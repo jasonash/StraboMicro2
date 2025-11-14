@@ -1,0 +1,504 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://strabospot.org/schemas/strabomicro-project.json",
+  "title": "StraboMicro Project Schema",
+  "description": "Complete data model for StraboMicro geological microanalysis projects",
+  "version": "2.0.0",
+
+  "definitions": {
+    "ProjectMetadata": {
+      "type": "object",
+      "description": "Root project metadata container",
+      "required": ["id", "name"],
+      "properties": {
+        "id": { "type": "string", "description": "Unique project identifier (UUID)" },
+        "name": { "type": "string", "description": "Project name" },
+        "description": { "type": "string" },
+        "startDate": { "type": "string", "format": "date" },
+        "endDate": { "type": "string", "format": "date" },
+        "owner": { "type": "string", "description": "Owner name" },
+        "ownerAffiliation": { "type": "string" },
+        "ownerEmail": { "type": "string", "format": "email" },
+        "ownerORCID": { "type": "string" },
+        "principalInvestigator": { "type": "string" },
+        "principalInvestigatorAffiliation": { "type": "string" },
+        "principalInvestigatorEmail": { "type": "string", "format": "email" },
+        "principalInvestigatorORCID": { "type": "string" },
+        "grantNumber": { "type": "string" },
+        "fundingSource": { "type": "string" },
+        "datasets": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/DatasetMetadata" }
+        },
+        "groups": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/GroupMetadata" }
+        },
+        "tags": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/Tag" }
+        }
+      }
+    },
+
+    "DatasetMetadata": {
+      "type": "object",
+      "description": "Dataset containing samples and micrographs",
+      "required": ["id", "name"],
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "samples": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/SampleMetadata" }
+        }
+      }
+    },
+
+    "SampleMetadata": {
+      "type": "object",
+      "description": "Physical sample with associated micrographs",
+      "required": ["id", "name"],
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "lithology": { "type": "string" },
+        "orientation": { "type": "string" },
+        "orientationQuality": { "type": "string" },
+        "samplingPurpose": { "type": "string" },
+        "rockType": { "type": "string" },
+        "fieldRelationships": { "type": "string" },
+        "physiographicSetting": { "type": "string" },
+        "tectSetting": { "type": "string" },
+        "notes": { "type": "string" },
+        "mainLithCategory": { "type": "string" },
+        "mainRockType": { "type": "string" },
+        "micrographs": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/MicrographMetadata" }
+        }
+      }
+    },
+
+    "MicrographMetadata": {
+      "type": "object",
+      "description": "Thin section micrograph with annotations",
+      "required": ["id", "name"],
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "notes": { "type": "string" },
+        "imageFilename": { "type": "string", "description": "Original TIFF filename" },
+        "imageWidth": { "type": "integer" },
+        "imageHeight": { "type": "integer" },
+        "micronPerPixel": { "type": "number", "description": "Scale factor" },
+        "parentID": { "type": "string", "description": "Parent micrograph for overlay hierarchy" },
+        "xOffset": { "type": "number", "description": "X position on parent image" },
+        "yOffset": { "type": "number", "description": "Y position on parent image" },
+        "rotation": { "type": "number", "description": "Rotation angle in degrees" },
+        "opacity": { "type": "number", "minimum": 0, "maximum": 1 },
+        "visible": { "type": "boolean", "default": true },
+        "spots": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/Spot" }
+        },
+        "grainInfos": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/GrainInfo" }
+        },
+        "fabricInfos": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/FabricInfo" }
+        },
+        "boundaryInfos": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/BoundaryInfo" }
+        },
+        "mineralogies": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/Mineralogy" }
+        },
+        "veinInfos": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/VeinInfo" }
+        },
+        "fractureInfos": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/FractureInfo" }
+        },
+        "foldInfos": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/FoldInfo" }
+        },
+        "porosity": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/Porosity" }
+        },
+        "pseudotachylytes": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/Pseudotachylyte" }
+        },
+        "otherFeatures": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/OtherFeature" }
+        }
+      }
+    },
+
+    "Spot": {
+      "type": "object",
+      "description": "Annotated region on a micrograph",
+      "required": ["id", "name"],
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "notes": { "type": "string" },
+        "geometry": { "$ref": "#/definitions/Geometry" },
+        "grainInfos": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/GrainInfo" }
+        },
+        "fabricInfos": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/FabricInfo" }
+        },
+        "boundaryInfos": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/BoundaryInfo" }
+        },
+        "mineralogies": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/Mineralogy" }
+        },
+        "veinInfos": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/VeinInfo" }
+        },
+        "fractureInfos": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/FractureInfo" }
+        },
+        "foldInfos": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/FoldInfo" }
+        },
+        "porosity": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/Porosity" }
+        },
+        "pseudotachylytes": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/Pseudotachylyte" }
+        },
+        "otherFeatures": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/OtherFeature" }
+        }
+      }
+    },
+
+    "Geometry": {
+      "type": "object",
+      "description": "Vector geometry for spots (point, line, or polygon)",
+      "required": ["type", "coordinates"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["Point", "LineString", "Polygon"]
+        },
+        "coordinates": {
+          "oneOf": [
+            {
+              "type": "array",
+              "description": "Point: [x, y]",
+              "minItems": 2,
+              "maxItems": 2,
+              "items": { "type": "number" }
+            },
+            {
+              "type": "array",
+              "description": "LineString: [[x1, y1], [x2, y2], ...]",
+              "items": {
+                "type": "array",
+                "minItems": 2,
+                "maxItems": 2,
+                "items": { "type": "number" }
+              }
+            },
+            {
+              "type": "array",
+              "description": "Polygon: [[[x1, y1], [x2, y2], ...]]",
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "array",
+                  "minItems": 2,
+                  "maxItems": 2,
+                  "items": { "type": "number" }
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+
+    "GroupMetadata": {
+      "type": "object",
+      "description": "Grouping of spots for organization",
+      "required": ["id", "name"],
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "spotIDs": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "References to spot IDs"
+        }
+      }
+    },
+
+    "Tag": {
+      "type": "object",
+      "description": "User-defined tag for categorization",
+      "required": ["id", "name"],
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "color": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
+        "spotIDs": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "References to tagged spot IDs"
+        }
+      }
+    },
+
+    "GrainInfo": {
+      "type": "object",
+      "description": "Grain microstructure characteristics",
+      "properties": {
+        "grainSize": { "type": "string" },
+        "grainSizeRange": { "type": "string" },
+        "shapePreferredOrientation": { "type": "string" },
+        "aspectRatio": { "type": "string" },
+        "aspectRatioRange": { "type": "string" },
+        "boundaryShape": { "type": "string" },
+        "contacts": { "type": "string" },
+        "surfaceTexture": { "type": "string" },
+        "grainBoundaries": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/GrainBoundary" }
+        },
+        "geochronologies": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/Geochronology" }
+        },
+        "chemistries": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/Chemistry" }
+        }
+      }
+    },
+
+    "FabricInfo": {
+      "type": "object",
+      "description": "Rock fabric and texture information",
+      "properties": {
+        "fabricType": { "type": "string" },
+        "fabricOrientation": { "type": "number", "description": "Angle in degrees" },
+        "penetrativeness": { "type": "string" },
+        "clastSize": { "type": "string" },
+        "sharingAngle": { "type": "number" },
+        "symmetry": { "type": "string" },
+        "metamorphicGrade": { "type": "string" },
+        "metamorphicTexture": { "type": "string" },
+        "protolithLithology": { "type": "string" }
+      }
+    },
+
+    "BoundaryInfo": {
+      "type": "object",
+      "description": "Grain boundary characteristics",
+      "properties": {
+        "boundaryType": { "type": "string" },
+        "boundaryShape": { "type": "string" },
+        "boundaryCharacter": { "type": "string" },
+        "boundaryDefinition": { "type": "string" }
+      }
+    },
+
+    "Mineralogy": {
+      "type": "object",
+      "description": "Mineral composition and characteristics",
+      "properties": {
+        "mineral": { "type": "string" },
+        "abundance": { "type": "number", "minimum": 0, "maximum": 100 },
+        "habit": { "type": "string" },
+        "color": { "type": "string" },
+        "pleochroism": { "type": "string" },
+        "interference": { "type": "string" },
+        "relief": { "type": "string" },
+        "cleavage": { "type": "string" },
+        "twinning": { "type": "string" },
+        "zoning": { "type": "string" },
+        "alteration": { "type": "string" },
+        "opticSign": { "type": "string" },
+        "extinctionAngle": { "type": "number" },
+        "chemistries": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/Chemistry" }
+        }
+      }
+    },
+
+    "VeinInfo": {
+      "type": "object",
+      "description": "Vein characteristics",
+      "properties": {
+        "veinType": { "type": "string" },
+        "veinOrientation": { "type": "number" },
+        "thickness": { "type": "number" },
+        "fillMineralogy": { "type": "string" },
+        "wallRockAlteration": { "type": "string" }
+      }
+    },
+
+    "FractureInfo": {
+      "type": "object",
+      "description": "Fracture characteristics",
+      "properties": {
+        "fractureType": { "type": "string" },
+        "fractureOrientation": { "type": "number" },
+        "aperture": { "type": "number" },
+        "fill": { "type": "string" },
+        "termination": { "type": "string" }
+      }
+    },
+
+    "FoldInfo": {
+      "type": "object",
+      "description": "Fold microstructure characteristics",
+      "properties": {
+        "foldType": { "type": "string" },
+        "axialOrientation": { "type": "number" },
+        "limbOrientation": { "type": "number" },
+        "interlimbAngle": { "type": "number" },
+        "wavelength": { "type": "number" },
+        "amplitude": { "type": "number" }
+      }
+    },
+
+    "Porosity": {
+      "type": "object",
+      "description": "Porosity measurements",
+      "properties": {
+        "porosityType": { "type": "string" },
+        "porosityPercent": { "type": "number", "minimum": 0, "maximum": 100 },
+        "poreSize": { "type": "number" },
+        "poreShape": { "type": "string" },
+        "connectivity": { "type": "string" }
+      }
+    },
+
+    "Pseudotachylyte": {
+      "type": "object",
+      "description": "Pseudotachylyte vein characteristics (56 fields)",
+      "properties": {
+        "veinType": { "type": "string" },
+        "veinThickness": { "type": "number" },
+        "veinOrientation": { "type": "number" },
+        "matrixColor": { "type": "string" },
+        "matrixTexture": { "type": "string" },
+        "clastComposition": { "type": "string" },
+        "clastSize": { "type": "string" },
+        "clastShape": { "type": "string" },
+        "clastDistribution": { "type": "string" },
+        "injectionVeins": { "type": "boolean" },
+        "wallRockAlteration": { "type": "string" },
+        "crosscuttingRelationships": { "type": "string" }
+      }
+    },
+
+    "OtherFeature": {
+      "type": "object",
+      "description": "Generic feature type for extensibility",
+      "properties": {
+        "featureType": { "type": "string" },
+        "description": { "type": "string" },
+        "properties": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      }
+    },
+
+    "GrainBoundary": {
+      "type": "object",
+      "description": "Grain boundary analysis",
+      "properties": {
+        "boundaryType": { "type": "string" },
+        "misorientation": { "type": "number" },
+        "segmentation": { "type": "string" }
+      }
+    },
+
+    "Geochronology": {
+      "type": "object",
+      "description": "Geochronological dating results",
+      "properties": {
+        "method": { "type": "string", "description": "U-Pb, Ar-Ar, etc." },
+        "age": { "type": "number", "description": "Age in Ma" },
+        "uncertainty": { "type": "number" },
+        "material": { "type": "string" },
+        "lab": { "type": "string" },
+        "analyst": { "type": "string" },
+        "date": { "type": "string", "format": "date" },
+        "reference": { "type": "string" }
+      }
+    },
+
+    "Chemistry": {
+      "type": "object",
+      "description": "Chemical analysis results",
+      "properties": {
+        "instrument": { "$ref": "#/definitions/Instrument" },
+        "elements": {
+          "type": "object",
+          "additionalProperties": { "type": "number" },
+          "description": "Element symbol -> concentration pairs"
+        },
+        "oxides": {
+          "type": "object",
+          "additionalProperties": { "type": "number" },
+          "description": "Oxide formula -> weight percent pairs"
+        },
+        "total": { "type": "number" },
+        "analyst": { "type": "string" },
+        "analysisDate": { "type": "string", "format": "date" }
+      }
+    },
+
+    "Instrument": {
+      "type": "object",
+      "description": "Analytical instrument configuration (65 fields for all instrument types)",
+      "properties": {
+        "instrumentType": {
+          "type": "string",
+          "enum": ["SEM", "TEM", "EPMA", "SIMS", "LA-ICP-MS", "XRF", "Raman", "FTIR", "Optical"]
+        },
+        "instrumentModel": { "type": "string" },
+        "acceleratingVoltage": { "type": "number" },
+        "beamCurrent": { "type": "number" },
+        "spotSize": { "type": "number" },
+        "workingDistance": { "type": "number" },
+        "detector": { "type": "string" },
+        "magnification": { "type": "number" },
+        "countTime": { "type": "number" },
+        "beamDiameter": { "type": "number" }
+      }
+    }
+  },
+
+  "$ref": "#/definitions/ProjectMetadata"
+}

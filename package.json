@@ -11,7 +11,12 @@
     "preview": "vite preview",
     "package": "npm run build && electron-builder"
   },
-  "keywords": ["geology", "microscopy", "electron", "react"],
+  "keywords": [
+    "geology",
+    "microscopy",
+    "electron",
+    "react"
+  ],
   "author": "StraboSpot.org",
   "license": "MIT",
   "devDependencies": {
@@ -27,8 +32,11 @@
     "wait-on": "^7.2.0"
   },
   "dependencies": {
+    "immer": "^10.2.0",
     "react": "^18.2.0",
-    "react-dom": "^18.2.0"
+    "react-dom": "^18.2.0",
+    "zundo": "^2.3.0",
+    "zustand": "^5.0.8"
   },
   "build": {
     "appId": "org.strabospot.strabomicro2",
