@@ -22,6 +22,7 @@
   cursor: pointer;
   transition: all 0.2s;
   border-bottom: 2px solid transparent;
+  text-transform: uppercase;
 }
 
 .tab:hover {
@@ -30,7 +31,7 @@
 }
 
 .tab.active {
-  color: #e44c65;
+  color: #ffffff;
   border-bottom-color: #e44c65;
   background-color: #252525;
 }
