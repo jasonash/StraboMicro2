@@ -1,6 +1,17 @@
 const { app, BrowserWindow, Menu, ipcMain, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const log = require('electron-log');
+
+// Configure electron-log
+log.transports.file.level = 'info';
+log.transports.console.level = 'debug';
+
+// Log application startup
+log.info('StraboMicro application starting...');
+log.info(`Electron version: ${process.versions.electron}`);
+log.info(`Node version: ${process.versions.node}`);
+log.info(`Chrome version: ${process.versions.chrome}`);
 
 let mainWindow;
 
@@ -117,7 +128,22 @@ function createWindow() {
   });
 }
 
-app.whenReady().then(createWindow);
+app.whenReady().then(async () => {
+  const isDev = process.env.NODE_ENV !== 'production';
+
+  // Install React DevTools in development mode
+  if (isDev) {
+    try {
+      const { default: installExtension, REACT_DEVELOPER_TOOLS } = require('electron-devtools-installer');
+      const name = await installExtension(REACT_DEVELOPER_TOOLS);
+      log.info(`Added DevTools Extension: ${name}`);
+    } catch (err) {
+      log.error('Failed to install React DevTools:', err);
+    }
+  }
+
+  createWindow();
+});
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
@@ -156,7 +182,7 @@ ipcMain.handle('dialog:open-tiff', async () => {
 // TIFF image loading with RGB→RGBA conversion
 ipcMain.handle('load-tiff-image', async (event, filePath) => {
   try {
-    console.log(`Loading TIFF: ${filePath}`);
+    log.info(`Loading TIFF: ${filePath}`);
 
     // Dynamic import of ES Module
     const { decode } = await import('tiff');
@@ -173,14 +199,14 @@ ipcMain.handle('load-tiff-image', async (event, filePath) => {
 
     // Detect format: RGB (3 bytes/pixel) vs RGBA (4 bytes/pixel)
     const bytesPerPixel = image.data.length / (image.width * image.height);
-    console.log(`TIFF decoded: ${image.width}x${image.height}, ${image.data.length} bytes, ${bytesPerPixel} bytes/pixel`);
+    log.info(`TIFF decoded: ${image.width}x${image.height}, ${image.data.length} bytes, ${bytesPerPixel} bytes/pixel`);
 
     const sourceData = new Uint8Array(image.data);
     let rgbaData;
 
     if (bytesPerPixel === 3) {
       // RGB format - convert to RGBA
-      console.log('Converting RGB to RGBA');
+      log.info('Converting RGB to RGBA');
       const pixelCount = image.width * image.height;
       rgbaData = new Uint8Array(pixelCount * 4);
 
@@ -193,7 +219,7 @@ ipcMain.handle('load-tiff-image', async (event, filePath) => {
       }
     } else if (bytesPerPixel === 4) {
       // Already RGBA format
-      console.log('Already RGBA format');
+      log.info('Already RGBA format');
       rgbaData = sourceData;
     } else {
       throw new Error(`Unsupported TIFF format: ${bytesPerPixel} bytes per pixel (expected 3 or 4)`);
@@ -202,7 +228,7 @@ ipcMain.handle('load-tiff-image', async (event, filePath) => {
     // Convert to base64 for efficient IPC transfer
     const pixelDataBase64 = Buffer.from(rgbaData).toString('base64');
 
-    console.log(`TIFF loaded successfully: ${image.width}x${image.height}, ${rgbaData.length} bytes RGBA`);
+    log.info(`TIFF loaded successfully: ${image.width}x${image.height}, ${rgbaData.length} bytes RGBA`);
 
     return {
       width: image.width,
@@ -212,7 +238,7 @@ ipcMain.handle('load-tiff-image', async (event, filePath) => {
       fileName: path.basename(filePath)
     };
   } catch (error) {
-    console.error('Error loading TIFF:', error);
+    log.error('Error loading TIFF:', error);
     throw error;
   }
 });
