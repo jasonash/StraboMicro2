@@ -1,9 +1,8 @@
 .details-panel {
-  width: 280px;
+  width: 100%;
   background-color: #252525;
   border-left: 1px solid #404040;
   overflow-y: auto;
-  flex-shrink: 0;
 }
 
 .panel-section {

@@ -11,3 +11,45 @@
   flex: 1;
   overflow: hidden;
 }
+
+.sidebar-container,
+.details-container {
+  position: relative;
+  flex-shrink: 0;
+  display: flex;
+}
+
+.sidebar-container {
+  flex-direction: row;
+}
+
+.details-container {
+  flex-direction: row;
+}
+
+.resize-handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  cursor: col-resize;
+  background-color: transparent;
+  transition: background-color 0.2s;
+  z-index: 10;
+}
+
+.resize-handle:hover {
+  background-color: #e44c65;
+}
+
+.resize-handle:active {
+  background-color: #e44c65;
+}
+
+.resize-handle-right {
+  right: 0;
+}
+
+.resize-handle-left {
+  left: 0;
+}
