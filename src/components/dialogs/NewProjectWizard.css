@@ -149,6 +149,12 @@
   color: #e0e0e0;
 }
 
+/* Date input calendar icon styling */
+.form-group input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: invert(47%) sepia(68%) saturate(1500%) hue-rotate(320deg) brightness(95%) contrast(90%);
+  cursor: pointer;
+}
+
 /* Two-column layout for date fields and GPS fields */
 .form-row {
   display: grid;

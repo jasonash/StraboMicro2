@@ -109,113 +109,103 @@ export const EditProjectDialog: React.FC<EditProjectDialogProps> = ({ isOpen, on
 
   return (
     <div className="wizard-overlay" onClick={onClose}>
-      <div className="wizard-container" onClick={(e) => e.stopPropagation()}>
+      <div className="wizard-content" onClick={(e) => e.stopPropagation()}>
         <div className="wizard-header">
           <h2>Edit Project</h2>
           <button className="wizard-close" onClick={onClose}>×</button>
         </div>
 
         <div className="wizard-body">
-          <div className="wizard-form">
-            <div className="form-row">
-              <label>
-                Project Name <span className="required">*</span>
-                <input
-                  type="text"
-                  value={formData.name}
-                  onChange={(e) => updateField('name', e.target.value)}
-                  placeholder="Enter project name"
-                />
-              </label>
-            </div>
+          <div className="form-group">
+            <label>
+              Project Name <span className="required">*</span>
+            </label>
+            <input
+              type="text"
+              value={formData.name}
+              onChange={(e) => updateField('name', e.target.value)}
+              placeholder="Enter project name"
+            />
+          </div>
 
-            <div className="form-row-split">
-              <label>
-                Start Date
-                <input
-                  type="date"
-                  value={formData.startDate}
-                  onChange={(e) => updateField('startDate', e.target.value)}
-                />
-              </label>
-              <label>
-                End Date
-                <input
-                  type="date"
-                  value={formData.endDate}
-                  onChange={(e) => updateField('endDate', e.target.value)}
-                />
-              </label>
+          <div className="form-row">
+            <div className="form-group">
+              <label>Start Date</label>
+              <input
+                type="date"
+                value={formData.startDate}
+                onChange={(e) => updateField('startDate', e.target.value)}
+              />
             </div>
+            <div className="form-group">
+              <label>End Date</label>
+              <input
+                type="date"
+                value={formData.endDate}
+                onChange={(e) => updateField('endDate', e.target.value)}
+              />
+            </div>
+          </div>
 
-            <div className="form-row">
-              <label>
-                Purpose of Study
-                <textarea
-                  value={formData.purposeOfStudy}
-                  onChange={(e) => updateField('purposeOfStudy', e.target.value)}
-                  placeholder="Describe the purpose of this study"
-                  rows={3}
-                />
-              </label>
-            </div>
+          <div className="form-group">
+            <label>Purpose of Study</label>
+            <textarea
+              value={formData.purposeOfStudy}
+              onChange={(e) => updateField('purposeOfStudy', e.target.value)}
+              placeholder="Describe the purpose of this study"
+              rows={3}
+            />
+          </div>
 
-            <div className="form-row">
-              <label>
-                Other Team Members
-                <input
-                  type="text"
-                  value={formData.otherTeamMembers}
-                  onChange={(e) => updateField('otherTeamMembers', e.target.value)}
-                  placeholder="List other team members"
-                />
-              </label>
-            </div>
+          <div className="form-group">
+            <label>Other Team Members</label>
+            <input
+              type="text"
+              value={formData.otherTeamMembers}
+              onChange={(e) => updateField('otherTeamMembers', e.target.value)}
+              placeholder="List other team members"
+            />
+          </div>
 
-            <div className="form-row">
-              <label>
-                Area of Interest
-                <input
-                  type="text"
-                  value={formData.areaOfInterest}
-                  onChange={(e) => updateField('areaOfInterest', e.target.value)}
-                  placeholder="Geographic area or location"
-                />
-              </label>
-            </div>
+          <div className="form-group">
+            <label>Area of Interest</label>
+            <input
+              type="text"
+              value={formData.areaOfInterest}
+              onChange={(e) => updateField('areaOfInterest', e.target.value)}
+              placeholder="Geographic area or location"
+            />
+          </div>
 
-            <div className="form-row-split">
-              <label>
-                GPS Datum
-                <input
-                  type="text"
-                  value={formData.gpsDatum}
-                  onChange={(e) => updateField('gpsDatum', e.target.value)}
-                  placeholder="e.g., WGS84"
-                />
-              </label>
-              <label>
-                Magnetic Declination
-                <input
-                  type="text"
-                  value={formData.magneticDeclination}
-                  onChange={(e) => updateField('magneticDeclination', e.target.value)}
-                  placeholder="Declination value"
-                />
-              </label>
+          <div className="form-row">
+            <div className="form-group">
+              <label>GPS Datum</label>
+              <input
+                type="text"
+                value={formData.gpsDatum}
+                onChange={(e) => updateField('gpsDatum', e.target.value)}
+                placeholder="e.g., WGS84"
+              />
             </div>
+            <div className="form-group">
+              <label>Magnetic Declination</label>
+              <input
+                type="text"
+                value={formData.magneticDeclination}
+                onChange={(e) => updateField('magneticDeclination', e.target.value)}
+                placeholder="Declination value"
+              />
+            </div>
+          </div>
 
-            <div className="form-row">
-              <label>
-                Notes
-                <textarea
-                  value={formData.notes}
-                  onChange={(e) => updateField('notes', e.target.value)}
-                  placeholder="Additional notes about the project"
-                  rows={4}
-                />
-              </label>
-            </div>
+          <div className="form-group">
+            <label>Notes</label>
+            <textarea
+              value={formData.notes}
+              onChange={(e) => updateField('notes', e.target.value)}
+              placeholder="Additional notes about the project"
+              rows={4}
+            />
           </div>
         </div>
 
