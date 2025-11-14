@@ -76,6 +76,16 @@ function createWindow() {
           }
         },
         { type: 'separator' },
+        {
+          label: 'Show Project Structure',
+          accelerator: 'CmdOrCtrl+Shift+D',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('menu:show-project-debug');
+            }
+          }
+        },
+        { type: 'separator' },
         { role: 'toggleDevTools' },
       ],
     },
