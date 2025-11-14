@@ -1,0 +1,25 @@
+.details-panel {
+  width: 280px;
+  background-color: #252525;
+  border-left: 1px solid #404040;
+  overflow-y: auto;
+  flex-shrink: 0;
+}
+
+.panel-section {
+  padding: 16px;
+  border-bottom: 1px solid #404040;
+}
+
+.panel-section:last-child {
+  border-bottom: none;
+}
+
+.panel-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #e0e0e0;
+  margin: 0 0 12px 0;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #404040;
+}
