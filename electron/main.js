@@ -22,6 +22,7 @@ function createWindow() {
     minWidth: 1024,
     minHeight: 768,
     backgroundColor: '#1e1e1e',
+    title: 'StraboMicro',
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
