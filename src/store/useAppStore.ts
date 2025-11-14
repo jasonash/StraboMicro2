@@ -453,7 +453,17 @@ export const useAppStore = create<AppState>()(
         // Persistence configuration
         name: 'strabomicro-storage',
         partialize: (state) => ({
-          // Only persist UI preferences, not project data
+          // Project data (metadata only, not large binary data)
+          project: state.project,
+          projectFilePath: state.projectFilePath,
+          isDirty: state.isDirty,
+
+          // Navigation state
+          activeDatasetId: state.activeDatasetId,
+          activeSampleId: state.activeSampleId,
+          activeMicrographId: state.activeMicrographId,
+
+          // UI preferences
           sidebarTab: state.sidebarTab,
           detailsPanelOpen: state.detailsPanelOpen,
           showSpotLabels: state.showSpotLabels,
