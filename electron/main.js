@@ -53,6 +53,15 @@ function createWindow() {
             }
           }
         },
+        {
+          label: 'Edit Project',
+          accelerator: 'CmdOrCtrl+E',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('menu:edit-project');
+            }
+          }
+        },
         { label: 'Save', accelerator: 'CmdOrCtrl+S' },
         { type: 'separator' },
         { role: 'quit' },

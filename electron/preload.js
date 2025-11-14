@@ -8,6 +8,7 @@ contextBridge.exposeInMainWorld('api', {
   // Dialog triggers (from menu)
   onNewProject: (callback) => ipcRenderer.on('menu:new-project', callback),
   onOpenProject: (callback) => ipcRenderer.on('menu:open-project', callback),
+  onEditProject: (callback) => ipcRenderer.on('menu:edit-project', callback),
   onShowProjectDebug: (callback) => ipcRenderer.on('menu:show-project-debug', callback),
   onClearProject: (callback) => ipcRenderer.on('menu:clear-project', callback),
 

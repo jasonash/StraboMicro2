@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import MainLayout from './components/MainLayout';
 import { NewProjectWizard } from './components/dialogs/NewProjectWizard';
+import { EditProjectDialog } from './components/dialogs/EditProjectDialog';
 import { ProjectDebugModal } from './components/dialogs/ProjectDebugModal';
 import { useAppStore } from '@/store';
 import './App.css';
@@ -11,6 +12,7 @@ declare global {
     api: {
       onNewProject: (callback: () => void) => void;
       onOpenProject: (callback: () => void) => void;
+      onEditProject: (callback: () => void) => void;
       onShowProjectDebug: (callback: () => void) => void;
       onClearProject: (callback: () => void) => void;
       openTiffDialog: () => Promise<string | null>;
@@ -28,6 +30,7 @@ declare global {
 
 function App() {
   const [isNewProjectDialogOpen, setIsNewProjectDialogOpen] = useState(false);
+  const [isEditProjectDialogOpen, setIsEditProjectDialogOpen] = useState(false);
   const [isDebugModalOpen, setIsDebugModalOpen] = useState(false);
   const closeProject = useAppStore(state => state.closeProject);
   const project = useAppStore(state => state.project);
@@ -61,6 +64,11 @@ function App() {
       console.log('Open Project clicked');
     });
 
+    // Edit Project menu item
+    window.api.onEditProject(() => {
+      setIsEditProjectDialogOpen(true);
+    });
+
     // Debug: Show Project Structure
     window.api.onShowProjectDebug(() => {
       setIsDebugModalOpen(true);
@@ -81,6 +89,10 @@ function App() {
       <NewProjectWizard
         isOpen={isNewProjectDialogOpen}
         onClose={() => setIsNewProjectDialogOpen(false)}
+      />
+      <EditProjectDialog
+        isOpen={isEditProjectDialogOpen}
+        onClose={() => setIsEditProjectDialogOpen(false)}
       />
       <ProjectDebugModal
         isOpen={isDebugModalOpen}
