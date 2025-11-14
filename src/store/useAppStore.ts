@@ -65,7 +65,7 @@ interface AppState {
   spotIndex: Map<string, Spot>;
 
   // ========== PROJECT ACTIONS ==========
-  loadProject: (project: ProjectMetadata, filePath: string) => void;
+  loadProject: (project: ProjectMetadata, filePath: string | null) => void;
   closeProject: () => void;
   saveProject: () => void;
   markDirty: () => void;

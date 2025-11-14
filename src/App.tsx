@@ -26,6 +26,12 @@ function App() {
 
   // Listen for menu events from Electron
   useEffect(() => {
+    // Check if window.api is available (Electron context)
+    if (!window.api) {
+      console.warn('window.api not available - running outside Electron context');
+      return;
+    }
+
     // New Project menu item
     window.api.onNewProject(() => {
       setIsNewProjectDialogOpen(true);
