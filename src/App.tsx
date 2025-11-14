@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import MainLayout from './components/MainLayout';
 import { NewProjectWizard } from './components/dialogs/NewProjectWizard';
 import { ProjectDebugModal } from './components/dialogs/ProjectDebugModal';
+import { useAppStore } from '@/store';
 import './App.css';
 
 // TypeScript type for window.api
@@ -11,6 +12,7 @@ declare global {
       onNewProject: (callback: () => void) => void;
       onOpenProject: (callback: () => void) => void;
       onShowProjectDebug: (callback: () => void) => void;
+      onClearProject: (callback: () => void) => void;
       openTiffDialog: () => Promise<string | null>;
       loadTiffImage: (filePath: string) => Promise<{
         width: number;
@@ -26,6 +28,7 @@ declare global {
 function App() {
   const [isNewProjectDialogOpen, setIsNewProjectDialogOpen] = useState(false);
   const [isDebugModalOpen, setIsDebugModalOpen] = useState(false);
+  const closeProject = useAppStore(state => state.closeProject);
 
   // Listen for menu events from Electron
   useEffect(() => {
@@ -49,7 +52,15 @@ function App() {
     window.api.onShowProjectDebug(() => {
       setIsDebugModalOpen(true);
     });
-  }, []);
+
+    // Debug: Clear Project
+    window.api.onClearProject(() => {
+      if (confirm('Are you sure you want to clear the current project? This will remove it from localStorage.')) {
+        closeProject();
+        console.log('Project cleared');
+      }
+    });
+  }, [closeProject]);
 
   return (
     <>

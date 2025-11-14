@@ -85,6 +85,14 @@ function createWindow() {
             }
           }
         },
+        {
+          label: 'Clear Project',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('menu:clear-project');
+            }
+          }
+        },
         { type: 'separator' },
         { role: 'toggleDevTools' },
       ],
