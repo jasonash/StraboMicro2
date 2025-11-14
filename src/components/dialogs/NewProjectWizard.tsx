@@ -95,6 +95,28 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
+  // Validation for longitude (-180 to 180)
+  const handleLongitudeChange = (value: string) => {
+    // Allow empty, minus sign, and valid decimal numbers
+    if (value === '' || value === '-' || /^-?\d*\.?\d*$/.test(value)) {
+      const num = parseFloat(value);
+      if (value === '' || value === '-' || (num >= -180 && num <= 180) || isNaN(num)) {
+        updateField('longitude', value);
+      }
+    }
+  };
+
+  // Validation for latitude (-90 to 90)
+  const handleLatitudeChange = (value: string) => {
+    // Allow empty, minus sign, and valid decimal numbers
+    if (value === '' || value === '-' || /^-?\d*\.?\d*$/.test(value)) {
+      const num = parseFloat(value);
+      if (value === '' || value === '-' || (num >= -90 && num <= 90) || isNaN(num)) {
+        updateField('latitude', value);
+      }
+    }
+  };
+
   const handleBack = () => {
     if (currentStep > 1) {
       setCurrentStep(currentStep - 1);
@@ -336,12 +358,9 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
                   <label htmlFor="longitude">Longitude</label>
                   <input
                     id="longitude"
-                    type="number"
-                    step="0.000001"
-                    min="-180"
-                    max="180"
+                    type="text"
                     value={formData.longitude}
-                    onChange={(e) => updateField('longitude', e.target.value)}
+                    onChange={(e) => handleLongitudeChange(e.target.value)}
                     placeholder="-180 to 180"
                   />
                 </div>
@@ -350,12 +369,9 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
                   <label htmlFor="latitude">Latitude</label>
                   <input
                     id="latitude"
-                    type="number"
-                    step="0.000001"
-                    min="-90"
-                    max="90"
+                    type="text"
                     value={formData.latitude}
-                    onChange={(e) => updateField('latitude', e.target.value)}
+                    onChange={(e) => handleLatitudeChange(e.target.value)}
                     placeholder="-90 to 90"
                   />
                 </div>
