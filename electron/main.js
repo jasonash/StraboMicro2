@@ -118,7 +118,12 @@ function createWindow() {
 
   if (isDev) {
     mainWindow.loadURL('http://localhost:5173');
-    mainWindow.webContents.openDevTools();
+
+    // Open DevTools automatically in development
+    mainWindow.webContents.once('did-finish-load', () => {
+      log.info('Page loaded, opening DevTools...');
+      mainWindow.webContents.openDevTools({ mode: 'detach' });
+    });
   } else {
     mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
   }
