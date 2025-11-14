@@ -1,5 +1,6 @@
-# Docs
+# Docs (but track PROJECT_STATUS.md)
 docs/
+!docs/PROJECT_STATUS.md
 
 # Dependencies
 node_modules/
