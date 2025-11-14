@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import MainLayout from './components/MainLayout';
-import { NewProjectDialog } from './components/dialogs/NewProjectDialog';
+import { NewProjectWizard } from './components/dialogs/NewProjectWizard';
 import './App.css';
 
 // TypeScript type for window.api
@@ -46,7 +46,7 @@ function App() {
   return (
     <>
       <MainLayout />
-      <NewProjectDialog
+      <NewProjectWizard
         isOpen={isNewProjectDialogOpen}
         onClose={() => setIsNewProjectDialogOpen(false)}
       />
