@@ -21,6 +21,7 @@ declare global {
         filePath: string;
         fileName: string;
       }>;
+      setWindowTitle: (title: string) => void;
     };
   }
 }
@@ -29,6 +30,18 @@ function App() {
   const [isNewProjectDialogOpen, setIsNewProjectDialogOpen] = useState(false);
   const [isDebugModalOpen, setIsDebugModalOpen] = useState(false);
   const closeProject = useAppStore(state => state.closeProject);
+  const project = useAppStore(state => state.project);
+
+  // Update window title when project changes
+  useEffect(() => {
+    if (!window.api) return;
+
+    if (project && project.name) {
+      window.api.setWindowTitle(`StraboMicro - ${project.name}`);
+    } else {
+      window.api.setWindowTitle('StraboMicro');
+    }
+  }, [project]);
 
   // Listen for menu events from Electron
   useEffect(() => {

@@ -16,4 +16,7 @@ contextBridge.exposeInMainWorld('api', {
 
   // TIFF loading
   loadTiffImage: (filePath) => ipcRenderer.invoke('load-tiff-image', filePath),
+
+  // Window title
+  setWindowTitle: (title) => ipcRenderer.send('set-window-title', title),
 });

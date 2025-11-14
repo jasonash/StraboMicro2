@@ -248,3 +248,11 @@ ipcMain.handle('load-tiff-image', async (event, filePath) => {
     throw error;
   }
 });
+
+// Window title update
+ipcMain.on('set-window-title', (event, title) => {
+  if (mainWindow) {
+    mainWindow.setTitle(title);
+    log.info(`Window title set to: ${title}`);
+  }
+});
