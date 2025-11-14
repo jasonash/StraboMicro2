@@ -1,6 +1,8 @@
-# Docs (but track PROJECT_STATUS.md)
+# Project tracking (local only)
+PROJECT_STATUS.md
+
+# Docs
 docs/
-!docs/PROJECT_STATUS.md
 
 # Dependencies
 node_modules/
