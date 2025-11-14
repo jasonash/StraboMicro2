@@ -21,6 +21,7 @@
 
 .sidebar-container {
   flex-direction: row;
+  min-width: 300px;
 }
 
 .details-container {

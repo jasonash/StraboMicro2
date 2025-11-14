@@ -6,7 +6,7 @@ import DetailsPanel from './DetailsPanel';
 import './MainLayout.css';
 
 const MainLayout: React.FC = () => {
-  const [leftWidth, setLeftWidth] = useState(250);
+  const [leftWidth, setLeftWidth] = useState(300);
   const [rightWidth, setRightWidth] = useState(280);
   const isResizingLeft = useRef(false);
   const isResizingRight = useRef(false);
@@ -25,7 +25,7 @@ const MainLayout: React.FC = () => {
   const handleMouseMove = (e: MouseEvent) => {
     if (isResizingLeft.current) {
       const newWidth = e.clientX;
-      if (newWidth >= 200 && newWidth <= 500) {
+      if (newWidth >= 300 && newWidth <= 500) {
         setLeftWidth(newWidth);
       }
     } else if (isResizingRight.current) {
