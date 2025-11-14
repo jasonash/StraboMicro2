@@ -24,6 +24,7 @@
   height: 32px;
   width: auto;
   display: block;
+  border-radius: 25%;
 }
 
 .app-title {
