@@ -20,6 +20,12 @@
   align-items: center;
 }
 
+.logo-image {
+  height: 32px;
+  width: auto;
+  display: block;
+}
+
 .app-title {
   font-family: 'Roboto', sans-serif;
   font-size: 20px;

@@ -1,14 +1,13 @@
 import React from 'react';
 import './Header.css';
+import straboLogo from '../assets/strabo-logo.png';
 
 const Header: React.FC = () => {
   return (
     <header className="header">
       <div className="header-left">
         <div className="app-logo">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-            <circle cx="12" cy="12" r="10" fill="#e44c65" />
-          </svg>
+          <img src={straboLogo} alt="StraboSpot Logo" className="logo-image" />
         </div>
         <h1 className="app-title">STRABOMICRO</h1>
       </div>
