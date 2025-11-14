@@ -49,6 +49,16 @@ function createWindow() {
       label: 'Debug',
       submenu: [
         { role: 'reload' },
+        {
+          label: 'Force Reload',
+          accelerator: 'CmdOrCtrl+Shift+R',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.reloadIgnoringCache();
+            }
+          }
+        },
+        { type: 'separator' },
         { role: 'toggleDevTools' },
       ],
     },
