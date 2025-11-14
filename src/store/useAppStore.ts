@@ -473,4 +473,4 @@ export const useAppStore = create<AppState>()(
 // UNDO/REDO HOOKS (from zundo temporal middleware)
 // ============================================================================
 
-export const useTemporalStore = create(useAppStore.temporal);
+export const useTemporalStore = useAppStore.temporal;
