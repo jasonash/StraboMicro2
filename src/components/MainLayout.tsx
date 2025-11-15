@@ -7,7 +7,7 @@ import DetailsPanel from './DetailsPanel';
 
 const MainLayout: React.FC = () => {
   const [leftWidth, setLeftWidth] = useState(360);
-  const [rightWidth, setRightWidth] = useState(280);
+  const [rightWidth, setRightWidth] = useState(360);
   const isResizingLeft = useRef(false);
   const isResizingRight = useRef(false);
 
@@ -30,7 +30,7 @@ const MainLayout: React.FC = () => {
       }
     } else if (isResizingRight.current) {
       const newWidth = window.innerWidth - e.clientX;
-      if (newWidth >= 250 && newWidth <= 600) {
+      if (newWidth >= 360 && newWidth <= 600) {
         setRightWidth(newWidth);
       }
     }
