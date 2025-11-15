@@ -10,8 +10,21 @@
  */
 
 import { useState } from 'react';
+import {
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Button,
+  Stepper,
+  Step,
+  StepLabel,
+  TextField,
+  MenuItem,
+  Box,
+  Stack,
+} from '@mui/material';
 import { useAppStore } from '@/store';
-import './NewProjectWizard.css';
 
 interface NewProjectWizardProps {
   isOpen: boolean;
@@ -19,7 +32,6 @@ interface NewProjectWizardProps {
 }
 
 interface ProjectFormData {
-  // Step 1: Project Metadata
   name: string;
   startDate: string;
   endDate: string;
@@ -29,11 +41,7 @@ interface ProjectFormData {
   gpsDatum: string;
   magneticDeclination: string;
   notes: string;
-
-  // Step 2: Dataset
   datasetName: string;
-
-  // Step 3: Sample
   sampleID: string;
   longitude: string;
   latitude: string;
@@ -47,7 +55,6 @@ interface ProjectFormData {
   sampleSize: string;
   degreeOfWeathering: string;
   sampleNotes: string;
-  // Conditional fields for materialType
   sampleType: string;
   color: string;
   lithology: string;
@@ -87,50 +94,25 @@ const initialFormData: ProjectFormData = {
 };
 
 export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onClose }) => {
-  const [currentStep, setCurrentStep] = useState(1);
+  const [activeStep, setActiveStep] = useState(0);
   const [formData, setFormData] = useState<ProjectFormData>(initialFormData);
   const loadProject = useAppStore(state => state.loadProject);
+
+  const steps = ['Project Metadata', 'Dataset Information', 'Sample Information'];
 
   const updateField = (field: keyof ProjectFormData, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
-  // Validation for longitude (-180 to 180)
-  const handleLongitudeChange = (value: string) => {
-    // Allow empty, minus sign, and valid decimal numbers
-    if (value === '' || value === '-' || /^-?\d*\.?\d*$/.test(value)) {
-      const num = parseFloat(value);
-      if (value === '' || value === '-' || (num >= -180 && num <= 180) || isNaN(num)) {
-        updateField('longitude', value);
-      }
-    }
-  };
-
-  // Validation for latitude (-90 to 90)
-  const handleLatitudeChange = (value: string) => {
-    // Allow empty, minus sign, and valid decimal numbers
-    if (value === '' || value === '-' || /^-?\d*\.?\d*$/.test(value)) {
-      const num = parseFloat(value);
-      if (value === '' || value === '-' || (num >= -90 && num <= 90) || isNaN(num)) {
-        updateField('latitude', value);
-      }
-    }
+  const handleNext = () => {
+    setActiveStep((prevActiveStep) => prevActiveStep + 1);
   };
 
   const handleBack = () => {
-    if (currentStep > 1) {
-      setCurrentStep(currentStep - 1);
-    }
-  };
-
-  const handleNext = () => {
-    if (currentStep < 3) {
-      setCurrentStep(currentStep + 1);
-    }
+    setActiveStep((prevActiveStep) => prevActiveStep - 1);
   };
 
   const handleFinish = () => {
-    // Create complete project structure
     const newProject = {
       id: crypto.randomUUID(),
       name: formData.name,
@@ -173,437 +155,232 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
     };
 
     loadProject(newProject, null);
-
-    // Reset and close
     setFormData(initialFormData);
-    setCurrentStep(1);
+    setActiveStep(0);
     onClose();
   };
 
   const handleCancel = () => {
     setFormData(initialFormData);
-    setCurrentStep(1);
+    setActiveStep(0);
     onClose();
   };
 
-  // Validation for each step
-  const canProceedStep1 = formData.name.trim() !== '';
-  const canProceedStep2 = formData.datasetName.trim() !== '';
-  const canProceedStep3 = formData.sampleID.trim() !== '';
+  const canProceed = () => {
+    if (activeStep === 0) return formData.name.trim() !== '';
+    if (activeStep === 1) return formData.datasetName.trim() !== '';
+    if (activeStep === 2) return formData.sampleID.trim() !== '';
+    return true;
+  };
 
-  if (!isOpen) return null;
+  const renderStepContent = (step: number) => {
+    switch (step) {
+      case 0:
+        return (
+          <Stack spacing={2}>
+            <TextField
+              fullWidth
+              required
+              label="Project Name"
+              value={formData.name}
+              onChange={(e) => updateField('name', e.target.value)}
+            />
+            <Box sx={{ display: 'flex', gap: 2 }}>
+              <TextField
+                fullWidth
+                type="date"
+                label="Start Date"
+                InputLabelProps={{ shrink: true }}
+                value={formData.startDate}
+                onChange={(e) => updateField('startDate', e.target.value)}
+              />
+              <TextField
+                fullWidth
+                type="date"
+                label="End Date"
+                InputLabelProps={{ shrink: true }}
+                value={formData.endDate}
+                onChange={(e) => updateField('endDate', e.target.value)}
+              />
+            </Box>
+            <TextField
+              fullWidth
+              label="Purpose of Study"
+              value={formData.purposeOfStudy}
+              onChange={(e) => updateField('purposeOfStudy', e.target.value)}
+            />
+            <TextField
+              fullWidth
+              label="Other Team Members"
+              value={formData.otherTeamMembers}
+              onChange={(e) => updateField('otherTeamMembers', e.target.value)}
+            />
+            <TextField
+              fullWidth
+              label="Area of Interest"
+              value={formData.areaOfInterest}
+              onChange={(e) => updateField('areaOfInterest', e.target.value)}
+            />
+            <Box sx={{ display: 'flex', gap: 2 }}>
+              <TextField
+                fullWidth
+                label="GPS Datum"
+                value={formData.gpsDatum}
+                onChange={(e) => updateField('gpsDatum', e.target.value)}
+              />
+              <TextField
+                fullWidth
+                label="Magnetic Declination"
+                value={formData.magneticDeclination}
+                onChange={(e) => updateField('magneticDeclination', e.target.value)}
+              />
+            </Box>
+            <TextField
+              fullWidth
+              multiline
+              rows={4}
+              label="Notes"
+              value={formData.notes}
+              onChange={(e) => updateField('notes', e.target.value)}
+            />
+          </Stack>
+        );
+
+      case 1:
+        return (
+          <TextField
+            fullWidth
+            required
+            label="Dataset Name"
+            value={formData.datasetName}
+            onChange={(e) => updateField('datasetName', e.target.value)}
+          />
+        );
+
+      case 2:
+        return (
+          <Stack spacing={2}>
+            <TextField
+              fullWidth
+              required
+              label="Sample ID"
+              value={formData.sampleID}
+              onChange={(e) => updateField('sampleID', e.target.value)}
+            />
+            <Box sx={{ display: 'flex', gap: 2 }}>
+              <TextField
+                fullWidth
+                label="Longitude"
+                placeholder="-180 to 180"
+                value={formData.longitude}
+                onChange={(e) => updateField('longitude', e.target.value)}
+              />
+              <TextField
+                fullWidth
+                label="Latitude"
+                placeholder="-90 to 90"
+                value={formData.latitude}
+                onChange={(e) => updateField('latitude', e.target.value)}
+              />
+            </Box>
+            <TextField
+              fullWidth
+              select
+              label="Main Sampling Purpose"
+              value={formData.mainSamplingPurpose}
+              onChange={(e) => updateField('mainSamplingPurpose', e.target.value)}
+            >
+              <MenuItem value="">Select Main Sampling Purpose...</MenuItem>
+              <MenuItem value="fabric___micro">Fabric / Microstructure</MenuItem>
+              <MenuItem value="petrology">Petrology</MenuItem>
+              <MenuItem value="geochronology">Geochronology</MenuItem>
+              <MenuItem value="geochemistry">Geochemistry</MenuItem>
+              <MenuItem value="active_eruptio">Active Eruption</MenuItem>
+              <MenuItem value="other">Other</MenuItem>
+            </TextField>
+            {formData.mainSamplingPurpose === 'other' && (
+              <TextField
+                fullWidth
+                label="Other Sampling Purpose"
+                value={formData.otherSamplingPurpose}
+                onChange={(e) => updateField('otherSamplingPurpose', e.target.value)}
+              />
+            )}
+            <TextField
+              fullWidth
+              label="Sample Description"
+              value={formData.sampleDescription}
+              onChange={(e) => updateField('sampleDescription', e.target.value)}
+            />
+            <TextField
+              fullWidth
+              select
+              label="Material Type"
+              value={formData.materialType}
+              onChange={(e) => updateField('materialType', e.target.value)}
+            >
+              <MenuItem value="">Select Material Type...</MenuItem>
+              <MenuItem value="intact_rock">Intact Rock</MenuItem>
+              <MenuItem value="fragmented_roc">Fragmented Rock</MenuItem>
+              <MenuItem value="sediment">Sediment</MenuItem>
+              <MenuItem value="tephra">Tephra</MenuItem>
+              <MenuItem value="carbon_or_animal">Carbon or Animal</MenuItem>
+              <MenuItem value="other">Other</MenuItem>
+            </TextField>
+            <TextField
+              fullWidth
+              multiline
+              rows={4}
+              label="Sample Notes"
+              value={formData.sampleNotes}
+              onChange={(e) => updateField('sampleNotes', e.target.value)}
+            />
+          </Stack>
+        );
+
+      default:
+        return null;
+    }
+  };
 
   return (
-    <div className="wizard-overlay" onClick={handleCancel}>
-      <div className="wizard-content" onClick={(e) => e.stopPropagation()}>
-        <div className="wizard-header">
-          <h2>New Project - Step {currentStep} of 3</h2>
-          <button className="wizard-close" onClick={handleCancel}>×</button>
-        </div>
-
-        <div className="wizard-body">
-          {/* Step 1: Project Metadata */}
-          {currentStep === 1 && (
-            <div className="wizard-step">
-              <h3>Project Metadata</h3>
-
-              <div className="form-group">
-                <label htmlFor="projectName">
-                  Project Name <span className="required">*</span>
-                </label>
-                <input
-                  id="projectName"
-                  type="text"
-                  value={formData.name}
-                  onChange={(e) => updateField('name', e.target.value)}
-                  placeholder="Enter project name"
-                  autoFocus
-                />
-              </div>
-
-              <div className="form-row">
-                <div className="form-group">
-                  <label htmlFor="startDate">Start Date</label>
-                  <input
-                    id="startDate"
-                    type="date"
-                    value={formData.startDate}
-                    onChange={(e) => updateField('startDate', e.target.value)}
-                  />
-                </div>
-
-                <div className="form-group">
-                  <label htmlFor="endDate">End Date</label>
-                  <input
-                    id="endDate"
-                    type="date"
-                    value={formData.endDate}
-                    onChange={(e) => updateField('endDate', e.target.value)}
-                  />
-                </div>
-              </div>
-
-              <div className="form-group">
-                <label htmlFor="purposeOfStudy">Purpose of Study</label>
-                <input
-                  id="purposeOfStudy"
-                  type="text"
-                  value={formData.purposeOfStudy}
-                  onChange={(e) => updateField('purposeOfStudy', e.target.value)}
-                  placeholder="Optional"
-                />
-              </div>
-
-              <div className="form-group">
-                <label htmlFor="otherTeamMembers">Other Team Members</label>
-                <input
-                  id="otherTeamMembers"
-                  type="text"
-                  value={formData.otherTeamMembers}
-                  onChange={(e) => updateField('otherTeamMembers', e.target.value)}
-                  placeholder="Optional"
-                />
-              </div>
-
-              <div className="form-group">
-                <label htmlFor="areaOfInterest">Area of Interest</label>
-                <input
-                  id="areaOfInterest"
-                  type="text"
-                  value={formData.areaOfInterest}
-                  onChange={(e) => updateField('areaOfInterest', e.target.value)}
-                  placeholder="Optional"
-                />
-              </div>
-
-              <div className="form-row">
-                <div className="form-group">
-                  <label htmlFor="gpsDatum">GPS Datum</label>
-                  <input
-                    id="gpsDatum"
-                    type="text"
-                    value={formData.gpsDatum}
-                    onChange={(e) => updateField('gpsDatum', e.target.value)}
-                    placeholder="Optional"
-                  />
-                </div>
-
-                <div className="form-group">
-                  <label htmlFor="magneticDeclination">Magnetic Declination</label>
-                  <input
-                    id="magneticDeclination"
-                    type="text"
-                    value={formData.magneticDeclination}
-                    onChange={(e) => updateField('magneticDeclination', e.target.value)}
-                    placeholder="Optional"
-                  />
-                </div>
-              </div>
-
-              <div className="form-group">
-                <label htmlFor="notes">Notes</label>
-                <textarea
-                  id="notes"
-                  value={formData.notes}
-                  onChange={(e) => updateField('notes', e.target.value)}
-                  placeholder="Optional project notes"
-                  rows={4}
-                />
-              </div>
-            </div>
-          )}
-
-          {/* Step 2: Dataset Name */}
-          {currentStep === 2 && (
-            <div className="wizard-step">
-              <h3>Dataset Information</h3>
-
-              <div className="form-group">
-                <label htmlFor="datasetName">
-                  Dataset Name <span className="required">*</span>
-                </label>
-                <input
-                  id="datasetName"
-                  type="text"
-                  value={formData.datasetName}
-                  onChange={(e) => updateField('datasetName', e.target.value)}
-                  placeholder="Enter dataset name"
-                  autoFocus
-                />
-              </div>
-            </div>
-          )}
-
-          {/* Step 3: Sample Information */}
-          {currentStep === 3 && (
-            <div className="wizard-step">
-              <h3>Sample Information</h3>
-
-              <div className="form-group">
-                <label htmlFor="sampleID">
-                  Sample ID <span className="required">*</span>
-                </label>
-                <input
-                  id="sampleID"
-                  type="text"
-                  value={formData.sampleID}
-                  onChange={(e) => updateField('sampleID', e.target.value)}
-                  placeholder="Enter sample ID"
-                  autoFocus
-                />
-              </div>
-
-              <div className="form-row">
-                <div className="form-group">
-                  <label htmlFor="longitude">Longitude</label>
-                  <input
-                    id="longitude"
-                    type="text"
-                    value={formData.longitude}
-                    onChange={(e) => handleLongitudeChange(e.target.value)}
-                    placeholder="-180 to 180"
-                  />
-                </div>
-
-                <div className="form-group">
-                  <label htmlFor="latitude">Latitude</label>
-                  <input
-                    id="latitude"
-                    type="text"
-                    value={formData.latitude}
-                    onChange={(e) => handleLatitudeChange(e.target.value)}
-                    placeholder="-90 to 90"
-                  />
-                </div>
-              </div>
-
-              <div className="form-group">
-                <label htmlFor="mainSamplingPurpose">Main Sampling Purpose</label>
-                <select
-                  id="mainSamplingPurpose"
-                  value={formData.mainSamplingPurpose}
-                  onChange={(e) => updateField('mainSamplingPurpose', e.target.value)}
-                >
-                  <option value="">Select Main Sampling Purpose...</option>
-                  <option value="fabric___micro">Fabric / Microstructure</option>
-                  <option value="petrology">Petrology</option>
-                  <option value="geochronology">Geochronology</option>
-                  <option value="geochemistry">Geochemistry</option>
-                  <option value="active_eruptio">Active Eruption</option>
-                  <option value="other">Other</option>
-                </select>
-              </div>
-
-              {formData.mainSamplingPurpose === 'other' && (
-                <div className="form-group">
-                  <label htmlFor="otherSamplingPurpose">Other Sampling Purpose</label>
-                  <input
-                    id="otherSamplingPurpose"
-                    type="text"
-                    value={formData.otherSamplingPurpose}
-                    onChange={(e) => updateField('otherSamplingPurpose', e.target.value)}
-                    placeholder="Specify other purpose"
-                  />
-                </div>
-              )}
-
-              <div className="form-group">
-                <label htmlFor="sampleDescription">Sample Description</label>
-                <input
-                  id="sampleDescription"
-                  type="text"
-                  value={formData.sampleDescription}
-                  onChange={(e) => updateField('sampleDescription', e.target.value)}
-                  placeholder="Optional"
-                />
-              </div>
-
-              <div className="form-group">
-                <label htmlFor="materialType">Material Type</label>
-                <select
-                  id="materialType"
-                  value={formData.materialType}
-                  onChange={(e) => updateField('materialType', e.target.value)}
-                >
-                  <option value="">Select Material Type...</option>
-                  <option value="intact_rock">Intact Rock</option>
-                  <option value="fragmented_roc">Fragmented Rock</option>
-                  <option value="sediment">Sediment</option>
-                  <option value="tephra">Tephra</option>
-                  <option value="carbon_or_animal">Carbon or Animal</option>
-                  <option value="other">Other</option>
-                </select>
-              </div>
-
-              {formData.materialType === 'tephra' && (
-                <>
-                  <div className="form-group">
-                    <label htmlFor="sampleType">Sample Type</label>
-                    <input
-                      id="sampleType"
-                      type="text"
-                      value={formData.sampleType}
-                      onChange={(e) => updateField('sampleType', e.target.value)}
-                    />
-                  </div>
-                  <div className="form-group">
-                    <label htmlFor="color">Color</label>
-                    <input
-                      id="color"
-                      type="text"
-                      value={formData.color}
-                      onChange={(e) => updateField('color', e.target.value)}
-                    />
-                  </div>
-                  <div className="form-group">
-                    <label htmlFor="lithology">Lithology</label>
-                    <input
-                      id="lithology"
-                      type="text"
-                      value={formData.lithology}
-                      onChange={(e) => updateField('lithology', e.target.value)}
-                    />
-                  </div>
-                  <div className="form-group">
-                    <label htmlFor="sampleUnit">Sample Unit</label>
-                    <input
-                      id="sampleUnit"
-                      type="text"
-                      value={formData.sampleUnit}
-                      onChange={(e) => updateField('sampleUnit', e.target.value)}
-                    />
-                  </div>
-                </>
-              )}
-
-              {formData.materialType === 'other' && (
-                <div className="form-group">
-                  <label htmlFor="otherMaterialType">Other Material Type</label>
-                  <input
-                    id="otherMaterialType"
-                    type="text"
-                    value={formData.otherMaterialType}
-                    onChange={(e) => updateField('otherMaterialType', e.target.value)}
-                    placeholder="Specify other material type"
-                  />
-                </div>
-              )}
-
-              <div className="form-group">
-                <label htmlFor="inplacenessOfSample">Inplaceness of Sample</label>
-                <select
-                  id="inplacenessOfSample"
-                  value={formData.inplacenessOfSample}
-                  onChange={(e) => updateField('inplacenessOfSample', e.target.value)}
-                >
-                  <option value="">Select Inplaceness of Sample...</option>
-                  <option value="5___definitely">5 - Definitely in Place</option>
-                  <option value="4">4</option>
-                  <option value="3">3</option>
-                  <option value="2">2</option>
-                  <option value="1___float">1 - Float</option>
-                </select>
-              </div>
-
-              <div className="form-group">
-                <label htmlFor="orientedSample">Oriented Sample</label>
-                <select
-                  id="orientedSample"
-                  value={formData.orientedSample}
-                  onChange={(e) => updateField('orientedSample', e.target.value)}
-                >
-                  <option value="">Select Oriented Sample...</option>
-                  <option value="yes">Yes</option>
-                  <option value="no">No</option>
-                </select>
-              </div>
-
-              {formData.orientedSample === 'yes' && (
-                <div className="form-group">
-                  <label htmlFor="sampleOrientationNotes">Sample Orientation Notes</label>
-                  <textarea
-                    id="sampleOrientationNotes"
-                    value={formData.sampleOrientationNotes}
-                    onChange={(e) => updateField('sampleOrientationNotes', e.target.value)}
-                    rows={3}
-                  />
-                </div>
-              )}
-
-              <div className="form-group">
-                <label htmlFor="sampleSize">Sample Size</label>
-                <input
-                  id="sampleSize"
-                  type="text"
-                  value={formData.sampleSize}
-                  onChange={(e) => updateField('sampleSize', e.target.value)}
-                  placeholder="Optional"
-                />
-              </div>
-
-              <div className="form-group">
-                <label htmlFor="degreeOfWeathering">Degree of Weathering</label>
-                <select
-                  id="degreeOfWeathering"
-                  value={formData.degreeOfWeathering}
-                  onChange={(e) => updateField('degreeOfWeathering', e.target.value)}
-                >
-                  <option value="">Select Degree of Weathering...</option>
-                  <option value="5___fresh">5 - Fresh</option>
-                  <option value="4">4</option>
-                  <option value="3">3</option>
-                  <option value="2">2</option>
-                  <option value="1___highly_wea">1 - Highly Weathered</option>
-                </select>
-              </div>
-
-              <div className="form-group">
-                <label htmlFor="sampleNotes">Sample Notes</label>
-                <textarea
-                  id="sampleNotes"
-                  value={formData.sampleNotes}
-                  onChange={(e) => updateField('sampleNotes', e.target.value)}
-                  placeholder="Optional sample notes"
-                  rows={4}
-                />
-              </div>
-            </div>
-          )}
-        </div>
-
-        <div className="wizard-footer">
-          <button className="button-secondary" onClick={handleCancel}>
-            Cancel
-          </button>
-
-          {currentStep > 1 && (
-            <button className="button-secondary" onClick={handleBack}>
-              Back
-            </button>
-          )}
-
-          {currentStep < 3 ? (
-            <button
-              className="button-primary"
-              onClick={handleNext}
-              disabled={
-                (currentStep === 1 && !canProceedStep1) ||
-                (currentStep === 2 && !canProceedStep2)
-              }
-            >
-              Next
-            </button>
-          ) : (
-            <button
-              className="button-primary"
-              onClick={handleFinish}
-              disabled={!canProceedStep3}
-            >
-              Finish
-            </button>
-          )}
-        </div>
-      </div>
-    </div>
+    <Dialog open={isOpen} onClose={handleCancel} maxWidth="md" fullWidth>
+      <DialogTitle>New Project</DialogTitle>
+      <DialogContent>
+        <Stepper activeStep={activeStep} sx={{ pt: 3, pb: 5 }}>
+          {steps.map((label) => (
+            <Step key={label}>
+              <StepLabel>{label}</StepLabel>
+            </Step>
+          ))}
+        </Stepper>
+        <Box sx={{ mt: 2, mb: 1 }}>
+          {renderStepContent(activeStep)}
+        </Box>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={handleCancel}>Cancel</Button>
+        {activeStep > 0 && (
+          <Button onClick={handleBack}>Back</Button>
+        )}
+        {activeStep < steps.length - 1 ? (
+          <Button
+            variant="contained"
+            onClick={handleNext}
+            disabled={!canProceed()}
+          >
+            Next
+          </Button>
+        ) : (
+          <Button
+            variant="contained"
+            onClick={handleFinish}
+            disabled={!canProceed()}
+          >
+            Finish
+          </Button>
+        )}
+      </DialogActions>
+    </Dialog>
   );
 };

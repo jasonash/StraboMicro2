@@ -1,9 +1,9 @@
 import React, { useState, useRef } from 'react';
+import { Box } from '@mui/material';
 import Header from './Header';
 import Sidebar from './Sidebar';
 import Viewer from './Viewer';
 import DetailsPanel from './DetailsPanel';
-import './MainLayout.css';
 
 const MainLayout: React.FC = () => {
   const [leftWidth, setLeftWidth] = useState(300);
@@ -25,7 +25,7 @@ const MainLayout: React.FC = () => {
   const handleMouseMove = (e: MouseEvent) => {
     if (isResizingLeft.current) {
       const newWidth = e.clientX;
-      if (newWidth >= 300 && newWidth <= 500) {
+      if (newWidth >= 250 && newWidth <= 500) {
         setLeftWidth(newWidth);
       }
     } else if (isResizingRight.current) {
@@ -53,26 +53,73 @@ const MainLayout: React.FC = () => {
   }, []);
 
   return (
-    <div className="main-layout">
+    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
       <Header />
-      <div className="content">
-        <div className="sidebar-container" style={{ width: `${leftWidth}px` }}>
+      <Box sx={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+        {/* Left Sidebar */}
+        <Box
+          sx={{
+            width: `${leftWidth}px`,
+            position: 'relative',
+            borderRight: 1,
+            borderColor: 'divider',
+            overflow: 'auto',
+            bgcolor: 'background.paper',
+          }}
+        >
           <Sidebar />
-          <div
-            className="resize-handle resize-handle-right"
+          {/* Resize handle */}
+          <Box
             onMouseDown={handleMouseDown('left')}
+            sx={{
+              position: 'absolute',
+              right: 0,
+              top: 0,
+              bottom: 0,
+              width: '4px',
+              cursor: 'col-resize',
+              '&:hover': {
+                bgcolor: 'primary.main',
+              },
+            }}
           />
-        </div>
-        <Viewer />
-        <div className="details-container" style={{ width: `${rightWidth}px` }}>
-          <div
-            className="resize-handle resize-handle-left"
+        </Box>
+
+        {/* Center Viewer */}
+        <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          <Viewer />
+        </Box>
+
+        {/* Right Details Panel */}
+        <Box
+          sx={{
+            width: `${rightWidth}px`,
+            position: 'relative',
+            borderLeft: 1,
+            borderColor: 'divider',
+            overflow: 'auto',
+            bgcolor: 'background.paper',
+          }}
+        >
+          {/* Resize handle */}
+          <Box
             onMouseDown={handleMouseDown('right')}
+            sx={{
+              position: 'absolute',
+              left: 0,
+              top: 0,
+              bottom: 0,
+              width: '4px',
+              cursor: 'col-resize',
+              '&:hover': {
+                bgcolor: 'primary.main',
+              },
+            }}
           />
           <DetailsPanel />
-        </div>
-      </div>
-    </div>
+        </Box>
+      </Box>
+    </Box>
   );
 };
 

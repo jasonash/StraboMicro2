@@ -1,52 +1,64 @@
 import React, { useState } from 'react';
-import './Sidebar.css';
+import { Tabs, Tab, Box } from '@mui/material';
 
-const Sidebar: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<string>('samples');
+interface TabPanelProps {
+  children?: React.ReactNode;
+  index: number;
+  value: number;
+}
 
-  const tabs = [
-    { id: 'samples', label: 'Samples' },
-    { id: 'groups', label: 'Groups' },
-    { id: 'spots', label: 'Spots' },
-    { id: 'tags', label: 'Tags' },
-  ];
+function TabPanel(props: TabPanelProps) {
+  const { children, value, index, ...other } = props;
 
   return (
-    <div className="sidebar">
-      <div className="tab-bar">
-        {tabs.map((tab) => (
-          <button
-            key={tab.id}
-            className={`tab ${activeTab === tab.id ? 'active' : ''}`}
-            onClick={() => setActiveTab(tab.id)}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
-      <div className="tab-content">
-        {activeTab === 'samples' && (
-          <div className="tab-panel">
-            {/* Sample tree will go here */}
-          </div>
-        )}
-        {activeTab === 'groups' && (
-          <div className="tab-panel">
-            {/* Groups list will go here */}
-          </div>
-        )}
-        {activeTab === 'spots' && (
-          <div className="tab-panel">
-            {/* Spots list will go here */}
-          </div>
-        )}
-        {activeTab === 'tags' && (
-          <div className="tab-panel">
-            {/* Tags list will go here */}
-          </div>
-        )}
-      </div>
+    <div
+      role="tabpanel"
+      hidden={value !== index}
+      id={`sidebar-tabpanel-${index}`}
+      aria-labelledby={`sidebar-tab-${index}`}
+      {...other}
+    >
+      {value === index && <Box sx={{ p: 2 }}>{children}</Box>}
     </div>
+  );
+}
+
+const Sidebar: React.FC = () => {
+  const [activeTab, setActiveTab] = useState(0);
+
+  const handleChange = (_event: React.SyntheticEvent, newValue: number) => {
+    setActiveTab(newValue);
+  };
+
+  return (
+    <Box sx={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
+      <Tabs
+        value={activeTab}
+        onChange={handleChange}
+        variant="fullWidth"
+        sx={{ borderBottom: 1, borderColor: 'divider' }}
+      >
+        <Tab label="Samples" />
+        <Tab label="Groups" />
+        <Tab label="Spots" />
+        <Tab label="Tags" />
+      </Tabs>
+
+      <Box sx={{ flex: 1, overflow: 'auto' }}>
+        <TabPanel value={activeTab} index={0}>
+          {/* Sample tree will go here */}
+        </TabPanel>
+        <TabPanel value={activeTab} index={1}>
+          {/* Groups list will go here */}
+        </TabPanel>
+        <TabPanel value={activeTab} index={2}>
+          {/* Spots list will go here */}
+        </TabPanel>
+        <TabPanel value={activeTab} index={3}>
+          {/* Tags list will go here */}
+        </TabPanel>
+      </Box>
+    </Box>
   );
 };
 
