@@ -80,6 +80,7 @@ const MainLayout: React.FC = () => {
               cursor: 'col-resize',
               '&:hover': {
                 bgcolor: 'primary.main',
+                width: '2px',
               },
             }}
           />
@@ -113,6 +114,7 @@ const MainLayout: React.FC = () => {
               cursor: 'col-resize',
               '&:hover': {
                 bgcolor: 'primary.main',
+                width: '2px',
               },
             }}
           />
