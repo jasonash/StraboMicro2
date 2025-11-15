@@ -15,10 +15,12 @@ const Viewer: React.FC = () => {
 
   const isResizingBottom = useRef(false);
   const viewerBottomRef = useRef<number>(0);
-  const [, setResizingState] = useState(0); // Force re-render during resize
+  const rafIdBottom = useRef<number | null>(null);
+  const [isTransitionEnabled, setIsTransitionEnabled] = useState(true);
 
   const handleMouseDown = (e: React.MouseEvent) => {
     e.preventDefault();
+    setIsTransitionEnabled(false); // Disable transition during resize
     isResizingBottom.current = true;
 
     // Cache the viewer bottom position once at start of resize
@@ -30,25 +32,39 @@ const Viewer: React.FC = () => {
 
     document.body.style.cursor = 'row-resize';
     document.body.style.userSelect = 'none';
-    setResizingState((s) => s + 1); // Trigger re-render
   };
 
   const handleMouseMove = (e: MouseEvent) => {
     if (isResizingBottom.current) {
-      requestAnimationFrame(() => {
+      if (rafIdBottom.current !== null) return; // Skip if already scheduled
+      rafIdBottom.current = requestAnimationFrame(() => {
         const newHeight = viewerBottomRef.current - e.clientY;
-        if (newHeight >= 150 && newHeight <= 500) {
+        // Allow bottom panel to be up to 75% of viewer height
+        // viewerBottomRef.current is the bottom of the viewer, so 75% would be 0.75 * viewer height
+        const viewerElement = document.querySelector('.viewer-container');
+        const maxHeight = viewerElement
+          ? viewerElement.getBoundingClientRect().height * 0.75
+          : 500;
+
+        if (newHeight >= 150 && newHeight <= maxHeight) {
           setBottomHeight(newHeight);
         }
+        rafIdBottom.current = null;
       });
     }
   };
 
   const handleMouseUp = () => {
     isResizingBottom.current = false;
+    setIsTransitionEnabled(true); // Re-enable transition after resize
     document.body.style.cursor = '';
     document.body.style.userSelect = '';
-    setResizingState((s) => s + 1); // Trigger re-render
+
+    // Cancel any pending RAF
+    if (rafIdBottom.current !== null) {
+      cancelAnimationFrame(rafIdBottom.current);
+      rafIdBottom.current = null;
+    }
   };
 
   // Save collapse state to localStorage
@@ -128,7 +144,7 @@ const Viewer: React.FC = () => {
           borderColor: 'divider',
           overflow: isBottomPanelCollapsed ? 'hidden' : 'visible',
           bgcolor: 'background.paper',
-          transition: 'height 0.3s ease-in-out',
+          transition: isTransitionEnabled ? 'height 0.3s ease-in-out' : 'none',
         }}
       >
         {/* Resize handle with integrated collapse button - only show when not collapsed */}
@@ -178,7 +194,6 @@ const Viewer: React.FC = () => {
                   alignItems: 'center',
                   justifyContent: 'center',
                   transition: 'background-color 0.2s, border-color 0.2s',
-                  pointerEvents: isResizingBottom.current ? 'none' : 'auto',
                   '&:hover': {
                     bgcolor: 'background.default',
                     borderColor: 'primary.main',

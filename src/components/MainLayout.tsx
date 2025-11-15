@@ -22,10 +22,13 @@ const MainLayout: React.FC = () => {
 
   const isResizingLeft = useRef(false);
   const isResizingRight = useRef(false);
-  const [, setResizingState] = useState(0); // Force re-render during resize
+  const rafIdLeft = useRef<number | null>(null);
+  const rafIdRight = useRef<number | null>(null);
+  const [isTransitionEnabled, setIsTransitionEnabled] = React.useState(true);
 
   const handleMouseDown = (side: 'left' | 'right') => (e: React.MouseEvent) => {
     e.preventDefault();
+    setIsTransitionEnabled(false); // Disable transition during resize
     if (side === 'left') {
       isResizingLeft.current = true;
     } else {
@@ -33,31 +36,46 @@ const MainLayout: React.FC = () => {
     }
     document.body.style.cursor = 'col-resize';
     document.body.style.userSelect = 'none';
-    setResizingState((s) => s + 1); // Trigger re-render
   };
 
   const handleMouseMove = (e: MouseEvent) => {
-    requestAnimationFrame(() => {
-      if (isResizingLeft.current) {
+    if (isResizingLeft.current) {
+      if (rafIdLeft.current !== null) return; // Skip if already scheduled
+      rafIdLeft.current = requestAnimationFrame(() => {
         const newWidth = e.clientX;
         if (newWidth >= 360 && newWidth <= 500) {
           setLeftWidth(newWidth);
         }
-      } else if (isResizingRight.current) {
+        rafIdLeft.current = null;
+      });
+    } else if (isResizingRight.current) {
+      if (rafIdRight.current !== null) return; // Skip if already scheduled
+      rafIdRight.current = requestAnimationFrame(() => {
         const newWidth = window.innerWidth - e.clientX;
         if (newWidth >= 360 && newWidth <= 600) {
           setRightWidth(newWidth);
         }
-      }
-    });
+        rafIdRight.current = null;
+      });
+    }
   };
 
   const handleMouseUp = () => {
     isResizingLeft.current = false;
     isResizingRight.current = false;
+    setIsTransitionEnabled(true); // Re-enable transition after resize
     document.body.style.cursor = '';
     document.body.style.userSelect = '';
-    setResizingState((s) => s + 1); // Trigger re-render
+
+    // Cancel any pending RAF
+    if (rafIdLeft.current !== null) {
+      cancelAnimationFrame(rafIdLeft.current);
+      rafIdLeft.current = null;
+    }
+    if (rafIdRight.current !== null) {
+      cancelAnimationFrame(rafIdRight.current);
+      rafIdRight.current = null;
+    }
   };
 
   // Save collapse states to localStorage whenever they change
@@ -116,7 +134,7 @@ const MainLayout: React.FC = () => {
             overflow: isLeftPanelCollapsed ? 'hidden' : 'hidden',
             overflowY: isLeftPanelCollapsed ? 'hidden' : 'auto',
             bgcolor: 'background.paper',
-            transition: 'width 0.3s ease-in-out',
+            transition: isTransitionEnabled ? 'width 0.3s ease-in-out' : 'none',
           }}
         >
           <Sidebar />
@@ -168,7 +186,6 @@ const MainLayout: React.FC = () => {
                     alignItems: 'center',
                     justifyContent: 'center',
                     transition: 'background-color 0.2s, border-color 0.2s',
-                    pointerEvents: isResizingLeft.current || isResizingRight.current ? 'none' : 'auto',
                     '&:hover': {
                       bgcolor: 'background.default',
                       borderColor: 'primary.main',
@@ -197,7 +214,7 @@ const MainLayout: React.FC = () => {
             overflow: isRightPanelCollapsed ? 'hidden' : 'hidden',
             overflowY: isRightPanelCollapsed ? 'hidden' : 'auto',
             bgcolor: 'background.paper',
-            transition: 'width 0.3s ease-in-out',
+            transition: isTransitionEnabled ? 'width 0.3s ease-in-out' : 'none',
           }}
         >
           {/* Resize handle with integrated collapse button - only show when not collapsed */}
@@ -247,7 +264,6 @@ const MainLayout: React.FC = () => {
                     alignItems: 'center',
                     justifyContent: 'center',
                     transition: 'background-color 0.2s, border-color 0.2s',
-                    pointerEvents: isResizingLeft.current || isResizingRight.current ? 'none' : 'auto',
                     '&:hover': {
                       bgcolor: 'background.default',
                       borderColor: 'primary.main',

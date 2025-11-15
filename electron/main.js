@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, ipcMain, dialog } = require('electron');
+const { app, BrowserWindow, Menu, ipcMain, dialog, screen } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const log = require('electron-log');
@@ -15,10 +15,90 @@ log.info(`Chrome version: ${process.versions.chrome}`);
 
 let mainWindow;
 
-function createWindow() {
-  mainWindow = new BrowserWindow({
+// Window state management
+const windowStateFile = path.join(app.getPath('userData'), 'window-state.json');
+
+function loadWindowState() {
+  try {
+    if (fs.existsSync(windowStateFile)) {
+      const data = fs.readFileSync(windowStateFile, 'utf8');
+      const state = JSON.parse(data);
+      log.info('Loaded window state:', state);
+      return state;
+    }
+  } catch (error) {
+    log.error('Error loading window state:', error);
+  }
+  // Return default state
+  return {
     width: 1400,
     height: 900,
+    x: undefined,
+    y: undefined
+  };
+}
+
+function saveWindowState() {
+  if (!mainWindow) return;
+
+  try {
+    const bounds = mainWindow.getBounds();
+    const state = {
+      width: bounds.width,
+      height: bounds.height,
+      x: bounds.x,
+      y: bounds.y,
+      isMaximized: mainWindow.isMaximized()
+    };
+    fs.writeFileSync(windowStateFile, JSON.stringify(state, null, 2));
+    log.info('Saved window state:', state);
+  } catch (error) {
+    log.error('Error saving window state:', error);
+  }
+}
+
+function ensureWindowIsVisible(bounds) {
+  // Get all displays
+  const displays = screen.getAllDisplays();
+
+  // Check if the window position is within any display
+  const isVisible = displays.some(display => {
+    const { x, y, width, height } = display.bounds;
+    return bounds.x >= x && bounds.x < x + width &&
+           bounds.y >= y && bounds.y < y + height;
+  });
+
+  if (!isVisible) {
+    // Window is off-screen, reset to default position
+    log.info('Window position off-screen, resetting to center');
+    return { x: undefined, y: undefined };
+  }
+
+  // Check if window would be too large for any display
+  const fitsInDisplay = displays.some(display => {
+    return bounds.width <= display.bounds.width &&
+           bounds.height <= display.bounds.height;
+  });
+
+  if (!fitsInDisplay) {
+    // Window is too large, use default size
+    log.info('Window size too large for display, resetting to default');
+    return { width: 1400, height: 900, x: undefined, y: undefined };
+  }
+
+  return bounds;
+}
+
+function createWindow() {
+  // Load previous window state
+  const savedState = loadWindowState();
+  const windowState = ensureWindowIsVisible(savedState);
+
+  mainWindow = new BrowserWindow({
+    width: windowState.width || 1400,
+    height: windowState.height || 900,
+    x: windowState.x,
+    y: windowState.y,
     minWidth: 1024,
     minHeight: 768,
     backgroundColor: '#1e1e1e',
@@ -29,6 +109,23 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.js'),
     },
   });
+
+  // Restore maximized state if needed
+  if (savedState.isMaximized) {
+    mainWindow.maximize();
+  }
+
+  // Save window state on resize or move (debounced)
+  let saveStateTimeout;
+  const debouncedSaveState = () => {
+    clearTimeout(saveStateTimeout);
+    saveStateTimeout = setTimeout(saveWindowState, 500);
+  };
+
+  mainWindow.on('resize', debouncedSaveState);
+  mainWindow.on('move', debouncedSaveState);
+  mainWindow.on('maximize', saveWindowState);
+  mainWindow.on('unmaximize', saveWindowState);
 
   // Create menu
   const menuTemplate = [
@@ -137,6 +234,11 @@ function createWindow() {
   } else {
     mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
   }
+
+  mainWindow.on('close', () => {
+    // Save final window state before closing
+    saveWindowState();
+  });
 
   mainWindow.on('closed', () => {
     mainWindow = null;
