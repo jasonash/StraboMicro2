@@ -63,7 +63,8 @@ const darkTheme = createTheme({
         root: {
           // Style the date picker calendar icon to be light grey/white to match text
           '& input[type="date"]::-webkit-calendar-picker-indicator': {
-            filter: 'invert(1) brightness(0.9) opacity(0.8)',
+            filter: 'invert(100%)',
+            opacity: 0.8,
             cursor: 'pointer',
           },
           // Style the native date input calendar popup
