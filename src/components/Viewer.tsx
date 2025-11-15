@@ -14,12 +14,14 @@ const Viewer: React.FC = () => {
   });
 
   const isResizingBottom = useRef(false);
+  const [, setResizingState] = useState(0); // Force re-render during resize
 
   const handleMouseDown = (e: React.MouseEvent) => {
     e.preventDefault();
     isResizingBottom.current = true;
     document.body.style.cursor = 'row-resize';
     document.body.style.userSelect = 'none';
+    setResizingState((s) => s + 1); // Trigger re-render
   };
 
   const handleMouseMove = (e: MouseEvent) => {
@@ -39,6 +41,7 @@ const Viewer: React.FC = () => {
     isResizingBottom.current = false;
     document.body.style.cursor = '';
     document.body.style.userSelect = '';
+    setResizingState((s) => s + 1); // Trigger re-render
   };
 
   // Save collapse state to localStorage
@@ -168,6 +171,7 @@ const Viewer: React.FC = () => {
                   alignItems: 'center',
                   justifyContent: 'center',
                   transition: 'background-color 0.2s, border-color 0.2s',
+                  pointerEvents: isResizingBottom.current ? 'none' : 'auto',
                   '&:hover': {
                     bgcolor: 'background.default',
                     borderColor: 'primary.main',

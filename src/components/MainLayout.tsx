@@ -22,6 +22,7 @@ const MainLayout: React.FC = () => {
 
   const isResizingLeft = useRef(false);
   const isResizingRight = useRef(false);
+  const [, setResizingState] = useState(0); // Force re-render during resize
 
   const handleMouseDown = (side: 'left' | 'right') => (e: React.MouseEvent) => {
     e.preventDefault();
@@ -32,6 +33,7 @@ const MainLayout: React.FC = () => {
     }
     document.body.style.cursor = 'col-resize';
     document.body.style.userSelect = 'none';
+    setResizingState((s) => s + 1); // Trigger re-render
   };
 
   const handleMouseMove = (e: MouseEvent) => {
@@ -53,6 +55,7 @@ const MainLayout: React.FC = () => {
     isResizingRight.current = false;
     document.body.style.cursor = '';
     document.body.style.userSelect = '';
+    setResizingState((s) => s + 1); // Trigger re-render
   };
 
   // Save collapse states to localStorage whenever they change
@@ -163,6 +166,7 @@ const MainLayout: React.FC = () => {
                     alignItems: 'center',
                     justifyContent: 'center',
                     transition: 'background-color 0.2s, border-color 0.2s',
+                    pointerEvents: isResizingLeft.current || isResizingRight.current ? 'none' : 'auto',
                     '&:hover': {
                       bgcolor: 'background.default',
                       borderColor: 'primary.main',
@@ -241,6 +245,7 @@ const MainLayout: React.FC = () => {
                     alignItems: 'center',
                     justifyContent: 'center',
                     transition: 'background-color 0.2s, border-color 0.2s',
+                    pointerEvents: isResizingLeft.current || isResizingRight.current ? 'none' : 'auto',
                     '&:hover': {
                       bgcolor: 'background.default',
                       borderColor: 'primary.main',
