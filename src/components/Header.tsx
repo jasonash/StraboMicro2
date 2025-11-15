@@ -1,5 +1,5 @@
 import React from 'react';
-import { AppBar, Toolbar, Typography, IconButton, Box } from '@mui/material';
+import { AppBar, Toolbar, Typography, IconButton, Box, Tooltip } from '@mui/material';
 import {
   Navigation as PointerIcon,
   ZoomIn as ZoomInIcon,
@@ -38,21 +38,31 @@ const Header: React.FC = () => {
 
         {/* Right: Toolbar buttons */}
         <Box sx={{ display: 'flex', gap: 0.5 }}>
-          <IconButton color="inherit" title="Pointer" size="small">
-            <PointerIcon />
-          </IconButton>
-          <IconButton color="inherit" title="Zoom In" size="small">
-            <ZoomInIcon />
-          </IconButton>
-          <IconButton color="inherit" title="Zoom Out" size="small">
-            <ZoomOutIcon />
-          </IconButton>
-          <IconButton color="inherit" title="Ruler / Measure" size="small">
-            <RulerIcon />
-          </IconButton>
-          <IconButton color="inherit" title="Crosshairs / Center" size="small">
-            <CrosshairIcon />
-          </IconButton>
+          <Tooltip title="Pan and Select" placement="bottom">
+            <IconButton color="inherit" size="small">
+              <PointerIcon />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Zoom In" placement="bottom">
+            <IconButton color="inherit" size="small">
+              <ZoomInIcon />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Zoom Out" placement="bottom">
+            <IconButton color="inherit" size="small">
+              <ZoomOutIcon />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Measure Distance on Micrograph" placement="bottom">
+            <IconButton color="inherit" size="small">
+              <RulerIcon />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Re-Center Micrograph" placement="bottom">
+            <IconButton color="inherit" size="small">
+              <CrosshairIcon />
+            </IconButton>
+          </Tooltip>
         </Box>
       </Toolbar>
     </AppBar>
