@@ -172,7 +172,7 @@ const Viewer: React.FC = () => {
             sx={{
               position: 'absolute',
               left: 8,
-              bottom: 8, // Just above bottom edge
+              bottom: 40, // Above status bar (32px) + 8px padding
               zIndex: 10,
               bgcolor: 'background.paper',
               border: 1,
