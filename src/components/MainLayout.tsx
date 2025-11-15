@@ -115,45 +115,64 @@ const MainLayout: React.FC = () => {
         >
           <Sidebar />
 
-          {/* Resize handle - only show when not collapsed */}
+          {/* Resize handle with integrated collapse button - only show when not collapsed */}
           {!isLeftPanelCollapsed && (
             <Box
-              onMouseDown={handleMouseDown('left')}
               sx={{
                 position: 'absolute',
                 right: 0,
                 top: 0,
                 bottom: 0,
                 width: '4px',
-                cursor: 'col-resize',
-                '&:hover': {
-                  bgcolor: 'primary.main',
-                  width: '2px',
-                },
               }}
-            />
-          )}
-
-          {/* Collapse/Expand button - on the right edge of panel */}
-          {!isLeftPanelCollapsed && (
-            <Tooltip title="Hide Panel" placement="right">
-              <IconButton
-                onClick={() => setIsLeftPanelCollapsed(true)}
+            >
+              {/* Resize handle (lower part) */}
+              <Box
+                onMouseDown={handleMouseDown('left')}
                 sx={{
                   position: 'absolute',
-                  right: 8,
-                  top: 8,
-                  zIndex: 10,
-                  bgcolor: 'background.default',
+                  right: 0,
+                  top: 60,
+                  bottom: 0,
+                  width: '4px',
+                  cursor: 'col-resize',
                   '&:hover': {
-                    bgcolor: 'background.paper',
+                    bgcolor: 'primary.main',
+                    width: '2px',
                   },
                 }}
-                size="small"
-              >
-                <ChevronLeft fontSize="small" />
-              </IconButton>
-            </Tooltip>
+              />
+
+              {/* Vertical collapse button on divider */}
+              <Tooltip title="Hide Panel" placement="right">
+                <Box
+                  onClick={() => setIsLeftPanelCollapsed(true)}
+                  sx={{
+                    position: 'absolute',
+                    right: '-2px',
+                    top: 8,
+                    width: '8px',
+                    height: '40px',
+                    bgcolor: 'background.paper',
+                    border: 1,
+                    borderColor: 'divider',
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    transition: 'all 0.2s',
+                    '&:hover': {
+                      bgcolor: 'background.default',
+                      width: '12px',
+                      borderColor: 'primary.main',
+                    },
+                  }}
+                >
+                  <ChevronLeft sx={{ fontSize: 14, color: 'text.secondary' }} />
+                </Box>
+              </Tooltip>
+            </Box>
           )}
         </Box>
 
@@ -174,45 +193,64 @@ const MainLayout: React.FC = () => {
             transition: 'width 0.3s ease-in-out',
           }}
         >
-          {/* Resize handle - only show when not collapsed */}
+          {/* Resize handle with integrated collapse button - only show when not collapsed */}
           {!isRightPanelCollapsed && (
             <Box
-              onMouseDown={handleMouseDown('right')}
               sx={{
                 position: 'absolute',
                 left: 0,
                 top: 0,
                 bottom: 0,
                 width: '4px',
-                cursor: 'col-resize',
-                '&:hover': {
-                  bgcolor: 'primary.main',
-                  width: '2px',
-                },
               }}
-            />
-          )}
-
-          {/* Collapse/Expand button - on the left edge of panel */}
-          {!isRightPanelCollapsed && (
-            <Tooltip title="Hide Panel" placement="left">
-              <IconButton
-                onClick={() => setIsRightPanelCollapsed(true)}
+            >
+              {/* Resize handle (lower part) */}
+              <Box
+                onMouseDown={handleMouseDown('right')}
                 sx={{
                   position: 'absolute',
-                  left: 8,
-                  top: 8,
-                  zIndex: 10,
-                  bgcolor: 'background.default',
+                  left: 0,
+                  top: 60,
+                  bottom: 0,
+                  width: '4px',
+                  cursor: 'col-resize',
                   '&:hover': {
-                    bgcolor: 'background.paper',
+                    bgcolor: 'primary.main',
+                    width: '2px',
                   },
                 }}
-                size="small"
-              >
-                <ChevronRight fontSize="small" />
-              </IconButton>
-            </Tooltip>
+              />
+
+              {/* Vertical collapse button on divider */}
+              <Tooltip title="Hide Panel" placement="left">
+                <Box
+                  onClick={() => setIsRightPanelCollapsed(true)}
+                  sx={{
+                    position: 'absolute',
+                    left: '-2px',
+                    top: 8,
+                    width: '8px',
+                    height: '40px',
+                    bgcolor: 'background.paper',
+                    border: 1,
+                    borderColor: 'divider',
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    transition: 'all 0.2s',
+                    '&:hover': {
+                      bgcolor: 'background.default',
+                      width: '12px',
+                      borderColor: 'primary.main',
+                    },
+                  }}
+                >
+                  <ChevronRight sx={{ fontSize: 14, color: 'text.secondary' }} />
+                </Box>
+              </Tooltip>
+            </Box>
           )}
 
           <DetailsPanel />
