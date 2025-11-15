@@ -1,11 +1,11 @@
 import React from 'react';
 import { AppBar, Toolbar, Typography, IconButton, Box } from '@mui/material';
 import {
-  NearMe as PointerIcon,
+  MouseOutlined as PointerIcon,
   ZoomIn as ZoomInIcon,
   ZoomOut as ZoomOutIcon,
-  Edit as EditIcon,
-  Settings as SettingsIcon,
+  Straighten as RulerIcon,
+  MyLocation as CrosshairIcon,
 } from '@mui/icons-material';
 import straboLogo from '../assets/strabo-logo.png';
 
@@ -47,11 +47,11 @@ const Header: React.FC = () => {
           <IconButton color="inherit" title="Zoom Out" size="small">
             <ZoomOutIcon />
           </IconButton>
-          <IconButton color="inherit" title="Draw" size="small">
-            <EditIcon />
+          <IconButton color="inherit" title="Ruler / Measure" size="small">
+            <RulerIcon />
           </IconButton>
-          <IconButton color="inherit" title="Settings" size="small">
-            <SettingsIcon />
+          <IconButton color="inherit" title="Crosshairs / Center" size="small">
+            <CrosshairIcon />
           </IconButton>
         </Box>
       </Toolbar>
