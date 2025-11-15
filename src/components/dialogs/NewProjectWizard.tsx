@@ -354,6 +354,14 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
               <MenuItem value="carbon_or_animal">Carbon or Animal</MenuItem>
               <MenuItem value="other">Other</MenuItem>
             </TextField>
+            {formData.materialType === 'other' && (
+              <TextField
+                fullWidth
+                label="Other Material Type"
+                value={formData.otherMaterialType}
+                onChange={(e) => updateField('otherMaterialType', e.target.value)}
+              />
+            )}
             <TextField
               fullWidth
               multiline
