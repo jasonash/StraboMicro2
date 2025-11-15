@@ -1,7 +1,7 @@
 import React from 'react';
 import { AppBar, Toolbar, Typography, IconButton, Box } from '@mui/material';
 import {
-  MouseOutlined as PointerIcon,
+  Navigation as PointerIcon,
   ZoomIn as ZoomInIcon,
   ZoomOut as ZoomOutIcon,
   Straighten as RulerIcon,
