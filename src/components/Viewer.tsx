@@ -1,12 +1,14 @@
 import React from 'react';
 import { Box, Typography, Divider } from '@mui/material';
+import DrawingToolbar from './DrawingToolbar';
 
 const Viewer: React.FC = () => {
   return (
     <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', height: '100%' }}>
       {/* Canvas area */}
-      <Box sx={{ flex: 1, bgcolor: 'background.default' }}>
+      <Box sx={{ flex: 1, bgcolor: 'background.default', position: 'relative' }}>
         {/* Canvas will go here */}
+        <DrawingToolbar />
       </Box>
 
       {/* Status bar */}

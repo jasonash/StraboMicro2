@@ -1,0 +1,55 @@
+.drawing-toolbar {
+  position: absolute;
+  top: 50%;
+  right: 16px;
+  transform: translateY(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background-color: rgba(45, 45, 45, 0.95);
+  border: 1px solid #404040;
+  border-radius: 6px;
+  padding: 6px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  z-index: 100;
+  backdrop-filter: blur(4px);
+}
+
+.toolbar-button {
+  width: 40px;
+  height: 40px;
+  color: #b0b0b0;
+  background-color: #2d2d2d;
+  border: 1px solid #404040;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+}
+
+.toolbar-button:hover {
+  background-color: #3d3d3d;
+  color: #e44c65;
+  border-color: #e44c65;
+  transform: scale(1.05);
+}
+
+.toolbar-button:active {
+  background-color: #4d4d4d;
+  transform: scale(0.98);
+}
+
+/* Active/selected state - will be used later when we track active tool */
+.toolbar-button.active {
+  background-color: #e44c65;
+  color: #ffffff;
+  border-color: #e44c65;
+}
+
+.toolbar-button.active:hover {
+  background-color: #f05575;
+  border-color: #f05575;
+}
+
+/* SVG icons inherit color from button */
+.toolbar-button svg {
+  display: block;
+}
