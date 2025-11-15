@@ -14,11 +14,20 @@ const Viewer: React.FC = () => {
   });
 
   const isResizingBottom = useRef(false);
+  const viewerBottomRef = useRef<number>(0);
   const [, setResizingState] = useState(0); // Force re-render during resize
 
   const handleMouseDown = (e: React.MouseEvent) => {
     e.preventDefault();
     isResizingBottom.current = true;
+
+    // Cache the viewer bottom position once at start of resize
+    const viewerElement = document.querySelector('.viewer-container');
+    if (viewerElement) {
+      const viewerRect = viewerElement.getBoundingClientRect();
+      viewerBottomRef.current = viewerRect.bottom;
+    }
+
     document.body.style.cursor = 'row-resize';
     document.body.style.userSelect = 'none';
     setResizingState((s) => s + 1); // Trigger re-render
@@ -26,13 +35,9 @@ const Viewer: React.FC = () => {
 
   const handleMouseMove = (e: MouseEvent) => {
     if (isResizingBottom.current) {
-      const viewerElement = document.querySelector('.viewer-container');
-      if (viewerElement) {
-        const viewerRect = viewerElement.getBoundingClientRect();
-        const newHeight = viewerRect.bottom - e.clientY; // Status bar is now above, not subtracted
-        if (newHeight >= 150 && newHeight <= 500) {
-          setBottomHeight(newHeight);
-        }
+      const newHeight = viewerBottomRef.current - e.clientY;
+      if (newHeight >= 150 && newHeight <= 500) {
+        setBottomHeight(newHeight);
       }
     }
   };
