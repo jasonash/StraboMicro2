@@ -150,9 +150,9 @@ const MainLayout: React.FC = () => {
                   onClick={() => setIsLeftPanelCollapsed(true)}
                   sx={{
                     position: 'absolute',
-                    right: '-2px',
+                    right: '-4px',
                     top: 8,
-                    width: '8px',
+                    width: '12px',
                     height: '40px',
                     bgcolor: 'background.paper',
                     border: 1,
@@ -162,10 +162,9 @@ const MainLayout: React.FC = () => {
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    transition: 'all 0.2s',
+                    transition: 'background-color 0.2s, border-color 0.2s',
                     '&:hover': {
                       bgcolor: 'background.default',
-                      width: '12px',
                       borderColor: 'primary.main',
                     },
                   }}
@@ -229,9 +228,9 @@ const MainLayout: React.FC = () => {
                   onClick={() => setIsRightPanelCollapsed(true)}
                   sx={{
                     position: 'absolute',
-                    left: '-2px',
+                    left: '-4px',
                     top: 8,
-                    width: '8px',
+                    width: '12px',
                     height: '40px',
                     bgcolor: 'background.paper',
                     border: 1,
@@ -241,10 +240,9 @@ const MainLayout: React.FC = () => {
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    transition: 'all 0.2s',
+                    transition: 'background-color 0.2s, border-color 0.2s',
                     '&:hover': {
                       bgcolor: 'background.default',
-                      width: '12px',
                       borderColor: 'primary.main',
                     },
                   }}

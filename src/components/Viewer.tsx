@@ -156,9 +156,9 @@ const Viewer: React.FC = () => {
                 sx={{
                   position: 'absolute',
                   left: 8,
-                  top: '-2px',
+                  top: '-4px',
                   width: '40px',
-                  height: '8px',
+                  height: '12px',
                   bgcolor: 'background.paper',
                   border: 1,
                   borderColor: 'divider',
@@ -167,10 +167,9 @@ const Viewer: React.FC = () => {
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  transition: 'all 0.2s',
+                  transition: 'background-color 0.2s, border-color 0.2s',
                   '&:hover': {
                     bgcolor: 'background.default',
-                    height: '12px',
                     borderColor: 'primary.main',
                   },
                 }}
