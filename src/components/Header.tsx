@@ -14,14 +14,14 @@ const Header: React.FC = () => {
     <AppBar position="static" elevation={0}>
       <Toolbar sx={{ gap: 2 }}>
         {/* Left: Logo and Title */}
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, pl: 2 }}>
           <img
             src={straboLogo}
             alt="StraboSpot Logo"
             style={{ height: '32px', width: 'auto', borderRadius: '25%' }}
           />
           <Typography
-            variant="h6"
+            variant="h5"
             component="h1"
             sx={{ fontWeight: 300, letterSpacing: 0.5 }}
           >
