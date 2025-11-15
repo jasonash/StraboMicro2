@@ -108,7 +108,8 @@ const MainLayout: React.FC = () => {
             position: 'relative',
             borderRight: isLeftPanelCollapsed ? 0 : 1,
             borderColor: 'divider',
-            overflow: isLeftPanelCollapsed ? 'hidden' : 'auto',
+            overflow: isLeftPanelCollapsed ? 'hidden' : 'hidden',
+            overflowY: isLeftPanelCollapsed ? 'hidden' : 'auto',
             bgcolor: 'background.paper',
             transition: 'width 0.3s ease-in-out',
           }}
@@ -188,7 +189,8 @@ const MainLayout: React.FC = () => {
             position: 'relative',
             borderLeft: isRightPanelCollapsed ? 0 : 1,
             borderColor: 'divider',
-            overflow: isRightPanelCollapsed ? 'hidden' : 'auto',
+            overflow: isRightPanelCollapsed ? 'hidden' : 'hidden',
+            overflowY: isRightPanelCollapsed ? 'hidden' : 'auto',
             bgcolor: 'background.paper',
             transition: 'width 0.3s ease-in-out',
           }}
