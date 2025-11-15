@@ -1,5 +1,6 @@
 import React, { useState, useRef } from 'react';
-import { Box } from '@mui/material';
+import { Box, IconButton, Tooltip } from '@mui/material';
+import { ChevronLeft, ChevronRight } from '@mui/icons-material';
 import Header from './Header';
 import Sidebar from './Sidebar';
 import Viewer from './Viewer';
@@ -8,6 +9,7 @@ import DetailsPanel from './DetailsPanel';
 const MainLayout: React.FC = () => {
   const [leftWidth, setLeftWidth] = useState(360);
   const [rightWidth, setRightWidth] = useState(360);
+  const [isRightPanelCollapsed, setIsRightPanelCollapsed] = useState(false);
   const isResizingLeft = useRef(false);
   const isResizingRight = useRef(false);
 
@@ -94,32 +96,82 @@ const MainLayout: React.FC = () => {
         {/* Right Details Panel */}
         <Box
           sx={{
-            width: `${rightWidth}px`,
+            width: isRightPanelCollapsed ? '0px' : `${rightWidth}px`,
             position: 'relative',
-            borderLeft: 1,
+            borderLeft: isRightPanelCollapsed ? 0 : 1,
             borderColor: 'divider',
-            overflow: 'auto',
+            overflow: isRightPanelCollapsed ? 'hidden' : 'auto',
             bgcolor: 'background.paper',
+            transition: 'width 0.3s ease-in-out',
           }}
         >
-          {/* Resize handle */}
-          <Box
-            onMouseDown={handleMouseDown('right')}
-            sx={{
-              position: 'absolute',
-              left: 0,
-              top: 0,
-              bottom: 0,
-              width: '4px',
-              cursor: 'col-resize',
-              '&:hover': {
-                bgcolor: 'primary.main',
-                width: '2px',
-              },
-            }}
-          />
+          {/* Resize handle - only show when not collapsed */}
+          {!isRightPanelCollapsed && (
+            <Box
+              onMouseDown={handleMouseDown('right')}
+              sx={{
+                position: 'absolute',
+                left: 0,
+                top: 0,
+                bottom: 0,
+                width: '4px',
+                cursor: 'col-resize',
+                '&:hover': {
+                  bgcolor: 'primary.main',
+                  width: '2px',
+                },
+              }}
+            />
+          )}
+
+          {/* Collapse/Expand button - on the left edge of panel */}
+          {!isRightPanelCollapsed && (
+            <Tooltip title="Hide Panel" placement="left">
+              <IconButton
+                onClick={() => setIsRightPanelCollapsed(true)}
+                sx={{
+                  position: 'absolute',
+                  left: 8,
+                  top: 8,
+                  zIndex: 10,
+                  bgcolor: 'background.default',
+                  '&:hover': {
+                    bgcolor: 'background.paper',
+                  },
+                }}
+                size="small"
+              >
+                <ChevronRight fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          )}
+
           <DetailsPanel />
         </Box>
+
+        {/* Floating toggle button when panel is collapsed */}
+        {isRightPanelCollapsed && (
+          <Tooltip title="Show Panel" placement="left">
+            <IconButton
+              onClick={() => setIsRightPanelCollapsed(false)}
+              sx={{
+                position: 'absolute',
+                right: 8,
+                top: 72, // Below header
+                zIndex: 10,
+                bgcolor: 'background.paper',
+                border: 1,
+                borderColor: 'divider',
+                '&:hover': {
+                  bgcolor: 'background.default',
+                },
+              }}
+              size="small"
+            >
+              <ChevronLeft fontSize="small" />
+            </IconButton>
+          </Tooltip>
+        )}
       </Box>
     </Box>
   );
