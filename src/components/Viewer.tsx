@@ -27,7 +27,7 @@ const Viewer: React.FC = () => {
       const viewerElement = document.querySelector('.viewer-container');
       if (viewerElement) {
         const viewerRect = viewerElement.getBoundingClientRect();
-        const newHeight = viewerRect.bottom - e.clientY - 32; // Subtract status bar height
+        const newHeight = viewerRect.bottom - e.clientY; // Status bar is now above, not subtracted
         if (newHeight >= 150 && newHeight <= 500) {
           setBottomHeight(newHeight);
         }
@@ -64,6 +64,29 @@ const Viewer: React.FC = () => {
       <Box sx={{ flex: 1, bgcolor: 'background.default', position: 'relative' }}>
         {/* Canvas will go here */}
         <DrawingToolbar />
+      </Box>
+
+      {/* Status bar */}
+      <Box
+        sx={{
+          height: 32,
+          borderTop: 1,
+          borderColor: 'divider',
+          bgcolor: 'background.paper',
+          display: 'flex',
+          alignItems: 'center',
+          px: 2,
+          gap: 1,
+          flexShrink: 0,
+        }}
+      >
+        <Typography variant="body2" color="text.secondary">
+          Scale: 10μm/px
+        </Typography>
+        <Divider orientation="vertical" flexItem />
+        <Typography variant="body2" color="text.secondary">
+          Zoom: 100%
+        </Typography>
       </Box>
 
       {/* Bottom Panel */}
@@ -149,7 +172,7 @@ const Viewer: React.FC = () => {
             sx={{
               position: 'absolute',
               left: 8,
-              bottom: 40, // Above status bar
+              bottom: 8, // Just above bottom edge
               zIndex: 10,
               bgcolor: 'background.paper',
               border: 1,
@@ -164,28 +187,6 @@ const Viewer: React.FC = () => {
           </IconButton>
         </Tooltip>
       )}
-
-      {/* Status bar */}
-      <Box
-        sx={{
-          height: 32,
-          borderTop: 1,
-          borderColor: 'divider',
-          bgcolor: 'background.paper',
-          display: 'flex',
-          alignItems: 'center',
-          px: 2,
-          gap: 1,
-        }}
-      >
-        <Typography variant="body2" color="text.secondary">
-          Scale: 10μm/px
-        </Typography>
-        <Divider orientation="vertical" flexItem />
-        <Typography variant="body2" color="text.secondary">
-          Zoom: 100%
-        </Typography>
-      </Box>
     </Box>
   );
 };
