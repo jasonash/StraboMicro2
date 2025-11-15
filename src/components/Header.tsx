@@ -14,7 +14,7 @@ const Header: React.FC = () => {
     <AppBar position="static" elevation={0}>
       <Toolbar sx={{ gap: 2 }}>
         {/* Left: Logo and Title */}
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, pl: 2 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, ml: -1 }}>
           <img
             src={straboLogo}
             alt="StraboSpot Logo"
