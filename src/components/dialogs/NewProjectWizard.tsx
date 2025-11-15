@@ -194,7 +194,22 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
   const canProceed = () => {
     if (activeStep === 0) return formData.name.trim() !== '';
     if (activeStep === 1) return formData.datasetName.trim() !== '';
-    if (activeStep === 2) return formData.sampleID.trim() !== '';
+    if (activeStep === 2) {
+      // Sample ID is required
+      if (formData.sampleID.trim() === '') return false;
+
+      // If "other" is selected for Main Sampling Purpose, require text in Other Sampling Purpose
+      if (formData.mainSamplingPurpose === 'other' && formData.otherSamplingPurpose.trim() === '') {
+        return false;
+      }
+
+      // If "other" is selected for Material Type, require text in Other Material Type
+      if (formData.materialType === 'other' && formData.otherMaterialType.trim() === '') {
+        return false;
+      }
+
+      return true;
+    }
     return true;
   };
 
@@ -334,9 +349,11 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
             {formData.mainSamplingPurpose === 'other' && (
               <TextField
                 fullWidth
+                required
                 label="Other Sampling Purpose"
                 value={formData.otherSamplingPurpose}
                 onChange={(e) => updateField('otherSamplingPurpose', e.target.value)}
+                helperText="Required when 'Other' is selected"
               />
             )}
             <TextField
@@ -369,9 +386,11 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
             {formData.materialType === 'other' && (
               <TextField
                 fullWidth
+                required
                 label="Other Material Type"
                 value={formData.otherMaterialType}
                 onChange={(e) => updateField('otherMaterialType', e.target.value)}
+                helperText="Required when 'Other' is selected"
               />
             )}
             <TextField
