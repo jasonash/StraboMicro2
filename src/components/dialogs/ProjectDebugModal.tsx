@@ -16,6 +16,7 @@ import {
   TableBody,
   TableRow,
   TableCell,
+  Grow,
 } from '@mui/material';
 import { ContentCopy as CopyIcon } from '@mui/icons-material';
 import { useAppStore } from '@/store';
@@ -37,7 +38,14 @@ export const ProjectDebugModal: React.FC<ProjectDebugModalProps> = ({ isOpen, on
   };
 
   return (
-    <Dialog open={isOpen} onClose={onClose} maxWidth="md" fullWidth>
+    <Dialog
+      open={isOpen}
+      onClose={onClose}
+      maxWidth="md"
+      fullWidth
+      TransitionComponent={Grow}
+      transitionDuration={300}
+    >
       <DialogTitle>Project Structure (Debug)</DialogTitle>
       <DialogContent>
         <Table size="small" sx={{ mb: 2 }}>

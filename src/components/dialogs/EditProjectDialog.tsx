@@ -15,6 +15,7 @@ import {
   TextField,
   Box,
   Stack,
+  Grow,
 } from '@mui/material';
 import { useAppStore } from '@/store';
 
@@ -105,7 +106,14 @@ export const EditProjectDialog: React.FC<EditProjectDialogProps> = ({ isOpen, on
   if (!project) return null;
 
   return (
-    <Dialog open={isOpen} onClose={onClose} maxWidth="md" fullWidth>
+    <Dialog
+      open={isOpen}
+      onClose={onClose}
+      maxWidth="md"
+      fullWidth
+      TransitionComponent={Grow}
+      transitionDuration={300}
+    >
       <DialogTitle>Edit Project</DialogTitle>
       <DialogContent>
         <Stack spacing={2} sx={{ mt: 1 }}>

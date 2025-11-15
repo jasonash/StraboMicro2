@@ -23,6 +23,8 @@ import {
   MenuItem,
   Box,
   Stack,
+  Fade,
+  Grow,
 } from '@mui/material';
 import { useAppStore } from '@/store';
 
@@ -344,7 +346,14 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
   };
 
   return (
-    <Dialog open={isOpen} onClose={handleCancel} maxWidth="md" fullWidth>
+    <Dialog
+      open={isOpen}
+      onClose={handleCancel}
+      maxWidth="md"
+      fullWidth
+      TransitionComponent={Grow}
+      transitionDuration={300}
+    >
       <DialogTitle>New Project</DialogTitle>
       <DialogContent>
         <Stepper activeStep={activeStep} sx={{ pt: 3, pb: 5 }}>
@@ -354,9 +363,11 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
             </Step>
           ))}
         </Stepper>
-        <Box sx={{ mt: 2, mb: 1 }}>
-          {renderStepContent(activeStep)}
-        </Box>
+        <Fade in={true} timeout={300} key={activeStep}>
+          <Box sx={{ mt: 2, mb: 1 }}>
+            {renderStepContent(activeStep)}
+          </Box>
+        </Fade>
       </DialogContent>
       <DialogActions>
         <Button onClick={handleCancel}>Cancel</Button>
