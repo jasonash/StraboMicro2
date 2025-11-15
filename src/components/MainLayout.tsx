@@ -37,17 +37,19 @@ const MainLayout: React.FC = () => {
   };
 
   const handleMouseMove = (e: MouseEvent) => {
-    if (isResizingLeft.current) {
-      const newWidth = e.clientX;
-      if (newWidth >= 360 && newWidth <= 500) {
-        setLeftWidth(newWidth);
+    requestAnimationFrame(() => {
+      if (isResizingLeft.current) {
+        const newWidth = e.clientX;
+        if (newWidth >= 360 && newWidth <= 500) {
+          setLeftWidth(newWidth);
+        }
+      } else if (isResizingRight.current) {
+        const newWidth = window.innerWidth - e.clientX;
+        if (newWidth >= 360 && newWidth <= 600) {
+          setRightWidth(newWidth);
+        }
       }
-    } else if (isResizingRight.current) {
-      const newWidth = window.innerWidth - e.clientX;
-      if (newWidth >= 360 && newWidth <= 600) {
-        setRightWidth(newWidth);
-      }
-    }
+    });
   };
 
   const handleMouseUp = () => {

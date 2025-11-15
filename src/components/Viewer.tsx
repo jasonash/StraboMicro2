@@ -35,10 +35,12 @@ const Viewer: React.FC = () => {
 
   const handleMouseMove = (e: MouseEvent) => {
     if (isResizingBottom.current) {
-      const newHeight = viewerBottomRef.current - e.clientY;
-      if (newHeight >= 150 && newHeight <= 500) {
-        setBottomHeight(newHeight);
-      }
+      requestAnimationFrame(() => {
+        const newHeight = viewerBottomRef.current - e.clientY;
+        if (newHeight >= 150 && newHeight <= 500) {
+          setBottomHeight(newHeight);
+        }
+      });
     }
   };
 
