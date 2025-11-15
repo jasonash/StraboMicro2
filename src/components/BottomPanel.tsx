@@ -32,6 +32,13 @@ const BottomPanel: React.FC = () => {
               (details)
             </Typography>
           </Box>
+          <Typography variant="body2" color="text.secondary" sx={{ pl: 1 }}>
+            Curabitur pretium tincidunt lacus. Nulla gravida orci a odio. Nullam varius, turpis et
+            commodo pharetra, est eros bibendum elit, nec luctus magna felis sollicitudin mauris.
+            Integer in mauris eu nibh euismod gravida. Duis ac tellus et risus vulputate vehicula.
+            Donec lobortis risus a elit. Etiam tempor. Ut ullamcorper, ligula eu tempor congue,
+            eros est euismod turpis, id tincidunt sapien risus a quam.
+          </Typography>
         </Box>
 
         {/* Project Notes Section */}
