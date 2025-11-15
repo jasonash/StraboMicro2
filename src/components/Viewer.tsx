@@ -64,6 +64,30 @@ const Viewer: React.FC = () => {
       <Box sx={{ flex: 1, bgcolor: 'background.default', position: 'relative' }}>
         {/* Canvas will go here */}
         <DrawingToolbar />
+
+        {/* Floating toggle button when bottom panel is collapsed */}
+        {isBottomPanelCollapsed && (
+          <Tooltip title="Show Panel" placement="top">
+            <IconButton
+              onClick={() => setIsBottomPanelCollapsed(false)}
+              sx={{
+                position: 'absolute',
+                left: 8,
+                bottom: 8, // 8px from bottom of canvas
+                zIndex: 10,
+                bgcolor: 'background.paper',
+                border: 1,
+                borderColor: 'divider',
+                '&:hover': {
+                  bgcolor: 'background.default',
+                },
+              }}
+              size="small"
+            >
+              <KeyboardArrowUp fontSize="small" />
+            </IconButton>
+          </Tooltip>
+        )}
       </Box>
 
       {/* Status bar */}
@@ -163,30 +187,6 @@ const Viewer: React.FC = () => {
 
         <BottomPanel />
       </Box>
-
-      {/* Floating toggle button when bottom panel is collapsed */}
-      {isBottomPanelCollapsed && (
-        <Tooltip title="Show Panel" placement="top">
-          <IconButton
-            onClick={() => setIsBottomPanelCollapsed(false)}
-            sx={{
-              position: 'absolute',
-              left: 8,
-              bottom: 40, // Above status bar (32px) + 8px padding
-              zIndex: 10,
-              bgcolor: 'background.paper',
-              border: 1,
-              borderColor: 'divider',
-              '&:hover': {
-                bgcolor: 'background.default',
-              },
-            }}
-            size="small"
-          >
-            <KeyboardArrowUp fontSize="small" />
-          </IconButton>
-        </Tooltip>
-      )}
     </Box>
   );
 };
