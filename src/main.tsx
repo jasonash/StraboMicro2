@@ -61,9 +61,9 @@ const darkTheme = createTheme({
     MuiTextField: {
       styleOverrides: {
         root: {
-          // Style the date picker calendar icon to be visible in dark mode
+          // Style the date picker calendar icon to be light grey/white
           '& input[type="date"]::-webkit-calendar-picker-indicator': {
-            filter: 'invert(1)',
+            filter: 'invert(0.8) brightness(1.2)',
             cursor: 'pointer',
           },
           // Style the native date input calendar popup
