@@ -315,7 +315,13 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
               select
               label="Main Sampling Purpose"
               value={formData.mainSamplingPurpose}
-              onChange={(e) => updateField('mainSamplingPurpose', e.target.value)}
+              onChange={(e) => {
+                updateField('mainSamplingPurpose', e.target.value);
+                // Clear "Other Sampling Purpose" if user selects non-"other" option
+                if (e.target.value !== 'other') {
+                  updateField('otherSamplingPurpose', '');
+                }
+              }}
             >
               <MenuItem value="">Select Main Sampling Purpose...</MenuItem>
               <MenuItem value="fabric___micro">Fabric / Microstructure</MenuItem>
@@ -344,7 +350,13 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
               select
               label="Material Type"
               value={formData.materialType}
-              onChange={(e) => updateField('materialType', e.target.value)}
+              onChange={(e) => {
+                updateField('materialType', e.target.value);
+                // Clear "Other Material Type" if user selects non-"other" option
+                if (e.target.value !== 'other') {
+                  updateField('otherMaterialType', '');
+                }
+              }}
             >
               <MenuItem value="">Select Material Type...</MenuItem>
               <MenuItem value="intact_rock">Intact Rock</MenuItem>
