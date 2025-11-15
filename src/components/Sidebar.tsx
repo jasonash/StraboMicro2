@@ -36,12 +36,24 @@ const Sidebar: React.FC = () => {
         value={activeTab}
         onChange={handleChange}
         variant="fullWidth"
-        sx={{ borderBottom: 1, borderColor: 'divider' }}
+        sx={{
+          borderBottom: 1,
+          borderColor: 'divider',
+          '& .MuiTab-root': {
+            color: 'text.primary', // Keep text white
+            '&.Mui-selected': {
+              color: 'text.primary', // Keep selected tab text white (not red)
+            },
+          },
+          '& .MuiTabs-indicator': {
+            backgroundColor: 'primary.main', // Keep the red bottom border indicator
+          },
+        }}
       >
-        <Tab label="Samples" />
-        <Tab label="Groups" />
-        <Tab label="Spots" />
-        <Tab label="Tags" />
+        <Tab label="Samples" disableRipple />
+        <Tab label="Groups" disableRipple />
+        <Tab label="Spots" disableRipple />
+        <Tab label="Tags" disableRipple />
       </Tabs>
 
       <Box sx={{ flex: 1, overflow: 'auto' }}>
