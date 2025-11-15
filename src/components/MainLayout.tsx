@@ -9,7 +9,17 @@ import DetailsPanel from './DetailsPanel';
 const MainLayout: React.FC = () => {
   const [leftWidth, setLeftWidth] = useState(360);
   const [rightWidth, setRightWidth] = useState(360);
-  const [isRightPanelCollapsed, setIsRightPanelCollapsed] = useState(false);
+
+  // Load collapse states from localStorage
+  const [isLeftPanelCollapsed, setIsLeftPanelCollapsed] = useState(() => {
+    const saved = localStorage.getItem('leftPanelCollapsed');
+    return saved ? JSON.parse(saved) : false;
+  });
+  const [isRightPanelCollapsed, setIsRightPanelCollapsed] = useState(() => {
+    const saved = localStorage.getItem('rightPanelCollapsed');
+    return saved ? JSON.parse(saved) : false;
+  });
+
   const isResizingLeft = useRef(false);
   const isResizingRight = useRef(false);
 
@@ -45,6 +55,15 @@ const MainLayout: React.FC = () => {
     document.body.style.userSelect = '';
   };
 
+  // Save collapse states to localStorage whenever they change
+  React.useEffect(() => {
+    localStorage.setItem('leftPanelCollapsed', JSON.stringify(isLeftPanelCollapsed));
+  }, [isLeftPanelCollapsed]);
+
+  React.useEffect(() => {
+    localStorage.setItem('rightPanelCollapsed', JSON.stringify(isRightPanelCollapsed));
+  }, [isRightPanelCollapsed]);
+
   React.useEffect(() => {
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', handleMouseUp);
@@ -58,34 +77,84 @@ const MainLayout: React.FC = () => {
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
       <Header />
       <Box sx={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+        {/* Floating toggle button when left panel is collapsed */}
+        {isLeftPanelCollapsed && (
+          <Tooltip title="Show Panel" placement="right">
+            <IconButton
+              onClick={() => setIsLeftPanelCollapsed(false)}
+              sx={{
+                position: 'absolute',
+                left: 8,
+                top: 72, // Below header
+                zIndex: 10,
+                bgcolor: 'background.paper',
+                border: 1,
+                borderColor: 'divider',
+                '&:hover': {
+                  bgcolor: 'background.default',
+                },
+              }}
+              size="small"
+            >
+              <ChevronRight fontSize="small" />
+            </IconButton>
+          </Tooltip>
+        )}
+
         {/* Left Sidebar */}
         <Box
           sx={{
-            width: `${leftWidth}px`,
+            width: isLeftPanelCollapsed ? '0px' : `${leftWidth}px`,
             position: 'relative',
-            borderRight: 1,
+            borderRight: isLeftPanelCollapsed ? 0 : 1,
             borderColor: 'divider',
-            overflow: 'auto',
+            overflow: isLeftPanelCollapsed ? 'hidden' : 'auto',
             bgcolor: 'background.paper',
+            transition: 'width 0.3s ease-in-out',
           }}
         >
           <Sidebar />
-          {/* Resize handle */}
-          <Box
-            onMouseDown={handleMouseDown('left')}
-            sx={{
-              position: 'absolute',
-              right: 0,
-              top: 0,
-              bottom: 0,
-              width: '4px',
-              cursor: 'col-resize',
-              '&:hover': {
-                bgcolor: 'primary.main',
-                width: '2px',
-              },
-            }}
-          />
+
+          {/* Resize handle - only show when not collapsed */}
+          {!isLeftPanelCollapsed && (
+            <Box
+              onMouseDown={handleMouseDown('left')}
+              sx={{
+                position: 'absolute',
+                right: 0,
+                top: 0,
+                bottom: 0,
+                width: '4px',
+                cursor: 'col-resize',
+                '&:hover': {
+                  bgcolor: 'primary.main',
+                  width: '2px',
+                },
+              }}
+            />
+          )}
+
+          {/* Collapse/Expand button - on the right edge of panel */}
+          {!isLeftPanelCollapsed && (
+            <Tooltip title="Hide Panel" placement="right">
+              <IconButton
+                onClick={() => setIsLeftPanelCollapsed(true)}
+                sx={{
+                  position: 'absolute',
+                  right: 8,
+                  top: 8,
+                  zIndex: 10,
+                  bgcolor: 'background.default',
+                  '&:hover': {
+                    bgcolor: 'background.paper',
+                  },
+                }}
+                size="small"
+              >
+                <ChevronLeft fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          )}
         </Box>
 
         {/* Center Viewer */}
