@@ -99,17 +99,13 @@ const Viewer: React.FC = () => {
           bgcolor: 'background.paper',
           display: 'flex',
           alignItems: 'center',
+          justifyContent: 'center',
           px: 2,
-          gap: 1,
           flexShrink: 0,
         }}
       >
         <Typography variant="body2" color="text.secondary">
-          Scale: 10μm/px
-        </Typography>
-        <Divider orientation="vertical" flexItem />
-        <Typography variant="body2" color="text.secondary">
-          Zoom: 100%
+          X: 0.000 cm Y: 0.000 cm
         </Typography>
       </Box>
 
