@@ -37,3 +37,8 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: #666;
 }
+
+/* Attempt to style native date picker calendar widget */
+input[type="date"] {
+  color-scheme: dark;
+}

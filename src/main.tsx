@@ -66,6 +66,25 @@ const darkTheme = createTheme({
             filter: 'invert(1)',
             cursor: 'pointer',
           },
+          // Style the native date input calendar popup
+          '& input[type="date"]::-webkit-datetime-edit': {
+            color: '#e0e0e0',
+          },
+          '& input[type="date"]::-webkit-datetime-edit-fields-wrapper': {
+            color: '#e0e0e0',
+          },
+          '& input[type="date"]::-webkit-datetime-edit-text': {
+            color: '#e0e0e0',
+          },
+          '& input[type="date"]::-webkit-datetime-edit-month-field': {
+            color: '#e0e0e0',
+          },
+          '& input[type="date"]::-webkit-datetime-edit-day-field': {
+            color: '#e0e0e0',
+          },
+          '& input[type="date"]::-webkit-datetime-edit-year-field': {
+            color: '#e0e0e0',
+          },
         },
       },
     },
