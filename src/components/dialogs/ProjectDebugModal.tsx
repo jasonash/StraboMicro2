@@ -4,8 +4,22 @@
  * Displays the current project structure in JSON format for debugging
  */
 
+import {
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Button,
+  Typography,
+  Box,
+  Table,
+  TableBody,
+  TableRow,
+  TableCell,
+  Grow,
+} from '@mui/material';
+import { ContentCopy as CopyIcon } from '@mui/icons-material';
 import { useAppStore } from '@/store';
-import './ProjectDebugModal.css';
 
 interface ProjectDebugModalProps {
   isOpen: boolean;
@@ -23,58 +37,89 @@ export const ProjectDebugModal: React.FC<ProjectDebugModalProps> = ({ isOpen, on
     alert('Project JSON copied to clipboard!');
   };
 
-  if (!isOpen) return null;
-
   return (
-    <div className="debug-modal-overlay" onClick={onClose}>
-      <div className="debug-modal-content" onClick={(e) => e.stopPropagation()}>
-        <div className="debug-modal-header">
-          <h2>Project Structure (Debug)</h2>
-          <button className="debug-modal-close" onClick={onClose}>×</button>
-        </div>
+    <Dialog
+      open={isOpen}
+      onClose={onClose}
+      maxWidth="md"
+      fullWidth
+      TransitionComponent={Grow}
+      transitionDuration={300}
+    >
+      <DialogTitle>Project Structure (Debug)</DialogTitle>
+      <DialogContent>
+        <Table size="small" sx={{ mb: 2 }}>
+          <TableBody>
+            <TableRow>
+              <TableCell component="th" scope="row">File Path:</TableCell>
+              <TableCell>
+                <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>
+                  {projectFilePath || '(unsaved)'}
+                </Typography>
+              </TableCell>
+            </TableRow>
+            <TableRow>
+              <TableCell component="th" scope="row">Dirty:</TableCell>
+              <TableCell>
+                <Typography
+                  variant="body2"
+                  color={isDirty ? 'warning.main' : 'success.main'}
+                >
+                  {isDirty ? 'Yes (unsaved changes)' : 'No'}
+                </Typography>
+              </TableCell>
+            </TableRow>
+            <TableRow>
+              <TableCell component="th" scope="row">Project Loaded:</TableCell>
+              <TableCell>
+                <Typography
+                  variant="body2"
+                  color={project ? 'success.main' : 'text.secondary'}
+                >
+                  {project ? 'Yes' : 'No'}
+                </Typography>
+              </TableCell>
+            </TableRow>
+          </TableBody>
+        </Table>
 
-        <div className="debug-modal-body">
-          <div className="debug-info-section">
-            <h3>Project Info</h3>
-            <div className="debug-info-row">
-              <span className="debug-label">File Path:</span>
-              <span className="debug-value">{projectFilePath || '(unsaved)'}</span>
-            </div>
-            <div className="debug-info-row">
-              <span className="debug-label">Dirty:</span>
-              <span className="debug-value">{isDirty ? 'Yes (unsaved changes)' : 'No'}</span>
-            </div>
-            <div className="debug-info-row">
-              <span className="debug-label">Project Loaded:</span>
-              <span className="debug-value">{project ? 'Yes' : 'No'}</span>
-            </div>
-          </div>
-
-          {project ? (
-            <>
-              <div className="debug-info-section">
-                <h3>Project Structure (JSON)</h3>
-                <button className="button-copy" onClick={handleCopyToClipboard}>
-                  Copy to Clipboard
-                </button>
-              </div>
-              <pre className="debug-json">
-                {JSON.stringify(project, null, 2)}
-              </pre>
-            </>
-          ) : (
-            <div className="debug-no-project">
-              <p>No project currently loaded.</p>
-            </div>
-          )}
-        </div>
-
-        <div className="debug-modal-footer">
-          <button className="button-secondary" onClick={onClose}>
-            Close
-          </button>
-        </div>
-      </div>
-    </div>
+        {project ? (
+          <>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+              <Typography variant="subtitle1">Project Structure (JSON)</Typography>
+              <Button
+                size="small"
+                startIcon={<CopyIcon />}
+                onClick={handleCopyToClipboard}
+              >
+                Copy to Clipboard
+              </Button>
+            </Box>
+            <Box
+              component="pre"
+              sx={{
+                bgcolor: 'background.default',
+                p: 2,
+                borderRadius: 1,
+                maxHeight: 400,
+                overflow: 'auto',
+                fontSize: 12,
+                lineHeight: 1.5,
+                fontFamily: 'monospace',
+              }}
+            >
+              {JSON.stringify(project, null, 2)}
+            </Box>
+          </>
+        ) : (
+          <Box sx={{ textAlign: 'center', py: 4 }}>
+            <Typography color="text.secondary">No project currently loaded.</Typography>
+          </Box>
+        )}
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose}>Close</Button>
+      </DialogActions>
+    </Dialog>
   );
 };

@@ -6,8 +6,18 @@
  */
 
 import { useState, useEffect } from 'react';
+import {
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Button,
+  TextField,
+  Box,
+  Stack,
+  Grow,
+} from '@mui/material';
 import { useAppStore } from '@/store';
-import './NewProjectWizard.css'; // Reuse wizard styles
 
 interface EditProjectDialogProps {
   isOpen: boolean;
@@ -28,7 +38,6 @@ interface ProjectMetadataForm {
 
 export const EditProjectDialog: React.FC<EditProjectDialogProps> = ({ isOpen, onClose }) => {
   const project = useAppStore(state => state.project);
-  const updateDataset = useAppStore(state => state.updateDataset);
 
   const [formData, setFormData] = useState<ProjectMetadataForm>({
     name: '',
@@ -74,12 +83,6 @@ export const EditProjectDialog: React.FC<EditProjectDialogProps> = ({ isOpen, on
       return;
     }
 
-    // Update project using the store's updateDataset for the first dataset
-    // Note: In the current data model, project metadata is stored at the root level
-    // We'll need to update the project directly through a new store action
-    // For now, we'll use a workaround by updating via the project reference
-
-    // This is a temporary approach - ideally we'd have an updateProject action
     const updatedProject = {
       ...project,
       name: formData.name,
@@ -93,7 +96,6 @@ export const EditProjectDialog: React.FC<EditProjectDialogProps> = ({ isOpen, on
       notes: formData.notes,
     };
 
-    // Use loadProject to replace the current project with updated metadata
     const loadProject = useAppStore.getState().loadProject;
     const projectFilePath = useAppStore.getState().projectFilePath;
     loadProject(updatedProject, projectFilePath);
@@ -101,123 +103,96 @@ export const EditProjectDialog: React.FC<EditProjectDialogProps> = ({ isOpen, on
     onClose();
   };
 
-  const handleCancel = () => {
-    onClose();
-  };
-
-  if (!isOpen || !project) return null;
+  if (!project) return null;
 
   return (
-    <div className="wizard-overlay" onClick={onClose}>
-      <div className="wizard-content" onClick={(e) => e.stopPropagation()}>
-        <div className="wizard-header">
-          <h2>Edit Project</h2>
-          <button className="wizard-close" onClick={onClose}>×</button>
-        </div>
-
-        <div className="wizard-body">
-          <div className="form-group">
-            <label>
-              Project Name <span className="required">*</span>
-            </label>
-            <input
-              type="text"
-              value={formData.name}
-              onChange={(e) => updateField('name', e.target.value)}
-              placeholder="Enter project name"
+    <Dialog
+      open={isOpen}
+      onClose={onClose}
+      maxWidth="md"
+      fullWidth
+      TransitionComponent={Grow}
+      transitionDuration={300}
+    >
+      <DialogTitle>Edit Project</DialogTitle>
+      <DialogContent>
+        <Stack spacing={2} sx={{ mt: 1 }}>
+          <TextField
+            fullWidth
+            required
+            label="Project Name"
+            value={formData.name}
+            onChange={(e) => updateField('name', e.target.value)}
+          />
+          <Box sx={{ display: 'flex', gap: 2 }}>
+            <TextField
+              fullWidth
+              type="date"
+              label="Start Date"
+              InputLabelProps={{ shrink: true }}
+              value={formData.startDate}
+              onChange={(e) => updateField('startDate', e.target.value)}
             />
-          </div>
-
-          <div className="form-row">
-            <div className="form-group">
-              <label>Start Date</label>
-              <input
-                type="date"
-                value={formData.startDate}
-                onChange={(e) => updateField('startDate', e.target.value)}
-              />
-            </div>
-            <div className="form-group">
-              <label>End Date</label>
-              <input
-                type="date"
-                value={formData.endDate}
-                onChange={(e) => updateField('endDate', e.target.value)}
-              />
-            </div>
-          </div>
-
-          <div className="form-group">
-            <label>Purpose of Study</label>
-            <textarea
-              value={formData.purposeOfStudy}
-              onChange={(e) => updateField('purposeOfStudy', e.target.value)}
-              placeholder="Describe the purpose of this study"
-              rows={3}
+            <TextField
+              fullWidth
+              type="date"
+              label="End Date"
+              InputLabelProps={{ shrink: true }}
+              value={formData.endDate}
+              onChange={(e) => updateField('endDate', e.target.value)}
             />
-          </div>
-
-          <div className="form-group">
-            <label>Other Team Members</label>
-            <input
-              type="text"
-              value={formData.otherTeamMembers}
-              onChange={(e) => updateField('otherTeamMembers', e.target.value)}
-              placeholder="List other team members"
+          </Box>
+          <TextField
+            fullWidth
+            multiline
+            rows={3}
+            label="Purpose of Study"
+            value={formData.purposeOfStudy}
+            onChange={(e) => updateField('purposeOfStudy', e.target.value)}
+          />
+          <TextField
+            fullWidth
+            label="Other Team Members"
+            value={formData.otherTeamMembers}
+            onChange={(e) => updateField('otherTeamMembers', e.target.value)}
+          />
+          <TextField
+            fullWidth
+            label="Area of Interest"
+            value={formData.areaOfInterest}
+            onChange={(e) => updateField('areaOfInterest', e.target.value)}
+          />
+          <Box sx={{ display: 'flex', gap: 2 }}>
+            <TextField
+              fullWidth
+              label="GPS Datum"
+              value={formData.gpsDatum}
+              onChange={(e) => updateField('gpsDatum', e.target.value)}
+              placeholder="e.g., WGS84"
             />
-          </div>
-
-          <div className="form-group">
-            <label>Area of Interest</label>
-            <input
-              type="text"
-              value={formData.areaOfInterest}
-              onChange={(e) => updateField('areaOfInterest', e.target.value)}
-              placeholder="Geographic area or location"
+            <TextField
+              fullWidth
+              label="Magnetic Declination"
+              value={formData.magneticDeclination}
+              onChange={(e) => updateField('magneticDeclination', e.target.value)}
             />
-          </div>
-
-          <div className="form-row">
-            <div className="form-group">
-              <label>GPS Datum</label>
-              <input
-                type="text"
-                value={formData.gpsDatum}
-                onChange={(e) => updateField('gpsDatum', e.target.value)}
-                placeholder="e.g., WGS84"
-              />
-            </div>
-            <div className="form-group">
-              <label>Magnetic Declination</label>
-              <input
-                type="text"
-                value={formData.magneticDeclination}
-                onChange={(e) => updateField('magneticDeclination', e.target.value)}
-                placeholder="Declination value"
-              />
-            </div>
-          </div>
-
-          <div className="form-group">
-            <label>Notes</label>
-            <textarea
-              value={formData.notes}
-              onChange={(e) => updateField('notes', e.target.value)}
-              placeholder="Additional notes about the project"
-              rows={4}
-            />
-          </div>
-        </div>
-
-        <div className="wizard-footer">
-          <button className="button-secondary" onClick={handleCancel}>
-            Cancel
-          </button>
-          <button className="button-primary" onClick={handleSave}>
-            Save Changes
-          </button>
-        </div>
-      </div>
-    </div>
+          </Box>
+          <TextField
+            fullWidth
+            multiline
+            rows={4}
+            label="Notes"
+            value={formData.notes}
+            onChange={(e) => updateField('notes', e.target.value)}
+          />
+        </Stack>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose}>Cancel</Button>
+        <Button variant="contained" onClick={handleSave}>
+          Save Changes
+        </Button>
+      </DialogActions>
+    </Dialog>
   );
 };
