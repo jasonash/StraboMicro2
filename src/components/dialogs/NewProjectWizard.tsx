@@ -106,6 +106,29 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
+  // Validation handlers for latitude/longitude
+  const handleLatitudeChange = (value: string) => {
+    // Allow empty, minus sign, or valid decimal numbers
+    if (value === '' || value === '-' || /^-?\d*\.?\d*$/.test(value)) {
+      const num = parseFloat(value);
+      // Allow partial input or valid range
+      if (value === '' || value === '-' || (num >= -90 && num <= 90) || isNaN(num)) {
+        updateField('latitude', value);
+      }
+    }
+  };
+
+  const handleLongitudeChange = (value: string) => {
+    // Allow empty, minus sign, or valid decimal numbers
+    if (value === '' || value === '-' || /^-?\d*\.?\d*$/.test(value)) {
+      const num = parseFloat(value);
+      // Allow partial input or valid range
+      if (value === '' || value === '-' || (num >= -180 && num <= 180) || isNaN(num)) {
+        updateField('longitude', value);
+      }
+    }
+  };
+
   const handleNext = () => {
     setActiveStep((prevActiveStep) => prevActiveStep + 1);
   };
@@ -275,14 +298,16 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
                 label="Longitude"
                 placeholder="-180 to 180"
                 value={formData.longitude}
-                onChange={(e) => updateField('longitude', e.target.value)}
+                onChange={(e) => handleLongitudeChange(e.target.value)}
+                helperText="Valid range: -180 to 180"
               />
               <TextField
                 fullWidth
                 label="Latitude"
                 placeholder="-90 to 90"
                 value={formData.latitude}
-                onChange={(e) => updateField('latitude', e.target.value)}
+                onChange={(e) => handleLatitudeChange(e.target.value)}
+                helperText="Valid range: -90 to 90"
               />
             </Box>
             <TextField
@@ -363,11 +388,9 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
             </Step>
           ))}
         </Stepper>
-        <Fade in={true} timeout={300} key={activeStep}>
-          <Box sx={{ mt: 2, mb: 1 }}>
-            {renderStepContent(activeStep)}
-          </Box>
-        </Fade>
+        <Box sx={{ mt: 2, mb: 1 }}>
+          {renderStepContent(activeStep)}
+        </Box>
       </DialogContent>
       <DialogActions>
         <Button onClick={handleCancel}>Cancel</Button>
