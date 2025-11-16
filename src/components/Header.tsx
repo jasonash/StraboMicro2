@@ -23,6 +23,7 @@ const Header: React.FC = () => {
           <Typography
             variant="h5"
             component="h1"
+            color="text.primary"
             sx={{ fontWeight: 300, letterSpacing: 0.5, fontSize: '1.75rem' }}
           >
             STRABOMICRO
