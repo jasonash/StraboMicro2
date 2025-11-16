@@ -138,6 +138,9 @@ export const EditProjectDialog: React.FC<EditProjectDialogProps> = ({ isOpen, on
               InputLabelProps={{ shrink: true }}
               value={formData.startDate}
               onChange={(e) => updateField('startDate', e.target.value)}
+              inputProps={{
+                max: formData.endDate || undefined, // Date picker can't select after end date
+              }}
               helperText={formData.endDate && formData.startDate && formData.startDate > formData.endDate ? 'Start date must be before end date' : ''}
               error={!!(formData.endDate && formData.startDate && formData.startDate > formData.endDate)}
             />
@@ -148,6 +151,9 @@ export const EditProjectDialog: React.FC<EditProjectDialogProps> = ({ isOpen, on
               InputLabelProps={{ shrink: true }}
               value={formData.endDate}
               onChange={(e) => updateField('endDate', e.target.value)}
+              inputProps={{
+                min: formData.startDate || undefined, // Date picker can't select before start date
+              }}
               helperText={formData.startDate && formData.endDate && formData.endDate < formData.startDate ? 'End date must be after start date' : ''}
               error={!!(formData.startDate && formData.endDate && formData.endDate < formData.startDate)}
             />
