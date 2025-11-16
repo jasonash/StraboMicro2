@@ -4,29 +4,8 @@ import { NewProjectWizard } from './components/dialogs/NewProjectWizard';
 import { EditProjectDialog } from './components/dialogs/EditProjectDialog';
 import { ProjectDebugModal } from './components/dialogs/ProjectDebugModal';
 import { useAppStore } from '@/store';
+import { useTheme } from './hooks/useTheme';
 import './App.css';
-
-// TypeScript type for window.api
-declare global {
-  interface Window {
-    api: {
-      onNewProject: (callback: () => void) => void;
-      onOpenProject: (callback: () => void) => void;
-      onEditProject: (callback: () => void) => void;
-      onShowProjectDebug: (callback: () => void) => void;
-      onClearProject: (callback: () => void) => void;
-      openTiffDialog: () => Promise<string | null>;
-      loadTiffImage: (filePath: string) => Promise<{
-        width: number;
-        height: number;
-        data: string;
-        filePath: string;
-        fileName: string;
-      }>;
-      setWindowTitle: (title: string) => void;
-    };
-  }
-}
 
 function App() {
   const [isNewProjectDialogOpen, setIsNewProjectDialogOpen] = useState(false);
@@ -34,6 +13,10 @@ function App() {
   const [isDebugModalOpen, setIsDebugModalOpen] = useState(false);
   const closeProject = useAppStore(state => state.closeProject);
   const project = useAppStore(state => state.project);
+  const setTheme = useAppStore(state => state.setTheme);
+
+  // Initialize theme system
+  useTheme();
 
   // Update window title when project changes
   useEffect(() => {
@@ -81,7 +64,12 @@ function App() {
         console.log('Project cleared');
       }
     });
-  }, [closeProject]);
+
+    // Theme menu item
+    window.api.onThemeChange((theme) => {
+      setTheme(theme);
+    });
+  }, [closeProject, setTheme]);
 
   return (
     <>
