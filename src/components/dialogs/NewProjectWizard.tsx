@@ -156,7 +156,7 @@ const initialFormData: ProjectFormData = {
   gpsDatum: '',
   magneticDeclination: '',
   notes: '',
-  datasetName: '',
+  datasetName: 'Default',
   sampleID: '',
   longitude: '',
   latitude: '',
