@@ -7,6 +7,9 @@
     "dev": "concurrently \"npm run dev:vite\" \"npm run dev:electron\"",
     "dev:vite": "vite",
     "dev:electron": "wait-on http://localhost:5173 && electron .",
+    "dev:typecheck": "concurrently \"npm run dev:vite\" \"npm run dev:electron\" \"npm run typecheck:watch\"",
+    "typecheck": "tsc --noEmit",
+    "typecheck:watch": "tsc --noEmit --watch --preserveWatchOutput",
     "build": "tsc && vite build",
     "preview": "vite preview",
     "package": "npm run build && electron-builder"
