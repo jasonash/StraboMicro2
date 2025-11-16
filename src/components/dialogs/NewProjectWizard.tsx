@@ -27,6 +27,10 @@ import {
   Grow,
   Typography,
   Link,
+  Checkbox,
+  FormControlLabel,
+  FormGroup,
+  Divider,
 } from '@mui/material';
 import { useAppStore } from '@/store';
 
@@ -82,6 +86,58 @@ interface ProjectFormData {
   postProcessingSoftwareVersion: string;
   filamentType: string;
   instrumentNotes: string;
+  // Instrument Settings fields (Step 7)
+  accelerationVoltage: string;
+  beamCurrent: string;
+  spotSize: string;
+  aperture: string;
+  cameraLength: string;
+  cameraBinning: string;
+  dwellTime: string;
+  analysisDwellTime: string;
+  analysisDwellTimeUnit: string;
+  backgroundDwellTime: string;
+  backgroundDwellTimeUnit: string;
+  workingDistance: string;
+  instrumentPurged: string;
+  instrumentPurgedGasType: string;
+  instrumentPurgedGasOtherType: string;
+  environmentPurged: string;
+  environmentPurgedGasType: string;
+  environmentPurgedGasOtherType: string;
+  scanTime: string;
+  resolution: string;
+  spectralResolution: string;
+  wavenumberRange: string;
+  averaging: string;
+  excitationWavelength: string;
+  laserPower: string;
+  diffractionGrating: string;
+  integrationTime: string;
+  objective: string;
+  calibration: string;
+  cantileverStiffness: string;
+  tipDiameter: string;
+  operatingFrequency: string;
+  scanDimensions: string;
+  scanArea: string;
+  spatialResolution: string;
+  temperatureOfRoom: string;
+  relativeHumidity: string;
+  sampleTemperature: string;
+  stepSize: string;
+  backgroundCorrectionTechnique: string;
+  deadTime: string;
+  energyLoss: string;
+  backgroundComposition: string;
+  otherBackgroundComposition: string;
+  clColor: string;
+  rgbCheck: string[];
+  atomicMode: string;
+  backgroundCorrectionFrequencyAndNotes: string;
+  notesOnPostProcessing: string;
+  calibrationStandardNotes: string;
+  notesOnCrystalStructuresUsed: string;
 }
 
 interface Detector {
@@ -137,6 +193,57 @@ const initialFormData: ProjectFormData = {
   postProcessingSoftwareVersion: '',
   filamentType: '',
   instrumentNotes: '',
+  accelerationVoltage: '',
+  beamCurrent: '',
+  spotSize: '',
+  aperture: '',
+  cameraLength: '',
+  cameraBinning: '',
+  dwellTime: '',
+  analysisDwellTime: '',
+  analysisDwellTimeUnit: 's',
+  backgroundDwellTime: '',
+  backgroundDwellTimeUnit: 's',
+  workingDistance: '',
+  instrumentPurged: '',
+  instrumentPurgedGasType: '',
+  instrumentPurgedGasOtherType: '',
+  environmentPurged: '',
+  environmentPurgedGasType: '',
+  environmentPurgedGasOtherType: '',
+  scanTime: '',
+  resolution: '',
+  spectralResolution: '',
+  wavenumberRange: '',
+  averaging: '',
+  excitationWavelength: '',
+  laserPower: '',
+  diffractionGrating: '',
+  integrationTime: '',
+  objective: '',
+  calibration: '',
+  cantileverStiffness: '',
+  tipDiameter: '',
+  operatingFrequency: '',
+  scanDimensions: '',
+  scanArea: '',
+  spatialResolution: '',
+  temperatureOfRoom: '',
+  relativeHumidity: '',
+  sampleTemperature: '',
+  stepSize: '',
+  backgroundCorrectionTechnique: '',
+  deadTime: '',
+  energyLoss: '',
+  backgroundComposition: '',
+  otherBackgroundComposition: '',
+  clColor: '',
+  rgbCheck: [],
+  atomicMode: '',
+  backgroundCorrectionFrequencyAndNotes: '',
+  notesOnPostProcessing: '',
+  calibrationStandardNotes: '',
+  notesOnCrystalStructuresUsed: '',
 };
 
 export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onClose }) => {
@@ -145,9 +252,18 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
   const [detectors, setDetectors] = useState<Detector[]>([{ type: '', make: '', model: '' }]);
   const loadProject = useAppStore(state => state.loadProject);
 
-  const steps = ['Project Metadata', 'Dataset Information', 'Sample Information', 'Load Reference Micrograph', 'Instrument & Image Information', 'Instrument Data'];
+  // Determine which steps to show based on instrument type
+  const shouldShowInstrumentSettings = () => {
+    return formData.instrumentType &&
+           !['Optical Microscopy', 'Scanner', 'Other'].includes(formData.instrumentType);
+  };
 
-  const updateField = (field: keyof ProjectFormData, value: string) => {
+  const baseSteps = ['Project Metadata', 'Dataset Information', 'Sample Information', 'Load Reference Micrograph', 'Instrument & Image Information', 'Instrument Data'];
+  const steps = shouldShowInstrumentSettings()
+    ? [...baseSteps, 'Instrument Settings']
+    : baseSteps;
+
+  const updateField = (field: keyof ProjectFormData, value: string | string[]) => {
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
@@ -382,6 +498,24 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
     }
     if (activeStep === 5) {
       // Step 6: Instrument Data - no required fields, all optional
+      return true;
+    }
+    if (activeStep === 6) {
+      // Step 7: Instrument Settings - validation for conditional "Other" fields
+      if (formData.instrumentPurged === 'Yes' &&
+          formData.instrumentPurgedGasType === 'Other' &&
+          formData.instrumentPurgedGasOtherType.trim() === '') {
+        return false;
+      }
+      if (formData.environmentPurged === 'Yes' &&
+          formData.environmentPurgedGasType === 'Other' &&
+          formData.environmentPurgedGasOtherType.trim() === '') {
+        return false;
+      }
+      if (formData.backgroundComposition === 'Other' &&
+          formData.otherBackgroundComposition.trim() === '') {
+        return false;
+      }
       return true;
     }
     return true;
@@ -1099,6 +1233,448 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
               value={formData.instrumentNotes}
               onChange={(e) => updateField('instrumentNotes', e.target.value)}
             />
+          </Stack>
+        );
+
+      case 6:
+        // Step 7: Instrument Settings - Only shown for certain instrument types
+        return (
+          <Stack spacing={2}>
+            {/* TEM Settings */}
+            {formData.instrumentType === 'Transmission Electron Microscopy (TEM)' && (
+              <>
+                <Typography variant="h6">TEM Settings</Typography>
+                <TextField
+                  fullWidth
+                  label="Acceleration Voltage"
+                  value={formData.accelerationVoltage}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('accelerationVoltage', val);
+                  }}
+                  InputProps={{ endAdornment: <Typography variant="body2" sx={{ ml: 1 }}>kV</Typography> }}
+                />
+                <TextField
+                  fullWidth
+                  label="Beam Current"
+                  value={formData.beamCurrent}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('beamCurrent', val);
+                  }}
+                  InputProps={{ endAdornment: <Typography variant="body2" sx={{ ml: 1 }}>nA</Typography> }}
+                />
+                <TextField
+                  fullWidth
+                  label="Spot Size"
+                  value={formData.spotSize}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('spotSize', val);
+                  }}
+                  InputProps={{ endAdornment: <Typography variant="body2" sx={{ ml: 1 }}>um</Typography> }}
+                />
+                <TextField
+                  fullWidth
+                  label="Aperture"
+                  value={formData.aperture}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('aperture', val);
+                  }}
+                />
+                <TextField
+                  fullWidth
+                  label="Camera Length"
+                  value={formData.cameraLength}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('cameraLength', val);
+                  }}
+                  InputProps={{ endAdornment: <Typography variant="body2" sx={{ ml: 1 }}>mm</Typography> }}
+                />
+
+                {/* EDS Settings for TEM */}
+                {formData.dataType === 'Energy Dispersive X-ray Spectroscopy (EDS)' && (
+                  <>
+                    <Divider sx={{ my: 2 }} />
+                    <Typography variant="h6">EDS Settings</Typography>
+                    <TextField
+                      fullWidth
+                      label="Step Size"
+                      value={formData.stepSize}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('stepSize', val);
+                      }}
+                      InputProps={{ endAdornment: <Typography variant="body2" sx={{ ml: 1 }}>um</Typography> }}
+                    />
+                    <TextField
+                      fullWidth
+                      label="Analysis Dwell Time (/pixel)"
+                      value={formData.analysisDwellTime}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('analysisDwellTime', val);
+                      }}
+                      InputProps={{ endAdornment: <Typography variant="body2" sx={{ ml: 1 }}>ms</Typography> }}
+                    />
+                    <TextField
+                      fullWidth
+                      label="Dead Time"
+                      value={formData.deadTime}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('deadTime', val);
+                      }}
+                      InputProps={{ endAdornment: <Typography variant="body2" sx={{ ml: 1 }}>ms</Typography> }}
+                    />
+                    <TextField
+                      fullWidth
+                      multiline
+                      rows={3}
+                      label="Calibration / Standard Notes"
+                      value={formData.calibrationStandardNotes}
+                      onChange={(e) => updateField('calibrationStandardNotes', e.target.value)}
+                    />
+                  </>
+                )}
+
+                {/* CL Settings for TEM */}
+                {formData.dataType === 'Cathodoluminescence (CL)' && (
+                  <>
+                    <Divider sx={{ my: 2 }} />
+                    <Typography variant="h6">CL Settings</Typography>
+                    <TextField
+                      fullWidth
+                      select
+                      label="Color"
+                      value={formData.clColor}
+                      onChange={(e) => {
+                        updateField('clColor', e.target.value);
+                        if (e.target.value !== 'Color CL') {
+                          updateField('rgbCheck', []);
+                        }
+                      }}
+                    >
+                      <MenuItem value="">Select...</MenuItem>
+                      <MenuItem value="Color CL">Color CL</MenuItem>
+                      <MenuItem value="Panchromatic (greyscale)">Panchromatic (greyscale)</MenuItem>
+                    </TextField>
+                    {formData.clColor === 'Color CL' && (
+                      <FormGroup row>
+                        <FormControlLabel
+                          control={
+                            <Checkbox
+                              checked={formData.rgbCheck.includes('R')}
+                              onChange={(e) => {
+                                const newCheck = e.target.checked
+                                  ? [...formData.rgbCheck, 'R']
+                                  : formData.rgbCheck.filter(c => c !== 'R');
+                                updateField('rgbCheck', newCheck);
+                              }}
+                            />
+                          }
+                          label="Red"
+                        />
+                        <FormControlLabel
+                          control={
+                            <Checkbox
+                              checked={formData.rgbCheck.includes('G')}
+                              onChange={(e) => {
+                                const newCheck = e.target.checked
+                                  ? [...formData.rgbCheck, 'G']
+                                  : formData.rgbCheck.filter(c => c !== 'G');
+                                updateField('rgbCheck', newCheck);
+                              }}
+                            />
+                          }
+                          label="Green"
+                        />
+                        <FormControlLabel
+                          control={
+                            <Checkbox
+                              checked={formData.rgbCheck.includes('B')}
+                              onChange={(e) => {
+                                const newCheck = e.target.checked
+                                  ? [...formData.rgbCheck, 'B']
+                                  : formData.rgbCheck.filter(c => c !== 'B');
+                                updateField('rgbCheck', newCheck);
+                              }}
+                            />
+                          }
+                          label="Blue"
+                        />
+                      </FormGroup>
+                    )}
+                  </>
+                )}
+              </>
+            )}
+
+            {/* STEM Settings */}
+            {formData.instrumentType === 'Scanning Transmission Electron Microscopy (STEM)' && (
+              <>
+                <Typography variant="h6">STEM Settings</Typography>
+                <TextField
+                  fullWidth
+                  label="Acceleration Voltage"
+                  value={formData.accelerationVoltage}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('accelerationVoltage', val);
+                  }}
+                  InputProps={{ endAdornment: <Typography variant="body2" sx={{ ml: 1 }}>kV</Typography> }}
+                />
+                <TextField
+                  fullWidth
+                  label="Beam Current"
+                  value={formData.beamCurrent}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('beamCurrent', val);
+                  }}
+                  InputProps={{ endAdornment: <Typography variant="body2" sx={{ ml: 1 }}>nA</Typography> }}
+                />
+                <TextField
+                  fullWidth
+                  label="Spot Size"
+                  value={formData.spotSize}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('spotSize', val);
+                  }}
+                  InputProps={{ endAdornment: <Typography variant="body2" sx={{ ml: 1 }}>um</Typography> }}
+                />
+                <TextField
+                  fullWidth
+                  label="Aperture"
+                  value={formData.aperture}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('aperture', val);
+                  }}
+                />
+                <TextField
+                  fullWidth
+                  label="Camera Length"
+                  value={formData.cameraLength}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('cameraLength', val);
+                  }}
+                  InputProps={{ endAdornment: <Typography variant="body2" sx={{ ml: 1 }}>mm</Typography> }}
+                />
+                <TextField
+                  fullWidth
+                  label="Camera Binning"
+                  value={formData.cameraBinning}
+                  onChange={(e) => updateField('cameraBinning', e.target.value)}
+                />
+                <TextField
+                  fullWidth
+                  label="Dwell Time"
+                  value={formData.dwellTime}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('dwellTime', val);
+                  }}
+                  InputProps={{ endAdornment: <Typography variant="body2" sx={{ ml: 1 }}>s</Typography> }}
+                />
+
+                {/* EELS Settings for STEM */}
+                {formData.dataType === 'Electron Energy Loss Spectroscopy (EELS)' && (
+                  <>
+                    <Divider sx={{ my: 2 }} />
+                    <Typography variant="h6">EELS Settings</Typography>
+                    <TextField
+                      fullWidth
+                      label="Energy Loss"
+                      value={formData.energyLoss}
+                      onChange={(e) => updateField('energyLoss', e.target.value)}
+                      InputProps={{ endAdornment: <Typography variant="body2" sx={{ ml: 1 }}>eV</Typography> }}
+                    />
+                  </>
+                )}
+
+                {/* EDS Settings for STEM */}
+                {formData.dataType === 'Energy Dispersive X-ray Spectroscopy (EDS)' && (
+                  <>
+                    <Divider sx={{ my: 2 }} />
+                    <Typography variant="h6">EDS Settings</Typography>
+                    <TextField
+                      fullWidth
+                      label="Step Size"
+                      value={formData.stepSize}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('stepSize', val);
+                      }}
+                      InputProps={{ endAdornment: <Typography variant="body2" sx={{ ml: 1 }}>um</Typography> }}
+                    />
+                    <TextField
+                      fullWidth
+                      label="Analysis Dwell Time (/pixel)"
+                      value={formData.analysisDwellTime}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('analysisDwellTime', val);
+                      }}
+                      InputProps={{ endAdornment: <Typography variant="body2" sx={{ ml: 1 }}>ms</Typography> }}
+                    />
+                    <TextField
+                      fullWidth
+                      label="Dead Time"
+                      value={formData.deadTime}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('deadTime', val);
+                      }}
+                      InputProps={{ endAdornment: <Typography variant="body2" sx={{ ml: 1 }}>ms</Typography> }}
+                    />
+                    <TextField
+                      fullWidth
+                      multiline
+                      rows={3}
+                      label="Calibration / Standard Notes"
+                      value={formData.calibrationStandardNotes}
+                      onChange={(e) => updateField('calibrationStandardNotes', e.target.value)}
+                    />
+                  </>
+                )}
+
+                {/* CL Settings for STEM */}
+                {formData.dataType === 'Cathodoluminescence (CL)' && (
+                  <>
+                    <Divider sx={{ my: 2 }} />
+                    <Typography variant="h6">CL Settings</Typography>
+                    <TextField
+                      fullWidth
+                      select
+                      label="Color"
+                      value={formData.clColor}
+                      onChange={(e) => {
+                        updateField('clColor', e.target.value);
+                        if (e.target.value !== 'Color CL') {
+                          updateField('rgbCheck', []);
+                        }
+                      }}
+                    >
+                      <MenuItem value="">Select...</MenuItem>
+                      <MenuItem value="Color CL">Color CL</MenuItem>
+                      <MenuItem value="Panchromatic (greyscale)">Panchromatic (greyscale)</MenuItem>
+                    </TextField>
+                    {formData.clColor === 'Color CL' && (
+                      <FormGroup row>
+                        <FormControlLabel control={<Checkbox checked={formData.rgbCheck.includes('R')} onChange={(e) => { const newCheck = e.target.checked ? [...formData.rgbCheck, 'R'] : formData.rgbCheck.filter(c => c !== 'R'); updateField('rgbCheck', newCheck); }} />} label="Red" />
+                        <FormControlLabel control={<Checkbox checked={formData.rgbCheck.includes('G')} onChange={(e) => { const newCheck = e.target.checked ? [...formData.rgbCheck, 'G'] : formData.rgbCheck.filter(c => c !== 'G'); updateField('rgbCheck', newCheck); }} />} label="Green" />
+                        <FormControlLabel control={<Checkbox checked={formData.rgbCheck.includes('B')} onChange={(e) => { const newCheck = e.target.checked ? [...formData.rgbCheck, 'B'] : formData.rgbCheck.filter(c => c !== 'B'); updateField('rgbCheck', newCheck); }} />} label="Blue" />
+                      </FormGroup>
+                    )}
+                  </>
+                )}
+              </>
+            )}
+
+            {/* SEM Settings */}
+            {formData.instrumentType === 'Scanning Electron Microscopy (SEM)' && (
+              <>
+                <Typography variant="h6">SEM Settings</Typography>
+                <TextField fullWidth label="Acceleration Voltage" value={formData.accelerationVoltage} onChange={(e) => { const val = e.target.value; if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('accelerationVoltage', val); }} InputProps={{ endAdornment: <Typography variant="body2" sx={{ ml: 1 }}>kV</Typography> }} />
+                <TextField fullWidth label="Beam Current" value={formData.beamCurrent} onChange={(e) => { const val = e.target.value; if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('beamCurrent', val); }} InputProps={{ endAdornment: <Typography variant="body2" sx={{ ml: 1 }}>nA</Typography> }} />
+                <TextField fullWidth label="Spot Size" value={formData.spotSize} onChange={(e) => { const val = e.target.value; if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('spotSize', val); }} InputProps={{ endAdornment: <Typography variant="body2" sx={{ ml: 1 }}>um</Typography> }} />
+                <TextField fullWidth label="Working Distance" value={formData.workingDistance} onChange={(e) => { const val = e.target.value; if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('workingDistance', val); }} InputProps={{ endAdornment: <Typography variant="body2" sx={{ ml: 1 }}>mm</Typography> }} />
+
+                {/* EDS/WDS Settings for SEM */}
+                {(formData.dataType === 'Energy Dispersive X-ray Spectroscopy (EDS)' || formData.dataType === 'Wavelength-dispersive X-ray spectroscopy (WDS)') && (
+                  <>
+                    <Divider sx={{ my: 2 }} />
+                    <Typography variant="h6">{formData.dataType === 'Energy Dispersive X-ray Spectroscopy (EDS)' ? 'EDS' : 'WDS'} Settings</Typography>
+                    <TextField fullWidth label="Step Size" value={formData.stepSize} onChange={(e) => { const val = e.target.value; if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('stepSize', val); }} InputProps={{ endAdornment: <Typography variant="body2" sx={{ ml: 1 }}>um</Typography> }} />
+                    <TextField fullWidth label="Analysis Dwell Time (/pixel)" value={formData.analysisDwellTime} onChange={(e) => { const val = e.target.value; if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('analysisDwellTime', val); }} InputProps={{ endAdornment: <Typography variant="body2" sx={{ ml: 1 }}>ms</Typography> }} />
+                    <TextField fullWidth label="Dead Time" value={formData.deadTime} onChange={(e) => { const val = e.target.value; if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('deadTime', val); }} InputProps={{ endAdornment: <Typography variant="body2" sx={{ ml: 1 }}>ms</Typography> }} />
+                    <TextField fullWidth multiline rows={3} label="Calibration / Standard Notes" value={formData.calibrationStandardNotes} onChange={(e) => updateField('calibrationStandardNotes', e.target.value)} />
+                  </>
+                )}
+
+                {/* EBSD Settings for SEM */}
+                {formData.dataType === 'Electron Backscatter Diffraction (EBSD)' && (
+                  <>
+                    <Divider sx={{ my: 2 }} />
+                    <Typography variant="h6">EBSD Settings</Typography>
+                    <TextField fullWidth label="Step Size" value={formData.stepSize} onChange={(e) => { const val = e.target.value; if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('stepSize', val); }} InputProps={{ endAdornment: <Typography variant="body2" sx={{ ml: 1 }}>um</Typography> }} />
+                    <TextField fullWidth multiline rows={3} label="Notes on Crystal Structures Used" value={formData.notesOnCrystalStructuresUsed} onChange={(e) => updateField('notesOnCrystalStructuresUsed', e.target.value)} />
+                  </>
+                )}
+              </>
+            )}
+
+            {/* Electron Microprobe Settings */}
+            {formData.instrumentType === 'Electron Microprobe' && (
+              <>
+                <Typography variant="h6">Electron Microprobe Settings</Typography>
+                <TextField fullWidth label="Acceleration Voltage" value={formData.accelerationVoltage} onChange={(e) => { const val = e.target.value; if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('accelerationVoltage', val); }} InputProps={{ endAdornment: <Typography variant="body2" sx={{ ml: 1 }}>kV</Typography> }} />
+                <TextField fullWidth label="Beam Current" value={formData.beamCurrent} onChange={(e) => { const val = e.target.value; if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('beamCurrent', val); }} InputProps={{ endAdornment: <Typography variant="body2" sx={{ ml: 1 }}>nA</Typography> }} />
+                <TextField fullWidth label="Spot Size" value={formData.spotSize} onChange={(e) => { const val = e.target.value; if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('spotSize', val); }} InputProps={{ endAdornment: <Typography variant="body2" sx={{ ml: 1 }}>um</Typography> }} />
+
+                {(formData.dataType === 'Energy Dispersive X-ray Spectroscopy (EDS)' || formData.dataType === 'Wavelength-dispersive X-ray spectroscopy (WDS)') && (
+                  <>
+                    <Divider sx={{ my: 2 }} />
+                    <Typography variant="h6">{formData.dataType === 'Energy Dispersive X-ray Spectroscopy (EDS)' ? 'EDS' : 'WDS'} Settings</Typography>
+                    <TextField fullWidth label="Step Size" value={formData.stepSize} onChange={(e) => { const val = e.target.value; if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('stepSize', val); }} InputProps={{ endAdornment: <Typography variant="body2" sx={{ ml: 1 }}>um</Typography> }} />
+                    <TextField fullWidth multiline rows={3} label="Calibration / Standard Notes" value={formData.calibrationStandardNotes} onChange={(e) => updateField('calibrationStandardNotes', e.target.value)} />
+                  </>
+                )}
+              </>
+            )}
+
+            {/* FTIR Settings */}
+            {formData.instrumentType === 'Fourier Transform Infrared Spectroscopy (FTIR)' && (
+              <>
+                <Typography variant="h6">FTIR Settings</Typography>
+                <TextField fullWidth label="Scan Time" value={formData.scanTime} onChange={(e) => updateField('scanTime', e.target.value)} InputProps={{ endAdornment: <Typography variant="body2" sx={{ ml: 1 }}>s</Typography> }} />
+                <TextField fullWidth label="Resolution" value={formData.resolution} onChange={(e) => updateField('resolution', e.target.value)} InputProps={{ endAdornment: <Typography variant="body2" sx={{ ml: 1 }}>cm⁻¹</Typography> }} />
+                <TextField fullWidth label="Spectral Resolution" value={formData.spectralResolution} onChange={(e) => updateField('spectralResolution', e.target.value)} InputProps={{ endAdornment: <Typography variant="body2" sx={{ ml: 1 }}>cm⁻¹</Typography> }} />
+                <TextField fullWidth label="Wavenumber Range" value={formData.wavenumberRange} onChange={(e) => updateField('wavenumberRange', e.target.value)} placeholder="e.g., 4000-400" InputProps={{ endAdornment: <Typography variant="body2" sx={{ ml: 1 }}>cm⁻¹</Typography> }} />
+                <TextField fullWidth label="Averaging (number of scans)" value={formData.averaging} onChange={(e) => { const val = e.target.value; if (val === '' || /^\d*$/.test(val)) updateField('averaging', val); }} />
+                <TextField fullWidth label="Spatial Resolution" value={formData.spatialResolution} onChange={(e) => updateField('spatialResolution', e.target.value)} InputProps={{ endAdornment: <Typography variant="body2" sx={{ ml: 1 }}>um</Typography> }} />
+                <TextField fullWidth multiline rows={3} label="Background Correction: Frequency and Notes" value={formData.backgroundCorrectionFrequencyAndNotes} onChange={(e) => updateField('backgroundCorrectionFrequencyAndNotes', e.target.value)} />
+              </>
+            )}
+
+            {/* Raman Spectroscopy Settings */}
+            {formData.instrumentType === 'Raman Spectroscopy' && (
+              <>
+                <Typography variant="h6">Raman Spectroscopy Settings</Typography>
+                <TextField fullWidth label="Excitation Wavelength" value={formData.excitationWavelength} onChange={(e) => updateField('excitationWavelength', e.target.value)} InputProps={{ endAdornment: <Typography variant="body2" sx={{ ml: 1 }}>nm</Typography> }} />
+                <TextField fullWidth label="Laser Power" value={formData.laserPower} onChange={(e) => updateField('laserPower', e.target.value)} InputProps={{ endAdornment: <Typography variant="body2" sx={{ ml: 1 }}>mW</Typography> }} />
+                <TextField fullWidth label="Diffraction Grating" value={formData.diffractionGrating} onChange={(e) => updateField('diffractionGrating', e.target.value)} placeholder="e.g., 600 lines/mm" />
+                <TextField fullWidth label="Integration Time" value={formData.integrationTime} onChange={(e) => updateField('integrationTime', e.target.value)} InputProps={{ endAdornment: <Typography variant="body2" sx={{ ml: 1 }}>s</Typography> }} />
+                <TextField fullWidth label="Objective" value={formData.objective} onChange={(e) => updateField('objective', e.target.value)} placeholder="e.g., 50x, 100x" />
+                <TextField fullWidth label="Spatial Resolution" value={formData.spatialResolution} onChange={(e) => updateField('spatialResolution', e.target.value)} InputProps={{ endAdornment: <Typography variant="body2" sx={{ ml: 1 }}>um</Typography> }} />
+                <TextField fullWidth multiline rows={3} label="Calibration Notes" value={formData.calibrationStandardNotes} onChange={(e) => updateField('calibrationStandardNotes', e.target.value)} />
+              </>
+            )}
+
+            {/* AFM Settings */}
+            {formData.instrumentType === 'Atomic Force Microscopy (AFM)' && (
+              <>
+                <Typography variant="h6">AFM Settings</Typography>
+                <TextField fullWidth select label="Atomic Mode" value={formData.atomicMode} onChange={(e) => updateField('atomicMode', e.target.value)}>
+                  <MenuItem value="">Select...</MenuItem>
+                  <MenuItem value="Contact">Contact</MenuItem>
+                  <MenuItem value="Non-Contact">Non-Contact</MenuItem>
+                  <MenuItem value="Tapping">Tapping</MenuItem>
+                </TextField>
+                <TextField fullWidth label="Cantilever Stiffness" value={formData.cantileverStiffness} onChange={(e) => updateField('cantileverStiffness', e.target.value)} InputProps={{ endAdornment: <Typography variant="body2" sx={{ ml: 1 }}>N/m</Typography> }} />
+                <TextField fullWidth label="Tip Diameter" value={formData.tipDiameter} onChange={(e) => updateField('tipDiameter', e.target.value)} InputProps={{ endAdornment: <Typography variant="body2" sx={{ ml: 1 }}>nm</Typography> }} />
+                <TextField fullWidth label="Operating Frequency" value={formData.operatingFrequency} onChange={(e) => updateField('operatingFrequency', e.target.value)} InputProps={{ endAdornment: <Typography variant="body2" sx={{ ml: 1 }}>kHz</Typography> }} />
+                <TextField fullWidth label="Scan Dimensions" value={formData.scanDimensions} onChange={(e) => updateField('scanDimensions', e.target.value)} placeholder="e.g., 512x512" />
+                <TextField fullWidth label="Scan Area" value={formData.scanArea} onChange={(e) => updateField('scanArea', e.target.value)} InputProps={{ endAdornment: <Typography variant="body2" sx={{ ml: 1 }}>um²</Typography> }} />
+                <TextField fullWidth label="Temperature of Room" value={formData.temperatureOfRoom} onChange={(e) => updateField('temperatureOfRoom', e.target.value)} InputProps={{ endAdornment: <Typography variant="body2" sx={{ ml: 1 }}>°C</Typography> }} />
+                <TextField fullWidth label="Relative Humidity" value={formData.relativeHumidity} onChange={(e) => updateField('relativeHumidity', e.target.value)} InputProps={{ endAdornment: <Typography variant="body2" sx={{ ml: 1 }}>%</Typography> }} />
+              </>
+            )}
           </Stack>
         );
 
