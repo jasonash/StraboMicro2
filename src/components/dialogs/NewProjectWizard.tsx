@@ -72,6 +72,22 @@ interface ProjectFormData {
   otherInstrumentType: string;
   dataType: string;
   imageType: string;
+  instrumentBrand: string;
+  instrumentModel: string;
+  university: string;
+  laboratory: string;
+  dataCollectionSoftware: string;
+  dataCollectionSoftwareVersion: string;
+  postProcessingSoftware: string;
+  postProcessingSoftwareVersion: string;
+  filamentType: string;
+  instrumentNotes: string;
+}
+
+interface Detector {
+  type: string;
+  make: string;
+  model: string;
 }
 
 const initialFormData: ProjectFormData = {
@@ -111,14 +127,25 @@ const initialFormData: ProjectFormData = {
   otherInstrumentType: '',
   dataType: '',
   imageType: '',
+  instrumentBrand: '',
+  instrumentModel: '',
+  university: '',
+  laboratory: '',
+  dataCollectionSoftware: '',
+  dataCollectionSoftwareVersion: '',
+  postProcessingSoftware: '',
+  postProcessingSoftwareVersion: '',
+  filamentType: '',
+  instrumentNotes: '',
 };
 
 export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onClose }) => {
   const [activeStep, setActiveStep] = useState(0);
   const [formData, setFormData] = useState<ProjectFormData>(initialFormData);
+  const [detectors, setDetectors] = useState<Detector[]>([{ type: '', make: '', model: '' }]);
   const loadProject = useAppStore(state => state.loadProject);
 
-  const steps = ['Project Metadata', 'Dataset Information', 'Sample Information', 'Load Reference Micrograph', 'Instrument & Image Information'];
+  const steps = ['Project Metadata', 'Dataset Information', 'Sample Information', 'Load Reference Micrograph', 'Instrument & Image Information', 'Instrument Data'];
 
   const updateField = (field: keyof ProjectFormData, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }));
@@ -215,6 +242,21 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
         instrumentType: formData.instrumentType || undefined,
         otherInstrumentType: formData.otherInstrumentType || undefined,
         dataType: formData.dataType || undefined,
+        instrumentBrand: formData.instrumentBrand || undefined,
+        instrumentModel: formData.instrumentModel || undefined,
+        university: formData.university || undefined,
+        laboratory: formData.laboratory || undefined,
+        dataCollectionSoftware: formData.dataCollectionSoftware || undefined,
+        dataCollectionSoftwareVersion: formData.dataCollectionSoftwareVersion || undefined,
+        postProcessingSoftware: formData.postProcessingSoftware || undefined,
+        postProcessingSoftwareVersion: formData.postProcessingSoftwareVersion || undefined,
+        filamentType: formData.filamentType || undefined,
+        instrumentNotes: formData.instrumentNotes || undefined,
+        instrumentDetectors: detectors.filter(d => d.type || d.make || d.model).map(d => ({
+          detectorType: d.type || undefined,
+          detectorMake: d.make || undefined,
+          detectorModel: d.model || undefined,
+        })),
       },
       grains: [],
       fabrics: [],
@@ -273,14 +315,32 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
 
     loadProject(newProject, null);
     setFormData(initialFormData);
+    setDetectors([{ type: '', make: '', model: '' }]);
     setActiveStep(0);
     onClose();
   };
 
   const handleCancel = () => {
     setFormData(initialFormData);
+    setDetectors([{ type: '', make: '', model: '' }]);
     setActiveStep(0);
     onClose();
+  };
+
+  const updateDetector = (index: number, field: keyof Detector, value: string) => {
+    setDetectors(prev => {
+      const updated = [...prev];
+      updated[index] = { ...updated[index], [field]: value };
+      return updated;
+    });
+  };
+
+  const addDetector = () => {
+    setDetectors(prev => [...prev, { type: '', make: '', model: '' }]);
+  };
+
+  const removeDetector = (index: number) => {
+    setDetectors(prev => prev.filter((_, i) => i !== index));
   };
 
   const canProceed = () => {
@@ -318,6 +378,10 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
       // Image Type is required (for most instrument types)
       if (formData.imageType.trim() === '') return false;
 
+      return true;
+    }
+    if (activeStep === 5) {
+      // Step 6: Instrument Data - no required fields, all optional
       return true;
     }
     return true;
@@ -897,6 +961,144 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
                 Image Type: {formData.dataType}
               </Typography>
             )}
+          </Stack>
+        );
+
+      case 5:
+        const showDetectors = ['Transmission Electron Microscopy (TEM)', 'Scanning Transmission Electron Microscopy (STEM)',
+                               'Scanning Electron Microscopy (SEM)', 'Electron Microprobe'].includes(formData.instrumentType);
+
+        return (
+          <Stack spacing={2}>
+            <Typography variant="body2" color="text.secondary">
+              Instrument Type: {formData.instrumentType}
+            </Typography>
+
+            <TextField
+              fullWidth
+              label="Instrument Brand"
+              placeholder="e.g., FEI, JEOL, Zeiss"
+              value={formData.instrumentBrand}
+              onChange={(e) => updateField('instrumentBrand', e.target.value)}
+            />
+
+            <TextField
+              fullWidth
+              label="Instrument Model"
+              placeholder="e.g., Quanta 650, JEM-2100"
+              value={formData.instrumentModel}
+              onChange={(e) => updateField('instrumentModel', e.target.value)}
+            />
+
+            <Box sx={{ display: 'flex', gap: 2 }}>
+              <TextField
+                fullWidth
+                label="University"
+                value={formData.university}
+                onChange={(e) => updateField('university', e.target.value)}
+              />
+              <TextField
+                fullWidth
+                label="Laboratory"
+                value={formData.laboratory}
+                onChange={(e) => updateField('laboratory', e.target.value)}
+              />
+            </Box>
+
+            <Box sx={{ display: 'flex', gap: 2 }}>
+              <TextField
+                fullWidth
+                label="Data Collection Software"
+                value={formData.dataCollectionSoftware}
+                onChange={(e) => updateField('dataCollectionSoftware', e.target.value)}
+              />
+              <TextField
+                fullWidth
+                label="Version"
+                value={formData.dataCollectionSoftwareVersion}
+                onChange={(e) => updateField('dataCollectionSoftwareVersion', e.target.value)}
+              />
+            </Box>
+
+            <Box sx={{ display: 'flex', gap: 2 }}>
+              <TextField
+                fullWidth
+                label="Post Processing Software"
+                value={formData.postProcessingSoftware}
+                onChange={(e) => updateField('postProcessingSoftware', e.target.value)}
+              />
+              <TextField
+                fullWidth
+                label="Version"
+                value={formData.postProcessingSoftwareVersion}
+                onChange={(e) => updateField('postProcessingSoftwareVersion', e.target.value)}
+              />
+            </Box>
+
+            {showDetectors && (
+              <>
+                <TextField
+                  fullWidth
+                  label="Filament Type"
+                  placeholder="e.g., W, LaB6, Field Emission"
+                  value={formData.filamentType}
+                  onChange={(e) => updateField('filamentType', e.target.value)}
+                />
+
+                <Typography variant="h6" sx={{ mt: 2 }}>
+                  Detectors
+                </Typography>
+
+                {detectors.map((detector, index) => (
+                  <Box key={index} sx={{ display: 'flex', gap: 2, alignItems: 'flex-start' }}>
+                    <TextField
+                      fullWidth
+                      label="Type"
+                      placeholder="e.g., EBSD, Spectrometer"
+                      value={detector.type}
+                      onChange={(e) => updateDetector(index, 'type', e.target.value)}
+                    />
+                    <TextField
+                      fullWidth
+                      label="Make"
+                      placeholder="e.g., Oxford"
+                      value={detector.make}
+                      onChange={(e) => updateDetector(index, 'make', e.target.value)}
+                    />
+                    <TextField
+                      fullWidth
+                      label="Model"
+                      placeholder="e.g., Nordlys"
+                      value={detector.model}
+                      onChange={(e) => updateDetector(index, 'model', e.target.value)}
+                    />
+                    {detectors.length > 1 && (
+                      <Button
+                        variant="outlined"
+                        color="error"
+                        onClick={() => removeDetector(index)}
+                        sx={{ minWidth: '100px' }}
+                      >
+                        Remove
+                      </Button>
+                    )}
+                  </Box>
+                ))}
+
+                <Button variant="outlined" onClick={addDetector} sx={{ alignSelf: 'center' }}>
+                  Add Additional Detector
+                </Button>
+              </>
+            )}
+
+            <TextField
+              fullWidth
+              multiline
+              rows={4}
+              label="Instrument Notes"
+              value={formData.instrumentNotes}
+              onChange={(e) => updateField('instrumentNotes', e.target.value)}
+            />
           </Stack>
         );
 
