@@ -490,8 +490,10 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
         return false;
       }
 
-      // Image Type is required (for most instrument types)
-      if (formData.imageType.trim() === '') return false;
+      // Image Type is required only when shown (not shown for "Other" instrument type)
+      if (formData.instrumentType !== 'Other' && formData.imageType.trim() === '') {
+        return false;
+      }
 
       return true;
     }
