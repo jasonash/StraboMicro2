@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import './PeriodicTableModal.css';
-import { periodicTableElements, type PeriodicElement } from '../../data/periodicTableData';
+import { periodicTableElements } from '../../data/periodicTableData';
 
 interface PeriodicTableModalProps {
   isOpen: boolean;
