@@ -13,6 +13,13 @@ export function PeriodicTableModal({ isOpen, onClose, onSelectElements, initialS
   const [selectedElements, setSelectedElements] = useState<string[]>(initialSelection);
   const [theme, setTheme] = useState<'light' | 'dark'>('dark');
 
+  // Reset selected elements when modal opens or initialSelection changes
+  useEffect(() => {
+    if (isOpen) {
+      setSelectedElements(initialSelection);
+    }
+  }, [isOpen, initialSelection]);
+
   // Detect current theme
   useEffect(() => {
     const updateTheme = () => {

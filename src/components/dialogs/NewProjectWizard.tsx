@@ -1787,7 +1787,11 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
     <>
     <Dialog
       open={isOpen}
-      onClose={handleCancel}
+      onClose={(event, reason) => {
+        if (reason !== 'backdropClick' && reason !== 'escapeKeyDown') {
+          handleCancel();
+        }
+      }}
       maxWidth="md"
       fullWidth
       TransitionComponent={Grow}
