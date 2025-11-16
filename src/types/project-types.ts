@@ -25,6 +25,12 @@ export interface ProjectMetadata {
   principalInvestigatorORCID?: string;
   grantNumber?: string;
   fundingSource?: string;
+  purposeOfStudy?: string;
+  otherTeamMembers?: string;
+  areaOfInterest?: string;
+  gpsDatum?: string;
+  magneticDeclination?: string;
+  notes?: string;
   datasets?: DatasetMetadata[];
   groups?: GroupMetadata[];
   tags?: Tag[];
@@ -39,7 +45,25 @@ export interface DatasetMetadata {
 export interface SampleMetadata {
   id: string;
   name: string;
+  label?: string;
+  sampleID?: string;
+  longitude?: number;
+  latitude?: number;
+  mainSamplingPurpose?: string;
+  otherSamplingPurpose?: string;
+  sampleDescription?: string;
+  materialType?: string;
+  inplacenessOfSample?: string;
+  orientedSample?: string;
+  sampleOrientationNotes?: string;
+  sampleSize?: string;
+  degreeOfWeathering?: string;
+  sampleNotes?: string;
+  sampleType?: string;
+  color?: string;
   lithology?: string;
+  sampleUnit?: string;
+  otherMaterialType?: string;
   orientation?: string;
   orientationQuality?: string;
   samplingPurpose?: string;

@@ -19,8 +19,6 @@ import {
   Spot,
 } from '@/types/project-types';
 import {
-  findMicrographById,
-  findSpotById,
   updateMicrograph,
   updateSpot,
   buildMicrographIndex,

@@ -23,7 +23,6 @@ import {
   MenuItem,
   Box,
   Stack,
-  Fade,
   Grow,
 } from '@mui/material';
 import { useAppStore } from '@/store';
@@ -155,6 +154,7 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
         name: formData.datasetName,
         samples: [{
           id: crypto.randomUUID(),
+          name: formData.sampleID,
           label: formData.sampleID,
           sampleID: formData.sampleID,
           longitude: formData.longitude ? parseFloat(formData.longitude) : undefined,

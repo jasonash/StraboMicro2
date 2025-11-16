@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Box, Typography, Divider, IconButton, Tooltip } from '@mui/material';
+import { Box, Typography, IconButton, Tooltip } from '@mui/material';
 import { KeyboardArrowDown, KeyboardArrowUp } from '@mui/icons-material';
 import DrawingToolbar from './DrawingToolbar';
 import BottomPanel from './BottomPanel';
