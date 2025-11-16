@@ -319,9 +319,13 @@ app.on('activate', () => {
 // File dialog for TIFF selection
 ipcMain.handle('dialog:open-tiff', async () => {
   const result = await dialog.showOpenDialog(mainWindow, {
-    title: 'Select TIFF Image',
+    title: 'Select Micrograph Image',
     filters: [
+      { name: 'Image Files', extensions: ['tif', 'tiff', 'jpg', 'jpeg', 'png', 'bmp'] },
       { name: 'TIFF Images', extensions: ['tif', 'tiff'] },
+      { name: 'JPEG Images', extensions: ['jpg', 'jpeg'] },
+      { name: 'PNG Images', extensions: ['png'] },
+      { name: 'BMP Images', extensions: ['bmp'] },
       { name: 'All Files', extensions: ['*'] }
     ],
     properties: ['openFile']
@@ -334,75 +338,102 @@ ipcMain.handle('dialog:open-tiff', async () => {
   return result.filePaths[0];
 });
 
-// TIFF image loading with RGB→RGBA conversion
+// Image loading (supports TIFF, JPEG, PNG, BMP)
 ipcMain.handle('load-tiff-image', async (event, filePath) => {
   try {
-    log.info(`Loading TIFF: ${filePath}`);
+    log.info(`Loading image: ${filePath}`);
 
-    // Dynamic import of ES Module
-    const { decode } = await import('tiff');
-    const { createCanvas } = require('canvas');
+    const { createCanvas, loadImage } = require('canvas');
+    const fileExt = path.extname(filePath).toLowerCase();
 
-    // Read and decode TIFF file
-    const tiffData = fs.readFileSync(filePath);
-    const images = decode(tiffData);
+    let pngBase64;
+    let width;
+    let height;
 
-    if (!images || images.length === 0) {
-      throw new Error('No images found in TIFF file');
-    }
+    // Check if it's a TIFF file (requires special decoding)
+    if (fileExt === '.tif' || fileExt === '.tiff') {
+      // Dynamic import of ES Module
+      const { decode } = await import('tiff');
 
-    const image = images[0]; // Use first image
+      // Read and decode TIFF file
+      const tiffData = fs.readFileSync(filePath);
+      const images = decode(tiffData);
 
-    // Detect format: RGB (3 bytes/pixel) vs RGBA (4 bytes/pixel)
-    const bytesPerPixel = image.data.length / (image.width * image.height);
-    log.info(`TIFF decoded: ${image.width}x${image.height}, ${image.data.length} bytes, ${bytesPerPixel} bytes/pixel`);
-
-    const sourceData = new Uint8Array(image.data);
-    let rgbaData;
-
-    if (bytesPerPixel === 3) {
-      // RGB format - convert to RGBA
-      log.info('Converting RGB to RGBA');
-      const pixelCount = image.width * image.height;
-      rgbaData = new Uint8Array(pixelCount * 4);
-
-      // RGB→RGBA conversion loop
-      for (let i = 0, j = 0; i < sourceData.length; i += 3, j += 4) {
-        rgbaData[j] = sourceData[i];         // R
-        rgbaData[j + 1] = sourceData[i + 1]; // G
-        rgbaData[j + 2] = sourceData[i + 2]; // B
-        rgbaData[j + 3] = 255;               // A (fully opaque)
+      if (!images || images.length === 0) {
+        throw new Error('No images found in TIFF file');
       }
-    } else if (bytesPerPixel === 4) {
-      // Already RGBA format
-      log.info('Already RGBA format');
-      rgbaData = sourceData;
+
+      const image = images[0]; // Use first image
+      width = image.width;
+      height = image.height;
+
+      // Detect format: RGB (3 bytes/pixel) vs RGBA (4 bytes/pixel)
+      const bytesPerPixel = image.data.length / (width * height);
+      log.info(`TIFF decoded: ${width}x${height}, ${image.data.length} bytes, ${bytesPerPixel} bytes/pixel`);
+
+      const sourceData = new Uint8Array(image.data);
+      let rgbaData;
+
+      if (bytesPerPixel === 3) {
+        // RGB format - convert to RGBA
+        log.info('Converting RGB to RGBA');
+        const pixelCount = width * height;
+        rgbaData = new Uint8Array(pixelCount * 4);
+
+        // RGB→RGBA conversion loop
+        for (let i = 0, j = 0; i < sourceData.length; i += 3, j += 4) {
+          rgbaData[j] = sourceData[i];         // R
+          rgbaData[j + 1] = sourceData[i + 1]; // G
+          rgbaData[j + 2] = sourceData[i + 2]; // B
+          rgbaData[j + 3] = 255;               // A (fully opaque)
+        }
+      } else if (bytesPerPixel === 4) {
+        // Already RGBA format
+        log.info('Already RGBA format');
+        rgbaData = sourceData;
+      } else {
+        throw new Error(`Unsupported TIFF format: ${bytesPerPixel} bytes per pixel (expected 3 or 4)`);
+      }
+
+      // Create Canvas and convert to PNG
+      const canvas = createCanvas(width, height);
+      const ctx = canvas.getContext('2d');
+      const imageData = ctx.createImageData(width, height);
+      imageData.data.set(rgbaData);
+      ctx.putImageData(imageData, 0, 0);
+
+      // Convert canvas to PNG buffer and then to base64
+      const pngBuffer = canvas.toBuffer('image/png');
+      pngBase64 = pngBuffer.toString('base64');
+
+      log.info(`TIFF converted to PNG: ${width}x${height}`);
     } else {
-      throw new Error(`Unsupported TIFF format: ${bytesPerPixel} bytes per pixel (expected 3 or 4)`);
+      // For JPEG, PNG, BMP - use canvas loadImage (native support)
+      const img = await loadImage(filePath);
+      width = img.width;
+      height = img.height;
+
+      // Create canvas and draw image
+      const canvas = createCanvas(width, height);
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0);
+
+      // Convert to PNG base64
+      const pngBuffer = canvas.toBuffer('image/png');
+      pngBase64 = pngBuffer.toString('base64');
+
+      log.info(`Image loaded and converted to PNG: ${width}x${height}`);
     }
-
-    // Create Canvas and convert to PNG
-    const canvas = createCanvas(image.width, image.height);
-    const ctx = canvas.getContext('2d');
-    const imageData = ctx.createImageData(image.width, image.height);
-    imageData.data.set(rgbaData);
-    ctx.putImageData(imageData, 0, 0);
-
-    // Convert canvas to PNG buffer and then to base64
-    const pngBuffer = canvas.toBuffer('image/png');
-    const pngBase64 = pngBuffer.toString('base64');
-
-    log.info(`TIFF converted to PNG: ${image.width}x${image.height}`);
 
     return {
-      width: image.width,
-      height: image.height,
-      data: pngBase64,  // Now this is a proper PNG, not raw RGBA
+      width: width,
+      height: height,
+      data: pngBase64,
       filePath: filePath,
       fileName: path.basename(filePath)
     };
   } catch (error) {
-    log.error('Error loading TIFF:', error);
+    log.error('Error loading image:', error);
     throw error;
   }
 });
