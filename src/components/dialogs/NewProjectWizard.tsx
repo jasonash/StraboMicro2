@@ -10,7 +10,7 @@
  * After completion, creates project structure in store with micrograph
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -68,6 +68,10 @@ interface ProjectFormData {
   micrographFileName: string;
   micrographWidth: number;
   micrographHeight: number;
+  instrumentType: string;
+  otherInstrumentType: string;
+  dataType: string;
+  imageType: string;
 }
 
 const initialFormData: ProjectFormData = {
@@ -103,6 +107,10 @@ const initialFormData: ProjectFormData = {
   micrographFileName: '',
   micrographWidth: 0,
   micrographHeight: 0,
+  instrumentType: '',
+  otherInstrumentType: '',
+  dataType: '',
+  imageType: '',
 };
 
 export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onClose }) => {
@@ -110,11 +118,35 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
   const [formData, setFormData] = useState<ProjectFormData>(initialFormData);
   const loadProject = useAppStore(state => state.loadProject);
 
-  const steps = ['Project Metadata', 'Dataset Information', 'Sample Information', 'Load Reference Micrograph'];
+  const steps = ['Project Metadata', 'Dataset Information', 'Sample Information', 'Load Reference Micrograph', 'Instrument & Image Information'];
 
   const updateField = (field: keyof ProjectFormData, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }));
   };
+
+  // Auto-set imageType based on dataType for certain instrument/data type combinations
+  useEffect(() => {
+    if (formData.instrumentType === 'Transmission Electron Microscopy (TEM)' && formData.dataType) {
+      if (!['Electron Diffraction', 'Energy Dispersive X-ray Spectroscopy (EDS)'].includes(formData.dataType)) {
+        setFormData(prev => ({ ...prev, imageType: formData.dataType }));
+      }
+    } else if (formData.instrumentType === 'Scanning Transmission Electron Microscopy (STEM)' && formData.dataType) {
+      if (!['Energy Dispersive X-ray Spectroscopy (EDS)', 'Cathodoluminescence (CL)'].includes(formData.dataType)) {
+        setFormData(prev => ({ ...prev, imageType: formData.dataType }));
+      }
+    } else if (formData.instrumentType === 'Scanning Electron Microscopy (SEM)' && formData.dataType) {
+      if (!['Electron Backscatter Diffraction (EBSD)', 'Energy Dispersive X-ray Spectroscopy (EDS)',
+           'Wavelength-dispersive X-ray spectroscopy (WDS)', 'Cathodoluminescence (CL)',
+           'Focused Ion Beam Scanning Electron Microscopy (FIB-SEM)'].includes(formData.dataType)) {
+        setFormData(prev => ({ ...prev, imageType: formData.dataType }));
+      }
+    } else if (formData.instrumentType === 'Electron Microprobe' && formData.dataType) {
+      if (!['Energy Dispersive X-ray Spectroscopy (EDS)', 'Wavelength-dispersive X-ray spectroscopy (WDS)',
+           'Cathodoluminescence (CL)'].includes(formData.dataType)) {
+        setFormData(prev => ({ ...prev, imageType: formData.dataType }));
+      }
+    }
+  }, [formData.instrumentType, formData.dataType]);
 
   // Validation handlers for latitude/longitude
   const handleLatitudeChange = (value: string) => {
@@ -177,7 +209,13 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
       imageFilename: formData.micrographFileName,
       imageWidth: formData.micrographWidth,
       imageHeight: formData.micrographHeight,
+      imageType: formData.imageType || undefined,
       visible: true,
+      instrument: {
+        instrumentType: formData.instrumentType || undefined,
+        otherInstrumentType: formData.otherInstrumentType || undefined,
+        dataType: formData.dataType || undefined,
+      },
       grains: [],
       fabrics: [],
       boundaries: [],
@@ -267,6 +305,20 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
     if (activeStep === 3) {
       // Micrograph file is required
       return formData.micrographFilePath.trim() !== '';
+    }
+    if (activeStep === 4) {
+      // Instrument Type is required
+      if (formData.instrumentType.trim() === '') return false;
+
+      // If "Other" is selected for Instrument Type, require text in Other Instrument Type
+      if (formData.instrumentType === 'Other' && formData.otherInstrumentType.trim() === '') {
+        return false;
+      }
+
+      // Image Type is required (for most instrument types)
+      if (formData.imageType.trim() === '') return false;
+
+      return true;
     }
     return true;
   };
@@ -497,6 +549,354 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
                 </Link>
               </Typography>
             </Box>
+          </Stack>
+        );
+
+      case 4:
+        return (
+          <Stack spacing={2}>
+            <TextField
+              fullWidth
+              required
+              select
+              label="Instrument Type"
+              value={formData.instrumentType}
+              onChange={(e) => {
+                updateField('instrumentType', e.target.value);
+                // Clear dependent fields when instrument type changes
+                updateField('otherInstrumentType', '');
+                updateField('dataType', '');
+                updateField('imageType', '');
+              }}
+            >
+              <MenuItem value="">Select Instrument Type...</MenuItem>
+              <MenuItem value="Optical Microscopy">Optical Microscopy</MenuItem>
+              <MenuItem value="Scanner">Scanner</MenuItem>
+              <MenuItem value="Transmission Electron Microscopy (TEM)">Transmission Electron Microscopy (TEM)</MenuItem>
+              <MenuItem value="Scanning Transmission Electron Microscopy (STEM)">Scanning Transmission Electron Microscopy (STEM)</MenuItem>
+              <MenuItem value="Scanning Electron Microscopy (SEM)">Scanning Electron Microscopy (SEM)</MenuItem>
+              <MenuItem value="Electron Microprobe">Electron Microprobe</MenuItem>
+              <MenuItem value="Fourier Transform Infrared Spectroscopy (FTIR)">Fourier Transform Infrared Spectroscopy (FTIR)</MenuItem>
+              <MenuItem value="Raman Spectroscopy">Raman Spectroscopy</MenuItem>
+              <MenuItem value="Atomic Force Microscopy (AFM)">Atomic Force Microscopy (AFM)</MenuItem>
+              <MenuItem value="Other">Other</MenuItem>
+            </TextField>
+
+            {formData.instrumentType === 'Other' && (
+              <TextField
+                fullWidth
+                required
+                label="Other Instrument Type"
+                value={formData.otherInstrumentType}
+                onChange={(e) => updateField('otherInstrumentType', e.target.value)}
+                helperText="Required when 'Other' is selected"
+              />
+            )}
+
+            {/* Data Type field - shown for TEM, STEM, SEM, Electron Microprobe */}
+            {(formData.instrumentType === 'Transmission Electron Microscopy (TEM)') && (
+              <TextField
+                fullWidth
+                select
+                label="Data Type"
+                value={formData.dataType}
+                onChange={(e) => {
+                  updateField('dataType', e.target.value);
+                  // Clear imageType when dataType changes
+                  updateField('imageType', '');
+                }}
+              >
+                <MenuItem value="">Select Data Type...</MenuItem>
+                <MenuItem value="Bright Field">Bright Field</MenuItem>
+                <MenuItem value="Dark Field">Dark Field</MenuItem>
+                <MenuItem value="Electron Diffraction">Electron Diffraction</MenuItem>
+                <MenuItem value="Energy Dispersive X-ray Spectroscopy (EDS)">Energy Dispersive X-ray Spectroscopy (EDS)</MenuItem>
+                <MenuItem value="Automated Crystal Orientation Mapping (ACOM)">Automated Crystal Orientation Mapping (ACOM)</MenuItem>
+                <MenuItem value="Energy Dispersive X-ray Tomography">Energy Dispersive X-ray Tomography</MenuItem>
+              </TextField>
+            )}
+
+            {(formData.instrumentType === 'Scanning Transmission Electron Microscopy (STEM)') && (
+              <TextField
+                fullWidth
+                select
+                label="Data Type"
+                value={formData.dataType}
+                onChange={(e) => {
+                  updateField('dataType', e.target.value);
+                  updateField('imageType', '');
+                }}
+              >
+                <MenuItem value="">Select Data Type...</MenuItem>
+                <MenuItem value="Bright Field">Bright Field</MenuItem>
+                <MenuItem value="Dark Field">Dark Field</MenuItem>
+                <MenuItem value="Annular Dark Field (ADF)">Annular Dark Field (ADF)</MenuItem>
+                <MenuItem value="High-Angle Annular Dark Field (HAADF)">High-Angle Annular Dark Field (HAADF)</MenuItem>
+                <MenuItem value="Energy Dispersive X-ray Spectroscopy (EDS)">Energy Dispersive X-ray Spectroscopy (EDS)</MenuItem>
+                <MenuItem value="Electron Energy Loss Spectroscopy (EELS)">Electron Energy Loss Spectroscopy (EELS)</MenuItem>
+                <MenuItem value="Cathodoluminescence (CL)">Cathodoluminescence (CL)</MenuItem>
+              </TextField>
+            )}
+
+            {(formData.instrumentType === 'Scanning Electron Microscopy (SEM)') && (
+              <TextField
+                fullWidth
+                select
+                label="Data Type"
+                value={formData.dataType}
+                onChange={(e) => {
+                  updateField('dataType', e.target.value);
+                  updateField('imageType', '');
+                }}
+              >
+                <MenuItem value="">Select Data Type...</MenuItem>
+                <MenuItem value="Secondary Electron (SE)">Secondary Electron (SE)</MenuItem>
+                <MenuItem value="Backscatter Electron (BSE)">Backscatter Electron (BSE)</MenuItem>
+                <MenuItem value="Forescatter Electron (FSE)">Forescatter Electron (FSE)</MenuItem>
+                <MenuItem value="Electron Backscatter Diffraction (EBSD)">Electron Backscatter Diffraction (EBSD)</MenuItem>
+                <MenuItem value="Transmission Kikuchi Diffraction (TKD)">Transmission Kikuchi Diffraction (TKD)</MenuItem>
+                <MenuItem value="Electron Channeling Contrast Imaging (ECCI)">Electron Channeling Contrast Imaging (ECCI)</MenuItem>
+                <MenuItem value="Energy Dispersive X-ray Spectroscopy (EDS)">Energy Dispersive X-ray Spectroscopy (EDS)</MenuItem>
+                <MenuItem value="Wavelength-dispersive X-ray spectroscopy (WDS)">Wavelength-dispersive X-ray spectroscopy (WDS)</MenuItem>
+                <MenuItem value="Cathodoluminescence (CL)">Cathodoluminescence (CL)</MenuItem>
+                <MenuItem value="Focused Ion Beam Scanning Electron Microscopy (FIB-SEM)">Focused Ion Beam Scanning Electron Microscopy (FIB-SEM)</MenuItem>
+              </TextField>
+            )}
+
+            {(formData.instrumentType === 'Electron Microprobe') && (
+              <TextField
+                fullWidth
+                select
+                label="Data Type"
+                value={formData.dataType}
+                onChange={(e) => {
+                  updateField('dataType', e.target.value);
+                  updateField('imageType', '');
+                }}
+              >
+                <MenuItem value="">Select Data Type...</MenuItem>
+                <MenuItem value="Secondary Electron (SE)">Secondary Electron (SE)</MenuItem>
+                <MenuItem value="Backscatter Electron (BSE)">Backscatter Electron (BSE)</MenuItem>
+                <MenuItem value="Electron Channeling Contrast Imaging (ECCI)">Electron Channeling Contrast Imaging (ECCI)</MenuItem>
+                <MenuItem value="Energy Dispersive X-ray Spectroscopy (EDS)">Energy Dispersive X-ray Spectroscopy (EDS)</MenuItem>
+                <MenuItem value="Wavelength-dispersive X-ray spectroscopy (WDS)">Wavelength-dispersive X-ray spectroscopy (WDS)</MenuItem>
+                <MenuItem value="Cathodoluminescence (CL)">Cathodoluminescence (CL)</MenuItem>
+              </TextField>
+            )}
+
+            {/* Image Type field - shown for Optical Microscopy, Scanner, FTIR, Raman, AFM */}
+            {formData.instrumentType === 'Optical Microscopy' && (
+              <TextField
+                fullWidth
+                required
+                select
+                label="Image Type"
+                value={formData.imageType}
+                onChange={(e) => updateField('imageType', e.target.value)}
+              >
+                <MenuItem value="">Select Image Type...</MenuItem>
+                <MenuItem value="Plane Polarized Light">Plane Polarized Light</MenuItem>
+                <MenuItem value="Cross Polarized Light">Cross Polarized Light</MenuItem>
+                <MenuItem value="Reflected Light">Reflected Light</MenuItem>
+                <MenuItem value="1/4 Lambda Plate">1/4 Lambda Plate</MenuItem>
+                <MenuItem value="Cathodoluminescence">Cathodoluminescence</MenuItem>
+                <MenuItem value="Gypsum Plate">Gypsum Plate</MenuItem>
+              </TextField>
+            )}
+
+            {formData.instrumentType === 'Scanner' && (
+              <TextField
+                fullWidth
+                required
+                select
+                label="Image Type"
+                value={formData.imageType}
+                onChange={(e) => updateField('imageType', e.target.value)}
+              >
+                <MenuItem value="">Select Image Type...</MenuItem>
+                <MenuItem value="No Polarizer">No Polarizer</MenuItem>
+                <MenuItem value="Plane Polarized">Plane Polarized</MenuItem>
+                <MenuItem value="Cross Polarized">Cross Polarized</MenuItem>
+                <MenuItem value="Other">Other</MenuItem>
+              </TextField>
+            )}
+
+            {(formData.instrumentType === 'Fourier Transform Infrared Spectroscopy (FTIR)' ||
+              formData.instrumentType === 'Raman Spectroscopy') && (
+              <TextField
+                fullWidth
+                required
+                select
+                label="Image Type"
+                value={formData.imageType}
+                onChange={(e) => updateField('imageType', e.target.value)}
+              >
+                <MenuItem value="">Select Image Type...</MenuItem>
+                <MenuItem value="False Color Map">False Color Map</MenuItem>
+                <MenuItem value="Intensity Map">Intensity Map</MenuItem>
+              </TextField>
+            )}
+
+            {formData.instrumentType === 'Atomic Force Microscopy (AFM)' && (
+              <TextField
+                fullWidth
+                required
+                select
+                label="Image Type"
+                value={formData.imageType}
+                onChange={(e) => updateField('imageType', e.target.value)}
+              >
+                <MenuItem value="">Select Image Type...</MenuItem>
+                <MenuItem value="Topography Image">Topography Image</MenuItem>
+              </TextField>
+            )}
+
+            {/* Conditional Image Type based on Data Type for TEM */}
+            {formData.instrumentType === 'Transmission Electron Microscopy (TEM)' &&
+             formData.dataType === 'Electron Diffraction' && (
+              <TextField
+                fullWidth
+                required
+                select
+                label="Image Type"
+                value={formData.imageType}
+                onChange={(e) => updateField('imageType', e.target.value)}
+              >
+                <MenuItem value="">Select Image Type...</MenuItem>
+                <MenuItem value="Selected Area Electron Diffraction (SAED)">Selected Area Electron Diffraction (SAED)</MenuItem>
+                <MenuItem value="Convergent Beam Electron Diffraction (CBED)">Convergent Beam Electron Diffraction (CBED)</MenuItem>
+                <MenuItem value="Nano Beam Diffraction (NBD)">Nano Beam Diffraction (NBD)</MenuItem>
+                <MenuItem value="Large Area Convergent Beam Electron Diffraction (LACBED)">Large Area Convergent Beam Electron Diffraction (LACBED)</MenuItem>
+              </TextField>
+            )}
+
+            {/* Conditional Image Type based on Data Type for STEM CL */}
+            {formData.instrumentType === 'Scanning Transmission Electron Microscopy (STEM)' &&
+             formData.dataType === 'Cathodoluminescence (CL)' && (
+              <TextField
+                fullWidth
+                required
+                select
+                label="Image Type"
+                value={formData.imageType}
+                onChange={(e) => updateField('imageType', e.target.value)}
+              >
+                <MenuItem value="">Select Image Type...</MenuItem>
+                <MenuItem value="Panchromatic CL Image">Panchromatic CL Image</MenuItem>
+                <MenuItem value="Wavelength Filtered CL Image">Wavelength Filtered CL Image</MenuItem>
+                <MenuItem value="Cathodoluminescence Spectroscopy">Cathodoluminescence Spectroscopy</MenuItem>
+              </TextField>
+            )}
+
+            {/* Conditional Image Type based on Data Type for SEM EBSD */}
+            {formData.instrumentType === 'Scanning Electron Microscopy (SEM)' &&
+             formData.dataType === 'Electron Backscatter Diffraction (EBSD)' && (
+              <TextField
+                fullWidth
+                required
+                select
+                label="Image Type"
+                value={formData.imageType}
+                onChange={(e) => updateField('imageType', e.target.value)}
+              >
+                <MenuItem value="">Select Image Type...</MenuItem>
+                <MenuItem value="Orientation (Euler)">Orientation (Euler)</MenuItem>
+                <MenuItem value="Orientation (IPF-X)">Orientation (IPF-X)</MenuItem>
+                <MenuItem value="Orientation (IPF-Y)">Orientation (IPF-Y)</MenuItem>
+                <MenuItem value="Orientation (IPF-Z)">Orientation (IPF-Z)</MenuItem>
+                <MenuItem value="Band Contrast">Band Contrast</MenuItem>
+                <MenuItem value="Phase Map">Phase Map</MenuItem>
+                <MenuItem value="Misorientation to Mean">Misorientation to Mean</MenuItem>
+                <MenuItem value="Grain Boundaries">Grain Boundaries</MenuItem>
+                <MenuItem value="Sub-grain Boundaries">Sub-grain Boundaries</MenuItem>
+              </TextField>
+            )}
+
+            {/* Conditional Image Type based on Data Type for SEM CL */}
+            {formData.instrumentType === 'Scanning Electron Microscopy (SEM)' &&
+             formData.dataType === 'Cathodoluminescence (CL)' && (
+              <TextField
+                fullWidth
+                required
+                select
+                label="Image Type"
+                value={formData.imageType}
+                onChange={(e) => updateField('imageType', e.target.value)}
+              >
+                <MenuItem value="">Select Image Type...</MenuItem>
+                <MenuItem value="Panchromatic CL Image">Panchromatic CL Image</MenuItem>
+                <MenuItem value="Wavelength Filtered CL Image">Wavelength Filtered CL Image</MenuItem>
+              </TextField>
+            )}
+
+            {/* Conditional Image Type for SEM FIB-SEM */}
+            {formData.instrumentType === 'Scanning Electron Microscopy (SEM)' &&
+             formData.dataType === 'Focused Ion Beam Scanning Electron Microscopy (FIB-SEM)' && (
+              <TextField
+                fullWidth
+                required
+                select
+                label="Image Type"
+                value={formData.imageType}
+                onChange={(e) => updateField('imageType', e.target.value)}
+              >
+                <MenuItem value="">Select Image Type...</MenuItem>
+                <MenuItem value="FIB Imaging">FIB Imaging</MenuItem>
+              </TextField>
+            )}
+
+            {/* Conditional Image Type for Electron Microprobe CL */}
+            {formData.instrumentType === 'Electron Microprobe' &&
+             formData.dataType === 'Cathodoluminescence (CL)' && (
+              <TextField
+                fullWidth
+                required
+                select
+                label="Image Type"
+                value={formData.imageType}
+                onChange={(e) => updateField('imageType', e.target.value)}
+              >
+                <MenuItem value="">Select Image Type...</MenuItem>
+                <MenuItem value="Panchromatic SEM-CL Image">Panchromatic SEM-CL Image</MenuItem>
+                <MenuItem value="Wavelength Filtered SEM-CL Image">Wavelength Filtered SEM-CL Image</MenuItem>
+              </TextField>
+            )}
+
+            {/* Auto-set imageType for certain data types that don't need a separate image type dropdown */}
+            {formData.instrumentType === 'Transmission Electron Microscopy (TEM)' &&
+             formData.dataType &&
+             !['Electron Diffraction', 'Energy Dispersive X-ray Spectroscopy (EDS)'].includes(formData.dataType) && (
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                Image Type: {formData.dataType}
+              </Typography>
+            )}
+
+            {formData.instrumentType === 'Scanning Transmission Electron Microscopy (STEM)' &&
+             formData.dataType &&
+             !['Energy Dispersive X-ray Spectroscopy (EDS)', 'Cathodoluminescence (CL)'].includes(formData.dataType) && (
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                Image Type: {formData.dataType}
+              </Typography>
+            )}
+
+            {formData.instrumentType === 'Scanning Electron Microscopy (SEM)' &&
+             formData.dataType &&
+             !['Electron Backscatter Diffraction (EBSD)', 'Energy Dispersive X-ray Spectroscopy (EDS)',
+               'Wavelength-dispersive X-ray spectroscopy (WDS)', 'Cathodoluminescence (CL)',
+               'Focused Ion Beam Scanning Electron Microscopy (FIB-SEM)'].includes(formData.dataType) && (
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                Image Type: {formData.dataType}
+              </Typography>
+            )}
+
+            {formData.instrumentType === 'Electron Microprobe' &&
+             formData.dataType &&
+             !['Energy Dispersive X-ray Spectroscopy (EDS)', 'Wavelength-dispersive X-ray spectroscopy (WDS)',
+               'Cathodoluminescence (CL)'].includes(formData.dataType) && (
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                Image Type: {formData.dataType}
+              </Typography>
+            )}
           </Stack>
         );
 
