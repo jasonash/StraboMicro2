@@ -1099,14 +1099,14 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
                   label="Image Type(s)"
                   value={formData.imageType}
                   InputProps={{ readOnly: true }}
-                  helperText="Click 'Select Element(s) from Table' to choose elements"
+                  helperText="Click 'Select Element(s) from Periodic Table' to choose elements"
                 />
                 <Button
                   variant="outlined"
                   onClick={() => setShowPeriodicTable(true)}
                   sx={{ mt: 1 }}
                 >
-                  Select Element(s) from Table
+                  Select Element(s) from Periodic Table
                 </Button>
               </Box>
             )}
@@ -1121,14 +1121,14 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
                   label="Image Type(s)"
                   value={formData.imageType}
                   InputProps={{ readOnly: true }}
-                  helperText="Click 'Select Element(s) from Table' to choose elements"
+                  helperText="Click 'Select Element(s) from Periodic Table' to choose elements"
                 />
                 <Button
                   variant="outlined"
                   onClick={() => setShowPeriodicTable(true)}
                   sx={{ mt: 1 }}
                 >
-                  Select Element(s) from Table
+                  Select Element(s) from Periodic Table
                 </Button>
               </Box>
             )}
@@ -1144,14 +1144,14 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
                   label="Image Type(s)"
                   value={formData.imageType}
                   InputProps={{ readOnly: true }}
-                  helperText="Click 'Select Element(s) from Table' to choose elements"
+                  helperText="Click 'Select Element(s) from Periodic Table' to choose elements"
                 />
                 <Button
                   variant="outlined"
                   onClick={() => setShowPeriodicTable(true)}
                   sx={{ mt: 1 }}
                 >
-                  Select Element(s) from Table
+                  Select Element(s) from Periodic Table
                 </Button>
               </Box>
             )}
@@ -1167,14 +1167,14 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
                   label="Image Type(s)"
                   value={formData.imageType}
                   InputProps={{ readOnly: true }}
-                  helperText="Click 'Select Element(s) from Table' to choose elements"
+                  helperText="Click 'Select Element(s) from Periodic Table' to choose elements"
                 />
                 <Button
                   variant="outlined"
                   onClick={() => setShowPeriodicTable(true)}
                   sx={{ mt: 1 }}
                 >
-                  Select Element(s) from Table
+                  Select Element(s) from Periodic Table
                 </Button>
               </Box>
             )}
