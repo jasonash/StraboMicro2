@@ -1,15 +1,15 @@
 .sidebar {
   width: 100%;
-  background-color: #252525;
-  border-right: 1px solid #404040;
+  background-color: var(--bg-secondary);
+  border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
 }
 
 .tab-bar {
   display: flex;
-  background-color: #2d2d2d;
-  border-bottom: 1px solid #404040;
+  background-color: var(--bg-tertiary);
+  border-bottom: 1px solid var(--border);
 }
 
 .tab {
@@ -17,7 +17,7 @@
   padding: 12px 8px;
   background: transparent;
   border: none;
-  color: #b0b0b0;
+  color: var(--text-secondary);
   font-size: 13px;
   cursor: pointer;
   transition: all 0.2s;
@@ -26,14 +26,14 @@
 }
 
 .tab:hover {
-  background-color: #333;
-  color: #e0e0e0;
+  background-color: var(--border);
+  color: var(--text-primary);
 }
 
 .tab.active {
-  color: #ffffff;
-  border-bottom-color: #e44c65;
-  background-color: #252525;
+  color: var(--text-primary);
+  border-bottom-color: var(--accent);
+  background-color: var(--bg-secondary);
 }
 
 .tab-content {

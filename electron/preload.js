@@ -20,4 +20,8 @@ contextBridge.exposeInMainWorld('api', {
 
   // Window title
   setWindowTitle: (title) => ipcRenderer.send('set-window-title', title),
+
+  // Theme management
+  onThemeChange: (callback) => ipcRenderer.on('theme:set', (event, theme) => callback(theme)),
+  notifyThemeChanged: (theme) => ipcRenderer.send('theme:changed', theme),
 });

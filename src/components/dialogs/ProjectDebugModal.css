@@ -14,7 +14,7 @@
 }
 
 .debug-modal-content {
-  background-color: #2d2d2d;
+  background-color: var(--bg-tertiary);
   border-radius: 8px;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
   width: 900px;
@@ -26,7 +26,7 @@
 
 .debug-modal-header {
   padding: 20px 24px;
-  border-bottom: 1px solid #404040;
+  border-bottom: 1px solid var(--border);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -36,13 +36,13 @@
   margin: 0;
   font-size: 20px;
   font-weight: 400;
-  color: #e0e0e0;
+  color: var(--text-primary);
 }
 
 .debug-modal-close {
   background: none;
   border: none;
-  color: #b0b0b0;
+  color: var(--text-secondary);
   font-size: 28px;
   line-height: 1;
   cursor: pointer;
@@ -57,8 +57,8 @@
 }
 
 .debug-modal-close:hover {
-  background-color: #404040;
-  color: #ffffff;
+  background-color: var(--border);
+  color: var(--text-primary);
 }
 
 .debug-modal-body {
@@ -75,7 +75,7 @@
   margin: 0 0 12px 0;
   font-size: 16px;
   font-weight: 500;
-  color: #e44c65;
+  color: var(--accent);
 }
 
 .debug-info-row {
@@ -86,25 +86,25 @@
 }
 
 .debug-label {
-  color: #b0b0b0;
+  color: var(--text-secondary);
   font-weight: 500;
   min-width: 120px;
 }
 
 .debug-value {
-  color: #e0e0e0;
+  color: var(--text-primary);
   font-family: 'Courier New', monospace;
 }
 
 .debug-json {
-  background-color: #1e1e1e;
-  border: 1px solid #404040;
+  background-color: var(--bg-primary);
+  border: 1px solid var(--border);
   border-radius: 4px;
   padding: 16px;
   overflow-x: auto;
   font-size: 13px;
   line-height: 1.5;
-  color: #e0e0e0;
+  color: var(--text-primary);
   font-family: 'Courier New', monospace;
   white-space: pre-wrap;
   word-wrap: break-word;
@@ -113,14 +113,14 @@
 .debug-no-project {
   padding: 40px;
   text-align: center;
-  color: #b0b0b0;
+  color: var(--text-secondary);
   font-style: italic;
 }
 
 .button-copy {
   padding: 8px 16px;
-  background-color: #404040;
-  color: #e0e0e0;
+  background-color: var(--border);
+  color: var(--text-primary);
   border: none;
   border-radius: 4px;
   font-size: 13px;
@@ -132,12 +132,12 @@
 }
 
 .button-copy:hover {
-  background-color: #4a4a4a;
+  background-color: var(--text-muted);
 }
 
 .debug-modal-footer {
   padding: 16px 24px;
-  border-top: 1px solid #404040;
+  border-top: 1px solid var(--border);
   display: flex;
   gap: 12px;
   justify-content: flex-end;
@@ -155,10 +155,10 @@
 }
 
 .button-secondary {
-  background-color: #404040;
-  color: #e0e0e0;
+  background-color: var(--border);
+  color: var(--text-primary);
 }
 
 .button-secondary:hover {
-  background-color: #4a4a4a;
+  background-color: var(--text-muted);
 }

@@ -1,26 +1,33 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import { ThemeProvider, createTheme } from '@mui/material/styles';
+import { ThemeProvider, createTheme, Theme } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
 import App from './App';
 import './index.css';
+import { useTheme } from './hooks/useTheme';
 
-// Create dark theme with custom colors matching the original design
-const darkTheme = createTheme({
+// Shared theme configuration
+const getTheme = (mode: 'dark' | 'light'): Theme => createTheme({
   palette: {
-    mode: 'dark',
+    mode,
     primary: {
-      main: '#e44c65', // Pinkish-red accent
+      main: '#e44c65', // Pinkish-red accent (same for both themes)
       contrastText: '#fff',
     },
-    background: {
-      default: '#1e1e1e', // Very dark grey
-      paper: '#2d2d2d',   // Dark grey for panels/cards
+    background: mode === 'dark' ? {
+      default: '#1a1a1a',
+      paper: '#2d2d2d',
+    } : {
+      default: '#f5f5f0', // Warm off-white (softer than pure white)
+      paper: '#faf9f6',   // Warmer paper background
     },
-    divider: '#404040',
-    text: {
+    divider: mode === 'dark' ? '#404040' : '#d0d0d0',
+    text: mode === 'dark' ? {
       primary: '#e0e0e0',
       secondary: '#b0b0b0',
+    } : {
+      primary: '#2a2a2a',  // Softer than pure black
+      secondary: '#5a5a5a', // Warmer medium gray
     },
   },
   typography: {
@@ -49,18 +56,18 @@ const darkTheme = createTheme({
   components: {
     MuiAppBar: {
       styleOverrides: {
-        root: {
-          backgroundColor: '#2d2d2d',
-          borderBottom: '1px solid #404040',
-        },
+        root: ({ theme }) => ({
+          backgroundColor: theme.palette.background.paper,
+          borderBottom: `1px solid ${theme.palette.divider}`,
+        }),
       },
     },
     MuiDrawer: {
       styleOverrides: {
-        paper: {
-          backgroundColor: '#2d2d2d',
-          borderRight: '1px solid #404040',
-        },
+        paper: ({ theme }) => ({
+          backgroundColor: theme.palette.background.paper,
+          borderRight: `1px solid ${theme.palette.divider}`,
+        }),
       },
     },
     MuiPaper: {
@@ -79,42 +86,52 @@ const darkTheme = createTheme({
     },
     MuiTextField: {
       styleOverrides: {
-        root: {
-          // Style the date picker calendar icon to be white to match text
+        root: ({ theme }) => ({
+          // Style the date picker calendar icon
           '& input[type="date"]::-webkit-calendar-picker-indicator': {
-            filter: 'brightness(0) invert(1)',
+            filter: theme.palette.mode === 'dark' ? 'brightness(0) invert(1)' : 'none',
             cursor: 'pointer',
           },
           // Style the native date input calendar popup
           '& input[type="date"]::-webkit-datetime-edit': {
-            color: '#e0e0e0',
+            color: theme.palette.text.primary,
           },
           '& input[type="date"]::-webkit-datetime-edit-fields-wrapper': {
-            color: '#e0e0e0',
+            color: theme.palette.text.primary,
           },
           '& input[type="date"]::-webkit-datetime-edit-text': {
-            color: '#e0e0e0',
+            color: theme.palette.text.primary,
           },
           '& input[type="date"]::-webkit-datetime-edit-month-field': {
-            color: '#e0e0e0',
+            color: theme.palette.text.primary,
           },
           '& input[type="date"]::-webkit-datetime-edit-day-field': {
-            color: '#e0e0e0',
+            color: theme.palette.text.primary,
           },
           '& input[type="date"]::-webkit-datetime-edit-year-field': {
-            color: '#e0e0e0',
+            color: theme.palette.text.primary,
           },
-        },
+        }),
       },
     },
   },
 });
 
-ReactDOM.createRoot(document.getElementById('root')!).render(
-  <React.StrictMode>
-    <ThemeProvider theme={darkTheme}>
+// Wrapper component that makes MUI theme reactive to Zustand state
+function ThemedApp() {
+  const { effectiveTheme } = useTheme();
+  const muiTheme = React.useMemo(() => getTheme(effectiveTheme), [effectiveTheme]);
+
+  return (
+    <ThemeProvider theme={muiTheme}>
       <CssBaseline />
       <App />
     </ThemeProvider>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')!).render(
+  <React.StrictMode>
+    <ThemedApp />
   </React.StrictMode>
 );

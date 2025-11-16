@@ -6,8 +6,8 @@
   display: flex;
   flex-direction: column;
   gap: 4px;
-  background-color: rgba(45, 45, 45, 0.95);
-  border: 1px solid #404040;
+  background-color: var(--bg-tertiary);
+  border: 1px solid var(--border);
   border-radius: 6px;
   padding: 6px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
@@ -18,35 +18,35 @@
 .toolbar-button {
   width: 40px;
   height: 40px;
-  color: #b0b0b0;
-  background-color: #2d2d2d;
-  border: 1px solid #404040;
+  color: var(--text-secondary);
+  background-color: var(--bg-tertiary);
+  border: 1px solid var(--border);
   border-radius: 4px;
   transition: all 0.2s ease;
 }
 
 .toolbar-button:hover {
-  background-color: #3d3d3d;
-  color: #e44c65;
-  border-color: #e44c65;
+  background-color: var(--border);
+  color: var(--accent);
+  border-color: var(--accent);
   transform: scale(1.05);
 }
 
 .toolbar-button:active {
-  background-color: #4d4d4d;
+  background-color: var(--text-muted);
   transform: scale(0.98);
 }
 
 /* Active/selected state - will be used later when we track active tool */
 .toolbar-button.active {
-  background-color: #e44c65;
+  background-color: var(--accent);
   color: #ffffff;
-  border-color: #e44c65;
+  border-color: var(--accent);
 }
 
 .toolbar-button.active:hover {
-  background-color: #f05575;
-  border-color: #f05575;
+  background-color: var(--accent-hover);
+  border-color: var(--accent-hover);
 }
 
 /* SVG icons inherit color from button */

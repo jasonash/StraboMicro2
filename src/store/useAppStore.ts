@@ -31,6 +31,7 @@ import {
 
 export type DrawingTool = 'select' | 'point' | 'line' | 'polygon' | 'measure' | null;
 export type SidebarTab = 'samples' | 'groups' | 'spots' | 'tags';
+export type ThemeMode = 'dark' | 'light' | 'system';
 
 interface AppState {
   // ========== PROJECT STATE ==========
@@ -57,6 +58,7 @@ interface AppState {
   // ========== UI STATE (persisted) ==========
   sidebarTab: SidebarTab;
   detailsPanelOpen: boolean;
+  theme: ThemeMode;
 
   // ========== COMPUTED INDEXES (for performance) ==========
   micrographIndex: Map<string, MicrographMetadata>;
@@ -110,6 +112,7 @@ interface AppState {
   // ========== UI ACTIONS ==========
   setSidebarTab: (tab: SidebarTab) => void;
   setDetailsPanelOpen: (open: boolean) => void;
+  setTheme: (theme: ThemeMode) => void;
 }
 
 // ============================================================================
@@ -141,6 +144,7 @@ export const useAppStore = create<AppState>()(
 
           sidebarTab: 'samples',
           detailsPanelOpen: true,
+          theme: 'dark',
 
           micrographIndex: new Map(),
           spotIndex: new Map(),
@@ -440,6 +444,8 @@ export const useAppStore = create<AppState>()(
           setSidebarTab: (tab) => set({ sidebarTab: tab }),
 
           setDetailsPanelOpen: (open) => set({ detailsPanelOpen: open }),
+
+          setTheme: (theme) => set({ theme }),
         }),
         {
           // Temporal (undo/redo) configuration
@@ -467,6 +473,7 @@ export const useAppStore = create<AppState>()(
           showSpotLabels: state.showSpotLabels,
           showMicrographOutlines: state.showMicrographOutlines,
           spotOverlayOpacity: state.spotOverlayOpacity,
+          theme: state.theme,
         }),
       }
     ),

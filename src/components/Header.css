@@ -3,8 +3,8 @@
   justify-content: space-between;
   align-items: center;
   height: 60px;
-  background-color: #2d2d2d;
-  border-bottom: 1px solid #404040;
+  background-color: var(--bg-tertiary);
+  border-bottom: 1px solid var(--border);
   padding: 0 20px;
   flex-shrink: 0;
 }
@@ -31,7 +31,7 @@
   font-family: 'Roboto', sans-serif;
   font-size: 20px;
   font-weight: 300;
-  color: #e0e0e0;
+  color: var(--text-primary);
   letter-spacing: 0.5px;
 }
 
@@ -42,7 +42,7 @@
 
 .user-info {
   font-size: 13px;
-  color: #b0b0b0;
+  color: var(--text-secondary);
 }
 
 .header-right {
@@ -57,8 +57,8 @@
 
 .tool-button {
   background: transparent;
-  border: 1px solid #404040;
-  color: #e0e0e0;
+  border: 1px solid var(--border);
+  color: var(--text-primary);
   width: 36px;
   height: 36px;
   border-radius: 4px;
@@ -70,13 +70,13 @@
 }
 
 .tool-button:hover {
-  background-color: #404040;
-  border-color: #e44c65;
+  background-color: var(--border);
+  border-color: var(--accent);
 }
 
 .tool-button:active {
-  background-color: #e44c65;
-  border-color: #e44c65;
+  background-color: var(--accent);
+  border-color: var(--accent);
 }
 
 .tool-button svg {

@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, ipcMain, dialog, screen } = require('electron');
+const { app, BrowserWindow, Menu, ipcMain, dialog, screen, nativeTheme } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const log = require('electron-log');
@@ -171,6 +171,44 @@ function createWindow() {
         { label: 'Logout' },
         { type: 'separator' },
         { label: 'Settings' },
+      ],
+    },
+    {
+      label: 'View',
+      submenu: [
+        {
+          label: 'Theme',
+          submenu: [
+            {
+              label: 'Dark',
+              type: 'radio',
+              checked: true,
+              click: () => {
+                if (mainWindow) {
+                  mainWindow.webContents.send('theme:set', 'dark');
+                }
+              }
+            },
+            {
+              label: 'Light',
+              type: 'radio',
+              click: () => {
+                if (mainWindow) {
+                  mainWindow.webContents.send('theme:set', 'light');
+                }
+              }
+            },
+            {
+              label: 'System',
+              type: 'radio',
+              click: () => {
+                if (mainWindow) {
+                  mainWindow.webContents.send('theme:set', 'system');
+                }
+              }
+            },
+          ],
+        },
       ],
     },
     {
@@ -366,4 +404,10 @@ ipcMain.on('set-window-title', (event, title) => {
     mainWindow.setTitle(title);
     log.info(`Window title set to: ${title}`);
   }
+});
+
+// Theme change handler - log theme changes (no nativeTheme sync)
+ipcMain.on('theme:changed', (event, theme) => {
+  // Note: We don't sync nativeTheme to keep the native window chrome unchanged
+  log.info(`App theme changed to: ${theme}`);
 });
