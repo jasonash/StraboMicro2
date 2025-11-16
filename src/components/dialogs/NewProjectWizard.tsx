@@ -26,7 +26,6 @@ import {
   Stack,
   Grow,
   Typography,
-  Link,
   Checkbox,
   FormControlLabel,
   FormGroup,
@@ -735,17 +734,6 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
               >
                 Browse...
               </Button>
-            </Box>
-            <Box sx={{ mt: 2 }}>
-              <Typography variant="caption" color="text.secondary">
-                <Link
-                  href="https://www.google.com/search?q=reference+micrograph"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  What is a reference micrograph?
-                </Link>
-              </Typography>
             </Box>
           </Stack>
         );
