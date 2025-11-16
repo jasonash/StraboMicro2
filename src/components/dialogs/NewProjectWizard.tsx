@@ -32,6 +32,7 @@ import {
   Divider,
 } from '@mui/material';
 import { useAppStore } from '@/store';
+import { PeriodicTableModal } from './PeriodicTableModal';
 
 interface NewProjectWizardProps {
   isOpen: boolean;
@@ -249,6 +250,7 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
   const [activeStep, setActiveStep] = useState(0);
   const [formData, setFormData] = useState<ProjectFormData>(initialFormData);
   const [detectors, setDetectors] = useState<Detector[]>([{ type: '', make: '', model: '' }]);
+  const [showPeriodicTable, setShowPeriodicTable] = useState(false);
   const loadProject = useAppStore(state => state.loadProject);
 
   // Determine which steps to show based on instrument type
@@ -1085,6 +1087,97 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
                 Image Type: {formData.dataType}
               </Typography>
             )}
+
+            {/* Periodic Table Element Picker for EDS/WDS */}
+            {/* TEM + EDS */}
+            {formData.instrumentType === 'Transmission Electron Microscopy (TEM)' &&
+             formData.dataType === 'Energy Dispersive X-ray Spectroscopy (EDS)' && (
+              <Box>
+                <TextField
+                  fullWidth
+                  required
+                  label="Image Type(s)"
+                  value={formData.imageType}
+                  InputProps={{ readOnly: true }}
+                  helperText="Click 'Select Element(s) from Table' to choose elements"
+                />
+                <Button
+                  variant="outlined"
+                  onClick={() => setShowPeriodicTable(true)}
+                  sx={{ mt: 1 }}
+                >
+                  Select Element(s) from Table
+                </Button>
+              </Box>
+            )}
+
+            {/* STEM + EDS */}
+            {formData.instrumentType === 'Scanning Transmission Electron Microscopy (STEM)' &&
+             formData.dataType === 'Energy Dispersive X-ray Spectroscopy (EDS)' && (
+              <Box>
+                <TextField
+                  fullWidth
+                  required
+                  label="Image Type(s)"
+                  value={formData.imageType}
+                  InputProps={{ readOnly: true }}
+                  helperText="Click 'Select Element(s) from Table' to choose elements"
+                />
+                <Button
+                  variant="outlined"
+                  onClick={() => setShowPeriodicTable(true)}
+                  sx={{ mt: 1 }}
+                >
+                  Select Element(s) from Table
+                </Button>
+              </Box>
+            )}
+
+            {/* SEM + EDS or WDS */}
+            {formData.instrumentType === 'Scanning Electron Microscopy (SEM)' &&
+             (formData.dataType === 'Energy Dispersive X-ray Spectroscopy (EDS)' ||
+              formData.dataType === 'Wavelength-dispersive X-ray spectroscopy (WDS)') && (
+              <Box>
+                <TextField
+                  fullWidth
+                  required
+                  label="Image Type(s)"
+                  value={formData.imageType}
+                  InputProps={{ readOnly: true }}
+                  helperText="Click 'Select Element(s) from Table' to choose elements"
+                />
+                <Button
+                  variant="outlined"
+                  onClick={() => setShowPeriodicTable(true)}
+                  sx={{ mt: 1 }}
+                >
+                  Select Element(s) from Table
+                </Button>
+              </Box>
+            )}
+
+            {/* Electron Microprobe + EDS or WDS */}
+            {formData.instrumentType === 'Electron Microprobe' &&
+             (formData.dataType === 'Energy Dispersive X-ray Spectroscopy (EDS)' ||
+              formData.dataType === 'Wavelength-dispersive X-ray spectroscopy (WDS)') && (
+              <Box>
+                <TextField
+                  fullWidth
+                  required
+                  label="Image Type(s)"
+                  value={formData.imageType}
+                  InputProps={{ readOnly: true }}
+                  helperText="Click 'Select Element(s) from Table' to choose elements"
+                />
+                <Button
+                  variant="outlined"
+                  onClick={() => setShowPeriodicTable(true)}
+                  sx={{ mt: 1 }}
+                >
+                  Select Element(s) from Table
+                </Button>
+              </Box>
+            )}
           </Stack>
         );
 
@@ -1674,6 +1767,7 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
   };
 
   return (
+    <>
     <Dialog
       open={isOpen}
       onClose={handleCancel}
@@ -1719,5 +1813,17 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
         )}
       </DialogActions>
     </Dialog>
+
+    {/* Periodic Table Modal */}
+    <PeriodicTableModal
+      isOpen={showPeriodicTable}
+      onClose={() => setShowPeriodicTable(false)}
+      onSelectElements={(elements) => {
+        // Join elements with ", " as per legacy app (straboMicroUtil.implode)
+        updateField('imageType', elements.join(', '));
+      }}
+      initialSelection={formData.imageType ? formData.imageType.split(', ').filter(e => e.trim() !== '') : []}
+    />
+  </>
   );
 };
