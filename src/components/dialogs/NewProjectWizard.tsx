@@ -461,7 +461,13 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
   };
 
   const canProceed = () => {
-    if (activeStep === 0) return formData.name.trim() !== '';
+    if (activeStep === 0) {
+      // Project name is required
+      if (formData.name.trim() === '') return false;
+      // If both dates are provided, validate that start <= end
+      if (formData.startDate && formData.endDate && formData.startDate > formData.endDate) return false;
+      return true;
+    }
     if (activeStep === 1) return formData.datasetName.trim() !== '';
     if (activeStep === 2) {
       // Sample ID is required
@@ -544,6 +550,11 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
                 InputLabelProps={{ shrink: true }}
                 value={formData.startDate}
                 onChange={(e) => updateField('startDate', e.target.value)}
+                inputProps={{
+                  max: formData.endDate || undefined, // Can't be after end date
+                }}
+                helperText={formData.endDate && formData.startDate > formData.endDate ? 'Start date must be before end date' : ''}
+                error={!!(formData.endDate && formData.startDate > formData.endDate)}
               />
               <TextField
                 fullWidth
@@ -552,6 +563,11 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
                 InputLabelProps={{ shrink: true }}
                 value={formData.endDate}
                 onChange={(e) => updateField('endDate', e.target.value)}
+                inputProps={{
+                  min: formData.startDate || undefined, // Can't be before start date
+                }}
+                helperText={formData.startDate && formData.endDate < formData.startDate ? 'End date must be after start date' : ''}
+                error={!!(formData.startDate && formData.endDate < formData.startDate)}
               />
             </Box>
             <TextField

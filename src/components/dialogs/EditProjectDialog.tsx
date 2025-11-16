@@ -83,6 +83,12 @@ export const EditProjectDialog: React.FC<EditProjectDialogProps> = ({ isOpen, on
       return;
     }
 
+    // Validate date range
+    if (formData.startDate && formData.endDate && formData.startDate > formData.endDate) {
+      alert('Start date must be before end date.');
+      return;
+    }
+
     const updatedProject = {
       ...project,
       name: formData.name,
@@ -132,6 +138,11 @@ export const EditProjectDialog: React.FC<EditProjectDialogProps> = ({ isOpen, on
               InputLabelProps={{ shrink: true }}
               value={formData.startDate}
               onChange={(e) => updateField('startDate', e.target.value)}
+              inputProps={{
+                max: formData.endDate || undefined, // Can't be after end date
+              }}
+              helperText={formData.endDate && formData.startDate > formData.endDate ? 'Start date must be before end date' : ''}
+              error={!!(formData.endDate && formData.startDate > formData.endDate)}
             />
             <TextField
               fullWidth
@@ -140,6 +151,11 @@ export const EditProjectDialog: React.FC<EditProjectDialogProps> = ({ isOpen, on
               InputLabelProps={{ shrink: true }}
               value={formData.endDate}
               onChange={(e) => updateField('endDate', e.target.value)}
+              inputProps={{
+                min: formData.startDate || undefined, // Can't be before start date
+              }}
+              helperText={formData.startDate && formData.endDate < formData.startDate ? 'End date must be after start date' : ''}
+              error={!!(formData.startDate && formData.endDate < formData.startDate)}
             />
           </Box>
           <TextField
