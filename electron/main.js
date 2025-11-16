@@ -341,6 +341,7 @@ ipcMain.handle('load-tiff-image', async (event, filePath) => {
 
     // Dynamic import of ES Module
     const { decode } = await import('tiff');
+    const { createCanvas } = require('canvas');
 
     // Read and decode TIFF file
     const tiffData = fs.readFileSync(filePath);
@@ -380,15 +381,23 @@ ipcMain.handle('load-tiff-image', async (event, filePath) => {
       throw new Error(`Unsupported TIFF format: ${bytesPerPixel} bytes per pixel (expected 3 or 4)`);
     }
 
-    // Convert to base64 for efficient IPC transfer
-    const pixelDataBase64 = Buffer.from(rgbaData).toString('base64');
+    // Create Canvas and convert to PNG
+    const canvas = createCanvas(image.width, image.height);
+    const ctx = canvas.getContext('2d');
+    const imageData = ctx.createImageData(image.width, image.height);
+    imageData.data.set(rgbaData);
+    ctx.putImageData(imageData, 0, 0);
 
-    log.info(`TIFF loaded successfully: ${image.width}x${image.height}, ${rgbaData.length} bytes RGBA`);
+    // Convert canvas to PNG buffer and then to base64
+    const pngBuffer = canvas.toBuffer('image/png');
+    const pngBase64 = pngBuffer.toString('base64');
+
+    log.info(`TIFF converted to PNG: ${image.width}x${image.height}`);
 
     return {
       width: image.width,
       height: image.height,
-      data: pixelDataBase64,
+      data: pngBase64,  // Now this is a proper PNG, not raw RGBA
       filePath: filePath,
       fileName: path.basename(filePath)
     };
