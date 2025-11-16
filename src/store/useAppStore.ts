@@ -144,7 +144,7 @@ export const useAppStore = create<AppState>()(
 
           sidebarTab: 'samples',
           detailsPanelOpen: true,
-          theme: 'system',
+          theme: 'dark',
 
           micrographIndex: new Map(),
           spotIndex: new Map(),

@@ -182,6 +182,7 @@ function createWindow() {
             {
               label: 'Dark',
               type: 'radio',
+              checked: true,
               click: () => {
                 if (mainWindow) {
                   mainWindow.webContents.send('theme:set', 'dark');
@@ -200,7 +201,6 @@ function createWindow() {
             {
               label: 'System',
               type: 'radio',
-              checked: true,
               click: () => {
                 if (mainWindow) {
                   mainWindow.webContents.send('theme:set', 'system');
