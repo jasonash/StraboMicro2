@@ -461,7 +461,13 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
   };
 
   const canProceed = () => {
-    if (activeStep === 0) return formData.name.trim() !== '';
+    if (activeStep === 0) {
+      // Project name is required
+      if (formData.name.trim() === '') return false;
+      // If both dates are provided, validate that start <= end
+      if (formData.startDate && formData.endDate && formData.startDate > formData.endDate) return false;
+      return true;
+    }
     if (activeStep === 1) return formData.datasetName.trim() !== '';
     if (activeStep === 2) {
       // Sample ID is required
@@ -544,6 +550,11 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
                 InputLabelProps={{ shrink: true }}
                 value={formData.startDate}
                 onChange={(e) => updateField('startDate', e.target.value)}
+                inputProps={{
+                  max: formData.endDate || '2100-12-31', // Date picker can't select after end date or year 2100
+                }}
+                helperText={formData.endDate && formData.startDate && formData.startDate > formData.endDate ? 'Start date must be before end date' : ''}
+                error={!!(formData.endDate && formData.startDate && formData.startDate > formData.endDate)}
               />
               <TextField
                 fullWidth
@@ -552,6 +563,12 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
                 InputLabelProps={{ shrink: true }}
                 value={formData.endDate}
                 onChange={(e) => updateField('endDate', e.target.value)}
+                inputProps={{
+                  min: formData.startDate || undefined, // Date picker can't select before start date
+                  max: '2100-12-31', // Date picker can't select after year 2100
+                }}
+                helperText={formData.startDate && formData.endDate && formData.endDate < formData.startDate ? 'End date must be after start date' : ''}
+                error={!!(formData.startDate && formData.endDate && formData.endDate < formData.startDate)}
               />
             </Box>
             <TextField
@@ -1770,7 +1787,11 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
     <>
     <Dialog
       open={isOpen}
-      onClose={handleCancel}
+      onClose={(event, reason) => {
+        if (reason !== 'backdropClick' && reason !== 'escapeKeyDown') {
+          handleCancel();
+        }
+      }}
       maxWidth="md"
       fullWidth
       TransitionComponent={Grow}
