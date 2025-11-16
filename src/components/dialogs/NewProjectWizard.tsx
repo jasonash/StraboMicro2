@@ -486,13 +486,6 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
                 Browse...
               </Button>
             </Box>
-            {formData.micrographFileName && (
-              <Box>
-                <Typography variant="body2" color="text.secondary">
-                  <strong>Selected:</strong> {formData.micrographFileName}
-                </Typography>
-              </Box>
-            )}
             <Box sx={{ mt: 2 }}>
               <Typography variant="caption" color="text.secondary">
                 <Link
