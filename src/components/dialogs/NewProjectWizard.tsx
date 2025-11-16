@@ -146,19 +146,17 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
         if (filePath) {
           const fileName = filePath.split(/[\\/]/).pop() || '';
 
-          // Load the image to get dimensions only (no preview)
-          const imageData = await window.api.loadTiffImage(filePath);
-
+          // Just store the file path - dimensions will be loaded later when displaying
           setFormData(prev => ({
             ...prev,
             micrographFilePath: filePath,
             micrographFileName: fileName,
-            micrographWidth: imageData.width,
-            micrographHeight: imageData.height,
+            micrographWidth: 0,  // Will be loaded later
+            micrographHeight: 0,  // Will be loaded later
           }));
         }
       } catch (error) {
-        console.error('Error loading image:', error);
+        console.error('Error selecting image:', error);
       }
     }
   };
@@ -478,7 +476,7 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
                 label="Micrograph File Path"
                 value={formData.micrographFilePath}
                 InputProps={{ readOnly: true }}
-                helperText="Click 'Browse' to select an image file"
+                helperText="Click 'Browse' to select an image file (TIFF, JPEG, PNG, BMP)"
               />
               <Button
                 variant="contained"
@@ -491,10 +489,7 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
             {formData.micrographFileName && (
               <Box>
                 <Typography variant="body2" color="text.secondary">
-                  <strong>File:</strong> {formData.micrographFileName}
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  <strong>Dimensions:</strong> {formData.micrographWidth} × {formData.micrographHeight} pixels
+                  <strong>Selected:</strong> {formData.micrographFileName}
                 </Typography>
               </Box>
             )}
