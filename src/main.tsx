@@ -18,16 +18,16 @@ const getTheme = (mode: 'dark' | 'light'): Theme => createTheme({
       default: '#1a1a1a',
       paper: '#2d2d2d',
     } : {
-      default: '#fafafa',
-      paper: '#ffffff',
+      default: '#f5f5f0', // Warm off-white (softer than pure white)
+      paper: '#faf9f6',   // Warmer paper background
     },
     divider: mode === 'dark' ? '#404040' : '#d0d0d0',
     text: mode === 'dark' ? {
       primary: '#e0e0e0',
       secondary: '#b0b0b0',
     } : {
-      primary: '#1e1e1e',
-      secondary: '#505050',
+      primary: '#2a2a2a',  // Softer than pure black
+      secondary: '#5a5a5a', // Warmer medium gray
     },
   },
   typography: {
