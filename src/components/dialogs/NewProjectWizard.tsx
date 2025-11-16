@@ -5,8 +5,9 @@
  * Step 1: Project Metadata (name, dates, purpose, etc.)
  * Step 2: Dataset Name
  * Step 3: Sample Information
+ * Step 4: Load Reference Micrograph
  *
- * After completion, creates project structure in store (without micrograph)
+ * After completion, creates project structure in store with micrograph
  */
 
 import { useState } from 'react';
@@ -24,6 +25,8 @@ import {
   Box,
   Stack,
   Grow,
+  Typography,
+  Link,
 } from '@mui/material';
 import { useAppStore } from '@/store';
 
@@ -61,6 +64,10 @@ interface ProjectFormData {
   lithology: string;
   sampleUnit: string;
   otherMaterialType: string;
+  micrographFilePath: string;
+  micrographFileName: string;
+  micrographWidth: number;
+  micrographHeight: number;
 }
 
 const initialFormData: ProjectFormData = {
@@ -92,14 +99,19 @@ const initialFormData: ProjectFormData = {
   lithology: '',
   sampleUnit: '',
   otherMaterialType: '',
+  micrographFilePath: '',
+  micrographFileName: '',
+  micrographWidth: 0,
+  micrographHeight: 0,
 };
 
 export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onClose }) => {
   const [activeStep, setActiveStep] = useState(0);
   const [formData, setFormData] = useState<ProjectFormData>(initialFormData);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
   const loadProject = useAppStore(state => state.loadProject);
 
-  const steps = ['Project Metadata', 'Dataset Information', 'Sample Information'];
+  const steps = ['Project Metadata', 'Dataset Information', 'Sample Information', 'Load Reference Micrograph'];
 
   const updateField = (field: keyof ProjectFormData, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }));
@@ -128,6 +140,33 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
     }
   };
 
+  const handleBrowseImage = async () => {
+    if (window.api && window.api.openTiffDialog) {
+      try {
+        const filePath = await window.api.openTiffDialog();
+        if (filePath) {
+          const fileName = filePath.split(/[\\/]/).pop() || '';
+
+          // Load the image to get dimensions and create preview
+          const imageData = await window.api.loadTiffImage(filePath);
+
+          setFormData(prev => ({
+            ...prev,
+            micrographFilePath: filePath,
+            micrographFileName: fileName,
+            micrographWidth: imageData.width,
+            micrographHeight: imageData.height,
+          }));
+
+          // Create preview image from base64 data
+          setImagePreview(`data:image/png;base64,${imageData.data}`);
+        }
+      } catch (error) {
+        console.error('Error loading image:', error);
+      }
+    }
+  };
+
   const handleNext = () => {
     setActiveStep((prevActiveStep) => prevActiveStep + 1);
   };
@@ -137,6 +176,27 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
   };
 
   const handleFinish = () => {
+    // Create micrograph object if file was selected
+    const micrographs = formData.micrographFilePath ? [{
+      id: crypto.randomUUID(),
+      name: formData.micrographFileName,
+      imageFilename: formData.micrographFileName,
+      imageWidth: formData.micrographWidth,
+      imageHeight: formData.micrographHeight,
+      visible: true,
+      grains: [],
+      fabrics: [],
+      boundaries: [],
+      mineralogy: [],
+      veins: [],
+      fractures: [],
+      folds: [],
+      porosity: [],
+      pseudotachylyte: [],
+      otherFeatures: [],
+      spots: []
+    }] : [];
+
     const newProject = {
       id: crypto.randomUUID(),
       name: formData.name,
@@ -174,19 +234,21 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
           lithology: formData.lithology || undefined,
           sampleUnit: formData.sampleUnit || undefined,
           otherMaterialType: formData.otherMaterialType || undefined,
-          micrographs: []
+          micrographs: micrographs
         }]
       }]
     };
 
     loadProject(newProject, null);
     setFormData(initialFormData);
+    setImagePreview(null);
     setActiveStep(0);
     onClose();
   };
 
   const handleCancel = () => {
     setFormData(initialFormData);
+    setImagePreview(null);
     setActiveStep(0);
     onClose();
   };
@@ -209,6 +271,10 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
       }
 
       return true;
+    }
+    if (activeStep === 3) {
+      // Micrograph file is required
+      return formData.micrographFilePath.trim() !== '';
     }
     return true;
   };
@@ -401,6 +467,78 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
               value={formData.sampleNotes}
               onChange={(e) => updateField('sampleNotes', e.target.value)}
             />
+          </Stack>
+        );
+
+      case 3:
+        return (
+          <Stack spacing={2}>
+            <Typography variant="body2" color="text.secondary">
+              Select a reference micrograph image file to add to this sample. This will be the base image
+              for your annotations and measurements.
+            </Typography>
+            <Box sx={{ display: 'flex', gap: 2, alignItems: 'flex-start' }}>
+              <TextField
+                fullWidth
+                required
+                label="Micrograph File Path"
+                value={formData.micrographFilePath}
+                InputProps={{ readOnly: true }}
+                helperText="Click 'Browse' to select an image file"
+              />
+              <Button
+                variant="contained"
+                onClick={handleBrowseImage}
+                sx={{ minWidth: '120px', mt: 0 }}
+              >
+                Browse...
+              </Button>
+            </Box>
+            {formData.micrographFileName && (
+              <Box>
+                <Typography variant="body2" color="text.secondary">
+                  <strong>File:</strong> {formData.micrographFileName}
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  <strong>Dimensions:</strong> {formData.micrographWidth} × {formData.micrographHeight} pixels
+                </Typography>
+              </Box>
+            )}
+            {imagePreview && (
+              <Box
+                sx={{
+                  mt: 2,
+                  p: 2,
+                  border: '1px solid',
+                  borderColor: 'divider',
+                  borderRadius: 1,
+                  backgroundColor: 'background.default',
+                  display: 'flex',
+                  justifyContent: 'center',
+                }}
+              >
+                <img
+                  src={imagePreview}
+                  alt="Micrograph preview"
+                  style={{
+                    maxWidth: '100%',
+                    maxHeight: '300px',
+                    objectFit: 'contain',
+                  }}
+                />
+              </Box>
+            )}
+            <Box sx={{ mt: 2 }}>
+              <Typography variant="caption" color="text.secondary">
+                <Link
+                  href="https://www.google.com/search?q=reference+micrograph"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  What is a reference micrograph?
+                </Link>
+              </Typography>
+            </Box>
           </Stack>
         );
 
