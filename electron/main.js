@@ -406,15 +406,8 @@ ipcMain.on('set-window-title', (event, title) => {
   }
 });
 
-// Theme change handler - sync with Electron nativeTheme
+// Theme change handler - log theme changes (no nativeTheme sync)
 ipcMain.on('theme:changed', (event, theme) => {
-  // Update Electron's nativeTheme to match
-  if (theme === 'dark') {
-    nativeTheme.themeSource = 'dark';
-  } else if (theme === 'light') {
-    nativeTheme.themeSource = 'light';
-  } else if (theme === 'system') {
-    nativeTheme.themeSource = 'system';
-  }
-  log.info(`Theme changed to: ${theme}, nativeTheme.shouldUseDarkColors: ${nativeTheme.shouldUseDarkColors}`);
+  // Note: We don't sync nativeTheme to keep the native window chrome unchanged
+  log.info(`App theme changed to: ${theme}`);
 });
