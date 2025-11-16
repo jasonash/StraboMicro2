@@ -108,7 +108,6 @@ const initialFormData: ProjectFormData = {
 export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onClose }) => {
   const [activeStep, setActiveStep] = useState(0);
   const [formData, setFormData] = useState<ProjectFormData>(initialFormData);
-  const [imagePreview, setImagePreview] = useState<string | null>(null);
   const loadProject = useAppStore(state => state.loadProject);
 
   const steps = ['Project Metadata', 'Dataset Information', 'Sample Information', 'Load Reference Micrograph'];
@@ -147,7 +146,7 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
         if (filePath) {
           const fileName = filePath.split(/[\\/]/).pop() || '';
 
-          // Load the image to get dimensions and create preview
+          // Load the image to get dimensions only (no preview)
           const imageData = await window.api.loadTiffImage(filePath);
 
           setFormData(prev => ({
@@ -157,9 +156,6 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
             micrographWidth: imageData.width,
             micrographHeight: imageData.height,
           }));
-
-          // Create preview image from base64 data
-          setImagePreview(`data:image/png;base64,${imageData.data}`);
         }
       } catch (error) {
         console.error('Error loading image:', error);
@@ -241,14 +237,12 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
 
     loadProject(newProject, null);
     setFormData(initialFormData);
-    setImagePreview(null);
     setActiveStep(0);
     onClose();
   };
 
   const handleCancel = () => {
     setFormData(initialFormData);
-    setImagePreview(null);
     setActiveStep(0);
     onClose();
   };
@@ -502,30 +496,6 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
                 <Typography variant="body2" color="text.secondary">
                   <strong>Dimensions:</strong> {formData.micrographWidth} × {formData.micrographHeight} pixels
                 </Typography>
-              </Box>
-            )}
-            {imagePreview && (
-              <Box
-                sx={{
-                  mt: 2,
-                  p: 2,
-                  border: '1px solid',
-                  borderColor: 'divider',
-                  borderRadius: 1,
-                  backgroundColor: 'background.default',
-                  display: 'flex',
-                  justifyContent: 'center',
-                }}
-              >
-                <img
-                  src={imagePreview}
-                  alt="Micrograph preview"
-                  style={{
-                    maxWidth: '100%',
-                    maxHeight: '300px',
-                    objectFit: 'contain',
-                  }}
-                />
               </Box>
             )}
             <Box sx={{ mt: 2 }}>

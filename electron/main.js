@@ -338,15 +338,12 @@ ipcMain.handle('dialog:open-tiff', async () => {
   return result.filePaths[0];
 });
 
-// Image loading (supports TIFF, JPEG, PNG, BMP)
+// Image loading (supports TIFF, JPEG, PNG, BMP) - dimensions only for performance
 ipcMain.handle('load-tiff-image', async (event, filePath) => {
   try {
-    log.info(`Loading image: ${filePath}`);
+    log.info(`Loading image metadata: ${filePath}`);
 
-    const { createCanvas, loadImage } = require('canvas');
     const fileExt = path.extname(filePath).toLowerCase();
-
-    let pngBase64;
     let width;
     let height;
 
@@ -355,7 +352,7 @@ ipcMain.handle('load-tiff-image', async (event, filePath) => {
       // Dynamic import of ES Module
       const { decode } = await import('tiff');
 
-      // Read and decode TIFF file
+      // Read and decode TIFF file (header only for dimensions)
       const tiffData = fs.readFileSync(filePath);
       const images = decode(tiffData);
 
@@ -367,73 +364,25 @@ ipcMain.handle('load-tiff-image', async (event, filePath) => {
       width = image.width;
       height = image.height;
 
-      // Detect format: RGB (3 bytes/pixel) vs RGBA (4 bytes/pixel)
-      const bytesPerPixel = image.data.length / (width * height);
-      log.info(`TIFF decoded: ${width}x${height}, ${image.data.length} bytes, ${bytesPerPixel} bytes/pixel`);
-
-      const sourceData = new Uint8Array(image.data);
-      let rgbaData;
-
-      if (bytesPerPixel === 3) {
-        // RGB format - convert to RGBA
-        log.info('Converting RGB to RGBA');
-        const pixelCount = width * height;
-        rgbaData = new Uint8Array(pixelCount * 4);
-
-        // RGB→RGBA conversion loop
-        for (let i = 0, j = 0; i < sourceData.length; i += 3, j += 4) {
-          rgbaData[j] = sourceData[i];         // R
-          rgbaData[j + 1] = sourceData[i + 1]; // G
-          rgbaData[j + 2] = sourceData[i + 2]; // B
-          rgbaData[j + 3] = 255;               // A (fully opaque)
-        }
-      } else if (bytesPerPixel === 4) {
-        // Already RGBA format
-        log.info('Already RGBA format');
-        rgbaData = sourceData;
-      } else {
-        throw new Error(`Unsupported TIFF format: ${bytesPerPixel} bytes per pixel (expected 3 or 4)`);
-      }
-
-      // Create Canvas and convert to PNG
-      const canvas = createCanvas(width, height);
-      const ctx = canvas.getContext('2d');
-      const imageData = ctx.createImageData(width, height);
-      imageData.data.set(rgbaData);
-      ctx.putImageData(imageData, 0, 0);
-
-      // Convert canvas to PNG buffer and then to base64
-      const pngBuffer = canvas.toBuffer('image/png');
-      pngBase64 = pngBuffer.toString('base64');
-
-      log.info(`TIFF converted to PNG: ${width}x${height}`);
+      log.info(`TIFF dimensions: ${width}x${height}`);
     } else {
-      // For JPEG, PNG, BMP - use canvas loadImage (native support)
+      // For JPEG, PNG, BMP - use canvas loadImage to get dimensions
+      const { loadImage } = require('canvas');
       const img = await loadImage(filePath);
       width = img.width;
       height = img.height;
 
-      // Create canvas and draw image
-      const canvas = createCanvas(width, height);
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(img, 0, 0);
-
-      // Convert to PNG base64
-      const pngBuffer = canvas.toBuffer('image/png');
-      pngBase64 = pngBuffer.toString('base64');
-
-      log.info(`Image loaded and converted to PNG: ${width}x${height}`);
+      log.info(`Image dimensions: ${width}x${height}`);
     }
 
     return {
       width: width,
       height: height,
-      data: pngBase64,
       filePath: filePath,
       fileName: path.basename(filePath)
     };
   } catch (error) {
-    log.error('Error loading image:', error);
+    log.error('Error loading image metadata:', error);
     throw error;
   }
 });
