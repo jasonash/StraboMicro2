@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import './PeriodicTableModal.css';
 import { periodicTableElements } from '../../data/periodicTableData';
 
@@ -11,8 +11,33 @@ interface PeriodicTableModalProps {
 
 export function PeriodicTableModal({ isOpen, onClose, onSelectElements, initialSelection = [] }: PeriodicTableModalProps) {
   const [selectedElements, setSelectedElements] = useState<string[]>(initialSelection);
+  const [theme, setTheme] = useState<'light' | 'dark'>('dark');
+
+  // Detect current theme
+  useEffect(() => {
+    const updateTheme = () => {
+      const currentTheme = document.documentElement.dataset.theme as 'light' | 'dark' | undefined;
+      setTheme(currentTheme || 'dark');
+    };
+
+    // Initial theme
+    updateTheme();
+
+    // Watch for theme changes
+    const observer = new MutationObserver(updateTheme);
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['data-theme']
+    });
+
+    return () => observer.disconnect();
+  }, []);
 
   if (!isOpen) return null;
+
+  // Theme-aware colors
+  const borderColor = theme === 'light' ? '#999' : '#555';
+  const labelColor = theme === 'light' ? '#666' : '#999';
 
   const toggleElement = (symbol: string) => {
     setSelectedElements(prev =>
@@ -86,7 +111,7 @@ export function PeriodicTableModal({ isOpen, onClose, onSelectElements, initialS
                       width={cellSize}
                       height={cellSize}
                       fill={element.bgColor}
-                      stroke={isSelected ? '#e44c65' : '#555'}
+                      stroke={isSelected ? '#e44c65' : borderColor}
                       strokeWidth={isSelected ? 3 : 1.5}
                       rx={4}
                     />
@@ -130,7 +155,7 @@ export function PeriodicTableModal({ isOpen, onClose, onSelectElements, initialS
                 textAnchor="middle"
                 dominantBaseline="middle"
                 fontSize="10"
-                fill="#666"
+                fill={labelColor}
               >
                 57-71
               </text>
@@ -142,7 +167,7 @@ export function PeriodicTableModal({ isOpen, onClose, onSelectElements, initialS
                 textAnchor="middle"
                 dominantBaseline="middle"
                 fontSize="10"
-                fill="#666"
+                fill={labelColor}
               >
                 89-103
               </text>
