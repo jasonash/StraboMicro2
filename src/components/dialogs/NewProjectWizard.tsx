@@ -762,7 +762,11 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
 
         {formData.orientationMethod === 'fabricReference' && (
           <Stack spacing={2} sx={{ pl: 4 }}>
-            <Typography variant="subtitle2" sx={{ fontWeight: 'bold' }}>Fabric Reference Frame</Typography>
+            <Typography variant="subtitle2" sx={{ fontWeight: 'bold' }}>
+              Fabric Reference: <Typography component="span" variant="body2" color="text.secondary" sx={{ fontWeight: 'normal' }}>
+                (X - Lineation, Y - Perpendicular to lineation within the foliation plane, Z - Pole to foliation)
+              </Typography>
+            </Typography>
             <RadioGroup
               row
               value={formData.fabricReference}
@@ -773,6 +777,9 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
               <FormControlLabel value="xy" control={<Radio />} label="XY" />
             </RadioGroup>
 
+            <Typography variant="subtitle2" sx={{ fontWeight: 'bold', mt: 1 }}>
+              Foliation Orientation: (Geographic Coordinates)
+            </Typography>
             <Stack direction="row" spacing={2}>
               <TextField
                 label="Strike"
@@ -792,7 +799,10 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
               />
             </Stack>
 
-            <Stack direction="row" spacing={2}>
+            <Typography variant="subtitle2" sx={{ fontWeight: 'bold', mt: 1 }}>
+              Lineation Orientation: (Geographic Coordinates)
+            </Typography>
+            <Stack direction="row" spacing={2} alignItems="center">
               <TextField
                 label="Trend"
                 type="number"
@@ -809,17 +819,22 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
                 InputProps={{ endAdornment: '°' }}
                 sx={{ flex: 1 }}
               />
+              <Typography variant="body2" sx={{ px: 1 }}>OR</Typography>
+              <TextField
+                label="Rake"
+                type="number"
+                value={formData.fabricRake}
+                onChange={(e) => updateField('fabricRake', e.target.value)}
+                InputProps={{ endAdornment: '°' }}
+                helperText="(RHR, 0-180)"
+                sx={{ flex: 1 }}
+              />
             </Stack>
 
-            <TextField
-              label="Rake"
-              type="number"
-              value={formData.fabricRake}
-              onChange={(e) => updateField('fabricRake', e.target.value)}
-              InputProps={{ endAdornment: '°' }}
-              fullWidth
-            />
-
+            <Typography variant="subtitle2" sx={{ fontWeight: 'bold', mt: 1 }}>Look Direction:</Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+              When looking at the Reference micrograph, are you looking toward the lower hemisphere or upper hemisphere in geographic coordinates?
+            </Typography>
             <RadioGroup
               value={formData.lookDirection}
               onChange={(e) => updateField('lookDirection', e.target.value as 'down' | 'up')}
