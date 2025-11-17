@@ -72,6 +72,9 @@ interface ProjectFormData {
   micrographFileName: string;
   micrographWidth: number;
   micrographHeight: number;
+  micrographTitle: string;
+  micrographNotes: string;
+  micrographAnnotations: string;
   instrumentType: string;
   otherInstrumentType: string;
   dataType: string;
@@ -179,6 +182,9 @@ const initialFormData: ProjectFormData = {
   micrographFileName: '',
   micrographWidth: 0,
   micrographHeight: 0,
+  micrographTitle: '',
+  micrographNotes: '',
+  micrographAnnotations: '',
   instrumentType: '',
   otherInstrumentType: '',
   dataType: '',
@@ -259,9 +265,9 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
            !['Optical Microscopy', 'Scanner', 'Other'].includes(formData.instrumentType);
   };
 
-  const baseSteps = ['Project Metadata', 'Dataset Information', 'Sample Information', 'Load Reference Micrograph', 'Instrument & Image Information', 'Instrument Data'];
+  const baseSteps = ['Project Metadata', 'Dataset Information', 'Sample Information', 'Load Reference Micrograph', 'Instrument & Image Information', 'Instrument Data', 'Micrograph Metadata'];
   const steps = shouldShowInstrumentSettings()
-    ? [...baseSteps, 'Instrument Settings']
+    ? [...baseSteps.slice(0, 6), 'Instrument Settings', baseSteps[6]]
     : baseSteps;
 
   const updateField = (field: keyof ProjectFormData, value: string | string[]) => {
@@ -349,7 +355,8 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
     // Create micrograph object if file was selected
     const micrographs = formData.micrographFilePath ? [{
       id: crypto.randomUUID(),
-      name: formData.micrographFileName,
+      name: formData.micrographTitle || formData.micrographFileName,
+      notes: formData.micrographNotes || undefined,
       imageFilename: formData.micrographFileName,
       imageWidth: formData.micrographWidth,
       imageHeight: formData.micrographHeight,
@@ -510,22 +517,34 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
       return true;
     }
     if (activeStep === 6) {
-      // Step 7: Instrument Settings - validation for conditional "Other" fields
-      if (formData.instrumentPurged === 'Yes' &&
-          formData.instrumentPurgedGasType === 'Other' &&
-          formData.instrumentPurgedGasOtherType.trim() === '') {
-        return false;
+      // Step 7: Instrument Settings (only shown for certain instrument types) OR Step 7: Micrograph Metadata
+      // For Instrument Settings - validation for conditional "Other" fields
+      if (shouldShowInstrumentSettings()) {
+        if (formData.instrumentPurged === 'Yes' &&
+            formData.instrumentPurgedGasType === 'Other' &&
+            formData.instrumentPurgedGasOtherType.trim() === '') {
+          return false;
+        }
+        if (formData.environmentPurged === 'Yes' &&
+            formData.environmentPurgedGasType === 'Other' &&
+            formData.environmentPurgedGasOtherType.trim() === '') {
+          return false;
+        }
+        if (formData.backgroundComposition === 'Other' &&
+            formData.otherBackgroundComposition.trim() === '') {
+          return false;
+        }
+        return true;
+      } else {
+        // This is Step 7: Micrograph Metadata (when Instrument Settings not shown)
+        // Title is required
+        return formData.micrographTitle.trim() !== '';
       }
-      if (formData.environmentPurged === 'Yes' &&
-          formData.environmentPurgedGasType === 'Other' &&
-          formData.environmentPurgedGasOtherType.trim() === '') {
-        return false;
-      }
-      if (formData.backgroundComposition === 'Other' &&
-          formData.otherBackgroundComposition.trim() === '') {
-        return false;
-      }
-      return true;
+    }
+    if (activeStep === 7) {
+      // Step 8: Micrograph Metadata (when Instrument Settings IS shown)
+      // Title is required
+      return formData.micrographTitle.trim() !== '';
     }
     return true;
   };
@@ -1778,6 +1797,42 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
           </Stack>
         );
 
+      case 7:
+        // Step 8: Micrograph Metadata (when Instrument Settings IS shown) OR Step 7: Micrograph Metadata (when not shown)
+        return (
+          <Stack spacing={2}>
+            <Typography variant="body2" color="text.secondary">
+              Add descriptive information about this micrograph.
+            </Typography>
+            <TextField
+              fullWidth
+              required
+              label="Micrograph Title"
+              value={formData.micrographTitle}
+              onChange={(e) => updateField('micrographTitle', e.target.value)}
+              helperText="A descriptive title for this micrograph"
+            />
+            <TextField
+              fullWidth
+              multiline
+              rows={4}
+              label="Notes"
+              value={formData.micrographNotes}
+              onChange={(e) => updateField('micrographNotes', e.target.value)}
+              helperText="Optional notes or description about this micrograph"
+            />
+            <TextField
+              fullWidth
+              multiline
+              rows={3}
+              label="Annotations / Tags"
+              value={formData.micrographAnnotations}
+              onChange={(e) => updateField('micrographAnnotations', e.target.value)}
+              helperText="Optional tags or annotations (comma-separated)"
+            />
+          </Stack>
+        );
+
       default:
         return null;
     }
@@ -1787,7 +1842,7 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
     <>
     <Dialog
       open={isOpen}
-      onClose={(event, reason) => {
+      onClose={(_event, reason) => {
         if (reason !== 'backdropClick' && reason !== 'escapeKeyDown') {
           handleCancel();
         }

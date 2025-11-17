@@ -114,7 +114,7 @@ export const EditProjectDialog: React.FC<EditProjectDialogProps> = ({ isOpen, on
   return (
     <Dialog
       open={isOpen}
-      onClose={(event, reason) => {
+      onClose={(_event, reason) => {
         if (reason !== 'backdropClick' && reason !== 'escapeKeyDown') {
           onClose();
         }
