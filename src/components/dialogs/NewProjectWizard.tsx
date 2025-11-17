@@ -10,7 +10,7 @@
  * After completion, creates project structure in store with micrograph
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -33,10 +33,13 @@ import {
   Radio,
   RadioGroup,
   CircularProgress,
+  IconButton,
+  Tooltip,
 } from '@mui/material';
 import { useAppStore } from '@/store';
 import { PeriodicTableModal } from './PeriodicTableModal';
-import { ScaleBarCanvas } from '../ScaleBarCanvas';
+import { ScaleBarCanvas, type Tool, type ScaleBarCanvasRef } from '../ScaleBarCanvas';
+import { PanTool, Timeline, ZoomIn, ZoomOut, RestartAlt } from '@mui/icons-material';
 
 interface NewProjectWizardProps {
   isOpen: boolean;
@@ -334,6 +337,8 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
   const [showPeriodicTable, setShowPeriodicTable] = useState(false);
   const [micrographPreviewUrl, setMicrographPreviewUrl] = useState<string>('');
   const [isLoadingPreview, setIsLoadingPreview] = useState(false);
+  const [canvasTool, setCanvasTool] = useState<Tool>('line'); // Start with line tool selected
+  const canvasRef = useRef<ScaleBarCanvasRef>(null);
   const loadProject = useAppStore((state) => state.loadProject);
 
   // Determine which steps to show based on instrument type
@@ -1342,15 +1347,70 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
             Draw a line over the scale bar in the micrograph, then enter the physical length that line represents.
           </Typography>
 
-          {/* Input fields in a single row above the canvas */}
-          <Stack direction="row" spacing={2} alignItems="flex-start">
+          {/* Toolbar and input fields all on one line */}
+          <Box
+            sx={{
+              display: 'flex',
+              gap: 2,
+              alignItems: 'center',
+              p: 1.5,
+              border: '1px solid',
+              borderColor: 'divider',
+              borderRadius: 1,
+              bgcolor: 'background.paper',
+            }}
+          >
+            {/* Drawing tools */}
+            <Stack direction="row" spacing={0.5}>
+              <Tooltip title="Pointer Tool (Pan/Zoom)">
+                <IconButton
+                  size="small"
+                  onClick={() => setCanvasTool('pointer')}
+                  color={canvasTool === 'pointer' ? 'primary' : 'default'}
+                >
+                  <PanTool />
+                </IconButton>
+              </Tooltip>
+
+              <Tooltip title="Line Tool (Draw Scale Bar)">
+                <IconButton
+                  size="small"
+                  onClick={() => setCanvasTool('line')}
+                  color={canvasTool === 'line' ? 'primary' : 'default'}
+                >
+                  <Timeline />
+                </IconButton>
+              </Tooltip>
+
+              <Tooltip title="Zoom In">
+                <IconButton size="small" onClick={() => canvasRef.current?.zoomIn()}>
+                  <ZoomIn />
+                </IconButton>
+              </Tooltip>
+
+              <Tooltip title="Zoom Out">
+                <IconButton size="small" onClick={() => canvasRef.current?.zoomOut()}>
+                  <ZoomOut />
+                </IconButton>
+              </Tooltip>
+
+              <Tooltip title="Reset Zoom">
+                <IconButton size="small" onClick={() => canvasRef.current?.resetZoom()}>
+                  <RestartAlt />
+                </IconButton>
+              </Tooltip>
+            </Stack>
+
+            <Divider orientation="vertical" flexItem />
+
+            {/* Input fields */}
             <TextField
               required
               label="Line Length (pixels)"
               value={formData.scaleBarLineLengthPixels}
-              helperText="Auto-filled when you draw a line"
               InputProps={{ readOnly: true }}
-              sx={{ flex: 1 }}
+              size="small"
+              sx={{ width: 180 }}
             />
 
             <TextField
@@ -1359,8 +1419,8 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
               type="number"
               value={formData.scaleBarPhysicalLength}
               onChange={(e) => updateField('scaleBarPhysicalLength', e.target.value)}
-              helperText="Real-world length the line represents"
-              sx={{ flex: 1 }}
+              size="small"
+              sx={{ width: 150 }}
             />
 
             <TextField
@@ -1369,8 +1429,8 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
               label="Units"
               value={formData.scaleBarUnits}
               onChange={(e) => updateField('scaleBarUnits', e.target.value)}
-              helperText=" "
-              sx={{ flex: 1 }}
+              size="small"
+              sx={{ width: 100 }}
             >
               {units.map((unit) => (
                 <MenuItem key={unit} value={unit}>
@@ -1378,12 +1438,16 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
                 </MenuItem>
               ))}
             </TextField>
-          </Stack>
+          </Box>
 
           {/* Canvas for drawing scale bar line */}
           {micrographPreviewUrl ? (
             <ScaleBarCanvas
+              ref={canvasRef}
               imageUrl={micrographPreviewUrl}
+              showToolbar={false}
+              currentTool={canvasTool}
+              onToolChange={setCanvasTool}
               onLineDrawn={(lineData) => {
                 updateField('scaleBarLineStart', lineData.start);
                 updateField('scaleBarLineEnd', lineData.end);

@@ -1,19 +1,38 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
 import { Stage, Layer, Image as KonvaImage, Line } from 'react-konva';
 import { Box, Stack, IconButton, Tooltip, Paper } from '@mui/material';
 import { PanTool, Timeline, ZoomIn, ZoomOut, RestartAlt } from '@mui/icons-material';
 import Konva from 'konva';
 
+export type Tool = 'pointer' | 'line';
+
+export interface ScaleBarCanvasRef {
+  zoomIn: () => void;
+  zoomOut: () => void;
+  resetZoom: () => void;
+}
+
 interface ScaleBarCanvasProps {
   imageUrl: string;
   onLineDrawn: (lineData: { start: { x: number; y: number }; end: { x: number; y: number }; lengthPixels: number }) => void;
+  showToolbar?: boolean;
+  currentTool?: Tool;
+  onToolChange?: (tool: Tool) => void;
 }
 
-type Tool = 'pointer' | 'line';
-
-export const ScaleBarCanvas: React.FC<ScaleBarCanvasProps> = ({ imageUrl, onLineDrawn }) => {
+export const ScaleBarCanvas = forwardRef<ScaleBarCanvasRef, ScaleBarCanvasProps>(({
+  imageUrl,
+  onLineDrawn,
+  showToolbar = true,
+  currentTool,
+  onToolChange
+}, ref) => {
   const [image, setImage] = useState<HTMLImageElement | null>(null);
-  const [tool, setTool] = useState<Tool>('pointer');
+  const [internalTool, setInternalTool] = useState<Tool>('pointer');
+
+  // Use controlled tool if provided, otherwise use internal state
+  const tool = currentTool ?? internalTool;
+  const setTool = onToolChange ?? setInternalTool;
   const [line, setLine] = useState<{ start: { x: number; y: number }; end: { x: number; y: number } } | null>(null);
   const [tempLine, setTempLine] = useState<{ start: { x: number; y: number }; end: { x: number; y: number } } | null>(null);
   const [isDrawing, setIsDrawing] = useState(false);
@@ -26,6 +45,13 @@ export const ScaleBarCanvas: React.FC<ScaleBarCanvasProps> = ({ imageUrl, onLine
   // Canvas dimensions
   const CANVAS_WIDTH = 800;
   const CANVAS_HEIGHT = 600;
+
+  // Expose zoom methods via ref
+  useImperativeHandle(ref, () => ({
+    zoomIn: handleZoomIn,
+    zoomOut: handleZoomOut,
+    resetZoom: handleResetZoom
+  }));
 
   // Load image
   useEffect(() => {
@@ -174,49 +200,51 @@ export const ScaleBarCanvas: React.FC<ScaleBarCanvasProps> = ({ imageUrl, onLine
 
   return (
     <Box>
-      <Paper elevation={2} sx={{ p: 1, mb: 2 }}>
-        <Stack direction="row" spacing={1} alignItems="center">
-          <Tooltip title="Pointer Tool (Pan/Zoom)">
-            <IconButton
-              size="small"
-              onClick={() => setTool('pointer')}
-              color={tool === 'pointer' ? 'primary' : 'default'}
-            >
-              <PanTool />
-            </IconButton>
-          </Tooltip>
+      {showToolbar && (
+        <Paper elevation={2} sx={{ p: 1, mb: 2 }}>
+          <Stack direction="row" spacing={1} alignItems="center">
+            <Tooltip title="Pointer Tool (Pan/Zoom)">
+              <IconButton
+                size="small"
+                onClick={() => setTool('pointer')}
+                color={tool === 'pointer' ? 'primary' : 'default'}
+              >
+                <PanTool />
+              </IconButton>
+            </Tooltip>
 
-          <Tooltip title="Line Tool (Draw Scale Bar)">
-            <IconButton
-              size="small"
-              onClick={() => setTool('line')}
-              color={tool === 'line' ? 'primary' : 'default'}
-            >
-              <Timeline />
-            </IconButton>
-          </Tooltip>
+            <Tooltip title="Line Tool (Draw Scale Bar)">
+              <IconButton
+                size="small"
+                onClick={() => setTool('line')}
+                color={tool === 'line' ? 'primary' : 'default'}
+              >
+                <Timeline />
+              </IconButton>
+            </Tooltip>
 
-          <Box sx={{ flexGrow: 1 }} />
+            <Box sx={{ flexGrow: 1 }} />
 
-          <Tooltip title="Zoom In">
-            <IconButton size="small" onClick={handleZoomIn}>
-              <ZoomIn />
-            </IconButton>
-          </Tooltip>
+            <Tooltip title="Zoom In">
+              <IconButton size="small" onClick={handleZoomIn}>
+                <ZoomIn />
+              </IconButton>
+            </Tooltip>
 
-          <Tooltip title="Zoom Out">
-            <IconButton size="small" onClick={handleZoomOut}>
-              <ZoomOut />
-            </IconButton>
-          </Tooltip>
+            <Tooltip title="Zoom Out">
+              <IconButton size="small" onClick={handleZoomOut}>
+                <ZoomOut />
+              </IconButton>
+            </Tooltip>
 
-          <Tooltip title="Reset Zoom">
-            <IconButton size="small" onClick={handleResetZoom}>
-              <RestartAlt />
-            </IconButton>
-          </Tooltip>
-        </Stack>
-      </Paper>
+            <Tooltip title="Reset Zoom">
+              <IconButton size="small" onClick={handleResetZoom}>
+                <RestartAlt />
+              </IconButton>
+            </Tooltip>
+          </Stack>
+        </Paper>
+      )}
 
       <Box
         ref={containerRef}
@@ -263,4 +291,4 @@ export const ScaleBarCanvas: React.FC<ScaleBarCanvasProps> = ({ imageUrl, onLine
       </Box>
     </Box>
   );
-};
+});
