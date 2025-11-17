@@ -39,6 +39,8 @@ import { PeriodicTableModal } from './PeriodicTableModal';
 interface NewProjectWizardProps {
   isOpen: boolean;
   onClose: () => void;
+  debugInitialStep?: number;
+  debugTestData?: Partial<ProjectFormData>;
 }
 
 interface ProjectFormData {
@@ -290,9 +292,9 @@ const initialFormData: ProjectFormData = {
   notesOnCrystalStructuresUsed: '',
 };
 
-export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onClose }) => {
-  const [activeStep, setActiveStep] = useState(0);
-  const [formData, setFormData] = useState<ProjectFormData>(initialFormData);
+export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onClose, debugInitialStep, debugTestData }) => {
+  const [activeStep, setActiveStep] = useState(debugInitialStep || 0);
+  const [formData, setFormData] = useState<ProjectFormData>(debugTestData ? { ...initialFormData, ...debugTestData } : initialFormData);
   const [detectors, setDetectors] = useState<Detector[]>([{ type: '', make: '', model: '' }]);
   const [showPeriodicTable, setShowPeriodicTable] = useState(false);
   const loadProject = useAppStore(state => state.loadProject);
