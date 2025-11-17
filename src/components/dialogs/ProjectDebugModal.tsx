@@ -24,9 +24,10 @@ import { useAppStore } from '@/store';
 interface ProjectDebugModalProps {
   isOpen: boolean;
   onClose: () => void;
+  onTestOrientationStep?: () => void;
 }
 
-export const ProjectDebugModal: React.FC<ProjectDebugModalProps> = ({ isOpen, onClose }) => {
+export const ProjectDebugModal: React.FC<ProjectDebugModalProps> = ({ isOpen, onClose, onTestOrientationStep }) => {
   const project = useAppStore(state => state.project);
   const projectFilePath = useAppStore(state => state.projectFilePath);
   const isDirty = useAppStore(state => state.isDirty);
@@ -118,6 +119,19 @@ export const ProjectDebugModal: React.FC<ProjectDebugModalProps> = ({ isOpen, on
         )}
       </DialogContent>
       <DialogActions>
+        {onTestOrientationStep && (
+          <Button
+            onClick={() => {
+              onTestOrientationStep();
+              onClose();
+            }}
+            variant="outlined"
+            color="warning"
+            sx={{ mr: 'auto' }}
+          >
+            Test Orientation Step
+          </Button>
+        )}
         <Button onClick={onClose}>Close</Button>
       </DialogActions>
     </Dialog>

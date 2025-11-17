@@ -11,9 +11,34 @@ function App() {
   const [isNewProjectDialogOpen, setIsNewProjectDialogOpen] = useState(false);
   const [isEditProjectDialogOpen, setIsEditProjectDialogOpen] = useState(false);
   const [isDebugModalOpen, setIsDebugModalOpen] = useState(false);
+  const [debugWizardStep, setDebugWizardStep] = useState<number | undefined>(undefined);
+  const [debugWizardData, setDebugWizardData] = useState<any>(undefined);
   const closeProject = useAppStore(state => state.closeProject);
   const project = useAppStore(state => state.project);
   const setTheme = useAppStore(state => state.setTheme);
+
+  const handleTestOrientationStep = () => {
+    // Determine which step to jump to based on whether Instrument Settings would be shown
+    // For "Optical Microscopy", Instrument Settings is not shown, so orientation is step 7 (index 7)
+    const testStep = 7; // This will be step 7 or 8 depending on the steps array
+
+    const testData = {
+      name: 'Debug Test Project',
+      datasetName: 'Test Dataset',
+      sampleName: 'Test Sample',
+      micrographFilePath: '/Volumes/8TB/Work/StraboMicro/Micro/ThinSections/good/C.tif',
+      micrographFileName: 'C.tif',
+      micrographWidth: 2048,
+      micrographHeight: 2048,
+      micrographName: 'Test Micrograph C',
+      instrumentType: 'Optical Microscopy',
+      orientationMethod: 'unoriented' as const,
+    };
+
+    setDebugWizardStep(testStep);
+    setDebugWizardData(testData);
+    setIsNewProjectDialogOpen(true);
+  };
 
   // Initialize theme system
   useTheme();
@@ -76,7 +101,13 @@ function App() {
       <MainLayout />
       <NewProjectWizard
         isOpen={isNewProjectDialogOpen}
-        onClose={() => setIsNewProjectDialogOpen(false)}
+        onClose={() => {
+          setIsNewProjectDialogOpen(false);
+          setDebugWizardStep(undefined);
+          setDebugWizardData(undefined);
+        }}
+        debugInitialStep={debugWizardStep}
+        debugTestData={debugWizardData}
       />
       <EditProjectDialog
         isOpen={isEditProjectDialogOpen}
@@ -85,6 +116,7 @@ function App() {
       <ProjectDebugModal
         isOpen={isDebugModalOpen}
         onClose={() => setIsDebugModalOpen(false)}
+        onTestOrientationStep={handleTestOrientationStep}
       />
     </>
   );
