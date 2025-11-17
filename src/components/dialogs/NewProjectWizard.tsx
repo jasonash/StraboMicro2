@@ -76,6 +76,8 @@ interface ProjectFormData {
   micrographPolished: boolean;
   micrographPolishDescription: string;
   micrographNotes: string;
+  micrographRotation: number;
+  micrographFlipped: boolean;
   instrumentType: string;
   otherInstrumentType: string;
   dataType: string;
@@ -187,6 +189,8 @@ const initialFormData: ProjectFormData = {
   micrographPolished: false,
   micrographPolishDescription: '',
   micrographNotes: '',
+  micrographRotation: 0,
+  micrographFlipped: false,
   instrumentType: '',
   otherInstrumentType: '',
   dataType: '',
@@ -267,12 +271,12 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
            !['Optical Microscopy', 'Scanner', 'Other'].includes(formData.instrumentType);
   };
 
-  const baseSteps = ['Project Metadata', 'Dataset Information', 'Sample Information', 'Load Reference Micrograph', 'Instrument & Image Information', 'Instrument Data', 'Micrograph Metadata'];
+  const baseSteps = ['Project Metadata', 'Dataset Information', 'Sample Information', 'Load Reference Micrograph', 'Instrument & Image Information', 'Instrument Data', 'Micrograph Metadata', 'Micrograph Orientation'];
   const steps = shouldShowInstrumentSettings()
-    ? [...baseSteps.slice(0, 6), 'Instrument Settings', baseSteps[6]]
+    ? [...baseSteps.slice(0, 6), 'Instrument Settings', baseSteps[6], baseSteps[7]]
     : baseSteps;
 
-  const updateField = (field: keyof ProjectFormData, value: string | string[] | boolean) => {
+  const updateField = (field: keyof ProjectFormData, value: string | string[] | boolean | number) => {
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
@@ -366,6 +370,8 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
       imageWidth: formData.micrographWidth,
       imageHeight: formData.micrographHeight,
       imageType: formData.imageType || undefined,
+      rotation: formData.micrographRotation || undefined,
+      flipped: formData.micrographFlipped || undefined,
       visible: true,
       instrument: {
         instrumentType: formData.instrumentType || undefined,
@@ -549,10 +555,20 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
       }
     }
     if (activeStep === 7) {
-      // Step 8: Micrograph Metadata (when Instrument Settings IS shown)
-      // Name is required, and if polished is checked, polish description is required
-      if (formData.micrographName.trim() === '') return false;
-      if (formData.micrographPolished && formData.micrographPolishDescription.trim() === '') return false;
+      // Step 8: Micrograph Metadata (when Instrument Settings IS shown) OR Step 8: Micrograph Orientation (when not shown)
+      if (shouldShowInstrumentSettings()) {
+        // This is Micrograph Metadata
+        if (formData.micrographName.trim() === '') return false;
+        if (formData.micrographPolished && formData.micrographPolishDescription.trim() === '') return false;
+        return true;
+      } else {
+        // This is Micrograph Orientation (no validation required - all fields optional)
+        return true;
+      }
+    }
+    if (activeStep === 8) {
+      // Step 9: Micrograph Orientation (when Instrument Settings IS shown)
+      // No validation required - all fields optional
       return true;
     }
     return true;
@@ -1859,52 +1875,118 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
         );
 
       case 7:
-        // Step 8: Micrograph Metadata (when Instrument Settings IS shown)
-        return (
-          <Stack spacing={2}>
-            <Typography variant="body2" color="text.secondary">
-              Add descriptive information about this micrograph.
-            </Typography>
-            <TextField
-              fullWidth
-              required
-              label="Name"
-              value={formData.micrographName}
-              onChange={(e) => updateField('micrographName', e.target.value)}
-              helperText="Name for this micrograph"
-            />
-            <FormControlLabel
-              control={
-                <Checkbox
-                  checked={formData.micrographPolished}
-                  onChange={(e) => {
-                    updateField('micrographPolished', e.target.checked);
-                    // Clear polish description if unchecking
-                    if (!e.target.checked) {
-                      updateField('micrographPolishDescription', '');
-                    }
-                  }}
-                />
-              }
-              label="Polished?"
-            />
-            {formData.micrographPolished && (
+        // Step 8: Either Micrograph Metadata (when Instrument Settings IS shown) OR Micrograph Orientation (when NOT shown)
+        if (shouldShowInstrumentSettings()) {
+          // This is Micrograph Metadata
+          return (
+            <Stack spacing={2}>
+              <Typography variant="body2" color="text.secondary">
+                Add descriptive information about this micrograph.
+              </Typography>
               <TextField
                 fullWidth
                 required
-                label="Polish Description"
-                value={formData.micrographPolishDescription}
-                onChange={(e) => updateField('micrographPolishDescription', e.target.value)}
-                helperText="Required when 'Polished?' is checked"
+                label="Name"
+                value={formData.micrographName}
+                onChange={(e) => updateField('micrographName', e.target.value)}
+                helperText="Name for this micrograph"
               />
-            )}
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={formData.micrographPolished}
+                    onChange={(e) => {
+                      updateField('micrographPolished', e.target.checked);
+                      // Clear polish description if unchecking
+                      if (!e.target.checked) {
+                        updateField('micrographPolishDescription', '');
+                      }
+                    }}
+                  />
+                }
+                label="Polished?"
+              />
+              {formData.micrographPolished && (
+                <TextField
+                  fullWidth
+                  required
+                  label="Polish Description"
+                  value={formData.micrographPolishDescription}
+                  onChange={(e) => updateField('micrographPolishDescription', e.target.value)}
+                  helperText="Required when 'Polished?' is checked"
+                />
+              )}
+              <TextField
+                fullWidth
+                multiline
+                rows={4}
+                label="Notes"
+                value={formData.micrographNotes}
+                onChange={(e) => updateField('micrographNotes', e.target.value)}
+              />
+            </Stack>
+          );
+        } else {
+          // This is Micrograph Orientation (when Instrument Settings NOT shown)
+          return (
+            <Stack spacing={2}>
+              <Typography variant="body2" color="text.secondary">
+                Set the orientation of the micrograph image.
+              </Typography>
+              <TextField
+                fullWidth
+                select
+                label="Rotation"
+                value={formData.micrographRotation}
+                onChange={(e) => updateField('micrographRotation', parseInt(e.target.value))}
+                helperText="Rotate the image for correct viewing orientation"
+              >
+                <MenuItem value={0}>0° (No rotation)</MenuItem>
+                <MenuItem value={90}>90° Clockwise</MenuItem>
+                <MenuItem value={180}>180°</MenuItem>
+                <MenuItem value={270}>270° Clockwise (90° Counter-clockwise)</MenuItem>
+              </TextField>
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={formData.micrographFlipped}
+                    onChange={(e) => updateField('micrographFlipped', e.target.checked)}
+                  />
+                }
+                label="Flip Horizontal"
+              />
+            </Stack>
+          );
+        }
+
+      case 8:
+        // Step 9: Micrograph Orientation (when Instrument Settings IS shown)
+        return (
+          <Stack spacing={2}>
+            <Typography variant="body2" color="text.secondary">
+              Set the orientation of the micrograph image.
+            </Typography>
             <TextField
               fullWidth
-              multiline
-              rows={4}
-              label="Notes"
-              value={formData.micrographNotes}
-              onChange={(e) => updateField('micrographNotes', e.target.value)}
+              select
+              label="Rotation"
+              value={formData.micrographRotation}
+              onChange={(e) => updateField('micrographRotation', parseInt(e.target.value))}
+              helperText="Rotate the image for correct viewing orientation"
+            >
+              <MenuItem value={0}>0° (No rotation)</MenuItem>
+              <MenuItem value={90}>90° Clockwise</MenuItem>
+              <MenuItem value={180}>180°</MenuItem>
+              <MenuItem value={270}>270° Clockwise (90° Counter-clockwise)</MenuItem>
+            </TextField>
+            <FormControlLabel
+              control={
+                <Checkbox
+                  checked={formData.micrographFlipped}
+                  onChange={(e) => updateField('micrographFlipped', e.target.checked)}
+                />
+              }
+              label="Flip Horizontal"
             />
           </Stack>
         );
