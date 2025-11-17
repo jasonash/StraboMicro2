@@ -3,9 +3,40 @@ const path = require('path');
 const fs = require('fs');
 const log = require('electron-log');
 
+// Handle EPIPE errors at process level (prevents crash on broken stdout pipe)
+process.stdout.on('error', (err) => {
+  if (err.code === 'EPIPE') {
+    // Ignore EPIPE errors - this happens when stdout is closed
+    return;
+  }
+  console.error('stdout error:', err);
+});
+
+process.stderr.on('error', (err) => {
+  if (err.code === 'EPIPE') {
+    // Ignore EPIPE errors - this happens when stderr is closed
+    return;
+  }
+  console.error('stderr error:', err);
+});
+
 // Configure electron-log
 log.transports.file.level = 'info';
 log.transports.console.level = 'debug';
+
+// Prevent EPIPE errors when console transport pipe is closed
+log.transports.console.useStyles = false;
+log.errorHandler.startCatching({
+  onError: ({ error, errorName }) => {
+    // Suppress EPIPE errors from console transport
+    if (error.code === 'EPIPE') {
+      return;
+    }
+    // Log other errors to file only
+    log.transports.console.level = false;
+    log.error(`${errorName}:`, error);
+  }
+});
 
 // Log application startup
 log.info('StraboMicro application starting...');
