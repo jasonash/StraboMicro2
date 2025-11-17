@@ -2343,11 +2343,30 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
       <DialogTitle>New Project</DialogTitle>
       <DialogContent>
         <Stepper activeStep={activeStep} sx={{ pt: 3, pb: 5 }}>
-          {steps.map((label) => (
-            <Step key={label}>
-              <StepLabel>{label}</StepLabel>
-            </Step>
-          ))}
+          {(() => {
+            const maxVisibleSteps = 5;
+            const totalSteps = steps.length;
+
+            // Calculate visible window
+            let startIndex = Math.max(0, activeStep - Math.floor(maxVisibleSteps / 2));
+            let endIndex = Math.min(totalSteps, startIndex + maxVisibleSteps);
+
+            // Adjust start if we're near the end
+            if (endIndex === totalSteps) {
+              startIndex = Math.max(0, totalSteps - maxVisibleSteps);
+            }
+
+            const visibleSteps = steps.slice(startIndex, endIndex);
+
+            return visibleSteps.map((label, index) => {
+              const actualIndex = startIndex + index;
+              return (
+                <Step key={label} completed={actualIndex < activeStep}>
+                  <StepLabel>{label}</StepLabel>
+                </Step>
+              );
+            });
+          })()}
         </Stepper>
         <Box sx={{ mt: 2, mb: 1 }}>
           {renderStepContent(activeStep)}
