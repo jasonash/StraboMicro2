@@ -337,7 +337,7 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
   const [showPeriodicTable, setShowPeriodicTable] = useState(false);
   const [micrographPreviewUrl, setMicrographPreviewUrl] = useState<string>('');
   const [isLoadingPreview, setIsLoadingPreview] = useState(false);
-  const [canvasTool, setCanvasTool] = useState<Tool>('line'); // Start with line tool selected
+  const [canvasTool, setCanvasTool] = useState<Tool>('pointer'); // Start with pointer tool (pan/zoom)
   const canvasRef = useRef<ScaleBarCanvasRef>(null);
   const loadProject = useAppStore((state) => state.loadProject);
 
