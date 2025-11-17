@@ -1401,40 +1401,69 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
             Enter the number of pixels per unit directly.
           </Typography>
 
-          <TextField
-            fullWidth
-            required
-            label="Pixels"
-            type="number"
-            value={formData.pixels}
-            onChange={(e) => updateField('pixels', e.target.value)}
-            helperText="Number of pixels"
-          />
+          {/* Image preview */}
+          {micrographPreviewUrl && (
+            <Box
+              sx={{
+                display: 'flex',
+                justifyContent: 'center',
+                border: '1px solid',
+                borderColor: 'divider',
+                borderRadius: 1,
+                p: 2,
+                bgcolor: 'background.paper',
+              }}
+            >
+              {isLoadingPreview ? (
+                <CircularProgress />
+              ) : (
+                <img
+                  src={micrographPreviewUrl}
+                  alt="Micrograph preview"
+                  style={{ maxWidth: '100%', maxHeight: '300px', objectFit: 'contain' }}
+                />
+              )}
+            </Box>
+          )}
 
-          <TextField
-            fullWidth
-            required
-            label="Physical Length"
-            type="number"
-            value={formData.physicalLength}
-            onChange={(e) => updateField('physicalLength', e.target.value)}
-            helperText="Corresponding physical length"
-          />
+          {/* Single-line input fields */}
+          <Stack direction="row" spacing={2} alignItems="flex-start">
+            <TextField
+              required
+              label="Pixels"
+              type="number"
+              value={formData.pixels}
+              onChange={(e) => updateField('pixels', e.target.value)}
+              helperText="Number of pixels"
+              sx={{ flex: 1 }}
+            />
 
-          <TextField
-            fullWidth
-            select
-            required
-            label="Units"
-            value={formData.pixelUnits}
-            onChange={(e) => updateField('pixelUnits', e.target.value)}
-          >
-            {units.map((unit) => (
-              <MenuItem key={unit} value={unit}>
-                {unit}
-              </MenuItem>
-            ))}
-          </TextField>
+            <TextField
+              required
+              label="Physical Length"
+              type="number"
+              value={formData.physicalLength}
+              onChange={(e) => updateField('physicalLength', e.target.value)}
+              helperText="Corresponding length"
+              sx={{ flex: 1 }}
+            />
+
+            <TextField
+              select
+              required
+              label="Units"
+              value={formData.pixelUnits}
+              onChange={(e) => updateField('pixelUnits', e.target.value)}
+              helperText="Unit of measurement"
+              sx={{ flex: 1 }}
+            >
+              {units.map((unit) => (
+                <MenuItem key={unit} value={unit}>
+                  {unit}
+                </MenuItem>
+              ))}
+            </TextField>
+          </Stack>
 
           <Typography variant="caption" color="text.secondary">
             Pixels per unit: {formData.pixels && formData.physicalLength
@@ -1474,47 +1503,76 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
       return (
         <Stack spacing={2}>
           <Typography variant="body2" color="text.secondary">
-            Enter either the physical width or height - the other will be auto-calculated based on the image aspect ratio.
+            Enter either the physical width or height - the other will be auto-calculated.
           </Typography>
+
+          {/* Image preview */}
+          {micrographPreviewUrl && (
+            <Box
+              sx={{
+                display: 'flex',
+                justifyContent: 'center',
+                border: '1px solid',
+                borderColor: 'divider',
+                borderRadius: 1,
+                p: 2,
+                bgcolor: 'background.paper',
+              }}
+            >
+              {isLoadingPreview ? (
+                <CircularProgress />
+              ) : (
+                <img
+                  src={micrographPreviewUrl}
+                  alt="Micrograph preview"
+                  style={{ maxWidth: '100%', maxHeight: '300px', objectFit: 'contain' }}
+                />
+              )}
+            </Box>
+          )}
 
           <Typography variant="caption" color="text.secondary">
-            Image dimensions: {formData.micrographWidth} x {formData.micrographHeight} pixels (aspect ratio: {aspectRatio.toFixed(3)})
+            Image: {formData.micrographWidth} x {formData.micrographHeight} pixels (aspect ratio: {aspectRatio.toFixed(3)})
           </Typography>
 
-          <TextField
-            fullWidth
-            required
-            label="Image Width (physical)"
-            type="number"
-            value={formData.imageWidthPhysical}
-            onChange={(e) => handleWidthChange(e.target.value)}
-            helperText="Physical width of the entire image (height will be auto-calculated)"
-          />
+          {/* Single-line input fields */}
+          <Stack direction="row" spacing={2} alignItems="flex-start">
+            <TextField
+              required
+              label="Width"
+              type="number"
+              value={formData.imageWidthPhysical}
+              onChange={(e) => handleWidthChange(e.target.value)}
+              helperText="Auto-calculates height"
+              sx={{ flex: 1 }}
+            />
 
-          <TextField
-            fullWidth
-            required
-            label="Image Height (physical)"
-            type="number"
-            value={formData.imageHeightPhysical}
-            onChange={(e) => handleHeightChange(e.target.value)}
-            helperText="Physical height of the entire image (width will be auto-calculated)"
-          />
+            <TextField
+              required
+              label="Height"
+              type="number"
+              value={formData.imageHeightPhysical}
+              onChange={(e) => handleHeightChange(e.target.value)}
+              helperText="Auto-calculates width"
+              sx={{ flex: 1 }}
+            />
 
-          <TextField
-            fullWidth
-            select
-            required
-            label="Units"
-            value={formData.sizeUnits}
-            onChange={(e) => updateField('sizeUnits', e.target.value)}
-          >
-            {units.map((unit) => (
-              <MenuItem key={unit} value={unit}>
-                {unit}
-              </MenuItem>
-            ))}
-          </TextField>
+            <TextField
+              select
+              required
+              label="Units"
+              value={formData.sizeUnits}
+              onChange={(e) => updateField('sizeUnits', e.target.value)}
+              helperText="Unit of measurement"
+              sx={{ flex: 1 }}
+            >
+              {units.map((unit) => (
+                <MenuItem key={unit} value={unit}>
+                  {unit}
+                </MenuItem>
+              ))}
+            </TextField>
+          </Stack>
 
           <Typography variant="caption" color="text.secondary">
             Pixels per unit: {formData.imageWidthPhysical
