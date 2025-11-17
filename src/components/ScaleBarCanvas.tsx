@@ -126,7 +126,7 @@ export const ScaleBarCanvas = forwardRef<ScaleBarCanvasRef, ScaleBarCanvasProps>
   };
 
   const handleZoomIn = () => {
-    setScale(prev => Math.min(prev * 1.2, 5));
+    setScale(prev => Math.min(prev * 1.2, 20));
   };
 
   const handleZoomOut = () => {
@@ -162,7 +162,7 @@ export const ScaleBarCanvas = forwardRef<ScaleBarCanvasRef, ScaleBarCanvasProps>
 
     const direction = e.evt.deltaY > 0 ? -1 : 1;
     const newScale = direction > 0 ? oldScale * 1.1 : oldScale / 1.1;
-    const clampedScale = Math.max(0.1, Math.min(5, newScale));
+    const clampedScale = Math.max(0.1, Math.min(20, newScale));
 
     setScale(clampedScale);
     setStagePos({
