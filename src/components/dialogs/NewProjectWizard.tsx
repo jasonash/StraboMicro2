@@ -39,7 +39,7 @@ import {
 import { useAppStore } from '@/store';
 import { PeriodicTableModal } from './PeriodicTableModal';
 import { ScaleBarCanvas, type Tool, type ScaleBarCanvasRef } from '../ScaleBarCanvas';
-import { PanTool, Timeline, ZoomIn, ZoomOut, RestartAlt } from '@mui/icons-material';
+import { PanTool, Timeline, RestartAlt } from '@mui/icons-material';
 
 interface NewProjectWizardProps {
   isOpen: boolean;
@@ -1379,18 +1379,6 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
                   color={canvasTool === 'line' ? 'primary' : 'default'}
                 >
                   <Timeline />
-                </IconButton>
-              </Tooltip>
-
-              <Tooltip title="Zoom In">
-                <IconButton size="small" onClick={() => canvasRef.current?.zoomIn()}>
-                  <ZoomIn />
-                </IconButton>
-              </Tooltip>
-
-              <Tooltip title="Zoom Out">
-                <IconButton size="small" onClick={() => canvasRef.current?.zoomOut()}>
-                  <ZoomOut />
                 </IconButton>
               </Tooltip>
 
