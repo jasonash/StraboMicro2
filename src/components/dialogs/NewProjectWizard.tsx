@@ -32,6 +32,7 @@ import {
   Divider,
   Radio,
   RadioGroup,
+  CircularProgress,
 } from '@mui/material';
 import { useAppStore } from '@/store';
 import { PeriodicTableModal } from './PeriodicTableModal';
@@ -297,6 +298,8 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
   const [formData, setFormData] = useState<ProjectFormData>(debugTestData ? { ...initialFormData, ...debugTestData } : initialFormData);
   const [detectors, setDetectors] = useState<Detector[]>([{ type: '', make: '', model: '' }]);
   const [showPeriodicTable, setShowPeriodicTable] = useState(false);
+  const [micrographPreviewUrl, setMicrographPreviewUrl] = useState<string>('');
+  const [isLoadingPreview, setIsLoadingPreview] = useState(false);
   const loadProject = useAppStore(state => state.loadProject);
 
   // Determine which steps to show based on instrument type
@@ -337,6 +340,37 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
       }
     }
   }, [formData.instrumentType, formData.dataType]);
+
+  // Handle debug mode: update step and form data when debug props change
+  useEffect(() => {
+    if (isOpen && debugInitialStep !== undefined) {
+      setActiveStep(debugInitialStep);
+    }
+    if (isOpen && debugTestData) {
+      setFormData({ ...initialFormData, ...debugTestData });
+    }
+  }, [isOpen, debugInitialStep, debugTestData]);
+
+  // Load micrograph preview image (thumbnail for fast preview)
+  useEffect(() => {
+    const loadPreview = async () => {
+      if (formData.micrographFilePath && window.api?.loadImagePreview) {
+        try {
+          setIsLoadingPreview(true);
+          console.log('Loading thumbnail preview for:', formData.micrographFilePath);
+          // Request thumbnail size for fast loading in orientation step
+          const dataUrl = await window.api.loadImagePreview(formData.micrographFilePath, 'thumbnail');
+          console.log('Thumbnail preview loaded, dataUrl length:', dataUrl?.length);
+          setMicrographPreviewUrl(dataUrl);
+        } catch (error) {
+          console.error('Error loading micrograph preview:', error);
+        } finally {
+          setIsLoadingPreview(false);
+        }
+      }
+    };
+    loadPreview();
+  }, [formData.micrographFilePath]);
 
   // Validation handlers for latitude/longitude
   const handleLatitudeChange = (value: string) => {
@@ -679,86 +713,152 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
         </RadioGroup>
 
         {formData.orientationMethod === 'trendPlunge' && (
-          <Stack spacing={2} sx={{ pl: 4 }}>
-            <Typography variant="body2" color="text.secondary">
+          <Stack spacing={3} sx={{ pl: 4 }}>
+            <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 600 }}>
               Provide TWO of THREE: Select the arrow on each edge that represents a lower hemisphere plunge, and enter the trend and plunge information and/or provide the strike and dip of the thin section.
             </Typography>
 
-            <Typography variant="subtitle2" sx={{ fontWeight: 'bold' }}>Top Edge</Typography>
-            <Stack direction="row" spacing={2}>
-              <TextField
-                label="Trend"
-                type="number"
-                value={formData.topTrend}
-                onChange={(e) => updateField('topTrend', e.target.value)}
-                InputProps={{ endAdornment: '°' }}
-                sx={{ flex: 1 }}
-              />
-              <TextField
-                label="Plunge"
-                type="number"
-                value={formData.topPlunge}
-                onChange={(e) => updateField('topPlunge', e.target.value)}
-                InputProps={{ endAdornment: '°' }}
-                sx={{ flex: 1 }}
-              />
-            </Stack>
-            <RadioGroup
-              row
-              value={formData.topReferenceCorner}
-              onChange={(e) => updateField('topReferenceCorner', e.target.value as 'left' | 'right')}
-            >
-              <FormControlLabel value="left" control={<Radio />} label="Left" />
-              <FormControlLabel value="right" control={<Radio />} label="Right" />
-            </RadioGroup>
+            {/* Main layout: Fields on left, Image preview with arrows on right */}
+            <Box sx={{ display: 'flex', gap: 5, alignItems: 'flex-start', mt: 2 }}>
+              {/* Left side: Trend and Plunge fields */}
+              <Stack spacing={2} sx={{ width: 120, flexShrink: 0, mt: '80px' }}>
+                <Typography variant="subtitle2" sx={{ fontWeight: 'bold' }}>Trend:</Typography>
+                <TextField
+                  type="number"
+                  value={formData.topTrend}
+                  onChange={(e) => updateField('topTrend', e.target.value)}
+                  InputProps={{ endAdornment: '°' }}
+                  size="small"
+                />
 
-            <Typography variant="subtitle2" sx={{ fontWeight: 'bold' }}>Side Edge</Typography>
-            <Stack direction="row" spacing={2}>
-              <TextField
-                label="Trend"
-                type="number"
-                value={formData.sideTrend}
-                onChange={(e) => updateField('sideTrend', e.target.value)}
-                InputProps={{ endAdornment: '°' }}
-                sx={{ flex: 1 }}
-              />
-              <TextField
-                label="Plunge"
-                type="number"
-                value={formData.sidePlunge}
-                onChange={(e) => updateField('sidePlunge', e.target.value)}
-                InputProps={{ endAdornment: '°' }}
-                sx={{ flex: 1 }}
-              />
-            </Stack>
-            <RadioGroup
-              row
-              value={formData.sideReferenceCorner}
-              onChange={(e) => updateField('sideReferenceCorner', e.target.value as 'top' | 'bottom')}
-            >
-              <FormControlLabel value="top" control={<Radio />} label="Top" />
-              <FormControlLabel value="bottom" control={<Radio />} label="Bottom" />
-            </RadioGroup>
+                <Typography variant="subtitle2" sx={{ fontWeight: 'bold', mt: 2 }}>Plunge:</Typography>
+                <TextField
+                  type="number"
+                  value={formData.topPlunge}
+                  onChange={(e) => updateField('topPlunge', e.target.value)}
+                  InputProps={{ endAdornment: '°' }}
+                  size="small"
+                />
+              </Stack>
 
-            <Typography variant="subtitle2" sx={{ fontWeight: 'bold' }}>Strike and Dip</Typography>
-            <Stack direction="row" spacing={2}>
-              <TextField
-                label="Strike"
-                type="number"
-                value={formData.trendPlungeStrike}
-                onChange={(e) => updateField('trendPlungeStrike', e.target.value)}
-                InputProps={{ endAdornment: '°' }}
-                sx={{ flex: 1 }}
-              />
-              <TextField
-                label="Dip"
-                type="number"
-                value={formData.trendPlungeDip}
-                onChange={(e) => updateField('trendPlungeDip', e.target.value)}
-                InputProps={{ endAdornment: '°' }}
-                sx={{ flex: 1 }}
-              />
-            </Stack>
+              {/* Right side: Image preview with arrows */}
+              <Box sx={{ position: 'relative', display: 'inline-block', mt: 6, ml: 8 }}>
+                {/* Top edge arrows - positioned at corners */}
+                <RadioGroup
+                  row
+                  value={formData.topReferenceCorner}
+                  onChange={(e) => updateField('topReferenceCorner', e.target.value as 'left' | 'right')}
+                >
+                  {/* Left corner */}
+                  <Box sx={{ position: 'absolute', top: -45, left: -5, display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                    <Radio value="left" />
+                    <Typography sx={{ fontSize: 28, lineHeight: 1 }}>→</Typography>
+                  </Box>
+                  {/* Right corner */}
+                  <Box sx={{ position: 'absolute', top: -45, right: -5, display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                    <Typography sx={{ fontSize: 28, lineHeight: 1 }}>←</Typography>
+                    <Radio value="right" />
+                  </Box>
+                </RadioGroup>
+
+                {/* Left edge arrows - positioned at corners */}
+                <RadioGroup
+                  value={formData.sideReferenceCorner}
+                  onChange={(e) => updateField('sideReferenceCorner', e.target.value as 'top' | 'bottom')}
+                >
+                  {/* Top corner */}
+                  <Box sx={{ position: 'absolute', left: -55, top: -5, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                    <Radio value="top" />
+                    <Typography sx={{ fontSize: 28, lineHeight: 1 }}>↓</Typography>
+                  </Box>
+                  {/* Bottom corner */}
+                  <Box sx={{ position: 'absolute', left: -55, bottom: -5, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                    <Typography sx={{ fontSize: 28, lineHeight: 1 }}>↑</Typography>
+                    <Radio value="bottom" />
+                  </Box>
+                </RadioGroup>
+
+                {/* Image preview */}
+                {isLoadingPreview ? (
+                  <Box
+                    sx={{
+                      width: 300,
+                      height: 300,
+                      border: '1px solid',
+                      borderColor: 'divider',
+                      bgcolor: 'background.default',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 2,
+                    }}
+                  >
+                    <CircularProgress />
+                    <Typography variant="body2" color="text.secondary">Loading preview...</Typography>
+                  </Box>
+                ) : micrographPreviewUrl ? (
+                  <Box
+                    component="img"
+                    src={micrographPreviewUrl}
+                    alt="Micrograph preview"
+                    sx={{
+                      width: 300,
+                      height: 300,
+                      objectFit: 'contain',
+                      border: '1px solid',
+                      borderColor: 'divider',
+                      bgcolor: 'background.paper',
+                    }}
+                  />
+                ) : (
+                  <Box
+                    sx={{
+                      width: 300,
+                      height: 300,
+                      border: '1px solid',
+                      borderColor: 'divider',
+                      bgcolor: 'background.default',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <Typography variant="body2" color="text.secondary">No image loaded</Typography>
+                  </Box>
+                )}
+              </Box>
+            </Box>
+
+            {/* Strike and Dip below the image */}
+            <Box sx={{ display: 'flex', gap: 5, mt: 2 }}>
+              {/* Spacer to match left side width */}
+              <Box sx={{ width: 120, flexShrink: 0 }} />
+
+              {/* Strike and Dip fields */}
+              <Box sx={{ ml: '-20px' }}>
+                <Stack direction="row" spacing={2} alignItems="center">
+                  <Typography variant="subtitle2" sx={{ fontWeight: 'bold', minWidth: 60 }}>Strike:</Typography>
+                  <TextField
+                    type="number"
+                    value={formData.trendPlungeStrike}
+                    onChange={(e) => updateField('trendPlungeStrike', e.target.value)}
+                    InputProps={{ endAdornment: '°' }}
+                    size="small"
+                    sx={{ width: 120 }}
+                  />
+                  <Typography variant="subtitle2" sx={{ fontWeight: 'bold', minWidth: 40, ml: 2 }}>Dip:</Typography>
+                  <TextField
+                    type="number"
+                    value={formData.trendPlungeDip}
+                    onChange={(e) => updateField('trendPlungeDip', e.target.value)}
+                    InputProps={{ endAdornment: '°' }}
+                    size="small"
+                    sx={{ width: 120 }}
+                  />
+                </Stack>
+              </Box>
+            </Box>
           </Stack>
         )}
 
@@ -804,13 +904,14 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
             <Typography variant="subtitle2" sx={{ fontWeight: 'bold', mt: 1 }}>
               Lineation Orientation: (Geographic Coordinates)
             </Typography>
-            <Stack direction="row" spacing={2} alignItems="center">
+            <Stack direction="row" spacing={2} alignItems="flex-start">
               <TextField
                 label="Trend"
                 type="number"
                 value={formData.fabricTrend}
                 onChange={(e) => updateField('fabricTrend', e.target.value)}
                 InputProps={{ endAdornment: '°' }}
+                helperText=" "
                 sx={{ flex: 1 }}
               />
               <TextField
@@ -819,9 +920,10 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
                 value={formData.fabricPlunge}
                 onChange={(e) => updateField('fabricPlunge', e.target.value)}
                 InputProps={{ endAdornment: '°' }}
+                helperText=" "
                 sx={{ flex: 1 }}
               />
-              <Typography variant="body2" sx={{ px: 1 }}>OR</Typography>
+              <Typography variant="body2" sx={{ px: 1, pt: 2 }}>OR</Typography>
               <TextField
                 label="Rake"
                 type="number"

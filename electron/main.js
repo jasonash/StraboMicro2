@@ -273,6 +273,15 @@ function createWindow() {
           }
         },
         {
+          label: 'Test Orientation Step',
+          accelerator: 'CmdOrCtrl+Shift+O',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('menu:test-orientation-step');
+            }
+          }
+        },
+        {
           label: 'Clear Project',
           click: () => {
             if (mainWindow) {
@@ -414,6 +423,108 @@ ipcMain.handle('load-tiff-image', async (event, filePath) => {
     };
   } catch (error) {
     log.error('Error loading image metadata:', error);
+    throw error;
+  }
+});
+
+// Load image as base64 data URL for preview
+// size: 'thumbnail' (max 512px) or 'full' (original resolution)
+ipcMain.handle('load-image-preview', async (event, filePath, size = 'thumbnail') => {
+  try {
+    log.info(`Loading image preview: ${filePath}, size: ${size}`);
+    const ext = path.extname(filePath).toLowerCase();
+
+    // For TIFF files, decode using the tiff library and convert to PNG
+    if (ext === '.tif' || ext === '.tiff') {
+      const { decode } = await import('tiff');
+      const { createCanvas } = require('canvas');
+
+      const tiffData = fs.readFileSync(filePath);
+      const images = decode(tiffData);
+
+      if (!images || images.length === 0) {
+        throw new Error('No images found in TIFF file');
+      }
+
+      const image = images[0]; // Use first image
+
+      // Determine bytes per pixel to identify the format
+      const bytesPerPixel = image.data.length / (image.width * image.height);
+      log.info(`TIFF decoded: ${image.width}x${image.height}, ${image.data.length} bytes, ${bytesPerPixel} bytes/pixel`);
+
+      const sourceData = new Uint8Array(image.data);
+      let rgbaData;
+
+      if (bytesPerPixel === 3) {
+        // RGB format - need to convert to RGBA
+        log.info('Converting RGB to RGBA');
+        const pixelCount = image.width * image.height;
+        rgbaData = new Uint8ClampedArray(pixelCount * 4);
+
+        for (let i = 0, j = 0; i < sourceData.length; i += 3, j += 4) {
+          rgbaData[j] = sourceData[i];         // R
+          rgbaData[j + 1] = sourceData[i + 1]; // G
+          rgbaData[j + 2] = sourceData[i + 2]; // B
+          rgbaData[j + 3] = 255;               // A (fully opaque)
+        }
+      } else if (bytesPerPixel === 4) {
+        // Already RGBA format
+        log.info('Already RGBA format');
+        rgbaData = new Uint8ClampedArray(sourceData);
+      } else {
+        throw new Error(`Unsupported TIFF format: ${bytesPerPixel} bytes per pixel`);
+      }
+
+      // Determine final canvas dimensions based on size parameter
+      let finalWidth = image.width;
+      let finalHeight = image.height;
+
+      if (size === 'thumbnail') {
+        // Downsample to max 512px on longest edge
+        const maxDimension = 512;
+        const scale = Math.min(maxDimension / image.width, maxDimension / image.height, 1);
+        finalWidth = Math.floor(image.width * scale);
+        finalHeight = Math.floor(image.height * scale);
+        log.info(`Downsampling from ${image.width}x${image.height} to ${finalWidth}x${finalHeight}`);
+      }
+
+      // Create canvas with original size first to render RGBA data
+      const tempCanvas = createCanvas(image.width, image.height);
+      const tempCtx = tempCanvas.getContext('2d');
+      const imageData = tempCtx.createImageData(image.width, image.height);
+      imageData.data.set(rgbaData);
+      tempCtx.putImageData(imageData, 0, 0);
+
+      // If thumbnail mode and needs downsampling, create a smaller canvas
+      let finalCanvas = tempCanvas;
+      if (size === 'thumbnail' && (finalWidth !== image.width || finalHeight !== image.height)) {
+        finalCanvas = createCanvas(finalWidth, finalHeight);
+        const finalCtx = finalCanvas.getContext('2d');
+        // Use high-quality downsampling
+        finalCtx.imageSmoothingEnabled = true;
+        finalCtx.imageSmoothingQuality = 'high';
+        finalCtx.drawImage(tempCanvas, 0, 0, finalWidth, finalHeight);
+      }
+
+      // Convert to PNG data URL
+      const pngDataUrl = finalCanvas.toDataURL('image/png');
+      return pngDataUrl;
+    }
+
+    // For other formats (JPEG, PNG, BMP), read directly
+    const imageBuffer = fs.readFileSync(filePath);
+    let mimeType = 'image/png';
+
+    if (ext === '.jpg' || ext === '.jpeg') {
+      mimeType = 'image/jpeg';
+    } else if (ext === '.bmp') {
+      mimeType = 'image/bmp';
+    }
+
+    const base64 = imageBuffer.toString('base64');
+    return `data:${mimeType};base64,${base64}`;
+  } catch (error) {
+    log.error('Error loading image preview:', error);
     throw error;
   }
 });

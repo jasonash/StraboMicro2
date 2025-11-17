@@ -10,6 +10,7 @@ contextBridge.exposeInMainWorld('api', {
   onOpenProject: (callback) => ipcRenderer.on('menu:open-project', callback),
   onEditProject: (callback) => ipcRenderer.on('menu:edit-project', callback),
   onShowProjectDebug: (callback) => ipcRenderer.on('menu:show-project-debug', callback),
+  onTestOrientationStep: (callback) => ipcRenderer.on('menu:test-orientation-step', callback),
   onClearProject: (callback) => ipcRenderer.on('menu:clear-project', callback),
 
   // File dialogs
@@ -17,6 +18,10 @@ contextBridge.exposeInMainWorld('api', {
 
   // TIFF loading
   loadTiffImage: (filePath) => ipcRenderer.invoke('load-tiff-image', filePath),
+
+  // Image preview loading (returns base64 data URL)
+  // size: 'thumbnail' (max 512px, fast) or 'full' (original resolution)
+  loadImagePreview: (filePath, size) => ipcRenderer.invoke('load-image-preview', filePath, size),
 
   // Window title
   setWindowTitle: (title) => ipcRenderer.send('set-window-title', title),

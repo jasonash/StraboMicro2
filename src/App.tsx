@@ -23,15 +23,67 @@ function App() {
     const testStep = 7; // This will be step 7 or 8 depending on the steps array
 
     const testData = {
+      // Step 1: Project Metadata
       name: 'Debug Test Project',
+      startDate: '2025-01-01',
+      endDate: '2025-12-31',
+      purposeOfStudy: 'Microstructural analysis of deformed rocks',
+      otherTeamMembers: 'Dr. Jane Smith, Dr. Bob Jones',
+      areaOfInterest: 'Western Alps',
+      gpsDatum: 'WGS84',
+      magneticDeclination: '2.5',
+      notes: 'Debug test project for orientation step development',
+
+      // Step 2: Dataset Information
       datasetName: 'Test Dataset',
-      sampleName: 'Test Sample',
-      micrographFilePath: '/Volumes/8TB/Work/StraboMicro/Micro/ThinSections/good/C.tif',
-      micrographFileName: 'C.tif',
-      micrographWidth: 2048,
-      micrographHeight: 2048,
-      micrographName: 'Test Micrograph C',
+
+      // Step 3: Sample Information
+      sampleID: 'TEST-001',
+      longitude: '7.5',
+      latitude: '45.8',
+      mainSamplingPurpose: 'Microstructure',
+      sampleDescription: 'Mylonitic quartzite sample from shear zone',
+      materialType: 'Rock',
+      lithology: 'Quartzite',
+      inplacenessOfSample: 'In Place',
+      orientedSample: 'yes',
+      sampleOrientationNotes: 'Oriented with magnetic compass',
+      sampleSize: 'Hand Sample',
+      degreeOfWeathering: 'Fresh',
+      sampleNotes: 'Well-developed mylonitic foliation',
+      sampleType: 'Thin Section',
+      color: 'Gray',
+      sampleUnit: 'Shear Zone Unit A',
+
+      // Step 4: Load Reference Micrograph
+      micrographFilePath: '/Volumes/8TB/Work/StraboMicro/Micro/ThinSections/good/A_Big.tif',
+      micrographFileName: 'A_Big.tif',
+      micrographWidth: 10000,
+      micrographHeight: 7500,
+
+      // Step 5: Instrument & Image Information
       instrumentType: 'Optical Microscopy',
+      dataType: 'Transmitted Light',
+      imageType: 'Transmitted Light',
+      instrumentBrand: 'Nikon',
+      instrumentModel: 'Eclipse LV100N POL',
+      university: 'Test University',
+      laboratory: 'Structural Geology Lab',
+
+      // Step 6: Instrument Data
+      dataCollectionSoftware: 'NIS-Elements',
+      dataCollectionSoftwareVersion: '5.2',
+      postProcessingSoftware: 'ImageJ',
+      postProcessingSoftwareVersion: '1.53',
+      instrumentNotes: 'Cross-polarized light imaging',
+
+      // Step 7: Micrograph Metadata
+      micrographName: 'Test Micrograph A_Big',
+      micrographPolished: true,
+      micrographPolishDescription: 'Standard 30 micron thin section, polished to optical quality',
+      micrographNotes: 'Cross-polarized light image showing quartz ribbon grains',
+
+      // Step 8: Micrograph Orientation (default to unoriented for testing)
       orientationMethod: 'unoriented' as const,
     };
 
@@ -80,6 +132,11 @@ function App() {
     // Debug: Show Project Structure
     window.api.onShowProjectDebug(() => {
       setIsDebugModalOpen(true);
+    });
+
+    // Debug: Test Orientation Step
+    window.api.onTestOrientationStep(() => {
+      handleTestOrientationStep();
     });
 
     // Debug: Clear Project
