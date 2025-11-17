@@ -81,6 +81,27 @@ export interface SampleMetadata {
 // MICROGRAPH (IMAGE) STRUCTURE
 // ============================================================================
 
+export interface MicrographOrientation {
+  orientationMethod: 'unoriented' | 'trendPlunge' | 'fabricReference';
+  // Trend and Plunge fields
+  topTrend?: number;
+  topPlunge?: number;
+  topReferenceCorner?: 'left' | 'right';
+  sideTrend?: number;
+  sidePlunge?: number;
+  sideReferenceCorner?: 'top' | 'bottom';
+  trendPlungeStrike?: number;
+  trendPlungeDip?: number;
+  // Fabric Reference fields
+  fabricReference?: 'xz' | 'yz' | 'xy';
+  fabricStrike?: number;
+  fabricDip?: number;
+  fabricTrend?: number;
+  fabricPlunge?: number;
+  fabricRake?: number;
+  lookDirection?: 'down' | 'up';
+}
+
 export interface MicrographMetadata {
   id: string;
   name: string;
@@ -100,6 +121,9 @@ export interface MicrographMetadata {
   flipped?: boolean;
   opacity?: number;
   visible?: boolean;
+
+  // Orientation information
+  orientationInfo?: MicrographOrientation;
 
   // Annotations
   spots?: Spot[];

@@ -30,6 +30,8 @@ import {
   FormControlLabel,
   FormGroup,
   Divider,
+  Radio,
+  RadioGroup,
 } from '@mui/material';
 import { useAppStore } from '@/store';
 import { PeriodicTableModal } from './PeriodicTableModal';
@@ -76,8 +78,23 @@ interface ProjectFormData {
   micrographPolished: boolean;
   micrographPolishDescription: string;
   micrographNotes: string;
-  micrographRotation: number;
-  micrographFlipped: boolean;
+  // Orientation fields
+  orientationMethod: 'unoriented' | 'trendPlunge' | 'fabricReference';
+  topTrend: string;
+  topPlunge: string;
+  topReferenceCorner: 'left' | 'right';
+  sideTrend: string;
+  sidePlunge: string;
+  sideReferenceCorner: 'top' | 'bottom';
+  trendPlungeStrike: string;
+  trendPlungeDip: string;
+  fabricReference: 'xz' | 'yz' | 'xy';
+  fabricStrike: string;
+  fabricDip: string;
+  fabricTrend: string;
+  fabricPlunge: string;
+  fabricRake: string;
+  lookDirection: 'down' | 'up';
   instrumentType: string;
   otherInstrumentType: string;
   dataType: string;
@@ -189,8 +206,23 @@ const initialFormData: ProjectFormData = {
   micrographPolished: false,
   micrographPolishDescription: '',
   micrographNotes: '',
-  micrographRotation: 0,
-  micrographFlipped: false,
+  // Orientation initial values
+  orientationMethod: 'unoriented',
+  topTrend: '',
+  topPlunge: '',
+  topReferenceCorner: 'left',
+  sideTrend: '',
+  sidePlunge: '',
+  sideReferenceCorner: 'top',
+  trendPlungeStrike: '',
+  trendPlungeDip: '',
+  fabricReference: 'xz',
+  fabricStrike: '',
+  fabricDip: '',
+  fabricTrend: '',
+  fabricPlunge: '',
+  fabricRake: '',
+  lookDirection: 'down',
   instrumentType: '',
   otherInstrumentType: '',
   dataType: '',
@@ -370,9 +402,25 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
       imageWidth: formData.micrographWidth,
       imageHeight: formData.micrographHeight,
       imageType: formData.imageType || undefined,
-      rotation: formData.micrographRotation || undefined,
-      flipped: formData.micrographFlipped || undefined,
       visible: true,
+      orientationInfo: {
+        orientationMethod: formData.orientationMethod,
+        ...(formData.topTrend && { topTrend: parseFloat(formData.topTrend) }),
+        ...(formData.topPlunge && { topPlunge: parseFloat(formData.topPlunge) }),
+        topReferenceCorner: formData.topReferenceCorner,
+        ...(formData.sideTrend && { sideTrend: parseFloat(formData.sideTrend) }),
+        ...(formData.sidePlunge && { sidePlunge: parseFloat(formData.sidePlunge) }),
+        sideReferenceCorner: formData.sideReferenceCorner,
+        ...(formData.trendPlungeStrike && { trendPlungeStrike: parseFloat(formData.trendPlungeStrike) }),
+        ...(formData.trendPlungeDip && { trendPlungeDip: parseFloat(formData.trendPlungeDip) }),
+        fabricReference: formData.fabricReference,
+        ...(formData.fabricStrike && { fabricStrike: parseFloat(formData.fabricStrike) }),
+        ...(formData.fabricDip && { fabricDip: parseFloat(formData.fabricDip) }),
+        ...(formData.fabricTrend && { fabricTrend: parseFloat(formData.fabricTrend) }),
+        ...(formData.fabricPlunge && { fabricPlunge: parseFloat(formData.fabricPlunge) }),
+        ...(formData.fabricRake && { fabricRake: parseFloat(formData.fabricRake) }),
+        lookDirection: formData.lookDirection,
+      },
       instrument: {
         instrumentType: formData.instrumentType || undefined,
         otherInstrumentType: formData.otherInstrumentType || undefined,
@@ -478,6 +526,32 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
     setDetectors(prev => prev.filter((_, i) => i !== index));
   };
 
+  const validateOrientationStep = () => {
+    if (formData.orientationMethod === 'unoriented') {
+      return true; // No validation needed
+    }
+
+    if (formData.orientationMethod === 'trendPlunge') {
+      // Need TWO of THREE data sets:
+      // 1. Top edge (trend + plunge)
+      // 2. Side edge (trend + plunge)
+      // 3. Strike and Dip
+      const hasTop = formData.topTrend.trim() !== '' && formData.topPlunge.trim() !== '';
+      const hasSide = formData.sideTrend.trim() !== '' && formData.sidePlunge.trim() !== '';
+      const hasStrikeDip = formData.trendPlungeStrike.trim() !== '' && formData.trendPlungeDip.trim() !== '';
+
+      const setCount = [hasTop, hasSide, hasStrikeDip].filter(Boolean).length;
+      return setCount >= 2;
+    }
+
+    if (formData.orientationMethod === 'fabricReference') {
+      // For fabric reference, no fields are strictly required - they're all optional
+      return true;
+    }
+
+    return true;
+  };
+
   const canProceed = () => {
     if (activeStep === 0) {
       // Project name is required
@@ -562,16 +636,209 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
         if (formData.micrographPolished && formData.micrographPolishDescription.trim() === '') return false;
         return true;
       } else {
-        // This is Micrograph Orientation (no validation required - all fields optional)
-        return true;
+        // This is Micrograph Orientation
+        return validateOrientationStep();
       }
     }
     if (activeStep === 8) {
       // Step 9: Micrograph Orientation (when Instrument Settings IS shown)
-      // No validation required - all fields optional
-      return true;
+      return validateOrientationStep();
     }
     return true;
+  };
+
+  const renderOrientationStep = () => {
+    return (
+      <Stack spacing={3}>
+        <Typography variant="h6">Orientation of Reference Micrograph</Typography>
+        <Typography variant="body2" color="text.secondary">
+          Thin Section Oriented by:
+        </Typography>
+
+        <RadioGroup
+          value={formData.orientationMethod}
+          onChange={(e) => updateField('orientationMethod', e.target.value as 'unoriented' | 'trendPlunge' | 'fabricReference')}
+        >
+          <FormControlLabel
+            value="unoriented"
+            control={<Radio />}
+            label="Unoriented Thin Section"
+          />
+          <FormControlLabel
+            value="trendPlunge"
+            control={<Radio />}
+            label="Trend and Plunge of Edges/Strike and Dip of Surface"
+          />
+          <FormControlLabel
+            value="fabricReference"
+            control={<Radio />}
+            label="Fabric Reference Frame (XZ, YZ, XY Thin Sections)"
+          />
+        </RadioGroup>
+
+        {formData.orientationMethod === 'trendPlunge' && (
+          <Stack spacing={2} sx={{ pl: 4 }}>
+            <Typography variant="body2" color="text.secondary">
+              Provide TWO of THREE: Select the arrow on each edge that represents a lower hemisphere plunge, and enter the trend and plunge information and/or provide the strike and dip of the thin section.
+            </Typography>
+
+            <Typography variant="subtitle2" sx={{ fontWeight: 'bold' }}>Top Edge</Typography>
+            <Stack direction="row" spacing={2}>
+              <TextField
+                label="Trend"
+                type="number"
+                value={formData.topTrend}
+                onChange={(e) => updateField('topTrend', e.target.value)}
+                InputProps={{ endAdornment: '°' }}
+                sx={{ flex: 1 }}
+              />
+              <TextField
+                label="Plunge"
+                type="number"
+                value={formData.topPlunge}
+                onChange={(e) => updateField('topPlunge', e.target.value)}
+                InputProps={{ endAdornment: '°' }}
+                sx={{ flex: 1 }}
+              />
+            </Stack>
+            <RadioGroup
+              row
+              value={formData.topReferenceCorner}
+              onChange={(e) => updateField('topReferenceCorner', e.target.value as 'left' | 'right')}
+            >
+              <FormControlLabel value="left" control={<Radio />} label="Left" />
+              <FormControlLabel value="right" control={<Radio />} label="Right" />
+            </RadioGroup>
+
+            <Typography variant="subtitle2" sx={{ fontWeight: 'bold' }}>Side Edge</Typography>
+            <Stack direction="row" spacing={2}>
+              <TextField
+                label="Trend"
+                type="number"
+                value={formData.sideTrend}
+                onChange={(e) => updateField('sideTrend', e.target.value)}
+                InputProps={{ endAdornment: '°' }}
+                sx={{ flex: 1 }}
+              />
+              <TextField
+                label="Plunge"
+                type="number"
+                value={formData.sidePlunge}
+                onChange={(e) => updateField('sidePlunge', e.target.value)}
+                InputProps={{ endAdornment: '°' }}
+                sx={{ flex: 1 }}
+              />
+            </Stack>
+            <RadioGroup
+              row
+              value={formData.sideReferenceCorner}
+              onChange={(e) => updateField('sideReferenceCorner', e.target.value as 'top' | 'bottom')}
+            >
+              <FormControlLabel value="top" control={<Radio />} label="Top" />
+              <FormControlLabel value="bottom" control={<Radio />} label="Bottom" />
+            </RadioGroup>
+
+            <Typography variant="subtitle2" sx={{ fontWeight: 'bold' }}>Strike and Dip</Typography>
+            <Stack direction="row" spacing={2}>
+              <TextField
+                label="Strike"
+                type="number"
+                value={formData.trendPlungeStrike}
+                onChange={(e) => updateField('trendPlungeStrike', e.target.value)}
+                InputProps={{ endAdornment: '°' }}
+                sx={{ flex: 1 }}
+              />
+              <TextField
+                label="Dip"
+                type="number"
+                value={formData.trendPlungeDip}
+                onChange={(e) => updateField('trendPlungeDip', e.target.value)}
+                InputProps={{ endAdornment: '°' }}
+                sx={{ flex: 1 }}
+              />
+            </Stack>
+          </Stack>
+        )}
+
+        {formData.orientationMethod === 'fabricReference' && (
+          <Stack spacing={2} sx={{ pl: 4 }}>
+            <Typography variant="subtitle2" sx={{ fontWeight: 'bold' }}>Fabric Reference Frame</Typography>
+            <RadioGroup
+              row
+              value={formData.fabricReference}
+              onChange={(e) => updateField('fabricReference', e.target.value as 'xz' | 'yz' | 'xy')}
+            >
+              <FormControlLabel value="xz" control={<Radio />} label="XZ" />
+              <FormControlLabel value="yz" control={<Radio />} label="YZ" />
+              <FormControlLabel value="xy" control={<Radio />} label="XY" />
+            </RadioGroup>
+
+            <Stack direction="row" spacing={2}>
+              <TextField
+                label="Strike"
+                type="number"
+                value={formData.fabricStrike}
+                onChange={(e) => updateField('fabricStrike', e.target.value)}
+                InputProps={{ endAdornment: '°' }}
+                sx={{ flex: 1 }}
+              />
+              <TextField
+                label="Dip"
+                type="number"
+                value={formData.fabricDip}
+                onChange={(e) => updateField('fabricDip', e.target.value)}
+                InputProps={{ endAdornment: '°' }}
+                sx={{ flex: 1 }}
+              />
+            </Stack>
+
+            <Stack direction="row" spacing={2}>
+              <TextField
+                label="Trend"
+                type="number"
+                value={formData.fabricTrend}
+                onChange={(e) => updateField('fabricTrend', e.target.value)}
+                InputProps={{ endAdornment: '°' }}
+                sx={{ flex: 1 }}
+              />
+              <TextField
+                label="Plunge"
+                type="number"
+                value={formData.fabricPlunge}
+                onChange={(e) => updateField('fabricPlunge', e.target.value)}
+                InputProps={{ endAdornment: '°' }}
+                sx={{ flex: 1 }}
+              />
+            </Stack>
+
+            <TextField
+              label="Rake"
+              type="number"
+              value={formData.fabricRake}
+              onChange={(e) => updateField('fabricRake', e.target.value)}
+              InputProps={{ endAdornment: '°' }}
+              fullWidth
+            />
+
+            <RadioGroup
+              value={formData.lookDirection}
+              onChange={(e) => updateField('lookDirection', e.target.value as 'down' | 'up')}
+            >
+              <FormControlLabel
+                value="down"
+                control={<Radio />}
+                label="Looking down through the micrograph (Lower hemisphere)"
+              />
+              <FormControlLabel
+                value="up"
+                control={<Radio />}
+                label="Looking up through the micrograph (Upper hemisphere)"
+              />
+            </RadioGroup>
+          </Stack>
+        )}
+      </Stack>
+    );
   };
 
   const renderStepContent = (step: number) => {
@@ -1928,68 +2195,12 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
           );
         } else {
           // This is Micrograph Orientation (when Instrument Settings NOT shown)
-          return (
-            <Stack spacing={2}>
-              <Typography variant="body2" color="text.secondary">
-                Set the orientation of the micrograph image.
-              </Typography>
-              <TextField
-                fullWidth
-                select
-                label="Rotation"
-                value={formData.micrographRotation}
-                onChange={(e) => updateField('micrographRotation', parseInt(e.target.value))}
-                helperText="Rotate the image for correct viewing orientation"
-              >
-                <MenuItem value={0}>0° (No rotation)</MenuItem>
-                <MenuItem value={90}>90° Clockwise</MenuItem>
-                <MenuItem value={180}>180°</MenuItem>
-                <MenuItem value={270}>270° Clockwise (90° Counter-clockwise)</MenuItem>
-              </TextField>
-              <FormControlLabel
-                control={
-                  <Checkbox
-                    checked={formData.micrographFlipped}
-                    onChange={(e) => updateField('micrographFlipped', e.target.checked)}
-                  />
-                }
-                label="Flip Horizontal"
-              />
-            </Stack>
-          );
+          return renderOrientationStep();
         }
 
       case 8:
         // Step 9: Micrograph Orientation (when Instrument Settings IS shown)
-        return (
-          <Stack spacing={2}>
-            <Typography variant="body2" color="text.secondary">
-              Set the orientation of the micrograph image.
-            </Typography>
-            <TextField
-              fullWidth
-              select
-              label="Rotation"
-              value={formData.micrographRotation}
-              onChange={(e) => updateField('micrographRotation', parseInt(e.target.value))}
-              helperText="Rotate the image for correct viewing orientation"
-            >
-              <MenuItem value={0}>0° (No rotation)</MenuItem>
-              <MenuItem value={90}>90° Clockwise</MenuItem>
-              <MenuItem value={180}>180°</MenuItem>
-              <MenuItem value={270}>270° Clockwise (90° Counter-clockwise)</MenuItem>
-            </TextField>
-            <FormControlLabel
-              control={
-                <Checkbox
-                  checked={formData.micrographFlipped}
-                  onChange={(e) => updateField('micrographFlipped', e.target.checked)}
-                />
-              }
-              label="Flip Horizontal"
-            />
-          </Stack>
-        );
+        return renderOrientationStep();
 
       default:
         return null;
