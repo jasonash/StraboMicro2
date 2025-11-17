@@ -1444,10 +1444,41 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
         </Stack>
       );
     } else if (formData.scaleMethod === 'Provide Width/Height of Image') {
+      // Calculate aspect ratio from image pixel dimensions
+      const aspectRatio = formData.micrographWidth / formData.micrographHeight;
+
+      const handleWidthChange = (value: string) => {
+        updateField('imageWidthPhysical', value);
+        // Auto-calculate height based on aspect ratio
+        if (value && !isNaN(parseFloat(value))) {
+          const width = parseFloat(value);
+          const height = width / aspectRatio;
+          updateField('imageHeightPhysical', height.toFixed(4));
+        } else {
+          updateField('imageHeightPhysical', '');
+        }
+      };
+
+      const handleHeightChange = (value: string) => {
+        updateField('imageHeightPhysical', value);
+        // Auto-calculate width based on aspect ratio
+        if (value && !isNaN(parseFloat(value))) {
+          const height = parseFloat(value);
+          const width = height * aspectRatio;
+          updateField('imageWidthPhysical', width.toFixed(4));
+        } else {
+          updateField('imageWidthPhysical', '');
+        }
+      };
+
       return (
         <Stack spacing={2}>
           <Typography variant="body2" color="text.secondary">
-            Enter the physical dimensions of the entire image. Image dimensions: {formData.micrographWidth} x {formData.micrographHeight} pixels
+            Enter either the physical width or height - the other will be auto-calculated based on the image aspect ratio.
+          </Typography>
+
+          <Typography variant="caption" color="text.secondary">
+            Image dimensions: {formData.micrographWidth} x {formData.micrographHeight} pixels (aspect ratio: {aspectRatio.toFixed(3)})
           </Typography>
 
           <TextField
@@ -1456,8 +1487,8 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
             label="Image Width (physical)"
             type="number"
             value={formData.imageWidthPhysical}
-            onChange={(e) => updateField('imageWidthPhysical', e.target.value)}
-            helperText="Physical width of the entire image"
+            onChange={(e) => handleWidthChange(e.target.value)}
+            helperText="Physical width of the entire image (height will be auto-calculated)"
           />
 
           <TextField
@@ -1466,8 +1497,8 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
             label="Image Height (physical)"
             type="number"
             value={formData.imageHeightPhysical}
-            onChange={(e) => updateField('imageHeightPhysical', e.target.value)}
-            helperText="Physical height of the entire image"
+            onChange={(e) => handleHeightChange(e.target.value)}
+            helperText="Physical height of the entire image (width will be auto-calculated)"
           />
 
           <TextField
@@ -1486,7 +1517,7 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
           </TextField>
 
           <Typography variant="caption" color="text.secondary">
-            Pixels per unit (from width): {formData.imageWidthPhysical
+            Pixels per unit: {formData.imageWidthPhysical
               ? (formData.micrographWidth / parseFloat(formData.imageWidthPhysical)).toFixed(4)
               : 'N/A'}
           </Typography>
