@@ -1356,7 +1356,44 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
         );
 
       case 6:
-        // Step 7: Instrument Settings - Only shown for certain instrument types
+        // Step 7: Either Instrument Settings OR Micrograph Metadata (depending on instrument type)
+        if (!shouldShowInstrumentSettings()) {
+          // This is Micrograph Metadata (when Instrument Settings not shown)
+          return (
+            <Stack spacing={2}>
+              <Typography variant="body2" color="text.secondary">
+                Add descriptive information about this micrograph.
+              </Typography>
+              <TextField
+                fullWidth
+                required
+                label="Micrograph Title"
+                value={formData.micrographTitle}
+                onChange={(e) => updateField('micrographTitle', e.target.value)}
+                helperText="A descriptive title for this micrograph"
+              />
+              <TextField
+                fullWidth
+                multiline
+                rows={4}
+                label="Notes"
+                value={formData.micrographNotes}
+                onChange={(e) => updateField('micrographNotes', e.target.value)}
+                helperText="Optional notes or description about this micrograph"
+              />
+              <TextField
+                fullWidth
+                multiline
+                rows={3}
+                label="Annotations / Tags"
+                value={formData.micrographAnnotations}
+                onChange={(e) => updateField('micrographAnnotations', e.target.value)}
+                helperText="Optional tags or annotations (comma-separated)"
+              />
+            </Stack>
+          );
+        }
+        // Otherwise, this is Instrument Settings
         return (
           <Stack spacing={2}>
             {/* TEM Settings */}
@@ -1798,7 +1835,7 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
         );
 
       case 7:
-        // Step 8: Micrograph Metadata (when Instrument Settings IS shown) OR Step 7: Micrograph Metadata (when not shown)
+        // Step 8: Micrograph Metadata (when Instrument Settings IS shown)
         return (
           <Stack spacing={2}>
             <Typography variant="body2" color="text.secondary">
