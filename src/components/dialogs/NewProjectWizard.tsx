@@ -98,6 +98,19 @@ interface ProjectFormData {
   fabricPlunge: string;
   fabricRake: string;
   lookDirection: 'down' | 'up';
+  // Scale fields
+  scaleMethod: 'Trace Scale Bar' | 'Pixel Conversion Factor' | 'Provide Width/Height of Image' | '';
+  scaleBarLineStart: { x: number; y: number } | null;
+  scaleBarLineEnd: { x: number; y: number } | null;
+  scaleBarLineLengthPixels: string;
+  scaleBarPhysicalLength: string;
+  scaleBarUnits: string;
+  pixels: string;
+  physicalLength: string;
+  pixelUnits: string;
+  imageWidthPhysical: string;
+  imageHeightPhysical: string;
+  sizeUnits: string;
   instrumentType: string;
   otherInstrumentType: string;
   dataType: string;
@@ -226,6 +239,19 @@ const initialFormData: ProjectFormData = {
   fabricPlunge: '',
   fabricRake: '',
   lookDirection: 'down',
+  // Scale initial values
+  scaleMethod: '',
+  scaleBarLineStart: null,
+  scaleBarLineEnd: null,
+  scaleBarLineLengthPixels: '',
+  scaleBarPhysicalLength: '',
+  scaleBarUnits: 'μm',
+  pixels: '',
+  physicalLength: '',
+  pixelUnits: 'μm',
+  imageWidthPhysical: '',
+  imageHeightPhysical: '',
+  sizeUnits: 'μm',
   instrumentType: '',
   otherInstrumentType: '',
   dataType: '',
@@ -326,9 +352,11 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
     'Instrument Data',
     'Micrograph Metadata',
     'Micrograph Orientation',
+    'Set Micrograph Scale',
+    'Trace Scale Bar',
   ];
   const steps = shouldShowInstrumentSettings()
-    ? [...baseSteps.slice(0, 6), 'Instrument Settings', baseSteps[6], baseSteps[7]]
+    ? [...baseSteps.slice(0, 6), 'Instrument Settings', ...baseSteps.slice(6)]
     : baseSteps;
 
   const updateField = (
@@ -570,6 +598,42 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
               }
               return { orientationMethod: formData.orientationMethod };
             })(),
+            scale: (() => {
+              // Calculate pixelsPerUnit based on selected method
+              if (formData.scaleMethod === 'Trace Scale Bar') {
+                const lineLengthPixels = parseFloat(formData.scaleBarLineLengthPixels);
+                const physicalLength = parseFloat(formData.scaleBarPhysicalLength);
+                return {
+                  scaleMethod: 'Trace Scale Bar',
+                  scaleBarLineStart: formData.scaleBarLineStart,
+                  scaleBarLineEnd: formData.scaleBarLineEnd,
+                  scaleBarLineLengthPixels: lineLengthPixels,
+                  scaleBarPhysicalLength: physicalLength,
+                  scaleBarUnits: formData.scaleBarUnits,
+                  pixelsPerUnit: lineLengthPixels / physicalLength,
+                };
+              } else if (formData.scaleMethod === 'Pixel Conversion Factor') {
+                const pixels = parseFloat(formData.pixels);
+                const physicalLength = parseFloat(formData.physicalLength);
+                return {
+                  scaleMethod: 'Pixel Conversion Factor',
+                  pixels: pixels,
+                  physicalLength: physicalLength,
+                  units: formData.pixelUnits,
+                  pixelsPerUnit: pixels / physicalLength,
+                };
+              } else if (formData.scaleMethod === 'Provide Width/Height of Image') {
+                const imageWidthPhysical = parseFloat(formData.imageWidthPhysical);
+                return {
+                  scaleMethod: 'Provide Width/Height of Image',
+                  imageWidthPhysical: imageWidthPhysical,
+                  imageHeightPhysical: parseFloat(formData.imageHeightPhysical),
+                  units: formData.sizeUnits,
+                  pixelsPerUnit: formData.micrographWidth / imageWidthPhysical,
+                };
+              }
+              return undefined;
+            })(),
             instrument: {
               instrumentType: formData.instrumentType || undefined,
               otherInstrumentType: formData.otherInstrumentType || undefined,
@@ -810,6 +874,39 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
     if (activeStep === 8) {
       // Step 9: Micrograph Orientation (when Instrument Settings IS shown)
       return validateOrientationStep();
+    }
+    if (activeStep === 9) {
+      // Step 10 (or 9): Set Micrograph Scale - Method Selection
+      // A scale method must be selected
+      return formData.scaleMethod !== '';
+    }
+    if (activeStep === 10) {
+      // Step 11 (or 10): Trace Scale Bar - Execute selected scale method
+      if (formData.scaleMethod === 'Trace Scale Bar') {
+        // Line must be drawn, and physical length must be provided
+        return (
+          formData.scaleBarLineLengthPixels !== '' &&
+          formData.scaleBarPhysicalLength !== '' &&
+          parseFloat(formData.scaleBarPhysicalLength) > 0
+        );
+      } else if (formData.scaleMethod === 'Pixel Conversion Factor') {
+        // Pixels and physical length must be provided
+        return (
+          formData.pixels !== '' &&
+          formData.physicalLength !== '' &&
+          parseFloat(formData.pixels) > 0 &&
+          parseFloat(formData.physicalLength) > 0
+        );
+      } else if (formData.scaleMethod === 'Provide Width/Height of Image') {
+        // Width and height must be provided
+        return (
+          formData.imageWidthPhysical !== '' &&
+          formData.imageHeightPhysical !== '' &&
+          parseFloat(formData.imageWidthPhysical) > 0 &&
+          parseFloat(formData.imageHeightPhysical) > 0
+        );
+      }
+      return false;
     }
     return true;
   };
@@ -1199,6 +1296,176 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
           </Stack>
         )}
       </Stack>
+    );
+  };
+
+  const renderScaleInputStep = () => {
+    const units = ['μm', 'mm', 'cm', 'm', 'inches'];
+
+    if (formData.scaleMethod === 'Trace Scale Bar') {
+      return (
+        <Stack spacing={2}>
+          <Typography variant="body2" color="text.secondary">
+            Draw a line over the scale bar in the micrograph, then enter the physical length that line represents.
+          </Typography>
+
+          {/* Canvas for drawing will be implemented here */}
+          <Box
+            sx={{
+              border: '1px solid',
+              borderColor: 'divider',
+              borderRadius: 1,
+              p: 2,
+              bgcolor: 'background.paper',
+            }}
+          >
+            <Typography variant="caption" color="text.secondary" sx={{ mb: 2, display: 'block' }}>
+              Canvas drawing tool will be implemented here
+            </Typography>
+            <Typography variant="body2">
+              Micrograph: {formData.micrographFileName}
+            </Typography>
+          </Box>
+
+          <TextField
+            fullWidth
+            required
+            label="Line Length (pixels)"
+            value={formData.scaleBarLineLengthPixels}
+            helperText="Auto-filled when you draw a line"
+            InputProps={{ readOnly: true }}
+          />
+
+          <TextField
+            fullWidth
+            required
+            label="Physical Length"
+            type="number"
+            value={formData.scaleBarPhysicalLength}
+            onChange={(e) => updateField('scaleBarPhysicalLength', e.target.value)}
+            helperText="The real-world length the line represents"
+          />
+
+          <TextField
+            fullWidth
+            select
+            required
+            label="Units"
+            value={formData.scaleBarUnits}
+            onChange={(e) => updateField('scaleBarUnits', e.target.value)}
+          >
+            {units.map((unit) => (
+              <MenuItem key={unit} value={unit}>
+                {unit}
+              </MenuItem>
+            ))}
+          </TextField>
+        </Stack>
+      );
+    } else if (formData.scaleMethod === 'Pixel Conversion Factor') {
+      return (
+        <Stack spacing={2}>
+          <Typography variant="body2" color="text.secondary">
+            Enter the number of pixels per unit directly.
+          </Typography>
+
+          <TextField
+            fullWidth
+            required
+            label="Pixels"
+            type="number"
+            value={formData.pixels}
+            onChange={(e) => updateField('pixels', e.target.value)}
+            helperText="Number of pixels"
+          />
+
+          <TextField
+            fullWidth
+            required
+            label="Physical Length"
+            type="number"
+            value={formData.physicalLength}
+            onChange={(e) => updateField('physicalLength', e.target.value)}
+            helperText="Corresponding physical length"
+          />
+
+          <TextField
+            fullWidth
+            select
+            required
+            label="Units"
+            value={formData.pixelUnits}
+            onChange={(e) => updateField('pixelUnits', e.target.value)}
+          >
+            {units.map((unit) => (
+              <MenuItem key={unit} value={unit}>
+                {unit}
+              </MenuItem>
+            ))}
+          </TextField>
+
+          <Typography variant="caption" color="text.secondary">
+            Pixels per unit: {formData.pixels && formData.physicalLength
+              ? (parseFloat(formData.pixels) / parseFloat(formData.physicalLength)).toFixed(4)
+              : 'N/A'}
+          </Typography>
+        </Stack>
+      );
+    } else if (formData.scaleMethod === 'Provide Width/Height of Image') {
+      return (
+        <Stack spacing={2}>
+          <Typography variant="body2" color="text.secondary">
+            Enter the physical dimensions of the entire image. Image dimensions: {formData.micrographWidth} x {formData.micrographHeight} pixels
+          </Typography>
+
+          <TextField
+            fullWidth
+            required
+            label="Image Width (physical)"
+            type="number"
+            value={formData.imageWidthPhysical}
+            onChange={(e) => updateField('imageWidthPhysical', e.target.value)}
+            helperText="Physical width of the entire image"
+          />
+
+          <TextField
+            fullWidth
+            required
+            label="Image Height (physical)"
+            type="number"
+            value={formData.imageHeightPhysical}
+            onChange={(e) => updateField('imageHeightPhysical', e.target.value)}
+            helperText="Physical height of the entire image"
+          />
+
+          <TextField
+            fullWidth
+            select
+            required
+            label="Units"
+            value={formData.sizeUnits}
+            onChange={(e) => updateField('sizeUnits', e.target.value)}
+          >
+            {units.map((unit) => (
+              <MenuItem key={unit} value={unit}>
+                {unit}
+              </MenuItem>
+            ))}
+          </TextField>
+
+          <Typography variant="caption" color="text.secondary">
+            Pixels per unit (from width): {formData.imageWidthPhysical
+              ? (formData.micrographWidth / parseFloat(formData.imageWidthPhysical)).toFixed(4)
+              : 'N/A'}
+          </Typography>
+        </Stack>
+      );
+    }
+
+    return (
+      <Typography color="error">
+        Please select a scale method from the previous step.
+      </Typography>
     );
   };
 
@@ -3237,6 +3504,51 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
       case 8:
         // Step 9: Micrograph Orientation (when Instrument Settings IS shown)
         return renderOrientationStep();
+
+      case 9:
+        // Step 10 (or 9): Set Micrograph Scale - Method Selection
+        return (
+          <Stack spacing={3}>
+            <Typography variant="body2" color="text.secondary">
+              How do you wish to set the scale?
+            </Typography>
+            <RadioGroup
+              value={formData.scaleMethod}
+              onChange={(e) => updateField('scaleMethod', e.target.value)}
+            >
+              <FormControlLabel
+                value="Trace Scale Bar"
+                control={<Radio />}
+                label="Trace Scale Bar"
+              />
+              <Typography variant="caption" color="text.secondary" sx={{ ml: 4, mt: -1, mb: 2 }}>
+                Draw a line over the scale bar in the micrograph (most accurate)
+              </Typography>
+
+              <FormControlLabel
+                value="Pixel Conversion Factor"
+                control={<Radio />}
+                label="Pixel Conversion Factor"
+              />
+              <Typography variant="caption" color="text.secondary" sx={{ ml: 4, mt: -1, mb: 2 }}>
+                Enter the number of pixels per unit directly
+              </Typography>
+
+              <FormControlLabel
+                value="Provide Width/Height of Image"
+                control={<Radio />}
+                label="Provide Width/Height of Image"
+              />
+              <Typography variant="caption" color="text.secondary" sx={{ ml: 4, mt: -1, mb: 2 }}>
+                Enter the physical dimensions of the entire image
+              </Typography>
+            </RadioGroup>
+          </Stack>
+        );
+
+      case 10:
+        // Step 11 (or 10): Trace Scale Bar - Execute selected scale method
+        return renderScaleInputStep();
 
       default:
         return null;
