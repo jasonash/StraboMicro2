@@ -293,50 +293,96 @@ const initialFormData: ProjectFormData = {
   notesOnCrystalStructuresUsed: '',
 };
 
-export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onClose, debugInitialStep, debugTestData }) => {
+export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
+  isOpen,
+  onClose,
+  debugInitialStep,
+  debugTestData,
+}) => {
   const [activeStep, setActiveStep] = useState(debugInitialStep || 0);
-  const [formData, setFormData] = useState<ProjectFormData>(debugTestData ? { ...initialFormData, ...debugTestData } : initialFormData);
+  const [formData, setFormData] = useState<ProjectFormData>(
+    debugTestData ? { ...initialFormData, ...debugTestData } : initialFormData
+  );
   const [detectors, setDetectors] = useState<Detector[]>([{ type: '', make: '', model: '' }]);
   const [showPeriodicTable, setShowPeriodicTable] = useState(false);
   const [micrographPreviewUrl, setMicrographPreviewUrl] = useState<string>('');
   const [isLoadingPreview, setIsLoadingPreview] = useState(false);
-  const loadProject = useAppStore(state => state.loadProject);
+  const loadProject = useAppStore((state) => state.loadProject);
 
   // Determine which steps to show based on instrument type
   const shouldShowInstrumentSettings = () => {
-    return formData.instrumentType &&
-           !['Optical Microscopy', 'Scanner', 'Other'].includes(formData.instrumentType);
+    return (
+      formData.instrumentType &&
+      !['Optical Microscopy', 'Scanner', 'Other'].includes(formData.instrumentType)
+    );
   };
 
-  const baseSteps = ['Project Metadata', 'Dataset Information', 'Sample Information', 'Load Reference Micrograph', 'Instrument & Image Information', 'Instrument Data', 'Micrograph Metadata', 'Micrograph Orientation'];
+  const baseSteps = [
+    'Project Metadata',
+    'Dataset Information',
+    'Sample Information',
+    'Load Reference Micrograph',
+    'Instrument & Image Information',
+    'Instrument Data',
+    'Micrograph Metadata',
+    'Micrograph Orientation',
+  ];
   const steps = shouldShowInstrumentSettings()
     ? [...baseSteps.slice(0, 6), 'Instrument Settings', baseSteps[6], baseSteps[7]]
     : baseSteps;
 
-  const updateField = (field: keyof ProjectFormData, value: string | string[] | boolean | number) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
+  const updateField = (
+    field: keyof ProjectFormData,
+    value: string | string[] | boolean | number
+  ) => {
+    setFormData((prev) => ({ ...prev, [field]: value }));
   };
 
   // Auto-set imageType based on dataType for certain instrument/data type combinations
   useEffect(() => {
     if (formData.instrumentType === 'Transmission Electron Microscopy (TEM)' && formData.dataType) {
-      if (!['Electron Diffraction', 'Energy Dispersive X-ray Spectroscopy (EDS)'].includes(formData.dataType)) {
-        setFormData(prev => ({ ...prev, imageType: formData.dataType }));
+      if (
+        !['Electron Diffraction', 'Energy Dispersive X-ray Spectroscopy (EDS)'].includes(
+          formData.dataType
+        )
+      ) {
+        setFormData((prev) => ({ ...prev, imageType: formData.dataType }));
       }
-    } else if (formData.instrumentType === 'Scanning Transmission Electron Microscopy (STEM)' && formData.dataType) {
-      if (!['Energy Dispersive X-ray Spectroscopy (EDS)', 'Cathodoluminescence (CL)'].includes(formData.dataType)) {
-        setFormData(prev => ({ ...prev, imageType: formData.dataType }));
+    } else if (
+      formData.instrumentType === 'Scanning Transmission Electron Microscopy (STEM)' &&
+      formData.dataType
+    ) {
+      if (
+        !['Energy Dispersive X-ray Spectroscopy (EDS)', 'Cathodoluminescence (CL)'].includes(
+          formData.dataType
+        )
+      ) {
+        setFormData((prev) => ({ ...prev, imageType: formData.dataType }));
       }
-    } else if (formData.instrumentType === 'Scanning Electron Microscopy (SEM)' && formData.dataType) {
-      if (!['Electron Backscatter Diffraction (EBSD)', 'Energy Dispersive X-ray Spectroscopy (EDS)',
-           'Wavelength-dispersive X-ray spectroscopy (WDS)', 'Cathodoluminescence (CL)',
-           'Focused Ion Beam Scanning Electron Microscopy (FIB-SEM)'].includes(formData.dataType)) {
-        setFormData(prev => ({ ...prev, imageType: formData.dataType }));
+    } else if (
+      formData.instrumentType === 'Scanning Electron Microscopy (SEM)' &&
+      formData.dataType
+    ) {
+      if (
+        ![
+          'Electron Backscatter Diffraction (EBSD)',
+          'Energy Dispersive X-ray Spectroscopy (EDS)',
+          'Wavelength-dispersive X-ray spectroscopy (WDS)',
+          'Cathodoluminescence (CL)',
+          'Focused Ion Beam Scanning Electron Microscopy (FIB-SEM)',
+        ].includes(formData.dataType)
+      ) {
+        setFormData((prev) => ({ ...prev, imageType: formData.dataType }));
       }
     } else if (formData.instrumentType === 'Electron Microprobe' && formData.dataType) {
-      if (!['Energy Dispersive X-ray Spectroscopy (EDS)', 'Wavelength-dispersive X-ray spectroscopy (WDS)',
-           'Cathodoluminescence (CL)'].includes(formData.dataType)) {
-        setFormData(prev => ({ ...prev, imageType: formData.dataType }));
+      if (
+        ![
+          'Energy Dispersive X-ray Spectroscopy (EDS)',
+          'Wavelength-dispersive X-ray spectroscopy (WDS)',
+          'Cathodoluminescence (CL)',
+        ].includes(formData.dataType)
+      ) {
+        setFormData((prev) => ({ ...prev, imageType: formData.dataType }));
       }
     }
   }, [formData.instrumentType, formData.dataType]);
@@ -351,6 +397,56 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
     }
   }, [isOpen, debugInitialStep, debugTestData]);
 
+  // Clear orientation data when switching between orientation methods
+  useEffect(() => {
+    if (formData.orientationMethod === 'trendPlunge') {
+      // Clear fabric reference fields
+      setFormData(prev => ({
+        ...prev,
+        fabricReference: 'xz',
+        fabricStrike: '',
+        fabricDip: '',
+        fabricTrend: '',
+        fabricPlunge: '',
+        fabricRake: '',
+        lookDirection: 'down'
+      }));
+    } else if (formData.orientationMethod === 'fabricReference') {
+      // Clear trend and plunge fields
+      setFormData(prev => ({
+        ...prev,
+        topTrend: '',
+        topPlunge: '',
+        topReferenceCorner: 'left',
+        sideTrend: '',
+        sidePlunge: '',
+        sideReferenceCorner: 'top',
+        trendPlungeStrike: '',
+        trendPlungeDip: ''
+      }));
+    } else if (formData.orientationMethod === 'unoriented') {
+      // Clear all orientation fields
+      setFormData(prev => ({
+        ...prev,
+        topTrend: '',
+        topPlunge: '',
+        topReferenceCorner: 'left',
+        sideTrend: '',
+        sidePlunge: '',
+        sideReferenceCorner: 'top',
+        trendPlungeStrike: '',
+        trendPlungeDip: '',
+        fabricReference: 'xz',
+        fabricStrike: '',
+        fabricDip: '',
+        fabricTrend: '',
+        fabricPlunge: '',
+        fabricRake: '',
+        lookDirection: 'down'
+      }));
+    }
+  }, [formData.orientationMethod]);
+
   // Load micrograph preview image (thumbnail for fast preview)
   useEffect(() => {
     const loadPreview = async () => {
@@ -359,7 +455,10 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
           setIsLoadingPreview(true);
           console.log('Loading thumbnail preview for:', formData.micrographFilePath);
           // Request thumbnail size for fast loading in orientation step
-          const dataUrl = await window.api.loadImagePreview(formData.micrographFilePath, 'thumbnail');
+          const dataUrl = await window.api.loadImagePreview(
+            formData.micrographFilePath,
+            'thumbnail'
+          );
           console.log('Thumbnail preview loaded, dataUrl length:', dataUrl?.length);
           setMicrographPreviewUrl(dataUrl);
         } catch (error) {
@@ -405,13 +504,13 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
           const nameWithoutExt = fileName.substring(0, fileName.lastIndexOf('.')) || fileName;
 
           // Just store the file path - dimensions will be loaded later when displaying
-          setFormData(prev => ({
+          setFormData((prev) => ({
             ...prev,
             micrographFilePath: filePath,
             micrographFileName: fileName,
             micrographName: prev.micrographName || nameWithoutExt, // Only set if not already set
-            micrographWidth: 0,  // Will be loaded later
-            micrographHeight: 0,  // Will be loaded later
+            micrographWidth: 0, // Will be loaded later
+            micrographHeight: 0, // Will be loaded later
           }));
         }
       } catch (error) {
@@ -430,65 +529,83 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
 
   const handleFinish = () => {
     // Create micrograph object if file was selected
-    const micrographs = formData.micrographFilePath ? [{
-      id: crypto.randomUUID(),
-      name: formData.micrographName || formData.micrographFileName,
-      notes: formData.micrographNotes || undefined,
-      imageFilename: formData.micrographFileName,
-      imageWidth: formData.micrographWidth,
-      imageHeight: formData.micrographHeight,
-      imageType: formData.imageType || undefined,
-      visible: true,
-      orientationInfo: {
-        orientationMethod: formData.orientationMethod,
-        ...(formData.topTrend && { topTrend: parseFloat(formData.topTrend) }),
-        ...(formData.topPlunge && { topPlunge: parseFloat(formData.topPlunge) }),
-        topReferenceCorner: formData.topReferenceCorner,
-        ...(formData.sideTrend && { sideTrend: parseFloat(formData.sideTrend) }),
-        ...(formData.sidePlunge && { sidePlunge: parseFloat(formData.sidePlunge) }),
-        sideReferenceCorner: formData.sideReferenceCorner,
-        ...(formData.trendPlungeStrike && { trendPlungeStrike: parseFloat(formData.trendPlungeStrike) }),
-        ...(formData.trendPlungeDip && { trendPlungeDip: parseFloat(formData.trendPlungeDip) }),
-        fabricReference: formData.fabricReference,
-        ...(formData.fabricStrike && { fabricStrike: parseFloat(formData.fabricStrike) }),
-        ...(formData.fabricDip && { fabricDip: parseFloat(formData.fabricDip) }),
-        ...(formData.fabricTrend && { fabricTrend: parseFloat(formData.fabricTrend) }),
-        ...(formData.fabricPlunge && { fabricPlunge: parseFloat(formData.fabricPlunge) }),
-        ...(formData.fabricRake && { fabricRake: parseFloat(formData.fabricRake) }),
-        lookDirection: formData.lookDirection,
-      },
-      instrument: {
-        instrumentType: formData.instrumentType || undefined,
-        otherInstrumentType: formData.otherInstrumentType || undefined,
-        dataType: formData.dataType || undefined,
-        instrumentBrand: formData.instrumentBrand || undefined,
-        instrumentModel: formData.instrumentModel || undefined,
-        university: formData.university || undefined,
-        laboratory: formData.laboratory || undefined,
-        dataCollectionSoftware: formData.dataCollectionSoftware || undefined,
-        dataCollectionSoftwareVersion: formData.dataCollectionSoftwareVersion || undefined,
-        postProcessingSoftware: formData.postProcessingSoftware || undefined,
-        postProcessingSoftwareVersion: formData.postProcessingSoftwareVersion || undefined,
-        filamentType: formData.filamentType || undefined,
-        instrumentNotes: formData.instrumentNotes || undefined,
-        instrumentDetectors: detectors.filter(d => d.type || d.make || d.model).map(d => ({
-          detectorType: d.type || undefined,
-          detectorMake: d.make || undefined,
-          detectorModel: d.model || undefined,
-        })),
-      },
-      grains: [],
-      fabrics: [],
-      boundaries: [],
-      mineralogy: [],
-      veins: [],
-      fractures: [],
-      folds: [],
-      porosity: [],
-      pseudotachylyte: [],
-      otherFeatures: [],
-      spots: []
-    }] : [];
+    const micrographs = formData.micrographFilePath
+      ? [
+          {
+            id: crypto.randomUUID(),
+            name: formData.micrographName || formData.micrographFileName,
+            notes: formData.micrographNotes || undefined,
+            imageFilename: formData.micrographFileName,
+            imageWidth: formData.micrographWidth,
+            imageHeight: formData.micrographHeight,
+            imageType: formData.imageType || undefined,
+            visible: true,
+            orientationInfo: (() => {
+              // Only include orientation data for the selected method
+              if (formData.orientationMethod === 'unoriented') {
+                return { orientationMethod: 'unoriented' };
+              } else if (formData.orientationMethod === 'trendPlunge') {
+                return {
+                  orientationMethod: 'trendPlunge',
+                  ...(formData.topTrend && { topTrend: parseFloat(formData.topTrend) }),
+                  ...(formData.topPlunge && { topPlunge: parseFloat(formData.topPlunge) }),
+                  ...(formData.topReferenceCorner && { topReferenceCorner: formData.topReferenceCorner }),
+                  ...(formData.sideTrend && { sideTrend: parseFloat(formData.sideTrend) }),
+                  ...(formData.sidePlunge && { sidePlunge: parseFloat(formData.sidePlunge) }),
+                  ...(formData.sideReferenceCorner && { sideReferenceCorner: formData.sideReferenceCorner }),
+                  ...(formData.trendPlungeStrike && { trendPlungeStrike: parseFloat(formData.trendPlungeStrike) }),
+                  ...(formData.trendPlungeDip && { trendPlungeDip: parseFloat(formData.trendPlungeDip) }),
+                };
+              } else if (formData.orientationMethod === 'fabricReference') {
+                return {
+                  orientationMethod: 'fabricReference',
+                  ...(formData.fabricReference && { fabricReference: formData.fabricReference }),
+                  ...(formData.fabricStrike && { fabricStrike: parseFloat(formData.fabricStrike) }),
+                  ...(formData.fabricDip && { fabricDip: parseFloat(formData.fabricDip) }),
+                  ...(formData.fabricTrend && { fabricTrend: parseFloat(formData.fabricTrend) }),
+                  ...(formData.fabricPlunge && { fabricPlunge: parseFloat(formData.fabricPlunge) }),
+                  ...(formData.fabricRake && { fabricRake: parseFloat(formData.fabricRake) }),
+                  ...(formData.lookDirection && { lookDirection: formData.lookDirection }),
+                };
+              }
+              return { orientationMethod: formData.orientationMethod };
+            })(),
+            instrument: {
+              instrumentType: formData.instrumentType || undefined,
+              otherInstrumentType: formData.otherInstrumentType || undefined,
+              dataType: formData.dataType || undefined,
+              instrumentBrand: formData.instrumentBrand || undefined,
+              instrumentModel: formData.instrumentModel || undefined,
+              university: formData.university || undefined,
+              laboratory: formData.laboratory || undefined,
+              dataCollectionSoftware: formData.dataCollectionSoftware || undefined,
+              dataCollectionSoftwareVersion: formData.dataCollectionSoftwareVersion || undefined,
+              postProcessingSoftware: formData.postProcessingSoftware || undefined,
+              postProcessingSoftwareVersion: formData.postProcessingSoftwareVersion || undefined,
+              filamentType: formData.filamentType || undefined,
+              instrumentNotes: formData.instrumentNotes || undefined,
+              instrumentDetectors: detectors
+                .filter((d) => d.type || d.make || d.model)
+                .map((d) => ({
+                  detectorType: d.type || undefined,
+                  detectorMake: d.make || undefined,
+                  detectorModel: d.model || undefined,
+                })),
+            },
+            grains: [],
+            fabrics: [],
+            boundaries: [],
+            mineralogy: [],
+            veins: [],
+            fractures: [],
+            folds: [],
+            porosity: [],
+            pseudotachylyte: [],
+            otherFeatures: [],
+            spots: [],
+          },
+        ]
+      : [];
 
     const newProject = {
       id: crypto.randomUUID(),
@@ -502,34 +619,38 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
       magneticDeclination: formData.magneticDeclination || undefined,
       notes: formData.notes || undefined,
       projectLocation: 'local',
-      datasets: [{
-        id: crypto.randomUUID(),
-        name: formData.datasetName,
-        samples: [{
+      datasets: [
+        {
           id: crypto.randomUUID(),
-          name: formData.sampleID,
-          label: formData.sampleID,
-          sampleID: formData.sampleID,
-          longitude: formData.longitude ? parseFloat(formData.longitude) : undefined,
-          latitude: formData.latitude ? parseFloat(formData.latitude) : undefined,
-          mainSamplingPurpose: formData.mainSamplingPurpose || undefined,
-          otherSamplingPurpose: formData.otherSamplingPurpose || undefined,
-          sampleDescription: formData.sampleDescription || undefined,
-          materialType: formData.materialType || undefined,
-          inplacenessOfSample: formData.inplacenessOfSample || undefined,
-          orientedSample: formData.orientedSample || undefined,
-          sampleOrientationNotes: formData.sampleOrientationNotes || undefined,
-          sampleSize: formData.sampleSize || undefined,
-          degreeOfWeathering: formData.degreeOfWeathering || undefined,
-          sampleNotes: formData.sampleNotes || undefined,
-          sampleType: formData.sampleType || undefined,
-          color: formData.color || undefined,
-          lithology: formData.lithology || undefined,
-          sampleUnit: formData.sampleUnit || undefined,
-          otherMaterialType: formData.otherMaterialType || undefined,
-          micrographs: micrographs
-        }]
-      }]
+          name: formData.datasetName,
+          samples: [
+            {
+              id: crypto.randomUUID(),
+              name: formData.sampleID,
+              label: formData.sampleID,
+              sampleID: formData.sampleID,
+              longitude: formData.longitude ? parseFloat(formData.longitude) : undefined,
+              latitude: formData.latitude ? parseFloat(formData.latitude) : undefined,
+              mainSamplingPurpose: formData.mainSamplingPurpose || undefined,
+              otherSamplingPurpose: formData.otherSamplingPurpose || undefined,
+              sampleDescription: formData.sampleDescription || undefined,
+              materialType: formData.materialType || undefined,
+              inplacenessOfSample: formData.inplacenessOfSample || undefined,
+              orientedSample: formData.orientedSample || undefined,
+              sampleOrientationNotes: formData.sampleOrientationNotes || undefined,
+              sampleSize: formData.sampleSize || undefined,
+              degreeOfWeathering: formData.degreeOfWeathering || undefined,
+              sampleNotes: formData.sampleNotes || undefined,
+              sampleType: formData.sampleType || undefined,
+              color: formData.color || undefined,
+              lithology: formData.lithology || undefined,
+              sampleUnit: formData.sampleUnit || undefined,
+              otherMaterialType: formData.otherMaterialType || undefined,
+              micrographs: micrographs,
+            },
+          ],
+        },
+      ],
     };
 
     loadProject(newProject, null);
@@ -547,7 +668,7 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
   };
 
   const updateDetector = (index: number, field: keyof Detector, value: string) => {
-    setDetectors(prev => {
+    setDetectors((prev) => {
       const updated = [...prev];
       updated[index] = { ...updated[index], [field]: value };
       return updated;
@@ -555,11 +676,11 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
   };
 
   const addDetector = () => {
-    setDetectors(prev => [...prev, { type: '', make: '', model: '' }]);
+    setDetectors((prev) => [...prev, { type: '', make: '', model: '' }]);
   };
 
   const removeDetector = (index: number) => {
-    setDetectors(prev => prev.filter((_, i) => i !== index));
+    setDetectors((prev) => prev.filter((_, i) => i !== index));
   };
 
   const validateOrientationStep = () => {
@@ -574,7 +695,8 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
       // 3. Strike and Dip
       const hasTop = formData.topTrend.trim() !== '' && formData.topPlunge.trim() !== '';
       const hasSide = formData.sideTrend.trim() !== '' && formData.sidePlunge.trim() !== '';
-      const hasStrikeDip = formData.trendPlungeStrike.trim() !== '' && formData.trendPlungeDip.trim() !== '';
+      const hasStrikeDip =
+        formData.trendPlungeStrike.trim() !== '' && formData.trendPlungeDip.trim() !== '';
 
       const setCount = [hasTop, hasSide, hasStrikeDip].filter(Boolean).length;
       return setCount >= 2;
@@ -593,7 +715,8 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
       // Project name is required
       if (formData.name.trim() === '') return false;
       // If both dates are provided, validate that start <= end
-      if (formData.startDate && formData.endDate && formData.startDate > formData.endDate) return false;
+      if (formData.startDate && formData.endDate && formData.startDate > formData.endDate)
+        return false;
       return true;
     }
     if (activeStep === 1) return formData.datasetName.trim() !== '';
@@ -641,18 +764,24 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
       // Step 7: Instrument Settings (only shown for certain instrument types) OR Step 7: Micrograph Metadata
       // For Instrument Settings - validation for conditional "Other" fields
       if (shouldShowInstrumentSettings()) {
-        if (formData.instrumentPurged === 'Yes' &&
-            formData.instrumentPurgedGasType === 'Other' &&
-            formData.instrumentPurgedGasOtherType.trim() === '') {
+        if (
+          formData.instrumentPurged === 'Yes' &&
+          formData.instrumentPurgedGasType === 'Other' &&
+          formData.instrumentPurgedGasOtherType.trim() === ''
+        ) {
           return false;
         }
-        if (formData.environmentPurged === 'Yes' &&
-            formData.environmentPurgedGasType === 'Other' &&
-            formData.environmentPurgedGasOtherType.trim() === '') {
+        if (
+          formData.environmentPurged === 'Yes' &&
+          formData.environmentPurgedGasType === 'Other' &&
+          formData.environmentPurgedGasOtherType.trim() === ''
+        ) {
           return false;
         }
-        if (formData.backgroundComposition === 'Other' &&
-            formData.otherBackgroundComposition.trim() === '') {
+        if (
+          formData.backgroundComposition === 'Other' &&
+          formData.otherBackgroundComposition.trim() === ''
+        ) {
           return false;
         }
         return true;
@@ -660,7 +789,8 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
         // This is Step 7: Micrograph Metadata (when Instrument Settings not shown)
         // Name is required, and if polished is checked, polish description is required
         if (formData.micrographName.trim() === '') return false;
-        if (formData.micrographPolished && formData.micrographPolishDescription.trim() === '') return false;
+        if (formData.micrographPolished && formData.micrographPolishDescription.trim() === '')
+          return false;
         return true;
       }
     }
@@ -669,7 +799,8 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
       if (shouldShowInstrumentSettings()) {
         // This is Micrograph Metadata
         if (formData.micrographName.trim() === '') return false;
-        if (formData.micrographPolished && formData.micrographPolishDescription.trim() === '') return false;
+        if (formData.micrographPolished && formData.micrographPolishDescription.trim() === '')
+          return false;
         return true;
       } else {
         // This is Micrograph Orientation
@@ -693,7 +824,12 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
 
         <RadioGroup
           value={formData.orientationMethod}
-          onChange={(e) => updateField('orientationMethod', e.target.value as 'unoriented' | 'trendPlunge' | 'fabricReference')}
+          onChange={(e) =>
+            updateField(
+              'orientationMethod',
+              e.target.value as 'unoriented' | 'trendPlunge' | 'fabricReference'
+            )
+          }
         >
           <FormControlLabel
             value="unoriented"
@@ -715,47 +851,113 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
         {formData.orientationMethod === 'trendPlunge' && (
           <Stack spacing={3} sx={{ pl: 4 }}>
             <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 600 }}>
-              Provide TWO of THREE: Select the arrow on each edge that represents a lower hemisphere plunge, and enter the trend and plunge information and/or provide the strike and dip of the thin section.
+              Provide TWO of THREE: Select the arrow on each edge that represents a lower hemisphere
+              plunge, and enter the trend and plunge information and/or provide the strike and dip
+              of the thin section.
             </Typography>
 
-            {/* Main layout: Fields on left, Image preview with arrows on right */}
+            {/* Main layout: Side fields on left, Image preview with arrows on right */}
             <Box sx={{ display: 'flex', gap: 5, alignItems: 'flex-start', mt: 2 }}>
-              {/* Left side: Trend and Plunge fields */}
+              {/* Left side: Side Edge Trend and Plunge fields */}
               <Stack spacing={2} sx={{ width: 120, flexShrink: 0, mt: '80px' }}>
-                <Typography variant="subtitle2" sx={{ fontWeight: 'bold' }}>Trend:</Typography>
+                <Typography variant="subtitle2" sx={{ fontWeight: 'bold' }}>
+                  Trend:
+                </Typography>
                 <TextField
                   type="number"
-                  value={formData.topTrend}
-                  onChange={(e) => updateField('topTrend', e.target.value)}
+                  value={formData.sideTrend}
+                  onChange={(e) => updateField('sideTrend', e.target.value)}
                   InputProps={{ endAdornment: '°' }}
                   size="small"
                 />
 
-                <Typography variant="subtitle2" sx={{ fontWeight: 'bold', mt: 2 }}>Plunge:</Typography>
+                <Typography variant="subtitle2" sx={{ fontWeight: 'bold', mt: 2 }}>
+                  Plunge:
+                </Typography>
                 <TextField
                   type="number"
-                  value={formData.topPlunge}
-                  onChange={(e) => updateField('topPlunge', e.target.value)}
+                  value={formData.sidePlunge}
+                  onChange={(e) => updateField('sidePlunge', e.target.value)}
                   InputProps={{ endAdornment: '°' }}
                   size="small"
                 />
               </Stack>
 
               {/* Right side: Image preview with arrows */}
-              <Box sx={{ position: 'relative', display: 'inline-block', mt: 6, ml: 8 }}>
+              <Box sx={{ position: 'relative', display: 'inline-block', mt: 10, ml: 8 }}>
+                {/* Top Edge Trend and Plunge fields - positioned above image */}
+                <Box
+                  sx={{
+                    position: 'absolute',
+                    top: -100,
+                    left: -35,
+                    right: 0,
+                    display: 'flex',
+                    gap: 4,
+                    justifyContent: 'center',
+                  }}
+                >
+                  <Stack direction="row" spacing={2} alignItems="center">
+                    <Typography variant="subtitle2" sx={{ fontWeight: 'bold', minWidth: 60 }}>
+                      Trend:
+                    </Typography>
+                    <TextField
+                      type="number"
+                      value={formData.topTrend}
+                      onChange={(e) => updateField('topTrend', e.target.value)}
+                      InputProps={{ endAdornment: '°' }}
+                      size="small"
+                      sx={{ width: 120 }}
+                    />
+                    <Typography
+                      variant="subtitle2"
+                      sx={{ fontWeight: 'bold', minWidth: 60, ml: 2 }}
+                    >
+                      Plunge:
+                    </Typography>
+                    <TextField
+                      type="number"
+                      value={formData.topPlunge}
+                      onChange={(e) => updateField('topPlunge', e.target.value)}
+                      InputProps={{ endAdornment: '°' }}
+                      size="small"
+                      sx={{ width: 120 }}
+                    />
+                  </Stack>
+                </Box>
                 {/* Top edge arrows - positioned at corners */}
                 <RadioGroup
                   row
                   value={formData.topReferenceCorner}
-                  onChange={(e) => updateField('topReferenceCorner', e.target.value as 'left' | 'right')}
+                  onChange={(e) =>
+                    updateField('topReferenceCorner', e.target.value as 'left' | 'right')
+                  }
                 >
                   {/* Left corner */}
-                  <Box sx={{ position: 'absolute', top: -45, left: -5, display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                  <Box
+                    sx={{
+                      position: 'absolute',
+                      top: -45,
+                      left: -5,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 0.5,
+                    }}
+                  >
                     <Radio value="left" />
                     <Typography sx={{ fontSize: 28, lineHeight: 1 }}>→</Typography>
                   </Box>
                   {/* Right corner */}
-                  <Box sx={{ position: 'absolute', top: -45, right: -5, display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                  <Box
+                    sx={{
+                      position: 'absolute',
+                      top: -45,
+                      right: -5,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 0.5,
+                    }}
+                  >
                     <Typography sx={{ fontSize: 28, lineHeight: 1 }}>←</Typography>
                     <Radio value="right" />
                   </Box>
@@ -764,15 +966,35 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
                 {/* Left edge arrows - positioned at corners */}
                 <RadioGroup
                   value={formData.sideReferenceCorner}
-                  onChange={(e) => updateField('sideReferenceCorner', e.target.value as 'top' | 'bottom')}
+                  onChange={(e) =>
+                    updateField('sideReferenceCorner', e.target.value as 'top' | 'bottom')
+                  }
                 >
                   {/* Top corner */}
-                  <Box sx={{ position: 'absolute', left: -55, top: -5, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                  <Box
+                    sx={{
+                      position: 'absolute',
+                      left: -55,
+                      top: -5,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                    }}
+                  >
                     <Radio value="top" />
                     <Typography sx={{ fontSize: 28, lineHeight: 1 }}>↓</Typography>
                   </Box>
                   {/* Bottom corner */}
-                  <Box sx={{ position: 'absolute', left: -55, bottom: -5, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                  <Box
+                    sx={{
+                      position: 'absolute',
+                      left: -55,
+                      bottom: -5,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                    }}
+                  >
                     <Typography sx={{ fontSize: 28, lineHeight: 1 }}>↑</Typography>
                     <Radio value="bottom" />
                   </Box>
@@ -795,7 +1017,9 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
                     }}
                   >
                     <CircularProgress />
-                    <Typography variant="body2" color="text.secondary">Loading preview...</Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      Loading preview...
+                    </Typography>
                   </Box>
                 ) : micrographPreviewUrl ? (
                   <Box
@@ -824,7 +1048,9 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
                       justifyContent: 'center',
                     }}
                   >
-                    <Typography variant="body2" color="text.secondary">No image loaded</Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      No image loaded
+                    </Typography>
                   </Box>
                 )}
               </Box>
@@ -838,7 +1064,9 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
               {/* Strike and Dip fields */}
               <Box sx={{ ml: '-20px' }}>
                 <Stack direction="row" spacing={2} alignItems="center">
-                  <Typography variant="subtitle2" sx={{ fontWeight: 'bold', minWidth: 60 }}>Strike:</Typography>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 'bold', minWidth: 60 }}>
+                    Strike:
+                  </Typography>
                   <TextField
                     type="number"
                     value={formData.trendPlungeStrike}
@@ -847,7 +1075,9 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
                     size="small"
                     sx={{ width: 120 }}
                   />
-                  <Typography variant="subtitle2" sx={{ fontWeight: 'bold', minWidth: 40, ml: 2 }}>Dip:</Typography>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 'bold', minWidth: 40, ml: 2 }}>
+                    Dip:
+                  </Typography>
                   <TextField
                     type="number"
                     value={formData.trendPlungeDip}
@@ -865,8 +1095,15 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
         {formData.orientationMethod === 'fabricReference' && (
           <Stack spacing={2} sx={{ pl: 4 }}>
             <Typography variant="subtitle2" sx={{ fontWeight: 'bold' }}>
-              Fabric Reference: <Typography component="span" variant="body2" color="text.secondary" sx={{ fontWeight: 'normal' }}>
-                (X - Lineation, Y - Perpendicular to lineation within the foliation plane, Z - Pole to foliation)
+              Fabric Reference:{' '}
+              <Typography
+                component="span"
+                variant="body2"
+                color="text.secondary"
+                sx={{ fontWeight: 'normal' }}
+              >
+                (X - Lineation, Y - Perpendicular to lineation within the foliation plane, Z - Pole
+                to foliation)
               </Typography>
             </Typography>
             <RadioGroup
@@ -923,7 +1160,9 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
                 helperText=" "
                 sx={{ flex: 1 }}
               />
-              <Typography variant="body2" sx={{ px: 1, pt: 2 }}>OR</Typography>
+              <Typography variant="body2" sx={{ px: 1, pt: 2 }}>
+                OR
+              </Typography>
               <TextField
                 label="Rake"
                 type="number"
@@ -935,9 +1174,12 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
               />
             </Stack>
 
-            <Typography variant="subtitle2" sx={{ fontWeight: 'bold', mt: 1 }}>Look Direction:</Typography>
+            <Typography variant="subtitle2" sx={{ fontWeight: 'bold', mt: 1 }}>
+              Look Direction:
+            </Typography>
             <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
-              When looking at the Reference micrograph, are you looking toward the lower hemisphere or upper hemisphere in geographic coordinates?
+              When looking at the Reference micrograph, are you looking toward the lower hemisphere
+              or upper hemisphere in geographic coordinates?
             </Typography>
             <RadioGroup
               value={formData.lookDirection}
@@ -983,8 +1225,18 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
                 inputProps={{
                   max: formData.endDate || '2100-12-31', // Date picker can't select after end date or year 2100
                 }}
-                helperText={formData.endDate && formData.startDate && formData.startDate > formData.endDate ? 'Start date must be before end date' : ''}
-                error={!!(formData.endDate && formData.startDate && formData.startDate > formData.endDate)}
+                helperText={
+                  formData.endDate && formData.startDate && formData.startDate > formData.endDate
+                    ? 'Start date must be before end date'
+                    : ''
+                }
+                error={
+                  !!(
+                    formData.endDate &&
+                    formData.startDate &&
+                    formData.startDate > formData.endDate
+                  )
+                }
               />
               <TextField
                 fullWidth
@@ -997,8 +1249,18 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
                   min: formData.startDate || undefined, // Date picker can't select before start date
                   max: '2100-12-31', // Date picker can't select after year 2100
                 }}
-                helperText={formData.startDate && formData.endDate && formData.endDate < formData.startDate ? 'End date must be after start date' : ''}
-                error={!!(formData.startDate && formData.endDate && formData.endDate < formData.startDate)}
+                helperText={
+                  formData.startDate && formData.endDate && formData.endDate < formData.startDate
+                    ? 'End date must be after start date'
+                    : ''
+                }
+                error={
+                  !!(
+                    formData.startDate &&
+                    formData.endDate &&
+                    formData.endDate < formData.startDate
+                  )
+                }
               />
             </Box>
             <TextField
@@ -1166,8 +1428,8 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
         return (
           <Stack spacing={2}>
             <Typography variant="body2" color="text.secondary">
-              Select a reference micrograph image file to add to this sample. This will be the base image
-              for your annotations and measurements.
+              Select a reference micrograph image file to add to this sample. This will be the base
+              image for your annotations and measurements.
             </Typography>
             <Box sx={{ display: 'flex', gap: 2, alignItems: 'flex-start' }}>
               <TextField
@@ -1209,13 +1471,23 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
               <MenuItem value="">Select Instrument Type...</MenuItem>
               <MenuItem value="Optical Microscopy">Optical Microscopy</MenuItem>
               <MenuItem value="Scanner">Scanner</MenuItem>
-              <MenuItem value="Transmission Electron Microscopy (TEM)">Transmission Electron Microscopy (TEM)</MenuItem>
-              <MenuItem value="Scanning Transmission Electron Microscopy (STEM)">Scanning Transmission Electron Microscopy (STEM)</MenuItem>
-              <MenuItem value="Scanning Electron Microscopy (SEM)">Scanning Electron Microscopy (SEM)</MenuItem>
+              <MenuItem value="Transmission Electron Microscopy (TEM)">
+                Transmission Electron Microscopy (TEM)
+              </MenuItem>
+              <MenuItem value="Scanning Transmission Electron Microscopy (STEM)">
+                Scanning Transmission Electron Microscopy (STEM)
+              </MenuItem>
+              <MenuItem value="Scanning Electron Microscopy (SEM)">
+                Scanning Electron Microscopy (SEM)
+              </MenuItem>
               <MenuItem value="Electron Microprobe">Electron Microprobe</MenuItem>
-              <MenuItem value="Fourier Transform Infrared Spectroscopy (FTIR)">Fourier Transform Infrared Spectroscopy (FTIR)</MenuItem>
+              <MenuItem value="Fourier Transform Infrared Spectroscopy (FTIR)">
+                Fourier Transform Infrared Spectroscopy (FTIR)
+              </MenuItem>
               <MenuItem value="Raman Spectroscopy">Raman Spectroscopy</MenuItem>
-              <MenuItem value="Atomic Force Microscopy (AFM)">Atomic Force Microscopy (AFM)</MenuItem>
+              <MenuItem value="Atomic Force Microscopy (AFM)">
+                Atomic Force Microscopy (AFM)
+              </MenuItem>
               <MenuItem value="Other">Other</MenuItem>
             </TextField>
 
@@ -1231,7 +1503,7 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
             )}
 
             {/* Data Type field - shown for TEM, STEM, SEM, Electron Microprobe */}
-            {(formData.instrumentType === 'Transmission Electron Microscopy (TEM)') && (
+            {formData.instrumentType === 'Transmission Electron Microscopy (TEM)' && (
               <TextField
                 fullWidth
                 select
@@ -1247,13 +1519,19 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
                 <MenuItem value="Bright Field">Bright Field</MenuItem>
                 <MenuItem value="Dark Field">Dark Field</MenuItem>
                 <MenuItem value="Electron Diffraction">Electron Diffraction</MenuItem>
-                <MenuItem value="Energy Dispersive X-ray Spectroscopy (EDS)">Energy Dispersive X-ray Spectroscopy (EDS)</MenuItem>
-                <MenuItem value="Automated Crystal Orientation Mapping (ACOM)">Automated Crystal Orientation Mapping (ACOM)</MenuItem>
-                <MenuItem value="Energy Dispersive X-ray Tomography">Energy Dispersive X-ray Tomography</MenuItem>
+                <MenuItem value="Energy Dispersive X-ray Spectroscopy (EDS)">
+                  Energy Dispersive X-ray Spectroscopy (EDS)
+                </MenuItem>
+                <MenuItem value="Automated Crystal Orientation Mapping (ACOM)">
+                  Automated Crystal Orientation Mapping (ACOM)
+                </MenuItem>
+                <MenuItem value="Energy Dispersive X-ray Tomography">
+                  Energy Dispersive X-ray Tomography
+                </MenuItem>
               </TextField>
             )}
 
-            {(formData.instrumentType === 'Scanning Transmission Electron Microscopy (STEM)') && (
+            {formData.instrumentType === 'Scanning Transmission Electron Microscopy (STEM)' && (
               <TextField
                 fullWidth
                 select
@@ -1268,14 +1546,20 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
                 <MenuItem value="Bright Field">Bright Field</MenuItem>
                 <MenuItem value="Dark Field">Dark Field</MenuItem>
                 <MenuItem value="Annular Dark Field (ADF)">Annular Dark Field (ADF)</MenuItem>
-                <MenuItem value="High-Angle Annular Dark Field (HAADF)">High-Angle Annular Dark Field (HAADF)</MenuItem>
-                <MenuItem value="Energy Dispersive X-ray Spectroscopy (EDS)">Energy Dispersive X-ray Spectroscopy (EDS)</MenuItem>
-                <MenuItem value="Electron Energy Loss Spectroscopy (EELS)">Electron Energy Loss Spectroscopy (EELS)</MenuItem>
+                <MenuItem value="High-Angle Annular Dark Field (HAADF)">
+                  High-Angle Annular Dark Field (HAADF)
+                </MenuItem>
+                <MenuItem value="Energy Dispersive X-ray Spectroscopy (EDS)">
+                  Energy Dispersive X-ray Spectroscopy (EDS)
+                </MenuItem>
+                <MenuItem value="Electron Energy Loss Spectroscopy (EELS)">
+                  Electron Energy Loss Spectroscopy (EELS)
+                </MenuItem>
                 <MenuItem value="Cathodoluminescence (CL)">Cathodoluminescence (CL)</MenuItem>
               </TextField>
             )}
 
-            {(formData.instrumentType === 'Scanning Electron Microscopy (SEM)') && (
+            {formData.instrumentType === 'Scanning Electron Microscopy (SEM)' && (
               <TextField
                 fullWidth
                 select
@@ -1290,17 +1574,29 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
                 <MenuItem value="Secondary Electron (SE)">Secondary Electron (SE)</MenuItem>
                 <MenuItem value="Backscatter Electron (BSE)">Backscatter Electron (BSE)</MenuItem>
                 <MenuItem value="Forescatter Electron (FSE)">Forescatter Electron (FSE)</MenuItem>
-                <MenuItem value="Electron Backscatter Diffraction (EBSD)">Electron Backscatter Diffraction (EBSD)</MenuItem>
-                <MenuItem value="Transmission Kikuchi Diffraction (TKD)">Transmission Kikuchi Diffraction (TKD)</MenuItem>
-                <MenuItem value="Electron Channeling Contrast Imaging (ECCI)">Electron Channeling Contrast Imaging (ECCI)</MenuItem>
-                <MenuItem value="Energy Dispersive X-ray Spectroscopy (EDS)">Energy Dispersive X-ray Spectroscopy (EDS)</MenuItem>
-                <MenuItem value="Wavelength-dispersive X-ray spectroscopy (WDS)">Wavelength-dispersive X-ray spectroscopy (WDS)</MenuItem>
+                <MenuItem value="Electron Backscatter Diffraction (EBSD)">
+                  Electron Backscatter Diffraction (EBSD)
+                </MenuItem>
+                <MenuItem value="Transmission Kikuchi Diffraction (TKD)">
+                  Transmission Kikuchi Diffraction (TKD)
+                </MenuItem>
+                <MenuItem value="Electron Channeling Contrast Imaging (ECCI)">
+                  Electron Channeling Contrast Imaging (ECCI)
+                </MenuItem>
+                <MenuItem value="Energy Dispersive X-ray Spectroscopy (EDS)">
+                  Energy Dispersive X-ray Spectroscopy (EDS)
+                </MenuItem>
+                <MenuItem value="Wavelength-dispersive X-ray spectroscopy (WDS)">
+                  Wavelength-dispersive X-ray spectroscopy (WDS)
+                </MenuItem>
                 <MenuItem value="Cathodoluminescence (CL)">Cathodoluminescence (CL)</MenuItem>
-                <MenuItem value="Focused Ion Beam Scanning Electron Microscopy (FIB-SEM)">Focused Ion Beam Scanning Electron Microscopy (FIB-SEM)</MenuItem>
+                <MenuItem value="Focused Ion Beam Scanning Electron Microscopy (FIB-SEM)">
+                  Focused Ion Beam Scanning Electron Microscopy (FIB-SEM)
+                </MenuItem>
               </TextField>
             )}
 
-            {(formData.instrumentType === 'Electron Microprobe') && (
+            {formData.instrumentType === 'Electron Microprobe' && (
               <TextField
                 fullWidth
                 select
@@ -1314,9 +1610,15 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
                 <MenuItem value="">Select Data Type...</MenuItem>
                 <MenuItem value="Secondary Electron (SE)">Secondary Electron (SE)</MenuItem>
                 <MenuItem value="Backscatter Electron (BSE)">Backscatter Electron (BSE)</MenuItem>
-                <MenuItem value="Electron Channeling Contrast Imaging (ECCI)">Electron Channeling Contrast Imaging (ECCI)</MenuItem>
-                <MenuItem value="Energy Dispersive X-ray Spectroscopy (EDS)">Energy Dispersive X-ray Spectroscopy (EDS)</MenuItem>
-                <MenuItem value="Wavelength-dispersive X-ray spectroscopy (WDS)">Wavelength-dispersive X-ray spectroscopy (WDS)</MenuItem>
+                <MenuItem value="Electron Channeling Contrast Imaging (ECCI)">
+                  Electron Channeling Contrast Imaging (ECCI)
+                </MenuItem>
+                <MenuItem value="Energy Dispersive X-ray Spectroscopy (EDS)">
+                  Energy Dispersive X-ray Spectroscopy (EDS)
+                </MenuItem>
+                <MenuItem value="Wavelength-dispersive X-ray spectroscopy (WDS)">
+                  Wavelength-dispersive X-ray spectroscopy (WDS)
+                </MenuItem>
                 <MenuItem value="Cathodoluminescence (CL)">Cathodoluminescence (CL)</MenuItem>
               </TextField>
             )}
@@ -1390,247 +1692,278 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
 
             {/* Conditional Image Type based on Data Type for TEM */}
             {formData.instrumentType === 'Transmission Electron Microscopy (TEM)' &&
-             formData.dataType === 'Electron Diffraction' && (
-              <TextField
-                fullWidth
-                required
-                select
-                label="Image Type"
-                value={formData.imageType}
-                onChange={(e) => updateField('imageType', e.target.value)}
-              >
-                <MenuItem value="">Select Image Type...</MenuItem>
-                <MenuItem value="Selected Area Electron Diffraction (SAED)">Selected Area Electron Diffraction (SAED)</MenuItem>
-                <MenuItem value="Convergent Beam Electron Diffraction (CBED)">Convergent Beam Electron Diffraction (CBED)</MenuItem>
-                <MenuItem value="Nano Beam Diffraction (NBD)">Nano Beam Diffraction (NBD)</MenuItem>
-                <MenuItem value="Large Area Convergent Beam Electron Diffraction (LACBED)">Large Area Convergent Beam Electron Diffraction (LACBED)</MenuItem>
-              </TextField>
-            )}
+              formData.dataType === 'Electron Diffraction' && (
+                <TextField
+                  fullWidth
+                  required
+                  select
+                  label="Image Type"
+                  value={formData.imageType}
+                  onChange={(e) => updateField('imageType', e.target.value)}
+                >
+                  <MenuItem value="">Select Image Type...</MenuItem>
+                  <MenuItem value="Selected Area Electron Diffraction (SAED)">
+                    Selected Area Electron Diffraction (SAED)
+                  </MenuItem>
+                  <MenuItem value="Convergent Beam Electron Diffraction (CBED)">
+                    Convergent Beam Electron Diffraction (CBED)
+                  </MenuItem>
+                  <MenuItem value="Nano Beam Diffraction (NBD)">
+                    Nano Beam Diffraction (NBD)
+                  </MenuItem>
+                  <MenuItem value="Large Area Convergent Beam Electron Diffraction (LACBED)">
+                    Large Area Convergent Beam Electron Diffraction (LACBED)
+                  </MenuItem>
+                </TextField>
+              )}
 
             {/* Conditional Image Type based on Data Type for STEM CL */}
             {formData.instrumentType === 'Scanning Transmission Electron Microscopy (STEM)' &&
-             formData.dataType === 'Cathodoluminescence (CL)' && (
-              <TextField
-                fullWidth
-                required
-                select
-                label="Image Type"
-                value={formData.imageType}
-                onChange={(e) => updateField('imageType', e.target.value)}
-              >
-                <MenuItem value="">Select Image Type...</MenuItem>
-                <MenuItem value="Panchromatic CL Image">Panchromatic CL Image</MenuItem>
-                <MenuItem value="Wavelength Filtered CL Image">Wavelength Filtered CL Image</MenuItem>
-                <MenuItem value="Cathodoluminescence Spectroscopy">Cathodoluminescence Spectroscopy</MenuItem>
-              </TextField>
-            )}
+              formData.dataType === 'Cathodoluminescence (CL)' && (
+                <TextField
+                  fullWidth
+                  required
+                  select
+                  label="Image Type"
+                  value={formData.imageType}
+                  onChange={(e) => updateField('imageType', e.target.value)}
+                >
+                  <MenuItem value="">Select Image Type...</MenuItem>
+                  <MenuItem value="Panchromatic CL Image">Panchromatic CL Image</MenuItem>
+                  <MenuItem value="Wavelength Filtered CL Image">
+                    Wavelength Filtered CL Image
+                  </MenuItem>
+                  <MenuItem value="Cathodoluminescence Spectroscopy">
+                    Cathodoluminescence Spectroscopy
+                  </MenuItem>
+                </TextField>
+              )}
 
             {/* Conditional Image Type based on Data Type for SEM EBSD */}
             {formData.instrumentType === 'Scanning Electron Microscopy (SEM)' &&
-             formData.dataType === 'Electron Backscatter Diffraction (EBSD)' && (
-              <TextField
-                fullWidth
-                required
-                select
-                label="Image Type"
-                value={formData.imageType}
-                onChange={(e) => updateField('imageType', e.target.value)}
-              >
-                <MenuItem value="">Select Image Type...</MenuItem>
-                <MenuItem value="Orientation (Euler)">Orientation (Euler)</MenuItem>
-                <MenuItem value="Orientation (IPF-X)">Orientation (IPF-X)</MenuItem>
-                <MenuItem value="Orientation (IPF-Y)">Orientation (IPF-Y)</MenuItem>
-                <MenuItem value="Orientation (IPF-Z)">Orientation (IPF-Z)</MenuItem>
-                <MenuItem value="Band Contrast">Band Contrast</MenuItem>
-                <MenuItem value="Phase Map">Phase Map</MenuItem>
-                <MenuItem value="Misorientation to Mean">Misorientation to Mean</MenuItem>
-                <MenuItem value="Grain Boundaries">Grain Boundaries</MenuItem>
-                <MenuItem value="Sub-grain Boundaries">Sub-grain Boundaries</MenuItem>
-              </TextField>
-            )}
+              formData.dataType === 'Electron Backscatter Diffraction (EBSD)' && (
+                <TextField
+                  fullWidth
+                  required
+                  select
+                  label="Image Type"
+                  value={formData.imageType}
+                  onChange={(e) => updateField('imageType', e.target.value)}
+                >
+                  <MenuItem value="">Select Image Type...</MenuItem>
+                  <MenuItem value="Orientation (Euler)">Orientation (Euler)</MenuItem>
+                  <MenuItem value="Orientation (IPF-X)">Orientation (IPF-X)</MenuItem>
+                  <MenuItem value="Orientation (IPF-Y)">Orientation (IPF-Y)</MenuItem>
+                  <MenuItem value="Orientation (IPF-Z)">Orientation (IPF-Z)</MenuItem>
+                  <MenuItem value="Band Contrast">Band Contrast</MenuItem>
+                  <MenuItem value="Phase Map">Phase Map</MenuItem>
+                  <MenuItem value="Misorientation to Mean">Misorientation to Mean</MenuItem>
+                  <MenuItem value="Grain Boundaries">Grain Boundaries</MenuItem>
+                  <MenuItem value="Sub-grain Boundaries">Sub-grain Boundaries</MenuItem>
+                </TextField>
+              )}
 
             {/* Conditional Image Type based on Data Type for SEM CL */}
             {formData.instrumentType === 'Scanning Electron Microscopy (SEM)' &&
-             formData.dataType === 'Cathodoluminescence (CL)' && (
-              <TextField
-                fullWidth
-                required
-                select
-                label="Image Type"
-                value={formData.imageType}
-                onChange={(e) => updateField('imageType', e.target.value)}
-              >
-                <MenuItem value="">Select Image Type...</MenuItem>
-                <MenuItem value="Panchromatic CL Image">Panchromatic CL Image</MenuItem>
-                <MenuItem value="Wavelength Filtered CL Image">Wavelength Filtered CL Image</MenuItem>
-              </TextField>
-            )}
+              formData.dataType === 'Cathodoluminescence (CL)' && (
+                <TextField
+                  fullWidth
+                  required
+                  select
+                  label="Image Type"
+                  value={formData.imageType}
+                  onChange={(e) => updateField('imageType', e.target.value)}
+                >
+                  <MenuItem value="">Select Image Type...</MenuItem>
+                  <MenuItem value="Panchromatic CL Image">Panchromatic CL Image</MenuItem>
+                  <MenuItem value="Wavelength Filtered CL Image">
+                    Wavelength Filtered CL Image
+                  </MenuItem>
+                </TextField>
+              )}
 
             {/* Conditional Image Type for SEM FIB-SEM */}
             {formData.instrumentType === 'Scanning Electron Microscopy (SEM)' &&
-             formData.dataType === 'Focused Ion Beam Scanning Electron Microscopy (FIB-SEM)' && (
-              <TextField
-                fullWidth
-                required
-                select
-                label="Image Type"
-                value={formData.imageType}
-                onChange={(e) => updateField('imageType', e.target.value)}
-              >
-                <MenuItem value="">Select Image Type...</MenuItem>
-                <MenuItem value="FIB Imaging">FIB Imaging</MenuItem>
-              </TextField>
-            )}
+              formData.dataType === 'Focused Ion Beam Scanning Electron Microscopy (FIB-SEM)' && (
+                <TextField
+                  fullWidth
+                  required
+                  select
+                  label="Image Type"
+                  value={formData.imageType}
+                  onChange={(e) => updateField('imageType', e.target.value)}
+                >
+                  <MenuItem value="">Select Image Type...</MenuItem>
+                  <MenuItem value="FIB Imaging">FIB Imaging</MenuItem>
+                </TextField>
+              )}
 
             {/* Conditional Image Type for Electron Microprobe CL */}
             {formData.instrumentType === 'Electron Microprobe' &&
-             formData.dataType === 'Cathodoluminescence (CL)' && (
-              <TextField
-                fullWidth
-                required
-                select
-                label="Image Type"
-                value={formData.imageType}
-                onChange={(e) => updateField('imageType', e.target.value)}
-              >
-                <MenuItem value="">Select Image Type...</MenuItem>
-                <MenuItem value="Panchromatic SEM-CL Image">Panchromatic SEM-CL Image</MenuItem>
-                <MenuItem value="Wavelength Filtered SEM-CL Image">Wavelength Filtered SEM-CL Image</MenuItem>
-              </TextField>
-            )}
+              formData.dataType === 'Cathodoluminescence (CL)' && (
+                <TextField
+                  fullWidth
+                  required
+                  select
+                  label="Image Type"
+                  value={formData.imageType}
+                  onChange={(e) => updateField('imageType', e.target.value)}
+                >
+                  <MenuItem value="">Select Image Type...</MenuItem>
+                  <MenuItem value="Panchromatic SEM-CL Image">Panchromatic SEM-CL Image</MenuItem>
+                  <MenuItem value="Wavelength Filtered SEM-CL Image">
+                    Wavelength Filtered SEM-CL Image
+                  </MenuItem>
+                </TextField>
+              )}
 
             {/* Auto-set imageType for certain data types that don't need a separate image type dropdown */}
             {formData.instrumentType === 'Transmission Electron Microscopy (TEM)' &&
-             formData.dataType &&
-             !['Electron Diffraction', 'Energy Dispersive X-ray Spectroscopy (EDS)'].includes(formData.dataType) && (
-              <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                Image Type: {formData.dataType}
-              </Typography>
-            )}
+              formData.dataType &&
+              !['Electron Diffraction', 'Energy Dispersive X-ray Spectroscopy (EDS)'].includes(
+                formData.dataType
+              ) && (
+                <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                  Image Type: {formData.dataType}
+                </Typography>
+              )}
 
             {formData.instrumentType === 'Scanning Transmission Electron Microscopy (STEM)' &&
-             formData.dataType &&
-             !['Energy Dispersive X-ray Spectroscopy (EDS)', 'Cathodoluminescence (CL)'].includes(formData.dataType) && (
-              <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                Image Type: {formData.dataType}
-              </Typography>
-            )}
+              formData.dataType &&
+              !['Energy Dispersive X-ray Spectroscopy (EDS)', 'Cathodoluminescence (CL)'].includes(
+                formData.dataType
+              ) && (
+                <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                  Image Type: {formData.dataType}
+                </Typography>
+              )}
 
             {formData.instrumentType === 'Scanning Electron Microscopy (SEM)' &&
-             formData.dataType &&
-             !['Electron Backscatter Diffraction (EBSD)', 'Energy Dispersive X-ray Spectroscopy (EDS)',
-               'Wavelength-dispersive X-ray spectroscopy (WDS)', 'Cathodoluminescence (CL)',
-               'Focused Ion Beam Scanning Electron Microscopy (FIB-SEM)'].includes(formData.dataType) && (
-              <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                Image Type: {formData.dataType}
-              </Typography>
-            )}
+              formData.dataType &&
+              ![
+                'Electron Backscatter Diffraction (EBSD)',
+                'Energy Dispersive X-ray Spectroscopy (EDS)',
+                'Wavelength-dispersive X-ray spectroscopy (WDS)',
+                'Cathodoluminescence (CL)',
+                'Focused Ion Beam Scanning Electron Microscopy (FIB-SEM)',
+              ].includes(formData.dataType) && (
+                <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                  Image Type: {formData.dataType}
+                </Typography>
+              )}
 
             {formData.instrumentType === 'Electron Microprobe' &&
-             formData.dataType &&
-             !['Energy Dispersive X-ray Spectroscopy (EDS)', 'Wavelength-dispersive X-ray spectroscopy (WDS)',
-               'Cathodoluminescence (CL)'].includes(formData.dataType) && (
-              <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                Image Type: {formData.dataType}
-              </Typography>
-            )}
+              formData.dataType &&
+              ![
+                'Energy Dispersive X-ray Spectroscopy (EDS)',
+                'Wavelength-dispersive X-ray spectroscopy (WDS)',
+                'Cathodoluminescence (CL)',
+              ].includes(formData.dataType) && (
+                <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                  Image Type: {formData.dataType}
+                </Typography>
+              )}
 
             {/* Periodic Table Element Picker for EDS/WDS */}
             {/* TEM + EDS */}
             {formData.instrumentType === 'Transmission Electron Microscopy (TEM)' &&
-             formData.dataType === 'Energy Dispersive X-ray Spectroscopy (EDS)' && (
-              <Box>
-                <TextField
-                  fullWidth
-                  required
-                  label="Image Type(s)"
-                  value={formData.imageType}
-                  InputProps={{ readOnly: true }}
-                  helperText="Click 'Select Element(s) from Periodic Table' to choose elements"
-                />
-                <Button
-                  variant="outlined"
-                  onClick={() => setShowPeriodicTable(true)}
-                  sx={{ mt: 1 }}
-                >
-                  Select Element(s) from Periodic Table
-                </Button>
-              </Box>
-            )}
+              formData.dataType === 'Energy Dispersive X-ray Spectroscopy (EDS)' && (
+                <Box>
+                  <TextField
+                    fullWidth
+                    required
+                    label="Image Type(s)"
+                    value={formData.imageType}
+                    InputProps={{ readOnly: true }}
+                    helperText="Click 'Select Element(s) from Periodic Table' to choose elements"
+                  />
+                  <Button
+                    variant="outlined"
+                    onClick={() => setShowPeriodicTable(true)}
+                    sx={{ mt: 1 }}
+                  >
+                    Select Element(s) from Periodic Table
+                  </Button>
+                </Box>
+              )}
 
             {/* STEM + EDS */}
             {formData.instrumentType === 'Scanning Transmission Electron Microscopy (STEM)' &&
-             formData.dataType === 'Energy Dispersive X-ray Spectroscopy (EDS)' && (
-              <Box>
-                <TextField
-                  fullWidth
-                  required
-                  label="Image Type(s)"
-                  value={formData.imageType}
-                  InputProps={{ readOnly: true }}
-                  helperText="Click 'Select Element(s) from Periodic Table' to choose elements"
-                />
-                <Button
-                  variant="outlined"
-                  onClick={() => setShowPeriodicTable(true)}
-                  sx={{ mt: 1 }}
-                >
-                  Select Element(s) from Periodic Table
-                </Button>
-              </Box>
-            )}
+              formData.dataType === 'Energy Dispersive X-ray Spectroscopy (EDS)' && (
+                <Box>
+                  <TextField
+                    fullWidth
+                    required
+                    label="Image Type(s)"
+                    value={formData.imageType}
+                    InputProps={{ readOnly: true }}
+                    helperText="Click 'Select Element(s) from Periodic Table' to choose elements"
+                  />
+                  <Button
+                    variant="outlined"
+                    onClick={() => setShowPeriodicTable(true)}
+                    sx={{ mt: 1 }}
+                  >
+                    Select Element(s) from Periodic Table
+                  </Button>
+                </Box>
+              )}
 
             {/* SEM + EDS or WDS */}
             {formData.instrumentType === 'Scanning Electron Microscopy (SEM)' &&
-             (formData.dataType === 'Energy Dispersive X-ray Spectroscopy (EDS)' ||
-              formData.dataType === 'Wavelength-dispersive X-ray spectroscopy (WDS)') && (
-              <Box>
-                <TextField
-                  fullWidth
-                  required
-                  label="Image Type(s)"
-                  value={formData.imageType}
-                  InputProps={{ readOnly: true }}
-                  helperText="Click 'Select Element(s) from Periodic Table' to choose elements"
-                />
-                <Button
-                  variant="outlined"
-                  onClick={() => setShowPeriodicTable(true)}
-                  sx={{ mt: 1 }}
-                >
-                  Select Element(s) from Periodic Table
-                </Button>
-              </Box>
-            )}
+              (formData.dataType === 'Energy Dispersive X-ray Spectroscopy (EDS)' ||
+                formData.dataType === 'Wavelength-dispersive X-ray spectroscopy (WDS)') && (
+                <Box>
+                  <TextField
+                    fullWidth
+                    required
+                    label="Image Type(s)"
+                    value={formData.imageType}
+                    InputProps={{ readOnly: true }}
+                    helperText="Click 'Select Element(s) from Periodic Table' to choose elements"
+                  />
+                  <Button
+                    variant="outlined"
+                    onClick={() => setShowPeriodicTable(true)}
+                    sx={{ mt: 1 }}
+                  >
+                    Select Element(s) from Periodic Table
+                  </Button>
+                </Box>
+              )}
 
             {/* Electron Microprobe + EDS or WDS */}
             {formData.instrumentType === 'Electron Microprobe' &&
-             (formData.dataType === 'Energy Dispersive X-ray Spectroscopy (EDS)' ||
-              formData.dataType === 'Wavelength-dispersive X-ray spectroscopy (WDS)') && (
-              <Box>
-                <TextField
-                  fullWidth
-                  required
-                  label="Image Type(s)"
-                  value={formData.imageType}
-                  InputProps={{ readOnly: true }}
-                  helperText="Click 'Select Element(s) from Periodic Table' to choose elements"
-                />
-                <Button
-                  variant="outlined"
-                  onClick={() => setShowPeriodicTable(true)}
-                  sx={{ mt: 1 }}
-                >
-                  Select Element(s) from Periodic Table
-                </Button>
-              </Box>
-            )}
+              (formData.dataType === 'Energy Dispersive X-ray Spectroscopy (EDS)' ||
+                formData.dataType === 'Wavelength-dispersive X-ray spectroscopy (WDS)') && (
+                <Box>
+                  <TextField
+                    fullWidth
+                    required
+                    label="Image Type(s)"
+                    value={formData.imageType}
+                    InputProps={{ readOnly: true }}
+                    helperText="Click 'Select Element(s) from Periodic Table' to choose elements"
+                  />
+                  <Button
+                    variant="outlined"
+                    onClick={() => setShowPeriodicTable(true)}
+                    sx={{ mt: 1 }}
+                  >
+                    Select Element(s) from Periodic Table
+                  </Button>
+                </Box>
+              )}
           </Stack>
         );
 
       case 5:
-        const showDetectors = ['Transmission Electron Microscopy (TEM)', 'Scanning Transmission Electron Microscopy (STEM)',
-                               'Scanning Electron Microscopy (SEM)', 'Electron Microprobe'].includes(formData.instrumentType);
+        const showDetectors = [
+          'Transmission Electron Microscopy (TEM)',
+          'Scanning Transmission Electron Microscopy (STEM)',
+          'Scanning Electron Microscopy (SEM)',
+          'Electron Microprobe',
+        ].includes(formData.instrumentType);
 
         return (
           <Stack spacing={2}>
@@ -1832,9 +2165,16 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
                   value={formData.accelerationVoltage}
                   onChange={(e) => {
                     const val = e.target.value;
-                    if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('accelerationVoltage', val);
+                    if (val === '' || /^\d*\.?\d*$/.test(val))
+                      updateField('accelerationVoltage', val);
                   }}
-                  InputProps={{ endAdornment: <Typography variant="body2" sx={{ ml: 1 }}>kV</Typography> }}
+                  InputProps={{
+                    endAdornment: (
+                      <Typography variant="body2" sx={{ ml: 1 }}>
+                        kV
+                      </Typography>
+                    ),
+                  }}
                 />
                 <TextField
                   fullWidth
@@ -1844,7 +2184,13 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
                     const val = e.target.value;
                     if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('beamCurrent', val);
                   }}
-                  InputProps={{ endAdornment: <Typography variant="body2" sx={{ ml: 1 }}>nA</Typography> }}
+                  InputProps={{
+                    endAdornment: (
+                      <Typography variant="body2" sx={{ ml: 1 }}>
+                        nA
+                      </Typography>
+                    ),
+                  }}
                 />
                 <TextField
                   fullWidth
@@ -1854,7 +2200,13 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
                     const val = e.target.value;
                     if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('spotSize', val);
                   }}
-                  InputProps={{ endAdornment: <Typography variant="body2" sx={{ ml: 1 }}>um</Typography> }}
+                  InputProps={{
+                    endAdornment: (
+                      <Typography variant="body2" sx={{ ml: 1 }}>
+                        um
+                      </Typography>
+                    ),
+                  }}
                 />
                 <TextField
                   fullWidth
@@ -1873,7 +2225,13 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
                     const val = e.target.value;
                     if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('cameraLength', val);
                   }}
-                  InputProps={{ endAdornment: <Typography variant="body2" sx={{ ml: 1 }}>mm</Typography> }}
+                  InputProps={{
+                    endAdornment: (
+                      <Typography variant="body2" sx={{ ml: 1 }}>
+                        mm
+                      </Typography>
+                    ),
+                  }}
                 />
 
                 {/* EDS Settings for TEM */}
@@ -1889,7 +2247,13 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
                         const val = e.target.value;
                         if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('stepSize', val);
                       }}
-                      InputProps={{ endAdornment: <Typography variant="body2" sx={{ ml: 1 }}>um</Typography> }}
+                      InputProps={{
+                        endAdornment: (
+                          <Typography variant="body2" sx={{ ml: 1 }}>
+                            um
+                          </Typography>
+                        ),
+                      }}
                     />
                     <TextField
                       fullWidth
@@ -1897,9 +2261,16 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
                       value={formData.analysisDwellTime}
                       onChange={(e) => {
                         const val = e.target.value;
-                        if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('analysisDwellTime', val);
+                        if (val === '' || /^\d*\.?\d*$/.test(val))
+                          updateField('analysisDwellTime', val);
                       }}
-                      InputProps={{ endAdornment: <Typography variant="body2" sx={{ ml: 1 }}>ms</Typography> }}
+                      InputProps={{
+                        endAdornment: (
+                          <Typography variant="body2" sx={{ ml: 1 }}>
+                            ms
+                          </Typography>
+                        ),
+                      }}
                     />
                     <TextField
                       fullWidth
@@ -1909,7 +2280,13 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
                         const val = e.target.value;
                         if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('deadTime', val);
                       }}
-                      InputProps={{ endAdornment: <Typography variant="body2" sx={{ ml: 1 }}>ms</Typography> }}
+                      InputProps={{
+                        endAdornment: (
+                          <Typography variant="body2" sx={{ ml: 1 }}>
+                            ms
+                          </Typography>
+                        ),
+                      }}
                     />
                     <TextField
                       fullWidth
@@ -1952,7 +2329,7 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
                               onChange={(e) => {
                                 const newCheck = e.target.checked
                                   ? [...formData.rgbCheck, 'R']
-                                  : formData.rgbCheck.filter(c => c !== 'R');
+                                  : formData.rgbCheck.filter((c) => c !== 'R');
                                 updateField('rgbCheck', newCheck);
                               }}
                             />
@@ -1966,7 +2343,7 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
                               onChange={(e) => {
                                 const newCheck = e.target.checked
                                   ? [...formData.rgbCheck, 'G']
-                                  : formData.rgbCheck.filter(c => c !== 'G');
+                                  : formData.rgbCheck.filter((c) => c !== 'G');
                                 updateField('rgbCheck', newCheck);
                               }}
                             />
@@ -1980,7 +2357,7 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
                               onChange={(e) => {
                                 const newCheck = e.target.checked
                                   ? [...formData.rgbCheck, 'B']
-                                  : formData.rgbCheck.filter(c => c !== 'B');
+                                  : formData.rgbCheck.filter((c) => c !== 'B');
                                 updateField('rgbCheck', newCheck);
                               }}
                             />
@@ -2004,9 +2381,16 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
                   value={formData.accelerationVoltage}
                   onChange={(e) => {
                     const val = e.target.value;
-                    if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('accelerationVoltage', val);
+                    if (val === '' || /^\d*\.?\d*$/.test(val))
+                      updateField('accelerationVoltage', val);
                   }}
-                  InputProps={{ endAdornment: <Typography variant="body2" sx={{ ml: 1 }}>kV</Typography> }}
+                  InputProps={{
+                    endAdornment: (
+                      <Typography variant="body2" sx={{ ml: 1 }}>
+                        kV
+                      </Typography>
+                    ),
+                  }}
                 />
                 <TextField
                   fullWidth
@@ -2016,7 +2400,13 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
                     const val = e.target.value;
                     if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('beamCurrent', val);
                   }}
-                  InputProps={{ endAdornment: <Typography variant="body2" sx={{ ml: 1 }}>nA</Typography> }}
+                  InputProps={{
+                    endAdornment: (
+                      <Typography variant="body2" sx={{ ml: 1 }}>
+                        nA
+                      </Typography>
+                    ),
+                  }}
                 />
                 <TextField
                   fullWidth
@@ -2026,7 +2416,13 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
                     const val = e.target.value;
                     if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('spotSize', val);
                   }}
-                  InputProps={{ endAdornment: <Typography variant="body2" sx={{ ml: 1 }}>um</Typography> }}
+                  InputProps={{
+                    endAdornment: (
+                      <Typography variant="body2" sx={{ ml: 1 }}>
+                        um
+                      </Typography>
+                    ),
+                  }}
                 />
                 <TextField
                   fullWidth
@@ -2045,7 +2441,13 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
                     const val = e.target.value;
                     if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('cameraLength', val);
                   }}
-                  InputProps={{ endAdornment: <Typography variant="body2" sx={{ ml: 1 }}>mm</Typography> }}
+                  InputProps={{
+                    endAdornment: (
+                      <Typography variant="body2" sx={{ ml: 1 }}>
+                        mm
+                      </Typography>
+                    ),
+                  }}
                 />
                 <TextField
                   fullWidth
@@ -2061,7 +2463,13 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
                     const val = e.target.value;
                     if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('dwellTime', val);
                   }}
-                  InputProps={{ endAdornment: <Typography variant="body2" sx={{ ml: 1 }}>s</Typography> }}
+                  InputProps={{
+                    endAdornment: (
+                      <Typography variant="body2" sx={{ ml: 1 }}>
+                        s
+                      </Typography>
+                    ),
+                  }}
                 />
 
                 {/* EELS Settings for STEM */}
@@ -2074,7 +2482,13 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
                       label="Energy Loss"
                       value={formData.energyLoss}
                       onChange={(e) => updateField('energyLoss', e.target.value)}
-                      InputProps={{ endAdornment: <Typography variant="body2" sx={{ ml: 1 }}>eV</Typography> }}
+                      InputProps={{
+                        endAdornment: (
+                          <Typography variant="body2" sx={{ ml: 1 }}>
+                            eV
+                          </Typography>
+                        ),
+                      }}
                     />
                   </>
                 )}
@@ -2092,7 +2506,13 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
                         const val = e.target.value;
                         if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('stepSize', val);
                       }}
-                      InputProps={{ endAdornment: <Typography variant="body2" sx={{ ml: 1 }}>um</Typography> }}
+                      InputProps={{
+                        endAdornment: (
+                          <Typography variant="body2" sx={{ ml: 1 }}>
+                            um
+                          </Typography>
+                        ),
+                      }}
                     />
                     <TextField
                       fullWidth
@@ -2100,9 +2520,16 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
                       value={formData.analysisDwellTime}
                       onChange={(e) => {
                         const val = e.target.value;
-                        if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('analysisDwellTime', val);
+                        if (val === '' || /^\d*\.?\d*$/.test(val))
+                          updateField('analysisDwellTime', val);
                       }}
-                      InputProps={{ endAdornment: <Typography variant="body2" sx={{ ml: 1 }}>ms</Typography> }}
+                      InputProps={{
+                        endAdornment: (
+                          <Typography variant="body2" sx={{ ml: 1 }}>
+                            ms
+                          </Typography>
+                        ),
+                      }}
                     />
                     <TextField
                       fullWidth
@@ -2112,7 +2539,13 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
                         const val = e.target.value;
                         if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('deadTime', val);
                       }}
-                      InputProps={{ endAdornment: <Typography variant="body2" sx={{ ml: 1 }}>ms</Typography> }}
+                      InputProps={{
+                        endAdornment: (
+                          <Typography variant="body2" sx={{ ml: 1 }}>
+                            ms
+                          </Typography>
+                        ),
+                      }}
                     />
                     <TextField
                       fullWidth
@@ -2148,9 +2581,48 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
                     </TextField>
                     {formData.clColor === 'Color CL' && (
                       <FormGroup row>
-                        <FormControlLabel control={<Checkbox checked={formData.rgbCheck.includes('R')} onChange={(e) => { const newCheck = e.target.checked ? [...formData.rgbCheck, 'R'] : formData.rgbCheck.filter(c => c !== 'R'); updateField('rgbCheck', newCheck); }} />} label="Red" />
-                        <FormControlLabel control={<Checkbox checked={formData.rgbCheck.includes('G')} onChange={(e) => { const newCheck = e.target.checked ? [...formData.rgbCheck, 'G'] : formData.rgbCheck.filter(c => c !== 'G'); updateField('rgbCheck', newCheck); }} />} label="Green" />
-                        <FormControlLabel control={<Checkbox checked={formData.rgbCheck.includes('B')} onChange={(e) => { const newCheck = e.target.checked ? [...formData.rgbCheck, 'B'] : formData.rgbCheck.filter(c => c !== 'B'); updateField('rgbCheck', newCheck); }} />} label="Blue" />
+                        <FormControlLabel
+                          control={
+                            <Checkbox
+                              checked={formData.rgbCheck.includes('R')}
+                              onChange={(e) => {
+                                const newCheck = e.target.checked
+                                  ? [...formData.rgbCheck, 'R']
+                                  : formData.rgbCheck.filter((c) => c !== 'R');
+                                updateField('rgbCheck', newCheck);
+                              }}
+                            />
+                          }
+                          label="Red"
+                        />
+                        <FormControlLabel
+                          control={
+                            <Checkbox
+                              checked={formData.rgbCheck.includes('G')}
+                              onChange={(e) => {
+                                const newCheck = e.target.checked
+                                  ? [...formData.rgbCheck, 'G']
+                                  : formData.rgbCheck.filter((c) => c !== 'G');
+                                updateField('rgbCheck', newCheck);
+                              }}
+                            />
+                          }
+                          label="Green"
+                        />
+                        <FormControlLabel
+                          control={
+                            <Checkbox
+                              checked={formData.rgbCheck.includes('B')}
+                              onChange={(e) => {
+                                const newCheck = e.target.checked
+                                  ? [...formData.rgbCheck, 'B']
+                                  : formData.rgbCheck.filter((c) => c !== 'B');
+                                updateField('rgbCheck', newCheck);
+                              }}
+                            />
+                          }
+                          label="Blue"
+                        />
                       </FormGroup>
                     )}
                   </>
@@ -2162,20 +2634,140 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
             {formData.instrumentType === 'Scanning Electron Microscopy (SEM)' && (
               <>
                 <Typography variant="h6">SEM Settings</Typography>
-                <TextField fullWidth label="Acceleration Voltage" value={formData.accelerationVoltage} onChange={(e) => { const val = e.target.value; if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('accelerationVoltage', val); }} InputProps={{ endAdornment: <Typography variant="body2" sx={{ ml: 1 }}>kV</Typography> }} />
-                <TextField fullWidth label="Beam Current" value={formData.beamCurrent} onChange={(e) => { const val = e.target.value; if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('beamCurrent', val); }} InputProps={{ endAdornment: <Typography variant="body2" sx={{ ml: 1 }}>nA</Typography> }} />
-                <TextField fullWidth label="Spot Size" value={formData.spotSize} onChange={(e) => { const val = e.target.value; if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('spotSize', val); }} InputProps={{ endAdornment: <Typography variant="body2" sx={{ ml: 1 }}>um</Typography> }} />
-                <TextField fullWidth label="Working Distance" value={formData.workingDistance} onChange={(e) => { const val = e.target.value; if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('workingDistance', val); }} InputProps={{ endAdornment: <Typography variant="body2" sx={{ ml: 1 }}>mm</Typography> }} />
+                <TextField
+                  fullWidth
+                  label="Acceleration Voltage"
+                  value={formData.accelerationVoltage}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (val === '' || /^\d*\.?\d*$/.test(val))
+                      updateField('accelerationVoltage', val);
+                  }}
+                  InputProps={{
+                    endAdornment: (
+                      <Typography variant="body2" sx={{ ml: 1 }}>
+                        kV
+                      </Typography>
+                    ),
+                  }}
+                />
+                <TextField
+                  fullWidth
+                  label="Beam Current"
+                  value={formData.beamCurrent}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('beamCurrent', val);
+                  }}
+                  InputProps={{
+                    endAdornment: (
+                      <Typography variant="body2" sx={{ ml: 1 }}>
+                        nA
+                      </Typography>
+                    ),
+                  }}
+                />
+                <TextField
+                  fullWidth
+                  label="Spot Size"
+                  value={formData.spotSize}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('spotSize', val);
+                  }}
+                  InputProps={{
+                    endAdornment: (
+                      <Typography variant="body2" sx={{ ml: 1 }}>
+                        um
+                      </Typography>
+                    ),
+                  }}
+                />
+                <TextField
+                  fullWidth
+                  label="Working Distance"
+                  value={formData.workingDistance}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('workingDistance', val);
+                  }}
+                  InputProps={{
+                    endAdornment: (
+                      <Typography variant="body2" sx={{ ml: 1 }}>
+                        mm
+                      </Typography>
+                    ),
+                  }}
+                />
 
                 {/* EDS/WDS Settings for SEM */}
-                {(formData.dataType === 'Energy Dispersive X-ray Spectroscopy (EDS)' || formData.dataType === 'Wavelength-dispersive X-ray spectroscopy (WDS)') && (
+                {(formData.dataType === 'Energy Dispersive X-ray Spectroscopy (EDS)' ||
+                  formData.dataType === 'Wavelength-dispersive X-ray spectroscopy (WDS)') && (
                   <>
                     <Divider sx={{ my: 2 }} />
-                    <Typography variant="h6">{formData.dataType === 'Energy Dispersive X-ray Spectroscopy (EDS)' ? 'EDS' : 'WDS'} Settings</Typography>
-                    <TextField fullWidth label="Step Size" value={formData.stepSize} onChange={(e) => { const val = e.target.value; if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('stepSize', val); }} InputProps={{ endAdornment: <Typography variant="body2" sx={{ ml: 1 }}>um</Typography> }} />
-                    <TextField fullWidth label="Analysis Dwell Time (/pixel)" value={formData.analysisDwellTime} onChange={(e) => { const val = e.target.value; if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('analysisDwellTime', val); }} InputProps={{ endAdornment: <Typography variant="body2" sx={{ ml: 1 }}>ms</Typography> }} />
-                    <TextField fullWidth label="Dead Time" value={formData.deadTime} onChange={(e) => { const val = e.target.value; if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('deadTime', val); }} InputProps={{ endAdornment: <Typography variant="body2" sx={{ ml: 1 }}>ms</Typography> }} />
-                    <TextField fullWidth multiline rows={3} label="Calibration / Standard Notes" value={formData.calibrationStandardNotes} onChange={(e) => updateField('calibrationStandardNotes', e.target.value)} />
+                    <Typography variant="h6">
+                      {formData.dataType === 'Energy Dispersive X-ray Spectroscopy (EDS)'
+                        ? 'EDS'
+                        : 'WDS'}{' '}
+                      Settings
+                    </Typography>
+                    <TextField
+                      fullWidth
+                      label="Step Size"
+                      value={formData.stepSize}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('stepSize', val);
+                      }}
+                      InputProps={{
+                        endAdornment: (
+                          <Typography variant="body2" sx={{ ml: 1 }}>
+                            um
+                          </Typography>
+                        ),
+                      }}
+                    />
+                    <TextField
+                      fullWidth
+                      label="Analysis Dwell Time (/pixel)"
+                      value={formData.analysisDwellTime}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (val === '' || /^\d*\.?\d*$/.test(val))
+                          updateField('analysisDwellTime', val);
+                      }}
+                      InputProps={{
+                        endAdornment: (
+                          <Typography variant="body2" sx={{ ml: 1 }}>
+                            ms
+                          </Typography>
+                        ),
+                      }}
+                    />
+                    <TextField
+                      fullWidth
+                      label="Dead Time"
+                      value={formData.deadTime}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('deadTime', val);
+                      }}
+                      InputProps={{
+                        endAdornment: (
+                          <Typography variant="body2" sx={{ ml: 1 }}>
+                            ms
+                          </Typography>
+                        ),
+                      }}
+                    />
+                    <TextField
+                      fullWidth
+                      multiline
+                      rows={3}
+                      label="Calibration / Standard Notes"
+                      value={formData.calibrationStandardNotes}
+                      onChange={(e) => updateField('calibrationStandardNotes', e.target.value)}
+                    />
                   </>
                 )}
 
@@ -2184,8 +2776,30 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
                   <>
                     <Divider sx={{ my: 2 }} />
                     <Typography variant="h6">EBSD Settings</Typography>
-                    <TextField fullWidth label="Step Size" value={formData.stepSize} onChange={(e) => { const val = e.target.value; if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('stepSize', val); }} InputProps={{ endAdornment: <Typography variant="body2" sx={{ ml: 1 }}>um</Typography> }} />
-                    <TextField fullWidth multiline rows={3} label="Notes on Crystal Structures Used" value={formData.notesOnCrystalStructuresUsed} onChange={(e) => updateField('notesOnCrystalStructuresUsed', e.target.value)} />
+                    <TextField
+                      fullWidth
+                      label="Step Size"
+                      value={formData.stepSize}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('stepSize', val);
+                      }}
+                      InputProps={{
+                        endAdornment: (
+                          <Typography variant="body2" sx={{ ml: 1 }}>
+                            um
+                          </Typography>
+                        ),
+                      }}
+                    />
+                    <TextField
+                      fullWidth
+                      multiline
+                      rows={3}
+                      label="Notes on Crystal Structures Used"
+                      value={formData.notesOnCrystalStructuresUsed}
+                      onChange={(e) => updateField('notesOnCrystalStructuresUsed', e.target.value)}
+                    />
                   </>
                 )}
               </>
@@ -2195,16 +2809,90 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
             {formData.instrumentType === 'Electron Microprobe' && (
               <>
                 <Typography variant="h6">Electron Microprobe Settings</Typography>
-                <TextField fullWidth label="Acceleration Voltage" value={formData.accelerationVoltage} onChange={(e) => { const val = e.target.value; if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('accelerationVoltage', val); }} InputProps={{ endAdornment: <Typography variant="body2" sx={{ ml: 1 }}>kV</Typography> }} />
-                <TextField fullWidth label="Beam Current" value={formData.beamCurrent} onChange={(e) => { const val = e.target.value; if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('beamCurrent', val); }} InputProps={{ endAdornment: <Typography variant="body2" sx={{ ml: 1 }}>nA</Typography> }} />
-                <TextField fullWidth label="Spot Size" value={formData.spotSize} onChange={(e) => { const val = e.target.value; if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('spotSize', val); }} InputProps={{ endAdornment: <Typography variant="body2" sx={{ ml: 1 }}>um</Typography> }} />
+                <TextField
+                  fullWidth
+                  label="Acceleration Voltage"
+                  value={formData.accelerationVoltage}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (val === '' || /^\d*\.?\d*$/.test(val))
+                      updateField('accelerationVoltage', val);
+                  }}
+                  InputProps={{
+                    endAdornment: (
+                      <Typography variant="body2" sx={{ ml: 1 }}>
+                        kV
+                      </Typography>
+                    ),
+                  }}
+                />
+                <TextField
+                  fullWidth
+                  label="Beam Current"
+                  value={formData.beamCurrent}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('beamCurrent', val);
+                  }}
+                  InputProps={{
+                    endAdornment: (
+                      <Typography variant="body2" sx={{ ml: 1 }}>
+                        nA
+                      </Typography>
+                    ),
+                  }}
+                />
+                <TextField
+                  fullWidth
+                  label="Spot Size"
+                  value={formData.spotSize}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('spotSize', val);
+                  }}
+                  InputProps={{
+                    endAdornment: (
+                      <Typography variant="body2" sx={{ ml: 1 }}>
+                        um
+                      </Typography>
+                    ),
+                  }}
+                />
 
-                {(formData.dataType === 'Energy Dispersive X-ray Spectroscopy (EDS)' || formData.dataType === 'Wavelength-dispersive X-ray spectroscopy (WDS)') && (
+                {(formData.dataType === 'Energy Dispersive X-ray Spectroscopy (EDS)' ||
+                  formData.dataType === 'Wavelength-dispersive X-ray spectroscopy (WDS)') && (
                   <>
                     <Divider sx={{ my: 2 }} />
-                    <Typography variant="h6">{formData.dataType === 'Energy Dispersive X-ray Spectroscopy (EDS)' ? 'EDS' : 'WDS'} Settings</Typography>
-                    <TextField fullWidth label="Step Size" value={formData.stepSize} onChange={(e) => { const val = e.target.value; if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('stepSize', val); }} InputProps={{ endAdornment: <Typography variant="body2" sx={{ ml: 1 }}>um</Typography> }} />
-                    <TextField fullWidth multiline rows={3} label="Calibration / Standard Notes" value={formData.calibrationStandardNotes} onChange={(e) => updateField('calibrationStandardNotes', e.target.value)} />
+                    <Typography variant="h6">
+                      {formData.dataType === 'Energy Dispersive X-ray Spectroscopy (EDS)'
+                        ? 'EDS'
+                        : 'WDS'}{' '}
+                      Settings
+                    </Typography>
+                    <TextField
+                      fullWidth
+                      label="Step Size"
+                      value={formData.stepSize}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('stepSize', val);
+                      }}
+                      InputProps={{
+                        endAdornment: (
+                          <Typography variant="body2" sx={{ ml: 1 }}>
+                            um
+                          </Typography>
+                        ),
+                      }}
+                    />
+                    <TextField
+                      fullWidth
+                      multiline
+                      rows={3}
+                      label="Calibration / Standard Notes"
+                      value={formData.calibrationStandardNotes}
+                      onChange={(e) => updateField('calibrationStandardNotes', e.target.value)}
+                    />
                   </>
                 )}
               </>
@@ -2214,13 +2902,91 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
             {formData.instrumentType === 'Fourier Transform Infrared Spectroscopy (FTIR)' && (
               <>
                 <Typography variant="h6">FTIR Settings</Typography>
-                <TextField fullWidth label="Scan Time" value={formData.scanTime} onChange={(e) => updateField('scanTime', e.target.value)} InputProps={{ endAdornment: <Typography variant="body2" sx={{ ml: 1 }}>s</Typography> }} />
-                <TextField fullWidth label="Resolution" value={formData.resolution} onChange={(e) => updateField('resolution', e.target.value)} InputProps={{ endAdornment: <Typography variant="body2" sx={{ ml: 1 }}>cm⁻¹</Typography> }} />
-                <TextField fullWidth label="Spectral Resolution" value={formData.spectralResolution} onChange={(e) => updateField('spectralResolution', e.target.value)} InputProps={{ endAdornment: <Typography variant="body2" sx={{ ml: 1 }}>cm⁻¹</Typography> }} />
-                <TextField fullWidth label="Wavenumber Range" value={formData.wavenumberRange} onChange={(e) => updateField('wavenumberRange', e.target.value)} placeholder="e.g., 4000-400" InputProps={{ endAdornment: <Typography variant="body2" sx={{ ml: 1 }}>cm⁻¹</Typography> }} />
-                <TextField fullWidth label="Averaging (number of scans)" value={formData.averaging} onChange={(e) => { const val = e.target.value; if (val === '' || /^\d*$/.test(val)) updateField('averaging', val); }} />
-                <TextField fullWidth label="Spatial Resolution" value={formData.spatialResolution} onChange={(e) => updateField('spatialResolution', e.target.value)} InputProps={{ endAdornment: <Typography variant="body2" sx={{ ml: 1 }}>um</Typography> }} />
-                <TextField fullWidth multiline rows={3} label="Background Correction: Frequency and Notes" value={formData.backgroundCorrectionFrequencyAndNotes} onChange={(e) => updateField('backgroundCorrectionFrequencyAndNotes', e.target.value)} />
+                <TextField
+                  fullWidth
+                  label="Scan Time"
+                  value={formData.scanTime}
+                  onChange={(e) => updateField('scanTime', e.target.value)}
+                  InputProps={{
+                    endAdornment: (
+                      <Typography variant="body2" sx={{ ml: 1 }}>
+                        s
+                      </Typography>
+                    ),
+                  }}
+                />
+                <TextField
+                  fullWidth
+                  label="Resolution"
+                  value={formData.resolution}
+                  onChange={(e) => updateField('resolution', e.target.value)}
+                  InputProps={{
+                    endAdornment: (
+                      <Typography variant="body2" sx={{ ml: 1 }}>
+                        cm⁻¹
+                      </Typography>
+                    ),
+                  }}
+                />
+                <TextField
+                  fullWidth
+                  label="Spectral Resolution"
+                  value={formData.spectralResolution}
+                  onChange={(e) => updateField('spectralResolution', e.target.value)}
+                  InputProps={{
+                    endAdornment: (
+                      <Typography variant="body2" sx={{ ml: 1 }}>
+                        cm⁻¹
+                      </Typography>
+                    ),
+                  }}
+                />
+                <TextField
+                  fullWidth
+                  label="Wavenumber Range"
+                  value={formData.wavenumberRange}
+                  onChange={(e) => updateField('wavenumberRange', e.target.value)}
+                  placeholder="e.g., 4000-400"
+                  InputProps={{
+                    endAdornment: (
+                      <Typography variant="body2" sx={{ ml: 1 }}>
+                        cm⁻¹
+                      </Typography>
+                    ),
+                  }}
+                />
+                <TextField
+                  fullWidth
+                  label="Averaging (number of scans)"
+                  value={formData.averaging}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (val === '' || /^\d*$/.test(val)) updateField('averaging', val);
+                  }}
+                />
+                <TextField
+                  fullWidth
+                  label="Spatial Resolution"
+                  value={formData.spatialResolution}
+                  onChange={(e) => updateField('spatialResolution', e.target.value)}
+                  InputProps={{
+                    endAdornment: (
+                      <Typography variant="body2" sx={{ ml: 1 }}>
+                        um
+                      </Typography>
+                    ),
+                  }}
+                />
+                <TextField
+                  fullWidth
+                  multiline
+                  rows={3}
+                  label="Background Correction: Frequency and Notes"
+                  value={formData.backgroundCorrectionFrequencyAndNotes}
+                  onChange={(e) =>
+                    updateField('backgroundCorrectionFrequencyAndNotes', e.target.value)
+                  }
+                />
               </>
             )}
 
@@ -2228,13 +2994,80 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
             {formData.instrumentType === 'Raman Spectroscopy' && (
               <>
                 <Typography variant="h6">Raman Spectroscopy Settings</Typography>
-                <TextField fullWidth label="Excitation Wavelength" value={formData.excitationWavelength} onChange={(e) => updateField('excitationWavelength', e.target.value)} InputProps={{ endAdornment: <Typography variant="body2" sx={{ ml: 1 }}>nm</Typography> }} />
-                <TextField fullWidth label="Laser Power" value={formData.laserPower} onChange={(e) => updateField('laserPower', e.target.value)} InputProps={{ endAdornment: <Typography variant="body2" sx={{ ml: 1 }}>mW</Typography> }} />
-                <TextField fullWidth label="Diffraction Grating" value={formData.diffractionGrating} onChange={(e) => updateField('diffractionGrating', e.target.value)} placeholder="e.g., 600 lines/mm" />
-                <TextField fullWidth label="Integration Time" value={formData.integrationTime} onChange={(e) => updateField('integrationTime', e.target.value)} InputProps={{ endAdornment: <Typography variant="body2" sx={{ ml: 1 }}>s</Typography> }} />
-                <TextField fullWidth label="Objective" value={formData.objective} onChange={(e) => updateField('objective', e.target.value)} placeholder="e.g., 50x, 100x" />
-                <TextField fullWidth label="Spatial Resolution" value={formData.spatialResolution} onChange={(e) => updateField('spatialResolution', e.target.value)} InputProps={{ endAdornment: <Typography variant="body2" sx={{ ml: 1 }}>um</Typography> }} />
-                <TextField fullWidth multiline rows={3} label="Calibration Notes" value={formData.calibrationStandardNotes} onChange={(e) => updateField('calibrationStandardNotes', e.target.value)} />
+                <TextField
+                  fullWidth
+                  label="Excitation Wavelength"
+                  value={formData.excitationWavelength}
+                  onChange={(e) => updateField('excitationWavelength', e.target.value)}
+                  InputProps={{
+                    endAdornment: (
+                      <Typography variant="body2" sx={{ ml: 1 }}>
+                        nm
+                      </Typography>
+                    ),
+                  }}
+                />
+                <TextField
+                  fullWidth
+                  label="Laser Power"
+                  value={formData.laserPower}
+                  onChange={(e) => updateField('laserPower', e.target.value)}
+                  InputProps={{
+                    endAdornment: (
+                      <Typography variant="body2" sx={{ ml: 1 }}>
+                        mW
+                      </Typography>
+                    ),
+                  }}
+                />
+                <TextField
+                  fullWidth
+                  label="Diffraction Grating"
+                  value={formData.diffractionGrating}
+                  onChange={(e) => updateField('diffractionGrating', e.target.value)}
+                  placeholder="e.g., 600 lines/mm"
+                />
+                <TextField
+                  fullWidth
+                  label="Integration Time"
+                  value={formData.integrationTime}
+                  onChange={(e) => updateField('integrationTime', e.target.value)}
+                  InputProps={{
+                    endAdornment: (
+                      <Typography variant="body2" sx={{ ml: 1 }}>
+                        s
+                      </Typography>
+                    ),
+                  }}
+                />
+                <TextField
+                  fullWidth
+                  label="Objective"
+                  value={formData.objective}
+                  onChange={(e) => updateField('objective', e.target.value)}
+                  placeholder="e.g., 50x, 100x"
+                />
+                <TextField
+                  fullWidth
+                  label="Spatial Resolution"
+                  value={formData.spatialResolution}
+                  onChange={(e) => updateField('spatialResolution', e.target.value)}
+                  InputProps={{
+                    endAdornment: (
+                      <Typography variant="body2" sx={{ ml: 1 }}>
+                        um
+                      </Typography>
+                    ),
+                  }}
+                />
+                <TextField
+                  fullWidth
+                  multiline
+                  rows={3}
+                  label="Calibration Notes"
+                  value={formData.calibrationStandardNotes}
+                  onChange={(e) => updateField('calibrationStandardNotes', e.target.value)}
+                />
               </>
             )}
 
@@ -2242,19 +3075,103 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
             {formData.instrumentType === 'Atomic Force Microscopy (AFM)' && (
               <>
                 <Typography variant="h6">AFM Settings</Typography>
-                <TextField fullWidth select label="Atomic Mode" value={formData.atomicMode} onChange={(e) => updateField('atomicMode', e.target.value)}>
+                <TextField
+                  fullWidth
+                  select
+                  label="Atomic Mode"
+                  value={formData.atomicMode}
+                  onChange={(e) => updateField('atomicMode', e.target.value)}
+                >
                   <MenuItem value="">Select...</MenuItem>
                   <MenuItem value="Contact">Contact</MenuItem>
                   <MenuItem value="Non-Contact">Non-Contact</MenuItem>
                   <MenuItem value="Tapping">Tapping</MenuItem>
                 </TextField>
-                <TextField fullWidth label="Cantilever Stiffness" value={formData.cantileverStiffness} onChange={(e) => updateField('cantileverStiffness', e.target.value)} InputProps={{ endAdornment: <Typography variant="body2" sx={{ ml: 1 }}>N/m</Typography> }} />
-                <TextField fullWidth label="Tip Diameter" value={formData.tipDiameter} onChange={(e) => updateField('tipDiameter', e.target.value)} InputProps={{ endAdornment: <Typography variant="body2" sx={{ ml: 1 }}>nm</Typography> }} />
-                <TextField fullWidth label="Operating Frequency" value={formData.operatingFrequency} onChange={(e) => updateField('operatingFrequency', e.target.value)} InputProps={{ endAdornment: <Typography variant="body2" sx={{ ml: 1 }}>kHz</Typography> }} />
-                <TextField fullWidth label="Scan Dimensions" value={formData.scanDimensions} onChange={(e) => updateField('scanDimensions', e.target.value)} placeholder="e.g., 512x512" />
-                <TextField fullWidth label="Scan Area" value={formData.scanArea} onChange={(e) => updateField('scanArea', e.target.value)} InputProps={{ endAdornment: <Typography variant="body2" sx={{ ml: 1 }}>um²</Typography> }} />
-                <TextField fullWidth label="Temperature of Room" value={formData.temperatureOfRoom} onChange={(e) => updateField('temperatureOfRoom', e.target.value)} InputProps={{ endAdornment: <Typography variant="body2" sx={{ ml: 1 }}>°C</Typography> }} />
-                <TextField fullWidth label="Relative Humidity" value={formData.relativeHumidity} onChange={(e) => updateField('relativeHumidity', e.target.value)} InputProps={{ endAdornment: <Typography variant="body2" sx={{ ml: 1 }}>%</Typography> }} />
+                <TextField
+                  fullWidth
+                  label="Cantilever Stiffness"
+                  value={formData.cantileverStiffness}
+                  onChange={(e) => updateField('cantileverStiffness', e.target.value)}
+                  InputProps={{
+                    endAdornment: (
+                      <Typography variant="body2" sx={{ ml: 1 }}>
+                        N/m
+                      </Typography>
+                    ),
+                  }}
+                />
+                <TextField
+                  fullWidth
+                  label="Tip Diameter"
+                  value={formData.tipDiameter}
+                  onChange={(e) => updateField('tipDiameter', e.target.value)}
+                  InputProps={{
+                    endAdornment: (
+                      <Typography variant="body2" sx={{ ml: 1 }}>
+                        nm
+                      </Typography>
+                    ),
+                  }}
+                />
+                <TextField
+                  fullWidth
+                  label="Operating Frequency"
+                  value={formData.operatingFrequency}
+                  onChange={(e) => updateField('operatingFrequency', e.target.value)}
+                  InputProps={{
+                    endAdornment: (
+                      <Typography variant="body2" sx={{ ml: 1 }}>
+                        kHz
+                      </Typography>
+                    ),
+                  }}
+                />
+                <TextField
+                  fullWidth
+                  label="Scan Dimensions"
+                  value={formData.scanDimensions}
+                  onChange={(e) => updateField('scanDimensions', e.target.value)}
+                  placeholder="e.g., 512x512"
+                />
+                <TextField
+                  fullWidth
+                  label="Scan Area"
+                  value={formData.scanArea}
+                  onChange={(e) => updateField('scanArea', e.target.value)}
+                  InputProps={{
+                    endAdornment: (
+                      <Typography variant="body2" sx={{ ml: 1 }}>
+                        um²
+                      </Typography>
+                    ),
+                  }}
+                />
+                <TextField
+                  fullWidth
+                  label="Temperature of Room"
+                  value={formData.temperatureOfRoom}
+                  onChange={(e) => updateField('temperatureOfRoom', e.target.value)}
+                  InputProps={{
+                    endAdornment: (
+                      <Typography variant="body2" sx={{ ml: 1 }}>
+                        °C
+                      </Typography>
+                    ),
+                  }}
+                />
+                <TextField
+                  fullWidth
+                  label="Relative Humidity"
+                  value={formData.relativeHumidity}
+                  onChange={(e) => updateField('relativeHumidity', e.target.value)}
+                  InputProps={{
+                    endAdornment: (
+                      <Typography variant="body2" sx={{ ml: 1 }}>
+                        %
+                      </Typography>
+                    ),
+                  }}
+                />
               </>
             )}
           </Stack>
@@ -2328,85 +3245,75 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
 
   return (
     <>
-    <Dialog
-      open={isOpen}
-      onClose={(_event, reason) => {
-        if (reason !== 'backdropClick' && reason !== 'escapeKeyDown') {
-          handleCancel();
+      <Dialog
+        open={isOpen}
+        onClose={(_event, reason) => {
+          if (reason !== 'backdropClick' && reason !== 'escapeKeyDown') {
+            handleCancel();
+          }
+        }}
+        maxWidth="md"
+        fullWidth
+        TransitionComponent={Grow}
+        transitionDuration={300}
+      >
+        <DialogTitle>New Project</DialogTitle>
+        <DialogContent>
+          <Stepper activeStep={activeStep} sx={{ pt: 3, pb: 5 }}>
+            {(() => {
+              const maxVisibleSteps = 5;
+              const totalSteps = steps.length;
+
+              // Calculate visible window
+              let startIndex = Math.max(0, activeStep - Math.floor(maxVisibleSteps / 2));
+              let endIndex = Math.min(totalSteps, startIndex + maxVisibleSteps);
+
+              // Adjust start if we're near the end
+              if (endIndex === totalSteps) {
+                startIndex = Math.max(0, totalSteps - maxVisibleSteps);
+              }
+
+              const visibleSteps = steps.slice(startIndex, endIndex);
+
+              return visibleSteps.map((label, index) => {
+                const actualIndex = startIndex + index;
+                return (
+                  <Step key={label} completed={actualIndex < activeStep}>
+                    <StepLabel>{label}</StepLabel>
+                  </Step>
+                );
+              });
+            })()}
+          </Stepper>
+          <Box sx={{ mt: 2, mb: 1 }}>{renderStepContent(activeStep)}</Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCancel}>Cancel</Button>
+          {activeStep > 0 && <Button onClick={handleBack}>Back</Button>}
+          {activeStep < steps.length - 1 ? (
+            <Button variant="contained" onClick={handleNext} disabled={!canProceed()}>
+              Next
+            </Button>
+          ) : (
+            <Button variant="contained" onClick={handleFinish} disabled={!canProceed()}>
+              Finish
+            </Button>
+          )}
+        </DialogActions>
+      </Dialog>
+
+      {/* Periodic Table Modal */}
+      <PeriodicTableModal
+        isOpen={showPeriodicTable}
+        onClose={() => setShowPeriodicTable(false)}
+        onSelectElements={(elements) => {
+          // Join elements with ", " as per legacy app (straboMicroUtil.implode)
+          updateField('imageType', elements.join(', '));
+        }}
+        initialSelection={
+          formData.imageType ? formData.imageType.split(', ').filter((e) => e.trim() !== '') : []
         }
-      }}
-      maxWidth="md"
-      fullWidth
-      TransitionComponent={Grow}
-      transitionDuration={300}
-    >
-      <DialogTitle>New Project</DialogTitle>
-      <DialogContent>
-        <Stepper activeStep={activeStep} sx={{ pt: 3, pb: 5 }}>
-          {(() => {
-            const maxVisibleSteps = 5;
-            const totalSteps = steps.length;
-
-            // Calculate visible window
-            let startIndex = Math.max(0, activeStep - Math.floor(maxVisibleSteps / 2));
-            let endIndex = Math.min(totalSteps, startIndex + maxVisibleSteps);
-
-            // Adjust start if we're near the end
-            if (endIndex === totalSteps) {
-              startIndex = Math.max(0, totalSteps - maxVisibleSteps);
-            }
-
-            const visibleSteps = steps.slice(startIndex, endIndex);
-
-            return visibleSteps.map((label, index) => {
-              const actualIndex = startIndex + index;
-              return (
-                <Step key={label} completed={actualIndex < activeStep}>
-                  <StepLabel>{label}</StepLabel>
-                </Step>
-              );
-            });
-          })()}
-        </Stepper>
-        <Box sx={{ mt: 2, mb: 1 }}>
-          {renderStepContent(activeStep)}
-        </Box>
-      </DialogContent>
-      <DialogActions>
-        <Button onClick={handleCancel}>Cancel</Button>
-        {activeStep > 0 && (
-          <Button onClick={handleBack}>Back</Button>
-        )}
-        {activeStep < steps.length - 1 ? (
-          <Button
-            variant="contained"
-            onClick={handleNext}
-            disabled={!canProceed()}
-          >
-            Next
-          </Button>
-        ) : (
-          <Button
-            variant="contained"
-            onClick={handleFinish}
-            disabled={!canProceed()}
-          >
-            Finish
-          </Button>
-        )}
-      </DialogActions>
-    </Dialog>
-
-    {/* Periodic Table Modal */}
-    <PeriodicTableModal
-      isOpen={showPeriodicTable}
-      onClose={() => setShowPeriodicTable(false)}
-      onSelectElements={(elements) => {
-        // Join elements with ", " as per legacy app (straboMicroUtil.implode)
-        updateField('imageType', elements.join(', '));
-      }}
-      initialSelection={formData.imageType ? formData.imageType.split(', ').filter(e => e.trim() !== '') : []}
-    />
-  </>
+      />
+    </>
   );
 };
