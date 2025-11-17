@@ -240,7 +240,7 @@ const initialFormData: ProjectFormData = {
   fabricRake: '',
   lookDirection: 'down',
   // Scale initial values
-  scaleMethod: '',
+  scaleMethod: 'Trace Scale Bar',
   scaleBarLineStart: null,
   scaleBarLineEnd: null,
   scaleBarLineLengthPixels: '',
