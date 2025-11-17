@@ -1342,6 +1342,44 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
             Draw a line over the scale bar in the micrograph, then enter the physical length that line represents.
           </Typography>
 
+          {/* Input fields in a single row above the canvas */}
+          <Stack direction="row" spacing={2} alignItems="flex-start">
+            <TextField
+              required
+              label="Line Length (pixels)"
+              value={formData.scaleBarLineLengthPixels}
+              helperText="Auto-filled when you draw a line"
+              InputProps={{ readOnly: true }}
+              sx={{ flex: 1 }}
+            />
+
+            <TextField
+              required
+              label="Physical Length"
+              type="number"
+              value={formData.scaleBarPhysicalLength}
+              onChange={(e) => updateField('scaleBarPhysicalLength', e.target.value)}
+              helperText="Real-world length the line represents"
+              sx={{ flex: 1 }}
+            />
+
+            <TextField
+              select
+              required
+              label="Units"
+              value={formData.scaleBarUnits}
+              onChange={(e) => updateField('scaleBarUnits', e.target.value)}
+              helperText=" "
+              sx={{ flex: 1 }}
+            >
+              {units.map((unit) => (
+                <MenuItem key={unit} value={unit}>
+                  {unit}
+                </MenuItem>
+              ))}
+            </TextField>
+          </Stack>
+
           {/* Canvas for drawing scale bar line */}
           {micrographPreviewUrl ? (
             <ScaleBarCanvas
@@ -1368,40 +1406,6 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
               </Typography>
             </Box>
           )}
-
-          <TextField
-            fullWidth
-            required
-            label="Line Length (pixels)"
-            value={formData.scaleBarLineLengthPixels}
-            helperText="Auto-filled when you draw a line"
-            InputProps={{ readOnly: true }}
-          />
-
-          <TextField
-            fullWidth
-            required
-            label="Physical Length"
-            type="number"
-            value={formData.scaleBarPhysicalLength}
-            onChange={(e) => updateField('scaleBarPhysicalLength', e.target.value)}
-            helperText="The real-world length the line represents"
-          />
-
-          <TextField
-            fullWidth
-            select
-            required
-            label="Units"
-            value={formData.scaleBarUnits}
-            onChange={(e) => updateField('scaleBarUnits', e.target.value)}
-          >
-            {units.map((unit) => (
-              <MenuItem key={unit} value={unit}>
-                {unit}
-              </MenuItem>
-            ))}
-          </TextField>
         </Stack>
       );
     } else if (formData.scaleMethod === 'Pixel Conversion Factor') {
