@@ -282,6 +282,15 @@ function createWindow() {
           }
         },
         {
+          label: 'Test Scale Bar Step',
+          accelerator: 'CmdOrCtrl+Shift+S',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('menu:test-scale-bar-step');
+            }
+          }
+        },
+        {
           label: 'Clear Project',
           click: () => {
             if (mainWindow) {

@@ -36,6 +36,7 @@ import {
 } from '@mui/material';
 import { useAppStore } from '@/store';
 import { PeriodicTableModal } from './PeriodicTableModal';
+import { ScaleBarCanvas } from '../ScaleBarCanvas';
 
 interface NewProjectWizardProps {
   isOpen: boolean;
@@ -1341,23 +1342,32 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
             Draw a line over the scale bar in the micrograph, then enter the physical length that line represents.
           </Typography>
 
-          {/* Canvas for drawing will be implemented here */}
-          <Box
-            sx={{
-              border: '1px solid',
-              borderColor: 'divider',
-              borderRadius: 1,
-              p: 2,
-              bgcolor: 'background.paper',
-            }}
-          >
-            <Typography variant="caption" color="text.secondary" sx={{ mb: 2, display: 'block' }}>
-              Canvas drawing tool will be implemented here
-            </Typography>
-            <Typography variant="body2">
-              Micrograph: {formData.micrographFileName}
-            </Typography>
-          </Box>
+          {/* Canvas for drawing scale bar line */}
+          {micrographPreviewUrl ? (
+            <ScaleBarCanvas
+              imageUrl={micrographPreviewUrl}
+              onLineDrawn={(lineData) => {
+                updateField('scaleBarLineStart', lineData.start);
+                updateField('scaleBarLineEnd', lineData.end);
+                updateField('scaleBarLineLengthPixels', lineData.lengthPixels.toFixed(2));
+              }}
+            />
+          ) : (
+            <Box
+              sx={{
+                border: '1px solid',
+                borderColor: 'divider',
+                borderRadius: 1,
+                p: 2,
+                bgcolor: 'background.paper',
+              }}
+            >
+              <CircularProgress size={24} sx={{ mr: 2 }} />
+              <Typography variant="body2" component="span">
+                Loading micrograph preview...
+              </Typography>
+            </Box>
+          )}
 
           <TextField
             fullWidth
