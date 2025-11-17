@@ -92,6 +92,83 @@ function App() {
     setIsNewProjectDialogOpen(true);
   };
 
+  const handleTestScaleBarStep = () => {
+    // For "Optical Microscopy", Instrument Settings is not shown, so scale bar is step 9 (index 9)
+    const testStep = 9; // This will be the "Trace Scale Bar" input step
+
+    const testData = {
+      // Step 1: Project Metadata
+      name: 'Debug Test Project - Scale Bar',
+      startDate: '2025-01-01',
+      endDate: '2025-12-31',
+      purposeOfStudy: 'Testing scale bar functionality',
+      otherTeamMembers: '',
+      areaOfInterest: 'Test Area',
+      gpsDatum: 'WGS84',
+      magneticDeclination: '0',
+      notes: 'Debug test for scale bar canvas',
+
+      // Step 2: Dataset Information
+      datasetName: 'Test Dataset',
+
+      // Step 3: Sample Information
+      sampleID: 'TEST-SCALE-001',
+      longitude: '0',
+      latitude: '0',
+      mainSamplingPurpose: 'Microstructure',
+      sampleDescription: 'Test sample for scale bar',
+      materialType: 'Rock',
+      lithology: 'Quartzite',
+      inplacenessOfSample: 'In Place',
+      orientedSample: 'no',
+      sampleOrientationNotes: '',
+      sampleSize: 'Hand Sample',
+      degreeOfWeathering: 'Fresh',
+      sampleNotes: '',
+      sampleType: 'Thin Section',
+      color: 'Gray',
+      sampleUnit: '',
+
+      // Step 4: Load Reference Micrograph
+      micrographFilePath: '/Volumes/8TB/Work/StraboMicro/Micro/ThinSections/good/A_Big.tif',
+      micrographFileName: 'A_Big.tif',
+      micrographWidth: 10000,
+      micrographHeight: 7500,
+
+      // Step 5: Instrument & Image Information
+      instrumentType: 'Optical Microscopy',
+      dataType: 'Transmitted Light',
+      imageType: 'Transmitted Light',
+      instrumentBrand: 'Nikon',
+      instrumentModel: 'Test Model',
+      university: 'Test University',
+      laboratory: 'Test Lab',
+
+      // Step 6: Instrument Data
+      dataCollectionSoftware: 'Test Software',
+      dataCollectionSoftwareVersion: '1.0',
+      postProcessingSoftware: '',
+      postProcessingSoftwareVersion: '',
+      instrumentNotes: '',
+
+      // Step 7: Micrograph Metadata
+      micrographName: 'Test Scale Bar Micrograph',
+      micrographPolished: true,
+      micrographPolishDescription: 'Standard thin section',
+      micrographNotes: '',
+
+      // Step 8: Micrograph Orientation
+      orientationMethod: 'unoriented' as const,
+
+      // Step 9: Scale Method (already selected)
+      scaleMethod: 'Trace Scale Bar' as const,
+    };
+
+    setDebugWizardStep(testStep);
+    setDebugWizardData(testData);
+    setIsNewProjectDialogOpen(true);
+  };
+
   // Initialize theme system
   useTheme();
 
@@ -137,6 +214,11 @@ function App() {
     // Debug: Test Orientation Step
     window.api.onTestOrientationStep(() => {
       handleTestOrientationStep();
+    });
+
+    // Debug: Test Scale Bar Step
+    window.api.onTestScaleBarStep(() => {
+      handleTestScaleBarStep();
     });
 
     // Debug: Clear Project

@@ -10,7 +10,7 @@
  * After completion, creates project structure in store with micrograph
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -33,9 +33,13 @@ import {
   Radio,
   RadioGroup,
   CircularProgress,
+  IconButton,
+  Tooltip,
 } from '@mui/material';
 import { useAppStore } from '@/store';
 import { PeriodicTableModal } from './PeriodicTableModal';
+import { ScaleBarCanvas, type Tool, type ScaleBarCanvasRef } from '../ScaleBarCanvas';
+import { PanTool, Timeline, RestartAlt } from '@mui/icons-material';
 
 interface NewProjectWizardProps {
   isOpen: boolean;
@@ -333,6 +337,8 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
   const [showPeriodicTable, setShowPeriodicTable] = useState(false);
   const [micrographPreviewUrl, setMicrographPreviewUrl] = useState<string>('');
   const [isLoadingPreview, setIsLoadingPreview] = useState(false);
+  const [canvasTool, setCanvasTool] = useState<Tool>('pointer'); // Start with pointer tool (pan/zoom)
+  const canvasRef = useRef<ScaleBarCanvasRef>(null);
   const loadProject = useAppStore((state) => state.loadProject);
 
   // Determine which steps to show based on instrument type
@@ -499,6 +505,7 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
     loadPreview();
   }, [formData.micrographFilePath]);
 
+
   // Validation handlers for latitude/longitude
   const handleLatitudeChange = (value: string) => {
     // Allow empty, minus sign, or valid decimal numbers
@@ -562,12 +569,13 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
           {
             id: crypto.randomUUID(),
             name: formData.micrographName || formData.micrographFileName,
-            notes: formData.micrographNotes || undefined,
-            imageFilename: formData.micrographFileName,
-            imageWidth: formData.micrographWidth,
-            imageHeight: formData.micrographHeight,
             imageType: formData.imageType || undefined,
-            visible: true,
+            width: formData.micrographWidth,
+            height: formData.micrographHeight,
+            opacity: 1.0,
+            polish: formData.micrographPolished || false,
+            polishDescription: formData.micrographPolishDescription || '',
+            notes: formData.micrographNotes || '',
             orientationInfo: (() => {
               // Only include orientation data for the selected method
               if (formData.orientationMethod === 'unoriented') {
@@ -598,41 +606,39 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
               }
               return { orientationMethod: formData.orientationMethod };
             })(),
-            scale: (() => {
-              // Calculate pixelsPerUnit based on selected method
+            scalePixelsPerCentimeter: (() => {
+              // Convert scale to scalePixelsPerCentimeter (legacy format)
+              // All methods calculate pixels per unit, then convert to pixels per cm
+              let pixelsPerUnit = 0;
+              let unit = '';
+
               if (formData.scaleMethod === 'Trace Scale Bar') {
                 const lineLengthPixels = parseFloat(formData.scaleBarLineLengthPixels);
                 const physicalLength = parseFloat(formData.scaleBarPhysicalLength);
-                return {
-                  scaleMethod: 'Trace Scale Bar',
-                  scaleBarLineStart: formData.scaleBarLineStart,
-                  scaleBarLineEnd: formData.scaleBarLineEnd,
-                  scaleBarLineLengthPixels: lineLengthPixels,
-                  scaleBarPhysicalLength: physicalLength,
-                  scaleBarUnits: formData.scaleBarUnits,
-                  pixelsPerUnit: lineLengthPixels / physicalLength,
-                };
+                pixelsPerUnit = lineLengthPixels / physicalLength;
+                unit = formData.scaleBarUnits;
               } else if (formData.scaleMethod === 'Pixel Conversion Factor') {
                 const pixels = parseFloat(formData.pixels);
                 const physicalLength = parseFloat(formData.physicalLength);
-                return {
-                  scaleMethod: 'Pixel Conversion Factor',
-                  pixels: pixels,
-                  physicalLength: physicalLength,
-                  units: formData.pixelUnits,
-                  pixelsPerUnit: pixels / physicalLength,
-                };
+                pixelsPerUnit = pixels / physicalLength;
+                unit = formData.pixelUnits;
               } else if (formData.scaleMethod === 'Provide Width/Height of Image') {
                 const imageWidthPhysical = parseFloat(formData.imageWidthPhysical);
-                return {
-                  scaleMethod: 'Provide Width/Height of Image',
-                  imageWidthPhysical: imageWidthPhysical,
-                  imageHeightPhysical: parseFloat(formData.imageHeightPhysical),
-                  units: formData.sizeUnits,
-                  pixelsPerUnit: formData.micrographWidth / imageWidthPhysical,
-                };
+                pixelsPerUnit = formData.micrographWidth / imageWidthPhysical;
+                unit = formData.sizeUnits;
               }
-              return undefined;
+
+              // Convert to pixels per centimeter
+              const conversionToCm: { [key: string]: number } = {
+                'μm': 10000,      // 1 cm = 10,000 μm
+                'mm': 10,         // 1 cm = 10 mm
+                'cm': 1,          // 1 cm = 1 cm
+                'm': 0.01,        // 1 cm = 0.01 m
+                'inches': 0.393701 // 1 cm = 0.393701 inches
+              };
+
+              const pixelsPerCm = pixelsPerUnit * (conversionToCm[unit] || 1);
+              return pixelsPerCm;
             })(),
             instrument: {
               instrumentType: formData.instrumentType || undefined,
@@ -656,17 +662,8 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
                   detectorModel: d.model || undefined,
                 })),
             },
-            grains: [],
-            fabrics: [],
-            boundaries: [],
-            mineralogy: [],
-            veins: [],
-            fractures: [],
-            folds: [],
-            porosity: [],
-            pseudotachylyte: [],
-            otherFeatures: [],
-            spots: [],
+            isMicroVisible: true,
+            isFlipped: false,
           },
         ]
       : [];
@@ -1341,57 +1338,117 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
             Draw a line over the scale bar in the micrograph, then enter the physical length that line represents.
           </Typography>
 
-          {/* Canvas for drawing will be implemented here */}
+          {/* Toolbar and input fields all on one line */}
           <Box
             sx={{
+              display: 'flex',
+              gap: 2,
+              alignItems: 'center',
+              p: 1.5,
               border: '1px solid',
               borderColor: 'divider',
               borderRadius: 1,
-              p: 2,
               bgcolor: 'background.paper',
             }}
           >
-            <Typography variant="caption" color="text.secondary" sx={{ mb: 2, display: 'block' }}>
-              Canvas drawing tool will be implemented here
-            </Typography>
-            <Typography variant="body2">
-              Micrograph: {formData.micrographFileName}
-            </Typography>
+            {/* Drawing tools */}
+            <Stack direction="row" spacing={0.5}>
+              <Tooltip title="Pointer Tool (Pan/Zoom)">
+                <IconButton
+                  size="small"
+                  onClick={() => setCanvasTool('pointer')}
+                  color={canvasTool === 'pointer' ? 'primary' : 'default'}
+                >
+                  <PanTool />
+                </IconButton>
+              </Tooltip>
+
+              <Tooltip title="Line Tool (Draw Scale Bar)">
+                <IconButton
+                  size="small"
+                  onClick={() => setCanvasTool('line')}
+                  color={canvasTool === 'line' ? 'primary' : 'default'}
+                >
+                  <Timeline />
+                </IconButton>
+              </Tooltip>
+
+              <Tooltip title="Reset Zoom">
+                <IconButton size="small" onClick={() => canvasRef.current?.resetZoom()}>
+                  <RestartAlt />
+                </IconButton>
+              </Tooltip>
+            </Stack>
+
+            <Divider orientation="vertical" flexItem />
+
+            {/* Input fields */}
+            <TextField
+              required
+              label="Line Length (pixels)"
+              value={formData.scaleBarLineLengthPixels}
+              InputProps={{ readOnly: true }}
+              size="small"
+              sx={{ width: 180 }}
+            />
+
+            <TextField
+              required
+              label="Physical Length"
+              type="number"
+              value={formData.scaleBarPhysicalLength}
+              onChange={(e) => updateField('scaleBarPhysicalLength', e.target.value)}
+              size="small"
+              sx={{ width: 150 }}
+            />
+
+            <TextField
+              select
+              required
+              label="Units"
+              value={formData.scaleBarUnits}
+              onChange={(e) => updateField('scaleBarUnits', e.target.value)}
+              size="small"
+              sx={{ width: 100 }}
+            >
+              {units.map((unit) => (
+                <MenuItem key={unit} value={unit}>
+                  {unit}
+                </MenuItem>
+              ))}
+            </TextField>
           </Box>
 
-          <TextField
-            fullWidth
-            required
-            label="Line Length (pixels)"
-            value={formData.scaleBarLineLengthPixels}
-            helperText="Auto-filled when you draw a line"
-            InputProps={{ readOnly: true }}
-          />
-
-          <TextField
-            fullWidth
-            required
-            label="Physical Length"
-            type="number"
-            value={formData.scaleBarPhysicalLength}
-            onChange={(e) => updateField('scaleBarPhysicalLength', e.target.value)}
-            helperText="The real-world length the line represents"
-          />
-
-          <TextField
-            fullWidth
-            select
-            required
-            label="Units"
-            value={formData.scaleBarUnits}
-            onChange={(e) => updateField('scaleBarUnits', e.target.value)}
-          >
-            {units.map((unit) => (
-              <MenuItem key={unit} value={unit}>
-                {unit}
-              </MenuItem>
-            ))}
-          </TextField>
+          {/* Canvas for drawing scale bar line */}
+          {micrographPreviewUrl ? (
+            <ScaleBarCanvas
+              ref={canvasRef}
+              imageUrl={micrographPreviewUrl}
+              showToolbar={false}
+              currentTool={canvasTool}
+              onToolChange={setCanvasTool}
+              onLineDrawn={(lineData) => {
+                updateField('scaleBarLineStart', lineData.start);
+                updateField('scaleBarLineEnd', lineData.end);
+                updateField('scaleBarLineLengthPixels', lineData.lengthPixels.toFixed(2));
+              }}
+            />
+          ) : (
+            <Box
+              sx={{
+                border: '1px solid',
+                borderColor: 'divider',
+                borderRadius: 1,
+                p: 2,
+                bgcolor: 'background.paper',
+              }}
+            >
+              <CircularProgress size={24} sx={{ mr: 2 }} />
+              <Typography variant="body2" component="span">
+                Loading micrograph preview...
+              </Typography>
+            </Box>
+          )}
         </Stack>
       );
     } else if (formData.scaleMethod === 'Pixel Conversion Factor') {
