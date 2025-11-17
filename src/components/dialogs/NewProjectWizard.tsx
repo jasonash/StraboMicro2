@@ -569,12 +569,13 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
           {
             id: crypto.randomUUID(),
             name: formData.micrographName || formData.micrographFileName,
-            notes: formData.micrographNotes || undefined,
-            imageFilename: formData.micrographFileName,
-            imageWidth: formData.micrographWidth,
-            imageHeight: formData.micrographHeight,
             imageType: formData.imageType || undefined,
-            visible: true,
+            width: formData.micrographWidth,
+            height: formData.micrographHeight,
+            opacity: 1.0,
+            polish: formData.micrographPolished || false,
+            polishDescription: formData.micrographPolishDescription || '',
+            notes: formData.micrographNotes || '',
             orientationInfo: (() => {
               // Only include orientation data for the selected method
               if (formData.orientationMethod === 'unoriented') {
@@ -605,41 +606,39 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
               }
               return { orientationMethod: formData.orientationMethod };
             })(),
-            scale: (() => {
-              // Calculate pixelsPerUnit based on selected method
+            scalePixelsPerCentimeter: (() => {
+              // Convert scale to scalePixelsPerCentimeter (legacy format)
+              // All methods calculate pixels per unit, then convert to pixels per cm
+              let pixelsPerUnit = 0;
+              let unit = '';
+
               if (formData.scaleMethod === 'Trace Scale Bar') {
                 const lineLengthPixels = parseFloat(formData.scaleBarLineLengthPixels);
                 const physicalLength = parseFloat(formData.scaleBarPhysicalLength);
-                return {
-                  scaleMethod: 'Trace Scale Bar',
-                  scaleBarLineStart: formData.scaleBarLineStart,
-                  scaleBarLineEnd: formData.scaleBarLineEnd,
-                  scaleBarLineLengthPixels: lineLengthPixels,
-                  scaleBarPhysicalLength: physicalLength,
-                  scaleBarUnits: formData.scaleBarUnits,
-                  pixelsPerUnit: lineLengthPixels / physicalLength,
-                };
+                pixelsPerUnit = lineLengthPixels / physicalLength;
+                unit = formData.scaleBarUnits;
               } else if (formData.scaleMethod === 'Pixel Conversion Factor') {
                 const pixels = parseFloat(formData.pixels);
                 const physicalLength = parseFloat(formData.physicalLength);
-                return {
-                  scaleMethod: 'Pixel Conversion Factor',
-                  pixels: pixels,
-                  physicalLength: physicalLength,
-                  units: formData.pixelUnits,
-                  pixelsPerUnit: pixels / physicalLength,
-                };
+                pixelsPerUnit = pixels / physicalLength;
+                unit = formData.pixelUnits;
               } else if (formData.scaleMethod === 'Provide Width/Height of Image') {
                 const imageWidthPhysical = parseFloat(formData.imageWidthPhysical);
-                return {
-                  scaleMethod: 'Provide Width/Height of Image',
-                  imageWidthPhysical: imageWidthPhysical,
-                  imageHeightPhysical: parseFloat(formData.imageHeightPhysical),
-                  units: formData.sizeUnits,
-                  pixelsPerUnit: formData.micrographWidth / imageWidthPhysical,
-                };
+                pixelsPerUnit = formData.micrographWidth / imageWidthPhysical;
+                unit = formData.sizeUnits;
               }
-              return undefined;
+
+              // Convert to pixels per centimeter
+              const conversionToCm: { [key: string]: number } = {
+                'μm': 10000,      // 1 cm = 10,000 μm
+                'mm': 10,         // 1 cm = 10 mm
+                'cm': 1,          // 1 cm = 1 cm
+                'm': 0.01,        // 1 cm = 0.01 m
+                'inches': 0.393701 // 1 cm = 0.393701 inches
+              };
+
+              const pixelsPerCm = pixelsPerUnit * (conversionToCm[unit] || 1);
+              return pixelsPerCm;
             })(),
             instrument: {
               instrumentType: formData.instrumentType || undefined,
@@ -663,17 +662,8 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
                   detectorModel: d.model || undefined,
                 })),
             },
-            grains: [],
-            fabrics: [],
-            boundaries: [],
-            mineralogy: [],
-            veins: [],
-            fractures: [],
-            folds: [],
-            porosity: [],
-            pseudotachylyte: [],
-            otherFeatures: [],
-            spots: [],
+            isMicroVisible: true,
+            isFlipped: false,
           },
         ]
       : [];
