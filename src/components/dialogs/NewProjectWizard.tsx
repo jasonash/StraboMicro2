@@ -872,16 +872,48 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
       }
     }
     if (activeStep === 8) {
-      // Step 9: Micrograph Orientation (when Instrument Settings IS shown)
-      return validateOrientationStep();
+      // Step 9: Either Micrograph Orientation (when Instrument Settings IS shown) OR Set Micrograph Scale (when NOT shown)
+      if (shouldShowInstrumentSettings()) {
+        // This is Micrograph Orientation
+        return validateOrientationStep();
+      } else {
+        // This is Set Micrograph Scale
+        return formData.scaleMethod !== '';
+      }
     }
     if (activeStep === 9) {
-      // Step 10 (or 9): Set Micrograph Scale - Method Selection
-      // A scale method must be selected
-      return formData.scaleMethod !== '';
+      // Step 10: Either Set Micrograph Scale (when Instrument Settings IS shown) OR Trace Scale Bar (when NOT shown)
+      if (shouldShowInstrumentSettings()) {
+        // This is Set Micrograph Scale - Method Selection
+        return formData.scaleMethod !== '';
+      } else {
+        // This is Trace Scale Bar - Execute selected scale method
+        if (formData.scaleMethod === 'Trace Scale Bar') {
+          return (
+            formData.scaleBarLineLengthPixels !== '' &&
+            formData.scaleBarPhysicalLength !== '' &&
+            parseFloat(formData.scaleBarPhysicalLength) > 0
+          );
+        } else if (formData.scaleMethod === 'Pixel Conversion Factor') {
+          return (
+            formData.pixels !== '' &&
+            formData.physicalLength !== '' &&
+            parseFloat(formData.pixels) > 0 &&
+            parseFloat(formData.physicalLength) > 0
+          );
+        } else if (formData.scaleMethod === 'Provide Width/Height of Image') {
+          return (
+            formData.imageWidthPhysical !== '' &&
+            formData.imageHeightPhysical !== '' &&
+            parseFloat(formData.imageWidthPhysical) > 0 &&
+            parseFloat(formData.imageHeightPhysical) > 0
+          );
+        }
+        return false;
+      }
     }
     if (activeStep === 10) {
-      // Step 11 (or 10): Trace Scale Bar - Execute selected scale method
+      // Step 11: Trace Scale Bar (when Instrument Settings IS shown) - Execute selected scale method
       if (formData.scaleMethod === 'Trace Scale Bar') {
         // Line must be drawn, and physical length must be provided
         return (
@@ -3502,52 +3534,101 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
         }
 
       case 8:
-        // Step 9: Micrograph Orientation (when Instrument Settings IS shown)
-        return renderOrientationStep();
+        // Step 9: Either Micrograph Orientation (when Instrument Settings IS shown) OR Set Micrograph Scale (when NOT shown)
+        if (shouldShowInstrumentSettings()) {
+          // This is Micrograph Orientation
+          return renderOrientationStep();
+        } else {
+          // This is Set Micrograph Scale (when Instrument Settings NOT shown)
+          return (
+            <Stack spacing={3}>
+              <Typography variant="body2" color="text.secondary">
+                How do you wish to set the scale?
+              </Typography>
+              <RadioGroup
+                value={formData.scaleMethod}
+                onChange={(e) => updateField('scaleMethod', e.target.value)}
+              >
+                <FormControlLabel
+                  value="Trace Scale Bar"
+                  control={<Radio />}
+                  label="Trace Scale Bar"
+                />
+                <Typography variant="caption" color="text.secondary" sx={{ ml: 4, mt: -1, mb: 2 }}>
+                  Draw a line over the scale bar in the micrograph (most accurate)
+                </Typography>
+
+                <FormControlLabel
+                  value="Pixel Conversion Factor"
+                  control={<Radio />}
+                  label="Pixel Conversion Factor"
+                />
+                <Typography variant="caption" color="text.secondary" sx={{ ml: 4, mt: -1, mb: 2 }}>
+                  Enter the number of pixels per unit directly
+                </Typography>
+
+                <FormControlLabel
+                  value="Provide Width/Height of Image"
+                  control={<Radio />}
+                  label="Provide Width/Height of Image"
+                />
+                <Typography variant="caption" color="text.secondary" sx={{ ml: 4, mt: -1, mb: 2 }}>
+                  Enter the physical dimensions of the entire image
+                </Typography>
+              </RadioGroup>
+            </Stack>
+          );
+        }
 
       case 9:
-        // Step 10 (or 9): Set Micrograph Scale - Method Selection
-        return (
-          <Stack spacing={3}>
-            <Typography variant="body2" color="text.secondary">
-              How do you wish to set the scale?
-            </Typography>
-            <RadioGroup
-              value={formData.scaleMethod}
-              onChange={(e) => updateField('scaleMethod', e.target.value)}
-            >
-              <FormControlLabel
-                value="Trace Scale Bar"
-                control={<Radio />}
-                label="Trace Scale Bar"
-              />
-              <Typography variant="caption" color="text.secondary" sx={{ ml: 4, mt: -1, mb: 2 }}>
-                Draw a line over the scale bar in the micrograph (most accurate)
+        // Step 10: Either Set Micrograph Scale (when Instrument Settings IS shown) OR Trace Scale Bar (when NOT shown)
+        if (shouldShowInstrumentSettings()) {
+          // This is Set Micrograph Scale
+          return (
+            <Stack spacing={3}>
+              <Typography variant="body2" color="text.secondary">
+                How do you wish to set the scale?
               </Typography>
+              <RadioGroup
+                value={formData.scaleMethod}
+                onChange={(e) => updateField('scaleMethod', e.target.value)}
+              >
+                <FormControlLabel
+                  value="Trace Scale Bar"
+                  control={<Radio />}
+                  label="Trace Scale Bar"
+                />
+                <Typography variant="caption" color="text.secondary" sx={{ ml: 4, mt: -1, mb: 2 }}>
+                  Draw a line over the scale bar in the micrograph (most accurate)
+                </Typography>
 
-              <FormControlLabel
-                value="Pixel Conversion Factor"
-                control={<Radio />}
-                label="Pixel Conversion Factor"
-              />
-              <Typography variant="caption" color="text.secondary" sx={{ ml: 4, mt: -1, mb: 2 }}>
-                Enter the number of pixels per unit directly
-              </Typography>
+                <FormControlLabel
+                  value="Pixel Conversion Factor"
+                  control={<Radio />}
+                  label="Pixel Conversion Factor"
+                />
+                <Typography variant="caption" color="text.secondary" sx={{ ml: 4, mt: -1, mb: 2 }}>
+                  Enter the number of pixels per unit directly
+                </Typography>
 
-              <FormControlLabel
-                value="Provide Width/Height of Image"
-                control={<Radio />}
-                label="Provide Width/Height of Image"
-              />
-              <Typography variant="caption" color="text.secondary" sx={{ ml: 4, mt: -1, mb: 2 }}>
-                Enter the physical dimensions of the entire image
-              </Typography>
-            </RadioGroup>
-          </Stack>
-        );
+                <FormControlLabel
+                  value="Provide Width/Height of Image"
+                  control={<Radio />}
+                  label="Provide Width/Height of Image"
+                />
+                <Typography variant="caption" color="text.secondary" sx={{ ml: 4, mt: -1, mb: 2 }}>
+                  Enter the physical dimensions of the entire image
+                </Typography>
+              </RadioGroup>
+            </Stack>
+          );
+        } else {
+          // This is Trace Scale Bar (when Instrument Settings NOT shown)
+          return renderScaleInputStep();
+        }
 
       case 10:
-        // Step 11 (or 10): Trace Scale Bar - Execute selected scale method
+        // Step 11: Trace Scale Bar (when Instrument Settings IS shown)
         return renderScaleInputStep();
 
       default:
