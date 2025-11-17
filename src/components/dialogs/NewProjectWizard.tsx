@@ -336,6 +336,7 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
   const [detectors, setDetectors] = useState<Detector[]>([{ type: '', make: '', model: '' }]);
   const [showPeriodicTable, setShowPeriodicTable] = useState(false);
   const [micrographPreviewUrl, setMicrographPreviewUrl] = useState<string>('');
+  const [micrographMediumPreviewUrl, setMicrographMediumPreviewUrl] = useState<string>('');
   const [isLoadingPreview, setIsLoadingPreview] = useState(false);
   const [canvasTool, setCanvasTool] = useState<Tool>('line'); // Start with line tool selected
   const canvasRef = useRef<ScaleBarCanvasRef>(null);
@@ -504,6 +505,33 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
     };
     loadPreview();
   }, [formData.micrographFilePath]);
+
+  // Load medium-resolution preview for scale bar step (higher quality for detailed work)
+  useEffect(() => {
+    const loadMediumPreview = async () => {
+      // Only load medium preview when user reaches the scale bar step
+      const isScaleBarStep = (
+        (shouldShowInstrumentSettings() && activeStep === 10) ||
+        (!shouldShowInstrumentSettings() && activeStep === 9)
+      );
+
+      if (isScaleBarStep && formData.micrographFilePath && window.api?.loadImagePreview && !micrographMediumPreviewUrl) {
+        try {
+          console.log('Loading medium-resolution preview for scale bar:', formData.micrographFilePath);
+          // Request medium size (2048px) for better detail when drawing scale bar
+          const dataUrl = await window.api.loadImagePreview(
+            formData.micrographFilePath,
+            'medium'
+          );
+          console.log('Medium preview loaded, dataUrl length:', dataUrl?.length);
+          setMicrographMediumPreviewUrl(dataUrl);
+        } catch (error) {
+          console.error('Error loading medium micrograph preview:', error);
+        }
+      }
+    };
+    loadMediumPreview();
+  }, [activeStep, formData.micrographFilePath, micrographMediumPreviewUrl, shouldShowInstrumentSettings]);
 
   // Validation handlers for latitude/longitude
   const handleLatitudeChange = (value: string) => {
@@ -1429,10 +1457,10 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
           </Box>
 
           {/* Canvas for drawing scale bar line */}
-          {micrographPreviewUrl ? (
+          {micrographMediumPreviewUrl ? (
             <ScaleBarCanvas
               ref={canvasRef}
-              imageUrl={micrographPreviewUrl}
+              imageUrl={micrographMediumPreviewUrl}
               showToolbar={false}
               currentTool={canvasTool}
               onToolChange={setCanvasTool}

@@ -437,7 +437,7 @@ ipcMain.handle('load-tiff-image', async (event, filePath) => {
 });
 
 // Load image as base64 data URL for preview
-// size: 'thumbnail' (max 512px) or 'full' (original resolution)
+// size: 'thumbnail' (max 512px), 'medium' (max 2048px), or 'full' (original resolution)
 ipcMain.handle('load-image-preview', async (event, filePath, size = 'thumbnail') => {
   try {
     log.info(`Loading image preview: ${filePath}, size: ${size}`);
@@ -491,6 +491,13 @@ ipcMain.handle('load-image-preview', async (event, filePath, size = 'thumbnail')
       if (size === 'thumbnail') {
         // Downsample to max 512px on longest edge
         const maxDimension = 512;
+        const scale = Math.min(maxDimension / image.width, maxDimension / image.height, 1);
+        finalWidth = Math.floor(image.width * scale);
+        finalHeight = Math.floor(image.height * scale);
+        log.info(`Downsampling from ${image.width}x${image.height} to ${finalWidth}x${finalHeight}`);
+      } else if (size === 'medium') {
+        // Downsample to max 2048px on longest edge (good for scale bar drawing)
+        const maxDimension = 2048;
         const scale = Math.min(maxDimension / image.width, maxDimension / image.height, 1);
         finalWidth = Math.floor(image.width * scale);
         finalHeight = Math.floor(image.height * scale);
