@@ -97,6 +97,7 @@ export interface MicrographMetadata {
   xOffset?: number;
   yOffset?: number;
   rotation?: number;
+  flipped?: boolean;
   opacity?: number;
   visible?: boolean;
 
