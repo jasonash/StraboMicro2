@@ -72,9 +72,10 @@ interface ProjectFormData {
   micrographFileName: string;
   micrographWidth: number;
   micrographHeight: number;
-  micrographTitle: string;
+  micrographName: string;
+  micrographPolished: boolean;
+  micrographPolishDescription: string;
   micrographNotes: string;
-  micrographAnnotations: string;
   instrumentType: string;
   otherInstrumentType: string;
   dataType: string;
@@ -182,9 +183,10 @@ const initialFormData: ProjectFormData = {
   micrographFileName: '',
   micrographWidth: 0,
   micrographHeight: 0,
-  micrographTitle: '',
+  micrographName: '',
+  micrographPolished: false,
+  micrographPolishDescription: '',
   micrographNotes: '',
-  micrographAnnotations: '',
   instrumentType: '',
   otherInstrumentType: '',
   dataType: '',
@@ -270,7 +272,7 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
     ? [...baseSteps.slice(0, 6), 'Instrument Settings', baseSteps[6]]
     : baseSteps;
 
-  const updateField = (field: keyof ProjectFormData, value: string | string[]) => {
+  const updateField = (field: keyof ProjectFormData, value: string | string[] | boolean) => {
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
@@ -327,12 +329,15 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
         const filePath = await window.api.openTiffDialog();
         if (filePath) {
           const fileName = filePath.split(/[\\/]/).pop() || '';
+          // Extract name without extension for micrograph name (matching legacy behavior)
+          const nameWithoutExt = fileName.substring(0, fileName.lastIndexOf('.')) || fileName;
 
           // Just store the file path - dimensions will be loaded later when displaying
           setFormData(prev => ({
             ...prev,
             micrographFilePath: filePath,
             micrographFileName: fileName,
+            micrographName: prev.micrographName || nameWithoutExt, // Only set if not already set
             micrographWidth: 0,  // Will be loaded later
             micrographHeight: 0,  // Will be loaded later
           }));
@@ -355,7 +360,7 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
     // Create micrograph object if file was selected
     const micrographs = formData.micrographFilePath ? [{
       id: crypto.randomUUID(),
-      name: formData.micrographTitle || formData.micrographFileName,
+      name: formData.micrographName || formData.micrographFileName,
       notes: formData.micrographNotes || undefined,
       imageFilename: formData.micrographFileName,
       imageWidth: formData.micrographWidth,
@@ -537,14 +542,18 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
         return true;
       } else {
         // This is Step 7: Micrograph Metadata (when Instrument Settings not shown)
-        // Title is required
-        return formData.micrographTitle.trim() !== '';
+        // Name is required, and if polished is checked, polish description is required
+        if (formData.micrographName.trim() === '') return false;
+        if (formData.micrographPolished && formData.micrographPolishDescription.trim() === '') return false;
+        return true;
       }
     }
     if (activeStep === 7) {
       // Step 8: Micrograph Metadata (when Instrument Settings IS shown)
-      // Title is required
-      return formData.micrographTitle.trim() !== '';
+      // Name is required, and if polished is checked, polish description is required
+      if (formData.micrographName.trim() === '') return false;
+      if (formData.micrographPolished && formData.micrographPolishDescription.trim() === '') return false;
+      return true;
     }
     return true;
   };
@@ -1367,11 +1376,36 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
               <TextField
                 fullWidth
                 required
-                label="Micrograph Title"
-                value={formData.micrographTitle}
-                onChange={(e) => updateField('micrographTitle', e.target.value)}
-                helperText="A descriptive title for this micrograph"
+                label="Name"
+                value={formData.micrographName}
+                onChange={(e) => updateField('micrographName', e.target.value)}
+                helperText="Name for this micrograph"
               />
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={formData.micrographPolished}
+                    onChange={(e) => {
+                      updateField('micrographPolished', e.target.checked);
+                      // Clear polish description if unchecking
+                      if (!e.target.checked) {
+                        updateField('micrographPolishDescription', '');
+                      }
+                    }}
+                  />
+                }
+                label="Polished?"
+              />
+              {formData.micrographPolished && (
+                <TextField
+                  fullWidth
+                  required
+                  label="Polish Description"
+                  value={formData.micrographPolishDescription}
+                  onChange={(e) => updateField('micrographPolishDescription', e.target.value)}
+                  helperText="Required when 'Polished?' is checked"
+                />
+              )}
               <TextField
                 fullWidth
                 multiline
@@ -1379,16 +1413,6 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
                 label="Notes"
                 value={formData.micrographNotes}
                 onChange={(e) => updateField('micrographNotes', e.target.value)}
-                helperText="Optional notes or description about this micrograph"
-              />
-              <TextField
-                fullWidth
-                multiline
-                rows={3}
-                label="Annotations / Tags"
-                value={formData.micrographAnnotations}
-                onChange={(e) => updateField('micrographAnnotations', e.target.value)}
-                helperText="Optional tags or annotations (comma-separated)"
               />
             </Stack>
           );
@@ -1844,11 +1868,36 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
             <TextField
               fullWidth
               required
-              label="Micrograph Title"
-              value={formData.micrographTitle}
-              onChange={(e) => updateField('micrographTitle', e.target.value)}
-              helperText="A descriptive title for this micrograph"
+              label="Name"
+              value={formData.micrographName}
+              onChange={(e) => updateField('micrographName', e.target.value)}
+              helperText="Name for this micrograph"
             />
+            <FormControlLabel
+              control={
+                <Checkbox
+                  checked={formData.micrographPolished}
+                  onChange={(e) => {
+                    updateField('micrographPolished', e.target.checked);
+                    // Clear polish description if unchecking
+                    if (!e.target.checked) {
+                      updateField('micrographPolishDescription', '');
+                    }
+                  }}
+                />
+              }
+              label="Polished?"
+            />
+            {formData.micrographPolished && (
+              <TextField
+                fullWidth
+                required
+                label="Polish Description"
+                value={formData.micrographPolishDescription}
+                onChange={(e) => updateField('micrographPolishDescription', e.target.value)}
+                helperText="Required when 'Polished?' is checked"
+              />
+            )}
             <TextField
               fullWidth
               multiline
@@ -1856,16 +1905,6 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({ isOpen, onCl
               label="Notes"
               value={formData.micrographNotes}
               onChange={(e) => updateField('micrographNotes', e.target.value)}
-              helperText="Optional notes or description about this micrograph"
-            />
-            <TextField
-              fullWidth
-              multiline
-              rows={3}
-              label="Annotations / Tags"
-              value={formData.micrographAnnotations}
-              onChange={(e) => updateField('micrographAnnotations', e.target.value)}
-              helperText="Optional tags or annotations (comma-separated)"
             />
           </Stack>
         );
