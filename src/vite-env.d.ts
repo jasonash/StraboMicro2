@@ -25,6 +25,41 @@ declare module '*.gif' {
   export default value;
 }
 
+// Tile metadata interface
+interface TileMetadata {
+  cacheVersion: string;
+  originalPath: string;
+  width: number;
+  height: number;
+  tileSize: number;
+  tilesX: number;
+  tilesY: number;
+  totalTiles: number;
+  thumbnailSize: number;
+  mediumSize: number;
+  createdAt: string;
+}
+
+// Tile coordinate interface
+interface TileCoordinate {
+  x: number;
+  y: number;
+}
+
+// Tile data interface
+interface TileData extends TileCoordinate {
+  dataUrl: string;
+}
+
+// Cache statistics interface
+interface CacheStats {
+  imageCount: number;
+  totalSizeBytes: number;
+  totalSizeMB: string;
+  cacheDirectory: string;
+  error?: string;
+}
+
 // Electron API declarations
 interface Window {
   api?: {
@@ -33,6 +68,8 @@ interface Window {
     onOpenProject: (callback: () => void) => void;
     onEditProject: (callback: () => void) => void;
     onShowProjectDebug: (callback: () => void) => void;
+    onTestOrientationStep: (callback: () => void) => void;
+    onTestScaleBarStep: (callback: () => void) => void;
     onClearProject: (callback: () => void) => void;
     openTiffDialog: () => Promise<string | null>;
     loadTiffImage: (filePath: string) => Promise<{
@@ -42,8 +79,23 @@ interface Window {
       filePath: string;
       filename: string;
     }>;
+    loadImagePreview: (filePath: string, size?: 'thumbnail' | 'medium' | 'full') => Promise<string>;
     setWindowTitle: (title: string) => void;
     onThemeChange: (callback: (theme: 'dark' | 'light' | 'system') => void) => void;
     notifyThemeChanged: (theme: 'dark' | 'light' | 'system') => void;
+
+    // Tile-based image loading
+    loadImageWithTiles: (imagePath: string) => Promise<{
+      hash: string;
+      metadata: TileMetadata;
+      fromCache: boolean;
+    }>;
+    loadThumbnail: (imageHash: string) => Promise<string>;
+    loadMedium: (imageHash: string) => Promise<string>;
+    loadTile: (imageHash: string, tileX: number, tileY: number) => Promise<string>;
+    loadTilesBatch: (imageHash: string, tiles: TileCoordinate[]) => Promise<TileData[]>;
+    getCacheStats: () => Promise<CacheStats>;
+    clearImageCache: (imageHash: string) => Promise<{ success: boolean }>;
+    clearAllCaches: () => Promise<{ success: boolean }>;
   };
 }

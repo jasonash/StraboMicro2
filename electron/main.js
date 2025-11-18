@@ -558,3 +558,199 @@ ipcMain.on('theme:changed', (event, theme) => {
   // Note: We don't sync nativeTheme to keep the native window chrome unchanged
   log.info(`App theme changed to: ${theme}`);
 });
+
+// ========== Tile-Based Image Loading System ==========
+// Import tile cache and generator
+const tileCache = require('./tileCache');
+const tileGenerator = require('./tileGenerator');
+
+/**
+ * Load and process an image with tiling support
+ * Returns image hash and metadata for tile requests
+ */
+ipcMain.handle('image:load-with-tiles', async (event, imagePath) => {
+  try {
+    log.info(`Loading image with tiles: ${imagePath}`);
+
+    // Check if cache exists
+    const cacheStatus = await tileCache.isCacheValid(imagePath);
+
+    if (cacheStatus.exists) {
+      log.info(`Using cached tiles for: ${imagePath}`);
+      return {
+        hash: cacheStatus.hash,
+        metadata: cacheStatus.metadata,
+        fromCache: true,
+      };
+    }
+
+    // Decode image
+    log.info('Decoding image...');
+    const imageData = await tileGenerator.decodeAuto(imagePath);
+
+    // Process and cache
+    log.info('Processing image and generating initial cache...');
+    const result = await tileGenerator.processImage(imagePath, imageData);
+
+    log.info(`Image loaded successfully: ${result.metadata.width}x${result.metadata.height}`);
+    return result;
+  } catch (error) {
+    log.error('Error loading image with tiles:', error);
+    throw error;
+  }
+});
+
+/**
+ * Load thumbnail for quick preview (512x512 max)
+ */
+ipcMain.handle('image:load-thumbnail', async (event, imageHash) => {
+  try {
+    const buffer = await tileCache.loadThumbnail(imageHash);
+
+    if (!buffer) {
+      throw new Error(`Thumbnail not found for hash: ${imageHash}`);
+    }
+
+    // Convert to base64 data URL
+    const base64 = buffer.toString('base64');
+    return `data:image/jpeg;base64,${base64}`;
+  } catch (error) {
+    log.error('Error loading thumbnail:', error);
+    throw error;
+  }
+});
+
+/**
+ * Load medium resolution image (2048x2048 max)
+ */
+ipcMain.handle('image:load-medium', async (event, imageHash) => {
+  try {
+    const buffer = await tileCache.loadMedium(imageHash);
+
+    if (!buffer) {
+      throw new Error(`Medium resolution not found for hash: ${imageHash}`);
+    }
+
+    // Convert to base64 data URL
+    const base64 = buffer.toString('base64');
+    return `data:image/jpeg;base64,${base64}`;
+  } catch (error) {
+    log.error('Error loading medium resolution:', error);
+    throw error;
+  }
+});
+
+/**
+ * Load a single tile
+ */
+ipcMain.handle('image:load-tile', async (event, imageHash, tileX, tileY) => {
+  try {
+    let buffer = await tileCache.loadTile(imageHash, tileX, tileY);
+
+    // If tile not cached, generate it on-demand
+    if (!buffer) {
+      log.info(`Generating tile on-demand: ${tileX}, ${tileY}`);
+
+      // Load metadata to get original image info
+      const metadata = await tileCache.loadMetadata(imageHash);
+      if (!metadata) {
+        throw new Error(`Metadata not found for hash: ${imageHash}`);
+      }
+
+      // Decode the original image
+      const imageData = await tileGenerator.decodeAuto(metadata.originalPath);
+
+      // Generate the tile
+      buffer = await tileGenerator.generateTile(imageHash, imageData, tileX, tileY);
+    }
+
+    // Convert to base64 data URL
+    const base64 = buffer.toString('base64');
+    return `data:image/png;base64,${base64}`;
+  } catch (error) {
+    log.error(`Error loading tile (${tileX}, ${tileY}):`, error);
+    throw error;
+  }
+});
+
+/**
+ * Load multiple tiles in batch
+ */
+ipcMain.handle('image:load-tiles-batch', async (event, imageHash, tiles) => {
+  try {
+    const results = [];
+
+    // Load metadata once
+    const metadata = await tileCache.loadMetadata(imageHash);
+    if (!metadata) {
+      throw new Error(`Metadata not found for hash: ${imageHash}`);
+    }
+
+    // Decode image data once (only if needed)
+    let imageData = null;
+
+    for (const { x, y } of tiles) {
+      let buffer = await tileCache.loadTile(imageHash, x, y);
+
+      // Generate on-demand if not cached
+      if (!buffer) {
+        if (!imageData) {
+          imageData = await tileGenerator.decodeAuto(metadata.originalPath);
+        }
+        buffer = await tileGenerator.generateTile(imageHash, imageData, x, y);
+      }
+
+      const base64 = buffer.toString('base64');
+      results.push({
+        x,
+        y,
+        dataUrl: `data:image/png;base64,${base64}`,
+      });
+    }
+
+    return results;
+  } catch (error) {
+    log.error('Error loading tiles batch:', error);
+    throw error;
+  }
+});
+
+/**
+ * Get cache statistics
+ */
+ipcMain.handle('image:cache-stats', async () => {
+  try {
+    return await tileCache.getCacheStats();
+  } catch (error) {
+    log.error('Error getting cache stats:', error);
+    throw error;
+  }
+});
+
+/**
+ * Clear cache for a specific image
+ */
+ipcMain.handle('image:clear-cache', async (event, imageHash) => {
+  try {
+    await tileCache.clearImageCache(imageHash);
+    log.info(`Cleared cache for image: ${imageHash}`);
+    return { success: true };
+  } catch (error) {
+    log.error('Error clearing image cache:', error);
+    throw error;
+  }
+});
+
+/**
+ * Clear all caches
+ */
+ipcMain.handle('image:clear-all-caches', async () => {
+  try {
+    await tileCache.clearAllCaches();
+    log.info('Cleared all caches');
+    return { success: true };
+  } catch (error) {
+    log.error('Error clearing all caches:', error);
+    throw error;
+  }
+});

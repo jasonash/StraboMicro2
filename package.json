@@ -47,7 +47,7 @@
     "konva": "^9.3.22",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "react-konva": "^18.2.10",
+    "react-konva": "^18.2.14",
     "tiff": "^7.1.2",
     "zundo": "^2.3.0",
     "zustand": "^5.0.8"

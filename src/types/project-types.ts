@@ -109,6 +109,7 @@ export interface MicrographMetadata {
 
   // Image file properties
   imageFilename?: string;
+  imagePath?: string;  // Full path to image file (not serialized in .smz, runtime only)
   imageWidth?: number;
   imageHeight?: number;
   micronPerPixel?: number;

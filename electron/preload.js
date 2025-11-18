@@ -30,4 +30,14 @@ contextBridge.exposeInMainWorld('api', {
   // Theme management
   onThemeChange: (callback) => ipcRenderer.on('theme:set', (event, theme) => callback(theme)),
   notifyThemeChanged: (theme) => ipcRenderer.send('theme:changed', theme),
+
+  // Tile-based image loading
+  loadImageWithTiles: (imagePath) => ipcRenderer.invoke('image:load-with-tiles', imagePath),
+  loadThumbnail: (imageHash) => ipcRenderer.invoke('image:load-thumbnail', imageHash),
+  loadMedium: (imageHash) => ipcRenderer.invoke('image:load-medium', imageHash),
+  loadTile: (imageHash, tileX, tileY) => ipcRenderer.invoke('image:load-tile', imageHash, tileX, tileY),
+  loadTilesBatch: (imageHash, tiles) => ipcRenderer.invoke('image:load-tiles-batch', imageHash, tiles),
+  getCacheStats: () => ipcRenderer.invoke('image:cache-stats'),
+  clearImageCache: (imageHash) => ipcRenderer.invoke('image:clear-cache', imageHash),
+  clearAllCaches: () => ipcRenderer.invoke('image:clear-all-caches'),
 });
