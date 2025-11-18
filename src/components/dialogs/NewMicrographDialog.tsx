@@ -374,9 +374,13 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
           // Load image metadata and thumbnail preview
           setIsLoadingPreview(true);
           try {
-            if (window.api.loadThumbnail) {
-              const thumbnailData = await window.api.loadThumbnail(filePath, 512);
-              setMicrographPreviewUrl(`data:image/jpeg;base64,${thumbnailData.data}`);
+            if (window.api.loadImageWithTiles) {
+              // Load image and generate cache (includes thumbnail)
+              const result = await window.api.loadImageWithTiles(filePath);
+
+              // Now load the thumbnail using the hash
+              const thumbnailDataUrl = await window.api.loadThumbnail(result.hash);
+              setMicrographPreviewUrl(thumbnailDataUrl);
 
               // Update form data with image dimensions and file info
               setFormData((prev) => ({
@@ -384,8 +388,8 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
                 micrographFilePath: filePath,
                 micrographFileName: fileName,
                 micrographName: prev.micrographName || nameWithoutExt,
-                micrographWidth: thumbnailData.width,
-                micrographHeight: thumbnailData.height,
+                micrographWidth: result.metadata.width,
+                micrographHeight: result.metadata.height,
               }));
             } else {
               // Fallback if thumbnail API not available
