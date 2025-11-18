@@ -41,6 +41,13 @@ interface ImageMetadata {
   fromCache: boolean;
 }
 
+type RenderMode = 'thumbnail' | 'tiled';
+
+interface ThumbnailState {
+  imageObj: HTMLImageElement;
+  dataUrl: string;
+}
+
 export const TiledViewer: React.FC<TiledViewerProps> = ({ imagePath }) => {
   const stageRef = useRef<any>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -48,6 +55,8 @@ export const TiledViewer: React.FC<TiledViewerProps> = ({ imagePath }) => {
   // State
   const [stageSize, setStageSize] = useState({ width: 800, height: 600 });
   const [imageMetadata, setImageMetadata] = useState<ImageMetadata | null>(null);
+  const [renderMode, setRenderMode] = useState<RenderMode>('thumbnail');
+  const [thumbnail, setThumbnail] = useState<ThumbnailState | null>(null);
   const [tiles, setTiles] = useState<Map<string, TileInfo>>(new Map());
   const [visibleTiles, setVisibleTiles] = useState<string[]>([]);
   const [zoom, setZoom] = useState(1);
@@ -73,17 +82,20 @@ export const TiledViewer: React.FC<TiledViewerProps> = ({ imagePath }) => {
 
       // Clear previous image state immediately
       setImageMetadata(null);
+      setRenderMode('thumbnail');
+      setThumbnail(null);
       setTiles(new Map());
       setVisibleTiles([]);
       setZoom(1);
       setPosition({ x: 0, y: 0 });
 
       try {
-        console.log('Loading image with tiles:', imagePath);
+        console.log('=== Progressive Loading: Step 1 - Load metadata ===');
 
+        // Step 1: Load image metadata (fast, creates thumbnail)
         const result = await window.api!.loadImageWithTiles(imagePath);
 
-        console.log('Image loaded:', {
+        console.log('Metadata loaded:', {
           hash: result.hash,
           dimensions: `${result.metadata.width}x${result.metadata.height}`,
           tiles: `${result.metadata.tilesX}x${result.metadata.tilesY}`,
@@ -99,17 +111,96 @@ export const TiledViewer: React.FC<TiledViewerProps> = ({ imagePath }) => {
           fromCache: result.fromCache,
         });
 
-        // Reset view
+        // Step 2: Load and display thumbnail immediately (512px max)
+        console.log('=== Progressive Loading: Step 2 - Load thumbnail ===');
+        const thumbnailDataUrl = await window.api!.loadThumbnail(result.hash);
+
+        const thumbnailImg = new Image();
+        thumbnailImg.src = thumbnailDataUrl;
+        await new Promise((resolve) => {
+          thumbnailImg.onload = resolve;
+        });
+
+        setThumbnail({
+          imageObj: thumbnailImg,
+          dataUrl: thumbnailDataUrl,
+        });
+
+        // Fit thumbnail to screen
         fitToScreen(result.metadata.width, result.metadata.height);
+
+        setIsLoading(false);
+        console.log('=== Thumbnail displayed, user can now interact ===');
+
+        // Step 3: Load ALL tiles in background (not viewport-based)
+        console.log('=== Progressive Loading: Step 3 - Loading all tiles in background ===');
+        loadAllTiles(result.hash, result.metadata.tilesX, result.metadata.tilesY);
+
       } catch (error) {
         console.error('Failed to load image:', error);
-      } finally {
         setIsLoading(false);
       }
     };
 
     loadImage();
   }, [imagePath]);
+
+  /**
+   * Load ALL tiles for the entire image in background
+   */
+  const loadAllTiles = useCallback(async (hash: string, tilesX: number, tilesY: number) => {
+    try {
+      // Generate list of ALL tile coordinates
+      const allTileCoords: Array<{ x: number; y: number }> = [];
+      for (let y = 0; y < tilesY; y++) {
+        for (let x = 0; x < tilesX; x++) {
+          allTileCoords.push({ x, y });
+        }
+      }
+
+      console.log(`Loading all ${allTileCoords.length} tiles...`);
+
+      // Load all tiles in batch
+      const results = await window.api!.loadTilesBatch(hash, allTileCoords);
+
+      // Create image objects and wait for them all to load
+      const newTiles = new Map<string, TileInfo>();
+      const imageLoadPromises: Promise<void>[] = [];
+
+      for (const { x, y, dataUrl } of results) {
+        const tileKey = `${x}_${y}`;
+        const img = new Image();
+
+        const loadPromise = new Promise<void>((resolve) => {
+          img.onload = () => resolve();
+        });
+        imageLoadPromises.push(loadPromise);
+
+        img.src = dataUrl;
+
+        newTiles.set(tileKey, {
+          x,
+          y,
+          dataUrl,
+          imageObj: img,
+        });
+      }
+
+      // Wait for ALL tile images to finish loading
+      await Promise.all(imageLoadPromises);
+      console.log(`All ${allTileCoords.length} tiles loaded and ready`);
+
+      // Update state with all tiles
+      setTiles(newTiles);
+
+      // Switch to tiled mode now that everything is ready
+      console.log('=== All tiles loaded, switching to tiled mode ===');
+      setRenderMode('tiled');
+
+    } catch (error) {
+      console.error('Failed to load all tiles:', error);
+    }
+  }, []);
 
   /**
    * Fit image to screen on initial load
@@ -166,9 +257,12 @@ export const TiledViewer: React.FC<TiledViewerProps> = ({ imagePath }) => {
   }, [imageMetadata, position, zoom, stageSize]);
 
   /**
-   * Load tiles that are visible but not yet loaded
+   * Load tiles that are visible but not yet loaded (only in tiled mode)
+   * In thumbnail mode, all tiles are loaded upfront by loadAllTiles()
    */
   useEffect(() => {
+    // Only do on-demand tile loading in tiled mode (for pan/zoom after initial load)
+    if (renderMode !== 'tiled') return;
     if (!imageMetadata || visibleTiles.length === 0 || !window.api) return;
 
     const loadTiles = async () => {
@@ -184,20 +278,28 @@ export const TiledViewer: React.FC<TiledViewerProps> = ({ imagePath }) => {
 
       if (tilesToLoad.length === 0) return;
 
-      console.log(`Loading ${tilesToLoad.length} tiles...`);
+      console.log(`Loading ${tilesToLoad.length} additional tiles...`);
 
       try {
         // Load tiles in batch
         const results = await window.api!.loadTilesBatch(imageMetadata.hash, tilesToLoad);
 
-        // Create image objects from data URLs
+        // Create image objects from data URLs and wait for them to load
         const newTiles = new Map(tiles);
+        const imageLoadPromises: Promise<void>[] = [];
 
         for (const { x, y, dataUrl } of results) {
           const tileKey = `${x}_${y}`;
 
           // Create image object
           const img = new Image();
+
+          // Wait for image to actually load
+          const loadPromise = new Promise<void>((resolve) => {
+            img.onload = () => resolve();
+          });
+          imageLoadPromises.push(loadPromise);
+
           img.src = dataUrl;
 
           newTiles.set(tileKey, {
@@ -208,6 +310,10 @@ export const TiledViewer: React.FC<TiledViewerProps> = ({ imagePath }) => {
           });
         }
 
+        // Wait for ALL tile images to finish loading
+        await Promise.all(imageLoadPromises);
+        console.log(`All ${imageLoadPromises.length} additional tiles loaded`);
+
         setTiles(newTiles);
       } catch (error) {
         console.error('Failed to load tiles:', error);
@@ -215,7 +321,7 @@ export const TiledViewer: React.FC<TiledViewerProps> = ({ imagePath }) => {
     };
 
     loadTiles();
-  }, [visibleTiles, imageMetadata, tiles]);
+  }, [visibleTiles, imageMetadata, tiles, renderMode]);
 
   /**
    * Update visible tiles when viewport changes
@@ -366,8 +472,19 @@ export const TiledViewer: React.FC<TiledViewerProps> = ({ imagePath }) => {
               scaleX={zoom}
               scaleY={zoom}
             >
-              {/* Render visible tiles */}
-              {visibleTiles.map((tileKey) => {
+              {/* Progressive loading: Show thumbnail first, then switch to tiles */}
+              {renderMode === 'thumbnail' && thumbnail && (
+                <KonvaImage
+                  image={thumbnail.imageObj}
+                  x={0}
+                  y={0}
+                  width={imageMetadata!.width}
+                  height={imageMetadata!.height}
+                />
+              )}
+
+              {/* Render visible tiles in tiled mode */}
+              {renderMode === 'tiled' && visibleTiles.map((tileKey) => {
                 const tile = tiles.get(tileKey);
                 if (!tile || !tile.imageObj) return null;
 
