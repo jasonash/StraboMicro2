@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Tabs, Tab, Box } from '@mui/material';
+import { ProjectTree } from './ProjectTree';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -18,7 +19,7 @@ function TabPanel(props: TabPanelProps) {
       aria-labelledby={`sidebar-tab-${index}`}
       {...other}
     >
-      {value === index && <Box sx={{ p: 2 }}>{children}</Box>}
+      {value === index && <Box>{children}</Box>}
     </div>
   );
 }
@@ -58,7 +59,7 @@ const Sidebar: React.FC = () => {
 
       <Box sx={{ flex: 1, overflow: 'auto' }}>
         <TabPanel value={activeTab} index={0}>
-          {/* Sample tree will go here */}
+          <ProjectTree />
         </TabPanel>
         <TabPanel value={activeTab} index={1}>
           {/* Groups list will go here */}
