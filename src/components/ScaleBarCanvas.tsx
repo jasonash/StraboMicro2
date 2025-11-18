@@ -72,57 +72,81 @@ export const ScaleBarCanvas = forwardRef<ScaleBarCanvasRef, ScaleBarCanvasProps>
     };
   }, [imageUrl]);
 
-  const handleMouseDown = (e: Konva.KonvaEventObject<MouseEvent>) => {
-    if (tool !== 'line') return;
+  const [isPanning, setIsPanning] = useState(false);
+  const [lastPanPos, setLastPanPos] = useState<{ x: number; y: number } | null>(null);
 
+  const handleMouseDown = (e: Konva.KonvaEventObject<MouseEvent>) => {
     const stage = e.target.getStage();
     if (!stage) return;
 
     const pointerPos = stage.getPointerPosition();
     if (!pointerPos) return;
 
-    // Convert screen coordinates to image coordinates
-    const x = (pointerPos.x - stagePos.x) / scale;
-    const y = (pointerPos.y - stagePos.y) / scale;
+    if (tool === 'line') {
+      // Convert screen coordinates to image coordinates
+      const x = (pointerPos.x - stagePos.x) / scale;
+      const y = (pointerPos.y - stagePos.y) / scale;
 
-    setIsDrawing(true);
-    setTempLine({ start: { x, y }, end: { x, y } });
+      setIsDrawing(true);
+      setTempLine({ start: { x, y }, end: { x, y } });
+    } else if (tool === 'pointer') {
+      // Start panning
+      setIsPanning(true);
+      setLastPanPos(pointerPos);
+    }
   };
 
   const handleMouseMove = (e: Konva.KonvaEventObject<MouseEvent>) => {
-    if (!isDrawing || tool !== 'line') return;
-
     const stage = e.target.getStage();
-    if (!stage || !tempLine) return;
+    if (!stage) return;
 
     const pointerPos = stage.getPointerPosition();
     if (!pointerPos) return;
 
-    // Convert screen coordinates to image coordinates
-    const x = (pointerPos.x - stagePos.x) / scale;
-    const y = (pointerPos.y - stagePos.y) / scale;
+    if (isDrawing && tool === 'line' && tempLine) {
+      // Drawing a line
+      const x = (pointerPos.x - stagePos.x) / scale;
+      const y = (pointerPos.y - stagePos.y) / scale;
+      setTempLine({ ...tempLine, end: { x, y } });
+    } else if (isPanning && tool === 'pointer' && lastPanPos) {
+      // Panning the image
+      const dx = pointerPos.x - lastPanPos.x;
+      const dy = pointerPos.y - lastPanPos.y;
 
-    setTempLine({ ...tempLine, end: { x, y } });
+      const newPos = {
+        x: stagePos.x + dx,
+        y: stagePos.y + dy,
+      };
+
+      // Apply bounds
+      const bounded = dragBoundFunc(newPos);
+      setStagePos(bounded);
+      setLastPanPos(pointerPos);
+    }
   };
 
   const handleMouseUp = () => {
-    if (!isDrawing || !tempLine) return;
+    if (isDrawing && tempLine) {
+      setIsDrawing(false);
+      setLine(tempLine);
+      setTempLine(null);
 
-    setIsDrawing(false);
-    setLine(tempLine);
-    setTempLine(null);
+      // Calculate line length in pixels (original image coordinates)
+      const dx = tempLine.end.x - tempLine.start.x;
+      const dy = tempLine.end.y - tempLine.start.y;
+      const lengthPixels = Math.sqrt(dx * dx + dy * dy);
 
-    // Calculate line length in pixels (original image coordinates)
-    const dx = tempLine.end.x - tempLine.start.x;
-    const dy = tempLine.end.y - tempLine.start.y;
-    const lengthPixels = Math.sqrt(dx * dx + dy * dy);
+      // Notify parent component
+      onLineDrawn({
+        start: tempLine.start,
+        end: tempLine.end,
+        lengthPixels
+      });
+    }
 
-    // Notify parent component
-    onLineDrawn({
-      start: tempLine.start,
-      end: tempLine.end,
-      lengthPixels
-    });
+    // Stop panning
+    setIsPanning(false);
+    setLastPanPos(null);
   };
 
   const handleZoomIn = () => {
@@ -171,14 +195,7 @@ export const ScaleBarCanvas = forwardRef<ScaleBarCanvasRef, ScaleBarCanvasProps>
     });
   };
 
-  const handleDragEnd = (e: Konva.KonvaEventObject<DragEvent>) => {
-    setStagePos({
-      x: e.target.x(),
-      y: e.target.y(),
-    });
-  };
-
-  // Constrain dragging to keep image visible
+  // Constrain panning to keep image visible
   const dragBoundFunc = (pos: { x: number; y: number }) => {
     if (!image) return pos;
 
@@ -272,32 +289,31 @@ export const ScaleBarCanvas = forwardRef<ScaleBarCanvasRef, ScaleBarCanvasProps>
       <Box
         ref={containerRef}
         sx={{
+          width: CANVAS_WIDTH,
+          height: CANVAS_HEIGHT,
           border: '1px solid',
           borderColor: 'divider',
           borderRadius: 1,
           overflow: 'hidden',
           backgroundColor: '#2a2a2a',
-          cursor: tool === 'line' ? 'crosshair' : isDrawing ? 'grabbing' : 'grab',
+          cursor: tool === 'line' ? 'crosshair' : isPanning ? 'grabbing' : 'grab',
+          position: 'relative',
         }}
       >
         <Stage
           ref={stageRef}
           width={CANVAS_WIDTH}
           height={CANVAS_HEIGHT}
+          scaleX={scale}
+          scaleY={scale}
+          x={stagePos.x}
+          y={stagePos.y}
           onMouseDown={handleMouseDown}
           onMouseMove={handleMouseMove}
           onMouseUp={handleMouseUp}
           onWheel={handleWheel}
         >
-          <Layer
-            scaleX={scale}
-            scaleY={scale}
-            x={stagePos.x}
-            y={stagePos.y}
-            draggable={tool === 'pointer'}
-            dragBoundFunc={dragBoundFunc}
-            onDragEnd={handleDragEnd}
-          >
+          <Layer>
             {image && (
               <KonvaImage
                 image={image}
