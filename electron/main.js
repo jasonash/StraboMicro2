@@ -755,9 +755,21 @@ ipcMain.handle('image:clear-cache', async (event, imageHash) => {
  */
 ipcMain.handle('image:clear-all-caches', async () => {
   try {
+    log.info('=== Clearing all tile caches ===');
+
+    // Get stats before clearing
+    const statsBefore = await tileCache.getCacheStats();
+    log.info('Cache stats before clear:', statsBefore);
+
+    // Clear the cache
     await tileCache.clearAllCaches();
-    log.info('Cleared all caches');
-    return { success: true };
+
+    // Get stats after clearing
+    const statsAfter = await tileCache.getCacheStats();
+    log.info('Cache stats after clear:', statsAfter);
+
+    log.info('=== All caches cleared successfully ===');
+    return { success: true, before: statsBefore, after: statsAfter };
   } catch (error) {
     log.error('Error clearing all caches:', error);
     throw error;

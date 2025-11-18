@@ -232,24 +232,44 @@ function App() {
     // Debug: Quick Load Image
     window.api.onQuickLoadImage(async () => {
       try {
-        // Clear all tile caches first
+        console.log('=== Quick Load Image: Starting ===');
+
+        // Step 1: Clear the current project/canvas first
+        console.log('Step 1: Clearing current project...');
+        closeProject();
+
+        // Step 2: Clear all tile caches
+        console.log('Step 2: Clearing tile cache...');
         if (window.api.clearAllCaches) {
-          await window.api.clearAllCaches();
-          console.log('Tile cache cleared');
+          const result = await window.api.clearAllCaches();
+          console.log('Tile cache cleared:', result);
         }
 
-        // Prompt user to select an image file
+        // Get cache stats to verify it's cleared
+        if (window.api.getCacheStats) {
+          const stats = await window.api.getCacheStats();
+          console.log('Cache stats after clear:', stats);
+        }
+
+        // Step 3: Prompt user to select an image file
+        console.log('Step 3: Prompting for file selection...');
         const filePath = await window.api.openTiffDialog();
         if (!filePath) {
-          console.log('No file selected');
+          console.log('No file selected, aborting');
           return;
         }
+        console.log('File selected:', filePath);
 
-        // Load image metadata
+        // Step 4: Load image metadata
+        console.log('Step 4: Loading image metadata...');
         const imageData = await window.api.loadTiffImage(filePath);
-        console.log('Image loaded:', imageData);
+        console.log('Image metadata loaded:', {
+          filename: imageData.fileName,
+          dimensions: `${imageData.width}x${imageData.height}`,
+        });
 
-        // Create a minimal project with just this one micrograph
+        // Step 5: Create a minimal project with just this one micrograph
+        console.log('Step 5: Creating minimal project structure...');
         const micrographId = crypto.randomUUID();
         const quickProject = {
           id: crypto.randomUUID(),
@@ -292,16 +312,19 @@ function App() {
           ],
         };
 
-        // Load the project
+        // Step 6: Load the project (this will trigger the loading state in TiledViewer)
+        console.log('Step 6: Loading project into store...');
         useAppStore.getState().loadProject(quickProject, null);
 
-        // Select the micrograph
+        // Step 7: Select the micrograph (this triggers TiledViewer to load the image)
+        console.log('Step 7: Selecting micrograph...');
         setTimeout(() => {
           useAppStore.getState().selectMicrograph(micrographId);
-          console.log('Micrograph loaded and selected');
-        }, 0);
+          console.log('=== Quick Load Image: Complete ===');
+        }, 100); // Slight delay to ensure project is loaded
+
       } catch (error) {
-        console.error('Failed to quick load image:', error);
+        console.error('Quick Load Image failed:', error);
         alert('Failed to load image: ' + (error as Error).message);
       }
     });
