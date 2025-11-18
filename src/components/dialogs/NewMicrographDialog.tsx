@@ -371,15 +371,38 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
           // Extract name without extension for micrograph name (matching legacy behavior)
           const nameWithoutExt = fileName.substring(0, fileName.lastIndexOf('.')) || fileName;
 
-          // Just store the file path - dimensions will be loaded later when displaying
-          setFormData((prev) => ({
-            ...prev,
-            micrographFilePath: filePath,
-            micrographFileName: fileName,
-            micrographName: prev.micrographName || nameWithoutExt, // Only set if not already set
-            micrographWidth: 0, // Will be loaded later
-            micrographHeight: 0, // Will be loaded later
-          }));
+          // Load image metadata and thumbnail preview
+          setIsLoadingPreview(true);
+          try {
+            if (window.api.loadThumbnail) {
+              const thumbnailData = await window.api.loadThumbnail(filePath, 512);
+              setMicrographPreviewUrl(`data:image/jpeg;base64,${thumbnailData.data}`);
+
+              // Update form data with image dimensions and file info
+              setFormData((prev) => ({
+                ...prev,
+                micrographFilePath: filePath,
+                micrographFileName: fileName,
+                micrographName: prev.micrographName || nameWithoutExt,
+                micrographWidth: thumbnailData.width,
+                micrographHeight: thumbnailData.height,
+              }));
+            } else {
+              // Fallback if thumbnail API not available
+              setFormData((prev) => ({
+                ...prev,
+                micrographFilePath: filePath,
+                micrographFileName: fileName,
+                micrographName: prev.micrographName || nameWithoutExt,
+                micrographWidth: 0,
+                micrographHeight: 0,
+              }));
+            }
+          } catch (error) {
+            console.error('Failed to load thumbnail:', error);
+          } finally {
+            setIsLoadingPreview(false);
+          }
         }
       } catch (error) {
         console.error('Error selecting image:', error);
