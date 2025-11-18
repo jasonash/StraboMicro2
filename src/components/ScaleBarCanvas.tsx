@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
+import { useState, useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
 import { Stage, Layer, Image as KonvaImage, Line } from 'react-konva';
 import { Box, Stack, IconButton, Tooltip, Paper } from '@mui/material';
 import { PanTool, Timeline, ZoomIn, ZoomOut, RestartAlt } from '@mui/icons-material';
@@ -178,6 +178,29 @@ export const ScaleBarCanvas = forwardRef<ScaleBarCanvasRef, ScaleBarCanvasProps>
     });
   };
 
+  // Constrain dragging to keep image visible
+  const dragBoundFunc = (pos: { x: number; y: number }) => {
+    if (!image) return pos;
+
+    const imageWidth = image.width * scale;
+    const imageHeight = image.height * scale;
+
+    // Allow dragging but keep at least 50px of the image visible
+    const minVisible = 50;
+
+    const x = Math.max(
+      -imageWidth + minVisible,
+      Math.min(CANVAS_WIDTH - minVisible, pos.x)
+    );
+
+    const y = Math.max(
+      -imageHeight + minVisible,
+      Math.min(CANVAS_HEIGHT - minVisible, pos.y)
+    );
+
+    return { x, y };
+  };
+
   // Render line in canvas coordinates
   const renderLine = (lineData: { start: { x: number; y: number }; end: { x: number; y: number } } | null, color: string) => {
     if (!lineData) return null;
@@ -266,6 +289,7 @@ export const ScaleBarCanvas = forwardRef<ScaleBarCanvasRef, ScaleBarCanvasProps>
           x={stagePos.x}
           y={stagePos.y}
           draggable={tool === 'pointer'}
+          dragBoundFunc={dragBoundFunc}
           onMouseDown={handleMouseDown}
           onMouseMove={handleMouseMove}
           onMouseUp={handleMouseUp}
