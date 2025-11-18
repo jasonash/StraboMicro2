@@ -581,25 +581,10 @@ ipcMain.handle('image:load-with-tiles', async (event, imagePath) => {
   try {
     log.info(`Loading image with tiles: ${imagePath}`);
 
-    // Check if cache exists
-    const cacheStatus = await tileCache.isCacheValid(imagePath);
-
-    if (cacheStatus.exists) {
-      log.info(`Using cached tiles for: ${imagePath}`);
-      return {
-        hash: cacheStatus.hash,
-        metadata: cacheStatus.metadata,
-        fromCache: true,
-      };
-    }
-
-    // Decode image
-    log.info('Decoding image...');
-    const imageData = await tileGenerator.decodeAuto(imagePath);
-
-    // Process and cache
-    log.info('Processing image and generating initial cache...');
-    const result = await tileGenerator.processImage(imagePath, imageData);
+    // Process the image (checks cache, generates thumbnails if needed)
+    // This is memory-efficient and won't crash on large images
+    log.info('Processing image (cache check and thumbnail generation)...');
+    const result = await tileGenerator.processImage(imagePath);
 
     log.info(`Image loaded successfully: ${result.metadata.width}x${result.metadata.height}`);
     return result;

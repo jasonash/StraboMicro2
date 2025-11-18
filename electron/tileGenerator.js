@@ -22,16 +22,14 @@ class TileGenerator {
   /**
    * Process an image and generate all cached assets
    *
+   * IMPORTANT: This does NOT load the full image into memory!
+   * Only generates thumbnail and medium resolution.
+   * Full tiles are generated on-demand to avoid OOM crashes.
+   *
    * @param {string} imagePath - Path to source image
-   * @param {Object} imageData - Image data from TIFF decoder
-   * @param {number} imageData.width - Image width
-   * @param {number} imageData.height - Image height
-   * @param {Buffer} imageData.data - RGBA pixel data
    * @returns {Promise<{hash: string, metadata: Object}>}
    */
-  async processImage(imagePath, imageData) {
-    const { width, height, data } = imageData;
-
+  async processImage(imagePath) {
     // Generate hash and check cache
     const hash = await tileCache.generateImageHash(imagePath);
     const cacheStatus = await tileCache.isCacheValid(imagePath);
@@ -45,29 +43,22 @@ class TileGenerator {
       };
     }
 
-    console.log(`Cache miss - generating tiles for: ${imagePath}`);
+    console.log(`Cache miss - generating thumbnails for: ${imagePath}`);
+
+    // Decode image to get dimensions (this loads the full image temporarily)
+    const imageData = await this.decodeAuto(imagePath);
+    const { width, height } = imageData;
 
     // Create metadata
     const metadata = tileCache.createMetadata(imagePath, width, height);
     await tileCache.saveMetadata(hash, metadata);
 
-    // Create source canvas with image data
-    const sourceCanvas = createCanvas(width, height);
-    const sourceCtx = sourceCanvas.getContext('2d');
+    // Generate thumbnail and medium using sharp (more memory efficient)
+    await this.generateThumbnailFromFile(hash, imagePath, width, height);
+    await this.generateMediumFromFile(hash, imagePath, width, height);
 
-    // Convert RGBA buffer to ImageData
-    const imageDataObj = sourceCtx.createImageData(width, height);
-    imageDataObj.data.set(data);
-    sourceCtx.putImageData(imageDataObj, 0, 0);
-
-    // Generate thumbnail (512x512)
-    await this.generateThumbnail(hash, sourceCanvas, width, height);
-
-    // Generate medium resolution (2048x2048)
-    await this.generateMedium(hash, sourceCanvas, width, height);
-
-    // Note: We don't generate all tiles upfront - they'll be generated on-demand
-    // This keeps initial load fast
+    // Free the image data immediately
+    // Tiles will be generated on-demand when requested
 
     console.log(`Cache created for image: ${imagePath}`);
 
@@ -79,7 +70,75 @@ class TileGenerator {
   }
 
   /**
-   * Generate and cache thumbnail (512x512 max)
+   * Generate thumbnail directly from file using sharp (memory efficient)
+   *
+   * @param {string} hash - Image hash
+   * @param {string} imagePath - Path to source image
+   * @param {number} width - Original width
+   * @param {number} height - Original height
+   */
+  async generateThumbnailFromFile(hash, imagePath, width, height) {
+    // Check if already cached
+    if (await tileCache.hasThumbnail(hash)) {
+      return;
+    }
+
+    const sharp = require('sharp');
+
+    // Calculate thumbnail dimensions
+    const scale = Math.min(THUMBNAIL_SIZE / width, THUMBNAIL_SIZE / height);
+    const thumbWidth = Math.round(width * scale);
+    const thumbHeight = Math.round(height * scale);
+
+    // Use sharp to resize efficiently (doesn't load full image into canvas)
+    const buffer = await sharp(imagePath)
+      .resize(thumbWidth, thumbHeight, { fit: 'inside' })
+      .jpeg({ quality: Math.round(JPEG_QUALITY * 100) })
+      .toBuffer();
+
+    await tileCache.saveThumbnail(hash, buffer);
+    console.log(`Generated thumbnail: ${thumbWidth}x${thumbHeight}`);
+  }
+
+  /**
+   * Generate medium resolution directly from file using sharp (memory efficient)
+   *
+   * @param {string} hash - Image hash
+   * @param {string} imagePath - Path to source image
+   * @param {number} width - Original width
+   * @param {number} height - Original height
+   */
+  async generateMediumFromFile(hash, imagePath, width, height) {
+    // Check if already cached
+    if (await tileCache.hasMedium(hash)) {
+      return;
+    }
+
+    // Skip if image is smaller than medium size
+    if (width <= MEDIUM_SIZE && height <= MEDIUM_SIZE) {
+      console.log('Image smaller than medium size, skipping');
+      return;
+    }
+
+    const sharp = require('sharp');
+
+    // Calculate medium dimensions
+    const scale = Math.min(MEDIUM_SIZE / width, MEDIUM_SIZE / height);
+    const medWidth = Math.round(width * scale);
+    const medHeight = Math.round(height * scale);
+
+    // Use sharp to resize efficiently
+    const buffer = await sharp(imagePath)
+      .resize(medWidth, medHeight, { fit: 'inside' })
+      .jpeg({ quality: Math.round(JPEG_QUALITY * 100) })
+      .toBuffer();
+
+    await tileCache.saveMedium(hash, buffer);
+    console.log(`Generated medium: ${medWidth}x${medHeight}`);
+  }
+
+  /**
+   * Generate and cache thumbnail (512x512 max) - DEPRECATED - use generateThumbnailFromFile
    *
    * @param {string} hash - Image hash
    * @param {Canvas} sourceCanvas - Source image canvas
