@@ -14,6 +14,7 @@ contextBridge.exposeInMainWorld('api', {
   onTestScaleBarStep: (callback) => ipcRenderer.on('menu:test-scale-bar-step', callback),
   onClearProject: (callback) => ipcRenderer.on('menu:clear-project', callback),
   onQuickLoadImage: (callback) => ipcRenderer.on('menu:quick-load-image', callback),
+  onLoadSampleProject: (callback) => ipcRenderer.on('menu:load-sample-project', callback),
 
   // File dialogs
   openTiffDialog: () => ipcRenderer.invoke('dialog:open-tiff'),

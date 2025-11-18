@@ -307,6 +307,15 @@ function createWindow() {
             }
           }
         },
+        {
+          label: 'Load Sample Project',
+          accelerator: 'CmdOrCtrl+Shift+P',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('menu:load-sample-project');
+            }
+          }
+        },
         { type: 'separator' },
         { role: 'toggleDevTools' },
       ],
