@@ -169,6 +169,80 @@ function App() {
       }
     });
 
+    // Load Sample Project
+    window.api.onLoadSampleProject(() => {
+      console.log('Loading sample project...');
+
+      const sampleProject = {
+        id: crypto.randomUUID(),
+        name: 'Sample Geological Project 2025',
+        startDate: '2025-01-01',
+        endDate: '2025-12-31',
+        purposeOfStudy: 'Microstructural analysis and fabric characterization',
+        otherTeamMembers: 'Dr. Jane Smith, Dr. Bob Wilson',
+        areaOfInterest: 'Western Alps, France',
+        gpsDatum: 'WGS84',
+        magneticDeclination: '2.5',
+        notes: 'Sample project for testing the new wizard system',
+        datasets: [
+          {
+            id: crypto.randomUUID(),
+            name: 'Field Season 2025',
+            samples: [
+              {
+                id: crypto.randomUUID(),
+                name: 'Alpine Shear Zone Sample 1',
+                label: 'ASZ-001',
+                sampleID: 'ASZ-001',
+                longitude: 6.8652,
+                latitude: 45.9237,
+                mainSamplingPurpose: 'fabric___micro',
+                sampleDescription: 'Mylonitic quartzite from main shear zone',
+                materialType: 'intact_rock',
+                lithology: 'Quartzite',
+                sampleNotes: 'Well-developed S-C fabric, strong lineation',
+                micrographs: [],
+              },
+              {
+                id: crypto.randomUUID(),
+                name: 'Alpine Shear Zone Sample 2',
+                label: 'ASZ-002',
+                sampleID: 'ASZ-002',
+                longitude: 6.8658,
+                latitude: 45.9240,
+                mainSamplingPurpose: 'petrology',
+                sampleDescription: 'Garnet-bearing micaschist',
+                materialType: 'intact_rock',
+                lithology: 'Micaschist',
+                sampleNotes: 'Contains 3-5mm garnet porphyroblasts',
+                micrographs: [],
+              },
+            ],
+          },
+          {
+            id: crypto.randomUUID(),
+            name: 'Lab Analysis 2025',
+            samples: [
+              {
+                id: crypto.randomUUID(),
+                name: 'Reference Standard',
+                label: 'REF-STD-001',
+                sampleID: 'REF-STD-001',
+                mainSamplingPurpose: 'geochemistry',
+                sampleDescription: 'Laboratory reference standard for calibration',
+                materialType: 'intact_rock',
+                sampleNotes: 'Used for EPMA calibration',
+                micrographs: [],
+              },
+            ],
+          },
+        ],
+      };
+
+      useAppStore.getState().loadProject(sampleProject, null);
+      console.log('Sample project loaded successfully!');
+    });
+
     // Theme menu item
     window.api.onThemeChange((theme) => {
       setTheme(theme);
