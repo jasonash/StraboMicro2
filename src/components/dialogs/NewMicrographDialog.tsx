@@ -430,13 +430,128 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
   };
 
   const handleFinish = () => {
-    // TODO: Implement micrograph creation
-    // This will need to call useAppStore.getState().addMicrograph()
-    // with the appropriate sampleId and micrograph data
-    console.log('Finish clicked - implement micrograph creation');
-    console.log('Form data:', formData);
-    console.log('Sample ID:', sampleId);
-    console.log('Parent Micrograph ID:', parentMicrographId);
+    if (!sampleId) {
+      console.error('Cannot create micrograph: sampleId is required');
+      return;
+    }
+
+    // Calculate scale in pixels per centimeter (legacy format)
+    let scalePixelsPerCentimeter = 100; // Default fallback
+
+    if (formData.scaleMethod === 'Trace Scale Bar' && formData.scaleBarLineLengthPixels && formData.scaleBarPhysicalLength) {
+      const lineLengthPixels = parseFloat(formData.scaleBarLineLengthPixels);
+      const physicalLength = parseFloat(formData.scaleBarPhysicalLength);
+      const pixelsPerUnit = lineLengthPixels / physicalLength;
+      const conversionToCm: { [key: string]: number } = {
+        'μm': 10000,
+        'mm': 10,
+        'cm': 1,
+        'm': 0.01,
+        'inches': 0.393701
+      };
+      scalePixelsPerCentimeter = pixelsPerUnit * (conversionToCm[formData.scaleBarUnits] || 1);
+    } else if (formData.scaleMethod === 'Pixel Conversion Factor' && formData.pixels && formData.physicalLength) {
+      const pixels = parseFloat(formData.pixels);
+      const physicalLength = parseFloat(formData.physicalLength);
+      const pixelsPerUnit = pixels / physicalLength;
+      const conversionToCm: { [key: string]: number } = {
+        'μm': 10000,
+        'mm': 10,
+        'cm': 1,
+        'm': 0.01,
+        'inches': 0.393701
+      };
+      scalePixelsPerCentimeter = pixelsPerUnit * (conversionToCm[formData.pixelUnits] || 1);
+    } else if (formData.scaleMethod === 'Provide Width/Height of Image' && formData.imageWidthPhysical) {
+      const imageWidthPhysical = parseFloat(formData.imageWidthPhysical);
+      const pixelsPerUnit = formData.micrographWidth / imageWidthPhysical;
+      const conversionToCm: { [key: string]: number } = {
+        'μm': 10000,
+        'mm': 10,
+        'cm': 1,
+        'm': 0.01,
+        'inches': 0.393701
+      };
+      scalePixelsPerCentimeter = pixelsPerUnit * (conversionToCm[formData.sizeUnits] || 1);
+    }
+
+    // Build orientation info based on selected method
+    const orientationInfo = (() => {
+      if (formData.orientationMethod === 'unoriented') {
+        return { orientationMethod: 'unoriented' as const };
+      } else if (formData.orientationMethod === 'trendPlunge') {
+        return {
+          orientationMethod: 'trendPlunge' as const,
+          topTrend: formData.topTrend ? parseFloat(formData.topTrend) : undefined,
+          topPlunge: formData.topPlunge ? parseFloat(formData.topPlunge) : undefined,
+          topReferenceCorner: formData.topReferenceCorner || undefined,
+          sideTrend: formData.sideTrend ? parseFloat(formData.sideTrend) : undefined,
+          sidePlunge: formData.sidePlunge ? parseFloat(formData.sidePlunge) : undefined,
+          sideReferenceCorner: formData.sideReferenceCorner || undefined,
+          trendPlungeStrike: formData.trendPlungeStrike ? parseFloat(formData.trendPlungeStrike) : undefined,
+          trendPlungeDip: formData.trendPlungeDip ? parseFloat(formData.trendPlungeDip) : undefined,
+        };
+      } else if (formData.orientationMethod === 'fabricReference') {
+        return {
+          orientationMethod: 'fabricReference' as const,
+          fabricReference: formData.fabricReference || undefined,
+          fabricStrike: formData.fabricStrike ? parseFloat(formData.fabricStrike) : undefined,
+          fabricDip: formData.fabricDip ? parseFloat(formData.fabricDip) : undefined,
+          fabricTrend: formData.fabricTrend ? parseFloat(formData.fabricTrend) : undefined,
+          fabricPlunge: formData.fabricPlunge ? parseFloat(formData.fabricPlunge) : undefined,
+          fabricRake: formData.fabricRake ? parseFloat(formData.fabricRake) : undefined,
+          lookDirection: formData.lookDirection || undefined,
+        };
+      }
+      return { orientationMethod: 'unoriented' as const };
+    })();
+
+    // Create micrograph object
+    const micrograph = {
+      id: crypto.randomUUID(),
+      name: formData.micrographName || formData.micrographFileName || 'Unnamed Micrograph',
+      notes: formData.micrographNotes || undefined,
+      imageFilename: formData.micrographFileName,
+      imagePath: formData.micrographFilePath,
+      imageWidth: formData.micrographWidth,
+      imageHeight: formData.micrographHeight,
+      width: formData.micrographWidth, // Legacy field
+      height: formData.micrographHeight, // Legacy field
+      opacity: 1.0,
+      polish: formData.micrographPolished,
+      polishDescription: formData.micrographPolishDescription || undefined,
+      orientationInfo,
+      scalePixelsPerCentimeter,
+      parentID: parentMicrographId || undefined,
+      instrument: {
+        instrumentType: formData.instrumentType || undefined,
+        otherInstrumentType: formData.otherInstrumentType || undefined,
+        dataType: formData.dataType || undefined,
+        imageType: formData.imageType || undefined,
+        instrumentBrand: formData.instrumentBrand || undefined,
+        instrumentModel: formData.instrumentModel || undefined,
+        university: formData.university || undefined,
+        laboratory: formData.laboratory || undefined,
+        dataCollectionSoftware: formData.dataCollectionSoftware || undefined,
+        dataCollectionSoftwareVersion: formData.dataCollectionSoftwareVersion || undefined,
+        postProcessingSoftware: formData.postProcessingSoftware || undefined,
+        postProcessingSoftwareVersion: formData.postProcessingSoftwareVersion || undefined,
+        filamentType: formData.filamentType || undefined,
+        instrumentNotes: formData.instrumentNotes || undefined,
+      },
+      isMicroVisible: true,
+      isFlipped: false,
+    };
+
+    // Add micrograph to store
+    useAppStore.getState().addMicrograph(sampleId, micrograph);
+
+    // Select the newly created micrograph
+    useAppStore.getState().selectMicrograph(micrograph.id);
+
+    console.log('Micrograph created successfully:', micrograph.id);
+
+    // Close dialog
     handleCancel();
   };
 
