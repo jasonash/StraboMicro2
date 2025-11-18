@@ -569,9 +569,13 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
           {
             id: crypto.randomUUID(),
             name: formData.micrographName || formData.micrographFileName,
+            imagePath: formData.micrographFilePath, // Full path to image file
+            imageFilename: formData.micrographFileName,
             imageType: formData.imageType || undefined,
-            width: formData.micrographWidth,
-            height: formData.micrographHeight,
+            imageWidth: formData.micrographWidth,
+            imageHeight: formData.micrographHeight,
+            width: formData.micrographWidth, // Legacy field
+            height: formData.micrographHeight, // Legacy field
             opacity: 1.0,
             polish: formData.micrographPolished || false,
             polishDescription: formData.micrographPolishDescription || '',
@@ -715,6 +719,16 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
     };
 
     loadProject(newProject, null);
+
+    // Set the newly created micrograph as active if it exists
+    if (micrographs.length > 0) {
+      const micrographId = micrographs[0].id;
+      // Use setTimeout to ensure the store has been updated
+      setTimeout(() => {
+        useAppStore.getState().selectMicrograph(micrographId);
+      }, 0);
+    }
+
     setFormData(initialFormData);
     setDetectors([{ type: '', make: '', model: '' }]);
     setActiveStep(0);
