@@ -3,7 +3,7 @@ import MainLayout from './components/MainLayout';
 import { NewProjectDialog } from './components/dialogs/NewProjectDialog';
 import { EditProjectDialog } from './components/dialogs/EditProjectDialog';
 import { ProjectDebugModal } from './components/dialogs/ProjectDebugModal';
-import { useAppStore } from '@/store';
+import { useAppStore, useTemporalStore } from '@/store';
 import { useTheme } from './hooks/useTheme';
 import './App.css';
 
@@ -241,6 +241,20 @@ function App() {
 
       useAppStore.getState().loadProject(sampleProject, null);
       console.log('Sample project loaded successfully!');
+    });
+
+    // Undo menu item
+    window.api.onUndo(() => {
+      const temporalState = useTemporalStore.getState();
+      temporalState.undo();
+      console.log('Undo performed');
+    });
+
+    // Redo menu item
+    window.api.onRedo(() => {
+      const temporalState = useTemporalStore.getState();
+      temporalState.redo();
+      console.log('Redo performed');
     });
 
     // Theme menu item

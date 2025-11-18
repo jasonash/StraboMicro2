@@ -16,6 +16,10 @@ contextBridge.exposeInMainWorld('api', {
   onQuickLoadImage: (callback) => ipcRenderer.on('menu:quick-load-image', callback),
   onLoadSampleProject: (callback) => ipcRenderer.on('menu:load-sample-project', callback),
 
+  // Undo/Redo
+  onUndo: (callback) => ipcRenderer.on('menu:undo', callback),
+  onRedo: (callback) => ipcRenderer.on('menu:redo', callback),
+
   // File dialogs
   openTiffDialog: () => ipcRenderer.invoke('dialog:open-tiff'),
 

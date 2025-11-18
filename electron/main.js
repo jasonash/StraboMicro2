@@ -196,6 +196,29 @@ function createWindow() {
       ],
     },
     {
+      label: 'Edit',
+      submenu: [
+        {
+          label: 'Undo',
+          accelerator: 'CmdOrCtrl+Z',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('menu:undo');
+            }
+          }
+        },
+        {
+          label: 'Redo',
+          accelerator: 'CmdOrCtrl+Shift+Z',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('menu:redo');
+            }
+          }
+        },
+      ],
+    },
+    {
       label: 'Account',
       submenu: [
         { label: 'Login' },

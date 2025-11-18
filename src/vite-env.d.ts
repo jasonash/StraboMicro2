@@ -73,6 +73,8 @@ interface Window {
     onClearProject: (callback: () => void) => void;
     onQuickLoadImage: (callback: () => void) => void;
     onLoadSampleProject: (callback: () => void) => void;
+    onUndo: (callback: () => void) => void;
+    onRedo: (callback: () => void) => void;
     openTiffDialog: () => Promise<string | null>;
     loadTiffImage: (filePath: string) => Promise<{
       width: number;
