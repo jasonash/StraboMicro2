@@ -60,10 +60,24 @@ export const TiledViewer: React.FC<TiledViewerProps> = ({ imagePath }) => {
    * Load image metadata and initialize viewer
    */
   useEffect(() => {
-    if (!imagePath || !window.api) return;
+    if (!imagePath || !window.api) {
+      // Clear state when no image
+      setImageMetadata(null);
+      setTiles(new Map());
+      setVisibleTiles([]);
+      return;
+    }
 
     const loadImage = async () => {
       setIsLoading(true);
+
+      // Clear previous image state immediately
+      setImageMetadata(null);
+      setTiles(new Map());
+      setVisibleTiles([]);
+      setZoom(1);
+      setPosition({ x: 0, y: 0 });
+
       try {
         console.log('Loading image with tiles:', imagePath);
 
