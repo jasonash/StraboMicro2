@@ -284,19 +284,20 @@ export const ScaleBarCanvas = forwardRef<ScaleBarCanvasRef, ScaleBarCanvasProps>
           ref={stageRef}
           width={CANVAS_WIDTH}
           height={CANVAS_HEIGHT}
-          scaleX={scale}
-          scaleY={scale}
-          x={stagePos.x}
-          y={stagePos.y}
-          draggable={tool === 'pointer'}
-          dragBoundFunc={dragBoundFunc}
           onMouseDown={handleMouseDown}
           onMouseMove={handleMouseMove}
           onMouseUp={handleMouseUp}
           onWheel={handleWheel}
-          onDragEnd={handleDragEnd}
         >
-          <Layer>
+          <Layer
+            scaleX={scale}
+            scaleY={scale}
+            x={stagePos.x}
+            y={stagePos.y}
+            draggable={tool === 'pointer'}
+            dragBoundFunc={dragBoundFunc}
+            onDragEnd={handleDragEnd}
+          >
             {image && (
               <KonvaImage
                 image={image}
