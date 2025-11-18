@@ -229,6 +229,83 @@ function App() {
       }
     });
 
+    // Debug: Quick Load Image
+    window.api.onQuickLoadImage(async () => {
+      try {
+        // Clear all tile caches first
+        if (window.api.clearAllCaches) {
+          await window.api.clearAllCaches();
+          console.log('Tile cache cleared');
+        }
+
+        // Prompt user to select an image file
+        const filePath = await window.api.openTiffDialog();
+        if (!filePath) {
+          console.log('No file selected');
+          return;
+        }
+
+        // Load image metadata
+        const imageData = await window.api.loadTiffImage(filePath);
+        console.log('Image loaded:', imageData);
+
+        // Create a minimal project with just this one micrograph
+        const micrographId = crypto.randomUUID();
+        const quickProject = {
+          id: crypto.randomUUID(),
+          name: 'Quick Load Project',
+          projectLocation: 'local' as const,
+          datasets: [
+            {
+              id: crypto.randomUUID(),
+              name: 'Quick Dataset',
+              samples: [
+                {
+                  id: crypto.randomUUID(),
+                  name: 'Quick Sample',
+                  label: 'Quick Sample',
+                  sampleID: 'QUICK-001',
+                  micrographs: [
+                    {
+                      id: micrographId,
+                      name: imageData.fileName,
+                      imagePath: filePath,
+                      imageFilename: imageData.fileName,
+                      imageWidth: imageData.width,
+                      imageHeight: imageData.height,
+                      width: imageData.width, // Legacy field
+                      height: imageData.height, // Legacy field
+                      opacity: 1.0,
+                      polish: false,
+                      polishDescription: '',
+                      notes: 'Quick load for testing',
+                      orientationInfo: { orientationMethod: 'unoriented' as const },
+                      scalePixelsPerCentimeter: 100, // Placeholder
+                      instrument: {},
+                      isMicroVisible: true,
+                      isFlipped: false,
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        };
+
+        // Load the project
+        useAppStore.getState().loadProject(quickProject, null);
+
+        // Select the micrograph
+        setTimeout(() => {
+          useAppStore.getState().selectMicrograph(micrographId);
+          console.log('Micrograph loaded and selected');
+        }, 0);
+      } catch (error) {
+        console.error('Failed to quick load image:', error);
+        alert('Failed to load image: ' + (error as Error).message);
+      }
+    });
+
     // Theme menu item
     window.api.onThemeChange((theme) => {
       setTheme(theme);

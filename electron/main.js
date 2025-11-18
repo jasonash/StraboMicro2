@@ -298,6 +298,15 @@ function createWindow() {
             }
           }
         },
+        {
+          label: 'Quick Load Image to Canvas',
+          accelerator: 'CmdOrCtrl+Shift+L',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('menu:quick-load-image');
+            }
+          }
+        },
         { type: 'separator' },
         { role: 'toggleDevTools' },
       ],

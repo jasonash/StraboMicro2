@@ -71,6 +71,7 @@ interface Window {
     onTestOrientationStep: (callback: () => void) => void;
     onTestScaleBarStep: (callback: () => void) => void;
     onClearProject: (callback: () => void) => void;
+    onQuickLoadImage: (callback: () => void) => void;
     openTiffDialog: () => Promise<string | null>;
     loadTiffImage: (filePath: string) => Promise<{
       width: number;

@@ -13,6 +13,7 @@ contextBridge.exposeInMainWorld('api', {
   onTestOrientationStep: (callback) => ipcRenderer.on('menu:test-orientation-step', callback),
   onTestScaleBarStep: (callback) => ipcRenderer.on('menu:test-scale-bar-step', callback),
   onClearProject: (callback) => ipcRenderer.on('menu:clear-project', callback),
+  onQuickLoadImage: (callback) => ipcRenderer.on('menu:quick-load-image', callback),
 
   // File dialogs
   openTiffDialog: () => ipcRenderer.invoke('dialog:open-tiff'),
