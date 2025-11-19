@@ -1642,10 +1642,11 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
             control={<Radio />}
             label="Locate by an approximate point"
           />
-          <Typography variant="caption" color="text.secondary" sx={{ ml: 4, mt: -1, mb: 2 }}>
+          <Typography variant="caption" color="text.secondary" sx={{ ml: 4, mt: -1 }}>
             Mark a single point showing approximate location
           </Typography>
 
+          {/* TODO: Implement these location methods later
           <FormControlLabel
             value="Locate by known grid coordinates"
             control={<Radio />}
@@ -1663,6 +1664,7 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
           <Typography variant="caption" color="text.secondary" sx={{ ml: 4, mt: -1 }}>
             Do not specify a location for this image
           </Typography>
+          */}
         </RadioGroup>
       </Stack>
     );
