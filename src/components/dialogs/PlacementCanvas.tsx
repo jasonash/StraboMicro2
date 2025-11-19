@@ -79,8 +79,15 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
           return;
         }
 
+        // Build full path to parent image
+        // imagePath is stored as just the micrograph ID, need to construct full path
+        const folderPaths = await window.api.getProjectFolderPaths(project.id);
+        const fullParentPath = `${folderPaths.images}/${parentMicrograph.imagePath}`;
+
+        console.log('[PlacementCanvas] Loading parent from:', fullParentPath);
+
         // Load the tiled image
-        const tileData = await window.api.loadImageWithTiles(parentMicrograph.imagePath);
+        const tileData = await window.api.loadImageWithTiles(fullParentPath);
 
         // Load medium resolution for placement canvas
         const mediumDataUrl = await window.api.loadMedium(tileData.hash);
