@@ -39,12 +39,16 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
 
   const [parentImage, setParentImage] = useState<HTMLImageElement | null>(null);
   const [childImage, setChildImage] = useState<HTMLImageElement | null>(null);
-  const [stageSize, setStageSize] = useState({ width: 800, height: 600 });
+  const [parentImageScale, setParentImageScale] = useState(1);
+
+  // Stage dimensions (fixed to container)
+  const stageWidth = 800;
+  const stageHeight = 600;
 
   // Child overlay transform state
   const [childTransform, setChildTransform] = useState({
-    x: initialOffsetX,
-    y: initialOffsetY,
+    x: initialOffsetX || stageWidth / 2,
+    y: initialOffsetY || stageHeight / 2,
     rotation: initialRotation,
     scaleX: 1,
     scaleY: 1,
@@ -96,17 +100,20 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
         img.onload = () => {
           setParentImage(img);
 
-          // Fit stage to parent image while maintaining aspect ratio
-          const containerWidth = 800;
-          const containerHeight = 600;
+          // Calculate scale to fit parent image in stage while maintaining aspect ratio
           const scale = Math.min(
-            containerWidth / img.width,
-            containerHeight / img.height
+            stageWidth / img.width,
+            stageHeight / img.height
           );
 
-          setStageSize({
-            width: img.width * scale,
-            height: img.height * scale,
+          setParentImageScale(scale);
+
+          console.log('[PlacementCanvas] Parent image loaded:', {
+            width: img.width,
+            height: img.height,
+            scale,
+            stageWidth,
+            stageHeight,
           });
         };
         img.src = mediumDataUrl;
@@ -189,8 +196,8 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
 
   // Reset placement to center
   const handleReset = () => {
-    const centerX = stageSize.width / 2 - (childWidth * childTransform.scaleX) / 2;
-    const centerY = stageSize.height / 2 - (childHeight * childTransform.scaleY) / 2;
+    const centerX = stageWidth / 2;
+    const centerY = stageHeight / 2;
 
     const resetTransform = {
       x: centerX,
@@ -232,16 +239,18 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
       >
         <Stage
           ref={stageRef}
-          width={stageSize.width}
-          height={stageSize.height}
+          width={stageWidth}
+          height={stageHeight}
         >
           <Layer>
-            {/* Parent micrograph (background) */}
+            {/* Parent micrograph (background) - scaled to fit stage */}
             {parentImage && (
               <KonvaImage
                 image={parentImage}
-                width={stageSize.width}
-                height={stageSize.height}
+                width={parentImage.width * parentImageScale}
+                height={parentImage.height * parentImageScale}
+                x={(stageWidth - parentImage.width * parentImageScale) / 2}
+                y={(stageHeight - parentImage.height * parentImageScale) / 2}
               />
             )}
 
@@ -252,6 +261,8 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
                 x={childTransform.x}
                 y={childTransform.y}
                 rotation={childTransform.rotation}
+                offsetX={childWidth / 2}
+                offsetY={childHeight / 2}
                 draggable
                 onDragEnd={handleDragEnd}
                 onTransformEnd={handleTransformEnd}
