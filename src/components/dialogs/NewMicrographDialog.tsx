@@ -214,6 +214,7 @@ const initialFormData: MicrographFormData = {
   offsetX: 0,
   offsetY: 0,
   rotationAngle: 0,
+  // Scale method will be set based on location method (defaults to 'Trace Scale Bar' initially)
   instrumentType: '',
   otherInstrumentType: '',
   dataType: '',
@@ -317,13 +318,14 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
     'Trace Scale Bar',
   ];
 
-  // Associated micrograph steps (NO orientation, adds location method/placement)
+  // Associated micrograph steps (NO orientation, adds location method → scale method → placement)
   const associatedBaseSteps = [
     'Load Associated Micrograph',
     'Instrument & Image Information',
     'Instrument Data',
     'Micrograph Metadata',
     'Location Method',
+    'Scale Method',
     'Micrograph Location & Scale',
   ];
 
@@ -766,15 +768,23 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
             // Location Method step
             return formData.locationMethod !== '';
           }
-        case 5: // Location Method OR Location/Placement
+        case 5: // Location Method OR Scale Method
           if (hasInstrumentSettings) {
             // Location Method step
             return formData.locationMethod !== '';
           } else {
+            // Scale Method step
+            return formData.scaleMethod !== '';
+          }
+        case 6: // Scale Method OR Location/Placement
+          if (hasInstrumentSettings) {
+            // Scale Method step
+            return formData.scaleMethod !== '';
+          } else {
             // Location/Placement step - always allow proceeding (placement is optional)
             return true;
           }
-        case 6: // Location/Placement (when has settings)
+        case 7: // Location/Placement (when has settings)
           return true; // Always allow proceeding
         default:
           return true;
@@ -1658,6 +1668,86 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
     );
   };
 
+  // Render Scale Method Selection step (for associated micrographs)
+  const renderAssociatedScaleMethodStep = () => {
+    // Different scale options based on location method
+    const isScaledRectangle = formData.locationMethod === 'Locate as a scaled rectangle';
+
+    return (
+      <Stack spacing={3}>
+        <Typography variant="body2" color="text.secondary">
+          How do you wish to set the scale?
+        </Typography>
+        <RadioGroup
+          value={formData.scaleMethod}
+          onChange={(e) => updateField('scaleMethod', e.target.value)}
+        >
+          {isScaledRectangle && (
+            <>
+              <FormControlLabel
+                value="Trace Scale Bar and Drag"
+                control={<Radio />}
+                label="Trace Scale Bar and Drag"
+              />
+              <Typography variant="caption" color="text.secondary" sx={{ ml: 4, mt: -1, mb: 2 }}>
+                Interactive: trace scale bar, then drag/resize/rotate the image
+              </Typography>
+
+              <FormControlLabel
+                value="Stretch and Drag"
+                control={<Radio />}
+                label="Stretch and Drag"
+              />
+              <Typography variant="caption" color="text.secondary" sx={{ ml: 4, mt: -1, mb: 2 }}>
+                Interactive: stretch to fit, then drag/resize/rotate the image
+              </Typography>
+            </>
+          )}
+
+          {!isScaledRectangle && (
+            <>
+              <FormControlLabel
+                value="Trace Scale Bar"
+                control={<Radio />}
+                label="Trace Scale Bar"
+              />
+              <Typography variant="caption" color="text.secondary" sx={{ ml: 4, mt: -1, mb: 2 }}>
+                Trace a scale bar to set the scale
+              </Typography>
+            </>
+          )}
+
+          <FormControlLabel
+            value="Pixel Conversion Factor"
+            control={<Radio />}
+            label="Pixel Conversion Factor"
+          />
+          <Typography variant="caption" color="text.secondary" sx={{ ml: 4, mt: -1, mb: 2 }}>
+            Enter pixels per unit manually
+          </Typography>
+
+          <FormControlLabel
+            value="Provide Width/Height of Image"
+            control={<Radio />}
+            label="Provide Width/Height of Image"
+          />
+          <Typography variant="caption" color="text.secondary" sx={{ ml: 4, mt: -1, mb: 2 }}>
+            Specify the physical dimensions of the image
+          </Typography>
+
+          <FormControlLabel
+            value="Copy Size from Existing Micrograph"
+            control={<Radio />}
+            label="Copy Size from Existing Micrograph"
+          />
+          <Typography variant="caption" color="text.secondary" sx={{ ml: 4, mt: -1 }}>
+            Use the same scale as another micrograph
+          </Typography>
+        </RadioGroup>
+      </Stack>
+    );
+  };
+
   // Render Location & Scale step (for associated micrographs)
   const renderLocationPlacementStep = () => {
     return (
@@ -1671,7 +1761,10 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
         </Typography>
         <Box sx={{ p: 4, bgcolor: 'background.default', borderRadius: 1, textAlign: 'center' }}>
           <Typography color="text.secondary">
-            Selected method: {formData.locationMethod}
+            Location method: {formData.locationMethod}
+          </Typography>
+          <Typography color="text.secondary">
+            Scale method: {formData.scaleMethod}
           </Typography>
           <Typography variant="caption" color="text.secondary">
             Canvas implementation coming soon...
@@ -1692,17 +1785,20 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
       // 2: Instrument Data
       // 3: Instrument Settings (conditional)
       // 4: Metadata (if has settings) OR Location Method (if no settings)
-      // 5: Location Method (if has settings) OR Location/Placement (if no settings)
-      // 6: Location/Placement (if has settings)
+      // 5: Location Method (if has settings) OR Scale Method (if no settings)
+      // 6: Scale Method (if has settings) OR Location/Placement (if no settings)
+      // 7: Location/Placement (if has settings)
 
       if (hasInstrumentSettings) {
         if (step === 4) return renderMetadataStep();
         if (step === 5) return renderLocationMethodStep();
-        if (step === 6) return renderLocationPlacementStep();
+        if (step === 6) return renderAssociatedScaleMethodStep();
+        if (step === 7) return renderLocationPlacementStep();
       } else {
         if (step === 3) return renderMetadataStep();
         if (step === 4) return renderLocationMethodStep();
-        if (step === 5) return renderLocationPlacementStep();
+        if (step === 5) return renderAssociatedScaleMethodStep();
+        if (step === 6) return renderLocationPlacementStep();
       }
       // Fall through to default handling for steps 0-3 (shared with reference)
     }
