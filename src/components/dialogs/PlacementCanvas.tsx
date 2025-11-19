@@ -2,13 +2,13 @@
  * PlacementCanvas Component
  *
  * Interactive canvas for placing associated micrographs on their parent micrograph.
- * Uses tiled rendering for both the parent (from disk) and child (from scratch space).
- * Allows drag, resize, and rotate interactions to position the associated micrograph.
+ * Similar to ScaleBarCanvas but with an overlay child image that can be dragged, resized, and rotated.
  */
 
 import React, { useEffect, useRef, useState } from 'react';
 import { Stage, Layer, Image as KonvaImage, Rect, Transformer, Group } from 'react-konva';
-import { Box, Typography, Button, Stack } from '@mui/material';
+import { Box, Typography, Button, Stack, IconButton, Tooltip, Paper } from '@mui/material';
+import { PanTool, ZoomIn, ZoomOut, RestartAlt } from '@mui/icons-material';
 import Konva from 'konva';
 import { useAppStore } from '@/store';
 
@@ -28,8 +28,8 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
   childScratchPath,
   childWidth,
   childHeight,
-  initialOffsetX = 0,
-  initialOffsetY = 0,
+  initialOffsetX = 400,
+  initialOffsetY = 300,
   initialRotation = 0,
   onPlacementChange,
 }) => {
@@ -39,16 +39,21 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
 
   const [parentImage, setParentImage] = useState<HTMLImageElement | null>(null);
   const [childImage, setChildImage] = useState<HTMLImageElement | null>(null);
-  const [parentImageScale, setParentImageScale] = useState(1);
 
-  // Stage dimensions (fixed to container)
-  const stageWidth = 800;
-  const stageHeight = 600;
+  // Stage pan/zoom state (for parent background)
+  const [scale, setScale] = useState(1);
+  const [stagePos, setStagePos] = useState({ x: 0, y: 0 });
+  const [isPanning, setIsPanning] = useState(false);
+  const [lastPanPos, setLastPanPos] = useState<{ x: number; y: number } | null>(null);
 
-  // Child overlay transform state
+  // Canvas dimensions
+  const CANVAS_WIDTH = 800;
+  const CANVAS_HEIGHT = 600;
+
+  // Child overlay position (in parent image coordinates)
   const [childTransform, setChildTransform] = useState({
-    x: initialOffsetX || stageWidth / 2,
-    y: initialOffsetY || stageHeight / 2,
+    x: initialOffsetX,
+    y: initialOffsetY,
     rotation: initialRotation,
     scaleX: 1,
     scaleY: 1,
@@ -58,7 +63,6 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
   useEffect(() => {
     const loadParentImage = async () => {
       try {
-        // Get parent micrograph from store to find its image hash
         const { project } = useAppStore.getState();
         if (!project) {
           console.error('[PlacementCanvas] No project loaded');
@@ -84,7 +88,6 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
         }
 
         // Build full path to parent image
-        // imagePath is stored as just the micrograph ID, need to construct full path
         const folderPaths = await window.api.getProjectFolderPaths(project.id);
         const fullParentPath = `${folderPaths.images}/${parentMicrograph.imagePath}`;
 
@@ -100,20 +103,21 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
         img.onload = () => {
           setParentImage(img);
 
-          // Calculate scale to fit parent image in stage while maintaining aspect ratio
-          const scale = Math.min(
-            stageWidth / img.width,
-            stageHeight / img.height
-          );
+          // Fit image to canvas initially
+          const scaleX = CANVAS_WIDTH / img.width;
+          const scaleY = CANVAS_HEIGHT / img.height;
+          const initialScale = Math.min(scaleX, scaleY, 1);
+          setScale(initialScale);
 
-          setParentImageScale(scale);
+          // Center image
+          const x = (CANVAS_WIDTH - img.width * initialScale) / 2;
+          const y = (CANVAS_HEIGHT - img.height * initialScale) / 2;
+          setStagePos({ x, y });
 
           console.log('[PlacementCanvas] Parent image loaded:', {
             width: img.width,
             height: img.height,
-            scale,
-            stageWidth,
-            stageHeight,
+            initialScale,
           });
         };
         img.src = mediumDataUrl;
@@ -138,6 +142,10 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
         const img = new window.Image();
         img.onload = () => {
           setChildImage(img);
+          console.log('[PlacementCanvas] Child image loaded:', {
+            width: img.width,
+            height: img.height,
+          });
         };
         img.src = mediumDataUrl;
       } catch (error) {
@@ -156,31 +164,97 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
     }
   }, [childImage]);
 
-  // Handle transform changes (drag, resize, rotate)
-  const handleTransformEnd = () => {
-    const node = childGroupRef.current;
-    if (!node) return;
+  // Pan/Zoom handlers
+  const handleMouseDown = (e: Konva.KonvaEventObject<MouseEvent>) => {
+    const clickedOnEmpty = e.target === e.target.getStage();
+    if (clickedOnEmpty) {
+      const stage = e.target.getStage();
+      if (!stage) return;
 
-    const scaleX = node.scaleX();
-    const scaleY = node.scaleY();
+      const pointerPos = stage.getPointerPosition();
+      if (!pointerPos) return;
 
-    // Reset scale and update dimensions instead (keeps scaling consistent)
-    node.scaleX(1);
-    node.scaleY(1);
-
-    const newTransform = {
-      x: node.x(),
-      y: node.y(),
-      rotation: node.rotation(),
-      scaleX,
-      scaleY,
-    };
-
-    setChildTransform(newTransform);
-    onPlacementChange(newTransform.x, newTransform.y, newTransform.rotation);
+      setIsPanning(true);
+      setLastPanPos(pointerPos);
+    }
   };
 
-  const handleDragEnd = () => {
+  const handleMouseMove = (e: Konva.KonvaEventObject<MouseEvent>) => {
+    if (!isPanning || !lastPanPos) return;
+
+    const stage = e.target.getStage();
+    if (!stage) return;
+
+    const pointerPos = stage.getPointerPosition();
+    if (!pointerPos) return;
+
+    const dx = pointerPos.x - lastPanPos.x;
+    const dy = pointerPos.y - lastPanPos.y;
+
+    setStagePos({
+      x: stagePos.x + dx,
+      y: stagePos.y + dy,
+    });
+
+    setLastPanPos(pointerPos);
+  };
+
+  const handleMouseUp = () => {
+    setIsPanning(false);
+    setLastPanPos(null);
+  };
+
+  const handleWheel = (e: Konva.KonvaEventObject<WheelEvent>) => {
+    e.evt.preventDefault();
+
+    const stage = e.target.getStage();
+    if (!stage) return;
+
+    const oldScale = scale;
+    const pointer = stage.getPointerPosition();
+    if (!pointer) return;
+
+    const mousePointTo = {
+      x: (pointer.x - stagePos.x) / oldScale,
+      y: (pointer.y - stagePos.y) / oldScale,
+    };
+
+    const direction = e.evt.deltaY > 0 ? -1 : 1;
+    const newScale = direction > 0 ? oldScale * 1.1 : oldScale / 1.1;
+    const clampedScale = Math.max(0.1, Math.min(20, newScale));
+
+    setScale(clampedScale);
+    setStagePos({
+      x: pointer.x - mousePointTo.x * clampedScale,
+      y: pointer.y - mousePointTo.y * clampedScale,
+    });
+  };
+
+  const handleZoomIn = () => {
+    const newScale = Math.min(scale * 1.2, 20);
+    setScale(newScale);
+  };
+
+  const handleZoomOut = () => {
+    const newScale = Math.max(scale / 1.2, 0.1);
+    setScale(newScale);
+  };
+
+  const handleResetView = () => {
+    if (!parentImage) return;
+
+    const scaleX = CANVAS_WIDTH / parentImage.width;
+    const scaleY = CANVAS_HEIGHT / parentImage.height;
+    const initialScale = Math.min(scaleX, scaleY, 1);
+    setScale(initialScale);
+
+    const x = (CANVAS_WIDTH - parentImage.width * initialScale) / 2;
+    const y = (CANVAS_HEIGHT - parentImage.height * initialScale) / 2;
+    setStagePos({ x, y });
+  };
+
+  // Child transform handlers
+  const handleChildDragEnd = () => {
     const node = childGroupRef.current;
     if (!node) return;
 
@@ -194,14 +268,28 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
     onPlacementChange(newTransform.x, newTransform.y, newTransform.rotation);
   };
 
-  // Reset placement to center
-  const handleReset = () => {
-    const centerX = stageWidth / 2;
-    const centerY = stageHeight / 2;
+  const handleChildTransformEnd = () => {
+    const node = childGroupRef.current;
+    if (!node) return;
+
+    const newTransform = {
+      x: node.x(),
+      y: node.y(),
+      rotation: node.rotation(),
+      scaleX: node.scaleX(),
+      scaleY: node.scaleY(),
+    };
+
+    setChildTransform(newTransform);
+    onPlacementChange(newTransform.x, newTransform.y, newTransform.rotation);
+  };
+
+  const handleResetChild = () => {
+    if (!parentImage) return;
 
     const resetTransform = {
-      x: centerX,
-      y: centerY,
+      x: parentImage.width / 2,
+      y: parentImage.height / 2,
       rotation: 0,
       scaleX: 1,
       scaleY: 1,
@@ -211,7 +299,7 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
     onPlacementChange(resetTransform.x, resetTransform.y, resetTransform.rotation);
 
     if (childGroupRef.current) {
-      childGroupRef.current.position({ x: centerX, y: centerY });
+      childGroupRef.current.position({ x: resetTransform.x, y: resetTransform.y });
       childGroupRef.current.rotation(0);
       childGroupRef.current.scale({ x: 1, y: 1 });
       childGroupRef.current.getLayer()?.batchDraw();
@@ -221,36 +309,77 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
       <Typography variant="body2" color="text.secondary">
-        Drag, resize, and rotate the overlay to position it on the parent micrograph.
+        Pan and zoom the parent micrograph. Drag, resize, and rotate the overlay to position it.
       </Typography>
 
+      {/* Toolbar */}
+      <Paper elevation={2} sx={{ p: 1 }}>
+        <Stack direction="row" spacing={1} alignItems="center">
+          <Tooltip title="Pan Tool">
+            <IconButton size="small" color="primary">
+              <PanTool />
+            </IconButton>
+          </Tooltip>
+
+          <Box sx={{ flexGrow: 1 }} />
+
+          <Tooltip title="Zoom In">
+            <IconButton size="small" onClick={handleZoomIn}>
+              <ZoomIn />
+            </IconButton>
+          </Tooltip>
+
+          <Tooltip title="Zoom Out">
+            <IconButton size="small" onClick={handleZoomOut}>
+              <ZoomOut />
+            </IconButton>
+          </Tooltip>
+
+          <Tooltip title="Reset View">
+            <IconButton size="small" onClick={handleResetView}>
+              <RestartAlt />
+            </IconButton>
+          </Tooltip>
+
+          <Button size="small" variant="outlined" onClick={handleResetChild}>
+            Reset Overlay
+          </Button>
+        </Stack>
+      </Paper>
+
+      {/* Canvas */}
       <Box
         sx={{
+          width: CANVAS_WIDTH,
+          height: CANVAS_HEIGHT,
           border: '1px solid',
           borderColor: 'divider',
           borderRadius: 1,
           overflow: 'hidden',
-          display: 'flex',
-          justifyContent: 'center',
-          alignItems: 'center',
-          bgcolor: 'background.default',
-          minHeight: 600,
+          backgroundColor: '#2a2a2a',
+          cursor: isPanning ? 'grabbing' : 'grab',
         }}
       >
         <Stage
           ref={stageRef}
-          width={stageWidth}
-          height={stageHeight}
+          width={CANVAS_WIDTH}
+          height={CANVAS_HEIGHT}
+          scaleX={scale}
+          scaleY={scale}
+          x={stagePos.x}
+          y={stagePos.y}
+          onMouseDown={handleMouseDown}
+          onMouseMove={handleMouseMove}
+          onMouseUp={handleMouseUp}
+          onWheel={handleWheel}
         >
           <Layer>
-            {/* Parent micrograph (background) - scaled to fit stage */}
+            {/* Parent micrograph (background) */}
             {parentImage && (
               <KonvaImage
                 image={parentImage}
-                width={parentImage.width * parentImageScale}
-                height={parentImage.height * parentImageScale}
-                x={(stageWidth - parentImage.width * parentImageScale) / 2}
-                y={(stageHeight - parentImage.height * parentImageScale) / 2}
+                width={parentImage.width}
+                height={parentImage.height}
               />
             )}
 
@@ -261,11 +390,13 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
                 x={childTransform.x}
                 y={childTransform.y}
                 rotation={childTransform.rotation}
+                scaleX={childTransform.scaleX}
+                scaleY={childTransform.scaleY}
                 offsetX={childWidth / 2}
                 offsetY={childHeight / 2}
                 draggable
-                onDragEnd={handleDragEnd}
-                onTransformEnd={handleTransformEnd}
+                onDragEnd={handleChildDragEnd}
+                onTransformEnd={handleChildTransformEnd}
               >
                 <KonvaImage
                   image={childImage}
@@ -279,7 +410,7 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
                   width={childWidth}
                   height={childHeight}
                   stroke="#00ff00"
-                  strokeWidth={2}
+                  strokeWidth={2 / scale}
                   listening={false}
                 />
               </Group>
@@ -293,22 +424,17 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
                 borderStroke="#00ff00"
                 anchorStroke="#00ff00"
                 anchorFill="#ffffff"
-                anchorSize={8}
+                anchorSize={8 / scale}
               />
             )}
           </Layer>
         </Stage>
       </Box>
 
-      <Stack direction="row" spacing={2} justifyContent="flex-end">
-        <Button variant="outlined" onClick={handleReset}>
-          Reset Position
-        </Button>
-      </Stack>
-
       <Typography variant="caption" color="text.secondary">
-        Position: ({childTransform.x.toFixed(1)}, {childTransform.y.toFixed(1)}) |
-        Rotation: {childTransform.rotation.toFixed(1)}°
+        Overlay Position: ({childTransform.x.toFixed(1)}, {childTransform.y.toFixed(1)}) |
+        Rotation: {childTransform.rotation.toFixed(1)}° |
+        Zoom: {(scale * 100).toFixed(0)}%
       </Typography>
     </Box>
   );
