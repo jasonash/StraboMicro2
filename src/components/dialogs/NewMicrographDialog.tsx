@@ -495,7 +495,41 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
   };
 
   const handleFinish = async () => {
-    if (!sampleId) {
+    // For associated micrographs, we need to find the sampleId from the parent micrograph
+    let targetSampleId = sampleId;
+
+    if (isAssociated && parentMicrographId) {
+      // Find the parent micrograph to get its sampleId
+      const micrographIndex = useAppStore.getState().micrographIndex;
+      const parentMicrograph = micrographIndex[parentMicrographId];
+
+      if (!parentMicrograph) {
+        console.error('Cannot create associated micrograph: parent micrograph not found');
+        alert('Error: Parent micrograph not found. Please try again.');
+        return;
+      }
+
+      // Find which sample contains the parent micrograph
+      const project = useAppStore.getState().project;
+      if (project) {
+        outer: for (const dataset of project.datasets || []) {
+          for (const sample of dataset.samples || []) {
+            if (sample.micrographs?.some(m => m.id === parentMicrographId)) {
+              targetSampleId = sample.id;
+              break outer;
+            }
+          }
+        }
+      }
+
+      if (!targetSampleId) {
+        console.error('Cannot create associated micrograph: parent sample not found');
+        alert('Error: Could not find parent sample. Please try again.');
+        return;
+      }
+    }
+
+    if (!targetSampleId) {
       console.error('Cannot create micrograph: sampleId is required');
       return;
     }
@@ -657,7 +691,7 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
       };
 
       // Add micrograph to store
-      useAppStore.getState().addMicrograph(sampleId, micrograph);
+      useAppStore.getState().addMicrograph(targetSampleId, micrograph);
 
       // Select the newly created micrograph
       useAppStore.getState().selectMicrograph(micrograph.id);
