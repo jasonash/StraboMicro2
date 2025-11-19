@@ -91,6 +91,11 @@ interface MicrographFormData {
   imageWidthPhysical: string;
   imageHeightPhysical: string;
   sizeUnits: string;
+  // Location fields (for associated micrographs)
+  locationMethod: 'Not Located' | 'Locate by an approximate point' | 'Locate by known grid coordinates' | 'Locate as a scaled rectangle' | '';
+  offsetX: number;
+  offsetY: number;
+  rotationAngle: number;
   instrumentType: string;
   otherInstrumentType: string;
   dataType: string;
@@ -204,6 +209,11 @@ const initialFormData: MicrographFormData = {
   imageWidthPhysical: '',
   imageHeightPhysical: '',
   sizeUnits: 'μm',
+  // Location initial values (for associated micrographs)
+  locationMethod: 'Locate as a scaled rectangle',
+  offsetX: 0,
+  offsetY: 0,
+  rotationAngle: 0,
   instrumentType: '',
   otherInstrumentType: '',
   dataType: '',
@@ -286,6 +296,9 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
   const [canvasTool, setCanvasTool] = useState<Tool>('pointer');
   const canvasRef = useRef<ScaleBarCanvasRef>(null);
 
+  // Determine if this is an associated micrograph (has a parent) or reference (no parent)
+  const isAssociated = parentMicrographId !== null;
+
   const shouldShowInstrumentSettings = () => {
     return (
       formData.instrumentType &&
@@ -293,7 +306,8 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
     );
   };
 
-  const baseSteps = [
+  // Reference micrograph steps (includes orientation)
+  const referenceBaseSteps = [
     'Load Reference Micrograph',
     'Instrument & Image Information',
     'Instrument Data',
@@ -302,6 +316,18 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
     'Set Micrograph Scale',
     'Trace Scale Bar',
   ];
+
+  // Associated micrograph steps (NO orientation, adds location method/placement)
+  const associatedBaseSteps = [
+    'Load Associated Micrograph',
+    'Instrument & Image Information',
+    'Instrument Data',
+    'Micrograph Metadata',
+    'Location Method',
+    'Micrograph Location & Scale',
+  ];
+
+  const baseSteps = isAssociated ? associatedBaseSteps : referenceBaseSteps;
 
   const steps = shouldShowInstrumentSettings()
     ? [...baseSteps.slice(0, 3), 'Instrument Settings', ...baseSteps.slice(3)]
@@ -469,7 +495,43 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
   };
 
   const handleFinish = async () => {
-    if (!sampleId) {
+    // For associated micrographs, we need to find the sampleId from the parent micrograph
+    let targetSampleId = sampleId;
+
+    if (isAssociated && parentMicrographId) {
+      // Find which sample contains the parent micrograph by searching the project directly
+      const project = useAppStore.getState().project;
+
+      if (!project) {
+        console.error('Cannot create associated micrograph: no active project');
+        alert('Error: No active project found. Please try again.');
+        return;
+      }
+
+      console.log('[NewMicrographDialog] Looking for parent micrograph:', parentMicrographId);
+
+      let foundParent = false;
+      outer: for (const dataset of project.datasets || []) {
+        for (const sample of dataset.samples || []) {
+          if (sample.micrographs?.some(m => m.id === parentMicrographId)) {
+            targetSampleId = sample.id;
+            foundParent = true;
+            console.log('[NewMicrographDialog] Found parent in sample:', sample.id);
+            break outer;
+          }
+        }
+      }
+
+      if (!foundParent || !targetSampleId) {
+        console.error('Cannot create associated micrograph: parent micrograph not found in project');
+        console.error('Parent ID:', parentMicrographId);
+        console.error('Project structure:', JSON.stringify(project, null, 2));
+        alert('Error: Parent micrograph not found. Please try again.');
+        return;
+      }
+    }
+
+    if (!targetSampleId) {
       console.error('Cannot create micrograph: sampleId is required');
       return;
     }
@@ -522,8 +584,13 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
       scalePixelsPerCentimeter = pixelsPerUnit * (conversionToCm[formData.sizeUnits] || 1);
     }
 
-    // Build orientation info based on selected method
+    // Build orientation info based on selected method (only for reference micrographs)
     const orientationInfo = (() => {
+      // Associated micrographs don't have orientation data
+      if (isAssociated) {
+        return undefined;
+      }
+
       if (formData.orientationMethod === 'unoriented') {
         return { orientationMethod: 'unoriented' as const };
       } else if (formData.orientationMethod === 'trendPlunge') {
@@ -598,7 +665,13 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
         polishDescription: formData.micrographPolishDescription || undefined,
         orientationInfo,
         scalePixelsPerCentimeter,
+        // Associated micrograph fields
         parentID: parentMicrographId || undefined,
+        ...(isAssociated && {
+          xOffset: formData.offsetX,
+          yOffset: formData.offsetY,
+          rotation: formData.rotationAngle,
+        }),
         instrument: {
           instrumentType: formData.instrumentType || undefined,
           otherInstrumentType: formData.otherInstrumentType || undefined,
@@ -620,7 +693,7 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
       };
 
       // Add micrograph to store
-      useAppStore.getState().addMicrograph(sampleId, micrograph);
+      useAppStore.getState().addMicrograph(targetSampleId, micrograph);
 
       // Select the newly created micrograph
       useAppStore.getState().selectMicrograph(micrograph.id);
@@ -668,6 +741,47 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
   };
 
   const canProceed = () => {
+    // For associated micrographs, use different validation
+    if (isAssociated) {
+      const hasInstrumentSettings = shouldShowInstrumentSettings();
+
+      switch (activeStep) {
+        case 0: // Load Image
+          return formData.micrographFilePath !== '';
+        case 1: // Instrument Info
+          if (!formData.instrumentType) return false;
+          if (formData.instrumentType === 'Other' && !formData.otherInstrumentType) return false;
+          return true;
+        case 2: // Instrument Data
+          return true;
+        case 3: // Instrument Settings OR Metadata
+          if (hasInstrumentSettings) return true; // Instrument Settings
+          // Metadata step
+          return formData.micrographName?.trim() !== '';
+        case 4: // Metadata OR Location Method
+          if (hasInstrumentSettings) {
+            // Metadata step
+            return formData.micrographName?.trim() !== '';
+          } else {
+            // Location Method step
+            return formData.locationMethod !== '';
+          }
+        case 5: // Location Method OR Location/Placement
+          if (hasInstrumentSettings) {
+            // Location Method step
+            return formData.locationMethod !== '';
+          } else {
+            // Location/Placement step - always allow proceeding (placement is optional)
+            return true;
+          }
+        case 6: // Location/Placement (when has settings)
+          return true; // Always allow proceeding
+        default:
+          return true;
+      }
+    }
+
+    // Reference micrograph validation (existing logic)
     switch (activeStep) {
       case 0: // Load Reference Micrograph
         return formData.micrographFilePath !== '';
@@ -1440,14 +1554,167 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
     return null;
   };
 
+  // Render Micrograph Metadata step
+  const renderMetadataStep = () => {
+    return (
+      <Stack spacing={2}>
+        <Typography variant="body2" color="text.secondary">
+          Add descriptive information about this micrograph.
+        </Typography>
+        <TextField
+          fullWidth
+          required
+          label="Name"
+          value={formData.micrographName}
+          onChange={(e) => updateField('micrographName', e.target.value)}
+          helperText="Name for this micrograph"
+        />
+        <FormControlLabel
+          control={
+            <Checkbox
+              checked={formData.micrographPolished}
+              onChange={(e) => {
+                updateField('micrographPolished', e.target.checked);
+                // Clear polish description if unchecking
+                if (!e.target.checked) {
+                  updateField('micrographPolishDescription', '');
+                }
+              }}
+            />
+          }
+          label="Polished?"
+        />
+        {formData.micrographPolished && (
+          <TextField
+            fullWidth
+            required
+            label="Polish Description"
+            value={formData.micrographPolishDescription}
+            onChange={(e) => updateField('micrographPolishDescription', e.target.value)}
+            helperText="Required when 'Polished?' is checked"
+          />
+        )}
+        <TextField
+          fullWidth
+          multiline
+          rows={4}
+          label="Notes"
+          value={formData.micrographNotes}
+          onChange={(e) => updateField('micrographNotes', e.target.value)}
+        />
+      </Stack>
+    );
+  };
+
+  // Render Location Method Selection step (for associated micrographs)
+  const renderLocationMethodStep = () => {
+    return (
+      <Stack spacing={3}>
+        <Typography variant="body2" color="text.secondary">
+          Choose how to locate this associated micrograph on its parent image. The default method
+          (scaled rectangle) allows you to interactively position, resize, and rotate the image.
+        </Typography>
+        <RadioGroup
+          value={formData.locationMethod}
+          onChange={(e) => updateField('locationMethod', e.target.value)}
+        >
+          <FormControlLabel
+            value="Locate as a scaled rectangle"
+            control={<Radio />}
+            label="Locate as a scaled rectangle"
+          />
+          <Typography variant="caption" color="text.secondary" sx={{ ml: 4, mt: -1, mb: 2 }}>
+            Interactively position, resize, and rotate the image on the parent (recommended)
+          </Typography>
+
+          <FormControlLabel
+            value="Locate by an approximate point"
+            control={<Radio />}
+            label="Locate by an approximate point"
+          />
+          <Typography variant="caption" color="text.secondary" sx={{ ml: 4, mt: -1, mb: 2 }}>
+            Mark a single point showing approximate location
+          </Typography>
+
+          <FormControlLabel
+            value="Locate by known grid coordinates"
+            control={<Radio />}
+            label="Locate by known grid coordinates"
+          />
+          <Typography variant="caption" color="text.secondary" sx={{ ml: 4, mt: -1, mb: 2 }}>
+            Enter precise grid coordinates for positioning
+          </Typography>
+
+          <FormControlLabel
+            value="Not Located"
+            control={<Radio />}
+            label="Not Located"
+          />
+          <Typography variant="caption" color="text.secondary" sx={{ ml: 4, mt: -1 }}>
+            Do not specify a location for this image
+          </Typography>
+        </RadioGroup>
+      </Stack>
+    );
+  };
+
+  // Render Location & Scale step (for associated micrographs)
+  const renderLocationPlacementStep = () => {
+    return (
+      <Stack spacing={2}>
+        <Typography variant="body2" color="text.secondary">
+          Location and scale placement canvas will be implemented here.
+        </Typography>
+        <Typography variant="body2" color="warning.main">
+          TODO: Implement interactive Konva canvas showing parent micrograph with child overlay,
+          drag/resize/rotate controls, and scale bar tracing.
+        </Typography>
+        <Box sx={{ p: 4, bgcolor: 'background.default', borderRadius: 1, textAlign: 'center' }}>
+          <Typography color="text.secondary">
+            Selected method: {formData.locationMethod}
+          </Typography>
+          <Typography variant="caption" color="text.secondary">
+            Canvas implementation coming soon...
+          </Typography>
+        </Box>
+      </Stack>
+    );
+  };
+
   const renderStepContent = (step: number) => {
+    // For associated micrographs, route to different steps after metadata
+    if (isAssociated) {
+      const hasInstrumentSettings = shouldShowInstrumentSettings();
+
+      // Step mapping for associated micrographs:
+      // 0: Load Image
+      // 1: Instrument Info
+      // 2: Instrument Data
+      // 3: Instrument Settings (conditional)
+      // 4: Metadata (if has settings) OR Location Method (if no settings)
+      // 5: Location Method (if has settings) OR Location/Placement (if no settings)
+      // 6: Location/Placement (if has settings)
+
+      if (hasInstrumentSettings) {
+        if (step === 4) return renderMetadataStep();
+        if (step === 5) return renderLocationMethodStep();
+        if (step === 6) return renderLocationPlacementStep();
+      } else {
+        if (step === 3) return renderMetadataStep();
+        if (step === 4) return renderLocationMethodStep();
+        if (step === 5) return renderLocationPlacementStep();
+      }
+      // Fall through to default handling for steps 0-3 (shared with reference)
+    }
+
     switch (step) {
       case 0:
         return (
           <Stack spacing={2}>
             <Typography variant="body2" color="text.secondary">
-              Select a reference micrograph image file to add to this sample. This will be the base
-              image for your annotations and measurements.
+              {isAssociated
+                ? 'Select an associated micrograph image file to overlay on the parent micrograph. This image will be positioned and scaled relative to its parent.'
+                : 'Select a reference micrograph image file to add to this sample. This will be the base image for your annotations and measurements.'}
             </Typography>
             <Box sx={{ display: 'flex', gap: 2, alignItems: 'flex-start' }}>
               <TextField
