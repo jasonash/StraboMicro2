@@ -82,14 +82,15 @@ export function NewProjectDialog({ isOpen, onClose }: NewProjectDialogProps) {
     return true;
   };
 
-  const handleCreate = () => {
+  const handleCreate = async () => {
     if (!validateForm()) {
       return;
     }
 
     // Create project structure
+    const projectId = crypto.randomUUID();
     const project: ProjectMetadata = {
-      id: crypto.randomUUID(),
+      id: projectId,
       name: formData.name,
       startDate: formData.startDate || undefined,
       endDate: formData.endDate || undefined,
@@ -102,13 +103,25 @@ export function NewProjectDialog({ isOpen, onClose }: NewProjectDialogProps) {
       datasets: [],
     };
 
-    // Load project into store (null filePath = unsaved project)
-    loadProject(project, null);
+    try {
+      // Create project folder structure on disk
+      if (window.api) {
+        console.log(`[NewProjectDialog] Creating project folders for: ${projectId}`);
+        const folderPaths = await window.api.createProjectFolders(projectId);
+        console.log('[NewProjectDialog] Successfully created project folders:', folderPaths);
+      }
 
-    // Reset form and close
-    setFormData(initialFormData);
-    setDateError('');
-    onClose();
+      // Load project into store (null filePath = unsaved project)
+      loadProject(project, null);
+
+      // Reset form and close
+      setFormData(initialFormData);
+      setDateError('');
+      onClose();
+    } catch (error) {
+      console.error('[NewProjectDialog] Error creating project folders:', error);
+      alert('Failed to create project folders. Please check the console for details.');
+    }
   };
 
   const handleCancel = () => {
