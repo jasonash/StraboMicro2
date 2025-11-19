@@ -499,32 +499,34 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
     let targetSampleId = sampleId;
 
     if (isAssociated && parentMicrographId) {
-      // Find the parent micrograph to get its sampleId
-      const micrographIndex = useAppStore.getState().micrographIndex;
-      const parentMicrograph = micrographIndex[parentMicrographId];
+      // Find which sample contains the parent micrograph by searching the project directly
+      const project = useAppStore.getState().project;
 
-      if (!parentMicrograph) {
-        console.error('Cannot create associated micrograph: parent micrograph not found');
-        alert('Error: Parent micrograph not found. Please try again.');
+      if (!project) {
+        console.error('Cannot create associated micrograph: no active project');
+        alert('Error: No active project found. Please try again.');
         return;
       }
 
-      // Find which sample contains the parent micrograph
-      const project = useAppStore.getState().project;
-      if (project) {
-        outer: for (const dataset of project.datasets || []) {
-          for (const sample of dataset.samples || []) {
-            if (sample.micrographs?.some(m => m.id === parentMicrographId)) {
-              targetSampleId = sample.id;
-              break outer;
-            }
+      console.log('[NewMicrographDialog] Looking for parent micrograph:', parentMicrographId);
+
+      let foundParent = false;
+      outer: for (const dataset of project.datasets || []) {
+        for (const sample of dataset.samples || []) {
+          if (sample.micrographs?.some(m => m.id === parentMicrographId)) {
+            targetSampleId = sample.id;
+            foundParent = true;
+            console.log('[NewMicrographDialog] Found parent in sample:', sample.id);
+            break outer;
           }
         }
       }
 
-      if (!targetSampleId) {
-        console.error('Cannot create associated micrograph: parent sample not found');
-        alert('Error: Could not find parent sample. Please try again.');
+      if (!foundParent || !targetSampleId) {
+        console.error('Cannot create associated micrograph: parent micrograph not found in project');
+        console.error('Parent ID:', parentMicrographId);
+        console.error('Project structure:', JSON.stringify(project, null, 2));
+        alert('Error: Parent micrograph not found. Please try again.');
         return;
       }
     }
