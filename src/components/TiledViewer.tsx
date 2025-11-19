@@ -14,6 +14,7 @@
 
 import React, { useEffect, useRef, useState, useCallback, useImperativeHandle, forwardRef } from 'react';
 import { Stage, Layer, Image as KonvaImage } from 'react-konva';
+import { Box, CircularProgress, Typography } from '@mui/material';
 import './TiledViewer.css';
 
 const TILE_SIZE = 256;
@@ -66,6 +67,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(({ image
   const [zoom, setZoom] = useState(1);
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const [isLoading, setIsLoading] = useState(false);
+  const [isLoadingTiles, setIsLoadingTiles] = useState(false);
   const [isPanning, setIsPanning] = useState(false);
   const [lastPointerPos, setLastPointerPos] = useState<{ x: number; y: number } | null>(null);
 
@@ -151,8 +153,10 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(({ image
 
   /**
    * Load ALL tiles for the entire image in background
+   * Uses chunked loading to keep UI responsive
    */
   const loadAllTiles = useCallback(async (hash: string, tilesX: number, tilesY: number) => {
+    setIsLoadingTiles(true);
     try {
       // Generate list of ALL tile coordinates
       const allTileCoords: Array<{ x: number; y: number }> = [];
@@ -162,47 +166,59 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(({ image
         }
       }
 
-      console.log(`Loading all ${allTileCoords.length} tiles...`);
+      console.log(`Loading all ${allTileCoords.length} tiles in background...`);
 
-      // Load all tiles in batch
+      // Load all tile data from disk (this happens in the main process)
       const results = await window.api!.loadTilesBatch(hash, allTileCoords);
 
-      // Create image objects and wait for them all to load
+      // Decode images in chunks to avoid blocking UI
       const newTiles = new Map<string, TileInfo>();
-      const imageLoadPromises: Promise<void>[] = [];
+      const CHUNK_SIZE = 20; // Decode 20 images at a time
 
-      for (const { x, y, dataUrl } of results) {
-        const tileKey = `${x}_${y}`;
-        const img = new Image();
+      for (let i = 0; i < results.length; i += CHUNK_SIZE) {
+        const chunk = results.slice(i, i + CHUNK_SIZE);
+        const chunkPromises: Promise<void>[] = [];
 
-        const loadPromise = new Promise<void>((resolve) => {
-          img.onload = () => resolve();
-        });
-        imageLoadPromises.push(loadPromise);
+        for (const { x, y, dataUrl } of chunk) {
+          const tileKey = `${x}_${y}`;
+          const img = new Image();
 
-        img.src = dataUrl;
+          const loadPromise = new Promise<void>((resolve) => {
+            img.onload = () => resolve();
+            img.onerror = () => resolve(); // Don't block on errors
+          });
+          chunkPromises.push(loadPromise);
 
-        newTiles.set(tileKey, {
-          x,
-          y,
-          dataUrl,
-          imageObj: img,
-        });
+          img.src = dataUrl;
+
+          newTiles.set(tileKey, {
+            x,
+            y,
+            dataUrl,
+            imageObj: img,
+          });
+        }
+
+        // Wait for this chunk to decode
+        await Promise.all(chunkPromises);
+
+        // Yield to browser after each chunk to allow user interactions
+        await new Promise(resolve => setTimeout(resolve, 0));
       }
 
-      // Wait for ALL tile images to finish loading
-      await Promise.all(imageLoadPromises);
       console.log(`All ${allTileCoords.length} tiles loaded and ready`);
 
-      // Update state with all tiles
+      // Now update state ONCE with all tiles - triggers single re-render
       setTiles(newTiles);
 
-      // Switch to tiled mode now that everything is ready
+      // Switch to tiled mode
       console.log('=== All tiles loaded, switching to tiled mode ===');
       setRenderMode('tiled');
 
     } catch (error) {
       console.error('Failed to load all tiles:', error);
+    } finally {
+      setIsLoadingTiles(false);
     }
   }, []);
 
@@ -497,6 +513,33 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(({ image
               })}
             </Layer>
           </Stage>
+
+          {/* Tile loading indicator */}
+          {isLoadingTiles && (
+            <Box
+              sx={{
+                position: 'absolute',
+                top: 16,
+                right: 16,
+                zIndex: 1000,
+                bgcolor: 'rgba(0, 0, 0, 0.85)',
+                color: '#4caf50',
+                px: 2.5,
+                py: 1.5,
+                borderRadius: 2,
+                border: '2px solid white',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 1.5,
+                boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)',
+              }}
+            >
+              <CircularProgress size={18} sx={{ color: '#4caf50' }} />
+              <Typography variant="body2" sx={{ fontWeight: 500, color: '#4caf50' }}>
+                Loading high-res tiles...
+              </Typography>
+            </Box>
+          )}
         </>
       )}
     </div>
