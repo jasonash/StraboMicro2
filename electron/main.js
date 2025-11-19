@@ -3,6 +3,7 @@ const path = require('path');
 const fs = require('fs');
 const log = require('electron-log');
 const projectFolders = require('./projectFolders');
+const imageConverter = require('./imageConverter');
 
 // Handle EPIPE errors at process level (prevents crash on broken stdout pipe)
 process.stdout.on('error', (err) => {
@@ -897,5 +898,81 @@ ipcMain.handle('project:delete-folder', async (event, projectId) => {
   } catch (error) {
     log.error('[IPC] Error deleting project folder:', error);
     throw error;
+  }
+});
+
+/**
+ * ============================================================================
+ * IMAGE CONVERSION HANDLERS
+ * ============================================================================
+ */
+
+/**
+ * Convert and save a micrograph image to the project images folder
+ */
+ipcMain.handle('image:convert-and-save-micrograph', async (event, sourcePath, projectId, micrographId) => {
+  try {
+    log.info(`[IPC] Converting and saving micrograph image: ${sourcePath}`);
+    const dataPath = projectFolders.getStraboMicro2DataPath();
+    const result = await imageConverter.convertAndSaveMicrographImage(
+      sourcePath,
+      projectId,
+      micrographId,
+      dataPath
+    );
+    log.info('[IPC] Successfully converted and saved micrograph image');
+    return result;
+  } catch (error) {
+    log.error('[IPC] Error converting and saving micrograph image:', error);
+    throw error;
+  }
+});
+
+/**
+ * Generate image variants (uiImages, compositeImages, thumbnails, etc.)
+ */
+ipcMain.handle('image:generate-variants', async (event, sourcePath, projectId, micrographId) => {
+  try {
+    log.info(`[IPC] Generating image variants for micrograph: ${micrographId}`);
+    const dataPath = projectFolders.getStraboMicro2DataPath();
+    const result = await imageConverter.generateImageVariants(
+      sourcePath,
+      projectId,
+      micrographId,
+      dataPath
+    );
+    log.info('[IPC] Successfully generated image variants');
+    return result;
+  } catch (error) {
+    log.error('[IPC] Error generating image variants:', error);
+    throw error;
+  }
+});
+
+/**
+ * Get image dimensions
+ */
+ipcMain.handle('image:get-dimensions', async (event, imagePath) => {
+  try {
+    const dimensions = await imageConverter.getImageDimensions(imagePath);
+    log.info(`[IPC] Image dimensions for ${imagePath}:`, dimensions);
+    return dimensions;
+  } catch (error) {
+    log.error('[IPC] Error getting image dimensions:', error);
+    throw error;
+  }
+});
+
+/**
+ * Check if file is a valid image
+ */
+ipcMain.handle('image:is-valid', async (event, filePath) => {
+  try {
+    const isValid = await imageConverter.isValidImage(filePath);
+    log.info(`[IPC] Image validity check for ${filePath}: ${isValid}`);
+    return isValid;
+  } catch (error) {
+    log.error('[IPC] Error checking image validity:', error);
+    return false;
   }
 });

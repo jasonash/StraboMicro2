@@ -129,5 +129,32 @@ interface Window {
     }>;
     listProjectFolders: () => Promise<string[]>;
     deleteProjectFolder: (projectId: string) => Promise<{ success: boolean }>;
+
+    // Image conversion
+    convertAndSaveMicrographImage: (sourcePath: string, projectId: string, micrographId: string) => Promise<{
+      success: boolean;
+      originalWidth: number;
+      originalHeight: number;
+      originalFormat: string;
+      outputWidth: number;
+      outputHeight: number;
+      outputSize: number;
+      outputPath: string;
+    }>;
+    generateImageVariants: (sourcePath: string, projectId: string, micrographId: string) => Promise<{
+      success: boolean;
+      variants: Record<string, {
+        path: string;
+        width: number;
+        height: number;
+        size: number;
+      }>;
+    }>;
+    getImageDimensions: (imagePath: string) => Promise<{
+      width: number;
+      height: number;
+      format: string;
+    }>;
+    isValidImage: (filePath: string) => Promise<boolean>;
   };
 }

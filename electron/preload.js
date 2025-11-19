@@ -55,4 +55,12 @@ contextBridge.exposeInMainWorld('api', {
   getProjectFolderPaths: (projectId) => ipcRenderer.invoke('project:get-folder-paths', projectId),
   listProjectFolders: () => ipcRenderer.invoke('project:list-folders'),
   deleteProjectFolder: (projectId) => ipcRenderer.invoke('project:delete-folder', projectId),
+
+  // Image conversion
+  convertAndSaveMicrographImage: (sourcePath, projectId, micrographId) =>
+    ipcRenderer.invoke('image:convert-and-save-micrograph', sourcePath, projectId, micrographId),
+  generateImageVariants: (sourcePath, projectId, micrographId) =>
+    ipcRenderer.invoke('image:generate-variants', sourcePath, projectId, micrographId),
+  getImageDimensions: (imagePath) => ipcRenderer.invoke('image:get-dimensions', imagePath),
+  isValidImage: (filePath) => ipcRenderer.invoke('image:is-valid', filePath),
 });
