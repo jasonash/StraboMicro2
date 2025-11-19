@@ -15,6 +15,179 @@ const sharp = require('sharp');
 const fs = require('fs');
 const path = require('path');
 const log = require('electron-log');
+const scratchSpace = require('./scratchSpace');
+
+// tiff is an ES module, we'll import it dynamically when needed
+let decodeTIFF = null;
+async function getTiffDecoder() {
+  if (!decodeTIFF) {
+    const tiffModule = await import('tiff');
+    decodeTIFF = tiffModule.decode;
+  }
+  return decodeTIFF;
+}
+
+// Configure Sharp/libvips for handling large images
+// Disable concurrency to reduce memory usage
+sharp.concurrency(1);
+
+// Increase cache limits (default is 50MB, we'll set to 2GB)
+sharp.cache({ memory: 2048, files: 0, items: 100 });
+
+/**
+ * Convert TIFF (or other format) to JPEG in scratch space
+ * This should be called IMMEDIATELY when user selects an image
+ * Returns the scratch path where the JPEG is stored temporarily
+ *
+ * @param {string} inputPath - Path to input image (TIFF, PNG, BMP, etc.)
+ * @param {Function} progressCallback - Optional callback for progress updates
+ * @returns {Promise<Object>} Scratch identifier and metadata
+ */
+async function convertToScratchJPEG(inputPath, progressCallback = null) {
+  try {
+    log.info(`[ImageConverter] Converting to scratch JPEG: ${inputPath}`);
+
+    // Ensure scratch directory exists
+    await scratchSpace.ensureScratchDir();
+
+    // Generate unique identifier for this conversion
+    const identifier = `scratch-${Date.now()}.jpg`;
+    const scratchPath = scratchSpace.getScratchPath(identifier);
+
+    if (progressCallback) {
+      progressCallback({ stage: 'reading', percent: 10 });
+    }
+
+    // Detect file format
+    const ext = path.extname(inputPath).toLowerCase();
+    const isTiff = ext === '.tif' || ext === '.tiff';
+
+    if (isTiff) {
+      // Use tiff library for TIFF files (bypasses libvips memory limits)
+      log.info(`[ImageConverter] Detected TIFF file, using tiff library...`);
+
+      // Get decode function (dynamic import)
+      const decode = await getTiffDecoder();
+
+      // Read TIFF file
+      const buffer = await fs.promises.readFile(inputPath);
+
+      if (progressCallback) {
+        progressCallback({ stage: 'converting', percent: 30 });
+      }
+
+      // Decode TIFF (this library handles large TIFFs efficiently)
+      const tiffData = decode(buffer);
+
+      // Get first image (page 0)
+      const image = tiffData[0];
+      const width = image.width;
+      const height = image.height;
+      log.info(`[ImageConverter] TIFF dimensions: ${width}x${height}`);
+
+      if (progressCallback) {
+        progressCallback({ stage: 'converting', percent: 60 });
+      }
+
+      // Get image data - the tiff library returns data in different formats depending on the image
+      // We need to convert it to a format Sharp can understand
+      let rawBuffer;
+      let channels;
+
+      if (image.data) {
+        // Image has raw pixel data
+        rawBuffer = Buffer.from(image.data);
+
+        // Determine number of channels from the data length
+        const pixelCount = width * height;
+        channels = rawBuffer.length / pixelCount;
+
+        log.info(`[ImageConverter] Image has ${channels} channels`);
+      } else {
+        throw new Error('TIFF image data format not supported');
+      }
+
+      log.info(`[ImageConverter] Converting raw pixel data to JPEG with Sharp...`);
+
+      // Use Sharp to convert raw pixel data to JPEG
+      const info = await sharp(rawBuffer, {
+        raw: {
+          width,
+          height,
+          channels,
+        },
+      })
+        .jpeg({
+          quality: 95,
+          mozjpeg: true,
+        })
+        .toFile(scratchPath);
+
+      if (progressCallback) {
+        progressCallback({ stage: 'complete', percent: 100 });
+      }
+
+      log.info(`[ImageConverter] Successfully converted TIFF to JPEG: ${info.width}x${info.height}, ${info.size} bytes`);
+      log.info(`[ImageConverter] Scratch location: ${scratchPath}`);
+
+      return {
+        identifier,
+        scratchPath,
+        originalWidth: width,
+        originalHeight: height,
+        originalFormat: 'tiff',
+        jpegWidth: info.width,
+        jpegHeight: info.height,
+        jpegSize: info.size,
+      };
+    } else {
+      // For non-TIFF files, use Sharp directly
+      log.info(`[ImageConverter] Using Sharp for non-TIFF file...`);
+
+      const metadata = await sharp(inputPath, {
+        limitInputPixels: false,
+        sequentialRead: true,
+      }).metadata();
+
+      log.info(`[ImageConverter] Source image: ${metadata.width}x${metadata.height}, format: ${metadata.format}`);
+
+      if (progressCallback) {
+        progressCallback({ stage: 'converting', percent: 30 });
+      }
+
+      const info = await sharp(inputPath, {
+        limitInputPixels: false,
+        sequentialRead: true,
+      })
+        .jpeg({
+          quality: 95,
+          mozjpeg: true,
+        })
+        .toFile(scratchPath);
+
+      if (progressCallback) {
+        progressCallback({ stage: 'complete', percent: 100 });
+      }
+
+      log.info(`[ImageConverter] Successfully converted to JPEG: ${info.width}x${info.height}, ${info.size} bytes`);
+      log.info(`[ImageConverter] Scratch location: ${scratchPath}`);
+
+      return {
+        identifier,
+        scratchPath,
+        originalWidth: metadata.width,
+        originalHeight: metadata.height,
+        originalFormat: metadata.format,
+        jpegWidth: info.width,
+        jpegHeight: info.height,
+        jpegSize: info.size,
+      };
+    }
+  } catch (error) {
+    log.error(`[ImageConverter] Error converting to scratch JPEG:`, error);
+    throw error;
+  }
+}
 
 /**
  * Convert any image format to JPEG
@@ -212,6 +385,7 @@ async function isValidImage(filePath) {
 }
 
 module.exports = {
+  convertToScratchJPEG,
   convertToJPEG,
   convertAndSaveMicrographImage,
   generateImageVariants,

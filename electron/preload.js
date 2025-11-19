@@ -58,6 +58,10 @@ contextBridge.exposeInMainWorld('api', {
   deleteProjectFolder: (projectId) => ipcRenderer.invoke('project:delete-folder', projectId),
 
   // Image conversion
+  convertToScratchJPEG: (sourcePath) => ipcRenderer.invoke('image:convert-to-scratch', sourcePath),
+  moveFromScratch: (identifier, projectId, micrographId) => ipcRenderer.invoke('image:move-from-scratch', identifier, projectId, micrographId),
+  deleteScratchImage: (identifier) => ipcRenderer.invoke('image:delete-scratch', identifier),
+  onConversionProgress: (callback) => ipcRenderer.on('image:conversion-progress', (event, progress) => callback(progress)),
   convertAndSaveMicrographImage: (sourcePath, projectId, micrographId) =>
     ipcRenderer.invoke('image:convert-and-save-micrograph', sourcePath, projectId, micrographId),
   generateImageVariants: (sourcePath, projectId, micrographId) =>

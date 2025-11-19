@@ -260,7 +260,7 @@ export function ProjectTree() {
                 fontSize: '0.75rem',
               }}
             >
-              Add Micrograph
+              Add Reference Micrograph
             </Button>
           </Box>
         </Collapse>

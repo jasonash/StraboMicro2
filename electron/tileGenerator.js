@@ -55,7 +55,8 @@ class TileGenerator {
     console.log(`Cache miss - generating thumbnails for: ${imagePath}`);
 
     // Get image dimensions using Sharp metadata (doesn't load full image into memory)
-    const sharpMetadata = await sharp(imagePath).metadata();
+    // Set unlimited pixel limit to allow reading metadata from very large images
+    const sharpMetadata = await sharp(imagePath, { limitInputPixels: false }).metadata();
     const { width, height } = sharpMetadata;
 
     console.log(`Image dimensions: ${width}x${height} (format: ${sharpMetadata.format})`);

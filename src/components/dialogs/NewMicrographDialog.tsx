@@ -362,6 +362,9 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
     }
   }, [formData.instrumentType, formData.dataType]);
 
+  const [scratchIdentifier, setScratchIdentifier] = useState<string | null>(null);
+  const [conversionProgress, setConversionProgress] = useState<{ stage: string; percent: number } | null>(null);
+
   const handleBrowseImage = async () => {
     if (window.api && window.api.openTiffDialog) {
       try {
@@ -371,39 +374,52 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
           // Extract name without extension for micrograph name (matching legacy behavior)
           const nameWithoutExt = fileName.substring(0, fileName.lastIndexOf('.')) || fileName;
 
-          // Load image metadata and thumbnail preview
+          console.log('[NewMicrographDialog] Selected file:', filePath);
+
+          // Convert to JPEG in scratch space IMMEDIATELY
           setIsLoadingPreview(true);
+          setConversionProgress({ stage: 'reading', percent: 10 });
+
           try {
-            if (window.api.loadImageWithTiles) {
-              // Load image and generate cache (includes thumbnail)
-              const result = await window.api.loadImageWithTiles(filePath);
-
-              // Now load the thumbnail using the hash
-              const thumbnailDataUrl = await window.api.loadThumbnail(result.hash);
-              setMicrographPreviewUrl(thumbnailDataUrl);
-
-              // Update form data with image dimensions and file info
-              setFormData((prev) => ({
-                ...prev,
-                micrographFilePath: filePath,
-                micrographFileName: fileName,
-                micrographName: prev.micrographName || nameWithoutExt,
-                micrographWidth: result.metadata.width,
-                micrographHeight: result.metadata.height,
-              }));
-            } else {
-              // Fallback if thumbnail API not available
-              setFormData((prev) => ({
-                ...prev,
-                micrographFilePath: filePath,
-                micrographFileName: fileName,
-                micrographName: prev.micrographName || nameWithoutExt,
-                micrographWidth: 0,
-                micrographHeight: 0,
-              }));
+            // Listen for progress updates
+            if (window.api.onConversionProgress) {
+              window.api.onConversionProgress((progress: { stage: string; percent: number }) => {
+                setConversionProgress(progress);
+              });
             }
+
+            // Convert TIFF to JPEG in scratch space (never loads full TIFF into memory)
+            console.log('[NewMicrographDialog] Converting to scratch JPEG...');
+            const conversionResult = await window.api.convertToScratchJPEG(filePath);
+
+            console.log('[NewMicrographDialog] Conversion complete:', conversionResult);
+
+            // Store scratch identifier for later cleanup or move
+            setScratchIdentifier(conversionResult.identifier);
+
+            // Now load the JPEG from scratch space (much smaller, much faster)
+            console.log('[NewMicrographDialog] Loading tiles from scratch JPEG...');
+            const result = await window.api.loadImageWithTiles(conversionResult.scratchPath);
+
+            // Load thumbnail
+            const thumbnailDataUrl = await window.api.loadThumbnail(result.hash);
+            setMicrographPreviewUrl(thumbnailDataUrl);
+
+            // Update form data with image dimensions and file info
+            setFormData((prev) => ({
+              ...prev,
+              micrographFilePath: conversionResult.scratchPath, // Use scratch path now
+              micrographFileName: fileName,
+              micrographName: prev.micrographName || nameWithoutExt,
+              micrographWidth: conversionResult.jpegWidth,
+              micrographHeight: conversionResult.jpegHeight,
+            }));
+
+            setConversionProgress(null);
           } catch (error) {
-            console.error('Failed to load thumbnail:', error);
+            console.error('[NewMicrographDialog] Failed to convert/load image:', error);
+            alert(`Error loading image: ${error instanceof Error ? error.message : 'Unknown error'}`);
+            setConversionProgress(null);
           } finally {
             setIsLoadingPreview(false);
           }
@@ -422,10 +438,22 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
     setActiveStep((prevActiveStep) => prevActiveStep - 1);
   };
 
-  const handleCancel = () => {
+  const handleCancel = async () => {
+    // Clean up scratch file if exists
+    if (scratchIdentifier && window.api) {
+      try {
+        console.log('[NewMicrographDialog] Cleaning up scratch file:', scratchIdentifier);
+        await window.api.deleteScratchImage(scratchIdentifier);
+      } catch (error) {
+        console.error('[NewMicrographDialog] Error cleaning up scratch file:', error);
+      }
+    }
+
     setFormData(initialFormData);
     setActiveStep(0);
     setDetectors([]);
+    setScratchIdentifier(null);
+    setConversionProgress(null);
     onClose();
   };
 
@@ -518,17 +546,20 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
     const micrographId = crypto.randomUUID();
 
     try {
-      // Convert and save image to project folder
-      if (window.api && formData.micrographFilePath) {
-        console.log(`[NewMicrographDialog] Converting and saving image for micrograph ${micrographId}`);
+      // Move image from scratch to project folder
+      if (window.api && scratchIdentifier) {
+        console.log(`[NewMicrographDialog] Moving scratch JPEG to project folder for micrograph ${micrographId}`);
 
-        const conversionResult = await window.api.convertAndSaveMicrographImage(
-          formData.micrographFilePath,
+        const moveResult = await window.api.moveFromScratch(
+          scratchIdentifier,
           projectId,
           micrographId
         );
 
-        console.log('[NewMicrographDialog] Image conversion successful:', conversionResult);
+        console.log('[NewMicrographDialog] Image moved successfully:', moveResult);
+
+        // Clear scratch identifier since it's been moved
+        setScratchIdentifier(null);
 
         // NOTE: Image variants (uiImages, compositeImages, thumbnails, etc.) are NOT generated here.
         // They will only be generated when:
@@ -536,7 +567,7 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
         // 2. Uploading to Strabo server
         // For local work in StraboMicro2, only the images/ folder is populated.
       } else {
-        console.warn('[NewMicrographDialog] window.api not available or no image path - skipping image conversion');
+        console.warn('[NewMicrographDialog] window.api not available or no scratch identifier - skipping image move');
       }
 
       // Create micrograph object
@@ -929,8 +960,17 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
                   >
                     <CircularProgress />
                     <Typography variant="body2" color="text.secondary">
-                      Loading preview...
+                      {conversionProgress
+                        ? `Converting image... ${conversionProgress.percent}%`
+                        : 'Loading preview...'}
                     </Typography>
+                    {conversionProgress && (
+                      <Typography variant="caption" color="text.secondary">
+                        {conversionProgress.stage === 'reading' && 'Reading image file...'}
+                        {conversionProgress.stage === 'converting' && 'Converting to JPEG...'}
+                        {conversionProgress.stage === 'complete' && 'Complete!'}
+                      </Typography>
+                    )}
                   </Box>
                 ) : micrographPreviewUrl ? (
                   <Box
@@ -1347,8 +1387,8 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
               <TextField
                 fullWidth
                 required
-                label="Micrograph File Path"
-                value={formData.micrographFilePath}
+                label="Micrograph File"
+                value={formData.micrographFileName}
                 InputProps={{ readOnly: true }}
                 helperText="Click 'Browse' to select an image file (TIFF, JPEG, PNG, BMP)"
               />
@@ -1356,6 +1396,7 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
                 variant="contained"
                 onClick={handleBrowseImage}
                 sx={{ minWidth: '120px', mt: 0 }}
+                disabled={isLoadingPreview}
               >
                 Browse...
               </Button>
@@ -3319,6 +3360,42 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
           formData.imageType ? formData.imageType.split(', ').filter((e) => e.trim() !== '') : []
         }
       />
+
+      {/* Loading Overlay for Image Conversion */}
+      {isLoadingPreview && conversionProgress && (
+        <Box
+          sx={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.7)',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 9999,
+            gap: 3,
+          }}
+        >
+          <CircularProgress size={60} />
+          <Typography variant="h6" color="white">
+            Converting Image...
+          </Typography>
+          <Typography variant="body1" color="white">
+            {conversionProgress.percent}%
+          </Typography>
+          <Typography variant="body2" color="white" sx={{ opacity: 0.8 }}>
+            {conversionProgress.stage === 'reading' && 'Reading TIFF file...'}
+            {conversionProgress.stage === 'converting' && 'Optimizing Large Image...'}
+            {conversionProgress.stage === 'complete' && 'Loading preview...'}
+          </Typography>
+          <Typography variant="caption" color="white" sx={{ opacity: 0.6 }}>
+            Large TIFF files may take a minute to process
+          </Typography>
+        </Box>
+      )}
     </>
   );
 };

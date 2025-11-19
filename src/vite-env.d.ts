@@ -132,6 +132,22 @@ interface Window {
     deleteProjectFolder: (projectId: string) => Promise<{ success: boolean }>;
 
     // Image conversion
+    convertToScratchJPEG: (sourcePath: string) => Promise<{
+      identifier: string;
+      scratchPath: string;
+      originalWidth: number;
+      originalHeight: number;
+      originalFormat: string;
+      jpegWidth: number;
+      jpegHeight: number;
+      jpegSize: number;
+    }>;
+    moveFromScratch: (identifier: string, projectId: string, micrographId: string) => Promise<{
+      success: boolean;
+      destination: string;
+    }>;
+    deleteScratchImage: (identifier: string) => Promise<{ success: boolean }>;
+    onConversionProgress: (callback: (progress: { stage: string; percent: number }) => void) => void;
     convertAndSaveMicrographImage: (sourcePath: string, projectId: string, micrographId: string) => Promise<{
       success: boolean;
       originalWidth: number;

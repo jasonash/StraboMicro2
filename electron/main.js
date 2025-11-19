@@ -1,3 +1,11 @@
+// Configure libvips memory limits BEFORE loading Sharp
+// VIPS_DISC_THRESHOLD controls when libvips switches to disc caching
+// Setting to 0 forces disc caching immediately, avoiding memory limits
+process.env.VIPS_DISC_THRESHOLD = '0';
+
+// Remove libvips memory limits entirely
+process.env.VIPS_NOVECTOR = '1';
+
 const { app, BrowserWindow, Menu, ipcMain, dialog, screen, nativeTheme } = require('electron');
 const path = require('path');
 const fs = require('fs');
@@ -5,6 +13,7 @@ const log = require('electron-log');
 const projectFolders = require('./projectFolders');
 const imageConverter = require('./imageConverter');
 const projectSerializer = require('./projectSerializer');
+const scratchSpace = require('./scratchSpace');
 
 // Handle EPIPE errors at process level (prevents crash on broken stdout pipe)
 process.stdout.on('error', (err) => {
@@ -387,6 +396,9 @@ function createWindow() {
 
 app.whenReady().then(async () => {
   const isDev = process.env.NODE_ENV !== 'production';
+
+  // Clean up scratch space on startup
+  await scratchSpace.cleanupAll();
 
   // Install React DevTools in development mode
   if (isDev) {
@@ -916,6 +928,63 @@ ipcMain.handle('project:delete-folder', async (event, projectId) => {
  * IMAGE CONVERSION HANDLERS
  * ============================================================================
  */
+
+/**
+ * Convert image to JPEG in scratch space (for immediate preview during workflow)
+ * This should be called as soon as user selects an image
+ */
+ipcMain.handle('image:convert-to-scratch', async (event, sourcePath) => {
+  try {
+    log.info(`[IPC] Converting to scratch JPEG: ${sourcePath}`);
+
+    const result = await imageConverter.convertToScratchJPEG(sourcePath, (progress) => {
+      // Send progress updates to renderer
+      if (mainWindow) {
+        mainWindow.webContents.send('image:conversion-progress', progress);
+      }
+    });
+
+    log.info('[IPC] Successfully converted to scratch JPEG');
+    return result;
+  } catch (error) {
+    log.error('[IPC] Error converting to scratch JPEG:', error);
+    throw error;
+  }
+});
+
+/**
+ * Move image from scratch to project folder
+ */
+ipcMain.handle('image:move-from-scratch', async (event, identifier, projectId, micrographId) => {
+  try {
+    log.info(`[IPC] Moving scratch image to project folder: ${identifier}`);
+    const dataPath = projectFolders.getStraboMicro2DataPath();
+    const destination = `${dataPath}/${projectId}/images/${micrographId}`;
+
+    await scratchSpace.moveToFinal(identifier, destination);
+
+    log.info('[IPC] Successfully moved scratch image to project folder');
+    return { success: true, destination };
+  } catch (error) {
+    log.error('[IPC] Error moving scratch image:', error);
+    throw error;
+  }
+});
+
+/**
+ * Delete scratch image (when user cancels)
+ */
+ipcMain.handle('image:delete-scratch', async (event, identifier) => {
+  try {
+    log.info(`[IPC] Deleting scratch image: ${identifier}`);
+    await scratchSpace.deleteScratchFile(identifier);
+    log.info('[IPC] Successfully deleted scratch image');
+    return { success: true };
+  } catch (error) {
+    log.error('[IPC] Error deleting scratch image:', error);
+    throw error;
+  }
+});
 
 /**
  * Convert and save a micrograph image to the project images folder
