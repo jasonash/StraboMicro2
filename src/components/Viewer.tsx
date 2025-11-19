@@ -3,15 +3,17 @@ import { Box, Typography, IconButton, Tooltip } from '@mui/material';
 import { KeyboardArrowDown, KeyboardArrowUp } from '@mui/icons-material';
 import DrawingToolbar from './DrawingToolbar';
 import BottomPanel from './BottomPanel';
-import { TiledViewer } from './TiledViewer';
+import { TiledViewer, TiledViewerRef } from './TiledViewer';
 import { useAppStore } from '../store';
 
 const Viewer: React.FC = () => {
   const [bottomHeight, setBottomHeight] = useState(200);
+  const tiledViewerRef = useRef<TiledViewerRef>(null);
 
   // Get active micrograph from store
   const project = useAppStore((state) => state.project);
   const activeMicrographId = useAppStore((state) => state.activeMicrographId);
+  const setViewerRef = useAppStore((state) => state.setViewerRef);
 
   // Build the full path to the active micrograph's image
   const [activeMicrographPath, setActiveMicrographPath] = React.useState<string | null>(null);
@@ -114,6 +116,11 @@ const Viewer: React.FC = () => {
     }
   };
 
+  // Set viewer ref in store
+  useEffect(() => {
+    setViewerRef(tiledViewerRef);
+  }, [setViewerRef]);
+
   // Save collapse state to localStorage
   useEffect(() => {
     localStorage.setItem('bottomPanelCollapsed', JSON.stringify(isBottomPanelCollapsed));
@@ -135,7 +142,7 @@ const Viewer: React.FC = () => {
     >
       {/* Canvas area */}
       <Box sx={{ flex: 1, bgcolor: 'background.default', position: 'relative' }}>
-        <TiledViewer imagePath={activeMicrographPath} />
+        <TiledViewer ref={tiledViewerRef} imagePath={activeMicrographPath} />
         <DrawingToolbar />
 
         {/* Floating toggle button when bottom panel is collapsed */}

@@ -8,8 +8,16 @@ import {
   MyLocation as CrosshairIcon,
 } from '@mui/icons-material';
 import straboLogo from '../assets/strabo-logo.png';
+import { useAppStore } from '@/store';
 
 const Header: React.FC = () => {
+  const viewerRef = useAppStore((state) => state.viewerRef);
+
+  const handleRecenter = () => {
+    if (viewerRef?.current) {
+      viewerRef.current.fitToScreen();
+    }
+  };
   return (
     <AppBar position="static" elevation={0}>
       <Toolbar sx={{ gap: 2 }}>
@@ -60,7 +68,7 @@ const Header: React.FC = () => {
             </IconButton>
           </Tooltip>
           <Tooltip title="Re-Center Micrograph" placement="bottom">
-            <IconButton color="inherit" size="small">
+            <IconButton color="inherit" size="small" onClick={handleRecenter}>
               <CrosshairIcon />
             </IconButton>
           </Tooltip>
