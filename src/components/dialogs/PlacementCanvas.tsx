@@ -166,8 +166,11 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
 
   // Pan/Zoom handlers
   const handleMouseDown = (e: Konva.KonvaEventObject<MouseEvent>) => {
+    // Allow panning when clicking on empty space OR the parent image (but not the child overlay)
     const clickedOnEmpty = e.target === e.target.getStage();
-    if (clickedOnEmpty) {
+    const clickedOnParent = e.target.attrs?.image === parentImage;
+
+    if (clickedOnEmpty || clickedOnParent) {
       const stage = e.target.getStage();
       if (!stage) return;
 
@@ -307,13 +310,13 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
   };
 
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-      <Typography variant="body2" color="text.secondary">
+    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, width: '100%', alignItems: 'center' }}>
+      <Typography variant="body2" color="text.secondary" sx={{ width: '100%', textAlign: 'center' }}>
         Pan and zoom the parent micrograph. Drag, resize, and rotate the overlay to position it.
       </Typography>
 
       {/* Toolbar */}
-      <Paper elevation={2} sx={{ p: 1 }}>
+      <Paper elevation={2} sx={{ p: 1, width: CANVAS_WIDTH }}>
         <Stack direction="row" spacing={1} alignItems="center">
           <Tooltip title="Pan Tool">
             <IconButton size="small" color="primary">
@@ -358,6 +361,8 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
           overflow: 'hidden',
           backgroundColor: '#2a2a2a',
           cursor: isPanning ? 'grabbing' : 'grab',
+          position: 'relative',
+          flexShrink: 0,
         }}
       >
         <Stage
@@ -431,7 +436,7 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
         </Stage>
       </Box>
 
-      <Typography variant="caption" color="text.secondary">
+      <Typography variant="caption" color="text.secondary" sx={{ width: CANVAS_WIDTH, textAlign: 'center' }}>
         Overlay Position: ({childTransform.x.toFixed(1)}, {childTransform.y.toFixed(1)}) |
         Rotation: {childTransform.rotation.toFixed(1)}° |
         Zoom: {(scale * 100).toFixed(0)}%
