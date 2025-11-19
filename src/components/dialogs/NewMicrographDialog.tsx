@@ -43,6 +43,7 @@ import {
 import { useAppStore } from '@/store';
 import { PeriodicTableModal } from './PeriodicTableModal';
 import { ScaleBarCanvas, type Tool, type ScaleBarCanvasRef } from '../ScaleBarCanvas';
+import PlacementCanvas from './PlacementCanvas';
 import { PanTool, Timeline, RestartAlt } from '@mui/icons-material';
 
 interface NewMicrographDialogProps {
@@ -1779,26 +1780,71 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
 
   // Render Location & Scale step (for associated micrographs)
   const renderLocationPlacementStep = () => {
+    // Handler for placement changes from the canvas
+    const handlePlacementChange = (offsetX: number, offsetY: number, rotation: number) => {
+      updateField('offsetX', offsetX);
+      updateField('offsetY', offsetY);
+      updateField('rotationAngle', rotation);
+    };
+
+    // Render different canvas based on location method
+    if (formData.locationMethod === 'Locate as a scaled rectangle') {
+      // Ensure we have necessary data
+      if (!parentMicrographId || !formData.micrographFilePath) {
+        return (
+          <Typography variant="body2" color="error">
+            Error: Missing parent micrograph or child image data
+          </Typography>
+        );
+      }
+
+      return (
+        <Stack spacing={2}>
+          <Typography variant="h6">
+            Position the Associated Micrograph
+          </Typography>
+          <PlacementCanvas
+            parentMicrographId={parentMicrographId}
+            childScratchPath={formData.micrographFilePath}
+            childWidth={formData.micrographWidth}
+            childHeight={formData.micrographHeight}
+            initialOffsetX={formData.offsetX}
+            initialOffsetY={formData.offsetY}
+            initialRotation={formData.rotationAngle}
+            onPlacementChange={handlePlacementChange}
+          />
+        </Stack>
+      );
+    }
+
+    if (formData.locationMethod === 'Locate by an approximate point') {
+      // TODO: Implement PointPlacementCanvas
+      return (
+        <Stack spacing={2}>
+          <Typography variant="body2" color="text.secondary">
+            Click on the parent micrograph to place the center point of the associated micrograph.
+          </Typography>
+          <Typography variant="body2" color="warning.main">
+            TODO: Implement PointPlacementCanvas component
+          </Typography>
+          <Box sx={{ p: 4, bgcolor: 'background.default', borderRadius: 1, textAlign: 'center' }}>
+            <Typography color="text.secondary">
+              Location method: {formData.locationMethod}
+            </Typography>
+            <Typography variant="caption" color="text.secondary">
+              Point placement canvas coming soon...
+            </Typography>
+          </Box>
+        </Stack>
+      );
+    }
+
+    // Fallback for unknown location method
     return (
       <Stack spacing={2}>
-        <Typography variant="body2" color="text.secondary">
-          Location and scale placement canvas will be implemented here.
+        <Typography variant="body2" color="error">
+          Unknown location method: {formData.locationMethod}
         </Typography>
-        <Typography variant="body2" color="warning.main">
-          TODO: Implement interactive Konva canvas showing parent micrograph with child overlay,
-          drag/resize/rotate controls, and scale bar tracing.
-        </Typography>
-        <Box sx={{ p: 4, bgcolor: 'background.default', borderRadius: 1, textAlign: 'center' }}>
-          <Typography color="text.secondary">
-            Location method: {formData.locationMethod}
-          </Typography>
-          <Typography color="text.secondary">
-            Scale method: {formData.scaleMethod}
-          </Typography>
-          <Typography variant="caption" color="text.secondary">
-            Canvas implementation coming soon...
-          </Typography>
-        </Box>
       </Stack>
     );
   };
