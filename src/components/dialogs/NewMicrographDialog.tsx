@@ -1675,6 +1675,29 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
     // Different scale options based on location method
     const isScaledRectangle = formData.locationMethod === 'Locate as a scaled rectangle';
 
+    // Check if there are any micrographs with matching aspect ratio
+    const currentAspectRatio = formData.micrographWidth / formData.micrographHeight;
+    const hasMatchingAspectRatio = (() => {
+      const project = useAppStore.getState().project;
+      if (!project) return false;
+
+      const tolerance = 0.01; // 1% tolerance for aspect ratio matching
+
+      for (const dataset of project.datasets || []) {
+        for (const sample of dataset.samples || []) {
+          for (const micrograph of sample.micrographs || []) {
+            if (micrograph.imageWidth && micrograph.imageHeight) {
+              const ratio = micrograph.imageWidth / micrograph.imageHeight;
+              if (Math.abs(ratio - currentAspectRatio) / currentAspectRatio < tolerance) {
+                return true;
+              }
+            }
+          }
+        }
+      }
+      return false;
+    })();
+
     return (
       <Stack spacing={3}>
         <Typography variant="body2" color="text.secondary">
@@ -1737,14 +1760,18 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
             Specify the physical dimensions of the image
           </Typography>
 
-          <FormControlLabel
-            value="Copy Size from Existing Micrograph"
-            control={<Radio />}
-            label="Copy Size from Existing Micrograph"
-          />
-          <Typography variant="caption" color="text.secondary" sx={{ ml: 4, mt: -1 }}>
-            Use the same scale as another micrograph
-          </Typography>
+          {hasMatchingAspectRatio && (
+            <>
+              <FormControlLabel
+                value="Copy Size from Existing Micrograph"
+                control={<Radio />}
+                label="Copy Size from Existing Micrograph"
+              />
+              <Typography variant="caption" color="text.secondary" sx={{ ml: 4, mt: -1 }}>
+                Use the same scale as another micrograph with matching aspect ratio
+              </Typography>
+            </>
+          )}
         </RadioGroup>
       </Stack>
     );
