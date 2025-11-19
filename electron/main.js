@@ -2,6 +2,9 @@ const { app, BrowserWindow, Menu, ipcMain, dialog, screen, nativeTheme } = requi
 const path = require('path');
 const fs = require('fs');
 const log = require('electron-log');
+const projectFolders = require('./projectFolders');
+const imageConverter = require('./imageConverter');
+const projectSerializer = require('./projectSerializer');
 
 // Handle EPIPE errors at process level (prevents crash on broken stdout pipe)
 process.stdout.on('error', (err) => {
@@ -789,6 +792,224 @@ ipcMain.handle('image:clear-all-caches', async () => {
     return { success: true, before: statsBefore, after: statsAfter };
   } catch (error) {
     log.error('Error clearing all caches:', error);
+    throw error;
+  }
+});
+
+/**
+ * ============================================================================
+ * PROJECT FOLDER STRUCTURE HANDLERS
+ * ============================================================================
+ */
+
+/**
+ * Get the path to the StraboMicro2Data root directory
+ */
+ipcMain.handle('project:get-data-path', async () => {
+  try {
+    const dataPath = projectFolders.getStraboMicro2DataPath();
+    log.info('[IPC] StraboMicro2Data path:', dataPath);
+    return dataPath;
+  } catch (error) {
+    log.error('[IPC] Error getting data path:', error);
+    throw error;
+  }
+});
+
+/**
+ * Ensure the StraboMicro2Data directory exists
+ */
+ipcMain.handle('project:ensure-data-dir', async () => {
+  try {
+    const dataPath = await projectFolders.ensureStraboMicro2DataDir();
+    log.info('[IPC] Ensured StraboMicro2Data directory exists:', dataPath);
+    return dataPath;
+  } catch (error) {
+    log.error('[IPC] Error ensuring data directory:', error);
+    throw error;
+  }
+});
+
+/**
+ * Create complete folder structure for a new project
+ */
+ipcMain.handle('project:create-folders', async (event, projectId) => {
+  try {
+    log.info(`[IPC] Creating project folders for: ${projectId}`);
+    const folderPaths = await projectFolders.createProjectFolders(projectId);
+    log.info('[IPC] Successfully created project folders:', folderPaths);
+    return folderPaths;
+  } catch (error) {
+    log.error('[IPC] Error creating project folders:', error);
+    throw error;
+  }
+});
+
+/**
+ * Check if a project folder exists
+ */
+ipcMain.handle('project:folder-exists', async (event, projectId) => {
+  try {
+    const exists = await projectFolders.projectFolderExists(projectId);
+    log.info(`[IPC] Project folder exists for ${projectId}:`, exists);
+    return exists;
+  } catch (error) {
+    log.error('[IPC] Error checking project folder:', error);
+    throw error;
+  }
+});
+
+/**
+ * Get paths to all subfolders for a project
+ */
+ipcMain.handle('project:get-folder-paths', async (event, projectId) => {
+  try {
+    const paths = projectFolders.getProjectFolderPaths(projectId);
+    log.info(`[IPC] Project folder paths for ${projectId}:`, paths);
+    return paths;
+  } catch (error) {
+    log.error('[IPC] Error getting project folder paths:', error);
+    throw error;
+  }
+});
+
+/**
+ * List all project folders in StraboMicro2Data
+ */
+ipcMain.handle('project:list-folders', async () => {
+  try {
+    const projectIds = await projectFolders.listProjectFolders();
+    log.info(`[IPC] Found ${projectIds.length} project folder(s)`);
+    return projectIds;
+  } catch (error) {
+    log.error('[IPC] Error listing project folders:', error);
+    throw error;
+  }
+});
+
+/**
+ * Delete a project folder (with confirmation)
+ */
+ipcMain.handle('project:delete-folder', async (event, projectId) => {
+  try {
+    log.info(`[IPC] Deleting project folder: ${projectId}`);
+    await projectFolders.deleteProjectFolder(projectId);
+    log.info('[IPC] Successfully deleted project folder');
+    return { success: true };
+  } catch (error) {
+    log.error('[IPC] Error deleting project folder:', error);
+    throw error;
+  }
+});
+
+/**
+ * ============================================================================
+ * IMAGE CONVERSION HANDLERS
+ * ============================================================================
+ */
+
+/**
+ * Convert and save a micrograph image to the project images folder
+ */
+ipcMain.handle('image:convert-and-save-micrograph', async (event, sourcePath, projectId, micrographId) => {
+  try {
+    log.info(`[IPC] Converting and saving micrograph image: ${sourcePath}`);
+    const dataPath = projectFolders.getStraboMicro2DataPath();
+    const result = await imageConverter.convertAndSaveMicrographImage(
+      sourcePath,
+      projectId,
+      micrographId,
+      dataPath
+    );
+    log.info('[IPC] Successfully converted and saved micrograph image');
+    return result;
+  } catch (error) {
+    log.error('[IPC] Error converting and saving micrograph image:', error);
+    throw error;
+  }
+});
+
+/**
+ * Generate image variants (uiImages, compositeImages, thumbnails, etc.)
+ */
+ipcMain.handle('image:generate-variants', async (event, sourcePath, projectId, micrographId) => {
+  try {
+    log.info(`[IPC] Generating image variants for micrograph: ${micrographId}`);
+    const dataPath = projectFolders.getStraboMicro2DataPath();
+    const result = await imageConverter.generateImageVariants(
+      sourcePath,
+      projectId,
+      micrographId,
+      dataPath
+    );
+    log.info('[IPC] Successfully generated image variants');
+    return result;
+  } catch (error) {
+    log.error('[IPC] Error generating image variants:', error);
+    throw error;
+  }
+});
+
+/**
+ * Get image dimensions
+ */
+ipcMain.handle('image:get-dimensions', async (event, imagePath) => {
+  try {
+    const dimensions = await imageConverter.getImageDimensions(imagePath);
+    log.info(`[IPC] Image dimensions for ${imagePath}:`, dimensions);
+    return dimensions;
+  } catch (error) {
+    log.error('[IPC] Error getting image dimensions:', error);
+    throw error;
+  }
+});
+
+/**
+ * Check if file is a valid image
+ */
+ipcMain.handle('image:is-valid', async (event, filePath) => {
+  try {
+    const isValid = await imageConverter.isValidImage(filePath);
+    log.info(`[IPC] Image validity check for ${filePath}: ${isValid}`);
+    return isValid;
+  } catch (error) {
+    log.error('[IPC] Error checking image validity:', error);
+    return false;
+  }
+});
+
+/**
+ * ============================================================================
+ * PROJECT SERIALIZATION HANDLERS
+ * ============================================================================
+ */
+
+/**
+ * Save project.json to disk (legacy format)
+ */
+ipcMain.handle('project:save-json', async (event, project, projectId) => {
+  try {
+    log.info(`[IPC] Saving project.json for: ${projectId}`);
+    const savedPath = await projectSerializer.saveProjectJson(project, projectId);
+    log.info('[IPC] Successfully saved project.json');
+    return { success: true, path: savedPath };
+  } catch (error) {
+    log.error('[IPC] Error saving project.json:', error);
+    throw error;
+  }
+});
+
+/**
+ * Load project.json from disk
+ */
+ipcMain.handle('project:load-json', async (event, projectId) => {
+  try {
+    log.info(`[IPC] Loading project.json for: ${projectId}`);
+    const project = await projectSerializer.loadProjectJson(projectId);
+    log.info('[IPC] Successfully loaded project.json');
+    return project;
+  } catch (error) {
+    log.error('[IPC] Error loading project.json:', error);
     throw error;
   }
 });
