@@ -24,6 +24,7 @@ import {
   buildMicrographIndex,
   buildSpotIndex,
 } from './helpers';
+import type { TiledViewerRef } from '@/components/TiledViewer';
 
 // ============================================================================
 // TYPE DEFINITIONS
@@ -54,6 +55,7 @@ interface AppState {
   showSpotLabels: boolean;
   showMicrographOutlines: boolean;
   spotOverlayOpacity: number;
+  viewerRef: React.RefObject<TiledViewerRef> | null;
 
   // ========== UI STATE (persisted) ==========
   sidebarTab: SidebarTab;
@@ -108,6 +110,7 @@ interface AppState {
   setShowSpotLabels: (show: boolean) => void;
   setShowMicrographOutlines: (show: boolean) => void;
   setSpotOverlayOpacity: (opacity: number) => void;
+  setViewerRef: (ref: React.RefObject<TiledViewerRef> | null) => void;
 
   // ========== UI ACTIONS ==========
   setSidebarTab: (tab: SidebarTab) => void;
@@ -141,6 +144,7 @@ export const useAppStore = create<AppState>()(
           showSpotLabels: true,
           showMicrographOutlines: true,
           spotOverlayOpacity: 0.7,
+          viewerRef: null,
 
           sidebarTab: 'samples',
           detailsPanelOpen: true,
@@ -461,6 +465,8 @@ export const useAppStore = create<AppState>()(
           setShowMicrographOutlines: (show) => set({ showMicrographOutlines: show }),
 
           setSpotOverlayOpacity: (opacity) => set({ spotOverlayOpacity: opacity }),
+
+          setViewerRef: (ref) => set({ viewerRef: ref }),
 
           // ========== UI ACTIONS ==========
 

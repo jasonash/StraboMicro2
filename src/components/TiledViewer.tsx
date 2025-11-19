@@ -12,7 +12,7 @@
  * - Support for 100MB+ TIFF files
  */
 
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState, useCallback, useImperativeHandle, forwardRef } from 'react';
 import { Stage, Layer, Image as KonvaImage } from 'react-konva';
 import './TiledViewer.css';
 
@@ -23,6 +23,10 @@ const ZOOM_STEP = 1.1;
 
 interface TiledViewerProps {
   imagePath: string | null;
+}
+
+export interface TiledViewerRef {
+  fitToScreen: () => void;
 }
 
 interface TileInfo {
@@ -48,7 +52,7 @@ interface ThumbnailState {
   dataUrl: string;
 }
 
-export const TiledViewer: React.FC<TiledViewerProps> = ({ imagePath }) => {
+export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(({ imagePath }, ref) => {
   const stageRef = useRef<any>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -424,6 +428,11 @@ export const TiledViewer: React.FC<TiledViewerProps> = ({ imagePath }) => {
     fitToScreen(imageMetadata.width, imageMetadata.height);
   }, [imageMetadata, fitToScreen]);
 
+  // Expose fitToScreen method to parent components via ref
+  useImperativeHandle(ref, () => ({
+    fitToScreen: handleResetZoom,
+  }), [handleResetZoom]);
+
   return (
     <div className="tiled-viewer" ref={containerRef}>
       {isLoading && (
@@ -442,19 +451,6 @@ export const TiledViewer: React.FC<TiledViewerProps> = ({ imagePath }) => {
 
       {imageMetadata && (
         <>
-          <div className="tiled-viewer-toolbar">
-            <div className="zoom-info">
-              Zoom: {(zoom * 100).toFixed(0)}%
-            </div>
-            <button onClick={handleResetZoom} className="reset-zoom-btn">
-              Fit to Screen
-            </button>
-            <div className="image-info">
-              {imageMetadata.width} × {imageMetadata.height} px
-              {imageMetadata.fromCache && <span className="cache-badge">Cached</span>}
-            </div>
-          </div>
-
           <Stage
             ref={stageRef}
             width={stageSize.width}
@@ -505,4 +501,4 @@ export const TiledViewer: React.FC<TiledViewerProps> = ({ imagePath }) => {
       )}
     </div>
   );
-};
+});
