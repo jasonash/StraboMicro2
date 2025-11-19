@@ -13,25 +13,45 @@ const Viewer: React.FC = () => {
   const project = useAppStore((state) => state.project);
   const activeMicrographId = useAppStore((state) => state.activeMicrographId);
 
-  // Find the active micrograph's image path
-  const activeMicrographPath = React.useMemo(() => {
-    if (!project || !activeMicrographId || !project.datasets) return null;
+  // Build the full path to the active micrograph's image
+  const [activeMicrographPath, setActiveMicrographPath] = React.useState<string | null>(null);
 
-    // Search all datasets -> samples -> micrographs for the active one
-    for (const dataset of project.datasets) {
-      if (!dataset.samples) continue;
+  React.useEffect(() => {
+    const buildImagePath = async () => {
+      if (!project || !activeMicrographId || !project.datasets || !window.api) {
+        setActiveMicrographPath(null);
+        return;
+      }
 
-      for (const sample of dataset.samples) {
-        if (!sample.micrographs) continue;
+      // Search for the active micrograph
+      for (const dataset of project.datasets) {
+        if (!dataset.samples) continue;
 
-        const micrograph = sample.micrographs.find((m) => m.id === activeMicrographId);
-        if (micrograph) {
-          return micrograph.imagePath || null;
+        for (const sample of dataset.samples) {
+          if (!sample.micrographs) continue;
+
+          const micrograph = sample.micrographs.find((m) => m.id === activeMicrographId);
+          if (micrograph && micrograph.imagePath) {
+            // imagePath is now just the micrograph ID
+            // Build the full path: ~/Documents/StraboMicro2Data/<project-id>/images/<micrograph-id>
+            try {
+              const folderPaths = await window.api.getProjectFolderPaths(project.id);
+              const fullPath = `${folderPaths.images}/${micrograph.imagePath}`;
+              console.log(`[Viewer] Loading micrograph from: ${fullPath}`);
+              setActiveMicrographPath(fullPath);
+            } catch (error) {
+              console.error('[Viewer] Error building image path:', error);
+              setActiveMicrographPath(null);
+            }
+            return;
+          }
         }
       }
-    }
 
-    return null;
+      setActiveMicrographPath(null);
+    };
+
+    buildImagePath();
   }, [project, activeMicrographId]);
 
   // Load collapse state from localStorage
