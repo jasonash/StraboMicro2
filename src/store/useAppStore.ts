@@ -180,10 +180,33 @@ export const useAppStore = create<AppState>()(
             spotIndex: new Map(),
           }),
 
-          saveProject: () => {
-            // TODO: Implement actual file save via Electron IPC
-            // For now, just mark as clean
-            set({ isDirty: false });
+          saveProject: async () => {
+            const { project, isDirty } = get();
+
+            if (!project) {
+              console.warn('[Store] No project to save');
+              return;
+            }
+
+            if (!isDirty) {
+              console.log('[Store] Project is already clean, skipping save');
+              return;
+            }
+
+            try {
+              // Save project.json to disk (legacy format)
+              if (window.api) {
+                console.log(`[Store] Saving project.json for: ${project.id}`);
+                await window.api.saveProjectJson(project, project.id);
+                console.log('[Store] Successfully saved project.json');
+                set({ isDirty: false });
+              } else {
+                console.warn('[Store] window.api not available, cannot save project');
+              }
+            } catch (error) {
+              console.error('[Store] Error saving project:', error);
+              throw error;
+            }
           },
 
           markDirty: () => set({ isDirty: true }),
