@@ -530,15 +530,11 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
 
         console.log('[NewMicrographDialog] Image conversion successful:', conversionResult);
 
-        // Generate image variants (uiImages, compositeImages, thumbnails, etc.)
-        // Note: For now, we'll use the original JPEG as source. Later this will be the composite image.
-        const variantsResult = await window.api.generateImageVariants(
-          conversionResult.outputPath,
-          projectId,
-          micrographId
-        );
-
-        console.log('[NewMicrographDialog] Image variants generated:', variantsResult);
+        // NOTE: Image variants (uiImages, compositeImages, thumbnails, etc.) are NOT generated here.
+        // They will only be generated when:
+        // 1. Saving project to .smz file
+        // 2. Uploading to Strabo server
+        // For local work in StraboMicro2, only the images/ folder is populated.
       } else {
         console.warn('[NewMicrographDialog] window.api not available or no image path - skipping image conversion');
       }
