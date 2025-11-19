@@ -429,9 +429,17 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
     onClose();
   };
 
-  const handleFinish = () => {
+  const handleFinish = async () => {
     if (!sampleId) {
       console.error('Cannot create micrograph: sampleId is required');
+      return;
+    }
+
+    // Get project ID from store
+    const projectId = useAppStore.getState().project?.id;
+    if (!projectId) {
+      console.error('Cannot create micrograph: project ID not found');
+      alert('Error: No active project found. Please create a project first.');
       return;
     }
 
@@ -506,53 +514,87 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
       return { orientationMethod: 'unoriented' as const };
     })();
 
-    // Create micrograph object
-    const micrograph = {
-      id: crypto.randomUUID(),
-      name: formData.micrographName || formData.micrographFileName || 'Unnamed Micrograph',
-      notes: formData.micrographNotes || undefined,
-      imageFilename: formData.micrographFileName,
-      imagePath: formData.micrographFilePath,
-      imageWidth: formData.micrographWidth,
-      imageHeight: formData.micrographHeight,
-      width: formData.micrographWidth, // Legacy field
-      height: formData.micrographHeight, // Legacy field
-      opacity: 1.0,
-      polish: formData.micrographPolished,
-      polishDescription: formData.micrographPolishDescription || undefined,
-      orientationInfo,
-      scalePixelsPerCentimeter,
-      parentID: parentMicrographId || undefined,
-      instrument: {
-        instrumentType: formData.instrumentType || undefined,
-        otherInstrumentType: formData.otherInstrumentType || undefined,
-        dataType: formData.dataType || undefined,
-        imageType: formData.imageType || undefined,
-        instrumentBrand: formData.instrumentBrand || undefined,
-        instrumentModel: formData.instrumentModel || undefined,
-        university: formData.university || undefined,
-        laboratory: formData.laboratory || undefined,
-        dataCollectionSoftware: formData.dataCollectionSoftware || undefined,
-        dataCollectionSoftwareVersion: formData.dataCollectionSoftwareVersion || undefined,
-        postProcessingSoftware: formData.postProcessingSoftware || undefined,
-        postProcessingSoftwareVersion: formData.postProcessingSoftwareVersion || undefined,
-        filamentType: formData.filamentType || undefined,
-        instrumentNotes: formData.instrumentNotes || undefined,
-      },
-      isMicroVisible: true,
-      isFlipped: false,
-    };
+    // Generate micrograph ID
+    const micrographId = crypto.randomUUID();
 
-    // Add micrograph to store
-    useAppStore.getState().addMicrograph(sampleId, micrograph);
+    try {
+      // Convert and save image to project folder
+      if (window.api && formData.micrographFilePath) {
+        console.log(`[NewMicrographDialog] Converting and saving image for micrograph ${micrographId}`);
 
-    // Select the newly created micrograph
-    useAppStore.getState().selectMicrograph(micrograph.id);
+        const conversionResult = await window.api.convertAndSaveMicrographImage(
+          formData.micrographFilePath,
+          projectId,
+          micrographId
+        );
 
-    console.log('Micrograph created successfully:', micrograph.id);
+        console.log('[NewMicrographDialog] Image conversion successful:', conversionResult);
 
-    // Close dialog
-    handleCancel();
+        // Generate image variants (uiImages, compositeImages, thumbnails, etc.)
+        // Note: For now, we'll use the original JPEG as source. Later this will be the composite image.
+        const variantsResult = await window.api.generateImageVariants(
+          conversionResult.outputPath,
+          projectId,
+          micrographId
+        );
+
+        console.log('[NewMicrographDialog] Image variants generated:', variantsResult);
+      } else {
+        console.warn('[NewMicrographDialog] window.api not available or no image path - skipping image conversion');
+      }
+
+      // Create micrograph object
+      const micrograph = {
+        id: micrographId,
+        name: formData.micrographName || formData.micrographFileName || 'Unnamed Micrograph',
+        notes: formData.micrographNotes || undefined,
+        imageFilename: formData.micrographFileName,
+        // imagePath is now just the micrograph ID (image stored in project folder)
+        imagePath: micrographId,
+        imageWidth: formData.micrographWidth,
+        imageHeight: formData.micrographHeight,
+        width: formData.micrographWidth, // Legacy field
+        height: formData.micrographHeight, // Legacy field
+        opacity: 1.0,
+        polish: formData.micrographPolished,
+        polishDescription: formData.micrographPolishDescription || undefined,
+        orientationInfo,
+        scalePixelsPerCentimeter,
+        parentID: parentMicrographId || undefined,
+        instrument: {
+          instrumentType: formData.instrumentType || undefined,
+          otherInstrumentType: formData.otherInstrumentType || undefined,
+          dataType: formData.dataType || undefined,
+          imageType: formData.imageType || undefined,
+          instrumentBrand: formData.instrumentBrand || undefined,
+          instrumentModel: formData.instrumentModel || undefined,
+          university: formData.university || undefined,
+          laboratory: formData.laboratory || undefined,
+          dataCollectionSoftware: formData.dataCollectionSoftware || undefined,
+          dataCollectionSoftwareVersion: formData.dataCollectionSoftwareVersion || undefined,
+          postProcessingSoftware: formData.postProcessingSoftware || undefined,
+          postProcessingSoftwareVersion: formData.postProcessingSoftwareVersion || undefined,
+          filamentType: formData.filamentType || undefined,
+          instrumentNotes: formData.instrumentNotes || undefined,
+        },
+        isMicroVisible: true,
+        isFlipped: false,
+      };
+
+      // Add micrograph to store
+      useAppStore.getState().addMicrograph(sampleId, micrograph);
+
+      // Select the newly created micrograph
+      useAppStore.getState().selectMicrograph(micrograph.id);
+
+      console.log('Micrograph created successfully:', micrograph.id);
+
+      // Close dialog
+      handleCancel();
+    } catch (error) {
+      console.error('[NewMicrographDialog] Error creating micrograph:', error);
+      alert(`Failed to create micrograph: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
   };
 
   const canProceed = () => {
