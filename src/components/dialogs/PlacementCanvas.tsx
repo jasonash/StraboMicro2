@@ -414,7 +414,7 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
                 <Rect
                   width={childWidth}
                   height={childHeight}
-                  stroke="#00ff00"
+                  stroke="#e44c65"
                   strokeWidth={2 / scale}
                   listening={false}
                 />
@@ -426,10 +426,15 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
               <Transformer
                 ref={transformerRef}
                 rotateEnabled={true}
-                borderStroke="#00ff00"
-                anchorStroke="#00ff00"
-                anchorFill="#ffffff"
-                anchorSize={8 / scale}
+                borderStroke="#e44c65"
+                anchorStroke="#e44c65"
+                anchorFill="#e44c65"
+                anchorSize={5 / scale}
+                anchorCornerRadius={2.5 / scale}
+                anchorStrokeWidth={2 / scale}
+                enabledAnchors={['top-left', 'top-right', 'bottom-left', 'bottom-right']}
+                keepRatio={true}
+                rotateAnchorOffset={8 / scale}
               />
             )}
           </Layer>
