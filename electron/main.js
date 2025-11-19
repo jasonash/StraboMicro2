@@ -4,6 +4,7 @@ const fs = require('fs');
 const log = require('electron-log');
 const projectFolders = require('./projectFolders');
 const imageConverter = require('./imageConverter');
+const projectSerializer = require('./projectSerializer');
 
 // Handle EPIPE errors at process level (prevents crash on broken stdout pipe)
 process.stdout.on('error', (err) => {
@@ -974,5 +975,41 @@ ipcMain.handle('image:is-valid', async (event, filePath) => {
   } catch (error) {
     log.error('[IPC] Error checking image validity:', error);
     return false;
+  }
+});
+
+/**
+ * ============================================================================
+ * PROJECT SERIALIZATION HANDLERS
+ * ============================================================================
+ */
+
+/**
+ * Save project.json to disk (legacy format)
+ */
+ipcMain.handle('project:save-json', async (event, project, projectId) => {
+  try {
+    log.info(`[IPC] Saving project.json for: ${projectId}`);
+    const savedPath = await projectSerializer.saveProjectJson(project, projectId);
+    log.info('[IPC] Successfully saved project.json');
+    return { success: true, path: savedPath };
+  } catch (error) {
+    log.error('[IPC] Error saving project.json:', error);
+    throw error;
+  }
+});
+
+/**
+ * Load project.json from disk
+ */
+ipcMain.handle('project:load-json', async (event, projectId) => {
+  try {
+    log.info(`[IPC] Loading project.json for: ${projectId}`);
+    const project = await projectSerializer.loadProjectJson(projectId);
+    log.info('[IPC] Successfully loaded project.json');
+    return project;
+  } catch (error) {
+    log.error('[IPC] Error loading project.json:', error);
+    throw error;
   }
 });

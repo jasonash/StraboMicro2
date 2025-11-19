@@ -156,5 +156,12 @@ interface Window {
       format: string;
     }>;
     isValidImage: (filePath: string) => Promise<boolean>;
+
+    // Project serialization
+    saveProjectJson: (project: any, projectId: string) => Promise<{
+      success: boolean;
+      path: string;
+    }>;
+    loadProjectJson: (projectId: string) => Promise<any>;
   };
 }

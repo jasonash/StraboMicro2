@@ -63,4 +63,8 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('image:generate-variants', sourcePath, projectId, micrographId),
   getImageDimensions: (imagePath) => ipcRenderer.invoke('image:get-dimensions', imagePath),
   isValidImage: (filePath) => ipcRenderer.invoke('image:is-valid', filePath),
+
+  // Project serialization
+  saveProjectJson: (project, projectId) => ipcRenderer.invoke('project:save-json', project, projectId),
+  loadProjectJson: (projectId) => ipcRenderer.invoke('project:load-json', projectId),
 });
