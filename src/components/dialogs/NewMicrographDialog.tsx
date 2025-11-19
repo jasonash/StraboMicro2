@@ -362,6 +362,17 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
     }
   }, [formData.instrumentType, formData.dataType]);
 
+  // Reset canvas tool to 'pointer' when entering the scale bar step
+  useEffect(() => {
+    const isScaleBarStep =
+      (activeStep === 6 && !shouldShowInstrumentSettings()) ||
+      (activeStep === 7 && shouldShowInstrumentSettings());
+
+    if (isScaleBarStep && formData.scaleMethod === 'Trace Scale Bar') {
+      setCanvasTool('pointer');
+    }
+  }, [activeStep, formData.scaleMethod]);
+
   const [scratchIdentifier, setScratchIdentifier] = useState<string | null>(null);
   const [conversionProgress, setConversionProgress] = useState<{ stage: string; percent: number } | null>(null);
 
@@ -401,9 +412,9 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
             console.log('[NewMicrographDialog] Loading tiles from scratch JPEG...');
             const result = await window.api.loadImageWithTiles(conversionResult.scratchPath);
 
-            // Load thumbnail
-            const thumbnailDataUrl = await window.api.loadThumbnail(result.hash);
-            setMicrographPreviewUrl(thumbnailDataUrl);
+            // Load medium resolution (2048px) for better quality in scale bar tracing
+            const mediumDataUrl = await window.api.loadMedium(result.hash);
+            setMicrographPreviewUrl(mediumDataUrl);
 
             // Update form data with image dimensions and file info
             setFormData((prev) => ({
@@ -624,6 +635,38 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
     }
   };
 
+  const validateOrientationStep = () => {
+    // Unoriented is always valid
+    if (formData.orientationMethod === 'unoriented') {
+      return true;
+    }
+
+    // Trend and Plunge of Edges: Need TWO of THREE sets
+    if (formData.orientationMethod === 'trendPlunge') {
+      const hasTopEdge = formData.topTrend !== '' && formData.topPlunge !== '';
+      const hasSideEdge = formData.sideTrend !== '' && formData.sidePlunge !== '';
+      const hasStrikeDip = formData.trendPlungeStrike !== '' && formData.trendPlungeDip !== '';
+
+      const completedSets = [hasTopEdge, hasSideEdge, hasStrikeDip].filter(Boolean).length;
+      return completedSets >= 2;
+    }
+
+    // Fabric Reference Frame
+    if (formData.orientationMethod === 'fabricReference') {
+      // Must have fabric reference selection (XZ, YZ, or XY)
+      if (!formData.fabricReference) return false;
+
+      // Need EITHER (Strike AND Dip) OR (Trend AND (Plunge OR Rake))
+      const hasStrikeDip = formData.fabricStrike !== '' && formData.fabricDip !== '';
+      const hasTrendPlunge = formData.fabricTrend !== '' && formData.fabricPlunge !== '';
+      const hasTrendRake = formData.fabricTrend !== '' && formData.fabricRake !== '';
+
+      return hasStrikeDip || hasTrendPlunge || hasTrendRake;
+    }
+
+    return false;
+  };
+
   const canProceed = () => {
     switch (activeStep) {
       case 0: // Load Reference Micrograph
@@ -660,13 +703,13 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
           return true;
         } else {
           // This is Step 4: Micrograph Orientation (when Instrument Settings NOT shown)
-          return true; // Orientation has no required fields
+          return validateOrientationStep();
         }
 
       case 5: // Either Micrograph Orientation (when Instrument Settings IS shown) OR Set Micrograph Scale (when NOT shown)
         if (shouldShowInstrumentSettings()) {
           // This is Step 5: Micrograph Orientation (when Instrument Settings IS shown)
-          return true; // Orientation has no required fields
+          return validateOrientationStep();
         } else {
           // This is Step 5: Set Micrograph Scale (when Instrument Settings NOT shown)
           return formData.scaleMethod !== '';
@@ -729,34 +772,7 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
     setDetectors((prev) => prev.filter((_, i) => i !== index));
   };
 
-  const validateOrientationStep = () => {
-    if (formData.orientationMethod === 'unoriented') {
-      return true; // No validation needed
-    }
-
-    if (formData.orientationMethod === 'trendPlunge') {
-      // Need TWO of THREE data sets:
-      // 1. Top edge (trend + plunge)
-      // 2. Side edge (trend + plunge)
-      // 3. Strike and Dip
-      const hasTop = formData.topTrend.trim() !== '' && formData.topPlunge.trim() !== '';
-      const hasSide = formData.sideTrend.trim() !== '' && formData.sidePlunge.trim() !== '';
-      const hasStrikeDip =
-        formData.trendPlungeStrike.trim() !== '' && formData.trendPlungeDip.trim() !== '';
-
-      const setCount = [hasTop, hasSide, hasStrikeDip].filter(Boolean).length;
-      return setCount >= 2;
-    }
-
-    if (formData.orientationMethod === 'fabricReference') {
-      // For fabric reference, no fields are strictly required - they're all optional
-      return true;
-    }
-
-    return true;
-  };
-
-    const renderOrientationStep = () => {
+  const renderOrientationStep = () => {
     return (
       <Stack spacing={3}>
         <Typography variant="h6">Orientation of Reference Micrograph</Typography>
@@ -1291,6 +1307,31 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
     } else if (formData.scaleMethod === 'Pixel Conversion Factor') {
       return (
         <Stack spacing={2}>
+          {/* Micrograph thumbnail preview */}
+          {micrographPreviewUrl && (
+            <Box
+              sx={{
+                display: 'flex',
+                justifyContent: 'center',
+                p: 2,
+                border: '1px solid',
+                borderColor: 'divider',
+                borderRadius: 1,
+                bgcolor: 'background.paper',
+              }}
+            >
+              <Box
+                component="img"
+                src={micrographPreviewUrl}
+                alt="Micrograph preview"
+                sx={{
+                  maxWidth: '100%',
+                  maxHeight: 400,
+                  objectFit: 'contain',
+                }}
+              />
+            </Box>
+          )}
           <Typography variant="body2" color="text.secondary">
             Enter the number of pixels that corresponds to a known physical length.
           </Typography>
@@ -1331,6 +1372,31 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
     } else if (formData.scaleMethod === 'Provide Width/Height of Image') {
       return (
         <Stack spacing={2}>
+          {/* Micrograph thumbnail preview */}
+          {micrographPreviewUrl && (
+            <Box
+              sx={{
+                display: 'flex',
+                justifyContent: 'center',
+                p: 2,
+                border: '1px solid',
+                borderColor: 'divider',
+                borderRadius: 1,
+                bgcolor: 'background.paper',
+              }}
+            >
+              <Box
+                component="img"
+                src={micrographPreviewUrl}
+                alt="Micrograph preview"
+                sx={{
+                  maxWidth: '100%',
+                  maxHeight: 400,
+                  objectFit: 'contain',
+                }}
+              />
+            </Box>
+          )}
           <Typography variant="body2" color="text.secondary">
             Enter the physical width and/or height of the entire micrograph image. At least one
             dimension is required.
