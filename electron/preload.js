@@ -15,6 +15,7 @@ contextBridge.exposeInMainWorld('api', {
   onClearProject: (callback) => ipcRenderer.on('menu:clear-project', callback),
   onQuickLoadImage: (callback) => ipcRenderer.on('menu:quick-load-image', callback),
   onLoadSampleProject: (callback) => ipcRenderer.on('menu:load-sample-project', callback),
+  onResetEverything: (callback) => ipcRenderer.on('menu:reset-everything', callback),
 
   // Undo/Redo
   onUndo: (callback) => ipcRenderer.on('menu:undo', callback),
@@ -67,4 +68,7 @@ contextBridge.exposeInMainWorld('api', {
   // Project serialization
   saveProjectJson: (project, projectId) => ipcRenderer.invoke('project:save-json', project, projectId),
   loadProjectJson: (projectId) => ipcRenderer.invoke('project:load-json', projectId),
+
+  // Debug utilities
+  resetEverything: () => ipcRenderer.invoke('debug:reset-everything'),
 });

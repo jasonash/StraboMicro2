@@ -243,6 +243,24 @@ function App() {
       console.log('Sample project loaded successfully!');
     });
 
+    // Reset Everything (Clean Test)
+    window.api.onResetEverything(async () => {
+      console.log('Resetting everything for clean test...');
+
+      try {
+        const result = await window.api.resetEverything();
+        console.log('Reset complete:', result);
+
+        // Load the test project into the store
+        useAppStore.getState().loadProject(result.project, null);
+
+        alert(`✅ Reset Complete!\n\n${result.message}\n\nTest project loaded with 1 dataset and 1 sample (no images).`);
+      } catch (error) {
+        console.error('Error during reset:', error);
+        alert(`❌ Error during reset: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      }
+    });
+
     // Undo menu item
     window.api.onUndo(() => {
       const temporalState = useTemporalStore.getState();

@@ -73,6 +73,7 @@ interface Window {
     onClearProject: (callback: () => void) => void;
     onQuickLoadImage: (callback: () => void) => void;
     onLoadSampleProject: (callback: () => void) => void;
+    onResetEverything: (callback: () => void) => void;
     onUndo: (callback: () => void) => void;
     onRedo: (callback: () => void) => void;
     openTiffDialog: () => Promise<string | null>;
@@ -163,5 +164,12 @@ interface Window {
       path: string;
     }>;
     loadProjectJson: (projectId: string) => Promise<any>;
+
+    // Debug utilities
+    resetEverything: () => Promise<{
+      success: boolean;
+      project: any;
+      message: string;
+    }>;
   };
 }

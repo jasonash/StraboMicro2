@@ -342,6 +342,15 @@ function createWindow() {
             }
           }
         },
+        {
+          label: 'Reset Everything (Clean Test)',
+          accelerator: 'CmdOrCtrl+Shift+R',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('menu:reset-everything');
+            }
+          }
+        },
         { type: 'separator' },
         { role: 'toggleDevTools' },
       ],
@@ -1010,6 +1019,103 @@ ipcMain.handle('project:load-json', async (event, projectId) => {
     return project;
   } catch (error) {
     log.error('[IPC] Error loading project.json:', error);
+    throw error;
+  }
+});
+
+/**
+ * Reset everything for clean testing
+ * - Clears StraboMicro2Data folder
+ * - Clears tile cache
+ * - Creates test project with dataset and sample (no images)
+ */
+ipcMain.handle('debug:reset-everything', async () => {
+  try {
+    log.info('[IPC] === RESET EVERYTHING - Starting clean test ===');
+
+    // Step 1: Clear StraboMicro2Data folder
+    const dataPath = projectFolders.getStraboMicro2DataPath();
+    log.info(`[IPC] Clearing StraboMicro2Data folder: ${dataPath}`);
+
+    try {
+      await fs.promises.rm(dataPath, { recursive: true, force: true });
+      log.info('[IPC] Successfully deleted StraboMicro2Data folder');
+    } catch (error) {
+      if (error.code !== 'ENOENT') {
+        log.warn('[IPC] Error deleting StraboMicro2Data folder:', error);
+      }
+    }
+
+    // Step 2: Clear tile cache
+    log.info('[IPC] Clearing all tile caches');
+    const tileCache = require('./tileCache');
+    await tileCache.clearAllCaches();
+    log.info('[IPC] Successfully cleared tile caches');
+
+    // Step 3: Create test project structure
+    const testProjectId = 'test-project-' + Date.now();
+    log.info(`[IPC] Creating test project: ${testProjectId}`);
+
+    const testProject = {
+      id: testProjectId,
+      name: 'Test Project',
+      startDate: '2025-01-01',
+      endDate: '2025-12-31',
+      purposeOfStudy: 'Testing and development',
+      otherTeamMembers: 'Claude Code',
+      areaOfInterest: 'Test Area',
+      gpsDatum: 'WGS84',
+      magneticDeclination: '0',
+      notes: 'Auto-generated test project for development',
+      datasets: [
+        {
+          id: 'test-dataset-1',
+          name: 'Test Dataset',
+          date: new Date().toISOString(),
+          samples: [
+            {
+              id: 'test-sample-1',
+              label: 'Test Sample 001',
+              sampleID: 'TS-001',
+              longitude: -122.4194,
+              latitude: 37.7749,
+              mainSamplingPurpose: 'Testing',
+              sampleDescription: 'Test sample for development',
+              materialType: 'Rock',
+              inplacenessOfSample: 'In-place',
+              orientedSample: 'No',
+              sampleSize: 'Medium',
+              degreeOfWeathering: 'Fresh',
+              sampleNotes: 'Auto-generated test sample',
+              sampleType: 'Hand sample',
+              color: 'Gray',
+              lithology: 'Granite',
+              micrographs: [],
+              isExpanded: false,
+              isSpotExpanded: false,
+            }
+          ]
+        }
+      ]
+    };
+
+    // Step 4: Create project folders
+    await projectFolders.createProjectFolders(testProjectId);
+    log.info('[IPC] Created test project folder structure');
+
+    // Step 5: Save project.json
+    await projectSerializer.saveProjectJson(testProject, testProjectId);
+    log.info('[IPC] Saved test project.json');
+
+    log.info('[IPC] === RESET EVERYTHING - Complete ===');
+
+    return {
+      success: true,
+      project: testProject,
+      message: 'Successfully reset everything and created test project'
+    };
+  } catch (error) {
+    log.error('[IPC] Error during reset:', error);
     throw error;
   }
 });
