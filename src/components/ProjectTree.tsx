@@ -5,7 +5,7 @@
  * Includes "Add" buttons at each level to trigger the appropriate dialog.
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Box,
   Typography,
@@ -46,6 +46,27 @@ export function ProjectTree() {
   const [expandedDatasets, setExpandedDatasets] = useState<Set<string>>(new Set());
   const [expandedSamples, setExpandedSamples] = useState<Set<string>>(new Set());
   const [expandedMicrographs, setExpandedMicrographs] = useState<Set<string>>(new Set());
+
+  // Auto-expand newly added datasets, samples, and micrographs
+  useEffect(() => {
+    if (!project?.datasets) return;
+
+    const newExpandedDatasets = new Set(expandedDatasets);
+    const newExpandedSamples = new Set(expandedSamples);
+
+    // Expand all datasets by default
+    project.datasets.forEach((dataset) => {
+      newExpandedDatasets.add(dataset.id);
+
+      // Expand all samples in each dataset
+      dataset.samples?.forEach((sample) => {
+        newExpandedSamples.add(sample.id);
+      });
+    });
+
+    setExpandedDatasets(newExpandedDatasets);
+    setExpandedSamples(newExpandedSamples);
+  }, [project?.datasets]);
 
   const toggleDataset = (datasetId: string) => {
     setExpandedDatasets((prev) => {
