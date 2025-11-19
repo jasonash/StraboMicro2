@@ -146,6 +146,60 @@ class TileGenerator {
   }
 
   /**
+   * Generate thumbnail from image path (public helper for on-demand generation)
+   *
+   * @param {string} imagePath - Path to source image
+   * @returns {Promise<Buffer>} - Thumbnail image buffer
+   */
+  async generateThumbnail(imagePath) {
+    // Get image dimensions
+    const metadata = await sharp(imagePath).metadata();
+    const width = metadata.width;
+    const height = metadata.height;
+
+    // Calculate thumbnail dimensions
+    const scale = Math.min(THUMBNAIL_SIZE / width, THUMBNAIL_SIZE / height);
+    const thumbWidth = Math.round(width * scale);
+    const thumbHeight = Math.round(height * scale);
+
+    // Generate and return buffer (don't save to cache - caller will do that)
+    const buffer = await sharp(imagePath)
+      .resize(thumbWidth, thumbHeight, { fit: 'inside' })
+      .jpeg({ quality: Math.round(JPEG_QUALITY * 100) })
+      .toBuffer();
+
+    console.log(`Generated thumbnail from ${imagePath}: ${thumbWidth}x${thumbHeight}`);
+    return buffer;
+  }
+
+  /**
+   * Generate medium resolution from image path (public helper for on-demand generation)
+   *
+   * @param {string} imagePath - Path to source image
+   * @returns {Promise<Buffer>} - Medium resolution image buffer
+   */
+  async generateMedium(imagePath) {
+    // Get image dimensions
+    const metadata = await sharp(imagePath).metadata();
+    const width = metadata.width;
+    const height = metadata.height;
+
+    // Calculate medium dimensions
+    const scale = Math.min(MEDIUM_SIZE / width, MEDIUM_SIZE / height);
+    const medWidth = Math.round(width * scale);
+    const medHeight = Math.round(height * scale);
+
+    // Generate and return buffer (don't save to cache - caller will do that)
+    const buffer = await sharp(imagePath)
+      .resize(medWidth, medHeight, { fit: 'inside' })
+      .jpeg({ quality: Math.round(JPEG_QUALITY * 100) })
+      .toBuffer();
+
+    console.log(`Generated medium from ${imagePath}: ${medWidth}x${medHeight}`);
+    return buffer;
+  }
+
+  /**
    * Generate and cache thumbnail (512x512 max) - DEPRECATED - use generateThumbnailFromFile
    *
    * @param {string} hash - Image hash

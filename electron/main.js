@@ -672,13 +672,44 @@ ipcMain.handle('image:load-thumbnail', async (event, imageHash) => {
 
 /**
  * Load medium resolution image (2048x2048 max)
+ * Generates on-demand if not cached, falls back to thumbnail for small images
  */
 ipcMain.handle('image:load-medium', async (event, imageHash) => {
   try {
-    const buffer = await tileCache.loadMedium(imageHash);
+    // Try to load from cache first
+    let buffer = await tileCache.loadMedium(imageHash);
 
+    // If not in cache, try to generate or fall back to thumbnail
     if (!buffer) {
-      throw new Error(`Medium resolution not found for hash: ${imageHash}`);
+      log.info(`[IPC] Medium resolution not cached for ${imageHash}`);
+
+      // Get the original image path from metadata
+      const metadata = await tileCache.loadMetadata(imageHash);
+      if (!metadata || !metadata.originalPath) {
+        throw new Error(`Cannot generate medium resolution: no metadata found for hash ${imageHash}`);
+      }
+
+      // Check if image is small (no medium needed - use thumbnail or original)
+      if (metadata.width <= 2048 && metadata.height <= 2048) {
+        log.info(`[IPC] Image is small (${metadata.width}x${metadata.height}), using thumbnail as medium`);
+        buffer = await tileCache.loadThumbnail(imageHash);
+
+        // If still no thumbnail, generate it
+        if (!buffer) {
+          const tileGenerator = require('./tileGenerator');
+          buffer = await tileGenerator.generateThumbnail(metadata.originalPath);
+          await tileCache.saveThumbnail(imageHash, buffer);
+        }
+      } else {
+        // Generate medium resolution for larger images
+        log.info(`[IPC] Generating medium resolution for large image...`);
+        const tileGenerator = require('./tileGenerator');
+        buffer = await tileGenerator.generateMedium(metadata.originalPath);
+
+        // Cache it for next time
+        await tileCache.saveMedium(imageHash, buffer);
+        log.info(`[IPC] Generated and cached medium resolution`);
+      }
     }
 
     // Convert to base64 data URL
@@ -1109,6 +1140,9 @@ ipcMain.handle('debug:reset-everything', async () => {
     try {
       await fs.promises.rm(dataPath, { recursive: true, force: true });
       log.info('[IPC] Successfully deleted StraboMicro2Data folder');
+
+      // Wait a moment to ensure deletion is complete
+      await new Promise(resolve => setTimeout(resolve, 100));
     } catch (error) {
       if (error.code !== 'ENOENT') {
         log.warn('[IPC] Error deleting StraboMicro2Data folder:', error);
@@ -1121,7 +1155,11 @@ ipcMain.handle('debug:reset-everything', async () => {
     await tileCache.clearAllCaches();
     log.info('[IPC] Successfully cleared tile caches');
 
-    // Step 3: Create test project structure
+    // Step 3: Recreate base StraboMicro2Data directory
+    await projectFolders.ensureStraboMicro2DataDir();
+    log.info('[IPC] Recreated StraboMicro2Data base directory');
+
+    // Step 4: Create test project structure
     const testProjectId = 'test-project-' + Date.now();
     log.info(`[IPC] Creating test project: ${testProjectId}`);
 
@@ -1168,11 +1206,11 @@ ipcMain.handle('debug:reset-everything', async () => {
       ]
     };
 
-    // Step 4: Create project folders
+    // Step 5: Create project folders
     await projectFolders.createProjectFolders(testProjectId);
     log.info('[IPC] Created test project folder structure');
 
-    // Step 5: Save project.json
+    // Step 6: Save project.json
     await projectSerializer.saveProjectJson(testProject, testProjectId);
     log.info('[IPC] Saved test project.json');
 
