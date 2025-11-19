@@ -101,5 +101,33 @@ interface Window {
     getCacheStats: () => Promise<CacheStats>;
     clearImageCache: (imageHash: string) => Promise<{ success: boolean }>;
     clearAllCaches: () => Promise<{ success: boolean }>;
+
+    // Project folder structure
+    getProjectDataPath: () => Promise<string>;
+    ensureProjectDataDir: () => Promise<string>;
+    createProjectFolders: (projectId: string) => Promise<{
+      projectPath: string;
+      associatedFiles: string;
+      compositeImages: string;
+      compositeThumbnails: string;
+      images: string;
+      uiImages: string;
+      webImages: string;
+      webThumbnails: string;
+    }>;
+    projectFolderExists: (projectId: string) => Promise<boolean>;
+    getProjectFolderPaths: (projectId: string) => Promise<{
+      projectPath: string;
+      associatedFiles: string;
+      compositeImages: string;
+      compositeThumbnails: string;
+      images: string;
+      uiImages: string;
+      webImages: string;
+      webThumbnails: string;
+      projectJson: string;
+    }>;
+    listProjectFolders: () => Promise<string[]>;
+    deleteProjectFolder: (projectId: string) => Promise<{ success: boolean }>;
   };
 }

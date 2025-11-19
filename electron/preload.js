@@ -46,4 +46,13 @@ contextBridge.exposeInMainWorld('api', {
   getCacheStats: () => ipcRenderer.invoke('image:cache-stats'),
   clearImageCache: (imageHash) => ipcRenderer.invoke('image:clear-cache', imageHash),
   clearAllCaches: () => ipcRenderer.invoke('image:clear-all-caches'),
+
+  // Project folder structure
+  getProjectDataPath: () => ipcRenderer.invoke('project:get-data-path'),
+  ensureProjectDataDir: () => ipcRenderer.invoke('project:ensure-data-dir'),
+  createProjectFolders: (projectId) => ipcRenderer.invoke('project:create-folders', projectId),
+  projectFolderExists: (projectId) => ipcRenderer.invoke('project:folder-exists', projectId),
+  getProjectFolderPaths: (projectId) => ipcRenderer.invoke('project:get-folder-paths', projectId),
+  listProjectFolders: () => ipcRenderer.invoke('project:list-folders'),
+  deleteProjectFolder: (projectId) => ipcRenderer.invoke('project:delete-folder', projectId),
 });
