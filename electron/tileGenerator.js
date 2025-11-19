@@ -11,6 +11,15 @@
 
 const { createCanvas, loadImage } = require('canvas');
 const tileCache = require('./tileCache');
+const sharp = require('sharp');
+
+// Configure Sharp for large images
+// Set concurrency to 1 to reduce memory usage
+sharp.concurrency(1);
+
+// Set memory limits (optional, but helps prevent OOM)
+// This limits the pixel cache size Sharp uses
+sharp.cache({ memory: 512 }); // 512MB cache limit
 
 // Tile configuration
 const TILE_SIZE = 256;
@@ -45,9 +54,11 @@ class TileGenerator {
 
     console.log(`Cache miss - generating thumbnails for: ${imagePath}`);
 
-    // Decode image to get dimensions (this loads the full image temporarily)
-    const imageData = await this.decodeAuto(imagePath);
-    const { width, height } = imageData;
+    // Get image dimensions using Sharp metadata (doesn't load full image into memory)
+    const sharpMetadata = await sharp(imagePath).metadata();
+    const { width, height } = sharpMetadata;
+
+    console.log(`Image dimensions: ${width}x${height} (format: ${sharpMetadata.format})`);
 
     // Create metadata
     const metadata = tileCache.createMetadata(imagePath, width, height);
@@ -83,8 +94,6 @@ class TileGenerator {
       return;
     }
 
-    const sharp = require('sharp');
-
     // Calculate thumbnail dimensions
     const scale = Math.min(THUMBNAIL_SIZE / width, THUMBNAIL_SIZE / height);
     const thumbWidth = Math.round(width * scale);
@@ -119,8 +128,6 @@ class TileGenerator {
       console.log('Image smaller than medium size, skipping');
       return;
     }
-
-    const sharp = require('sharp');
 
     // Calculate medium dimensions
     const scale = Math.min(MEDIUM_SIZE / width, MEDIUM_SIZE / height);
