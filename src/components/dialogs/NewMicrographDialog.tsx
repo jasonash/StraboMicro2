@@ -91,6 +91,11 @@ interface MicrographFormData {
   imageWidthPhysical: string;
   imageHeightPhysical: string;
   sizeUnits: string;
+  // Location fields (for associated micrographs)
+  locationMethod: 'Not Located' | 'Locate by an approximate point' | 'Locate by known grid coordinates' | 'Locate as a scaled rectangle' | '';
+  offsetX: number;
+  offsetY: number;
+  rotationAngle: number;
   instrumentType: string;
   otherInstrumentType: string;
   dataType: string;
@@ -204,6 +209,11 @@ const initialFormData: MicrographFormData = {
   imageWidthPhysical: '',
   imageHeightPhysical: '',
   sizeUnits: 'μm',
+  // Location initial values (for associated micrographs)
+  locationMethod: 'Locate as a scaled rectangle',
+  offsetX: 0,
+  offsetY: 0,
+  rotationAngle: 0,
   instrumentType: '',
   otherInstrumentType: '',
   dataType: '',
@@ -286,6 +296,9 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
   const [canvasTool, setCanvasTool] = useState<Tool>('pointer');
   const canvasRef = useRef<ScaleBarCanvasRef>(null);
 
+  // Determine if this is an associated micrograph (has a parent) or reference (no parent)
+  const isAssociated = parentMicrographId !== null;
+
   const shouldShowInstrumentSettings = () => {
     return (
       formData.instrumentType &&
@@ -293,7 +306,8 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
     );
   };
 
-  const baseSteps = [
+  // Reference micrograph steps (includes orientation)
+  const referenceBaseSteps = [
     'Load Reference Micrograph',
     'Instrument & Image Information',
     'Instrument Data',
@@ -302,6 +316,18 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
     'Set Micrograph Scale',
     'Trace Scale Bar',
   ];
+
+  // Associated micrograph steps (NO orientation, adds location method/placement)
+  const associatedBaseSteps = [
+    'Load Associated Micrograph',
+    'Instrument & Image Information',
+    'Instrument Data',
+    'Micrograph Metadata',
+    'Location Method',
+    'Micrograph Location & Scale',
+  ];
+
+  const baseSteps = isAssociated ? associatedBaseSteps : referenceBaseSteps;
 
   const steps = shouldShowInstrumentSettings()
     ? [...baseSteps.slice(0, 3), 'Instrument Settings', ...baseSteps.slice(3)]
