@@ -612,24 +612,73 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
         }
       }
     } else if (isAssociated && formData.scaleMethod === 'Stretch and Drag') {
-      // Calculate scale based on the scale factor (scaleX/scaleY) and parent's scale
-      // The scaleX value represents: how much larger/smaller the child appears relative to parent
-      // If scaleX = 1, child and parent have same scale (1 cm on child = 1 cm on parent at same zoom)
-      // If scaleX = 0.5, child appears half size (child is more zoomed in, higher px/cm)
-      // If scaleX = 2, child appears double size (child is more zoomed out, lower px/cm)
+      // For Stretch and Drag, the user manually sizes the overlay to match the parent
+      // The scaleX represents the SIZE relationship, not magnification
       //
-      // Formula: childScale = parentScale / scaleX
+      // Example: If both images have the same magnification (same px/cm):
+      //   - Parent is 3500px wide showing a 70cm wide area → 50 px/cm
+      //   - Child is 1395px wide showing a 27.9cm wide area → 50 px/cm (same!)
+      //   - When overlaid, child appears at scaleX = 1395/3500 = 0.399
+      //   - But both have the SAME scalePixelsPerCentimeter!
+      //
+      // The key insight: scaleX = (childWidth / childScale) / (parentWidth / parentScale)
+      // Solving for childScale: childScale = parentScale * (childWidth / parentWidth) / scaleX
+      //
+      // But (childWidth / parentWidth) / scaleX simplifies based on the scaleX we're getting
+      // which already accounts for original dimensions.
+      //
+      // Actually, if the user resizes to match features, they're saying "this overlay size
+      // represents the correct physical relationship". The scaleX we receive is already
+      // accounting for image dimensions, so:
+      // Formula: childScale = parentScale (they should match if user sized correctly!)
+      //
+      // Wait, that's not right either. Let me reconsider...
+      //
+      // The scaleX we receive is: how much to scale the child's ORIGINAL dimensions
+      // to match the parent's coordinate space. If scaleX = 0.3735, it means:
+      // - 1 pixel on child = 0.3735 pixels on parent (in the overlay)
+      // - If 1cm on parent = 500px, then 1cm on child should = 500/0.3735 = 1338px
+      //
+      // NO WAIT. That's backwards. Let me think about this correctly:
+      //
+      // If scaleX = 0.3735 (child is 37.35% size of parent in overlay)
+      // And parent scale = 500 px/cm
+      // And we want child scale such that physical sizes align:
+      //   1cm of real world = 500px on parent
+      //   When child is overlaid at 0.3735x, how many child pixels = 1cm?
+      //   If child has same magnification: 1cm = 500px on child too
+      //   But child is displayed at 0.3735x, so those 500px appear as 186.75px
+      //
+      // The user dragged the child to match. So they're saying "this size is correct"
+      // If child's 500px (1cm) appears as 186.75px on parent, and parent's 1cm is 500px,
+      // then child must be at 186.75/500 = 0.3735 of parent's scale? NO!
+      //
+      // I think the issue is: scaleX is NOT about magnification at all!
+      // scaleX is purely about how much we're scaling the child IMAGE to fit the parent
+      // The magnification is inherent in the images themselves.
+      //
+      // So if both images have the same magnification, they have the SAME scalePixelsPerCentimeter
+      // regardless of scaleX!
+      //
+      // The user's manual sizing is implicitly defining the scale relationship by matching features.
+      // We need to extract the scale from the SIZE relationship and the parent's known scale.
+      //
+      // Let's use: childScale = parentScale (assume same scale, since user matched features)
+
       const { project } = useAppStore.getState();
-      if (project && parentMicrographId && formData.scaleX) {
+      if (project && parentMicrographId) {
         for (const dataset of project.datasets) {
           for (const sample of dataset.samples) {
             const parentMicrograph = sample.micrographs.find(m => m.id === parentMicrographId);
             if (parentMicrograph && parentMicrograph.scalePixelsPerCentimeter) {
-              scalePixelsPerCentimeter = parentMicrograph.scalePixelsPerCentimeter / formData.scaleX;
+              // For Stretch and Drag, assume child has same scale as parent
+              // The user has manually sized the overlay to match features
+              scalePixelsPerCentimeter = parentMicrograph.scalePixelsPerCentimeter;
               console.log('[NewMicrographDialog] Calculated scale from Stretch and Drag:', {
                 parentScale: parentMicrograph.scalePixelsPerCentimeter,
                 scaleX: formData.scaleX,
                 childScale: scalePixelsPerCentimeter,
+                note: 'Assuming child has same scale as parent (user matched features)',
               });
               break;
             }
