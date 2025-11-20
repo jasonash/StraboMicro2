@@ -94,8 +94,10 @@ interface MicrographFormData {
   sizeUnits: string;
   // Location fields (for associated micrographs)
   locationMethod: 'Not Located' | 'Locate by an approximate point' | 'Locate by known grid coordinates' | 'Locate as a scaled rectangle' | '';
-  offsetX: number;
-  offsetY: number;
+  offsetInParent: {
+    X: number;
+    Y: number;
+  };
   rotationAngle: number;
   scaleX: number;
   scaleY: number;
@@ -214,8 +216,10 @@ const initialFormData: MicrographFormData = {
   sizeUnits: 'μm',
   // Location initial values (for associated micrographs)
   locationMethod: 'Locate as a scaled rectangle',
-  offsetX: 0,
-  offsetY: 0,
+  offsetInParent: {
+    X: 0,
+    Y: 0,
+  },
   rotationAngle: 0,
   scaleX: 1,
   scaleY: 1,
@@ -675,8 +679,10 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
         // Associated micrograph fields
         parentID: parentMicrographId || undefined,
         ...(isAssociated && {
-          xOffset: formData.offsetX,
-          yOffset: formData.offsetY,
+          offsetInParent: {
+            X: formData.offsetInParent.X,
+            Y: formData.offsetInParent.Y,
+          },
           rotation: formData.rotationAngle,
         }),
         instrument: {
@@ -1785,11 +1791,16 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
   const renderLocationPlacementStep = () => {
     // Handler for placement changes from the canvas
     const handlePlacementChange = (offsetX: number, offsetY: number, rotation: number, scaleX?: number, scaleY?: number) => {
-      updateField('offsetX', offsetX);
-      updateField('offsetY', offsetY);
-      updateField('rotationAngle', rotation);
-      if (scaleX !== undefined) updateField('scaleX', scaleX);
-      if (scaleY !== undefined) updateField('scaleY', scaleY);
+      setFormData((prev) => ({
+        ...prev,
+        offsetInParent: {
+          X: offsetX,
+          Y: offsetY,
+        },
+        rotationAngle: rotation,
+        scaleX: scaleX !== undefined ? scaleX : prev.scaleX,
+        scaleY: scaleY !== undefined ? scaleY : prev.scaleY,
+      }));
     };
 
     // Render different canvas based on location method
@@ -1814,8 +1825,8 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
             childWidth={formData.micrographWidth}
             childHeight={formData.micrographHeight}
             scaleMethod={formData.scaleMethod}
-            initialOffsetX={formData.offsetX}
-            initialOffsetY={formData.offsetY}
+            initialOffsetX={formData.offsetInParent.X}
+            initialOffsetY={formData.offsetInParent.Y}
             initialRotation={formData.rotationAngle}
             onPlacementChange={handlePlacementChange}
           />
