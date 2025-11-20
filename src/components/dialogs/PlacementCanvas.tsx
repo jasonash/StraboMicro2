@@ -102,6 +102,7 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
 
   // Load parent micrograph from the store and tile cache
   useEffect(() => {
+    console.log('[PlacementCanvas] Parent image loading effect triggered');
     const loadParentImage = async () => {
       try {
         const { project } = useAppStore.getState();
@@ -190,7 +191,8 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
     };
 
     loadParentImage();
-  }, [parentMicrographId, initialOffsetX, initialOffsetY, initialRotation, initialScaleX, initialScaleY, onPlacementChange]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [parentMicrographId]); // Only reload when parent ID changes, not on every offset/scale update
 
   // Load child micrograph from scratch space
   useEffect(() => {
