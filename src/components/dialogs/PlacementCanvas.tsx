@@ -162,7 +162,9 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
           setStagePos({ x, y });
 
           // Initialize child position to center of parent image if not already set
-          if (initialOffsetX === 400 && initialOffsetY === 300) {
+          // Check for default/uninitialized values (0, 0) or (400, 300)
+          if ((initialOffsetX === 0 && initialOffsetY === 0) ||
+              (initialOffsetX === 400 && initialOffsetY === 300)) {
             // These are the default values, so center the child
             const centerX = img.width / 2;
             const centerY = img.height / 2;
