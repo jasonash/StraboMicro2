@@ -1438,6 +1438,8 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
             <ScaleBarCanvas
               ref={canvasRef}
               imageUrl={micrographPreviewUrl}
+              originalWidth={formData.micrographWidth}
+              originalHeight={formData.micrographHeight}
               showToolbar={false}
               currentTool={canvasTool}
               onToolChange={setCanvasTool}

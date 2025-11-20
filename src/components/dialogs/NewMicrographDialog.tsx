@@ -1395,20 +1395,19 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
             <ScaleBarCanvas
               ref={canvasRef}
               imageUrl={micrographPreviewUrl}
+              originalWidth={formData.micrographWidth}
+              originalHeight={formData.micrographHeight}
               showToolbar={false}
               currentTool={canvasTool}
               onToolChange={setCanvasTool}
               onLineDrawn={(lineData) => {
                 console.log('Line drawn:', lineData);
-                const lengthPixels = Math.sqrt(
-                  Math.pow(lineData.end.x - lineData.start.x, 2) +
-                    Math.pow(lineData.end.y - lineData.start.y, 2)
-                );
+                // lineData.lengthPixels is already in original image pixels
                 setFormData((prev) => ({
                   ...prev,
                   scaleBarLineStart: lineData.start,
                   scaleBarLineEnd: lineData.end,
-                  scaleBarLineLengthPixels: lengthPixels.toFixed(2),
+                  scaleBarLineLengthPixels: lineData.lengthPixels.toFixed(2),
                 }));
               }}
             />

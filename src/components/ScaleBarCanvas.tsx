@@ -14,6 +14,8 @@ export interface ScaleBarCanvasRef {
 
 interface ScaleBarCanvasProps {
   imageUrl: string;
+  originalWidth: number;  // Original full-resolution image width
+  originalHeight: number; // Original full-resolution image height
   onLineDrawn: (lineData: { start: { x: number; y: number }; end: { x: number; y: number }; lengthPixels: number }) => void;
   showToolbar?: boolean;
   currentTool?: Tool;
@@ -22,6 +24,8 @@ interface ScaleBarCanvasProps {
 
 export const ScaleBarCanvas = forwardRef<ScaleBarCanvasRef, ScaleBarCanvasProps>(({
   imageUrl,
+  originalWidth,
+  originalHeight,
   onLineDrawn,
   showToolbar = true,
   currentTool,
@@ -126,17 +130,32 @@ export const ScaleBarCanvas = forwardRef<ScaleBarCanvasRef, ScaleBarCanvasProps>
   };
 
   const handleMouseUp = () => {
-    if (isDrawing && tempLine) {
+    if (isDrawing && tempLine && image) {
       setIsDrawing(false);
       setLine(tempLine);
       setTempLine(null);
 
-      // Calculate line length in pixels (original image coordinates)
+      // Calculate line length in displayed image coordinates
       const dx = tempLine.end.x - tempLine.start.x;
       const dy = tempLine.end.y - tempLine.start.y;
-      const lengthPixels = Math.sqrt(dx * dx + dy * dy);
+      const lengthInDisplayedImage = Math.sqrt(dx * dx + dy * dy);
 
-      // Notify parent component
+      // Calculate the scale ratio between original and displayed image
+      // The displayed image (medium resolution) might be downsampled from the original
+      const scaleRatio = originalWidth / image.width;
+
+      // Convert line length to original image pixel coordinates
+      const lengthPixels = lengthInDisplayedImage * scaleRatio;
+
+      console.log('[ScaleBarCanvas] Line drawn:', {
+        displayedImageWidth: image.width,
+        originalWidth,
+        scaleRatio,
+        lengthInDisplayedImage,
+        lengthPixels
+      });
+
+      // Notify parent component with length in original image pixels
       onLineDrawn({
         start: tempLine.start,
         end: tempLine.end,
