@@ -524,6 +524,13 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
     }
   };
 
+  const handleResetAll = () => {
+    // Reset the view (parent background zoom/pan)
+    handleResetView();
+    // Reset the child overlay position/rotation/scale
+    handleResetChild();
+  };
+
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, width: '100%', alignItems: 'center' }}>
       <Typography variant="body2" color="text.secondary" sx={{ width: '100%', textAlign: 'center' }}>
@@ -536,44 +543,63 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
           <Typography variant="subtitle2" gutterBottom>
             Pixel Conversion Factor
           </Typography>
-          <Grid container spacing={2} alignItems="flex-end">
-            <Grid item xs={4}>
-              <TextField
-                label="Number of Pixels"
-                type="number"
-                value={pixelInput}
-                onChange={(e) => setPixelInput(e.target.value)}
-                fullWidth
-                size="small"
-              />
-            </Grid>
-            <Grid item xs={4}>
-              <TextField
-                label="Physical Length"
-                type="number"
-                value={physicalLengthInput}
-                onChange={(e) => setPhysicalLengthInput(e.target.value)}
-                fullWidth
-                size="small"
-              />
-            </Grid>
-            <Grid item xs={4}>
-              <FormControl fullWidth size="small">
-                <InputLabel>Unit</InputLabel>
-                <Select
-                  value={unitInput}
-                  onChange={(e) => setUnitInput(e.target.value)}
-                  label="Unit"
-                >
-                  <MenuItem value="μm">μm (micrometers)</MenuItem>
-                  <MenuItem value="mm">mm (millimeters)</MenuItem>
-                  <MenuItem value="cm">cm (centimeters)</MenuItem>
-                  <MenuItem value="m">m (meters)</MenuItem>
-                  <MenuItem value="inches">inches</MenuItem>
-                </Select>
-              </FormControl>
-            </Grid>
-          </Grid>
+          <Stack direction="row" spacing={2} alignItems="flex-end">
+            {/* Tool buttons on the left */}
+            <Stack direction="row" spacing={0.5}>
+              <Tooltip title="Pan Tool">
+                <IconButton size="small" color="primary">
+                  <PanTool />
+                </IconButton>
+              </Tooltip>
+              <Tooltip title="Reset View">
+                <IconButton size="small" onClick={handleResetAll}>
+                  <RestartAlt />
+                </IconButton>
+              </Tooltip>
+            </Stack>
+
+            {/* Input fields on the right */}
+            <Box sx={{ flexGrow: 1 }}>
+              <Grid container spacing={2} alignItems="flex-end">
+                <Grid item xs={4}>
+                  <TextField
+                    label="Number of Pixels"
+                    type="number"
+                    value={pixelInput}
+                    onChange={(e) => setPixelInput(e.target.value)}
+                    fullWidth
+                    size="small"
+                  />
+                </Grid>
+                <Grid item xs={4}>
+                  <TextField
+                    label="Physical Length"
+                    type="number"
+                    value={physicalLengthInput}
+                    onChange={(e) => setPhysicalLengthInput(e.target.value)}
+                    fullWidth
+                    size="small"
+                  />
+                </Grid>
+                <Grid item xs={4}>
+                  <FormControl fullWidth size="small">
+                    <InputLabel>Unit</InputLabel>
+                    <Select
+                      value={unitInput}
+                      onChange={(e) => setUnitInput(e.target.value)}
+                      label="Unit"
+                    >
+                      <MenuItem value="μm">μm (micrometers)</MenuItem>
+                      <MenuItem value="mm">mm (millimeters)</MenuItem>
+                      <MenuItem value="cm">cm (centimeters)</MenuItem>
+                      <MenuItem value="m">m (meters)</MenuItem>
+                      <MenuItem value="inches">inches</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Grid>
+              </Grid>
+            </Box>
+          </Stack>
           <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
             Enter how many pixels correspond to a known physical length. The overlay will resize automatically.
           </Typography>
@@ -586,84 +612,87 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
           <Typography variant="subtitle2" gutterBottom>
             Image Physical Dimensions
           </Typography>
-          <Grid container spacing={2} alignItems="flex-end">
-            <Grid item xs={4}>
-              <TextField
-                label="Width"
-                type="number"
-                value={widthInput}
-                onChange={(e) => setWidthInput(e.target.value)}
-                fullWidth
-                size="small"
-              />
-            </Grid>
-            <Grid item xs={4}>
-              <TextField
-                label="Height"
-                type="number"
-                value={heightInput}
-                onChange={(e) => setHeightInput(e.target.value)}
-                fullWidth
-                size="small"
-              />
-            </Grid>
-            <Grid item xs={4}>
-              <FormControl fullWidth size="small">
-                <InputLabel>Unit</InputLabel>
-                <Select
-                  value={sizeUnitInput}
-                  onChange={(e) => setSizeUnitInput(e.target.value)}
-                  label="Unit"
-                >
-                  <MenuItem value="μm">μm (micrometers)</MenuItem>
-                  <MenuItem value="mm">mm (millimeters)</MenuItem>
-                  <MenuItem value="cm">cm (centimeters)</MenuItem>
-                  <MenuItem value="m">m (meters)</MenuItem>
-                  <MenuItem value="inches">inches</MenuItem>
-                </Select>
-              </FormControl>
-            </Grid>
-          </Grid>
+          <Stack direction="row" spacing={2} alignItems="flex-end">
+            {/* Tool buttons on the left */}
+            <Stack direction="row" spacing={0.5}>
+              <Tooltip title="Pan Tool">
+                <IconButton size="small" color="primary">
+                  <PanTool />
+                </IconButton>
+              </Tooltip>
+              <Tooltip title="Reset View">
+                <IconButton size="small" onClick={handleResetAll}>
+                  <RestartAlt />
+                </IconButton>
+              </Tooltip>
+            </Stack>
+
+            {/* Input fields on the right */}
+            <Box sx={{ flexGrow: 1 }}>
+              <Grid container spacing={2} alignItems="flex-end">
+                <Grid item xs={4}>
+                  <TextField
+                    label="Width"
+                    type="number"
+                    value={widthInput}
+                    onChange={(e) => setWidthInput(e.target.value)}
+                    fullWidth
+                    size="small"
+                  />
+                </Grid>
+                <Grid item xs={4}>
+                  <TextField
+                    label="Height"
+                    type="number"
+                    value={heightInput}
+                    onChange={(e) => setHeightInput(e.target.value)}
+                    fullWidth
+                    size="small"
+                  />
+                </Grid>
+                <Grid item xs={4}>
+                  <FormControl fullWidth size="small">
+                    <InputLabel>Unit</InputLabel>
+                    <Select
+                      value={sizeUnitInput}
+                      onChange={(e) => setSizeUnitInput(e.target.value)}
+                      label="Unit"
+                    >
+                      <MenuItem value="μm">μm (micrometers)</MenuItem>
+                      <MenuItem value="mm">mm (millimeters)</MenuItem>
+                      <MenuItem value="cm">cm (centimeters)</MenuItem>
+                      <MenuItem value="m">m (meters)</MenuItem>
+                      <MenuItem value="inches">inches</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Grid>
+              </Grid>
+            </Box>
+          </Stack>
           <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
             Enter width or height - the other dimension will auto-populate. The overlay will resize automatically.
           </Typography>
         </Paper>
       )}
 
-      {/* Toolbar */}
-      <Paper elevation={2} sx={{ p: 1, width: CANVAS_WIDTH }}>
-        <Stack direction="row" spacing={1} alignItems="center">
-          <Tooltip title="Pan Tool">
-            <IconButton size="small" color="primary">
-              <PanTool />
-            </IconButton>
-          </Tooltip>
+      {/* Toolbar for Stretch and Drag method */}
+      {scaleMethod === 'Stretch and Drag' && (
+        <Paper elevation={2} sx={{ p: 1, width: CANVAS_WIDTH }}>
+          <Stack direction="row" spacing={0.5} alignItems="center">
+            <Tooltip title="Pan Tool">
+              <IconButton size="small" color="primary">
+                <PanTool />
+              </IconButton>
+            </Tooltip>
 
-          <Box sx={{ flexGrow: 1 }} />
-
-          <Tooltip title="Zoom In">
-            <IconButton size="small" onClick={handleZoomIn}>
-              <ZoomIn />
-            </IconButton>
-          </Tooltip>
-
-          <Tooltip title="Zoom Out">
-            <IconButton size="small" onClick={handleZoomOut}>
-              <ZoomOut />
-            </IconButton>
-          </Tooltip>
-
-          <Tooltip title="Reset View">
-            <IconButton size="small" onClick={handleResetView}>
-              <RestartAlt />
-            </IconButton>
-          </Tooltip>
-
-          <Button size="small" variant="outlined" onClick={handleResetChild}>
-            Reset Overlay
-          </Button>
-        </Stack>
-      </Paper>
+            <Tooltip title="Reset View">
+              <IconButton size="small" onClick={handleResetAll}>
+                <RestartAlt />
+              </IconButton>
+            </Tooltip>
+          </Stack>
+        </Paper>
+      )}
 
       {/* Canvas */}
       <Box
