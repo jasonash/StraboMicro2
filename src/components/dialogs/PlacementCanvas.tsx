@@ -198,7 +198,7 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
           const y = (CANVAS_HEIGHT - img.height * initialScale) / 2;
           setStagePos({ x, y });
 
-          // Initialize child position to center of parent image if not already set
+          // Initialize child position
           // Check for default/uninitialized values (0, 0) or (400, 300)
           if ((initialOffsetX === 0 && initialOffsetY === 0) ||
               (initialOffsetX === 400 && initialOffsetY === 300)) {
@@ -212,8 +212,30 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
             }));
             // Convert center to top-left for legacy compatibility
             const topLeft = convertCenterToTopLeft(centerX, centerY, initialRotation, initialScaleX, initialScaleY);
-            onPlacementChange(topLeft.x, topLeft.y, initialRotation, initialScaleX, initialScaleY);
-            console.log('[PlacementCanvas] Initialized child position to center:', { centerX, centerY, topLeft });
+            // Convert to original image coordinates
+            const scaleRatio = parentOriginalWidth / img.width;
+            const originalX = topLeft.x * scaleRatio;
+            const originalY = topLeft.y * scaleRatio;
+            onPlacementChange(originalX, originalY, initialRotation, initialScaleX, initialScaleY);
+            console.log('[PlacementCanvas] Initialized child position to center:', { centerX, centerY, topLeft, originalX, originalY });
+          } else {
+            // We have existing values - convert from original image coordinates to displayed coordinates
+            const scaleRatio = img.width / parentOriginalWidth;
+            // Initial values are in top-left format, convert to center
+            const centerX = (initialOffsetX * scaleRatio) + (childWidth * scaleRatio * initialScaleX) / 2;
+            const centerY = (initialOffsetY * scaleRatio) + (childHeight * scaleRatio * initialScaleY) / 2;
+            setChildTransform(prev => ({
+              ...prev,
+              x: centerX,
+              y: centerY,
+            }));
+            console.log('[PlacementCanvas] Initialized from existing values:', {
+              originalX: initialOffsetX,
+              originalY: initialOffsetY,
+              scaleRatio,
+              displayedCenterX: centerX,
+              displayedCenterY: centerY,
+            });
           }
 
           console.log('[PlacementCanvas] Parent image loaded:', {
@@ -735,9 +757,14 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
     // Convert center position to top-left for legacy compatibility
     const topLeft = convertCenterToTopLeft(newTransform.x, newTransform.y, newTransform.rotation, newTransform.scaleX, newTransform.scaleY);
 
+    // Convert from displayed image coordinates to original image coordinates
+    const scaleRatio = parentOriginalWidth / (parentImage?.width || 1);
+    const originalX = topLeft.x * scaleRatio;
+    const originalY = topLeft.y * scaleRatio;
+
     // For Stretch and Drag, report the DISPLAYED scale (not converted)
     // The scale calculation should happen at save time using: childScale = parentScale / displayedScale
-    onPlacementChange(topLeft.x, topLeft.y, newTransform.rotation, newTransform.scaleX, newTransform.scaleY);
+    onPlacementChange(originalX, originalY, newTransform.rotation, newTransform.scaleX, newTransform.scaleY);
   };
 
   const handleChildTransformEnd = () => {
@@ -761,9 +788,14 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
     // Convert center position to top-left for legacy compatibility
     const topLeft = convertCenterToTopLeft(newTransform.x, newTransform.y, newTransform.rotation, displayedScaleX, displayedScaleY);
 
+    // Convert from displayed image coordinates to original image coordinates
+    const scaleRatio = parentOriginalWidth / (parentImage?.width || 1);
+    const originalX = topLeft.x * scaleRatio;
+    const originalY = topLeft.y * scaleRatio;
+
     // For Stretch and Drag, report the DISPLAYED scale (not converted)
     // The scale calculation should happen at save time using: childScale = parentScale / displayedScale
-    onPlacementChange(topLeft.x, topLeft.y, newTransform.rotation, displayedScaleX, displayedScaleY);
+    onPlacementChange(originalX, originalY, newTransform.rotation, displayedScaleX, displayedScaleY);
   };
 
   const handleResetChild = () => {

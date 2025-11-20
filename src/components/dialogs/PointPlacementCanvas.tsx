@@ -53,14 +53,12 @@ export const PointPlacementCanvas = ({
   const CANVAS_WIDTH = 800;
   const CANVAS_HEIGHT = 600;
 
-  // Child overlay position (for "Trace Scale Bar" method - in parent image coordinates)
-  const [childOverlayPos, setChildOverlayPos] = useState({ x: initialOffsetX, y: initialOffsetY });
+  // Child overlay position (for "Trace Scale Bar" method - in DISPLAYED image coordinates)
+  const [childOverlayPos, setChildOverlayPos] = useState({ x: 0, y: 0 });
   const [isDraggingChild, setIsDraggingChild] = useState(false);
 
-  // Point marker position (in parent image coordinates) - only one point allowed
-  const [pointPos, setPointPos] = useState<{ x: number; y: number } | null>(
-    initialOffsetX !== 0 || initialOffsetY !== 0 ? { x: initialOffsetX, y: initialOffsetY } : null
-  );
+  // Point marker position (in DISPLAYED image coordinates) - only one point allowed
+  const [pointPos, setPointPos] = useState<{ x: number; y: number } | null>(null);
   const [isDraggingPoint, setIsDraggingPoint] = useState(false);
 
   // Tool state
@@ -183,14 +181,26 @@ export const PointPlacementCanvas = ({
     loadChildImage();
   }, [scaleMethod, childScratchPath]);
 
-  // Center child overlay when parent image first loads (if not already set)
+  // Initialize positions when parent image loads
   useEffect(() => {
-    if (parentImage && initialOffsetX === 0 && initialOffsetY === 0) {
+    if (!parentImage || !parentOriginalWidth) return;
+
+    // Calculate scale ratio
+    const scaleRatio = parentImage.width / parentOriginalWidth;
+
+    // If we have initial values (editing existing), convert from original to displayed coordinates
+    if (initialOffsetX !== 0 || initialOffsetY !== 0) {
+      const displayedX = initialOffsetX * scaleRatio;
+      const displayedY = initialOffsetY * scaleRatio;
+      setPointPos({ x: displayedX, y: displayedY });
+      setChildOverlayPos({ x: displayedX, y: displayedY });
+    } else {
+      // Otherwise, center the child overlay
       const centerX = parentImage.width / 2;
       const centerY = parentImage.height / 2;
       setChildOverlayPos({ x: centerX, y: centerY });
     }
-  }, [parentImage, initialOffsetX, initialOffsetY]);
+  }, [parentImage, parentOriginalWidth, initialOffsetX, initialOffsetY]);
 
   // Notify parent of scale data changes
   useEffect(() => {
@@ -297,7 +307,13 @@ export const PointPlacementCanvas = ({
       // Only allow placing one point
       if (!pointPos) {
         setPointPos({ x: imageX, y: imageY });
-        onPlacementChange(imageX, imageY);
+
+        // Convert from displayed image coordinates to original image coordinates
+        const scaleRatio = parentOriginalWidth / (parentImage?.width || 1);
+        const originalX = imageX * scaleRatio;
+        const originalY = imageY * scaleRatio;
+
+        onPlacementChange(originalX, originalY);
         // Switch back to pan tool after placing the point
         setActiveTool('pan');
       }
@@ -368,8 +384,12 @@ export const PointPlacementCanvas = ({
 
   const handleMouseUp = () => {
     if (isDraggingPoint && pointPos) {
-      // Finished dragging point - notify parent
-      onPlacementChange(pointPos.x, pointPos.y);
+      // Finished dragging point - convert to original image coordinates and notify parent
+      const scaleRatio = parentOriginalWidth / (parentImage?.width || 1);
+      const originalX = pointPos.x * scaleRatio;
+      const originalY = pointPos.y * scaleRatio;
+
+      onPlacementChange(originalX, originalY);
       setIsDraggingPoint(false);
       setLastPanPos(null);
       return;
