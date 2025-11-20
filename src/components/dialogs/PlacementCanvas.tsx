@@ -80,17 +80,6 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
     scaleY: initialScaleY,
   });
 
-  // Determine if resize handles should be shown based on scale method
-  const enableResizeHandles = scaleMethod === 'Stretch and Drag';
-
-  // For "Copy Size from Existing", we might lock position/rotation too
-  // For "Trace Scale Bar", disable drag when line tool is active
-  const enableDrag = scaleMethod !== 'Copy Size from Existing Micrograph' && activeTool !== 'line';
-  const enableRotate = scaleMethod !== 'Copy Size from Existing Micrograph';
-
-  // For "Trace Scale Bar", rotation is enabled but resize is not
-  // (This is already handled by enableResizeHandles above, just noting for clarity)
-
   // State for Pixel Conversion Factor inputs
   const [pixelInput, setPixelInput] = useState('');
   const [physicalLengthInput, setPhysicalLengthInput] = useState('');
@@ -113,6 +102,17 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
 
   // Parent micrograph metadata (for scale calculations)
   const [parentScale, setParentScale] = useState<number | null>(null);
+
+  // Determine if resize handles should be shown based on scale method
+  const enableResizeHandles = scaleMethod === 'Stretch and Drag';
+
+  // For "Copy Size from Existing", we might lock position/rotation too
+  // For "Trace Scale Bar", disable drag when line tool is active
+  const enableDrag = scaleMethod !== 'Copy Size from Existing Micrograph' && activeTool !== 'line';
+  const enableRotate = scaleMethod !== 'Copy Size from Existing Micrograph';
+
+  // For "Trace Scale Bar", rotation is enabled but resize is not
+  // (This is already handled by enableResizeHandles above, just noting for clarity)
 
   // Load parent micrograph from the store and tile cache
   useEffect(() => {
