@@ -235,7 +235,21 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
     const childPixelsPerCm = childPixelsPerUnit * (conversionToCm[unitInput] || 1);
 
     // Calculate scale factor: child scale / parent scale
-    const scaleFactor = childPixelsPerCm / parentScale;
+    let scaleFactor = childPixelsPerCm / parentScale;
+
+    // Sanity checks: prevent wildly large or small scales
+    // Max scale: child can't be more than 10x the size of parent
+    // Min scale: child can't be less than 0.01x the size of parent
+    const MIN_SCALE = 0.01;
+    const MAX_SCALE = 10;
+
+    if (scaleFactor > MAX_SCALE) {
+      console.warn('[PlacementCanvas] Scale factor too large, clamping to', MAX_SCALE);
+      scaleFactor = MAX_SCALE;
+    } else if (scaleFactor < MIN_SCALE) {
+      console.warn('[PlacementCanvas] Scale factor too small, clamping to', MIN_SCALE);
+      scaleFactor = MIN_SCALE;
+    }
 
     console.log('[PlacementCanvas] Pixel Conversion Factor calculation:', {
       pixels,
@@ -244,20 +258,22 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
       childPixelsPerCm,
       parentScale,
       scaleFactor,
+      clamped: scaleFactor !== childPixelsPerCm / parentScale,
     });
 
-    // Update child scale
-    setChildTransform(prev => {
-      // Update parent callback with new scale
-      onPlacementChange(prev.x, prev.y, prev.rotation, scaleFactor, scaleFactor);
+    // Update child scale (without calling onPlacementChange during render)
+    setChildTransform(prev => ({
+      ...prev,
+      scaleX: scaleFactor,
+      scaleY: scaleFactor,
+    }));
+  }, [scaleMethod, pixelInput, physicalLengthInput, unitInput, parentScale]);
 
-      return {
-        ...prev,
-        scaleX: scaleFactor,
-        scaleY: scaleFactor,
-      };
-    });
-  }, [scaleMethod, pixelInput, physicalLengthInput, unitInput, parentScale, onPlacementChange]);
+  // Separate effect to call onPlacementChange when transform changes
+  useEffect(() => {
+    if (scaleMethod !== 'Pixel Conversion Factor') return;
+    onPlacementChange(childTransform.x, childTransform.y, childTransform.rotation, childTransform.scaleX, childTransform.scaleY);
+  }, [childTransform.scaleX, childTransform.scaleY]);
 
   // Auto-calculate child scale for Provide Width/Height method
   useEffect(() => {
@@ -304,7 +320,19 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
     if (!childPixelsPerCm) return;
 
     // Calculate scale factor: child scale / parent scale
-    const scaleFactor = childPixelsPerCm / parentScale;
+    let scaleFactor = childPixelsPerCm / parentScale;
+
+    // Sanity checks: prevent wildly large or small scales
+    const MIN_SCALE = 0.01;
+    const MAX_SCALE = 10;
+
+    if (scaleFactor > MAX_SCALE) {
+      console.warn('[PlacementCanvas] Scale factor too large, clamping to', MAX_SCALE);
+      scaleFactor = MAX_SCALE;
+    } else if (scaleFactor < MIN_SCALE) {
+      console.warn('[PlacementCanvas] Scale factor too small, clamping to', MIN_SCALE);
+      scaleFactor = MIN_SCALE;
+    }
 
     console.log('[PlacementCanvas] Width/Height calculation:', {
       width,
@@ -313,20 +341,22 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
       childPixelsPerCm,
       parentScale,
       scaleFactor,
+      clamped: scaleFactor !== childPixelsPerCm / parentScale,
     });
 
-    // Update child scale
-    setChildTransform(prev => {
-      // Update parent callback with new scale
-      onPlacementChange(prev.x, prev.y, prev.rotation, scaleFactor, scaleFactor);
+    // Update child scale (without calling onPlacementChange during render)
+    setChildTransform(prev => ({
+      ...prev,
+      scaleX: scaleFactor,
+      scaleY: scaleFactor,
+    }));
+  }, [scaleMethod, widthInput, heightInput, sizeUnitInput, parentScale, childWidth, childHeight]);
 
-      return {
-        ...prev,
-        scaleX: scaleFactor,
-        scaleY: scaleFactor,
-      };
-    });
-  }, [scaleMethod, widthInput, heightInput, sizeUnitInput, parentScale, childWidth, childHeight, onPlacementChange]);
+  // Separate effect to call onPlacementChange when transform changes (for Width/Height)
+  useEffect(() => {
+    if (scaleMethod !== 'Provide Width/Height of Image') return;
+    onPlacementChange(childTransform.x, childTransform.y, childTransform.rotation, childTransform.scaleX, childTransform.scaleY);
+  }, [childTransform.scaleX, childTransform.scaleY]);
 
   // Pan/Zoom handlers
   const handleMouseDown = (e: Konva.KonvaEventObject<MouseEvent>) => {
