@@ -53,9 +53,15 @@ export const PointPlacementCanvas = ({
   const CANVAS_WIDTH = 800;
   const CANVAS_HEIGHT = 600;
 
-  // Point marker position (in parent image coordinates)
-  const [pointPos, setPointPos] = useState({ x: initialOffsetX, y: initialOffsetY });
+  // Child overlay position (for "Trace Scale Bar" method - in parent image coordinates)
+  const [childOverlayPos, setChildOverlayPos] = useState({ x: initialOffsetX, y: initialOffsetY });
   const [isDraggingChild, setIsDraggingChild] = useState(false);
+
+  // Point marker position (in parent image coordinates) - only one point allowed
+  const [pointPos, setPointPos] = useState<{ x: number; y: number } | null>(
+    initialOffsetX !== 0 || initialOffsetY !== 0 ? { x: initialOffsetX, y: initialOffsetY } : null
+  );
+  const [isDraggingPoint, setIsDraggingPoint] = useState(false);
 
   // Tool state
   const [activeTool, setActiveTool] = useState<'pan' | 'point' | 'line'>('pan');
@@ -177,15 +183,14 @@ export const PointPlacementCanvas = ({
     loadChildImage();
   }, [scaleMethod, childScratchPath]);
 
-  // Center point position when parent image first loads (if not already set)
+  // Center child overlay when parent image first loads (if not already set)
   useEffect(() => {
     if (parentImage && initialOffsetX === 0 && initialOffsetY === 0) {
       const centerX = parentImage.width / 2;
       const centerY = parentImage.height / 2;
-      setPointPos({ x: centerX, y: centerY });
-      onPlacementChange(centerX, centerY);
+      setChildOverlayPos({ x: centerX, y: centerY });
     }
-  }, [parentImage, initialOffsetX, initialOffsetY, onPlacementChange]);
+  }, [parentImage, initialOffsetX, initialOffsetY]);
 
   // Notify parent of scale data changes
   useEffect(() => {
@@ -258,12 +263,27 @@ export const PointPlacementCanvas = ({
     const imageX = (pointerPos.x - stagePos.x) / scale;
     const imageY = (pointerPos.y - stagePos.y) / scale;
 
+    // Check if clicking on existing point to drag it
+    if (pointPos && activeTool === 'pan') {
+      const POINT_RADIUS = 8; // Match the visual radius
+      const distToPoint = Math.sqrt(
+        Math.pow((imageX - pointPos.x) * scale, 2) +
+        Math.pow((imageY - pointPos.y) * scale, 2)
+      );
+
+      if (distToPoint <= POINT_RADIUS + 5) { // 5px tolerance
+        setIsDraggingPoint(true);
+        setLastPanPos(pointerPos);
+        return;
+      }
+    }
+
     // Check if clicking on child overlay for "Trace Scale Bar" method
     if (scaleMethod === 'Trace Scale Bar' && childImage && activeTool === 'pan') {
-      const childLeft = pointPos.x - childImage.width / 2;
-      const childRight = pointPos.x + childImage.width / 2;
-      const childTop = pointPos.y - childImage.height / 2;
-      const childBottom = pointPos.y + childImage.height / 2;
+      const childLeft = childOverlayPos.x - childImage.width / 2;
+      const childRight = childOverlayPos.x + childImage.width / 2;
+      const childTop = childOverlayPos.y - childImage.height / 2;
+      const childBottom = childOverlayPos.y + childImage.height / 2;
 
       if (imageX >= childLeft && imageX <= childRight && imageY >= childTop && imageY <= childBottom) {
         // Start dragging the child overlay
@@ -274,10 +294,13 @@ export const PointPlacementCanvas = ({
     }
 
     if (activeTool === 'point') {
-      setPointPos({ x: imageX, y: imageY });
-      onPlacementChange(imageX, imageY);
+      // Only allow placing one point
+      if (!pointPos) {
+        setPointPos({ x: imageX, y: imageY });
+        onPlacementChange(imageX, imageY);
+      }
     } else if (activeTool === 'line') {
-      // Start drawing line for scale bar
+      // Start drawing line for scale bar (on child overlay for "Trace Scale Bar")
       setIsDrawingLine(true);
       setCurrentLine({ x1: imageX, y1: imageY, x2: imageX, y2: imageY });
     } else if (activeTool === 'pan') {
@@ -294,8 +317,8 @@ export const PointPlacementCanvas = ({
     const pointerPos = stage.getPointerPosition();
     if (!pointerPos) return;
 
-    if (isDraggingChild && lastPanPos) {
-      // Drag the child overlay
+    if (isDraggingPoint && lastPanPos && pointPos) {
+      // Drag the point marker
       const dx = pointerPos.x - lastPanPos.x;
       const dy = pointerPos.y - lastPanPos.y;
 
@@ -307,6 +330,20 @@ export const PointPlacementCanvas = ({
       const newY = pointPos.y + imageDy;
 
       setPointPos({ x: newX, y: newY });
+      setLastPanPos(pointerPos);
+    } else if (isDraggingChild && lastPanPos) {
+      // Drag the child overlay
+      const dx = pointerPos.x - lastPanPos.x;
+      const dy = pointerPos.y - lastPanPos.y;
+
+      // Convert screen delta to image delta
+      const imageDx = dx / scale;
+      const imageDy = dy / scale;
+
+      const newX = childOverlayPos.x + imageDx;
+      const newY = childOverlayPos.y + imageDy;
+
+      setChildOverlayPos({ x: newX, y: newY });
       setLastPanPos(pointerPos);
     } else if (isDrawingLine && activeTool === 'line' && currentLine) {
       // Update line endpoint
@@ -328,9 +365,16 @@ export const PointPlacementCanvas = ({
   };
 
   const handleMouseUp = () => {
-    if (isDraggingChild) {
-      // Finished dragging child - notify parent
+    if (isDraggingPoint && pointPos) {
+      // Finished dragging point - notify parent
       onPlacementChange(pointPos.x, pointPos.y);
+      setIsDraggingPoint(false);
+      setLastPanPos(null);
+      return;
+    }
+
+    if (isDraggingChild) {
+      // Finished dragging child overlay - no need to notify parent (only point matters)
       setIsDraggingChild(false);
       setLastPanPos(null);
       return;
@@ -401,8 +445,12 @@ export const PointPlacementCanvas = ({
   };
 
   const getCursor = () => {
-    if (activeTool === 'point') return 'crosshair';
+    if (activeTool === 'point') {
+      // Show crosshair only if no point placed yet
+      return pointPos ? 'not-allowed' : 'crosshair';
+    }
     if (activeTool === 'line') return 'crosshair';
+    if (isDraggingPoint) return 'grabbing';
     if (isDraggingChild) return 'grabbing';
     if (isPanning) return 'grabbing';
     return 'grab';
@@ -667,8 +715,8 @@ export const PointPlacementCanvas = ({
             {scaleMethod === 'Trace Scale Bar' && childImage && (
               <KonvaImage
                 image={childImage}
-                x={pointPos.x - childImage.width / 2}
-                y={pointPos.y - childImage.height / 2}
+                x={childOverlayPos.x - childImage.width / 2}
+                y={childOverlayPos.y - childImage.height / 2}
                 width={childImage.width}
                 height={childImage.height}
                 opacity={0.5}
@@ -689,22 +737,27 @@ export const PointPlacementCanvas = ({
             )}
           </Layer>
 
-          {/* Point marker layer - NOT scaled */}
+          {/* Point marker layer - NOT scaled, only shown if point is placed */}
           <Layer>
-            <Circle
-              x={pointPos.x * scale + stagePos.x}
-              y={pointPos.y * scale + stagePos.y}
-              radius={8}
-              fill="#e44c65"
-              stroke="#ffffff"
-              strokeWidth={2}
-            />
+            {pointPos && (
+              <Circle
+                x={pointPos.x * scale + stagePos.x}
+                y={pointPos.y * scale + stagePos.y}
+                radius={8}
+                fill="#e44c65"
+                stroke="#ffffff"
+                strokeWidth={2}
+              />
+            )}
           </Layer>
         </Stage>
       </Box>
 
       <Typography variant="caption" color="text.secondary" sx={{ width: CANVAS_WIDTH, textAlign: 'center', mt: 1, display: 'block' }}>
-        Point Location: ({pointPos.x.toFixed(1)}, {pointPos.y.toFixed(1)}) | Zoom: {(scale * 100).toFixed(0)}%
+        {pointPos
+          ? `Point Location: (${pointPos.x.toFixed(1)}, ${pointPos.y.toFixed(1)}) | Zoom: ${(scale * 100).toFixed(0)}%`
+          : `No point placed yet | Zoom: ${(scale * 100).toFixed(0)}%`
+        }
       </Typography>
     </Box>
   );

@@ -824,12 +824,18 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
         scalePixelsPerCentimeter,
         // Associated micrograph fields
         parentID: parentMicrographId || undefined,
-        ...(isAssociated && {
+        ...(isAssociated && formData.locationMethod === 'Locate as a scaled rectangle' && {
           offsetInParent: {
             X: formData.offsetInParent.X,
             Y: formData.offsetInParent.Y,
           },
           rotation: formData.rotationAngle,
+        }),
+        ...(isAssociated && formData.locationMethod === 'Locate by an approximate point' && {
+          pointInParent: {
+            X: formData.offsetInParent.X,
+            Y: formData.offsetInParent.Y,
+          },
         }),
         instrument: {
           instrumentType: formData.instrumentType || undefined,
