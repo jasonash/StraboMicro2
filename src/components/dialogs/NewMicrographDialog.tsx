@@ -671,12 +671,27 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
           for (const sample of dataset.samples) {
             const parentMicrograph = sample.micrographs.find(m => m.id === parentMicrographId);
             if (parentMicrograph && parentMicrograph.scalePixelsPerCentimeter) {
-              // Now formData.scaleX contains the DISPLAYED scale (not converted)
-              // Following Trace Scale Bar logic: childScale = parentScale / displayedScale
-              scalePixelsPerCentimeter = parentMicrograph.scalePixelsPerCentimeter / formData.scaleX;
+              // Following Trace Scale Bar logic (line 450-455 in PlacementCanvas):
+              // We need to account for parent downsampling
+              // parentScaleInDisplayedImage = parentScale × parentDownsampleRatio
+              // childScale = parentScaleInDisplayedImage / displayedScale
+              //
+              // But we don't have the downsample ratio here. We need to load the parent image
+              // to get its displayed size. For now, assume no downsampling (will fix if needed).
+              //
+              // Actually, we can calculate it! Parent is always loaded at 2048px max dimension
+              const maxDimension = Math.max(parentMicrograph.width, parentMicrograph.height);
+              const parentDownsampleRatio = maxDimension > 2048 ? 2048 / maxDimension : 1;
+              const parentScaleInDisplayedImage = parentMicrograph.scalePixelsPerCentimeter * parentDownsampleRatio;
+
+              scalePixelsPerCentimeter = parentScaleInDisplayedImage / formData.scaleX;
 
               console.log('[NewMicrographDialog] Calculated scale from Stretch and Drag:', {
                 parentScale: parentMicrograph.scalePixelsPerCentimeter,
+                parentOriginalSize: `${parentMicrograph.width}x${parentMicrograph.height}`,
+                maxDimension,
+                parentDownsampleRatio,
+                parentScaleInDisplayedImage,
                 displayedScaleX: formData.scaleX,
                 childScale: scalePixelsPerCentimeter,
               });
