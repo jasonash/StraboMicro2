@@ -454,15 +454,21 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
   // Auto-populate pixel count from line length
   useEffect(() => {
     if (scaleMethod !== 'Trace Scale Bar and Drag') return;
-    if (!currentLine) return;
+    if (!currentLine || !childImage) return;
 
+    // Calculate line length in parent image space
     const dx = currentLine.x2 - currentLine.x1;
     const dy = currentLine.y2 - currentLine.y1;
-    const length = Math.sqrt(dx * dx + dy * dy);
+    const lineLength = Math.sqrt(dx * dx + dy * dy);
+
+    // Convert line length from parent image space to child's original image pixel space
+    // The line is drawn in parent coordinates, but we need the length in child's pixel space
+    // Since the child is scaled by childTransform.scaleX, we need to divide by that scale
+    const lengthInChildPixels = lineLength / childTransform.scaleX;
 
     // Round to 1 decimal place
-    setScaleBarPixelInput(length.toFixed(1));
-  }, [scaleMethod, currentLine]);
+    setScaleBarPixelInput(lengthInChildPixels.toFixed(1));
+  }, [scaleMethod, currentLine, childTransform.scaleX, childImage]);
 
   // Pan/Zoom handlers
   const handleMouseDown = (e: Konva.KonvaEventObject<MouseEvent>) => {
