@@ -418,8 +418,10 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
     };
     const childPixelsPerCm = childPixelsPerUnit * (conversionToCm[scaleBarUnitInput] || 1);
 
-    // Calculate scale factor: child scale / parent scale
-    let scaleFactor = childPixelsPerCm / parentScale;
+    // Calculate scale factor: parent scale / child scale
+    // If child is more zoomed in (higher px/cm), it should appear smaller on parent (scale < 1)
+    // If child is more zoomed out (lower px/cm), it should appear larger on parent (scale > 1)
+    let scaleFactor = parentScale / childPixelsPerCm;
 
     // Sanity checks: prevent wildly large or small scales
     const MIN_SCALE = 0.01;
@@ -440,7 +442,9 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
       childPixelsPerCm,
       parentScale,
       scaleFactor,
-      clamped: scaleFactor !== childPixelsPerCm / parentScale,
+      originalFormula: childPixelsPerCm / parentScale,
+      correctedFormula: parentScale / childPixelsPerCm,
+      clamped: scaleFactor !== parentScale / childPixelsPerCm,
     });
 
     // Update child scale (without calling onPlacementChange during render)
@@ -468,10 +472,18 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
     // but the actual loaded image might be downsampled (childImage.width x childImage.height)
     // Konva stretches the loaded image to fit childWidth x childHeight
 
+    // Step 1: Convert from parent space to child's rendered space
     // The child is scaled by childTransform.scaleX in parent space
-    // So: lineLengthInParentSpace / childTransform.scaleX = length in child's rendered space
-    // But the child is rendered at original size (childWidth), so this IS the original pixel length!
-    const lengthInOriginalChildPixels = lineLengthInParentSpace / childTransform.scaleX;
+    const lengthInChildRenderedSpace = lineLengthInParentSpace / childTransform.scaleX;
+
+    // Step 2: The child is rendered at childWidth (original size),
+    // but we drew on the actual pixels of the loaded image (childImage.width)
+    // We need to scale DOWN by the ratio to get the actual pixels in the loaded image
+    const loadedToOriginalRatio = childImage.width / childWidth;
+    const lengthInLoadedImagePixels = lengthInChildRenderedSpace * loadedToOriginalRatio;
+
+    // Step 3: Now scale back UP to original image dimensions
+    const lengthInOriginalChildPixels = lengthInLoadedImagePixels * (childWidth / childImage.width);
 
     console.log('[PlacementCanvas] Trace Scale Bar calculation:', {
       'Line coords': { x1: currentLine.x1, y1: currentLine.y1, x2: currentLine.x2, y2: currentLine.y2 },
