@@ -611,6 +611,31 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
           }
         }
       }
+    } else if (isAssociated && formData.scaleMethod === 'Stretch and Drag') {
+      // Calculate scale based on the scale factor (scaleX/scaleY) and parent's scale
+      // The scaleX value represents: how much larger/smaller the child appears relative to parent
+      // If scaleX = 1, child and parent have same scale (1 cm on child = 1 cm on parent at same zoom)
+      // If scaleX = 0.5, child appears half size (child is more zoomed in, higher px/cm)
+      // If scaleX = 2, child appears double size (child is more zoomed out, lower px/cm)
+      //
+      // Formula: childScale = parentScale / scaleX
+      const { project } = useAppStore.getState();
+      if (project && parentMicrographId && formData.scaleX) {
+        for (const dataset of project.datasets) {
+          for (const sample of dataset.samples) {
+            const parentMicrograph = sample.micrographs.find(m => m.id === parentMicrographId);
+            if (parentMicrograph && parentMicrograph.scalePixelsPerCentimeter) {
+              scalePixelsPerCentimeter = parentMicrograph.scalePixelsPerCentimeter / formData.scaleX;
+              console.log('[NewMicrographDialog] Calculated scale from Stretch and Drag:', {
+                parentScale: parentMicrograph.scalePixelsPerCentimeter,
+                scaleX: formData.scaleX,
+                childScale: scalePixelsPerCentimeter,
+              });
+              break;
+            }
+          }
+        }
+      }
     } else if (isAssociated && formData.scaleMethod === 'Trace Scale Bar and Drag' && formData.scaleBarLineLengthPixels && formData.scaleBarPhysicalLength) {
       const lineLengthPixels = parseFloat(formData.scaleBarLineLengthPixels);
       const physicalLength = parseFloat(formData.scaleBarPhysicalLength);
