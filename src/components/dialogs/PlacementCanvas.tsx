@@ -49,7 +49,7 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
   initialScaleX = 1,
   initialScaleY = 1,
   onPlacementChange,
-  onScaleDataChange,
+  onScaleDataChange: _onScaleDataChange, // Will be used for other scale methods
 }) => {
   const stageRef = useRef<Konva.Stage>(null);
   const transformerRef = useRef<Konva.Transformer>(null);
@@ -77,18 +77,12 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
     scaleY: initialScaleY,
   });
 
-  // Scale bar/input state for different scale methods
-  const [scaleInputs, setScaleInputs] = useState({
-    scaleBarLineLengthPixels: '',
-    scaleBarPhysicalLength: '',
-    scaleBarUnits: 'μm',
-    pixels: '',
-    physicalLength: '',
-    pixelUnits: 'μm',
-    imageWidthPhysical: '',
-    imageHeightPhysical: '',
-    sizeUnits: 'μm',
-  });
+  // Determine if resize handles should be shown based on scale method
+  const enableResizeHandles = scaleMethod === 'Stretch and Drag';
+
+  // For "Copy Size from Existing", we might lock position/rotation too
+  const enableDrag = scaleMethod !== 'Copy Size from Existing Micrograph';
+  const enableRotate = scaleMethod !== 'Copy Size from Existing Micrograph';
 
   // Load parent micrograph from the store and tile cache
   useEffect(() => {
@@ -299,7 +293,7 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
     };
 
     setChildTransform(newTransform);
-    onPlacementChange(newTransform.x, newTransform.y, newTransform.rotation);
+    onPlacementChange(newTransform.x, newTransform.y, newTransform.rotation, newTransform.scaleX, newTransform.scaleY);
   };
 
   const handleChildTransformEnd = () => {
@@ -315,7 +309,7 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
     };
 
     setChildTransform(newTransform);
-    onPlacementChange(newTransform.x, newTransform.y, newTransform.rotation);
+    onPlacementChange(newTransform.x, newTransform.y, newTransform.rotation, newTransform.scaleX, newTransform.scaleY);
   };
 
   const handleResetChild = () => {
@@ -330,7 +324,7 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
     };
 
     setChildTransform(resetTransform);
-    onPlacementChange(resetTransform.x, resetTransform.y, resetTransform.rotation);
+    onPlacementChange(resetTransform.x, resetTransform.y, resetTransform.rotation, resetTransform.scaleX, resetTransform.scaleY);
 
     if (childGroupRef.current) {
       childGroupRef.current.position({ x: resetTransform.x, y: resetTransform.y });
@@ -430,7 +424,7 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
                 scaleY={childTransform.scaleY}
                 offsetX={childWidth / 2}
                 offsetY={childHeight / 2}
-                draggable
+                draggable={enableDrag}
                 onDragEnd={handleChildDragEnd}
                 onTransformEnd={handleChildTransformEnd}
               >
@@ -456,14 +450,14 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
             {childImage && (
               <Transformer
                 ref={transformerRef}
-                rotateEnabled={true}
+                rotateEnabled={enableRotate}
                 borderStroke="#e44c65"
                 anchorStroke="#e44c65"
                 anchorFill="#e44c65"
                 anchorSize={5 / scale}
                 anchorCornerRadius={2.5 / scale}
                 anchorStrokeWidth={2 / scale}
-                enabledAnchors={['top-left', 'top-right', 'bottom-left', 'bottom-right']}
+                enabledAnchors={enableResizeHandles ? ['top-left', 'top-right', 'bottom-left', 'bottom-right'] : []}
                 keepRatio={true}
                 rotateAnchorOffset={8 / scale}
               />

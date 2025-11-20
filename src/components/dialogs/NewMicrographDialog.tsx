@@ -97,6 +97,8 @@ interface MicrographFormData {
   offsetX: number;
   offsetY: number;
   rotationAngle: number;
+  scaleX: number;
+  scaleY: number;
   instrumentType: string;
   otherInstrumentType: string;
   dataType: string;
@@ -215,6 +217,8 @@ const initialFormData: MicrographFormData = {
   offsetX: 0,
   offsetY: 0,
   rotationAngle: 0,
+  scaleX: 1,
+  scaleY: 1,
   // Scale method will be set based on location method (defaults to 'Trace Scale Bar' initially)
   instrumentType: '',
   otherInstrumentType: '',
@@ -1781,10 +1785,12 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
   // Render Location & Scale step (for associated micrographs)
   const renderLocationPlacementStep = () => {
     // Handler for placement changes from the canvas
-    const handlePlacementChange = (offsetX: number, offsetY: number, rotation: number) => {
+    const handlePlacementChange = (offsetX: number, offsetY: number, rotation: number, scaleX?: number, scaleY?: number) => {
       updateField('offsetX', offsetX);
       updateField('offsetY', offsetY);
       updateField('rotationAngle', rotation);
+      if (scaleX !== undefined) updateField('scaleX', scaleX);
+      if (scaleY !== undefined) updateField('scaleY', scaleY);
     };
 
     // Render different canvas based on location method
@@ -1808,6 +1814,7 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
             childScratchPath={formData.micrographFilePath}
             childWidth={formData.micrographWidth}
             childHeight={formData.micrographHeight}
+            scaleMethod={formData.scaleMethod}
             initialOffsetX={formData.offsetX}
             initialOffsetY={formData.offsetY}
             initialRotation={formData.rotationAngle}
