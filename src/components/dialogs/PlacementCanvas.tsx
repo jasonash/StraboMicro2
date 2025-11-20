@@ -1064,16 +1064,18 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
           ref={stageRef}
           width={CANVAS_WIDTH}
           height={CANVAS_HEIGHT}
-          scaleX={scale}
-          scaleY={scale}
-          x={stagePos.x}
-          y={stagePos.y}
           onMouseDown={handleMouseDown}
           onMouseMove={handleMouseMove}
           onMouseUp={handleMouseUp}
           onWheel={handleWheel}
         >
-          <Layer>
+          {/* Main content layer - scaled and panned */}
+          <Layer
+            scaleX={scale}
+            scaleY={scale}
+            x={stagePos.x}
+            y={stagePos.y}
+          >
             {/* Parent micrograph (background) */}
             {parentImage && (
               <KonvaImage
@@ -1116,23 +1118,6 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
               </Group>
             )}
 
-            {/* Transformer for resize/rotate handles */}
-            {childImage && (
-              <Transformer
-                ref={transformerRef}
-                rotateEnabled={enableRotate}
-                borderStroke="#e44c65"
-                anchorStroke="#e44c65"
-                anchorFill="#e44c65"
-                anchorSize={5 / scale}
-                anchorCornerRadius={2.5 / scale}
-                anchorStrokeWidth={2 / scale}
-                enabledAnchors={enableResizeHandles ? ['top-left', 'top-right', 'bottom-left', 'bottom-right'] : []}
-                keepRatio={true}
-                rotateAnchorOffset={8 / scale}
-              />
-            )}
-
             {/* Traced scale bar line for Trace Scale Bar method */}
             {scaleMethod === 'Trace Scale Bar and Drag' && currentLine && (
               <Line
@@ -1142,6 +1127,27 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
                 lineCap="round"
                 lineJoin="round"
                 listening={false}
+              />
+            )}
+          </Layer>
+
+          {/* Transformer layer - NOT scaled, stays at constant screen size */}
+          <Layer>
+            {childImage && (
+              <Transformer
+                ref={transformerRef}
+                rotateEnabled={enableRotate}
+                borderStroke="#e44c65"
+                anchorStroke="#e44c65"
+                anchorFill="#e44c65"
+                anchorSize={8}
+                anchorCornerRadius={4}
+                anchorStrokeWidth={2}
+                borderStrokeWidth={2}
+                enabledAnchors={enableResizeHandles ? ['top-left', 'top-right', 'bottom-left', 'bottom-right'] : []}
+                keepRatio={true}
+                rotateAnchorOffset={30}
+                ignoreStroke={true}
               />
             )}
           </Layer>
