@@ -161,6 +161,20 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
           const y = (CANVAS_HEIGHT - img.height * initialScale) / 2;
           setStagePos({ x, y });
 
+          // Initialize child position to center of parent image if not already set
+          if (initialOffsetX === 400 && initialOffsetY === 300) {
+            // These are the default values, so center the child
+            const centerX = img.width / 2;
+            const centerY = img.height / 2;
+            setChildTransform(prev => ({
+              ...prev,
+              x: centerX,
+              y: centerY,
+            }));
+            onPlacementChange(centerX, centerY, initialRotation, initialScaleX, initialScaleY);
+            console.log('[PlacementCanvas] Initialized child position to center:', { centerX, centerY });
+          }
+
           console.log('[PlacementCanvas] Parent image loaded:', {
             width: img.width,
             height: img.height,
@@ -174,7 +188,7 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
     };
 
     loadParentImage();
-  }, [parentMicrographId]);
+  }, [parentMicrographId, initialOffsetX, initialOffsetY, initialRotation, initialScaleX, initialScaleY, onPlacementChange]);
 
   // Load child micrograph from scratch space
   useEffect(() => {
