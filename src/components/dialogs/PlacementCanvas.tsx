@@ -1179,38 +1179,38 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
 
       {/* Debug panel for Stretch and Drag method */}
       {scaleMethod === 'Stretch and Drag' && parentScale && parentOriginalWidth && parentImage && childImage && (
-        <Paper elevation={1} sx={{ p: 2, width: CANVAS_WIDTH, backgroundColor: '#f5f5f5' }}>
+        <Paper elevation={2} sx={{ p: 2, width: CANVAS_WIDTH, backgroundColor: 'background.paper', border: 1, borderColor: 'divider' }}>
           <Typography variant="subtitle2" gutterBottom color="primary">
             Scale Calculation Debug (Stretch and Drag)
           </Typography>
           <Stack spacing={0.5}>
-            <Typography variant="caption" sx={{ fontFamily: 'monospace' }}>
+            <Typography variant="caption" sx={{ fontFamily: 'monospace', color: 'text.primary' }}>
               Parent Scale: {parentScale.toFixed(2)} px/cm
             </Typography>
-            <Typography variant="caption" sx={{ fontFamily: 'monospace' }}>
+            <Typography variant="caption" sx={{ fontFamily: 'monospace', color: 'text.primary' }}>
               Parent Original Size: {parentOriginalWidth} x {parentImage.height} px
             </Typography>
-            <Typography variant="caption" sx={{ fontFamily: 'monospace' }}>
+            <Typography variant="caption" sx={{ fontFamily: 'monospace', color: 'text.primary' }}>
               Parent Displayed Size: {parentImage.width} x {parentImage.height} px
             </Typography>
-            <Typography variant="caption" sx={{ fontFamily: 'monospace' }}>
+            <Typography variant="caption" sx={{ fontFamily: 'monospace', color: 'text.primary' }}>
               Parent Downsample Ratio: {(parentImage.width / parentOriginalWidth).toFixed(4)}
             </Typography>
-            <Box sx={{ borderTop: '1px solid #ccc', my: 0.5 }} />
-            <Typography variant="caption" sx={{ fontFamily: 'monospace' }}>
+            <Box sx={{ borderTop: 1, borderColor: 'divider', my: 0.5 }} />
+            <Typography variant="caption" sx={{ fontFamily: 'monospace', color: 'text.primary' }}>
               Child Original Size: {childWidth} x {childHeight} px
             </Typography>
-            <Typography variant="caption" sx={{ fontFamily: 'monospace' }}>
+            <Typography variant="caption" sx={{ fontFamily: 'monospace', color: 'text.primary' }}>
               Child Displayed Size: {childImage.width} x {childImage.height} px
             </Typography>
-            <Typography variant="caption" sx={{ fontFamily: 'monospace' }}>
+            <Typography variant="caption" sx={{ fontFamily: 'monospace', color: 'text.primary' }}>
               Child Downsample Ratio: {(childImage.width / childWidth).toFixed(4)}
             </Typography>
-            <Box sx={{ borderTop: '1px solid #ccc', my: 0.5 }} />
-            <Typography variant="caption" sx={{ fontFamily: 'monospace' }}>
+            <Box sx={{ borderTop: 1, borderColor: 'divider', my: 0.5 }} />
+            <Typography variant="caption" sx={{ fontFamily: 'monospace', color: 'text.primary' }}>
               Displayed Scale (from resize): {childTransform.scaleX.toFixed(4)}x
             </Typography>
-            <Typography variant="caption" sx={{ fontFamily: 'monospace' }}>
+            <Typography variant="caption" sx={{ fontFamily: 'monospace', color: 'text.primary' }}>
               Final Scale (for original images): {(childTransform.scaleX * (childImage.width / childWidth) / (parentImage.width / parentOriginalWidth)).toFixed(4)}x
             </Typography>
             <Typography variant="caption" sx={{ fontFamily: 'monospace', fontWeight: 'bold', color: 'primary.main' }}>
