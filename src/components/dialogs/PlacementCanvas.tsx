@@ -456,30 +456,31 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
     if (scaleMethod !== 'Trace Scale Bar and Drag') return;
     if (!currentLine || !childImage) return;
 
+    // The line is drawn in parent image coordinate space
+    // But we need the length in the child's ORIGINAL image pixel space
+
     // Calculate line length in parent image space
     const dx = currentLine.x2 - currentLine.x1;
     const dy = currentLine.y2 - currentLine.y1;
-    const lineLength = Math.sqrt(dx * dx + dy * dy);
+    const lineLengthInParentSpace = Math.sqrt(dx * dx + dy * dy);
 
-    // Convert line length from parent image space to child's displayed image space
-    // Since the child is scaled by childTransform.scaleX in the parent's coordinate system
-    const lengthInDisplayedChildPixels = lineLength / childTransform.scaleX;
+    // The child Group is rendered at original dimensions (childWidth x childHeight)
+    // but the actual loaded image might be downsampled (childImage.width x childImage.height)
+    // Konva stretches the loaded image to fit childWidth x childHeight
 
-    // Account for the fact that childImage might be downsampled (medium resolution)
-    // Calculate scale ratio between original child image and displayed child image
-    const childScaleRatio = childWidth / childImage.width;
-
-    // Convert to original child image pixels
-    const lengthInOriginalChildPixels = lengthInDisplayedChildPixels * childScaleRatio;
+    // The child is scaled by childTransform.scaleX in parent space
+    // So: lineLengthInParentSpace / childTransform.scaleX = length in child's rendered space
+    // But the child is rendered at original size (childWidth), so this IS the original pixel length!
+    const lengthInOriginalChildPixels = lineLengthInParentSpace / childTransform.scaleX;
 
     console.log('[PlacementCanvas] Trace Scale Bar calculation:', {
-      lineLength,
-      childTransformScale: childTransform.scaleX,
-      lengthInDisplayedChildPixels,
-      displayedChildWidth: childImage.width,
-      originalChildWidth: childWidth,
-      childScaleRatio,
-      lengthInOriginalChildPixels
+      'Line coords': { x1: currentLine.x1, y1: currentLine.y1, x2: currentLine.x2, y2: currentLine.y2 },
+      'Line length in parent space': lineLengthInParentSpace,
+      'Child transform scale': childTransform.scaleX,
+      'Division result': lineLengthInParentSpace / childTransform.scaleX,
+      'Loaded child image size': { width: childImage.width, height: childImage.height },
+      'Original child size': { width: childWidth, height: childHeight },
+      'Final length in original child pixels': lengthInOriginalChildPixels
     });
 
     // Round to 1 decimal place
