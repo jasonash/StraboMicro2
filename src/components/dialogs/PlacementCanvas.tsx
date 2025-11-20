@@ -285,11 +285,20 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
     }));
   }, [scaleMethod, pixelInput, physicalLengthInput, unitInput, parentScale]);
 
-  // Separate effect to call onPlacementChange when transform changes
+  // Call onPlacementChange when scale changes automatically (for auto-scale methods)
+  // Use a ref to track previous scale to avoid calling on every render
+  const prevScaleRef = useRef({ scaleX: initialScaleX, scaleY: initialScaleY });
   useEffect(() => {
-    if (scaleMethod !== 'Pixel Conversion Factor') return;
-    onPlacementChange(childTransform.x, childTransform.y, childTransform.rotation, childTransform.scaleX, childTransform.scaleY);
-  }, [childTransform.scaleX, childTransform.scaleY]);
+    // Only for methods that auto-calculate scale
+    if (scaleMethod !== 'Pixel Conversion Factor' && scaleMethod !== 'Provide Width/Height of Image') return;
+
+    // Only call if scale actually changed (not just position)
+    if (childTransform.scaleX !== prevScaleRef.current.scaleX ||
+        childTransform.scaleY !== prevScaleRef.current.scaleY) {
+      onPlacementChange(childTransform.x, childTransform.y, childTransform.rotation, childTransform.scaleX, childTransform.scaleY);
+      prevScaleRef.current = { scaleX: childTransform.scaleX, scaleY: childTransform.scaleY };
+    }
+  }, [scaleMethod, childTransform.scaleX, childTransform.scaleY, childTransform.x, childTransform.y, childTransform.rotation, onPlacementChange]);
 
   // Auto-calculate child scale for Provide Width/Height method
   useEffect(() => {
@@ -367,12 +376,6 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
       scaleY: scaleFactor,
     }));
   }, [scaleMethod, widthInput, heightInput, sizeUnitInput, parentScale, childWidth, childHeight]);
-
-  // Separate effect to call onPlacementChange when transform changes (for Width/Height)
-  useEffect(() => {
-    if (scaleMethod !== 'Provide Width/Height of Image') return;
-    onPlacementChange(childTransform.x, childTransform.y, childTransform.rotation, childTransform.scaleX, childTransform.scaleY);
-  }, [childTransform.scaleX, childTransform.scaleY]);
 
   // Pan/Zoom handlers
   const handleMouseDown = (e: Konva.KonvaEventObject<MouseEvent>) => {
