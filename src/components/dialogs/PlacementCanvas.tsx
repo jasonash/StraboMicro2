@@ -104,6 +104,35 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
   const [parentScale, setParentScale] = useState<number | null>(null);
   const [parentOriginalWidth, setParentOriginalWidth] = useState<number | null>(null);
 
+  // Helper function to convert from center-based to top-left-based coordinates
+  const convertCenterToTopLeft = (centerX: number, centerY: number, rotation: number, scaleX: number, scaleY: number) => {
+    // The child Group is positioned at its center due to offsetX/offsetY
+    // We need to calculate the top-left corner position
+    // Since rotation happens around the center, we need to account for that
+
+    // Without rotation, top-left is simply (centerX - width/2, centerY - height/2)
+    // But with rotation, we need to apply the rotation transform
+    const halfWidth = (childWidth * scaleX) / 2;
+    const halfHeight = (childHeight * scaleY) / 2;
+
+    // Convert rotation to radians
+    const rotRad = (rotation * Math.PI) / 180;
+
+    // Calculate offset from center to top-left corner (before rotation)
+    const dx = -halfWidth;
+    const dy = -halfHeight;
+
+    // Apply rotation to the offset
+    const rotatedDx = dx * Math.cos(rotRad) - dy * Math.sin(rotRad);
+    const rotatedDy = dx * Math.sin(rotRad) + dy * Math.cos(rotRad);
+
+    // Top-left position = center + rotated offset
+    const topLeftX = centerX + rotatedDx;
+    const topLeftY = centerY + rotatedDy;
+
+    return { x: topLeftX, y: topLeftY };
+  };
+
   // Determine if resize handles should be shown based on scale method
   const enableResizeHandles = scaleMethod === 'Stretch and Drag';
 
@@ -193,8 +222,10 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
               x: centerX,
               y: centerY,
             }));
-            onPlacementChange(centerX, centerY, initialRotation, initialScaleX, initialScaleY);
-            console.log('[PlacementCanvas] Initialized child position to center:', { centerX, centerY });
+            // Convert center to top-left for legacy compatibility
+            const topLeft = convertCenterToTopLeft(centerX, centerY, initialRotation, initialScaleX, initialScaleY);
+            onPlacementChange(topLeft.x, topLeft.y, initialRotation, initialScaleX, initialScaleY);
+            console.log('[PlacementCanvas] Initialized child position to center:', { centerX, centerY, topLeft });
           }
 
           console.log('[PlacementCanvas] Parent image loaded:', {
@@ -318,7 +349,9 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
     // Only call if scale actually changed (not just position)
     if (childTransform.scaleX !== prevScaleRef.current.scaleX ||
         childTransform.scaleY !== prevScaleRef.current.scaleY) {
-      onPlacementChange(childTransform.x, childTransform.y, childTransform.rotation, childTransform.scaleX, childTransform.scaleY);
+      // Convert center position to top-left for legacy compatibility
+      const topLeft = convertCenterToTopLeft(childTransform.x, childTransform.y, childTransform.rotation, childTransform.scaleX, childTransform.scaleY);
+      onPlacementChange(topLeft.x, topLeft.y, childTransform.rotation, childTransform.scaleX, childTransform.scaleY);
       prevScaleRef.current = { scaleX: childTransform.scaleX, scaleY: childTransform.scaleY };
     }
   }, [scaleMethod, childTransform.scaleX, childTransform.scaleY, childTransform.x, childTransform.y, childTransform.rotation, onPlacementChange]);
@@ -656,7 +689,10 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
     };
 
     setChildTransform(newTransform);
-    onPlacementChange(newTransform.x, newTransform.y, newTransform.rotation, newTransform.scaleX, newTransform.scaleY);
+
+    // Convert center position to top-left for legacy compatibility
+    const topLeft = convertCenterToTopLeft(newTransform.x, newTransform.y, newTransform.rotation, newTransform.scaleX, newTransform.scaleY);
+    onPlacementChange(topLeft.x, topLeft.y, newTransform.rotation, newTransform.scaleX, newTransform.scaleY);
   };
 
   const handleChildTransformEnd = () => {
@@ -672,7 +708,10 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
     };
 
     setChildTransform(newTransform);
-    onPlacementChange(newTransform.x, newTransform.y, newTransform.rotation, newTransform.scaleX, newTransform.scaleY);
+
+    // Convert center position to top-left for legacy compatibility
+    const topLeft = convertCenterToTopLeft(newTransform.x, newTransform.y, newTransform.rotation, newTransform.scaleX, newTransform.scaleY);
+    onPlacementChange(topLeft.x, topLeft.y, newTransform.rotation, newTransform.scaleX, newTransform.scaleY);
   };
 
   const handleResetChild = () => {
@@ -687,7 +726,10 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
     };
 
     setChildTransform(resetTransform);
-    onPlacementChange(resetTransform.x, resetTransform.y, resetTransform.rotation, resetTransform.scaleX, resetTransform.scaleY);
+
+    // Convert center to top-left for legacy compatibility
+    const topLeft = convertCenterToTopLeft(resetTransform.x, resetTransform.y, resetTransform.rotation, resetTransform.scaleX, resetTransform.scaleY);
+    onPlacementChange(topLeft.x, topLeft.y, resetTransform.rotation, resetTransform.scaleX, resetTransform.scaleY);
 
     if (childGroupRef.current) {
       childGroupRef.current.position({ x: resetTransform.x, y: resetTransform.y });
