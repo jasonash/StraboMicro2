@@ -17,10 +17,24 @@ interface PlacementCanvasProps {
   childScratchPath: string; // Path to child image in scratch space
   childWidth: number;
   childHeight: number;
+  scaleMethod: string; // The scale method chosen in the wizard
   initialOffsetX?: number;
   initialOffsetY?: number;
   initialRotation?: number;
-  onPlacementChange: (offsetX: number, offsetY: number, rotation: number) => void;
+  initialScaleX?: number;
+  initialScaleY?: number;
+  onPlacementChange: (offsetX: number, offsetY: number, rotation: number, scaleX?: number, scaleY?: number) => void;
+  onScaleDataChange?: (data: {
+    scaleBarLineLengthPixels?: number;
+    scaleBarPhysicalLength?: number;
+    scaleBarUnits?: string;
+    pixels?: number;
+    physicalLength?: number;
+    pixelUnits?: string;
+    imageWidthPhysical?: number;
+    imageHeightPhysical?: number;
+    sizeUnits?: string;
+  }) => void;
 }
 
 const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
@@ -28,10 +42,14 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
   childScratchPath,
   childWidth,
   childHeight,
+  scaleMethod,
   initialOffsetX = 400,
   initialOffsetY = 300,
   initialRotation = 0,
+  initialScaleX = 1,
+  initialScaleY = 1,
   onPlacementChange,
+  onScaleDataChange,
 }) => {
   const stageRef = useRef<Konva.Stage>(null);
   const transformerRef = useRef<Konva.Transformer>(null);
@@ -55,8 +73,21 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
     x: initialOffsetX,
     y: initialOffsetY,
     rotation: initialRotation,
-    scaleX: 1,
-    scaleY: 1,
+    scaleX: initialScaleX,
+    scaleY: initialScaleY,
+  });
+
+  // Scale bar/input state for different scale methods
+  const [scaleInputs, setScaleInputs] = useState({
+    scaleBarLineLengthPixels: '',
+    scaleBarPhysicalLength: '',
+    scaleBarUnits: 'μm',
+    pixels: '',
+    physicalLength: '',
+    pixelUnits: 'μm',
+    imageWidthPhysical: '',
+    imageHeightPhysical: '',
+    sizeUnits: 'μm',
   });
 
   // Load parent micrograph from the store and tile cache
