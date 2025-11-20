@@ -1175,17 +1175,14 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
             </Typography>
             <Box sx={{ borderTop: 1, borderColor: 'divider', my: 0.5 }} />
             <Typography variant="caption" sx={{ fontFamily: 'monospace', color: 'text.secondary' }}>
-              Image Dimension Ratio: {(childWidth / parentOriginalWidth).toFixed(4)} (child/parent)
-            </Typography>
-            <Typography variant="caption" sx={{ fontFamily: 'monospace', color: 'text.secondary' }}>
-              Magnification Ratio: {((childTransform.scaleX * (childImage.width / childWidth) / (parentImage.width / parentOriginalWidth)) / (childWidth / parentOriginalWidth)).toFixed(4)}
+              Parent Scale In Displayed Image: {(parentScale * (parentImage.width / parentOriginalWidth)).toFixed(2)} px/cm
             </Typography>
             <Box sx={{ borderTop: 1, borderColor: 'divider', my: 0.5 }} />
-            <Typography variant="caption" sx={{ fontFamily: 'monospace', fontWeight: 'bold', color: 'error.main' }}>
-              OLD WRONG: Child scale = {(parentScale / (childTransform.scaleX * (childImage.width / childWidth) / (parentImage.width / parentOriginalWidth))).toFixed(2)} px/cm
-            </Typography>
             <Typography variant="caption" sx={{ fontFamily: 'monospace', fontWeight: 'bold', color: 'success.main' }}>
-              NEW CORRECT: Child scale = {(parentScale / ((childTransform.scaleX * (childImage.width / childWidth) / (parentImage.width / parentOriginalWidth)) / (childWidth / parentOriginalWidth))).toFixed(2)} px/cm
+              CALCULATED Child Scale: {((parentScale * (parentImage.width / parentOriginalWidth)) / childTransform.scaleX).toFixed(2)} px/cm
+            </Typography>
+            <Typography variant="caption" sx={{ fontFamily: 'monospace', fontSize: '0.7rem', color: 'text.secondary' }}>
+              Formula: parentScaleInDisplayed / displayedScale
             </Typography>
           </Stack>
         </Paper>
