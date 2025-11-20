@@ -704,7 +704,7 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
   // Child transform handlers
   const handleChildDragEnd = () => {
     const node = childGroupRef.current;
-    if (!node || !childImage || !parentImage || !parentOriginalWidth) return;
+    if (!node) return;
 
     const newTransform = {
       ...childTransform,
@@ -717,75 +717,35 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
     // Convert center position to top-left for legacy compatibility
     const topLeft = convertCenterToTopLeft(newTransform.x, newTransform.y, newTransform.rotation, newTransform.scaleX, newTransform.scaleY);
 
-    // Convert displayed scale to original image scale for reporting
-    const childDownsampleRatio = childImage.width / childWidth;
-    const parentDownsampleRatio = parentImage.width / parentOriginalWidth;
-    const finalScaleX = newTransform.scaleX * childDownsampleRatio / parentDownsampleRatio;
-    const finalScaleY = newTransform.scaleY * childDownsampleRatio / parentDownsampleRatio;
-
-    onPlacementChange(topLeft.x, topLeft.y, newTransform.rotation, finalScaleX, finalScaleY);
+    // For Stretch and Drag, report the DISPLAYED scale (not converted)
+    // The scale calculation should happen at save time using: childScale = parentScale / displayedScale
+    onPlacementChange(topLeft.x, topLeft.y, newTransform.rotation, newTransform.scaleX, newTransform.scaleY);
   };
 
   const handleChildTransformEnd = () => {
     const node = childGroupRef.current;
-    if (!node || !childImage || !parentImage || !parentOriginalWidth) return;
+    if (!node) return;
 
     // Get the scale in displayed coordinate space
     const displayedScaleX = node.scaleX();
     const displayedScaleY = node.scaleY();
 
-    // Convert scale from displayed space to original image space
-    // The scale user sees is: (displayed child size * displayedScale) / displayed parent size
-    // We need: (original child size * finalScale) / original parent size
-    //
-    // displayedScale is relative to displayed child (e.g., 2048px version)
-    // We need finalScale relative to original child (e.g., 2500px version)
-    //
-    // displayedScale * displayedChildSize = target size on screen
-    // finalScale * originalChildSize = target size in original coordinates
-    //
-    // But both need to be proportional to their respective parent sizes:
-    // (displayedScale * displayedChildSize) / displayedParentSize = (finalScale * originalChildSize) / originalParentSize
-    //
-    // Solving for finalScale:
-    // finalScale = displayedScale * (displayedChildSize / originalChildSize) * (originalParentSize / displayedParentSize)
-
-    const childDownsampleRatio = childImage.width / childWidth; // e.g., 2048 / 2500 = 0.8192
-    const parentDownsampleRatio = parentImage.width / parentOriginalWidth; // e.g., 2048 / 3500 = 0.585
-
-    // Convert displayed scale to original image scale
-    const finalScaleX = displayedScaleX * childDownsampleRatio / parentDownsampleRatio;
-    const finalScaleY = displayedScaleY * childDownsampleRatio / parentDownsampleRatio;
-
-    console.log('[PlacementCanvas] Transform scale conversion:', {
-      displayedScaleX,
-      displayedScaleY,
-      childDisplayedWidth: childImage.width,
-      childOriginalWidth: childWidth,
-      childDownsampleRatio,
-      parentDisplayedWidth: parentImage.width,
-      parentOriginalWidth,
-      parentDownsampleRatio,
-      finalScaleX,
-      finalScaleY,
-    });
-
     const newTransform = {
       x: node.x(),
       y: node.y(),
       rotation: node.rotation(),
-      scaleX: displayedScaleX, // Keep displayed scale for rendering
+      scaleX: displayedScaleX,
       scaleY: displayedScaleY,
     };
 
     setChildTransform(newTransform);
 
     // Convert center position to top-left for legacy compatibility
-    // Use displayed scale for coordinate conversion (since coordinates are in displayed space)
     const topLeft = convertCenterToTopLeft(newTransform.x, newTransform.y, newTransform.rotation, displayedScaleX, displayedScaleY);
 
-    // But report final scale (for original image space) to parent
-    onPlacementChange(topLeft.x, topLeft.y, newTransform.rotation, finalScaleX, finalScaleY);
+    // For Stretch and Drag, report the DISPLAYED scale (not converted)
+    // The scale calculation should happen at save time using: childScale = parentScale / displayedScale
+    onPlacementChange(topLeft.x, topLeft.y, newTransform.rotation, displayedScaleX, displayedScaleY);
   };
 
   const handleResetChild = () => {

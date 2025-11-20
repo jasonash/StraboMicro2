@@ -671,26 +671,13 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
           for (const sample of dataset.samples) {
             const parentMicrograph = sample.micrographs.find(m => m.id === parentMicrographId);
             if (parentMicrograph && parentMicrograph.scalePixelsPerCentimeter) {
-              // The scaleX we receive combines two factors:
-              // 1. Image dimension ratio (child width / parent width)
-              // 2. Magnification ratio (how zoomed in child is vs parent)
-              //
-              // To extract magnification: divide finalScale by image dimension ratio
-              // Then: childScale = parentScale / magnificationRatio
-              //     = parentScale × imageDimensionRatio / finalScale
-              //     = parentScale × (childWidth / parentWidth) / scaleX
-
-              const imageDimensionRatio = formData.micrographWidth / parentMicrograph.width;
-              const magnificationRatio = formData.scaleX / imageDimensionRatio;
-              scalePixelsPerCentimeter = parentMicrograph.scalePixelsPerCentimeter / magnificationRatio;
+              // Now formData.scaleX contains the DISPLAYED scale (not converted)
+              // Following Trace Scale Bar logic: childScale = parentScale / displayedScale
+              scalePixelsPerCentimeter = parentMicrograph.scalePixelsPerCentimeter / formData.scaleX;
 
               console.log('[NewMicrographDialog] Calculated scale from Stretch and Drag:', {
                 parentScale: parentMicrograph.scalePixelsPerCentimeter,
-                parentWidth: parentMicrograph.width,
-                childWidth: formData.micrographWidth,
-                imageDimensionRatio,
-                scaleX: formData.scaleX,
-                magnificationRatio,
+                displayedScaleX: formData.scaleX,
                 childScale: scalePixelsPerCentimeter,
               });
               break;
