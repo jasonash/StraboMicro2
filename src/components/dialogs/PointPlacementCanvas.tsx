@@ -1,0 +1,604 @@
+import { useState, useRef, useEffect } from 'react';
+import { Stage, Layer, Image as KonvaImage, Circle, Line } from 'react-konva';
+import { Box, Stack, IconButton, Tooltip, Paper, TextField, Select, MenuItem, FormControl, InputLabel, Typography, Grid } from '@mui/material';
+import { PanTool, Timeline, ZoomIn, ZoomOut, RestartAlt, Place } from '@mui/icons-material';
+import Konva from 'konva';
+
+interface PointPlacementCanvasProps {
+  parentImageUrl: string;
+  parentOriginalWidth: number;
+  parentOriginalHeight: number;
+  parentScale: number; // scalePixelsPerCentimeter from parent micrograph
+  childWidth: number; // Original child image width (for scale calculations)
+  childHeight: number; // Original child image height (for scale calculations)
+  childImageUrl?: string; // Only used for "Trace Scale Bar" method
+  scaleMethod: string;
+  initialOffsetX?: number;
+  initialOffsetY?: number;
+  onPlacementChange: (offsetX: number, offsetY: number) => void;
+  onScaleDataChange?: (data: {
+    scaleBarLineLengthPixels?: number;
+    scaleBarPhysicalLength?: number;
+    scaleBarUnits?: string;
+    pixels?: number;
+    physicalLength?: number;
+    pixelUnits?: string;
+    imageWidthPhysical?: number;
+    imageHeightPhysical?: number;
+    sizeUnits?: string;
+  }) => void;
+}
+
+export const PointPlacementCanvas = ({
+  parentImageUrl,
+  parentOriginalWidth,
+  parentOriginalHeight,
+  parentScale,
+  childWidth,
+  childHeight,
+  childImageUrl,
+  scaleMethod,
+  initialOffsetX = 0,
+  initialOffsetY = 0,
+  onPlacementChange,
+  onScaleDataChange,
+}: PointPlacementCanvasProps) => {
+  const [parentImage, setParentImage] = useState<HTMLImageElement | null>(null);
+  const [childImage, setChildImage] = useState<HTMLImageElement | null>(null);
+
+  // Stage pan/zoom state
+  const [scale, setScale] = useState(1);
+  const [stagePos, setStagePos] = useState({ x: 0, y: 0 });
+  const [isPanning, setIsPanning] = useState(false);
+  const [lastPanPos, setLastPanPos] = useState<{ x: number; y: number } | null>(null);
+
+  // Canvas dimensions
+  const CANVAS_WIDTH = 800;
+  const CANVAS_HEIGHT = 600;
+
+  // Point marker position (in parent image coordinates)
+  const [pointPos, setPointPos] = useState({ x: initialOffsetX, y: initialOffsetY });
+
+  // Tool state
+  const [activeTool, setActiveTool] = useState<'pan' | 'point' | 'line'>('pan');
+
+  // State for Pixel Conversion Factor inputs
+  const [pixelInput, setPixelInput] = useState('');
+  const [physicalLengthInput, setPhysicalLengthInput] = useState('');
+  const [unitInput, setUnitInput] = useState('μm');
+
+  // State for Width/Height inputs
+  const [widthInput, setWidthInput] = useState('');
+  const [heightInput, setHeightInput] = useState('');
+  const [sizeUnitInput, setSizeUnitInput] = useState('μm');
+
+  // State for Trace Scale Bar inputs
+  const [scaleBarPixelInput, setScaleBarPixelInput] = useState('');
+  const [scaleBarPhysicalInput, setScaleBarPhysicalInput] = useState('');
+  const [scaleBarUnitInput, setScaleBarUnitInput] = useState('μm');
+
+  // State for traced scale bar line
+  const [currentLine, setCurrentLine] = useState<{ x1: number; y1: number; x2: number; y2: number } | null>(null);
+  const [isDrawingLine, setIsDrawingLine] = useState(false);
+
+  const stageRef = useRef<Konva.Stage>(null);
+
+  // Load parent image
+  useEffect(() => {
+    const img = new window.Image();
+    img.src = parentImageUrl;
+    img.onload = () => {
+      setParentImage(img);
+      // Fit image to canvas
+      const scaleX = CANVAS_WIDTH / img.width;
+      const scaleY = CANVAS_HEIGHT / img.height;
+      const initialScale = Math.min(scaleX, scaleY, 1);
+      setScale(initialScale);
+
+      // Center image
+      const x = (CANVAS_WIDTH - img.width * initialScale) / 2;
+      const y = (CANVAS_HEIGHT - img.height * initialScale) / 2;
+      setStagePos({ x, y });
+    };
+  }, [parentImageUrl]);
+
+  // Load child image (only for Trace Scale Bar method)
+  useEffect(() => {
+    if (scaleMethod === 'Trace Scale Bar' && childImageUrl) {
+      const img = new window.Image();
+      img.src = childImageUrl;
+      img.onload = () => {
+        setChildImage(img);
+      };
+    } else {
+      setChildImage(null);
+    }
+  }, [scaleMethod, childImageUrl]);
+
+  // Notify parent of scale data changes
+  useEffect(() => {
+    if (!onScaleDataChange) return;
+
+    if (scaleMethod === 'Trace Scale Bar') {
+      if (scaleBarPixelInput && scaleBarPhysicalInput) {
+        onScaleDataChange({
+          scaleBarLineLengthPixels: parseFloat(scaleBarPixelInput),
+          scaleBarPhysicalLength: parseFloat(scaleBarPhysicalInput),
+          scaleBarUnits: scaleBarUnitInput,
+        });
+      }
+    } else if (scaleMethod === 'Pixel Conversion Factor') {
+      if (pixelInput && physicalLengthInput) {
+        onScaleDataChange({
+          pixels: parseFloat(pixelInput),
+          physicalLength: parseFloat(physicalLengthInput),
+          pixelUnits: unitInput,
+        });
+      }
+    } else if (scaleMethod === 'Provide Width/Height of Image') {
+      if (widthInput || heightInput) {
+        onScaleDataChange({
+          imageWidthPhysical: widthInput ? parseFloat(widthInput) : undefined,
+          imageHeightPhysical: heightInput ? parseFloat(heightInput) : undefined,
+          sizeUnits: sizeUnitInput,
+        });
+      }
+    }
+  }, [
+    scaleMethod,
+    scaleBarPixelInput,
+    scaleBarPhysicalInput,
+    scaleBarUnitInput,
+    pixelInput,
+    physicalLengthInput,
+    unitInput,
+    widthInput,
+    heightInput,
+    sizeUnitInput,
+    onScaleDataChange,
+  ]);
+
+  // Auto-populate width/height based on aspect ratio
+  useEffect(() => {
+    if (scaleMethod !== 'Provide Width/Height of Image') return;
+
+    const width = parseFloat(widthInput);
+    const height = parseFloat(heightInput);
+    const aspectRatio = childWidth / childHeight;
+
+    if (!isNaN(width) && width > 0 && !heightInput) {
+      const calculatedHeight = (width / aspectRatio).toFixed(2);
+      setHeightInput(calculatedHeight);
+    } else if (!isNaN(height) && height > 0 && !widthInput) {
+      const calculatedWidth = (height * aspectRatio).toFixed(2);
+      setWidthInput(calculatedWidth);
+    }
+  }, [widthInput, heightInput, childWidth, childHeight, scaleMethod]);
+
+  const handleMouseDown = (e: Konva.KonvaEventObject<MouseEvent>) => {
+    const stage = e.target.getStage();
+    if (!stage) return;
+
+    const pointerPos = stage.getPointerPosition();
+    if (!pointerPos) return;
+
+    if (activeTool === 'point') {
+      // Convert screen coordinates to parent image coordinates
+      const x = (pointerPos.x - stagePos.x) / scale;
+      const y = (pointerPos.y - stagePos.y) / scale;
+
+      setPointPos({ x, y });
+      onPlacementChange(x, y);
+    } else if (activeTool === 'line') {
+      // Start drawing line for scale bar
+      const x = (pointerPos.x - stagePos.x) / scale;
+      const y = (pointerPos.y - stagePos.y) / scale;
+
+      setIsDrawingLine(true);
+      setCurrentLine({ x1: x, y1: y, x2: x, y2: y });
+    } else if (activeTool === 'pan') {
+      // Start panning
+      setIsPanning(true);
+      setLastPanPos(pointerPos);
+    }
+  };
+
+  const handleMouseMove = (e: Konva.KonvaEventObject<MouseEvent>) => {
+    const stage = e.target.getStage();
+    if (!stage) return;
+
+    const pointerPos = stage.getPointerPosition();
+    if (!pointerPos) return;
+
+    if (isDrawingLine && activeTool === 'line' && currentLine) {
+      // Update line endpoint
+      const x = (pointerPos.x - stagePos.x) / scale;
+      const y = (pointerPos.y - stagePos.y) / scale;
+
+      setCurrentLine({ ...currentLine, x2: x, y2: y });
+    } else if (isPanning && activeTool === 'pan' && lastPanPos) {
+      // Pan the view
+      const dx = pointerPos.x - lastPanPos.x;
+      const dy = pointerPos.y - lastPanPos.y;
+
+      setStagePos({
+        x: stagePos.x + dx,
+        y: stagePos.y + dy,
+      });
+      setLastPanPos(pointerPos);
+    }
+  };
+
+  const handleMouseUp = () => {
+    if (isDrawingLine && currentLine) {
+      // Calculate line length in pixels
+      const dx = currentLine.x2 - currentLine.x1;
+      const dy = currentLine.y2 - currentLine.y1;
+      const lengthInDisplayedImage = Math.sqrt(dx * dx + dy * dy);
+
+      // Convert to original image pixel coordinates
+      const scaleRatio = parentOriginalWidth / (parentImage?.width || 1);
+      const lengthPixels = lengthInDisplayedImage * scaleRatio;
+
+      setScaleBarPixelInput(lengthPixels.toFixed(2));
+      setIsDrawingLine(false);
+    }
+
+    setIsPanning(false);
+    setLastPanPos(null);
+  };
+
+  const handleZoomIn = () => {
+    setScale(prev => Math.min(prev * 1.2, 20));
+  };
+
+  const handleZoomOut = () => {
+    setScale(prev => Math.max(prev / 1.2, 0.1));
+  };
+
+  const handleResetView = () => {
+    if (!parentImage) return;
+    const scaleX = CANVAS_WIDTH / parentImage.width;
+    const scaleY = CANVAS_HEIGHT / parentImage.height;
+    const initialScale = Math.min(scaleX, scaleY, 1);
+    setScale(initialScale);
+
+    const x = (CANVAS_WIDTH - parentImage.width * initialScale) / 2;
+    const y = (CANVAS_HEIGHT - parentImage.height * initialScale) / 2;
+    setStagePos({ x, y });
+  };
+
+  const handleWheel = (e: Konva.KonvaEventObject<WheelEvent>) => {
+    e.evt.preventDefault();
+
+    const stage = e.target.getStage();
+    if (!stage) return;
+
+    const oldScale = scale;
+    const pointer = stage.getPointerPosition();
+    if (!pointer) return;
+
+    const mousePointTo = {
+      x: (pointer.x - stagePos.x) / oldScale,
+      y: (pointer.y - stagePos.y) / oldScale,
+    };
+
+    const direction = e.evt.deltaY > 0 ? -1 : 1;
+    const newScale = direction > 0 ? oldScale * 1.1 : oldScale / 1.1;
+    const clampedScale = Math.max(0.1, Math.min(20, newScale));
+
+    setScale(clampedScale);
+    setStagePos({
+      x: pointer.x - mousePointTo.x * clampedScale,
+      y: pointer.y - mousePointTo.y * clampedScale,
+    });
+  };
+
+  const getCursor = () => {
+    if (activeTool === 'point') return 'crosshair';
+    if (activeTool === 'line') return 'crosshair';
+    if (isPanning) return 'grabbing';
+    return 'grab';
+  };
+
+  const showLineTools = scaleMethod === 'Trace Scale Bar';
+  const showPointTool = true; // Always show point tool for point placement
+
+  return (
+    <Box>
+      {/* Toolbar */}
+      <Paper elevation={2} sx={{ p: 1, mb: 2 }}>
+        <Stack direction="row" spacing={1} alignItems="center">
+          <Tooltip title="Pan Tool">
+            <IconButton
+              size="small"
+              onClick={() => setActiveTool('pan')}
+              color={activeTool === 'pan' ? 'primary' : 'default'}
+            >
+              <PanTool />
+            </IconButton>
+          </Tooltip>
+
+          {showPointTool && (
+            <Tooltip title="Point Tool (Click to Place Location)">
+              <IconButton
+                size="small"
+                onClick={() => setActiveTool('point')}
+                color={activeTool === 'point' ? 'primary' : 'default'}
+              >
+                <Place />
+              </IconButton>
+            </Tooltip>
+          )}
+
+          {showLineTools && (
+            <Tooltip title="Line Tool (Draw Scale Bar)">
+              <IconButton
+                size="small"
+                onClick={() => setActiveTool('line')}
+                color={activeTool === 'line' ? 'primary' : 'default'}
+              >
+                <Timeline />
+              </IconButton>
+            </Tooltip>
+          )}
+
+          <Box sx={{ flexGrow: 1 }} />
+
+          <Tooltip title="Zoom In">
+            <IconButton size="small" onClick={handleZoomIn}>
+              <ZoomIn />
+            </IconButton>
+          </Tooltip>
+
+          <Tooltip title="Zoom Out">
+            <IconButton size="small" onClick={handleZoomOut}>
+              <ZoomOut />
+            </IconButton>
+          </Tooltip>
+
+          <Tooltip title="Reset View">
+            <IconButton size="small" onClick={handleResetView}>
+              <RestartAlt />
+            </IconButton>
+          </Tooltip>
+        </Stack>
+      </Paper>
+
+      {/* Input fields for Trace Scale Bar method */}
+      {scaleMethod === 'Trace Scale Bar' && (
+        <Paper elevation={2} sx={{ p: 2, width: CANVAS_WIDTH, mb: 2 }}>
+          <Typography variant="subtitle2" gutterBottom>
+            Trace Scale Bar on Child Image
+          </Typography>
+          <Grid container spacing={2} alignItems="flex-end">
+            <Grid item xs={4}>
+              <TextField
+                label="Pixels"
+                type="number"
+                value={scaleBarPixelInput}
+                onChange={(e) => setScaleBarPixelInput(e.target.value)}
+                fullWidth
+                size="small"
+                InputProps={{ readOnly: true }}
+              />
+            </Grid>
+            <Grid item xs={4}>
+              <TextField
+                label="Physical Length"
+                type="number"
+                value={scaleBarPhysicalInput}
+                onChange={(e) => setScaleBarPhysicalInput(e.target.value)}
+                fullWidth
+                size="small"
+              />
+            </Grid>
+            <Grid item xs={4}>
+              <FormControl fullWidth size="small">
+                <InputLabel>Unit</InputLabel>
+                <Select
+                  value={scaleBarUnitInput}
+                  onChange={(e) => setScaleBarUnitInput(e.target.value)}
+                  label="Unit"
+                >
+                  <MenuItem value="μm">μm (micrometers)</MenuItem>
+                  <MenuItem value="mm">mm (millimeters)</MenuItem>
+                  <MenuItem value="cm">cm (centimeters)</MenuItem>
+                  <MenuItem value="m">m (meters)</MenuItem>
+                  <MenuItem value="inches">inches</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+          </Grid>
+          <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+            Use the line tool to trace a scale bar on the child image overlay. Enter the physical length.
+          </Typography>
+        </Paper>
+      )}
+
+      {/* Input fields for Pixel Conversion Factor method */}
+      {scaleMethod === 'Pixel Conversion Factor' && (
+        <Paper elevation={2} sx={{ p: 2, width: CANVAS_WIDTH, mb: 2 }}>
+          <Typography variant="subtitle2" gutterBottom>
+            Pixel Conversion Factor
+          </Typography>
+          <Grid container spacing={2} alignItems="flex-end">
+            <Grid item xs={4}>
+              <TextField
+                label="Number of Pixels"
+                type="number"
+                value={pixelInput}
+                onChange={(e) => setPixelInput(e.target.value)}
+                fullWidth
+                size="small"
+              />
+            </Grid>
+            <Grid item xs={4}>
+              <TextField
+                label="Physical Length"
+                type="number"
+                value={physicalLengthInput}
+                onChange={(e) => setPhysicalLengthInput(e.target.value)}
+                fullWidth
+                size="small"
+              />
+            </Grid>
+            <Grid item xs={4}>
+              <FormControl fullWidth size="small">
+                <InputLabel>Unit</InputLabel>
+                <Select
+                  value={unitInput}
+                  onChange={(e) => setUnitInput(e.target.value)}
+                  label="Unit"
+                >
+                  <MenuItem value="μm">μm (micrometers)</MenuItem>
+                  <MenuItem value="mm">mm (millimeters)</MenuItem>
+                  <MenuItem value="cm">cm (centimeters)</MenuItem>
+                  <MenuItem value="m">m (meters)</MenuItem>
+                  <MenuItem value="inches">inches</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+          </Grid>
+          <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+            Enter how many pixels correspond to a known physical length. Use the point tool to mark the location.
+          </Typography>
+        </Paper>
+      )}
+
+      {/* Input fields for Provide Width/Height method */}
+      {scaleMethod === 'Provide Width/Height of Image' && (
+        <Paper elevation={2} sx={{ p: 2, width: CANVAS_WIDTH, mb: 2 }}>
+          <Typography variant="subtitle2" gutterBottom>
+            Image Physical Dimensions
+          </Typography>
+          <Grid container spacing={2} alignItems="flex-end">
+            <Grid item xs={4}>
+              <TextField
+                label="Width"
+                type="number"
+                value={widthInput}
+                onChange={(e) => setWidthInput(e.target.value)}
+                fullWidth
+                size="small"
+              />
+            </Grid>
+            <Grid item xs={4}>
+              <TextField
+                label="Height"
+                type="number"
+                value={heightInput}
+                onChange={(e) => setHeightInput(e.target.value)}
+                fullWidth
+                size="small"
+              />
+            </Grid>
+            <Grid item xs={4}>
+              <FormControl fullWidth size="small">
+                <InputLabel>Unit</InputLabel>
+                <Select
+                  value={sizeUnitInput}
+                  onChange={(e) => setSizeUnitInput(e.target.value)}
+                  label="Unit"
+                >
+                  <MenuItem value="μm">μm (micrometers)</MenuItem>
+                  <MenuItem value="mm">mm (millimeters)</MenuItem>
+                  <MenuItem value="cm">cm (centimeters)</MenuItem>
+                  <MenuItem value="m">m (meters)</MenuItem>
+                  <MenuItem value="inches">inches</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+          </Grid>
+          <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+            Enter width or height (the other will auto-populate). Use the point tool to mark the location.
+          </Typography>
+        </Paper>
+      )}
+
+      {/* Canvas */}
+      <Box
+        sx={{
+          width: CANVAS_WIDTH,
+          height: CANVAS_HEIGHT,
+          border: '1px solid',
+          borderColor: 'divider',
+          borderRadius: 1,
+          overflow: 'hidden',
+          backgroundColor: '#2a2a2a',
+          cursor: getCursor(),
+          position: 'relative',
+          flexShrink: 0,
+        }}
+      >
+        <Stage
+          ref={stageRef}
+          width={CANVAS_WIDTH}
+          height={CANVAS_HEIGHT}
+          onMouseDown={handleMouseDown}
+          onMouseMove={handleMouseMove}
+          onMouseUp={handleMouseUp}
+          onWheel={handleWheel}
+        >
+          {/* Main content layer - scaled and panned */}
+          <Layer
+            scaleX={scale}
+            scaleY={scale}
+            x={stagePos.x}
+            y={stagePos.y}
+          >
+            {/* Parent micrograph (background) */}
+            {parentImage && (
+              <KonvaImage
+                image={parentImage}
+                width={parentImage.width}
+                height={parentImage.height}
+              />
+            )}
+
+            {/* Child image overlay - only shown for "Trace Scale Bar" method */}
+            {scaleMethod === 'Trace Scale Bar' && childImage && (
+              <KonvaImage
+                image={childImage}
+                x={pointPos.x - childImage.width / 2}
+                y={pointPos.y - childImage.height / 2}
+                width={childImage.width}
+                height={childImage.height}
+                opacity={0.5}
+                listening={false}
+              />
+            )}
+
+            {/* Traced scale bar line */}
+            {scaleMethod === 'Trace Scale Bar' && currentLine && (
+              <Line
+                points={[currentLine.x1, currentLine.y1, currentLine.x2, currentLine.y2]}
+                stroke="#00ff00"
+                strokeWidth={3 / scale}
+                lineCap="round"
+                lineJoin="round"
+                listening={false}
+              />
+            )}
+          </Layer>
+
+          {/* Point marker layer - NOT scaled */}
+          <Layer>
+            <Circle
+              x={pointPos.x * scale + stagePos.x}
+              y={pointPos.y * scale + stagePos.y}
+              radius={8}
+              fill="#e44c65"
+              stroke="#ffffff"
+              strokeWidth={2}
+            />
+          </Layer>
+        </Stage>
+      </Box>
+
+      <Typography variant="caption" color="text.secondary" sx={{ width: CANVAS_WIDTH, textAlign: 'center', mt: 1, display: 'block' }}>
+        Point Location: ({pointPos.x.toFixed(1)}, {pointPos.y.toFixed(1)}) | Zoom: {(scale * 100).toFixed(0)}%
+      </Typography>
+    </Box>
+  );
+};

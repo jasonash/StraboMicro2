@@ -44,6 +44,7 @@ import { useAppStore } from '@/store';
 import { PeriodicTableModal } from './PeriodicTableModal';
 import { ScaleBarCanvas, type Tool, type ScaleBarCanvasRef } from '../ScaleBarCanvas';
 import PlacementCanvas from './PlacementCanvas';
+import { PointPlacementCanvas } from './PointPlacementCanvas';
 import { PanTool, Timeline, RestartAlt } from '@mui/icons-material';
 
 interface NewMicrographDialogProps {
@@ -2007,23 +2008,33 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
     }
 
     if (formData.locationMethod === 'Locate by an approximate point') {
-      // TODO: Implement PointPlacementCanvas
       return (
         <Stack spacing={2}>
           <Typography variant="body2" color="text.secondary">
             Click on the parent micrograph to place the center point of the associated micrograph.
           </Typography>
-          <Typography variant="body2" color="warning.main">
-            TODO: Implement PointPlacementCanvas component
-          </Typography>
-          <Box sx={{ p: 4, bgcolor: 'background.default', borderRadius: 1, textAlign: 'center' }}>
-            <Typography color="text.secondary">
-              Location method: {formData.locationMethod}
-            </Typography>
-            <Typography variant="caption" color="text.secondary">
-              Point placement canvas coming soon...
-            </Typography>
-          </Box>
+          <PointPlacementCanvas
+            parentImageUrl={parentImagePath}
+            parentOriginalWidth={parentMicrograph.width}
+            parentOriginalHeight={parentMicrograph.height}
+            parentScale={parentMicrograph.scalePixelsPerCentimeter}
+            childWidth={formData.imageWidth}
+            childHeight={formData.imageHeight}
+            childImageUrl={formData.scaleMethod === 'Trace Scale Bar' ? scratchImagePath : undefined}
+            scaleMethod={formData.scaleMethod || ''}
+            initialOffsetX={formData.offsetInParent.X}
+            initialOffsetY={formData.offsetInParent.Y}
+            onPlacementChange={(offsetX, offsetY) => {
+              setFormData((prev) => ({
+                ...prev,
+                offsetInParent: {
+                  X: offsetX,
+                  Y: offsetY,
+                },
+              }));
+            }}
+            onScaleDataChange={handleScaleDataChange}
+          />
         </Stack>
       );
     }
