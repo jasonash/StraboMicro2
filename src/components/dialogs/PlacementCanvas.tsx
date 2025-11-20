@@ -461,14 +461,30 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
     const dy = currentLine.y2 - currentLine.y1;
     const lineLength = Math.sqrt(dx * dx + dy * dy);
 
-    // Convert line length from parent image space to child's original image pixel space
-    // The line is drawn in parent coordinates, but we need the length in child's pixel space
-    // Since the child is scaled by childTransform.scaleX, we need to divide by that scale
-    const lengthInChildPixels = lineLength / childTransform.scaleX;
+    // Convert line length from parent image space to child's displayed image space
+    // Since the child is scaled by childTransform.scaleX in the parent's coordinate system
+    const lengthInDisplayedChildPixels = lineLength / childTransform.scaleX;
+
+    // Account for the fact that childImage might be downsampled (medium resolution)
+    // Calculate scale ratio between original child image and displayed child image
+    const childScaleRatio = childWidth / childImage.width;
+
+    // Convert to original child image pixels
+    const lengthInOriginalChildPixels = lengthInDisplayedChildPixels * childScaleRatio;
+
+    console.log('[PlacementCanvas] Trace Scale Bar calculation:', {
+      lineLength,
+      childTransformScale: childTransform.scaleX,
+      lengthInDisplayedChildPixels,
+      displayedChildWidth: childImage.width,
+      originalChildWidth: childWidth,
+      childScaleRatio,
+      lengthInOriginalChildPixels
+    });
 
     // Round to 1 decimal place
-    setScaleBarPixelInput(lengthInChildPixels.toFixed(1));
-  }, [scaleMethod, currentLine, childTransform.scaleX, childImage]);
+    setScaleBarPixelInput(lengthInOriginalChildPixels.toFixed(1));
+  }, [scaleMethod, currentLine, childTransform.scaleX, childImage, childWidth]);
 
   // Pan/Zoom handlers
   const handleMouseDown = (e: Konva.KonvaEventObject<MouseEvent>) => {
