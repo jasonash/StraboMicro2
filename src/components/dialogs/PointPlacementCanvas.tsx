@@ -3,15 +3,13 @@ import { Stage, Layer, Image as KonvaImage, Circle, Line } from 'react-konva';
 import { Box, Stack, IconButton, Tooltip, Paper, TextField, Select, MenuItem, FormControl, InputLabel, Typography, Grid } from '@mui/material';
 import { PanTool, Timeline, ZoomIn, ZoomOut, RestartAlt, Place } from '@mui/icons-material';
 import Konva from 'konva';
+import { useAppStore } from '@/store';
 
 interface PointPlacementCanvasProps {
-  parentImageUrl: string;
-  parentOriginalWidth: number;
-  parentOriginalHeight: number;
-  parentScale: number; // scalePixelsPerCentimeter from parent micrograph
-  childWidth: number; // Original child image width (for scale calculations)
-  childHeight: number; // Original child image height (for scale calculations)
-  childImageUrl?: string; // Only used for "Trace Scale Bar" method
+  parentMicrographId: string;
+  childScratchPath: string; // Path to child image in scratch space
+  childWidth: number;
+  childHeight: number;
   scaleMethod: string;
   initialOffsetX?: number;
   initialOffsetY?: number;
@@ -30,13 +28,10 @@ interface PointPlacementCanvasProps {
 }
 
 export const PointPlacementCanvas = ({
-  parentImageUrl,
-  parentOriginalWidth,
-  parentOriginalHeight,
-  parentScale,
+  parentMicrographId,
+  childScratchPath,
   childWidth,
   childHeight,
-  childImageUrl,
   scaleMethod,
   initialOffsetX = 0,
   initialOffsetY = 0,
@@ -45,6 +40,8 @@ export const PointPlacementCanvas = ({
 }: PointPlacementCanvasProps) => {
   const [parentImage, setParentImage] = useState<HTMLImageElement | null>(null);
   const [childImage, setChildImage] = useState<HTMLImageElement | null>(null);
+  const [parentScale, setParentScale] = useState<number>(0);
+  const [parentOriginalWidth, setParentOriginalWidth] = useState<number>(0);
 
   // Stage pan/zoom state
   const [scale, setScale] = useState(1);
@@ -85,35 +82,99 @@ export const PointPlacementCanvas = ({
 
   // Load parent image
   useEffect(() => {
-    const img = new window.Image();
-    img.src = parentImageUrl;
-    img.onload = () => {
-      setParentImage(img);
-      // Fit image to canvas
-      const scaleX = CANVAS_WIDTH / img.width;
-      const scaleY = CANVAS_HEIGHT / img.height;
-      const initialScale = Math.min(scaleX, scaleY, 1);
-      setScale(initialScale);
+    const loadParentImage = async () => {
+      try {
+        const { project } = useAppStore.getState();
+        if (!project) {
+          console.error('[PointPlacementCanvas] No project loaded');
+          return;
+        }
 
-      // Center image
-      const x = (CANVAS_WIDTH - img.width * initialScale) / 2;
-      const y = (CANVAS_HEIGHT - img.height * initialScale) / 2;
-      setStagePos({ x, y });
+        // Find parent micrograph
+        let parentMicrograph = null;
+        outer: for (const dataset of project.datasets || []) {
+          for (const sample of dataset.samples || []) {
+            for (const micrograph of sample.micrographs || []) {
+              if (micrograph.id === parentMicrographId) {
+                parentMicrograph = micrograph;
+                break outer;
+              }
+            }
+          }
+        }
+
+        if (!parentMicrograph || !parentMicrograph.imagePath) {
+          console.error('[PointPlacementCanvas] Parent micrograph not found or has no image path');
+          return;
+        }
+
+        // Store parent scale and original dimensions for calculations
+        if (parentMicrograph.scalePixelsPerCentimeter) {
+          setParentScale(parentMicrograph.scalePixelsPerCentimeter);
+        }
+        if (parentMicrograph.imageWidth) {
+          setParentOriginalWidth(parentMicrograph.imageWidth);
+        }
+
+        // Build full path to parent image
+        const folderPaths = await window.api.getProjectFolderPaths(project.id);
+        const fullParentPath = `${folderPaths.images}/${parentMicrograph.imagePath}`;
+
+        // Load the tiled image
+        const tileData = await window.api.loadImageWithTiles(fullParentPath);
+
+        // Load medium resolution for placement canvas
+        const mediumDataUrl = await window.api.loadMedium(tileData.hash);
+
+        const img = new window.Image();
+        img.onload = () => {
+          setParentImage(img);
+
+          // Fit image to canvas
+          const scaleX = CANVAS_WIDTH / img.width;
+          const scaleY = CANVAS_HEIGHT / img.height;
+          const initialScale = Math.min(scaleX, scaleY, 1);
+          setScale(initialScale);
+
+          // Center image
+          const x = (CANVAS_WIDTH - img.width * initialScale) / 2;
+          const y = (CANVAS_HEIGHT - img.height * initialScale) / 2;
+          setStagePos({ x, y });
+        };
+        img.src = mediumDataUrl;
+      } catch (error) {
+        console.error('[PointPlacementCanvas] Failed to load parent image:', error);
+      }
     };
-  }, [parentImageUrl]);
+
+    loadParentImage();
+  }, [parentMicrographId]);
 
   // Load child image (only for Trace Scale Bar method)
   useEffect(() => {
-    if (scaleMethod === 'Trace Scale Bar' && childImageUrl) {
-      const img = new window.Image();
-      img.src = childImageUrl;
-      img.onload = () => {
-        setChildImage(img);
-      };
-    } else {
-      setChildImage(null);
-    }
-  }, [scaleMethod, childImageUrl]);
+    const loadChildImage = async () => {
+      if (scaleMethod !== 'Trace Scale Bar') {
+        setChildImage(null);
+        return;
+      }
+
+      try {
+        // Load child from scratch space via tile cache
+        const tileData = await window.api.loadImageWithTiles(childScratchPath);
+        const mediumDataUrl = await window.api.loadMedium(tileData.hash);
+
+        const img = new window.Image();
+        img.onload = () => {
+          setChildImage(img);
+        };
+        img.src = mediumDataUrl;
+      } catch (error) {
+        console.error('[PointPlacementCanvas] Failed to load child image:', error);
+      }
+    };
+
+    loadChildImage();
+  }, [scaleMethod, childScratchPath]);
 
   // Notify parent of scale data changes
   useEffect(() => {
