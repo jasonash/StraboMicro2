@@ -298,6 +298,8 @@ export const PointPlacementCanvas = ({
       if (!pointPos) {
         setPointPos({ x: imageX, y: imageY });
         onPlacementChange(imageX, imageY);
+        // Switch back to pan tool after placing the point
+        setActiveTool('pan');
       }
     } else if (activeTool === 'line') {
       // Start drawing line for scale bar (on child overlay for "Trace Scale Bar")
