@@ -666,19 +666,32 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
       // Let's use: childScale = parentScale (assume same scale, since user matched features)
 
       const { project } = useAppStore.getState();
-      if (project && parentMicrographId) {
+      if (project && parentMicrographId && formData.scaleX) {
         for (const dataset of project.datasets) {
           for (const sample of dataset.samples) {
             const parentMicrograph = sample.micrographs.find(m => m.id === parentMicrographId);
             if (parentMicrograph && parentMicrograph.scalePixelsPerCentimeter) {
-              // For Stretch and Drag, assume child has same scale as parent
-              // The user has manually sized the overlay to match features
-              scalePixelsPerCentimeter = parentMicrograph.scalePixelsPerCentimeter;
+              // The scaleX we receive combines two factors:
+              // 1. Image dimension ratio (child width / parent width)
+              // 2. Magnification ratio (how zoomed in child is vs parent)
+              //
+              // To extract magnification: divide finalScale by image dimension ratio
+              // Then: childScale = parentScale / magnificationRatio
+              //     = parentScale × imageDimensionRatio / finalScale
+              //     = parentScale × (childWidth / parentWidth) / scaleX
+
+              const imageDimensionRatio = formData.micrographWidth / parentMicrograph.width;
+              const magnificationRatio = formData.scaleX / imageDimensionRatio;
+              scalePixelsPerCentimeter = parentMicrograph.scalePixelsPerCentimeter / magnificationRatio;
+
               console.log('[NewMicrographDialog] Calculated scale from Stretch and Drag:', {
                 parentScale: parentMicrograph.scalePixelsPerCentimeter,
+                parentWidth: parentMicrograph.width,
+                childWidth: formData.micrographWidth,
+                imageDimensionRatio,
                 scaleX: formData.scaleX,
+                magnificationRatio,
                 childScale: scalePixelsPerCentimeter,
-                note: 'Assuming child has same scale as parent (user matched features)',
               });
               break;
             }

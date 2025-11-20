@@ -1213,8 +1213,19 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
             <Typography variant="caption" sx={{ fontFamily: 'monospace', color: 'text.primary' }}>
               Final Scale (for original images): {(childTransform.scaleX * (childImage.width / childWidth) / (parentImage.width / parentOriginalWidth)).toFixed(4)}x
             </Typography>
-            <Typography variant="caption" sx={{ fontFamily: 'monospace', fontWeight: 'bold', color: 'primary.main' }}>
-              Child scalePixelsPerCentimeter: {(parentScale / (childTransform.scaleX * (childImage.width / childWidth) / (parentImage.width / parentOriginalWidth))).toFixed(2)} px/cm
+            <Box sx={{ borderTop: 1, borderColor: 'divider', my: 0.5 }} />
+            <Typography variant="caption" sx={{ fontFamily: 'monospace', color: 'text.secondary' }}>
+              Image Dimension Ratio: {(childWidth / parentOriginalWidth).toFixed(4)} (child/parent)
+            </Typography>
+            <Typography variant="caption" sx={{ fontFamily: 'monospace', color: 'text.secondary' }}>
+              Magnification Ratio: {((childTransform.scaleX * (childImage.width / childWidth) / (parentImage.width / parentOriginalWidth)) / (childWidth / parentOriginalWidth)).toFixed(4)}
+            </Typography>
+            <Box sx={{ borderTop: 1, borderColor: 'divider', my: 0.5 }} />
+            <Typography variant="caption" sx={{ fontFamily: 'monospace', fontWeight: 'bold', color: 'error.main' }}>
+              OLD WRONG: Child scale = {(parentScale / (childTransform.scaleX * (childImage.width / childWidth) / (parentImage.width / parentOriginalWidth))).toFixed(2)} px/cm
+            </Typography>
+            <Typography variant="caption" sx={{ fontFamily: 'monospace', fontWeight: 'bold', color: 'success.main' }}>
+              NEW CORRECT: Child scale = {(parentScale / ((childTransform.scaleX * (childImage.width / childWidth) / (parentImage.width / parentOriginalWidth)) / (childWidth / parentOriginalWidth))).toFixed(2)} px/cm
             </Typography>
           </Stack>
         </Paper>
