@@ -475,9 +475,10 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
     if (activeTool === 'line' && scaleMethod === 'Trace Scale Bar and Drag') {
       const clickedOnEmpty = e.target === e.target.getStage();
       const clickedOnParent = e.target.attrs?.image === parentImage;
+      const clickedOnChild = e.target.attrs?.image === childImage;
 
-      // Only allow line drawing on empty space or parent image (not on child)
-      if (clickedOnEmpty || clickedOnParent) {
+      // Allow line drawing on empty space, parent image, OR child overlay
+      if (clickedOnEmpty || clickedOnParent || clickedOnChild) {
         // Convert screen coordinates to image coordinates
         const x = (pointerPos.x - stagePos.x) / scale;
         const y = (pointerPos.y - stagePos.y) / scale;
@@ -531,7 +532,12 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
     // Finish drawing line
     if (isDrawingLine) {
       setIsDrawingLine(false);
-      // Keep the currentLine so it persists
+      // Clear the line after it's been used to calculate pixel count
+      setTimeout(() => {
+        setCurrentLine(null);
+        // Switch back to pan tool automatically
+        setActiveTool('pan');
+      }, 100);
     }
 
     // Stop panning
@@ -905,7 +911,7 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
           borderRadius: 1,
           overflow: 'hidden',
           backgroundColor: '#2a2a2a',
-          cursor: isPanning ? 'grabbing' : 'grab',
+          cursor: activeTool === 'line' ? 'crosshair' : (isPanning ? 'grabbing' : 'grab'),
           position: 'relative',
           flexShrink: 0,
         }}
