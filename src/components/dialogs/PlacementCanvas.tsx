@@ -7,7 +7,10 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { Stage, Layer, Image as KonvaImage, Rect, Transformer, Group } from 'react-konva';
-import { Box, Typography, Button, Stack, IconButton, Tooltip, Paper } from '@mui/material';
+import {
+  Box, Typography, Button, Stack, IconButton, Tooltip, Paper,
+  TextField, Select, MenuItem, FormControl, InputLabel, Grid
+} from '@mui/material';
 import { PanTool, ZoomIn, ZoomOut, RestartAlt } from '@mui/icons-material';
 import Konva from 'konva';
 import { useAppStore } from '@/store';
@@ -84,6 +87,19 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
   const enableDrag = scaleMethod !== 'Copy Size from Existing Micrograph';
   const enableRotate = scaleMethod !== 'Copy Size from Existing Micrograph';
 
+  // State for Pixel Conversion Factor inputs
+  const [pixelInput, setPixelInput] = useState('');
+  const [physicalLengthInput, setPhysicalLengthInput] = useState('');
+  const [unitInput, setUnitInput] = useState('μm');
+
+  // State for Width/Height inputs
+  const [widthInput, setWidthInput] = useState('');
+  const [heightInput, setHeightInput] = useState('');
+  const [sizeUnitInput, setSizeUnitInput] = useState('μm');
+
+  // Parent micrograph metadata (for scale calculations)
+  const [parentScale, setParentScale] = useState<number | null>(null);
+
   // Load parent micrograph from the store and tile cache
   useEffect(() => {
     const loadParentImage = async () => {
@@ -110,6 +126,12 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
         if (!parentMicrograph || !parentMicrograph.imagePath) {
           console.error('[PlacementCanvas] Parent micrograph not found or has no image path');
           return;
+        }
+
+        // Store parent scale for calculations
+        if (parentMicrograph.scalePixelsPerCentimeter) {
+          setParentScale(parentMicrograph.scalePixelsPerCentimeter);
+          console.log('[PlacementCanvas] Parent scale:', parentMicrograph.scalePixelsPerCentimeter, 'px/cm');
         }
 
         // Build full path to parent image
@@ -188,6 +210,54 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
       transformerRef.current.getLayer()?.batchDraw();
     }
   }, [childImage]);
+
+  // Auto-calculate child scale for Pixel Conversion Factor method
+  useEffect(() => {
+    if (scaleMethod !== 'Pixel Conversion Factor') return;
+    if (!parentScale || !pixelInput || !physicalLengthInput) return;
+
+    const pixels = parseFloat(pixelInput);
+    const physicalLength = parseFloat(physicalLengthInput);
+
+    if (isNaN(pixels) || isNaN(physicalLength) || physicalLength === 0) return;
+
+    // Calculate child's pixels per unit
+    const childPixelsPerUnit = pixels / physicalLength;
+
+    // Convert to pixels per centimeter
+    const conversionToCm: { [key: string]: number } = {
+      'μm': 10000,
+      'mm': 10,
+      'cm': 1,
+      'm': 0.01,
+      'inches': 0.393701
+    };
+    const childPixelsPerCm = childPixelsPerUnit * (conversionToCm[unitInput] || 1);
+
+    // Calculate scale factor: child scale / parent scale
+    const scaleFactor = childPixelsPerCm / parentScale;
+
+    console.log('[PlacementCanvas] Pixel Conversion Factor calculation:', {
+      pixels,
+      physicalLength,
+      unit: unitInput,
+      childPixelsPerCm,
+      parentScale,
+      scaleFactor,
+    });
+
+    // Update child scale
+    setChildTransform(prev => {
+      // Update parent callback with new scale
+      onPlacementChange(prev.x, prev.y, prev.rotation, scaleFactor, scaleFactor);
+
+      return {
+        ...prev,
+        scaleX: scaleFactor,
+        scaleY: scaleFactor,
+      };
+    });
+  }, [scaleMethod, pixelInput, physicalLengthInput, unitInput, parentScale, onPlacementChange]);
 
   // Pan/Zoom handlers
   const handleMouseDown = (e: Konva.KonvaEventObject<MouseEvent>) => {
@@ -466,9 +536,60 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
         </Stage>
       </Box>
 
+      {/* Input fields for Pixel Conversion Factor method */}
+      {scaleMethod === 'Pixel Conversion Factor' && (
+        <Paper elevation={2} sx={{ p: 2, width: CANVAS_WIDTH }}>
+          <Typography variant="subtitle2" gutterBottom>
+            Pixel Conversion Factor
+          </Typography>
+          <Grid container spacing={2} alignItems="flex-end">
+            <Grid item xs={4}>
+              <TextField
+                label="Number of Pixels"
+                type="number"
+                value={pixelInput}
+                onChange={(e) => setPixelInput(e.target.value)}
+                fullWidth
+                size="small"
+              />
+            </Grid>
+            <Grid item xs={4}>
+              <TextField
+                label="Physical Length"
+                type="number"
+                value={physicalLengthInput}
+                onChange={(e) => setPhysicalLengthInput(e.target.value)}
+                fullWidth
+                size="small"
+              />
+            </Grid>
+            <Grid item xs={4}>
+              <FormControl fullWidth size="small">
+                <InputLabel>Unit</InputLabel>
+                <Select
+                  value={unitInput}
+                  onChange={(e) => setUnitInput(e.target.value)}
+                  label="Unit"
+                >
+                  <MenuItem value="μm">μm (micrometers)</MenuItem>
+                  <MenuItem value="mm">mm (millimeters)</MenuItem>
+                  <MenuItem value="cm">cm (centimeters)</MenuItem>
+                  <MenuItem value="m">m (meters)</MenuItem>
+                  <MenuItem value="inches">inches</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+          </Grid>
+          <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+            Enter how many pixels correspond to a known physical length. The overlay will resize automatically.
+          </Typography>
+        </Paper>
+      )}
+
       <Typography variant="caption" color="text.secondary" sx={{ width: CANVAS_WIDTH, textAlign: 'center' }}>
         Overlay Position: ({childTransform.x.toFixed(1)}, {childTransform.y.toFixed(1)}) |
         Rotation: {childTransform.rotation.toFixed(1)}° |
+        Scale: {childTransform.scaleX.toFixed(2)}x |
         Zoom: {(scale * 100).toFixed(0)}%
       </Typography>
     </Box>
