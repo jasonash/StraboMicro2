@@ -52,7 +52,7 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
   initialScaleX = 1,
   initialScaleY = 1,
   onPlacementChange,
-  onScaleDataChange: _onScaleDataChange, // Will be used for other scale methods
+  onScaleDataChange,
 }) => {
   const stageRef = useRef<Konva.Stage>(null);
   const transformerRef = useRef<Konva.Transformer>(null);
@@ -533,6 +533,42 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
     // Round to 1 decimal place
     setScaleBarPixelInput(lengthInOriginalChildPixels.toFixed(1));
   }, [scaleMethod, currentLine, childTransform.scaleX, childImage, childWidth]);
+
+  // Notify parent of scale data changes for "Trace Scale Bar and Drag"
+  useEffect(() => {
+    if (scaleMethod !== 'Trace Scale Bar and Drag' || !onScaleDataChange) return;
+    if (!scaleBarPixelInput || !scaleBarPhysicalInput) return;
+
+    onScaleDataChange({
+      scaleBarLineLengthPixels: parseFloat(scaleBarPixelInput),
+      scaleBarPhysicalLength: parseFloat(scaleBarPhysicalInput),
+      scaleBarUnits: scaleBarUnitInput,
+    });
+  }, [scaleMethod, scaleBarPixelInput, scaleBarPhysicalInput, scaleBarUnitInput, onScaleDataChange]);
+
+  // Notify parent of scale data changes for "Pixel Conversion Factor"
+  useEffect(() => {
+    if (scaleMethod !== 'Pixel Conversion Factor' || !onScaleDataChange) return;
+    if (!pixelInput || !physicalLengthInput) return;
+
+    onScaleDataChange({
+      pixels: parseFloat(pixelInput),
+      physicalLength: parseFloat(physicalLengthInput),
+      pixelUnits: unitInput,
+    });
+  }, [scaleMethod, pixelInput, physicalLengthInput, unitInput, onScaleDataChange]);
+
+  // Notify parent of scale data changes for "Provide Width/Height"
+  useEffect(() => {
+    if (scaleMethod !== 'Provide Width/Height of Image' || !onScaleDataChange) return;
+    if (!widthInput) return;
+
+    onScaleDataChange({
+      imageWidthPhysical: parseFloat(widthInput),
+      imageHeightPhysical: heightInput ? parseFloat(heightInput) : undefined,
+      sizeUnits: sizeUnitInput,
+    });
+  }, [scaleMethod, widthInput, heightInput, sizeUnitInput, onScaleDataChange]);
 
   // Pan/Zoom handlers
   const handleMouseDown = (e: Konva.KonvaEventObject<MouseEvent>) => {

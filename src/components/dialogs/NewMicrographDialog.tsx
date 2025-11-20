@@ -558,6 +558,7 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
     // Calculate scale in pixels per centimeter (legacy format)
     let scalePixelsPerCentimeter = 100; // Default fallback
 
+    // Reference micrograph scale methods
     if (formData.scaleMethod === 'Trace Scale Bar' && formData.scaleBarLineLengthPixels && formData.scaleBarPhysicalLength) {
       const lineLengthPixels = parseFloat(formData.scaleBarLineLengthPixels);
       const physicalLength = parseFloat(formData.scaleBarPhysicalLength);
@@ -593,6 +594,61 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
         'inches': 0.393701
       };
       scalePixelsPerCentimeter = pixelsPerUnit * (conversionToCm[formData.sizeUnits] || 1);
+    }
+    // Associated micrograph scale methods (for associated micrographs)
+    else if (isAssociated && formData.scaleMethod === 'Use Same Scale as Parent') {
+      // Find parent micrograph and copy its scale
+      const { project } = useAppStore.getState();
+      if (project && parentMicrographId) {
+        for (const dataset of project.datasets) {
+          for (const sample of dataset.samples) {
+            const parentMicrograph = sample.micrographs.find(m => m.id === parentMicrographId);
+            if (parentMicrograph && parentMicrograph.scalePixelsPerCentimeter) {
+              scalePixelsPerCentimeter = parentMicrograph.scalePixelsPerCentimeter;
+              console.log('[NewMicrographDialog] Copied scale from parent:', scalePixelsPerCentimeter);
+              break;
+            }
+          }
+        }
+      }
+    } else if (isAssociated && formData.scaleMethod === 'Trace Scale Bar and Drag' && formData.scaleBarLineLengthPixels && formData.scaleBarPhysicalLength) {
+      const lineLengthPixels = parseFloat(formData.scaleBarLineLengthPixels);
+      const physicalLength = parseFloat(formData.scaleBarPhysicalLength);
+      const pixelsPerUnit = lineLengthPixels / physicalLength;
+      const conversionToCm: { [key: string]: number } = {
+        'μm': 10000,
+        'mm': 10,
+        'cm': 1,
+        'm': 0.01,
+        'inches': 0.393701
+      };
+      scalePixelsPerCentimeter = pixelsPerUnit * (conversionToCm[formData.scaleBarUnits] || 1);
+      console.log('[NewMicrographDialog] Calculated scale from traced scale bar:', scalePixelsPerCentimeter);
+    } else if (isAssociated && formData.scaleMethod === 'Pixel Conversion Factor' && formData.pixels && formData.physicalLength) {
+      const pixels = parseFloat(formData.pixels);
+      const physicalLength = parseFloat(formData.physicalLength);
+      const pixelsPerUnit = pixels / physicalLength;
+      const conversionToCm: { [key: string]: number } = {
+        'μm': 10000,
+        'mm': 10,
+        'cm': 1,
+        'm': 0.01,
+        'inches': 0.393701
+      };
+      scalePixelsPerCentimeter = pixelsPerUnit * (conversionToCm[formData.pixelUnits] || 1);
+      console.log('[NewMicrographDialog] Calculated scale from pixel conversion factor:', scalePixelsPerCentimeter);
+    } else if (isAssociated && formData.scaleMethod === 'Provide Width/Height of Image' && formData.imageWidthPhysical) {
+      const imageWidthPhysical = parseFloat(formData.imageWidthPhysical);
+      const pixelsPerUnit = formData.micrographWidth / imageWidthPhysical;
+      const conversionToCm: { [key: string]: number } = {
+        'μm': 10000,
+        'mm': 10,
+        'cm': 1,
+        'm': 0.01,
+        'inches': 0.393701
+      };
+      scalePixelsPerCentimeter = pixelsPerUnit * (conversionToCm[formData.sizeUnits] || 1);
+      console.log('[NewMicrographDialog] Calculated scale from width/height:', scalePixelsPerCentimeter);
     }
 
     // Build orientation info based on selected method (only for reference micrographs)
@@ -1803,6 +1859,32 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
       }));
     };
 
+    // Handler for scale data changes from the canvas
+    const handleScaleDataChange = (data: {
+      scaleBarLineLengthPixels?: number;
+      scaleBarPhysicalLength?: number;
+      scaleBarUnits?: string;
+      pixels?: number;
+      physicalLength?: number;
+      pixelUnits?: string;
+      imageWidthPhysical?: number;
+      imageHeightPhysical?: number;
+      sizeUnits?: string;
+    }) => {
+      setFormData((prev) => ({
+        ...prev,
+        scaleBarLineLengthPixels: data.scaleBarLineLengthPixels?.toString() || prev.scaleBarLineLengthPixels,
+        scaleBarPhysicalLength: data.scaleBarPhysicalLength?.toString() || prev.scaleBarPhysicalLength,
+        scaleBarUnits: data.scaleBarUnits || prev.scaleBarUnits,
+        pixels: data.pixels?.toString() || prev.pixels,
+        physicalLength: data.physicalLength?.toString() || prev.physicalLength,
+        pixelUnits: data.pixelUnits || prev.pixelUnits,
+        imageWidthPhysical: data.imageWidthPhysical?.toString() || prev.imageWidthPhysical,
+        imageHeightPhysical: data.imageHeightPhysical?.toString() || prev.imageHeightPhysical,
+        sizeUnits: data.sizeUnits || prev.sizeUnits,
+      }));
+    };
+
     // Render different canvas based on location method
     if (formData.locationMethod === 'Locate as a scaled rectangle') {
       // Ensure we have necessary data
@@ -1829,6 +1911,7 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
             initialOffsetY={formData.offsetInParent.Y}
             initialRotation={formData.rotationAngle}
             onPlacementChange={handlePlacementChange}
+            onScaleDataChange={handleScaleDataChange}
           />
         </Stack>
       );
