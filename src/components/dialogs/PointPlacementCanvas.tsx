@@ -181,9 +181,10 @@ export const PointPlacementCanvas = ({
     loadChildImage();
   }, [scaleMethod, childScratchPath]);
 
-  // Initialize positions when parent image loads
+  // Initialize positions when parent image loads (only once)
+  const [initialized, setInitialized] = useState(false);
   useEffect(() => {
-    if (!parentImage || !parentOriginalWidth) return;
+    if (!parentImage || !parentOriginalWidth || initialized) return;
 
     // Calculate scale ratio
     const scaleRatio = parentImage.width / parentOriginalWidth;
@@ -193,14 +194,16 @@ export const PointPlacementCanvas = ({
       const displayedX = initialOffsetX * scaleRatio;
       const displayedY = initialOffsetY * scaleRatio;
       setPointPos({ x: displayedX, y: displayedY });
-      setChildOverlayPos({ x: displayedX, y: displayedY });
-    } else {
-      // Otherwise, center the child overlay
-      const centerX = parentImage.width / 2;
-      const centerY = parentImage.height / 2;
-      setChildOverlayPos({ x: centerX, y: centerY });
+      // Child overlay stays centered - don't move it to the point position
     }
-  }, [parentImage, parentOriginalWidth, initialOffsetX, initialOffsetY]);
+
+    // Always center the child overlay (independent of point position)
+    const centerX = parentImage.width / 2;
+    const centerY = parentImage.height / 2;
+    setChildOverlayPos({ x: centerX, y: centerY });
+
+    setInitialized(true);
+  }, [parentImage, parentOriginalWidth, initialOffsetX, initialOffsetY, initialized]);
 
   // Notify parent of scale data changes
   useEffect(() => {
@@ -408,12 +411,15 @@ export const PointPlacementCanvas = ({
       const dy = currentLine.y2 - currentLine.y1;
       const lengthInDisplayedImage = Math.sqrt(dx * dx + dy * dy);
 
-      // Convert to original image pixel coordinates
-      const scaleRatio = parentOriginalWidth / (parentImage?.width || 1);
-      const lengthPixels = lengthInDisplayedImage * scaleRatio;
+      // Convert to original CHILD image pixel coordinates
+      // (not parent - the line is drawn on the child overlay)
+      const childScaleRatio = childWidth / (childImage?.width || 1);
+      const lengthPixels = lengthInDisplayedImage * childScaleRatio;
 
       setScaleBarPixelInput(lengthPixels.toFixed(2));
       setIsDrawingLine(false);
+      setCurrentLine(null); // Clear the line
+      setActiveTool('pan'); // Auto-switch back to pan tool
     }
 
     setIsPanning(false);
