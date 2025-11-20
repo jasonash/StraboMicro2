@@ -107,28 +107,16 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
   // Helper function to convert from center-based to top-left-based coordinates
   const convertCenterToTopLeft = (centerX: number, centerY: number, rotation: number, scaleX: number, scaleY: number) => {
     // The child Group is positioned at its center due to offsetX/offsetY
-    // We need to calculate the top-left corner position
-    // Since rotation happens around the center, we need to account for that
+    // We need to calculate the top-left corner position in the UNROTATED coordinate system
+    // The legacy app measures offset BEFORE rotation is applied
 
-    // Without rotation, top-left is simply (centerX - width/2, centerY - height/2)
-    // But with rotation, we need to apply the rotation transform
+    // Calculate half dimensions considering scale
     const halfWidth = (childWidth * scaleX) / 2;
     const halfHeight = (childHeight * scaleY) / 2;
 
-    // Convert rotation to radians
-    const rotRad = (rotation * Math.PI) / 180;
-
-    // Calculate offset from center to top-left corner (before rotation)
-    const dx = -halfWidth;
-    const dy = -halfHeight;
-
-    // Apply rotation to the offset
-    const rotatedDx = dx * Math.cos(rotRad) - dy * Math.sin(rotRad);
-    const rotatedDy = dx * Math.sin(rotRad) + dy * Math.cos(rotRad);
-
-    // Top-left position = center + rotated offset
-    const topLeftX = centerX + rotatedDx;
-    const topLeftY = centerY + rotatedDy;
+    // Top-left is simply center minus half dimensions (no rotation applied)
+    const topLeftX = centerX - halfWidth;
+    const topLeftY = centerY - halfHeight;
 
     return { x: topLeftX, y: topLeftY };
   };
