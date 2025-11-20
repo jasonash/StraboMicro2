@@ -259,6 +259,75 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
     });
   }, [scaleMethod, pixelInput, physicalLengthInput, unitInput, parentScale, onPlacementChange]);
 
+  // Auto-calculate child scale for Provide Width/Height method
+  useEffect(() => {
+    if (scaleMethod !== 'Provide Width/Height of Image') return;
+    if (!parentScale || (!widthInput && !heightInput)) return;
+
+    const width = parseFloat(widthInput);
+    const height = parseFloat(heightInput);
+    const aspectRatio = childWidth / childHeight;
+
+    // Convert to pixels per centimeter
+    const conversionToCm: { [key: string]: number } = {
+      'μm': 10000,
+      'mm': 10,
+      'cm': 1,
+      'm': 0.01,
+      'inches': 0.393701
+    };
+
+    let childPixelsPerCm: number | null = null;
+
+    if (!isNaN(width) && width > 0) {
+      // Calculate based on width
+      const childPixelsPerUnit = childWidth / width;
+      childPixelsPerCm = childPixelsPerUnit * (conversionToCm[sizeUnitInput] || 1);
+
+      // Auto-populate height if not already set
+      const calculatedHeight = (width / aspectRatio).toFixed(2);
+      if (heightInput !== calculatedHeight) {
+        setHeightInput(calculatedHeight);
+      }
+    } else if (!isNaN(height) && height > 0) {
+      // Calculate based on height
+      const childPixelsPerUnit = childHeight / height;
+      childPixelsPerCm = childPixelsPerUnit * (conversionToCm[sizeUnitInput] || 1);
+
+      // Auto-populate width if not already set
+      const calculatedWidth = (height * aspectRatio).toFixed(2);
+      if (widthInput !== calculatedWidth) {
+        setWidthInput(calculatedWidth);
+      }
+    }
+
+    if (!childPixelsPerCm) return;
+
+    // Calculate scale factor: child scale / parent scale
+    const scaleFactor = childPixelsPerCm / parentScale;
+
+    console.log('[PlacementCanvas] Width/Height calculation:', {
+      width,
+      height,
+      unit: sizeUnitInput,
+      childPixelsPerCm,
+      parentScale,
+      scaleFactor,
+    });
+
+    // Update child scale
+    setChildTransform(prev => {
+      // Update parent callback with new scale
+      onPlacementChange(prev.x, prev.y, prev.rotation, scaleFactor, scaleFactor);
+
+      return {
+        ...prev,
+        scaleX: scaleFactor,
+        scaleY: scaleFactor,
+      };
+    });
+  }, [scaleMethod, widthInput, heightInput, sizeUnitInput, parentScale, childWidth, childHeight, onPlacementChange]);
+
   // Pan/Zoom handlers
   const handleMouseDown = (e: Konva.KonvaEventObject<MouseEvent>) => {
     // Allow panning when clicking on empty space OR the parent image (but not the child overlay)
@@ -582,6 +651,56 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
           </Grid>
           <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
             Enter how many pixels correspond to a known physical length. The overlay will resize automatically.
+          </Typography>
+        </Paper>
+      )}
+
+      {/* Input fields for Provide Width/Height method */}
+      {scaleMethod === 'Provide Width/Height of Image' && (
+        <Paper elevation={2} sx={{ p: 2, width: CANVAS_WIDTH }}>
+          <Typography variant="subtitle2" gutterBottom>
+            Image Physical Dimensions
+          </Typography>
+          <Grid container spacing={2} alignItems="flex-end">
+            <Grid item xs={4}>
+              <TextField
+                label="Width"
+                type="number"
+                value={widthInput}
+                onChange={(e) => setWidthInput(e.target.value)}
+                fullWidth
+                size="small"
+              />
+            </Grid>
+            <Grid item xs={4}>
+              <TextField
+                label="Height"
+                type="number"
+                value={heightInput}
+                onChange={(e) => setHeightInput(e.target.value)}
+                fullWidth
+                size="small"
+              />
+            </Grid>
+            <Grid item xs={4}>
+              <FormControl fullWidth size="small">
+                <InputLabel>Unit</InputLabel>
+                <Select
+                  value={sizeUnitInput}
+                  onChange={(e) => setSizeUnitInput(e.target.value)}
+                  label="Unit"
+                >
+                  <MenuItem value="μm">μm (micrometers)</MenuItem>
+                  <MenuItem value="mm">mm (millimeters)</MenuItem>
+                  <MenuItem value="cm">cm (centimeters)</MenuItem>
+                  <MenuItem value="m">m (meters)</MenuItem>
+                  <MenuItem value="inches">inches</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+          </Grid>
+          <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+            Enter width or height - the other dimension will auto-populate. The overlay will resize automatically.
           </Typography>
         </Paper>
       )}
