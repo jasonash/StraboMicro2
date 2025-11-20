@@ -102,6 +102,7 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
 
   // Parent micrograph metadata (for scale calculations)
   const [parentScale, setParentScale] = useState<number | null>(null);
+  const [parentOriginalWidth, setParentOriginalWidth] = useState<number | null>(null);
 
   // Determine if resize handles should be shown based on scale method
   const enableResizeHandles = scaleMethod === 'Stretch and Drag';
@@ -143,10 +144,14 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
           return;
         }
 
-        // Store parent scale for calculations
+        // Store parent scale and original dimensions for calculations
         if (parentMicrograph.scalePixelsPerCentimeter) {
           setParentScale(parentMicrograph.scalePixelsPerCentimeter);
           console.log('[PlacementCanvas] Parent scale:', parentMicrograph.scalePixelsPerCentimeter, 'px/cm');
+        }
+        if (parentMicrograph.imageWidth) {
+          setParentOriginalWidth(parentMicrograph.imageWidth);
+          console.log('[PlacementCanvas] Parent original width:', parentMicrograph.imageWidth, 'px');
         }
 
         // Build full path to parent image
@@ -398,7 +403,7 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
   // Auto-calculate child scale for Trace Scale Bar method
   useEffect(() => {
     if (scaleMethod !== 'Trace Scale Bar and Drag') return;
-    if (!parentScale || !scaleBarPixelInput || !scaleBarPhysicalInput) return;
+    if (!parentScale || !parentOriginalWidth || !parentImage || !scaleBarPixelInput || !scaleBarPhysicalInput) return;
 
     const pixels = parseFloat(scaleBarPixelInput);
     const physicalLength = parseFloat(scaleBarPhysicalInput);
@@ -418,10 +423,15 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
     };
     const childPixelsPerCm = childPixelsPerUnit * (conversionToCm[scaleBarUnitInput] || 1);
 
+    // Account for parent downsampling
+    // The parent scale (px/cm) is for the original image, but we're displaying a downsampled version
+    const parentDownsampleRatio = parentImage.width / parentOriginalWidth;
+    const parentScaleInDisplayedImage = parentScale * parentDownsampleRatio;
+
     // Calculate scale factor: parent scale / child scale
     // If child is more zoomed in (higher px/cm), it should appear smaller on parent (scale < 1)
     // If child is more zoomed out (lower px/cm), it should appear larger on parent (scale > 1)
-    let scaleFactor = parentScale / childPixelsPerCm;
+    let scaleFactor = parentScaleInDisplayedImage / childPixelsPerCm;
 
     // Sanity checks: prevent wildly large or small scales
     const MIN_SCALE = 0.01;
@@ -441,10 +451,14 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
       unit: scaleBarUnitInput,
       childPixelsPerCm,
       parentScale,
+      parentOriginalWidth,
+      parentDisplayedWidth: parentImage.width,
+      parentDownsampleRatio,
+      parentScaleInDisplayedImage,
       scaleFactor,
-      originalFormula: childPixelsPerCm / parentScale,
-      correctedFormula: parentScale / childPixelsPerCm,
-      clamped: scaleFactor !== parentScale / childPixelsPerCm,
+      oldFormula: parentScale / childPixelsPerCm,
+      newFormula: parentScaleInDisplayedImage / childPixelsPerCm,
+      clamped: scaleFactor !== parentScaleInDisplayedImage / childPixelsPerCm,
     });
 
     // Update child scale (without calling onPlacementChange during render)
@@ -453,7 +467,7 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
       scaleX: scaleFactor,
       scaleY: scaleFactor,
     }));
-  }, [scaleMethod, scaleBarPixelInput, scaleBarPhysicalInput, scaleBarUnitInput, parentScale]);
+  }, [scaleMethod, scaleBarPixelInput, scaleBarPhysicalInput, scaleBarUnitInput, parentScale, parentOriginalWidth, parentImage]);
 
   // Auto-populate pixel count from line length
   useEffect(() => {
