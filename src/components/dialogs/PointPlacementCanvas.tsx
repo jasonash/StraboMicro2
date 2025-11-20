@@ -256,12 +256,18 @@ export const PointPlacementCanvas = ({
     const height = parseFloat(heightInput);
     const aspectRatio = childWidth / childHeight;
 
-    if (!isNaN(width) && width > 0 && !heightInput) {
+    if (!isNaN(width) && width > 0) {
+      // Auto-populate height based on width
       const calculatedHeight = (width / aspectRatio).toFixed(2);
-      setHeightInput(calculatedHeight);
-    } else if (!isNaN(height) && height > 0 && !widthInput) {
+      if (heightInput !== calculatedHeight) {
+        setHeightInput(calculatedHeight);
+      }
+    } else if (!isNaN(height) && height > 0) {
+      // Auto-populate width based on height
       const calculatedWidth = (height * aspectRatio).toFixed(2);
-      setWidthInput(calculatedWidth);
+      if (widthInput !== calculatedWidth) {
+        setWidthInput(calculatedWidth);
+      }
     }
   }, [widthInput, heightInput, childWidth, childHeight, scaleMethod]);
 

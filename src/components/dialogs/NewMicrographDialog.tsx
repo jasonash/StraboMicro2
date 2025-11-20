@@ -944,11 +944,68 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
             // Scale Method step
             return formData.scaleMethod !== '';
           } else {
-            // Location/Placement step - always allow proceeding (placement is optional)
-            return true;
+            // Location/Placement step - validate based on location method
+            if (formData.locationMethod === 'Locate by an approximate point') {
+              // Point must be placed
+              if (formData.offsetInParent.X === 0 && formData.offsetInParent.Y === 0) return false;
+
+              // Validate scale inputs based on scale method
+              if (formData.scaleMethod === 'Trace Scale Bar') {
+                return !!(formData.scaleBarLineLengthPixels && formData.scaleBarPhysicalLength);
+              } else if (formData.scaleMethod === 'Pixel Conversion Factor') {
+                return !!(formData.pixels && formData.physicalLength);
+              } else if (formData.scaleMethod === 'Provide Width/Height of Image') {
+                return !!(formData.imageWidthPhysical || formData.imageHeightPhysical);
+              } else if (formData.scaleMethod === 'Use Same Scale as Parent' || formData.scaleMethod === 'Copy Size from Existing Micrograph') {
+                return true; // These methods don't need additional inputs
+              }
+              return false;
+            } else if (formData.locationMethod === 'Locate as a scaled rectangle') {
+              // Validate scale inputs based on scale method
+              if (formData.scaleMethod === 'Trace Scale Bar and Drag') {
+                return !!(formData.scaleBarLineLengthPixels && formData.scaleBarPhysicalLength);
+              } else if (formData.scaleMethod === 'Pixel Conversion Factor') {
+                return !!(formData.pixels && formData.physicalLength);
+              } else if (formData.scaleMethod === 'Provide Width/Height of Image') {
+                return !!(formData.imageWidthPhysical || formData.imageHeightPhysical);
+              } else if (formData.scaleMethod === 'Stretch and Drag' || formData.scaleMethod === 'Use Same Scale as Parent' || formData.scaleMethod === 'Copy Size from Existing Micrograph') {
+                return true; // These methods don't need additional inputs
+              }
+              return false;
+            }
+            return false;
           }
         case 7: // Location/Placement (when has settings)
-          return true; // Always allow proceeding
+          // Validate based on location method
+          if (formData.locationMethod === 'Locate by an approximate point') {
+            // Point must be placed
+            if (formData.offsetInParent.X === 0 && formData.offsetInParent.Y === 0) return false;
+
+            // Validate scale inputs based on scale method
+            if (formData.scaleMethod === 'Trace Scale Bar') {
+              return !!(formData.scaleBarLineLengthPixels && formData.scaleBarPhysicalLength);
+            } else if (formData.scaleMethod === 'Pixel Conversion Factor') {
+              return !!(formData.pixels && formData.physicalLength);
+            } else if (formData.scaleMethod === 'Provide Width/Height of Image') {
+              return !!(formData.imageWidthPhysical || formData.imageHeightPhysical);
+            } else if (formData.scaleMethod === 'Use Same Scale as Parent' || formData.scaleMethod === 'Copy Size from Existing Micrograph') {
+              return true; // These methods don't need additional inputs
+            }
+            return false;
+          } else if (formData.locationMethod === 'Locate as a scaled rectangle') {
+            // Validate scale inputs based on scale method
+            if (formData.scaleMethod === 'Trace Scale Bar and Drag') {
+              return !!(formData.scaleBarLineLengthPixels && formData.scaleBarPhysicalLength);
+            } else if (formData.scaleMethod === 'Pixel Conversion Factor') {
+              return !!(formData.pixels && formData.physicalLength);
+            } else if (formData.scaleMethod === 'Provide Width/Height of Image') {
+              return !!(formData.imageWidthPhysical || formData.imageHeightPhysical);
+            } else if (formData.scaleMethod === 'Stretch and Drag' || formData.scaleMethod === 'Use Same Scale as Parent' || formData.scaleMethod === 'Copy Size from Existing Micrograph') {
+              return true; // These methods don't need additional inputs
+            }
+            return false;
+          }
+          return false;
         default:
           return true;
       }
