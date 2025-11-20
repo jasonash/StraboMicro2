@@ -55,6 +55,7 @@ export const PointPlacementCanvas = ({
 
   // Point marker position (in parent image coordinates)
   const [pointPos, setPointPos] = useState({ x: initialOffsetX, y: initialOffsetY });
+  const [isDraggingChild, setIsDraggingChild] = useState(false);
 
   // Tool state
   const [activeTool, setActiveTool] = useState<'pan' | 'point' | 'line'>('pan');
@@ -176,6 +177,16 @@ export const PointPlacementCanvas = ({
     loadChildImage();
   }, [scaleMethod, childScratchPath]);
 
+  // Center point position when parent image first loads (if not already set)
+  useEffect(() => {
+    if (parentImage && initialOffsetX === 0 && initialOffsetY === 0) {
+      const centerX = parentImage.width / 2;
+      const centerY = parentImage.height / 2;
+      setPointPos({ x: centerX, y: centerY });
+      onPlacementChange(centerX, centerY);
+    }
+  }, [parentImage, initialOffsetX, initialOffsetY, onPlacementChange]);
+
   // Notify parent of scale data changes
   useEffect(() => {
     if (!onScaleDataChange) return;
@@ -243,20 +254,32 @@ export const PointPlacementCanvas = ({
     const pointerPos = stage.getPointerPosition();
     if (!pointerPos) return;
 
-    if (activeTool === 'point') {
-      // Convert screen coordinates to parent image coordinates
-      const x = (pointerPos.x - stagePos.x) / scale;
-      const y = (pointerPos.y - stagePos.y) / scale;
+    // Convert screen coordinates to parent image coordinates
+    const imageX = (pointerPos.x - stagePos.x) / scale;
+    const imageY = (pointerPos.y - stagePos.y) / scale;
 
-      setPointPos({ x, y });
-      onPlacementChange(x, y);
+    // Check if clicking on child overlay for "Trace Scale Bar" method
+    if (scaleMethod === 'Trace Scale Bar' && childImage && activeTool === 'pan') {
+      const childLeft = pointPos.x - childImage.width / 2;
+      const childRight = pointPos.x + childImage.width / 2;
+      const childTop = pointPos.y - childImage.height / 2;
+      const childBottom = pointPos.y + childImage.height / 2;
+
+      if (imageX >= childLeft && imageX <= childRight && imageY >= childTop && imageY <= childBottom) {
+        // Start dragging the child overlay
+        setIsDraggingChild(true);
+        setLastPanPos(pointerPos);
+        return;
+      }
+    }
+
+    if (activeTool === 'point') {
+      setPointPos({ x: imageX, y: imageY });
+      onPlacementChange(imageX, imageY);
     } else if (activeTool === 'line') {
       // Start drawing line for scale bar
-      const x = (pointerPos.x - stagePos.x) / scale;
-      const y = (pointerPos.y - stagePos.y) / scale;
-
       setIsDrawingLine(true);
-      setCurrentLine({ x1: x, y1: y, x2: x, y2: y });
+      setCurrentLine({ x1: imageX, y1: imageY, x2: imageX, y2: imageY });
     } else if (activeTool === 'pan') {
       // Start panning
       setIsPanning(true);
@@ -271,7 +294,21 @@ export const PointPlacementCanvas = ({
     const pointerPos = stage.getPointerPosition();
     if (!pointerPos) return;
 
-    if (isDrawingLine && activeTool === 'line' && currentLine) {
+    if (isDraggingChild && lastPanPos) {
+      // Drag the child overlay
+      const dx = pointerPos.x - lastPanPos.x;
+      const dy = pointerPos.y - lastPanPos.y;
+
+      // Convert screen delta to image delta
+      const imageDx = dx / scale;
+      const imageDy = dy / scale;
+
+      const newX = pointPos.x + imageDx;
+      const newY = pointPos.y + imageDy;
+
+      setPointPos({ x: newX, y: newY });
+      setLastPanPos(pointerPos);
+    } else if (isDrawingLine && activeTool === 'line' && currentLine) {
       // Update line endpoint
       const x = (pointerPos.x - stagePos.x) / scale;
       const y = (pointerPos.y - stagePos.y) / scale;
@@ -291,6 +328,14 @@ export const PointPlacementCanvas = ({
   };
 
   const handleMouseUp = () => {
+    if (isDraggingChild) {
+      // Finished dragging child - notify parent
+      onPlacementChange(pointPos.x, pointPos.y);
+      setIsDraggingChild(false);
+      setLastPanPos(null);
+      return;
+    }
+
     if (isDrawingLine && currentLine) {
       // Calculate line length in pixels
       const dx = currentLine.x2 - currentLine.x1;
@@ -358,6 +403,7 @@ export const PointPlacementCanvas = ({
   const getCursor = () => {
     if (activeTool === 'point') return 'crosshair';
     if (activeTool === 'line') return 'crosshair';
+    if (isDraggingChild) return 'grabbing';
     if (isPanning) return 'grabbing';
     return 'grab';
   };
