@@ -270,7 +270,7 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
   // Auto-calculate child scale for Pixel Conversion Factor method
   useEffect(() => {
     if (scaleMethod !== 'Pixel Conversion Factor') return;
-    if (!parentScale || !pixelInput || !physicalLengthInput) return;
+    if (!parentScale || !parentOriginalWidth || !parentImage || !pixelInput || !physicalLengthInput) return;
 
     const pixels = parseFloat(pixelInput);
     const physicalLength = parseFloat(physicalLengthInput);
@@ -290,8 +290,15 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
     };
     const childPixelsPerCm = childPixelsPerUnit * (conversionToCm[unitInput] || 1);
 
-    // Calculate scale factor: child scale / parent scale
-    let scaleFactor = childPixelsPerCm / parentScale;
+    // Account for parent downsampling
+    // The parent scale (px/cm) is for the original image, but we're displaying a downsampled version
+    const parentDownsampleRatio = parentImage.width / parentOriginalWidth;
+    const parentScaleInDisplayedImage = parentScale * parentDownsampleRatio;
+
+    // Calculate scale factor: parent scale / child scale
+    // If child is more zoomed in (higher px/cm), it should appear smaller on parent (scale < 1)
+    // If child is more zoomed out (lower px/cm), it should appear larger on parent (scale > 1)
+    let scaleFactor = parentScaleInDisplayedImage / childPixelsPerCm;
 
     // Sanity checks: prevent wildly large or small scales
     // Max scale: child can't be more than 10x the size of parent
@@ -313,8 +320,10 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
       unit: unitInput,
       childPixelsPerCm,
       parentScale,
+      parentDownsampleRatio,
+      parentScaleInDisplayedImage,
       scaleFactor,
-      clamped: scaleFactor !== childPixelsPerCm / parentScale,
+      clamped: scaleFactor !== parentScaleInDisplayedImage / childPixelsPerCm,
     });
 
     // Update child scale (without calling onPlacementChange during render)
@@ -347,7 +356,7 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
   // Auto-calculate child scale for Provide Width/Height method
   useEffect(() => {
     if (scaleMethod !== 'Provide Width/Height of Image') return;
-    if (!parentScale || (!widthInput && !heightInput)) return;
+    if (!parentScale || !parentOriginalWidth || !parentImage || (!widthInput && !heightInput)) return;
 
     const width = parseFloat(widthInput);
     const height = parseFloat(heightInput);
@@ -388,8 +397,15 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
 
     if (!childPixelsPerCm) return;
 
-    // Calculate scale factor: child scale / parent scale
-    let scaleFactor = childPixelsPerCm / parentScale;
+    // Account for parent downsampling
+    // The parent scale (px/cm) is for the original image, but we're displaying a downsampled version
+    const parentDownsampleRatio = parentImage.width / parentOriginalWidth;
+    const parentScaleInDisplayedImage = parentScale * parentDownsampleRatio;
+
+    // Calculate scale factor: parent scale / child scale
+    // If child is more zoomed in (higher px/cm), it should appear smaller on parent (scale < 1)
+    // If child is more zoomed out (lower px/cm), it should appear larger on parent (scale > 1)
+    let scaleFactor = parentScaleInDisplayedImage / childPixelsPerCm;
 
     // Sanity checks: prevent wildly large or small scales
     const MIN_SCALE = 0.01;
@@ -409,8 +425,10 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
       unit: sizeUnitInput,
       childPixelsPerCm,
       parentScale,
+      parentDownsampleRatio,
+      parentScaleInDisplayedImage,
       scaleFactor,
-      clamped: scaleFactor !== childPixelsPerCm / parentScale,
+      clamped: scaleFactor !== parentScaleInDisplayedImage / childPixelsPerCm,
     });
 
     // Update child scale (without calling onPlacementChange during render)
