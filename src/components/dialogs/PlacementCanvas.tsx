@@ -530,6 +530,106 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
         Pan and zoom the parent micrograph. Drag, resize, and rotate the overlay to position it.
       </Typography>
 
+      {/* Input fields for Pixel Conversion Factor method */}
+      {scaleMethod === 'Pixel Conversion Factor' && (
+        <Paper elevation={2} sx={{ p: 2, width: CANVAS_WIDTH }}>
+          <Typography variant="subtitle2" gutterBottom>
+            Pixel Conversion Factor
+          </Typography>
+          <Grid container spacing={2} alignItems="flex-end">
+            <Grid item xs={4}>
+              <TextField
+                label="Number of Pixels"
+                type="number"
+                value={pixelInput}
+                onChange={(e) => setPixelInput(e.target.value)}
+                fullWidth
+                size="small"
+              />
+            </Grid>
+            <Grid item xs={4}>
+              <TextField
+                label="Physical Length"
+                type="number"
+                value={physicalLengthInput}
+                onChange={(e) => setPhysicalLengthInput(e.target.value)}
+                fullWidth
+                size="small"
+              />
+            </Grid>
+            <Grid item xs={4}>
+              <FormControl fullWidth size="small">
+                <InputLabel>Unit</InputLabel>
+                <Select
+                  value={unitInput}
+                  onChange={(e) => setUnitInput(e.target.value)}
+                  label="Unit"
+                >
+                  <MenuItem value="μm">μm (micrometers)</MenuItem>
+                  <MenuItem value="mm">mm (millimeters)</MenuItem>
+                  <MenuItem value="cm">cm (centimeters)</MenuItem>
+                  <MenuItem value="m">m (meters)</MenuItem>
+                  <MenuItem value="inches">inches</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+          </Grid>
+          <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+            Enter how many pixels correspond to a known physical length. The overlay will resize automatically.
+          </Typography>
+        </Paper>
+      )}
+
+      {/* Input fields for Provide Width/Height method */}
+      {scaleMethod === 'Provide Width/Height of Image' && (
+        <Paper elevation={2} sx={{ p: 2, width: CANVAS_WIDTH }}>
+          <Typography variant="subtitle2" gutterBottom>
+            Image Physical Dimensions
+          </Typography>
+          <Grid container spacing={2} alignItems="flex-end">
+            <Grid item xs={4}>
+              <TextField
+                label="Width"
+                type="number"
+                value={widthInput}
+                onChange={(e) => setWidthInput(e.target.value)}
+                fullWidth
+                size="small"
+              />
+            </Grid>
+            <Grid item xs={4}>
+              <TextField
+                label="Height"
+                type="number"
+                value={heightInput}
+                onChange={(e) => setHeightInput(e.target.value)}
+                fullWidth
+                size="small"
+              />
+            </Grid>
+            <Grid item xs={4}>
+              <FormControl fullWidth size="small">
+                <InputLabel>Unit</InputLabel>
+                <Select
+                  value={sizeUnitInput}
+                  onChange={(e) => setSizeUnitInput(e.target.value)}
+                  label="Unit"
+                >
+                  <MenuItem value="μm">μm (micrometers)</MenuItem>
+                  <MenuItem value="mm">mm (millimeters)</MenuItem>
+                  <MenuItem value="cm">cm (centimeters)</MenuItem>
+                  <MenuItem value="m">m (meters)</MenuItem>
+                  <MenuItem value="inches">inches</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+          </Grid>
+          <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+            Enter width or height - the other dimension will auto-populate. The overlay will resize automatically.
+          </Typography>
+        </Paper>
+      )}
+
       {/* Toolbar */}
       <Paper elevation={2} sx={{ p: 1, width: CANVAS_WIDTH }}>
         <Stack direction="row" spacing={1} alignItems="center">
@@ -655,106 +755,6 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
           </Layer>
         </Stage>
       </Box>
-
-      {/* Input fields for Pixel Conversion Factor method */}
-      {scaleMethod === 'Pixel Conversion Factor' && (
-        <Paper elevation={2} sx={{ p: 2, width: CANVAS_WIDTH }}>
-          <Typography variant="subtitle2" gutterBottom>
-            Pixel Conversion Factor
-          </Typography>
-          <Grid container spacing={2} alignItems="flex-end">
-            <Grid item xs={4}>
-              <TextField
-                label="Number of Pixels"
-                type="number"
-                value={pixelInput}
-                onChange={(e) => setPixelInput(e.target.value)}
-                fullWidth
-                size="small"
-              />
-            </Grid>
-            <Grid item xs={4}>
-              <TextField
-                label="Physical Length"
-                type="number"
-                value={physicalLengthInput}
-                onChange={(e) => setPhysicalLengthInput(e.target.value)}
-                fullWidth
-                size="small"
-              />
-            </Grid>
-            <Grid item xs={4}>
-              <FormControl fullWidth size="small">
-                <InputLabel>Unit</InputLabel>
-                <Select
-                  value={unitInput}
-                  onChange={(e) => setUnitInput(e.target.value)}
-                  label="Unit"
-                >
-                  <MenuItem value="μm">μm (micrometers)</MenuItem>
-                  <MenuItem value="mm">mm (millimeters)</MenuItem>
-                  <MenuItem value="cm">cm (centimeters)</MenuItem>
-                  <MenuItem value="m">m (meters)</MenuItem>
-                  <MenuItem value="inches">inches</MenuItem>
-                </Select>
-              </FormControl>
-            </Grid>
-          </Grid>
-          <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
-            Enter how many pixels correspond to a known physical length. The overlay will resize automatically.
-          </Typography>
-        </Paper>
-      )}
-
-      {/* Input fields for Provide Width/Height method */}
-      {scaleMethod === 'Provide Width/Height of Image' && (
-        <Paper elevation={2} sx={{ p: 2, width: CANVAS_WIDTH }}>
-          <Typography variant="subtitle2" gutterBottom>
-            Image Physical Dimensions
-          </Typography>
-          <Grid container spacing={2} alignItems="flex-end">
-            <Grid item xs={4}>
-              <TextField
-                label="Width"
-                type="number"
-                value={widthInput}
-                onChange={(e) => setWidthInput(e.target.value)}
-                fullWidth
-                size="small"
-              />
-            </Grid>
-            <Grid item xs={4}>
-              <TextField
-                label="Height"
-                type="number"
-                value={heightInput}
-                onChange={(e) => setHeightInput(e.target.value)}
-                fullWidth
-                size="small"
-              />
-            </Grid>
-            <Grid item xs={4}>
-              <FormControl fullWidth size="small">
-                <InputLabel>Unit</InputLabel>
-                <Select
-                  value={sizeUnitInput}
-                  onChange={(e) => setSizeUnitInput(e.target.value)}
-                  label="Unit"
-                >
-                  <MenuItem value="μm">μm (micrometers)</MenuItem>
-                  <MenuItem value="mm">mm (millimeters)</MenuItem>
-                  <MenuItem value="cm">cm (centimeters)</MenuItem>
-                  <MenuItem value="m">m (meters)</MenuItem>
-                  <MenuItem value="inches">inches</MenuItem>
-                </Select>
-              </FormControl>
-            </Grid>
-          </Grid>
-          <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
-            Enter width or height - the other dimension will auto-populate. The overlay will resize automatically.
-          </Typography>
-        </Paper>
-      )}
 
       <Typography variant="caption" color="text.secondary" sx={{ width: CANVAS_WIDTH, textAlign: 'center' }}>
         Overlay Position: ({childTransform.x.toFixed(1)}, {childTransform.y.toFixed(1)}) |
