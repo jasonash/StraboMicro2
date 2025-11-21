@@ -1159,6 +1159,11 @@ ipcMain.handle('composite:generate-thumbnail', async (event, projectId, microgra
     let baseImage = sharp(basePath);
     const baseMetadata = await baseImage.metadata();
 
+    log.info(`[IPC] Parent micrograph: ${micrograph.id}`);
+    log.info(`[IPC]   imageWidth (stored): ${micrograph.imageWidth}, imageHeight (stored): ${micrograph.imageHeight}`);
+    log.info(`[IPC]   Actual file dimensions: ${baseMetadata.width}x${baseMetadata.height}`);
+    log.info(`[IPC]   Parent px/cm: ${micrograph.scalePixelsPerCentimeter}`);
+
     // Calculate thumbnail dimensions maintaining aspect ratio
     const maxDimension = 250;
     const aspectRatio = baseMetadata.width / baseMetadata.height;
