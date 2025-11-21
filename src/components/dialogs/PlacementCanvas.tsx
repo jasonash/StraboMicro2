@@ -441,10 +441,19 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
         childTransform.scaleY !== prevScaleRef.current.scaleY) {
       // Convert center position to top-left for legacy compatibility
       const topLeft = convertCenterToTopLeft(childTransform.x, childTransform.y, childTransform.rotation, childTransform.scaleX, childTransform.scaleY);
-      onPlacementChange(topLeft.x, topLeft.y, childTransform.rotation, childTransform.scaleX, childTransform.scaleY);
+
+      // Convert from displayed coordinates to original parent coordinates
+      if (!parentOriginalWidth || !parentImage?.width) {
+        onPlacementChange(topLeft.x, topLeft.y, childTransform.rotation, childTransform.scaleX, childTransform.scaleY);
+      } else {
+        const scaleRatio = parentOriginalWidth / parentImage.width;
+        const originalX = topLeft.x * scaleRatio;
+        const originalY = topLeft.y * scaleRatio;
+        onPlacementChange(originalX, originalY, childTransform.rotation, childTransform.scaleX, childTransform.scaleY);
+      }
       prevScaleRef.current = { scaleX: childTransform.scaleX, scaleY: childTransform.scaleY };
     }
-  }, [scaleMethod, childTransform.scaleX, childTransform.scaleY, childTransform.x, childTransform.y, childTransform.rotation, onPlacementChange]);
+  }, [scaleMethod, childTransform.scaleX, childTransform.scaleY, childTransform.x, childTransform.y, childTransform.rotation, onPlacementChange, parentOriginalWidth, parentImage]);
 
   // Auto-calculate child scale for Provide Width/Height method
   useEffect(() => {
