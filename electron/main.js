@@ -1134,6 +1134,10 @@ ipcMain.handle('composite:generate-thumbnail', async (event, projectId, microgra
             childMicrographs = (sample.micrographs || []).filter(
               m => m.parentID === micrographId
             );
+
+            log.info(`[IPC] Found parent micrograph ${micrographId} with ${childMicrographs.length} children`);
+            log.info(`[IPC] Children IDs:`, childMicrographs.map(c => ({ id: c.id, name: c.name, imagePath: c.imagePath })));
+
             break;
           }
         }
