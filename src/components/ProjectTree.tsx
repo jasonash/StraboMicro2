@@ -78,19 +78,20 @@ function MicrographThumbnail({ micrographId, projectId, micrographName }: Microg
       const customEvent = event as CustomEvent<{ micrographId: string }>;
       if (customEvent.detail.micrographId === micrographId) {
         console.log(`[MicrographThumbnail] Reloading thumbnail for ${micrographId}`);
-        // Reload the thumbnail after a short delay to ensure file is written
+        // Reload the thumbnail after a delay to ensure file is written and synced
+        // Longer delay to account for file system sync
         setTimeout(() => {
           loadThumbnail();
-        }, 100);
+        }, 500);
       }
     };
 
     const handleRebuildAll = () => {
       console.log(`[MicrographThumbnail] Rebuild all triggered, reloading ${micrographId}`);
-      // Reload the thumbnail after a short delay to ensure file is written
+      // Reload the thumbnail after a delay to ensure file is written
       setTimeout(() => {
         loadThumbnail();
-      }, 100);
+      }, 500);
     };
 
     window.addEventListener('thumbnail-generated', handleThumbnailGenerated);
