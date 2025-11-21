@@ -1089,6 +1089,231 @@ ipcMain.handle('image:is-valid', async (event, filePath) => {
 
 /**
  * ============================================================================
+ * COMPOSITE THUMBNAIL GENERATION HANDLERS
+ * ============================================================================
+ */
+
+/**
+ * Generate composite thumbnail for a micrograph with its immediate children overlaid
+ * Creates a 250px JPEG in the compositeThumbnails/ folder
+ */
+ipcMain.handle('composite:generate-thumbnail', async (event, projectId, micrographId) => {
+  try {
+    log.info(`[IPC] Generating composite thumbnail for micrograph: ${micrographId}`);
+
+    // Get project folder paths
+    const folderPaths = await projectFolders.getProjectFolderPaths(projectId);
+
+    // Load project.json to get micrograph metadata
+    const project = await projectSerializer.loadProjectJson(projectId);
+
+    // Find the micrograph in the project hierarchy
+    let micrograph = null;
+    let childMicrographs = [];
+
+    for (const dataset of project.datasets || []) {
+      for (const sample of dataset.samples || []) {
+        for (const micro of sample.micrographs || []) {
+          if (micro.id === micrographId) {
+            micrograph = micro;
+
+            // Find immediate children (associated micrographs)
+            childMicrographs = (sample.micrographs || []).filter(
+              m => m.parentID === micrographId
+            );
+            break;
+          }
+        }
+        if (micrograph) break;
+      }
+      if (micrograph) break;
+    }
+
+    if (!micrograph) {
+      throw new Error(`Micrograph ${micrographId} not found in project`);
+    }
+
+    // Load base micrograph image
+    const basePath = path.join(folderPaths.images, micrograph.imagePath);
+    log.info(`[IPC] Loading base image: ${basePath}`);
+
+    let baseImage = sharp(basePath);
+    const baseMetadata = await baseImage.metadata();
+
+    // Calculate thumbnail dimensions maintaining aspect ratio
+    const maxDimension = 250;
+    const aspectRatio = baseMetadata.width / baseMetadata.height;
+    let thumbWidth, thumbHeight;
+
+    if (baseMetadata.width > baseMetadata.height) {
+      thumbWidth = maxDimension;
+      thumbHeight = Math.round(maxDimension / aspectRatio);
+    } else {
+      thumbHeight = maxDimension;
+      thumbWidth = Math.round(maxDimension * aspectRatio);
+    }
+
+    // Resize base image to thumbnail size
+    baseImage = baseImage.resize(thumbWidth, thumbHeight, {
+      fit: 'fill',
+      kernel: sharp.kernel.lanczos3
+    });
+
+    // If there are no children, just save the base thumbnail
+    if (childMicrographs.length === 0) {
+      log.info(`[IPC] No child micrographs, saving base thumbnail only`);
+
+      const outputPath = path.join(folderPaths.compositeThumbnails, micrographId);
+      await baseImage.jpeg({ quality: 85 }).toFile(outputPath);
+
+      return {
+        success: true,
+        thumbnailPath: outputPath,
+        width: thumbWidth,
+        height: thumbHeight
+      };
+    }
+
+    // Composite children onto base
+    log.info(`[IPC] Compositing ${childMicrographs.length} child micrographs`);
+
+    // Convert base image to buffer for compositing
+    const baseBuffer = await baseImage.toBuffer();
+
+    // Calculate scale factor from original to thumbnail
+    const thumbnailScale = thumbWidth / baseMetadata.width;
+
+    // Build composite layers
+    const compositeInputs = [];
+
+    for (const child of childMicrographs) {
+      try {
+        const childPath = path.join(folderPaths.images, child.imagePath);
+
+        // Load child image
+        let childImage = sharp(childPath);
+        const childMetadata = await childImage.metadata();
+
+        // Calculate child's display scale based on pixels per centimeter
+        const childPxPerCm = child.scalePixelsPerCentimeter || 100;
+        const parentPxPerCm = micrograph.scalePixelsPerCentimeter || 100;
+        const displayScale = parentPxPerCm / childPxPerCm;
+
+        // Calculate child dimensions in parent's coordinate space
+        const childDisplayWidth = childMetadata.width * displayScale;
+        const childDisplayHeight = childMetadata.height * displayScale;
+
+        // Get child position (top-left)
+        let topLeftX = 0;
+        let topLeftY = 0;
+
+        if (child.offsetInParent) {
+          topLeftX = child.offsetInParent.X;
+          topLeftY = child.offsetInParent.Y;
+        } else if (child.pointInParent) {
+          topLeftX = child.pointInParent.x - childDisplayWidth / 2;
+          topLeftY = child.pointInParent.y - childDisplayHeight / 2;
+        } else if (child.xOffset !== undefined && child.yOffset !== undefined) {
+          topLeftX = child.xOffset;
+          topLeftY = child.yOffset;
+        }
+
+        // Scale position to thumbnail coordinates
+        const thumbX = Math.round(topLeftX * thumbnailScale);
+        const thumbY = Math.round(topLeftY * thumbnailScale);
+
+        // Scale child dimensions to thumbnail coordinates
+        const thumbChildWidth = Math.round(childDisplayWidth * thumbnailScale);
+        const thumbChildHeight = Math.round(childDisplayHeight * thumbnailScale);
+
+        // Resize child image
+        childImage = childImage.resize(thumbChildWidth, thumbChildHeight, {
+          fit: 'fill',
+          kernel: sharp.kernel.lanczos3
+        });
+
+        // Apply rotation if needed
+        if (child.rotation) {
+          // Calculate center position for rotation
+          const centerX = thumbX + thumbChildWidth / 2;
+          const centerY = thumbY + thumbChildHeight / 2;
+
+          // Sharp rotates around center, then we need to adjust position
+          childImage = childImage.rotate(child.rotation, {
+            background: { r: 0, g: 0, b: 0, alpha: 0 }
+          });
+
+          // After rotation, image size changes - get new dimensions
+          const rotatedMeta = await childImage.metadata();
+
+          // Adjust position to account for rotation
+          const adjustedX = Math.round(centerX - rotatedMeta.width / 2);
+          const adjustedY = Math.round(centerY - rotatedMeta.height / 2);
+
+          compositeInputs.push({
+            input: await childImage.toBuffer(),
+            left: adjustedX,
+            top: adjustedY
+          });
+        } else {
+          compositeInputs.push({
+            input: await childImage.toBuffer(),
+            left: thumbX,
+            top: thumbY
+          });
+        }
+      } catch (error) {
+        log.error(`[IPC] Failed to composite child ${child.id}:`, error);
+        // Continue with other children
+      }
+    }
+
+    // Apply composites to base image
+    const compositeImage = sharp(baseBuffer).composite(compositeInputs);
+
+    // Save to compositeThumbnails folder (JPEG with no extension)
+    const outputPath = path.join(folderPaths.compositeThumbnails, micrographId);
+    await compositeImage.jpeg({ quality: 85 }).toFile(outputPath);
+
+    log.info(`[IPC] Successfully generated composite thumbnail: ${outputPath}`);
+
+    return {
+      success: true,
+      thumbnailPath: outputPath,
+      width: thumbWidth,
+      height: thumbHeight
+    };
+
+  } catch (error) {
+    log.error('[IPC] Error generating composite thumbnail:', error);
+    throw error;
+  }
+});
+
+/**
+ * Get path to composite thumbnail (returns empty string if doesn't exist)
+ */
+ipcMain.handle('composite:get-thumbnail-path', async (event, projectId, micrographId) => {
+  try {
+    const folderPaths = await projectFolders.getProjectFolderPaths(projectId);
+    const thumbnailPath = path.join(folderPaths.compositeThumbnails, micrographId);
+
+    // Check if file exists
+    const fs = require('fs').promises;
+    try {
+      await fs.access(thumbnailPath);
+      return thumbnailPath;
+    } catch {
+      return '';
+    }
+  } catch (error) {
+    log.error('[IPC] Error getting composite thumbnail path:', error);
+    return '';
+  }
+});
+
+/**
+ * ============================================================================
  * PROJECT SERIALIZATION HANDLERS
  * ============================================================================
  */

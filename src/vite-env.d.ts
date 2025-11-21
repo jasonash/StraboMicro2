@@ -174,6 +174,15 @@ interface Window {
     }>;
     isValidImage: (filePath: string) => Promise<boolean>;
 
+    // Composite thumbnail generation
+    generateCompositeThumbnail: (projectId: string, micrographId: string) => Promise<{
+      success: boolean;
+      thumbnailPath: string;
+      width: number;
+      height: number;
+    }>;
+    getCompositeThumbnailPath: (projectId: string, micrographId: string) => Promise<string>;
+
     // Project serialization
     saveProjectJson: (project: any, projectId: string) => Promise<{
       success: boolean;

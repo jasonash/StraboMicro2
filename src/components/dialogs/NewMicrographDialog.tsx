@@ -903,6 +903,33 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
 
       console.log('Micrograph created successfully:', micrograph.id);
 
+      // Generate composite thumbnails
+      // If this is an associated micrograph (has parentID), regenerate parent's thumbnail
+      if (micrograph.parentID && window.api && useAppStore.getState().project) {
+        const projectId = useAppStore.getState().project!.id;
+        console.log(`[NewMicrographDialog] Generating composite thumbnail for parent: ${micrograph.parentID}`);
+        try {
+          await window.api.generateCompositeThumbnail(projectId, micrograph.parentID);
+          console.log('[NewMicrographDialog] Successfully generated parent composite thumbnail');
+        } catch (error) {
+          console.error('[NewMicrographDialog] Failed to generate parent composite thumbnail:', error);
+          // Don't block the workflow if thumbnail generation fails
+        }
+      }
+
+      // Also generate thumbnail for the new micrograph itself (may have children in the future)
+      if (window.api && useAppStore.getState().project) {
+        const projectId = useAppStore.getState().project!.id;
+        console.log(`[NewMicrographDialog] Generating composite thumbnail for new micrograph: ${micrograph.id}`);
+        try {
+          await window.api.generateCompositeThumbnail(projectId, micrograph.id);
+          console.log('[NewMicrographDialog] Successfully generated composite thumbnail');
+        } catch (error) {
+          console.error('[NewMicrographDialog] Failed to generate composite thumbnail:', error);
+          // Don't block the workflow if thumbnail generation fails
+        }
+      }
+
       // Close dialog
       handleCancel();
     } catch (error) {

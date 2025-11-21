@@ -69,6 +69,12 @@ contextBridge.exposeInMainWorld('api', {
   getImageDimensions: (imagePath) => ipcRenderer.invoke('image:get-dimensions', imagePath),
   isValidImage: (filePath) => ipcRenderer.invoke('image:is-valid', filePath),
 
+  // Composite thumbnail generation
+  generateCompositeThumbnail: (projectId, micrographId) =>
+    ipcRenderer.invoke('composite:generate-thumbnail', projectId, micrographId),
+  getCompositeThumbnailPath: (projectId, micrographId) =>
+    ipcRenderer.invoke('composite:get-thumbnail-path', projectId, micrographId),
+
   // Project serialization
   saveProjectJson: (project, projectId) => ipcRenderer.invoke('project:save-json', project, projectId),
   loadProjectJson: (projectId) => ipcRenderer.invoke('project:load-json', projectId),
