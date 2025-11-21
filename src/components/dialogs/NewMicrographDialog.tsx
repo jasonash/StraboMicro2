@@ -2048,7 +2048,15 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
   // Render Location & Scale step (for associated micrographs)
   const renderLocationPlacementStep = () => {
     // Get the selected sibling micrograph data for "Copy Size from Existing" method
-    const getCopySizeSibling = (): { xOffset: number; yOffset: number; rotation: number; scaleX: number; scaleY: number; pointInParent?: { x: number; y: number } } | null => {
+    // Returns raw sibling data plus adjusted scale for the new image
+    const getCopySizeData = (): {
+      xOffset: number;
+      yOffset: number;
+      rotation: number;
+      adjustedScaleX: number;
+      adjustedScaleY: number;
+      pointInParent?: { x: number; y: number };
+    } | null => {
       if (formData.scaleMethod !== 'Copy Size from Existing Micrograph' || !formData.copySizeFromMicrographId) {
         return null;
       }
@@ -2059,12 +2067,27 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
         for (const sample of dataset.samples || []) {
           for (const micrograph of sample.micrographs || []) {
             if (micrograph.id === formData.copySizeFromMicrographId) {
+              // Get sibling's dimensions and scale
+              const siblingWidth = micrograph.imageWidth ?? 1;
+              const siblingHeight = micrograph.imageHeight ?? 1;
+              const siblingScaleX = micrograph.scaleX ?? 1;
+              const siblingScaleY = micrograph.scaleY ?? 1;
+
+              // Calculate the sibling's displayed size (in parent image coordinates)
+              const siblingDisplayedWidth = siblingWidth * siblingScaleX;
+              const siblingDisplayedHeight = siblingHeight * siblingScaleY;
+
+              // Calculate what scale the NEW image needs to be the SAME displayed size
+              // newDisplayedWidth = newWidth * adjustedScaleX = siblingDisplayedWidth
+              const adjustedScaleX = siblingDisplayedWidth / formData.micrographWidth;
+              const adjustedScaleY = siblingDisplayedHeight / formData.micrographHeight;
+
               return {
                 xOffset: micrograph.xOffset ?? 0,
                 yOffset: micrograph.yOffset ?? 0,
                 rotation: micrograph.rotation ?? 0,
-                scaleX: micrograph.scaleX ?? 1,
-                scaleY: micrograph.scaleY ?? 1,
+                adjustedScaleX,
+                adjustedScaleY,
                 pointInParent: micrograph.pointInParent,
               };
             }
@@ -2074,7 +2097,7 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
       return null;
     };
 
-    const copySizeSibling = getCopySizeSibling();
+    const copySizeData = getCopySizeData();
 
     // Handler for placement changes from the canvas
     const handlePlacementChange = (offsetX: number, offsetY: number, rotation: number, scaleX?: number, scaleY?: number) => {
@@ -2138,11 +2161,11 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
             childWidth={formData.micrographWidth}
             childHeight={formData.micrographHeight}
             scaleMethod={formData.scaleMethod}
-            initialOffsetX={copySizeSibling?.xOffset ?? formData.offsetInParent.X}
-            initialOffsetY={copySizeSibling?.yOffset ?? formData.offsetInParent.Y}
-            initialRotation={copySizeSibling?.rotation ?? formData.rotationAngle}
-            initialScaleX={copySizeSibling?.scaleX}
-            initialScaleY={copySizeSibling?.scaleY}
+            initialOffsetX={copySizeData?.xOffset ?? formData.offsetInParent.X}
+            initialOffsetY={copySizeData?.yOffset ?? formData.offsetInParent.Y}
+            initialRotation={copySizeData?.rotation ?? formData.rotationAngle}
+            initialScaleX={copySizeData?.adjustedScaleX}
+            initialScaleY={copySizeData?.adjustedScaleY}
             onPlacementChange={handlePlacementChange}
             onScaleDataChange={handleScaleDataChange}
           />
@@ -2162,9 +2185,9 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
             childWidth={formData.micrographWidth}
             childHeight={formData.micrographHeight}
             scaleMethod={formData.scaleMethod || ''}
-            initialOffsetX={copySizeSibling?.pointInParent?.x ?? formData.offsetInParent.X}
-            initialOffsetY={copySizeSibling?.pointInParent?.y ?? formData.offsetInParent.Y}
-            copySizeScale={copySizeSibling ? { scaleX: copySizeSibling.scaleX, scaleY: copySizeSibling.scaleY } : undefined}
+            initialOffsetX={copySizeData?.pointInParent?.x ?? formData.offsetInParent.X}
+            initialOffsetY={copySizeData?.pointInParent?.y ?? formData.offsetInParent.Y}
+            copySizeScale={copySizeData ? { scaleX: copySizeData.adjustedScaleX, scaleY: copySizeData.adjustedScaleY } : undefined}
             onPlacementChange={(offsetX, offsetY) => {
               setFormData((prev) => ({
                 ...prev,
