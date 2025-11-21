@@ -2063,46 +2063,71 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
       const project = useAppStore.getState().project;
       if (!project) return null;
 
+      // Find the parent micrograph to get its scale
+      let parentMicrograph = null;
+      for (const dataset of project.datasets || []) {
+        for (const sample of dataset.samples || []) {
+          for (const m of sample.micrographs || []) {
+            if (m.id === parentMicrographId) {
+              parentMicrograph = m;
+              break;
+            }
+          }
+        }
+      }
+      const parentScalePxPerCm = parentMicrograph?.scalePixelsPerCentimeter ?? 1;
+
       for (const dataset of project.datasets || []) {
         for (const sample of dataset.samples || []) {
           for (const micrograph of sample.micrographs || []) {
             if (micrograph.id === formData.copySizeFromMicrographId) {
-              // Get sibling's dimensions and scale
+              // Get sibling's dimensions and scale (px/cm)
               const siblingWidth = micrograph.imageWidth ?? 1;
               const siblingHeight = micrograph.imageHeight ?? 1;
-              const siblingScaleX = micrograph.scaleX ?? 1;
-              const siblingScaleY = micrograph.scaleY ?? 1;
+              const siblingScalePxPerCm = micrograph.scalePixelsPerCentimeter ?? 1;
+
+              // Calculate sibling's display scale factor
+              // displayScale = parentScale / childScale
+              // If child has higher px/cm (more zoomed in), it appears smaller on parent
+              const siblingDisplayScale = parentScalePxPerCm / siblingScalePxPerCm;
 
               // Calculate the sibling's displayed size (in parent image coordinates)
-              const siblingDisplayedWidth = siblingWidth * siblingScaleX;
-              const siblingDisplayedHeight = siblingHeight * siblingScaleY;
+              const siblingDisplayedWidth = siblingWidth * siblingDisplayScale;
+              const siblingDisplayedHeight = siblingHeight * siblingDisplayScale;
 
               // Calculate what scale the NEW image needs to be the SAME displayed size
               // newDisplayedWidth = newWidth * adjustedScaleX = siblingDisplayedWidth
               const adjustedScaleX = siblingDisplayedWidth / formData.micrographWidth;
               const adjustedScaleY = siblingDisplayedHeight / formData.micrographHeight;
 
+              // Get position from offsetInParent (the actual saved field) or xOffset/yOffset
+              const offsetInParent = (micrograph as { offsetInParent?: { X: number; Y: number } }).offsetInParent;
+              const xOffset = offsetInParent?.X ?? micrograph.xOffset ?? 0;
+              const yOffset = offsetInParent?.Y ?? micrograph.yOffset ?? 0;
+
               console.log('[NewMicrographDialog] Copy Size calculation:', {
                 siblingId: micrograph.id,
                 siblingName: micrograph.name,
                 siblingWidth,
                 siblingHeight,
-                siblingScaleX,
-                siblingScaleY,
+                siblingScalePxPerCm,
+                parentScalePxPerCm,
+                siblingDisplayScale,
                 siblingDisplayedWidth,
                 siblingDisplayedHeight,
                 newWidth: formData.micrographWidth,
                 newHeight: formData.micrographHeight,
                 adjustedScaleX,
                 adjustedScaleY,
-                xOffset: micrograph.xOffset,
-                yOffset: micrograph.yOffset,
+                offsetInParent,
+                xOffset,
+                yOffset,
                 rotation: micrograph.rotation,
               });
 
               return {
-                xOffset: micrograph.xOffset ?? 0,
-                yOffset: micrograph.yOffset ?? 0,
+                xOffset,
+                yOffset,
                 rotation: micrograph.rotation ?? 0,
                 adjustedScaleX,
                 adjustedScaleY,
