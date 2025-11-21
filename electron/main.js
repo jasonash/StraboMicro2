@@ -10,6 +10,7 @@ const { app, BrowserWindow, Menu, ipcMain, dialog, screen, nativeTheme } = requi
 const path = require('path');
 const fs = require('fs');
 const log = require('electron-log');
+const sharp = require('sharp');
 const projectFolders = require('./projectFolders');
 const imageConverter = require('./imageConverter');
 const projectSerializer = require('./projectSerializer');
