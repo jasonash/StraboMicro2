@@ -33,6 +33,9 @@ import {
   Checkbox,
   FormControlLabel,
   FormGroup,
+  FormControl,
+  InputLabel,
+  Select,
   Divider,
   Radio,
   RadioGroup,
@@ -102,6 +105,7 @@ interface MicrographFormData {
   rotationAngle: number;
   scaleX: number;
   scaleY: number;
+  copySizeFromMicrographId: string; // For "Copy Size from Existing Micrograph" method
   instrumentType: string;
   otherInstrumentType: string;
   dataType: string;
@@ -224,6 +228,7 @@ const initialFormData: MicrographFormData = {
   rotationAngle: 0,
   scaleX: 1,
   scaleY: 1,
+  copySizeFromMicrographId: '',
   // Scale method will be set based on location method (defaults to 'Trace Scale Bar' initially)
   instrumentType: '',
   otherInstrumentType: '',
@@ -747,6 +752,31 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
       };
       scalePixelsPerCentimeter = pixelsPerUnit * (conversionToCm[formData.sizeUnits] || 1);
       console.log('[NewMicrographDialog] Calculated scale from width/height:', scalePixelsPerCentimeter);
+    } else if (isAssociated && formData.scaleMethod === 'Copy Size from Existing Micrograph' && formData.copySizeFromMicrographId) {
+      // Find the sibling micrograph and calculate the new image's scale
+      // newImagePixelsPerCm = siblingScalePxPerCm * (newWidth / siblingWidth)
+      const { project } = useAppStore.getState();
+      if (project?.datasets) {
+        for (const dataset of project.datasets) {
+          if (dataset.samples) {
+            for (const sample of dataset.samples) {
+              if (sample.micrographs) {
+                const siblingMicrograph = sample.micrographs.find(m => m.id === formData.copySizeFromMicrographId);
+                if (siblingMicrograph?.scalePixelsPerCentimeter && siblingMicrograph.imageWidth) {
+                  scalePixelsPerCentimeter = siblingMicrograph.scalePixelsPerCentimeter * (formData.micrographWidth / siblingMicrograph.imageWidth);
+                  console.log('[NewMicrographDialog] Calculated scale from Copy Size from Existing:', {
+                    siblingScale: siblingMicrograph.scalePixelsPerCentimeter,
+                    siblingWidth: siblingMicrograph.imageWidth,
+                    newWidth: formData.micrographWidth,
+                    newScale: scalePixelsPerCentimeter,
+                  });
+                  break;
+                }
+              }
+            }
+          }
+        }
+      }
     }
 
     // Build orientation info based on selected method (only for reference micrographs)
@@ -945,17 +975,28 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
             return formData.locationMethod !== '';
           } else {
             // Scale Method step
-            return formData.scaleMethod !== '';
+            if (formData.scaleMethod === '') return false;
+            // If "Copy Size from Existing", require a micrograph selection
+            if (formData.scaleMethod === 'Copy Size from Existing Micrograph') {
+              return formData.copySizeFromMicrographId !== '';
+            }
+            return true;
           }
         case 6: // Scale Method OR Location/Placement
           if (hasInstrumentSettings) {
             // Scale Method step
-            return formData.scaleMethod !== '';
+            if (formData.scaleMethod === '') return false;
+            // If "Copy Size from Existing", require a micrograph selection
+            if (formData.scaleMethod === 'Copy Size from Existing Micrograph') {
+              return formData.copySizeFromMicrographId !== '';
+            }
+            return true;
           } else {
             // Location/Placement step - validate based on location method
             if (formData.locationMethod === 'Locate by an approximate point') {
-              // Point must be placed
-              if (formData.offsetInParent.X === 0 && formData.offsetInParent.Y === 0) return false;
+              // Point must be placed (unless copying from existing, which pre-populates position)
+              if (formData.scaleMethod !== 'Copy Size from Existing Micrograph' &&
+                  formData.offsetInParent.X === 0 && formData.offsetInParent.Y === 0) return false;
 
               // Validate scale inputs based on scale method
               if (formData.scaleMethod === 'Trace Scale Bar') {
@@ -986,8 +1027,9 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
         case 7: // Location/Placement (when has settings)
           // Validate based on location method
           if (formData.locationMethod === 'Locate by an approximate point') {
-            // Point must be placed
-            if (formData.offsetInParent.X === 0 && formData.offsetInParent.Y === 0) return false;
+            // Point must be placed (unless copying from existing, which pre-populates position)
+            if (formData.scaleMethod !== 'Copy Size from Existing Micrograph' &&
+                formData.offsetInParent.X === 0 && formData.offsetInParent.Y === 0) return false;
 
             // Validate scale inputs based on scale method
             if (formData.scaleMethod === 'Trace Scale Bar') {
@@ -1902,28 +1944,48 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
     // Different scale options based on location method
     const isScaledRectangle = formData.locationMethod === 'Locate as a scaled rectangle';
 
-    // Check if there are any micrographs with matching aspect ratio
+    // Get sibling micrographs with matching aspect ratio AND same placement type (same parent only)
+    // Rectangle placements have offsetInParent, point placements have pointInParent
     const currentAspectRatio = formData.micrographWidth / formData.micrographHeight;
-    const hasMatchingAspectRatio = (() => {
+    const matchingSiblings = (() => {
       const project = useAppStore.getState().project;
-      if (!project) return false;
+      if (!project || !parentMicrographId) return [];
 
       const tolerance = 0.01; // 1% tolerance for aspect ratio matching
+      const siblings: Array<{ id: string; name: string; width: number; height: number }> = [];
 
       for (const dataset of project.datasets || []) {
         for (const sample of dataset.samples || []) {
           for (const micrograph of sample.micrographs || []) {
-            if (micrograph.imageWidth && micrograph.imageHeight) {
+            // Must be a sibling (same parent) and have dimensions
+            if (micrograph.parentID === parentMicrographId &&
+                micrograph.imageWidth && micrograph.imageHeight) {
+
+              // Check placement type matches current location method
+              const hasOffsetInParent = !!(micrograph as { offsetInParent?: unknown }).offsetInParent;
+              const hasPointInParent = !!micrograph.pointInParent;
+
+              // For rectangle placement, only show siblings with offsetInParent
+              // For point placement, only show siblings with pointInParent
+              if (isScaledRectangle && !hasOffsetInParent) continue;
+              if (!isScaledRectangle && !hasPointInParent) continue;
+
               const ratio = micrograph.imageWidth / micrograph.imageHeight;
               if (Math.abs(ratio - currentAspectRatio) / currentAspectRatio < tolerance) {
-                return true;
+                siblings.push({
+                  id: micrograph.id,
+                  name: micrograph.name,
+                  width: micrograph.imageWidth,
+                  height: micrograph.imageHeight,
+                });
               }
             }
           }
         }
       }
-      return false;
+      return siblings;
     })();
+    const hasMatchingAspectRatio = matchingSiblings.length > 0;
 
     return (
       <Stack spacing={3}>
@@ -1995,8 +2057,25 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
                 label="Copy Size from Existing Micrograph"
               />
               <Typography variant="caption" color="text.secondary" sx={{ ml: 4, mt: -1 }}>
-                Use the same scale as another micrograph with matching aspect ratio
+                Copy position and scale from a sibling micrograph
               </Typography>
+
+              {formData.scaleMethod === 'Copy Size from Existing Micrograph' && (
+                <FormControl sx={{ ml: 4, mt: 1, minWidth: 300 }} size="small">
+                  <InputLabel>Select Micrograph</InputLabel>
+                  <Select
+                    value={formData.copySizeFromMicrographId}
+                    label="Select Micrograph"
+                    onChange={(e) => updateField('copySizeFromMicrographId', e.target.value)}
+                  >
+                    {matchingSiblings.map((sibling) => (
+                      <MenuItem key={sibling.id} value={sibling.id}>
+                        {sibling.name} ({sibling.width} × {sibling.height})
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              )}
             </>
           )}
         </RadioGroup>
@@ -2006,6 +2085,74 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
 
   // Render Location & Scale step (for associated micrographs)
   const renderLocationPlacementStep = () => {
+    // Get the selected sibling micrograph data for "Copy Size from Existing" method
+    // Returns position, rotation, and the calculated pixelsPerCentimeter for the new image
+    const getCopySizeData = (): {
+      xOffset: number;
+      yOffset: number;
+      rotation: number;
+      newImagePixelsPerCm: number;
+      pointInParent?: { x: number; y: number };
+    } | null => {
+      if (formData.scaleMethod !== 'Copy Size from Existing Micrograph' || !formData.copySizeFromMicrographId) {
+        return null;
+      }
+      const project = useAppStore.getState().project;
+      if (!project) return null;
+
+      for (const dataset of project.datasets || []) {
+        for (const sample of dataset.samples || []) {
+          for (const micrograph of sample.micrographs || []) {
+            if (micrograph.id === formData.copySizeFromMicrographId) {
+              // Get sibling's dimensions and scale (px/cm)
+              const siblingWidth = micrograph.imageWidth ?? 1;
+              const siblingScalePxPerCm = micrograph.scalePixelsPerCentimeter ?? 1;
+
+              // The sibling covers a physical area. The new image covers the SAME physical area
+              // but has different pixel dimensions. So its pixelsPerCm is different.
+              //
+              // Physical width of sibling = siblingWidth / siblingScalePxPerCm
+              // New image has same physical width, but newWidth pixels
+              // So: newScalePxPerCm = newWidth / physicalWidth
+              //                     = newWidth / (siblingWidth / siblingScalePxPerCm)
+              //                     = newWidth * siblingScalePxPerCm / siblingWidth
+              //                     = siblingScalePxPerCm * (newWidth / siblingWidth)
+              const newImagePixelsPerCm = siblingScalePxPerCm * (formData.micrographWidth / siblingWidth);
+
+              // Get position from offsetInParent (the actual saved field) or xOffset/yOffset
+              const offsetInParent = (micrograph as { offsetInParent?: { X: number; Y: number } }).offsetInParent;
+              const xOffset = offsetInParent?.X ?? micrograph.xOffset ?? 0;
+              const yOffset = offsetInParent?.Y ?? micrograph.yOffset ?? 0;
+
+              console.log('[NewMicrographDialog] Copy Size calculation:', {
+                siblingId: micrograph.id,
+                siblingName: micrograph.name,
+                siblingWidth,
+                siblingScalePxPerCm,
+                newWidth: formData.micrographWidth,
+                newImagePixelsPerCm,
+                offsetInParent,
+                xOffset,
+                yOffset,
+                rotation: micrograph.rotation,
+              });
+
+              return {
+                xOffset,
+                yOffset,
+                rotation: micrograph.rotation ?? 0,
+                newImagePixelsPerCm,
+                pointInParent: micrograph.pointInParent,
+              };
+            }
+          }
+        }
+      }
+      return null;
+    };
+
+    const copySizeData = getCopySizeData();
+
     // Handler for placement changes from the canvas
     const handlePlacementChange = (offsetX: number, offsetY: number, rotation: number, scaleX?: number, scaleY?: number) => {
       setFormData((prev) => ({
@@ -2068,9 +2215,10 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
             childWidth={formData.micrographWidth}
             childHeight={formData.micrographHeight}
             scaleMethod={formData.scaleMethod}
-            initialOffsetX={formData.offsetInParent.X}
-            initialOffsetY={formData.offsetInParent.Y}
-            initialRotation={formData.rotationAngle}
+            initialOffsetX={copySizeData?.xOffset ?? formData.offsetInParent.X}
+            initialOffsetY={copySizeData?.yOffset ?? formData.offsetInParent.Y}
+            initialRotation={copySizeData?.rotation ?? formData.rotationAngle}
+            copySizePixelsPerCm={copySizeData?.newImagePixelsPerCm}
             onPlacementChange={handlePlacementChange}
             onScaleDataChange={handleScaleDataChange}
           />
@@ -2090,8 +2238,9 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
             childWidth={formData.micrographWidth}
             childHeight={formData.micrographHeight}
             scaleMethod={formData.scaleMethod || ''}
-            initialOffsetX={formData.offsetInParent.X}
-            initialOffsetY={formData.offsetInParent.Y}
+            initialOffsetX={copySizeData?.pointInParent?.x ?? formData.offsetInParent.X}
+            initialOffsetY={copySizeData?.pointInParent?.y ?? formData.offsetInParent.Y}
+            copySizePixelsPerCm={copySizeData?.newImagePixelsPerCm}
             onPlacementChange={(offsetX, offsetY) => {
               setFormData((prev) => ({
                 ...prev,
