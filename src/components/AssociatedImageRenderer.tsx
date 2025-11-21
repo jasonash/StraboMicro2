@@ -49,6 +49,7 @@ interface ImageState {
   imageObj: HTMLImageElement | null;
   tiles: Map<string, TileInfo>;
   isLoading: boolean;
+  targetMode?: RenderMode; // Track what mode we're currently loading
 }
 
 const TILE_SIZE = 256;
@@ -171,10 +172,13 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
         return;
       }
 
-      // Don't reload if already loading
-      if (imageState.isLoading) return;
+      // Don't reload if already loading this target mode
+      if (imageState.isLoading && imageState.targetMode === targetMode) {
+        return;
+      }
 
-      setImageState(prev => ({ ...prev, isLoading: true }));
+      // Mark that we're loading this target mode
+      setImageState(prev => ({ ...prev, isLoading: true, targetMode }));
 
       try {
         // Build full path: ~/Documents/StraboMicro2Data/<project-id>/images/<micrograph-id>
@@ -194,6 +198,7 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
             img.onload = resolve;
           });
 
+          // Swap to thumbnail AFTER it's loaded (keep current image visible until then)
           setImageState({
             mode: 'THUMBNAIL',
             imageObj: img,
@@ -212,6 +217,7 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
             img.onload = resolve;
           });
 
+          // Swap to medium AFTER it's loaded (keep current image visible until then)
           setImageState({
             mode: 'MEDIUM',
             imageObj: img,
@@ -248,6 +254,7 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
             newTiles.set(`${x}_${y}`, { x, y, dataUrl, imageObj: img });
           }
 
+          // Swap to tiled mode AFTER all tiles are loaded (keep current image visible until then)
           setImageState({
             mode: 'TILED',
             imageObj: null,
@@ -257,12 +264,12 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
         }
       } catch (error) {
         console.error('[AssociatedImageRenderer] Failed to load image:', error);
-        setImageState(prev => ({ ...prev, isLoading: false }));
+        // Don't clear the current image on error - keep showing what we have
       }
     };
 
     loadImage();
-  }, [micrograph, determineRenderMode, imageState.mode, imageState.imageObj, imageState.tiles.size, imageState.isLoading]);
+  }, [micrograph, determineRenderMode, imageState.mode, imageState.imageObj, imageState.tiles.size, imageState.isLoading, projectId]);
 
   /**
    * Render based on current mode
