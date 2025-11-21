@@ -906,14 +906,36 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
       // Generate composite thumbnails in the background (non-blocking)
       // Use setTimeout to ensure these run AFTER the current execution context completes
       setTimeout(() => {
+        // Get fresh project state (includes the newly added micrograph)
+        const freshProject = useAppStore.getState().project;
+
+        if (!freshProject || !window.api) {
+          console.warn('[NewMicrographDialog] No project or API available for thumbnail generation');
+          return;
+        }
+
+        console.log('[NewMicrographDialog] Fresh project state obtained for thumbnail generation');
+
         // If this is an associated micrograph (has parentID), regenerate parent's thumbnail
-        if (micrograph.parentID && window.api && useAppStore.getState().project) {
-          const currentProject = useAppStore.getState().project!;
+        if (micrograph.parentID) {
           console.log(`[NewMicrographDialog] Generating composite thumbnail for parent: ${micrograph.parentID}`);
 
-          window.api.generateCompositeThumbnail(currentProject.id, micrograph.parentID, currentProject)
+          // Log all children of the parent to debug
+          let parentChildCount = 0;
+          for (const dataset of freshProject.datasets || []) {
+            for (const sample of dataset.samples || []) {
+              const children = (sample.micrographs || []).filter(m => m.parentID === micrograph.parentID);
+              if (children.length > 0) {
+                parentChildCount = children.length;
+                console.log(`[NewMicrographDialog] Parent ${micrograph.parentID} has ${children.length} children:`,
+                  children.map(c => ({ id: c.id, name: c.name })));
+              }
+            }
+          }
+
+          window.api.generateCompositeThumbnail(freshProject.id, micrograph.parentID, freshProject)
             .then(() => {
-              console.log('[NewMicrographDialog] Successfully generated parent composite thumbnail');
+              console.log(`[NewMicrographDialog] Successfully generated parent composite thumbnail with ${parentChildCount} children`);
               // Trigger thumbnail refresh
               window.dispatchEvent(new CustomEvent('thumbnail-generated', { detail: { micrographId: micrograph.parentID } }));
             })
@@ -923,20 +945,17 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
         }
 
         // Also generate thumbnail for the new micrograph itself (may have children in the future)
-        if (window.api && useAppStore.getState().project) {
-          const currentProject = useAppStore.getState().project!;
-          console.log(`[NewMicrographDialog] Generating composite thumbnail for new micrograph: ${micrograph.id}`);
+        console.log(`[NewMicrographDialog] Generating composite thumbnail for new micrograph: ${micrograph.id}`);
 
-          window.api.generateCompositeThumbnail(currentProject.id, micrograph.id, currentProject)
-            .then(() => {
-              console.log('[NewMicrographDialog] Successfully generated composite thumbnail');
-              // Trigger thumbnail refresh
-              window.dispatchEvent(new CustomEvent('thumbnail-generated', { detail: { micrographId: micrograph.id } }));
-            })
-            .catch((error) => {
-              console.error('[NewMicrographDialog] Failed to generate composite thumbnail:', error);
-            });
-        }
+        window.api.generateCompositeThumbnail(freshProject.id, micrograph.id, freshProject)
+          .then(() => {
+            console.log('[NewMicrographDialog] Successfully generated composite thumbnail');
+            // Trigger thumbnail refresh
+            window.dispatchEvent(new CustomEvent('thumbnail-generated', { detail: { micrographId: micrograph.id } }));
+          })
+          .catch((error) => {
+            console.error('[NewMicrographDialog] Failed to generate composite thumbnail:', error);
+          });
       }, 0);
 
       // Close dialog immediately (don't block on thumbnail generation)
