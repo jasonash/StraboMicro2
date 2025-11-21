@@ -361,6 +361,14 @@ function createWindow() {
             }
           }
         },
+        {
+          label: 'Rebuild All Thumbnails',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('menu:rebuild-all-thumbnails');
+            }
+          }
+        },
         { type: 'separator' },
         { role: 'toggleDevTools' },
       ],
@@ -1344,6 +1352,215 @@ ipcMain.handle('composite:load-thumbnail', async (event, projectId, micrographId
   } catch (error) {
     log.error('[IPC] Error loading composite thumbnail:', error);
     return null;
+  }
+});
+
+/**
+ * Rebuild all composite thumbnails for a project
+ * Iterates through all micrographs and regenerates their composite thumbnails
+ */
+ipcMain.handle('composite:rebuild-all-thumbnails', async (event, projectId, projectData) => {
+  try {
+    log.info(`[IPC] Rebuilding all composite thumbnails for project: ${projectId}`);
+
+    const project = projectData;
+    const micrographIds = [];
+
+    // Collect all micrograph IDs from project
+    for (const dataset of project.datasets || []) {
+      for (const sample of dataset.samples || []) {
+        for (const micrograph of sample.micrographs || []) {
+          micrographIds.push(micrograph.id);
+        }
+      }
+    }
+
+    log.info(`[IPC] Found ${micrographIds.length} micrographs to rebuild`);
+
+    const results = {
+      total: micrographIds.length,
+      succeeded: 0,
+      failed: 0,
+      errors: []
+    };
+
+    // Generate thumbnail for each micrograph
+    for (const micrographId of micrographIds) {
+      try {
+        // Reuse the existing generate-thumbnail handler logic
+        // Find the micrograph in the project hierarchy
+        let micrograph = null;
+        let childMicrographs = [];
+
+        for (const dataset of project.datasets || []) {
+          for (const sample of dataset.samples || []) {
+            for (const micro of sample.micrographs || []) {
+              if (micro.id === micrographId) {
+                micrograph = micro;
+                childMicrographs = (sample.micrographs || []).filter(
+                  m => m.parentID === micrographId
+                );
+                break;
+              }
+            }
+            if (micrograph) break;
+          }
+          if (micrograph) break;
+        }
+
+        if (!micrograph || !micrograph.imagePath) {
+          log.warn(`[IPC] Skipping micrograph ${micrographId} - no image path`);
+          continue;
+        }
+
+        // Get project folder paths
+        const folderPaths = await projectFolders.getProjectFolderPaths(projectId);
+
+        // Load base micrograph image
+        const basePath = path.join(folderPaths.images, micrograph.imagePath);
+
+        // Check if image file exists
+        const fs = require('fs').promises;
+        try {
+          await fs.access(basePath);
+        } catch {
+          log.warn(`[IPC] Skipping micrograph ${micrographId} - image file not found: ${basePath}`);
+          continue;
+        }
+
+        let baseImage = sharp(basePath);
+        const baseMetadata = await baseImage.metadata();
+
+        // Calculate thumbnail dimensions maintaining aspect ratio
+        const maxDimension = 250;
+        const aspectRatio = baseMetadata.width / baseMetadata.height;
+        let thumbWidth, thumbHeight;
+
+        if (baseMetadata.width > baseMetadata.height) {
+          thumbWidth = maxDimension;
+          thumbHeight = Math.round(maxDimension / aspectRatio);
+        } else {
+          thumbHeight = maxDimension;
+          thumbWidth = Math.round(maxDimension * aspectRatio);
+        }
+
+        // Resize base image to thumbnail size
+        baseImage = baseImage.resize(thumbWidth, thumbHeight, {
+          fit: 'fill',
+          kernel: sharp.kernel.lanczos3
+        });
+
+        // If there are no children, just save the base thumbnail
+        if (childMicrographs.length === 0) {
+          const outputPath = path.join(folderPaths.compositeThumbnails, micrographId);
+          await baseImage.jpeg({ quality: 85 }).toFile(outputPath);
+          results.succeeded++;
+          continue;
+        }
+
+        // Composite children onto base
+        const baseBuffer = await baseImage.toBuffer();
+        const thumbnailScale = thumbWidth / baseMetadata.width;
+        const compositeInputs = [];
+
+        for (const child of childMicrographs) {
+          try {
+            if (!child.imagePath) continue;
+
+            const childPath = path.join(folderPaths.images, child.imagePath);
+
+            // Check if child image exists
+            try {
+              await fs.access(childPath);
+            } catch {
+              log.warn(`[IPC] Child image not found: ${childPath}`);
+              continue;
+            }
+
+            let childImage = sharp(childPath);
+            const childMetadata = await childImage.metadata();
+
+            const childPxPerCm = child.scalePixelsPerCentimeter || 100;
+            const parentPxPerCm = micrograph.scalePixelsPerCentimeter || 100;
+            const displayScale = parentPxPerCm / childPxPerCm;
+
+            const childDisplayWidth = childMetadata.width * displayScale;
+            const childDisplayHeight = childMetadata.height * displayScale;
+
+            let topLeftX = 0;
+            let topLeftY = 0;
+
+            if (child.offsetInParent) {
+              topLeftX = child.offsetInParent.X;
+              topLeftY = child.offsetInParent.Y;
+            } else if (child.pointInParent) {
+              topLeftX = child.pointInParent.x - childDisplayWidth / 2;
+              topLeftY = child.pointInParent.y - childDisplayHeight / 2;
+            } else if (child.xOffset !== undefined && child.yOffset !== undefined) {
+              topLeftX = child.xOffset;
+              topLeftY = child.yOffset;
+            }
+
+            const thumbX = Math.round(topLeftX * thumbnailScale);
+            const thumbY = Math.round(topLeftY * thumbnailScale);
+            const thumbChildWidth = Math.round(childDisplayWidth * thumbnailScale);
+            const thumbChildHeight = Math.round(childDisplayHeight * thumbnailScale);
+
+            childImage = childImage.resize(thumbChildWidth, thumbChildHeight, {
+              fit: 'fill',
+              kernel: sharp.kernel.lanczos3
+            });
+
+            if (child.rotation) {
+              const centerX = thumbX + thumbChildWidth / 2;
+              const centerY = thumbY + thumbChildHeight / 2;
+
+              childImage = childImage.rotate(child.rotation, {
+                background: { r: 0, g: 0, b: 0, alpha: 0 }
+              });
+
+              const rotatedMeta = await childImage.metadata();
+              const adjustedX = Math.round(centerX - rotatedMeta.width / 2);
+              const adjustedY = Math.round(centerY - rotatedMeta.height / 2);
+
+              compositeInputs.push({
+                input: await childImage.toBuffer(),
+                left: adjustedX,
+                top: adjustedY
+              });
+            } else {
+              compositeInputs.push({
+                input: await childImage.toBuffer(),
+                left: thumbX,
+                top: thumbY
+              });
+            }
+          } catch (error) {
+            log.error(`[IPC] Failed to composite child ${child.id}:`, error);
+          }
+        }
+
+        const compositeImage = sharp(baseBuffer).composite(compositeInputs);
+        const outputPath = path.join(folderPaths.compositeThumbnails, micrographId);
+        await compositeImage.jpeg({ quality: 85 }).toFile(outputPath);
+
+        results.succeeded++;
+      } catch (error) {
+        log.error(`[IPC] Failed to rebuild thumbnail for ${micrographId}:`, error);
+        results.failed++;
+        results.errors.push({ micrographId, error: error.message });
+      }
+    }
+
+    log.info(`[IPC] Rebuild complete: ${results.succeeded} succeeded, ${results.failed} failed`);
+
+    return {
+      success: true,
+      results
+    };
+  } catch (error) {
+    log.error('[IPC] Error rebuilding all thumbnails:', error);
+    throw error;
   }
 });
 

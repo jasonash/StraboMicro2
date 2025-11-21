@@ -85,10 +85,20 @@ function MicrographThumbnail({ micrographId, projectId, micrographName }: Microg
       }
     };
 
+    const handleRebuildAll = () => {
+      console.log(`[MicrographThumbnail] Rebuild all triggered, reloading ${micrographId}`);
+      // Reload the thumbnail after a short delay to ensure file is written
+      setTimeout(() => {
+        loadThumbnail();
+      }, 100);
+    };
+
     window.addEventListener('thumbnail-generated', handleThumbnailGenerated);
+    window.addEventListener('rebuild-all-thumbnails', handleRebuildAll);
 
     return () => {
       window.removeEventListener('thumbnail-generated', handleThumbnailGenerated);
+      window.removeEventListener('rebuild-all-thumbnails', handleRebuildAll);
     };
   }, [micrographId, loadThumbnail]);
 
