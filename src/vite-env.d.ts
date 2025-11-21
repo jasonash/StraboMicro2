@@ -175,7 +175,7 @@ interface Window {
     isValidImage: (filePath: string) => Promise<boolean>;
 
     // Composite thumbnail generation
-    generateCompositeThumbnail: (projectId: string, micrographId: string) => Promise<{
+    generateCompositeThumbnail: (projectId: string, micrographId: string, projectData: any) => Promise<{
       success: boolean;
       thumbnailPath: string;
       width: number;

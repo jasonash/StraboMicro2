@@ -1096,16 +1096,20 @@ ipcMain.handle('image:is-valid', async (event, filePath) => {
 /**
  * Generate composite thumbnail for a micrograph with its immediate children overlaid
  * Creates a 250px JPEG in the compositeThumbnails/ folder
+ *
+ * @param {string} projectId - Project ID
+ * @param {string} micrographId - Micrograph ID to generate thumbnail for
+ * @param {object} projectData - Current project data from renderer (avoids stale disk reads)
  */
-ipcMain.handle('composite:generate-thumbnail', async (event, projectId, micrographId) => {
+ipcMain.handle('composite:generate-thumbnail', async (event, projectId, micrographId, projectData) => {
   try {
     log.info(`[IPC] Generating composite thumbnail for micrograph: ${micrographId}`);
 
     // Get project folder paths
     const folderPaths = await projectFolders.getProjectFolderPaths(projectId);
 
-    // Load project.json to get micrograph metadata
-    const project = await projectSerializer.loadProjectJson(projectId);
+    // Use provided project data instead of loading from disk (may be stale)
+    const project = projectData;
 
     // Find the micrograph in the project hierarchy
     let micrograph = null;
@@ -1130,6 +1134,8 @@ ipcMain.handle('composite:generate-thumbnail', async (event, projectId, microgra
     }
 
     if (!micrograph) {
+      log.error(`[IPC] Micrograph ${micrographId} not found in project. Available micrographs:`,
+        project.datasets?.flatMap(d => d.samples?.flatMap(s => s.micrographs?.map(m => m.id)) || []) || []);
       throw new Error(`Micrograph ${micrographId} not found in project`);
     }
 

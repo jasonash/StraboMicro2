@@ -70,8 +70,8 @@ contextBridge.exposeInMainWorld('api', {
   isValidImage: (filePath) => ipcRenderer.invoke('image:is-valid', filePath),
 
   // Composite thumbnail generation
-  generateCompositeThumbnail: (projectId, micrographId) =>
-    ipcRenderer.invoke('composite:generate-thumbnail', projectId, micrographId),
+  generateCompositeThumbnail: (projectId, micrographId, projectData) =>
+    ipcRenderer.invoke('composite:generate-thumbnail', projectId, micrographId, projectData),
   getCompositeThumbnailPath: (projectId, micrographId) =>
     ipcRenderer.invoke('composite:get-thumbnail-path', projectId, micrographId),
 

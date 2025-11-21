@@ -906,10 +906,10 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
       // Generate composite thumbnails
       // If this is an associated micrograph (has parentID), regenerate parent's thumbnail
       if (micrograph.parentID && window.api && useAppStore.getState().project) {
-        const projectId = useAppStore.getState().project!.id;
+        const currentProject = useAppStore.getState().project!;
         console.log(`[NewMicrographDialog] Generating composite thumbnail for parent: ${micrograph.parentID}`);
         try {
-          await window.api.generateCompositeThumbnail(projectId, micrograph.parentID);
+          await window.api.generateCompositeThumbnail(currentProject.id, micrograph.parentID, currentProject);
           console.log('[NewMicrographDialog] Successfully generated parent composite thumbnail');
         } catch (error) {
           console.error('[NewMicrographDialog] Failed to generate parent composite thumbnail:', error);
@@ -919,10 +919,10 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
 
       // Also generate thumbnail for the new micrograph itself (may have children in the future)
       if (window.api && useAppStore.getState().project) {
-        const projectId = useAppStore.getState().project!.id;
+        const currentProject = useAppStore.getState().project!;
         console.log(`[NewMicrographDialog] Generating composite thumbnail for new micrograph: ${micrograph.id}`);
         try {
-          await window.api.generateCompositeThumbnail(projectId, micrograph.id);
+          await window.api.generateCompositeThumbnail(currentProject.id, micrograph.id, currentProject);
           console.log('[NewMicrographDialog] Successfully generated composite thumbnail');
         } catch (error) {
           console.error('[NewMicrographDialog] Failed to generate composite thumbnail:', error);
