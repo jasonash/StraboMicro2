@@ -80,6 +80,25 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
     scaleY: initialScaleY,
   });
 
+  // Update transform when initial values change (e.g., "Copy Size from Existing" selection)
+  useEffect(() => {
+    if (scaleMethod === 'Copy Size from Existing Micrograph' && initialScaleX !== 1 && initialScaleY !== 1) {
+      console.log('[PlacementCanvas] Updating transform from Copy Size props:', {
+        initialScaleX,
+        initialScaleY,
+        initialOffsetX,
+        initialOffsetY,
+        initialRotation,
+      });
+      setChildTransform(prev => ({
+        ...prev,
+        scaleX: initialScaleX,
+        scaleY: initialScaleY,
+        rotation: initialRotation,
+      }));
+    }
+  }, [scaleMethod, initialScaleX, initialScaleY, initialOffsetX, initialOffsetY, initialRotation]);
+
   // State for Pixel Conversion Factor inputs
   const [pixelInput, setPixelInput] = useState('');
   const [physicalLengthInput, setPhysicalLengthInput] = useState('');

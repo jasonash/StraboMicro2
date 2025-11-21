@@ -2082,6 +2082,24 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
               const adjustedScaleX = siblingDisplayedWidth / formData.micrographWidth;
               const adjustedScaleY = siblingDisplayedHeight / formData.micrographHeight;
 
+              console.log('[NewMicrographDialog] Copy Size calculation:', {
+                siblingId: micrograph.id,
+                siblingName: micrograph.name,
+                siblingWidth,
+                siblingHeight,
+                siblingScaleX,
+                siblingScaleY,
+                siblingDisplayedWidth,
+                siblingDisplayedHeight,
+                newWidth: formData.micrographWidth,
+                newHeight: formData.micrographHeight,
+                adjustedScaleX,
+                adjustedScaleY,
+                xOffset: micrograph.xOffset,
+                yOffset: micrograph.yOffset,
+                rotation: micrograph.rotation,
+              });
+
               return {
                 xOffset: micrograph.xOffset ?? 0,
                 yOffset: micrograph.yOffset ?? 0,
