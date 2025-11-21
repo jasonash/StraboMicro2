@@ -1220,16 +1220,22 @@ ipcMain.handle('composite:generate-thumbnail', async (event, projectId, microgra
         let childImage = sharp(childPath);
         const childMetadata = await childImage.metadata();
 
+        // IMPORTANT: Use stored imageWidth/imageHeight (original dimensions), NOT actual file dimensions
+        // This matches how AssociatedImageRenderer works in the main viewer
+        const childImageWidth = child.imageWidth || child.width || childMetadata.width;
+        const childImageHeight = child.imageHeight || child.height || childMetadata.height;
+
         // Calculate child's display scale based on pixels per centimeter
         const childPxPerCm = child.scalePixelsPerCentimeter || 100;
         const parentPxPerCm = micrograph.scalePixelsPerCentimeter || 100;
         const displayScale = parentPxPerCm / childPxPerCm;
 
         log.info(`[IPC]   Child px/cm: ${childPxPerCm}, Parent px/cm: ${parentPxPerCm}, Display scale: ${displayScale}`);
+        log.info(`[IPC]   Child stored dimensions: ${childImageWidth}x${childImageHeight}, actual file: ${childMetadata.width}x${childMetadata.height}`);
 
-        // Calculate child dimensions in parent's coordinate space
-        const childDisplayWidth = childMetadata.width * displayScale;
-        const childDisplayHeight = childMetadata.height * displayScale;
+        // Calculate child dimensions in parent's coordinate space using STORED dimensions
+        const childDisplayWidth = childImageWidth * displayScale;
+        const childDisplayHeight = childImageHeight * displayScale;
 
         // Get child position (top-left)
         let topLeftX = 0;
@@ -1499,12 +1505,16 @@ ipcMain.handle('composite:rebuild-all-thumbnails', async (event, projectId, proj
             let childImage = sharp(childPath);
             const childMetadata = await childImage.metadata();
 
+            // IMPORTANT: Use stored imageWidth/imageHeight (original dimensions), NOT actual file dimensions
+            const childImageWidth = child.imageWidth || child.width || childMetadata.width;
+            const childImageHeight = child.imageHeight || child.height || childMetadata.height;
+
             const childPxPerCm = child.scalePixelsPerCentimeter || 100;
             const parentPxPerCm = micrograph.scalePixelsPerCentimeter || 100;
             const displayScale = parentPxPerCm / childPxPerCm;
 
-            const childDisplayWidth = childMetadata.width * displayScale;
-            const childDisplayHeight = childMetadata.height * displayScale;
+            const childDisplayWidth = childImageWidth * displayScale;
+            const childDisplayHeight = childImageHeight * displayScale;
 
             let topLeftX = 0;
             let topLeftY = 0;
