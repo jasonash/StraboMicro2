@@ -994,8 +994,9 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
           } else {
             // Location/Placement step - validate based on location method
             if (formData.locationMethod === 'Locate by an approximate point') {
-              // Point must be placed
-              if (formData.offsetInParent.X === 0 && formData.offsetInParent.Y === 0) return false;
+              // Point must be placed (unless copying from existing, which pre-populates position)
+              if (formData.scaleMethod !== 'Copy Size from Existing Micrograph' &&
+                  formData.offsetInParent.X === 0 && formData.offsetInParent.Y === 0) return false;
 
               // Validate scale inputs based on scale method
               if (formData.scaleMethod === 'Trace Scale Bar') {
@@ -1026,8 +1027,9 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
         case 7: // Location/Placement (when has settings)
           // Validate based on location method
           if (formData.locationMethod === 'Locate by an approximate point') {
-            // Point must be placed
-            if (formData.offsetInParent.X === 0 && formData.offsetInParent.Y === 0) return false;
+            // Point must be placed (unless copying from existing, which pre-populates position)
+            if (formData.scaleMethod !== 'Copy Size from Existing Micrograph' &&
+                formData.offsetInParent.X === 0 && formData.offsetInParent.Y === 0) return false;
 
             // Validate scale inputs based on scale method
             if (formData.scaleMethod === 'Trace Scale Bar') {
