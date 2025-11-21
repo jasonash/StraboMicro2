@@ -81,7 +81,7 @@ interface MicrographFormData {
   fabricRake: string;
   lookDirection: 'down' | 'up';
   // Scale fields
-  scaleMethod: 'Trace Scale Bar' | 'Pixel Conversion Factor' | 'Provide Width/Height of Image' | '';
+  scaleMethod: 'Trace Scale Bar' | 'Pixel Conversion Factor' | 'Provide Width/Height of Image' | 'Use Same Scale as Parent' | 'Copy Size from Existing Micrograph' | 'Stretch and Drag' | 'Trace Scale Bar and Drag' | '';
   scaleBarLineStart: { x: number; y: number } | null;
   scaleBarLineEnd: { x: number; y: number } | null;
   scaleBarLineLengthPixels: string;
@@ -600,14 +600,18 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
     else if (isAssociated && formData.scaleMethod === 'Use Same Scale as Parent') {
       // Find parent micrograph and copy its scale
       const { project } = useAppStore.getState();
-      if (project && parentMicrographId) {
+      if (project?.datasets && parentMicrographId) {
         for (const dataset of project.datasets) {
-          for (const sample of dataset.samples) {
-            const parentMicrograph = sample.micrographs.find(m => m.id === parentMicrographId);
-            if (parentMicrograph && parentMicrograph.scalePixelsPerCentimeter) {
-              scalePixelsPerCentimeter = parentMicrograph.scalePixelsPerCentimeter;
-              console.log('[NewMicrographDialog] Copied scale from parent:', scalePixelsPerCentimeter);
-              break;
+          if (dataset.samples) {
+            for (const sample of dataset.samples) {
+              if (sample.micrographs) {
+                const parentMicrograph = sample.micrographs.find(m => m.id === parentMicrographId);
+                if (parentMicrograph?.scalePixelsPerCentimeter) {
+                  scalePixelsPerCentimeter = parentMicrograph.scalePixelsPerCentimeter;
+                  console.log('[NewMicrographDialog] Copied scale from parent:', scalePixelsPerCentimeter);
+                  break;
+                }
+              }
             }
           }
         }
@@ -667,36 +671,40 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
       // Let's use: childScale = parentScale (assume same scale, since user matched features)
 
       const { project } = useAppStore.getState();
-      if (project && parentMicrographId && formData.scaleX) {
+      if (project?.datasets && parentMicrographId && formData.scaleX) {
         for (const dataset of project.datasets) {
-          for (const sample of dataset.samples) {
-            const parentMicrograph = sample.micrographs.find(m => m.id === parentMicrographId);
-            if (parentMicrograph && parentMicrograph.scalePixelsPerCentimeter) {
-              // Following Trace Scale Bar logic (line 450-455 in PlacementCanvas):
-              // We need to account for parent downsampling
-              // parentScaleInDisplayedImage = parentScale × parentDownsampleRatio
-              // childScale = parentScaleInDisplayedImage / displayedScale
-              //
-              // But we don't have the downsample ratio here. We need to load the parent image
-              // to get its displayed size. For now, assume no downsampling (will fix if needed).
-              //
-              // Actually, we can calculate it! Parent is always loaded at 2048px max dimension
-              const maxDimension = Math.max(parentMicrograph.width, parentMicrograph.height);
-              const parentDownsampleRatio = maxDimension > 2048 ? 2048 / maxDimension : 1;
-              const parentScaleInDisplayedImage = parentMicrograph.scalePixelsPerCentimeter * parentDownsampleRatio;
+          if (dataset.samples) {
+            for (const sample of dataset.samples) {
+              if (sample.micrographs) {
+                const parentMicrograph = sample.micrographs.find(m => m.id === parentMicrographId);
+                if (parentMicrograph?.scalePixelsPerCentimeter && parentMicrograph.width && parentMicrograph.height) {
+                  // Following Trace Scale Bar logic (line 450-455 in PlacementCanvas):
+                  // We need to account for parent downsampling
+                  // parentScaleInDisplayedImage = parentScale × parentDownsampleRatio
+                  // childScale = parentScaleInDisplayedImage / displayedScale
+                  //
+                  // But we don't have the downsample ratio here. We need to load the parent image
+                  // to get its displayed size. For now, assume no downsampling (will fix if needed).
+                  //
+                  // Actually, we can calculate it! Parent is always loaded at 2048px max dimension
+                  const maxDimension = Math.max(parentMicrograph.width, parentMicrograph.height);
+                  const parentDownsampleRatio = maxDimension > 2048 ? 2048 / maxDimension : 1;
+                  const parentScaleInDisplayedImage = parentMicrograph.scalePixelsPerCentimeter * parentDownsampleRatio;
 
-              scalePixelsPerCentimeter = parentScaleInDisplayedImage / formData.scaleX;
+                  scalePixelsPerCentimeter = parentScaleInDisplayedImage / formData.scaleX;
 
-              console.log('[NewMicrographDialog] Calculated scale from Stretch and Drag:', {
-                parentScale: parentMicrograph.scalePixelsPerCentimeter,
-                parentOriginalSize: `${parentMicrograph.width}x${parentMicrograph.height}`,
-                maxDimension,
-                parentDownsampleRatio,
-                parentScaleInDisplayedImage,
-                displayedScaleX: formData.scaleX,
-                childScale: scalePixelsPerCentimeter,
-              });
-              break;
+                  console.log('[NewMicrographDialog] Calculated scale from Stretch and Drag:', {
+                    parentScale: parentMicrograph.scalePixelsPerCentimeter,
+                    parentOriginalSize: `${parentMicrograph.width}x${parentMicrograph.height}`,
+                    maxDimension,
+                    parentDownsampleRatio,
+                    parentScaleInDisplayedImage,
+                    displayedScaleX: formData.scaleX,
+                    childScale: scalePixelsPerCentimeter,
+                  });
+                  break;
+                }
+              }
             }
           }
         }
@@ -833,8 +841,8 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
         }),
         ...(isAssociated && formData.locationMethod === 'Locate by an approximate point' && {
           pointInParent: {
-            X: formData.offsetInParent.X,
-            Y: formData.offsetInParent.Y,
+            x: formData.offsetInParent.X,
+            y: formData.offsetInParent.Y,
           },
         }),
         instrument: {

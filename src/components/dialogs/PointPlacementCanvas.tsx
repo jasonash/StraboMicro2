@@ -40,7 +40,7 @@ export const PointPlacementCanvas = ({
 }: PointPlacementCanvasProps) => {
   const [parentImage, setParentImage] = useState<HTMLImageElement | null>(null);
   const [childImage, setChildImage] = useState<HTMLImageElement | null>(null);
-  const [parentScale, setParentScale] = useState<number>(0);
+  const [_parentScale, setParentScale] = useState<number>(0); // Currently unused but may be needed
   const [parentOriginalWidth, setParentOriginalWidth] = useState<number>(0);
 
   // Stage pan/zoom state
@@ -122,14 +122,14 @@ export const PointPlacementCanvas = ({
         }
 
         // Build full path to parent image
-        const folderPaths = await window.api.getProjectFolderPaths(project.id);
+        const folderPaths = await window.api?.getProjectFolderPaths(project.id);
         const fullParentPath = `${folderPaths.images}/${parentMicrograph.imagePath}`;
 
         // Load the tiled image
-        const tileData = await window.api.loadImageWithTiles(fullParentPath);
+        const tileData = await window.api?.loadImageWithTiles(fullParentPath);
 
         // Load medium resolution for placement canvas
-        const mediumDataUrl = await window.api.loadMedium(tileData.hash);
+        const mediumDataUrl = await window.api?.loadMedium(tileData.hash);
 
         const img = new window.Image();
         img.onload = () => {
@@ -165,8 +165,8 @@ export const PointPlacementCanvas = ({
 
       try {
         // Load child from scratch space via tile cache
-        const tileData = await window.api.loadImageWithTiles(childScratchPath);
-        const mediumDataUrl = await window.api.loadMedium(tileData.hash);
+        const tileData = await window.api?.loadImageWithTiles(childScratchPath);
+        const mediumDataUrl = await window.api?.loadMedium(tileData.hash);
 
         const img = new window.Image();
         img.onload = () => {
@@ -561,7 +561,7 @@ export const PointPlacementCanvas = ({
             Trace Scale Bar on Child Image
           </Typography>
           <Grid container spacing={2} alignItems="flex-end">
-            <Grid item xs={4}>
+            <Grid size={4}>
               <TextField
                 label="Pixels"
                 type="number"
@@ -572,7 +572,7 @@ export const PointPlacementCanvas = ({
                 InputProps={{ readOnly: true }}
               />
             </Grid>
-            <Grid item xs={4}>
+            <Grid size={4}>
               <TextField
                 label="Physical Length"
                 type="number"
@@ -582,7 +582,7 @@ export const PointPlacementCanvas = ({
                 size="small"
               />
             </Grid>
-            <Grid item xs={4}>
+            <Grid size={4}>
               <FormControl fullWidth size="small">
                 <InputLabel>Unit</InputLabel>
                 <Select
@@ -612,7 +612,7 @@ export const PointPlacementCanvas = ({
             Pixel Conversion Factor
           </Typography>
           <Grid container spacing={2} alignItems="flex-end">
-            <Grid item xs={4}>
+            <Grid size={4}>
               <TextField
                 label="Number of Pixels"
                 type="number"
@@ -622,7 +622,7 @@ export const PointPlacementCanvas = ({
                 size="small"
               />
             </Grid>
-            <Grid item xs={4}>
+            <Grid size={4}>
               <TextField
                 label="Physical Length"
                 type="number"
@@ -632,7 +632,7 @@ export const PointPlacementCanvas = ({
                 size="small"
               />
             </Grid>
-            <Grid item xs={4}>
+            <Grid size={4}>
               <FormControl fullWidth size="small">
                 <InputLabel>Unit</InputLabel>
                 <Select
@@ -662,7 +662,7 @@ export const PointPlacementCanvas = ({
             Image Physical Dimensions
           </Typography>
           <Grid container spacing={2} alignItems="flex-end">
-            <Grid item xs={4}>
+            <Grid size={4}>
               <TextField
                 label="Width"
                 type="number"
@@ -672,7 +672,7 @@ export const PointPlacementCanvas = ({
                 size="small"
               />
             </Grid>
-            <Grid item xs={4}>
+            <Grid size={4}>
               <TextField
                 label="Height"
                 type="number"
@@ -682,7 +682,7 @@ export const PointPlacementCanvas = ({
                 size="small"
               />
             </Grid>
-            <Grid item xs={4}>
+            <Grid size={4}>
               <FormControl fullWidth size="small">
                 <InputLabel>Unit</InputLabel>
                 <Select

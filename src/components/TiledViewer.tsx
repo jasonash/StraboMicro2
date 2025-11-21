@@ -12,7 +12,7 @@
  * - Support for 100MB+ TIFF files
  */
 
-import React, { useEffect, useRef, useState, useCallback, useImperativeHandle, forwardRef } from 'react';
+import { useEffect, useRef, useState, useCallback, useImperativeHandle, forwardRef } from 'react';
 import { Stage, Layer, Image as KonvaImage } from 'react-konva';
 import { Box, CircularProgress, Typography } from '@mui/material';
 import './TiledViewer.css';

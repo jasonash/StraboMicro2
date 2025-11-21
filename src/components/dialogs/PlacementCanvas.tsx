@@ -8,10 +8,10 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Stage, Layer, Image as KonvaImage, Rect, Transformer, Group, Line } from 'react-konva';
 import {
-  Box, Typography, Button, Stack, IconButton, Tooltip, Paper,
+  Box, Typography, Stack, IconButton, Tooltip, Paper,
   TextField, Select, MenuItem, FormControl, InputLabel, Grid
 } from '@mui/material';
-import { PanTool, ZoomIn, ZoomOut, RestartAlt, Timeline } from '@mui/icons-material';
+import { PanTool, RestartAlt, Timeline } from '@mui/icons-material';
 import Konva from 'konva';
 import { useAppStore } from '@/store';
 
@@ -105,7 +105,7 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
   const [parentOriginalWidth, setParentOriginalWidth] = useState<number | null>(null);
 
   // Helper function to convert from center-based to top-left-based coordinates
-  const convertCenterToTopLeft = (centerX: number, centerY: number, rotation: number, scaleX: number, scaleY: number) => {
+  const convertCenterToTopLeft = (centerX: number, centerY: number, _rotation: number, scaleX: number, scaleY: number) => {
     // The child Group is positioned at its center due to offsetX/offsetY
     // We need to calculate the top-left corner position in the UNROTATED coordinate system
     // The legacy app measures offset BEFORE rotation is applied
@@ -172,16 +172,16 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
         }
 
         // Build full path to parent image
-        const folderPaths = await window.api.getProjectFolderPaths(project.id);
+        const folderPaths = await window.api?.getProjectFolderPaths(project.id);
         const fullParentPath = `${folderPaths.images}/${parentMicrograph.imagePath}`;
 
         console.log('[PlacementCanvas] Loading parent from:', fullParentPath);
 
         // Load the tiled image
-        const tileData = await window.api.loadImageWithTiles(fullParentPath);
+        const tileData = await window.api?.loadImageWithTiles(fullParentPath);
 
         // Load medium resolution for placement canvas
-        const mediumDataUrl = await window.api.loadMedium(tileData.hash);
+        const mediumDataUrl = await window.api?.loadMedium(tileData.hash);
 
         const img = new window.Image();
         img.onload = () => {
@@ -259,10 +259,10 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
     const loadChildImage = async () => {
       try {
         // Load the tiled image from scratch path
-        const tileData = await window.api.loadImageWithTiles(childScratchPath);
+        const tileData = await window.api?.loadImageWithTiles(childScratchPath);
 
         // Load medium resolution for placement canvas
-        const mediumDataUrl = await window.api.loadMedium(tileData.hash);
+        const mediumDataUrl = await window.api?.loadMedium(tileData.hash);
 
         const img = new window.Image();
         img.onload = () => {
@@ -718,15 +718,16 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
     });
   };
 
-  const handleZoomIn = () => {
-    const newScale = Math.min(scale * 1.2, 20);
-    setScale(newScale);
-  };
+  // Zoom functions - currently unused but may be needed for toolbar buttons
+  // const handleZoomIn = () => {
+  //   const newScale = Math.min(scale * 1.2, 20);
+  //   setScale(newScale);
+  // };
 
-  const handleZoomOut = () => {
-    const newScale = Math.max(scale / 1.2, 0.1);
-    setScale(newScale);
-  };
+  // const handleZoomOut = () => {
+  //   const newScale = Math.max(scale / 1.2, 0.1);
+  //   setScale(newScale);
+  // };
 
   const handleResetView = () => {
     if (!parentImage) return;
@@ -860,7 +861,7 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
             {/* Input fields on the right */}
             <Box sx={{ flexGrow: 1 }}>
               <Grid container spacing={2} alignItems="flex-end">
-                <Grid item xs={4}>
+                <Grid size={4}>
                   <TextField
                     label="Number of Pixels"
                     type="number"
@@ -870,7 +871,7 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
                     size="small"
                   />
                 </Grid>
-                <Grid item xs={4}>
+                <Grid size={4}>
                   <TextField
                     label="Physical Length"
                     type="number"
@@ -880,7 +881,7 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
                     size="small"
                   />
                 </Grid>
-                <Grid item xs={4}>
+                <Grid size={4}>
                   <FormControl fullWidth size="small">
                     <InputLabel>Unit</InputLabel>
                     <Select
@@ -929,7 +930,7 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
             {/* Input fields on the right */}
             <Box sx={{ flexGrow: 1 }}>
               <Grid container spacing={2} alignItems="flex-end">
-                <Grid item xs={4}>
+                <Grid size={4}>
                   <TextField
                     label="Width"
                     type="number"
@@ -939,7 +940,7 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
                     size="small"
                   />
                 </Grid>
-                <Grid item xs={4}>
+                <Grid size={4}>
                   <TextField
                     label="Height"
                     type="number"
@@ -949,7 +950,7 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
                     size="small"
                   />
                 </Grid>
-                <Grid item xs={4}>
+                <Grid size={4}>
                   <FormControl fullWidth size="small">
                     <InputLabel>Unit</InputLabel>
                     <Select
@@ -1011,7 +1012,7 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
             {/* Input fields on the right */}
             <Box sx={{ flexGrow: 1 }}>
               <Grid container spacing={2} alignItems="flex-end">
-                <Grid item xs={4}>
+                <Grid size={4}>
                   <TextField
                     label="Pixel Count"
                     type="number"
@@ -1023,7 +1024,7 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
                     helperText="Auto-filled from line"
                   />
                 </Grid>
-                <Grid item xs={4}>
+                <Grid size={4}>
                   <TextField
                     label="Physical Length"
                     type="number"
@@ -1033,7 +1034,7 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
                     size="small"
                   />
                 </Grid>
-                <Grid item xs={4}>
+                <Grid size={4}>
                   <FormControl fullWidth size="small">
                     <InputLabel>Unit</InputLabel>
                     <Select

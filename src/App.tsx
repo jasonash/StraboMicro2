@@ -244,11 +244,12 @@ function App() {
     });
 
     // Reset Everything (Clean Test)
-    window.api.onResetEverything(async () => {
+    window.api?.onResetEverything(async () => {
       console.log('Resetting everything for clean test...');
 
       try {
-        const result = await window.api.resetEverything();
+        const result = await window.api?.resetEverything();
+        if (!result) return;
         console.log('Reset complete:', result);
 
         // Load the test project into the store

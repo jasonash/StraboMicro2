@@ -112,13 +112,21 @@ export interface MicrographMetadata {
   imagePath?: string;  // Full path to image file (not serialized in .smz, runtime only)
   imageWidth?: number;
   imageHeight?: number;
+  width?: number;  // Alias for imageWidth (used in some contexts)
+  height?: number;  // Alias for imageHeight (used in some contexts)
   micronPerPixel?: number;
+
+  // Scale information
+  scalePixelsPerCentimeter?: number;  // Primary scale measurement
 
   // Spatial registration (for associated/overlay images)
   parentID?: string;  // References parent micrograph for hierarchical overlay
   xOffset?: number;
   yOffset?: number;
   rotation?: number;
+  scaleX?: number;  // Scale factor in X direction
+  scaleY?: number;  // Scale factor in Y direction
+  pointInParent?: { x: number; y: number };  // For point-based placement
   flipped?: boolean;
   opacity?: number;
   visible?: boolean;

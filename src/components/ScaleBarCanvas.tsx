@@ -25,7 +25,7 @@ interface ScaleBarCanvasProps {
 export const ScaleBarCanvas = forwardRef<ScaleBarCanvasRef, ScaleBarCanvasProps>(({
   imageUrl,
   originalWidth,
-  originalHeight,
+  // originalHeight - not currently used but may be needed in future
   onLineDrawn,
   showToolbar = true,
   currentTool,
