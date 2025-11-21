@@ -2048,13 +2048,12 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
   // Render Location & Scale step (for associated micrographs)
   const renderLocationPlacementStep = () => {
     // Get the selected sibling micrograph data for "Copy Size from Existing" method
-    // Returns raw sibling data plus adjusted scale for the new image
+    // Returns position, rotation, and the calculated pixelsPerCentimeter for the new image
     const getCopySizeData = (): {
       xOffset: number;
       yOffset: number;
       rotation: number;
-      adjustedScaleX: number;
-      adjustedScaleY: number;
+      newImagePixelsPerCm: number;
       pointInParent?: { x: number; y: number };
     } | null => {
       if (formData.scaleMethod !== 'Copy Size from Existing Micrograph' || !formData.copySizeFromMicrographId) {
@@ -2063,42 +2062,24 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
       const project = useAppStore.getState().project;
       if (!project) return null;
 
-      // Find the parent micrograph to get its scale
-      let parentMicrograph = null;
-      for (const dataset of project.datasets || []) {
-        for (const sample of dataset.samples || []) {
-          for (const m of sample.micrographs || []) {
-            if (m.id === parentMicrographId) {
-              parentMicrograph = m;
-              break;
-            }
-          }
-        }
-      }
-      const parentScalePxPerCm = parentMicrograph?.scalePixelsPerCentimeter ?? 1;
-
       for (const dataset of project.datasets || []) {
         for (const sample of dataset.samples || []) {
           for (const micrograph of sample.micrographs || []) {
             if (micrograph.id === formData.copySizeFromMicrographId) {
               // Get sibling's dimensions and scale (px/cm)
               const siblingWidth = micrograph.imageWidth ?? 1;
-              const siblingHeight = micrograph.imageHeight ?? 1;
               const siblingScalePxPerCm = micrograph.scalePixelsPerCentimeter ?? 1;
 
-              // Calculate sibling's display scale factor
-              // displayScale = parentScale / childScale
-              // If child has higher px/cm (more zoomed in), it appears smaller on parent
-              const siblingDisplayScale = parentScalePxPerCm / siblingScalePxPerCm;
-
-              // Calculate the sibling's displayed size (in parent image coordinates)
-              const siblingDisplayedWidth = siblingWidth * siblingDisplayScale;
-              const siblingDisplayedHeight = siblingHeight * siblingDisplayScale;
-
-              // Calculate what scale the NEW image needs to be the SAME displayed size
-              // newDisplayedWidth = newWidth * adjustedScaleX = siblingDisplayedWidth
-              const adjustedScaleX = siblingDisplayedWidth / formData.micrographWidth;
-              const adjustedScaleY = siblingDisplayedHeight / formData.micrographHeight;
+              // The sibling covers a physical area. The new image covers the SAME physical area
+              // but has different pixel dimensions. So its pixelsPerCm is different.
+              //
+              // Physical width of sibling = siblingWidth / siblingScalePxPerCm
+              // New image has same physical width, but newWidth pixels
+              // So: newScalePxPerCm = newWidth / physicalWidth
+              //                     = newWidth / (siblingWidth / siblingScalePxPerCm)
+              //                     = newWidth * siblingScalePxPerCm / siblingWidth
+              //                     = siblingScalePxPerCm * (newWidth / siblingWidth)
+              const newImagePixelsPerCm = siblingScalePxPerCm * (formData.micrographWidth / siblingWidth);
 
               // Get position from offsetInParent (the actual saved field) or xOffset/yOffset
               const offsetInParent = (micrograph as { offsetInParent?: { X: number; Y: number } }).offsetInParent;
@@ -2109,16 +2090,9 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
                 siblingId: micrograph.id,
                 siblingName: micrograph.name,
                 siblingWidth,
-                siblingHeight,
                 siblingScalePxPerCm,
-                parentScalePxPerCm,
-                siblingDisplayScale,
-                siblingDisplayedWidth,
-                siblingDisplayedHeight,
                 newWidth: formData.micrographWidth,
-                newHeight: formData.micrographHeight,
-                adjustedScaleX,
-                adjustedScaleY,
+                newImagePixelsPerCm,
                 offsetInParent,
                 xOffset,
                 yOffset,
@@ -2129,8 +2103,7 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
                 xOffset,
                 yOffset,
                 rotation: micrograph.rotation ?? 0,
-                adjustedScaleX,
-                adjustedScaleY,
+                newImagePixelsPerCm,
                 pointInParent: micrograph.pointInParent,
               };
             }
@@ -2207,8 +2180,7 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
             initialOffsetX={copySizeData?.xOffset ?? formData.offsetInParent.X}
             initialOffsetY={copySizeData?.yOffset ?? formData.offsetInParent.Y}
             initialRotation={copySizeData?.rotation ?? formData.rotationAngle}
-            initialScaleX={copySizeData?.adjustedScaleX}
-            initialScaleY={copySizeData?.adjustedScaleY}
+            copySizePixelsPerCm={copySizeData?.newImagePixelsPerCm}
             onPlacementChange={handlePlacementChange}
             onScaleDataChange={handleScaleDataChange}
           />
@@ -2230,7 +2202,7 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
             scaleMethod={formData.scaleMethod || ''}
             initialOffsetX={copySizeData?.pointInParent?.x ?? formData.offsetInParent.X}
             initialOffsetY={copySizeData?.pointInParent?.y ?? formData.offsetInParent.Y}
-            copySizeScale={copySizeData ? { scaleX: copySizeData.adjustedScaleX, scaleY: copySizeData.adjustedScaleY } : undefined}
+            copySizePixelsPerCm={copySizeData?.newImagePixelsPerCm}
             onPlacementChange={(offsetX, offsetY) => {
               setFormData((prev) => ({
                 ...prev,

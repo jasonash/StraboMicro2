@@ -26,6 +26,7 @@ interface PlacementCanvasProps {
   initialRotation?: number;
   initialScaleX?: number;
   initialScaleY?: number;
+  copySizePixelsPerCm?: number; // For "Copy Size from Existing" - the calculated px/cm for the new image
   onPlacementChange: (offsetX: number, offsetY: number, rotation: number, scaleX?: number, scaleY?: number) => void;
   onScaleDataChange?: (data: {
     scaleBarLineLengthPixels?: number;
@@ -51,6 +52,7 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
   initialRotation = 0,
   initialScaleX = 1,
   initialScaleY = 1,
+  copySizePixelsPerCm,
   onPlacementChange,
   onScaleDataChange,
 }) => {
@@ -80,24 +82,6 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
     scaleY: initialScaleY,
   });
 
-  // Update transform when initial values change (e.g., "Copy Size from Existing" selection)
-  useEffect(() => {
-    if (scaleMethod === 'Copy Size from Existing Micrograph' && initialScaleX !== 1 && initialScaleY !== 1) {
-      console.log('[PlacementCanvas] Updating transform from Copy Size props:', {
-        initialScaleX,
-        initialScaleY,
-        initialOffsetX,
-        initialOffsetY,
-        initialRotation,
-      });
-      setChildTransform(prev => ({
-        ...prev,
-        scaleX: initialScaleX,
-        scaleY: initialScaleY,
-        rotation: initialRotation,
-      }));
-    }
-  }, [scaleMethod, initialScaleX, initialScaleY, initialOffsetX, initialOffsetY, initialRotation]);
 
   // State for Pixel Conversion Factor inputs
   const [pixelInput, setPixelInput] = useState('');
@@ -383,6 +367,45 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
     }));
   }, [scaleMethod, pixelInput, physicalLengthInput, unitInput, parentScale]);
 
+  // Auto-calculate child scale for "Copy Size from Existing Micrograph" method
+  useEffect(() => {
+    if (scaleMethod !== 'Copy Size from Existing Micrograph') return;
+    if (!parentScale || !parentOriginalWidth || !parentImage || !copySizePixelsPerCm) return;
+
+    // Use the same formula as Pixel Conversion Factor
+    const childPixelsPerCm = copySizePixelsPerCm;
+
+    // Account for parent downsampling
+    const parentDownsampleRatio = parentImage.width / parentOriginalWidth;
+    const parentScaleInDisplayedImage = parentScale * parentDownsampleRatio;
+
+    // Calculate scale factor: parent scale / child scale
+    let scaleFactor = parentScaleInDisplayedImage / childPixelsPerCm;
+
+    // Sanity checks
+    const MIN_SCALE = 0.01;
+    const MAX_SCALE = 10;
+    if (scaleFactor > MAX_SCALE) scaleFactor = MAX_SCALE;
+    else if (scaleFactor < MIN_SCALE) scaleFactor = MIN_SCALE;
+
+    console.log('[PlacementCanvas] Copy Size from Existing calculation:', {
+      copySizePixelsPerCm,
+      parentScale,
+      parentOriginalWidth,
+      parentDisplayedWidth: parentImage.width,
+      parentDownsampleRatio,
+      parentScaleInDisplayedImage,
+      scaleFactor,
+    });
+
+    // Update child scale
+    setChildTransform(prev => ({
+      ...prev,
+      scaleX: scaleFactor,
+      scaleY: scaleFactor,
+    }));
+  }, [scaleMethod, copySizePixelsPerCm, parentScale, parentOriginalWidth, parentImage]);
+
   // Call onPlacementChange when scale changes automatically (for auto-scale methods)
   // Use a ref to track previous scale to avoid calling on every render
   const prevScaleRef = useRef({ scaleX: initialScaleX, scaleY: initialScaleY });
@@ -390,7 +413,8 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
     // Only for methods that auto-calculate scale
     if (scaleMethod !== 'Pixel Conversion Factor' &&
         scaleMethod !== 'Provide Width/Height of Image' &&
-        scaleMethod !== 'Trace Scale Bar and Drag') return;
+        scaleMethod !== 'Trace Scale Bar and Drag' &&
+        scaleMethod !== 'Copy Size from Existing Micrograph') return;
 
     // Only call if scale actually changed (not just position)
     if (childTransform.scaleX !== prevScaleRef.current.scaleX ||
