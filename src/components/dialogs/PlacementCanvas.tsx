@@ -122,12 +122,13 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
   };
 
   // Determine if resize handles should be shown based on scale method
+  // "Copy Size from Existing" should NOT allow resize (keeps copied size intact)
   const enableResizeHandles = scaleMethod === 'Stretch and Drag';
 
-  // For "Copy Size from Existing", we might lock position/rotation too
   // For "Trace Scale Bar", disable drag when line tool is active
-  const enableDrag = scaleMethod !== 'Copy Size from Existing Micrograph' && activeTool !== 'line';
-  const enableRotate = scaleMethod !== 'Copy Size from Existing Micrograph';
+  // For "Copy Size from Existing", allow drag and rotate (but not resize)
+  const enableDrag = activeTool !== 'line';
+  const enableRotate = true;
 
   // For "Trace Scale Bar", rotation is enabled but resize is not
   // (This is already handled by enableResizeHandles above, just noting for clarity)

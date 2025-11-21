@@ -13,6 +13,7 @@ interface PointPlacementCanvasProps {
   scaleMethod: string;
   initialOffsetX?: number;
   initialOffsetY?: number;
+  copySizeScale?: { scaleX: number; scaleY: number }; // For "Copy Size from Existing" method
   onPlacementChange: (offsetX: number, offsetY: number) => void;
   onScaleDataChange?: (data: {
     scaleBarLineLengthPixels?: number;
@@ -35,6 +36,7 @@ export const PointPlacementCanvas = ({
   scaleMethod,
   initialOffsetX = 0,
   initialOffsetY = 0,
+  copySizeScale: _copySizeScale, // Reserved for future use (point placement doesn't need scale)
   onPlacementChange,
   onScaleDataChange,
 }: PointPlacementCanvasProps) => {
