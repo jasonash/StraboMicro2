@@ -5,7 +5,7 @@
  * Includes "Add" buttons at each level to trigger the appropriate dialog.
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   Box,
   Typography,
@@ -14,6 +14,7 @@ import {
   Collapse,
   Stack,
   Avatar,
+  CircularProgress,
 } from '@mui/material';
 import {
   ExpandMore,
@@ -44,28 +45,54 @@ function MicrographThumbnail({ micrographId, projectId, micrographName }: Microg
   const [thumbnailDataUrl, setThumbnailDataUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
+  const loadThumbnail = useCallback(async () => {
+    if (!window.api) return;
+
+    setLoading(true);
+
+    try {
+      // Get thumbnail path
+      const path = await window.api.getCompositeThumbnailPath(projectId, micrographId);
+
+      if (path) {
+        // Load thumbnail as data URL with cache-busting timestamp
+        const dataUrl = `file://${path}?t=${Date.now()}`;
+        setThumbnailDataUrl(dataUrl);
+      } else {
+        setThumbnailDataUrl(null);
+      }
+    } catch (error) {
+      console.error('[MicrographThumbnail] Error loading thumbnail:', error);
+      setThumbnailDataUrl(null);
+    } finally {
+      setLoading(false);
+    }
+  }, [micrographId, projectId]);
+
+  // Initial load
   useEffect(() => {
-    const loadThumbnail = async () => {
-      if (!window.api) return;
+    loadThumbnail();
+  }, [loadThumbnail]);
 
-      try {
-        // Get thumbnail path
-        const path = await window.api.getCompositeThumbnailPath(projectId, micrographId);
-
-        if (path) {
-          // Load thumbnail as data URL
-          const dataUrl = `file://${path}?t=${Date.now()}`;
-          setThumbnailDataUrl(dataUrl);
-        }
-      } catch (error) {
-        console.error('[MicrographThumbnail] Error loading thumbnail:', error);
-      } finally {
-        setLoading(false);
+  // Listen for thumbnail generation events
+  useEffect(() => {
+    const handleThumbnailGenerated = (event: Event) => {
+      const customEvent = event as CustomEvent<{ micrographId: string }>;
+      if (customEvent.detail.micrographId === micrographId) {
+        console.log(`[MicrographThumbnail] Reloading thumbnail for ${micrographId}`);
+        // Reload the thumbnail after a short delay to ensure file is written
+        setTimeout(() => {
+          loadThumbnail();
+        }, 100);
       }
     };
 
-    loadThumbnail();
-  }, [micrographId, projectId]);
+    window.addEventListener('thumbnail-generated', handleThumbnailGenerated);
+
+    return () => {
+      window.removeEventListener('thumbnail-generated', handleThumbnailGenerated);
+    };
+  }, [micrographId, loadThumbnail]);
 
   if (loading) {
     return (
@@ -75,9 +102,12 @@ function MicrographThumbnail({ micrographId, projectId, micrographName }: Microg
           width: 40,
           height: 40,
           bgcolor: 'action.hover',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
         }}
       >
-        <ImageIcon fontSize="small" />
+        <CircularProgress size={20} thickness={4} />
       </Avatar>
     );
   }
