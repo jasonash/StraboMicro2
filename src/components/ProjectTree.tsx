@@ -9,12 +9,13 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   Box,
   Typography,
-  Button,
   IconButton,
   Collapse,
   Stack,
   Avatar,
   CircularProgress,
+  Menu,
+  MenuItem,
 } from '@mui/material';
 import {
   ExpandMore,
@@ -24,6 +25,11 @@ import {
   FolderOpen,
   Image as ImageIcon,
   Science,
+  MoreVert,
+  Visibility,
+  VisibilityOff,
+  ArrowUpward,
+  ArrowDownward,
 } from '@mui/icons-material';
 import { useAppStore } from '@/store';
 import { NewDatasetDialog } from './dialogs/NewDatasetDialog';
@@ -39,9 +45,11 @@ interface MicrographThumbnailProps {
   micrographId: string;
   projectId: string;
   micrographName: string;
+  width?: number;
+  height?: number;
 }
 
-function MicrographThumbnail({ micrographId, projectId, micrographName }: MicrographThumbnailProps) {
+function MicrographThumbnail({ micrographId, projectId, micrographName, width = 40, height = 40 }: MicrographThumbnailProps) {
   const [thumbnailDataUrl, setThumbnailDataUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -108,15 +116,15 @@ function MicrographThumbnail({ micrographId, projectId, micrographName }: Microg
       <Avatar
         variant="rounded"
         sx={{
-          width: 40,
-          height: 40,
+          width,
+          height,
           bgcolor: 'action.hover',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
         }}
       >
-        <CircularProgress size={20} thickness={4} />
+        <CircularProgress size={Math.min(width, height) / 2} thickness={4} />
       </Avatar>
     );
   }
@@ -127,8 +135,8 @@ function MicrographThumbnail({ micrographId, projectId, micrographName }: Microg
       <Avatar
         variant="rounded"
         sx={{
-          width: 40,
-          height: 40,
+          width,
+          height,
           bgcolor: 'action.hover',
         }}
       >
@@ -143,8 +151,8 @@ function MicrographThumbnail({ micrographId, projectId, micrographName }: Microg
       src={thumbnailDataUrl}
       alt={micrographName}
       sx={{
-        width: 40,
-        height: 40,
+        width,
+        height,
         objectFit: 'cover',
       }}
     />
@@ -164,30 +172,71 @@ export function ProjectTree() {
   const [selectedSampleId, setSelectedSampleId] = useState<string | null>(null);
   const [selectedParentMicrographId, setSelectedParentMicrographId] = useState<string | null>(null);
 
-  // Expansion states
-  const [expandedDatasets, setExpandedDatasets] = useState<Set<string>>(new Set());
-  const [expandedSamples, setExpandedSamples] = useState<Set<string>>(new Set());
-  const [expandedMicrographs, setExpandedMicrographs] = useState<Set<string>>(new Set());
+  // Expansion states - Load from localStorage on mount
+  const [expandedDatasets, setExpandedDatasets] = useState<Set<string>>(() => {
+    const saved = localStorage.getItem('sidebar-expanded-datasets');
+    return saved ? new Set(JSON.parse(saved)) : new Set();
+  });
+  const [expandedSamples, setExpandedSamples] = useState<Set<string>>(() => {
+    const saved = localStorage.getItem('sidebar-expanded-samples');
+    return saved ? new Set(JSON.parse(saved)) : new Set();
+  });
+  const [expandedMicrographs, setExpandedMicrographs] = useState<Set<string>>(() => {
+    const saved = localStorage.getItem('sidebar-expanded-micrographs');
+    return saved ? new Set(JSON.parse(saved)) : new Set();
+  });
 
-  // Auto-expand newly added datasets, samples, and micrographs
+  // Menu states
+  const [projectMenuAnchor, setProjectMenuAnchor] = useState<HTMLElement | null>(null);
+  const [datasetMenuAnchor, setDatasetMenuAnchor] = useState<{ [key: string]: HTMLElement | null }>({});
+  const [sampleMenuAnchor, setSampleMenuAnchor] = useState<{ [key: string]: HTMLElement | null }>({});
+  const [micrographOptionsAnchor, setMicrographOptionsAnchor] = useState<{ [key: string]: HTMLElement | null }>({});
+  const [micrographAddAnchor, setMicrographAddAnchor] = useState<{ [key: string]: HTMLElement | null }>({});
+
+  // Visibility states
+  const [hiddenMicrographs, setHiddenMicrographs] = useState<Set<string>>(new Set());
+
+  // Save expansion states to localStorage whenever they change
+  useEffect(() => {
+    localStorage.setItem('sidebar-expanded-datasets', JSON.stringify(Array.from(expandedDatasets)));
+  }, [expandedDatasets]);
+
+  useEffect(() => {
+    localStorage.setItem('sidebar-expanded-samples', JSON.stringify(Array.from(expandedSamples)));
+  }, [expandedSamples]);
+
+  useEffect(() => {
+    localStorage.setItem('sidebar-expanded-micrographs', JSON.stringify(Array.from(expandedMicrographs)));
+  }, [expandedMicrographs]);
+
+  // Auto-expand newly added datasets and samples (only if not already tracked)
   useEffect(() => {
     if (!project?.datasets) return;
 
     const newExpandedDatasets = new Set(expandedDatasets);
     const newExpandedSamples = new Set(expandedSamples);
+    let changed = false;
 
-    // Expand all datasets by default
+    // Only expand datasets/samples that aren't already in our saved state
     project.datasets.forEach((dataset) => {
-      newExpandedDatasets.add(dataset.id);
+      if (!newExpandedDatasets.has(dataset.id)) {
+        newExpandedDatasets.add(dataset.id);
+        changed = true;
+      }
 
       // Expand all samples in each dataset
       dataset.samples?.forEach((sample) => {
-        newExpandedSamples.add(sample.id);
+        if (!newExpandedSamples.has(sample.id)) {
+          newExpandedSamples.add(sample.id);
+          changed = true;
+        }
       });
     });
 
-    setExpandedDatasets(newExpandedDatasets);
-    setExpandedSamples(newExpandedSamples);
+    if (changed) {
+      setExpandedDatasets(newExpandedDatasets);
+      setExpandedSamples(newExpandedSamples);
+    }
   }, [project?.datasets]);
 
   const toggleDataset = (datasetId: string) => {
@@ -232,18 +281,24 @@ export function ProjectTree() {
 
   const handleAddSample = (datasetId: string) => {
     setSelectedDatasetId(datasetId);
+    // Ensure the dataset is expanded when adding a sample
+    setExpandedDatasets((prev) => new Set(prev).add(datasetId));
     setShowNewSample(true);
   };
 
   const handleAddReferenceMicrograph = (sampleId: string) => {
     setSelectedSampleId(sampleId);
     setSelectedParentMicrographId(null);
+    // Ensure the sample is expanded when adding a reference micrograph
+    setExpandedSamples((prev) => new Set(prev).add(sampleId));
     setShowNewMicrograph(true);
   };
 
   const handleAddAssociatedMicrograph = (parentMicrographId: string) => {
     setSelectedSampleId(null);
     setSelectedParentMicrographId(parentMicrographId);
+    // Ensure the parent micrograph is expanded when adding an associated micrograph
+    setExpandedMicrographs((prev) => new Set(prev).add(parentMicrographId));
     setShowNewMicrograph(true);
   };
 
@@ -265,91 +320,248 @@ export function ProjectTree() {
     const isActive = micrograph.id === activeMicrographId;
     const children = buildMicrographHierarchy(allMicrographs, micrograph.id);
     const hasChildren = children.length > 0;
+    const isReference = !micrograph.parentID;
+    const isHidden = hiddenMicrographs.has(micrograph.id);
+
+    // Use percentage-based sizing for responsive thumbnails
+    // This allows thumbnails to shrink/grow with the sidebar width
+    // No fixed pixel calculations needed - CSS will handle it automatically
 
     return (
       <Box key={micrograph.id} sx={{ ml: level * 2 }}>
-        <Stack
-          direction="row"
-          alignItems="center"
-          spacing={0.5}
+        {/* Micrograph Container */}
+        <Box
           sx={{
-            py: 0.5,
-            px: 1,
+            mb: 1,
+            p: 1,
             borderRadius: 1,
-            cursor: 'pointer',
             backgroundColor: isActive ? 'action.selected' : 'transparent',
             '&:hover': {
               backgroundColor: isActive ? 'action.selected' : 'action.hover',
             },
+            // Add left border for associated micrographs to show hierarchy
+            borderLeft: !isReference ? 3 : 0,
+            borderColor: !isReference ? 'primary.main' : 'transparent',
+            // Slight background tint for associated micrographs
+            bgcolor: isActive
+              ? 'action.selected'
+              : !isReference
+                ? 'action.hover'
+                : 'transparent',
           }}
-          onClick={() => handleMicrographClick(micrograph.id)}
         >
-          {hasChildren ? (
-            <IconButton
-              size="small"
-              onClick={(e) => {
-                e.stopPropagation();
-                toggleMicrograph(micrograph.id);
+          {/* Micrograph Name with Expand/Collapse */}
+          <Stack direction="row" alignItems="center" spacing={0.5} sx={{ mb: 0.5 }}>
+            {hasChildren ? (
+              <IconButton
+                size="small"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  toggleMicrograph(micrograph.id);
+                }}
+                sx={{ p: 0, width: 20, height: 20 }}
+              >
+                {isExpanded ? <ExpandMore fontSize="small" /> : <ChevronRight fontSize="small" />}
+              </IconButton>
+            ) : (
+              <Box sx={{ width: 20 }} />
+            )}
+            <Typography
+              variant="body2"
+              sx={{
+                flex: 1,
+                fontSize: '0.875rem',
+                fontWeight: isReference ? 600 : 400,
+                cursor: 'pointer',
               }}
-              sx={{ p: 0 }}
+              onClick={() => handleMicrographClick(micrograph.id)}
             >
-              {isExpanded ? <ExpandMore fontSize="small" /> : <ChevronRight fontSize="small" />}
-            </IconButton>
-          ) : (
-            <Box sx={{ width: 24 }} />
-          )}
-          {project && (
-            <MicrographThumbnail
-              micrographId={micrograph.id}
-              projectId={project.id}
-              micrographName={micrograph.name || micrograph.imageFilename || 'Unnamed'}
-            />
-          )}
-          <Typography variant="body2" sx={{ flex: 1, fontSize: '0.875rem' }}>
-            {micrograph.name || micrograph.imageFilename || 'Unnamed Micrograph'}
-          </Typography>
-        </Stack>
+              {micrograph.name || micrograph.imageFilename || 'Unnamed Micrograph'}
+              {isReference && ' (Reference)'}
+            </Typography>
+          </Stack>
 
+          {/* Thumbnail + Button Column */}
+          <Stack direction="row" spacing={1} alignItems="flex-start">
+            {/* Thumbnail - uses flex to fill available space */}
+            <Box
+              sx={{
+                cursor: 'pointer',
+                flex: 1,
+                minWidth: 0, // Allow flexbox to shrink below content size
+                maxWidth: '100%',
+              }}
+              onClick={() => handleMicrographClick(micrograph.id)}
+            >
+              {project && (
+                <Box
+                  sx={{
+                    width: '100%',
+                    maxWidth: 250 - (level * 30), // Still prefer smaller thumbs for deeper levels
+                    '& > *': {
+                      width: '100% !important',
+                      height: 'auto !important',
+                      aspectRatio: '5/3', // Maintain 0.6 aspect ratio (1/0.6 = 5/3)
+                    },
+                  }}
+                >
+                  <MicrographThumbnail
+                    micrographId={micrograph.id}
+                    projectId={project.id}
+                    micrographName={micrograph.name || micrograph.imageFilename || 'Unnamed'}
+                  />
+                </Box>
+              )}
+            </Box>
+
+            {/* Button Column - fixed width to prevent overflow */}
+            <Stack direction="column" spacing={0.5} sx={{ flexShrink: 0, width: 40 }}>
+              {/* Options Menu Button */}
+              <IconButton
+                size="small"
+                onClick={(e) => {
+                  setMicrographOptionsAnchor({ ...micrographOptionsAnchor, [micrograph.id]: e.currentTarget });
+                }}
+                sx={{ p: 0.5 }}
+              >
+                <MoreVert fontSize="small" />
+              </IconButton>
+
+              {/* Add Menu Button */}
+              <IconButton
+                size="small"
+                onClick={(e) => {
+                  setMicrographAddAnchor({ ...micrographAddAnchor, [micrograph.id]: e.currentTarget });
+                }}
+                sx={{ p: 0.5 }}
+              >
+                <Add fontSize="small" />
+              </IconButton>
+
+              {/* Visibility Toggle Button - Only for associated micrographs */}
+              {!isReference && (
+                <IconButton
+                  size="small"
+                  onClick={() => {
+                    setHiddenMicrographs((prev) => {
+                      const next = new Set(prev);
+                      if (next.has(micrograph.id)) {
+                        next.delete(micrograph.id);
+                      } else {
+                        next.add(micrograph.id);
+                      }
+                      return next;
+                    });
+                  }}
+                  sx={{ p: 0.5 }}
+                >
+                  {isHidden ? <VisibilityOff fontSize="small" /> : <Visibility fontSize="small" />}
+                </IconButton>
+              )}
+
+              {/* Move Up Button */}
+              <IconButton
+                size="small"
+                onClick={() => {
+                  // TODO: Implement move up
+                  console.log('Move up:', micrograph.id);
+                }}
+                sx={{ p: 0.5 }}
+              >
+                <ArrowUpward fontSize="small" />
+              </IconButton>
+
+              {/* Move Down Button */}
+              <IconButton
+                size="small"
+                onClick={() => {
+                  // TODO: Implement move down
+                  console.log('Move down:', micrograph.id);
+                }}
+                sx={{ p: 0.5 }}
+              >
+                <ArrowDownward fontSize="small" />
+              </IconButton>
+            </Stack>
+          </Stack>
+        </Box>
+
+        {/* Children (Associated Micrographs) */}
         {hasChildren && (
           <Collapse in={isExpanded}>
-            <Box sx={{ ml: 1 }}>
+            <Box sx={{ ml: 2 }}>
               {children.map((child) => renderMicrograph(child, allMicrographs, level + 1))}
-              <Button
-                size="small"
-                startIcon={<Add />}
-                onClick={() => handleAddAssociatedMicrograph(micrograph.id)}
-                sx={{
-                  ml: 2,
-                  mt: 0.5,
-                  textTransform: 'none',
-                  color: 'text.secondary',
-                  fontSize: '0.75rem',
-                }}
-              >
-                Add Associated Micrograph
-              </Button>
             </Box>
           </Collapse>
         )}
 
-        {!hasChildren && (
-          <Button
-            size="small"
-            startIcon={<Add />}
-            onClick={(e) => {
-              e.stopPropagation();
-              handleAddAssociatedMicrograph(micrograph.id);
-            }}
-            sx={{
-              ml: (level + 1) * 2 + 2,
-              textTransform: 'none',
-              color: 'text.secondary',
-              fontSize: '0.75rem',
-            }}
-          >
+        {/* Options Menu */}
+        <Menu
+          anchorEl={micrographOptionsAnchor[micrograph.id]}
+          open={Boolean(micrographOptionsAnchor[micrograph.id])}
+          onClose={() => setMicrographOptionsAnchor({ ...micrographOptionsAnchor, [micrograph.id]: null })}
+        >
+          <MenuItem onClick={() => {
+            // TODO: Add to group(s)
+            console.log('Add to group(s):', micrograph.id);
+            setMicrographOptionsAnchor({ ...micrographOptionsAnchor, [micrograph.id]: null });
+          }}>
+            Add to Group(s)
+          </MenuItem>
+          <MenuItem onClick={() => {
+            // TODO: Edit metadata
+            console.log('Edit metadata:', micrograph.id);
+            setMicrographOptionsAnchor({ ...micrographOptionsAnchor, [micrograph.id]: null });
+          }}>
+            Edit Micrograph Metadata
+          </MenuItem>
+          {!isReference && (
+            <>
+              <MenuItem onClick={() => {
+                // TODO: Edit location
+                console.log('Edit location:', micrograph.id);
+                setMicrographOptionsAnchor({ ...micrographOptionsAnchor, [micrograph.id]: null });
+              }}>
+                Edit Micrograph Location
+              </MenuItem>
+              <MenuItem onClick={() => {
+                // TODO: Edit opacity
+                console.log('Edit opacity:', micrograph.id);
+                setMicrographOptionsAnchor({ ...micrographOptionsAnchor, [micrograph.id]: null });
+              }}>
+                Edit Micrograph Opacity
+              </MenuItem>
+            </>
+          )}
+          <MenuItem onClick={() => {
+            // TODO: Delete micrograph
+            console.log('Delete micrograph:', micrograph.id);
+            setMicrographOptionsAnchor({ ...micrographOptionsAnchor, [micrograph.id]: null });
+          }}>
+            Delete Micrograph
+          </MenuItem>
+        </Menu>
+
+        {/* Add Menu */}
+        <Menu
+          anchorEl={micrographAddAnchor[micrograph.id]}
+          open={Boolean(micrographAddAnchor[micrograph.id])}
+          onClose={() => setMicrographAddAnchor({ ...micrographAddAnchor, [micrograph.id]: null })}
+        >
+          <MenuItem onClick={() => {
+            handleAddAssociatedMicrograph(micrograph.id);
+            setMicrographAddAnchor({ ...micrographAddAnchor, [micrograph.id]: null });
+          }}>
             Add Associated Micrograph
-          </Button>
-        )}
+          </MenuItem>
+          <MenuItem onClick={() => {
+            // TODO: Batch import associated
+            console.log('Batch import associated:', micrograph.id);
+            setMicrographAddAnchor({ ...micrographAddAnchor, [micrograph.id]: null });
+          }}>
+            Batch Import Associated Micrographs
+          </MenuItem>
+        </Menu>
       </Box>
     );
   };
@@ -368,6 +580,17 @@ export function ProjectTree() {
           <Typography variant="body2" sx={{ flex: 1, fontWeight: 500 }}>
             {sample.name || sample.sampleID || 'Unnamed Sample'}
           </Typography>
+
+          {/* Sample Options Menu Button */}
+          <IconButton
+            size="small"
+            onClick={(e) => {
+              setSampleMenuAnchor({ ...sampleMenuAnchor, [sample.id]: e.currentTarget });
+            }}
+            sx={{ p: 0.5 }}
+          >
+            <MoreVert fontSize="small" />
+          </IconButton>
         </Stack>
 
         <Collapse in={isExpanded}>
@@ -376,22 +599,43 @@ export function ProjectTree() {
               buildMicrographHierarchy(sample.micrographs!, null).map((micrograph) =>
                 renderMicrograph(micrograph, sample.micrographs!, 0)
               )}
-            <Button
-              size="small"
-              startIcon={<Add />}
-              onClick={() => handleAddReferenceMicrograph(sample.id)}
-              sx={{
-                ml: 2,
-                mt: 0.5,
-                textTransform: 'none',
-                color: 'text.secondary',
-                fontSize: '0.75rem',
-              }}
-            >
-              Add Reference Micrograph
-            </Button>
           </Box>
         </Collapse>
+
+        {/* Sample Menu */}
+        <Menu
+          anchorEl={sampleMenuAnchor[sample.id]}
+          open={Boolean(sampleMenuAnchor[sample.id])}
+          onClose={() => setSampleMenuAnchor({ ...sampleMenuAnchor, [sample.id]: null })}
+        >
+          <MenuItem onClick={() => {
+            handleAddReferenceMicrograph(sample.id);
+            setSampleMenuAnchor({ ...sampleMenuAnchor, [sample.id]: null });
+          }}>
+            Add New Reference Micrograph
+          </MenuItem>
+          <MenuItem onClick={() => {
+            // TODO: Batch import reference micrographs
+            console.log('Batch import reference micrographs:', sample.id);
+            setSampleMenuAnchor({ ...sampleMenuAnchor, [sample.id]: null });
+          }}>
+            Batch Import Reference Micrographs
+          </MenuItem>
+          <MenuItem onClick={() => {
+            // TODO: Edit sample metadata
+            console.log('Edit sample metadata:', sample.id);
+            setSampleMenuAnchor({ ...sampleMenuAnchor, [sample.id]: null });
+          }}>
+            Edit Sample Metadata
+          </MenuItem>
+          <MenuItem onClick={() => {
+            // TODO: Delete sample
+            console.log('Delete sample:', sample.id);
+            setSampleMenuAnchor({ ...sampleMenuAnchor, [sample.id]: null });
+          }}>
+            Delete Sample
+          </MenuItem>
+        </Menu>
       </Box>
     );
   };
@@ -414,27 +658,38 @@ export function ProjectTree() {
           <Typography variant="body2" sx={{ flex: 1, fontWeight: 600 }}>
             {dataset.name}
           </Typography>
+
+          {/* Dataset Options Menu Button */}
+          <IconButton
+            size="small"
+            onClick={(e) => {
+              setDatasetMenuAnchor({ ...datasetMenuAnchor, [dataset.id]: e.currentTarget });
+            }}
+            sx={{ p: 0.5 }}
+          >
+            <MoreVert fontSize="small" />
+          </IconButton>
         </Stack>
 
         <Collapse in={isExpanded}>
           <Box sx={{ ml: 1 }}>
             {hasSamples && dataset.samples!.map((sample) => renderSample(sample))}
-            <Button
-              size="small"
-              startIcon={<Add />}
-              onClick={() => handleAddSample(dataset.id)}
-              sx={{
-                ml: 2,
-                mt: 0.5,
-                textTransform: 'none',
-                color: 'text.secondary',
-                fontSize: '0.75rem',
-              }}
-            >
-              Add Sample
-            </Button>
           </Box>
         </Collapse>
+
+        {/* Dataset Menu */}
+        <Menu
+          anchorEl={datasetMenuAnchor[dataset.id]}
+          open={Boolean(datasetMenuAnchor[dataset.id])}
+          onClose={() => setDatasetMenuAnchor({ ...datasetMenuAnchor, [dataset.id]: null })}
+        >
+          <MenuItem onClick={() => {
+            handleAddSample(dataset.id);
+            setDatasetMenuAnchor({ ...datasetMenuAnchor, [dataset.id]: null });
+          }}>
+            Add New Sample
+          </MenuItem>
+        </Menu>
       </Box>
     );
   };
@@ -455,31 +710,42 @@ export function ProjectTree() {
     <Box sx={{ height: '100%', overflow: 'auto' }}>
       {/* Project header */}
       <Box sx={{ px: 2, py: 1, borderBottom: 1, borderColor: 'divider' }}>
-        <Typography variant="subtitle2" sx={{ fontWeight: 700, color: 'text.primary' }}>
-          {project.name}
-        </Typography>
+        <Stack direction="row" alignItems="center" spacing={0.5}>
+          <Typography variant="subtitle2" sx={{ flex: 1, fontWeight: 700, color: 'text.primary' }}>
+            {project.name}
+          </Typography>
+
+          {/* Project Options Menu Button */}
+          <IconButton
+            size="small"
+            onClick={(e) => {
+              setProjectMenuAnchor(e.currentTarget);
+            }}
+            sx={{ p: 0.5 }}
+          >
+            <MoreVert fontSize="small" />
+          </IconButton>
+        </Stack>
       </Box>
 
       {/* Dataset tree */}
       <Box sx={{ p: 1 }}>
         {hasDatasets && project.datasets!.map((dataset) => renderDataset(dataset))}
-
-        {/* Add Dataset button */}
-        <Button
-          size="small"
-          startIcon={<Add />}
-          onClick={handleAddDataset}
-          sx={{
-            ml: 1,
-            mt: hasDatasets ? 1 : 0,
-            textTransform: 'none',
-            color: 'text.secondary',
-            fontSize: '0.75rem',
-          }}
-        >
-          Add Dataset
-        </Button>
       </Box>
+
+      {/* Project Menu */}
+      <Menu
+        anchorEl={projectMenuAnchor}
+        open={Boolean(projectMenuAnchor)}
+        onClose={() => setProjectMenuAnchor(null)}
+      >
+        <MenuItem onClick={() => {
+          handleAddDataset();
+          setProjectMenuAnchor(null);
+        }}>
+          Add New Dataset
+        </MenuItem>
+      </Menu>
 
       {/* Dialogs */}
       <NewDatasetDialog isOpen={showNewDataset} onClose={() => setShowNewDataset(false)} />
