@@ -21,6 +21,7 @@ export type RenderMode = 'THUMBNAIL' | 'MEDIUM' | 'TILED';
 
 interface AssociatedImageRendererProps {
   micrograph: MicrographMetadata;
+  projectId: string; // Needed to build full image path
   parentMetadata: {
     width: number;  // Original parent width
     height: number; // Original parent height
@@ -54,6 +55,7 @@ const TILE_SIZE = 256;
 
 export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = ({
   micrograph,
+  projectId,
   parentMetadata,
   viewport,
   stageScale,
@@ -175,8 +177,11 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
       setImageState(prev => ({ ...prev, isLoading: true }));
 
       try {
-        // Use imagePath directly (should be full path to image file)
-        const fullPath = imagePath;
+        // Build full path: ~/Documents/StraboMicro2Data/<project-id>/images/<micrograph-id>
+        const folderPaths = await window.api!.getProjectFolderPaths(projectId);
+        const fullPath = `${folderPaths.images}/${imagePath}`;
+
+        console.log(`[AssociatedImageRenderer] Loading overlay from: ${fullPath}`);
 
         if (targetMode === 'THUMBNAIL') {
           // Load 512x512 thumbnail

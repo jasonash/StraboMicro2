@@ -538,10 +538,11 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(({ image
               })}
 
               {/* Render associated micrographs (overlays) */}
-              {activeMicrograph && childMicrographs.map((childMicro) => (
+              {activeMicrograph && project && childMicrographs.map((childMicro) => (
                 <AssociatedImageRenderer
                   key={childMicro.id}
                   micrograph={childMicro}
+                  projectId={project.id}
                   parentMetadata={{
                     width: activeMicrograph.imageWidth || activeMicrograph.width || imageMetadata?.width || 0,
                     height: activeMicrograph.imageHeight || activeMicrograph.height || imageMetadata?.height || 0,
