@@ -10,6 +10,7 @@ const { app, BrowserWindow, Menu, ipcMain, dialog, screen, nativeTheme } = requi
 const path = require('path');
 const fs = require('fs');
 const log = require('electron-log');
+const sharp = require('sharp');
 const projectFolders = require('./projectFolders');
 const imageConverter = require('./imageConverter');
 const projectSerializer = require('./projectSerializer');
@@ -357,6 +358,14 @@ function createWindow() {
           click: () => {
             if (mainWindow) {
               mainWindow.webContents.send('menu:reset-everything');
+            }
+          }
+        },
+        {
+          label: 'Rebuild All Thumbnails',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('menu:rebuild-all-thumbnails');
             }
           }
         },
@@ -1084,6 +1093,503 @@ ipcMain.handle('image:is-valid', async (event, filePath) => {
   } catch (error) {
     log.error('[IPC] Error checking image validity:', error);
     return false;
+  }
+});
+
+/**
+ * ============================================================================
+ * COMPOSITE THUMBNAIL GENERATION HANDLERS
+ * ============================================================================
+ */
+
+/**
+ * Generate composite thumbnail for a micrograph with its immediate children overlaid
+ * Creates a 250px JPEG in the compositeThumbnails/ folder
+ *
+ * @param {string} projectId - Project ID
+ * @param {string} micrographId - Micrograph ID to generate thumbnail for
+ * @param {object} projectData - Current project data from renderer (avoids stale disk reads)
+ */
+ipcMain.handle('composite:generate-thumbnail', async (event, projectId, micrographId, projectData) => {
+  try {
+    log.info(`[IPC] Generating composite thumbnail for micrograph: ${micrographId}`);
+
+    // Get project folder paths
+    const folderPaths = await projectFolders.getProjectFolderPaths(projectId);
+
+    // Use provided project data instead of loading from disk (may be stale)
+    const project = projectData;
+
+    // Find the micrograph in the project hierarchy
+    let micrograph = null;
+    let childMicrographs = [];
+
+    for (const dataset of project.datasets || []) {
+      for (const sample of dataset.samples || []) {
+        for (const micro of sample.micrographs || []) {
+          if (micro.id === micrographId) {
+            micrograph = micro;
+
+            // Find immediate children (associated micrographs)
+            childMicrographs = (sample.micrographs || []).filter(
+              m => m.parentID === micrographId
+            );
+
+            log.info(`[IPC] Found parent micrograph ${micrographId} with ${childMicrographs.length} children`);
+            log.info(`[IPC] Children IDs:`, childMicrographs.map(c => ({ id: c.id, name: c.name, imagePath: c.imagePath })));
+
+            break;
+          }
+        }
+        if (micrograph) break;
+      }
+      if (micrograph) break;
+    }
+
+    if (!micrograph) {
+      log.error(`[IPC] Micrograph ${micrographId} not found in project. Available micrographs:`,
+        project.datasets?.flatMap(d => d.samples?.flatMap(s => s.micrographs?.map(m => m.id)) || []) || []);
+      throw new Error(`Micrograph ${micrographId} not found in project`);
+    }
+
+    // Load base micrograph image
+    const basePath = path.join(folderPaths.images, micrograph.imagePath);
+    log.info(`[IPC] Loading base image: ${basePath}`);
+
+    let baseImage = sharp(basePath);
+    const baseMetadata = await baseImage.metadata();
+
+    log.info(`[IPC] Parent micrograph: ${micrograph.id}`);
+    log.info(`[IPC]   imageWidth (stored): ${micrograph.imageWidth}, imageHeight (stored): ${micrograph.imageHeight}`);
+    log.info(`[IPC]   Actual file dimensions: ${baseMetadata.width}x${baseMetadata.height}`);
+    log.info(`[IPC]   Parent px/cm: ${micrograph.scalePixelsPerCentimeter}`);
+
+    // Calculate thumbnail dimensions maintaining aspect ratio
+    const maxDimension = 250;
+    const aspectRatio = baseMetadata.width / baseMetadata.height;
+    let thumbWidth, thumbHeight;
+
+    if (baseMetadata.width > baseMetadata.height) {
+      thumbWidth = maxDimension;
+      thumbHeight = Math.round(maxDimension / aspectRatio);
+    } else {
+      thumbHeight = maxDimension;
+      thumbWidth = Math.round(maxDimension * aspectRatio);
+    }
+
+    // Resize base image to thumbnail size
+    baseImage = baseImage.resize(thumbWidth, thumbHeight, {
+      fit: 'fill',
+      kernel: sharp.kernel.lanczos3
+    });
+
+    // If there are no children, just save the base thumbnail
+    if (childMicrographs.length === 0) {
+      log.info(`[IPC] No child micrographs, saving base thumbnail only`);
+
+      const outputPath = path.join(folderPaths.compositeThumbnails, micrographId);
+      await baseImage.jpeg({ quality: 85 }).toFile(outputPath);
+
+      return {
+        success: true,
+        thumbnailPath: outputPath,
+        width: thumbWidth,
+        height: thumbHeight
+      };
+    }
+
+    // Composite children onto base
+    log.info(`[IPC] Compositing ${childMicrographs.length} child micrographs`);
+
+    // Convert base image to buffer for compositing
+    const baseBuffer = await baseImage.toBuffer();
+
+    // Calculate scale factor from original to thumbnail
+    const thumbnailScale = thumbWidth / baseMetadata.width;
+
+    // Build composite layers
+    const compositeInputs = [];
+
+    for (const child of childMicrographs) {
+      try {
+        log.info(`[IPC] Processing child ${child.id} (${child.name})`);
+
+        const childPath = path.join(folderPaths.images, child.imagePath);
+
+        // Load child image
+        let childImage = sharp(childPath);
+        const childMetadata = await childImage.metadata();
+
+        // IMPORTANT: Use stored imageWidth/imageHeight (original dimensions), NOT actual file dimensions
+        // This matches how AssociatedImageRenderer works in the main viewer
+        const childImageWidth = child.imageWidth || child.width || childMetadata.width;
+        const childImageHeight = child.imageHeight || child.height || childMetadata.height;
+
+        // Calculate child's display scale based on pixels per centimeter
+        const childPxPerCm = child.scalePixelsPerCentimeter || 100;
+        const parentPxPerCm = micrograph.scalePixelsPerCentimeter || 100;
+        const displayScale = parentPxPerCm / childPxPerCm;
+
+        log.info(`[IPC]   Child px/cm: ${childPxPerCm}, Parent px/cm: ${parentPxPerCm}, Display scale: ${displayScale}`);
+        log.info(`[IPC]   Child stored dimensions: ${childImageWidth}x${childImageHeight}, actual file: ${childMetadata.width}x${childMetadata.height}`);
+
+        // Calculate child dimensions in parent's coordinate space using STORED dimensions
+        const childDisplayWidth = childImageWidth * displayScale;
+        const childDisplayHeight = childImageHeight * displayScale;
+
+        // Get child position (top-left)
+        let topLeftX = 0;
+        let topLeftY = 0;
+
+        if (child.offsetInParent) {
+          topLeftX = child.offsetInParent.X;
+          topLeftY = child.offsetInParent.Y;
+          log.info(`[IPC]   Using offsetInParent: (${topLeftX}, ${topLeftY})`);
+        } else if (child.pointInParent) {
+          topLeftX = child.pointInParent.x - childDisplayWidth / 2;
+          topLeftY = child.pointInParent.y - childDisplayHeight / 2;
+          log.info(`[IPC]   Using pointInParent: (${child.pointInParent.x}, ${child.pointInParent.y}) -> topLeft: (${topLeftX}, ${topLeftY})`);
+        } else if (child.xOffset !== undefined && child.yOffset !== undefined) {
+          topLeftX = child.xOffset;
+          topLeftY = child.yOffset;
+          log.info(`[IPC]   Using legacy offset: (${topLeftX}, ${topLeftY})`);
+        }
+
+        // Scale position to thumbnail coordinates
+        const thumbX = Math.round(topLeftX * thumbnailScale);
+        const thumbY = Math.round(topLeftY * thumbnailScale);
+
+        // Scale child dimensions to thumbnail coordinates
+        const thumbChildWidth = Math.round(childDisplayWidth * thumbnailScale);
+        const thumbChildHeight = Math.round(childDisplayHeight * thumbnailScale);
+
+        log.info(`[IPC]   Original position: (${topLeftX}, ${topLeftY}), Thumbnail position: (${thumbX}, ${thumbY})`);
+        log.info(`[IPC]   Original size: ${childMetadata.width}x${childMetadata.height}, Display size: ${childDisplayWidth}x${childDisplayHeight}, Thumb size: ${thumbChildWidth}x${thumbChildHeight}`);
+
+        // Resize child image
+        childImage = childImage.resize(thumbChildWidth, thumbChildHeight, {
+          fit: 'fill',
+          kernel: sharp.kernel.lanczos3
+        });
+
+        // Apply rotation if needed
+        if (child.rotation) {
+          // Calculate center position for rotation
+          const centerX = thumbX + thumbChildWidth / 2;
+          const centerY = thumbY + thumbChildHeight / 2;
+
+          // Sharp rotates around center, then we need to adjust position
+          childImage = childImage.rotate(child.rotation, {
+            background: { r: 0, g: 0, b: 0, alpha: 0 }
+          });
+
+          // After rotation, image size changes - get new dimensions
+          const rotatedMeta = await childImage.metadata();
+
+          // Adjust position to account for rotation
+          const adjustedX = Math.round(centerX - rotatedMeta.width / 2);
+          const adjustedY = Math.round(centerY - rotatedMeta.height / 2);
+
+          compositeInputs.push({
+            input: await childImage.toBuffer(),
+            left: adjustedX,
+            top: adjustedY
+          });
+        } else {
+          compositeInputs.push({
+            input: await childImage.toBuffer(),
+            left: thumbX,
+            top: thumbY
+          });
+        }
+      } catch (error) {
+        log.error(`[IPC] Failed to composite child ${child.id}:`, error);
+        // Continue with other children
+      }
+    }
+
+    // Apply composites to base image
+    const compositeImage = sharp(baseBuffer).composite(compositeInputs);
+
+    // Save to compositeThumbnails folder (JPEG with no extension)
+    const outputPath = path.join(folderPaths.compositeThumbnails, micrographId);
+    await compositeImage.jpeg({ quality: 85 }).toFile(outputPath);
+
+    log.info(`[IPC] Successfully generated composite thumbnail: ${outputPath}`);
+
+    return {
+      success: true,
+      thumbnailPath: outputPath,
+      width: thumbWidth,
+      height: thumbHeight
+    };
+
+  } catch (error) {
+    log.error('[IPC] Error generating composite thumbnail:', error);
+    throw error;
+  }
+});
+
+/**
+ * Get path to composite thumbnail (returns empty string if doesn't exist)
+ */
+ipcMain.handle('composite:get-thumbnail-path', async (event, projectId, micrographId) => {
+  try {
+    const folderPaths = await projectFolders.getProjectFolderPaths(projectId);
+    const thumbnailPath = path.join(folderPaths.compositeThumbnails, micrographId);
+
+    // Check if file exists
+    const fs = require('fs').promises;
+    try {
+      await fs.access(thumbnailPath);
+      return thumbnailPath;
+    } catch {
+      return '';
+    }
+  } catch (error) {
+    log.error('[IPC] Error getting composite thumbnail path:', error);
+    return '';
+  }
+});
+
+/**
+ * Load composite thumbnail as base64 data URL
+ */
+ipcMain.handle('composite:load-thumbnail', async (event, projectId, micrographId) => {
+  try {
+    const folderPaths = await projectFolders.getProjectFolderPaths(projectId);
+    const thumbnailPath = path.join(folderPaths.compositeThumbnails, micrographId);
+
+    // Check if file exists
+    const fs = require('fs').promises;
+    try {
+      await fs.access(thumbnailPath);
+
+      // Read file as buffer and convert to base64
+      const buffer = await fs.readFile(thumbnailPath);
+      const base64 = buffer.toString('base64');
+      const dataUrl = `data:image/jpeg;base64,${base64}`;
+
+      return dataUrl;
+    } catch {
+      return null;
+    }
+  } catch (error) {
+    log.error('[IPC] Error loading composite thumbnail:', error);
+    return null;
+  }
+});
+
+/**
+ * Rebuild all composite thumbnails for a project
+ * Iterates through all micrographs and regenerates their composite thumbnails
+ */
+ipcMain.handle('composite:rebuild-all-thumbnails', async (event, projectId, projectData) => {
+  try {
+    log.info(`[IPC] Rebuilding all composite thumbnails for project: ${projectId}`);
+
+    const project = projectData;
+    const micrographIds = [];
+
+    // Collect all micrograph IDs from project
+    for (const dataset of project.datasets || []) {
+      for (const sample of dataset.samples || []) {
+        for (const micrograph of sample.micrographs || []) {
+          micrographIds.push(micrograph.id);
+        }
+      }
+    }
+
+    log.info(`[IPC] Found ${micrographIds.length} micrographs to rebuild`);
+
+    const results = {
+      total: micrographIds.length,
+      succeeded: 0,
+      failed: 0,
+      errors: []
+    };
+
+    // Generate thumbnail for each micrograph
+    for (const micrographId of micrographIds) {
+      try {
+        // Reuse the existing generate-thumbnail handler logic
+        // Find the micrograph in the project hierarchy
+        let micrograph = null;
+        let childMicrographs = [];
+
+        for (const dataset of project.datasets || []) {
+          for (const sample of dataset.samples || []) {
+            for (const micro of sample.micrographs || []) {
+              if (micro.id === micrographId) {
+                micrograph = micro;
+                childMicrographs = (sample.micrographs || []).filter(
+                  m => m.parentID === micrographId
+                );
+                break;
+              }
+            }
+            if (micrograph) break;
+          }
+          if (micrograph) break;
+        }
+
+        if (!micrograph || !micrograph.imagePath) {
+          log.warn(`[IPC] Skipping micrograph ${micrographId} - no image path`);
+          continue;
+        }
+
+        // Get project folder paths
+        const folderPaths = await projectFolders.getProjectFolderPaths(projectId);
+
+        // Load base micrograph image
+        const basePath = path.join(folderPaths.images, micrograph.imagePath);
+
+        // Check if image file exists
+        const fs = require('fs').promises;
+        try {
+          await fs.access(basePath);
+        } catch {
+          log.warn(`[IPC] Skipping micrograph ${micrographId} - image file not found: ${basePath}`);
+          continue;
+        }
+
+        let baseImage = sharp(basePath);
+        const baseMetadata = await baseImage.metadata();
+
+        // Calculate thumbnail dimensions maintaining aspect ratio
+        const maxDimension = 250;
+        const aspectRatio = baseMetadata.width / baseMetadata.height;
+        let thumbWidth, thumbHeight;
+
+        if (baseMetadata.width > baseMetadata.height) {
+          thumbWidth = maxDimension;
+          thumbHeight = Math.round(maxDimension / aspectRatio);
+        } else {
+          thumbHeight = maxDimension;
+          thumbWidth = Math.round(maxDimension * aspectRatio);
+        }
+
+        // Resize base image to thumbnail size
+        baseImage = baseImage.resize(thumbWidth, thumbHeight, {
+          fit: 'fill',
+          kernel: sharp.kernel.lanczos3
+        });
+
+        // If there are no children, just save the base thumbnail
+        if (childMicrographs.length === 0) {
+          const outputPath = path.join(folderPaths.compositeThumbnails, micrographId);
+          await baseImage.jpeg({ quality: 85 }).toFile(outputPath);
+          results.succeeded++;
+          continue;
+        }
+
+        // Composite children onto base
+        const baseBuffer = await baseImage.toBuffer();
+        const thumbnailScale = thumbWidth / baseMetadata.width;
+        const compositeInputs = [];
+
+        for (const child of childMicrographs) {
+          try {
+            if (!child.imagePath) continue;
+
+            const childPath = path.join(folderPaths.images, child.imagePath);
+
+            // Check if child image exists
+            try {
+              await fs.access(childPath);
+            } catch {
+              log.warn(`[IPC] Child image not found: ${childPath}`);
+              continue;
+            }
+
+            let childImage = sharp(childPath);
+            const childMetadata = await childImage.metadata();
+
+            // IMPORTANT: Use stored imageWidth/imageHeight (original dimensions), NOT actual file dimensions
+            const childImageWidth = child.imageWidth || child.width || childMetadata.width;
+            const childImageHeight = child.imageHeight || child.height || childMetadata.height;
+
+            const childPxPerCm = child.scalePixelsPerCentimeter || 100;
+            const parentPxPerCm = micrograph.scalePixelsPerCentimeter || 100;
+            const displayScale = parentPxPerCm / childPxPerCm;
+
+            const childDisplayWidth = childImageWidth * displayScale;
+            const childDisplayHeight = childImageHeight * displayScale;
+
+            let topLeftX = 0;
+            let topLeftY = 0;
+
+            if (child.offsetInParent) {
+              topLeftX = child.offsetInParent.X;
+              topLeftY = child.offsetInParent.Y;
+            } else if (child.pointInParent) {
+              topLeftX = child.pointInParent.x - childDisplayWidth / 2;
+              topLeftY = child.pointInParent.y - childDisplayHeight / 2;
+            } else if (child.xOffset !== undefined && child.yOffset !== undefined) {
+              topLeftX = child.xOffset;
+              topLeftY = child.yOffset;
+            }
+
+            const thumbX = Math.round(topLeftX * thumbnailScale);
+            const thumbY = Math.round(topLeftY * thumbnailScale);
+            const thumbChildWidth = Math.round(childDisplayWidth * thumbnailScale);
+            const thumbChildHeight = Math.round(childDisplayHeight * thumbnailScale);
+
+            childImage = childImage.resize(thumbChildWidth, thumbChildHeight, {
+              fit: 'fill',
+              kernel: sharp.kernel.lanczos3
+            });
+
+            if (child.rotation) {
+              const centerX = thumbX + thumbChildWidth / 2;
+              const centerY = thumbY + thumbChildHeight / 2;
+
+              childImage = childImage.rotate(child.rotation, {
+                background: { r: 0, g: 0, b: 0, alpha: 0 }
+              });
+
+              const rotatedMeta = await childImage.metadata();
+              const adjustedX = Math.round(centerX - rotatedMeta.width / 2);
+              const adjustedY = Math.round(centerY - rotatedMeta.height / 2);
+
+              compositeInputs.push({
+                input: await childImage.toBuffer(),
+                left: adjustedX,
+                top: adjustedY
+              });
+            } else {
+              compositeInputs.push({
+                input: await childImage.toBuffer(),
+                left: thumbX,
+                top: thumbY
+              });
+            }
+          } catch (error) {
+            log.error(`[IPC] Failed to composite child ${child.id}:`, error);
+          }
+        }
+
+        const compositeImage = sharp(baseBuffer).composite(compositeInputs);
+        const outputPath = path.join(folderPaths.compositeThumbnails, micrographId);
+        await compositeImage.jpeg({ quality: 85 }).toFile(outputPath);
+
+        results.succeeded++;
+      } catch (error) {
+        log.error(`[IPC] Failed to rebuild thumbnail for ${micrographId}:`, error);
+        results.failed++;
+        results.errors.push({ micrographId, error: error.message });
+      }
+    }
+
+    log.info(`[IPC] Rebuild complete: ${results.succeeded} succeeded, ${results.failed} failed`);
+
+    return {
+      success: true,
+      results
+    };
+  } catch (error) {
+    log.error('[IPC] Error rebuilding all thumbnails:', error);
+    throw error;
   }
 });
 

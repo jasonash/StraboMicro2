@@ -5,7 +5,7 @@
  * Includes "Add" buttons at each level to trigger the appropriate dialog.
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   Box,
   Typography,
@@ -13,6 +13,8 @@ import {
   IconButton,
   Collapse,
   Stack,
+  Avatar,
+  CircularProgress,
 } from '@mui/material';
 import {
   ExpandMore,
@@ -28,6 +30,126 @@ import { NewDatasetDialog } from './dialogs/NewDatasetDialog';
 import { NewSampleDialog } from './dialogs/NewSampleDialog';
 import { NewMicrographDialog } from './dialogs/NewMicrographDialog';
 import type { DatasetMetadata, SampleMetadata, MicrographMetadata } from '@/types/project-types';
+
+/**
+ * Micrograph Thumbnail Component
+ * Loads and displays composite thumbnail (with overlays) for a micrograph
+ */
+interface MicrographThumbnailProps {
+  micrographId: string;
+  projectId: string;
+  micrographName: string;
+}
+
+function MicrographThumbnail({ micrographId, projectId, micrographName }: MicrographThumbnailProps) {
+  const [thumbnailDataUrl, setThumbnailDataUrl] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  const loadThumbnail = useCallback(async () => {
+    if (!window.api) return;
+
+    setLoading(true);
+
+    try {
+      // Load thumbnail as base64 data URL from main process
+      const dataUrl = await window.api.loadCompositeThumbnail(projectId, micrographId);
+
+      if (dataUrl) {
+        setThumbnailDataUrl(dataUrl);
+      } else {
+        setThumbnailDataUrl(null);
+      }
+    } catch (error) {
+      console.error('[MicrographThumbnail] Error loading thumbnail:', error);
+      setThumbnailDataUrl(null);
+    } finally {
+      setLoading(false);
+    }
+  }, [micrographId, projectId]);
+
+  // Initial load
+  useEffect(() => {
+    loadThumbnail();
+  }, [loadThumbnail]);
+
+  // Listen for thumbnail generation events
+  useEffect(() => {
+    const handleThumbnailGenerated = (event: Event) => {
+      const customEvent = event as CustomEvent<{ micrographId: string }>;
+      if (customEvent.detail.micrographId === micrographId) {
+        console.log(`[MicrographThumbnail] Reloading thumbnail for ${micrographId}`);
+        // Reload the thumbnail after a delay to ensure file is written and synced
+        // Longer delay to account for file system sync
+        setTimeout(() => {
+          loadThumbnail();
+        }, 500);
+      }
+    };
+
+    const handleRebuildAll = () => {
+      console.log(`[MicrographThumbnail] Rebuild all triggered, reloading ${micrographId}`);
+      // Reload the thumbnail after a delay to ensure file is written
+      setTimeout(() => {
+        loadThumbnail();
+      }, 500);
+    };
+
+    window.addEventListener('thumbnail-generated', handleThumbnailGenerated);
+    window.addEventListener('rebuild-all-thumbnails', handleRebuildAll);
+
+    return () => {
+      window.removeEventListener('thumbnail-generated', handleThumbnailGenerated);
+      window.removeEventListener('rebuild-all-thumbnails', handleRebuildAll);
+    };
+  }, [micrographId, loadThumbnail]);
+
+  if (loading) {
+    return (
+      <Avatar
+        variant="rounded"
+        sx={{
+          width: 40,
+          height: 40,
+          bgcolor: 'action.hover',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        <CircularProgress size={20} thickness={4} />
+      </Avatar>
+    );
+  }
+
+  if (!thumbnailDataUrl) {
+    // Fallback to icon if no thumbnail exists
+    return (
+      <Avatar
+        variant="rounded"
+        sx={{
+          width: 40,
+          height: 40,
+          bgcolor: 'action.hover',
+        }}
+      >
+        <ImageIcon fontSize="small" />
+      </Avatar>
+    );
+  }
+
+  return (
+    <Avatar
+      variant="rounded"
+      src={thumbnailDataUrl}
+      alt={micrographName}
+      sx={{
+        width: 40,
+        height: 40,
+        objectFit: 'cover',
+      }}
+    />
+  );
+}
 
 export function ProjectTree() {
   const project = useAppStore((state) => state.project);
@@ -176,7 +298,13 @@ export function ProjectTree() {
           ) : (
             <Box sx={{ width: 24 }} />
           )}
-          <ImageIcon fontSize="small" sx={{ color: 'text.secondary' }} />
+          {project && (
+            <MicrographThumbnail
+              micrographId={micrograph.id}
+              projectId={project.id}
+              micrographName={micrograph.name || micrograph.imageFilename || 'Unnamed'}
+            />
+          )}
           <Typography variant="body2" sx={{ flex: 1, fontSize: '0.875rem' }}>
             {micrograph.name || micrograph.imageFilename || 'Unnamed Micrograph'}
           </Typography>

@@ -16,6 +16,7 @@ contextBridge.exposeInMainWorld('api', {
   onQuickLoadImage: (callback) => ipcRenderer.on('menu:quick-load-image', callback),
   onLoadSampleProject: (callback) => ipcRenderer.on('menu:load-sample-project', callback),
   onResetEverything: (callback) => ipcRenderer.on('menu:reset-everything', callback),
+  onRebuildAllThumbnails: (callback) => ipcRenderer.on('menu:rebuild-all-thumbnails', callback),
 
   // Undo/Redo
   onUndo: (callback) => ipcRenderer.on('menu:undo', callback),
@@ -68,6 +69,16 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('image:generate-variants', sourcePath, projectId, micrographId),
   getImageDimensions: (imagePath) => ipcRenderer.invoke('image:get-dimensions', imagePath),
   isValidImage: (filePath) => ipcRenderer.invoke('image:is-valid', filePath),
+
+  // Composite thumbnail generation
+  generateCompositeThumbnail: (projectId, micrographId, projectData) =>
+    ipcRenderer.invoke('composite:generate-thumbnail', projectId, micrographId, projectData),
+  getCompositeThumbnailPath: (projectId, micrographId) =>
+    ipcRenderer.invoke('composite:get-thumbnail-path', projectId, micrographId),
+  loadCompositeThumbnail: (projectId, micrographId) =>
+    ipcRenderer.invoke('composite:load-thumbnail', projectId, micrographId),
+  rebuildAllThumbnails: (projectId, projectData) =>
+    ipcRenderer.invoke('composite:rebuild-all-thumbnails', projectId, projectData),
 
   // Project serialization
   saveProjectJson: (project, projectId) => ipcRenderer.invoke('project:save-json', project, projectId),

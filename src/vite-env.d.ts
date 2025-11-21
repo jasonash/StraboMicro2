@@ -74,6 +74,7 @@ interface Window {
     onQuickLoadImage: (callback: () => void) => void;
     onLoadSampleProject: (callback: () => void) => void;
     onResetEverything: (callback: () => void) => void;
+    onRebuildAllThumbnails: (callback: () => void) => void;
     onUndo: (callback: () => void) => void;
     onRedo: (callback: () => void) => void;
     openTiffDialog: () => Promise<string | null>;
@@ -173,6 +174,25 @@ interface Window {
       format: string;
     }>;
     isValidImage: (filePath: string) => Promise<boolean>;
+
+    // Composite thumbnail generation
+    generateCompositeThumbnail: (projectId: string, micrographId: string, projectData: any) => Promise<{
+      success: boolean;
+      thumbnailPath: string;
+      width: number;
+      height: number;
+    }>;
+    getCompositeThumbnailPath: (projectId: string, micrographId: string) => Promise<string>;
+    loadCompositeThumbnail: (projectId: string, micrographId: string) => Promise<string | null>;
+    rebuildAllThumbnails: (projectId: string, projectData: any) => Promise<{
+      success: boolean;
+      results: {
+        total: number;
+        succeeded: number;
+        failed: number;
+        errors: Array<{ micrographId: string; error: string }>;
+      };
+    }>;
 
     // Project serialization
     saveProjectJson: (project: any, projectId: string) => Promise<{

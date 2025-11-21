@@ -262,6 +262,38 @@ function App() {
       }
     });
 
+    // Rebuild All Thumbnails
+    window.api?.onRebuildAllThumbnails(async () => {
+      const project = useAppStore.getState().project;
+
+      if (!project) {
+        alert('No project loaded');
+        return;
+      }
+
+      console.log('Rebuilding all thumbnails...');
+
+      try {
+        const result = await window.api?.rebuildAllThumbnails(project.id, project);
+        if (!result) return;
+
+        console.log('Rebuild complete:', result.results);
+
+        // Trigger refresh of all thumbnails
+        window.dispatchEvent(new CustomEvent('rebuild-all-thumbnails'));
+
+        const message = `✅ Thumbnail Rebuild Complete!\n\n` +
+          `Total: ${result.results.total}\n` +
+          `Succeeded: ${result.results.succeeded}\n` +
+          `Failed: ${result.results.failed}`;
+
+        alert(message);
+      } catch (error) {
+        console.error('Error rebuilding thumbnails:', error);
+        alert(`❌ Error rebuilding thumbnails: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      }
+    });
+
     // Undo menu item
     window.api.onUndo(() => {
       const temporalState = useTemporalStore.getState();
