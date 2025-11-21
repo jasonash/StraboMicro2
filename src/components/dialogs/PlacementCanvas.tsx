@@ -173,15 +173,18 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
 
         // Build full path to parent image
         const folderPaths = await window.api?.getProjectFolderPaths(project.id);
+        if (!folderPaths) return;
         const fullParentPath = `${folderPaths.images}/${parentMicrograph.imagePath}`;
 
         console.log('[PlacementCanvas] Loading parent from:', fullParentPath);
 
         // Load the tiled image
         const tileData = await window.api?.loadImageWithTiles(fullParentPath);
+        if (!tileData) return;
 
         // Load medium resolution for placement canvas
         const mediumDataUrl = await window.api?.loadMedium(tileData.hash);
+        if (!mediumDataUrl) return;
 
         const img = new window.Image();
         img.onload = () => {
@@ -213,6 +216,7 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
             // Convert center to top-left for legacy compatibility
             const topLeft = convertCenterToTopLeft(centerX, centerY, initialRotation, initialScaleX, initialScaleY);
             // Convert to original image coordinates
+            if (!parentOriginalWidth) return;
             const scaleRatio = parentOriginalWidth / img.width;
             const originalX = topLeft.x * scaleRatio;
             const originalY = topLeft.y * scaleRatio;
@@ -220,6 +224,7 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
             console.log('[PlacementCanvas] Initialized child position to center:', { centerX, centerY, topLeft, originalX, originalY });
           } else {
             // We have existing values - convert from original image coordinates to displayed coordinates
+            if (!parentOriginalWidth) return;
             const scaleRatio = img.width / parentOriginalWidth;
             // Initial values are in top-left format, convert to center
             const centerX = (initialOffsetX * scaleRatio) + (childWidth * scaleRatio * initialScaleX) / 2;
@@ -260,9 +265,11 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
       try {
         // Load the tiled image from scratch path
         const tileData = await window.api?.loadImageWithTiles(childScratchPath);
+        if (!tileData) return;
 
         // Load medium resolution for placement canvas
         const mediumDataUrl = await window.api?.loadMedium(tileData.hash);
+        if (!mediumDataUrl) return;
 
         const img = new window.Image();
         img.onload = () => {
@@ -759,7 +766,8 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
     const topLeft = convertCenterToTopLeft(newTransform.x, newTransform.y, newTransform.rotation, newTransform.scaleX, newTransform.scaleY);
 
     // Convert from displayed image coordinates to original image coordinates
-    const scaleRatio = parentOriginalWidth / (parentImage?.width || 1);
+    if (!parentOriginalWidth || !parentImage?.width) return;
+    const scaleRatio = parentOriginalWidth / parentImage.width;
     const originalX = topLeft.x * scaleRatio;
     const originalY = topLeft.y * scaleRatio;
 
@@ -790,7 +798,8 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
     const topLeft = convertCenterToTopLeft(newTransform.x, newTransform.y, newTransform.rotation, displayedScaleX, displayedScaleY);
 
     // Convert from displayed image coordinates to original image coordinates
-    const scaleRatio = parentOriginalWidth / (parentImage?.width || 1);
+    if (!parentOriginalWidth || !parentImage?.width) return;
+    const scaleRatio = parentOriginalWidth / parentImage.width;
     const originalX = topLeft.x * scaleRatio;
     const originalY = topLeft.y * scaleRatio;
 

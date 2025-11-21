@@ -2085,7 +2085,7 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
             Click on the parent micrograph to place the center point of the associated micrograph.
           </Typography>
           <PointPlacementCanvas
-            parentMicrographId={parentMicrographId}
+            parentMicrographId={parentMicrographId!}
             childScratchPath={formData.micrographFilePath}
             childWidth={formData.micrographWidth}
             childHeight={formData.micrographHeight}

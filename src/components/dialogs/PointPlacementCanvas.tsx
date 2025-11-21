@@ -123,13 +123,16 @@ export const PointPlacementCanvas = ({
 
         // Build full path to parent image
         const folderPaths = await window.api?.getProjectFolderPaths(project.id);
+        if (!folderPaths) return;
         const fullParentPath = `${folderPaths.images}/${parentMicrograph.imagePath}`;
 
         // Load the tiled image
         const tileData = await window.api?.loadImageWithTiles(fullParentPath);
+        if (!tileData) return;
 
         // Load medium resolution for placement canvas
         const mediumDataUrl = await window.api?.loadMedium(tileData.hash);
+        if (!mediumDataUrl) return;
 
         const img = new window.Image();
         img.onload = () => {
@@ -166,7 +169,9 @@ export const PointPlacementCanvas = ({
       try {
         // Load child from scratch space via tile cache
         const tileData = await window.api?.loadImageWithTiles(childScratchPath);
+        if (!tileData) return;
         const mediumDataUrl = await window.api?.loadMedium(tileData.hash);
+        if (!mediumDataUrl) return;
 
         const img = new window.Image();
         img.onload = () => {

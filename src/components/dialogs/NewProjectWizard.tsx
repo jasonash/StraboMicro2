@@ -583,10 +583,10 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
             orientationInfo: (() => {
               // Only include orientation data for the selected method
               if (formData.orientationMethod === 'unoriented') {
-                return { orientationMethod: 'unoriented' };
+                return { orientationMethod: 'unoriented' as const };
               } else if (formData.orientationMethod === 'trendPlunge') {
                 return {
-                  orientationMethod: 'trendPlunge',
+                  orientationMethod: 'trendPlunge' as const,
                   ...(formData.topTrend && { topTrend: parseFloat(formData.topTrend) }),
                   ...(formData.topPlunge && { topPlunge: parseFloat(formData.topPlunge) }),
                   ...(formData.topReferenceCorner && { topReferenceCorner: formData.topReferenceCorner }),
@@ -598,7 +598,7 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
                 };
               } else if (formData.orientationMethod === 'fabricReference') {
                 return {
-                  orientationMethod: 'fabricReference',
+                  orientationMethod: 'fabricReference' as const,
                   ...(formData.fabricReference && { fabricReference: formData.fabricReference }),
                   ...(formData.fabricStrike && { fabricStrike: parseFloat(formData.fabricStrike) }),
                   ...(formData.fabricDip && { fabricDip: parseFloat(formData.fabricDip) }),
@@ -608,7 +608,7 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
                   ...(formData.lookDirection && { lookDirection: formData.lookDirection }),
                 };
               }
-              return { orientationMethod: formData.orientationMethod };
+              return { orientationMethod: formData.orientationMethod as 'unoriented' | 'trendPlunge' | 'fabricReference' };
             })(),
             scalePixelsPerCentimeter: (() => {
               // Convert scale to scalePixelsPerCentimeter (legacy format)
@@ -1444,9 +1444,12 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
               currentTool={canvasTool}
               onToolChange={setCanvasTool}
               onLineDrawn={(lineData) => {
-                updateField('scaleBarLineStart', lineData.start);
-                updateField('scaleBarLineEnd', lineData.end);
-                updateField('scaleBarLineLengthPixels', lineData.lengthPixels.toFixed(2));
+                setFormData(prev => ({
+                  ...prev,
+                  scaleBarLineStart: lineData.start,
+                  scaleBarLineEnd: lineData.end,
+                  scaleBarLineLengthPixels: lineData.lengthPixels.toFixed(2),
+                }));
               }}
             />
           ) : (
