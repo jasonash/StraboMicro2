@@ -123,6 +123,7 @@ export interface MicrographMetadata {
   parentID?: string;  // References parent micrograph for hierarchical overlay
   xOffset?: number;
   yOffset?: number;
+  offsetInParent?: { X: number; Y: number };  // Top-left corner in original parent coordinates (rectangle placement)
   rotation?: number;
   scaleX?: number;  // Scale factor in X direction
   scaleY?: number;  // Scale factor in Y direction

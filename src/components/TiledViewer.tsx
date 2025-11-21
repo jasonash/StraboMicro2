@@ -15,6 +15,9 @@
 import { useEffect, useRef, useState, useCallback, useImperativeHandle, forwardRef } from 'react';
 import { Stage, Layer, Image as KonvaImage } from 'react-konva';
 import { Box, CircularProgress, Typography } from '@mui/material';
+import { useAppStore } from '@/store';
+import { getChildMicrographs } from '@/store/helpers';
+import { AssociatedImageRenderer } from './AssociatedImageRenderer';
 import './TiledViewer.css';
 
 const TILE_SIZE = 256;
@@ -70,6 +73,28 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(({ image
   const [isLoadingTiles, setIsLoadingTiles] = useState(false);
   const [isPanning, setIsPanning] = useState(false);
   const [lastPointerPos, setLastPointerPos] = useState<{ x: number; y: number } | null>(null);
+
+  // Get project and active micrograph from store
+  const project = useAppStore((state) => state.project);
+  const activeMicrographId = useAppStore((state) => state.activeMicrographId);
+
+  // Find active micrograph and its associated children
+  const activeMicrograph = useCallback(() => {
+    if (!project || !activeMicrographId || !project.datasets) return null;
+    for (const dataset of project.datasets) {
+      for (const sample of dataset.samples || []) {
+        const micro = sample.micrographs?.find(m => m.id === activeMicrographId);
+        if (micro) return micro;
+      }
+    }
+    return null;
+  }, [project, activeMicrographId])();
+
+  // Get child micrographs (overlays)
+  const childMicrographs = useCallback(() => {
+    if (!activeMicrographId) return [];
+    return getChildMicrographs(project, activeMicrographId);
+  }, [project, activeMicrographId])();
 
   /**
    * Load image metadata and initialize viewer
@@ -511,6 +536,27 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(({ image
                   />
                 );
               })}
+
+              {/* Render associated micrographs (overlays) */}
+              {activeMicrograph && childMicrographs.map((childMicro) => (
+                <AssociatedImageRenderer
+                  key={childMicro.id}
+                  micrograph={childMicro}
+                  parentMetadata={{
+                    width: activeMicrograph.imageWidth || activeMicrograph.width || imageMetadata?.width || 0,
+                    height: activeMicrograph.imageHeight || activeMicrograph.height || imageMetadata?.height || 0,
+                    scalePixelsPerCentimeter: activeMicrograph.scalePixelsPerCentimeter || 100,
+                  }}
+                  viewport={{
+                    x: position.x,
+                    y: position.y,
+                    zoom: zoom,
+                    width: stageSize.width,
+                    height: stageSize.height,
+                  }}
+                  stageScale={zoom}
+                />
+              ))}
             </Layer>
           </Stage>
 
