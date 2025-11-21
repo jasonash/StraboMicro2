@@ -12,12 +12,14 @@ import {
   Select,
   MenuItem,
   FormControl,
-  InputLabel,
   Divider,
   Stack,
 } from '@mui/material';
 import { SelectChangeEvent } from '@mui/material/Select';
 import { useAppStore } from '@/store';
+import { NotesDialog } from './dialogs/metadata/NotesDialog';
+import { SampleInfoDialog } from './dialogs/metadata/SampleInfoDialog';
+import { MicrographInfoDialog } from './dialogs/metadata/MicrographInfoDialog';
 
 /**
  * Data type options for micrographs
@@ -68,11 +70,27 @@ const SPOT_DATA_TYPES = [
 ] as const;
 
 export function PropertiesPanel() {
+  const project = useAppStore((state) => state.project);
   const activeMicrographId = useAppStore((state) => state.activeMicrographId);
   const activeSpotId = useAppStore((state) => state.activeSpotId);
 
   const [selectedDataType, setSelectedDataType] = useState('');
   const [openDialog, setOpenDialog] = useState<string | null>(null);
+
+  // Find the sample ID for the active micrograph
+  const findSampleIdForMicrograph = (): string | undefined => {
+    if (!activeMicrographId || !project) return undefined;
+    for (const dataset of project.datasets || []) {
+      for (const sample of dataset.samples || []) {
+        if (sample.micrographs?.some((m) => m.id === activeMicrographId)) {
+          return sample.id;
+        }
+      }
+    }
+    return undefined;
+  };
+
+  const sampleId = findSampleIdForMicrograph();
 
   // Determine what type of entity is selected
   const selectionType = activeMicrographId ? 'micrograph' : activeSpotId ? 'spot' : null;
@@ -90,10 +108,13 @@ export function PropertiesPanel() {
     if (dataType) {
       // Open the corresponding dialog
       setOpenDialog(dataType);
-
-      // Reset dropdown to "Select Data Type..."
-      setSelectedDataType('');
     }
+
+    // Always reset dropdown to "Select Data Type..." after any selection
+    // Use setTimeout to ensure the menu closes first
+    setTimeout(() => {
+      setSelectedDataType('');
+    }, 0);
   };
 
   // If nothing is selected, show placeholder
@@ -118,13 +139,15 @@ export function PropertiesPanel() {
 
       {/* Data Type Selector */}
       <FormControl fullWidth sx={{ mb: 3 }}>
-        <InputLabel id="data-type-select-label">Add/Edit Data</InputLabel>
         <Select
-          labelId="data-type-select-label"
-          id="data-type-select"
           value={selectedDataType}
-          label="Add/Edit Data"
           onChange={handleDataTypeChange}
+          displayEmpty
+          sx={{
+            '& .MuiSelect-select': {
+              py: 1.5,
+            }
+          }}
         >
           {dataTypes.map((type) => (
             <MenuItem key={type.id} value={type.id} disabled={type.id === ''}>
@@ -148,15 +171,30 @@ export function PropertiesPanel() {
         </Stack>
       </Box>
 
-      {/* Dialogs will be rendered here */}
-      {/* TODO: Add dialog components based on openDialog state */}
-      {openDialog && (
-        <Box>
-          {/* Placeholder - will be replaced with actual dialogs */}
-          <Typography variant="body2" color="text.secondary">
-            Dialog for {openDialog} (coming soon)
-          </Typography>
-        </Box>
+      {/* Dialogs */}
+      {openDialog === 'notes' && (
+        <NotesDialog
+          isOpen={true}
+          onClose={() => setOpenDialog(null)}
+          micrographId={activeMicrographId || undefined}
+          spotId={activeSpotId || undefined}
+        />
+      )}
+
+      {openDialog === 'sample' && sampleId && (
+        <SampleInfoDialog
+          isOpen={true}
+          onClose={() => setOpenDialog(null)}
+          sampleId={sampleId}
+        />
+      )}
+
+      {openDialog === 'micrograph' && activeMicrographId && (
+        <MicrographInfoDialog
+          isOpen={true}
+          onClose={() => setOpenDialog(null)}
+          micrographId={activeMicrographId}
+        />
       )}
     </Box>
   );
