@@ -1207,6 +1207,8 @@ ipcMain.handle('composite:generate-thumbnail', async (event, projectId, microgra
 
     for (const child of childMicrographs) {
       try {
+        log.info(`[IPC] Processing child ${child.id} (${child.name})`);
+
         const childPath = path.join(folderPaths.images, child.imagePath);
 
         // Load child image
@@ -1217,6 +1219,8 @@ ipcMain.handle('composite:generate-thumbnail', async (event, projectId, microgra
         const childPxPerCm = child.scalePixelsPerCentimeter || 100;
         const parentPxPerCm = micrograph.scalePixelsPerCentimeter || 100;
         const displayScale = parentPxPerCm / childPxPerCm;
+
+        log.info(`[IPC]   Child px/cm: ${childPxPerCm}, Parent px/cm: ${parentPxPerCm}, Display scale: ${displayScale}`);
 
         // Calculate child dimensions in parent's coordinate space
         const childDisplayWidth = childMetadata.width * displayScale;
@@ -1229,12 +1233,15 @@ ipcMain.handle('composite:generate-thumbnail', async (event, projectId, microgra
         if (child.offsetInParent) {
           topLeftX = child.offsetInParent.X;
           topLeftY = child.offsetInParent.Y;
+          log.info(`[IPC]   Using offsetInParent: (${topLeftX}, ${topLeftY})`);
         } else if (child.pointInParent) {
           topLeftX = child.pointInParent.x - childDisplayWidth / 2;
           topLeftY = child.pointInParent.y - childDisplayHeight / 2;
+          log.info(`[IPC]   Using pointInParent: (${child.pointInParent.x}, ${child.pointInParent.y}) -> topLeft: (${topLeftX}, ${topLeftY})`);
         } else if (child.xOffset !== undefined && child.yOffset !== undefined) {
           topLeftX = child.xOffset;
           topLeftY = child.yOffset;
+          log.info(`[IPC]   Using legacy offset: (${topLeftX}, ${topLeftY})`);
         }
 
         // Scale position to thumbnail coordinates
@@ -1244,6 +1251,9 @@ ipcMain.handle('composite:generate-thumbnail', async (event, projectId, microgra
         // Scale child dimensions to thumbnail coordinates
         const thumbChildWidth = Math.round(childDisplayWidth * thumbnailScale);
         const thumbChildHeight = Math.round(childDisplayHeight * thumbnailScale);
+
+        log.info(`[IPC]   Original position: (${topLeftX}, ${topLeftY}), Thumbnail position: (${thumbX}, ${thumbY})`);
+        log.info(`[IPC]   Original size: ${childMetadata.width}x${childMetadata.height}, Display size: ${childDisplayWidth}x${childDisplayHeight}, Thumb size: ${thumbChildWidth}x${thumbChildHeight}`);
 
         // Resize child image
         childImage = childImage.resize(thumbChildWidth, thumbChildHeight, {
