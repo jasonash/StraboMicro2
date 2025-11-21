@@ -752,6 +752,31 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
       };
       scalePixelsPerCentimeter = pixelsPerUnit * (conversionToCm[formData.sizeUnits] || 1);
       console.log('[NewMicrographDialog] Calculated scale from width/height:', scalePixelsPerCentimeter);
+    } else if (isAssociated && formData.scaleMethod === 'Copy Size from Existing Micrograph' && formData.copySizeFromMicrographId) {
+      // Find the sibling micrograph and calculate the new image's scale
+      // newImagePixelsPerCm = siblingScalePxPerCm * (newWidth / siblingWidth)
+      const { project } = useAppStore.getState();
+      if (project?.datasets) {
+        for (const dataset of project.datasets) {
+          if (dataset.samples) {
+            for (const sample of dataset.samples) {
+              if (sample.micrographs) {
+                const siblingMicrograph = sample.micrographs.find(m => m.id === formData.copySizeFromMicrographId);
+                if (siblingMicrograph?.scalePixelsPerCentimeter && siblingMicrograph.imageWidth) {
+                  scalePixelsPerCentimeter = siblingMicrograph.scalePixelsPerCentimeter * (formData.micrographWidth / siblingMicrograph.imageWidth);
+                  console.log('[NewMicrographDialog] Calculated scale from Copy Size from Existing:', {
+                    siblingScale: siblingMicrograph.scalePixelsPerCentimeter,
+                    siblingWidth: siblingMicrograph.imageWidth,
+                    newWidth: formData.micrographWidth,
+                    newScale: scalePixelsPerCentimeter,
+                  });
+                  break;
+                }
+              }
+            }
+          }
+        }
+      }
     }
 
     // Build orientation info based on selected method (only for reference micrographs)
