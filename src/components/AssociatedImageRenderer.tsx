@@ -166,16 +166,22 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
     const loadImage = async () => {
       const targetMode = determineRenderMode();
 
+      console.log(`[AssociatedImageRenderer] Current mode: ${imageState.mode}, Target mode: ${targetMode}, isLoading: ${imageState.isLoading}`);
+
       // If we're already in the right mode and have the image, skip
       if (imageState.mode === targetMode &&
           (imageState.imageObj || imageState.tiles.size > 0)) {
+        console.log(`[AssociatedImageRenderer] Already in ${targetMode} mode with image loaded, skipping`);
         return;
       }
 
       // Don't reload if already loading this target mode
       if (imageState.isLoading && imageState.targetMode === targetMode) {
+        console.log(`[AssociatedImageRenderer] Already loading ${targetMode}, skipping`);
         return;
       }
+
+      console.log(`[AssociatedImageRenderer] Starting load for mode: ${targetMode}`);
 
       // Mark that we're loading this target mode
       setImageState(prev => ({ ...prev, isLoading: true, targetMode }));
@@ -273,9 +279,15 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
 
   /**
    * Render based on current mode
+   * IMPORTANT: Keep rendering the current image even while loading a new one
    */
-  if (imageState.isLoading || !micrograph.imagePath) {
-    return null; // Could show loading placeholder
+  if (!micrograph.imagePath) {
+    return null;
+  }
+
+  // If we're loading but have nothing to show yet, return null
+  if (imageState.isLoading && !imageState.imageObj && imageState.tiles.size === 0) {
+    return null;
   }
 
   if (imageState.mode === 'THUMBNAIL' || imageState.mode === 'MEDIUM') {
