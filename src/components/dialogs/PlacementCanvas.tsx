@@ -367,7 +367,7 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
     }));
   }, [scaleMethod, pixelInput, physicalLengthInput, unitInput, parentScale]);
 
-  // Auto-calculate child scale for "Copy Size from Existing Micrograph" method
+  // Auto-calculate child scale AND position for "Copy Size from Existing Micrograph" method
   useEffect(() => {
     if (scaleMethod !== 'Copy Size from Existing Micrograph') return;
     if (!parentScale || !parentOriginalWidth || !parentImage || !copySizePixelsPerCm) return;
@@ -388,6 +388,17 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
     if (scaleFactor > MAX_SCALE) scaleFactor = MAX_SCALE;
     else if (scaleFactor < MIN_SCALE) scaleFactor = MIN_SCALE;
 
+    // Convert position from original parent coordinates to displayed coordinates
+    // initialOffsetX/Y are in original coordinates (top-left of child)
+    const positionScaleRatio = parentImage.width / parentOriginalWidth;
+    const displayedOffsetX = initialOffsetX * positionScaleRatio;
+    const displayedOffsetY = initialOffsetY * positionScaleRatio;
+
+    // Convert from top-left to center position
+    // The child is displayed at childWidth * scaleFactor size
+    const centerX = displayedOffsetX + (childWidth * scaleFactor) / 2;
+    const centerY = displayedOffsetY + (childHeight * scaleFactor) / 2;
+
     console.log('[PlacementCanvas] Copy Size from Existing calculation:', {
       copySizePixelsPerCm,
       parentScale,
@@ -396,15 +407,24 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
       parentDownsampleRatio,
       parentScaleInDisplayedImage,
       scaleFactor,
+      initialOffsetX,
+      initialOffsetY,
+      positionScaleRatio,
+      displayedOffsetX,
+      displayedOffsetY,
+      centerX,
+      centerY,
     });
 
-    // Update child scale
+    // Update child scale AND position
     setChildTransform(prev => ({
       ...prev,
+      x: centerX,
+      y: centerY,
       scaleX: scaleFactor,
       scaleY: scaleFactor,
     }));
-  }, [scaleMethod, copySizePixelsPerCm, parentScale, parentOriginalWidth, parentImage]);
+  }, [scaleMethod, copySizePixelsPerCm, parentScale, parentOriginalWidth, parentImage, initialOffsetX, initialOffsetY, childWidth, childHeight]);
 
   // Call onPlacementChange when scale changes automatically (for auto-scale methods)
   // Use a ref to track previous scale to avoid calling on every render
