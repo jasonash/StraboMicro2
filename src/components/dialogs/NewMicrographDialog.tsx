@@ -1942,7 +1942,8 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
     // Different scale options based on location method
     const isScaledRectangle = formData.locationMethod === 'Locate as a scaled rectangle';
 
-    // Get sibling micrographs with matching aspect ratio (same parent only)
+    // Get sibling micrographs with matching aspect ratio AND same placement type (same parent only)
+    // Rectangle placements have offsetInParent, point placements have pointInParent
     const currentAspectRatio = formData.micrographWidth / formData.micrographHeight;
     const matchingSiblings = (() => {
       const project = useAppStore.getState().project;
@@ -1957,6 +1958,16 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
             // Must be a sibling (same parent) and have dimensions
             if (micrograph.parentID === parentMicrographId &&
                 micrograph.imageWidth && micrograph.imageHeight) {
+
+              // Check placement type matches current location method
+              const hasOffsetInParent = !!(micrograph as { offsetInParent?: unknown }).offsetInParent;
+              const hasPointInParent = !!micrograph.pointInParent;
+
+              // For rectangle placement, only show siblings with offsetInParent
+              // For point placement, only show siblings with pointInParent
+              if (isScaledRectangle && !hasOffsetInParent) continue;
+              if (!isScaledRectangle && !hasPointInParent) continue;
+
               const ratio = micrograph.imageWidth / micrograph.imageHeight;
               if (Math.abs(ratio - currentAspectRatio) / currentAspectRatio < tolerance) {
                 siblings.push({
