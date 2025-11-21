@@ -104,9 +104,67 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
   }, [micrograph, parentMetadata, stageScale, viewport]);
 
   /**
-   * Determine appropriate render mode based on coverage and zoom
+   * Check if overlay is visible in the current viewport
+   */
+  const isInViewport = useCallback((): boolean => {
+    if (!micrograph.imageWidth || !micrograph.imageHeight) return false;
+
+    const childPxPerCm = micrograph.scalePixelsPerCentimeter || 100;
+    const parentPxPerCm = parentMetadata.scalePixelsPerCentimeter || 100;
+    const scaleFactor = parentPxPerCm / childPxPerCm;
+
+    const imageWidth = micrograph.imageWidth || 0;
+    const imageHeight = micrograph.imageHeight || 0;
+    const scaledWidth = imageWidth * scaleFactor;
+    const scaledHeight = imageHeight * scaleFactor;
+
+    // Get overlay position (top-left)
+    let topLeftX = 0;
+    let topLeftY = 0;
+
+    if (micrograph.offsetInParent) {
+      topLeftX = micrograph.offsetInParent.X;
+      topLeftY = micrograph.offsetInParent.Y;
+    } else if (micrograph.pointInParent) {
+      topLeftX = micrograph.pointInParent.x - scaledWidth / 2;
+      topLeftY = micrograph.pointInParent.y - scaledHeight / 2;
+    } else if (micrograph.xOffset !== undefined && micrograph.yOffset !== undefined) {
+      topLeftX = micrograph.xOffset;
+      topLeftY = micrograph.yOffset;
+    }
+
+    // Apply stage transform to get screen coordinates
+    const screenX = topLeftX * stageScale + viewport.x;
+    const screenY = topLeftY * stageScale + viewport.y;
+    const screenWidth = scaledWidth * stageScale;
+    const screenHeight = scaledHeight * stageScale;
+
+    // Check if overlay intersects with viewport
+    const overlayRight = screenX + screenWidth;
+    const overlayBottom = screenY + screenHeight;
+    const viewportRight = viewport.width;
+    const viewportBottom = viewport.height;
+
+    // Add margin for smoother transitions
+    const margin = 100; // pixels
+
+    return (
+      screenX < viewportRight + margin &&
+      overlayRight > -margin &&
+      screenY < viewportBottom + margin &&
+      overlayBottom > -margin
+    );
+  }, [micrograph, parentMetadata, stageScale, viewport]);
+
+  /**
+   * Determine appropriate render mode based on coverage, zoom, and viewport visibility
    */
   const determineRenderMode = useCallback((): RenderMode => {
+    // If not in viewport, use THUMBNAIL (smallest memory footprint)
+    if (!isInViewport()) {
+      return 'THUMBNAIL';
+    }
+
     const coverage = calculateScreenCoverage();
     const effectiveZoom = viewport.zoom * stageScale;
 
@@ -117,7 +175,7 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
     } else {
       return 'TILED'; // Full resolution
     }
-  }, [calculateScreenCoverage, viewport.zoom, stageScale]);
+  }, [isInViewport, calculateScreenCoverage, viewport.zoom, stageScale]);
 
   /**
    * Calculate position and scale for rendering overlay on parent
