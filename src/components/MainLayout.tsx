@@ -4,7 +4,7 @@ import { ChevronLeft, ChevronRight } from '@mui/icons-material';
 import Header from './Header';
 import Sidebar from './Sidebar';
 import Viewer from './Viewer';
-import DetailsPanel from './DetailsPanel';
+import { PropertiesPanel } from './PropertiesPanel';
 
 const MainLayout: React.FC = () => {
   const [leftWidth, setLeftWidth] = useState(360);
@@ -276,7 +276,7 @@ const MainLayout: React.FC = () => {
             </Box>
           )}
 
-          <DetailsPanel />
+          <PropertiesPanel />
         </Box>
 
         {/* Floating toggle button when panel is collapsed */}

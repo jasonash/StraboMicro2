@@ -44,9 +44,10 @@ interface AppState {
   activeDatasetId: string | null;
   activeSampleId: string | null;
   activeMicrographId: string | null;
+  activeSpotId: string | null; // Single active spot for properties panel
 
   // ========== SELECTION STATE ==========
-  selectedSpotIds: string[];
+  selectedSpotIds: string[]; // Multi-selection for batch operations
 
   // ========== VIEWER STATE ==========
   activeTool: DrawingTool;
@@ -135,6 +136,7 @@ export const useAppStore = create<AppState>()(
           activeDatasetId: null,
           activeSampleId: null,
           activeMicrographId: null,
+          activeSpotId: null,
 
           selectedSpotIds: [],
 
@@ -166,6 +168,7 @@ export const useAppStore = create<AppState>()(
               activeDatasetId: project.datasets?.[0]?.id || null,
               activeSampleId: null,
               activeMicrographId: null,
+              activeSpotId: null,
               selectedSpotIds: [],
               micrographIndex,
               spotIndex,
@@ -179,6 +182,7 @@ export const useAppStore = create<AppState>()(
             activeDatasetId: null,
             activeSampleId: null,
             activeMicrographId: null,
+            activeSpotId: null,
             selectedSpotIds: [],
             micrographIndex: new Map(),
             spotIndex: new Map(),
