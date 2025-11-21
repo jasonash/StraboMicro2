@@ -35,6 +35,8 @@ interface AssociatedImageRendererProps {
     height: number;
   };
   stageScale: number; // Current stage scale factor
+  onTileLoadingStart?: (message: string) => void; // Notify parent when tile loading starts
+  onTileLoadingEnd?: () => void; // Notify parent when tile loading ends
 }
 
 interface TileInfo {
@@ -60,6 +62,8 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
   parentMetadata,
   viewport,
   stageScale,
+  onTileLoadingStart,
+  onTileLoadingEnd,
 }) => {
   const [imageState, setImageState] = useState<ImageState>({
     mode: 'THUMBNAIL',
@@ -248,6 +252,12 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
           const tilesX = result.metadata.tilesX;
           const tilesY = result.metadata.tilesY;
 
+          // Notify parent that we're loading tiles
+          const message = result.fromCache
+            ? `Loading overlay tiles from cache...`
+            : `Generating overlay tiles (first load)...`;
+          onTileLoadingStart?.(message);
+
           // Generate tile coordinates
           const tileCoords: Array<{ x: number; y: number }> = [];
           for (let ty = 0; ty < tilesY; ty++) {
@@ -278,6 +288,9 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
             tiles: newTiles,
             isLoading: false,
           });
+
+          // Notify parent that we're done loading tiles
+          onTileLoadingEnd?.();
         }
       } catch (error) {
         console.error('[AssociatedImageRenderer] Failed to load image:', error);

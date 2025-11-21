@@ -71,8 +71,12 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(({ image
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingTiles, setIsLoadingTiles] = useState(false);
+  const [tileLoadingMessage, setTileLoadingMessage] = useState<string>('');
   const [isPanning, setIsPanning] = useState(false);
   const [lastPointerPos, setLastPointerPos] = useState<{ x: number; y: number } | null>(null);
+
+  // Track overlay tile loading state
+  const [overlayLoadingCount, setOverlayLoadingCount] = useState(0);
 
   // Get project and active micrograph from store
   const project = useAppStore((state) => state.project);
@@ -165,7 +169,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(({ image
 
         // Step 3: Load ALL tiles in background (not viewport-based)
         console.log('=== Progressive Loading: Step 3 - Loading all tiles in background ===');
-        loadAllTiles(result.hash, result.metadata.tilesX, result.metadata.tilesY);
+        loadAllTiles(result.hash, result.metadata.tilesX, result.metadata.tilesY, result.fromCache);
 
       } catch (error) {
         console.error('Failed to load image:', error);
@@ -180,8 +184,16 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(({ image
    * Load ALL tiles for the entire image in background
    * Uses chunked loading to keep UI responsive
    */
-  const loadAllTiles = useCallback(async (hash: string, tilesX: number, tilesY: number) => {
+  const loadAllTiles = useCallback(async (hash: string, tilesX: number, tilesY: number, fromCache: boolean) => {
     setIsLoadingTiles(true);
+
+    // Set message based on whether tiles are cached or being generated
+    if (fromCache) {
+      setTileLoadingMessage('Loading high-res tiles from cache...');
+    } else {
+      setTileLoadingMessage('Generating high-res tiles (first load)...');
+    }
+
     try {
       // Generate list of ALL tile coordinates
       const allTileCoords: Array<{ x: number; y: number }> = [];
@@ -191,7 +203,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(({ image
         }
       }
 
-      console.log(`Loading all ${allTileCoords.length} tiles in background...`);
+      console.log(`Loading all ${allTileCoords.length} tiles in background... (fromCache: ${fromCache})`);
 
       // Load all tile data from disk (this happens in the main process)
       const results = await window.api!.loadTilesBatch(hash, allTileCoords);
@@ -556,13 +568,20 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(({ image
                     height: stageSize.height,
                   }}
                   stageScale={zoom}
+                  onTileLoadingStart={(message) => {
+                    setTileLoadingMessage(message);
+                    setOverlayLoadingCount(prev => prev + 1);
+                  }}
+                  onTileLoadingEnd={() => {
+                    setOverlayLoadingCount(prev => Math.max(0, prev - 1));
+                  }}
                 />
               ))}
             </Layer>
           </Stage>
 
-          {/* Tile loading indicator */}
-          {isLoadingTiles && (
+          {/* Tile loading indicator - shows for both reference and overlay tiles */}
+          {(isLoadingTiles || overlayLoadingCount > 0) && (
             <Box
               sx={{
                 position: 'absolute',
@@ -583,7 +602,8 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(({ image
             >
               <CircularProgress size={18} sx={{ color: '#4caf50' }} />
               <Typography variant="body2" sx={{ fontWeight: 500, color: '#4caf50' }}>
-                Loading high-res tiles...
+                {tileLoadingMessage || 'Loading tiles...'}
+                {overlayLoadingCount > 0 && ` (${overlayLoadingCount} overlay${overlayLoadingCount > 1 ? 's' : ''})`}
               </Typography>
             </Box>
           )}
