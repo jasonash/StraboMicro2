@@ -520,7 +520,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(({ image
                 />
               )}
 
-              {/* Render visible tiles in tiled mode */}
+              {/* Render visible tiles in tiled mode with 1px overlap to prevent seams */}
               {renderMode === 'tiled' && visibleTiles.map((tileKey) => {
                 const tile = tiles.get(tileKey);
                 if (!tile || !tile.imageObj) return null;
@@ -531,8 +531,8 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(({ image
                     image={tile.imageObj}
                     x={tile.x * TILE_SIZE}
                     y={tile.y * TILE_SIZE}
-                    width={TILE_SIZE}
-                    height={TILE_SIZE}
+                    width={TILE_SIZE + 1}  // 1px overlap to prevent seams
+                    height={TILE_SIZE + 1} // 1px overlap to prevent seams
                   />
                 );
               })}

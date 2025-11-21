@@ -324,7 +324,7 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
       </Group>
     );
   } else {
-    // TILED mode - render individual tiles
+    // TILED mode - render individual tiles with 1px overlap to prevent seams
     if (imageState.tiles.size === 0) return null;
 
     return (
@@ -346,8 +346,8 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
               image={tile.imageObj}
               x={tile.x * TILE_SIZE}
               y={tile.y * TILE_SIZE}
-              width={TILE_SIZE}
-              height={TILE_SIZE}
+              width={TILE_SIZE + 1}  // 1px overlap to prevent seams
+              height={TILE_SIZE + 1} // 1px overlap to prevent seams
               opacity={micrograph.opacity ?? 1.0}
             />
           );
