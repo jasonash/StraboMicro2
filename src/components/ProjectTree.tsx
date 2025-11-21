@@ -51,12 +51,10 @@ function MicrographThumbnail({ micrographId, projectId, micrographName }: Microg
     setLoading(true);
 
     try {
-      // Get thumbnail path
-      const path = await window.api.getCompositeThumbnailPath(projectId, micrographId);
+      // Load thumbnail as base64 data URL from main process
+      const dataUrl = await window.api.loadCompositeThumbnail(projectId, micrographId);
 
-      if (path) {
-        // Load thumbnail as data URL with cache-busting timestamp
-        const dataUrl = `file://${path}?t=${Date.now()}`;
+      if (dataUrl) {
         setThumbnailDataUrl(dataUrl);
       } else {
         setThumbnailDataUrl(null);

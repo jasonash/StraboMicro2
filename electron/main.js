@@ -1320,6 +1320,34 @@ ipcMain.handle('composite:get-thumbnail-path', async (event, projectId, microgra
 });
 
 /**
+ * Load composite thumbnail as base64 data URL
+ */
+ipcMain.handle('composite:load-thumbnail', async (event, projectId, micrographId) => {
+  try {
+    const folderPaths = await projectFolders.getProjectFolderPaths(projectId);
+    const thumbnailPath = path.join(folderPaths.compositeThumbnails, micrographId);
+
+    // Check if file exists
+    const fs = require('fs').promises;
+    try {
+      await fs.access(thumbnailPath);
+
+      // Read file as buffer and convert to base64
+      const buffer = await fs.readFile(thumbnailPath);
+      const base64 = buffer.toString('base64');
+      const dataUrl = `data:image/jpeg;base64,${base64}`;
+
+      return dataUrl;
+    } catch {
+      return null;
+    }
+  } catch (error) {
+    log.error('[IPC] Error loading composite thumbnail:', error);
+    return null;
+  }
+});
+
+/**
  * ============================================================================
  * PROJECT SERIALIZATION HANDLERS
  * ============================================================================

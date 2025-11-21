@@ -182,6 +182,7 @@ interface Window {
       height: number;
     }>;
     getCompositeThumbnailPath: (projectId: string, micrographId: string) => Promise<string>;
+    loadCompositeThumbnail: (projectId: string, micrographId: string) => Promise<string | null>;
 
     // Project serialization
     saveProjectJson: (project: any, projectId: string) => Promise<{

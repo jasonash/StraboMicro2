@@ -74,6 +74,8 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('composite:generate-thumbnail', projectId, micrographId, projectData),
   getCompositeThumbnailPath: (projectId, micrographId) =>
     ipcRenderer.invoke('composite:get-thumbnail-path', projectId, micrographId),
+  loadCompositeThumbnail: (projectId, micrographId) =>
+    ipcRenderer.invoke('composite:load-thumbnail', projectId, micrographId),
 
   // Project serialization
   saveProjectJson: (project, projectId) => ipcRenderer.invoke('project:save-json', project, projectId),
