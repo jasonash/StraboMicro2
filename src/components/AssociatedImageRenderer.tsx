@@ -117,40 +117,51 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
 
   /**
    * Calculate position and scale for rendering overlay on parent
+   *
+   * IMPORTANT: offsetInParent is the top-left corner position BEFORE rotation.
+   * For Konva rotation to work correctly, we need to:
+   * 1. Convert top-left to center position
+   * 2. Set offsetX/offsetY to half the image dimensions
+   * 3. This makes the Group rotate around its center
    */
   const overlayTransform = useMemo(() => {
     const childPxPerCm = micrograph.scalePixelsPerCentimeter || 100;
     const parentPxPerCm = parentMetadata.scalePixelsPerCentimeter || 100;
     const scaleFactor = parentPxPerCm / childPxPerCm;
 
-    let x = 0;
-    let y = 0;
+    const imageWidth = micrograph.imageWidth || 0;
+    const imageHeight = micrograph.imageHeight || 0;
+    const scaledWidth = imageWidth * scaleFactor;
+    const scaledHeight = imageHeight * scaleFactor;
+
+    let centerX = 0;
+    let centerY = 0;
 
     // Get position from appropriate field
     if (micrograph.offsetInParent) {
-      x = micrograph.offsetInParent.X;
-      y = micrograph.offsetInParent.Y;
+      // offsetInParent is top-left corner position, convert to center
+      const topLeftX = micrograph.offsetInParent.X;
+      const topLeftY = micrograph.offsetInParent.Y;
+      centerX = topLeftX + scaledWidth / 2;
+      centerY = topLeftY + scaledHeight / 2;
     } else if (micrograph.pointInParent) {
-      // For point placement, position is the center
-      const centerX = micrograph.pointInParent.x;
-      const centerY = micrograph.pointInParent.y;
-      const width = (micrograph.imageWidth || 0) * scaleFactor;
-      const height = (micrograph.imageHeight || 0) * scaleFactor;
-      x = centerX - width / 2;
-      y = centerY - height / 2;
+      // For point placement, position is already the center
+      centerX = micrograph.pointInParent.x;
+      centerY = micrograph.pointInParent.y;
     } else if (micrograph.xOffset !== undefined && micrograph.yOffset !== undefined) {
-      x = micrograph.xOffset;
-      y = micrograph.yOffset;
+      // Legacy fields - assume top-left, convert to center
+      centerX = micrograph.xOffset + scaledWidth / 2;
+      centerY = micrograph.yOffset + scaledHeight / 2;
     }
 
     return {
-      x,
-      y,
+      x: centerX,
+      y: centerY,
       scaleX: scaleFactor,
       scaleY: scaleFactor,
       rotation: micrograph.rotation || 0,
-      offsetX: 0,
-      offsetY: 0,
+      offsetX: imageWidth / 2,  // Rotate around center
+      offsetY: imageHeight / 2, // Rotate around center
     };
   }, [micrograph, parentMetadata]);
 
