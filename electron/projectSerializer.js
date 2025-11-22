@@ -309,12 +309,11 @@ function deserializeMicrograph(micrograph) {
     parentID: micrograph.parentID,
     name: micrograph.name,
     imageType: micrograph.imageType,
-    // Store just the ID as imagePath (image is in project/images/<id>)
-    imagePath: micrograph.id,
-    imageWidth: micrograph.width,
-    imageHeight: micrograph.height,
-    width: micrograph.width, // Legacy field
-    height: micrograph.height, // Legacy field
+    // NOTE: Runtime-only fields NOT in legacy schema (do not serialize):
+    //   - imagePath (runtime file path, images stored separately in .smz)
+    //   - imageWidth/imageHeight (use width/height instead)
+    width: micrograph.width,
+    height: micrograph.height,
     opacity: micrograph.opacity,
     scale: micrograph.scale,
     polish: micrograph.polish,
