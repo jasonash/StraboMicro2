@@ -2197,7 +2197,10 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
                 yOffset,
                 rotation: micrograph.rotation ?? 0,
                 newImagePixelsPerCm,
-                pointInParent: micrograph.pointInParent,
+                pointInParent: micrograph.pointInParent ? {
+                  x: micrograph.pointInParent.x ?? micrograph.pointInParent.X ?? 0,
+                  y: micrograph.pointInParent.y ?? micrograph.pointInParent.Y ?? 0
+                } : undefined,
               };
             }
           }

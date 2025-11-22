@@ -18,6 +18,8 @@ import {
   DialogContent,
 } from '@mui/material';
 import { useAppStore } from '@/store';
+import { FoldInfoType, FoldType } from '@/types/project-types';
+import { findMicrographById, findSpotById } from '@/store/helpers';
 import { ListManager } from '../reusable/ListManager';
 import { FoldAddForm, FoldData } from './FoldAddForm';
 import { FoldListItem } from './FoldListItem';
@@ -29,11 +31,6 @@ interface FoldsDialogProps {
   spotId?: string;
 }
 
-interface FoldInfoData {
-  folds: FoldData[];
-  notes: string;
-}
-
 export function FoldsDialog({
   isOpen,
   onClose,
@@ -41,30 +38,43 @@ export function FoldsDialog({
   spotId,
 }: FoldsDialogProps) {
   const project = useAppStore((state) => state.project);
+  const updateMicrographMetadata = useAppStore((state) => state.updateMicrographMetadata);
+  const updateSpotData = useAppStore((state) => state.updateSpotData);
 
-  const [foldInfo, setFoldInfo] = useState<FoldInfoData>({
-    folds: [],
-    notes: '',
-  });
+  // Local state uses non-nullable types for ListManager
+  const [folds, setFolds] = useState<FoldData[]>([]);
+  const [notes, setNotes] = useState<string>('');
 
   // Load existing data when dialog opens
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen || !project) return;
 
-    // TODO: Load actual foldInfo from micrograph or spot
-    // For now, initialize with empty data
-    setFoldInfo({
-      folds: [],
-      notes: '',
-    });
+    let existingData: FoldInfoType | null | undefined = null;
+
+    if (micrographId) {
+      const micrograph = findMicrographById(project, micrographId);
+      existingData = micrograph?.foldInfo;
+    } else if (spotId) {
+      const spot = findSpotById(project, spotId);
+      existingData = spot?.foldInfo;
+    }
+
+    setFolds((existingData?.folds || []) as FoldData[]);
+    setNotes(existingData?.notes || '');
   }, [isOpen, micrographId, spotId, project]);
 
   const handleSave = (data: { items: FoldData[]; notes: string }) => {
-    // TODO: Save foldInfo to store
-    console.log('Saving fold info:', {
-      folds: data.items,
+    const foldInfo: FoldInfoType = {
+      folds: data.items as FoldType[],
       notes: data.notes,
-    });
+    };
+
+    if (micrographId) {
+      updateMicrographMetadata(micrographId, { foldInfo });
+    } else if (spotId) {
+      updateSpotData(spotId, { foldInfo });
+    }
+
     onClose();
   };
 
@@ -91,8 +101,8 @@ export function FoldsDialog({
       <DialogTitle>{title}</DialogTitle>
       <DialogContent sx={{ display: 'flex', flexDirection: 'column', p: 3 }}>
         <ListManager<FoldData>
-          items={foldInfo.folds}
-          notes={foldInfo.notes}
+          items={folds}
+          notes={notes}
           onSave={handleSave}
           onCancel={handleCancel}
           title="Folds"

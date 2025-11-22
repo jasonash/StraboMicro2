@@ -1,36 +1,32 @@
 /**
- * StraboMicro Project Data Model
+ * Legacy Type Definitions for StraboMicro2
  *
- * TypeScript interfaces for StraboMicro2 project structure
- * Merged from modern project-schema.json and legacy JavaFX format
+ * This file contains TypeScript interfaces generated from the complete legacy JSON schema.
+ * These types represent the JavaFX StraboMicro project.json format and are used for
+ * backward compatibility when reading legacy .smz project files.
  *
- * This file maintains backward compatibility with legacy .smz files while
- * supporting modern improvements. Most fields are optional with null safety
- * to handle legacy data gracefully.
+ * IMPORTANT: This is auto-generated from complete-legacy-schema.json
+ * Field names match EXACTLY (case-sensitive) with the legacy format.
+ * DO NOT modify field names without updating the schema.
  *
- * Last updated: 2025-11-22
+ * Total interfaces: 63+
+ * Source: /Users/jason/Desktop/StraboMicro2/docs/complete-legacy-schema.json
+ * Generated: 2025-11-22
  */
 
 // ============================================================================
-// ROOT PROJECT STRUCTURE
+// CORE METADATA TYPES
 // ============================================================================
 
-export interface ProjectMetadata {
-  id: string;
-  name: string;
-  description?: string | null;
+/**
+ * Top-level project metadata
+ * Contains datasets, groups, and tags
+ */
+export interface ProjectMetadataType {
+  id?: string | null;
+  name?: string | null;
   startDate?: string | null;
   endDate?: string | null;
-  owner?: string | null;
-  ownerAffiliation?: string | null;
-  ownerEmail?: string | null;
-  ownerORCID?: string | null;
-  principalInvestigator?: string | null;
-  principalInvestigatorAffiliation?: string | null;
-  principalInvestigatorEmail?: string | null;
-  principalInvestigatorORCID?: string | null;
-  grantNumber?: string | null;
-  fundingSource?: string | null;
   purposeOfStudy?: string | null;
   otherTeamMembers?: string | null;
   areaOfInterest?: string | null;
@@ -41,34 +37,39 @@ export interface ProjectMetadata {
   date?: string | null;
   modifiedTimestamp?: string | null;
   projectLocation?: string | null;
-  datasets?: DatasetMetadata[] | null;
-  groups?: GroupMetadata[] | null;
-  tags?: Tag[] | null;
+  datasets?: DatasetMetadataType[] | null;
+  groups?: GroupMetadataType[] | null;
+  tags?: TagType[] | null;
 }
 
-export interface DatasetMetadata {
-  id: string;
-  name: string;
+/**
+ * Dataset metadata
+ * Contains samples
+ */
+export interface DatasetMetadataType {
+  id?: string | null;
+  name?: string | null;
   date?: string | null;
   modifiedTimestamp?: string | null;
-  samples?: SampleMetadata[] | null;
+  samples?: SampleMetadataType[] | null;
 }
 
-export interface SampleMetadata {
-  id: string;
-  name: string;
+/**
+ * Sample metadata
+ * Contains micrographs and geological sample information
+ */
+export interface SampleMetadataType {
+  id?: string | null;
   existsOnServer?: boolean | null;
   label?: string | null;
   sampleID?: string | null;
   longitude?: number | null;
   latitude?: number | null;
   mainSamplingPurpose?: string | null;
-  otherSamplingPurpose?: string | null;
   sampleDescription?: string | null;
   materialType?: string | null;
   inplacenessOfSample?: string | null;
   orientedSample?: string | null;
-  sampleOrientationNotes?: string | null;
   sampleSize?: string | null;
   degreeOfWeathering?: string | null;
   sampleNotes?: string | null;
@@ -77,221 +78,121 @@ export interface SampleMetadata {
   lithology?: string | null;
   sampleUnit?: string | null;
   otherMaterialType?: string | null;
-  orientation?: string | null;
-  orientationQuality?: string | null;
-  samplingPurpose?: string | null;
-  rockType?: string | null;
-  fieldRelationships?: string | null;
-  physiographicSetting?: string | null;
-  tectSetting?: string | null;
-  notes?: string | null;
-  mainLithCategory?: string | null;
-  mainRockType?: string | null;
-  micrographs?: MicrographMetadata[] | null;
+  sampleOrientationNotes?: string | null;
+  otherSamplingPurpose?: string | null;
+  micrographs?: MicrographMetadataType[] | null;
   isExpanded?: boolean | null;
   isSpotExpanded?: boolean | null;
 }
 
-// ============================================================================
-// MICROGRAPH (IMAGE) STRUCTURE
-// ============================================================================
-
 /**
- * Micrograph orientation information
- * Supports multiple orientation methods: unoriented, trend/plunge, and fabric reference
+ * Micrograph metadata
+ * Core image entity containing spots and all feature info types
  */
-export interface MicrographOrientation {
-  orientationMethod?: string | null;
-  // Trend and Plunge fields
-  topTrend?: number | null;
-  topPlunge?: number | null;
-  topReferenceCorner?: string | null;
-  sideTrend?: number | null;
-  sidePlunge?: number | null;
-  sideReferenceCorner?: string | null;
-  trendPlungeStrike?: number | null;
-  trendPlungeDip?: number | null;
-  // Fabric Reference fields
-  fabricReference?: string | null;
-  fabricStrike?: number | null;
-  fabricDip?: number | null;
-  fabricTrend?: number | null;
-  fabricPlunge?: number | null;
-  fabricRake?: number | null;
-  lookDirection?: string | null;
-  topCorner?: string | null;
-}
-
-export interface MicrographMetadata {
-  id: string;
-  name: string;
-  notes?: string | null;
-
-  // Image file properties
-  imageFilename?: string | null;
-  imagePath?: string | null;  // Full path to image file (not serialized in .smz, runtime only)
+export interface MicrographMetadataType {
+  id?: string | null;
+  parentID?: string | null;
+  name?: string | null;
   imageType?: string | null;
-  imageWidth?: number | null;
-  imageHeight?: number | null;
-  width?: number | null;  // Alias for imageWidth (used in some contexts)
-  height?: number | null;  // Alias for imageHeight (used in some contexts)
-  micronPerPixel?: number | null;
-
-  // Scale information
+  width?: number | null;
+  height?: number | null;
+  opacity?: number | null;
   scale?: string | null;
-  scalePixelsPerCentimeter?: number | null;  // Primary scale measurement
   polish?: boolean | null;
   polishDescription?: string | null;
   description?: string | null;
-
-  // Spatial registration (for associated/overlay images)
-  parentID?: string | null;  // References parent micrograph for hierarchical overlay
-  xOffset?: number | null;
-  yOffset?: number | null;
-  offsetInParent?: SimpleCoord | null;  // Top-left corner in original parent coordinates (rectangle placement)
+  notes?: string | null;
+  scalePixelsPerCentimeter?: number | null;
+  offsetInParent?: SimpleCoordType | null;
+  pointInParent?: SimpleCoordType | null;
   rotation?: number | null;
-  scaleX?: number | null;  // Scale factor in X direction
-  scaleY?: number | null;  // Scale factor in Y direction
-  pointInParent?: SimpleCoord | null;  // For point-based placement
-  flipped?: boolean | null;
-  isFlipped?: boolean | null;
-  opacity?: number | null;
-  visible?: boolean | null;
-  isMicroVisible?: boolean | null;
-
-  // Orientation information
-  orientationInfo?: MicrographOrientation | null;
-
-  // Supporting data
-  instrument?: InstrumentType | null;
-  associatedFiles?: AssociatedFileType[] | null;
-  links?: LinkType[] | null;
-
-  // Annotations
-  spots?: Spot[] | null;
-
-  // Feature info types (use Info object pattern - singular, not plural)
   mineralogy?: MineralogyType | null;
+  spots?: SpotMetadataType[] | null;
   grainInfo?: GrainInfoType | null;
   fabricInfo?: FabricInfoType | null;
-  fractureInfo?: FractureInfoType | null;
-  foldInfo?: FoldInfoType | null;
-  veinInfo?: VeinInfoType | null;
+  orientationInfo?: MicrographOrientationType | null;
+  associatedFiles?: AssociatedFileType[] | null;
+  links?: LinkType[] | null;
+  instrument?: InstrumentType | null;
   clasticDeformationBandInfo?: ClasticDeformationBandInfoType | null;
   grainBoundaryInfo?: GrainBoundaryInfoType | null;
   intraGrainInfo?: IntraGrainInfoType | null;
+  veinInfo?: VeinInfoType | null;
   pseudotachylyteInfo?: PseudotachylyteInfoType | null;
+  foldInfo?: FoldInfoType | null;
   faultsShearZonesInfo?: FaultsShearZonesInfoType | null;
   extinctionMicrostructureInfo?: ExtinctionMicrostructureInfoType | null;
   lithologyInfo?: LithologyInfoType | null;
-
-  // UI state (not serialized, runtime only)
+  fractureInfo?: FractureInfoType | null;
+  isMicroVisible?: boolean | null;
   isExpanded?: boolean | null;
   isSpotExpanded?: boolean | null;
+  isFlipped?: boolean | null;
   tags?: string[] | null;
 }
-
-// ============================================================================
-// SPOT (ANNOTATION) STRUCTURE
-// ============================================================================
 
 /**
  * Spot metadata
  * Annotated region on a micrograph with geometry and feature info
  */
-export interface Spot {
-  id: string;
-  name: string;
-  notes?: string | null;
+export interface SpotMetadataType {
+  id?: string | null;
+  name?: string | null;
   labelColor?: string | null;
   showLabel?: boolean | null;
   color?: string | null;
   date?: string | null;
   time?: string | null;
+  notes?: string | null;
   modifiedTimestamp?: number | null;
-
-  // Geometry (modern GeoJSON-style or legacy points array)
-  geometry?: Geometry | null;
   geometryType?: string | null;
-  points?: SimpleCoord[] | null;
-
-  // Supporting data
-  associatedFiles?: AssociatedFileType[] | null;
-  links?: LinkType[] | null;
-  images?: ImageType[] | null;
-
-  // Feature info types (use Info object pattern - singular, not plural)
+  points?: SimpleCoordType[] | null;
   mineralogy?: MineralogyType | null;
   grainInfo?: GrainInfoType | null;
   fabricInfo?: FabricInfoType | null;
-  fractureInfo?: FractureInfoType | null;
-  foldInfo?: FoldInfoType | null;
-  veinInfo?: VeinInfoType | null;
+  associatedFiles?: AssociatedFileType[] | null;
+  links?: LinkType[] | null;
   clasticDeformationBandInfo?: ClasticDeformationBandInfoType | null;
   grainBoundaryInfo?: GrainBoundaryInfoType | null;
   intraGrainInfo?: IntraGrainInfoType | null;
+  veinInfo?: VeinInfoType | null;
   pseudotachylyteInfo?: PseudotachylyteInfoType | null;
+  foldInfo?: FoldInfoType | null;
   faultsShearZonesInfo?: FaultsShearZonesInfoType | null;
   extinctionMicrostructureInfo?: ExtinctionMicrostructureInfoType | null;
   lithologyInfo?: LithologyInfoType | null;
-
-  // UI state
+  fractureInfo?: FractureInfoType | null;
   tags?: string[] | null;
 }
 
-// ============================================================================
-// GEOMETRY (GeoJSON-like)
-// ============================================================================
-
-export type GeometryType = 'Point' | 'LineString' | 'Polygon';
-
-export interface Geometry {
-  type: GeometryType;
-  coordinates: number[] | number[][] | number[][][];
-}
-
-export interface PointGeometry extends Geometry {
-  type: 'Point';
-  coordinates: [number, number];
-}
-
-export interface LineStringGeometry extends Geometry {
-  type: 'LineString';
-  coordinates: Array<[number, number]>;
-}
-
-export interface PolygonGeometry extends Geometry {
-  type: 'Polygon';
-  coordinates: Array<Array<[number, number]>>;
-}
-
-// ============================================================================
-// ORGANIZATION STRUCTURES
-// ============================================================================
-
-export interface GroupMetadata {
-  id: string;
-  name: string;
-  spotIDs?: string[] | null;
+/**
+ * Group metadata
+ * Collection of micrographs for organizational purposes
+ */
+export interface GroupMetadataType {
+  id?: string | null;
+  name?: string | null;
   micrographs?: string[] | null;
   isExpanded?: boolean | null;
 }
 
-export interface Tag {
-  id: string;
-  name: string;
+/**
+ * Tag metadata
+ * User-defined tags for categorization
+ */
+export interface TagType {
+  id?: string | null;
+  name?: string | null;
   tagType?: string | null;
   tagSubtype?: string | null;
   otherConcept?: string | null;
   otherDocumentation?: string | null;
   otherTagType?: string | null;
-  color?: string | null;
   lineColor?: string | null;
   fillColor?: string | null;
   transparency?: number | null;
   tagSize?: number | null;
   notes?: string | null;
-  spotIDs?: string[] | null;
 }
 
 // ============================================================================
@@ -300,13 +201,45 @@ export interface Tag {
 
 /**
  * Simple 2D coordinate
- * Used for offsetInParent and pointInParent
  */
-export interface SimpleCoord {
+export interface SimpleCoordType {
   X?: number | null;
   Y?: number | null;
-  x?: number | null;  // Lowercase variant for compatibility
-  y?: number | null;
+}
+
+/**
+ * Micrograph orientation information
+ * Supports multiple orientation methods
+ */
+export interface MicrographOrientationType {
+  orientationMethod?: string | null;
+  topTrend?: number | null;
+  topPlunge?: number | null;
+  topReferenceCorner?: string | null;
+  sideTrend?: number | null;
+  sidePlunge?: number | null;
+  sideReferenceCorner?: string | null;
+  trendPlungeStrike?: number | null;
+  trendPlungeDip?: number | null;
+  fabricStrike?: number | null;
+  fabricDip?: number | null;
+  fabricTrend?: number | null;
+  fabricPlunge?: number | null;
+  fabricRake?: number | null;
+  fabricReference?: string | null;
+  lookDirection?: string | null;
+  topCorner?: string | null;
+}
+
+/**
+ * Parent location information for associated images
+ */
+export interface ParentLocationInfoType {
+  scalePixelsPerCentimeter?: number | null;
+  offsetInParent?: SimpleCoordType | null;
+  rotation?: number | null;
+  width?: number | null;
+  height?: number | null;
 }
 
 /**
@@ -326,16 +259,6 @@ export interface AssociatedFileType {
 export interface LinkType {
   label?: string | null;
   url?: string | null;
-}
-
-/**
- * Image metadata
- */
-export interface ImageType {
-  fileName?: string | null;
-  filePath?: string | null;
-  imageType?: string | null;
-  notes?: string | null;
 }
 
 // ============================================================================
@@ -360,6 +283,98 @@ export interface MineralType {
   name?: string | null;
   operator?: string | null;
   percentage?: number | null;
+}
+
+// ============================================================================
+// INSTRUMENT TYPE (65 fields!)
+// ============================================================================
+
+/**
+ * Instrument metadata
+ * Comprehensive analytical instrument parameters
+ * Used for SEM, TEM, EBSD, optical microscopy, etc.
+ */
+export interface InstrumentType {
+  instrumentType?: string | null;
+  otherInstrumentType?: string | null;
+  dataType?: string | null;
+  otherDataType?: string | null;
+  instrumentBrand?: string | null;
+  instrumentModel?: string | null;
+  university?: string | null;
+  laboratory?: string | null;
+  dataCollectionSoftware?: string | null;
+  dataCollectionSoftwareVersion?: string | null;
+  postProcessingSoftware?: string | null;
+  postProcessingSoftwareVersion?: string | null;
+  filamentType?: string | null;
+  instrumentDetectors?: InstrumentDetectorType[] | null;
+  instrumentNotes?: string | null;
+  accelerationVoltage?: number | null;
+  beamCurrent?: number | null;
+  spotSize?: number | null;
+  aperture?: number | null;
+  cameraLength?: number | null;
+  cameraBinning?: string | null;
+  analysisDwellTime?: number | null;
+  dwellTime?: number | null;
+  workingDistance?: number | null;
+  instrumentPurged?: boolean | null;
+  instrumentPurgedGasType?: string | null;
+  environmentPurged?: boolean | null;
+  environmentPurgedGasType?: string | null;
+  scanTime?: number | null;
+  resolution?: number | null;
+  spectralResolution?: number | null;
+  wavenumberRange?: string | null;
+  averaging?: string | null;
+  backgroundComposition?: string | null;
+  backgroundCorrectionFrequencyAndNotes?: string | null;
+  excitationWavelength?: number | null;
+  laserPower?: number | null;
+  diffractionGrating?: number | null;
+  integrationTime?: number | null;
+  objective?: number | null;
+  calibration?: string | null;
+  notesOnPostProcessing?: string | null;
+  atomicMode?: string | null;
+  cantileverStiffness?: number | null;
+  tipDiameter?: number | null;
+  operatingFrequency?: number | null;
+  scanDimensions?: string | null;
+  scanArea?: string | null;
+  spatialResolution?: number | null;
+  temperatureOfRoom?: number | null;
+  relativeHumidity?: number | null;
+  sampleTemperature?: number | null;
+  stepSize?: number | null;
+  backgroundDwellTime?: number | null;
+  standards?: InstrumentWDSStandardsType[] | null;
+  backgroundCorrectionTechnique?: string | null;
+  deadTime?: number | null;
+  calibrationStandardNotes?: string | null;
+  notesOnCrystalStructuresUsed?: string | null;
+  color?: string | null;
+  rgbCheck?: string | null;
+  energyLoss?: string | null;
+}
+
+/**
+ * Instrument detector metadata
+ */
+export interface InstrumentDetectorType {
+  detectorType?: string | null;
+  detectorMake?: string | null;
+  detectorModel?: string | null;
+}
+
+/**
+ * WDS standards metadata
+ */
+export interface InstrumentWDSStandardsType {
+  element?: string | null;
+  crystalType?: string | null;
+  standardName?: string | null;
 }
 
 // ============================================================================
@@ -911,182 +926,3 @@ export interface LithologyType {
   level3?: string | null;
   level3Other?: string | null;
 }
-
-// ============================================================================
-// INSTRUMENT TYPE (65 fields!)
-// ============================================================================
-
-/**
- * Instrument metadata
- * Comprehensive analytical instrument parameters
- * Used for SEM, TEM, EBSD, optical microscopy, etc.
- */
-export interface InstrumentType {
-  instrumentType?: string | null;
-  otherInstrumentType?: string | null;
-  dataType?: string | null;
-  otherDataType?: string | null;
-  instrumentBrand?: string | null;
-  instrumentModel?: string | null;
-  university?: string | null;
-  laboratory?: string | null;
-  dataCollectionSoftware?: string | null;
-  dataCollectionSoftwareVersion?: string | null;
-  postProcessingSoftware?: string | null;
-  postProcessingSoftwareVersion?: string | null;
-  filamentType?: string | null;
-  instrumentDetectors?: InstrumentDetectorType[] | null;
-  instrumentNotes?: string | null;
-  accelerationVoltage?: number | null;
-  beamCurrent?: number | null;
-  spotSize?: number | null;
-  aperture?: number | null;
-  cameraLength?: number | null;
-  cameraBinning?: string | null;
-  analysisDwellTime?: number | null;
-  dwellTime?: number | null;
-  workingDistance?: number | null;
-  instrumentPurged?: boolean | null;
-  instrumentPurgedGasType?: string | null;
-  environmentPurged?: boolean | null;
-  environmentPurgedGasType?: string | null;
-  scanTime?: number | null;
-  resolution?: number | null;
-  spectralResolution?: number | null;
-  wavenumberRange?: string | null;
-  averaging?: string | null;
-  backgroundComposition?: string | null;
-  backgroundCorrectionFrequencyAndNotes?: string | null;
-  excitationWavelength?: number | null;
-  laserPower?: number | null;
-  diffractionGrating?: number | null;
-  integrationTime?: number | null;
-  objective?: number | null;
-  calibration?: string | null;
-  notesOnPostProcessing?: string | null;
-  atomicMode?: string | null;
-  cantileverStiffness?: number | null;
-  tipDiameter?: number | null;
-  operatingFrequency?: number | null;
-  scanDimensions?: string | null;
-  scanArea?: string | null;
-  spatialResolution?: number | null;
-  temperatureOfRoom?: number | null;
-  relativeHumidity?: number | null;
-  sampleTemperature?: number | null;
-  stepSize?: number | null;
-  backgroundDwellTime?: number | null;
-  standards?: InstrumentWDSStandardsType[] | null;
-  backgroundCorrectionTechnique?: string | null;
-  deadTime?: number | null;
-  calibrationStandardNotes?: string | null;
-  notesOnCrystalStructuresUsed?: string | null;
-  color?: string | null;
-  rgbCheck?: string | null;
-  energyLoss?: string | null;
-}
-
-/**
- * Instrument detector metadata
- */
-export interface InstrumentDetectorType {
-  detectorType?: string | null;
-  detectorMake?: string | null;
-  detectorModel?: string | null;
-}
-
-/**
- * WDS standards metadata
- */
-export interface InstrumentWDSStandardsType {
-  element?: string | null;
-  crystalType?: string | null;
-  standardName?: string | null;
-}
-
-// ============================================================================
-// UTILITY TYPES AND TYPE GUARDS
-// ============================================================================
-
-/**
- * Type guard to check if geometry is a Point
- */
-export function isPointGeometry(geometry: Geometry): geometry is PointGeometry {
-  return geometry.type === 'Point';
-}
-
-/**
- * Type guard to check if geometry is a LineString
- */
-export function isLineStringGeometry(geometry: Geometry): geometry is LineStringGeometry {
-  return geometry.type === 'LineString';
-}
-
-/**
- * Type guard to check if geometry is a Polygon
- */
-export function isPolygonGeometry(geometry: Geometry): geometry is PolygonGeometry {
-  return geometry.type === 'Polygon';
-}
-
-/**
- * Union type of all feature Info container types
- */
-export type FeatureInfoType =
-  | MineralogyType
-  | GrainInfoType
-  | FabricInfoType
-  | FractureInfoType
-  | FoldInfoType
-  | VeinInfoType
-  | ClasticDeformationBandInfoType
-  | GrainBoundaryInfoType
-  | IntraGrainInfoType
-  | PseudotachylyteInfoType
-  | FaultsShearZonesInfoType
-  | ExtinctionMicrostructureInfoType
-  | LithologyInfoType;
-
-/**
- * Type for feature type names (using modern singular Info pattern)
- */
-export type FeatureTypeName =
-  | 'mineralogy'
-  | 'grainInfo'
-  | 'fabricInfo'
-  | 'fractureInfo'
-  | 'foldInfo'
-  | 'veinInfo'
-  | 'clasticDeformationBandInfo'
-  | 'grainBoundaryInfo'
-  | 'intraGrainInfo'
-  | 'pseudotachylyteInfo'
-  | 'faultsShearZonesInfo'
-  | 'extinctionMicrostructureInfo'
-  | 'lithologyInfo';
-
-// ============================================================================
-// COMPATIBILITY ALIASES
-// ============================================================================
-
-/**
- * Type aliases for backward compatibility with existing code
- * These allow both modern and legacy naming conventions
- */
-
-// Main entity type aliases (adding 'Type' suffix for consistency with legacy)
-export type { ProjectMetadata as ProjectMetadataType };
-export type { DatasetMetadata as DatasetMetadataType };
-export type { SampleMetadata as SampleMetadataType };
-export type { MicrographMetadata as MicrographMetadataType };
-export type { Spot as SpotMetadataType };
-export type { GroupMetadata as GroupMetadataType };
-export type { Tag as TagType };
-
-// Geometry type aliases
-// Note: GeometryType is already defined as a string union type above
-// export type { Geometry as GeometryType }; // Commented to avoid conflict
-export type { SimpleCoord as SimpleCoordType };
-
-// Orientation alias
-export type { MicrographOrientation as MicrographOrientationType };

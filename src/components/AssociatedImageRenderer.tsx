@@ -123,12 +123,13 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
     let topLeftY = 0;
 
     if (micrograph.offsetInParent) {
-      topLeftX = micrograph.offsetInParent.X;
-      topLeftY = micrograph.offsetInParent.Y;
+      topLeftX = micrograph.offsetInParent.X ?? micrograph.offsetInParent.x ?? 0;
+      topLeftY = micrograph.offsetInParent.Y ?? micrograph.offsetInParent.y ?? 0;
     } else if (micrograph.pointInParent) {
-      topLeftX = micrograph.pointInParent.x - scaledWidth / 2;
-      topLeftY = micrograph.pointInParent.y - scaledHeight / 2;
-    } else if (micrograph.xOffset !== undefined && micrograph.yOffset !== undefined) {
+      topLeftX = (micrograph.pointInParent.x ?? micrograph.pointInParent.X ?? 0) - scaledWidth / 2;
+      topLeftY = (micrograph.pointInParent.y ?? micrograph.pointInParent.Y ?? 0) - scaledHeight / 2;
+    } else if (micrograph.xOffset !== undefined && micrograph.xOffset !== null &&
+               micrograph.yOffset !== undefined && micrograph.yOffset !== null) {
       topLeftX = micrograph.xOffset;
       topLeftY = micrograph.yOffset;
     }
@@ -202,15 +203,16 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
     // Get position from appropriate field
     if (micrograph.offsetInParent) {
       // offsetInParent is top-left corner position, convert to center
-      const topLeftX = micrograph.offsetInParent.X;
-      const topLeftY = micrograph.offsetInParent.Y;
+      const topLeftX = micrograph.offsetInParent.X ?? micrograph.offsetInParent.x ?? 0;
+      const topLeftY = micrograph.offsetInParent.Y ?? micrograph.offsetInParent.y ?? 0;
       centerX = topLeftX + scaledWidth / 2;
       centerY = topLeftY + scaledHeight / 2;
     } else if (micrograph.pointInParent) {
       // For point placement, position is already the center
-      centerX = micrograph.pointInParent.x;
-      centerY = micrograph.pointInParent.y;
-    } else if (micrograph.xOffset !== undefined && micrograph.yOffset !== undefined) {
+      centerX = micrograph.pointInParent.x ?? micrograph.pointInParent.X ?? 0;
+      centerY = micrograph.pointInParent.y ?? micrograph.pointInParent.Y ?? 0;
+    } else if (micrograph.xOffset !== undefined && micrograph.xOffset !== null &&
+               micrograph.yOffset !== undefined && micrograph.yOffset !== null) {
       // Legacy fields - assume top-left, convert to center
       centerX = micrograph.xOffset + scaledWidth / 2;
       centerY = micrograph.yOffset + scaledHeight / 2;

@@ -263,13 +263,13 @@ export function getReferenceMicrographs(
 export function getAvailablePhasesFromMicrograph(
   micrograph: MicrographMetadata | null
 ): string[] {
-  if (!micrograph?.mineralogies || micrograph.mineralogies.length === 0) {
+  if (!micrograph?.mineralogy?.minerals || micrograph.mineralogy.minerals.length === 0) {
     return [];
   }
 
-  // Extract unique mineral names from the mineralogies array
-  const phases = micrograph.mineralogies
-    .map(m => m.mineral)
+  // Extract unique mineral names from the minerals array
+  const phases = micrograph.mineralogy.minerals
+    .map((m) => m.name)
     .filter((name): name is string => !!name); // Type guard to filter out undefined
 
   // Return unique phases
@@ -282,13 +282,13 @@ export function getAvailablePhasesFromMicrograph(
 export function getAvailablePhasesFromSpot(
   spot: Spot | null
 ): string[] {
-  if (!spot?.mineralogies || spot.mineralogies.length === 0) {
+  if (!spot?.mineralogy?.minerals || spot.mineralogy.minerals.length === 0) {
     return [];
   }
 
-  // Extract unique mineral names from the mineralogies array
-  const phases = spot.mineralogies
-    .map(m => m.mineral)
+  // Extract unique mineral names from the minerals array
+  const phases = spot.mineralogy.minerals
+    .map((m) => m.name)
     .filter((name): name is string => !!name);
 
   // Return unique phases

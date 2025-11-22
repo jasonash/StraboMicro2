@@ -18,6 +18,8 @@ import {
   DialogContent,
 } from '@mui/material';
 import { useAppStore } from '@/store';
+import { FractureInfoType, FractureType } from '@/types/project-types';
+import { findMicrographById, findSpotById } from '@/store/helpers';
 import { ListManager } from '../reusable/ListManager';
 import { FractureAddForm, FractureData } from './FractureAddForm';
 import { FractureListItem } from './FractureListItem';
@@ -29,11 +31,6 @@ interface FracturesDialogProps {
   spotId?: string;
 }
 
-interface FractureInfoData {
-  fractures: FractureData[];
-  notes: string;
-}
-
 export function FracturesDialog({
   isOpen,
   onClose,
@@ -41,30 +38,43 @@ export function FracturesDialog({
   spotId,
 }: FracturesDialogProps) {
   const project = useAppStore((state) => state.project);
+  const updateMicrographMetadata = useAppStore((state) => state.updateMicrographMetadata);
+  const updateSpotData = useAppStore((state) => state.updateSpotData);
 
-  const [fractureInfo, setFractureInfo] = useState<FractureInfoData>({
-    fractures: [],
-    notes: '',
-  });
+  // Local state uses non-nullable types for ListManager
+  const [fractures, setFractures] = useState<FractureData[]>([]);
+  const [notes, setNotes] = useState<string>('');
 
   // Load existing data when dialog opens
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen || !project) return;
 
-    // TODO: Load actual fractureInfo from micrograph or spot
-    // For now, initialize with empty data
-    setFractureInfo({
-      fractures: [],
-      notes: '',
-    });
+    let existingData: FractureInfoType | null | undefined = null;
+
+    if (micrographId) {
+      const micrograph = findMicrographById(project, micrographId);
+      existingData = micrograph?.fractureInfo;
+    } else if (spotId) {
+      const spot = findSpotById(project, spotId);
+      existingData = spot?.fractureInfo;
+    }
+
+    setFractures((existingData?.fractures || []) as FractureData[]);
+    setNotes(existingData?.notes || '');
   }, [isOpen, micrographId, spotId, project]);
 
   const handleSave = (data: { items: FractureData[]; notes: string }) => {
-    // TODO: Save fractureInfo to store
-    console.log('Saving fracture info:', {
-      fractures: data.items,
+    const fractureInfo: FractureInfoType = {
+      fractures: data.items as FractureType[],
       notes: data.notes,
-    });
+    };
+
+    if (micrographId) {
+      updateMicrographMetadata(micrographId, { fractureInfo });
+    } else if (spotId) {
+      updateSpotData(spotId, { fractureInfo });
+    }
+
     onClose();
   };
 
@@ -91,8 +101,8 @@ export function FracturesDialog({
       <DialogTitle>{title}</DialogTitle>
       <DialogContent sx={{ display: 'flex', flexDirection: 'column', p: 3 }}>
         <ListManager<FractureData>
-          items={fractureInfo.fractures}
-          notes={fractureInfo.notes}
+          items={fractures}
+          notes={notes}
           onSave={handleSave}
           onCancel={handleCancel}
           title="Fractures"

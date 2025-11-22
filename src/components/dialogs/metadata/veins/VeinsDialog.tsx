@@ -18,6 +18,8 @@ import {
   DialogContent,
 } from '@mui/material';
 import { useAppStore } from '@/store';
+import { VeinInfoType, VeinType } from '@/types/project-types';
+import { findMicrographById, findSpotById } from '@/store/helpers';
 import { ListManager } from '../reusable/ListManager';
 import { VeinAddForm, VeinData } from './VeinAddForm';
 import { VeinListItem } from './VeinListItem';
@@ -29,11 +31,6 @@ interface VeinsDialogProps {
   spotId?: string;
 }
 
-interface VeinInfoData {
-  veins: VeinData[];
-  notes: string;
-}
-
 export function VeinsDialog({
   isOpen,
   onClose,
@@ -41,30 +38,43 @@ export function VeinsDialog({
   spotId,
 }: VeinsDialogProps) {
   const project = useAppStore((state) => state.project);
+  const updateMicrographMetadata = useAppStore((state) => state.updateMicrographMetadata);
+  const updateSpotData = useAppStore((state) => state.updateSpotData);
 
-  const [veinInfo, setVeinInfo] = useState<VeinInfoData>({
-    veins: [],
-    notes: '',
-  });
+  // Local state uses non-nullable types for ListManager
+  const [veins, setVeins] = useState<VeinData[]>([]);
+  const [notes, setNotes] = useState<string>('');
 
   // Load existing data when dialog opens
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen || !project) return;
 
-    // TODO: Load actual veinInfo from micrograph or spot
-    // For now, initialize with empty data
-    setVeinInfo({
-      veins: [],
-      notes: '',
-    });
+    let existingData: VeinInfoType | null | undefined = null;
+
+    if (micrographId) {
+      const micrograph = findMicrographById(project, micrographId);
+      existingData = micrograph?.veinInfo;
+    } else if (spotId) {
+      const spot = findSpotById(project, spotId);
+      existingData = spot?.veinInfo;
+    }
+
+    setVeins((existingData?.veins || []) as VeinData[]);
+    setNotes(existingData?.notes || '');
   }, [isOpen, micrographId, spotId, project]);
 
   const handleSave = (data: { items: VeinData[]; notes: string }) => {
-    // TODO: Save veinInfo to store
-    console.log('Saving vein info:', {
-      veins: data.items,
+    const veinInfo: VeinInfoType = {
+      veins: data.items as VeinType[],
       notes: data.notes,
-    });
+    };
+
+    if (micrographId) {
+      updateMicrographMetadata(micrographId, { veinInfo });
+    } else if (spotId) {
+      updateSpotData(spotId, { veinInfo });
+    }
+
     onClose();
   };
 
@@ -91,8 +101,8 @@ export function VeinsDialog({
       <DialogTitle>{title}</DialogTitle>
       <DialogContent sx={{ display: 'flex', flexDirection: 'column', p: 3 }}>
         <ListManager<VeinData>
-          items={veinInfo.veins}
-          notes={veinInfo.notes}
+          items={veins}
+          notes={notes}
           onSave={handleSave}
           onCancel={handleCancel}
           title="Veins"
