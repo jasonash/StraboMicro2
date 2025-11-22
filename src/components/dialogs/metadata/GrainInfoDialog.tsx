@@ -22,6 +22,7 @@ import {
   RadioGroup,
   FormControlLabel,
   Radio,
+  Typography,
 } from '@mui/material';
 import { useAppStore } from '@/store';
 import { findMicrographById, findSpotById, getAvailablePhasesFromMicrograph, getAvailablePhasesFromSpot } from '@/store/helpers';
@@ -166,6 +167,9 @@ export function GrainInfoDialog({
       ? 'Spot Grain Information'
       : 'Grain Information';
 
+  // Disable all inputs if no mineralogy data is available
+  const hasNoMineralogy = availablePhases.length === 0;
+
   return (
     <Dialog open={isOpen} onClose={handleCancel} maxWidth="md" fullWidth>
       <DialogTitle>{title}</DialogTitle>
@@ -180,7 +184,7 @@ export function GrainInfoDialog({
 
         {/* Tab 1: Grain Size */}
         <TabPanel value={currentTab} index={0}>
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3, opacity: hasNoMineralogy ? 0.5 : 1, pointerEvents: hasNoMineralogy ? 'none' : 'auto' }}>
             <PhaseSelector
               availablePhases={availablePhases}
               selectedPhases={formData.sizePhases}
@@ -233,12 +237,20 @@ export function GrainInfoDialog({
                 />
               </Grid>
             </Grid>
+
+            {hasNoMineralogy && (
+              <Box sx={{ mt: 2, p: 2, bgcolor: 'action.disabledBackground', borderRadius: 1, textAlign: 'center' }}>
+                <Typography variant="body2" color="text.disabled">
+                  All inputs are disabled until mineralogy data is added.
+                </Typography>
+              </Box>
+            )}
           </Box>
         </TabPanel>
 
         {/* Tab 2: Shape */}
         <TabPanel value={currentTab} index={1}>
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3, opacity: hasNoMineralogy ? 0.5 : 1, pointerEvents: hasNoMineralogy ? 'none' : 'auto' }}>
             <PhaseSelector
               availablePhases={availablePhases}
               selectedPhases={formData.shapePhases}
@@ -256,7 +268,7 @@ export function GrainInfoDialog({
 
         {/* Tab 3: Orientation */}
         <TabPanel value={currentTab} index={2}>
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3, opacity: hasNoMineralogy ? 0.5 : 1, pointerEvents: hasNoMineralogy ? 'none' : 'auto' }}>
             <PhaseSelector
               availablePhases={availablePhases}
               selectedPhases={formData.orientationPhases}
@@ -318,7 +330,7 @@ export function GrainInfoDialog({
       </DialogContent>
       <DialogActions>
         <Button onClick={handleCancel}>Cancel</Button>
-        <Button onClick={handleSave} variant="contained">
+        <Button onClick={handleSave} variant="contained" disabled={hasNoMineralogy}>
           Save
         </Button>
       </DialogActions>
