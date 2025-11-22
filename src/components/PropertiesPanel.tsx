@@ -21,7 +21,7 @@ import { NotesDialog } from './dialogs/metadata/NotesDialog';
 import { SampleInfoDialog } from './dialogs/metadata/SampleInfoDialog';
 import { MicrographInfoDialog } from './dialogs/metadata/MicrographInfoDialog';
 import { MineralogyDialog } from './dialogs/metadata/MineralogyDialog';
-import { GrainInfoDialog } from './dialogs/metadata/GrainInfoDialog';
+import { GrainInfoDialog } from './dialogs/metadata/graininfo/GrainInfoDialog';
 import { FabricsDialog } from './dialogs/metadata/fabrics/FabricsDialog';
 import { FracturesDialog } from './dialogs/metadata/fractures/FracturesDialog';
 import { VeinsDialog } from './dialogs/metadata/veins/VeinsDialog';
