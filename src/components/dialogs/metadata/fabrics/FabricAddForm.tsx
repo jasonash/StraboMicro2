@@ -16,13 +16,9 @@ import {
   Checkbox,
   Button,
   Typography,
-  Accordion,
-  AccordionSummary,
-  AccordionDetails,
   IconButton,
   Divider,
 } from '@mui/material';
-import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import DeleteIcon from '@mui/icons-material/Delete';
 import AddIcon from '@mui/icons-material/Add';
 import { AutocompleteMineralSearch } from '../reusable/AutocompleteMineralSearch';
@@ -304,7 +300,7 @@ export function FabricAddForm({ onAdd, onCancel, initialData }: FabricAddFormPro
       <Box>
         <Typography variant="subtitle2" sx={{ mb: 1 }}>Defined By:</Typography>
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-          {/* Composition Checkbox + Expandable */}
+          {/* Composition Checkbox */}
           <Box>
             <FormControlLabel
               control={
@@ -316,72 +312,67 @@ export function FabricAddForm({ onAdd, onCancel, initialData }: FabricAddFormPro
               label="Composition"
             />
             {formData.fabricDefinedBy.includes('Composition') && formData.fabricCompositionInfo && (
-              <Accordion sx={{ mt: 1 }}>
-                <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                  <Typography variant="body2">Composition Details</Typography>
-                </AccordionSummary>
-                <AccordionDetails>
-                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                    {/* Composition Layers */}
-                    <Typography variant="body2" fontWeight="bold">Layers</Typography>
-                    {formData.fabricCompositionInfo.layers.map((layer, index) => (
-                      <Box key={index} sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
-                        <TextField
-                          label="Composition"
-                          value={layer.composition}
-                          onChange={(e) => updateCompositionLayer(index, { composition: e.target.value })}
-                          size="small"
-                          sx={{ flex: 1 }}
-                        />
-                        <UnitInput
-                          value={layer.thickness || ''}
-                          unit={layer.thicknessUnits}
-                          onValueChange={(value) => updateCompositionLayer(index, { thickness: value === '' ? null : value })}
-                          onUnitChange={(unit) => updateCompositionLayer(index, { thicknessUnits: unit })}
-                          units={SIZE_UNITS}
-                          label="Thickness"
-                          min={0}
-                        />
-                        <IconButton
-                          size="small"
-                          onClick={() => removeCompositionLayer(index)}
-                          color="error"
-                        >
-                          <DeleteIcon />
-                        </IconButton>
-                      </Box>
-                    ))}
-                    <Button
-                      startIcon={<AddIcon />}
-                      onClick={addCompositionLayer}
-                      size="small"
-                      variant="outlined"
-                    >
-                      Add Layer
-                    </Button>
+              <Box sx={{ ml: 4, mt: 1, p: 2, bgcolor: 'action.hover', borderRadius: 1 }}>
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  {/* Composition Layers */}
+                  <Typography variant="body2" fontWeight="bold">Layers</Typography>
+                  {formData.fabricCompositionInfo.layers.map((layer, index) => (
+                    <Box key={index} sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                      <TextField
+                        label="Composition"
+                        value={layer.composition}
+                        onChange={(e) => updateCompositionLayer(index, { composition: e.target.value })}
+                        size="small"
+                        sx={{ flex: 1 }}
+                      />
+                      <UnitInput
+                        value={layer.thickness || ''}
+                        unit={layer.thicknessUnits}
+                        onValueChange={(value) => updateCompositionLayer(index, { thickness: value === '' ? null : value })}
+                        onUnitChange={(unit) => updateCompositionLayer(index, { thicknessUnits: unit })}
+                        units={SIZE_UNITS}
+                        label="Thickness"
+                        min={0}
+                      />
+                      <IconButton
+                        size="small"
+                        onClick={() => removeCompositionLayer(index)}
+                        color="error"
+                      >
+                        <DeleteIcon />
+                      </IconButton>
+                    </Box>
+                  ))}
+                  <Button
+                    startIcon={<AddIcon />}
+                    onClick={addCompositionLayer}
+                    size="small"
+                    variant="outlined"
+                  >
+                    Add Layer
+                  </Button>
 
-                    {/* Composition Notes */}
-                    <TextField
-                      label="Composition Notes"
-                      value={formData.fabricCompositionInfo.compositionNotes}
-                      onChange={(e) => setFormData(prev => ({
-                        ...prev,
-                        fabricCompositionInfo: {
-                          ...prev.fabricCompositionInfo!,
-                          compositionNotes: e.target.value,
-                        },
-                      }))}
-                      multiline
-                      rows={2}
-                      size="small"
-                    />
-                  </Box>
-                </AccordionDetails>
-              </Accordion>
+                  {/* Composition Notes */}
+                  <TextField
+                    label="Composition Notes"
+                    value={formData.fabricCompositionInfo.compositionNotes}
+                    onChange={(e) => setFormData(prev => ({
+                      ...prev,
+                      fabricCompositionInfo: {
+                        ...prev.fabricCompositionInfo!,
+                        compositionNotes: e.target.value,
+                      },
+                    }))}
+                    multiline
+                    rows={2}
+                    size="small"
+                  />
+                </Box>
+              </Box>
             )}
           </Box>
 
-          {/* Grain Size Checkbox + Expandable */}
+          {/* Grain Size Checkbox */}
           <Box>
             <FormControlLabel
               control={
@@ -393,72 +384,67 @@ export function FabricAddForm({ onAdd, onCancel, initialData }: FabricAddFormPro
               label="Grain Size"
             />
             {formData.fabricDefinedBy.includes('Grain Size') && formData.fabricGrainSizeInfo && (
-              <Accordion sx={{ mt: 1 }}>
-                <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                  <Typography variant="body2">Grain Size Details</Typography>
-                </AccordionSummary>
-                <AccordionDetails>
-                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                    {/* Grain Size Layers */}
-                    <Typography variant="body2" fontWeight="bold">Layers</Typography>
-                    {formData.fabricGrainSizeInfo.layers.map((layer, index) => (
-                      <Box key={index} sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
-                        <TextField
-                          label="Grain Size"
-                          value={layer.grainSize}
-                          onChange={(e) => updateGrainSizeLayer(index, { grainSize: e.target.value })}
-                          size="small"
-                          sx={{ flex: 1 }}
-                        />
-                        <UnitInput
-                          value={layer.thickness || ''}
-                          unit={layer.thicknessUnits}
-                          onValueChange={(value) => updateGrainSizeLayer(index, { thickness: value === '' ? null : value })}
-                          onUnitChange={(unit) => updateGrainSizeLayer(index, { thicknessUnits: unit })}
-                          units={SIZE_UNITS}
-                          label="Thickness"
-                          min={0}
-                        />
-                        <IconButton
-                          size="small"
-                          onClick={() => removeGrainSizeLayer(index)}
-                          color="error"
-                        >
-                          <DeleteIcon />
-                        </IconButton>
-                      </Box>
-                    ))}
-                    <Button
-                      startIcon={<AddIcon />}
-                      onClick={addGrainSizeLayer}
-                      size="small"
-                      variant="outlined"
-                    >
-                      Add Layer
-                    </Button>
+              <Box sx={{ ml: 4, mt: 1, p: 2, bgcolor: 'action.hover', borderRadius: 1 }}>
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  {/* Grain Size Layers */}
+                  <Typography variant="body2" fontWeight="bold">Layers</Typography>
+                  {formData.fabricGrainSizeInfo.layers.map((layer, index) => (
+                    <Box key={index} sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                      <TextField
+                        label="Grain Size"
+                        value={layer.grainSize}
+                        onChange={(e) => updateGrainSizeLayer(index, { grainSize: e.target.value })}
+                        size="small"
+                        sx={{ flex: 1 }}
+                      />
+                      <UnitInput
+                        value={layer.thickness || ''}
+                        unit={layer.thicknessUnits}
+                        onValueChange={(value) => updateGrainSizeLayer(index, { thickness: value === '' ? null : value })}
+                        onUnitChange={(unit) => updateGrainSizeLayer(index, { thicknessUnits: unit })}
+                        units={SIZE_UNITS}
+                        label="Thickness"
+                        min={0}
+                      />
+                      <IconButton
+                        size="small"
+                        onClick={() => removeGrainSizeLayer(index)}
+                        color="error"
+                      >
+                        <DeleteIcon />
+                      </IconButton>
+                    </Box>
+                  ))}
+                  <Button
+                    startIcon={<AddIcon />}
+                    onClick={addGrainSizeLayer}
+                    size="small"
+                    variant="outlined"
+                  >
+                    Add Layer
+                  </Button>
 
-                    {/* Grain Size Notes */}
-                    <TextField
-                      label="Grain Size Notes"
-                      value={formData.fabricGrainSizeInfo.grainSizeNotes}
-                      onChange={(e) => setFormData(prev => ({
-                        ...prev,
-                        fabricGrainSizeInfo: {
-                          ...prev.fabricGrainSizeInfo!,
-                          grainSizeNotes: e.target.value,
-                        },
-                      }))}
-                      multiline
-                      rows={2}
-                      size="small"
-                    />
-                  </Box>
-                </AccordionDetails>
-              </Accordion>
+                  {/* Grain Size Notes */}
+                  <TextField
+                    label="Grain Size Notes"
+                    value={formData.fabricGrainSizeInfo.grainSizeNotes}
+                    onChange={(e) => setFormData(prev => ({
+                      ...prev,
+                      fabricGrainSizeInfo: {
+                        ...prev.fabricGrainSizeInfo!,
+                        grainSizeNotes: e.target.value,
+                      },
+                    }))}
+                    multiline
+                    rows={2}
+                    size="small"
+                  />
+                </Box>
+              </Box>
             )}
           </Box>
 
-          {/* Grain Shape Checkbox + Expandable */}
+          {/* Grain Shape Checkbox */}
           <Box>
             <FormControlLabel
               control={
@@ -470,87 +456,82 @@ export function FabricAddForm({ onAdd, onCancel, initialData }: FabricAddFormPro
               label="Grain Shape"
             />
             {formData.fabricDefinedBy.includes('Grain Shape') && formData.fabricGrainShapeInfo && (
-              <Accordion sx={{ mt: 1 }}>
-                <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                  <Typography variant="body2">Grain Shape Details</Typography>
-                </AccordionSummary>
-                <AccordionDetails>
-                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                    {/* Phases */}
-                    <AutocompleteMineralSearch
-                      selectedMinerals={formData.fabricGrainShapeInfo.phases}
-                      onChange={(minerals) => setFormData(prev => ({
-                        ...prev,
-                        fabricGrainShapeInfo: {
-                          ...prev.fabricGrainShapeInfo!,
-                          phases: minerals,
-                        },
-                      }))}
-                      multiple
-                      label="Phases"
-                    />
+              <Box sx={{ ml: 4, mt: 1, p: 2, bgcolor: 'action.hover', borderRadius: 1 }}>
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  {/* Phases */}
+                  <AutocompleteMineralSearch
+                    selectedMinerals={formData.fabricGrainShapeInfo.phases}
+                    onChange={(minerals) => setFormData(prev => ({
+                      ...prev,
+                      fabricGrainShapeInfo: {
+                        ...prev.fabricGrainShapeInfo!,
+                        phases: minerals,
+                      },
+                    }))}
+                    multiple
+                    label="Phases"
+                  />
 
-                    {/* Alignment */}
-                    <FormControl component="fieldset" size="small">
-                      <Typography variant="body2" sx={{ mb: 0.5 }}>Alignment</Typography>
-                      <RadioGroup
-                        row
-                        value={formData.fabricGrainShapeInfo.alignment}
-                        onChange={(e) => setFormData(prev => ({
-                          ...prev,
-                          fabricGrainShapeInfo: {
-                            ...prev.fabricGrainShapeInfo!,
-                            alignment: e.target.value,
-                          },
-                        }))}
-                      >
-                        <FormControlLabel value="weak" control={<Radio />} label="Weak" />
-                        <FormControlLabel value="moderate" control={<Radio />} label="Moderate" />
-                        <FormControlLabel value="strong" control={<Radio />} label="Strong" />
-                      </RadioGroup>
-                    </FormControl>
-
-                    {/* Shape */}
-                    <FormControl component="fieldset" size="small">
-                      <Typography variant="body2" sx={{ mb: 0.5 }}>Shape</Typography>
-                      <RadioGroup
-                        row
-                        value={formData.fabricGrainShapeInfo.shape}
-                        onChange={(e) => setFormData(prev => ({
-                          ...prev,
-                          fabricGrainShapeInfo: {
-                            ...prev.fabricGrainShapeInfo!,
-                            shape: e.target.value,
-                          },
-                        }))}
-                      >
-                        <FormControlLabel value="euhedral" control={<Radio />} label="Euhedral" />
-                        <FormControlLabel value="deformed" control={<Radio />} label="Deformed" />
-                      </RadioGroup>
-                    </FormControl>
-
-                    {/* Notes */}
-                    <TextField
-                      label="Shape Notes"
-                      value={formData.fabricGrainShapeInfo.notes}
+                  {/* Alignment */}
+                  <FormControl component="fieldset" size="small">
+                    <Typography variant="body2" sx={{ mb: 0.5 }}>Alignment</Typography>
+                    <RadioGroup
+                      row
+                      value={formData.fabricGrainShapeInfo.alignment}
                       onChange={(e) => setFormData(prev => ({
                         ...prev,
                         fabricGrainShapeInfo: {
                           ...prev.fabricGrainShapeInfo!,
-                          notes: e.target.value,
+                          alignment: e.target.value,
                         },
                       }))}
-                      multiline
-                      rows={2}
-                      size="small"
-                    />
-                  </Box>
-                </AccordionDetails>
-              </Accordion>
+                    >
+                      <FormControlLabel value="weak" control={<Radio />} label="Weak" />
+                      <FormControlLabel value="moderate" control={<Radio />} label="Moderate" />
+                      <FormControlLabel value="strong" control={<Radio />} label="Strong" />
+                    </RadioGroup>
+                  </FormControl>
+
+                  {/* Shape */}
+                  <FormControl component="fieldset" size="small">
+                    <Typography variant="body2" sx={{ mb: 0.5 }}>Shape</Typography>
+                    <RadioGroup
+                      row
+                      value={formData.fabricGrainShapeInfo.shape}
+                      onChange={(e) => setFormData(prev => ({
+                        ...prev,
+                        fabricGrainShapeInfo: {
+                          ...prev.fabricGrainShapeInfo!,
+                          shape: e.target.value,
+                        },
+                      }))}
+                    >
+                      <FormControlLabel value="euhedral" control={<Radio />} label="Euhedral" />
+                      <FormControlLabel value="deformed" control={<Radio />} label="Deformed" />
+                    </RadioGroup>
+                  </FormControl>
+
+                  {/* Notes */}
+                  <TextField
+                    label="Shape Notes"
+                    value={formData.fabricGrainShapeInfo.notes}
+                    onChange={(e) => setFormData(prev => ({
+                      ...prev,
+                      fabricGrainShapeInfo: {
+                        ...prev.fabricGrainShapeInfo!,
+                        notes: e.target.value,
+                      },
+                    }))}
+                    multiline
+                    rows={2}
+                    size="small"
+                  />
+                </Box>
+              </Box>
             )}
           </Box>
 
-          {/* Cleavage (Solution Seam) Checkbox + Expandable */}
+          {/* Cleavage (Solution Seam) Checkbox */}
           <Box>
             <FormControlLabel
               control={
@@ -562,104 +543,99 @@ export function FabricAddForm({ onAdd, onCancel, initialData }: FabricAddFormPro
               label="Cleavage (Solution Seam)"
             />
             {formData.fabricDefinedBy.includes('Cleavage') && formData.fabricCleavageInfo && (
-              <Accordion sx={{ mt: 1 }}>
-                <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                  <Typography variant="body2">Cleavage Details</Typography>
-                </AccordionSummary>
-                <AccordionDetails>
-                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                    {/* Spacing */}
-                    <UnitInput
-                      value={formData.fabricCleavageInfo.spacing || ''}
-                      unit={formData.fabricCleavageInfo.spacingUnit}
-                      onValueChange={(value) => setFormData(prev => ({
-                        ...prev,
-                        fabricCleavageInfo: {
-                          ...prev.fabricCleavageInfo!,
-                          spacing: value === '' ? null : value,
-                        },
-                      }))}
-                      onUnitChange={(unit) => setFormData(prev => ({
-                        ...prev,
-                        fabricCleavageInfo: {
-                          ...prev.fabricCleavageInfo!,
-                          spacingUnit: unit,
-                        },
-                      }))}
-                      units={SIZE_UNITS}
-                      label="Spacing"
-                      min={0}
-                    />
+              <Box sx={{ ml: 4, mt: 1, p: 2, bgcolor: 'action.hover', borderRadius: 1 }}>
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  {/* Spacing */}
+                  <UnitInput
+                    value={formData.fabricCleavageInfo.spacing || ''}
+                    unit={formData.fabricCleavageInfo.spacingUnit}
+                    onValueChange={(value) => setFormData(prev => ({
+                      ...prev,
+                      fabricCleavageInfo: {
+                        ...prev.fabricCleavageInfo!,
+                        spacing: value === '' ? null : value,
+                      },
+                    }))}
+                    onUnitChange={(unit) => setFormData(prev => ({
+                      ...prev,
+                      fabricCleavageInfo: {
+                        ...prev.fabricCleavageInfo!,
+                        spacingUnit: unit,
+                      },
+                    }))}
+                    units={SIZE_UNITS}
+                    label="Spacing"
+                    min={0}
+                  />
 
-                    {/* Stylolitic Cleavage */}
-                    <FormControl component="fieldset" size="small">
-                      <Typography variant="body2" sx={{ mb: 0.5 }}>Stylolitic Cleavage?</Typography>
-                      <RadioGroup
-                        row
-                        value={formData.fabricCleavageInfo.styloliticCleavage ? 'yes' : 'no'}
-                        onChange={(e) => setFormData(prev => ({
-                          ...prev,
-                          fabricCleavageInfo: {
-                            ...prev.fabricCleavageInfo!,
-                            styloliticCleavage: e.target.value === 'yes',
-                          },
-                        }))}
-                      >
-                        <FormControlLabel value="yes" control={<Radio />} label="Yes" />
-                        <FormControlLabel value="no" control={<Radio />} label="No" />
-                      </RadioGroup>
-                    </FormControl>
-
-                    {/* Geometry of Seams */}
-                    <Box>
-                      <Typography variant="body2" sx={{ mb: 0.5 }}>Geometry of Seams</Typography>
-                      <FormControlLabel
-                        control={
-                          <Checkbox
-                            checked={formData.fabricCleavageInfo.geometryOfSeams.includes('planar')}
-                            onChange={() => toggleGeometryOfSeams('planar')}
-                          />
-                        }
-                        label="Planar"
-                      />
-                      <FormControlLabel
-                        control={
-                          <Checkbox
-                            checked={formData.fabricCleavageInfo.geometryOfSeams.includes('anastomosing')}
-                            onChange={() => toggleGeometryOfSeams('anastomosing')}
-                          />
-                        }
-                        label="Anastomosing"
-                      />
-                      <FormControlLabel
-                        control={
-                          <Checkbox
-                            checked={formData.fabricCleavageInfo.geometryOfSeams.includes('discontinuous')}
-                            onChange={() => toggleGeometryOfSeams('discontinuous')}
-                          />
-                        }
-                        label="Discontinuous"
-                      />
-                    </Box>
-
-                    {/* Cleavage Notes */}
-                    <TextField
-                      label="Cleavage Notes"
-                      value={formData.fabricCleavageInfo.notes}
+                  {/* Stylolitic Cleavage */}
+                  <FormControl component="fieldset" size="small">
+                    <Typography variant="body2" sx={{ mb: 0.5 }}>Stylolitic Cleavage?</Typography>
+                    <RadioGroup
+                      row
+                      value={formData.fabricCleavageInfo.styloliticCleavage ? 'yes' : 'no'}
                       onChange={(e) => setFormData(prev => ({
                         ...prev,
                         fabricCleavageInfo: {
                           ...prev.fabricCleavageInfo!,
-                          notes: e.target.value,
+                          styloliticCleavage: e.target.value === 'yes',
                         },
                       }))}
-                      multiline
-                      rows={2}
-                      size="small"
+                    >
+                      <FormControlLabel value="yes" control={<Radio />} label="Yes" />
+                      <FormControlLabel value="no" control={<Radio />} label="No" />
+                    </RadioGroup>
+                  </FormControl>
+
+                  {/* Geometry of Seams */}
+                  <Box>
+                    <Typography variant="body2" sx={{ mb: 0.5 }}>Geometry of Seams</Typography>
+                    <FormControlLabel
+                      control={
+                        <Checkbox
+                          checked={formData.fabricCleavageInfo.geometryOfSeams.includes('planar')}
+                          onChange={() => toggleGeometryOfSeams('planar')}
+                        />
+                      }
+                      label="Planar"
+                    />
+                    <FormControlLabel
+                      control={
+                        <Checkbox
+                          checked={formData.fabricCleavageInfo.geometryOfSeams.includes('anastomosing')}
+                          onChange={() => toggleGeometryOfSeams('anastomosing')}
+                        />
+                      }
+                      label="Anastomosing"
+                    />
+                    <FormControlLabel
+                      control={
+                        <Checkbox
+                          checked={formData.fabricCleavageInfo.geometryOfSeams.includes('discontinuous')}
+                          onChange={() => toggleGeometryOfSeams('discontinuous')}
+                        />
+                      }
+                      label="Discontinuous"
                     />
                   </Box>
-                </AccordionDetails>
-              </Accordion>
+
+                  {/* Cleavage Notes */}
+                  <TextField
+                    label="Cleavage Notes"
+                    value={formData.fabricCleavageInfo.notes}
+                    onChange={(e) => setFormData(prev => ({
+                      ...prev,
+                      fabricCleavageInfo: {
+                        ...prev.fabricCleavageInfo!,
+                        notes: e.target.value,
+                      },
+                    }))}
+                    multiline
+                    rows={2}
+                    size="small"
+                  />
+                </Box>
+              </Box>
             )}
           </Box>
         </Box>
