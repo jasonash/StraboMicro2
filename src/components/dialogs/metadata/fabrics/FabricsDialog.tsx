@@ -16,6 +16,8 @@ import {
   Dialog,
   DialogTitle,
   DialogContent,
+  DialogActions,
+  Button,
 } from '@mui/material';
 import { useAppStore } from '@/store';
 import { FabricInfoType, FabricType } from '@/types/project-types';
@@ -63,10 +65,10 @@ export function FabricsDialog({
     setNotes(existingData?.notes || '');
   }, [isOpen, micrographId, spotId, project]);
 
-  const handleSave = (data: { items: FabricData[]; notes: string }) => {
+  const handleSave = () => {
     const fabricInfo: FabricInfoType = {
-      fabrics: data.items as FabricType[],
-      notes: data.notes,
+      fabrics: fabrics as FabricType[],
+      notes: notes,
     };
 
     if (micrographId) {
@@ -103,8 +105,9 @@ export function FabricsDialog({
         <ListManager<FabricData>
           items={fabrics}
           notes={notes}
-          onSave={handleSave}
-          onCancel={handleCancel}
+          onItemsChange={setFabrics}
+          onNotesChange={setNotes}
+          hideButtons={true}
           title="Fabrics"
           addSectionTitle="Add Fabric"
           emptyMessage="No fabrics added yet. Use the form below to add your first fabric."
@@ -119,6 +122,12 @@ export function FabricsDialog({
           )}
         />
       </DialogContent>
+      <DialogActions>
+        <Button onClick={handleCancel}>Cancel</Button>
+        <Button onClick={handleSave} variant="contained">
+          Save
+        </Button>
+      </DialogActions>
     </Dialog>
   );
 }

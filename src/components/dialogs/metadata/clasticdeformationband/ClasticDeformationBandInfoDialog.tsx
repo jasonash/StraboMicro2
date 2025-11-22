@@ -9,6 +9,8 @@ import {
   Dialog,
   DialogTitle,
   DialogContent,
+  DialogActions,
+  Button,
 } from '@mui/material';
 import { useAppStore } from '@/store';
 import { ClasticDeformationBandInfoType, ClasticDeformationBandType } from '@/types/project-types';
@@ -54,10 +56,10 @@ export function ClasticDeformationBandInfoDialog({
     setNotes(existingData?.notes || '');
   }, [isOpen, micrographId, spotId, project]);
 
-  const handleSave = (data: { items: ClasticDeformationBandData[]; notes: string }) => {
+  const handleSave = () => {
     const clasticDeformationBandInfo: ClasticDeformationBandInfoType = {
-      bands: data.items as ClasticDeformationBandType[],
-      notes: data.notes,
+      bands: bands as ClasticDeformationBandType[],
+      notes: notes,
     };
 
     if (micrographId) {
@@ -94,8 +96,9 @@ export function ClasticDeformationBandInfoDialog({
         <ListManager<ClasticDeformationBandData>
           items={bands}
           notes={notes}
-          onSave={handleSave}
-          onCancel={handleCancel}
+          onItemsChange={setBands}
+          onNotesChange={setNotes}
+          hideButtons={true}
           title="Clastic Deformation Bands"
           addSectionTitle="Add Deformation Band"
           emptyMessage="No deformation bands added yet. Use the form below to add your first band."
@@ -110,6 +113,12 @@ export function ClasticDeformationBandInfoDialog({
           )}
         />
       </DialogContent>
+      <DialogActions>
+        <Button onClick={handleCancel}>Cancel</Button>
+        <Button onClick={handleSave} variant="contained">
+          Save
+        </Button>
+      </DialogActions>
     </Dialog>
   );
 }

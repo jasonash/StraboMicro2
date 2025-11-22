@@ -16,6 +16,8 @@ import {
   Dialog,
   DialogTitle,
   DialogContent,
+  DialogActions,
+  Button,
 } from '@mui/material';
 import { useAppStore } from '@/store';
 import { VeinInfoType, VeinType } from '@/types/project-types';
@@ -63,10 +65,10 @@ export function VeinsDialog({
     setNotes(existingData?.notes || '');
   }, [isOpen, micrographId, spotId, project]);
 
-  const handleSave = (data: { items: VeinData[]; notes: string }) => {
+  const handleSave = () => {
     const veinInfo: VeinInfoType = {
-      veins: data.items as VeinType[],
-      notes: data.notes,
+      veins: veins as VeinType[],
+      notes: notes,
     };
 
     if (micrographId) {
@@ -103,8 +105,9 @@ export function VeinsDialog({
         <ListManager<VeinData>
           items={veins}
           notes={notes}
-          onSave={handleSave}
-          onCancel={handleCancel}
+          onItemsChange={setVeins}
+          onNotesChange={setNotes}
+          hideButtons={true}
           title="Veins"
           addSectionTitle="Add Vein"
           emptyMessage="No veins added yet. Use the form below to add your first vein."
@@ -119,6 +122,12 @@ export function VeinsDialog({
           )}
         />
       </DialogContent>
+      <DialogActions>
+        <Button onClick={handleCancel}>Cancel</Button>
+        <Button onClick={handleSave} variant="contained">
+          Save
+        </Button>
+      </DialogActions>
     </Dialog>
   );
 }

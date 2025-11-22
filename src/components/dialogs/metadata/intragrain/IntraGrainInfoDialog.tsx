@@ -9,6 +9,8 @@ import {
   Dialog,
   DialogTitle,
   DialogContent,
+  DialogActions,
+  Button,
 } from '@mui/material';
 import { useAppStore } from '@/store';
 import { IntraGrainInfoType, IntraGrainType } from '@/types/project-types';
@@ -54,10 +56,10 @@ export function IntraGrainInfoDialog({
     setNotes(existingData?.notes || '');
   }, [isOpen, micrographId, spotId, project]);
 
-  const handleSave = (data: { items: IntraGrainData[]; notes: string }) => {
+  const handleSave = () => {
     const intraGrainInfo: IntraGrainInfoType = {
-      grains: data.items as IntraGrainType[],
-      notes: data.notes,
+      grains: grains as IntraGrainType[],
+      notes: notes,
     };
 
     if (micrographId) {
@@ -94,8 +96,9 @@ export function IntraGrainInfoDialog({
         <ListManager<IntraGrainData>
           items={grains}
           notes={notes}
-          onSave={handleSave}
-          onCancel={handleCancel}
+          onItemsChange={setGrains}
+          onNotesChange={setNotes}
+          hideButtons={true}
           title="Intragranular Structures"
           addSectionTitle="Add Intragranular Structure"
           emptyMessage="No intragranular structures added yet. Use the form below to add your first structure."
@@ -110,6 +113,12 @@ export function IntraGrainInfoDialog({
           )}
         />
       </DialogContent>
+      <DialogActions>
+        <Button onClick={handleCancel}>Cancel</Button>
+        <Button onClick={handleSave} variant="contained">
+          Save
+        </Button>
+      </DialogActions>
     </Dialog>
   );
 }

@@ -29,9 +29,13 @@ export interface ListManagerProps<T> {
   items: T[];
   notes: string;
 
-  // Callbacks
-  onSave: (data: { items: T[]; notes: string }) => void;
-  onCancel: () => void;
+  // Callbacks for state changes
+  onItemsChange?: (items: T[]) => void;
+  onNotesChange?: (notes: string) => void;
+
+  // Legacy callbacks (still supported but optional)
+  onSave?: (data: { items: T[]; notes: string }) => void;
+  onCancel?: () => void;
 
   // Render props for custom UI
   renderItem: (item: T, index: number) => React.ReactNode;
@@ -45,11 +49,14 @@ export interface ListManagerProps<T> {
   addSectionTitle?: string;
   emptyMessage?: string;
   notesLabel?: string;
+  hideButtons?: boolean; // New: Hide cancel/save buttons when using DialogActions in parent
 }
 
 export function ListManager<T>({
   items: initialItems,
   notes: initialNotes,
+  onItemsChange,
+  onNotesChange,
   onSave,
   onCancel,
   renderItem,
@@ -58,13 +65,16 @@ export function ListManager<T>({
   addSectionTitle = 'Add New Item',
   emptyMessage = 'No items added yet.',
   notesLabel = 'Notes',
+  hideButtons = false,
 }: ListManagerProps<T>) {
   const [items, setItems] = useState<T[]>(initialItems);
   const [notes, setNotes] = useState(initialNotes);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
 
   const handleAdd = (newItem: T) => {
-    setItems([...items, newItem]);
+    const newItems = [...items, newItem];
+    setItems(newItems);
+    onItemsChange?.(newItems);
   };
 
   const handleEdit = (index: number, updatedItem: T) => {
@@ -72,14 +82,22 @@ export function ListManager<T>({
     newItems[index] = updatedItem;
     setItems(newItems);
     setEditingIndex(null);
+    onItemsChange?.(newItems);
   };
 
   const handleDelete = (index: number) => {
-    setItems(items.filter((_, i) => i !== index));
+    const newItems = items.filter((_, i) => i !== index);
+    setItems(newItems);
+    onItemsChange?.(newItems);
+  };
+
+  const handleNotesChange = (newNotes: string) => {
+    setNotes(newNotes);
+    onNotesChange?.(newNotes);
   };
 
   const handleSave = () => {
-    onSave({ items, notes });
+    onSave?.({ items, notes });
   };
 
   return (
@@ -176,27 +194,29 @@ export function ListManager<T>({
       <Divider sx={{ my: 2 }} />
 
       {/* Notes Section */}
-      <Box sx={{ mb: 2 }}>
+      <Box sx={{ mb: hideButtons ? 0 : 2 }}>
         <TextField
           fullWidth
           multiline
           rows={3}
           label={notesLabel}
           value={notes}
-          onChange={(e) => setNotes(e.target.value)}
+          onChange={(e) => handleNotesChange(e.target.value)}
           placeholder="General notes about all items..."
         />
       </Box>
 
-      {/* Action Buttons */}
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', pt: 2 }}>
-        <Button onClick={onCancel} variant="outlined">
-          Cancel
-        </Button>
-        <Button onClick={handleSave} variant="contained">
-          Save
-        </Button>
-      </Box>
+      {/* Action Buttons - Only show if not hidden */}
+      {!hideButtons && (
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', pt: 2 }}>
+          <Button onClick={onCancel} variant="outlined">
+            Cancel
+          </Button>
+          <Button onClick={handleSave} variant="contained">
+            Save
+          </Button>
+        </Box>
+      )}
     </Box>
   );
 }

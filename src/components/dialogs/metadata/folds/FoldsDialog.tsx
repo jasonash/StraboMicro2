@@ -16,6 +16,8 @@ import {
   Dialog,
   DialogTitle,
   DialogContent,
+  DialogActions,
+  Button,
 } from '@mui/material';
 import { useAppStore } from '@/store';
 import { FoldInfoType, FoldType } from '@/types/project-types';
@@ -63,10 +65,10 @@ export function FoldsDialog({
     setNotes(existingData?.notes || '');
   }, [isOpen, micrographId, spotId, project]);
 
-  const handleSave = (data: { items: FoldData[]; notes: string }) => {
+  const handleSave = () => {
     const foldInfo: FoldInfoType = {
-      folds: data.items as FoldType[],
-      notes: data.notes,
+      folds: folds as FoldType[],
+      notes: notes,
     };
 
     if (micrographId) {
@@ -103,8 +105,9 @@ export function FoldsDialog({
         <ListManager<FoldData>
           items={folds}
           notes={notes}
-          onSave={handleSave}
-          onCancel={handleCancel}
+          onItemsChange={setFolds}
+          onNotesChange={setNotes}
+          hideButtons={true}
           title="Folds"
           addSectionTitle="Add Fold"
           emptyMessage="No folds added yet. Use the form below to add your first fold."
@@ -119,6 +122,12 @@ export function FoldsDialog({
           )}
         />
       </DialogContent>
+      <DialogActions>
+        <Button onClick={handleCancel}>Cancel</Button>
+        <Button onClick={handleSave} variant="contained">
+          Save
+        </Button>
+      </DialogActions>
     </Dialog>
   );
 }

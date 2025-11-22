@@ -9,6 +9,8 @@ import {
   Dialog,
   DialogTitle,
   DialogContent,
+  DialogActions,
+  Button,
 } from '@mui/material';
 import { useAppStore } from '@/store';
 import { GrainBoundaryInfoType, GrainBoundaryType } from '@/types/project-types';
@@ -54,10 +56,10 @@ export function GrainBoundaryInfoDialog({
     setNotes(existingData?.notes || '');
   }, [isOpen, micrographId, spotId, project]);
 
-  const handleSave = (data: { items: GrainBoundaryData[]; notes: string }) => {
+  const handleSave = () => {
     const grainBoundaryInfo: GrainBoundaryInfoType = {
-      boundaries: data.items as GrainBoundaryType[],
-      notes: data.notes,
+      boundaries: boundaries as GrainBoundaryType[],
+      notes: notes,
     };
 
     if (micrographId) {
@@ -94,8 +96,9 @@ export function GrainBoundaryInfoDialog({
         <ListManager<GrainBoundaryData>
           items={boundaries}
           notes={notes}
-          onSave={handleSave}
-          onCancel={handleCancel}
+          onItemsChange={setBoundaries}
+          onNotesChange={setNotes}
+          hideButtons={true}
           title="Grain Boundaries"
           addSectionTitle="Add Grain Boundary"
           emptyMessage="No grain boundaries added yet. Use the form below to add your first grain boundary."
@@ -110,6 +113,12 @@ export function GrainBoundaryInfoDialog({
           )}
         />
       </DialogContent>
+      <DialogActions>
+        <Button onClick={handleCancel}>Cancel</Button>
+        <Button onClick={handleSave} variant="contained">
+          Save
+        </Button>
+      </DialogActions>
     </Dialog>
   );
 }

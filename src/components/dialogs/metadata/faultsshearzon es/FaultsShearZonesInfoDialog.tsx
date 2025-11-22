@@ -9,6 +9,8 @@ import {
   Dialog,
   DialogTitle,
   DialogContent,
+  DialogActions,
+  Button,
 } from '@mui/material';
 import { useAppStore } from '@/store';
 import { FaultsShearZonesInfoType, FaultsShearZonesType } from '@/types/project-types';
@@ -54,10 +56,10 @@ export function FaultsShearZonesInfoDialog({
     setNotes(existingData?.notes || '');
   }, [isOpen, micrographId, spotId, project]);
 
-  const handleSave = (data: { items: FaultsShearZonesData[]; notes: string }) => {
+  const handleSave = () => {
     const faultsShearZonesInfo: FaultsShearZonesInfoType = {
-      faultsShearZones: data.items as FaultsShearZonesType[],
-      notes: data.notes,
+      faultsShearZones: faultsShearZones as FaultsShearZonesType[],
+      notes: notes,
     };
 
     if (micrographId) {
@@ -94,8 +96,9 @@ export function FaultsShearZonesInfoDialog({
         <ListManager<FaultsShearZonesData>
           items={faultsShearZones}
           notes={notes}
-          onSave={handleSave}
-          onCancel={handleCancel}
+          onItemsChange={setFaultsShearZones}
+          onNotesChange={setNotes}
+          hideButtons={true}
           title="Faults and Shear Zones"
           addSectionTitle="Add Fault/Shear Zone"
           emptyMessage="No faults or shear zones added yet. Use the form below to add your first entry."
@@ -110,6 +113,12 @@ export function FaultsShearZonesInfoDialog({
           )}
         />
       </DialogContent>
+      <DialogActions>
+        <Button onClick={handleCancel}>Cancel</Button>
+        <Button onClick={handleSave} variant="contained">
+          Save
+        </Button>
+      </DialogActions>
     </Dialog>
   );
 }

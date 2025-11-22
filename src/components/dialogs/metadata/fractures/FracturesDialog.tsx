@@ -16,6 +16,8 @@ import {
   Dialog,
   DialogTitle,
   DialogContent,
+  DialogActions,
+  Button,
 } from '@mui/material';
 import { useAppStore } from '@/store';
 import { FractureInfoType, FractureType } from '@/types/project-types';
@@ -63,10 +65,10 @@ export function FracturesDialog({
     setNotes(existingData?.notes || '');
   }, [isOpen, micrographId, spotId, project]);
 
-  const handleSave = (data: { items: FractureData[]; notes: string }) => {
+  const handleSave = () => {
     const fractureInfo: FractureInfoType = {
-      fractures: data.items as FractureType[],
-      notes: data.notes,
+      fractures: fractures as FractureType[],
+      notes: notes,
     };
 
     if (micrographId) {
@@ -103,8 +105,9 @@ export function FracturesDialog({
         <ListManager<FractureData>
           items={fractures}
           notes={notes}
-          onSave={handleSave}
-          onCancel={handleCancel}
+          onItemsChange={setFractures}
+          onNotesChange={setNotes}
+          hideButtons={true}
           title="Fractures"
           addSectionTitle="Add Fracture"
           emptyMessage="No fractures added yet. Use the form below to add your first fracture."
@@ -119,6 +122,12 @@ export function FracturesDialog({
           )}
         />
       </DialogContent>
+      <DialogActions>
+        <Button onClick={handleCancel}>Cancel</Button>
+        <Button onClick={handleSave} variant="contained">
+          Save
+        </Button>
+      </DialogActions>
     </Dialog>
   );
 }

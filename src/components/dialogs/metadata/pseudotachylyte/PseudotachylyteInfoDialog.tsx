@@ -9,6 +9,8 @@ import {
   Dialog,
   DialogTitle,
   DialogContent,
+  DialogActions,
+  Button,
   TextField,
   Typography,
   Box,
@@ -59,11 +61,11 @@ export function PseudotachylyteInfoDialog({
     setNotes(existingData?.notes || '');
   }, [isOpen, micrographId, spotId, project]);
 
-  const handleSave = (data: { items: PseudotachylyteData[]; notes: string }) => {
+  const handleSave = () => {
     const pseudotachylyteInfo: PseudotachylyteInfoType = {
-      pseudotachylytes: data.items as PseudotachylyteType[],
+      pseudotachylytes: pseudotachylytes as PseudotachylyteType[],
       reasoning,
-      notes: data.notes,
+      notes: notes,
     };
 
     if (micrographId) {
@@ -115,8 +117,9 @@ export function PseudotachylyteInfoDialog({
         <ListManager<PseudotachylyteData>
           items={pseudotachylytes}
           notes={notes}
-          onSave={handleSave}
-          onCancel={handleCancel}
+          onItemsChange={setPseudotachylytes}
+          onNotesChange={setNotes}
+          hideButtons={true}
           title="Pseudotachylytes"
           addSectionTitle="Add Pseudotachylyte"
           emptyMessage="No pseudotachylytes added yet. Use the form below to add your first pseudotachylyte."
@@ -131,6 +134,12 @@ export function PseudotachylyteInfoDialog({
           )}
         />
       </DialogContent>
+      <DialogActions>
+        <Button onClick={handleCancel}>Cancel</Button>
+        <Button onClick={handleSave} variant="contained">
+          Save
+        </Button>
+      </DialogActions>
     </Dialog>
   );
 }

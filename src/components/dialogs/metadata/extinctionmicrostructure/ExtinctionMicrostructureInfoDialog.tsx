@@ -9,6 +9,8 @@ import {
   Dialog,
   DialogTitle,
   DialogContent,
+  DialogActions,
+  Button,
 } from '@mui/material';
 import { useAppStore } from '@/store';
 import { ExtinctionMicrostructureInfoType, ExtinctionMicrostructureType } from '@/types/project-types';
@@ -54,10 +56,10 @@ export function ExtinctionMicrostructureInfoDialog({
     setNotes(existingData?.notes || '');
   }, [isOpen, micrographId, spotId, project]);
 
-  const handleSave = (data: { items: ExtinctionMicrostructureData[]; notes: string }) => {
+  const handleSave = () => {
     const extinctionMicrostructureInfo: ExtinctionMicrostructureInfoType = {
-      extinctionMicrostructures: data.items as ExtinctionMicrostructureType[],
-      notes: data.notes,
+      extinctionMicrostructures: extinctionMicrostructures as ExtinctionMicrostructureType[],
+      notes: notes,
     };
 
     if (micrographId) {
@@ -94,8 +96,9 @@ export function ExtinctionMicrostructureInfoDialog({
         <ListManager<ExtinctionMicrostructureData>
           items={extinctionMicrostructures}
           notes={notes}
-          onSave={handleSave}
-          onCancel={handleCancel}
+          onItemsChange={setExtinctionMicrostructures}
+          onNotesChange={setNotes}
+          hideButtons={true}
           title="Extinction Microstructures"
           addSectionTitle="Add Extinction Microstructure"
           emptyMessage="No extinction microstructures added yet. Use the form below to add your first microstructure."
@@ -110,6 +113,12 @@ export function ExtinctionMicrostructureInfoDialog({
           )}
         />
       </DialogContent>
+      <DialogActions>
+        <Button onClick={handleCancel}>Cancel</Button>
+        <Button onClick={handleSave} variant="contained">
+          Save
+        </Button>
+      </DialogActions>
     </Dialog>
   );
 }
