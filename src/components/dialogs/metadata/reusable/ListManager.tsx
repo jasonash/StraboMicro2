@@ -85,7 +85,13 @@ export function ListManager<T>({
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       {/* List Section */}
-      <Box sx={{ flex: 1, overflowY: 'auto', mb: 2 }}>
+      <Box sx={{
+        flex: '1 1 auto',
+        minHeight: '200px',
+        maxHeight: items.length > 0 ? `${Math.min(items.length * 120 + 100, 400)}px` : '200px',
+        overflowY: 'auto',
+        mb: 2
+      }}>
         <Typography variant="h6" sx={{ mb: 2, fontSize: '1.1rem', fontWeight: 600 }}>
           {title}:
         </Typography>
