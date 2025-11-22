@@ -20,15 +20,15 @@ import { UnitInput } from '../reusable/UnitInput';
 
 export interface FractureData {
   granularity: string;
-  minerals: string[];
+  mineralogy: string; // LEGACY: comma-separated string, NOT array
   kinematicType: string;
-  openingAperture: number | '';
+  openingAperture: number | null;
   openingApertureUnit: string;
-  shearOffset: number | '';
+  shearOffset: number | null;
   shearOffsetUnit: string;
-  hybridAperture: number | '';
+  hybridAperture: number | null;
   hybridApertureUnit: string;
-  hybridOffset: number | '';
+  hybridOffset: number | null;
   hybridOffsetUnit: string;
   sealedHealed: boolean;
 }
@@ -39,20 +39,21 @@ interface FractureAddFormProps {
   initialData?: FractureData;
 }
 
-const SIZE_UNITS = ['μm', 'mm', 'cm'];
+// LEGACY UNITS: lowercase "um", not "μm"
+const SIZE_UNITS = ['um', 'mm', 'cm'];
 
 const DEFAULT_FRACTURE: FractureData = {
   granularity: '',
-  minerals: [],
+  mineralogy: '',
   kinematicType: '',
-  openingAperture: '',
-  openingApertureUnit: 'μm',
-  shearOffset: '',
-  shearOffsetUnit: 'μm',
-  hybridAperture: '',
-  hybridApertureUnit: 'μm',
-  hybridOffset: '',
-  hybridOffsetUnit: 'μm',
+  openingAperture: null,
+  openingApertureUnit: 'um',
+  shearOffset: null,
+  shearOffsetUnit: 'um',
+  hybridAperture: null,
+  hybridApertureUnit: 'um',
+  hybridOffset: null,
+  hybridOffsetUnit: 'um',
   sealedHealed: false,
 };
 
@@ -79,14 +80,43 @@ export function FractureAddForm({ onAdd, onCancel, initialData }: FractureAddFor
       ...prev,
       kinematicType,
       // Clear fields from other modes when switching
-      openingAperture: kinematicType === 'Opening' ? prev.openingAperture : '',
-      shearOffset: kinematicType === 'Shear' ? prev.shearOffset : '',
-      hybridAperture: kinematicType === 'Hybrid' ? prev.hybridAperture : '',
-      hybridOffset: kinematicType === 'Hybrid' ? prev.hybridOffset : '',
+      openingAperture: kinematicType === 'Opening' ? prev.openingAperture : null,
+      shearOffset: kinematicType === 'Shear' ? prev.shearOffset : null,
+      hybridAperture: kinematicType === 'Hybrid' ? prev.hybridAperture : null,
+      hybridOffset: kinematicType === 'Hybrid' ? prev.hybridOffset : null,
     }));
   };
 
-  const isValid = formData.granularity !== '' && formData.kinematicType !== '';
+  // LEGACY VALIDATION RULES (lines 473-486 in editFractureInfo.java)
+  const isValid = (() => {
+    // Must have granularity
+    if (formData.granularity === '') return false;
+
+    // Must have mineralogy
+    if (formData.mineralogy === '') return false;
+
+    // Must have kinematic type
+    if (formData.kinematicType === '') return false;
+
+    // If Opening: must have aperture value
+    if (formData.kinematicType === 'Opening' && (formData.openingAperture === null || formData.openingAperture === 0)) {
+      return false;
+    }
+
+    // If Shear: must have offset value
+    if (formData.kinematicType === 'Shear' && (formData.shearOffset === null || formData.shearOffset === 0)) {
+      return false;
+    }
+
+    // If Hybrid: must have at least ONE of (aperture OR offset)
+    if (formData.kinematicType === 'Hybrid') {
+      const hasAperture = formData.hybridAperture !== null && formData.hybridAperture !== 0;
+      const hasOffset = formData.hybridOffset !== null && formData.hybridOffset !== 0;
+      if (!hasAperture && !hasOffset) return false;
+    }
+
+    return true;
+  })();
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
@@ -109,8 +139,8 @@ export function FractureAddForm({ onAdd, onCancel, initialData }: FractureAddFor
       {/* Mineralogy of Fractured Phase(s) */}
       <Box>
         <AutocompleteMineralSearch
-          selectedMinerals={formData.minerals}
-          onChange={(minerals) => setFormData(prev => ({ ...prev, minerals }))}
+          selectedMinerals={formData.mineralogy ? formData.mineralogy.split(', ').filter(m => m) : []}
+          onChange={(minerals) => setFormData(prev => ({ ...prev, mineralogy: minerals.join(', ') }))}
           multiple
           label="Mineralogy of Fractured Phase(s)"
         />
@@ -131,9 +161,9 @@ export function FractureAddForm({ onAdd, onCancel, initialData }: FractureAddFor
           {formData.kinematicType === 'Opening' && (
             <Box sx={{ ml: 4, mt: 1, mb: 2 }}>
               <UnitInput
-                value={formData.openingAperture}
+                value={formData.openingAperture || ''}
                 unit={formData.openingApertureUnit}
-                onValueChange={(value) => setFormData(prev => ({ ...prev, openingAperture: value }))}
+                onValueChange={(value) => setFormData(prev => ({ ...prev, openingAperture: value === '' ? null : value }))}
                 onUnitChange={(unit) => setFormData(prev => ({ ...prev, openingApertureUnit: unit }))}
                 units={SIZE_UNITS}
                 label="Aperture"
@@ -151,9 +181,9 @@ export function FractureAddForm({ onAdd, onCancel, initialData }: FractureAddFor
           {formData.kinematicType === 'Shear' && (
             <Box sx={{ ml: 4, mt: 1, mb: 2 }}>
               <UnitInput
-                value={formData.shearOffset}
+                value={formData.shearOffset || ''}
                 unit={formData.shearOffsetUnit}
-                onValueChange={(value) => setFormData(prev => ({ ...prev, shearOffset: value }))}
+                onValueChange={(value) => setFormData(prev => ({ ...prev, shearOffset: value === '' ? null : value }))}
                 onUnitChange={(unit) => setFormData(prev => ({ ...prev, shearOffsetUnit: unit }))}
                 units={SIZE_UNITS}
                 label="Offset"
@@ -171,18 +201,18 @@ export function FractureAddForm({ onAdd, onCancel, initialData }: FractureAddFor
           {formData.kinematicType === 'Hybrid' && (
             <Box sx={{ ml: 4, mt: 1, mb: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
               <UnitInput
-                value={formData.hybridAperture}
+                value={formData.hybridAperture || ''}
                 unit={formData.hybridApertureUnit}
-                onValueChange={(value) => setFormData(prev => ({ ...prev, hybridAperture: value }))}
+                onValueChange={(value) => setFormData(prev => ({ ...prev, hybridAperture: value === '' ? null : value }))}
                 onUnitChange={(unit) => setFormData(prev => ({ ...prev, hybridApertureUnit: unit }))}
                 units={SIZE_UNITS}
                 label="Aperture"
                 min={0}
               />
               <UnitInput
-                value={formData.hybridOffset}
+                value={formData.hybridOffset || ''}
                 unit={formData.hybridOffsetUnit}
-                onValueChange={(value) => setFormData(prev => ({ ...prev, hybridOffset: value }))}
+                onValueChange={(value) => setFormData(prev => ({ ...prev, hybridOffset: value === '' ? null : value }))}
                 onUnitChange={(unit) => setFormData(prev => ({ ...prev, hybridOffsetUnit: unit }))}
                 units={SIZE_UNITS}
                 label="Offset"

@@ -2,10 +2,11 @@
  * Fracture List Item Component
  *
  * Displays a single fracture in the list view.
- * Shows key information: granularity, kinematics, and mineralogy.
+ * Matches legacy format (lines 505-528 in editFractureInfo.java):
+ * "Multigranular; Quartz, Feldspar; Opening (Mode I) Aperture: 50 um; Sealed/Healed: No;"
  */
 
-import { Box, Typography, Chip } from '@mui/material';
+import { Typography } from '@mui/material';
 import { FractureData } from './FractureAddForm';
 
 interface FractureListItemProps {
@@ -13,55 +14,47 @@ interface FractureListItemProps {
 }
 
 export function FractureListItem({ fracture }: FractureListItemProps) {
-  // Build summary text
-  const kinematicSummary = (() => {
-    switch (fracture.kinematicType) {
-      case 'Opening':
-        return fracture.openingAperture
-          ? `Opening (${fracture.openingAperture} ${fracture.openingApertureUnit})`
-          : 'Opening';
-      case 'Shear':
-        return fracture.shearOffset
-          ? `Shear (${fracture.shearOffset} ${fracture.shearOffsetUnit})`
-          : 'Shear';
-      case 'Hybrid':
-        const parts = [];
-        if (fracture.hybridAperture) {
-          parts.push(`Aperture: ${fracture.hybridAperture} ${fracture.hybridApertureUnit}`);
-        }
-        if (fracture.hybridOffset) {
-          parts.push(`Offset: ${fracture.hybridOffset} ${fracture.hybridOffsetUnit}`);
-        }
-        return parts.length > 0 ? `Hybrid (${parts.join(', ')})` : 'Hybrid';
-      default:
-        return 'Unknown';
+  // Build legacy-format display string
+  let detailString = '';
+
+  // Granularity
+  detailString += fracture.granularity + '; ';
+
+  // Mineralogy
+  if (fracture.mineralogy) {
+    detailString += fracture.mineralogy + '; ';
+  }
+
+  // Kinematics with measurements
+  if (fracture.kinematicType === 'Opening') {
+    detailString += fracture.kinematicType;
+    if (fracture.openingAperture) {
+      detailString += ' Aperture: ' + fracture.openingAperture + ' ' + fracture.openingApertureUnit;
     }
-  })();
+    detailString += '; ';
+  } else if (fracture.kinematicType === 'Shear') {
+    detailString += fracture.kinematicType;
+    if (fracture.shearOffset) {
+      detailString += ' Offset: ' + fracture.shearOffset + ' ' + fracture.shearOffsetUnit;
+    }
+    detailString += '; ';
+  } else if (fracture.kinematicType === 'Hybrid') {
+    detailString += fracture.kinematicType;
+    if (fracture.hybridAperture) {
+      detailString += ' Aperture: ' + fracture.hybridAperture + ' ' + fracture.hybridApertureUnit;
+    }
+    if (fracture.hybridOffset) {
+      detailString += ' Offset: ' + fracture.hybridOffset + ' ' + fracture.hybridOffsetUnit;
+    }
+    detailString += '; ';
+  }
+
+  // Sealed/Healed
+  detailString += fracture.sealedHealed ? 'Sealed/Healed: Yes; ' : 'Sealed/Healed: No; ';
 
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-      {/* Primary info */}
-      <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>
-        <Chip
-          label={fracture.granularity || 'Unknown'}
-          size="small"
-          color="primary"
-          variant="outlined"
-        />
-        <Typography variant="body2" sx={{ fontWeight: 500 }}>
-          {kinematicSummary}
-        </Typography>
-        {fracture.sealedHealed && (
-          <Chip label="Sealed/Healed" size="small" color="success" variant="outlined" />
-        )}
-      </Box>
-
-      {/* Mineralogy */}
-      {fracture.minerals.length > 0 && (
-        <Typography variant="body2" color="text.secondary">
-          Minerals: {fracture.minerals.join(', ')}
-        </Typography>
-      )}
-    </Box>
+    <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>
+      {detailString}
+    </Typography>
   );
 }
