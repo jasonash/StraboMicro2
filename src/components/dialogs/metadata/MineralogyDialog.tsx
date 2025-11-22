@@ -87,8 +87,8 @@ export function MineralogyDialog({
   spotId,
 }: MineralogyDialogProps) {
   const project = useAppStore((state) => state.project);
-  // const updateMicrographMetadata = useAppStore((state) => state.updateMicrographMetadata);
-  // const updateSpotData = useAppStore((state) => state.updateSpotData);
+  const updateMicrographMetadata = useAppStore((state) => state.updateMicrographMetadata);
+  const updateSpotData = useAppStore((state) => state.updateSpotData);
 
   const [currentTab, setCurrentTab] = useState(0);
   const [formData, setFormData] = useState<MineralogyData>({
@@ -154,14 +154,14 @@ export function MineralogyDialog({
   };
 
   const handleSave = () => {
-    // TODO: Save mineralogy and lithology data to store
-    // This will require extending the data model to store this information
+    // TEMPORARY: Save as-is until dialog is properly rebuilt to match legacy schema
+    // This dialog needs to be split into MineralogyDialog and LithologyDialog
     console.log('Saving mineralogy data:', formData);
 
     if (micrographId) {
-      // updateMicrographMetadata(micrographId, { mineralogy: formData });
+      updateMicrographMetadata(micrographId, { mineralogy: formData as any });
     } else if (spotId) {
-      // updateSpotData(spotId, { mineralogy: formData });
+      updateSpotData(spotId, { mineralogy: formData as any });
     }
 
     onClose();
