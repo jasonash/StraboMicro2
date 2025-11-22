@@ -129,12 +129,12 @@ export interface MicrographMetadata {
 
   // Image file properties
   imageFilename?: string | null;
-  imagePath?: string | null;  // Full path to image file (not serialized in .smz, runtime only)
+  imagePath?: string | null;  // RUNTIME-ONLY: Full path to image file (NOT serialized to project.json)
   imageType?: string | null;
-  imageWidth?: number | null;
-  imageHeight?: number | null;
-  width?: number | null;  // Alias for imageWidth (used in some contexts)
-  height?: number | null;  // Alias for imageHeight (used in some contexts)
+  imageWidth?: number | null;  // RUNTIME-ONLY: Convenience field (NOT serialized, use width instead)
+  imageHeight?: number | null;  // RUNTIME-ONLY: Convenience field (NOT serialized, use height instead)
+  width?: number | null;  // LEGACY: Image width in pixels (serialized to project.json)
+  height?: number | null;  // LEGACY: Image height in pixels (serialized to project.json)
   micronPerPixel?: number | null;
 
   // Scale information
