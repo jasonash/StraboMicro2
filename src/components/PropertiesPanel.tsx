@@ -21,6 +21,9 @@ import { NotesDialog } from './dialogs/metadata/NotesDialog';
 import { SampleInfoDialog } from './dialogs/metadata/SampleInfoDialog';
 import { MicrographInfoDialog } from './dialogs/metadata/MicrographInfoDialog';
 import { MineralogyDialog } from './dialogs/metadata/MineralogyDialog';
+import { GrainSizeDialog } from './dialogs/metadata/GrainSizeDialog';
+import { GrainShapeDialog } from './dialogs/metadata/GrainShapeDialog';
+import { GrainOrientationDialog } from './dialogs/metadata/GrainOrientationDialog';
 
 /**
  * Data type options for micrographs
@@ -30,7 +33,9 @@ const MICROGRAPH_DATA_TYPES = [
   { id: 'sample', label: 'Sample Info' },
   { id: 'micrograph', label: 'Micrograph Info' },
   { id: 'mineralogy', label: 'Mineralogy/Lithology' },
-  { id: 'grain', label: 'Grain Size/Shape/SPO' },
+  { id: 'grainSize', label: 'Grain Size' },
+  { id: 'grainShape', label: 'Grain Shape' },
+  { id: 'grainOrientation', label: 'Grain Orientation/SPO' },
   { id: 'fabric', label: 'Fabrics' },
   { id: 'clastic', label: 'Clastic Deformation Bands' },
   { id: 'grainBoundary', label: 'Grain Boundaries / Contacts' },
@@ -54,7 +59,9 @@ const SPOT_DATA_TYPES = [
   { id: 'sample', label: 'Sample Info' },
   { id: 'spot', label: 'Spot Data' },
   { id: 'mineralogy', label: 'Mineralogy/Lithology' },
-  { id: 'grain', label: 'Grain Size/Shape/SPO' },
+  { id: 'grainSize', label: 'Grain Size' },
+  { id: 'grainShape', label: 'Grain Shape' },
+  { id: 'grainOrientation', label: 'Grain Orientation/SPO' },
   { id: 'fabric', label: 'Fabrics' },
   { id: 'clastic', label: 'Clastic Deformation Bands' },
   { id: 'grainBoundary', label: 'Grain Boundaries / Contacts' },
@@ -200,6 +207,33 @@ export function PropertiesPanel() {
 
       {openDialog === 'mineralogy' && (
         <MineralogyDialog
+          isOpen={true}
+          onClose={() => setOpenDialog(null)}
+          micrographId={activeMicrographId || undefined}
+          spotId={activeSpotId || undefined}
+        />
+      )}
+
+      {openDialog === 'grainSize' && (
+        <GrainSizeDialog
+          isOpen={true}
+          onClose={() => setOpenDialog(null)}
+          micrographId={activeMicrographId || undefined}
+          spotId={activeSpotId || undefined}
+        />
+      )}
+
+      {openDialog === 'grainShape' && (
+        <GrainShapeDialog
+          isOpen={true}
+          onClose={() => setOpenDialog(null)}
+          micrographId={activeMicrographId || undefined}
+          spotId={activeSpotId || undefined}
+        />
+      )}
+
+      {openDialog === 'grainOrientation' && (
+        <GrainOrientationDialog
           isOpen={true}
           onClose={() => setOpenDialog(null)}
           micrographId={activeMicrographId || undefined}
