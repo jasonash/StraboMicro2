@@ -205,27 +205,49 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
           const y = (CANVAS_HEIGHT - img.height * initialScale) / 2;
           setStagePos({ x, y });
 
-          // Initialize child position
+          // Initialize child position and scale
           // Check for default/uninitialized values (0, 0) or (400, 300)
           if ((initialOffsetX === 0 && initialOffsetY === 0) ||
               (initialOffsetX === 400 && initialOffsetY === 300)) {
             // These are the default values, so center the child
             const centerX = img.width / 2;
             const centerY = img.height / 2;
+
+            // Calculate reasonable initial scale for "Stretch and Drag" mode
+            // Make child appear at ~25% of parent width (easier to see and manipulate)
+            let adjustedScaleX = initialScaleX;
+            let adjustedScaleY = initialScaleY;
+
+            if (scaleMethod === 'Stretch and Drag' && initialScaleX === 1 && initialScaleY === 1) {
+              // Target child width to be ~25% of parent width
+              const targetChildWidthRatio = 0.25;
+              const targetScale = (img.width * targetChildWidthRatio) / childWidth;
+              adjustedScaleX = targetScale;
+              adjustedScaleY = targetScale;
+              console.log('[PlacementCanvas] Auto-scaled child for Stretch and Drag mode:', {
+                parentWidth: img.width,
+                childWidth,
+                targetScale,
+                targetChildDisplayWidth: childWidth * targetScale
+              });
+            }
+
             setChildTransform(prev => ({
               ...prev,
               x: centerX,
               y: centerY,
+              scaleX: adjustedScaleX,
+              scaleY: adjustedScaleY,
             }));
             // Convert center to top-left for legacy compatibility
-            const topLeft = convertCenterToTopLeft(centerX, centerY, initialRotation, initialScaleX, initialScaleY);
+            const topLeft = convertCenterToTopLeft(centerX, centerY, initialRotation, adjustedScaleX, adjustedScaleY);
             // Convert to original image coordinates
             if (!parentOriginalWidth) return;
             const scaleRatio = parentOriginalWidth / img.width;
             const originalX = topLeft.x * scaleRatio;
             const originalY = topLeft.y * scaleRatio;
-            onPlacementChange(originalX, originalY, initialRotation, initialScaleX, initialScaleY);
-            console.log('[PlacementCanvas] Initialized child position to center:', { centerX, centerY, topLeft, originalX, originalY });
+            onPlacementChange(originalX, originalY, initialRotation, adjustedScaleX, adjustedScaleY);
+            console.log('[PlacementCanvas] Initialized child position to center:', { centerX, centerY, topLeft, originalX, originalY, scaleX: adjustedScaleX, scaleY: adjustedScaleY });
           } else {
             // We have existing values - convert from original image coordinates to displayed coordinates
             if (!parentOriginalWidth) return;

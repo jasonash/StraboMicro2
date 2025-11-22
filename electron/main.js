@@ -1411,32 +1411,38 @@ ipcMain.handle('composite:generate-thumbnail', async (event, projectId, microgra
 
         // Apply rotation if needed
         if (child.rotation) {
-          // Calculate center position for rotation
-          const centerX = thumbX + thumbChildWidth / 2;
-          const centerY = thumbY + thumbChildHeight / 2;
-
-          // Sharp rotates around center, then we need to adjust position
+          // Rotate the image - Sharp expands the canvas to fit rotated content
           childImage = childImage.rotate(child.rotation, {
             background: { r: 0, g: 0, b: 0, alpha: 0 }
           });
 
-          // After rotation, image size changes - get new dimensions
+          // Get rotated dimensions
           const rotatedMeta = await childImage.metadata();
 
-          // Adjust position to account for rotation
-          const adjustedX = Math.round(centerX - rotatedMeta.width / 2);
-          const adjustedY = Math.round(centerY - rotatedMeta.height / 2);
+          // Calculate where the rotated image's top-left should be
+          // The rotation pivot is at the center of the ORIGINAL (pre-rotation) image
+          const originalCenterX = thumbX + thumbChildWidth / 2;
+          const originalCenterY = thumbY + thumbChildHeight / 2;
+
+          // After rotation, the expanded canvas has the pivot at its center
+          // So we need to offset by half the rotated dimensions
+          const rotatedLeft = Math.round(originalCenterX - rotatedMeta.width / 2);
+          const rotatedTop = Math.round(originalCenterY - rotatedMeta.height / 2);
+
+          log.info(`[IPC]   Rotation: ${child.rotation}°, original center: (${originalCenterX}, ${originalCenterY}), rotated dims: ${rotatedMeta.width}x${rotatedMeta.height}, rotated pos: (${rotatedLeft}, ${rotatedTop})`);
 
           compositeInputs.push({
             input: await childImage.toBuffer(),
-            left: adjustedX,
-            top: adjustedY
+            left: rotatedLeft,
+            top: rotatedTop,
+            blend: 'over'
           });
         } else {
           compositeInputs.push({
             input: await childImage.toBuffer(),
             left: thumbX,
-            top: thumbY
+            top: thumbY,
+            blend: 'over'
           });
         }
       } catch (error) {
