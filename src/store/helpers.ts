@@ -255,3 +255,23 @@ export function getReferenceMicrographs(
 
   return references;
 }
+
+/**
+ * Get available mineral phases from a sample's mineralogy data
+ * Used to populate "Which Phases?" checkboxes in grain/fabric/etc dialogs
+ */
+export function getAvailablePhases(
+  sample: SampleMetadata | null
+): string[] {
+  if (!sample?.mineralogies || sample.mineralogies.length === 0) {
+    return [];
+  }
+
+  // Extract unique mineral names from the mineralogies array
+  const phases = sample.mineralogies
+    .map(m => m.mineral)
+    .filter((name): name is string => !!name); // Type guard to filter out undefined
+
+  // Return unique phases
+  return Array.from(new Set(phases));
+}
