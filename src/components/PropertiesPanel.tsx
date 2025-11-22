@@ -20,6 +20,7 @@ import { useAppStore } from '@/store';
 import { NotesDialog } from './dialogs/metadata/NotesDialog';
 import { SampleInfoDialog } from './dialogs/metadata/SampleInfoDialog';
 import { MicrographInfoDialog } from './dialogs/metadata/MicrographInfoDialog';
+import { MineralogyDialog } from './dialogs/metadata/MineralogyDialog';
 
 /**
  * Data type options for micrographs
@@ -194,6 +195,15 @@ export function PropertiesPanel() {
           isOpen={true}
           onClose={() => setOpenDialog(null)}
           micrographId={activeMicrographId}
+        />
+      )}
+
+      {openDialog === 'mineralogy' && (
+        <MineralogyDialog
+          isOpen={true}
+          onClose={() => setOpenDialog(null)}
+          micrographId={activeMicrographId || undefined}
+          spotId={activeSpotId || undefined}
         />
       )}
     </Box>
