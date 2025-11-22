@@ -24,6 +24,7 @@ import {
   Radio,
 } from '@mui/material';
 import { useAppStore } from '@/store';
+import { findMicrographById, findSpotById, getAvailablePhasesFromMicrograph, getAvailablePhasesFromSpot } from '@/store/helpers';
 import { PhaseSelector } from './reusable/PhaseSelector';
 import { UnitInput } from './reusable/UnitInput';
 import { OtherTextField } from './reusable/OtherTextField';
@@ -105,8 +106,12 @@ export function GrainInfoDialog({
     methodOther: '',
   });
 
-  // TODO: Get available phases from sample mineralogy
-  const availablePhases: string[] = [];
+  // Get available phases from micrograph or spot mineralogy data
+  const availablePhases: string[] = micrographId
+    ? getAvailablePhasesFromMicrograph(findMicrographById(project, micrographId))
+    : spotId
+      ? getAvailablePhasesFromSpot(findSpotById(project, spotId))
+      : [];
 
   // Load existing data when dialog opens
   useEffect(() => {

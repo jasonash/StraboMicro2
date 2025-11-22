@@ -257,20 +257,39 @@ export function getReferenceMicrographs(
 }
 
 /**
- * Get available mineral phases from a sample's mineralogy data
+ * Get available mineral phases from a micrograph's or spot's mineralogy data
  * Used to populate "Which Phases?" checkboxes in grain/fabric/etc dialogs
  */
-export function getAvailablePhases(
-  sample: SampleMetadata | null
+export function getAvailablePhasesFromMicrograph(
+  micrograph: MicrographMetadata | null
 ): string[] {
-  if (!sample?.mineralogies || sample.mineralogies.length === 0) {
+  if (!micrograph?.mineralogies || micrograph.mineralogies.length === 0) {
     return [];
   }
 
   // Extract unique mineral names from the mineralogies array
-  const phases = sample.mineralogies
+  const phases = micrograph.mineralogies
     .map(m => m.mineral)
     .filter((name): name is string => !!name); // Type guard to filter out undefined
+
+  // Return unique phases
+  return Array.from(new Set(phases));
+}
+
+/**
+ * Get available mineral phases from a spot's mineralogy data
+ */
+export function getAvailablePhasesFromSpot(
+  spot: Spot | null
+): string[] {
+  if (!spot?.mineralogies || spot.mineralogies.length === 0) {
+    return [];
+  }
+
+  // Extract unique mineral names from the mineralogies array
+  const phases = spot.mineralogies
+    .map(m => m.mineral)
+    .filter((name): name is string => !!name);
 
   // Return unique phases
   return Array.from(new Set(phases));
