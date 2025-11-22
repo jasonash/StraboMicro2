@@ -24,6 +24,7 @@ import { MineralogyDialog } from './dialogs/metadata/MineralogyDialog';
 import { GrainInfoDialog } from './dialogs/metadata/GrainInfoDialog';
 import { FabricsDialog } from './dialogs/metadata/FabricsDialog';
 import { FracturesDialog } from './dialogs/metadata/FracturesDialog';
+import { VeinsDialog } from './dialogs/metadata/VeinsDialog';
 
 /**
  * Data type options for micrographs
@@ -230,6 +231,15 @@ export function PropertiesPanel() {
 
       {openDialog === 'fracture' && (
         <FracturesDialog
+          isOpen={true}
+          onClose={() => setOpenDialog(null)}
+          micrographId={activeMicrographId || undefined}
+          spotId={activeSpotId || undefined}
+        />
+      )}
+
+      {openDialog === 'vein' && (
+        <VeinsDialog
           isOpen={true}
           onClose={() => setOpenDialog(null)}
           micrographId={activeMicrographId || undefined}
