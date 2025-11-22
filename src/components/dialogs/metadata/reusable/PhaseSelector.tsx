@@ -40,8 +40,14 @@ export function PhaseSelector({
 
   if (availablePhases.length === 0) {
     return (
-      <Box sx={{ p: 2, border: 1, borderColor: 'warning.main', borderRadius: 1, bgcolor: 'grey.100' }}>
-        <Typography variant="body2" color="text.primary">
+      <Box sx={{
+        p: 2,
+        border: 1,
+        borderColor: 'divider',
+        borderRadius: 1,
+        bgcolor: 'background.paper'
+      }}>
+        <Typography variant="body2" color="text.primary" sx={{ fontStyle: 'italic' }}>
           No mineralogy data available for this micrograph.
           Please add minerals in the Mineralogy/Lithology dialog first.
         </Typography>
