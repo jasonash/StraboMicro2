@@ -25,6 +25,7 @@ import { GrainInfoDialog } from './dialogs/metadata/GrainInfoDialog';
 import { FabricsDialog } from './dialogs/metadata/FabricsDialog';
 import { FracturesDialog } from './dialogs/metadata/FracturesDialog';
 import { VeinsDialog } from './dialogs/metadata/VeinsDialog';
+import { FoldsDialog } from './dialogs/metadata/FoldsDialog';
 
 /**
  * Data type options for micrographs
@@ -240,6 +241,15 @@ export function PropertiesPanel() {
 
       {openDialog === 'vein' && (
         <VeinsDialog
+          isOpen={true}
+          onClose={() => setOpenDialog(null)}
+          micrographId={activeMicrographId || undefined}
+          spotId={activeSpotId || undefined}
+        />
+      )}
+
+      {openDialog === 'fold' && (
+        <FoldsDialog
           isOpen={true}
           onClose={() => setOpenDialog(null)}
           micrographId={activeMicrographId || undefined}
