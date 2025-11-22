@@ -26,6 +26,12 @@ import { FabricsDialog } from './dialogs/metadata/fabrics/FabricsDialog';
 import { FracturesDialog } from './dialogs/metadata/fractures/FracturesDialog';
 import { VeinsDialog } from './dialogs/metadata/veins/VeinsDialog';
 import { FoldsDialog } from './dialogs/metadata/folds/FoldsDialog';
+import { GrainBoundaryInfoDialog } from './dialogs/metadata/grainboundary/GrainBoundaryInfoDialog';
+import { IntraGrainInfoDialog } from './dialogs/metadata/intragrain/IntraGrainInfoDialog';
+import { ClasticDeformationBandInfoDialog } from './dialogs/metadata/clasticdeformationband/ClasticDeformationBandInfoDialog';
+import { PseudotachylyteInfoDialog } from './dialogs/metadata/pseudotachylyte/PseudotachylyteInfoDialog';
+import { FaultsShearZonesInfoDialog } from './dialogs/metadata/faultsshearzon es/FaultsShearZonesInfoDialog';
+import { ExtinctionMicrostructureInfoDialog } from './dialogs/metadata/extinctionmicrostructure/ExtinctionMicrostructureInfoDialog';
 
 /**
  * Data type options for micrographs
@@ -250,6 +256,60 @@ export function PropertiesPanel() {
 
       {openDialog === 'fold' && (
         <FoldsDialog
+          isOpen={true}
+          onClose={() => setOpenDialog(null)}
+          micrographId={activeMicrographId || undefined}
+          spotId={activeSpotId || undefined}
+        />
+      )}
+
+      {openDialog === 'grainBoundary' && (
+        <GrainBoundaryInfoDialog
+          isOpen={true}
+          onClose={() => setOpenDialog(null)}
+          micrographId={activeMicrographId || undefined}
+          spotId={activeSpotId || undefined}
+        />
+      )}
+
+      {openDialog === 'intraGrain' && (
+        <IntraGrainInfoDialog
+          isOpen={true}
+          onClose={() => setOpenDialog(null)}
+          micrographId={activeMicrographId || undefined}
+          spotId={activeSpotId || undefined}
+        />
+      )}
+
+      {openDialog === 'clastic' && (
+        <ClasticDeformationBandInfoDialog
+          isOpen={true}
+          onClose={() => setOpenDialog(null)}
+          micrographId={activeMicrographId || undefined}
+          spotId={activeSpotId || undefined}
+        />
+      )}
+
+      {openDialog === 'pseudotachylyte' && (
+        <PseudotachylyteInfoDialog
+          isOpen={true}
+          onClose={() => setOpenDialog(null)}
+          micrographId={activeMicrographId || undefined}
+          spotId={activeSpotId || undefined}
+        />
+      )}
+
+      {openDialog === 'faultsShearZones' && (
+        <FaultsShearZonesInfoDialog
+          isOpen={true}
+          onClose={() => setOpenDialog(null)}
+          micrographId={activeMicrographId || undefined}
+          spotId={activeSpotId || undefined}
+        />
+      )}
+
+      {openDialog === 'extinctionMicrostructures' && (
+        <ExtinctionMicrostructureInfoDialog
           isOpen={true}
           onClose={() => setOpenDialog(null)}
           micrographId={activeMicrographId || undefined}
