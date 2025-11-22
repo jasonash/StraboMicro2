@@ -308,7 +308,7 @@ export function GrainInfoDialog({
                   variant="outlined"
                   fullWidth
                 >
-                  Add Grain Size Entry
+                  Add Grain Size
                 </Button>
               )}
 
@@ -372,7 +372,7 @@ export function GrainInfoDialog({
                   variant="outlined"
                   fullWidth
                 >
-                  Add Grain Shape Entry
+                  Add Grain Shape
                 </Button>
               )}
 
@@ -439,7 +439,7 @@ export function GrainInfoDialog({
                   variant="outlined"
                   fullWidth
                 >
-                  Add Grain Orientation Entry
+                  Add Grain Orientation
                 </Button>
               )}
 
