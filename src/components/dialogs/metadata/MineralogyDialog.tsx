@@ -106,17 +106,37 @@ export function MineralogyDialog({
 
   // Load existing data when dialog opens
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen || !project) return;
 
-    // TODO: Load actual mineralogy/lithology data from micrograph or spot
-    // For now, initialize with empty data
+    // Load from TWO separate fields: mineralogy and lithologyInfo
+    let existingMineralogy = null;
+    let existingLithology = null;
+
+    if (micrographId) {
+      const micrograph = project.datasets?.flatMap(d => d.samples || [])
+        .flatMap(s => s.micrographs || [])
+        .find(m => m.id === micrographId);
+      existingMineralogy = micrograph?.mineralogy;
+      existingLithology = micrograph?.lithologyInfo;
+    } else if (spotId) {
+      const spot = project.datasets?.flatMap(d => d.samples || [])
+        .flatMap(s => s.micrographs || [])
+        .flatMap(m => m.spots || [])
+        .find(s => s.id === spotId);
+      existingMineralogy = spot?.mineralogy;
+      existingLithology = spot?.lithologyInfo;
+    }
+
     setFormData({
-      minerals: [],
-      determinationMethod: '',
-      percentageCalculationMethod: '',
-      mineralogyNotes: '',
-      lithologies: [],
-      lithologyNotes: '',
+      minerals: existingMineralogy?.minerals?.map((m: any) => ({
+        name: m.name || '',
+        percentage: m.percentage || 0,
+      })) || [],
+      determinationMethod: existingMineralogy?.mineralogyMethod || '',
+      percentageCalculationMethod: existingMineralogy?.percentageCalculationMethod || '',
+      mineralogyNotes: existingMineralogy?.notes || '',
+      lithologies: (existingLithology?.lithologies || []) as LithologySelection[],
+      lithologyNotes: existingLithology?.notes || '',
     });
     setSelectedMinerals([]);
     setCurrentPercentage(0);
@@ -154,14 +174,38 @@ export function MineralogyDialog({
   };
 
   const handleSave = () => {
-    // TEMPORARY: Save as-is until dialog is properly rebuilt to match legacy schema
-    // This dialog needs to be split into MineralogyDialog and LithologyDialog
-    console.log('Saving mineralogy data:', formData);
+    // Save to TWO separate fields: mineralogy and lithologyInfo
+    // Legacy app uses one dialog to edit both fields (by design)
+    console.log('Saving mineralogy and lithology data:', formData);
+
+    // Build mineralogy object (Tab 1)
+    const mineralogy = {
+      minerals: formData.minerals.map(m => ({
+        name: m.name,
+        percentage: m.percentage,
+        operator: null, // TODO: Add operator field to UI if needed
+      })),
+      mineralogyMethod: formData.determinationMethod || null,
+      percentageCalculationMethod: formData.percentageCalculationMethod || null,
+      notes: formData.mineralogyNotes || null,
+    };
+
+    // Build lithologyInfo object (Tab 2)
+    const lithologyInfo = {
+      lithologies: formData.lithologies || null,
+      notes: formData.lithologyNotes || null,
+    };
 
     if (micrographId) {
-      updateMicrographMetadata(micrographId, { mineralogy: formData as any });
+      updateMicrographMetadata(micrographId, {
+        mineralogy: mineralogy.minerals.length > 0 ? mineralogy : null,
+        lithologyInfo: (lithologyInfo.lithologies && lithologyInfo.lithologies.length > 0) ? lithologyInfo : null,
+      });
     } else if (spotId) {
-      updateSpotData(spotId, { mineralogy: formData as any });
+      updateSpotData(spotId, {
+        mineralogy: mineralogy.minerals.length > 0 ? mineralogy : null,
+        lithologyInfo: (lithologyInfo.lithologies && lithologyInfo.lithologies.length > 0) ? lithologyInfo : null,
+      });
     }
 
     onClose();
