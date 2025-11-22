@@ -30,6 +30,18 @@ export function PhaseSelector({
   label = 'Which Phases?',
   helperText,
 }: PhaseSelectorProps) {
+  const allPhasesChecked = availablePhases.length > 0 && selectedPhases.length === availablePhases.length;
+
+  const handleAllPhasesChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    if (event.target.checked) {
+      // Select all phases
+      onChange([...availablePhases]);
+    } else {
+      // Deselect all phases
+      onChange([]);
+    }
+  };
+
   const handleChange = (phase: string) => (event: React.ChangeEvent<HTMLInputElement>) => {
     if (event.target.checked) {
       onChange([...selectedPhases, phase]);
@@ -64,6 +76,19 @@ export function PhaseSelector({
         </Typography>
       )}
       <FormGroup>
+        {/* "All Phases" checkbox */}
+        <FormControlLabel
+          control={
+            <Checkbox
+              checked={allPhasesChecked}
+              onChange={handleAllPhasesChange}
+            />
+          }
+          label={<strong>All Phases</strong>}
+          sx={{ mb: 1 }}
+        />
+
+        {/* Individual phase checkboxes */}
         {availablePhases.map((phase) => (
           <FormControlLabel
             key={phase}
