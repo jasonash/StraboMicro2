@@ -23,6 +23,7 @@ import {
   ListItemText,
   IconButton,
   Divider,
+  MenuItem,
 } from '@mui/material';
 import DeleteIcon from '@mui/icons-material/Delete';
 import { useAppStore } from '@/store';
@@ -53,6 +54,7 @@ function TabPanel({ children, value, index }: TabPanelProps) {
 
 interface MineralWithPercentage {
   name: string;
+  operator: string; // "eq" (=), "gt" (>), "lt" (<)
   percentage: number;
 }
 
@@ -102,6 +104,7 @@ export function MineralogyDialog({
 
   // Mineralogy tab - temporary state for adding new mineral
   const [selectedMinerals, setSelectedMinerals] = useState<string[]>([]);
+  const [currentOperator, setCurrentOperator] = useState<string>('eq');
   const [currentPercentage, setCurrentPercentage] = useState<number>(0);
 
   // Load existing data when dialog opens
@@ -130,6 +133,7 @@ export function MineralogyDialog({
     setFormData({
       minerals: existingMineralogy?.minerals?.map((m: any) => ({
         name: m.name || '',
+        operator: m.operator || 'eq',
         percentage: m.percentage || 0,
       })) || [],
       determinationMethod: existingMineralogy?.mineralogyMethod || '',
@@ -139,6 +143,7 @@ export function MineralogyDialog({
       lithologyNotes: existingLithology?.notes || '',
     });
     setSelectedMinerals([]);
+    setCurrentOperator('eq');
     setCurrentPercentage(0);
   }, [isOpen, micrographId, spotId, project]);
 
@@ -151,6 +156,7 @@ export function MineralogyDialog({
     if (selectedMinerals.length > 0 && currentPercentage > 0) {
       const newMineral: MineralWithPercentage = {
         name: selectedMinerals[0],
+        operator: currentOperator,
         percentage: currentPercentage,
       };
 
@@ -161,6 +167,7 @@ export function MineralogyDialog({
 
       // Reset selection
       setSelectedMinerals([]);
+      setCurrentOperator('eq');
       setCurrentPercentage(0);
     }
   };
@@ -182,8 +189,8 @@ export function MineralogyDialog({
     const mineralogy = {
       minerals: formData.minerals.map(m => ({
         name: m.name,
+        operator: m.operator,
         percentage: m.percentage,
-        operator: null, // TODO: Add operator field to UI if needed
       })),
       mineralogyMethod: formData.determinationMethod || null,
       percentageCalculationMethod: formData.percentageCalculationMethod || null,
@@ -250,6 +257,17 @@ export function MineralogyDialog({
                 />
               </Box>
               <TextField
+                select
+                label="Operator"
+                value={currentOperator}
+                onChange={(e) => setCurrentOperator(e.target.value)}
+                sx={{ width: 80 }}
+              >
+                <MenuItem value="eq">=</MenuItem>
+                <MenuItem value="gt">&gt;</MenuItem>
+                <MenuItem value="lt">&lt;</MenuItem>
+              </TextField>
+              <TextField
                 type="number"
                 label="Percentage"
                 value={currentPercentage || ''}
@@ -276,21 +294,24 @@ export function MineralogyDialog({
                   Minerals
                 </Typography>
                 <List sx={{ border: 1, borderColor: 'divider', borderRadius: 1 }}>
-                  {formData.minerals.map((mineral, index) => (
-                    <ListItem
-                      key={index}
-                      secondaryAction={
-                        <IconButton edge="end" onClick={() => handleRemoveMineral(index)}>
-                          <DeleteIcon />
-                        </IconButton>
-                      }
-                    >
-                      <ListItemText
-                        primary={mineral.name}
-                        secondary={`${mineral.percentage}%`}
-                      />
-                    </ListItem>
-                  ))}
+                  {formData.minerals.map((mineral, index) => {
+                    const operatorSymbol = mineral.operator === 'eq' ? '=' : mineral.operator === 'gt' ? '>' : '<';
+                    return (
+                      <ListItem
+                        key={index}
+                        secondaryAction={
+                          <IconButton edge="end" onClick={() => handleRemoveMineral(index)}>
+                            <DeleteIcon />
+                          </IconButton>
+                        }
+                      >
+                        <ListItemText
+                          primary={mineral.name}
+                          secondary={`${operatorSymbol} ${mineral.percentage}%`}
+                        />
+                      </ListItem>
+                    );
+                  })}
                 </List>
               </Box>
             )}
