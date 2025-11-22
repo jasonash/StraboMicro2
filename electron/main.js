@@ -1213,6 +1213,9 @@ ipcMain.handle('composite:generate-thumbnail', async (event, projectId, microgra
     for (const child of childMicrographs) {
       try {
         log.info(`[IPC] Processing child ${child.id} (${child.name})`);
+        log.info(`[IPC]   Child rotation value: ${child.rotation} (type: ${typeof child.rotation})`);
+        log.info(`[IPC]   Child rotationAngle value: ${child.rotationAngle} (type: ${typeof child.rotationAngle})`);
+        log.info(`[IPC]   All child keys:`, Object.keys(child));
 
         const childPath = path.join(folderPaths.images, child.imagePath);
 
@@ -1273,39 +1276,46 @@ ipcMain.handle('composite:generate-thumbnail', async (event, projectId, microgra
         });
 
         // Apply rotation if needed
-        if (child.rotation) {
-          // Rotate the image - Sharp expands the canvas to fit rotated content
+        if (child.rotation && child.rotation !== 0) {
+          log.info(`[IPC]   Applying rotation: ${child.rotation}°`);
+
+          // Rotate the resized image
           childImage = childImage.rotate(child.rotation, {
             background: { r: 0, g: 0, b: 0, alpha: 0 }
           });
 
-          // Get rotated dimensions
-          const rotatedMeta = await childImage.metadata();
+          // Calculate rotation using RESIZED dimensions (thumbChildWidth/Height)
+          // NOT metadata which returns original file dimensions
+          // Rotation expands the bounding box, so we need to calculate the new dimensions
+          const radians = (child.rotation * Math.PI) / 180;
+          const cos = Math.abs(Math.cos(radians));
+          const sin = Math.abs(Math.sin(radians));
+          const rotatedWidth = Math.round(thumbChildWidth * cos + thumbChildHeight * sin);
+          const rotatedHeight = Math.round(thumbChildWidth * sin + thumbChildHeight * cos);
 
-          // Calculate where the rotated image's top-left should be
-          // The rotation pivot is at the center of the ORIGINAL (pre-rotation) image
+          log.info(`[IPC]   Calculated rotated dims: ${rotatedWidth}x${rotatedHeight} (from ${thumbChildWidth}x${thumbChildHeight})`);
+
           const originalCenterX = thumbX + thumbChildWidth / 2;
           const originalCenterY = thumbY + thumbChildHeight / 2;
+          const rotatedLeft = Math.round(originalCenterX - rotatedWidth / 2);
+          const rotatedTop = Math.round(originalCenterY - rotatedHeight / 2);
 
-          // After rotation, the expanded canvas has the pivot at its center
-          // So we need to offset by half the rotated dimensions
-          const rotatedLeft = Math.round(originalCenterX - rotatedMeta.width / 2);
-          const rotatedTop = Math.round(originalCenterY - rotatedMeta.height / 2);
+          log.info(`[IPC]   Rotated pos: (${rotatedLeft}, ${rotatedTop}), center: (${originalCenterX}, ${originalCenterY})`);
 
-          log.info(`[IPC]   Rotation: ${child.rotation}°, original center: (${originalCenterX}, ${originalCenterY}), rotated dims: ${rotatedMeta.width}x${rotatedMeta.height}, rotated pos: (${rotatedLeft}, ${rotatedTop})`);
+          // Convert to buffer with PNG to preserve alpha channel
+          const rotatedBuffer = await childImage.png().toBuffer();
+          log.info(`[IPC]   Rotated buffer size: ${rotatedBuffer.length} bytes`);
 
           compositeInputs.push({
-            input: await childImage.toBuffer(),
+            input: rotatedBuffer,
             left: rotatedLeft,
-            top: rotatedTop,
-            blend: 'over'
+            top: rotatedTop
           });
         } else {
           compositeInputs.push({
             input: await childImage.toBuffer(),
             left: thumbX,
-            top: thumbY,
-            blend: 'over'
+            top: thumbY
           });
         }
       } catch (error) {
@@ -1496,6 +1506,10 @@ ipcMain.handle('composite:rebuild-all-thumbnails', async (event, projectId, proj
 
         for (const child of childMicrographs) {
           try {
+            log.info(`[IPC] Rebuild: Processing child ${child.id} (${child.name})`);
+            log.info(`[IPC] Rebuild: Child rotation value: ${child.rotation} (type: ${typeof child.rotation})`);
+            log.info(`[IPC] Rebuild: Child rotationAngle value: ${child.rotationAngle} (type: ${typeof child.rotationAngle})`);
+
             if (!child.imagePath) continue;
 
             const childPath = path.join(folderPaths.images, child.imagePath);
@@ -1541,27 +1555,46 @@ ipcMain.handle('composite:rebuild-all-thumbnails', async (event, projectId, proj
             const thumbChildWidth = Math.round(childDisplayWidth * thumbnailScale);
             const thumbChildHeight = Math.round(childDisplayHeight * thumbnailScale);
 
+            log.info(`[IPC] Rebuild: Thumbnail child dimensions: ${thumbChildWidth}x${thumbChildHeight}, pos: (${thumbX}, ${thumbY})`);
+
             childImage = childImage.resize(thumbChildWidth, thumbChildHeight, {
               fit: 'fill',
               kernel: sharp.kernel.lanczos3
             });
 
-            if (child.rotation) {
-              const centerX = thumbX + thumbChildWidth / 2;
-              const centerY = thumbY + thumbChildHeight / 2;
+            if (child.rotation && child.rotation !== 0) {
+              log.info(`[IPC] Rebuild: Applying rotation: ${child.rotation}°`);
 
+              // Rotate the resized image
               childImage = childImage.rotate(child.rotation, {
                 background: { r: 0, g: 0, b: 0, alpha: 0 }
               });
 
-              const rotatedMeta = await childImage.metadata();
-              const adjustedX = Math.round(centerX - rotatedMeta.width / 2);
-              const adjustedY = Math.round(centerY - rotatedMeta.height / 2);
+              // Calculate rotation using RESIZED dimensions (thumbChildWidth/Height)
+              // NOT metadata which returns original file dimensions
+              // Rotation expands the bounding box, so we need to calculate the new dimensions
+              const radians = (child.rotation * Math.PI) / 180;
+              const cos = Math.abs(Math.cos(radians));
+              const sin = Math.abs(Math.sin(radians));
+              const rotatedWidth = Math.round(thumbChildWidth * cos + thumbChildHeight * sin);
+              const rotatedHeight = Math.round(thumbChildWidth * sin + thumbChildHeight * cos);
+
+              log.info(`[IPC] Rebuild: Calculated rotated dims: ${rotatedWidth}x${rotatedHeight} (from ${thumbChildWidth}x${thumbChildHeight})`);
+
+              const originalCenterX = thumbX + thumbChildWidth / 2;
+              const originalCenterY = thumbY + thumbChildHeight / 2;
+              const rotatedLeft = Math.round(originalCenterX - rotatedWidth / 2);
+              const rotatedTop = Math.round(originalCenterY - rotatedHeight / 2);
+
+              log.info(`[IPC] Rebuild: Rotated pos: (${rotatedLeft}, ${rotatedTop}), center: (${originalCenterX}, ${originalCenterY})`);
+
+              const rotatedBuffer = await childImage.png().toBuffer();
+              log.info(`[IPC] Rebuild: Rotated buffer size: ${rotatedBuffer.length} bytes`);
 
               compositeInputs.push({
-                input: await childImage.toBuffer(),
-                left: adjustedX,
-                top: adjustedY
+                input: rotatedBuffer,
+                left: rotatedLeft,
+                top: rotatedTop
               });
             } else {
               compositeInputs.push({
