@@ -19,7 +19,7 @@ import { SelectChangeEvent } from '@mui/material/Select';
 import { useAppStore } from '@/store';
 import { NotesDialog } from './dialogs/metadata/NotesDialog';
 import { SampleInfoDialog } from './dialogs/metadata/SampleInfoDialog';
-import { MicrographInfoDialog } from './dialogs/metadata/MicrographInfoDialog';
+import { EditMicrographDialog } from './dialogs/metadata/EditMicrographDialog';
 import { MineralogyDialog } from './dialogs/metadata/MineralogyDialog';
 import { GrainInfoDialog } from './dialogs/metadata/graininfo/GrainInfoDialog';
 import { FabricsDialog } from './dialogs/metadata/fabrics/FabricsDialog';
@@ -204,7 +204,7 @@ export function PropertiesPanel() {
       )}
 
       {openDialog === 'micrograph' && activeMicrographId && (
-        <MicrographInfoDialog
+        <EditMicrographDialog
           isOpen={true}
           onClose={() => setOpenDialog(null)}
           micrographId={activeMicrographId}
