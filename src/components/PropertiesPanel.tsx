@@ -32,6 +32,8 @@ import { ClasticDeformationBandInfoDialog } from './dialogs/metadata/clasticdefo
 import { PseudotachylyteInfoDialog } from './dialogs/metadata/pseudotachylyte/PseudotachylyteInfoDialog';
 import { FaultsShearZonesInfoDialog } from './dialogs/metadata/faultsshearzon es/FaultsShearZonesInfoDialog';
 import { ExtinctionMicrostructureInfoDialog } from './dialogs/metadata/extinctionmicrostructure/ExtinctionMicrostructureInfoDialog';
+import { AssociatedFilesInfoDialog } from './dialogs/metadata/associatedfiles/AssociatedFilesInfoDialog';
+import { LinksInfoDialog } from './dialogs/metadata/links/LinksInfoDialog';
 
 /**
  * Data type options for micrographs
@@ -310,6 +312,24 @@ export function PropertiesPanel() {
 
       {openDialog === 'extinctionMicrostructures' && (
         <ExtinctionMicrostructureInfoDialog
+          isOpen={true}
+          onClose={() => setOpenDialog(null)}
+          micrographId={activeMicrographId || undefined}
+          spotId={activeSpotId || undefined}
+        />
+      )}
+
+      {openDialog === 'files' && (
+        <AssociatedFilesInfoDialog
+          isOpen={true}
+          onClose={() => setOpenDialog(null)}
+          micrographId={activeMicrographId || undefined}
+          spotId={activeSpotId || undefined}
+        />
+      )}
+
+      {openDialog === 'links' && (
+        <LinksInfoDialog
           isOpen={true}
           onClose={() => setOpenDialog(null)}
           micrographId={activeMicrographId || undefined}
