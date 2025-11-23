@@ -14,6 +14,8 @@ import {
   Radio,
   Checkbox,
   Button,
+  TextField,
+  Typography,
 } from '@mui/material';
 import { AutocompleteMineralSearch } from '../reusable/AutocompleteMineralSearch';
 import { UnitInput } from '../reusable/UnitInput';
@@ -60,17 +62,41 @@ const DEFAULT_FRACTURE: FractureData = {
 export function FractureAddForm({ onAdd, onCancel, initialData }: FractureAddFormProps) {
   const [formData, setFormData] = useState<FractureData>(initialData || DEFAULT_FRACTURE);
 
+  // Mineralogy state (matches clastic deformation pattern)
+  const [mineralogy, setMineralogy] = useState('');
+  const [mineralSearchKey, setMineralSearchKey] = useState(0); // Used to force reset autocomplete
+
   useEffect(() => {
     if (initialData) {
       setFormData(initialData);
+      setMineralogy(initialData.mineralogy || '');
     }
   }, [initialData]);
 
+  const handleMineralSelected = (mineralName: string | null) => {
+    if (!mineralName) return;
+
+    // Append to mineralogy list (comma-separated)
+    if (mineralogy === '') {
+      setMineralogy(mineralName);
+    } else {
+      setMineralogy(mineralogy + ', ' + mineralName);
+    }
+
+    // Force reset the autocomplete by changing its key
+    setMineralSearchKey(prev => prev + 1);
+  };
+
   const handleSubmit = () => {
-    onAdd(formData);
+    onAdd({
+      ...formData,
+      mineralogy: mineralogy,
+    });
     // Reset form if adding (not editing)
     if (!initialData) {
       setFormData(DEFAULT_FRACTURE);
+      setMineralogy('');
+      setMineralSearchKey(prev => prev + 1);
     }
   };
 
@@ -93,7 +119,7 @@ export function FractureAddForm({ onAdd, onCancel, initialData }: FractureAddFor
     if (formData.granularity === '') return false;
 
     // Must have mineralogy
-    if (formData.mineralogy === '') return false;
+    if (mineralogy === '') return false;
 
     // Must have kinematic type
     if (formData.kinematicType === '') return false;
@@ -136,14 +162,45 @@ export function FractureAddForm({ onAdd, onCancel, initialData }: FractureAddFor
         </RadioGroup>
       </FormControl>
 
-      {/* Mineralogy of Fractured Phase(s) */}
+      {/* Mineralogy of Fractured Phase(s) - Matches clastic deformation band pattern */}
       <Box>
+        <Typography variant="subtitle2" sx={{ mb: 1 }}>Mineralogy of Fractured Phase(s):</Typography>
+
+        {/* Autocomplete field for searching/selecting minerals */}
         <AutocompleteMineralSearch
-          selectedMinerals={formData.mineralogy ? formData.mineralogy.split(', ').filter(m => m) : []}
-          onChange={(minerals) => setFormData(prev => ({ ...prev, mineralogy: minerals.join(', ') }))}
-          multiple
-          label="Mineralogy of Fractured Phase(s)"
+          key={mineralSearchKey}
+          selectedMinerals={[]}
+          onChange={(minerals) => {
+            if (minerals.length > 0) {
+              handleMineralSelected(minerals[minerals.length - 1]);
+            }
+          }}
+          multiple={false}
+          label="Search and select mineral to add"
         />
+
+        {/* Display field showing comma-separated list of selected minerals */}
+        <Box sx={{ display: 'flex', gap: 1, mt: 2, alignItems: 'flex-start' }}>
+          <TextField
+            fullWidth
+            label="Selected Minerals"
+            value={mineralogy}
+            multiline
+            rows={2}
+            InputProps={{
+              readOnly: true,
+            }}
+            helperText="Comma-separated list of selected minerals"
+          />
+          <Button
+            variant="outlined"
+            onClick={() => setMineralogy('')}
+            disabled={!mineralogy}
+            sx={{ minWidth: '80px', height: '56px' }}
+          >
+            Clear
+          </Button>
+        </Box>
       </Box>
 
       {/* Kinematics */}
