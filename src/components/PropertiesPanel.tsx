@@ -13,7 +13,6 @@ import {
   MenuItem,
   FormControl,
   Divider,
-  Stack,
 } from '@mui/material';
 import { SelectChangeEvent } from '@mui/material/Select';
 import { useAppStore } from '@/store';
@@ -34,6 +33,7 @@ import { FaultsShearZonesInfoDialog } from './dialogs/metadata/faultsshearzon es
 import { ExtinctionMicrostructureInfoDialog } from './dialogs/metadata/extinctionmicrostructure/ExtinctionMicrostructureInfoDialog';
 import { AssociatedFilesInfoDialog } from './dialogs/metadata/associatedfiles/AssociatedFilesInfoDialog';
 import { LinksInfoDialog } from './dialogs/metadata/links/LinksInfoDialog';
+import { MetadataSummary } from './MetadataSummary';
 
 /**
  * Data type options for micrographs
@@ -177,12 +177,11 @@ export function PropertiesPanel() {
           Collected Data
         </Typography>
 
-        <Stack spacing={1}>
-          {/* TODO: Display collected metadata here */}
-          <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
-            No metadata collected yet. Use the dropdown above to add data.
-          </Typography>
-        </Stack>
+        <MetadataSummary
+          micrographId={activeMicrographId || undefined}
+          spotId={activeSpotId || undefined}
+          onEditSection={(sectionId) => setOpenDialog(sectionId)}
+        />
       </Box>
 
       {/* Dialogs */}
