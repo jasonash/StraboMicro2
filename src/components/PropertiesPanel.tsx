@@ -19,6 +19,8 @@ import { useAppStore } from '@/store';
 import { NotesDialog } from './dialogs/metadata/NotesDialog';
 import { SampleInfoDialog } from './dialogs/metadata/SampleInfoDialog';
 import { EditMicrographDialog } from './dialogs/metadata/EditMicrographDialog';
+import { EditDatasetDialog } from './dialogs/EditDatasetDialog';
+import { EditProjectDialog } from './dialogs/EditProjectDialog';
 import { MineralogyDialog } from './dialogs/metadata/MineralogyDialog';
 import { GrainInfoDialog } from './dialogs/metadata/graininfo/GrainInfoDialog';
 import { FabricsDialog } from './dialogs/metadata/fabrics/FabricsDialog';
@@ -104,7 +106,21 @@ export function PropertiesPanel() {
     return undefined;
   };
 
+  // Find the dataset ID for the active micrograph
+  const findDatasetIdForMicrograph = (): string | undefined => {
+    if (!activeMicrographId || !project) return undefined;
+    for (const dataset of project.datasets || []) {
+      for (const sample of dataset.samples || []) {
+        if (sample.micrographs?.some((m) => m.id === activeMicrographId)) {
+          return dataset.id;
+        }
+      }
+    }
+    return undefined;
+  };
+
   const sampleId = findSampleIdForMicrograph();
+  const datasetId = findDatasetIdForMicrograph();
 
   // Determine what type of entity is selected
   const selectionType = activeMicrographId ? 'micrograph' : activeSpotId ? 'spot' : null;
@@ -191,6 +207,21 @@ export function PropertiesPanel() {
           onClose={() => setOpenDialog(null)}
           micrographId={activeMicrographId || undefined}
           spotId={activeSpotId || undefined}
+        />
+      )}
+
+      {openDialog === 'project' && project && (
+        <EditProjectDialog
+          isOpen={true}
+          onClose={() => setOpenDialog(null)}
+        />
+      )}
+
+      {openDialog === 'dataset' && datasetId && (
+        <EditDatasetDialog
+          isOpen={true}
+          onClose={() => setOpenDialog(null)}
+          datasetId={datasetId}
         />
       )}
 
