@@ -187,6 +187,7 @@ export function AssociatedFilesInfoDialog({
           onItemDelete={handleFileDelete}
           hideButtons={true}
           hideNotes={true}
+          showEditFormOnly={true}
           title="Files"
           addSectionTitle="Edit File Metadata"
           emptyMessage="No associated files added yet."
