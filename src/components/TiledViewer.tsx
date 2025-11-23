@@ -19,6 +19,7 @@ import { useAppStore } from '@/store';
 import { getChildMicrographs } from '@/store/helpers';
 import { AssociatedImageRenderer } from './AssociatedImageRenderer';
 import { SpotRenderer } from './SpotRenderer';
+import { SpotContextMenu } from './SpotContextMenu';
 import { NewSpotDialog } from './dialogs/NewSpotDialog';
 import { Geometry, Spot } from '@/types/project-types';
 import './TiledViewer.css';
@@ -85,6 +86,10 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(({ image
   const [newSpotDialogOpen, setNewSpotDialogOpen] = useState(false);
   const [pendingSpotGeometry, setPendingSpotGeometry] = useState<Geometry | null>(null);
 
+  // Context Menu state
+  const [contextMenuSpot, setContextMenuSpot] = useState<Spot | null>(null);
+  const [contextMenuPosition, setContextMenuPosition] = useState<{ x: number; y: number } | null>(null);
+
   // Get project and active micrograph from store
   const project = useAppStore((state) => state.project);
   const activeMicrographId = useAppStore((state) => state.activeMicrographId);
@@ -93,6 +98,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(({ image
   const selectActiveSpot = useAppStore((state) => state.selectActiveSpot);
   const setActiveTool = useAppStore((state) => state.setActiveTool);
   const addSpot = useAppStore((state) => state.addSpot);
+  const deleteSpot = useAppStore((state) => state.deleteSpot);
 
   // Find active micrograph and its associated children
   const activeMicrograph = useCallback(() => {
@@ -540,6 +546,14 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(({ image
   }, [activeMicrographId, addSpot, selectActiveSpot, setActiveTool]);
 
   /**
+   * Handle spot deletion
+   */
+  const handleDeleteSpot = useCallback((spot: Spot) => {
+    deleteSpot(spot.id);
+    console.log('Spot deleted:', spot.name);
+  }, [deleteSpot]);
+
+  /**
    * Reset zoom (fit to screen)
    */
   const handleResetZoom = useCallback(() => {
@@ -671,8 +685,8 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(({ image
                     setActiveTool(null); // Deactivate drawing tool when selecting spot
                   }}
                   onContextMenu={(spot, x, y) => {
-                    // TODO: Show context menu
-                    console.log('Context menu for spot:', spot.name, 'at', x, y);
+                    setContextMenuSpot(spot);
+                    setContextMenuPosition({ x, y });
                   }}
                 />
               ))}
@@ -730,6 +744,17 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(({ image
           existingSpots={activeMicrograph?.spots || []}
         />
       )}
+
+      {/* Spot Context Menu */}
+      <SpotContextMenu
+        spot={contextMenuSpot}
+        anchorPosition={contextMenuPosition}
+        onClose={() => {
+          setContextMenuSpot(null);
+          setContextMenuPosition(null);
+        }}
+        onDelete={handleDeleteSpot}
+      />
     </div>
   );
 });
