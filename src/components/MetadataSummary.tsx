@@ -21,7 +21,7 @@ import {
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import EditIcon from '@mui/icons-material/Edit';
 import { useAppStore } from '@/store';
-import { findMicrographById, findSpotById, getMicrographParentSample } from '@/store/helpers';
+import { findMicrographById, findSpotById, getMicrographParentSample, getSampleParentDataset } from '@/store/helpers';
 import type {
   FractureType,
   FabricType,
@@ -577,6 +577,11 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
     ? getMicrographParentSample(project, micrographId)
     : undefined;
 
+  // Get the parent dataset
+  const dataset = sample && project
+    ? getSampleParentDataset(project, sample.id)
+    : undefined;
+
   if (!data) {
     return (
       <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic', p: 2 }}>
@@ -606,7 +611,7 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
 
   return (
     <Stack spacing={0.5}>
-      {/* Project/Dataset Metadata */}
+      {/* Project Metadata */}
       <Accordion
         expanded={expanded['project'] || false}
         onChange={handleExpand('project')}
@@ -620,27 +625,87 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
             '& .MuiAccordionSummary-content': { alignItems: 'center', gap: 1 },
           }}
         >
-          <Typography variant="subtitle2">Project/Dataset Metadata</Typography>
+          <Typography variant="subtitle2">Project Metadata</Typography>
           <Box sx={{ flexGrow: 1 }} />
           <IconButton
             size="small"
-            onClick={handleEdit('sample')}
+            onClick={handleEdit('project')}
             sx={{ mr: 1 }}
           >
             <EditIcon fontSize="small" />
           </IconButton>
         </AccordionSummary>
         <AccordionDetails sx={{ py: 1 }}>
-          <Stack spacing={1}>
-            <Box>
-              <Typography variant="caption" color="text.secondary">
-                Project: {project?.name || 'Untitled Project'}
+          <Stack spacing={0.5}>
+            {project?.name && (
+              <Box>
+                <Typography variant="caption" color="text.secondary">Name: </Typography>
+                <Typography variant="body2" component="span">{project.name}</Typography>
+              </Box>
+            )}
+            {project?.description && (
+              <Box>
+                <Typography variant="caption" color="text.secondary">Description: </Typography>
+                <Typography variant="body2" component="span">{project.description}</Typography>
+              </Box>
+            )}
+            {!project?.name && (
+              <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+                No project metadata set
               </Typography>
-            </Box>
-            {/* TODO: Add dataset info when available */}
+            )}
           </Stack>
         </AccordionDetails>
       </Accordion>
+
+      {/* Dataset Metadata */}
+      {dataset && (
+        <Accordion
+          expanded={expanded['dataset'] || false}
+          onChange={handleExpand('dataset')}
+          disableGutters
+          sx={{ '&:before': { display: 'none' } }}
+        >
+          <AccordionSummary
+            expandIcon={<ExpandMoreIcon />}
+            sx={{
+              minHeight: 48,
+              '& .MuiAccordionSummary-content': { alignItems: 'center', gap: 1 },
+            }}
+          >
+            <Typography variant="subtitle2">Dataset Metadata</Typography>
+            <Box sx={{ flexGrow: 1 }} />
+            <IconButton
+              size="small"
+              onClick={handleEdit('dataset')}
+              sx={{ mr: 1 }}
+            >
+              <EditIcon fontSize="small" />
+            </IconButton>
+          </AccordionSummary>
+          <AccordionDetails sx={{ py: 1 }}>
+            <Stack spacing={0.5}>
+              {dataset.name && (
+                <Box>
+                  <Typography variant="caption" color="text.secondary">Name: </Typography>
+                  <Typography variant="body2" component="span">{dataset.name}</Typography>
+                </Box>
+              )}
+              {dataset.date && (
+                <Box>
+                  <Typography variant="caption" color="text.secondary">Date: </Typography>
+                  <Typography variant="body2" component="span">{dataset.date}</Typography>
+                </Box>
+              )}
+              {!dataset.name && (
+                <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+                  No dataset metadata set
+                </Typography>
+              )}
+            </Stack>
+          </AccordionDetails>
+        </Accordion>
+      )}
 
       {/* Sample Metadata */}
       {sample && (
