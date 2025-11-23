@@ -24,9 +24,9 @@ import {
 import { useAppStore } from '@/store';
 import { AssociatedFileType } from '@/types/project-types';
 import { findMicrographById, findSpotById } from '@/store/helpers';
-import { ListManager } from '../reusable/ListManager';
-import { AssociatedFileAddForm, AssociatedFileData } from './AssociatedFileAddForm';
+import { AssociatedFileData } from './AssociatedFileAddForm';
 import { AssociatedFileListItem } from './AssociatedFileListItem';
+import { EditAssociatedFileDialog } from './EditAssociatedFileDialog';
 
 interface AssociatedFilesInfoDialogProps {
   isOpen: boolean;
@@ -46,6 +46,8 @@ export function AssociatedFilesInfoDialog({
   const updateSpotData = useAppStore((state) => state.updateSpotData);
 
   const [files, setFiles] = useState<AssociatedFileData[]>([]);
+  const [editingFile, setEditingFile] = useState<AssociatedFileData | null>(null);
+  const [editingIndex, setEditingIndex] = useState<number | null>(null);
 
   // New file form state (LEGACY: lines 33-36, 57-85 in editAssociatedFilesInfo.fxml)
   const [selectedFilePath, setSelectedFilePath] = useState<string>('');
@@ -99,6 +101,29 @@ export function AssociatedFilesInfoDialog({
       console.error('Error deleting file:', error);
       // Don't block the UI deletion even if filesystem deletion fails
     }
+  };
+
+  // Handle opening edit dialog
+  const handleEditFile = (file: AssociatedFileData, index: number) => {
+    setEditingFile(file);
+    setEditingIndex(index);
+  };
+
+  // Handle saving edited file
+  const handleSaveEdit = (updatedFile: AssociatedFileData) => {
+    if (editingIndex !== null) {
+      const newFiles = [...files];
+      newFiles[editingIndex] = updatedFile;
+      setFiles(newFiles);
+    }
+    setEditingFile(null);
+    setEditingIndex(null);
+  };
+
+  // Handle closing edit dialog
+  const handleCloseEdit = () => {
+    setEditingFile(null);
+    setEditingIndex(null);
   };
 
   // Handle file selection using native Electron dialog
@@ -180,28 +205,75 @@ export function AssociatedFilesInfoDialog({
       <DialogTitle>{title}</DialogTitle>
       <DialogContent sx={{ display: 'flex', flexDirection: 'column', p: 3 }}>
         {/* List of existing files - LEGACY: lines 45-50 in editAssociatedFilesInfo.fxml */}
-        <ListManager<AssociatedFileData>
-          items={files}
-          notes=""
-          onItemsChange={setFiles}
-          onItemDelete={handleFileDelete}
-          hideButtons={true}
-          hideNotes={true}
-          showEditFormOnly={true}
-          title="Files"
-          addSectionTitle="Edit File Metadata"
-          emptyMessage="No associated files added yet."
-          renderItem={(file) => (
-            <AssociatedFileListItem file={file} />
+        <Box sx={{ mb: 3 }}>
+          <Typography variant="h6" sx={{ mb: 2, fontSize: '1.1rem', fontWeight: 600 }}>
+            Files:
+          </Typography>
+
+          {files.length === 0 ? (
+            <Box
+              sx={{
+                p: 3,
+                textAlign: 'center',
+                border: '1px dashed',
+                borderColor: 'divider',
+                borderRadius: 1,
+                bgcolor: 'action.hover',
+              }}
+            >
+              <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+                No associated files added yet.
+              </Typography>
+            </Box>
+          ) : (
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+              {files.map((file, index) => (
+                <Box
+                  key={index}
+                  sx={{
+                    p: 2,
+                    border: '1px solid',
+                    borderColor: 'divider',
+                    borderRadius: 1,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 2,
+                    '&:hover': {
+                      bgcolor: 'action.hover',
+                    },
+                  }}
+                >
+                  {/* File info */}
+                  <Box sx={{ flex: 1 }}>
+                    <AssociatedFileListItem file={file} />
+                  </Box>
+
+                  {/* Action buttons */}
+                  <Box sx={{ display: 'flex', gap: 1 }}>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      onClick={() => handleEditFile(file, index)}
+                    >
+                      Edit
+                    </Button>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      color="error"
+                      onClick={async () => {
+                        await handleFileDelete(file);
+                        setFiles(files.filter((_, i) => i !== index));
+                      }}
+                    >
+                      Delete
+                    </Button>
+                  </Box>
+                </Box>
+              ))}
+            </Box>
           )}
-          renderAddForm={({ onAdd, onCancel, initialData }) => (
-            <AssociatedFileAddForm
-              onAdd={onAdd}
-              onCancel={onCancel}
-              initialData={initialData}
-            />
-          )}
-        />
+        </Box>
 
         <Divider sx={{ my: 3 }} />
 
@@ -294,6 +366,16 @@ export function AssociatedFilesInfoDialog({
           Save
         </Button>
       </DialogActions>
+
+      {/* Edit File Dialog */}
+      {editingFile && (
+        <EditAssociatedFileDialog
+          isOpen={true}
+          onClose={handleCloseEdit}
+          file={editingFile}
+          onSave={handleSaveEdit}
+        />
+      )}
     </Dialog>
   );
 }
