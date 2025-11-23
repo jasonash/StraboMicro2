@@ -20,7 +20,10 @@ import {
   FormControl,
   InputLabel,
   Divider,
+  IconButton,
 } from '@mui/material';
+import DeleteIcon from '@mui/icons-material/Delete';
+import EditIcon from '@mui/icons-material/Edit';
 import { useAppStore } from '@/store';
 import { AssociatedFileType } from '@/types/project-types';
 import { findMicrographById, findSpotById } from '@/store/helpers';
@@ -250,24 +253,24 @@ export function AssociatedFilesInfoDialog({
 
                   {/* Action buttons */}
                   <Box sx={{ display: 'flex', gap: 1 }}>
-                    <Button
+                    <IconButton
                       size="small"
-                      variant="outlined"
                       onClick={() => handleEditFile(file, index)}
+                      title="Edit"
                     >
-                      Edit
-                    </Button>
-                    <Button
+                      <EditIcon fontSize="small" />
+                    </IconButton>
+                    <IconButton
                       size="small"
-                      variant="outlined"
-                      color="error"
                       onClick={async () => {
                         await handleFileDelete(file);
                         setFiles(files.filter((_, i) => i !== index));
                       }}
+                      title="Delete"
+                      color="error"
                     >
-                      Delete
-                    </Button>
+                      <DeleteIcon fontSize="small" />
+                    </IconButton>
                   </Box>
                 </Box>
               ))}
