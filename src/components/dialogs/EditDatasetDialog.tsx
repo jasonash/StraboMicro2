@@ -24,7 +24,6 @@ interface EditDatasetDialogProps {
 
 export function EditDatasetDialog({ isOpen, onClose, datasetId }: EditDatasetDialogProps) {
   const [datasetName, setDatasetName] = useState('');
-  const [datasetDate, setDatasetDate] = useState('');
 
   const project = useAppStore((state) => state.project);
   const updateDataset = useAppStore((state) => state.updateDataset);
@@ -36,7 +35,6 @@ export function EditDatasetDialog({ isOpen, onClose, datasetId }: EditDatasetDia
     const dataset = project.datasets?.find(d => d.id === datasetId);
     if (dataset) {
       setDatasetName(dataset.name || '');
-      setDatasetDate(dataset.date || '');
     }
   }, [project, datasetId, isOpen]);
 
@@ -53,7 +51,6 @@ export function EditDatasetDialog({ isOpen, onClose, datasetId }: EditDatasetDia
     const updatedDataset = {
       ...dataset,
       name: datasetName.trim(),
-      date: datasetDate.trim() || null,
     };
 
     updateDataset(datasetId, updatedDataset);
@@ -65,7 +62,6 @@ export function EditDatasetDialog({ isOpen, onClose, datasetId }: EditDatasetDia
     const dataset = project?.datasets?.find(d => d.id === datasetId);
     if (dataset) {
       setDatasetName(dataset.name || '');
-      setDatasetDate(dataset.date || '');
     }
     onClose();
   };
@@ -94,14 +90,6 @@ export function EditDatasetDialog({ isOpen, onClose, datasetId }: EditDatasetDia
             fullWidth
             autoFocus
             placeholder="e.g., Field Season 2024"
-          />
-          <TextField
-            label="Date"
-            value={datasetDate}
-            onChange={(e) => setDatasetDate(e.target.value)}
-            fullWidth
-            placeholder="e.g., 2024-03-15"
-            helperText="Optional date for this dataset"
           />
         </Stack>
       </DialogContent>

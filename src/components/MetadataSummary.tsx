@@ -691,12 +691,6 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
                   <Typography variant="body2" component="span">{dataset.name}</Typography>
                 </Box>
               )}
-              {dataset.date && (
-                <Box>
-                  <Typography variant="caption" color="text.secondary">Date: </Typography>
-                  <Typography variant="body2" component="span">{dataset.date}</Typography>
-                </Box>
-              )}
               {!dataset.name && (
                 <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
                   No dataset metadata set
