@@ -87,9 +87,10 @@ export function AssociatedFilesInfoDialog({
           notes=""
           onItemsChange={setFiles}
           hideButtons={true}
+          hideAddForm={true}
           title="Associated Files"
           addSectionTitle="Add/Edit File Metadata"
-          emptyMessage="No associated files added yet."
+          emptyMessage="No associated files added yet. File upload functionality will be available in a future update."
           renderItem={(file) => (
             <AssociatedFileListItem file={file} />
           )}

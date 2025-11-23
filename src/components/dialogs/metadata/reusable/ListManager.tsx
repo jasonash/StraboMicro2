@@ -51,6 +51,7 @@ export interface ListManagerProps<T> {
   emptyMessage?: string;
   notesLabel?: string;
   hideButtons?: boolean; // New: Hide cancel/save buttons when using DialogActions in parent
+  hideAddForm?: boolean; // New: Hide the add form section entirely (for read-only or file upload cases)
   renderBeforeNotes?: () => React.ReactNode; // Optional content to render just before notes field
 }
 
@@ -68,6 +69,7 @@ export function ListManager<T>({
   emptyMessage = 'No items added yet.',
   notesLabel = 'Notes',
   hideButtons = false,
+  hideAddForm = false,
   renderBeforeNotes,
 }: ListManagerProps<T>) {
   const [items, setItems] = useState<T[]>(initialItems);
@@ -182,35 +184,39 @@ export function ListManager<T>({
         )}
       </Box>
 
-      <Divider sx={{ my: 2 }} />
+      {!hideAddForm && (
+        <>
+          <Divider sx={{ my: 2 }} />
 
-      {/* Add Form Section */}
-      <Box sx={{ mb: 2 }}>
-        <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 600 }}>
-          {addSectionTitle}:
-        </Typography>
-        {editingIndex !== null ? (
-          // Edit mode: render form with existing item
-          // Key forces remount when switching between different items
-          <Box key={`edit-${editingIndex}`}>
-            {renderAddForm({
-              onAdd: (updatedItem) => handleEdit(editingIndex, updatedItem),
-              onCancel: () => setEditingIndex(null),
-              initialData: items[editingIndex],
-            })}
+          {/* Add Form Section */}
+          <Box sx={{ mb: 2 }}>
+            <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 600 }}>
+              {addSectionTitle}:
+            </Typography>
+            {editingIndex !== null ? (
+              // Edit mode: render form with existing item
+              // Key forces remount when switching between different items
+              <Box key={`edit-${editingIndex}`}>
+                {renderAddForm({
+                  onAdd: (updatedItem) => handleEdit(editingIndex, updatedItem),
+                  onCancel: () => setEditingIndex(null),
+                  initialData: items[editingIndex],
+                })}
+              </Box>
+            ) : (
+              // Add mode: render form for new item
+              // Key forces remount when switching from edit to add mode
+              <Box key="add">
+                {renderAddForm({
+                  onAdd: handleAdd,
+                })}
+              </Box>
+            )}
           </Box>
-        ) : (
-          // Add mode: render form for new item
-          // Key forces remount when switching from edit to add mode
-          <Box key="add">
-            {renderAddForm({
-              onAdd: handleAdd,
-            })}
-          </Box>
-        )}
-      </Box>
 
-      <Divider sx={{ my: 2 }} />
+          <Divider sx={{ my: 2 }} />
+        </>
+      )}
 
       {/* Optional content before notes */}
       {renderBeforeNotes && (
