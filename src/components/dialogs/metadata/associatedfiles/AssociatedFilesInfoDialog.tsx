@@ -175,9 +175,11 @@ export function AssociatedFilesInfoDialog({
       setNewFileType('');
       setNewOtherType('');
       setNewFileNotes('');
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error copying file:', error);
-      alert('Failed to copy file. Please try again.');
+      // Show user-friendly error message
+      const errorMessage = error?.message || 'Failed to copy file. Please try again.';
+      alert(errorMessage);
     }
   };
 
