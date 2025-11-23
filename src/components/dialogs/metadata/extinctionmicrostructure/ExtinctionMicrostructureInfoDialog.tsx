@@ -14,7 +14,7 @@ import {
 } from '@mui/material';
 import { useAppStore } from '@/store';
 import { ExtinctionMicrostructureInfoType, ExtinctionMicrostructureType } from '@/types/project-types';
-import { findMicrographById, findSpotById } from '@/store/helpers';
+import { findMicrographById, findSpotById, getAvailablePhasesFromMicrograph, getAvailablePhasesFromSpot } from '@/store/helpers';
 import { ListManager } from '../reusable/ListManager';
 import { ExtinctionMicrostructureAddForm, ExtinctionMicrostructureData } from './ExtinctionMicrostructureAddForm';
 import { ExtinctionMicrostructureListItem } from './ExtinctionMicrostructureListItem';
@@ -75,6 +75,13 @@ export function ExtinctionMicrostructureInfoDialog({
     onClose();
   };
 
+  // Get available phases from mineralogy data (LEGACY: lines 162-183 in editExtinctionMicrostructure.java)
+  const availablePhases: string[] = micrographId
+    ? getAvailablePhasesFromMicrograph(findMicrographById(project, micrographId))
+    : spotId
+      ? getAvailablePhasesFromSpot(findSpotById(project, spotId))
+      : [];
+
   const title = micrographId
     ? 'Micrograph Extinction Microstructures'
     : spotId
@@ -107,6 +114,7 @@ export function ExtinctionMicrostructureInfoDialog({
           )}
           renderAddForm={({ onAdd, onCancel, initialData }) => (
             <ExtinctionMicrostructureAddForm
+              availablePhases={availablePhases}
               onAdd={onAdd}
               onCancel={onCancel}
               initialData={initialData}
