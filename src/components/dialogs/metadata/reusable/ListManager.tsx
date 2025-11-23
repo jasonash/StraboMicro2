@@ -42,6 +42,7 @@ export interface ListManagerProps<T> {
   renderAddForm: (props: {
     onAdd: (item: T) => void;
     onCancel?: () => void;
+    initialData?: T;
   }) => React.ReactNode;
 
   // Optional customization
@@ -50,6 +51,7 @@ export interface ListManagerProps<T> {
   emptyMessage?: string;
   notesLabel?: string;
   hideButtons?: boolean; // New: Hide cancel/save buttons when using DialogActions in parent
+  renderBeforeNotes?: () => React.ReactNode; // Optional content to render just before notes field
 }
 
 export function ListManager<T>({
@@ -66,6 +68,7 @@ export function ListManager<T>({
   emptyMessage = 'No items added yet.',
   notesLabel = 'Notes',
   hideButtons = false,
+  renderBeforeNotes,
 }: ListManagerProps<T>) {
   const [items, setItems] = useState<T[]>(initialItems);
   const [notes, setNotes] = useState(initialNotes);
@@ -188,19 +191,33 @@ export function ListManager<T>({
         </Typography>
         {editingIndex !== null ? (
           // Edit mode: render form with existing item
-          renderAddForm({
-            onAdd: (updatedItem) => handleEdit(editingIndex, updatedItem),
-            onCancel: () => setEditingIndex(null),
-          })
+          // Key forces remount when switching between different items
+          <Box key={`edit-${editingIndex}`}>
+            {renderAddForm({
+              onAdd: (updatedItem) => handleEdit(editingIndex, updatedItem),
+              onCancel: () => setEditingIndex(null),
+              initialData: items[editingIndex],
+            })}
+          </Box>
         ) : (
           // Add mode: render form for new item
-          renderAddForm({
-            onAdd: handleAdd,
-          })
+          // Key forces remount when switching from edit to add mode
+          <Box key="add">
+            {renderAddForm({
+              onAdd: handleAdd,
+            })}
+          </Box>
         )}
       </Box>
 
       <Divider sx={{ my: 2 }} />
+
+      {/* Optional content before notes */}
+      {renderBeforeNotes && (
+        <Box sx={{ mb: 2 }}>
+          {renderBeforeNotes()}
+        </Box>
+      )}
 
       {/* Notes Section */}
       <Box sx={{ mb: hideButtons ? 0 : 2 }}>

@@ -114,10 +114,11 @@ export function FracturesDialog({
           renderItem={(fracture) => (
             <FractureListItem fracture={fracture} />
           )}
-          renderAddForm={({ onAdd, onCancel }) => (
+          renderAddForm={({ onAdd, onCancel, initialData }) => (
             <FractureAddForm
               onAdd={onAdd}
               onCancel={onCancel}
+              initialData={initialData}
             />
           )}
         />

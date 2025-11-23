@@ -105,10 +105,11 @@ export function FaultsShearZonesInfoDialog({
           renderItem={(fault) => (
             <FaultsShearZonesListItem fault={fault} />
           )}
-          renderAddForm={({ onAdd, onCancel }) => (
+          renderAddForm={({ onAdd, onCancel, initialData }) => (
             <FaultsShearZonesAddForm
               onAdd={onAdd}
               onCancel={onCancel}
+              initialData={initialData}
             />
           )}
         />

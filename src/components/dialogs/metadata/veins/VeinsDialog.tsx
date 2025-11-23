@@ -114,10 +114,11 @@ export function VeinsDialog({
           renderItem={(vein) => (
             <VeinListItem vein={vein} />
           )}
-          renderAddForm={({ onAdd, onCancel }) => (
+          renderAddForm={({ onAdd, onCancel, initialData }) => (
             <VeinAddForm
               onAdd={onAdd}
               onCancel={onCancel}
+              initialData={initialData}
             />
           )}
         />

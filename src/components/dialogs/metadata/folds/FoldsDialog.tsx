@@ -114,10 +114,11 @@ export function FoldsDialog({
           renderItem={(fold) => (
             <FoldListItem fold={fold} />
           )}
-          renderAddForm={({ onAdd, onCancel }) => (
+          renderAddForm={({ onAdd, onCancel, initialData }) => (
             <FoldAddForm
               onAdd={onAdd}
               onCancel={onCancel}
+              initialData={initialData}
             />
           )}
         />

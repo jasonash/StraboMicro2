@@ -114,10 +114,11 @@ export function FabricsDialog({
           renderItem={(fabric) => (
             <FabricListItem fabric={fabric} />
           )}
-          renderAddForm={({ onAdd, onCancel }) => (
+          renderAddForm={({ onAdd, onCancel, initialData }) => (
             <FabricAddForm
               onAdd={onAdd}
               onCancel={onCancel}
+              initialData={initialData}
             />
           )}
         />

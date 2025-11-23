@@ -118,9 +118,57 @@ export function GrainBoundaryAddForm({
 
   // Load initial data
   useEffect(() => {
-    if (!initialData) return;
+    if (!initialData) {
+      // Reset form when switching from edit to add mode
+      setFormData(DEFAULT_BOUNDARY);
+      setCuspate(false);
+      setSutured(false);
+      setSerrated(false);
+      setLobate(false);
+      setStraight(false);
+      setPinned(false);
+      setOvergrowth(false);
+      setIsland(false);
+      setFillingDecoration(false);
+      setFillingMinorPhase(false);
+      setFillingFluidInclusion(false);
+      setFillingOther(false);
+      setFillingOtherText('');
+      setTripleJunction(false);
+      setTriple120(false);
+      setTripleTJunction(false);
+      setTripleOther(false);
+      setTripleOtherText('');
+      setFourGrainJunction(false);
+      setGrainNeighborSwitching(false);
+      setCorona(false);
+      return;
+    }
 
     setFormData(initialData);
+
+    // Reset all checkboxes first
+    setCuspate(false);
+    setSutured(false);
+    setSerrated(false);
+    setLobate(false);
+    setStraight(false);
+    setPinned(false);
+    setOvergrowth(false);
+    setIsland(false);
+    setFillingDecoration(false);
+    setFillingMinorPhase(false);
+    setFillingFluidInclusion(false);
+    setFillingOther(false);
+    setFillingOtherText('');
+    setTripleJunction(false);
+    setTriple120(false);
+    setTripleTJunction(false);
+    setTripleOther(false);
+    setTripleOtherText('');
+    setFourGrainJunction(false);
+    setGrainNeighborSwitching(false);
+    setCorona(false);
 
     // Set morphology checkboxes
     initialData.morphologies.forEach(morph => {

@@ -109,11 +109,13 @@ const DEFAULT_FABRIC: FabricData = {
 };
 
 export function FabricAddForm({ onAdd, onCancel, initialData }: FabricAddFormProps) {
-  const [formData, setFormData] = useState<FabricData>(initialData || DEFAULT_FABRIC);
+  const [formData, setFormData] = useState<FabricData>(DEFAULT_FABRIC);
 
   useEffect(() => {
     if (initialData) {
       setFormData(initialData);
+    } else {
+      setFormData(DEFAULT_FABRIC);
     }
   }, [initialData]);
 

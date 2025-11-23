@@ -105,10 +105,11 @@ export function ClasticDeformationBandInfoDialog({
           renderItem={(band) => (
             <ClasticDeformationBandListItem band={band} />
           )}
-          renderAddForm={({ onAdd, onCancel }) => (
+          renderAddForm={({ onAdd, onCancel, initialData }) => (
             <ClasticDeformationBandAddForm
               onAdd={onAdd}
               onCancel={onCancel}
+              initialData={initialData}
             />
           )}
         />

@@ -12,8 +12,6 @@ import {
   DialogActions,
   Button,
   TextField,
-  Typography,
-  Box,
 } from '@mui/material';
 import { useAppStore } from '@/store';
 import { PseudotachylyteInfoType, PseudotachylyteType } from '@/types/project-types';
@@ -99,21 +97,6 @@ export function PseudotachylyteInfoDialog({
     >
       <DialogTitle>{title}</DialogTitle>
       <DialogContent sx={{ display: 'flex', flexDirection: 'column', p: 3 }}>
-        {/* Reasoning field (above the list) */}
-        <Box sx={{ mb: 3 }}>
-          <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>
-            Reasoning for Pseudotachylyte Identification
-          </Typography>
-          <TextField
-            fullWidth
-            multiline
-            rows={3}
-            value={reasoning}
-            onChange={(e) => setReasoning(e.target.value)}
-            placeholder="Describe the reasoning for identifying this as pseudotachylyte..."
-          />
-        </Box>
-
         <ListManager<PseudotachylyteData>
           items={pseudotachylytes}
           notes={notes}
@@ -123,13 +106,26 @@ export function PseudotachylyteInfoDialog({
           title="Pseudotachylytes"
           addSectionTitle="Add Pseudotachylyte"
           emptyMessage="No pseudotachylytes added yet. Use the form below to add your first pseudotachylyte."
+          notesLabel="Notes"
           renderItem={(pseudotachylyte) => (
             <PseudotachylyteListItem pseudotachylyte={pseudotachylyte} />
           )}
-          renderAddForm={({ onAdd, onCancel }) => (
+          renderAddForm={({ onAdd, onCancel, initialData }) => (
             <PseudotachylyteAddForm
               onAdd={onAdd}
               onCancel={onCancel}
+              initialData={initialData}
+            />
+          )}
+          renderBeforeNotes={() => (
+            <TextField
+              fullWidth
+              multiline
+              rows={3}
+              label="Reasoning for Pseudotachylyte Identification"
+              value={reasoning}
+              onChange={(e) => setReasoning(e.target.value)}
+              placeholder="Describe the reasoning for identifying this as pseudotachylyte..."
             />
           )}
         />

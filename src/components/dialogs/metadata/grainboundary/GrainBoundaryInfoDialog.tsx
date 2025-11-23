@@ -105,10 +105,11 @@ export function GrainBoundaryInfoDialog({
           renderItem={(boundary) => (
             <GrainBoundaryListItem boundary={boundary} />
           )}
-          renderAddForm={({ onAdd, onCancel }) => (
+          renderAddForm={({ onAdd, onCancel, initialData }) => (
             <GrainBoundaryAddForm
               onAdd={onAdd}
               onCancel={onCancel}
+              initialData={initialData}
               micrographId={micrographId}
               spotId={spotId}
             />

@@ -105,10 +105,11 @@ export function IntraGrainInfoDialog({
           renderItem={(grain) => (
             <IntraGrainListItem grain={grain} />
           )}
-          renderAddForm={({ onAdd, onCancel }) => (
+          renderAddForm={({ onAdd, onCancel, initialData }) => (
             <IntraGrainAddForm
               onAdd={onAdd}
               onCancel={onCancel}
+              initialData={initialData}
             />
           )}
         />

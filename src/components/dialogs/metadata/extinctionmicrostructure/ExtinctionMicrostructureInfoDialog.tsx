@@ -105,10 +105,11 @@ export function ExtinctionMicrostructureInfoDialog({
           renderItem={(extinction) => (
             <ExtinctionMicrostructureListItem extinction={extinction} />
           )}
-          renderAddForm={({ onAdd, onCancel }) => (
+          renderAddForm={({ onAdd, onCancel, initialData }) => (
             <ExtinctionMicrostructureAddForm
               onAdd={onAdd}
               onCancel={onCancel}
+              initialData={initialData}
             />
           )}
         />
