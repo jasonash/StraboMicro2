@@ -14,7 +14,7 @@ import {
 } from '@mui/material';
 import { useAppStore } from '@/store';
 import { IntraGrainInfoType, IntraGrainType } from '@/types/project-types';
-import { findMicrographById, findSpotById } from '@/store/helpers';
+import { findMicrographById, findSpotById, getAvailablePhasesFromMicrograph, getAvailablePhasesFromSpot } from '@/store/helpers';
 import { ListManager } from '../reusable/ListManager';
 import { IntraGrainAddForm, IntraGrainData } from './IntraGrainAddForm';
 import { IntraGrainListItem } from './IntraGrainListItem';
@@ -75,6 +75,13 @@ export function IntraGrainInfoDialog({
     onClose();
   };
 
+  // Get available phases from mineralogy data (LEGACY: lines 444-462 in editIntraGrain.java)
+  const availablePhases: string[] = micrographId
+    ? getAvailablePhasesFromMicrograph(findMicrographById(project, micrographId))
+    : spotId
+      ? getAvailablePhasesFromSpot(findSpotById(project, spotId))
+      : [];
+
   const title = micrographId
     ? 'Micrograph Intragranular Structures'
     : spotId
@@ -107,6 +114,7 @@ export function IntraGrainInfoDialog({
           )}
           renderAddForm={({ onAdd, onCancel, initialData }) => (
             <IntraGrainAddForm
+              availablePhases={availablePhases}
               onAdd={onAdd}
               onCancel={onCancel}
               initialData={initialData}
