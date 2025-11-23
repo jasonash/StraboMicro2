@@ -10,7 +10,7 @@
  * - Bottom: Notes textarea + Cancel/Save buttons
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Box,
   Button,
@@ -70,6 +70,15 @@ export function ListManager<T>({
   const [items, setItems] = useState<T[]>(initialItems);
   const [notes, setNotes] = useState(initialNotes);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
+
+  // Sync internal state when props change (important for controlled mode)
+  useEffect(() => {
+    setItems(initialItems);
+  }, [initialItems]);
+
+  useEffect(() => {
+    setNotes(initialNotes);
+  }, [initialNotes]);
 
   const handleAdd = (newItem: T) => {
     const newItems = [...items, newItem];
