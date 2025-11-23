@@ -190,47 +190,6 @@ export function ClasticDeformationBandAddForm({ onAdd, onCancel, initialData }: 
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-      {/* Cements - Matches legacy pattern: autocomplete field + display field */}
-      <Box>
-        <Typography variant="subtitle2" sx={{ mb: 1 }}>Cements:</Typography>
-
-        {/* Autocomplete field for searching/selecting minerals */}
-        <AutocompleteMineralSearch
-          key={mineralSearchKey}
-          selectedMinerals={[]}
-          onChange={(minerals) => {
-            if (minerals.length > 0) {
-              handleMineralSelected(minerals[minerals.length - 1]);
-            }
-          }}
-          multiple={false}
-          label="Search and select mineral to add"
-        />
-
-        {/* Display field showing comma-separated list of selected minerals */}
-        <Box sx={{ display: 'flex', gap: 1, mt: 2, alignItems: 'flex-start' }}>
-          <TextField
-            fullWidth
-            label="Selected Cements"
-            value={cements}
-            multiline
-            rows={2}
-            InputProps={{
-              readOnly: true,
-            }}
-            helperText="Comma-separated list of selected cements"
-          />
-          <Button
-            variant="outlined"
-            onClick={() => setCements('')}
-            disabled={!cements}
-            sx={{ minWidth: '80px', height: '56px' }}
-          >
-            Clear
-          </Button>
-        </Box>
-      </Box>
-
       {/* Band Types Section */}
       <Box>
         <Typography variant="subtitle2" sx={{ mb: 1 }}>Band Type:</Typography>
@@ -333,6 +292,47 @@ export function ClasticDeformationBandAddForm({ onAdd, onCancel, initialData }: 
         label="Thickness"
         min={0}
       />
+
+      {/* Cements - Matches legacy pattern: autocomplete field + display field */}
+      <Box>
+        <Typography variant="subtitle2" sx={{ mb: 1 }}>Cements:</Typography>
+
+        {/* Autocomplete field for searching/selecting minerals */}
+        <AutocompleteMineralSearch
+          key={mineralSearchKey}
+          selectedMinerals={[]}
+          onChange={(minerals) => {
+            if (minerals.length > 0) {
+              handleMineralSelected(minerals[minerals.length - 1]);
+            }
+          }}
+          multiple={false}
+          label="Search and select mineral to add"
+        />
+
+        {/* Display field showing comma-separated list of selected minerals */}
+        <Box sx={{ display: 'flex', gap: 1, mt: 2, alignItems: 'flex-start' }}>
+          <TextField
+            fullWidth
+            label="Selected Cements"
+            value={cements}
+            multiline
+            rows={2}
+            InputProps={{
+              readOnly: true,
+            }}
+            helperText="Comma-separated list of selected cements"
+          />
+          <Button
+            variant="outlined"
+            onClick={() => setCements('')}
+            disabled={!cements}
+            sx={{ minWidth: '80px', height: '56px' }}
+          >
+            Clear
+          </Button>
+        </Box>
+      </Box>
 
       {/* Submit Button */}
       <Box sx={{ display: 'flex', gap: 2, justifyContent: 'center', mt: 2 }}>
