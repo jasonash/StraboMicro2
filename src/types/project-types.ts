@@ -206,6 +206,7 @@ export interface Spot {
   labelColor?: string | null;
   showLabel?: boolean | null;
   color?: string | null;
+  opacity?: number | null; // 0-100%, applied to fill only
   date?: string | null;
   time?: string | null;
   modifiedTimestamp?: number | null;

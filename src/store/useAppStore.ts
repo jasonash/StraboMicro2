@@ -78,6 +78,7 @@ interface AppState {
   selectDataset: (id: string | null) => void;
   selectSample: (id: string | null) => void;
   selectMicrograph: (id: string | null) => void;
+  selectActiveSpot: (id: string | null) => void;
 
   // ========== SELECTION ACTIONS ==========
   selectSpot: (id: string, multiSelect?: boolean) => void;
@@ -228,6 +229,8 @@ export const useAppStore = create<AppState>()(
           selectSample: (id) => set({ activeSampleId: id }),
 
           selectMicrograph: (id) => set({ activeMicrographId: id }),
+
+          selectActiveSpot: (id) => set({ activeSpotId: id }),
 
           // ========== SELECTION ACTIONS ==========
 

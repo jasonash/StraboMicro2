@@ -18,6 +18,7 @@ import { Box, CircularProgress, Typography } from '@mui/material';
 import { useAppStore } from '@/store';
 import { getChildMicrographs } from '@/store/helpers';
 import { AssociatedImageRenderer } from './AssociatedImageRenderer';
+import { SpotRenderer } from './SpotRenderer';
 import './TiledViewer.css';
 
 const TILE_SIZE = 256;
@@ -81,6 +82,10 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(({ image
   // Get project and active micrograph from store
   const project = useAppStore((state) => state.project);
   const activeMicrographId = useAppStore((state) => state.activeMicrographId);
+  const activeTool = useAppStore((state) => state.activeTool);
+  const activeSpotId = useAppStore((state) => state.activeSpotId);
+  const selectActiveSpot = useAppStore((state) => state.selectActiveSpot);
+  const setActiveTool = useAppStore((state) => state.setActiveTool);
 
   // Find active micrograph and its associated children
   const activeMicrograph = useCallback(() => {
@@ -474,6 +479,36 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(({ image
   }, []);
 
   /**
+   * Handle stage click for drawing tools
+   */
+  const handleStageClick = useCallback(() => {
+    // Only handle clicks when a drawing tool is active
+    if (!activeTool || activeTool === 'select') return;
+
+    const stage = stageRef.current;
+    if (!stage) return;
+
+    // Get click position in stage coordinates
+    const pos = stage.getPointerPosition();
+    if (!pos) return;
+
+    // Convert to image coordinates (account for zoom/pan)
+    const imageX = (pos.x - position.x) / zoom;
+    const imageY = (pos.y - position.y) / zoom;
+
+    console.log('Click at image coordinates:', imageX, imageY, 'Tool:', activeTool);
+
+    // Handle point tool
+    if (activeTool === 'point') {
+      // TODO: Open NewSpotDialog with point geometry
+      console.log('Point tool clicked at:', imageX, imageY);
+      // For now, just log. We'll implement the dialog next.
+    }
+
+    // TODO: Handle line and polygon tools
+  }, [activeTool, position, zoom]);
+
+  /**
    * Reset zoom (fit to screen)
    */
   const handleResetZoom = useCallback(() => {
@@ -509,11 +544,19 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(({ image
             width={stageSize.width}
             height={stageSize.height}
             onWheel={handleWheel}
+            onClick={handleStageClick}
             onMouseDown={handleMouseDown}
             onMouseMove={handleMouseMove}
             onMouseUp={handleMouseUp}
             onMouseLeave={handleMouseUp}
-            style={{ cursor: isPanning ? 'grabbing' : 'grab' }}
+            draggable={!activeTool || activeTool === 'select'}
+            style={{
+              cursor: activeTool === 'point' || activeTool === 'line' || activeTool === 'polygon'
+                ? 'crosshair'
+                : isPanning
+                ? 'grabbing'
+                : 'grab'
+            }}
           >
             <Layer
               x={position.x}
@@ -577,6 +620,41 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(({ image
                   }}
                 />
               ))}
+            </Layer>
+
+            {/* Spots Layer - render all saved spots */}
+            <Layer
+              x={position.x}
+              y={position.y}
+              scaleX={zoom}
+              scaleY={zoom}
+            >
+              {activeMicrograph?.spots?.map((spot) => (
+                <SpotRenderer
+                  key={spot.id}
+                  spot={spot}
+                  scale={zoom}
+                  isSelected={spot.id === activeSpotId}
+                  onClick={(spot) => {
+                    selectActiveSpot(spot.id);
+                    setActiveTool(null); // Deactivate drawing tool when selecting spot
+                  }}
+                  onContextMenu={(spot, x, y) => {
+                    // TODO: Show context menu
+                    console.log('Context menu for spot:', spot.name, 'at', x, y);
+                  }}
+                />
+              ))}
+            </Layer>
+
+            {/* Drawing Layer - for temporary drawing in progress */}
+            <Layer
+              x={position.x}
+              y={position.y}
+              scaleX={zoom}
+              scaleY={zoom}
+            >
+              {/* TODO: Add temporary drawing shapes here (point preview, line preview, polygon preview) */}
             </Layer>
           </Stage>
 
