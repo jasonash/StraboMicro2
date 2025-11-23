@@ -53,9 +53,10 @@ export function AutocompleteMineralSearch({
   };
 
   // Get Mineral objects from selected mineral names
-  const selectedMineralObjects = options.filter(m =>
-    selectedMinerals.includes(m.mineralname)
-  );
+  // Search in all minerals (not just current options) to prevent value loss during typing
+  const selectedMineralObjects = selectedMinerals
+    .map(name => searchMinerals(name).find(m => m.mineralname === name))
+    .filter((m): m is Mineral => m !== undefined);
 
   return (
     <Autocomplete
