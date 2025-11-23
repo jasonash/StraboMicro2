@@ -19,6 +19,8 @@ import { useAppStore } from '@/store';
 import { getChildMicrographs } from '@/store/helpers';
 import { AssociatedImageRenderer } from './AssociatedImageRenderer';
 import { SpotRenderer } from './SpotRenderer';
+import { NewSpotDialog } from './dialogs/NewSpotDialog';
+import { Geometry, Spot } from '@/types/project-types';
 import './TiledViewer.css';
 
 const TILE_SIZE = 256;
@@ -79,6 +81,10 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(({ image
   // Track overlay tile loading state
   const [overlayLoadingCount, setOverlayLoadingCount] = useState(0);
 
+  // New Spot Dialog state
+  const [newSpotDialogOpen, setNewSpotDialogOpen] = useState(false);
+  const [pendingSpotGeometry, setPendingSpotGeometry] = useState<Geometry | null>(null);
+
   // Get project and active micrograph from store
   const project = useAppStore((state) => state.project);
   const activeMicrographId = useAppStore((state) => state.activeMicrographId);
@@ -86,6 +92,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(({ image
   const activeSpotId = useAppStore((state) => state.activeSpotId);
   const selectActiveSpot = useAppStore((state) => state.selectActiveSpot);
   const setActiveTool = useAppStore((state) => state.setActiveTool);
+  const addSpot = useAppStore((state) => state.addSpot);
 
   // Find active micrograph and its associated children
   const activeMicrograph = useCallback(() => {
@@ -500,13 +507,37 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(({ image
 
     // Handle point tool
     if (activeTool === 'point') {
-      // TODO: Open NewSpotDialog with point geometry
-      console.log('Point tool clicked at:', imageX, imageY);
-      // For now, just log. We'll implement the dialog next.
+      const pointGeometry: Geometry = {
+        type: 'Point',
+        coordinates: [imageX, imageY],
+      };
+      setPendingSpotGeometry(pointGeometry);
+      setNewSpotDialogOpen(true);
     }
 
     // TODO: Handle line and polygon tools
   }, [activeTool, position, zoom]);
+
+  /**
+   * Handle saving new spot from dialog
+   */
+  const handleSaveSpot = useCallback((spot: Spot) => {
+    if (!activeMicrographId) {
+      console.error('No active micrograph');
+      return;
+    }
+
+    // Add spot to the active micrograph
+    addSpot(activeMicrographId, spot);
+
+    // Select the newly created spot
+    selectActiveSpot(spot.id);
+
+    // Clear the drawing tool
+    setActiveTool(null);
+
+    console.log('Spot created:', spot);
+  }, [activeMicrographId, addSpot, selectActiveSpot, setActiveTool]);
 
   /**
    * Reset zoom (fit to screen)
@@ -686,6 +717,18 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(({ image
             </Box>
           )}
         </>
+      )}
+
+      {/* New Spot Dialog */}
+      {pendingSpotGeometry && activeMicrographId && (
+        <NewSpotDialog
+          open={newSpotDialogOpen}
+          onClose={() => setNewSpotDialogOpen(false)}
+          onSave={handleSaveSpot}
+          geometry={pendingSpotGeometry}
+          micrographId={activeMicrographId}
+          existingSpots={activeMicrograph?.spots || []}
+        />
       )}
     </div>
   );

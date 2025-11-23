@@ -26,6 +26,7 @@
     "@types/node": "^20.11.0",
     "@types/react": "^18.2.48",
     "@types/react-dom": "^18.2.18",
+    "@types/uuid": "^10.0.0",
     "@vitejs/plugin-react": "^4.2.1",
     "concurrently": "^8.2.2",
     "electron": "^28.2.0",
@@ -51,6 +52,7 @@
     "react-konva": "^18.2.14",
     "sharp": "^0.34.5",
     "tiff": "^7.1.2",
+    "uuid": "^13.0.0",
     "zundo": "^2.3.0",
     "zustand": "^5.0.8"
   },
