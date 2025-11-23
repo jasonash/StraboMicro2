@@ -84,6 +84,7 @@ interface Window {
     onRedo: (callback: () => void) => void;
     openTiffDialog: () => Promise<string | null>;
     openFileDialog: () => Promise<string | null>;
+    openExternalLink: (url: string) => Promise<{ success: boolean }>;
     loadTiffImage: (filePath: string) => Promise<{
       width: number;
       height: number;

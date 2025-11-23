@@ -6,7 +6,7 @@ process.env.VIPS_DISC_THRESHOLD = '0';
 // Remove libvips memory limits entirely
 process.env.VIPS_NOVECTOR = '1';
 
-const { app, BrowserWindow, Menu, ipcMain, dialog, screen, nativeTheme } = require('electron');
+const { app, BrowserWindow, Menu, ipcMain, dialog, screen, nativeTheme, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const log = require('electron-log');
@@ -476,6 +476,18 @@ ipcMain.handle('dialog:open-file', async () => {
   }
 
   return result.filePaths[0];
+});
+
+// Open external link in default browser
+ipcMain.handle('open-external-link', async (event, url) => {
+  try {
+    log.info(`[IPC] Opening external link: ${url}`);
+    await shell.openExternal(url);
+    return { success: true };
+  } catch (error) {
+    log.error('[IPC] Error opening external link:', error);
+    throw error;
+  }
 });
 
 // Image loading (supports TIFF, JPEG, PNG, BMP) - dimensions only for performance

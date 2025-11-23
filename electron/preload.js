@@ -26,6 +26,9 @@ contextBridge.exposeInMainWorld('api', {
   openTiffDialog: () => ipcRenderer.invoke('dialog:open-tiff'),
   openFileDialog: () => ipcRenderer.invoke('dialog:open-file'),
 
+  // External links
+  openExternalLink: (url) => ipcRenderer.invoke('open-external-link', url),
+
   // TIFF loading
   loadTiffImage: (filePath) => ipcRenderer.invoke('load-tiff-image', filePath),
 

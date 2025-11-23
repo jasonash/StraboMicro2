@@ -13,6 +13,17 @@ interface LinkListItemProps {
 }
 
 export function LinkListItem({ link }: LinkListItemProps) {
+  const handleClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    // Open in external browser using Electron's shell API
+    if (window.api?.openExternalLink) {
+      window.api.openExternalLink(link.url);
+    } else {
+      // Fallback for non-Electron environments
+      window.open(link.url, '_blank', 'noopener,noreferrer');
+    }
+  };
+
   return (
     <Box>
       <Typography variant="body1" sx={{ fontWeight: 500 }}>
@@ -20,8 +31,7 @@ export function LinkListItem({ link }: LinkListItemProps) {
       </Typography>
       <MuiLink
         href={link.url}
-        target="_blank"
-        rel="noopener noreferrer"
+        onClick={handleClick}
         sx={{
           display: 'flex',
           alignItems: 'center',
@@ -29,6 +39,7 @@ export function LinkListItem({ link }: LinkListItemProps) {
           fontSize: '0.875rem',
           color: 'primary.main',
           textDecoration: 'none',
+          cursor: 'pointer',
           '&:hover': {
             textDecoration: 'underline',
           },
