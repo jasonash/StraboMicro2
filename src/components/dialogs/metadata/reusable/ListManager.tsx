@@ -52,6 +52,7 @@ export interface ListManagerProps<T> {
   notesLabel?: string;
   hideButtons?: boolean; // New: Hide cancel/save buttons when using DialogActions in parent
   hideAddForm?: boolean; // New: Hide the add form section entirely (for read-only or file upload cases)
+  hideNotes?: boolean; // New: Hide the notes field (for dialogs that don't use top-level notes)
   renderBeforeNotes?: () => React.ReactNode; // Optional content to render just before notes field
 }
 
@@ -70,6 +71,7 @@ export function ListManager<T>({
   notesLabel = 'Notes',
   hideButtons = false,
   hideAddForm = false,
+  hideNotes = false,
   renderBeforeNotes,
 }: ListManagerProps<T>) {
   const [items, setItems] = useState<T[]>(initialItems);
@@ -226,17 +228,19 @@ export function ListManager<T>({
       )}
 
       {/* Notes Section */}
-      <Box sx={{ mb: hideButtons ? 0 : 2 }}>
-        <TextField
-          fullWidth
-          multiline
-          rows={3}
-          label={notesLabel}
-          value={notes}
-          onChange={(e) => handleNotesChange(e.target.value)}
-          placeholder="General notes about all items..."
-        />
-      </Box>
+      {!hideNotes && (
+        <Box sx={{ mb: hideButtons ? 0 : 2 }}>
+          <TextField
+            fullWidth
+            multiline
+            rows={3}
+            label={notesLabel}
+            value={notes}
+            onChange={(e) => handleNotesChange(e.target.value)}
+            placeholder="General notes about all items..."
+          />
+        </Box>
+      )}
 
       {/* Action Buttons - Only show if not hidden */}
       {!hideButtons && (
