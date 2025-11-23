@@ -22,6 +22,8 @@ import { SpotRenderer } from './SpotRenderer';
 import { SpotContextMenu } from './SpotContextMenu';
 import { NewSpotDialog } from './dialogs/NewSpotDialog';
 import { Geometry, Spot } from '@/types/project-types';
+import { usePolygonDrawing } from '@/hooks/usePolygonDrawing';
+import { useLineDrawing } from '@/hooks/useLineDrawing';
 import './TiledViewer.css';
 
 const TILE_SIZE = 256;
@@ -63,6 +65,7 @@ interface ThumbnailState {
 export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(({ imagePath }, ref) => {
   const stageRef = useRef<any>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const drawingLayerRef = useRef<any>(null);
 
   // State
   const [stageSize, setStageSize] = useState({ width: 800, height: 600 });
@@ -117,6 +120,47 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(({ image
     if (!activeMicrographId) return [];
     return getChildMicrographs(project, activeMicrographId);
   }, [project, activeMicrographId])();
+
+  // Drawing hooks for polygon and line tools
+  const polygonDrawing = usePolygonDrawing({
+    layer: drawingLayerRef.current,
+    scale: zoom,
+    onComplete: (points) => {
+      // Convert points to polygon geometry
+      const coordinates: Array<[number, number]> = [];
+      for (let i = 0; i < points.length; i += 2) {
+        coordinates.push([points[i], points[i + 1]]);
+      }
+
+      const polygonGeometry: Geometry = {
+        type: 'Polygon',
+        coordinates: [coordinates], // Polygon coordinates are array of rings
+      };
+
+      setPendingSpotGeometry(polygonGeometry);
+      setNewSpotDialogOpen(true);
+    },
+  });
+
+  const lineDrawing = useLineDrawing({
+    layer: drawingLayerRef.current,
+    scale: zoom,
+    onComplete: (points) => {
+      // Convert points to line geometry
+      const coordinates: Array<[number, number]> = [];
+      for (let i = 0; i < points.length; i += 2) {
+        coordinates.push([points[i], points[i + 1]]);
+      }
+
+      const lineGeometry: Geometry = {
+        type: 'LineString',
+        coordinates,
+      };
+
+      setPendingSpotGeometry(lineGeometry);
+      setNewSpotDialogOpen(true);
+    },
+  });
 
   /**
    * Load image metadata and initialize viewer
@@ -454,7 +498,11 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(({ image
 
     setZoom(newZoom);
     setPosition(newPos);
-  }, [zoom, position]);
+
+    // Update stroke widths in drawing hooks
+    polygonDrawing.updateStrokeWidth(newZoom);
+    lineDrawing.updateStrokeWidth(newZoom);
+  }, [zoom, position, polygonDrawing, lineDrawing]);
 
   /**
    * Handle pan (drag to move)
@@ -469,22 +517,39 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(({ image
   }, []);
 
   const handleMouseMove = useCallback(() => {
-    if (!isPanning || !lastPointerPos) return;
-
     const stage = stageRef.current;
     if (!stage) return;
 
     const pos = stage.getPointerPosition();
-    const dx = pos.x - lastPointerPos.x;
-    const dy = pos.y - lastPointerPos.y;
+    if (!pos) return;
 
-    setPosition({
-      x: position.x + dx,
-      y: position.y + dy,
-    });
+    // Handle panning
+    if (isPanning && lastPointerPos) {
+      const dx = pos.x - lastPointerPos.x;
+      const dy = pos.y - lastPointerPos.y;
 
-    setLastPointerPos(pos);
-  }, [isPanning, lastPointerPos, position]);
+      setPosition({
+        x: position.x + dx,
+        y: position.y + dy,
+      });
+
+      setLastPointerPos(pos);
+      return; // Don't update drawing preview while panning
+    }
+
+    // Handle drawing tool preview (polygon/line)
+    if (activeTool === 'polygon' || activeTool === 'line') {
+      // Convert to image coordinates
+      const imageX = (pos.x - position.x) / zoom;
+      const imageY = (pos.y - position.y) / zoom;
+
+      if (activeTool === 'polygon') {
+        polygonDrawing.handleMouseMove(imageX, imageY);
+      } else if (activeTool === 'line') {
+        lineDrawing.handleMouseMove(imageX, imageY);
+      }
+    }
+  }, [isPanning, lastPointerPos, position, activeTool, zoom, polygonDrawing, lineDrawing]);
 
   const handleMouseUp = useCallback(() => {
     setIsPanning(false);
@@ -521,8 +586,28 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(({ image
       setNewSpotDialogOpen(true);
     }
 
-    // TODO: Handle line and polygon tools
-  }, [activeTool, position, zoom]);
+    // Handle polygon tool
+    if (activeTool === 'polygon') {
+      polygonDrawing.handleClick(imageX, imageY);
+    }
+
+    // Handle line tool
+    if (activeTool === 'line') {
+      lineDrawing.handleClick(imageX, imageY);
+    }
+  }, [activeTool, position, zoom, polygonDrawing, lineDrawing]);
+
+  /**
+   * Cleanup drawing when tool changes or dialog closes
+   */
+  useEffect(() => {
+    if (activeTool !== 'polygon') {
+      polygonDrawing.cleanup();
+    }
+    if (activeTool !== 'line') {
+      lineDrawing.cleanup();
+    }
+  }, [activeTool, polygonDrawing, lineDrawing]);
 
   /**
    * Handle saving new spot from dialog
@@ -694,12 +779,13 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(({ image
 
             {/* Drawing Layer - for temporary drawing in progress */}
             <Layer
+              ref={drawingLayerRef}
               x={position.x}
               y={position.y}
               scaleX={zoom}
               scaleY={zoom}
             >
-              {/* TODO: Add temporary drawing shapes here (point preview, line preview, polygon preview) */}
+              {/* Drawing shapes (polygon/line in progress) are added by the drawing hooks */}
             </Layer>
           </Stage>
 
