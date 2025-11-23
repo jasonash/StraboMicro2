@@ -32,6 +32,7 @@ export interface ListManagerProps<T> {
   // Callbacks for state changes
   onItemsChange?: (items: T[]) => void;
   onNotesChange?: (notes: string) => void;
+  onItemDelete?: (item: T, index: number) => void | Promise<void>; // Called before item is deleted
 
   // Legacy callbacks (still supported but optional)
   onSave?: (data: { items: T[]; notes: string }) => void;
@@ -61,6 +62,7 @@ export function ListManager<T>({
   notes: initialNotes,
   onItemsChange,
   onNotesChange,
+  onItemDelete,
   onSave,
   onCancel,
   renderItem,
@@ -101,7 +103,14 @@ export function ListManager<T>({
     onItemsChange?.(newItems);
   };
 
-  const handleDelete = (index: number) => {
+  const handleDelete = async (index: number) => {
+    const item = items[index];
+
+    // Call the onItemDelete callback if provided (allows parent to handle file deletion, etc.)
+    if (onItemDelete) {
+      await onItemDelete(item, index);
+    }
+
     const newItems = items.filter((_, i) => i !== index);
     setItems(newItems);
     onItemsChange?.(newItems);

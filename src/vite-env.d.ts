@@ -142,6 +142,11 @@ interface Window {
       fileName: string;
       success: boolean;
     }>;
+    deleteFromAssociatedFiles: (projectId: string, fileName: string) => Promise<{
+      success: boolean;
+      fileName: string;
+      message?: string;
+    }>;
 
     // Image conversion
     convertToScratchJPEG: (sourcePath: string) => Promise<{

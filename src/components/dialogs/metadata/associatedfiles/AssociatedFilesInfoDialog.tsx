@@ -85,6 +85,22 @@ export function AssociatedFilesInfoDialog({
     onClose();
   };
 
+  // Handle file deletion from filesystem
+  const handleFileDelete = async (file: AssociatedFileData) => {
+    if (!project?.id) return;
+
+    try {
+      // Delete file from associatedFiles folder
+      if (window.api?.deleteFromAssociatedFiles) {
+        await window.api.deleteFromAssociatedFiles(project.id, file.fileName);
+        console.log(`File deleted from associatedFiles: ${file.fileName}`);
+      }
+    } catch (error) {
+      console.error('Error deleting file:', error);
+      // Don't block the UI deletion even if filesystem deletion fails
+    }
+  };
+
   // Handle file selection using native Electron dialog
   const handleBrowseFile = async () => {
     if (!window.api?.openFileDialog) {
@@ -168,6 +184,7 @@ export function AssociatedFilesInfoDialog({
           items={files}
           notes=""
           onItemsChange={setFiles}
+          onItemDelete={handleFileDelete}
           hideButtons={true}
           hideAddForm={true}
           hideNotes={true}

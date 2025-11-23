@@ -60,6 +60,8 @@ contextBridge.exposeInMainWorld('api', {
   deleteProjectFolder: (projectId) => ipcRenderer.invoke('project:delete-folder', projectId),
   copyToAssociatedFiles: (sourcePath, projectId, fileName) =>
     ipcRenderer.invoke('project:copy-to-associated-files', sourcePath, projectId, fileName),
+  deleteFromAssociatedFiles: (projectId, fileName) =>
+    ipcRenderer.invoke('project:delete-from-associated-files', projectId, fileName),
 
   // Image conversion
   convertToScratchJPEG: (sourcePath) => ipcRenderer.invoke('image:convert-to-scratch', sourcePath),

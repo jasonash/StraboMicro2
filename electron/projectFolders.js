@@ -270,6 +270,51 @@ async function copyFileToAssociatedFiles(sourcePath, projectId, fileName) {
   }
 }
 
+/**
+ * Delete a file from the project's associatedFiles folder
+ * @param {string} projectId - UUID of the project
+ * @param {string} fileName - Filename to delete from associatedFiles folder
+ * @returns {Promise<Object>} Object with success status
+ */
+async function deleteFromAssociatedFiles(projectId, fileName) {
+  console.log(`[ProjectFolders] Deleting file from associatedFiles for project: ${projectId}`);
+  console.log(`[ProjectFolders] Filename: ${fileName}`);
+
+  try {
+    // Get project folder paths
+    const paths = getProjectFolderPaths(projectId);
+
+    // Build file path
+    const filePath = path.join(paths.associatedFiles, fileName);
+
+    // Check if file exists
+    try {
+      await fs.promises.access(filePath, fs.constants.F_OK);
+    } catch (error) {
+      // File doesn't exist, consider it already deleted
+      console.log(`[ProjectFolders] File does not exist (already deleted?): ${filePath}`);
+      return {
+        success: true,
+        fileName,
+        message: 'File does not exist'
+      };
+    }
+
+    // Delete the file
+    await fs.promises.unlink(filePath);
+
+    console.log(`[ProjectFolders] Successfully deleted file: ${filePath}`);
+
+    return {
+      success: true,
+      fileName
+    };
+  } catch (error) {
+    console.error(`[ProjectFolders] Error deleting file:`, error);
+    throw error;
+  }
+}
+
 module.exports = {
   getDocumentsPath,
   getStraboMicro2DataPath,
@@ -280,5 +325,6 @@ module.exports = {
   getProjectFolderPaths,
   deleteProjectFolder,
   listProjectFolders,
-  copyFileToAssociatedFiles
+  copyFileToAssociatedFiles,
+  deleteFromAssociatedFiles
 };

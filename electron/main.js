@@ -996,6 +996,21 @@ ipcMain.handle('project:copy-to-associated-files', async (event, sourcePath, pro
 });
 
 /**
+ * Delete a file from the project's associatedFiles folder
+ */
+ipcMain.handle('project:delete-from-associated-files', async (event, projectId, fileName) => {
+  try {
+    log.info(`[IPC] Deleting file from associatedFiles: ${fileName}`);
+    const result = await projectFolders.deleteFromAssociatedFiles(projectId, fileName);
+    log.info('[IPC] Successfully deleted file from associatedFiles');
+    return result;
+  } catch (error) {
+    log.error('[IPC] Error deleting file from associatedFiles:', error);
+    throw error;
+  }
+});
+
+/**
  * ============================================================================
  * IMAGE CONVERSION HANDLERS
  * ============================================================================
