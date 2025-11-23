@@ -1,35 +1,26 @@
 /**
  * Clastic Deformation Band Add/Edit Form
  *
- * Form for adding or editing clastic deformation bands.
- * Contains nested types array with aperture and offset fields.
+ * MATCHES LEGACY: editClasticDeformationBand.java
+ * - 4 checkboxes: Cataclastic, Dilation, Shear, Compaction
+ * - Conditional fields: Aperture (Dilation), Offset (Shear)
+ * - Thickness field with units
+ * - Cements field (comma-separated mineral list)
  */
 
 import { useState, useEffect } from 'react';
 import {
   Box,
-  TextField,
   Button,
+  Checkbox,
+  FormControlLabel,
   Typography,
-  Accordion,
-  AccordionSummary,
-  AccordionDetails,
-  Select,
-  MenuItem,
-  FormControl,
-  InputLabel,
-  IconButton,
-  List,
-  ListItem,
-  ListItemText,
 } from '@mui/material';
-import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
-import DeleteIcon from '@mui/icons-material/Delete';
-import EditIcon from '@mui/icons-material/Edit';
 import { UnitInput } from '../reusable/UnitInput';
+import { AutocompleteMineralSearch } from '../reusable/AutocompleteMineralSearch';
 
 export interface ClasticDeformationBandTypeData {
-  type: string;
+  type: string; // "Cataclastic", "Dilation", "Shear", "Compaction"
   aperture: number | null;
   apertureUnit: string;
   offset: number | null;
@@ -49,215 +40,262 @@ interface ClasticDeformationBandAddFormProps {
   initialData?: ClasticDeformationBandData;
 }
 
-const BAND_TYPES = [
-  'Cataclastic Band',
-  'Disaggregation Band',
-  'Phyllosilicate Band',
-  'Solution Band',
-  'Compaction Band',
-  'Shear Band',
-];
-
 const SIZE_UNITS = ['um', 'mm', 'cm'];
 
-const DEFAULT_BAND_TYPE: ClasticDeformationBandTypeData = {
-  type: '',
-  aperture: null,
-  apertureUnit: 'um',
-  offset: null,
-  offsetUnit: 'um',
-};
-
-const DEFAULT_BAND: ClasticDeformationBandData = {
-  types: [],
-  thickness: null,
-  thicknessUnit: 'um',
-  cements: '',
-};
-
 export function ClasticDeformationBandAddForm({ onAdd, onCancel, initialData }: ClasticDeformationBandAddFormProps) {
-  const [formData, setFormData] = useState<ClasticDeformationBandData>(initialData || DEFAULT_BAND);
-  const [editingTypeIndex, setEditingTypeIndex] = useState<number | null>(null);
-  const [currentBandType, setCurrentBandType] = useState<ClasticDeformationBandTypeData>(DEFAULT_BAND_TYPE);
+  // Checkbox states
+  const [cataclastic, setCataclastic] = useState(false);
+  const [dilation, setDilation] = useState(false);
+  const [shear, setShear] = useState(false);
+  const [compaction, setCompaction] = useState(false);
 
+  // Conditional field values
+  const [aperture, setAperture] = useState<number | ''>('');
+  const [apertureUnit, setApertureUnit] = useState('um');
+  const [offset, setOffset] = useState<number | ''>('');
+  const [offsetUnit, setOffsetUnit] = useState('um');
+
+  // Common fields
+  const [thickness, setThickness] = useState<number | ''>('');
+  const [thicknessUnit, setThicknessUnit] = useState('um');
+  const [cements, setCements] = useState('');
+  const [selectedMinerals, setSelectedMinerals] = useState<string[]>([]);
+
+  // Load existing data when editing
   useEffect(() => {
-    if (initialData) {
-      setFormData(initialData);
+    if (!initialData) return;
+
+    // Load types
+    if (initialData.types) {
+      initialData.types.forEach(type => {
+        if (type.type === 'Cataclastic') {
+          setCataclastic(true);
+        } else if (type.type === 'Dilation') {
+          setDilation(true);
+          if (type.aperture !== null) {
+            setAperture(type.aperture);
+            setApertureUnit(type.apertureUnit || 'um');
+          }
+        } else if (type.type === 'Shear') {
+          setShear(true);
+          if (type.offset !== null) {
+            setOffset(type.offset);
+            setOffsetUnit(type.offsetUnit || 'um');
+          }
+        } else if (type.type === 'Compaction') {
+          setCompaction(true);
+        }
+      });
+    }
+
+    // Load common fields
+    if (initialData.thickness !== null) {
+      setThickness(initialData.thickness);
+      setThicknessUnit(initialData.thicknessUnit || 'um');
+    }
+    if (initialData.cements) {
+      setCements(initialData.cements);
     }
   }, [initialData]);
 
-  const handleAddBandType = () => {
-    if (!currentBandType.type) return;
-
-    if (editingTypeIndex !== null) {
-      // Update existing
-      setFormData(prev => ({
-        ...prev,
-        types: prev.types.map((t, i) =>
-          i === editingTypeIndex ? currentBandType : t
-        ),
-      }));
-      setEditingTypeIndex(null);
-    } else {
-      // Add new
-      setFormData(prev => ({
-        ...prev,
-        types: [...prev.types, currentBandType],
-      }));
-    }
-
-    setCurrentBandType(DEFAULT_BAND_TYPE);
-  };
-
-  const handleEditBandType = (index: number) => {
-    setCurrentBandType(formData.types[index]);
-    setEditingTypeIndex(index);
-  };
-
-  const handleDeleteBandType = (index: number) => {
-    setFormData(prev => ({
-      ...prev,
-      types: prev.types.filter((_, i) => i !== index),
-    }));
-  };
-
-  const handleCancelBandTypeEdit = () => {
-    setCurrentBandType(DEFAULT_BAND_TYPE);
-    setEditingTypeIndex(null);
+  const handleMineralsChange = (minerals: string[]) => {
+    setSelectedMinerals(minerals);
+    // Convert array to comma-separated string like legacy app
+    setCements(minerals.join(', '));
   };
 
   const handleSubmit = () => {
-    onAdd(formData);
+    // Build types array based on checkboxes
+    const types: ClasticDeformationBandTypeData[] = [];
+
+    if (cataclastic) {
+      types.push({
+        type: 'Cataclastic',
+        aperture: null,
+        apertureUnit: 'um',
+        offset: null,
+        offsetUnit: 'um',
+      });
+    }
+
+    if (dilation) {
+      types.push({
+        type: 'Dilation',
+        aperture: aperture === '' ? null : aperture,
+        apertureUnit: apertureUnit,
+        offset: null,
+        offsetUnit: 'um',
+      });
+    }
+
+    if (shear) {
+      types.push({
+        type: 'Shear',
+        aperture: null,
+        apertureUnit: 'um',
+        offset: offset === '' ? null : offset,
+        offsetUnit: offsetUnit,
+      });
+    }
+
+    if (compaction) {
+      types.push({
+        type: 'Compaction',
+        aperture: null,
+        apertureUnit: 'um',
+        offset: null,
+        offsetUnit: 'um',
+      });
+    }
+
+    const bandData: ClasticDeformationBandData = {
+      types: types,
+      thickness: thickness === '' ? null : thickness,
+      thicknessUnit: thicknessUnit,
+      cements: cements,
+    };
+
+    onAdd(bandData);
+
+    // Reset form if adding new (not editing)
     if (!initialData) {
-      setFormData(DEFAULT_BAND);
+      setCataclastic(false);
+      setDilation(false);
+      setShear(false);
+      setCompaction(false);
+      setAperture('');
+      setApertureUnit('um');
+      setOffset('');
+      setOffsetUnit('um');
+      setThickness('');
+      setThicknessUnit('um');
+      setCements('');
+      setSelectedMinerals([]);
     }
   };
 
-  const isValid = formData.types.length > 0;
-  const isBandTypeValid = currentBandType.type !== '';
+  // Form is valid if at least one type is selected
+  const isValid = cataclastic || dilation || shear || compaction;
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-      {/* Band Types */}
-      <Accordion defaultExpanded>
-        <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-          <Typography>Band Types ({formData.types.length})</Typography>
-        </AccordionSummary>
-        <AccordionDetails>
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            {/* List of existing band types */}
-            <List dense>
-              {formData.types.map((bandType, index) => (
-                <ListItem
-                  key={index}
-                  secondaryAction={
-                    <Box>
-                      <IconButton edge="end" onClick={() => handleEditBandType(index)}>
-                        <EditIcon />
-                      </IconButton>
-                      <IconButton edge="end" onClick={() => handleDeleteBandType(index)}>
-                        <DeleteIcon />
-                      </IconButton>
-                    </Box>
-                  }
-                >
-                  <ListItemText
-                    primary={bandType.type}
-                    secondary={
-                      `${bandType.aperture ? `Aperture: ${bandType.aperture} ${bandType.apertureUnit}` : ''}${
-                        bandType.aperture && bandType.offset ? ', ' : ''
-                      }${bandType.offset ? `Offset: ${bandType.offset} ${bandType.offsetUnit}` : ''}`
+      {/* Band Types Section */}
+      <Box>
+        <Typography variant="subtitle2" sx={{ mb: 1 }}>Band Type:</Typography>
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+          {/* Cataclastic */}
+          <FormControlLabel
+            control={
+              <Checkbox
+                checked={cataclastic}
+                onChange={(e) => setCataclastic(e.target.checked)}
+              />
+            }
+            label="Cataclastic"
+          />
+
+          {/* Dilation */}
+          <Box>
+            <FormControlLabel
+              control={
+                <Checkbox
+                  checked={dilation}
+                  onChange={(e) => {
+                    setDilation(e.target.checked);
+                    if (!e.target.checked) {
+                      setAperture('');
+                      setApertureUnit('um');
                     }
-                  />
-                </ListItem>
-              ))}
-            </List>
-
-            {/* Add/Edit Band Type Form */}
-            <Box sx={{ border: '1px solid #ddd', p: 2, borderRadius: 1, bgcolor: '#f9f9f9' }}>
-              <Typography variant="subtitle2" sx={{ mb: 2 }}>
-                {editingTypeIndex !== null ? 'Edit Band Type' : 'Add Band Type'}
-              </Typography>
-
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                {/* Type */}
-                <FormControl fullWidth size="small" required>
-                  <InputLabel>Type</InputLabel>
-                  <Select
-                    value={currentBandType.type}
-                    label="Type"
-                    onChange={(e) => setCurrentBandType(prev => ({ ...prev, type: e.target.value }))}
-                  >
-                    {BAND_TYPES.map(type => (
-                      <MenuItem key={type} value={type}>{type}</MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-
-                {/* Aperture and Offset */}
-                <Box sx={{ display: 'flex', gap: 2 }}>
-                  <UnitInput
-                    value={currentBandType.aperture || ''}
-                    unit={currentBandType.apertureUnit}
-                    onValueChange={(value) => setCurrentBandType(prev => ({ ...prev, aperture: value === '' ? null : value }))}
-                    onUnitChange={(unit) => setCurrentBandType(prev => ({ ...prev, apertureUnit: unit }))}
-                    units={SIZE_UNITS}
-                    label="Aperture"
-                    min={0}
-                  />
-                  <UnitInput
-                    value={currentBandType.offset || ''}
-                    unit={currentBandType.offsetUnit}
-                    onValueChange={(value) => setCurrentBandType(prev => ({ ...prev, offset: value === '' ? null : value }))}
-                    onUnitChange={(unit) => setCurrentBandType(prev => ({ ...prev, offsetUnit: unit }))}
-                    units={SIZE_UNITS}
-                    label="Offset"
-                    min={0}
-                  />
-                </Box>
-
-                {/* Add/Update Band Type Button */}
-                <Box sx={{ display: 'flex', gap: 1 }}>
-                  {editingTypeIndex !== null && (
-                    <Button onClick={handleCancelBandTypeEdit} variant="outlined" size="small">
-                      Cancel
-                    </Button>
-                  )}
-                  <Button
-                    onClick={handleAddBandType}
-                    variant="contained"
-                    size="small"
-                    disabled={!isBandTypeValid}
-                  >
-                    {editingTypeIndex !== null ? 'Update Type' : 'Add Type'}
-                  </Button>
-                </Box>
+                  }}
+                />
+              }
+              label="Dilation"
+            />
+            {dilation && (
+              <Box sx={{ ml: 4, mt: 1 }}>
+                <UnitInput
+                  value={aperture}
+                  unit={apertureUnit}
+                  onValueChange={setAperture}
+                  onUnitChange={setApertureUnit}
+                  units={SIZE_UNITS}
+                  label="Aperture"
+                  min={0}
+                />
               </Box>
-            </Box>
+            )}
           </Box>
-        </AccordionDetails>
-      </Accordion>
+
+          {/* Shear */}
+          <Box>
+            <FormControlLabel
+              control={
+                <Checkbox
+                  checked={shear}
+                  onChange={(e) => {
+                    setShear(e.target.checked);
+                    if (!e.target.checked) {
+                      setOffset('');
+                      setOffsetUnit('um');
+                    }
+                  }}
+                />
+              }
+              label="Shear"
+            />
+            {shear && (
+              <Box sx={{ ml: 4, mt: 1 }}>
+                <UnitInput
+                  value={offset}
+                  unit={offsetUnit}
+                  onValueChange={setOffset}
+                  onUnitChange={setOffsetUnit}
+                  units={SIZE_UNITS}
+                  label="Offset"
+                  min={0}
+                />
+              </Box>
+            )}
+          </Box>
+
+          {/* Compaction */}
+          <FormControlLabel
+            control={
+              <Checkbox
+                checked={compaction}
+                onChange={(e) => setCompaction(e.target.checked)}
+              />
+            }
+            label="Compaction"
+          />
+        </Box>
+      </Box>
 
       {/* Thickness */}
       <UnitInput
-        value={formData.thickness || ''}
-        unit={formData.thicknessUnit}
-        onValueChange={(value) => setFormData(prev => ({ ...prev, thickness: value === '' ? null : value }))}
-        onUnitChange={(unit) => setFormData(prev => ({ ...prev, thicknessUnit: unit }))}
+        value={thickness}
+        unit={thicknessUnit}
+        onValueChange={setThickness}
+        onUnitChange={setThicknessUnit}
         units={SIZE_UNITS}
         label="Thickness"
         min={0}
       />
 
       {/* Cements */}
-      <TextField
-        fullWidth
-        label="Cements"
-        value={formData.cements}
-        onChange={(e) => setFormData(prev => ({ ...prev, cements: e.target.value }))}
-        multiline
-        rows={2}
-      />
+      <Box>
+        <AutocompleteMineralSearch
+          selectedMinerals={selectedMinerals}
+          onChange={handleMineralsChange}
+          multiple
+          label="Cements"
+        />
+        {cements && (
+          <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+            Selected: {cements}
+          </Typography>
+        )}
+      </Box>
 
       {/* Submit Button */}
       <Box sx={{ display: 'flex', gap: 2, justifyContent: 'center', mt: 2 }}>
