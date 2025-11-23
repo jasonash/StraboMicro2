@@ -62,7 +62,7 @@ export function ClasticDeformationBandAddForm({ onAdd, onCancel, initialData }: 
   const [cements, setCements] = useState('');
 
   // Autocomplete mineral search (separate from cements display)
-  const [mineralSearchValue, setMineralSearchValue] = useState<string | null>(null);
+  const [mineralSearchKey, setMineralSearchKey] = useState(0); // Used to force reset autocomplete
 
   // Load existing data when editing
   useEffect(() => {
@@ -111,8 +111,8 @@ export function ClasticDeformationBandAddForm({ onAdd, onCancel, initialData }: 
       setCements(cements + ', ' + mineralName);
     }
 
-    // Clear the autocomplete field
-    setMineralSearchValue(null);
+    // Force reset the autocomplete by changing its key
+    setMineralSearchKey(prev => prev + 1);
   };
 
   const handleSubmit = () => {
@@ -181,7 +181,7 @@ export function ClasticDeformationBandAddForm({ onAdd, onCancel, initialData }: 
       setThickness('');
       setThicknessUnit('um');
       setCements('');
-      setMineralSearchValue(null);
+      setMineralSearchKey(prev => prev + 1);
     }
   };
 
@@ -196,7 +196,8 @@ export function ClasticDeformationBandAddForm({ onAdd, onCancel, initialData }: 
 
         {/* Autocomplete field for searching/selecting minerals */}
         <AutocompleteMineralSearch
-          selectedMinerals={mineralSearchValue ? [mineralSearchValue] : []}
+          key={mineralSearchKey}
+          selectedMinerals={[]}
           onChange={(minerals) => {
             if (minerals.length > 0) {
               handleMineralSelected(minerals[minerals.length - 1]);
