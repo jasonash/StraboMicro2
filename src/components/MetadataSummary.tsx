@@ -21,7 +21,7 @@ import {
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import EditIcon from '@mui/icons-material/Edit';
 import { useAppStore } from '@/store';
-import { findMicrographById, findSpotById } from '@/store/helpers';
+import { findMicrographById, findSpotById, getMicrographParentSample } from '@/store/helpers';
 import type {
   FractureType,
   FabricType,
@@ -572,6 +572,11 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
   const spot = spotId ? findSpotById(project, spotId) : undefined;
   const data = micrograph || spot;
 
+  // Get the parent sample
+  const sample = micrographId && project
+    ? getMicrographParentSample(project, micrographId)
+    : undefined;
+
   if (!data) {
     return (
       <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic', p: 2 }}>
@@ -638,35 +643,87 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
       </Accordion>
 
       {/* Sample Metadata */}
-      <Accordion
-        expanded={expanded['sample'] || false}
-        onChange={handleExpand('sample')}
-        disableGutters
-        sx={{ '&:before': { display: 'none' } }}
-      >
-        <AccordionSummary
-          expandIcon={<ExpandMoreIcon />}
-          sx={{
-            minHeight: 48,
-            '& .MuiAccordionSummary-content': { alignItems: 'center', gap: 1 },
-          }}
+      {sample && (
+        <Accordion
+          expanded={expanded['sample'] || false}
+          onChange={handleExpand('sample')}
+          disableGutters
+          sx={{ '&:before': { display: 'none' } }}
         >
-          <Typography variant="subtitle2">Sample Metadata</Typography>
-          <Box sx={{ flexGrow: 1 }} />
-          <IconButton
-            size="small"
-            onClick={handleEdit('sample')}
-            sx={{ mr: 1 }}
+          <AccordionSummary
+            expandIcon={<ExpandMoreIcon />}
+            sx={{
+              minHeight: 48,
+              '& .MuiAccordionSummary-content': { alignItems: 'center', gap: 1 },
+            }}
           >
-            <EditIcon fontSize="small" />
-          </IconButton>
-        </AccordionSummary>
-        <AccordionDetails sx={{ py: 1 }}>
-          <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
-            Sample information
-          </Typography>
-        </AccordionDetails>
-      </Accordion>
+            <Typography variant="subtitle2">Sample Metadata</Typography>
+            <Box sx={{ flexGrow: 1 }} />
+            <IconButton
+              size="small"
+              onClick={handleEdit('sample')}
+              sx={{ mr: 1 }}
+            >
+              <EditIcon fontSize="small" />
+            </IconButton>
+          </AccordionSummary>
+          <AccordionDetails sx={{ py: 1 }}>
+            <Stack spacing={0.5}>
+              {sample.name && (
+                <Box>
+                  <Typography variant="caption" color="text.secondary">Name: </Typography>
+                  <Typography variant="body2" component="span">{sample.name}</Typography>
+                </Box>
+              )}
+              {sample.label && (
+                <Box>
+                  <Typography variant="caption" color="text.secondary">Label: </Typography>
+                  <Typography variant="body2" component="span">{sample.label}</Typography>
+                </Box>
+              )}
+              {sample.sampleID && (
+                <Box>
+                  <Typography variant="caption" color="text.secondary">Sample ID: </Typography>
+                  <Typography variant="body2" component="span">{sample.sampleID}</Typography>
+                </Box>
+              )}
+              {(sample.latitude !== null || sample.longitude !== null) && (
+                <Box>
+                  <Typography variant="caption" color="text.secondary">Location: </Typography>
+                  <Typography variant="body2" component="span">
+                    {sample.latitude !== null && `Lat: ${sample.latitude}`}
+                    {sample.latitude !== null && sample.longitude !== null && ', '}
+                    {sample.longitude !== null && `Lon: ${sample.longitude}`}
+                  </Typography>
+                </Box>
+              )}
+              {sample.sampleDescription && (
+                <Box>
+                  <Typography variant="caption" color="text.secondary">Description: </Typography>
+                  <Typography variant="body2" component="span">{sample.sampleDescription}</Typography>
+                </Box>
+              )}
+              {sample.materialType && (
+                <Box>
+                  <Typography variant="caption" color="text.secondary">Material Type: </Typography>
+                  <Typography variant="body2" component="span">{sample.materialType}</Typography>
+                </Box>
+              )}
+              {sample.sampleType && (
+                <Box>
+                  <Typography variant="caption" color="text.secondary">Sample Type: </Typography>
+                  <Typography variant="body2" component="span">{sample.sampleType}</Typography>
+                </Box>
+              )}
+              {!sample.name && !sample.label && !sample.sampleID && (
+                <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+                  No sample metadata set
+                </Typography>
+              )}
+            </Stack>
+          </AccordionDetails>
+        </Accordion>
+      )}
 
       {/* Micrograph/Spot Metadata */}
       <Accordion
