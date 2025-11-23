@@ -109,6 +109,8 @@ export function GrainBoundaryInfoDialog({
             <GrainBoundaryAddForm
               onAdd={onAdd}
               onCancel={onCancel}
+              micrographId={micrographId}
+              spotId={spotId}
             />
           )}
         />

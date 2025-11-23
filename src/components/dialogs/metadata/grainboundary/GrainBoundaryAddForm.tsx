@@ -2,29 +2,25 @@
  * Grain Boundary Add/Edit Form
  *
  * Form for adding or editing a single grain boundary.
- * Contains nested arrays for morphologies and descriptors.
+ * Matches legacy JavaFX implementation exactly for data compatibility.
  */
 
 import { useState, useEffect } from 'react';
 import {
   Box,
-  TextField,
   Button,
   Typography,
-  Accordion,
-  AccordionSummary,
-  AccordionDetails,
-  Select,
-  MenuItem,
   FormControl,
-  InputLabel,
-  IconButton,
-  List,
-  ListItem,
-  ListItemText,
+  FormLabel,
+  FormGroup,
+  FormControlLabel,
+  Radio,
+  RadioGroup,
+  Checkbox,
+  TextField,
 } from '@mui/material';
-import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
-import DeleteIcon from '@mui/icons-material/Delete';
+import { useAppStore } from '@/store';
+import { findMicrographById, findSpotById, getAvailablePhasesFromMicrograph, getAvailablePhasesFromSpot } from '@/store/helpers';
 
 export interface GrainBoundaryMorphologyData {
   type: string;
@@ -32,18 +28,18 @@ export interface GrainBoundaryMorphologyData {
 
 export interface GrainBoundaryDescriptorSubTypeData {
   type: string;
-  otherType: string;
+  otherType?: string;
 }
 
 export interface GrainBoundaryDescriptorData {
   type: string;
-  subTypes: GrainBoundaryDescriptorSubTypeData[];
+  subTypes?: GrainBoundaryDescriptorSubTypeData[];
 }
 
 export interface GrainBoundaryData {
-  typeOfBoundary: string;
-  phase1: string;
-  phase2: string;
+  typeOfBoundary: string;  // "phase" or "grain"
+  phase1: string | null;
+  phase2: string | null;
   morphologies: GrainBoundaryMorphologyData[];
   descriptors: GrainBoundaryDescriptorData[];
 }
@@ -52,259 +48,454 @@ interface GrainBoundaryAddFormProps {
   onAdd: (boundary: GrainBoundaryData) => void;
   onCancel?: () => void;
   initialData?: GrainBoundaryData;
+  micrographId?: string;
+  spotId?: string;
 }
-
-const BOUNDARY_TYPES = [
-  'Grain Boundary',
-  'Phase Boundary',
-  'Sub-grain Boundary',
-  'Twin Boundary',
-];
-
-const MORPHOLOGY_TYPES = [
-  'Straight',
-  'Curved',
-  'Irregular',
-  'Serrated',
-  'Lobate',
-  'Interlocking',
-];
-
-const DESCRIPTOR_TYPES = [
-  'Defect',
-  'Fluid Inclusion',
-  'Mineral Inclusion',
-  'Porosity',
-  'Melt',
-];
 
 const DEFAULT_BOUNDARY: GrainBoundaryData = {
   typeOfBoundary: '',
-  phase1: '',
-  phase2: '',
+  phase1: null,
+  phase2: null,
   morphologies: [],
   descriptors: [],
 };
 
-export function GrainBoundaryAddForm({ onAdd, onCancel, initialData }: GrainBoundaryAddFormProps) {
-  const [formData, setFormData] = useState<GrainBoundaryData>(initialData || DEFAULT_BOUNDARY);
+export function GrainBoundaryAddForm({
+  onAdd,
+  onCancel,
+  initialData,
+  micrographId,
+  spotId,
+}: GrainBoundaryAddFormProps) {
+  const project = useAppStore((state) => state.project);
 
+  const [formData, setFormData] = useState<GrainBoundaryData>(initialData || DEFAULT_BOUNDARY);
+  const [availablePhases, setAvailablePhases] = useState<string[]>([]);
+
+  // State for morphology checkboxes
+  const [cuspate, setCuspate] = useState(false);
+  const [sutured, setSutured] = useState(false);
+  const [serrated, setSerrated] = useState(false);
+  const [lobate, setLobate] = useState(false);
+  const [straight, setStraight] = useState(false);
+  const [pinned, setPinned] = useState(false);
+  const [overgrowth, setOvergrowth] = useState(false);
+  const [island, setIsland] = useState(false);
+
+  // State for descriptor checkboxes
+  const [fillingDecoration, setFillingDecoration] = useState(false);
+  const [fillingMinorPhase, setFillingMinorPhase] = useState(false);
+  const [fillingFluidInclusion, setFillingFluidInclusion] = useState(false);
+  const [fillingOther, setFillingOther] = useState(false);
+  const [fillingOtherText, setFillingOtherText] = useState('');
+
+  const [tripleJunction, setTripleJunction] = useState(false);
+  const [triple120, setTriple120] = useState(false);
+  const [tripleTJunction, setTripleTJunction] = useState(false);
+  const [tripleOther, setTripleOther] = useState(false);
+  const [tripleOtherText, setTripleOtherText] = useState('');
+
+  const [fourGrainJunction, setFourGrainJunction] = useState(false);
+  const [grainNeighborSwitching, setGrainNeighborSwitching] = useState(false);
+  const [corona, setCorona] = useState(false);
+
+  // Load available phases from mineralogy
   useEffect(() => {
-    if (initialData) {
-      setFormData(initialData);
+    if (!project) return;
+
+    let phases: string[] = [];
+
+    if (micrographId) {
+      const micrograph = findMicrographById(project, micrographId);
+      phases = getAvailablePhasesFromMicrograph(micrograph);
+    } else if (spotId) {
+      const spot = findSpotById(project, spotId);
+      phases = getAvailablePhasesFromSpot(spot);
     }
+
+    setAvailablePhases(phases);
+  }, [project, micrographId, spotId]);
+
+  // Load initial data
+  useEffect(() => {
+    if (!initialData) return;
+
+    setFormData(initialData);
+
+    // Set morphology checkboxes
+    initialData.morphologies.forEach(morph => {
+      if (morph.type === 'Cuspate') setCuspate(true);
+      if (morph.type === 'Sutured') setSutured(true);
+      if (morph.type === 'Serrated') setSerrated(true);
+      if (morph.type === 'Lobate') setLobate(true);
+      if (morph.type === 'Straight') setStraight(true);
+      if (morph.type === 'Pinned') setPinned(true);
+      if (morph.type === 'Overgrowth') setOvergrowth(true);
+      if (morph.type === 'Island') setIsland(true);
+    });
+
+    // Set descriptor checkboxes
+    initialData.descriptors.forEach(desc => {
+      if (desc.type === 'Filling/Decoration') {
+        setFillingDecoration(true);
+        desc.subTypes?.forEach(sub => {
+          if (sub.type === 'Minor Phase') setFillingMinorPhase(true);
+          if (sub.type === 'Fluid Inclusion') setFillingFluidInclusion(true);
+          if (sub.type === 'Other') {
+            setFillingOther(true);
+            setFillingOtherText(sub.otherType || '');
+          }
+        });
+      }
+      if (desc.type === 'Triple Junction') {
+        setTripleJunction(true);
+        desc.subTypes?.forEach(sub => {
+          if (sub.type === '120') setTriple120(true);
+          if (sub.type === 'T-Junction') setTripleTJunction(true);
+          if (sub.type === 'Other') {
+            setTripleOther(true);
+            setTripleOtherText(sub.otherType || '');
+          }
+        });
+      }
+      if (desc.type === 'Four-Grain Junction') setFourGrainJunction(true);
+      if (desc.type === 'Grain Neighbor Switching') setGrainNeighborSwitching(true);
+      if (desc.type === 'Corona') setCorona(true);
+    });
   }, [initialData]);
 
-  const handleAddMorphology = (type: string) => {
-    if (!type) return;
-    setFormData(prev => ({
-      ...prev,
-      morphologies: [...prev.morphologies, { type }],
-    }));
-  };
-
-  const handleDeleteMorphology = (index: number) => {
-    setFormData(prev => ({
-      ...prev,
-      morphologies: prev.morphologies.filter((_, i) => i !== index),
-    }));
-  };
-
-  const handleAddDescriptor = (type: string) => {
-    if (!type) return;
-    setFormData(prev => ({
-      ...prev,
-      descriptors: [...prev.descriptors, { type, subTypes: [] }],
-    }));
-  };
-
-  const handleDeleteDescriptor = (index: number) => {
-    setFormData(prev => ({
-      ...prev,
-      descriptors: prev.descriptors.filter((_, i) => i !== index),
-    }));
-  };
-
-  const handleAddDescriptorSubType = (descriptorIndex: number, subType: string, otherType: string) => {
-    if (!subType) return;
-    setFormData(prev => ({
-      ...prev,
-      descriptors: prev.descriptors.map((desc, i) =>
-        i === descriptorIndex
-          ? { ...desc, subTypes: [...desc.subTypes, { type: subType, otherType }] }
-          : desc
-      ),
-    }));
-  };
-
-  const handleDeleteDescriptorSubType = (descriptorIndex: number, subTypeIndex: number) => {
-    setFormData(prev => ({
-      ...prev,
-      descriptors: prev.descriptors.map((desc, i) =>
-        i === descriptorIndex
-          ? { ...desc, subTypes: desc.subTypes.filter((_, j) => j !== subTypeIndex) }
-          : desc
-      ),
-    }));
-  };
-
   const handleSubmit = () => {
-    onAdd(formData);
+    // Build morphologies array
+    const morphologies: GrainBoundaryMorphologyData[] = [];
+    if (cuspate) morphologies.push({ type: 'Cuspate' });
+    if (sutured) morphologies.push({ type: 'Sutured' });
+    if (serrated) morphologies.push({ type: 'Serrated' });
+    if (lobate) morphologies.push({ type: 'Lobate' });
+    if (straight) morphologies.push({ type: 'Straight' });
+    if (pinned) morphologies.push({ type: 'Pinned' });
+    if (overgrowth) morphologies.push({ type: 'Overgrowth' });
+    if (island) morphologies.push({ type: 'Island' });
+
+    // Build descriptors array
+    const descriptors: GrainBoundaryDescriptorData[] = [];
+
+    if (fillingDecoration) {
+      const subTypes: GrainBoundaryDescriptorSubTypeData[] = [];
+      if (fillingMinorPhase) subTypes.push({ type: 'Minor Phase' });
+      if (fillingFluidInclusion) subTypes.push({ type: 'Fluid Inclusion' });
+      if (fillingOther) subTypes.push({ type: 'Other', otherType: fillingOtherText });
+
+      descriptors.push({
+        type: 'Filling/Decoration',
+        subTypes: subTypes.length > 0 ? subTypes : undefined,
+      });
+    }
+
+    if (tripleJunction) {
+      const subTypes: GrainBoundaryDescriptorSubTypeData[] = [];
+      if (triple120) subTypes.push({ type: '120' });
+      if (tripleTJunction) subTypes.push({ type: 'T-Junction' });
+      if (tripleOther) subTypes.push({ type: 'Other', otherType: tripleOtherText });
+
+      descriptors.push({
+        type: 'Triple Junction',
+        subTypes: subTypes.length > 0 ? subTypes : undefined,
+      });
+    }
+
+    if (fourGrainJunction) descriptors.push({ type: 'Four-Grain Junction' });
+    if (grainNeighborSwitching) descriptors.push({ type: 'Grain Neighbor Switching' });
+    if (corona) descriptors.push({ type: 'Corona' });
+
+    const boundary: GrainBoundaryData = {
+      typeOfBoundary: formData.typeOfBoundary,
+      phase1: formData.phase1,
+      phase2: formData.phase2,
+      morphologies,
+      descriptors,
+    };
+
+    onAdd(boundary);
+
     if (!initialData) {
+      // Reset form
       setFormData(DEFAULT_BOUNDARY);
+      setCuspate(false);
+      setSutured(false);
+      setSerrated(false);
+      setLobate(false);
+      setStraight(false);
+      setPinned(false);
+      setOvergrowth(false);
+      setIsland(false);
+      setFillingDecoration(false);
+      setFillingMinorPhase(false);
+      setFillingFluidInclusion(false);
+      setFillingOther(false);
+      setFillingOtherText('');
+      setTripleJunction(false);
+      setTriple120(false);
+      setTripleTJunction(false);
+      setTripleOther(false);
+      setTripleOtherText('');
+      setFourGrainJunction(false);
+      setGrainNeighborSwitching(false);
+      setCorona(false);
     }
   };
 
-  const isValid = formData.typeOfBoundary !== '' && formData.phase1 !== '';
+  // Validation logic (matches legacy updateAddButton function)
+  const isValid =
+    (formData.phase1 !== null && formData.phase1 !== 'None') ||
+    (formData.phase2 !== null && formData.phase2 !== 'None') ||
+    cuspate || sutured || serrated || lobate || straight || pinned || overgrowth || island ||
+    fillingDecoration || tripleJunction || fourGrainJunction || grainNeighborSwitching || corona;
+
+  // If "Other" is checked, text field must be filled
+  const isValidWithOther =
+    isValid &&
+    (!fillingOther || fillingOtherText.trim() !== '') &&
+    (!tripleOther || tripleOtherText.trim() !== '');
 
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-      {/* Type of Boundary */}
-      <FormControl fullWidth required>
-        <InputLabel>Type of Boundary</InputLabel>
-        <Select
+    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+      {/* 1. Type of Boundary */}
+      <FormControl component="fieldset">
+        <FormLabel component="legend" sx={{ fontWeight: 600, fontSize: '1rem', mb: 1 }}>
+          Phase Boundary (2 phases) or Grain Boundary (single phase)?
+        </FormLabel>
+        <RadioGroup
           value={formData.typeOfBoundary}
-          label="Type of Boundary"
           onChange={(e) => setFormData(prev => ({ ...prev, typeOfBoundary: e.target.value }))}
         >
-          {BOUNDARY_TYPES.map(type => (
-            <MenuItem key={type} value={type}>{type}</MenuItem>
-          ))}
-        </Select>
+          <FormControlLabel value="phase" control={<Radio />} label="Phase Boundary" />
+          <FormControlLabel value="grain" control={<Radio />} label="Grain Boundary" />
+        </RadioGroup>
       </FormControl>
 
-      {/* Phase 1 */}
-      <TextField
-        fullWidth
-        required
-        label="Phase 1"
-        value={formData.phase1}
-        onChange={(e) => setFormData(prev => ({ ...prev, phase1: e.target.value }))}
-      />
+      {/* 2. Phases */}
+      <Box>
+        <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 1 }}>
+          Phase(s) Involved:
+        </Typography>
 
-      {/* Phase 2 */}
-      <TextField
-        fullWidth
-        label="Phase 2"
-        value={formData.phase2}
-        onChange={(e) => setFormData(prev => ({ ...prev, phase2: e.target.value }))}
-      />
-
-      {/* Morphologies */}
-      <Accordion>
-        <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-          <Typography>Morphologies ({formData.morphologies.length})</Typography>
-        </AccordionSummary>
-        <AccordionDetails>
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <FormControl fullWidth size="small">
-              <InputLabel>Add Morphology</InputLabel>
-              <Select
-                label="Add Morphology"
-                value=""
-                onChange={(e) => handleAddMorphology(e.target.value)}
+        {availablePhases.length === 0 ? (
+          <Typography variant="body2" sx={{ fontStyle: 'italic', color: 'text.secondary', pl: 2 }}>
+            No mineralogy was found. If you wish to set phase information for grain boundaries, please set mineralogy first.
+          </Typography>
+        ) : (
+          <Box sx={{ display: 'flex', gap: 4, pl: 2 }}>
+            {/* Phase 1 Column */}
+            <FormControl component="fieldset">
+              <FormLabel component="legend" sx={{ fontWeight: 600, mb: 1 }}>
+                Phase 1:
+              </FormLabel>
+              <RadioGroup
+                value={formData.phase1 || 'None'}
+                onChange={(e) => setFormData(prev => ({
+                  ...prev,
+                  phase1: e.target.value === 'None' ? null : e.target.value
+                }))}
               >
-                {MORPHOLOGY_TYPES.map(type => (
-                  <MenuItem key={type} value={type}>{type}</MenuItem>
+                <FormControlLabel value="None" control={<Radio />} label="None" />
+                {availablePhases.map(phase => (
+                  <FormControlLabel key={phase} value={phase} control={<Radio />} label={phase} />
                 ))}
-              </Select>
+              </RadioGroup>
             </FormControl>
 
-            <List dense>
-              {formData.morphologies.map((morph, index) => (
-                <ListItem
-                  key={index}
-                  secondaryAction={
-                    <IconButton edge="end" onClick={() => handleDeleteMorphology(index)}>
-                      <DeleteIcon />
-                    </IconButton>
+            {/* Phase 2 Column */}
+            <FormControl component="fieldset">
+              <FormLabel component="legend" sx={{ fontWeight: 600, mb: 1 }}>
+                Phase 2:
+              </FormLabel>
+              <RadioGroup
+                value={formData.phase2 || 'None'}
+                onChange={(e) => setFormData(prev => ({
+                  ...prev,
+                  phase2: e.target.value === 'None' ? null : e.target.value
+                }))}
+              >
+                <FormControlLabel value="None" control={<Radio />} label="None" />
+                {availablePhases.map(phase => (
+                  <FormControlLabel key={phase} value={phase} control={<Radio />} label={phase} />
+                ))}
+              </RadioGroup>
+            </FormControl>
+          </Box>
+        )}
+      </Box>
+
+      {/* 3. Morphology */}
+      <Box>
+        <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 1 }}>
+          Boundary Morphology:
+        </Typography>
+        <FormGroup sx={{ pl: 2 }}>
+          <FormControlLabel
+            control={<Checkbox checked={cuspate} onChange={(e) => setCuspate(e.target.checked)} />}
+            label="Cuspate"
+          />
+          <FormControlLabel
+            control={<Checkbox checked={sutured} onChange={(e) => setSutured(e.target.checked)} />}
+            label="Sutured"
+          />
+          <FormControlLabel
+            control={<Checkbox checked={serrated} onChange={(e) => setSerrated(e.target.checked)} />}
+            label="Serrated"
+          />
+          <FormControlLabel
+            control={<Checkbox checked={lobate} onChange={(e) => setLobate(e.target.checked)} />}
+            label="Lobate"
+          />
+          <FormControlLabel
+            control={<Checkbox checked={straight} onChange={(e) => setStraight(e.target.checked)} />}
+            label="Straight"
+          />
+          <FormControlLabel
+            control={<Checkbox checked={pinned} onChange={(e) => setPinned(e.target.checked)} />}
+            label="Pinned"
+          />
+          <FormControlLabel
+            control={<Checkbox checked={overgrowth} onChange={(e) => setOvergrowth(e.target.checked)} />}
+            label="Overgrowth"
+          />
+          <FormControlLabel
+            control={<Checkbox checked={island} onChange={(e) => setIsland(e.target.checked)} />}
+            label="Island"
+          />
+        </FormGroup>
+      </Box>
+
+      {/* 4. Descriptors */}
+      <Box>
+        <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 1 }}>
+          Boundary Descriptors:
+        </Typography>
+        <FormGroup sx={{ pl: 2 }}>
+          {/* Filling/Decoration */}
+          <FormControlLabel
+            control={
+              <Checkbox
+                checked={fillingDecoration}
+                onChange={(e) => {
+                  setFillingDecoration(e.target.checked);
+                  if (!e.target.checked) {
+                    setFillingMinorPhase(false);
+                    setFillingFluidInclusion(false);
+                    setFillingOther(false);
+                    setFillingOtherText('');
                   }
-                >
-                  <ListItemText primary={morph.type} />
-                </ListItem>
-              ))}
-            </List>
-          </Box>
-        </AccordionDetails>
-      </Accordion>
-
-      {/* Descriptors */}
-      <Accordion>
-        <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-          <Typography>Descriptors ({formData.descriptors.length})</Typography>
-        </AccordionSummary>
-        <AccordionDetails>
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <FormControl fullWidth size="small">
-              <InputLabel>Add Descriptor</InputLabel>
-              <Select
-                label="Add Descriptor"
-                value=""
-                onChange={(e) => handleAddDescriptor(e.target.value)}
-              >
-                {DESCRIPTOR_TYPES.map(type => (
-                  <MenuItem key={type} value={type}>{type}</MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-
-            {formData.descriptors.map((desc, descIndex) => (
-              <Box key={descIndex} sx={{ border: '1px solid #ddd', p: 2, borderRadius: 1 }}>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
-                  <Typography variant="subtitle2">{desc.type}</Typography>
-                  <IconButton size="small" onClick={() => handleDeleteDescriptor(descIndex)}>
-                    <DeleteIcon />
-                  </IconButton>
-                </Box>
-
-                <Typography variant="caption" sx={{ mb: 1, display: 'block' }}>
-                  Sub-types: {desc.subTypes.length}
-                </Typography>
-
-                <List dense>
-                  {desc.subTypes.map((subType, subIndex) => (
-                    <ListItem
-                      key={subIndex}
-                      secondaryAction={
-                        <IconButton edge="end" onClick={() => handleDeleteDescriptorSubType(descIndex, subIndex)}>
-                          <DeleteIcon />
-                        </IconButton>
-                      }
-                    >
-                      <ListItemText
-                        primary={subType.type}
-                        secondary={subType.otherType || undefined}
-                      />
-                    </ListItem>
-                  ))}
-                </List>
-
-                <Box sx={{ display: 'flex', gap: 1, mt: 1 }}>
+                }}
+              />
+            }
+            label="Filling/Decoration"
+          />
+          {fillingDecoration && (
+            <Box sx={{ pl: 4 }}>
+              <FormGroup>
+                <FormControlLabel
+                  control={<Checkbox checked={fillingMinorPhase} onChange={(e) => setFillingMinorPhase(e.target.checked)} />}
+                  label="Minor Phase"
+                />
+                <FormControlLabel
+                  control={<Checkbox checked={fillingFluidInclusion} onChange={(e) => setFillingFluidInclusion(e.target.checked)} />}
+                  label="Fluid Inclusion"
+                />
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      checked={fillingOther}
+                      onChange={(e) => {
+                        setFillingOther(e.target.checked);
+                        if (!e.target.checked) setFillingOtherText('');
+                      }}
+                    />
+                  }
+                  label="Other"
+                />
+                {fillingOther && (
                   <TextField
                     size="small"
-                    label="Sub-type"
-                    placeholder="e.g., Pore type"
-                    onKeyPress={(e) => {
-                      if (e.key === 'Enter') {
-                        const target = e.target as HTMLInputElement;
-                        const otherInput = target.parentElement?.nextElementSibling?.querySelector('input') as HTMLInputElement;
-                        handleAddDescriptorSubType(descIndex, target.value, otherInput?.value || '');
-                        target.value = '';
-                        if (otherInput) otherInput.value = '';
-                      }
-                    }}
+                    placeholder="Specify other type..."
+                    value={fillingOtherText}
+                    onChange={(e) => setFillingOtherText(e.target.value)}
+                    sx={{ ml: 4, maxWidth: 250 }}
                   />
+                )}
+              </FormGroup>
+            </Box>
+          )}
+
+          {/* Triple Junction */}
+          <FormControlLabel
+            control={
+              <Checkbox
+                checked={tripleJunction}
+                onChange={(e) => {
+                  setTripleJunction(e.target.checked);
+                  if (!e.target.checked) {
+                    setTriple120(false);
+                    setTripleTJunction(false);
+                    setTripleOther(false);
+                    setTripleOtherText('');
+                  }
+                }}
+              />
+            }
+            label="Triple Junction"
+          />
+          {tripleJunction && (
+            <Box sx={{ pl: 4 }}>
+              <FormGroup>
+                <FormControlLabel
+                  control={<Checkbox checked={triple120} onChange={(e) => setTriple120(e.target.checked)} />}
+                  label="120"
+                />
+                <FormControlLabel
+                  control={<Checkbox checked={tripleTJunction} onChange={(e) => setTripleTJunction(e.target.checked)} />}
+                  label="T-Junction"
+                />
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      checked={tripleOther}
+                      onChange={(e) => {
+                        setTripleOther(e.target.checked);
+                        if (!e.target.checked) setTripleOtherText('');
+                      }}
+                    />
+                  }
+                  label="Other"
+                />
+                {tripleOther && (
                   <TextField
                     size="small"
-                    label="Other Type"
-                    placeholder="Optional details"
+                    placeholder="Specify other type..."
+                    value={tripleOtherText}
+                    onChange={(e) => setTripleOtherText(e.target.value)}
+                    sx={{ ml: 4, maxWidth: 250 }}
                   />
-                </Box>
-              </Box>
-            ))}
-          </Box>
-        </AccordionDetails>
-      </Accordion>
+                )}
+              </FormGroup>
+            </Box>
+          )}
+
+          {/* Other Descriptors */}
+          <FormControlLabel
+            control={<Checkbox checked={fourGrainJunction} onChange={(e) => setFourGrainJunction(e.target.checked)} />}
+            label="Four-Grain Junction"
+          />
+          <FormControlLabel
+            control={<Checkbox checked={grainNeighborSwitching} onChange={(e) => setGrainNeighborSwitching(e.target.checked)} />}
+            label="Grain Neighbor Switching"
+          />
+          <FormControlLabel
+            control={<Checkbox checked={corona} onChange={(e) => setCorona(e.target.checked)} />}
+            label="Corona"
+          />
+        </FormGroup>
+      </Box>
 
       {/* Submit Button */}
       <Box sx={{ display: 'flex', gap: 2, justifyContent: 'center', mt: 2 }}>
@@ -316,7 +507,7 @@ export function GrainBoundaryAddForm({ onAdd, onCancel, initialData }: GrainBoun
         <Button
           onClick={handleSubmit}
           variant="contained"
-          disabled={!isValid}
+          disabled={!isValidWithOther}
         >
           {initialData ? 'Update' : 'Add'}
         </Button>
