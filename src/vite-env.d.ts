@@ -224,5 +224,12 @@ interface Window {
       project: any;
       message: string;
     }>;
+
+    // PDF export
+    exportDetailedNotesToPDF: (projectData: any, micrographId?: string, spotId?: string) => Promise<{
+      success: boolean;
+      canceled?: boolean;
+      filePath?: string;
+    }>;
   };
 }

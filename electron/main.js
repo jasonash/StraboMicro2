@@ -15,6 +15,7 @@ const projectFolders = require('./projectFolders');
 const imageConverter = require('./imageConverter');
 const projectSerializer = require('./projectSerializer');
 const scratchSpace = require('./scratchSpace');
+const pdfExport = require('./pdfExport');
 
 // Handle EPIPE errors at process level (prevents crash on broken stdout pipe)
 process.stdout.on('error', (err) => {
@@ -486,6 +487,62 @@ ipcMain.handle('open-external-link', async (event, url) => {
     return { success: true };
   } catch (error) {
     log.error('[IPC] Error opening external link:', error);
+    throw error;
+  }
+});
+
+// Export detailed notes to PDF
+ipcMain.handle('pdf:export-detailed-notes', async (event, projectData, micrographId, spotId) => {
+  try {
+    log.info('[IPC] Exporting detailed notes to PDF');
+
+    // Determine entity name for default filename
+    let entityName = 'Unknown';
+    let entityType = micrographId ? 'Micrograph' : 'Spot';
+
+    if (micrographId) {
+      // Find micrograph name
+      for (const dataset of projectData.datasets || []) {
+        for (const sample of dataset.samples || []) {
+          const micrograph = sample.micrographs?.find(m => m.id === micrographId);
+          if (micrograph) {
+            entityName = micrograph.name || 'Unnamed';
+            break;
+          }
+        }
+      }
+    }
+
+    // Clean filename (remove invalid characters)
+    const cleanName = entityName.replace(/[<>:"/\\|?*]/g, '_');
+    const defaultFileName = `${entityType}_${cleanName}_Notes.pdf`;
+
+    // Show save dialog
+    const result = await dialog.showSaveDialog({
+      title: 'Export Detailed Notes to PDF',
+      defaultPath: defaultFileName,
+      filters: [
+        { name: 'PDF Files', extensions: ['pdf'] }
+      ]
+    });
+
+    if (result.canceled || !result.filePath) {
+      return { success: false, canceled: true };
+    }
+
+    // Generate PDF
+    await pdfExport.generateDetailedNotesPDF(
+      result.filePath,
+      projectData,
+      micrographId,
+      spotId
+    );
+
+    log.info(`[IPC] PDF exported successfully to: ${result.filePath}`);
+    return { success: true, filePath: result.filePath };
+
+  } catch (error) {
+    log.error('[IPC] Error exporting PDF:', error);
     throw error;
   }
 });

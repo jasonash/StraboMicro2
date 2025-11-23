@@ -5,6 +5,7 @@
  * Matches legacy detailedNotes.java and detailedNotes.fxml functionality.
  */
 
+import { useState } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -16,7 +17,9 @@ import {
   Divider,
   Link,
   Stack,
+  CircularProgress,
 } from '@mui/material';
+import { PictureAsPdf } from '@mui/icons-material';
 import { useAppStore } from '@/store';
 import { findMicrographById, findSpotById, getMicrographParentSample } from '@/store/helpers';
 
@@ -30,6 +33,7 @@ interface DetailedNotesDialogProps {
 
 export function DetailedNotesDialog({ isOpen, onClose, micrographId, spotId, onEditSection }: DetailedNotesDialogProps) {
   const project = useAppStore((state) => state.project);
+  const [isExporting, setIsExporting] = useState(false);
 
   // Get the micrograph or spot data
   const micrograph = micrographId ? findMicrographById(project, micrographId) : undefined;
@@ -254,6 +258,30 @@ export function DetailedNotesDialog({ isOpen, onClose, micrographId, spotId, onE
     }
   }
 
+  // Handle PDF export
+  const handleExportPDF = async () => {
+    if (!window.api || !project) return;
+
+    setIsExporting(true);
+    try {
+      const result = await window.api.exportDetailedNotesToPDF(
+        project,
+        micrographId,
+        spotId
+      );
+
+      if (result.success && !result.canceled) {
+        // PDF exported successfully
+        console.log(`PDF exported to: ${result.filePath}`);
+      }
+    } catch (error) {
+      console.error('Error exporting PDF:', error);
+      // You could show a toast/snackbar here with error message
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   return (
     <Dialog
       open={isOpen}
@@ -279,6 +307,14 @@ export function DetailedNotesDialog({ isOpen, onClose, micrographId, spotId, onE
         )}
       </DialogContent>
       <DialogActions>
+        <Button
+          onClick={handleExportPDF}
+          startIcon={isExporting ? <CircularProgress size={20} /> : <PictureAsPdf />}
+          disabled={isExporting || noteSections.length === 0}
+          variant="contained"
+        >
+          {isExporting ? 'Creating PDF...' : 'Create PDF'}
+        </Button>
         <Button onClick={onClose}>Close</Button>
       </DialogActions>
     </Dialog>

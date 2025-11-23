@@ -94,4 +94,8 @@ contextBridge.exposeInMainWorld('api', {
 
   // Debug utilities
   resetEverything: () => ipcRenderer.invoke('debug:reset-everything'),
+
+  // PDF export
+  exportDetailedNotesToPDF: (projectData, micrographId, spotId) =>
+    ipcRenderer.invoke('pdf:export-detailed-notes', projectData, micrographId, spotId),
 });
