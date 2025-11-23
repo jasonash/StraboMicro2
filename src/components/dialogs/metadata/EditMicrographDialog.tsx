@@ -308,6 +308,58 @@ export function EditMicrographDialog({ isOpen, onClose, micrographId }: EditMicr
     setActiveStep(0);
   }, [isOpen, micrographId, project]);
 
+  // Auto-set imageType based on dataType for certain instrument/data type combinations
+  useEffect(() => {
+    if (formData.instrumentType === 'Transmission Electron Microscopy (TEM)' && formData.dataType) {
+      if (
+        !['Electron Diffraction', 'Energy Dispersive X-ray Spectroscopy (EDS)'].includes(
+          formData.dataType
+        )
+      ) {
+        setFormData((prev) => ({ ...prev, imageType: formData.dataType }));
+      }
+    } else if (
+      formData.instrumentType === 'Scanning Transmission Electron Microscopy (STEM)' &&
+      formData.dataType
+    ) {
+      if (
+        !['Energy Dispersive X-ray Spectroscopy (EDS)', 'Cathodoluminescence (CL)'].includes(
+          formData.dataType
+        )
+      ) {
+        setFormData((prev) => ({ ...prev, imageType: formData.dataType }));
+      }
+    } else if (
+      formData.instrumentType === 'Scanning Electron Microscopy (SEM)' &&
+      formData.dataType
+    ) {
+      if (
+        ![
+          'Electron Backscatter Diffraction (EBSD)',
+          'Energy Dispersive X-ray Spectroscopy (EDS)',
+          'Wavelength-dispersive X-ray spectroscopy (WDS)',
+          'Cathodoluminescence (CL)',
+          'Focused Ion Beam Scanning Electron Microscopy (FIB-SEM)',
+        ].includes(formData.dataType)
+      ) {
+        setFormData((prev) => ({ ...prev, imageType: formData.dataType }));
+      }
+    } else if (formData.instrumentType === 'Electron Microprobe' && formData.dataType) {
+      if (
+        ![
+          'Energy Dispersive X-ray Spectroscopy (EDS)',
+          'Wavelength-dispersive X-ray spectroscopy (WDS)',
+          'Cathodoluminescence (CL)',
+        ].includes(formData.dataType)
+      ) {
+        setFormData((prev) => ({ ...prev, imageType: formData.dataType }));
+      }
+    } else if (formData.instrumentType === 'Optical Microscopy' && formData.dataType) {
+      // Optical microscopy always uses dataType as imageType
+      setFormData((prev) => ({ ...prev, imageType: formData.dataType }));
+    }
+  }, [formData.instrumentType, formData.dataType]);
+
   const updateField = <K extends keyof MicrographFormData>(field: K, value: MicrographFormData[K]) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
   };
