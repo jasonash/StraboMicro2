@@ -208,16 +208,27 @@ export function ClasticDeformationBandAddForm({ onAdd, onCancel, initialData }: 
         />
 
         {/* Display field showing comma-separated list of selected minerals */}
-        <TextField
-          fullWidth
-          label="Selected Cements"
-          value={cements}
-          onChange={(e) => setCements(e.target.value)}
-          multiline
-          rows={2}
-          sx={{ mt: 2 }}
-          helperText="Comma-separated list of cements (you can also edit this directly)"
-        />
+        <Box sx={{ display: 'flex', gap: 1, mt: 2, alignItems: 'flex-start' }}>
+          <TextField
+            fullWidth
+            label="Selected Cements"
+            value={cements}
+            multiline
+            rows={2}
+            InputProps={{
+              readOnly: true,
+            }}
+            helperText="Comma-separated list of selected cements"
+          />
+          <Button
+            variant="outlined"
+            onClick={() => setCements('')}
+            disabled={!cements}
+            sx={{ minWidth: '80px', height: '56px' }}
+          >
+            Clear
+          </Button>
+        </Box>
       </Box>
 
       {/* Band Types Section */}
