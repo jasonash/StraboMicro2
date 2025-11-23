@@ -15,6 +15,7 @@ import {
   Checkbox,
   FormControlLabel,
   Typography,
+  TextField,
 } from '@mui/material';
 import { UnitInput } from '../reusable/UnitInput';
 import { AutocompleteMineralSearch } from '../reusable/AutocompleteMineralSearch';
@@ -59,7 +60,9 @@ export function ClasticDeformationBandAddForm({ onAdd, onCancel, initialData }: 
   const [thickness, setThickness] = useState<number | ''>('');
   const [thicknessUnit, setThicknessUnit] = useState('um');
   const [cements, setCements] = useState('');
-  const [selectedMinerals, setSelectedMinerals] = useState<string[]>([]);
+
+  // Autocomplete mineral search (separate from cements display)
+  const [mineralSearchValue, setMineralSearchValue] = useState<string | null>(null);
 
   // Load existing data when editing
   useEffect(() => {
@@ -98,10 +101,18 @@ export function ClasticDeformationBandAddForm({ onAdd, onCancel, initialData }: 
     }
   }, [initialData]);
 
-  const handleMineralsChange = (minerals: string[]) => {
-    setSelectedMinerals(minerals);
-    // Convert array to comma-separated string like legacy app
-    setCements(minerals.join(', '));
+  const handleMineralSelected = (mineralName: string | null) => {
+    if (!mineralName) return;
+
+    // Append to cements list (comma-separated)
+    if (cements === '') {
+      setCements(mineralName);
+    } else {
+      setCements(cements + ', ' + mineralName);
+    }
+
+    // Clear the autocomplete field
+    setMineralSearchValue(null);
   };
 
   const handleSubmit = () => {
@@ -170,7 +181,7 @@ export function ClasticDeformationBandAddForm({ onAdd, onCancel, initialData }: 
       setThickness('');
       setThicknessUnit('um');
       setCements('');
-      setSelectedMinerals([]);
+      setMineralSearchValue(null);
     }
   };
 
@@ -179,19 +190,33 @@ export function ClasticDeformationBandAddForm({ onAdd, onCancel, initialData }: 
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-      {/* Cements - Moved to top to fix autocomplete dropdown position */}
+      {/* Cements - Matches legacy pattern: autocomplete field + display field */}
       <Box>
+        <Typography variant="subtitle2" sx={{ mb: 1 }}>Cements:</Typography>
+
+        {/* Autocomplete field for searching/selecting minerals */}
         <AutocompleteMineralSearch
-          selectedMinerals={selectedMinerals}
-          onChange={handleMineralsChange}
-          multiple
-          label="Cements"
+          selectedMinerals={mineralSearchValue ? [mineralSearchValue] : []}
+          onChange={(minerals) => {
+            if (minerals.length > 0) {
+              handleMineralSelected(minerals[minerals.length - 1]);
+            }
+          }}
+          multiple={false}
+          label="Search and select mineral to add"
         />
-        {cements && (
-          <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
-            Selected: {cements}
-          </Typography>
-        )}
+
+        {/* Display field showing comma-separated list of selected minerals */}
+        <TextField
+          fullWidth
+          label="Selected Cements"
+          value={cements}
+          onChange={(e) => setCements(e.target.value)}
+          multiline
+          rows={2}
+          sx={{ mt: 2 }}
+          helperText="Comma-separated list of cements (you can also edit this directly)"
+        />
       </Box>
 
       {/* Band Types Section */}
