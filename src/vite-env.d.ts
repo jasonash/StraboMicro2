@@ -83,6 +83,7 @@ interface Window {
     onUndo: (callback: () => void) => void;
     onRedo: (callback: () => void) => void;
     openTiffDialog: () => Promise<string | null>;
+    openFileDialog: () => Promise<string | null>;
     loadTiffImage: (filePath: string) => Promise<{
       width: number;
       height: number;
@@ -136,6 +137,11 @@ interface Window {
     }>;
     listProjectFolders: () => Promise<string[]>;
     deleteProjectFolder: (projectId: string) => Promise<{ success: boolean }>;
+    copyToAssociatedFiles: (sourcePath: string, projectId: string, fileName: string) => Promise<{
+      destinationPath: string;
+      fileName: string;
+      success: boolean;
+    }>;
 
     // Image conversion
     convertToScratchJPEG: (sourcePath: string) => Promise<{

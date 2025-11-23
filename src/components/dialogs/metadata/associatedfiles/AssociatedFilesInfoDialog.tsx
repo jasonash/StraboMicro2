@@ -85,45 +85,56 @@ export function AssociatedFilesInfoDialog({
     onClose();
   };
 
-  // Handle file selection (LEGACY: lines 61-63, 121-131 in editAssociatedFilesInfo.java)
+  // Handle file selection using native Electron dialog
   const handleBrowseFile = async () => {
-    // In Electron, we should use the native file dialog via IPC
-    // For now, use the web file input and store the File object
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.onchange = (e: Event) => {
-      const target = e.target as HTMLInputElement;
-      if (target.files && target.files[0]) {
-        const file = target.files[0];
-        // For web, we only get the filename. In Electron, this would use dialog.showOpenDialog
-        setSelectedFilePath(file.name);
+    if (!window.api?.openFileDialog) {
+      console.error('File dialog API not available');
+      return;
+    }
+
+    try {
+      const filePath = await window.api.openFileDialog();
+      if (filePath) {
+        setSelectedFilePath(filePath);
       }
-    };
-    input.click();
+    } catch (error) {
+      console.error('Error opening file dialog:', error);
+    }
   };
 
   // Handle adding new file (LEGACY: lines 133-172 in editAssociatedFilesInfo.java)
-  const handleAddFile = () => {
-    if (!selectedFilePath) return;
+  const handleAddFile = async () => {
+    if (!selectedFilePath || !project?.id) return;
 
     // Extract filename from path
     const fileName = selectedFilePath.split(/[/\\]/).pop() || selectedFilePath;
 
-    const newFile: AssociatedFileData = {
-      fileName: fileName,
-      originalPath: selectedFilePath,
-      fileType: newFileType,
-      otherType: newFileType === 'Other' ? newOtherType : '',
-      notes: newFileNotes,
-    };
+    try {
+      // Copy file to project's associatedFiles folder
+      if (window.api?.copyToAssociatedFiles) {
+        await window.api.copyToAssociatedFiles(selectedFilePath, project.id, fileName);
+        console.log(`File copied to associatedFiles: ${fileName}`);
+      }
 
-    setFiles([...files, newFile]);
+      const newFile: AssociatedFileData = {
+        fileName: fileName,
+        originalPath: selectedFilePath,
+        fileType: newFileType,
+        otherType: newFileType === 'Other' ? newOtherType : '',
+        notes: newFileNotes,
+      };
 
-    // Reset form
-    setSelectedFilePath('');
-    setNewFileType('');
-    setNewOtherType('');
-    setNewFileNotes('');
+      setFiles([...files, newFile]);
+
+      // Reset form
+      setSelectedFilePath('');
+      setNewFileType('');
+      setNewOtherType('');
+      setNewFileNotes('');
+    } catch (error) {
+      console.error('Error copying file:', error);
+      alert('Failed to copy file. Please try again.');
+    }
   };
 
   // Validation for add button (LEGACY: lines 96-114 in editAssociatedFilesInfo.java)

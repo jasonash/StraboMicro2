@@ -24,6 +24,7 @@ contextBridge.exposeInMainWorld('api', {
 
   // File dialogs
   openTiffDialog: () => ipcRenderer.invoke('dialog:open-tiff'),
+  openFileDialog: () => ipcRenderer.invoke('dialog:open-file'),
 
   // TIFF loading
   loadTiffImage: (filePath) => ipcRenderer.invoke('load-tiff-image', filePath),
@@ -57,6 +58,8 @@ contextBridge.exposeInMainWorld('api', {
   getProjectFolderPaths: (projectId) => ipcRenderer.invoke('project:get-folder-paths', projectId),
   listProjectFolders: () => ipcRenderer.invoke('project:list-folders'),
   deleteProjectFolder: (projectId) => ipcRenderer.invoke('project:delete-folder', projectId),
+  copyToAssociatedFiles: (sourcePath, projectId, fileName) =>
+    ipcRenderer.invoke('project:copy-to-associated-files', sourcePath, projectId, fileName),
 
   // Image conversion
   convertToScratchJPEG: (sourcePath) => ipcRenderer.invoke('image:convert-to-scratch', sourcePath),

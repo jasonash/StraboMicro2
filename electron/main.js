@@ -461,6 +461,23 @@ ipcMain.handle('dialog:open-tiff', async () => {
   return result.filePaths[0];
 });
 
+// Generic file dialog for associated files
+ipcMain.handle('dialog:open-file', async () => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: 'Select File',
+    filters: [
+      { name: 'All Files', extensions: ['*'] }
+    ],
+    properties: ['openFile']
+  });
+
+  if (result.canceled || result.filePaths.length === 0) {
+    return null;
+  }
+
+  return result.filePaths[0];
+});
+
 // Image loading (supports TIFF, JPEG, PNG, BMP) - dimensions only for performance
 ipcMain.handle('load-tiff-image', async (event, filePath) => {
   try {
@@ -959,6 +976,21 @@ ipcMain.handle('project:delete-folder', async (event, projectId) => {
     return { success: true };
   } catch (error) {
     log.error('[IPC] Error deleting project folder:', error);
+    throw error;
+  }
+});
+
+/**
+ * Copy a file to the project's associatedFiles folder
+ */
+ipcMain.handle('project:copy-to-associated-files', async (event, sourcePath, projectId, fileName) => {
+  try {
+    log.info(`[IPC] Copying file to associatedFiles: ${fileName}`);
+    const result = await projectFolders.copyFileToAssociatedFiles(sourcePath, projectId, fileName);
+    log.info('[IPC] Successfully copied file to associatedFiles');
+    return result;
+  } catch (error) {
+    log.error('[IPC] Error copying file to associatedFiles:', error);
     throw error;
   }
 });
