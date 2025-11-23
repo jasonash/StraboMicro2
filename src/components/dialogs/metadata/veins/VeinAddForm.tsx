@@ -14,6 +14,8 @@ import {
   Checkbox,
   Button,
   FormControlLabel,
+  TextField,
+  Typography,
 } from '@mui/material';
 import { AutocompleteMineralSearch } from '../reusable/AutocompleteMineralSearch';
 import { DynamicFieldSet } from '../reusable/DynamicFieldSet';
@@ -44,17 +46,7 @@ interface VeinAddFormProps {
 // LEGACY UNITS: lowercase "um", not "μm"
 const SIZE_UNITS = ['um', 'mm', 'cm'];
 
-const DEFAULT_VEIN: VeinData = {
-  mineralogy: '',
-  crystalShapes: [],
-  growthMorphologies: [],
-  inclusionTrails: [],
-  kinematics: [],
-};
-
 export function VeinAddForm({ onAdd, onCancel, initialData }: VeinAddFormProps) {
-  const [formData, setFormData] = useState<VeinData>(initialData || DEFAULT_VEIN);
-
   // UI state for checkboxes
   const [crystalShapeChecks, setCrystalShapeChecks] = useState({
     equantBlocky: false,
@@ -86,9 +78,13 @@ export function VeinAddForm({ onAdd, onCancel, initialData }: VeinAddFormProps) 
   const [openingAperture, setOpeningAperture] = useState<number | null>(null);
   const [openingApertureUnit, setOpeningApertureUnit] = useState('um');
 
+  // Mineralogy state
+  const [mineralogy, setMineralogy] = useState('');
+  const [mineralSearchKey, setMineralSearchKey] = useState(0); // Used to force reset autocomplete
+
   useEffect(() => {
     if (initialData) {
-      setFormData(initialData);
+      setMineralogy(initialData.mineralogy || '');
 
       // Populate checkboxes from VeinSubType arrays
       const newCrystalChecks = { ...crystalShapeChecks };
@@ -135,6 +131,20 @@ export function VeinAddForm({ onAdd, onCancel, initialData }: VeinAddFormProps) 
     }
   }, [initialData]);
 
+  const handleMineralSelected = (mineralName: string | null) => {
+    if (!mineralName) return;
+
+    // Append to mineralogy list (comma-separated)
+    if (mineralogy === '') {
+      setMineralogy(mineralName);
+    } else {
+      setMineralogy(mineralogy + ', ' + mineralName);
+    }
+
+    // Force reset the autocomplete by changing its key
+    setMineralSearchKey(prev => prev + 1);
+  };
+
   const handleSubmit = () => {
     // Build VeinSubType arrays from checkbox state (lines 377-411 in editVein.java)
     const crystalShapes: VeinSubType[] = [];
@@ -172,7 +182,7 @@ export function VeinAddForm({ onAdd, onCancel, initialData }: VeinAddFormProps) 
     if (kinematicsChecks.hybrid) kinematics.push({ type: 'Hybrid' });
 
     onAdd({
-      mineralogy: formData.mineralogy,
+      mineralogy: mineralogy,
       crystalShapes,
       growthMorphologies,
       inclusionTrails,
@@ -181,7 +191,8 @@ export function VeinAddForm({ onAdd, onCancel, initialData }: VeinAddFormProps) 
 
     // Reset form if adding (not editing)
     if (!initialData) {
-      setFormData(DEFAULT_VEIN);
+      setMineralogy('');
+      setMineralSearchKey(prev => prev + 1);
       setCrystalShapeChecks({ equantBlocky: false, elongateBlocky: false, fibrous: false, stretched: false });
       setGrowthMorphChecks({ syntaxial: false, antitaxial: false, atataxial: false });
       setInclusionTrailChecks({ fluid: false, solid: false });
@@ -196,7 +207,7 @@ export function VeinAddForm({ onAdd, onCancel, initialData }: VeinAddFormProps) 
   // LEGACY VALIDATION RULES (lines 245-265 in editVein.java)
   const isValid = (() => {
     // Must have at least one field filled
-    if (formData.mineralogy === '' &&
+    if (mineralogy === '' &&
         !crystalShapeChecks.equantBlocky &&
         !crystalShapeChecks.elongateBlocky &&
         !crystalShapeChecks.fibrous &&
@@ -227,17 +238,45 @@ export function VeinAddForm({ onAdd, onCancel, initialData }: VeinAddFormProps) 
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-      {/* Mineralogy */}
+      {/* Mineralogy - Matches clastic deformation band pattern */}
       <Box>
-        <FormLabel component="legend" sx={{ mb: 1 }}>
-          Mineralogy:
-        </FormLabel>
+        <Typography variant="subtitle2" sx={{ mb: 1 }}>Mineralogy:</Typography>
+
+        {/* Autocomplete field for searching/selecting minerals */}
         <AutocompleteMineralSearch
-          selectedMinerals={formData.mineralogy ? formData.mineralogy.split(', ').filter(m => m) : []}
-          onChange={(minerals) => setFormData(prev => ({ ...prev, mineralogy: minerals.join(', ') }))}
-          multiple
-          label="Minerals"
+          key={mineralSearchKey}
+          selectedMinerals={[]}
+          onChange={(minerals) => {
+            if (minerals.length > 0) {
+              handleMineralSelected(minerals[minerals.length - 1]);
+            }
+          }}
+          multiple={false}
+          label="Search and select mineral to add"
         />
+
+        {/* Display field showing comma-separated list of selected minerals */}
+        <Box sx={{ display: 'flex', gap: 1, mt: 2, alignItems: 'flex-start' }}>
+          <TextField
+            fullWidth
+            label="Selected Minerals"
+            value={mineralogy}
+            multiline
+            rows={2}
+            InputProps={{
+              readOnly: true,
+            }}
+            helperText="Comma-separated list of selected minerals"
+          />
+          <Button
+            variant="outlined"
+            onClick={() => setMineralogy('')}
+            disabled={!mineralogy}
+            sx={{ minWidth: '80px', height: '56px' }}
+          >
+            Clear
+          </Button>
+        </Box>
       </Box>
 
       {/* Crystal Shape */}
