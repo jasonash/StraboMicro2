@@ -179,6 +179,21 @@ export function ClasticDeformationBandAddForm({ onAdd, onCancel, initialData }: 
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+      {/* Cements - Moved to top to fix autocomplete dropdown position */}
+      <Box>
+        <AutocompleteMineralSearch
+          selectedMinerals={selectedMinerals}
+          onChange={handleMineralsChange}
+          multiple
+          label="Cements"
+        />
+        {cements && (
+          <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+            Selected: {cements}
+          </Typography>
+        )}
+      </Box>
+
       {/* Band Types Section */}
       <Box>
         <Typography variant="subtitle2" sx={{ mb: 1 }}>Band Type:</Typography>
@@ -281,21 +296,6 @@ export function ClasticDeformationBandAddForm({ onAdd, onCancel, initialData }: 
         label="Thickness"
         min={0}
       />
-
-      {/* Cements */}
-      <Box>
-        <AutocompleteMineralSearch
-          selectedMinerals={selectedMinerals}
-          onChange={handleMineralsChange}
-          multiple
-          label="Cements"
-        />
-        {cements && (
-          <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
-            Selected: {cements}
-          </Typography>
-        )}
-      </Box>
 
       {/* Submit Button */}
       <Box sx={{ display: 'flex', gap: 2, justifyContent: 'center', mt: 2 }}>
