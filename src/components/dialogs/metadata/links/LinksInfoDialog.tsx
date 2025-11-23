@@ -87,6 +87,7 @@ export function LinksInfoDialog({
           notes=""
           onItemsChange={setLinks}
           hideButtons={true}
+          hideNotes={true}
           title="Links"
           addSectionTitle="Add Link"
           emptyMessage="No links added yet. Use the form below to add your first link."
