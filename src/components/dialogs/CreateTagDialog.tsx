@@ -27,6 +27,7 @@ import {
   // MenuItem,
 } from '@mui/material';
 import { v4 as uuidv4 } from 'uuid';
+import { MuiColorInput } from 'mui-color-input';
 import { useAppStore } from '@/store';
 import type { Tag } from '@/types/project-types';
 
@@ -71,17 +72,17 @@ interface CreateTagDialogProps {
   onTagSaved?: (tag: Tag) => void;
 }
 
-// Color presets for quick selection
-const COLOR_PRESETS = [
-  '#FF0000', // Red
-  '#00FF00', // Green
-  '#0000FF', // Blue
-  '#FFFF00', // Yellow
-  '#FF00FF', // Magenta
-  '#00FFFF', // Cyan
-  '#FFA500', // Orange
-  '#800080', // Purple
-];
+// Color presets for quick selection (used in commented-out line color picker)
+// const COLOR_PRESETS = [
+//   '#FF0000', // Red
+//   '#00FF00', // Green
+//   '#0000FF', // Blue
+//   '#FFFF00', // Yellow
+//   '#FF00FF', // Magenta
+//   '#00FFFF', // Cyan
+//   '#FFA500', // Orange
+//   '#800080', // Purple
+// ];
 
 export function CreateTagDialog({
   open,
@@ -394,38 +395,14 @@ export function CreateTagDialog({
           </Box>
           */}
 
-          {/* Color Pickers */}
-
-          <Box>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-              Fill Color
-            </Typography>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <input
-                type="color"
-                value={fillColor}
-                onChange={(e) => setFillColor(e.target.value)}
-                style={{ width: 40, height: 40, border: 'none', cursor: 'pointer' }}
-              />
-              <Box sx={{ display: 'flex', gap: 0.5 }}>
-                {COLOR_PRESETS.map((color) => (
-                  <Box
-                    key={`fill-${color}`}
-                    onClick={() => setFillColor(color)}
-                    sx={{
-                      width: 24,
-                      height: 24,
-                      bgcolor: color,
-                      border: fillColor === color ? '2px solid white' : '1px solid grey',
-                      borderRadius: 0.5,
-                      cursor: 'pointer',
-                      '&:hover': { transform: 'scale(1.1)' },
-                    }}
-                  />
-                ))}
-              </Box>
-            </Box>
-          </Box>
+          {/* Fill Color */}
+          <MuiColorInput
+            label="Fill Color"
+            value={fillColor}
+            onChange={(newColor) => setFillColor(newColor)}
+            format="hex"
+            fullWidth
+          />
 
           {/* Transparency Slider */}
           <Box>
