@@ -81,6 +81,9 @@ export function EditMicrographLocationDialog({
   const [pointX, setPointX] = useState(0);
   const [pointY, setPointY] = useState(0);
 
+  // Scale data state (for "Trace Scale Bar" methods)
+  const [hasScaleData, setHasScaleData] = useState(false);
+
   // Project folder paths for constructing image paths
   const [imagesFolder, setImagesFolder] = useState<string>('');
 
@@ -226,6 +229,38 @@ export function EditMicrographLocationDialog({
     setPointY(y);
   };
 
+  // Handle scale data changes from PlacementCanvas (for "Trace Scale Bar" methods)
+  const handleScaleDataChange = (data: {
+    scaleBarLineLengthPixels?: number;
+    scaleBarPhysicalLength?: number;
+    scaleBarUnits?: string;
+    pixels?: number;
+    physicalLength?: number;
+    pixelUnits?: string;
+    imageWidthPhysical?: number;
+    imageHeightPhysical?: number;
+    sizeUnits?: string;
+  }) => {
+    // Check if we have valid scale data based on the scale method
+    const hasValidScaleData =
+      (scaleMethod === 'Trace Scale Bar and Drag' || scaleMethod === 'Trace Scale Bar') &&
+      data.scaleBarLineLengthPixels &&
+      data.scaleBarPhysicalLength &&
+      data.scaleBarUnits;
+
+    setHasScaleData(!!hasValidScaleData);
+  };
+
+  // Check if Save should be enabled
+  const canSave = (): boolean => {
+    // For "Trace Scale Bar" methods, require scale data
+    if (scaleMethod === 'Trace Scale Bar and Drag' || scaleMethod === 'Trace Scale Bar') {
+      return hasScaleData;
+    }
+    // For other methods, always allow save
+    return true;
+  };
+
   const canProceedFromScaleMethod = (): boolean => {
     if (!scaleMethod) return false;
     if (scaleMethod === 'Copy Size from Existing Micrograph' && !copySizeFromMicrographId) {
@@ -238,12 +273,16 @@ export function EditMicrographLocationDialog({
     if (step === 0) {
       setStep(1);
     } else if (step === 1 && canProceedFromScaleMethod()) {
+      // Reset scale data when entering placement step
+      setHasScaleData(false);
       setStep(2);
     }
   };
 
   const handleBack = () => {
     if (step > 0) {
+      // Reset scale data when going back
+      setHasScaleData(false);
       setStep(step - 1);
     }
   };
@@ -504,13 +543,36 @@ export function EditMicrographLocationDialog({
                 childWidth={micrograph.imageWidth || 800}
                 childHeight={micrograph.imageHeight || 600}
                 scaleMethod={scaleMethod}
-                initialOffsetX={copySizeData?.xOffset ?? offsetX}
-                initialOffsetY={copySizeData?.yOffset ?? offsetY}
-                initialRotation={copySizeData?.rotation ?? rotation}
-                initialScaleX={copySizeData?.scaleX ?? scaleX}
-                initialScaleY={copySizeData?.scaleY ?? scaleY}
+                // For "Trace Scale Bar" methods, use (0, 0) to center the child initially
+                // For other methods, use existing position or copy data
+                initialOffsetX={
+                  scaleMethod === 'Trace Scale Bar and Drag'
+                    ? 0
+                    : (copySizeData?.xOffset ?? offsetX)
+                }
+                initialOffsetY={
+                  scaleMethod === 'Trace Scale Bar and Drag'
+                    ? 0
+                    : (copySizeData?.yOffset ?? offsetY)
+                }
+                initialRotation={
+                  scaleMethod === 'Trace Scale Bar and Drag'
+                    ? 0
+                    : (copySizeData?.rotation ?? rotation)
+                }
+                initialScaleX={
+                  scaleMethod === 'Trace Scale Bar and Drag'
+                    ? 1
+                    : (copySizeData?.scaleX ?? scaleX)
+                }
+                initialScaleY={
+                  scaleMethod === 'Trace Scale Bar and Drag'
+                    ? 1
+                    : (copySizeData?.scaleY ?? scaleY)
+                }
                 copySizePixelsPerCm={copySizeData?.newImagePixelsPerCm}
                 onPlacementChange={handlePlacementChange}
+                onScaleDataChange={handleScaleDataChange}
               />
             ) : (
               <PointPlacementCanvas
@@ -542,7 +604,7 @@ export function EditMicrographLocationDialog({
             Next
           </Button>
         ) : (
-          <Button onClick={handleSave} variant="contained">
+          <Button onClick={handleSave} variant="contained" disabled={!canSave()}>
             Save
           </Button>
         )}
