@@ -6,7 +6,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import { Circle, Line, Group, Text } from 'react-konva';
+import { Circle, Line, Group, Text, Rect } from 'react-konva';
 import { Spot } from '@/types/project-types';
 
 /**
@@ -137,18 +137,31 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
 
         {/* Label */}
         {showLabel && (
-          <Text
-            key="label"
-            x={x + 10 / scale}
-            y={y + 10 / scale}
-            text={spot.name}
-            fontSize={20 / scale}
-            fontStyle="bold"
-            fill={labelColor}
-            stroke="#000000"
-            strokeWidth={2 / scale}
-            listening={false}
-          />
+          <>
+            {/* Label background box */}
+            <Rect
+              key="label-bg"
+              x={x + 8 / scale}
+              y={y + 8 / scale}
+              width={(spot.name.length * 12 + 8) / scale}
+              height={26 / scale}
+              fill="#000000"
+              opacity={0.7}
+              cornerRadius={3 / scale}
+              listening={false}
+            />
+            {/* Label text */}
+            <Text
+              key="label"
+              x={x + 12 / scale}
+              y={y + 12 / scale}
+              text={spot.name}
+              fontSize={20 / scale}
+              fontStyle="bold"
+              fill={labelColor}
+              listening={false}
+            />
+          </>
         )}
       </Group>
     );
@@ -200,18 +213,31 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
 
         {/* Label at first point */}
         {showLabel && coords[0] && (
-          <Text
-            key="label"
-            x={coords[0][0] + 10 / scale}
-            y={coords[0][1] + 10 / scale}
-            text={spot.name}
-            fontSize={20 / scale}
-            fontStyle="bold"
-            fill={labelColor}
-            stroke="#000000"
-            strokeWidth={2 / scale}
-            listening={false}
-          />
+          <>
+            {/* Label background box */}
+            <Rect
+              key="label-bg"
+              x={coords[0][0] + 8 / scale}
+              y={coords[0][1] + 8 / scale}
+              width={(spot.name.length * 12 + 8) / scale}
+              height={26 / scale}
+              fill="#000000"
+              opacity={0.7}
+              cornerRadius={3 / scale}
+              listening={false}
+            />
+            {/* Label text */}
+            <Text
+              key="label"
+              x={coords[0][0] + 12 / scale}
+              y={coords[0][1] + 12 / scale}
+              text={spot.name}
+              fontSize={20 / scale}
+              fontStyle="bold"
+              fill={labelColor}
+              listening={false}
+            />
+          </>
         )}
       </Group>
     );
@@ -262,18 +288,31 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
 
         {/* Label at first point */}
         {showLabel && coords[0] && (
-          <Text
-            key="label"
-            x={coords[0][0] + 10 / scale}
-            y={coords[0][1] + 10 / scale}
-            text={spot.name}
-            fontSize={20 / scale}
-            fontStyle="bold"
-            fill={labelColor}
-            stroke="#000000"
-            strokeWidth={2 / scale}
-            listening={false}
-          />
+          <>
+            {/* Label background box */}
+            <Rect
+              key="label-bg"
+              x={coords[0][0] + 8 / scale}
+              y={coords[0][1] + 8 / scale}
+              width={(spot.name.length * 12 + 8) / scale}
+              height={26 / scale}
+              fill="#000000"
+              opacity={0.7}
+              cornerRadius={3 / scale}
+              listening={false}
+            />
+            {/* Label text */}
+            <Text
+              key="label"
+              x={coords[0][0] + 12 / scale}
+              y={coords[0][1] + 12 / scale}
+              text={spot.name}
+              fontSize={20 / scale}
+              fontStyle="bold"
+              fill={labelColor}
+              listening={false}
+            />
+          </>
         )}
       </Group>
     );
