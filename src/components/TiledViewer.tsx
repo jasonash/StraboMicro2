@@ -28,6 +28,7 @@ import { Geometry, Spot } from '@/types/project-types';
 import { usePolygonDrawing } from '@/hooks/usePolygonDrawing';
 import { useLineDrawing } from '@/hooks/useLineDrawing';
 import { useImperativeGeometryEditing } from '@/hooks/useImperativeGeometryEditing';
+import { getEffectiveTheme } from '@/hooks/useTheme';
 import './TiledViewer.css';
 
 const TILE_SIZE = 256;
@@ -108,6 +109,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(({ image
   const activeTool = useAppStore((state) => state.activeTool);
   const activeSpotId = useAppStore((state) => state.activeSpotId);
   const showRulers = useAppStore((state) => state.showRulers);
+  const theme = useAppStore((state) => state.theme);
   const selectActiveSpot = useAppStore((state) => state.selectActiveSpot);
   const setActiveTool = useAppStore((state) => state.setActiveTool);
   const addSpot = useAppStore((state) => state.addSpot);
@@ -756,6 +758,12 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(({ image
 
   const RULER_SIZE = 30; // Width/height of ruler bars
 
+  // Get themed colors for rulers
+  const effectiveTheme = getEffectiveTheme(theme);
+  const isDark = effectiveTheme === 'dark';
+  const rulerBgColor = isDark ? '#252525' : '#f5f5f0';
+  const rulerBorderColor = isDark ? '#404040' : '#d0d0c8';
+
   return (
     <div className="tiled-viewer" ref={containerRef}>
       {isLoading && (
@@ -790,9 +798,9 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(({ image
                 left: 0,
                 width: RULER_SIZE,
                 height: RULER_SIZE,
-                backgroundColor: '#f0f0f0',
-                borderRight: '1px solid #ccc',
-                borderBottom: '1px solid #ccc',
+                backgroundColor: rulerBgColor,
+                borderRight: `1px solid ${rulerBorderColor}`,
+                borderBottom: `1px solid ${rulerBorderColor}`,
                 zIndex: 1000,
               }} />
 

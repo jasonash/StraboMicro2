@@ -1,4 +1,6 @@
 import React, { useRef, useEffect } from 'react';
+import { useAppStore } from '@/store';
+import { getEffectiveTheme } from '@/hooks/useTheme';
 
 interface RulerCanvasProps {
   orientation: 'horizontal' | 'vertical';
@@ -35,6 +37,8 @@ const RulerCanvas: React.FC<RulerCanvasProps> = ({
   scalePixelsPerCentimeter,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const theme = useAppStore((state) => state.theme);
+  const effectiveTheme = getEffectiveTheme(theme);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -43,8 +47,24 @@ const RulerCanvas: React.FC<RulerCanvasProps> = ({
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
+    // Theme colors
+    const isDark = effectiveTheme === 'dark';
+    const colors = {
+      background: isDark ? '#252525' : '#f5f5f0',
+      border: isDark ? '#404040' : '#d0d0c8',
+      tickMajor: isDark ? '#e0e0e0' : '#333333',
+      tickMinor: isDark ? '#808080' : '#999999',
+      label: isDark ? '#b0b0b0' : '#666666',
+      badgeBg: isDark ? '#404040' : '#666666',
+      badgeText: isDark ? '#e0e0e0' : '#ffffff',
+    };
+
     // Clear canvas
     ctx.clearRect(0, 0, width, height);
+
+    // Fill background
+    ctx.fillStyle = colors.background;
+    ctx.fillRect(0, 0, width, height);
 
     // Set high DPI scaling for crisp rendering
     const dpr = window.devicePixelRatio || 1;
@@ -104,7 +124,7 @@ const RulerCanvas: React.FC<RulerCanvasProps> = ({
 
     // Draw little ticks (only if spacing is large enough to be visible)
     if (pixelsPerLittleTick > 5) {
-      ctx.strokeStyle = '#888';
+      ctx.strokeStyle = colors.tickMinor;
       ctx.lineWidth = 1;
 
       // Start from image origin and draw ticks
@@ -145,7 +165,7 @@ const RulerCanvas: React.FC<RulerCanvasProps> = ({
     }
 
     // Draw big ticks
-    ctx.strokeStyle = '#000';
+    ctx.strokeStyle = colors.tickMajor;
     ctx.lineWidth = 2;
 
     let pos = imageOriginInRuler;
@@ -184,7 +204,7 @@ const RulerCanvas: React.FC<RulerCanvasProps> = ({
     }
 
     // Draw labels
-    ctx.fillStyle = '#555';
+    ctx.fillStyle = colors.label;
     ctx.font = '12px system-ui, -apple-system, sans-serif';
 
     // Start labeling from image origin
@@ -274,7 +294,7 @@ const RulerCanvas: React.FC<RulerCanvasProps> = ({
       const borderRadius = 6;
 
       // Draw rounded rectangle background
-      ctx.fillStyle = '#666';
+      ctx.fillStyle = colors.badgeBg;
       ctx.beginPath();
       ctx.moveTo(badgeX + borderRadius, badgeY);
       ctx.lineTo(badgeX + badgeWidth - borderRadius, badgeY);
@@ -289,7 +309,7 @@ const RulerCanvas: React.FC<RulerCanvasProps> = ({
       ctx.fill();
 
       // Draw unit text (centered in badge)
-      ctx.fillStyle = '#fff';
+      ctx.fillStyle = colors.badgeText;
       ctx.font = 'bold 11px system-ui, sans-serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
@@ -300,7 +320,12 @@ const RulerCanvas: React.FC<RulerCanvasProps> = ({
       ctx.textBaseline = 'alphabetic';
     }
 
-  }, [orientation, width, height, zoom, position, imageWidth, imageHeight, scalePixelsPerCentimeter]);
+  }, [orientation, width, height, zoom, position, imageWidth, imageHeight, scalePixelsPerCentimeter, effectiveTheme]);
+
+  // Get themed colors for CSS
+  const isDark = effectiveTheme === 'dark';
+  const bgColor = isDark ? '#252525' : '#f5f5f0';
+  const borderColor = isDark ? '#404040' : '#d0d0c8';
 
   return (
     <canvas
@@ -309,9 +334,9 @@ const RulerCanvas: React.FC<RulerCanvasProps> = ({
         width: `${width}px`,
         height: `${height}px`,
         display: 'block',
-        backgroundColor: '#f0f0f0',
-        borderRight: orientation === 'vertical' ? '1px solid #ccc' : 'none',
-        borderBottom: orientation === 'horizontal' ? '1px solid #ccc' : 'none',
+        backgroundColor: bgColor,
+        borderRight: orientation === 'vertical' ? `1px solid ${borderColor}` : 'none',
+        borderBottom: orientation === 'horizontal' ? `1px solid ${borderColor}` : 'none',
       }}
     />
   );
