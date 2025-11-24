@@ -1,0 +1,373 @@
+/**
+ * useImperativeGeometryEditing Hook
+ *
+ * Handles geometry editing using pure imperative Konva API (no React components).
+ * Based on the test app's approach to avoid React/Konva rendering conflicts.
+ *
+ * When editing:
+ * 1. Original React-rendered spot is hidden
+ * 2. Temporary polygon and handles are created imperatively on overlay layer
+ * 3. All updates happen via direct Konva manipulation (no React re-renders)
+ * 4. On save/cancel, imperative elements are destroyed and React spot is shown again
+ */
+
+import { useCallback, useRef } from 'react';
+import Konva from 'konva';
+import { useAppStore } from '@/store';
+import { Spot } from '@/types/project-types';
+
+export const useImperativeGeometryEditing = (
+  overlayLayer: Konva.Layer | null,
+  stage: Konva.Stage | null
+) => {
+  // Refs for imperative Konva elements
+  const editingPolygonRef = useRef<Konva.Line | null>(null);
+  const vertexCirclesRef = useRef<Konva.Circle[]>([]);
+  const midpointCirclesRef = useRef<Konva.Circle[]>([]);
+  const originalGeometryRef = useRef<Array<{ X: number; Y: number }> | null>(null);
+  const editingSpotIdRef = useRef<string | null>(null);
+
+  // Store actions
+  const startEditingSpot = useAppStore((state) => state.startEditingSpot);
+  const updateEditingGeometry = useAppStore((state) => state.updateEditingGeometry);
+  const saveEditingGeometry = useAppStore((state) => state.saveEditingGeometry);
+  const cancelEditingGeometry = useAppStore((state) => state.cancelEditingGeometry);
+
+  /**
+   * Update vertex and midpoint handles
+   */
+  const updateEditHandles = useCallback((polygon: Konva.Line, geometryType: string) => {
+    if (!overlayLayer || !stage) return;
+
+    // Clear existing handles
+    vertexCirclesRef.current.forEach(circle => {
+      circle.off('dragmove');
+      circle.off('dragend');
+      circle.destroy();
+    });
+    midpointCirclesRef.current.forEach(circle => {
+      circle.off('dragstart');
+      circle.off('dragmove');
+      circle.off('dragend');
+      circle.destroy();
+    });
+
+    const points = polygon.points();
+    const polygonX = polygon.x();
+    const polygonY = polygon.y();
+    const scale = stage.scaleX();
+
+    // Create draggable vertex circles
+    const vertexCircles: Konva.Circle[] = [];
+    for (let i = 0; i < points.length; i += 2) {
+      const circle = new Konva.Circle({
+        x: polygonX + points[i],
+        y: polygonY + points[i + 1],
+        radius: 6 / scale,
+        fill: '#ff9900',
+        stroke: '#ffffff',
+        strokeWidth: 2 / scale,
+        draggable: true,
+        listening: true,
+      });
+
+      circle.setAttr('vertexIndex', i);
+
+      // Update polygon on vertex drag
+      circle.on('dragmove', () => {
+        const vertexIndex = circle.getAttr('vertexIndex');
+        const newPoints = polygon.points().slice();
+        newPoints[vertexIndex] = circle.x() - polygon.x();
+        newPoints[vertexIndex + 1] = circle.y() - polygon.y();
+        polygon.points(newPoints);
+
+        // Update adjacent midpoint circles
+        const numPoints = newPoints.length;
+
+        // Update midpoint before this vertex
+        const prevVertexIndex = vertexIndex === 0 ? numPoints - 2 : vertexIndex - 2;
+        const midpointBefore = midpointCirclesRef.current.find(
+          mc => mc.getAttr('edgeStartIndex') === prevVertexIndex && !mc.getAttr('isConverted')
+        );
+        if (midpointBefore) {
+          const midX = polygon.x() + (newPoints[prevVertexIndex] + newPoints[vertexIndex]) / 2;
+          const midY = polygon.y() + (newPoints[prevVertexIndex + 1] + newPoints[vertexIndex + 1]) / 2;
+          midpointBefore.x(midX);
+          midpointBefore.y(midY);
+        }
+
+        // Update midpoint after this vertex
+        const midpointAfter = midpointCirclesRef.current.find(
+          mc => mc.getAttr('edgeStartIndex') === vertexIndex && !mc.getAttr('isConverted')
+        );
+        if (midpointAfter) {
+          const nextVertexIndex = (vertexIndex + 2) % numPoints;
+          const midX = polygon.x() + (newPoints[vertexIndex] + newPoints[nextVertexIndex]) / 2;
+          const midY = polygon.y() + (newPoints[vertexIndex + 1] + newPoints[nextVertexIndex + 1]) / 2;
+          midpointAfter.x(midX);
+          midpointAfter.y(midY);
+        }
+
+        overlayLayer?.batchDraw();
+      });
+
+      // Recreate handles after drag end
+      circle.on('dragend', () => {
+        updateEditHandles(polygon, geometryType);
+      });
+
+      vertexCircles.push(circle);
+      overlayLayer.add(circle);
+    }
+
+    // Create midpoint circles for adding vertices
+    const midpointCircles: Konva.Circle[] = [];
+    for (let i = 0; i < points.length; i += 2) {
+      const nextIndex = (i + 2) % points.length;
+
+      // For lines (not closed), don't add midpoint after last vertex
+      if (geometryType === 'line' && nextIndex === 0) continue;
+
+      const midX = polygonX + (points[i] + points[nextIndex]) / 2;
+      const midY = polygonY + (points[i + 1] + points[nextIndex + 1]) / 2;
+
+      const midCircle = new Konva.Circle({
+        x: midX,
+        y: midY,
+        radius: 4 / scale,
+        fill: 'rgba(255, 153, 0, 0.5)',
+        stroke: '#ffffff',
+        strokeWidth: 1 / scale,
+        draggable: true,
+        listening: true,
+      });
+
+      midCircle.setAttr('edgeStartIndex', i);
+      midCircle.setAttr('isConverted', false);
+
+      // Convert midpoint to vertex on drag start
+      midCircle.on('dragstart', () => {
+        const edgeStartIndex = midCircle.getAttr('edgeStartIndex');
+        const newPoints = polygon.points().slice();
+
+        // Insert new vertex at midpoint position
+        const newX = midCircle.x() - polygon.x();
+        const newY = midCircle.y() - polygon.y();
+        newPoints.splice(edgeStartIndex + 2, 0, newX, newY);
+
+        polygon.points(newPoints);
+
+        // Mark as converted and update appearance
+        midCircle.setAttr('isConverted', true);
+        midCircle.setAttr('vertexIndex', edgeStartIndex + 2);
+        midCircle.fill('#ff9900');
+        midCircle.opacity(1);
+        midCircle.radius(6 / stage.scaleX());
+        midCircle.strokeWidth(2 / stage.scaleX());
+      });
+
+      // Update polygon as new vertex is dragged
+      midCircle.on('dragmove', () => {
+        if (midCircle.getAttr('isConverted')) {
+          const vertexIndex = midCircle.getAttr('vertexIndex');
+          const newPoints = polygon.points().slice();
+          newPoints[vertexIndex] = midCircle.x() - polygon.x();
+          newPoints[vertexIndex + 1] = midCircle.y() - polygon.y();
+          polygon.points(newPoints);
+          overlayLayer?.batchDraw();
+        }
+      });
+
+      // Recreate handles when drag ends
+      midCircle.on('dragend', () => {
+        if (midCircle.getAttr('isConverted')) {
+          updateEditHandles(polygon, geometryType);
+        }
+      });
+
+      midpointCircles.push(midCircle);
+      overlayLayer.add(midCircle);
+    }
+
+    vertexCirclesRef.current = vertexCircles;
+    midpointCirclesRef.current = midpointCircles;
+    overlayLayer.batchDraw();
+  }, [overlayLayer, stage]);
+
+  /**
+   * Enter edit mode for a spot
+   */
+  const enterEditMode = useCallback((spot: Spot) => {
+    if (!overlayLayer || !stage) {
+      console.error('Cannot enter edit mode: overlay layer or stage not ready');
+      return;
+    }
+
+    console.log('Entering imperative edit mode for spot:', spot.name);
+
+    // Store original geometry for cancel
+    const geometry = spot.points?.map((p) => ({ X: p.X ?? p.x ?? 0, Y: p.Y ?? p.y ?? 0 })) || [];
+    originalGeometryRef.current = [...geometry];
+    editingSpotIdRef.current = spot.id;
+
+    // Initialize editing state in store
+    startEditingSpot(spot.id, geometry);
+
+    // Determine geometry type
+    const geometryType = spot.geometryType || spot.geometry?.type || 'polygon';
+    const isClosed = geometryType === 'polygon' || geometryType === 'Polygon';
+
+    // Convert geometry to flat points array
+    const points: number[] = [];
+    geometry.forEach(p => {
+      points.push(p.X, p.Y);
+    });
+
+    // Create the temporary editing polygon imperatively
+    const scale = stage.scaleX();
+    const polygon = new Konva.Line({
+      points: points,
+      stroke: '#ff9900', // Orange to indicate editing
+      strokeWidth: 3 / scale,
+      fill: isClosed ? spot.color || '#00ff00' : undefined,
+      opacity: isClosed ? ((spot.opacity ?? 50) / 100) : undefined,
+      closed: isClosed,
+      listening: true,
+      draggable: true, // Allow dragging the whole shape
+    });
+
+    // Make polygon draggable to move entire shape
+    polygon.on('dragmove', () => {
+      updateEditHandles(polygon, geometryType);
+    });
+
+    editingPolygonRef.current = polygon;
+    overlayLayer.add(polygon);
+
+    // Create editing handles
+    updateEditHandles(polygon, geometryType);
+
+    // Note: The React-rendered spot should be hidden via the `isEditing` prop in SpotRenderer
+  }, [overlayLayer, stage, startEditingSpot, updateEditHandles]);
+
+  /**
+   * Clean up all imperative editing elements
+   */
+  const cleanupEditMode = useCallback(() => {
+    // Destroy polygon
+    if (editingPolygonRef.current) {
+      editingPolygonRef.current.off('dragmove');
+      editingPolygonRef.current.destroy();
+      editingPolygonRef.current = null;
+    }
+
+    // Destroy vertex circles
+    vertexCirclesRef.current.forEach(circle => {
+      circle.off('dragmove');
+      circle.off('dragend');
+      circle.destroy();
+    });
+    vertexCirclesRef.current = [];
+
+    // Destroy midpoint circles
+    midpointCirclesRef.current.forEach(circle => {
+      circle.off('dragstart');
+      circle.off('dragmove');
+      circle.off('dragend');
+      circle.destroy();
+    });
+    midpointCirclesRef.current = [];
+
+    // Clear refs
+    originalGeometryRef.current = null;
+    editingSpotIdRef.current = null;
+
+    // Redraw overlay
+    overlayLayer?.batchDraw();
+
+    console.log('Imperative edit mode cleaned up');
+  }, [overlayLayer]);
+
+  /**
+   * Save editing changes
+   */
+  const saveEdits = useCallback(() => {
+    if (!editingPolygonRef.current || !editingSpotIdRef.current) return;
+
+    console.log('Saving imperative edits');
+
+    // Get final geometry from polygon
+    const polygon = editingPolygonRef.current;
+    const points = polygon.points();
+    const polygonX = polygon.x();
+    const polygonY = polygon.y();
+
+    // Convert to geometry format
+    const newGeometry: Array<{ X: number; Y: number }> = [];
+    for (let i = 0; i < points.length; i += 2) {
+      newGeometry.push({
+        X: points[i] + polygonX,
+        Y: points[i + 1] + polygonY,
+      });
+    }
+
+    // Update the editing geometry in store
+    updateEditingGeometry(newGeometry);
+
+    // Save to spot (this will update the React spot)
+    saveEditingGeometry();
+
+    // Clean up imperative elements
+    cleanupEditMode();
+  }, [updateEditingGeometry, saveEditingGeometry, cleanupEditMode]);
+
+  /**
+   * Cancel editing changes
+   */
+  const cancelEdits = useCallback(() => {
+    console.log('Canceling imperative edits');
+
+    // Just clean up without saving
+    cancelEditingGeometry();
+    cleanupEditMode();
+  }, [cancelEditingGeometry, cleanupEditMode]);
+
+  /**
+   * Update handle sizes when zoom changes
+   */
+  const updateHandleSizes = useCallback((newScale: number) => {
+    if (!editingPolygonRef.current) return;
+
+    // Update polygon stroke width
+    editingPolygonRef.current.strokeWidth(3 / newScale);
+
+    // Update vertex circles
+    vertexCirclesRef.current.forEach(circle => {
+      circle.radius(6 / newScale);
+      circle.strokeWidth(2 / newScale);
+    });
+
+    // Update midpoint circles
+    midpointCirclesRef.current.forEach(circle => {
+      if (circle.getAttr('isConverted')) {
+        circle.radius(6 / newScale);
+        circle.strokeWidth(2 / newScale);
+      } else {
+        circle.radius(4 / newScale);
+        circle.strokeWidth(1 / newScale);
+      }
+    });
+
+    overlayLayer?.batchDraw();
+  }, [overlayLayer]);
+
+  return {
+    enterEditMode,
+    saveEdits,
+    cancelEdits,
+    cleanupEditMode,
+    updateHandleSizes,
+    isEditing: () => editingSpotIdRef.current !== null,
+    getEditingSpotId: () => editingSpotIdRef.current,
+  };
+};

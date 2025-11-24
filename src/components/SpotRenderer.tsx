@@ -8,6 +8,7 @@
 import { useState, useEffect } from 'react';
 import { Circle, Line, Group, Text, Rect } from 'react-konva';
 import { Spot } from '@/types/project-types';
+import { useAppStore } from '@/store';
 
 /**
  * Convert legacy color format (0xRRGGBBAA) to web format (#RRGGBB)
@@ -44,6 +45,13 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
   onContextMenu,
 }) => {
   const [isHovered, setIsHovered] = useState(false);
+  const editingSpotId = useAppStore((state) => state.editingSpotId);
+
+  const isEditing = editingSpotId === spot.id;
+
+  // Hide the React-rendered spot when in imperative edit mode
+  // The imperative editing hook will render the spot on the overlay layer instead
+  if (isEditing) return null;
 
   // Clear hover state when spot becomes selected
   useEffect(() => {
@@ -98,10 +106,10 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
     // Handle both modern geometry format and legacy points format
     const x = Array.isArray(spot.geometry?.coordinates)
       ? (spot.geometry.coordinates as number[])[0]
-      : spot.points?.[0]?.X ?? spot.points?.[0]?.x ?? 0;
+      : spot.points?.[0]?.X ?? 0;
     const y = Array.isArray(spot.geometry?.coordinates)
       ? (spot.geometry.coordinates as number[])[1]
-      : spot.points?.[0]?.Y ?? spot.points?.[0]?.y ?? 0;
+      : spot.points?.[0]?.Y ?? 0;
 
     return (
       <Group
@@ -172,7 +180,7 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
     // Handle both modern geometry format and legacy points format
     const coords: number[][] = Array.isArray(spot.geometry?.coordinates)
       ? (spot.geometry.coordinates as number[][])
-      : spot.points?.map((p) => [p.X ?? p.x ?? 0, p.Y ?? p.y ?? 0]) || [];
+      : spot.points?.map((p) => [p.X ?? 0, p.Y ?? 0]) || [];
 
     const points: number[] = coords.flat();
 
@@ -248,7 +256,7 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
     // Handle both modern geometry format (coordinates is array of rings) and legacy points format
     const coords: number[][] = Array.isArray(spot.geometry?.coordinates)
       ? ((spot.geometry.coordinates as number[][][])[0] || [])
-      : spot.points?.map((p) => [p.X ?? p.x ?? 0, p.Y ?? p.y ?? 0]) || [];
+      : spot.points?.map((p) => [p.X ?? 0, p.Y ?? 0]) || [];
 
     const points: number[] = coords.flat();
 

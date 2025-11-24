@@ -51,6 +51,9 @@ interface AppState {
 
   // ========== VIEWER STATE ==========
   activeTool: DrawingTool;
+  editingSpotId: string | null; // Spot currently being edited
+  editingGeometry: Array<{ X: number; Y: number }> | null; // Draft geometry during editing (not saved)
+  originalGeometry: Array<{ X: number; Y: number }> | null; // Backup of original geometry for cancel
   zoom: number;
   pan: { x: number; y: number };
   showSpotLabels: boolean;
@@ -114,6 +117,12 @@ interface AppState {
   setSpotOverlayOpacity: (opacity: number) => void;
   setViewerRef: (ref: React.RefObject<TiledViewerRef> | null) => void;
 
+  // ========== GEOMETRY EDITING ACTIONS ==========
+  startEditingSpot: (spotId: string, geometry: Array<{ X: number; Y: number }>) => void;
+  updateEditingGeometry: (geometry: Array<{ X: number; Y: number }>) => void;
+  saveEditingGeometry: () => void;
+  cancelEditingGeometry: () => void;
+
   // ========== UI ACTIONS ==========
   setSidebarTab: (tab: SidebarTab) => void;
   setDetailsPanelOpen: (open: boolean) => void;
@@ -142,6 +151,9 @@ export const useAppStore = create<AppState>()(
           selectedSpotIds: [],
 
           activeTool: 'select',
+          editingSpotId: null,
+          editingGeometry: null,
+          originalGeometry: null,
           zoom: 1,
           pan: { x: 0, y: 0 },
           showSpotLabels: true,
@@ -474,6 +486,78 @@ export const useAppStore = create<AppState>()(
           setSpotOverlayOpacity: (opacity) => set({ spotOverlayOpacity: opacity }),
 
           setViewerRef: (ref) => set({ viewerRef: ref }),
+
+          // ========== GEOMETRY EDITING ACTIONS ==========
+
+          startEditingSpot: (spotId, geometry) =>
+            set({
+              editingSpotId: spotId,
+              editingGeometry: [...geometry], // Create copy of geometry
+              originalGeometry: [...geometry], // Save backup for cancel
+            }),
+
+          updateEditingGeometry: (geometry) =>
+            set({
+              editingGeometry: [...geometry],
+            }),
+
+          saveEditingGeometry: () =>
+            set((state) => {
+              if (!state.project || !state.editingSpotId || !state.editingGeometry) {
+                return state;
+              }
+
+              const newProject = { ...state.project };
+              const spotId = state.editingSpotId;
+              const points = state.editingGeometry;
+
+              // Find the spot in the project and update it
+              let spotFound = false;
+              if (newProject.datasets) {
+                for (const dataset of newProject.datasets) {
+                  if (dataset.samples) {
+                    for (const sample of dataset.samples) {
+                      if (sample.micrographs) {
+                        for (const micrograph of sample.micrographs) {
+                          if (micrograph.spots) {
+                            const spotIndex = micrograph.spots.findIndex((s) => s.id === spotId);
+                            if (spotIndex !== -1) {
+                              // Update the spot's points
+                              micrograph.spots[spotIndex] = {
+                                ...micrograph.spots[spotIndex],
+                                points,
+                                modifiedTimestamp: Date.now(),
+                              };
+                              spotFound = true;
+                              break;
+                            }
+                          }
+                        }
+                        if (spotFound) break;
+                      }
+                    }
+                    if (spotFound) break;
+                  }
+                }
+              }
+
+              return {
+                project: newProject,
+                isDirty: true,
+                spotIndex: buildSpotIndex(newProject),
+                // Clear editing state
+                editingSpotId: null,
+                editingGeometry: null,
+                originalGeometry: null,
+              };
+            }),
+
+          cancelEditingGeometry: () =>
+            set({
+              editingSpotId: null,
+              editingGeometry: null,
+              originalGeometry: null,
+            }),
 
           // ========== UI ACTIONS ==========
 

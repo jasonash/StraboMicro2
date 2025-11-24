@@ -20,10 +20,12 @@ import { getChildMicrographs } from '@/store/helpers';
 import { AssociatedImageRenderer } from './AssociatedImageRenderer';
 import { SpotRenderer } from './SpotRenderer';
 import { SpotContextMenu } from './SpotContextMenu';
+import { EditingToolbar } from './EditingToolbar';
 import { NewSpotDialog } from './dialogs/NewSpotDialog';
 import { Geometry, Spot } from '@/types/project-types';
 import { usePolygonDrawing } from '@/hooks/usePolygonDrawing';
 import { useLineDrawing } from '@/hooks/useLineDrawing';
+import { useImperativeGeometryEditing } from '@/hooks/useImperativeGeometryEditing';
 import './TiledViewer.css';
 
 const TILE_SIZE = 256;
@@ -163,6 +165,12 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(({ image
     },
   });
 
+  // Imperative geometry editing hook
+  const geometryEditing = useImperativeGeometryEditing(
+    drawingLayerRef.current,
+    stageRef.current
+  );
+
   /**
    * Load image metadata and initialize viewer
    */
@@ -242,6 +250,21 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(({ image
 
     loadImage();
   }, [imagePath]);
+
+  /**
+   * Handle keyboard events (e.g., Escape to cancel editing mode)
+   */
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        // Cancel imperative editing mode
+        geometryEditing.cancelEdits();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [geometryEditing]);
 
   /**
    * Load ALL tiles for the entire image in background
@@ -503,7 +526,10 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(({ image
     // Update stroke widths in drawing hooks
     polygonDrawing.updateStrokeWidth(newZoom);
     lineDrawing.updateStrokeWidth(newZoom);
-  }, [zoom, position, polygonDrawing, lineDrawing]);
+
+    // Update editing handle sizes if in edit mode
+    geometryEditing.updateHandleSizes(newZoom);
+  }, [zoom, position, polygonDrawing, lineDrawing, geometryEditing]);
 
   /**
    * Handle pan (drag to move)
@@ -590,6 +616,8 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(({ image
       // Only clear selection if NOT clicking on a spot
       if (!isSpot) {
         selectActiveSpot(null);
+        // Also cancel imperative geometry editing mode
+        geometryEditing.cancelEdits();
       }
       return;
     }
@@ -665,10 +693,17 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(({ image
    * Handle edit spot geometry
    */
   const handleEditGeometry = useCallback((spot: Spot) => {
-    // TODO: Implement geometry editing
     console.log('Edit geometry for spot:', spot.name);
-    alert('Geometry editing coming soon!');
-  }, []);
+
+    // Enter imperative edit mode
+    geometryEditing.enterEditMode(spot);
+
+    // Also select the spot to highlight it
+    selectActiveSpot(spot.id);
+
+    // Disable any active drawing tool
+    setActiveTool(null);
+  }, [geometryEditing, selectActiveSpot, setActiveTool]);
 
   /**
    * Handle edit spot metadata
@@ -718,6 +753,12 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(({ image
           <p className="hint">Create a new project to get started</p>
         </div>
       )}
+
+      {/* Editing toolbar */}
+      <EditingToolbar
+        onSave={() => geometryEditing.saveEdits()}
+        onCancel={() => geometryEditing.cancelEdits()}
+      />
 
       {imageMetadata && (
         <>
