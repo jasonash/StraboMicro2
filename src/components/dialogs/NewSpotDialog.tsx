@@ -127,20 +127,44 @@ export const NewSpotDialog: React.FC<NewSpotDialogProps> = ({
     localStorage.setItem('spot_opacity', opacity.toString());
     localStorage.setItem('spot_showLabel', showLabel.toString());
 
-    // Create the new spot
+    // Convert GeoJSON geometry to legacy format
+    let points: Array<{ X: number; Y: number }> = [];
+    let legacyGeometryType: string = '';
+
+    if (geometry.type === 'Point') {
+      legacyGeometryType = 'point'; // lowercase in legacy format
+      const [x, y] = geometry.coordinates as [number, number];
+      points = [{ X: x, Y: y }];
+    } else if (geometry.type === 'LineString') {
+      legacyGeometryType = 'line'; // "line" not "LineString" in legacy format
+      points = (geometry.coordinates as Array<[number, number]>).map(([x, y]) => ({ X: x, Y: y }));
+    } else if (geometry.type === 'Polygon') {
+      legacyGeometryType = 'polygon'; // lowercase in legacy format
+      // Polygon coordinates are nested: [[[x1, y1], [x2, y2], ...]]
+      const ring = (geometry.coordinates as Array<Array<[number, number]>>)[0];
+      points = ring.map(([x, y]) => ({ X: x, Y: y }));
+    }
+
+    // Convert hex color from #RRGGBB to legacy 0xRRGGBBFF format
+    const convertColorToLegacy = (hexColor: string): string => {
+      // Remove # and add 0x prefix and FF suffix for full opacity
+      return '0x' + hexColor.slice(1) + 'ff';
+    };
+
+    // Create the new spot in legacy format
     const newSpot: Spot = {
       id: uuidv4(),
       name: name.trim(),
-      notes: notes.trim() || null,
-      labelColor,
+      notes: notes.trim() || '',
+      labelColor: convertColorToLegacy(labelColor),
       showLabel,
-      color: spotColor,
+      color: convertColorToLegacy(spotColor),
       opacity,
-      date: new Date().toISOString().split('T')[0],
-      time: new Date().toTimeString().split(' ')[0],
+      date: new Date().toISOString(),
+      time: new Date().toISOString(),
       modifiedTimestamp: Date.now(),
-      geometry,
-      geometryType: geometry.type,
+      geometryType: legacyGeometryType,
+      points,
     };
 
     // If copying from existing spot, copy selected fields

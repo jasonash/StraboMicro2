@@ -9,6 +9,25 @@ import { useState } from 'react';
 import { Circle, Line, Group, Text } from 'react-konva';
 import { Spot } from '@/types/project-types';
 
+/**
+ * Convert legacy color format (0xRRGGBBAA) to web format (#RRGGBB)
+ */
+function convertLegacyColor(color: string): string {
+  if (!color) return '#00ff00';
+
+  // If it's already in web format, return as-is
+  if (color.startsWith('#')) return color;
+
+  // Convert 0xRRGGBBAA to #RRGGBB
+  if (color.startsWith('0x')) {
+    const hex = color.slice(2); // Remove '0x'
+    const rgb = hex.slice(0, 6); // Take first 6 chars (ignore alpha)
+    return '#' + rgb;
+  }
+
+  return color; // Return as-is if unknown format
+}
+
 interface SpotRendererProps {
   spot: Spot;
   scale: number; // Current zoom level for size scaling
@@ -29,8 +48,8 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
   if (!spot.geometryType && !spot.geometry) return null;
 
   const geometryType = spot.geometryType || spot.geometry?.type;
-  const color = spot.color || '#00ff00';
-  const labelColor = spot.labelColor || '#ffffff';
+  const color = convertLegacyColor(spot.color || '#00ff00');
+  const labelColor = convertLegacyColor(spot.labelColor || '#ffffff');
   const showLabel = spot.showLabel ?? true;
   const opacity = (spot.opacity ?? 50) / 100; // Convert 0-100 to 0-1
 
