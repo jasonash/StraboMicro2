@@ -19,6 +19,7 @@ import { useAppStore } from '@/store';
 import { NotesDialog } from './dialogs/metadata/NotesDialog';
 import { SampleInfoDialog } from './dialogs/metadata/SampleInfoDialog';
 import { EditMicrographDialog } from './dialogs/metadata/EditMicrographDialog';
+import { EditSpotDialog } from './dialogs/metadata/EditSpotDialog';
 import { EditDatasetDialog } from './dialogs/EditDatasetDialog';
 import { EditProjectDialog } from './dialogs/EditProjectDialog';
 import { MineralogyDialog } from './dialogs/metadata/MineralogyDialog';
@@ -238,6 +239,14 @@ export function PropertiesPanel() {
           isOpen={true}
           onClose={() => setOpenDialog(null)}
           micrographId={activeMicrographId}
+        />
+      )}
+
+      {openDialog === 'spot' && activeSpotId && (
+        <EditSpotDialog
+          isOpen={true}
+          onClose={() => setOpenDialog(null)}
+          spotId={activeSpotId}
         />
       )}
 
