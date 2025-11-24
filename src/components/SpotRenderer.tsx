@@ -139,13 +139,13 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
         {showLabel && (
           <Text
             key="label"
-            x={x + 12 / scale}
-            y={y - 8 / scale}
+            x={x + 10 / scale}
+            y={y + 10 / scale}
             text={spot.name}
-            fontSize={12 / scale}
+            fontSize={16 / scale}
             fill={labelColor}
             stroke="#000000"
-            strokeWidth={0.5 / scale}
+            strokeWidth={1 / scale}
             listening={false}
           />
         )}
@@ -201,13 +201,13 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
         {showLabel && coords[0] && (
           <Text
             key="label"
-            x={coords[0][0]}
-            y={coords[0][1] - 12 / scale}
+            x={coords[0][0] + 10 / scale}
+            y={coords[0][1] + 10 / scale}
             text={spot.name}
-            fontSize={12 / scale}
+            fontSize={16 / scale}
             fill={labelColor}
             stroke="#000000"
-            strokeWidth={0.5 / scale}
+            strokeWidth={1 / scale}
             listening={false}
           />
         )}
@@ -262,13 +262,13 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
         {showLabel && coords[0] && (
           <Text
             key="label"
-            x={coords[0][0]}
-            y={coords[0][1] - 12 / scale}
+            x={coords[0][0] + 10 / scale}
+            y={coords[0][1] + 10 / scale}
             text={spot.name}
-            fontSize={12 / scale}
+            fontSize={16 / scale}
             fill={labelColor}
             stroke="#000000"
-            strokeWidth={0.5 / scale}
+            strokeWidth={1 / scale}
             listening={false}
           />
         )}
