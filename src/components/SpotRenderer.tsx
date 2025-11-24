@@ -47,18 +47,19 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
   const [isHovered, setIsHovered] = useState(false);
   const editingSpotId = useAppStore((state) => state.editingSpotId);
 
-  const isEditing = editingSpotId === spot.id;
-
-  // Hide the React-rendered spot when in imperative edit mode
-  // The imperative editing hook will render the spot on the overlay layer instead
-  if (isEditing) return null;
-
   // Clear hover state when spot becomes selected
+  // IMPORTANT: This must be BEFORE any conditional returns (React hooks rules)
   useEffect(() => {
     if (isSelected) {
       setIsHovered(false);
     }
   }, [isSelected]);
+
+  const isEditing = editingSpotId === spot.id;
+
+  // Hide the React-rendered spot when in imperative edit mode
+  // The imperative editing hook will render the spot on the overlay layer instead
+  if (isEditing) return null;
 
   if (!spot.geometryType && !spot.geometry) return null;
 
