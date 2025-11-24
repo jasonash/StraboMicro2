@@ -265,12 +265,12 @@ const RulerCanvas: React.FC<RulerCanvasProps> = ({
       }
     }
 
-    // Draw unit badge (only for horizontal ruler, in top-right corner)
+    // Draw unit badge (only for horizontal ruler, near right side but not at edge)
     if (isHorizontal) {
-      const badgeWidth = 35;
-      const badgeHeight = 20;
-      const badgeX = width - badgeWidth - 5; // 5px margin from right edge
-      const badgeY = 5; // 5px margin from top
+      const badgeWidth = 38;
+      const badgeHeight = 22;
+      const badgeX = width - badgeWidth - 50; // 50px margin from right edge to keep it visible
+      const badgeY = 4; // 4px margin from top
       const borderRadius = 6;
 
       // Draw rounded rectangle background
