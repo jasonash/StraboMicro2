@@ -35,7 +35,7 @@ export function EditSpotDialog({ isOpen, onClose, spotId }: EditSpotDialogProps)
 
   const [name, setName] = useState('');
   const [notes, setNotes] = useState('');
-  const [labelColor, setLabelColor] = useState('#ffffff');
+  const [labelColor, setLabelColor] = useState('#ffffff'); // Default to white for better readability with background box
   const [spotColor, setSpotColor] = useState('#00ff00');
   const [opacity, setOpacity] = useState(50);
   const [showLabel, setShowLabel] = useState(true);
@@ -122,8 +122,8 @@ export function EditSpotDialog({ isOpen, onClose, spotId }: EditSpotDialogProps)
             label="Show label on image"
           />
 
-          {/* Label Color */}
-          <Box>
+          {/* Label Color - Commented out for now, defaulting to white for better readability */}
+          {/* <Box>
             <Typography variant="body2" color="text.secondary" gutterBottom>
               Label Color
             </Typography>
@@ -146,7 +146,7 @@ export function EditSpotDialog({ isOpen, onClose, spotId }: EditSpotDialogProps)
                 )
               )}
             </Box>
-          </Box>
+          </Box> */}
 
           {/* Spot Color */}
           <Box>

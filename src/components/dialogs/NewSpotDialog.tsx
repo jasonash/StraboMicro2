@@ -59,7 +59,7 @@ export const NewSpotDialog: React.FC<NewSpotDialogProps> = ({
   const [name, setName] = useState('');
   const [notes, setNotes] = useState('');
   const [showLabel, setShowLabel] = useState(getDefaultShowLabel());
-  const [labelColor, setLabelColor] = useState(getDefaultColor('labelColor', '#ffffff'));
+  const [labelColor, setLabelColor] = useState('#ffffff'); // Default to white for better readability with background box
   const [spotColor, setSpotColor] = useState(getDefaultColor('spotColor', '#00ff00'));
   const [opacity, setOpacity] = useState(getDefaultOpacity());
 
@@ -90,7 +90,7 @@ export const NewSpotDialog: React.FC<NewSpotDialogProps> = ({
       setName('');
       setNotes('');
       setShowLabel(getDefaultShowLabel());
-      setLabelColor(getDefaultColor('labelColor', '#ffffff'));
+      setLabelColor('#ffffff'); // Default to white
       setSpotColor(getDefaultColor('spotColor', '#00ff00'));
       setOpacity(getDefaultOpacity());
       setEnableCopy(false);
@@ -285,8 +285,8 @@ export const NewSpotDialog: React.FC<NewSpotDialogProps> = ({
             label="Show Label"
           />
 
-          {/* Label Color */}
-          <Box>
+          {/* Label Color - Commented out for now, defaulting to white for better readability */}
+          {/* <Box>
             <Typography variant="body2" color="text.secondary" gutterBottom>
               Label Color
             </Typography>
@@ -309,7 +309,7 @@ export const NewSpotDialog: React.FC<NewSpotDialogProps> = ({
                 )
               )}
             </Box>
-          </Box>
+          </Box> */}
 
           {/* Spot Color */}
           <Box>
