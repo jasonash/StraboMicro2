@@ -509,12 +509,16 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(({ image
    */
   const handleMouseDown = useCallback((e: any) => {
     if (e.evt.button !== 0) return; // Only left mouse button
-    setIsPanning(true);
-    const stage = stageRef.current;
-    if (!stage) return;
-    const pos = stage.getPointerPosition();
-    setLastPointerPos(pos);
-  }, []);
+
+    // Only enable panning if no drawing tool is active
+    if (!activeTool || activeTool === 'select') {
+      setIsPanning(true);
+      const stage = stageRef.current;
+      if (!stage) return;
+      const pos = stage.getPointerPosition();
+      setLastPointerPos(pos);
+    }
+  }, [activeTool]);
 
   const handleMouseMove = useCallback(() => {
     const stage = stageRef.current;
@@ -679,7 +683,6 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(({ image
             onMouseMove={handleMouseMove}
             onMouseUp={handleMouseUp}
             onMouseLeave={handleMouseUp}
-            draggable={!activeTool || activeTool === 'select'}
             style={{
               cursor: activeTool === 'point' || activeTool === 'line' || activeTool === 'polygon'
                 ? 'crosshair'
