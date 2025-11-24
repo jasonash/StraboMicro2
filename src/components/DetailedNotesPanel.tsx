@@ -92,13 +92,13 @@ export function DetailedNotesPanel({ micrographId, spotId, onEditSection, onView
 
   // Micrograph/Spot notes
   if (micrograph?.notes) {
-    const result = renderNoteSection('Micrograph Notes', micrograph.notes, 'micrograph', !isFirst);
+    const result = renderNoteSection('Micrograph Notes', micrograph.notes, 'micrograph-notes', !isFirst);
     if (result) {
       noteSections.push(result);
       isFirst = false;
     }
   } else if (spot?.notes) {
-    const result = renderNoteSection('Spot Notes', spot.notes, 'spot', !isFirst);
+    const result = renderNoteSection('Spot Notes', spot.notes, 'spot-notes', !isFirst);
     if (result) {
       noteSections.push(result);
       isFirst = false;
@@ -107,7 +107,7 @@ export function DetailedNotesPanel({ micrographId, spotId, onEditSection, onView
 
   // Polish description
   if (micrograph?.polishDescription) {
-    const result = renderNoteSection('Polish Description', micrograph.polishDescription, 'micrograph', !isFirst);
+    const result = renderNoteSection('Polish Description', micrograph.polishDescription, 'polish-description', !isFirst);
     if (result) {
       noteSections.push(result);
       isFirst = false;
@@ -116,7 +116,7 @@ export function DetailedNotesPanel({ micrographId, spotId, onEditSection, onView
 
   // Instrument notes
   if (micrograph?.instrument?.instrumentNotes) {
-    const result = renderNoteSection('Instrument Notes', micrograph.instrument.instrumentNotes, 'micrograph', !isFirst);
+    const result = renderNoteSection('Instrument Notes', micrograph.instrument.instrumentNotes, 'instrument-notes', !isFirst);
     if (result) {
       noteSections.push(result);
       isFirst = false;
@@ -125,7 +125,7 @@ export function DetailedNotesPanel({ micrographId, spotId, onEditSection, onView
 
   // Post processing notes
   if (micrograph?.instrument?.notesOnPostProcessing) {
-    const result = renderNoteSection('Post Processing Notes', micrograph.instrument.notesOnPostProcessing, 'micrograph', !isFirst);
+    const result = renderNoteSection('Post Processing Notes', micrograph.instrument.notesOnPostProcessing, 'post-processing-notes', !isFirst);
     if (result) {
       noteSections.push(result);
       isFirst = false;
@@ -134,7 +134,7 @@ export function DetailedNotesPanel({ micrographId, spotId, onEditSection, onView
 
   // Mineralogy notes
   if (data.mineralogy?.notes) {
-    const result = renderNoteSection('Mineralogy Notes', data.mineralogy.notes, 'mineralogy', !isFirst);
+    const result = renderNoteSection('Mineralogy Notes', data.mineralogy.notes, 'mineralogy-notes', !isFirst);
     if (result) {
       noteSections.push(result);
       isFirst = false;
@@ -143,7 +143,7 @@ export function DetailedNotesPanel({ micrographId, spotId, onEditSection, onView
 
   // Lithology notes
   if (data.lithologyInfo?.notes) {
-    const result = renderNoteSection('Lithology Notes', data.lithologyInfo.notes, 'mineralogy', !isFirst);
+    const result = renderNoteSection('Lithology Notes', data.lithologyInfo.notes, 'lithology-notes', !isFirst);
     if (result) {
       noteSections.push(result);
       isFirst = false;
@@ -152,7 +152,7 @@ export function DetailedNotesPanel({ micrographId, spotId, onEditSection, onView
 
   // Grain size notes
   if (data.grainInfo?.grainSizeNotes) {
-    const result = renderNoteSection('Grain Size Notes', data.grainInfo.grainSizeNotes, 'grain', !isFirst);
+    const result = renderNoteSection('Grain Size Notes', data.grainInfo.grainSizeNotes, 'grain-size-notes', !isFirst);
     if (result) {
       noteSections.push(result);
       isFirst = false;
@@ -161,7 +161,7 @@ export function DetailedNotesPanel({ micrographId, spotId, onEditSection, onView
 
   // Grain shape notes
   if (data.grainInfo?.grainShapeNotes) {
-    const result = renderNoteSection('Grain Shape Notes', data.grainInfo.grainShapeNotes, 'grain', !isFirst);
+    const result = renderNoteSection('Grain Shape Notes', data.grainInfo.grainShapeNotes, 'grain-shape-notes', !isFirst);
     if (result) {
       noteSections.push(result);
       isFirst = false;
@@ -170,7 +170,7 @@ export function DetailedNotesPanel({ micrographId, spotId, onEditSection, onView
 
   // Grain orientation notes
   if (data.grainInfo?.grainOrientationNotes) {
-    const result = renderNoteSection('Grain Orientation Notes', data.grainInfo.grainOrientationNotes, 'grain', !isFirst);
+    const result = renderNoteSection('Grain Orientation Notes', data.grainInfo.grainOrientationNotes, 'grain-orientation-notes', !isFirst);
     if (result) {
       noteSections.push(result);
       isFirst = false;
@@ -179,7 +179,7 @@ export function DetailedNotesPanel({ micrographId, spotId, onEditSection, onView
 
   // Fabric notes
   if (data.fabricInfo?.notes) {
-    const result = renderNoteSection('Fabric Notes', data.fabricInfo.notes, 'fabric', !isFirst);
+    const result = renderNoteSection('Fabric Notes', data.fabricInfo.notes, 'fabric-notes', !isFirst);
     if (result) {
       noteSections.push(result);
       isFirst = false;
@@ -188,7 +188,7 @@ export function DetailedNotesPanel({ micrographId, spotId, onEditSection, onView
 
   // Clastic deformation band notes
   if (data.clasticDeformationBandInfo?.notes) {
-    const result = renderNoteSection('Clastic Deformation Band Notes', data.clasticDeformationBandInfo.notes, 'clastic', !isFirst);
+    const result = renderNoteSection('Clastic Deformation Band Notes', data.clasticDeformationBandInfo.notes, 'clastic-notes', !isFirst);
     if (result) {
       noteSections.push(result);
       isFirst = false;
@@ -197,7 +197,7 @@ export function DetailedNotesPanel({ micrographId, spotId, onEditSection, onView
 
   // Grain boundary notes
   if (data.grainBoundaryInfo?.notes) {
-    const result = renderNoteSection('Grain Boundary/Contact Notes', data.grainBoundaryInfo.notes, 'grainBoundary', !isFirst);
+    const result = renderNoteSection('Grain Boundary/Contact Notes', data.grainBoundaryInfo.notes, 'grain-boundary-notes', !isFirst);
     if (result) {
       noteSections.push(result);
       isFirst = false;
@@ -206,7 +206,7 @@ export function DetailedNotesPanel({ micrographId, spotId, onEditSection, onView
 
   // Intragrain notes
   if (data.intraGrainInfo?.notes) {
-    const result = renderNoteSection('Intragrain (Single Grain) Notes', data.intraGrainInfo.notes, 'intraGrain', !isFirst);
+    const result = renderNoteSection('Intragrain (Single Grain) Notes', data.intraGrainInfo.notes, 'intragrain-notes', !isFirst);
     if (result) {
       noteSections.push(result);
       isFirst = false;
@@ -215,7 +215,7 @@ export function DetailedNotesPanel({ micrographId, spotId, onEditSection, onView
 
   // Vein notes
   if (data.veinInfo?.notes) {
-    const result = renderNoteSection('Vein Notes', data.veinInfo.notes, 'vein', !isFirst);
+    const result = renderNoteSection('Vein Notes', data.veinInfo.notes, 'vein-notes', !isFirst);
     if (result) {
       noteSections.push(result);
       isFirst = false;
@@ -224,7 +224,7 @@ export function DetailedNotesPanel({ micrographId, spotId, onEditSection, onView
 
   // Pseudotachylyte notes
   if (data.pseudotachylyteInfo?.notes) {
-    const result = renderNoteSection('Pseudotachylyte Notes', data.pseudotachylyteInfo.notes, 'pseudotachylyte', !isFirst);
+    const result = renderNoteSection('Pseudotachylyte Notes', data.pseudotachylyteInfo.notes, 'pseudotachylyte-notes', !isFirst);
     if (result) {
       noteSections.push(result);
       isFirst = false;
@@ -233,7 +233,7 @@ export function DetailedNotesPanel({ micrographId, spotId, onEditSection, onView
 
   // Fold notes
   if (data.foldInfo?.notes) {
-    const result = renderNoteSection('Fold Notes', data.foldInfo.notes, 'fold', !isFirst);
+    const result = renderNoteSection('Fold Notes', data.foldInfo.notes, 'fold-notes', !isFirst);
     if (result) {
       noteSections.push(result);
       isFirst = false;
@@ -242,7 +242,7 @@ export function DetailedNotesPanel({ micrographId, spotId, onEditSection, onView
 
   // Faults/Shear zones notes
   if (data.faultsShearZonesInfo?.notes) {
-    const result = renderNoteSection('Faults/Shear Zones Notes', data.faultsShearZonesInfo.notes, 'faultsShearZones', !isFirst);
+    const result = renderNoteSection('Faults/Shear Zones Notes', data.faultsShearZonesInfo.notes, 'faults-shear-zones-notes', !isFirst);
     if (result) {
       noteSections.push(result);
       isFirst = false;
@@ -251,7 +251,7 @@ export function DetailedNotesPanel({ micrographId, spotId, onEditSection, onView
 
   // Extinction microstructures notes
   if (data.extinctionMicrostructureInfo?.notes) {
-    const result = renderNoteSection('Extinction Microstructures Notes', data.extinctionMicrostructureInfo.notes, 'extinctionMicrostructures', !isFirst);
+    const result = renderNoteSection('Extinction Microstructures Notes', data.extinctionMicrostructureInfo.notes, 'extinction-microstructures-notes', !isFirst);
     if (result) {
       noteSections.push(result);
       isFirst = false;
@@ -260,7 +260,7 @@ export function DetailedNotesPanel({ micrographId, spotId, onEditSection, onView
 
   // Fracture notes
   if (data.fractureInfo?.notes) {
-    const result = renderNoteSection('Fracture Notes', data.fractureInfo.notes, 'fracture', !isFirst);
+    const result = renderNoteSection('Fracture Notes', data.fractureInfo.notes, 'fracture-notes', !isFirst);
     if (result) {
       noteSections.push(result);
       isFirst = false;

@@ -103,12 +103,12 @@ export function DetailedNotesDialog({ isOpen, onClose, micrographId, spotId, onE
 
   // Micrograph/Spot notes
   if (micrograph?.notes) {
-    const result = renderNoteSection('Micrograph Notes', micrograph.notes, 'micrograph');
+    const result = renderNoteSection('Micrograph Notes', micrograph.notes, 'micrograph-notes');
     if (result) {
       noteSections.push(result);
     }
   } else if (spot?.notes) {
-    const result = renderNoteSection('Spot Notes', spot.notes, 'spot');
+    const result = renderNoteSection('Spot Notes', spot.notes, 'spot-notes');
     if (result) {
       noteSections.push(result);
     }
@@ -116,7 +116,7 @@ export function DetailedNotesDialog({ isOpen, onClose, micrographId, spotId, onE
 
   // Polish description
   if (micrograph?.polishDescription) {
-    const result = renderNoteSection('Polish Description', micrograph.polishDescription, 'micrograph');
+    const result = renderNoteSection('Polish Description', micrograph.polishDescription, 'polish-description');
     if (result) {
       noteSections.push(result);
     }
@@ -124,7 +124,7 @@ export function DetailedNotesDialog({ isOpen, onClose, micrographId, spotId, onE
 
   // Instrument notes
   if (micrograph?.instrument?.instrumentNotes) {
-    const result = renderNoteSection('Instrument Notes', micrograph.instrument.instrumentNotes, 'micrograph');
+    const result = renderNoteSection('Instrument Notes', micrograph.instrument.instrumentNotes, 'instrument-notes');
     if (result) {
       noteSections.push(result);
     }
@@ -132,7 +132,7 @@ export function DetailedNotesDialog({ isOpen, onClose, micrographId, spotId, onE
 
   // Post processing notes
   if (micrograph?.instrument?.notesOnPostProcessing) {
-    const result = renderNoteSection('Post Processing Notes', micrograph.instrument.notesOnPostProcessing, 'micrograph');
+    const result = renderNoteSection('Post Processing Notes', micrograph.instrument.notesOnPostProcessing, 'post-processing-notes');
     if (result) {
       noteSections.push(result);
     }
@@ -140,7 +140,7 @@ export function DetailedNotesDialog({ isOpen, onClose, micrographId, spotId, onE
 
   // Mineralogy notes
   if (data.mineralogy?.notes) {
-    const result = renderNoteSection('Mineralogy Notes', data.mineralogy.notes, 'mineralogy');
+    const result = renderNoteSection('Mineralogy Notes', data.mineralogy.notes, 'mineralogy-notes');
     if (result) {
       noteSections.push(result);
     }
@@ -148,7 +148,7 @@ export function DetailedNotesDialog({ isOpen, onClose, micrographId, spotId, onE
 
   // Lithology notes
   if (data.lithologyInfo?.notes) {
-    const result = renderNoteSection('Lithology Notes', data.lithologyInfo.notes, 'mineralogy');
+    const result = renderNoteSection('Lithology Notes', data.lithologyInfo.notes, 'lithology-notes');
     if (result) {
       noteSections.push(result);
     }
@@ -156,7 +156,7 @@ export function DetailedNotesDialog({ isOpen, onClose, micrographId, spotId, onE
 
   // Grain size notes
   if (data.grainInfo?.grainSizeNotes) {
-    const result = renderNoteSection('Grain Size Notes', data.grainInfo.grainSizeNotes, 'grain');
+    const result = renderNoteSection('Grain Size Notes', data.grainInfo.grainSizeNotes, 'grain-size-notes');
     if (result) {
       noteSections.push(result);
     }
@@ -164,7 +164,7 @@ export function DetailedNotesDialog({ isOpen, onClose, micrographId, spotId, onE
 
   // Grain shape notes
   if (data.grainInfo?.grainShapeNotes) {
-    const result = renderNoteSection('Grain Shape Notes', data.grainInfo.grainShapeNotes, 'grain');
+    const result = renderNoteSection('Grain Shape Notes', data.grainInfo.grainShapeNotes, 'grain-shape-notes');
     if (result) {
       noteSections.push(result);
     }
@@ -172,7 +172,7 @@ export function DetailedNotesDialog({ isOpen, onClose, micrographId, spotId, onE
 
   // Grain orientation notes
   if (data.grainInfo?.grainOrientationNotes) {
-    const result = renderNoteSection('Grain Orientation Notes', data.grainInfo.grainOrientationNotes, 'grain');
+    const result = renderNoteSection('Grain Orientation Notes', data.grainInfo.grainOrientationNotes, 'grain-orientation-notes');
     if (result) {
       noteSections.push(result);
     }
@@ -180,7 +180,7 @@ export function DetailedNotesDialog({ isOpen, onClose, micrographId, spotId, onE
 
   // Fabric notes
   if (data.fabricInfo?.notes) {
-    const result = renderNoteSection('Fabric Notes', data.fabricInfo.notes, 'fabric');
+    const result = renderNoteSection('Fabric Notes', data.fabricInfo.notes, 'fabric-notes');
     if (result) {
       noteSections.push(result);
     }
@@ -188,7 +188,7 @@ export function DetailedNotesDialog({ isOpen, onClose, micrographId, spotId, onE
 
   // Clastic deformation band notes
   if (data.clasticDeformationBandInfo?.notes) {
-    const result = renderNoteSection('Clastic Deformation Band Notes', data.clasticDeformationBandInfo.notes, 'clastic');
+    const result = renderNoteSection('Clastic Deformation Band Notes', data.clasticDeformationBandInfo.notes, 'clastic-notes');
     if (result) {
       noteSections.push(result);
     }
@@ -196,7 +196,7 @@ export function DetailedNotesDialog({ isOpen, onClose, micrographId, spotId, onE
 
   // Grain boundary notes
   if (data.grainBoundaryInfo?.notes) {
-    const result = renderNoteSection('Grain Boundary/Contact Notes', data.grainBoundaryInfo.notes, 'grainBoundary');
+    const result = renderNoteSection('Grain Boundary/Contact Notes', data.grainBoundaryInfo.notes, 'grain-boundary-notes');
     if (result) {
       noteSections.push(result);
     }
@@ -204,7 +204,7 @@ export function DetailedNotesDialog({ isOpen, onClose, micrographId, spotId, onE
 
   // Intragrain notes
   if (data.intraGrainInfo?.notes) {
-    const result = renderNoteSection('Intragrain (Single Grain) Notes', data.intraGrainInfo.notes, 'intraGrain');
+    const result = renderNoteSection('Intragrain (Single Grain) Notes', data.intraGrainInfo.notes, 'intragrain-notes');
     if (result) {
       noteSections.push(result);
     }
@@ -212,7 +212,7 @@ export function DetailedNotesDialog({ isOpen, onClose, micrographId, spotId, onE
 
   // Vein notes
   if (data.veinInfo?.notes) {
-    const result = renderNoteSection('Vein Notes', data.veinInfo.notes, 'vein');
+    const result = renderNoteSection('Vein Notes', data.veinInfo.notes, 'vein-notes');
     if (result) {
       noteSections.push(result);
     }
@@ -220,7 +220,7 @@ export function DetailedNotesDialog({ isOpen, onClose, micrographId, spotId, onE
 
   // Pseudotachylyte notes
   if (data.pseudotachylyteInfo?.notes) {
-    const result = renderNoteSection('Pseudotachylyte Notes', data.pseudotachylyteInfo.notes, 'pseudotachylyte');
+    const result = renderNoteSection('Pseudotachylyte Notes', data.pseudotachylyteInfo.notes, 'pseudotachylyte-notes');
     if (result) {
       noteSections.push(result);
     }
@@ -228,7 +228,7 @@ export function DetailedNotesDialog({ isOpen, onClose, micrographId, spotId, onE
 
   // Fold notes
   if (data.foldInfo?.notes) {
-    const result = renderNoteSection('Fold Notes', data.foldInfo.notes, 'fold');
+    const result = renderNoteSection('Fold Notes', data.foldInfo.notes, 'fold-notes');
     if (result) {
       noteSections.push(result);
     }
@@ -236,7 +236,7 @@ export function DetailedNotesDialog({ isOpen, onClose, micrographId, spotId, onE
 
   // Faults/Shear zones notes
   if (data.faultsShearZonesInfo?.notes) {
-    const result = renderNoteSection('Faults/Shear Zones Notes', data.faultsShearZonesInfo.notes, 'faultsShearZones');
+    const result = renderNoteSection('Faults/Shear Zones Notes', data.faultsShearZonesInfo.notes, 'faults-shear-zones-notes');
     if (result) {
       noteSections.push(result);
     }
@@ -244,7 +244,7 @@ export function DetailedNotesDialog({ isOpen, onClose, micrographId, spotId, onE
 
   // Extinction microstructures notes
   if (data.extinctionMicrostructureInfo?.notes) {
-    const result = renderNoteSection('Extinction Microstructures Notes', data.extinctionMicrostructureInfo.notes, 'extinctionMicrostructures');
+    const result = renderNoteSection('Extinction Microstructures Notes', data.extinctionMicrostructureInfo.notes, 'extinction-microstructures-notes');
     if (result) {
       noteSections.push(result);
     }
@@ -252,7 +252,7 @@ export function DetailedNotesDialog({ isOpen, onClose, micrographId, spotId, onE
 
   // Fracture notes
   if (data.fractureInfo?.notes) {
-    const result = renderNoteSection('Fracture Notes', data.fractureInfo.notes, 'fracture');
+    const result = renderNoteSection('Fracture Notes', data.fractureInfo.notes, 'fracture-notes');
     if (result) {
       noteSections.push(result);
     }
