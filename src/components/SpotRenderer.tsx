@@ -47,6 +47,22 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
     onContextMenu?.(spot, e.evt.clientX, e.evt.clientY);
   };
 
+  const handleMouseEnter = (e: any) => {
+    setIsHovered(true);
+    const container = e.target.getStage()?.container();
+    if (container) {
+      container.style.cursor = 'pointer';
+    }
+  };
+
+  const handleMouseLeave = (e: any) => {
+    setIsHovered(false);
+    const container = e.target.getStage()?.container();
+    if (container) {
+      container.style.cursor = 'default';
+    }
+  };
+
   // Point rendering
   if (geometryType === 'point' || geometryType === 'Point') {
     // Handle both modern geometry format and legacy points format
@@ -62,8 +78,8 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
         name={`spot-${spot.id}`}
         onClick={handleClick}
         onContextMenu={handleContextMenu}
-        onMouseEnter={() => setIsHovered(true)}
-        onMouseLeave={() => setIsHovered(false)}
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleMouseLeave}
       >
         {/* Selection indicator */}
         {isSelected && (
@@ -124,8 +140,8 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
         name={`spot-${spot.id}`}
         onClick={handleClick}
         onContextMenu={handleContextMenu}
-        onMouseEnter={() => setIsHovered(true)}
-        onMouseLeave={() => setIsHovered(false)}
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleMouseLeave}
       >
         {/* Selection indicator */}
         {isSelected && (
@@ -187,8 +203,8 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
         name={`spot-${spot.id}`}
         onClick={handleClick}
         onContextMenu={handleContextMenu}
-        onMouseEnter={() => setIsHovered(true)}
-        onMouseLeave={() => setIsHovered(false)}
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleMouseLeave}
       >
         {/* Selection indicator */}
         {isSelected && (
