@@ -34,37 +34,27 @@ export const EditingToolbar: React.FC<EditingToolbarProps> = ({ onSave, onCancel
         padding: 2,
         display: 'flex',
         alignItems: 'center',
-        gap: 2,
+        gap: 1,
       }}
     >
-      <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
-        Editing Geometry
-      </Typography>
-
-      <Box sx={{ display: 'flex', gap: 1 }}>
-        <Button
-          variant="outlined"
-          size="small"
-          startIcon={<CloseIcon />}
-          onClick={onCancel}
-          color="inherit"
-        >
-          Cancel
-        </Button>
-        <Button
-          variant="contained"
-          size="small"
-          startIcon={<CheckIcon />}
-          onClick={onSave}
-          color="primary"
-        >
-          Save
-        </Button>
-      </Box>
-
-      <Typography variant="caption" color="text.secondary" sx={{ ml: 1 }}>
-        Press Esc to cancel
-      </Typography>
+      <Button
+        variant="outlined"
+        size="small"
+        startIcon={<CloseIcon />}
+        onClick={onCancel}
+        color="inherit"
+      >
+        Cancel
+      </Button>
+      <Button
+        variant="contained"
+        size="small"
+        startIcon={<CheckIcon />}
+        onClick={onSave}
+        color="primary"
+      >
+        Save Edits
+      </Button>
     </Box>
   );
 };

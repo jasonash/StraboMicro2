@@ -35,6 +35,7 @@ interface SpotRendererProps {
   isSelected?: boolean;
   onClick?: (spot: Spot) => void;
   onContextMenu?: (spot: Spot, x: number, y: number) => void;
+  renderLabelsOnly?: boolean; // If true, only render labels (for layering)
 }
 
 export const SpotRenderer: React.FC<SpotRendererProps> = ({
@@ -43,6 +44,7 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
   isSelected = false,
   onClick,
   onContextMenu,
+  renderLabelsOnly = false,
 }) => {
   const [isHovered, setIsHovered] = useState(false);
   const editingSpotId = useAppStore((state) => state.editingSpotId);
@@ -112,6 +114,38 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
       ? (spot.geometry.coordinates as number[])[1]
       : spot.points?.[0]?.Y ?? 0;
 
+    // If rendering labels only, skip the shape
+    if (renderLabelsOnly) {
+      return showLabel ? (
+        <Group name={`spot-${spot.id}-label`}>
+          {/* Label background box */}
+          <Rect
+            key="label-bg"
+            x={x + 8 / scale}
+            y={y + 8 / scale}
+            width={(spot.name.length * 8.5 + 8) / scale}
+            height={22 / scale}
+            fill="#000000"
+            opacity={0.7}
+            cornerRadius={3 / scale}
+            listening={false}
+          />
+          {/* Label text */}
+          <Text
+            key="label"
+            x={x + 12 / scale}
+            y={y + 11 / scale}
+            text={spot.name}
+            fontSize={16 / scale}
+            fontStyle="bold"
+            fill={labelColor}
+            listening={false}
+          />
+        </Group>
+      ) : null;
+    }
+
+    // Rendering shapes only (skip labels)
     return (
       <Group
         name={`spot-${spot.id}`}
@@ -143,35 +177,6 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
           stroke="#ffffff"
           strokeWidth={2 / scale}
         />
-
-        {/* Label */}
-        {showLabel && (
-          <>
-            {/* Label background box */}
-            <Rect
-              key="label-bg"
-              x={x + 8 / scale}
-              y={y + 8 / scale}
-              width={(spot.name.length * 8.5 + 8) / scale}
-              height={22 / scale}
-              fill="#000000"
-              opacity={0.7}
-              cornerRadius={3 / scale}
-              listening={false}
-            />
-            {/* Label text */}
-            <Text
-              key="label"
-              x={x + 12 / scale}
-              y={y + 11 / scale}
-              text={spot.name}
-              fontSize={16 / scale}
-              fontStyle="bold"
-              fill={labelColor}
-              listening={false}
-            />
-          </>
-        )}
       </Group>
     );
   }
@@ -187,6 +192,38 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
 
     if (points.length < 4) return null; // Need at least 2 points
 
+    // If rendering labels only, skip the shape
+    if (renderLabelsOnly) {
+      return showLabel && coords[0] ? (
+        <Group name={`spot-${spot.id}-label`}>
+          {/* Label background box */}
+          <Rect
+            key="label-bg"
+            x={coords[0][0] + 8 / scale}
+            y={coords[0][1] + 8 / scale}
+            width={(spot.name.length * 8.5 + 8) / scale}
+            height={22 / scale}
+            fill="#000000"
+            opacity={0.7}
+            cornerRadius={3 / scale}
+            listening={false}
+          />
+          {/* Label text */}
+          <Text
+            key="label"
+            x={coords[0][0] + 12 / scale}
+            y={coords[0][1] + 11 / scale}
+            text={spot.name}
+            fontSize={16 / scale}
+            fontStyle="bold"
+            fill={labelColor}
+            listening={false}
+          />
+        </Group>
+      ) : null;
+    }
+
+    // Rendering shapes only (skip labels)
     return (
       <Group
         name={`spot-${spot.id}`}
@@ -219,35 +256,6 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
           lineJoin="round"
           hitStrokeWidth={10 / scale} // Wider hit area for easier clicking
         />
-
-        {/* Label at first point */}
-        {showLabel && coords[0] && (
-          <>
-            {/* Label background box */}
-            <Rect
-              key="label-bg"
-              x={coords[0][0] + 8 / scale}
-              y={coords[0][1] + 8 / scale}
-              width={(spot.name.length * 8.5 + 8) / scale}
-              height={22 / scale}
-              fill="#000000"
-              opacity={0.7}
-              cornerRadius={3 / scale}
-              listening={false}
-            />
-            {/* Label text */}
-            <Text
-              key="label"
-              x={coords[0][0] + 12 / scale}
-              y={coords[0][1] + 11 / scale}
-              text={spot.name}
-              fontSize={16 / scale}
-              fontStyle="bold"
-              fill={labelColor}
-              listening={false}
-            />
-          </>
-        )}
       </Group>
     );
   }
@@ -263,6 +271,38 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
 
     if (points.length < 6) return null; // Need at least 3 points
 
+    // If rendering labels only, skip the shape
+    if (renderLabelsOnly) {
+      return showLabel && coords[0] ? (
+        <Group name={`spot-${spot.id}-label`}>
+          {/* Label background box */}
+          <Rect
+            key="label-bg"
+            x={coords[0][0] + 8 / scale}
+            y={coords[0][1] + 8 / scale}
+            width={(spot.name.length * 8.5 + 8) / scale}
+            height={22 / scale}
+            fill="#000000"
+            opacity={0.7}
+            cornerRadius={3 / scale}
+            listening={false}
+          />
+          {/* Label text */}
+          <Text
+            key="label"
+            x={coords[0][0] + 12 / scale}
+            y={coords[0][1] + 11 / scale}
+            text={spot.name}
+            fontSize={16 / scale}
+            fontStyle="bold"
+            fill={labelColor}
+            listening={false}
+          />
+        </Group>
+      ) : null;
+    }
+
+    // Rendering shapes only (skip labels)
     return (
       <Group
         name={`spot-${spot.id}`}
@@ -294,35 +334,6 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
           closed={true}
           listening={true}
         />
-
-        {/* Label at first point */}
-        {showLabel && coords[0] && (
-          <>
-            {/* Label background box */}
-            <Rect
-              key="label-bg"
-              x={coords[0][0] + 8 / scale}
-              y={coords[0][1] + 8 / scale}
-              width={(spot.name.length * 8.5 + 8) / scale}
-              height={22 / scale}
-              fill="#000000"
-              opacity={0.7}
-              cornerRadius={3 / scale}
-              listening={false}
-            />
-            {/* Label text */}
-            <Text
-              key="label"
-              x={coords[0][0] + 12 / scale}
-              y={coords[0][1] + 11 / scale}
-              text={spot.name}
-              fontSize={16 / scale}
-              fontStyle="bold"
-              fill={labelColor}
-              listening={false}
-            />
-          </>
-        )}
       </Group>
     );
   }

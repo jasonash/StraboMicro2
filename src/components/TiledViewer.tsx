@@ -867,6 +867,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(({ image
               scaleX={zoom}
               scaleY={zoom}
             >
+              {/* First pass: Render all spot shapes */}
               {activeMicrograph?.spots?.map((spot) => (
                 <SpotRenderer
                   key={spot.id}
@@ -881,6 +882,18 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(({ image
                     setContextMenuSpot(spot);
                     setContextMenuPosition({ x, y });
                   }}
+                  renderLabelsOnly={false}
+                />
+              ))}
+
+              {/* Second pass: Render all spot labels (ensures labels are on top) */}
+              {activeMicrograph?.spots?.map((spot) => (
+                <SpotRenderer
+                  key={`${spot.id}-label`}
+                  spot={spot}
+                  scale={zoom}
+                  isSelected={spot.id === activeSpotId}
+                  renderLabelsOnly={true}
                 />
               ))}
             </Layer>
