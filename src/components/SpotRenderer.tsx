@@ -79,25 +79,15 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
           />
         )}
 
-        {/* Outer ring */}
+        {/* Solid circle with white outline */}
         <Circle
-          key="outer-ring"
+          key="point"
           x={x}
           y={y}
-          radius={8 / scale}
-          stroke={strokeColor}
-          strokeWidth={strokeWidth}
-          fill="transparent"
-        />
-
-        {/* Inner dot */}
-        <Circle
-          key="inner-dot"
-          x={x}
-          y={y}
-          radius={3 / scale}
+          radius={6 / scale}
           fill={color}
-          opacity={opacity}
+          stroke="#ffffff"
+          strokeWidth={2 / scale}
         />
 
         {/* Label */}
