@@ -56,7 +56,10 @@ export function AddMicrographsToGroupDialog({
 
   // Get all micrographs from the index
   const allMicrographs = useMemo(() => {
-    return Array.from(micrographIndex.values());
+    const micrographs = Array.from(micrographIndex.values());
+    console.log('[AddMicrographsToGroupDialog] micrographIndex size:', micrographIndex.size);
+    console.log('[AddMicrographsToGroupDialog] allMicrographs:', micrographs.map(m => m.name));
+    return micrographs;
   }, [micrographIndex]);
 
   // Filter out micrographs already in the selected group
@@ -65,8 +68,12 @@ export function AddMicrographsToGroupDialog({
 
     const group = groups.find(g => g.id === selectedGroupId);
     const existingIds = new Set(group?.micrographs || []);
+    console.log('[AddMicrographsToGroupDialog] group:', group?.name);
+    console.log('[AddMicrographsToGroupDialog] existingIds:', Array.from(existingIds));
 
-    return allMicrographs.filter(m => !existingIds.has(m.id));
+    const available = allMicrographs.filter(m => !existingIds.has(m.id));
+    console.log('[AddMicrographsToGroupDialog] available:', available.map(m => m.name));
+    return available;
   }, [allMicrographs, selectedGroupId, groups]);
 
   // Reset state when dialog opens

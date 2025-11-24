@@ -152,6 +152,8 @@ export function updateSpot(
 
 /**
  * Build an index of all micrographs in the project for fast lookups
+ * This includes both reference micrographs and associated micrographs
+ * (Associated micrographs are stored in the same array with parentID set)
  */
 export function buildMicrographIndex(
   project: ProjectMetadata | null

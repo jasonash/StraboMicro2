@@ -694,6 +694,15 @@ export const useAppStore = create<AppState>()(
           spotOverlayOpacity: state.spotOverlayOpacity,
           theme: state.theme,
         }),
+        // Rebuild indexes after rehydrating from localStorage
+        onRehydrateStorage: () => (state) => {
+          if (state?.project) {
+            // Rebuild the micrograph and spot indexes from the project data
+            state.micrographIndex = buildMicrographIndex(state.project);
+            state.spotIndex = buildSpotIndex(state.project);
+            console.log('[Store] Rehydrated indexes - micrographs:', state.micrographIndex.size, 'spots:', state.spotIndex.size);
+          }
+        },
       }
     ),
     {
