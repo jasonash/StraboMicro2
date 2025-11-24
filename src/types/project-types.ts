@@ -293,6 +293,8 @@ export interface Tag {
   tagSize?: number | null;
   notes?: string | null;
   spotIDs?: string[] | null;
+  // UI state (runtime only - not serialized)
+  isExpanded?: boolean | null;
 }
 
 // ============================================================================

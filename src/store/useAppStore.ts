@@ -18,6 +18,7 @@ import {
   MicrographMetadata,
   Spot,
   GroupMetadata,
+  Tag,
 } from '@/types/project-types';
 import {
   updateMicrograph,
@@ -117,6 +118,14 @@ interface AppState {
   addMicrographToGroup: (groupId: string, micrographId: string) => void;
   removeMicrographFromGroup: (groupId: string, micrographId: string) => void;
   setGroupExpanded: (groupId: string, expanded: boolean) => void;
+
+  // ========== CRUD: TAG ==========
+  createTag: (tag: Tag) => void;
+  updateTag: (id: string, updates: Partial<Tag>) => void;
+  deleteTag: (id: string) => void;
+  addTagToSpot: (tagId: string, spotId: string) => void;
+  removeTagFromSpot: (tagId: string, spotId: string) => void;
+  setTagExpanded: (tagId: string, expanded: boolean) => void;
 
   // ========== VIEWER ACTIONS ==========
   setActiveTool: (tool: DrawingTool) => void;
@@ -563,6 +572,144 @@ export const useAppStore = create<AppState>()(
 
             if (group) {
               group.isExpanded = expanded;
+            }
+
+            return { project: newProject, isDirty: true };
+          }),
+
+          // ========== CRUD: TAG ==========
+
+          createTag: (tag) => set((state) => {
+            if (!state.project) return state;
+
+            const newProject = structuredClone(state.project);
+            newProject.tags = [...(newProject.tags || []), tag];
+
+            return {
+              project: newProject,
+              isDirty: true,
+            };
+          }),
+
+          updateTag: (id, updates) => set((state) => {
+            if (!state.project) return state;
+
+            const newProject = structuredClone(state.project);
+            const tag = newProject.tags?.find(t => t.id === id);
+
+            if (tag) {
+              Object.assign(tag, updates);
+            }
+
+            return {
+              project: newProject,
+              isDirty: true,
+            };
+          }),
+
+          deleteTag: (id) => set((state) => {
+            if (!state.project) return state;
+
+            const newProject = structuredClone(state.project);
+
+            // Remove tag from project.tags array
+            newProject.tags = (newProject.tags || []).filter(t => t.id !== id);
+
+            // Also remove tag ID from any spots that have it
+            const datasets = newProject.datasets || [];
+            for (const dataset of datasets) {
+              const samples = dataset.samples || [];
+              for (const sample of samples) {
+                const micrographs = sample.micrographs || [];
+                for (const micrograph of micrographs) {
+                  const spots = micrograph.spots || [];
+                  for (const spot of spots) {
+                    if (spot.tags && spot.tags.includes(id)) {
+                      spot.tags = spot.tags.filter(tagId => tagId !== id);
+                    }
+                  }
+                }
+              }
+            }
+
+            return {
+              project: newProject,
+              isDirty: true,
+            };
+          }),
+
+          addTagToSpot: (tagId, spotId) => set((state) => {
+            if (!state.project) return state;
+
+            const newProject = structuredClone(state.project);
+
+            // Find the spot and add tag ID to its tags array
+            const datasets = newProject.datasets || [];
+            for (const dataset of datasets) {
+              const samples = dataset.samples || [];
+              for (const sample of samples) {
+                const micrographs = sample.micrographs || [];
+                for (const micrograph of micrographs) {
+                  const spots = micrograph.spots || [];
+                  for (const spot of spots) {
+                    if (spot.id === spotId) {
+                      spot.tags = [...(spot.tags || []), tagId];
+                      // Also rebuild spot index
+                      const newSpotIndex = buildSpotIndex(newProject);
+                      return {
+                        project: newProject,
+                        spotIndex: newSpotIndex,
+                        isDirty: true,
+                      };
+                    }
+                  }
+                }
+              }
+            }
+
+            return state;
+          }),
+
+          removeTagFromSpot: (tagId, spotId) => set((state) => {
+            if (!state.project) return state;
+
+            const newProject = structuredClone(state.project);
+
+            // Find the spot and remove tag ID from its tags array
+            const datasets = newProject.datasets || [];
+            for (const dataset of datasets) {
+              const samples = dataset.samples || [];
+              for (const sample of samples) {
+                const micrographs = sample.micrographs || [];
+                for (const micrograph of micrographs) {
+                  const spots = micrograph.spots || [];
+                  for (const spot of spots) {
+                    if (spot.id === spotId) {
+                      spot.tags = (spot.tags || []).filter(id => id !== tagId);
+                      // Also rebuild spot index
+                      const newSpotIndex = buildSpotIndex(newProject);
+                      return {
+                        project: newProject,
+                        spotIndex: newSpotIndex,
+                        isDirty: true,
+                      };
+                    }
+                  }
+                }
+              }
+            }
+
+            return state;
+          }),
+
+          setTagExpanded: (tagId, expanded) => set((state) => {
+            if (!state.project) return state;
+
+            const newProject = structuredClone(state.project);
+            const tag = newProject.tags?.find(t => t.id === tagId);
+
+            if (tag) {
+              tag.isExpanded = expanded;
             }
 
             return { project: newProject, isDirty: true };
