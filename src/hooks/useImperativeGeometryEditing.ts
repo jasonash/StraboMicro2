@@ -77,8 +77,14 @@ export const useImperativeGeometryEditing = (refs: GeometryEditingRefs) => {
 
       circle.setAttr('vertexIndex', i);
 
+      // Prevent stage dragging during vertex drag
+      circle.on('dragstart', (e) => {
+        e.cancelBubble = true;
+      });
+
       // Update polygon on vertex drag
-      circle.on('dragmove', () => {
+      circle.on('dragmove', (e) => {
+        e.cancelBubble = true;
         const vertexIndex = circle.getAttr('vertexIndex');
         const newPoints = polygon.points().slice();
         newPoints[vertexIndex] = circle.x() - polygon.x();
@@ -116,7 +122,8 @@ export const useImperativeGeometryEditing = (refs: GeometryEditingRefs) => {
       });
 
       // Recreate handles after drag end
-      circle.on('dragend', () => {
+      circle.on('dragend', (e) => {
+        e.cancelBubble = true;
         updateEditHandles(polygon, geometryType);
       });
 
@@ -150,7 +157,8 @@ export const useImperativeGeometryEditing = (refs: GeometryEditingRefs) => {
       midCircle.setAttr('isConverted', false);
 
       // Convert midpoint to vertex on drag start
-      midCircle.on('dragstart', () => {
+      midCircle.on('dragstart', (e) => {
+        e.cancelBubble = true;
         const edgeStartIndex = midCircle.getAttr('edgeStartIndex');
         const newPoints = polygon.points().slice();
 
@@ -171,7 +179,8 @@ export const useImperativeGeometryEditing = (refs: GeometryEditingRefs) => {
       });
 
       // Update polygon as new vertex is dragged
-      midCircle.on('dragmove', () => {
+      midCircle.on('dragmove', (e) => {
+        e.cancelBubble = true;
         if (midCircle.getAttr('isConverted')) {
           const vertexIndex = midCircle.getAttr('vertexIndex');
           const newPoints = polygon.points().slice();
@@ -183,7 +192,8 @@ export const useImperativeGeometryEditing = (refs: GeometryEditingRefs) => {
       });
 
       // Recreate handles when drag ends
-      midCircle.on('dragend', () => {
+      midCircle.on('dragend', (e) => {
+        e.cancelBubble = true;
         if (midCircle.getAttr('isConverted')) {
           updateEditHandles(polygon, geometryType);
         }
@@ -243,8 +253,17 @@ export const useImperativeGeometryEditing = (refs: GeometryEditingRefs) => {
     });
 
     // Make polygon draggable to move entire shape
-    polygon.on('dragmove', () => {
+    polygon.on('dragstart', (e) => {
+      e.cancelBubble = true;
+    });
+
+    polygon.on('dragmove', (e) => {
+      e.cancelBubble = true;
       updateEditHandles(polygon, geometryType);
+    });
+
+    polygon.on('dragend', (e) => {
+      e.cancelBubble = true;
     });
 
     editingPolygonRef.current = polygon;
