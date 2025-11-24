@@ -53,8 +53,9 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
   const showLabel = spot.showLabel ?? true;
   const opacity = (spot.opacity ?? 50) / 100; // Convert 0-100 to 0-1
 
-  const strokeColor = isHovered ? '#ffff00' : color;
-  const strokeWidth = isHovered ? 4 / scale : 3 / scale;
+  // Don't show hover effect when spot is selected
+  const strokeColor = (isHovered && !isSelected) ? '#ffff00' : color;
+  const strokeWidth = (isHovered && !isSelected) ? 4 / scale : 3 / scale;
 
   const handleClick = () => {
     onClick?.(spot);
