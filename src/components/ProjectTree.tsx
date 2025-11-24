@@ -35,6 +35,10 @@ import { useAppStore } from '@/store';
 import { NewDatasetDialog } from './dialogs/NewDatasetDialog';
 import { NewSampleDialog } from './dialogs/NewSampleDialog';
 import { NewMicrographDialog } from './dialogs/NewMicrographDialog';
+import { EditSampleDialog } from './dialogs/EditSampleDialog';
+import { ConfirmDialog } from './dialogs/ConfirmDialog';
+import { AddMicrographToGroupsDialog } from './dialogs/AddMicrographToGroupsDialog';
+import { MicrographInfoDialog } from './dialogs/metadata/MicrographInfoDialog';
 import type { DatasetMetadata, SampleMetadata, MicrographMetadata } from '@/types/project-types';
 
 /**
@@ -163,6 +167,8 @@ export function ProjectTree() {
   const project = useAppStore((state) => state.project);
   const selectMicrograph = useAppStore((state) => state.selectMicrograph);
   const activeMicrographId = useAppStore((state) => state.activeMicrographId);
+  const deleteSample = useAppStore((state) => state.deleteSample);
+  const deleteMicrograph = useAppStore((state) => state.deleteMicrograph);
 
   // Dialog states
   const [showNewDataset, setShowNewDataset] = useState(false);
@@ -171,6 +177,20 @@ export function ProjectTree() {
   const [selectedDatasetId, setSelectedDatasetId] = useState<string | null>(null);
   const [selectedSampleId, setSelectedSampleId] = useState<string | null>(null);
   const [selectedParentMicrographId, setSelectedParentMicrographId] = useState<string | null>(null);
+
+  // Edit/Delete dialog states
+  const [showEditSample, setShowEditSample] = useState(false);
+  const [editingSample, setEditingSample] = useState<SampleMetadata | null>(null);
+  const [showEditMicrograph, setShowEditMicrograph] = useState(false);
+  const [editingMicrographId, setEditingMicrographId] = useState<string | null>(null);
+  const [showAddToGroups, setShowAddToGroups] = useState(false);
+  const [addToGroupsMicrograph, setAddToGroupsMicrograph] = useState<MicrographMetadata | null>(null);
+
+  // Confirm dialog states
+  const [showDeleteSampleConfirm, setShowDeleteSampleConfirm] = useState(false);
+  const [deletingSample, setDeletingSample] = useState<SampleMetadata | null>(null);
+  const [showDeleteMicrographConfirm, setShowDeleteMicrographConfirm] = useState(false);
+  const [deletingMicrograph, setDeletingMicrograph] = useState<MicrographMetadata | null>(null);
 
   // Expansion states - Load from localStorage on mount
   const [expandedDatasets, setExpandedDatasets] = useState<Set<string>>(() => {
@@ -502,15 +522,15 @@ export function ProjectTree() {
           onClose={() => setMicrographOptionsAnchor({ ...micrographOptionsAnchor, [micrograph.id]: null })}
         >
           <MenuItem onClick={() => {
-            // TODO: Add to group(s)
-            console.log('Add to group(s):', micrograph.id);
+            setAddToGroupsMicrograph(micrograph);
+            setShowAddToGroups(true);
             setMicrographOptionsAnchor({ ...micrographOptionsAnchor, [micrograph.id]: null });
           }}>
             Add to Group(s)
           </MenuItem>
           <MenuItem onClick={() => {
-            // TODO: Edit metadata
-            console.log('Edit metadata:', micrograph.id);
+            setEditingMicrographId(micrograph.id);
+            setShowEditMicrograph(true);
             setMicrographOptionsAnchor({ ...micrographOptionsAnchor, [micrograph.id]: null });
           }}>
             Edit Micrograph Metadata
@@ -518,14 +538,14 @@ export function ProjectTree() {
           {!isReference && (
             <>
               <MenuItem onClick={() => {
-                // TODO: Edit location
+                // TODO: Edit location - requires PlacementCanvas dialog
                 console.log('Edit location:', micrograph.id);
                 setMicrographOptionsAnchor({ ...micrographOptionsAnchor, [micrograph.id]: null });
               }}>
                 Edit Micrograph Location
               </MenuItem>
               <MenuItem onClick={() => {
-                // TODO: Edit opacity
+                // TODO: Edit opacity - requires opacity slider dialog
                 console.log('Edit opacity:', micrograph.id);
                 setMicrographOptionsAnchor({ ...micrographOptionsAnchor, [micrograph.id]: null });
               }}>
@@ -534,8 +554,8 @@ export function ProjectTree() {
             </>
           )}
           <MenuItem onClick={() => {
-            // TODO: Delete micrograph
-            console.log('Delete micrograph:', micrograph.id);
+            setDeletingMicrograph(micrograph);
+            setShowDeleteMicrographConfirm(true);
             setMicrographOptionsAnchor({ ...micrographOptionsAnchor, [micrograph.id]: null });
           }}>
             Delete Micrograph
@@ -622,15 +642,15 @@ export function ProjectTree() {
             Batch Import Reference Micrographs
           </MenuItem>
           <MenuItem onClick={() => {
-            // TODO: Edit sample metadata
-            console.log('Edit sample metadata:', sample.id);
+            setEditingSample(sample);
+            setShowEditSample(true);
             setSampleMenuAnchor({ ...sampleMenuAnchor, [sample.id]: null });
           }}>
             Edit Sample Metadata
           </MenuItem>
           <MenuItem onClick={() => {
-            // TODO: Delete sample
-            console.log('Delete sample:', sample.id);
+            setDeletingSample(sample);
+            setShowDeleteSampleConfirm(true);
             setSampleMenuAnchor({ ...sampleMenuAnchor, [sample.id]: null });
           }}>
             Delete Sample
@@ -766,6 +786,107 @@ export function ProjectTree() {
         }}
         sampleId={selectedSampleId}
         parentMicrographId={selectedParentMicrographId}
+      />
+
+      {/* Edit Sample Dialog */}
+      <EditSampleDialog
+        isOpen={showEditSample}
+        onClose={() => {
+          setShowEditSample(false);
+          setEditingSample(null);
+        }}
+        sample={editingSample}
+      />
+
+      {/* Edit Micrograph Dialog */}
+      {editingMicrographId && (
+        <MicrographInfoDialog
+          isOpen={showEditMicrograph}
+          onClose={() => {
+            setShowEditMicrograph(false);
+            setEditingMicrographId(null);
+          }}
+          micrographId={editingMicrographId}
+        />
+      )}
+
+      {/* Add Micrograph to Groups Dialog */}
+      {addToGroupsMicrograph && (
+        <AddMicrographToGroupsDialog
+          open={showAddToGroups}
+          onClose={() => {
+            setShowAddToGroups(false);
+            setAddToGroupsMicrograph(null);
+          }}
+          micrographId={addToGroupsMicrograph.id}
+          micrographName={addToGroupsMicrograph.name || 'Unnamed Micrograph'}
+        />
+      )}
+
+      {/* Delete Sample Confirmation */}
+      <ConfirmDialog
+        open={showDeleteSampleConfirm}
+        title="Delete Sample"
+        message={
+          deletingSample ? (
+            <>
+              Are you sure you want to delete the sample "{deletingSample.sampleID || deletingSample.name}"?
+              <br /><br />
+              This will remove all micrographs and spots within this sample from the project.
+              <br /><br />
+              <strong>Note:</strong> Image files will remain on disk and can be re-added later.
+              They will be excluded when exporting to .smz format.
+            </>
+          ) : ''
+        }
+        confirmLabel="Delete"
+        confirmColor="error"
+        onConfirm={() => {
+          if (deletingSample) {
+            deleteSample(deletingSample.id);
+          }
+          setShowDeleteSampleConfirm(false);
+          setDeletingSample(null);
+        }}
+        onCancel={() => {
+          setShowDeleteSampleConfirm(false);
+          setDeletingSample(null);
+        }}
+      />
+
+      {/* Delete Micrograph Confirmation */}
+      <ConfirmDialog
+        open={showDeleteMicrographConfirm}
+        title="Delete Micrograph"
+        message={
+          deletingMicrograph ? (
+            <>
+              Are you sure you want to delete the micrograph "{deletingMicrograph.name}"?
+              <br /><br />
+              {!deletingMicrograph.parentID ? (
+                <>This is a <strong>reference micrograph</strong>. All associated micrographs and spots will also be removed.</>
+              ) : (
+                <>All spots on this micrograph will also be removed.</>
+              )}
+              <br /><br />
+              <strong>Note:</strong> Image files will remain on disk and can be re-added later.
+              They will be excluded when exporting to .smz format.
+            </>
+          ) : ''
+        }
+        confirmLabel="Delete"
+        confirmColor="error"
+        onConfirm={() => {
+          if (deletingMicrograph) {
+            deleteMicrograph(deletingMicrograph.id);
+          }
+          setShowDeleteMicrographConfirm(false);
+          setDeletingMicrograph(null);
+        }}
+        onCancel={() => {
+          setShowDeleteMicrographConfirm(false);
+          setDeletingMicrograph(null);
+        }}
       />
     </Box>
   );
