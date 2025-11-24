@@ -67,6 +67,7 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
         {/* Selection indicator */}
         {isSelected && (
           <Circle
+            key="selection"
             x={x}
             y={y}
             radius={12 / scale}
@@ -79,6 +80,7 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
 
         {/* Outer ring */}
         <Circle
+          key="outer-ring"
           x={x}
           y={y}
           radius={8 / scale}
@@ -89,6 +91,7 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
 
         {/* Inner dot */}
         <Circle
+          key="inner-dot"
           x={x}
           y={y}
           radius={3 / scale}
@@ -99,6 +102,7 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
         {/* Label */}
         {showLabel && (
           <Text
+            key="label"
             x={x + 12 / scale}
             y={y - 8 / scale}
             text={spot.name}
@@ -134,6 +138,7 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
         {/* Selection indicator */}
         {isSelected && (
           <Line
+            key="selection"
             points={points}
             stroke="#ffff00"
             strokeWidth={5 / scale}
@@ -146,6 +151,7 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
 
         {/* Line */}
         <Line
+          key="line"
           points={points}
           stroke={strokeColor}
           strokeWidth={strokeWidth}
@@ -158,6 +164,7 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
         {/* Label at first point */}
         {showLabel && coords[0] && (
           <Text
+            key="label"
             x={coords[0][0]}
             y={coords[0][1] - 12 / scale}
             text={spot.name}
@@ -193,6 +200,7 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
         {/* Selection indicator */}
         {isSelected && (
           <Line
+            key="selection"
             points={points}
             stroke="#ffff00"
             strokeWidth={5 / scale}
@@ -204,6 +212,7 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
 
         {/* Polygon */}
         <Line
+          key="polygon"
           points={points}
           stroke={strokeColor}
           strokeWidth={strokeWidth}
@@ -216,6 +225,7 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
         {/* Label at first point */}
         {showLabel && coords[0] && (
           <Text
+            key="label"
             x={coords[0][0]}
             y={coords[0][1] - 12 / scale}
             text={spot.name}
