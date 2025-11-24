@@ -205,7 +205,7 @@ export function PropertiesPanel() {
         <NotesDialog
           isOpen={true}
           onClose={() => setOpenDialog(null)}
-          micrographId={activeMicrographId || undefined}
+          micrographId={activeSpotId ? undefined : (activeMicrographId || undefined)}
           spotId={activeSpotId || undefined}
         />
       )}
@@ -245,7 +245,7 @@ export function PropertiesPanel() {
         <MineralogyDialog
           isOpen={true}
           onClose={() => setOpenDialog(null)}
-          micrographId={activeMicrographId || undefined}
+          micrographId={activeSpotId ? undefined : (activeMicrographId || undefined)}
           spotId={activeSpotId || undefined}
         />
       )}
@@ -254,7 +254,7 @@ export function PropertiesPanel() {
         <GrainInfoDialog
           isOpen={true}
           onClose={() => setOpenDialog(null)}
-          micrographId={activeMicrographId || undefined}
+          micrographId={activeSpotId ? undefined : (activeMicrographId || undefined)}
           spotId={activeSpotId || undefined}
         />
       )}
@@ -263,7 +263,7 @@ export function PropertiesPanel() {
         <FabricsDialog
           isOpen={true}
           onClose={() => setOpenDialog(null)}
-          micrographId={activeMicrographId || undefined}
+          micrographId={activeSpotId ? undefined : (activeMicrographId || undefined)}
           spotId={activeSpotId || undefined}
         />
       )}
@@ -272,7 +272,7 @@ export function PropertiesPanel() {
         <FracturesDialog
           isOpen={true}
           onClose={() => setOpenDialog(null)}
-          micrographId={activeMicrographId || undefined}
+          micrographId={activeSpotId ? undefined : (activeMicrographId || undefined)}
           spotId={activeSpotId || undefined}
         />
       )}
@@ -281,7 +281,7 @@ export function PropertiesPanel() {
         <VeinsDialog
           isOpen={true}
           onClose={() => setOpenDialog(null)}
-          micrographId={activeMicrographId || undefined}
+          micrographId={activeSpotId ? undefined : (activeMicrographId || undefined)}
           spotId={activeSpotId || undefined}
         />
       )}
@@ -290,7 +290,7 @@ export function PropertiesPanel() {
         <FoldsDialog
           isOpen={true}
           onClose={() => setOpenDialog(null)}
-          micrographId={activeMicrographId || undefined}
+          micrographId={activeSpotId ? undefined : (activeMicrographId || undefined)}
           spotId={activeSpotId || undefined}
         />
       )}
@@ -299,7 +299,7 @@ export function PropertiesPanel() {
         <GrainBoundaryInfoDialog
           isOpen={true}
           onClose={() => setOpenDialog(null)}
-          micrographId={activeMicrographId || undefined}
+          micrographId={activeSpotId ? undefined : (activeMicrographId || undefined)}
           spotId={activeSpotId || undefined}
         />
       )}
@@ -308,7 +308,7 @@ export function PropertiesPanel() {
         <IntraGrainInfoDialog
           isOpen={true}
           onClose={() => setOpenDialog(null)}
-          micrographId={activeMicrographId || undefined}
+          micrographId={activeSpotId ? undefined : (activeMicrographId || undefined)}
           spotId={activeSpotId || undefined}
         />
       )}
@@ -317,7 +317,7 @@ export function PropertiesPanel() {
         <ClasticDeformationBandInfoDialog
           isOpen={true}
           onClose={() => setOpenDialog(null)}
-          micrographId={activeMicrographId || undefined}
+          micrographId={activeSpotId ? undefined : (activeMicrographId || undefined)}
           spotId={activeSpotId || undefined}
         />
       )}
@@ -326,7 +326,7 @@ export function PropertiesPanel() {
         <PseudotachylyteInfoDialog
           isOpen={true}
           onClose={() => setOpenDialog(null)}
-          micrographId={activeMicrographId || undefined}
+          micrographId={activeSpotId ? undefined : (activeMicrographId || undefined)}
           spotId={activeSpotId || undefined}
         />
       )}
@@ -335,7 +335,7 @@ export function PropertiesPanel() {
         <FaultsShearZonesInfoDialog
           isOpen={true}
           onClose={() => setOpenDialog(null)}
-          micrographId={activeMicrographId || undefined}
+          micrographId={activeSpotId ? undefined : (activeMicrographId || undefined)}
           spotId={activeSpotId || undefined}
         />
       )}
@@ -344,7 +344,7 @@ export function PropertiesPanel() {
         <ExtinctionMicrostructureInfoDialog
           isOpen={true}
           onClose={() => setOpenDialog(null)}
-          micrographId={activeMicrographId || undefined}
+          micrographId={activeSpotId ? undefined : (activeMicrographId || undefined)}
           spotId={activeSpotId || undefined}
         />
       )}
@@ -353,7 +353,7 @@ export function PropertiesPanel() {
         <AssociatedFilesInfoDialog
           isOpen={true}
           onClose={() => setOpenDialog(null)}
-          micrographId={activeMicrographId || undefined}
+          micrographId={activeSpotId ? undefined : (activeMicrographId || undefined)}
           spotId={activeSpotId || undefined}
         />
       )}
@@ -362,7 +362,7 @@ export function PropertiesPanel() {
         <LinksInfoDialog
           isOpen={true}
           onClose={() => setOpenDialog(null)}
-          micrographId={activeMicrographId || undefined}
+          micrographId={activeSpotId ? undefined : (activeMicrographId || undefined)}
           spotId={activeSpotId || undefined}
         />
       )}

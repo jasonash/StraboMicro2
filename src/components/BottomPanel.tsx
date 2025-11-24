@@ -73,7 +73,7 @@ const BottomPanel: React.FC = () => {
         <NotesDialog
           isOpen={true}
           onClose={() => setOpenDialog(null)}
-          micrographId={activeMicrographId || undefined}
+          micrographId={activeSpotId ? undefined : (activeMicrographId || undefined)}
           spotId={activeSpotId || undefined}
         />
       )}
@@ -113,7 +113,7 @@ const BottomPanel: React.FC = () => {
         <MineralogyDialog
           isOpen={true}
           onClose={() => setOpenDialog(null)}
-          micrographId={activeMicrographId || undefined}
+          micrographId={activeSpotId ? undefined : (activeMicrographId || undefined)}
           spotId={activeSpotId || undefined}
         />
       )}
@@ -122,7 +122,7 @@ const BottomPanel: React.FC = () => {
         <GrainInfoDialog
           isOpen={true}
           onClose={() => setOpenDialog(null)}
-          micrographId={activeMicrographId || undefined}
+          micrographId={activeSpotId ? undefined : (activeMicrographId || undefined)}
           spotId={activeSpotId || undefined}
         />
       )}
@@ -131,7 +131,7 @@ const BottomPanel: React.FC = () => {
         <FabricsDialog
           isOpen={true}
           onClose={() => setOpenDialog(null)}
-          micrographId={activeMicrographId || undefined}
+          micrographId={activeSpotId ? undefined : (activeMicrographId || undefined)}
           spotId={activeSpotId || undefined}
         />
       )}
@@ -140,7 +140,7 @@ const BottomPanel: React.FC = () => {
         <FracturesDialog
           isOpen={true}
           onClose={() => setOpenDialog(null)}
-          micrographId={activeMicrographId || undefined}
+          micrographId={activeSpotId ? undefined : (activeMicrographId || undefined)}
           spotId={activeSpotId || undefined}
         />
       )}
@@ -149,7 +149,7 @@ const BottomPanel: React.FC = () => {
         <VeinsDialog
           isOpen={true}
           onClose={() => setOpenDialog(null)}
-          micrographId={activeMicrographId || undefined}
+          micrographId={activeSpotId ? undefined : (activeMicrographId || undefined)}
           spotId={activeSpotId || undefined}
         />
       )}
@@ -158,7 +158,7 @@ const BottomPanel: React.FC = () => {
         <FoldsDialog
           isOpen={true}
           onClose={() => setOpenDialog(null)}
-          micrographId={activeMicrographId || undefined}
+          micrographId={activeSpotId ? undefined : (activeMicrographId || undefined)}
           spotId={activeSpotId || undefined}
         />
       )}
@@ -167,7 +167,7 @@ const BottomPanel: React.FC = () => {
         <GrainBoundaryInfoDialog
           isOpen={true}
           onClose={() => setOpenDialog(null)}
-          micrographId={activeMicrographId || undefined}
+          micrographId={activeSpotId ? undefined : (activeMicrographId || undefined)}
           spotId={activeSpotId || undefined}
         />
       )}
@@ -176,7 +176,7 @@ const BottomPanel: React.FC = () => {
         <IntraGrainInfoDialog
           isOpen={true}
           onClose={() => setOpenDialog(null)}
-          micrographId={activeMicrographId || undefined}
+          micrographId={activeSpotId ? undefined : (activeMicrographId || undefined)}
           spotId={activeSpotId || undefined}
         />
       )}
@@ -185,7 +185,7 @@ const BottomPanel: React.FC = () => {
         <ClasticDeformationBandInfoDialog
           isOpen={true}
           onClose={() => setOpenDialog(null)}
-          micrographId={activeMicrographId || undefined}
+          micrographId={activeSpotId ? undefined : (activeMicrographId || undefined)}
           spotId={activeSpotId || undefined}
         />
       )}
@@ -194,7 +194,7 @@ const BottomPanel: React.FC = () => {
         <PseudotachylyteInfoDialog
           isOpen={true}
           onClose={() => setOpenDialog(null)}
-          micrographId={activeMicrographId || undefined}
+          micrographId={activeSpotId ? undefined : (activeMicrographId || undefined)}
           spotId={activeSpotId || undefined}
         />
       )}
@@ -203,7 +203,7 @@ const BottomPanel: React.FC = () => {
         <FaultsShearZonesInfoDialog
           isOpen={true}
           onClose={() => setOpenDialog(null)}
-          micrographId={activeMicrographId || undefined}
+          micrographId={activeSpotId ? undefined : (activeMicrographId || undefined)}
           spotId={activeSpotId || undefined}
         />
       )}
@@ -212,7 +212,7 @@ const BottomPanel: React.FC = () => {
         <ExtinctionMicrostructureInfoDialog
           isOpen={true}
           onClose={() => setOpenDialog(null)}
-          micrographId={activeMicrographId || undefined}
+          micrographId={activeSpotId ? undefined : (activeMicrographId || undefined)}
           spotId={activeSpotId || undefined}
         />
       )}
