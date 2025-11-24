@@ -525,3 +525,37 @@ export const useAppStore = create<AppState>()(
 // ============================================================================
 
 export const useTemporalStore = useAppStore.temporal;
+
+// ============================================================================
+// DEBUG HELPERS (development only)
+// ============================================================================
+
+if (import.meta.env.DEV) {
+  // Expose store to window for debugging in DevTools console
+  (window as any).__STRABO_STORE__ = useAppStore;
+
+  // Helper function to inspect current project
+  (window as any).inspectProject = () => {
+    const state = useAppStore.getState();
+    console.log('=== PROJECT STATE ===');
+    console.log('Project:', state.project);
+    console.log('File Path:', state.projectFilePath);
+    console.log('Is Dirty:', state.isDirty);
+    console.log('Active Dataset ID:', state.activeDatasetId);
+    console.log('Active Sample ID:', state.activeSampleId);
+    console.log('Active Micrograph ID:', state.activeMicrographId);
+    console.log('Active Spot ID:', state.activeSpotId);
+    console.log('Selected Spot IDs:', state.selectedSpotIds);
+    console.log('Micrograph Index Size:', state.micrographIndex.size);
+    console.log('Spot Index Size:', state.spotIndex.size);
+    return state.project;
+  };
+
+  // Helper to get full state
+  (window as any).getStoreState = () => useAppStore.getState();
+
+  console.log('🔍 Debug helpers available:');
+  console.log('  - inspectProject() - View current project data');
+  console.log('  - getStoreState() - Get full store state');
+  console.log('  - __STRABO_STORE__ - Direct store access');
+}

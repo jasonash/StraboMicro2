@@ -65,6 +65,13 @@ interface CacheStats {
   error?: string;
 }
 
+// Debug helpers (development only)
+interface Window {
+  __STRABO_STORE__?: any;
+  inspectProject?: () => any;
+  getStoreState?: () => any;
+}
+
 // Electron API declarations
 interface Window {
   api?: {
