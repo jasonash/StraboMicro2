@@ -21,6 +21,7 @@ import {
   Divider,
   Link,
 } from '@mui/material';
+import { Add } from '@mui/icons-material';
 import {
   ExpandMore,
   ChevronRight,
@@ -336,25 +337,24 @@ export function TagsPanel() {
 
   return (
     <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-      {/* Header with New Tag link */}
+      {/* Header with Add Tag button */}
       <Box
         sx={{
           display: 'flex',
           alignItems: 'center',
-          justifyContent: 'flex-end',
+          justifyContent: 'space-between',
           p: 1,
           borderBottom: 1,
           borderColor: 'divider',
         }}
       >
-        <Link
-          component="button"
-          variant="body2"
-          onClick={handleCreateNewTag}
-          sx={{ textDecoration: 'none', '&:hover': { textDecoration: 'underline' } }}
-        >
-          New Tag
-        </Link>
+        <Typography variant="body2" sx={{ fontWeight: 500 }}>
+          Add Tag
+        </Typography>
+
+        <IconButton size="small" onClick={handleCreateNewTag}>
+          <Add fontSize="small" />
+        </IconButton>
       </Box>
 
       {/* Tags List */}
