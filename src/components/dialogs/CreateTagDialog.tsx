@@ -97,7 +97,7 @@ export function CreateTagDialog({
   // Form state
   const [name, setName] = useState('');
   const [notes, setNotes] = useState('');
-  const [lineColor, setLineColor] = useState('#000000');
+  const [lineColor, setLineColor] = useState('#FFFFFF'); // Default to white
   const [fillColor, setFillColor] = useState('#FF0000');
   const [transparency, setTransparency] = useState(100); // 0-100%
   const [tagSize, setTagSize] = useState(10); // pixels
@@ -113,12 +113,12 @@ export function CreateTagDialog({
   // Load saved preferences from localStorage
   const loadSavedPreferences = useCallback(() => {
     const savedFillColor = localStorage.getItem('lastTagFillColor');
-    const savedLineColor = localStorage.getItem('lastTagLineColor');
+    // const savedLineColor = localStorage.getItem('lastTagLineColor'); // Commented out - defaulting to white
     const savedSize = localStorage.getItem('lastTagSize');
     const savedTransparency = localStorage.getItem('lastTagTransparency');
 
     if (savedFillColor) setFillColor(savedFillColor);
-    if (savedLineColor) setLineColor(savedLineColor);
+    // if (savedLineColor) setLineColor(savedLineColor); // Commented out - defaulting to white
     if (savedSize) setTagSize(parseInt(savedSize, 10));
     if (savedTransparency) setTransparency(parseInt(savedTransparency, 10));
   }, []);
@@ -357,7 +357,11 @@ export function CreateTagDialog({
           )}
           */}
 
-          {/* Color Pickers */}
+          {/* ================================================================
+              LINE COLOR PICKER - Commented out for now, defaulting to white
+              To enable: uncomment this block
+              ================================================================ */}
+          {/*
           <Box>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
               Line Color
@@ -388,6 +392,9 @@ export function CreateTagDialog({
               </Box>
             </Box>
           </Box>
+          */}
+
+          {/* Color Pickers */}
 
           <Box>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
