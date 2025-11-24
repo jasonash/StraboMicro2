@@ -228,7 +228,7 @@ export const useAppStore = create<AppState>()(
 
           selectSample: (id) => set({ activeSampleId: id }),
 
-          selectMicrograph: (id) => set({ activeMicrographId: id }),
+          selectMicrograph: (id) => set({ activeMicrographId: id, activeSpotId: null }),
 
           selectActiveSpot: (id) => set({ activeSpotId: id }),
 
