@@ -620,10 +620,13 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(({ image
                      (typeof parentName === 'string' && parentName.startsWith('spot-'));
 
       // Only clear selection if NOT clicking on a spot
+      // BUT: Don't cancel editing mode - user must explicitly Save or Cancel
       if (!isSpot) {
-        selectActiveSpot(null);
-        // Also cancel imperative geometry editing mode
-        geometryEditing.cancelEdits();
+        // Don't clear selection if we're in editing mode
+        const editingSpotId = useAppStore.getState().editingSpotId;
+        if (!editingSpotId) {
+          selectActiveSpot(null);
+        }
       }
       return;
     }
