@@ -104,6 +104,7 @@ interface Window {
     onThemeChange: (callback: (theme: 'dark' | 'light' | 'system') => void) => void;
     notifyThemeChanged: (theme: 'dark' | 'light' | 'system') => void;
     onToggleRulers: (callback: (checked: boolean) => void) => void;
+    onToggleSpotLabels: (callback: (checked: boolean) => void) => void;
 
     // Tile-based image loading
     loadImageWithTiles: (imagePath: string) => Promise<{

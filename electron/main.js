@@ -254,6 +254,16 @@ function createWindow() {
             }
           }
         },
+        {
+          label: 'Show Spot Labels',
+          type: 'checkbox',
+          checked: true,
+          click: (menuItem) => {
+            if (mainWindow) {
+              mainWindow.webContents.send('view:toggle-spot-labels', menuItem.checked);
+            }
+          }
+        },
         { type: 'separator' },
         {
           label: 'Theme',

@@ -45,6 +45,7 @@ contextBridge.exposeInMainWorld('api', {
 
   // View preferences
   onToggleRulers: (callback) => ipcRenderer.on('view:toggle-rulers', (event, checked) => callback(checked)),
+  onToggleSpotLabels: (callback) => ipcRenderer.on('view:toggle-spot-labels', (event, checked) => callback(checked)),
 
   // Tile-based image loading
   loadImageWithTiles: (imagePath) => ipcRenderer.invoke('image:load-with-tiles', imagePath),

@@ -15,6 +15,7 @@ function App() {
   const project = useAppStore(state => state.project);
   const setTheme = useAppStore(state => state.setTheme);
   const setShowRulers = useAppStore(state => state.setShowRulers);
+  const setShowSpotLabels = useAppStore(state => state.setShowSpotLabels);
 
   // Initialize theme system
   useTheme();
@@ -318,7 +319,12 @@ function App() {
     window.api.onToggleRulers((checked) => {
       setShowRulers(checked);
     });
-  }, [closeProject, setTheme, setShowRulers]);
+
+    // View: Toggle Spot Labels menu item
+    window.api.onToggleSpotLabels((checked) => {
+      setShowSpotLabels(checked);
+    });
+  }, [closeProject, setTheme, setShowRulers, setShowSpotLabels]);
 
   return (
     <>
