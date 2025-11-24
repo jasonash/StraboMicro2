@@ -81,6 +81,7 @@ export const useLineDrawing = ({ layer, scale, onComplete }: UseLineDrawingOptio
           listening: false,
           lineCap: 'round',
           lineJoin: 'round',
+          name: 'drawing-line', // Add unique name
         });
         state.currentLine = line;
         layer.add(line);
@@ -94,6 +95,7 @@ export const useLineDrawing = ({ layer, scale, onComplete }: UseLineDrawingOptio
           listening: false,
           lineCap: 'round',
           lineJoin: 'round',
+          name: 'drawing-preview', // Add unique name
         });
         state.previewLine = previewLine;
         layer.add(previewLine);

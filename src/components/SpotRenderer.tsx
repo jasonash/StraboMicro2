@@ -59,6 +59,7 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
 
     return (
       <Group
+        name={`spot-${spot.id}`}
         onClick={handleClick}
         onContextMenu={handleContextMenu}
         onMouseEnter={() => setIsHovered(true)}
@@ -130,6 +131,7 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
 
     return (
       <Group
+        name={`spot-${spot.id}`}
         onClick={handleClick}
         onContextMenu={handleContextMenu}
         onMouseEnter={() => setIsHovered(true)}
@@ -192,6 +194,7 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
 
     return (
       <Group
+        name={`spot-${spot.id}`}
         onClick={handleClick}
         onContextMenu={handleContextMenu}
         onMouseEnter={() => setIsHovered(true)}

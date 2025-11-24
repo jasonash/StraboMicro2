@@ -84,6 +84,7 @@ export const usePolygonDrawing = ({ layer, scale, onComplete }: UsePolygonDrawin
           fill: 'rgba(0, 255, 0, 0.2)',
           closed: false,
           listening: false,
+          name: 'drawing-polygon', // Add unique name
         });
         state.currentPolygon = polygon;
         layer.add(polygon);
@@ -97,6 +98,7 @@ export const usePolygonDrawing = ({ layer, scale, onComplete }: UsePolygonDrawin
           fill: 'rgba(0, 255, 0, 0.1)',
           closed: true,
           listening: false,
+          name: 'drawing-polygon-preview', // Add unique name
         });
         state.previewLine = previewLine;
         layer.add(previewLine);
