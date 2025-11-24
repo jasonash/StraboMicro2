@@ -566,8 +566,12 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(({ image
   const handleStageClick = useCallback((e: any) => {
     // If clicking directly on the stage (not on a spot), clear spot selection
     if (!activeTool || activeTool === 'select') {
-      // Check if click target is the stage itself (not a shape)
-      if (e.target === e.target.getStage()) {
+      // Check if click target is a spot (spots have names like "spot-{id}")
+      const targetName = e.target.name?.() || e.target.attrs?.name || '';
+      const isSpot = typeof targetName === 'string' && targetName.startsWith('spot-');
+
+      // Only clear selection if NOT clicking on a spot
+      if (!isSpot) {
         selectActiveSpot(null);
       }
       return;
