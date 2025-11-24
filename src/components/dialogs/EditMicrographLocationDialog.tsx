@@ -286,7 +286,7 @@ export function EditMicrographLocationDialog({
   };
 
   const handleSave = () => {
-    if (!micrograph || !parentMicrograph) return;
+    if (!micrograph || !parentMicrograph || !project) return;
 
     if (locationMethod === 'Locate as a scaled rectangle') {
       updateMicrographMetadata(micrographId, {
@@ -308,11 +308,24 @@ export function EditMicrographLocationDialog({
       });
     }
 
-    // Trigger thumbnail regeneration for the parent micrograph
-    // This updates the composite thumbnail to show the new location
-    window.dispatchEvent(new CustomEvent('thumbnail-generated', {
-      detail: { micrographId: parentMicrograph.id }
-    }));
+    // Regenerate composite thumbnail for the parent micrograph
+    // Use setTimeout to ensure store is updated before getting fresh project data
+    setTimeout(() => {
+      const freshProject = useAppStore.getState().project;
+      if (!freshProject) return;
+
+      window.api?.generateCompositeThumbnail(freshProject.id, parentMicrograph.id, freshProject)
+        .then(() => {
+          console.log('[EditMicrographLocationDialog] Successfully regenerated parent composite thumbnail');
+          // Trigger thumbnail refresh in UI
+          window.dispatchEvent(new CustomEvent('thumbnail-generated', {
+            detail: { micrographId: parentMicrograph.id }
+          }));
+        })
+        .catch((error) => {
+          console.error('[EditMicrographLocationDialog] Failed to regenerate composite thumbnail:', error);
+        });
+    }, 0);
 
     onClose();
   };
