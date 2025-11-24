@@ -39,6 +39,7 @@ import { EditSampleDialog } from './dialogs/EditSampleDialog';
 import { ConfirmDialog } from './dialogs/ConfirmDialog';
 import { AddMicrographToGroupsDialog } from './dialogs/AddMicrographToGroupsDialog';
 import { MicrographInfoDialog } from './dialogs/metadata/MicrographInfoDialog';
+import { EditMicrographLocationDialog } from './dialogs/EditMicrographLocationDialog';
 import type { DatasetMetadata, SampleMetadata, MicrographMetadata } from '@/types/project-types';
 
 /**
@@ -183,6 +184,8 @@ export function ProjectTree() {
   const [editingSample, setEditingSample] = useState<SampleMetadata | null>(null);
   const [showEditMicrograph, setShowEditMicrograph] = useState(false);
   const [editingMicrographId, setEditingMicrographId] = useState<string | null>(null);
+  const [showEditLocation, setShowEditLocation] = useState(false);
+  const [editLocationMicrographId, setEditLocationMicrographId] = useState<string | null>(null);
   const [showAddToGroups, setShowAddToGroups] = useState(false);
   const [addToGroupsMicrograph, setAddToGroupsMicrograph] = useState<MicrographMetadata | null>(null);
 
@@ -538,8 +541,8 @@ export function ProjectTree() {
           {!isReference && (
             <>
               <MenuItem onClick={() => {
-                // TODO: Edit location - requires PlacementCanvas dialog
-                console.log('Edit location:', micrograph.id);
+                setEditLocationMicrographId(micrograph.id);
+                setShowEditLocation(true);
                 setMicrographOptionsAnchor({ ...micrographOptionsAnchor, [micrograph.id]: null });
               }}>
                 Edit Micrograph Location
@@ -820,6 +823,18 @@ export function ProjectTree() {
           }}
           micrographId={addToGroupsMicrograph.id}
           micrographName={addToGroupsMicrograph.name || 'Unnamed Micrograph'}
+        />
+      )}
+
+      {/* Edit Micrograph Location Dialog */}
+      {editLocationMicrographId && (
+        <EditMicrographLocationDialog
+          open={showEditLocation}
+          onClose={() => {
+            setShowEditLocation(false);
+            setEditLocationMicrographId(null);
+          }}
+          micrographId={editLocationMicrographId}
         />
       )}
 
