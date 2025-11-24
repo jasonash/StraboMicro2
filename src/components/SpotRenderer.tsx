@@ -189,8 +189,8 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
         <Line
           key="line"
           points={points}
-          stroke={isSelected ? color : strokeColor}
-          strokeWidth={isSelected ? 3 / scale : strokeWidth}
+          stroke={isSelected ? 'transparent' : strokeColor}
+          strokeWidth={isSelected ? 0 : strokeWidth}
           listening={true}
           lineCap="round"
           lineJoin="round"
@@ -250,8 +250,8 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
         <Line
           key="polygon"
           points={points}
-          stroke={isSelected ? color : strokeColor}
-          strokeWidth={isSelected ? 3 / scale : strokeWidth}
+          stroke={isSelected ? 'transparent' : strokeColor}
+          strokeWidth={isSelected ? 0 : strokeWidth}
           fill={color}
           opacity={opacity}
           closed={true}
