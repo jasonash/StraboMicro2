@@ -229,7 +229,7 @@ export function EditMicrographLocationDialog({
     setPointY(y);
   };
 
-  // Handle scale data changes from PlacementCanvas (for "Trace Scale Bar" methods)
+  // Handle scale data changes from PlacementCanvas
   const handleScaleDataChange = (data: {
     scaleBarLineLengthPixels?: number;
     scaleBarPhysicalLength?: number;
@@ -242,22 +242,48 @@ export function EditMicrographLocationDialog({
     sizeUnits?: string;
   }) => {
     // Check if we have valid scale data based on the scale method
-    const hasValidScaleData =
-      (scaleMethod === 'Trace Scale Bar and Drag' || scaleMethod === 'Trace Scale Bar') &&
-      data.scaleBarLineLengthPixels &&
-      data.scaleBarPhysicalLength &&
-      data.scaleBarUnits;
+    let hasValidScaleData = false;
 
-    setHasScaleData(!!hasValidScaleData);
+    if (scaleMethod === 'Trace Scale Bar and Drag' || scaleMethod === 'Trace Scale Bar') {
+      hasValidScaleData = !!(
+        data.scaleBarLineLengthPixels &&
+        data.scaleBarPhysicalLength &&
+        data.scaleBarUnits
+      );
+    } else if (scaleMethod === 'Pixel Conversion Factor') {
+      hasValidScaleData = !!(
+        data.pixels &&
+        data.physicalLength &&
+        data.pixelUnits
+      );
+    } else if (scaleMethod === 'Provide Width/Height of Image') {
+      hasValidScaleData = !!(
+        data.imageWidthPhysical &&
+        data.imageHeightPhysical &&
+        data.sizeUnits
+      );
+    }
+
+    setHasScaleData(hasValidScaleData);
+  };
+
+  // Check if scale method requires scale data input
+  const requiresScaleData = (): boolean => {
+    return (
+      scaleMethod === 'Trace Scale Bar and Drag' ||
+      scaleMethod === 'Trace Scale Bar' ||
+      scaleMethod === 'Pixel Conversion Factor' ||
+      scaleMethod === 'Provide Width/Height of Image'
+    );
   };
 
   // Check if Save should be enabled
   const canSave = (): boolean => {
-    // For "Trace Scale Bar" methods, require scale data
-    if (scaleMethod === 'Trace Scale Bar and Drag' || scaleMethod === 'Trace Scale Bar') {
+    // For methods that require scale data, check hasScaleData
+    if (requiresScaleData()) {
       return hasScaleData;
     }
-    // For other methods, always allow save
+    // For other methods (Stretch and Drag, Copy Size), always allow save
     return true;
   };
 
@@ -543,30 +569,30 @@ export function EditMicrographLocationDialog({
                 childWidth={micrograph.imageWidth || 800}
                 childHeight={micrograph.imageHeight || 600}
                 scaleMethod={scaleMethod}
-                // For "Trace Scale Bar" methods, use (0, 0) to center the child initially
-                // For other methods, use existing position or copy data
+                // For methods requiring scale input, use (0, 0) to center the child initially
+                // For "Stretch and Drag" or "Copy Size", use existing position or copy data
                 initialOffsetX={
-                  scaleMethod === 'Trace Scale Bar and Drag'
+                  requiresScaleData()
                     ? 0
                     : (copySizeData?.xOffset ?? offsetX)
                 }
                 initialOffsetY={
-                  scaleMethod === 'Trace Scale Bar and Drag'
+                  requiresScaleData()
                     ? 0
                     : (copySizeData?.yOffset ?? offsetY)
                 }
                 initialRotation={
-                  scaleMethod === 'Trace Scale Bar and Drag'
+                  requiresScaleData()
                     ? 0
                     : (copySizeData?.rotation ?? rotation)
                 }
                 initialScaleX={
-                  scaleMethod === 'Trace Scale Bar and Drag'
+                  requiresScaleData()
                     ? 1
                     : (copySizeData?.scaleX ?? scaleX)
                 }
                 initialScaleY={
-                  scaleMethod === 'Trace Scale Bar and Drag'
+                  requiresScaleData()
                     ? 1
                     : (copySizeData?.scaleY ?? scaleY)
                 }
