@@ -35,7 +35,7 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
   const opacity = (spot.opacity ?? 50) / 100; // Convert 0-100 to 0-1
 
   const strokeColor = isHovered ? '#ffff00' : color;
-  const strokeWidth = isHovered ? 3 / scale : 2 / scale;
+  const strokeWidth = isHovered ? 4 / scale : 3 / scale;
 
   const handleClick = () => {
     onClick?.(spot);
