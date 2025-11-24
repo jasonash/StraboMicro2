@@ -36,8 +36,6 @@ import { ExtinctionMicrostructureInfoDialog } from './dialogs/metadata/extinctio
 import { AssociatedFilesInfoDialog } from './dialogs/metadata/associatedfiles/AssociatedFilesInfoDialog';
 import { LinksInfoDialog } from './dialogs/metadata/links/LinksInfoDialog';
 import { MetadataSummary } from './MetadataSummary';
-import { DetailedNotesPanel } from './DetailedNotesPanel';
-import { DetailedNotesDialog } from './dialogs/DetailedNotesDialog';
 
 /**
  * Data type options for micrographs
@@ -190,28 +188,16 @@ export function PropertiesPanel() {
       </FormControl>
 
       {/* Metadata Summary Section */}
-      <Box sx={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
+      <Box sx={{ flex: 1, overflow: 'auto' }}>
         <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>
           Collected Data
         </Typography>
 
-        <Box sx={{ flex: '0 0 auto', overflow: 'auto', mb: 2 }}>
-          <MetadataSummary
-            micrographId={activeSpotId ? undefined : (activeMicrographId || undefined)}
-            spotId={activeSpotId || undefined}
-            onEditSection={(sectionId) => setOpenDialog(sectionId)}
-          />
-        </Box>
-
-        {/* Detailed Notes Section */}
-        <Box sx={{ flex: '1 1 auto', overflow: 'auto', borderTop: 1, borderColor: 'divider', mt: 'auto' }}>
-          <DetailedNotesPanel
-            micrographId={activeSpotId ? undefined : (activeMicrographId || undefined)}
-            spotId={activeSpotId || undefined}
-            onEditSection={(sectionId) => setOpenDialog(sectionId)}
-            onViewAllNotes={() => setOpenDialog('detailedNotes')}
-          />
-        </Box>
+        <MetadataSummary
+          micrographId={activeSpotId ? undefined : (activeMicrographId || undefined)}
+          spotId={activeSpotId || undefined}
+          onEditSection={(sectionId) => setOpenDialog(sectionId)}
+        />
       </Box>
 
       {/* Dialogs */}
@@ -378,16 +364,6 @@ export function PropertiesPanel() {
           onClose={() => setOpenDialog(null)}
           micrographId={activeMicrographId || undefined}
           spotId={activeSpotId || undefined}
-        />
-      )}
-
-      {openDialog === 'detailedNotes' && (
-        <DetailedNotesDialog
-          isOpen={true}
-          onClose={() => setOpenDialog(null)}
-          micrographId={activeMicrographId || undefined}
-          spotId={activeSpotId || undefined}
-          onEditSection={(sectionId) => setOpenDialog(sectionId)}
         />
       )}
     </Box>
