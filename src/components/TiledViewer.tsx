@@ -563,9 +563,15 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(({ image
   /**
    * Handle stage click for drawing tools
    */
-  const handleStageClick = useCallback(() => {
-    // Only handle clicks when a drawing tool is active
-    if (!activeTool || activeTool === 'select') return;
+  const handleStageClick = useCallback((e: any) => {
+    // If clicking directly on the stage (not on a spot), clear spot selection
+    if (!activeTool || activeTool === 'select') {
+      // Check if click target is the stage itself (not a shape)
+      if (e.target === e.target.getStage()) {
+        selectActiveSpot(null);
+      }
+      return;
+    }
 
     const stage = stageRef.current;
     if (!stage) return;
@@ -599,7 +605,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(({ image
     if (activeTool === 'line') {
       lineDrawing.handleClick(imageX, imageY);
     }
-  }, [activeTool, position, zoom, polygonDrawing, lineDrawing]);
+  }, [activeTool, position, zoom, polygonDrawing, lineDrawing, selectActiveSpot]);
 
   /**
    * Cleanup drawing when tool changes or dialog closes
