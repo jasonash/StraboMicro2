@@ -245,6 +245,17 @@ function createWindow() {
       label: 'View',
       submenu: [
         {
+          label: 'Show Rulers',
+          type: 'checkbox',
+          checked: true,
+          click: (menuItem) => {
+            if (mainWindow) {
+              mainWindow.webContents.send('view:toggle-rulers', menuItem.checked);
+            }
+          }
+        },
+        { type: 'separator' },
+        {
           label: 'Theme',
           submenu: [
             {

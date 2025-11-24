@@ -14,6 +14,7 @@ function App() {
   const closeProject = useAppStore(state => state.closeProject);
   const project = useAppStore(state => state.project);
   const setTheme = useAppStore(state => state.setTheme);
+  const setShowRulers = useAppStore(state => state.setShowRulers);
 
   // Initialize theme system
   useTheme();
@@ -312,7 +313,12 @@ function App() {
     window.api.onThemeChange((theme) => {
       setTheme(theme);
     });
-  }, [closeProject, setTheme]);
+
+    // View: Toggle Rulers menu item
+    window.api.onToggleRulers((checked) => {
+      setShowRulers(checked);
+    });
+  }, [closeProject, setTheme, setShowRulers]);
 
   return (
     <>

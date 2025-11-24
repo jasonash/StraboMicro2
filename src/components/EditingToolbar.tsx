@@ -5,7 +5,7 @@
  * Positioned at the top of the canvas during editing mode.
  */
 
-import { Box, Button, Typography } from '@mui/material';
+import { Box, Button } from '@mui/material';
 import CheckIcon from '@mui/icons-material/Check';
 import CloseIcon from '@mui/icons-material/Close';
 import { useAppStore } from '@/store';

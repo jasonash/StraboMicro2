@@ -23,6 +23,7 @@ import { SpotContextMenu } from './SpotContextMenu';
 import { EditingToolbar } from './EditingToolbar';
 import { NewSpotDialog } from './dialogs/NewSpotDialog';
 import { EditSpotDialog } from './dialogs/metadata/EditSpotDialog';
+import RulerCanvas from './RulerCanvas';
 import { Geometry, Spot } from '@/types/project-types';
 import { usePolygonDrawing } from '@/hooks/usePolygonDrawing';
 import { useLineDrawing } from '@/hooks/useLineDrawing';
@@ -106,6 +107,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(({ image
   const activeMicrographId = useAppStore((state) => state.activeMicrographId);
   const activeTool = useAppStore((state) => state.activeTool);
   const activeSpotId = useAppStore((state) => state.activeSpotId);
+  const showRulers = useAppStore((state) => state.showRulers);
   const selectActiveSpot = useAppStore((state) => state.selectActiveSpot);
   const setActiveTool = useAppStore((state) => state.setActiveTool);
   const addSpot = useAppStore((state) => state.addSpot);
@@ -752,6 +754,8 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(({ image
     fitToScreen: handleResetZoom,
   }), [handleResetZoom]);
 
+  const RULER_SIZE = 30; // Width/height of ruler bars
+
   return (
     <div className="tiled-viewer" ref={containerRef}>
       {isLoading && (
@@ -776,7 +780,50 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(({ image
 
       {imageMetadata && (
         <>
-          <Stage
+          {/* Grid layout with rulers */}
+          {showRulers && (
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: `${RULER_SIZE}px 1fr`,
+                gridTemplateRows: `${RULER_SIZE}px 1fr`,
+                width: stageSize.width + RULER_SIZE,
+                height: stageSize.height + RULER_SIZE,
+                position: 'absolute',
+                top: 0,
+                left: 0,
+              }}
+            >
+              {/* Top-left corner (empty) */}
+              <div style={{ backgroundColor: '#f0f0f0', borderRight: '1px solid #ccc', borderBottom: '1px solid #ccc' }} />
+
+              {/* Top ruler (horizontal) */}
+              <RulerCanvas
+                orientation="horizontal"
+                width={stageSize.width}
+                height={RULER_SIZE}
+                zoom={zoom}
+                position={position}
+                imageWidth={activeMicrograph?.imageWidth || activeMicrograph?.width || imageMetadata.width}
+                imageHeight={activeMicrograph?.imageHeight || activeMicrograph?.height || imageMetadata.height}
+                scalePixelsPerCentimeter={activeMicrograph?.scalePixelsPerCentimeter || null}
+              />
+
+              {/* Left ruler (vertical) */}
+              <RulerCanvas
+                orientation="vertical"
+                width={RULER_SIZE}
+                height={stageSize.height}
+                zoom={zoom}
+                position={position}
+                imageWidth={activeMicrograph?.imageWidth || activeMicrograph?.width || imageMetadata.width}
+                imageHeight={activeMicrograph?.imageHeight || activeMicrograph?.height || imageMetadata.height}
+                scalePixelsPerCentimeter={activeMicrograph?.scalePixelsPerCentimeter || null}
+              />
+
+              {/* Main canvas area */}
+              <div>
+                <Stage
             ref={stageRef}
             width={stageSize.width}
             height={stageSize.height}
@@ -910,6 +957,144 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(({ image
               {/* Drawing shapes (polygon/line in progress) are added by the drawing hooks */}
             </Layer>
           </Stage>
+              </div>
+            </div>
+          )}
+
+          {/* Non-ruler layout (when rulers are off) */}
+          {!showRulers && (
+            <Stage
+              ref={stageRef}
+              width={stageSize.width}
+              height={stageSize.height}
+              onWheel={handleWheel}
+              onClick={handleStageClick}
+              onMouseDown={handleMouseDown}
+              onMouseMove={handleMouseMove}
+              onMouseUp={handleMouseUp}
+              onMouseLeave={handleMouseUp}
+              style={{
+                cursor: activeTool === 'point' || activeTool === 'line' || activeTool === 'polygon'
+                  ? 'crosshair'
+                  : isPanning
+                  ? 'grabbing'
+                  : 'grab'
+              }}
+            >
+              <Layer
+                key="image-layer"
+                x={position.x}
+                y={position.y}
+                scaleX={zoom}
+                scaleY={zoom}
+              >
+                {/* Progressive loading: Show thumbnail first, then switch to tiles */}
+                {renderMode === 'thumbnail' && thumbnail && (
+                  <KonvaImage
+                    image={thumbnail.imageObj}
+                    width={imageMetadata.width}
+                    height={imageMetadata.height}
+                  />
+                )}
+
+                {renderMode === 'tiled' && visibleTiles.map((tileKey) => {
+                  const tile = tiles.get(tileKey);
+                  if (!tile || !tile.imageObj) return null;
+
+                  return (
+                    <KonvaImage
+                      key={tileKey}
+                      image={tile.imageObj}
+                      x={tile.x * TILE_SIZE}
+                      y={tile.y * TILE_SIZE}
+                      width={TILE_SIZE + 1}
+                      height={TILE_SIZE + 1}
+                    />
+                  );
+                })}
+
+                {/* Render associated micrographs (overlays) */}
+                {activeMicrograph && project && childMicrographs.map((childMicro) => (
+                  <AssociatedImageRenderer
+                    key={childMicro.id}
+                    micrograph={childMicro}
+                    projectId={project.id}
+                    parentMetadata={{
+                      width: activeMicrograph.imageWidth || activeMicrograph.width || imageMetadata?.width || 0,
+                      height: activeMicrograph.imageHeight || activeMicrograph.height || imageMetadata?.height || 0,
+                      scalePixelsPerCentimeter: activeMicrograph.scalePixelsPerCentimeter || 100,
+                    }}
+                    viewport={{
+                      x: position.x,
+                      y: position.y,
+                      zoom: zoom,
+                      width: stageSize.width,
+                      height: stageSize.height,
+                    }}
+                    stageScale={zoom}
+                    onTileLoadingStart={(message) => {
+                      setTileLoadingMessage(message);
+                      setOverlayLoadingCount(prev => prev + 1);
+                    }}
+                    onTileLoadingEnd={() => {
+                      setOverlayLoadingCount(prev => Math.max(0, prev - 1));
+                    }}
+                  />
+                ))}
+              </Layer>
+
+              {/* Spots Layer - render all saved spots */}
+              <Layer
+                key="spots-layer"
+                x={position.x}
+                y={position.y}
+                scaleX={zoom}
+                scaleY={zoom}
+              >
+                {/* First pass: Render all spot shapes */}
+                {activeMicrograph?.spots?.map((spot) => (
+                  <SpotRenderer
+                    key={spot.id}
+                    spot={spot}
+                    scale={zoom}
+                    isSelected={spot.id === activeSpotId}
+                    onClick={(spot) => {
+                      selectActiveSpot(spot.id);
+                      setActiveTool(null);
+                    }}
+                    onContextMenu={(spot, x, y) => {
+                      setContextMenuSpot(spot);
+                      setContextMenuPosition({ x, y });
+                    }}
+                    renderLabelsOnly={false}
+                  />
+                ))}
+
+                {/* Second pass: Render all spot labels */}
+                {activeMicrograph?.spots?.map((spot) => (
+                  <SpotRenderer
+                    key={`${spot.id}-label`}
+                    spot={spot}
+                    scale={zoom}
+                    isSelected={spot.id === activeSpotId}
+                    renderLabelsOnly={true}
+                  />
+                ))}
+              </Layer>
+
+              {/* Drawing Layer */}
+              <Layer
+                key="drawing-layer"
+                ref={drawingLayerRef}
+                x={position.x}
+                y={position.y}
+                scaleX={zoom}
+                scaleY={zoom}
+              >
+                {/* Drawing shapes added by hooks */}
+              </Layer>
+            </Stage>
+          )}
 
           {/* Tile loading indicator - shows for both reference and overlay tiles */}
           {(isLoadingTiles || overlayLoadingCount > 0) && (

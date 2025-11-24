@@ -43,6 +43,9 @@ contextBridge.exposeInMainWorld('api', {
   onThemeChange: (callback) => ipcRenderer.on('theme:set', (event, theme) => callback(theme)),
   notifyThemeChanged: (theme) => ipcRenderer.send('theme:changed', theme),
 
+  // View preferences
+  onToggleRulers: (callback) => ipcRenderer.on('view:toggle-rulers', (event, checked) => callback(checked)),
+
   // Tile-based image loading
   loadImageWithTiles: (imagePath) => ipcRenderer.invoke('image:load-with-tiles', imagePath),
   loadThumbnail: (imageHash) => ipcRenderer.invoke('image:load-thumbnail', imageHash),
