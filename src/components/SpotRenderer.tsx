@@ -142,10 +142,11 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
             x={x + 10 / scale}
             y={y + 10 / scale}
             text={spot.name}
-            fontSize={16 / scale}
+            fontSize={20 / scale}
+            fontStyle="bold"
             fill={labelColor}
             stroke="#000000"
-            strokeWidth={1 / scale}
+            strokeWidth={2 / scale}
             listening={false}
           />
         )}
@@ -204,10 +205,11 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
             x={coords[0][0] + 10 / scale}
             y={coords[0][1] + 10 / scale}
             text={spot.name}
-            fontSize={16 / scale}
+            fontSize={20 / scale}
+            fontStyle="bold"
             fill={labelColor}
             stroke="#000000"
-            strokeWidth={1 / scale}
+            strokeWidth={2 / scale}
             listening={false}
           />
         )}
@@ -265,10 +267,11 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
             x={coords[0][0] + 10 / scale}
             y={coords[0][1] + 10 / scale}
             text={spot.name}
-            fontSize={16 / scale}
+            fontSize={20 / scale}
+            fontStyle="bold"
             fill={labelColor}
             stroke="#000000"
-            strokeWidth={1 / scale}
+            strokeWidth={2 / scale}
             listening={false}
           />
         )}
