@@ -24,6 +24,7 @@ import { EditingToolbar } from './EditingToolbar';
 import { NewSpotDialog } from './dialogs/NewSpotDialog';
 import { EditSpotDialog } from './dialogs/metadata/EditSpotDialog';
 import RulerCanvas from './RulerCanvas';
+import CursorLocation from './CursorLocation';
 import { Geometry, Spot } from '@/types/project-types';
 import { usePolygonDrawing } from '@/hooks/usePolygonDrawing';
 import { useLineDrawing } from '@/hooks/useLineDrawing';
@@ -87,6 +88,9 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(({ image
   const [isPanning, setIsPanning] = useState(false);
   const [lastPointerPos, setLastPointerPos] = useState<{ x: number; y: number } | null>(null);
   const [hasDragged, setHasDragged] = useState(false); // Track if user has dragged since mousedown
+
+  // Cursor location tracking (in image coordinates)
+  const [cursorImageCoords, setCursorImageCoords] = useState<{ x: number; y: number } | null>(null);
 
   // Track overlay tile loading state
   const [overlayLoadingCount, setOverlayLoadingCount] = useState(0);
@@ -603,11 +607,22 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(({ image
         lineDrawing.handleMouseMove(imageX, imageY);
       }
     }
+
+    // Update cursor location (convert screen coords to image coords)
+    const imageX = (pos.x - position.x) / zoom;
+    const imageY = (pos.y - position.y) / zoom;
+    setCursorImageCoords({ x: imageX, y: imageY });
   }, [isPanning, lastPointerPos, position, activeTool, zoom, polygonDrawing, lineDrawing]);
 
   const handleMouseUp = useCallback(() => {
     setIsPanning(false);
     setLastPointerPos(null);
+  }, []);
+
+  const handleMouseLeave = useCallback(() => {
+    setIsPanning(false);
+    setLastPointerPos(null);
+    setCursorImageCoords(null); // Hide cursor location when mouse leaves
   }, []);
 
   /**
@@ -849,7 +864,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(({ image
             onMouseDown={handleMouseDown}
             onMouseMove={handleMouseMove}
             onMouseUp={handleMouseUp}
-            onMouseLeave={handleMouseUp}
+            onMouseLeave={handleMouseLeave}
             style={{
               cursor: activeTool === 'point' || activeTool === 'line' || activeTool === 'polygon'
                 ? 'crosshair'
@@ -987,7 +1002,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(({ image
               onMouseDown={handleMouseDown}
               onMouseMove={handleMouseMove}
               onMouseUp={handleMouseUp}
-              onMouseLeave={handleMouseUp}
+              onMouseLeave={handleMouseLeave}
               style={{
                 cursor: activeTool === 'point' || activeTool === 'line' || activeTool === 'polygon'
                   ? 'crosshair'
@@ -1138,6 +1153,13 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(({ image
               </Typography>
             </Box>
           )}
+
+          {/* Cursor Location Display */}
+          <CursorLocation
+            x={cursorImageCoords?.x ?? null}
+            y={cursorImageCoords?.y ?? null}
+            scalePixelsPerCentimeter={activeMicrograph?.scalePixelsPerCentimeter ?? null}
+          />
         </>
       )}
 
