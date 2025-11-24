@@ -81,6 +81,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(({ image
   const [tileLoadingMessage, setTileLoadingMessage] = useState<string>('');
   const [isPanning, setIsPanning] = useState(false);
   const [lastPointerPos, setLastPointerPos] = useState<{ x: number; y: number } | null>(null);
+  const [hasDragged, setHasDragged] = useState(false); // Track if user has dragged since mousedown
 
   // Track overlay tile loading state
   const [overlayLoadingCount, setOverlayLoadingCount] = useState(0);
@@ -510,6 +511,9 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(({ image
   const handleMouseDown = useCallback((e: any) => {
     if (e.evt.button !== 0) return; // Only left mouse button
 
+    // Reset drag tracking
+    setHasDragged(false);
+
     // Only enable panning if no drawing tool is active
     if (!activeTool || activeTool === 'select') {
       setIsPanning(true);
@@ -531,6 +535,11 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(({ image
     if (isPanning && lastPointerPos) {
       const dx = pos.x - lastPointerPos.x;
       const dy = pos.y - lastPointerPos.y;
+
+      // Mark as dragged if movement exceeds threshold (3 pixels)
+      if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
+        setHasDragged(true);
+      }
 
       setPosition({
         x: position.x + dx,
@@ -564,6 +573,11 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(({ image
    * Handle stage click for drawing tools
    */
   const handleStageClick = useCallback((e: any) => {
+    // Ignore clicks that were actually drags
+    if (hasDragged) {
+      return;
+    }
+
     // If clicking directly on the stage (not on a spot), clear spot selection
     if (!activeTool || activeTool === 'select') {
       // Check if click target or its parent is a spot (spots have names like "spot-{id}")
@@ -612,7 +626,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(({ image
     if (activeTool === 'line') {
       lineDrawing.handleClick(imageX, imageY);
     }
-  }, [activeTool, position, zoom, polygonDrawing, lineDrawing, selectActiveSpot]);
+  }, [activeTool, position, zoom, polygonDrawing, lineDrawing, selectActiveSpot, hasDragged]);
 
   /**
    * Cleanup drawing when tool changes or dialog closes
