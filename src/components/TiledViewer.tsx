@@ -780,50 +780,59 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(({ image
 
       {imageMetadata && (
         <>
-          {/* Grid layout with rulers */}
+          {/* Rulers positioned absolutely on top of canvas */}
           {showRulers && (
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: `${RULER_SIZE}px 1fr`,
-                gridTemplateRows: `${RULER_SIZE}px 1fr`,
-                width: stageSize.width + RULER_SIZE,
-                height: stageSize.height + RULER_SIZE,
+            <>
+              {/* Top-left corner (empty) */}
+              <div style={{
                 position: 'absolute',
                 top: 0,
                 left: 0,
-              }}
-            >
-              {/* Top-left corner (empty) */}
-              <div style={{ backgroundColor: '#f0f0f0', borderRight: '1px solid #ccc', borderBottom: '1px solid #ccc' }} />
+                width: RULER_SIZE,
+                height: RULER_SIZE,
+                backgroundColor: '#f0f0f0',
+                borderRight: '1px solid #ccc',
+                borderBottom: '1px solid #ccc',
+                zIndex: 1000,
+              }} />
 
               {/* Top ruler (horizontal) */}
-              <RulerCanvas
-                orientation="horizontal"
-                width={stageSize.width}
-                height={RULER_SIZE}
-                zoom={zoom}
-                position={position}
-                imageWidth={activeMicrograph?.imageWidth || activeMicrograph?.width || imageMetadata.width}
-                imageHeight={activeMicrograph?.imageHeight || activeMicrograph?.height || imageMetadata.height}
-                scalePixelsPerCentimeter={activeMicrograph?.scalePixelsPerCentimeter || null}
-              />
+              <div style={{ position: 'absolute', top: 0, left: RULER_SIZE, zIndex: 1000 }}>
+                <RulerCanvas
+                  orientation="horizontal"
+                  width={stageSize.width}
+                  height={RULER_SIZE}
+                  zoom={zoom}
+                  position={position}
+                  imageWidth={activeMicrograph?.imageWidth || activeMicrograph?.width || imageMetadata.width}
+                  imageHeight={activeMicrograph?.imageHeight || activeMicrograph?.height || imageMetadata.height}
+                  scalePixelsPerCentimeter={activeMicrograph?.scalePixelsPerCentimeter || null}
+                />
+              </div>
 
               {/* Left ruler (vertical) */}
-              <RulerCanvas
-                orientation="vertical"
-                width={RULER_SIZE}
-                height={stageSize.height}
-                zoom={zoom}
-                position={position}
-                imageWidth={activeMicrograph?.imageWidth || activeMicrograph?.width || imageMetadata.width}
-                imageHeight={activeMicrograph?.imageHeight || activeMicrograph?.height || imageMetadata.height}
-                scalePixelsPerCentimeter={activeMicrograph?.scalePixelsPerCentimeter || null}
-              />
+              <div style={{ position: 'absolute', top: RULER_SIZE, left: 0, zIndex: 1000 }}>
+                <RulerCanvas
+                  orientation="vertical"
+                  width={RULER_SIZE}
+                  height={stageSize.height}
+                  zoom={zoom}
+                  position={position}
+                  imageWidth={activeMicrograph?.imageWidth || activeMicrograph?.width || imageMetadata.width}
+                  imageHeight={activeMicrograph?.imageHeight || activeMicrograph?.height || imageMetadata.height}
+                  scalePixelsPerCentimeter={activeMicrograph?.scalePixelsPerCentimeter || null}
+                />
+              </div>
+            </>
+          )}
 
-              {/* Main canvas area */}
-              <div>
-                <Stage
+          {/* Main canvas area - offset when rulers are shown */}
+          <div style={{
+            position: 'absolute',
+            top: showRulers ? RULER_SIZE : 0,
+            left: showRulers ? RULER_SIZE : 0,
+          }}>
+            <Stage
             ref={stageRef}
             width={stageSize.width}
             height={stageSize.height}
@@ -957,9 +966,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(({ image
               {/* Drawing shapes (polygon/line in progress) are added by the drawing hooks */}
             </Layer>
           </Stage>
-              </div>
-            </div>
-          )}
+          </div>
 
           {/* Non-ruler layout (when rulers are off) */}
           {!showRulers && (

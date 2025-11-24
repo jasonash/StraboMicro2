@@ -60,8 +60,16 @@ const RulerCanvas: React.FC<RulerCanvasProps> = ({
     const rulerPixelsPerCentimeter = zoom * scalePixelsPerCentimeter;
 
     // Calculate viewport offset in ruler space
-    // This determines where the "0" mark should appear based on pan position
-    const offset = isHorizontal ? position.x : position.y;
+    // The position is in stage coordinates, we need to find where image coordinate 0 appears on screen
+    // When position.x is positive, the image has moved right (image origin is to the right of viewport origin)
+    // When position.x is negative, the image has moved left (image origin is to the left of viewport origin)
+    // The ruler should show where we are in the IMAGE coordinate space
+    const viewportOffset = isHorizontal ? position.x : position.y;
+
+    // Calculate where the image origin (0,0) appears in the ruler
+    // If viewportOffset is positive, origin is to the right/below viewport
+    // We want the first tick to represent image coordinate 0, positioned at viewportOffset pixels
+    const imageOriginInRuler = viewportOffset;
 
     // Determine how many centimeters are visible
     const numRulerCent = rulerSize / rulerPixelsPerCentimeter;
@@ -102,9 +110,10 @@ const RulerCanvas: React.FC<RulerCanvasProps> = ({
       ctx.strokeStyle = '#888';
       ctx.lineWidth = 1;
 
-      let pos = offset;
-      while (pos < rulerSize - 40) {
-        if (pos >= 0 && pos <= rulerSize) {
+      // Start from image origin and draw ticks
+      let pos = imageOriginInRuler;
+      while (pos < rulerSize) {
+        if (pos >= 0) {
           if (isHorizontal) {
             ctx.beginPath();
             ctx.moveTo(pos, 20);
@@ -119,15 +128,32 @@ const RulerCanvas: React.FC<RulerCanvasProps> = ({
         }
         pos += pixelsPerLittleTick;
       }
+
+      // Draw ticks before origin (negative image coordinates)
+      pos = imageOriginInRuler - pixelsPerLittleTick;
+      while (pos >= 0) {
+        if (isHorizontal) {
+          ctx.beginPath();
+          ctx.moveTo(pos, 20);
+          ctx.lineTo(pos, 30);
+          ctx.stroke();
+        } else {
+          ctx.beginPath();
+          ctx.moveTo(20, pos);
+          ctx.lineTo(30, pos);
+          ctx.stroke();
+        }
+        pos -= pixelsPerLittleTick;
+      }
     }
 
     // Draw big ticks
     ctx.strokeStyle = '#000';
     ctx.lineWidth = 2;
 
-    let pos = offset;
-    while (pos < rulerSize - 40) {
-      if (pos >= 0 && pos <= rulerSize) {
+    let pos = imageOriginInRuler;
+    while (pos < rulerSize) {
+      if (pos >= 0) {
         if (isHorizontal) {
           ctx.beginPath();
           ctx.moveTo(pos, 15);
@@ -143,27 +169,40 @@ const RulerCanvas: React.FC<RulerCanvasProps> = ({
       pos += pixelsPerBigTick;
     }
 
+    // Draw big ticks before origin
+    pos = imageOriginInRuler - pixelsPerBigTick;
+    while (pos >= 0) {
+      if (isHorizontal) {
+        ctx.beginPath();
+        ctx.moveTo(pos, 15);
+        ctx.lineTo(pos, 30);
+        ctx.stroke();
+      } else {
+        ctx.beginPath();
+        ctx.moveTo(15, pos);
+        ctx.lineTo(30, pos);
+        ctx.stroke();
+      }
+      pos -= pixelsPerBigTick;
+    }
+
     // Draw labels
     ctx.fillStyle = '#555';
     ctx.font = '12px system-ui, -apple-system, sans-serif';
 
-    pos = offset;
-    let countLabel = 0;
-    let countDoubleLabel = 0.0;
+    // Start labeling from image origin
+    pos = imageOriginInRuler;
+    let labelValue = 0; // This represents the image coordinate in the chosen unit
 
-    while (pos < rulerSize - 40) {
-      if (pos >= 0 && pos <= rulerSize) {
+    // Labels going forward from origin
+    while (pos < rulerSize) {
+      if (pos >= 0 && pos < rulerSize - 40) {
         let labelText: string;
 
         if (showLevel === 'mmTenths') {
-          labelText = countDoubleLabel.toFixed(1);
-          countDoubleLabel += 0.1;
-        } else if (showLevel === 'tenMicrons') {
-          labelText = String(countLabel);
-          countLabel += 10;
+          labelText = labelValue.toFixed(1);
         } else {
-          labelText = String(countLabel);
-          countLabel += 1;
+          labelText = String(labelValue);
         }
 
         if (isHorizontal) {
@@ -180,8 +219,53 @@ const RulerCanvas: React.FC<RulerCanvasProps> = ({
         }
       }
 
-      // All increments are handled in the label text section above
       pos += pixelsPerBigTick;
+
+      // Increment label value based on scale
+      if (showLevel === 'mmTenths') {
+        labelValue += 0.1;
+      } else if (showLevel === 'tenMicrons') {
+        labelValue += 10;
+      } else {
+        labelValue += 1;
+      }
+    }
+
+    // Labels going backward from origin (not typically needed but included for completeness)
+    pos = imageOriginInRuler - pixelsPerBigTick;
+    labelValue = showLevel === 'mmTenths' ? -0.1 : (showLevel === 'tenMicrons' ? -10 : -1);
+
+    while (pos >= 0) {
+      let labelText: string;
+
+      if (showLevel === 'mmTenths') {
+        labelText = labelValue.toFixed(1);
+      } else {
+        labelText = String(labelValue);
+      }
+
+      if (isHorizontal) {
+        ctx.save();
+        ctx.translate(pos - 3, 10);
+        ctx.fillText(labelText, 5, 0);
+        ctx.restore();
+      } else {
+        ctx.save();
+        ctx.translate(0, pos);
+        ctx.rotate(Math.PI / 2);
+        ctx.fillText(labelText, 5, 0);
+        ctx.restore();
+      }
+
+      pos -= pixelsPerBigTick;
+
+      if (showLevel === 'mmTenths') {
+        labelValue -= 0.1;
+      } else if (showLevel === 'tenMicrons') {
+        labelValue -= 10;
+      } else {
+        labelValue -= 1;
+      }
     }
 
     // Draw unit badge (only for horizontal ruler, in top-right corner)
