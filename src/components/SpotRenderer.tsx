@@ -107,9 +107,8 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
             x={x}
             y={y}
             radius={12 / scale}
-            stroke="#ffff00"
+            stroke="#ff0000"
             strokeWidth={3 / scale}
-            dash={[5, 5]}
             listening={false}
           />
         )}
@@ -167,9 +166,8 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
           <Line
             key="selection"
             points={points}
-            stroke="#ffff00"
+            stroke="#ff0000"
             strokeWidth={5 / scale}
-            dash={[5, 5]}
             listening={false}
             lineCap="round"
             lineJoin="round"
@@ -230,9 +228,8 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
           <Line
             key="selection"
             points={points}
-            stroke="#ffff00"
+            stroke="#ff0000"
             strokeWidth={5 / scale}
-            dash={[5, 5]}
             closed={true}
             listening={false}
           />
