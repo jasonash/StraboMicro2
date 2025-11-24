@@ -21,6 +21,7 @@ import {
   Slider,
   Stack,
 } from '@mui/material';
+import { MuiColorInput } from 'mui-color-input';
 import { Spot, Geometry } from '@/types/project-types';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -312,30 +313,13 @@ export const NewSpotDialog: React.FC<NewSpotDialogProps> = ({
           </Box> */}
 
           {/* Spot Color */}
-          <Box>
-            <Typography variant="body2" color="text.secondary" gutterBottom>
-              Spot Color
-            </Typography>
-            <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-              {['#00ff00', '#ff0000', '#0000ff', '#ffff00', '#ff00ff', '#00ffff', '#ffffff', '#ffa500'].map(
-                (color) => (
-                  <Box
-                    key={color}
-                    onClick={() => setSpotColor(color)}
-                    sx={{
-                      width: 40,
-                      height: 40,
-                      bgcolor: color,
-                      border: spotColor === color ? '3px solid #1976d2' : '1px solid #ccc',
-                      borderRadius: 1,
-                      cursor: 'pointer',
-                      '&:hover': { opacity: 0.8 },
-                    }}
-                  />
-                )
-              )}
-            </Box>
-          </Box>
+          <MuiColorInput
+            label="Spot Color"
+            value={spotColor}
+            onChange={(newColor) => setSpotColor(newColor)}
+            format="hex"
+            fullWidth
+          />
 
           {/* Opacity */}
           <Box>

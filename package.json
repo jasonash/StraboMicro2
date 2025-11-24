@@ -46,6 +46,7 @@
     "canvas": "^3.2.0",
     "immer": "^10.2.0",
     "konva": "^9.3.22",
+    "mui-color-input": "^7.0.0",
     "pdfkit": "^0.17.2",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",

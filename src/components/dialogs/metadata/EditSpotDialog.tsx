@@ -18,6 +18,7 @@ import {
   FormControlLabel,
   Checkbox,
 } from '@mui/material';
+import { MuiColorInput } from 'mui-color-input';
 import { useAppStore } from '@/store';
 import { findSpotById } from '@/store/helpers';
 
@@ -149,30 +150,13 @@ export function EditSpotDialog({ isOpen, onClose, spotId }: EditSpotDialogProps)
           </Box> */}
 
           {/* Spot Color */}
-          <Box>
-            <Typography variant="body2" color="text.secondary" gutterBottom>
-              Spot Color
-            </Typography>
-            <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-              {['#00ff00', '#ff0000', '#0000ff', '#ffff00', '#ff00ff', '#00ffff', '#ffffff', '#ffa500'].map(
-                (color) => (
-                  <Box
-                    key={color}
-                    onClick={() => setSpotColor(color)}
-                    sx={{
-                      width: 40,
-                      height: 40,
-                      bgcolor: color,
-                      border: spotColor === color ? '3px solid #1976d2' : '1px solid #ccc',
-                      borderRadius: 1,
-                      cursor: 'pointer',
-                      '&:hover': { opacity: 0.8 },
-                    }}
-                  />
-                )
-              )}
-            </Box>
-          </Box>
+          <MuiColorInput
+            label="Spot Color"
+            value={spotColor}
+            onChange={(newColor) => setSpotColor(newColor)}
+            format="hex"
+            fullWidth
+          />
 
           {/* Opacity */}
           <Box>
