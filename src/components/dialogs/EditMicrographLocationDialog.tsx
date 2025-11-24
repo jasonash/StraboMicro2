@@ -301,8 +301,9 @@ export function EditMicrographLocationDialog({
     return null;
   }
 
-  // Build scratch path for the child micrograph image
-  const childScratchPath = `${project.id}/images/${micrograph.imageFilename}`;
+  // Use the actual image path for existing micrographs
+  // imagePath is the full absolute path set at runtime when the project is loaded
+  const childImagePath = micrograph.imagePath || '';
 
   const steps = ['Location Method', 'Scale Method', 'Position'];
   const isScaledRectangle = locationMethod === 'Locate as a scaled rectangle';
@@ -462,7 +463,7 @@ export function EditMicrographLocationDialog({
             {isScaledRectangle ? (
               <PlacementCanvas
                 parentMicrographId={parentMicrograph.id}
-                childScratchPath={childScratchPath}
+                childScratchPath={childImagePath}
                 childWidth={micrograph.imageWidth || 800}
                 childHeight={micrograph.imageHeight || 600}
                 scaleMethod={scaleMethod}
@@ -477,7 +478,7 @@ export function EditMicrographLocationDialog({
             ) : (
               <PointPlacementCanvas
                 parentMicrographId={parentMicrograph.id}
-                childScratchPath={childScratchPath}
+                childScratchPath={childImagePath}
                 childWidth={micrograph.imageWidth || 800}
                 childHeight={micrograph.imageHeight || 600}
                 scaleMethod={scaleMethod}
