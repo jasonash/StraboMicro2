@@ -79,13 +79,11 @@ const RulerCanvas: React.FC<RulerCanvasProps> = ({
     showLevel = 'cm';
     let numRulerUnits = numRulerCent;
     let unitLabel = 'cm';
-    let unitLabelOffset = 6;
 
     if (numRulerCent < 2) {
       showLevel = 'mm';
       numRulerUnits = numRulerCent * 10;
       unitLabel = 'mm';
-      unitLabelOffset = 3;
 
       if (numRulerUnits < 2) {
         showLevel = 'mmTenths';
@@ -96,7 +94,6 @@ const RulerCanvas: React.FC<RulerCanvasProps> = ({
           showLevel = 'tenMicrons';
           numRulerUnits = numRulerUnits * 10;
           unitLabel = 'µm';
-          unitLabelOffset = 5;
         }
       }
     }
@@ -270,14 +267,14 @@ const RulerCanvas: React.FC<RulerCanvasProps> = ({
 
     // Draw unit badge (only for horizontal ruler, in top-right corner)
     if (isHorizontal) {
-      const badgeWidth = 30;
+      const badgeWidth = 35;
       const badgeHeight = 20;
-      const badgeX = width - badgeWidth;
-      const badgeY = 3;
-      const borderRadius = 10;
+      const badgeX = width - badgeWidth - 5; // 5px margin from right edge
+      const badgeY = 5; // 5px margin from top
+      const borderRadius = 6;
 
       // Draw rounded rectangle background
-      ctx.fillStyle = '#555';
+      ctx.fillStyle = '#666';
       ctx.beginPath();
       ctx.moveTo(badgeX + borderRadius, badgeY);
       ctx.lineTo(badgeX + badgeWidth - borderRadius, badgeY);
@@ -291,10 +288,16 @@ const RulerCanvas: React.FC<RulerCanvasProps> = ({
       ctx.closePath();
       ctx.fill();
 
-      // Draw unit text
+      // Draw unit text (centered in badge)
       ctx.fillStyle = '#fff';
-      ctx.font = '12px Verdana, sans-serif';
-      ctx.fillText(unitLabel, badgeX + unitLabelOffset, badgeY + 14);
+      ctx.font = 'bold 11px system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(unitLabel, badgeX + badgeWidth / 2, badgeY + badgeHeight / 2);
+
+      // Reset text alignment for other text
+      ctx.textAlign = 'start';
+      ctx.textBaseline = 'alphabetic';
     }
 
   }, [orientation, width, height, zoom, position, imageWidth, imageHeight, scalePixelsPerCentimeter]);
