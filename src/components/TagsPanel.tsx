@@ -33,7 +33,7 @@ import {
 import { useAppStore } from '@/store';
 import { CreateTagDialog } from './dialogs/CreateTagDialog';
 import { AddSpotsToTagDialog } from './dialogs/AddSpotsToTagDialog';
-import type { Tag, Spot } from '@/types/project-types';
+import type { Tag, Spot, ProjectMetadata } from '@/types/project-types';
 
 // ============================================================================
 // TAG TYPE GROUPINGS (commented out for future use)
@@ -53,12 +53,32 @@ import type { Tag, Spot } from '@/types/project-types';
 // ============================================================================
 
 /**
- * Get all spots that have a specific tag
+ * Get all spots that have a specific tag.
+ * Cross-references against actual project data to filter out stale index entries.
  */
-function getSpotsWithTag(tag: Tag, spotIndex: Map<string, Spot>): Spot[] {
+function getSpotsWithTag(
+  tag: Tag,
+  spotIndex: Map<string, Spot>,
+  project: ProjectMetadata | null
+): Spot[] {
+  if (!project) return [];
+
+  // Build a set of valid spot IDs from the actual project structure
+  const validSpotIds = new Set<string>();
+  for (const dataset of project.datasets || []) {
+    for (const sample of dataset.samples || []) {
+      for (const micrograph of sample.micrographs || []) {
+        for (const spot of micrograph.spots || []) {
+          validSpotIds.add(spot.id);
+        }
+      }
+    }
+  }
+
   const spots: Spot[] = [];
   spotIndex.forEach(spot => {
-    if (spot.tags?.includes(tag.id)) {
+    // Only include spots that exist in the project AND have this tag
+    if (validSpotIds.has(spot.id) && spot.tags?.includes(tag.id)) {
       spots.push(spot);
     }
   });
@@ -72,6 +92,7 @@ function getSpotsWithTag(tag: Tag, spotIndex: Map<string, Spot>): Spot[] {
 interface TagItemProps {
   tag: Tag;
   spotCount: number;
+  project: ProjectMetadata;
   onEdit: (tag: Tag) => void;
   onDelete: (tag: Tag) => void;
   onAssignSpots: (tag: Tag) => void;
@@ -80,6 +101,7 @@ interface TagItemProps {
 function TagItem({
   tag,
   spotCount,
+  project,
   onEdit,
   onDelete,
   onAssignSpots,
@@ -109,16 +131,12 @@ function TagItem({
 
   // Get spots that have this tag
   const taggedSpots = useMemo(() => {
-    return getSpotsWithTag(tag, spotIndex);
-  }, [tag, spotIndex]);
+    return getSpotsWithTag(tag, spotIndex, project);
+  }, [tag, spotIndex, project]);
 
   // Handle clicking on a spot to navigate to it
   const handleSpotClick = (spot: Spot) => {
     // Find which micrograph this spot belongs to
-    // We need to search through the project structure
-    const project = useAppStore.getState().project;
-    if (!project) return;
-
     for (const dataset of project.datasets || []) {
       for (const sample of dataset.samples || []) {
         for (const micrograph of sample.micrographs || []) {
@@ -270,9 +288,9 @@ export function TagsPanel() {
     const tags = project?.tags || [];
     return tags.map(tag => ({
       tag,
-      spotCount: getSpotsWithTag(tag, spotIndex).length,
+      spotCount: getSpotsWithTag(tag, spotIndex, project).length,
     }));
-  }, [project?.tags, spotIndex]);
+  }, [project, spotIndex]);
 
   // ========================================================================
   // TAG TYPE GROUPING (commented out for future use)
@@ -369,6 +387,7 @@ export function TagsPanel() {
               key={tag.id}
               tag={tag}
               spotCount={spotCount}
+              project={project}
               onEdit={handleEditTag}
               onDelete={handleDeleteTag}
               onAssignSpots={handleAssignSpots}
@@ -395,6 +414,7 @@ export function TagsPanel() {
                 key={tag.id}
                 tag={tag}
                 spotCount={spotCount}
+                project={project}
                 onEdit={handleEditTag}
                 onDelete={handleDeleteTag}
                 onAssignSpots={handleAssignSpots}
