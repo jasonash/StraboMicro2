@@ -662,11 +662,32 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(({ image
   }, [activeMicrographId, addSpot, selectActiveSpot, setActiveTool]);
 
   /**
-   * Handle spot deletion
+   * Handle edit spot geometry
+   */
+  const handleEditGeometry = useCallback((spot: Spot) => {
+    // TODO: Implement geometry editing
+    console.log('Edit geometry for spot:', spot.name);
+    alert('Geometry editing coming soon!');
+  }, []);
+
+  /**
+   * Handle edit spot metadata
+   */
+  const handleEditMetadata = useCallback((spot: Spot) => {
+    // Open the spot metadata editor dialog
+    selectActiveSpot(spot.id);
+    // The EditSpotDialog will be opened from PropertiesPanel when user clicks edit
+    // For now, just select the spot to show it in the properties panel
+  }, [selectActiveSpot]);
+
+  /**
+   * Handle spot deletion with confirmation
    */
   const handleDeleteSpot = useCallback((spot: Spot) => {
-    deleteSpot(spot.id);
-    console.log('Spot deleted:', spot.name);
+    if (window.confirm(`Delete spot "${spot.name}"?\n\nThis action cannot be undone.`)) {
+      deleteSpot(spot.id);
+      console.log('Spot deleted:', spot.name);
+    }
   }, [deleteSpot]);
 
   /**
@@ -872,6 +893,8 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(({ image
           setContextMenuSpot(null);
           setContextMenuPosition(null);
         }}
+        onEditGeometry={handleEditGeometry}
+        onEditMetadata={handleEditMetadata}
         onDelete={handleDeleteSpot}
       />
     </div>
