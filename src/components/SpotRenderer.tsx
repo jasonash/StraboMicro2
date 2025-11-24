@@ -5,7 +5,7 @@
  * Handles visual representation including colors, labels, opacity, and selection states.
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Circle, Line, Group, Text } from 'react-konva';
 import { Spot } from '@/types/project-types';
 
@@ -45,6 +45,13 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
 }) => {
   const [isHovered, setIsHovered] = useState(false);
 
+  // Clear hover state when spot becomes selected
+  useEffect(() => {
+    if (isSelected) {
+      setIsHovered(false);
+    }
+  }, [isSelected]);
+
   if (!spot.geometryType && !spot.geometry) return null;
 
   const geometryType = spot.geometryType || spot.geometry?.type;
@@ -68,7 +75,10 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
   };
 
   const handleMouseEnter = (e: any) => {
-    setIsHovered(true);
+    // Don't set hover state when spot is selected
+    if (!isSelected) {
+      setIsHovered(true);
+    }
     const container = e.target.getStage()?.container();
     if (container) {
       container.style.cursor = 'pointer';
