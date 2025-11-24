@@ -24,7 +24,6 @@ import { EditingToolbar } from './EditingToolbar';
 import { NewSpotDialog } from './dialogs/NewSpotDialog';
 import { EditSpotDialog } from './dialogs/metadata/EditSpotDialog';
 import RulerCanvas from './RulerCanvas';
-import CursorLocation from './CursorLocation';
 import { Geometry, Spot } from '@/types/project-types';
 import { usePolygonDrawing } from '@/hooks/usePolygonDrawing';
 import { useLineDrawing } from '@/hooks/useLineDrawing';
@@ -39,6 +38,7 @@ const ZOOM_STEP = 1.1;
 
 interface TiledViewerProps {
   imagePath: string | null;
+  onCursorMove?: (coords: { x: number; y: number; unit: string; decimals: number } | null) => void;
 }
 
 export interface TiledViewerRef {
@@ -68,7 +68,7 @@ interface ThumbnailState {
   dataUrl: string;
 }
 
-export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(({ imagePath }, ref) => {
+export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(({ imagePath, onCursorMove }, ref) => {
   const stageRef = useRef<any>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const drawingLayerRef = useRef<any>(null);
@@ -88,9 +88,6 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(({ image
   const [isPanning, setIsPanning] = useState(false);
   const [lastPointerPos, setLastPointerPos] = useState<{ x: number; y: number } | null>(null);
   const [hasDragged, setHasDragged] = useState(false); // Track if user has dragged since mousedown
-
-  // Cursor location tracking (in image coordinates)
-  const [cursorImageCoords, setCursorImageCoords] = useState<{ x: number; y: number } | null>(null);
 
   // Track overlay tile loading state
   const [overlayLoadingCount, setOverlayLoadingCount] = useState(0);
@@ -611,8 +608,50 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(({ image
     // Update cursor location (convert screen coords to image coords)
     const imageX = (pos.x - position.x) / zoom;
     const imageY = (pos.y - position.y) / zoom;
-    setCursorImageCoords({ x: imageX, y: imageY });
-  }, [isPanning, lastPointerPos, position, activeTool, zoom, polygonDrawing, lineDrawing]);
+
+    // Format and send coordinates to parent
+    if (onCursorMove && activeMicrograph?.scalePixelsPerCentimeter) {
+      const scale = activeMicrograph.scalePixelsPerCentimeter;
+
+      // Convert pixel coordinates to centimeters
+      const xInCm = imageX / scale;
+      const yInCm = imageY / scale;
+
+      // Determine which unit to use (same logic as rulers)
+      let xValue: number;
+      let yValue: number;
+      let unit: string;
+      let decimals: number;
+
+      // Convert to mm first
+      const xInMm = xInCm * 10;
+      const yInMm = yInCm * 10;
+
+      if (Math.abs(xInCm) >= 0.2 || Math.abs(yInCm) >= 0.2) {
+        // Use cm for larger values
+        xValue = xInCm;
+        yValue = yInCm;
+        unit = 'cm';
+        decimals = 3;
+      } else if (Math.abs(xInMm) >= 0.2 || Math.abs(yInMm) >= 0.2) {
+        // Use mm for medium values
+        xValue = xInMm;
+        yValue = yInMm;
+        unit = 'mm';
+        decimals = 3;
+      } else {
+        // Use µm for small values
+        xValue = xInMm * 1000; // Convert mm to µm (1mm = 1000µm)
+        yValue = yInMm * 1000;
+        unit = 'µm';
+        decimals = 1;
+      }
+
+      onCursorMove({ x: xValue, y: yValue, unit, decimals });
+    } else {
+      onCursorMove?.(null);
+    }
+  }, [isPanning, lastPointerPos, position, activeTool, zoom, polygonDrawing, lineDrawing, onCursorMove, activeMicrograph]);
 
   const handleMouseUp = useCallback(() => {
     setIsPanning(false);
@@ -622,8 +661,8 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(({ image
   const handleMouseLeave = useCallback(() => {
     setIsPanning(false);
     setLastPointerPos(null);
-    setCursorImageCoords(null); // Hide cursor location when mouse leaves
-  }, []);
+    onCursorMove?.(null); // Clear coordinates in status bar
+  }, [onCursorMove]);
 
   /**
    * Handle stage click for drawing tools
@@ -1153,13 +1192,6 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(({ image
               </Typography>
             </Box>
           )}
-
-          {/* Cursor Location Display */}
-          <CursorLocation
-            x={cursorImageCoords?.x ?? null}
-            y={cursorImageCoords?.y ?? null}
-            scalePixelsPerCentimeter={activeMicrograph?.scalePixelsPerCentimeter ?? null}
-          />
         </>
       )}
 
