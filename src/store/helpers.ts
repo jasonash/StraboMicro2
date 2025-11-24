@@ -82,6 +82,27 @@ export function findSpotById(
 }
 
 /**
+ * Find a spot's parent micrograph by spot ID
+ */
+export function findSpotParentMicrograph(
+  project: ProjectMetadata | null,
+  spotId: string
+): MicrographMetadata | null {
+  if (!project?.datasets) return null;
+
+  for (const dataset of project.datasets) {
+    for (const sample of dataset.samples || []) {
+      for (const micrograph of sample.micrographs || []) {
+        const spot = micrograph.spots?.find(s => s.id === spotId);
+        if (spot) return micrograph;
+      }
+    }
+  }
+
+  return null;
+}
+
+/**
  * Update a micrograph immutably within the project hierarchy
  */
 export function updateMicrograph(

@@ -20,7 +20,7 @@ import {
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import EditIcon from '@mui/icons-material/Edit';
 import { useAppStore } from '@/store';
-import { findMicrographById, findSpotById, getMicrographParentSample, getSampleParentDataset } from '@/store/helpers';
+import { findMicrographById, findSpotById, findSpotParentMicrograph, getMicrographParentSample, getSampleParentDataset } from '@/store/helpers';
 import type {
   FractureType,
   FabricType,
@@ -571,9 +571,13 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
   const spot = spotId ? findSpotById(project, spotId) : undefined;
   const data = micrograph || spot;
 
-  // Get the parent sample
-  const sample = micrographId && project
-    ? getMicrographParentSample(project, micrographId)
+  // Get the parent micrograph for spots
+  const spotParentMicrograph = spotId && project ? findSpotParentMicrograph(project, spotId) : undefined;
+
+  // Get the parent sample (from micrograph or spot's parent micrograph)
+  const activeMicrographId = micrographId || spotParentMicrograph?.id;
+  const sample = activeMicrographId && project
+    ? getMicrographParentSample(project, activeMicrographId)
     : undefined;
 
   // Get the parent dataset
@@ -1556,81 +1560,87 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
       )}
 
       {/* Notes */}
-      {hasData(data.notes) && (
-        <Accordion
-          expanded={expanded['notes'] || false}
-          onChange={handleExpand('notes')}
-          disableGutters
-          sx={{ '&:before': { display: 'none' } }}
+      <Accordion
+        expanded={expanded['notes'] || false}
+        onChange={handleExpand('notes')}
+        disableGutters
+        sx={{ '&:before': { display: 'none' } }}
+      >
+        <AccordionSummary
+          expandIcon={<ExpandMoreIcon />}
+          sx={{
+            minHeight: 48,
+            '& .MuiAccordionSummary-content': { alignItems: 'center', gap: 1 },
+          }}
         >
-          <AccordionSummary
-            expandIcon={<ExpandMoreIcon />}
+          <Typography variant="subtitle2">Notes</Typography>
+          <Box sx={{ flexGrow: 1 }} />
+          <Box
+            onClick={handleEdit('notes')}
             sx={{
-              minHeight: 48,
-              '& .MuiAccordionSummary-content': { alignItems: 'center', gap: 1 },
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: 32,
+              height: 32,
+              mr: 1,
+              cursor: 'pointer',
+              borderRadius: '50%',
+              '&:hover': { bgcolor: 'action.hover' },
             }}
           >
-            <Typography variant="subtitle2">Notes</Typography>
-            <Box sx={{ flexGrow: 1 }} />
-            <Box
-              onClick={handleEdit('notes')}
-              sx={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                width: 32,
-                height: 32,
-                mr: 1,
-                cursor: 'pointer',
-                borderRadius: '50%',
-                '&:hover': { bgcolor: 'action.hover' },
-              }}
-            >
-              <EditIcon fontSize="small" />
-            </Box>
-          </AccordionSummary>
-          <AccordionDetails sx={{ py: 1 }}>
+            <EditIcon fontSize="small" />
+          </Box>
+        </AccordionSummary>
+        <AccordionDetails sx={{ py: 1 }}>
+          {data.notes ? (
             <Typography variant="body2">{data.notes}</Typography>
-          </AccordionDetails>
-        </Accordion>
-      )}
+          ) : (
+            <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+              No notes
+            </Typography>
+          )}
+        </AccordionDetails>
+      </Accordion>
 
       {/* Associated Files */}
-      {hasData(data.associatedFiles) && (
-        <Accordion
-          expanded={expanded['files'] || false}
-          onChange={handleExpand('files')}
-          disableGutters
-          sx={{ '&:before': { display: 'none' } }}
+      <Accordion
+        expanded={expanded['files'] || false}
+        onChange={handleExpand('files')}
+        disableGutters
+        sx={{ '&:before': { display: 'none' } }}
+      >
+        <AccordionSummary
+          expandIcon={<ExpandMoreIcon />}
+          sx={{
+            minHeight: 48,
+            '& .MuiAccordionSummary-content': { alignItems: 'center', gap: 1 },
+          }}
         >
-          <AccordionSummary
-            expandIcon={<ExpandMoreIcon />}
+          <Typography variant="subtitle2">Associated Files</Typography>
+          {hasData(data.associatedFiles) && (
+            <Chip label={`${getItemCount(data.associatedFiles)} files`} size="small" />
+          )}
+          <Box sx={{ flexGrow: 1 }} />
+          <Box
+            onClick={handleEdit('files')}
             sx={{
-              minHeight: 48,
-              '& .MuiAccordionSummary-content': { alignItems: 'center', gap: 1 },
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: 32,
+              height: 32,
+              mr: 1,
+              cursor: 'pointer',
+              borderRadius: '50%',
+              '&:hover': { bgcolor: 'action.hover' },
             }}
           >
-            <Typography variant="subtitle2">Associated Files</Typography>
-            <Chip label={`${getItemCount(data.associatedFiles)} files`} size="small" />
-            <Box sx={{ flexGrow: 1 }} />
-            <Box
-              onClick={handleEdit('files')}
-              sx={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                width: 32,
-                height: 32,
-                mr: 1,
-                cursor: 'pointer',
-                borderRadius: '50%',
-                '&:hover': { bgcolor: 'action.hover' },
-              }}
-            >
-              <EditIcon fontSize="small" />
-            </Box>
-          </AccordionSummary>
-          <AccordionDetails sx={{ py: 1 }}>
+            <EditIcon fontSize="small" />
+          </Box>
+        </AccordionSummary>
+        <AccordionDetails sx={{ py: 1 }}>
+          {hasData(data.associatedFiles) ? (
             <Stack spacing={0.5}>
               {data.associatedFiles?.map((file, index) => (
                 <Typography key={index} variant="body2">
@@ -1638,9 +1648,13 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
                 </Typography>
               ))}
             </Stack>
-          </AccordionDetails>
-        </Accordion>
-      )}
+          ) : (
+            <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+              No associated files
+            </Typography>
+          )}
+        </AccordionDetails>
+      </Accordion>
 
       {/* Links */}
       {hasData(data.links) && (
