@@ -81,6 +81,9 @@ export function EditMicrographLocationDialog({
   const [pointX, setPointX] = useState(0);
   const [pointY, setPointY] = useState(0);
 
+  // Project folder paths for constructing image paths
+  const [imagesFolder, setImagesFolder] = useState<string>('');
+
   // Get sibling micrographs with matching aspect ratio for "Copy Size" option
   const matchingSiblings = useMemo(() => {
     if (!project || !micrograph || !parentMicrograph) return [];
@@ -120,6 +123,20 @@ export function EditMicrographLocationDialog({
     }
     return siblings;
   }, [project, micrograph, parentMicrograph, locationMethod]);
+
+  // Load project folder paths when dialog opens
+  useEffect(() => {
+    if (!open || !project) return;
+
+    const loadProjectFolderPaths = async () => {
+      const folderPaths = await window.api?.getProjectFolderPaths(project.id);
+      if (folderPaths) {
+        setImagesFolder(folderPaths.images);
+      }
+    };
+
+    loadProjectFolderPaths();
+  }, [open, project]);
 
   // Load micrograph data when dialog opens
   useEffect(() => {
@@ -297,13 +314,13 @@ export function EditMicrographLocationDialog({
     onClose();
   };
 
-  if (!micrograph || !parentMicrograph || !project) {
+  if (!micrograph || !parentMicrograph || !project || !imagesFolder) {
     return null;
   }
 
-  // Use the actual image path for existing micrographs
-  // imagePath is the full absolute path set at runtime when the project is loaded
-  const childImagePath = micrograph.imagePath || '';
+  // Build full path to child micrograph image
+  // Same pattern as parent: ${folderPaths.images}/${micrograph.imagePath}
+  const childImagePath = `${imagesFolder}/${micrograph.imagePath}`;
 
   const steps = ['Location Method', 'Scale Method', 'Position'];
   const isScaledRectangle = locationMethod === 'Locate as a scaled rectangle';
