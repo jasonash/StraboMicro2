@@ -16,10 +16,10 @@ import Konva from 'konva';
 import { useAppStore } from '@/store';
 import { Spot } from '@/types/project-types';
 
-export const useImperativeGeometryEditing = (
-  overlayLayer: Konva.Layer | null,
-  stage: Konva.Stage | null
-) => {
+export const useImperativeGeometryEditing = () => {
+  // Store refs to layer and stage (will be set by parent)
+  const overlayLayerRef = useRef<Konva.Layer | null>(null);
+  const stageRefInternal = useRef<Konva.Stage | null>(null);
   // Refs for imperative Konva elements
   const editingPolygonRef = useRef<Konva.Line | null>(null);
   const vertexCirclesRef = useRef<Konva.Circle[]>([]);
@@ -34,9 +34,19 @@ export const useImperativeGeometryEditing = (
   const cancelEditingGeometry = useAppStore((state) => state.cancelEditingGeometry);
 
   /**
+   * Set the layer and stage refs (called by parent component)
+   */
+  const setRefs = useCallback((layer: Konva.Layer | null, stage: Konva.Stage | null) => {
+    overlayLayerRef.current = layer;
+    stageRefInternal.current = stage;
+  }, []);
+
+  /**
    * Update vertex and midpoint handles
    */
   const updateEditHandles = useCallback((polygon: Konva.Line, geometryType: string) => {
+    const overlayLayer = overlayLayerRef.current;
+    const stage = stageRefInternal.current;
     if (!overlayLayer || !stage) return;
 
     // Clear existing handles
@@ -192,12 +202,14 @@ export const useImperativeGeometryEditing = (
     vertexCirclesRef.current = vertexCircles;
     midpointCirclesRef.current = midpointCircles;
     overlayLayer.batchDraw();
-  }, [overlayLayer, stage]);
+  }, []);
 
   /**
    * Enter edit mode for a spot
    */
   const enterEditMode = useCallback((spot: Spot) => {
+    const overlayLayer = overlayLayerRef.current;
+    const stage = stageRefInternal.current;
     if (!overlayLayer || !stage) {
       console.error('Cannot enter edit mode: overlay layer or stage not ready');
       return;
@@ -248,7 +260,7 @@ export const useImperativeGeometryEditing = (
     updateEditHandles(polygon, geometryType);
 
     // Note: The React-rendered spot should be hidden via the `isEditing` prop in SpotRenderer
-  }, [overlayLayer, stage, startEditingSpot, updateEditHandles]);
+  }, [startEditingSpot, updateEditHandles]);
 
   /**
    * Clean up all imperative editing elements
@@ -283,10 +295,10 @@ export const useImperativeGeometryEditing = (
     editingSpotIdRef.current = null;
 
     // Redraw overlay
-    overlayLayer?.batchDraw();
+    overlayLayerRef.current?.batchDraw();
 
     console.log('Imperative edit mode cleaned up');
-  }, [overlayLayer]);
+  }, []);
 
   /**
    * Save editing changes
@@ -358,10 +370,11 @@ export const useImperativeGeometryEditing = (
       }
     });
 
-    overlayLayer?.batchDraw();
-  }, [overlayLayer]);
+    overlayLayerRef.current?.batchDraw();
+  }, []);
 
   return {
+    setRefs,
     enterEditMode,
     saveEdits,
     cancelEdits,

@@ -166,10 +166,12 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(({ image
   });
 
   // Imperative geometry editing hook
-  const geometryEditing = useImperativeGeometryEditing(
-    drawingLayerRef.current,
-    stageRef.current
-  );
+  const geometryEditing = useImperativeGeometryEditing();
+
+  // Update geometry editing refs when they change
+  useEffect(() => {
+    geometryEditing.setRefs(drawingLayerRef.current, stageRef.current);
+  }, [geometryEditing, drawingLayerRef.current, stageRef.current]);
 
   /**
    * Load image metadata and initialize viewer
