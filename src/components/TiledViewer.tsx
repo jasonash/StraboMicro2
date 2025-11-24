@@ -22,6 +22,7 @@ import { SpotRenderer } from './SpotRenderer';
 import { SpotContextMenu } from './SpotContextMenu';
 import { EditingToolbar } from './EditingToolbar';
 import { NewSpotDialog } from './dialogs/NewSpotDialog';
+import { EditSpotDialog } from './dialogs/metadata/EditSpotDialog';
 import { Geometry, Spot } from '@/types/project-types';
 import { usePolygonDrawing } from '@/hooks/usePolygonDrawing';
 import { useLineDrawing } from '@/hooks/useLineDrawing';
@@ -91,6 +92,10 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(({ image
   // New Spot Dialog state
   const [newSpotDialogOpen, setNewSpotDialogOpen] = useState(false);
   const [pendingSpotGeometry, setPendingSpotGeometry] = useState<Geometry | null>(null);
+
+  // Edit Spot Dialog state
+  const [editSpotDialogOpen, setEditSpotDialogOpen] = useState(false);
+  const [editingSpot, setEditingSpot] = useState<Spot | null>(null);
 
   // Context Menu state
   const [contextMenuSpot, setContextMenuSpot] = useState<Spot | null>(null);
@@ -720,8 +725,8 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(({ image
   const handleEditMetadata = useCallback((spot: Spot) => {
     // Open the spot metadata editor dialog
     selectActiveSpot(spot.id);
-    // The EditSpotDialog will be opened from PropertiesPanel when user clicks edit
-    // For now, just select the spot to show it in the properties panel
+    setEditingSpot(spot);
+    setEditSpotDialogOpen(true);
   }, [selectActiveSpot]);
 
   /**
@@ -932,6 +937,18 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(({ image
           geometry={pendingSpotGeometry}
           micrographId={activeMicrographId}
           existingSpots={activeMicrograph?.spots || []}
+        />
+      )}
+
+      {/* Edit Spot Dialog */}
+      {editingSpot && (
+        <EditSpotDialog
+          isOpen={editSpotDialogOpen}
+          onClose={() => {
+            setEditSpotDialogOpen(false);
+            setEditingSpot(null);
+          }}
+          spotId={editingSpot.id}
         />
       )}
 
