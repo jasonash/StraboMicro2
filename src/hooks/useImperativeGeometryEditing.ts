@@ -231,16 +231,51 @@ export const useImperativeGeometryEditing = (refs: GeometryEditingRefs) => {
 
     // Determine geometry type
     const geometryType = spot.geometryType || spot.geometry?.type || 'polygon';
+    const isPoint = geometryType === 'point' || geometryType === 'Point';
     const isClosed = geometryType === 'polygon' || geometryType === 'Polygon';
 
-    // Convert geometry to flat points array
+    const scale = stage.scaleX();
+
+    // Handle point editing differently - just a draggable circle
+    if (isPoint && geometry.length > 0) {
+      const point = geometry[0];
+      const circle = new Konva.Circle({
+        x: point.X,
+        y: point.Y,
+        radius: 8 / scale, // Slightly larger for easier dragging
+        fill: '#ff9900', // Orange to indicate editing
+        stroke: '#ffffff',
+        strokeWidth: 2 / scale,
+        draggable: true,
+        listening: true,
+      });
+
+      // Prevent stage dragging
+      circle.on('dragstart', (e) => {
+        e.cancelBubble = true;
+      });
+
+      circle.on('dragmove', (e) => {
+        e.cancelBubble = true;
+      });
+
+      circle.on('dragend', (e) => {
+        e.cancelBubble = true;
+      });
+
+      editingPolygonRef.current = circle as any; // Store as polygon ref for cleanup
+      overlayLayer.add(circle);
+      overlayLayer.batchDraw();
+      return; // Don't create handles for points
+    }
+
+    // Convert geometry to flat points array for lines/polygons
     const points: number[] = [];
     geometry.forEach(p => {
       points.push(p.X, p.Y);
     });
 
-    // Create the temporary editing polygon imperatively
-    const scale = stage.scaleX();
+    // Create the temporary editing polygon/line imperatively
     const polygon = new Konva.Line({
       points: points,
       stroke: '#ff9900', // Orange to indicate editing
@@ -269,7 +304,7 @@ export const useImperativeGeometryEditing = (refs: GeometryEditingRefs) => {
     editingPolygonRef.current = polygon;
     overlayLayer.add(polygon);
 
-    // Create editing handles
+    // Create editing handles for lines/polygons
     updateEditHandles(polygon, geometryType);
 
     // Note: The React-rendered spot should be hidden via the `isEditing` prop in SpotRenderer
@@ -321,19 +356,29 @@ export const useImperativeGeometryEditing = (refs: GeometryEditingRefs) => {
 
     console.log('Saving imperative edits');
 
-    // Get final geometry from polygon
-    const polygon = editingPolygonRef.current;
-    const points = polygon.points();
-    const polygonX = polygon.x();
-    const polygonY = polygon.y();
+    const shape = editingPolygonRef.current;
+    let newGeometry: Array<{ X: number; Y: number }> = [];
 
-    // Convert to geometry format
-    const newGeometry: Array<{ X: number; Y: number }> = [];
-    for (let i = 0; i < points.length; i += 2) {
-      newGeometry.push({
-        X: points[i] + polygonX,
-        Y: points[i + 1] + polygonY,
-      });
+    // Check if it's a Circle (point) or Line (polygon/line)
+    if (shape instanceof Konva.Circle) {
+      // For points, just get the circle's position
+      newGeometry = [{
+        X: shape.x(),
+        Y: shape.y(),
+      }];
+    } else {
+      // For polygons/lines, get points from the Line shape
+      const points = shape.points();
+      const shapeX = shape.x();
+      const shapeY = shape.y();
+
+      // Convert to geometry format
+      for (let i = 0; i < points.length; i += 2) {
+        newGeometry.push({
+          X: points[i] + shapeX,
+          Y: points[i + 1] + shapeY,
+        });
+      }
     }
 
     // Update the editing geometry in store
@@ -363,25 +408,34 @@ export const useImperativeGeometryEditing = (refs: GeometryEditingRefs) => {
   const updateHandleSizes = useCallback((newScale: number) => {
     if (!editingPolygonRef.current) return;
 
-    // Update polygon stroke width
-    editingPolygonRef.current.strokeWidth(3 / newScale);
+    const shape = editingPolygonRef.current;
 
-    // Update vertex circles
-    vertexCirclesRef.current.forEach(circle => {
-      circle.radius(6 / newScale);
-      circle.strokeWidth(2 / newScale);
-    });
+    // Check if it's a Circle (point) or Line (polygon/line)
+    if (shape instanceof Konva.Circle) {
+      // For points, update the circle's size
+      shape.radius(8 / newScale);
+      shape.strokeWidth(2 / newScale);
+    } else {
+      // For polygons/lines, update stroke width
+      shape.strokeWidth(3 / newScale);
 
-    // Update midpoint circles
-    midpointCirclesRef.current.forEach(circle => {
-      if (circle.getAttr('isConverted')) {
+      // Update vertex circles
+      vertexCirclesRef.current.forEach(circle => {
         circle.radius(6 / newScale);
         circle.strokeWidth(2 / newScale);
-      } else {
-        circle.radius(4 / newScale);
-        circle.strokeWidth(1 / newScale);
-      }
-    });
+      });
+
+      // Update midpoint circles
+      midpointCirclesRef.current.forEach(circle => {
+        if (circle.getAttr('isConverted')) {
+          circle.radius(6 / newScale);
+          circle.strokeWidth(2 / newScale);
+        } else {
+          circle.radius(4 / newScale);
+          circle.strokeWidth(1 / newScale);
+        }
+      });
+    }
 
     refs.layerRef.current?.batchDraw();
   }, [refs]);
