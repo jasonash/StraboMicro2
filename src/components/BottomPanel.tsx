@@ -61,7 +61,7 @@ const BottomPanel: React.FC = () => {
       {/* Panel content */}
       <Box sx={{ flex: 1, overflow: 'auto' }}>
         <DetailedNotesPanel
-          micrographId={activeMicrographId || undefined}
+          micrographId={activeSpotId ? undefined : (activeMicrographId || undefined)}
           spotId={activeSpotId || undefined}
           onEditSection={(sectionId) => setOpenDialog(sectionId)}
           onViewAllNotes={() => setOpenDialog('detailedNotes')}
@@ -221,7 +221,7 @@ const BottomPanel: React.FC = () => {
         <DetailedNotesDialog
           isOpen={true}
           onClose={() => setOpenDialog(null)}
-          micrographId={activeMicrographId || undefined}
+          micrographId={activeSpotId ? undefined : (activeMicrographId || undefined)}
           spotId={activeSpotId || undefined}
           onEditSection={(sectionId) => setOpenDialog(sectionId)}
         />
