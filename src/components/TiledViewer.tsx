@@ -540,6 +540,12 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(({ image
     // Reset drag tracking
     setHasDragged(false);
 
+    // Don't enable panning if we clicked on a draggable shape (editing handles)
+    const target = e.target;
+    if (target && target.draggable && target.draggable()) {
+      return; // Clicked on a draggable element, don't start panning
+    }
+
     // Only enable panning if no drawing tool is active
     if (!activeTool || activeTool === 'select') {
       setIsPanning(true);
