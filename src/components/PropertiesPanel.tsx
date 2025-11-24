@@ -197,7 +197,7 @@ export function PropertiesPanel() {
 
         <Box sx={{ flex: '0 0 auto', overflow: 'auto', mb: 2 }}>
           <MetadataSummary
-            micrographId={activeMicrographId || undefined}
+            micrographId={activeSpotId ? undefined : (activeMicrographId || undefined)}
             spotId={activeSpotId || undefined}
             onEditSection={(sectionId) => setOpenDialog(sectionId)}
           />
@@ -206,7 +206,7 @@ export function PropertiesPanel() {
         {/* Detailed Notes Section */}
         <Box sx={{ flex: '1 1 auto', overflow: 'auto', borderTop: 1, borderColor: 'divider', mt: 'auto' }}>
           <DetailedNotesPanel
-            micrographId={activeMicrographId || undefined}
+            micrographId={activeSpotId ? undefined : (activeMicrographId || undefined)}
             spotId={activeSpotId || undefined}
             onEditSection={(sectionId) => setOpenDialog(sectionId)}
             onViewAllNotes={() => setOpenDialog('detailedNotes')}
