@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Tabs, Tab, Box } from '@mui/material';
 import { ProjectTree } from './ProjectTree';
+import { GroupsPanel } from './GroupsPanel';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -62,7 +63,7 @@ const Sidebar: React.FC = () => {
           <ProjectTree />
         </TabPanel>
         <TabPanel value={activeTab} index={1}>
-          {/* Groups list will go here */}
+          <GroupsPanel />
         </TabPanel>
         <TabPanel value={activeTab} index={2}>
           {/* Spots list will go here */}

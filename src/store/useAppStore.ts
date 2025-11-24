@@ -17,6 +17,7 @@ import {
   SampleMetadata,
   MicrographMetadata,
   Spot,
+  GroupMetadata,
 } from '@/types/project-types';
 import {
   updateMicrograph,
@@ -108,6 +109,14 @@ interface AppState {
   addSpot: (micrographId: string, spot: Spot) => void;
   updateSpotData: (id: string, updates: Partial<Spot>) => void;
   deleteSpot: (id: string) => void;
+
+  // ========== CRUD: GROUP ==========
+  createGroup: (group: GroupMetadata) => void;
+  updateGroup: (id: string, updates: Partial<GroupMetadata>) => void;
+  deleteGroup: (id: string) => void;
+  addMicrographToGroup: (groupId: string, micrographId: string) => void;
+  removeMicrographFromGroup: (groupId: string, micrographId: string) => void;
+  setGroupExpanded: (groupId: string, expanded: boolean) => void;
 
   // ========== VIEWER ACTIONS ==========
   setActiveTool: (tool: DrawingTool) => void;
@@ -472,6 +481,91 @@ export const useAppStore = create<AppState>()(
               selectedSpotIds: state.selectedSpotIds.filter(sid => sid !== id),
               spotIndex: buildSpotIndex(newProject),
             };
+          }),
+
+          // ========== CRUD: GROUP ==========
+
+          createGroup: (group) => set((state) => {
+            if (!state.project) return state;
+
+            const newProject = structuredClone(state.project);
+            newProject.groups = [...(newProject.groups || []), group];
+
+            return {
+              project: newProject,
+              isDirty: true,
+            };
+          }),
+
+          updateGroup: (id, updates) => set((state) => {
+            if (!state.project) return state;
+
+            const newProject = structuredClone(state.project);
+            const group = newProject.groups?.find(g => g.id === id);
+
+            if (group) {
+              Object.assign(group, updates);
+            }
+
+            return { project: newProject, isDirty: true };
+          }),
+
+          deleteGroup: (id) => set((state) => {
+            if (!state.project) return state;
+
+            const newProject = structuredClone(state.project);
+            newProject.groups = newProject.groups?.filter(g => g.id !== id) || [];
+
+            return {
+              project: newProject,
+              isDirty: true,
+            };
+          }),
+
+          addMicrographToGroup: (groupId, micrographId) => set((state) => {
+            if (!state.project) return state;
+
+            const newProject = structuredClone(state.project);
+            const group = newProject.groups?.find(g => g.id === groupId);
+
+            if (group) {
+              // Initialize micrographs array if it doesn't exist
+              if (!group.micrographs) {
+                group.micrographs = [];
+              }
+              // Only add if not already present
+              if (!group.micrographs.includes(micrographId)) {
+                group.micrographs.push(micrographId);
+              }
+            }
+
+            return { project: newProject, isDirty: true };
+          }),
+
+          removeMicrographFromGroup: (groupId, micrographId) => set((state) => {
+            if (!state.project) return state;
+
+            const newProject = structuredClone(state.project);
+            const group = newProject.groups?.find(g => g.id === groupId);
+
+            if (group && group.micrographs) {
+              group.micrographs = group.micrographs.filter(id => id !== micrographId);
+            }
+
+            return { project: newProject, isDirty: true };
+          }),
+
+          setGroupExpanded: (groupId, expanded) => set((state) => {
+            if (!state.project) return state;
+
+            const newProject = structuredClone(state.project);
+            const group = newProject.groups?.find(g => g.id === groupId);
+
+            if (group) {
+              group.isExpanded = expanded;
+            }
+
+            return { project: newProject, isDirty: true };
           }),
 
           // ========== VIEWER ACTIONS ==========
