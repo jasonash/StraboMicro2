@@ -689,6 +689,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(({ image
             }}
           >
             <Layer
+              key="image-layer"
               x={position.x}
               y={position.y}
               scaleX={zoom}
@@ -754,6 +755,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(({ image
 
             {/* Spots Layer - render all saved spots */}
             <Layer
+              key="spots-layer"
               x={position.x}
               y={position.y}
               scaleX={zoom}
@@ -779,6 +781,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(({ image
 
             {/* Drawing Layer - for temporary drawing in progress */}
             <Layer
+              key="drawing-layer"
               ref={drawingLayerRef}
               x={position.x}
               y={position.y}
