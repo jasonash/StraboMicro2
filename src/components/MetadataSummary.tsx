@@ -13,7 +13,6 @@ import {
   AccordionSummary,
   AccordionDetails,
   Typography,
-  IconButton,
   Box,
   Stack,
   Chip,
@@ -627,13 +626,22 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
         >
           <Typography variant="subtitle2">Project Metadata</Typography>
           <Box sx={{ flexGrow: 1 }} />
-          <IconButton
-            size="small"
+          <Box
             onClick={handleEdit('project')}
-            sx={{ mr: 1 }}
+            sx={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: 32,
+              height: 32,
+              mr: 1,
+              cursor: 'pointer',
+              borderRadius: '50%',
+              '&:hover': { bgcolor: 'action.hover' },
+            }}
           >
             <EditIcon fontSize="small" />
-          </IconButton>
+          </Box>
         </AccordionSummary>
         <AccordionDetails sx={{ py: 1 }}>
           <Stack spacing={0.5}>
@@ -675,13 +683,22 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
           >
             <Typography variant="subtitle2">Dataset Metadata</Typography>
             <Box sx={{ flexGrow: 1 }} />
-            <IconButton
-              size="small"
+            <Box
               onClick={handleEdit('dataset')}
-              sx={{ mr: 1 }}
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: 32,
+                height: 32,
+                mr: 1,
+                cursor: 'pointer',
+                borderRadius: '50%',
+                '&:hover': { bgcolor: 'action.hover' },
+              }}
             >
               <EditIcon fontSize="small" />
-            </IconButton>
+            </Box>
           </AccordionSummary>
           <AccordionDetails sx={{ py: 1 }}>
             <Stack spacing={0.5}>
@@ -718,13 +735,22 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
           >
             <Typography variant="subtitle2">Sample Metadata</Typography>
             <Box sx={{ flexGrow: 1 }} />
-            <IconButton
-              size="small"
+            <Box
               onClick={handleEdit('sample')}
-              sx={{ mr: 1 }}
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: 32,
+                height: 32,
+                mr: 1,
+                cursor: 'pointer',
+                borderRadius: '50%',
+                '&:hover': { bgcolor: 'action.hover' },
+              }}
             >
               <EditIcon fontSize="small" />
-            </IconButton>
+            </Box>
           </AccordionSummary>
           <AccordionDetails sx={{ py: 1 }}>
             <Stack spacing={0.5}>
@@ -802,13 +828,22 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
             {micrographId ? 'Micrograph' : 'Spot'} Metadata
           </Typography>
           <Box sx={{ flexGrow: 1 }} />
-          <IconButton
-            size="small"
+          <Box
             onClick={handleEdit(micrographId ? 'micrograph' : 'spot')}
-            sx={{ mr: 1 }}
+            sx={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: 32,
+              height: 32,
+              mr: 1,
+              cursor: 'pointer',
+              borderRadius: '50%',
+              '&:hover': { bgcolor: 'action.hover' },
+            }}
           >
             <EditIcon fontSize="small" />
-          </IconButton>
+          </Box>
         </AccordionSummary>
         <AccordionDetails sx={{ py: 1 }}>
           <Stack spacing={0.5}>
@@ -870,13 +905,22 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
               <Chip label={`${data.mineralogy.minerals.length} minerals`} size="small" />
             )}
             <Box sx={{ flexGrow: 1 }} />
-            <IconButton
-              size="small"
+            <Box
               onClick={handleEdit('mineralogy')}
-              sx={{ mr: 1 }}
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: 32,
+                height: 32,
+                mr: 1,
+                cursor: 'pointer',
+                borderRadius: '50%',
+                '&:hover': { bgcolor: 'action.hover' },
+              }}
             >
               <EditIcon fontSize="small" />
-            </IconButton>
+            </Box>
           </AccordionSummary>
           <AccordionDetails sx={{ py: 1 }}>
             <Stack spacing={1}>
@@ -939,13 +983,22 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
               size="small"
             />
             <Box sx={{ flexGrow: 1 }} />
-            <IconButton
-              size="small"
+            <Box
               onClick={handleEdit('grain')}
-              sx={{ mr: 1 }}
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: 32,
+                height: 32,
+                mr: 1,
+                cursor: 'pointer',
+                borderRadius: '50%',
+                '&:hover': { bgcolor: 'action.hover' },
+              }}
             >
               <EditIcon fontSize="small" />
-            </IconButton>
+            </Box>
           </AccordionSummary>
           <AccordionDetails sx={{ py: 1 }}>
             <Stack spacing={1.5}>
@@ -1019,13 +1072,22 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
             <Typography variant="subtitle2">Fabric Info</Typography>
             <Chip label={`${getItemCount(data.fabricInfo?.fabrics)} fabrics`} size="small" />
             <Box sx={{ flexGrow: 1 }} />
-            <IconButton
-              size="small"
+            <Box
               onClick={handleEdit('fabric')}
-              sx={{ mr: 1 }}
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: 32,
+                height: 32,
+                mr: 1,
+                cursor: 'pointer',
+                borderRadius: '50%',
+                '&:hover': { bgcolor: 'action.hover' },
+              }}
             >
               <EditIcon fontSize="small" />
-            </IconButton>
+            </Box>
           </AccordionSummary>
           <AccordionDetails sx={{ py: 1 }}>
             <Stack spacing={1.5}>
@@ -1065,13 +1127,22 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
             <Typography variant="subtitle2">Clastic Deformation Bands</Typography>
             <Chip label={`${getItemCount(data.clasticDeformationBandInfo?.bands)} bands`} size="small" />
             <Box sx={{ flexGrow: 1 }} />
-            <IconButton
-              size="small"
+            <Box
               onClick={handleEdit('clastic')}
-              sx={{ mr: 1 }}
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: 32,
+                height: 32,
+                mr: 1,
+                cursor: 'pointer',
+                borderRadius: '50%',
+                '&:hover': { bgcolor: 'action.hover' },
+              }}
             >
               <EditIcon fontSize="small" />
-            </IconButton>
+            </Box>
           </AccordionSummary>
           <AccordionDetails sx={{ py: 1 }}>
             <Stack spacing={0.5}>
@@ -1103,13 +1174,22 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
             <Typography variant="subtitle2">Faults and Shear Zones</Typography>
             <Chip label={`${getItemCount(data.faultsShearZonesInfo?.faultsShearZones)} items`} size="small" />
             <Box sx={{ flexGrow: 1 }} />
-            <IconButton
-              size="small"
+            <Box
               onClick={handleEdit('faultsShearZones')}
-              sx={{ mr: 1 }}
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: 32,
+                height: 32,
+                mr: 1,
+                cursor: 'pointer',
+                borderRadius: '50%',
+                '&:hover': { bgcolor: 'action.hover' },
+              }}
             >
               <EditIcon fontSize="small" />
-            </IconButton>
+            </Box>
           </AccordionSummary>
           <AccordionDetails sx={{ py: 1 }}>
             <Stack spacing={0.5}>
@@ -1141,13 +1221,22 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
             <Typography variant="subtitle2">Extinction Microstructures</Typography>
             <Chip label={`${getItemCount(data.extinctionMicrostructureInfo?.extinctionMicrostructures)} items`} size="small" />
             <Box sx={{ flexGrow: 1 }} />
-            <IconButton
-              size="small"
+            <Box
               onClick={handleEdit('extinctionMicrostructures')}
-              sx={{ mr: 1 }}
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: 32,
+                height: 32,
+                mr: 1,
+                cursor: 'pointer',
+                borderRadius: '50%',
+                '&:hover': { bgcolor: 'action.hover' },
+              }}
             >
               <EditIcon fontSize="small" />
-            </IconButton>
+            </Box>
           </AccordionSummary>
           <AccordionDetails sx={{ py: 1 }}>
             <Stack spacing={0.5}>
@@ -1179,13 +1268,22 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
             <Typography variant="subtitle2">Grain Boundary/Contact Info</Typography>
             <Chip label={`${getItemCount(data.grainBoundaryInfo?.boundaries)} items`} size="small" />
             <Box sx={{ flexGrow: 1 }} />
-            <IconButton
-              size="small"
+            <Box
               onClick={handleEdit('grainBoundary')}
-              sx={{ mr: 1 }}
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: 32,
+                height: 32,
+                mr: 1,
+                cursor: 'pointer',
+                borderRadius: '50%',
+                '&:hover': { bgcolor: 'action.hover' },
+              }}
             >
               <EditIcon fontSize="small" />
-            </IconButton>
+            </Box>
           </AccordionSummary>
           <AccordionDetails sx={{ py: 1 }}>
             <Stack spacing={0.5}>
@@ -1217,13 +1315,22 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
             <Typography variant="subtitle2">Intragrain (Single Grain) Info</Typography>
             <Chip label={`${getItemCount(data.intraGrainInfo?.grains)} items`} size="small" />
             <Box sx={{ flexGrow: 1 }} />
-            <IconButton
-              size="small"
+            <Box
               onClick={handleEdit('intraGrain')}
-              sx={{ mr: 1 }}
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: 32,
+                height: 32,
+                mr: 1,
+                cursor: 'pointer',
+                borderRadius: '50%',
+                '&:hover': { bgcolor: 'action.hover' },
+              }}
             >
               <EditIcon fontSize="small" />
-            </IconButton>
+            </Box>
           </AccordionSummary>
           <AccordionDetails sx={{ py: 1 }}>
             <Stack spacing={0.5}>
@@ -1255,13 +1362,22 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
             <Typography variant="subtitle2">Vein Info</Typography>
             <Chip label={`${getItemCount(data.veinInfo?.veins)} veins`} size="small" />
             <Box sx={{ flexGrow: 1 }} />
-            <IconButton
-              size="small"
+            <Box
               onClick={handleEdit('vein')}
-              sx={{ mr: 1 }}
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: 32,
+                height: 32,
+                mr: 1,
+                cursor: 'pointer',
+                borderRadius: '50%',
+                '&:hover': { bgcolor: 'action.hover' },
+              }}
             >
               <EditIcon fontSize="small" />
-            </IconButton>
+            </Box>
           </AccordionSummary>
           <AccordionDetails sx={{ py: 1 }}>
             <Stack spacing={0.5}>
@@ -1293,13 +1409,22 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
             <Typography variant="subtitle2">Pseudotachylyte Info</Typography>
             <Chip label={`${getItemCount(data.pseudotachylyteInfo?.pseudotachylytes)} items`} size="small" />
             <Box sx={{ flexGrow: 1 }} />
-            <IconButton
-              size="small"
+            <Box
               onClick={handleEdit('pseudotachylyte')}
-              sx={{ mr: 1 }}
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: 32,
+                height: 32,
+                mr: 1,
+                cursor: 'pointer',
+                borderRadius: '50%',
+                '&:hover': { bgcolor: 'action.hover' },
+              }}
             >
               <EditIcon fontSize="small" />
-            </IconButton>
+            </Box>
           </AccordionSummary>
           <AccordionDetails sx={{ py: 1 }}>
             <Stack spacing={1.5}>
@@ -1346,13 +1471,22 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
             <Typography variant="subtitle2">Fold Info</Typography>
             <Chip label={`${getItemCount(data.foldInfo?.folds)} folds`} size="small" />
             <Box sx={{ flexGrow: 1 }} />
-            <IconButton
-              size="small"
+            <Box
               onClick={handleEdit('fold')}
-              sx={{ mr: 1 }}
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: 32,
+                height: 32,
+                mr: 1,
+                cursor: 'pointer',
+                borderRadius: '50%',
+                '&:hover': { bgcolor: 'action.hover' },
+              }}
             >
               <EditIcon fontSize="small" />
-            </IconButton>
+            </Box>
           </AccordionSummary>
           <AccordionDetails sx={{ py: 1 }}>
             <Stack spacing={1.5}>
@@ -1392,13 +1526,22 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
             <Typography variant="subtitle2">Fracture Info</Typography>
             <Chip label={`${getItemCount(data.fractureInfo?.fractures)} fractures`} size="small" />
             <Box sx={{ flexGrow: 1 }} />
-            <IconButton
-              size="small"
+            <Box
               onClick={handleEdit('fracture')}
-              sx={{ mr: 1 }}
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: 32,
+                height: 32,
+                mr: 1,
+                cursor: 'pointer',
+                borderRadius: '50%',
+                '&:hover': { bgcolor: 'action.hover' },
+              }}
             >
               <EditIcon fontSize="small" />
-            </IconButton>
+            </Box>
           </AccordionSummary>
           <AccordionDetails sx={{ py: 1 }}>
             <Stack spacing={0.5}>
@@ -1429,13 +1572,22 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
           >
             <Typography variant="subtitle2">Notes</Typography>
             <Box sx={{ flexGrow: 1 }} />
-            <IconButton
-              size="small"
+            <Box
               onClick={handleEdit('notes')}
-              sx={{ mr: 1 }}
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: 32,
+                height: 32,
+                mr: 1,
+                cursor: 'pointer',
+                borderRadius: '50%',
+                '&:hover': { bgcolor: 'action.hover' },
+              }}
             >
               <EditIcon fontSize="small" />
-            </IconButton>
+            </Box>
           </AccordionSummary>
           <AccordionDetails sx={{ py: 1 }}>
             <Typography variant="body2">{data.notes}</Typography>
@@ -1461,13 +1613,22 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
             <Typography variant="subtitle2">Associated Files</Typography>
             <Chip label={`${getItemCount(data.associatedFiles)} files`} size="small" />
             <Box sx={{ flexGrow: 1 }} />
-            <IconButton
-              size="small"
+            <Box
               onClick={handleEdit('files')}
-              sx={{ mr: 1 }}
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: 32,
+                height: 32,
+                mr: 1,
+                cursor: 'pointer',
+                borderRadius: '50%',
+                '&:hover': { bgcolor: 'action.hover' },
+              }}
             >
               <EditIcon fontSize="small" />
-            </IconButton>
+            </Box>
           </AccordionSummary>
           <AccordionDetails sx={{ py: 1 }}>
             <Stack spacing={0.5}>
@@ -1499,13 +1660,22 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
             <Typography variant="subtitle2">Links</Typography>
             <Chip label={`${getItemCount(data.links)} links`} size="small" />
             <Box sx={{ flexGrow: 1 }} />
-            <IconButton
-              size="small"
+            <Box
               onClick={handleEdit('links')}
-              sx={{ mr: 1 }}
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: 32,
+                height: 32,
+                mr: 1,
+                cursor: 'pointer',
+                borderRadius: '50%',
+                '&:hover': { bgcolor: 'action.hover' },
+              }}
             >
               <EditIcon fontSize="small" />
-            </IconButton>
+            </Box>
           </AccordionSummary>
           <AccordionDetails sx={{ py: 1 }}>
             <Stack spacing={0.5}>
