@@ -175,8 +175,9 @@ export function EditMicrographLocationDialog({
       // Default to rectangle method
       setLocationMethod('Locate as a scaled rectangle');
       setScaleMethod('Stretch and Drag');
-      setOffsetX(100);
-      setOffsetY(100);
+      // Use 0, 0 to trigger centering logic in PlacementCanvas
+      setOffsetX(0);
+      setOffsetY(0);
       setRotation(0);
       setScaleX(1);
       setScaleY(1);
@@ -285,7 +286,7 @@ export function EditMicrographLocationDialog({
   };
 
   const handleSave = () => {
-    if (!micrograph) return;
+    if (!micrograph || !parentMicrograph) return;
 
     if (locationMethod === 'Locate as a scaled rectangle') {
       updateMicrographMetadata(micrographId, {
@@ -306,6 +307,12 @@ export function EditMicrographLocationDialog({
         scaleY: undefined,
       });
     }
+
+    // Trigger thumbnail regeneration for the parent micrograph
+    // This updates the composite thumbnail to show the new location
+    window.dispatchEvent(new CustomEvent('thumbnail-generated', {
+      detail: { micrographId: parentMicrograph.id }
+    }));
 
     onClose();
   };
