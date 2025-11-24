@@ -242,7 +242,7 @@ export const useImperativeGeometryEditing = (refs: GeometryEditingRefs) => {
       const circle = new Konva.Circle({
         x: point.X,
         y: point.Y,
-        radius: 8 / scale, // Slightly larger for easier dragging
+        radius: 6 / scale, // Same size as vertex handles
         fill: '#ff9900', // Orange to indicate editing
         stroke: '#ffffff',
         strokeWidth: 2 / scale,
@@ -412,8 +412,8 @@ export const useImperativeGeometryEditing = (refs: GeometryEditingRefs) => {
 
     // Check if it's a Circle (point) or Line (polygon/line)
     if (shape instanceof Konva.Circle) {
-      // For points, update the circle's size
-      shape.radius(8 / newScale);
+      // For points, update the circle's size (same as vertex handles)
+      shape.radius(6 / newScale);
       shape.strokeWidth(2 / newScale);
     } else {
       // For polygons/lines, update stroke width
