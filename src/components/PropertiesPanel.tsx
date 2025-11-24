@@ -122,8 +122,8 @@ export function PropertiesPanel() {
   const sampleId = findSampleIdForMicrograph();
   const datasetId = findDatasetIdForMicrograph();
 
-  // Determine what type of entity is selected
-  const selectionType = activeMicrographId ? 'micrograph' : activeSpotId ? 'spot' : null;
+  // Determine what type of entity is selected (check spot first since it's more specific)
+  const selectionType = activeSpotId ? 'spot' : activeMicrographId ? 'micrograph' : null;
 
   // Get appropriate data types based on selection
   const dataTypes = selectionType === 'micrograph'
