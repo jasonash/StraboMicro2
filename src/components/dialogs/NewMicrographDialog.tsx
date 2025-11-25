@@ -2600,22 +2600,20 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
       case 1:
         return (
           <Stack spacing={2}>
-            {/* Load Metadata from Previous Image - only show if there are existing micrographs with instrument data */}
-            {existingMicrographs.length > 0 && (
-              <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
-                <Typography variant="body2" sx={{ whiteSpace: 'nowrap' }}>
-                  Load Metadata from Previous Image
-                </Typography>
+            {/* Top row: Load from existing (left) and Find in Database (right) */}
+            <Box sx={{ display: 'flex', gap: 2, alignItems: 'flex-start' }}>
+              {/* Load Metadata from Previous Image - only show if there are existing micrographs with instrument data */}
+              {existingMicrographs.length > 0 && (
                 <TextField
                   select
-                  size="small"
+                  label="Load Metadata from Previous Image"
                   value=""
                   onChange={(e) => {
                     if (e.target.value) {
                       handleCopyFromExisting(e.target.value);
                     }
                   }}
-                  sx={{ minWidth: 200 }}
+                  sx={{ minWidth: 280 }}
                 >
                   <MenuItem value="">Select...</MenuItem>
                   {existingMicrographs.map((micro) => (
@@ -2624,8 +2622,18 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
                     </MenuItem>
                   ))}
                 </TextField>
-              </Box>
-            )}
+              )}
+
+              <Box sx={{ flexGrow: 1 }} />
+
+              <Button
+                variant="text"
+                onClick={() => setShowInstrumentDatabase(true)}
+                sx={{ whiteSpace: 'nowrap', mt: existingMicrographs.length > 0 ? 1 : 0 }}
+              >
+                Find Instrument in Database
+              </Button>
+            </Box>
 
             <TextField
               fullWidth
@@ -2663,13 +2671,6 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
               </MenuItem>
               <MenuItem value="Other">Other</MenuItem>
             </TextField>
-
-            <Button
-              variant="outlined"
-              onClick={() => setShowInstrumentDatabase(true)}
-            >
-              Find Instrument in Database
-            </Button>
 
             {formData.instrumentType === 'Other' && (
               <TextField
