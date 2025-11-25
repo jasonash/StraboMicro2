@@ -349,15 +349,16 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
     if (!sourceMicro || !sourceMicro.instrument) return;
 
     const inst = sourceMicro.instrument;
+    const sourceDataType = inst.dataType || '';
+    const sourceImageType = sourceMicro.imageType || '';
 
     // Copy all instrument-related fields
-    // Note: dataType and imageType are NOT copied because their dropdown options vary
-    // based on instrumentType, and legacy data may have values that don't match current options
+    // First set instrumentType and other non-dependent fields
     setFormData(prev => ({
       ...prev,
       instrumentType: inst.instrumentType || '',
       otherInstrumentType: inst.otherInstrumentType || '',
-      // dataType and imageType intentionally not copied - user must select from available options
+      // dataType and imageType set separately via setTimeout to allow dropdowns to populate
       instrumentBrand: inst.instrumentBrand || '',
       instrumentModel: inst.instrumentModel || '',
       university: inst.university || '',
@@ -424,6 +425,20 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
         model: d.detectorModel || '',
       })));
     }
+
+    // Set dataType and imageType after a short delay to allow dropdowns to populate
+    // based on the newly set instrumentType
+    setTimeout(() => {
+      if (sourceDataType) {
+        setFormData(prev => ({ ...prev, dataType: sourceDataType }));
+      }
+      // Set imageType after another delay to allow it to populate based on dataType
+      setTimeout(() => {
+        if (sourceImageType) {
+          setFormData(prev => ({ ...prev, imageType: sourceImageType }));
+        }
+      }, 50);
+    }, 50);
 
     console.log('[NewMicrographDialog] Copied metadata from micrograph:', sourceMicro.name);
   };
