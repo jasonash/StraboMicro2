@@ -1986,7 +1986,7 @@ ipcMain.handle('auth:login', async (event, email, password, restServer) => {
  */
 ipcMain.handle('auth:logout', async (event, restServer) => {
   try {
-    const tokens = tokenService.getTokens();
+    const tokens = await tokenService.getTokens();
 
     if (tokens && tokens.accessToken) {
       const baseUrl = getRestServerFromPreferences(restServer);
@@ -2016,14 +2016,14 @@ ipcMain.handle('auth:logout', async (event, restServer) => {
     }
 
     // Always clear local tokens regardless of server response
-    tokenService.clearTokens();
+    await tokenService.clearTokens();
 
     log.info('[Auth] Logged out');
     return { success: true };
   } catch (error) {
     log.error('[Auth] Logout error:', error);
     // Still clear local tokens on error
-    tokenService.clearTokens();
+    await tokenService.clearTokens();
     return { success: true };
   }
 });
@@ -2035,7 +2035,7 @@ ipcMain.handle('auth:logout', async (event, restServer) => {
  */
 ipcMain.handle('auth:refresh', async (event, restServer) => {
   try {
-    const tokens = tokenService.getTokens();
+    const tokens = await tokenService.getTokens();
 
     if (!tokens || !tokens.refreshToken) {
       log.warn('[Auth] No refresh token available');
@@ -2054,7 +2054,7 @@ ipcMain.handle('auth:refresh', async (event, restServer) => {
     if (!response.ok) {
       log.error('[Auth] Token refresh failed - session expired');
       // Clear tokens since refresh failed
-      tokenService.clearTokens();
+      await tokenService.clearTokens();
       return {
         success: false,
         error: 'Session expired. Please log in again.',
@@ -2083,7 +2083,7 @@ ipcMain.handle('auth:refresh', async (event, restServer) => {
  */
 ipcMain.handle('auth:check', async () => {
   try {
-    const tokens = tokenService.getTokens();
+    const tokens = await tokenService.getTokens();
 
     if (!tokens) {
       return { isLoggedIn: false, user: null };
@@ -2118,7 +2118,7 @@ ipcMain.handle('auth:check', async () => {
  */
 ipcMain.handle('auth:get-token', async () => {
   try {
-    const tokens = tokenService.getTokens();
+    const tokens = await tokenService.getTokens();
 
     if (!tokens) {
       return { token: null };

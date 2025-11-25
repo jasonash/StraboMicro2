@@ -14,7 +14,6 @@
  */
 
 const { safeStorage } = require('electron');
-const Store = require('electron-store').default;
 const log = require('electron-log');
 
 // Token data structure stored encrypted
@@ -25,20 +24,38 @@ const log = require('electron-log');
 //   user: { pkey: string, email: string, name: string }
 // }
 
-class TokenService {
-  constructor() {
-    this.store = new Store({
+// Store instance - lazily initialized
+let store = null;
+
+/**
+ * Initialize the electron-store (ESM module requires dynamic import)
+ */
+async function getStore() {
+  if (store) {
+    return store;
+  }
+
+  try {
+    // Dynamic import for ESM module
+    const { default: Store } = await import('electron-store');
+    store = new Store({
       name: 'strabomicro-tokens',
       // Don't use electron-store's encryption - we use safeStorage instead
     });
+    return store;
+  } catch (error) {
+    log.error('[TokenService] Failed to initialize store:', error);
+    throw error;
   }
+}
 
+const tokenService = {
   /**
    * Check if secure storage is available on this system
    */
   isEncryptionAvailable() {
     return safeStorage.isEncryptionAvailable();
-  }
+  },
 
   /**
    * Get the storage backend being used (for warning on Linux)
@@ -49,7 +66,7 @@ class TokenService {
       return safeStorage.getSelectedStorageBackend();
     }
     return 'unknown';
-  }
+  },
 
   /**
    * Save tokens securely
@@ -82,44 +99,51 @@ class TokenService {
       const encryptedBase64 = encrypted.toString('base64');
 
       // Store encrypted data
-      this.store.set('tokens', encryptedBase64);
+      const s = await getStore();
+      s.set('tokens', encryptedBase64);
 
       log.info('[TokenService] Tokens saved securely for user:', user.email);
     } catch (error) {
       log.error('[TokenService] Failed to save tokens:', error);
       throw error;
     }
-  }
+  },
 
   /**
    * Retrieve and decrypt stored tokens
    * @returns {object|null} Token data or null if not found/invalid
    */
-  getTokens() {
-    const encryptedBase64 = this.store.get('tokens');
-    if (!encryptedBase64) {
-      return null;
-    }
-
+  async getTokens() {
     try {
+      const s = await getStore();
+      const encryptedBase64 = s.get('tokens');
+      if (!encryptedBase64) {
+        return null;
+      }
+
       const encrypted = Buffer.from(encryptedBase64, 'base64');
       const decrypted = safeStorage.decryptString(encrypted);
       return JSON.parse(decrypted);
     } catch (error) {
       log.error('[TokenService] Failed to decrypt tokens - clearing stored data:', error);
       // Clear corrupted/invalid tokens
-      this.clearTokens();
+      await this.clearTokens();
       return null;
     }
-  }
+  },
 
   /**
    * Clear all stored tokens (logout)
    */
-  clearTokens() {
-    this.store.delete('tokens');
-    log.info('[TokenService] Tokens cleared');
-  }
+  async clearTokens() {
+    try {
+      const s = await getStore();
+      s.delete('tokens');
+      log.info('[TokenService] Tokens cleared');
+    } catch (error) {
+      log.error('[TokenService] Failed to clear tokens:', error);
+    }
+  },
 
   /**
    * Check if the access token is expired or about to expire
@@ -132,25 +156,25 @@ class TokenService {
       return true;
     }
     return Date.now() >= (tokenData.expiresAt - bufferMs);
-  }
+  },
 
   /**
    * Check if we have a valid (non-expired) token
    * @returns {boolean}
    */
-  hasValidToken() {
-    const tokens = this.getTokens();
+  async hasValidToken() {
+    const tokens = await this.getTokens();
     return tokens !== null && !this.isTokenExpired(tokens);
-  }
+  },
 
   /**
    * Get the current user info if logged in
    * @returns {object|null} User info or null if not logged in
    */
-  getCurrentUser() {
-    const tokens = this.getTokens();
+  async getCurrentUser() {
+    const tokens = await this.getTokens();
     return tokens?.user || null;
-  }
+  },
 
   /**
    * Update only the access token (after refresh)
@@ -158,7 +182,7 @@ class TokenService {
    * @param {number} expiresIn - Seconds until new token expires
    */
   async updateAccessToken(newAccessToken, expiresIn) {
-    const currentTokens = this.getTokens();
+    const currentTokens = await this.getTokens();
     if (!currentTokens) {
       throw new Error('No existing tokens to update');
     }
@@ -172,9 +196,6 @@ class TokenService {
 
     log.info('[TokenService] Access token updated');
   }
-}
-
-// Singleton instance
-const tokenService = new TokenService();
+};
 
 module.exports = tokenService;
