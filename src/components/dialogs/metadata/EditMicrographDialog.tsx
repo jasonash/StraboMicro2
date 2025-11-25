@@ -37,6 +37,7 @@ import { Delete as DeleteIcon } from '@mui/icons-material';
 import { useAppStore } from '@/store';
 import { findMicrographById } from '@/store/helpers';
 import { PeriodicTableModal } from '../PeriodicTableModal';
+import { InstrumentDatabaseDialog, type InstrumentData } from '../InstrumentDatabaseDialog';
 import type { InstrumentDetectorType } from '@/types/project-types';
 
 interface EditMicrographDialogProps {
@@ -204,6 +205,7 @@ export function EditMicrographDialog({ isOpen, onClose, micrographId }: EditMicr
   const [formData, setFormData] = useState<MicrographFormData>(initialFormData);
   const [detectors, setDetectors] = useState<Detector[]>([{ type: '', make: '', model: '' }]);
   const [showPeriodicTable, setShowPeriodicTable] = useState(false);
+  const [showInstrumentDatabase, setShowInstrumentDatabase] = useState(false);
 
   // Load existing micrograph data when dialog opens
   useEffect(() => {
@@ -385,6 +387,35 @@ export function EditMicrographDialog({ isOpen, onClose, micrographId }: EditMicr
   const handlePeriodicTableSelect = (selectedElements: string[]) => {
     updateField('imageType', selectedElements.join(', '));
     setShowPeriodicTable(false);
+  };
+
+  const handleInstrumentFromDatabase = (instrument: InstrumentData) => {
+    // Update form data with instrument info
+    setFormData((prev) => ({
+      ...prev,
+      instrumentType: instrument.instrumentType || prev.instrumentType,
+      instrumentBrand: instrument.instrumentBrand || '',
+      instrumentModel: instrument.instrumentModel || '',
+      university: instrument.university || '',
+      laboratory: instrument.laboratory || '',
+      dataCollectionSoftware: instrument.dataCollectionSoftware || '',
+      dataCollectionSoftwareVersion: instrument.dataCollectionSoftwareVersion || '',
+      postProcessingSoftware: instrument.postProcessingSoftware || '',
+      postProcessingSoftwareVersion: instrument.postProcessingSoftwareVersion || '',
+      filamentType: instrument.filamentType || '',
+      instrumentNotes: instrument.instrumentNotes || '',
+    }));
+
+    // Update detectors
+    if (instrument.detectors && instrument.detectors.length > 0) {
+      setDetectors(
+        instrument.detectors.map((d) => ({
+          type: d.detectorType || '',
+          make: d.detectorMake || '',
+          model: d.detectorModel || '',
+        }))
+      );
+    }
   };
 
   // Determine if we need to show instrument settings step
@@ -595,6 +626,13 @@ export function EditMicrographDialog({ isOpen, onClose, micrographId }: EditMicr
           </MenuItem>
           <MenuItem value="Other">Other</MenuItem>
         </TextField>
+
+        <Button
+          variant="outlined"
+          onClick={() => setShowInstrumentDatabase(true)}
+        >
+          Find Instrument in Database
+        </Button>
 
         {formData.instrumentType === 'Other' && (
           <TextField
@@ -2213,6 +2251,12 @@ export function EditMicrographDialog({ isOpen, onClose, micrographId }: EditMicr
         onClose={() => setShowPeriodicTable(false)}
         onSelectElements={handlePeriodicTableSelect}
         initialSelection={formData.imageType.split(', ').filter((e) => e)}
+      />
+
+      <InstrumentDatabaseDialog
+        isOpen={showInstrumentDatabase}
+        onClose={() => setShowInstrumentDatabase(false)}
+        onSelect={handleInstrumentFromDatabase}
       />
     </>
   );

@@ -45,6 +45,7 @@ import {
 } from '@mui/material';
 import { useAppStore } from '@/store';
 import { PeriodicTableModal } from './PeriodicTableModal';
+import { InstrumentDatabaseDialog, type InstrumentData } from './InstrumentDatabaseDialog';
 import { ScaleBarCanvas, type Tool, type ScaleBarCanvasRef } from '../ScaleBarCanvas';
 import PlacementCanvas from './PlacementCanvas';
 import { PointPlacementCanvas } from './PointPlacementCanvas';
@@ -306,6 +307,7 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
   const [activeStep, setActiveStep] = useState(0);
   const [formData, setFormData] = useState<MicrographFormData>(initialFormData);
   const [showPeriodicTable, setShowPeriodicTable] = useState(false);
+  const [showInstrumentDatabase, setShowInstrumentDatabase] = useState(false);
   const [detectors, setDetectors] = useState<Detector[]>([{ type: '', make: '', model: '' }]);
   const [micrographPreviewUrl, setMicrographPreviewUrl] = useState<string>('');
   const [isLoadingPreview, setIsLoadingPreview] = useState(false);
@@ -1224,6 +1226,35 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
 
   const removeDetector = (index: number) => {
     setDetectors((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const handleInstrumentFromDatabase = (instrument: InstrumentData) => {
+    // Update form data with instrument info
+    setFormData((prev) => ({
+      ...prev,
+      instrumentType: instrument.instrumentType || prev.instrumentType,
+      instrumentBrand: instrument.instrumentBrand || '',
+      instrumentModel: instrument.instrumentModel || '',
+      university: instrument.university || '',
+      laboratory: instrument.laboratory || '',
+      dataCollectionSoftware: instrument.dataCollectionSoftware || '',
+      dataCollectionSoftwareVersion: instrument.dataCollectionSoftwareVersion || '',
+      postProcessingSoftware: instrument.postProcessingSoftware || '',
+      postProcessingSoftwareVersion: instrument.postProcessingSoftwareVersion || '',
+      filamentType: instrument.filamentType || '',
+      instrumentNotes: instrument.instrumentNotes || '',
+    }));
+
+    // Update detectors
+    if (instrument.detectors && instrument.detectors.length > 0) {
+      setDetectors(
+        instrument.detectors.map((d) => ({
+          type: d.detectorType || '',
+          make: d.detectorMake || '',
+          model: d.detectorModel || '',
+        }))
+      );
+    }
   };
 
   const renderOrientationStep = () => {
@@ -2433,6 +2464,13 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
               </MenuItem>
               <MenuItem value="Other">Other</MenuItem>
             </TextField>
+
+            <Button
+              variant="outlined"
+              onClick={() => setShowInstrumentDatabase(true)}
+            >
+              Find Instrument in Database
+            </Button>
 
             {formData.instrumentType === 'Other' && (
               <TextField
@@ -4350,6 +4388,12 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
         initialSelection={
           formData.imageType ? formData.imageType.split(', ').filter((e) => e.trim() !== '') : []
         }
+      />
+
+      <InstrumentDatabaseDialog
+        isOpen={showInstrumentDatabase}
+        onClose={() => setShowInstrumentDatabase(false)}
+        onSelect={handleInstrumentFromDatabase}
       />
 
       {/* Loading Overlay for Image Conversion */}
