@@ -351,12 +351,14 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
     const inst = sourceMicro.instrument;
 
     // Copy all instrument-related fields
+    // Note: imageType is NOT copied because dropdown options vary by instrument/data type
+    // and legacy data may have values that don't match current dropdown options
     setFormData(prev => ({
       ...prev,
       instrumentType: inst.instrumentType || '',
       otherInstrumentType: inst.otherInstrumentType || '',
       dataType: inst.dataType || '',
-      imageType: sourceMicro.imageType || '',
+      // imageType intentionally not copied - user must select from available options
       instrumentBrand: inst.instrumentBrand || '',
       instrumentModel: inst.instrumentModel || '',
       university: inst.university || '',
