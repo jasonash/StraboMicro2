@@ -343,6 +343,18 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
     return micrographs;
   }, [project]);
 
+  // Normalize legacy imageType values to match current dropdown options
+  const normalizeImageType = (imageType: string): string => {
+    // Map legacy values to current dropdown values
+    const imageTypeMap: { [key: string]: string } = {
+      'Secondary Electron Image (SE)': 'Secondary Electron (SE)',
+      'Backscatter Electron Image (BSE)': 'Backscatter Electron (BSE)',
+      'Forescatter Electron Image (FSE)': 'Forescatter Electron (FSE)',
+      // Add more mappings as needed for other legacy values
+    };
+    return imageTypeMap[imageType] || imageType;
+  };
+
   // Handler to copy metadata from an existing micrograph
   const handleCopyFromExisting = (micrographId: string) => {
     const sourceMicro = existingMicrographs.find(m => m.id === micrographId);
@@ -350,7 +362,7 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
 
     const inst = sourceMicro.instrument;
     const sourceDataType = inst.dataType || '';
-    const sourceImageType = sourceMicro.imageType || '';
+    const sourceImageType = normalizeImageType(sourceMicro.imageType || '');
 
     // Copy all instrument-related fields
     // First set instrumentType and other non-dependent fields
