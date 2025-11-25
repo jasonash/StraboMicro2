@@ -1420,12 +1420,19 @@ ipcMain.handle('composite:generate-thumbnail', async (event, projectId, microgra
             background: { r: 0, g: 0, b: 0, alpha: 0 }
           });
 
-          // After rotation, image size changes - get new dimensions
-          const rotatedMeta = await childImage.metadata();
+          // Calculate rotated bounding box dimensions mathematically
+          // Sharp's metadata() on a pipeline returns input metadata, not post-transform
+          const radians = (child.rotation * Math.PI) / 180;
+          const cos = Math.abs(Math.cos(radians));
+          const sin = Math.abs(Math.sin(radians));
+          const rotatedWidth = thumbChildWidth * cos + thumbChildHeight * sin;
+          const rotatedHeight = thumbChildWidth * sin + thumbChildHeight * cos;
 
           // Adjust position to account for rotation
-          const adjustedX = Math.round(centerX - rotatedMeta.width / 2);
-          const adjustedY = Math.round(centerY - rotatedMeta.height / 2);
+          const adjustedX = Math.round(centerX - rotatedWidth / 2);
+          const adjustedY = Math.round(centerY - rotatedHeight / 2);
+
+          log.info(`[IPC]   Rotation: ${child.rotation}°, Rotated size: ${Math.round(rotatedWidth)}x${Math.round(rotatedHeight)}`);
 
           compositeInputs.push({
             input: await childImage.toBuffer(),
@@ -1685,9 +1692,16 @@ ipcMain.handle('composite:rebuild-all-thumbnails', async (event, projectId, proj
                 background: { r: 0, g: 0, b: 0, alpha: 0 }
               });
 
-              const rotatedMeta = await childImage.metadata();
-              const adjustedX = Math.round(centerX - rotatedMeta.width / 2);
-              const adjustedY = Math.round(centerY - rotatedMeta.height / 2);
+              // Calculate rotated bounding box dimensions mathematically
+              // Sharp's metadata() on a pipeline returns input metadata, not post-transform
+              const radians = (child.rotation * Math.PI) / 180;
+              const cos = Math.abs(Math.cos(radians));
+              const sin = Math.abs(Math.sin(radians));
+              const rotatedWidth = thumbChildWidth * cos + thumbChildHeight * sin;
+              const rotatedHeight = thumbChildWidth * sin + thumbChildHeight * cos;
+
+              const adjustedX = Math.round(centerX - rotatedWidth / 2);
+              const adjustedY = Math.round(centerY - rotatedHeight / 2);
 
               compositeInputs.push({
                 input: await childImage.toBuffer(),
