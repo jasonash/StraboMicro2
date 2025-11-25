@@ -194,6 +194,7 @@ export function EditMicrographLocationDialog({
     }
 
     setCopySizeFromMicrographId('');
+    setIsFlipped(false);
     setStep(0);
   }, [open, project, micrographId]);
 

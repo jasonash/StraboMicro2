@@ -422,6 +422,11 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
     }
   }, [activeStep, formData.scaleMethod]);
 
+  // Reset flip state when a new micrograph file is selected
+  useEffect(() => {
+    setIsFlipped(false);
+  }, [formData.micrographFilePath]);
+
   const [scratchIdentifier, setScratchIdentifier] = useState<string | null>(null);
   const [conversionProgress, setConversionProgress] = useState<{ stage: string; percent: number } | null>(null);
 
@@ -541,6 +546,7 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
     setDetectors([]);
     setScratchIdentifier(null);
     setConversionProgress(null);
+    setIsFlipped(false);
     onClose();
   };
 
