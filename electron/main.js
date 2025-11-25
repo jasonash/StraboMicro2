@@ -1303,8 +1303,8 @@ ipcMain.handle('image:flip-horizontal', async (event, imagePath) => {
     await fs.rename(imagePath + '.tmp', imagePath);
 
     // Clear tile cache for this image so it gets re-tiled
-    const imageHash = imageConverter.getImageHash(imagePath);
-    await imageConverter.clearImageCache(imageHash);
+    const imageHash = await tileCache.generateImageHash(imagePath);
+    await tileCache.clearImageCache(imageHash);
 
     log.info(`[IPC] Successfully flipped image: ${imagePath}`);
     return { success: true, hash: imageHash };
