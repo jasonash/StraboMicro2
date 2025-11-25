@@ -81,6 +81,9 @@ export function EditMicrographLocationDialog({
   const [pointX, setPointX] = useState(0);
   const [pointY, setPointY] = useState(0);
 
+  // Opacity state for associated micrograph overlay
+  const [opacity, setOpacity] = useState(1);
+
   // Scale data state (for "Trace Scale Bar" methods)
   const [hasScaleData, setHasScaleData] = useState(false);
 
@@ -169,6 +172,7 @@ export function EditMicrographLocationDialog({
       setRotation(micro.rotation || 0);
       setScaleX(micro.scaleX || 1);
       setScaleY(micro.scaleY || 1);
+      setOpacity(micro.opacity ?? 1);
     } else if (hasPoint) {
       setLocationMethod('Locate by an approximate point');
       setScaleMethod('Trace Scale Bar'); // Default for point method
@@ -382,6 +386,7 @@ export function EditMicrographLocationDialog({
         offsetInParent: { X: offsetX, Y: offsetY },
         rotation,
         scalePixelsPerCentimeter: newChildPxPerCm,
+        opacity,
         // Clear point placement if switching methods
         pointInParent: undefined,
       });
@@ -620,7 +625,9 @@ export function EditMicrographLocationDialog({
                     : (copySizeData?.scaleY ?? scaleY)
                 }
                 copySizePixelsPerCm={copySizeData?.newImagePixelsPerCm}
+                initialOpacity={opacity}
                 onPlacementChange={handlePlacementChange}
+                onOpacityChange={setOpacity}
                 onScaleDataChange={handleScaleDataChange}
               />
             ) : (

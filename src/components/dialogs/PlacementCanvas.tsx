@@ -9,7 +9,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Stage, Layer, Image as KonvaImage, Rect, Transformer, Group, Line } from 'react-konva';
 import {
   Box, Typography, Stack, IconButton, Tooltip, Paper,
-  TextField, Select, MenuItem, FormControl, InputLabel, Grid
+  TextField, Select, MenuItem, FormControl, InputLabel, Grid, Slider
 } from '@mui/material';
 import { PanTool, RestartAlt, Timeline } from '@mui/icons-material';
 import Konva from 'konva';
@@ -26,8 +26,10 @@ interface PlacementCanvasProps {
   initialRotation?: number;
   initialScaleX?: number;
   initialScaleY?: number;
+  initialOpacity?: number; // Initial opacity (0-1), default 1
   copySizePixelsPerCm?: number; // For "Copy Size from Existing" - the calculated px/cm for the new image
   onPlacementChange: (offsetX: number, offsetY: number, rotation: number, scaleX?: number, scaleY?: number) => void;
+  onOpacityChange?: (opacity: number) => void; // Callback when opacity changes
   onScaleDataChange?: (data: {
     scaleBarLineLengthPixels?: number;
     scaleBarPhysicalLength?: number;
@@ -52,8 +54,10 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
   initialRotation = 0,
   initialScaleX = 1,
   initialScaleY = 1,
+  initialOpacity = 1,
   copySizePixelsPerCm,
   onPlacementChange,
+  onOpacityChange,
   onScaleDataChange,
 }) => {
   const stageRef = useRef<Konva.Stage>(null);
@@ -82,6 +86,8 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
     scaleY: initialScaleY,
   });
 
+  // Child overlay opacity (0-1, where 1 is fully opaque)
+  const [childOpacity, setChildOpacity] = useState(initialOpacity);
 
   // State for Pixel Conversion Factor inputs
   const [pixelInput, setPixelInput] = useState('');
@@ -1287,7 +1293,7 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
                   image={childImage}
                   width={childWidth}
                   height={childHeight}
-                  opacity={0.7}
+                  opacity={childOpacity}
                 />
 
                 {/* Border outline to make overlay visible */}
@@ -1333,6 +1339,28 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
             )}
           </Layer>
         </Stage>
+      </Box>
+
+      {/* Opacity Slider */}
+      <Box sx={{ width: CANVAS_WIDTH, display: 'flex', alignItems: 'center', gap: 2 }}>
+        <Typography variant="body2" color="text.secondary" sx={{ minWidth: 180 }}>
+          Associated Micrograph Opacity:
+        </Typography>
+        <Slider
+          value={childOpacity}
+          onChange={(_event, value) => {
+            const newOpacity = value as number;
+            setChildOpacity(newOpacity);
+            onOpacityChange?.(newOpacity);
+          }}
+          min={0}
+          max={1}
+          step={0.01}
+          sx={{ flex: 1 }}
+        />
+        <Typography variant="body2" color="text.secondary" sx={{ minWidth: 40 }}>
+          {Math.round(childOpacity * 100)}%
+        </Typography>
       </Box>
 
       <Typography variant="caption" color="text.secondary" sx={{ width: CANVAS_WIDTH, textAlign: 'center' }}>

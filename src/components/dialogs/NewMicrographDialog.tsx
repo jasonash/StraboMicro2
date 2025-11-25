@@ -106,6 +106,7 @@ interface MicrographFormData {
   rotationAngle: number;
   scaleX: number;
   scaleY: number;
+  opacity: number; // Opacity for associated micrograph overlay (0-1)
   copySizeFromMicrographId: string; // For "Copy Size from Existing Micrograph" method
   instrumentType: string;
   otherInstrumentType: string;
@@ -229,6 +230,7 @@ const initialFormData: MicrographFormData = {
   rotationAngle: 0,
   scaleX: 1,
   scaleY: 1,
+  opacity: 1,
   copySizeFromMicrographId: '',
   // Scale method will be set based on location method (defaults to 'Trace Scale Bar' initially)
   instrumentType: '',
@@ -862,7 +864,7 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
         imageHeight: formData.micrographHeight,
         width: formData.micrographWidth, // Legacy field
         height: formData.micrographHeight, // Legacy field
-        opacity: 1.0,
+        opacity: formData.opacity,
         polish: formData.micrographPolished,
         polishDescription: formData.micrographPolishDescription || undefined,
         orientationInfo,
@@ -2268,6 +2270,14 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
       }));
     };
 
+    // Handler for opacity changes from the canvas
+    const handleOpacityChange = (newOpacity: number) => {
+      setFormData((prev) => ({
+        ...prev,
+        opacity: newOpacity,
+      }));
+    };
+
     // Handler for scale data changes from the canvas
     const handleScaleDataChange = (data: {
       scaleBarLineLengthPixels?: number;
@@ -2319,8 +2329,10 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
             initialOffsetX={copySizeData?.xOffset ?? formData.offsetInParent.X}
             initialOffsetY={copySizeData?.yOffset ?? formData.offsetInParent.Y}
             initialRotation={copySizeData?.rotation ?? formData.rotationAngle}
+            initialOpacity={formData.opacity}
             copySizePixelsPerCm={copySizeData?.newImagePixelsPerCm}
             onPlacementChange={handlePlacementChange}
+            onOpacityChange={handleOpacityChange}
             onScaleDataChange={handleScaleDataChange}
           />
         </Stack>
