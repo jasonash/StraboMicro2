@@ -773,17 +773,27 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
       // Flip the child image on disk
       await window.api?.flipImageHorizontal(childScratchPath);
 
-      // Reload the child image with cache-busting
-      const img = new window.Image();
-      img.src = childScratchPath + '?t=' + Date.now();
-      img.onload = () => {
-        setChildImage(img);
+      // Reload the child image through the tile system (which will re-tile the flipped image)
+      const tileData = await window.api?.loadImageWithTiles(childScratchPath);
+      if (tileData) {
+        const mediumDataUrl = await window.api?.loadMedium(tileData.hash);
+        if (mediumDataUrl) {
+          const img = new window.Image();
+          img.onload = () => {
+            setChildImage(img);
+            setIsFlipping(false);
+          };
+          img.onerror = () => {
+            console.error('[PlacementCanvas] Failed to reload image after flip');
+            setIsFlipping(false);
+          };
+          img.src = mediumDataUrl;
+        } else {
+          setIsFlipping(false);
+        }
+      } else {
         setIsFlipping(false);
-      };
-      img.onerror = () => {
-        console.error('[PlacementCanvas] Failed to reload image after flip');
-        setIsFlipping(false);
-      };
+      }
 
       // Update the flip state
       onFlipChange(!isFlipped);

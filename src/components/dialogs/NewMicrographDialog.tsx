@@ -507,8 +507,14 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
       // Flip the image on disk
       await window.api?.flipImageHorizontal(formData.micrographFilePath);
 
-      // Update preview URL with cache-busting to force reload
-      setMicrographPreviewUrl(formData.micrographFilePath + '?t=' + Date.now());
+      // Reload the image through the tile system (which will re-tile the flipped image)
+      const tileData = await window.api?.loadImageWithTiles(formData.micrographFilePath);
+      if (tileData) {
+        const mediumDataUrl = await window.api?.loadMedium(tileData.hash);
+        if (mediumDataUrl) {
+          setMicrographPreviewUrl(mediumDataUrl);
+        }
+      }
 
       // Toggle flip state
       setIsFlipped(!isFlipped);

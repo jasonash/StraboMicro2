@@ -204,25 +204,35 @@ export const ScaleBarCanvas = forwardRef<ScaleBarCanvasRef, ScaleBarCanvasProps>
       // Flip the image on disk
       await window.api?.flipImageHorizontal(imagePath);
 
-      // Reload the image with cache-busting
-      const img = new window.Image();
-      img.src = imageUrl + '?t=' + Date.now();
-      img.onload = () => {
-        setImage(img);
-        // Re-center the image
-        const scaleX = CANVAS_WIDTH / img.width;
-        const scaleY = CANVAS_HEIGHT / img.height;
-        const initialScale = Math.min(scaleX, scaleY, 1);
-        setScale(initialScale);
-        const x = (CANVAS_WIDTH - img.width * initialScale) / 2;
-        const y = (CANVAS_HEIGHT - img.height * initialScale) / 2;
-        setStagePos({ x, y });
+      // Reload the image through the tile system (which will re-tile the flipped image)
+      const tileData = await window.api?.loadImageWithTiles(imagePath);
+      if (tileData) {
+        const mediumDataUrl = await window.api?.loadMedium(tileData.hash);
+        if (mediumDataUrl) {
+          const img = new window.Image();
+          img.onload = () => {
+            setImage(img);
+            // Re-center the image
+            const scaleX = CANVAS_WIDTH / img.width;
+            const scaleY = CANVAS_HEIGHT / img.height;
+            const initialScale = Math.min(scaleX, scaleY, 1);
+            setScale(initialScale);
+            const x = (CANVAS_WIDTH - img.width * initialScale) / 2;
+            const y = (CANVAS_HEIGHT - img.height * initialScale) / 2;
+            setStagePos({ x, y });
+            setIsFlipping(false);
+          };
+          img.onerror = () => {
+            console.error('[ScaleBarCanvas] Failed to reload image after flip');
+            setIsFlipping(false);
+          };
+          img.src = mediumDataUrl;
+        } else {
+          setIsFlipping(false);
+        }
+      } else {
         setIsFlipping(false);
-      };
-      img.onerror = () => {
-        console.error('[ScaleBarCanvas] Failed to reload image after flip');
-        setIsFlipping(false);
-      };
+      }
 
       // Update the flip state
       onFlipChange(checked);
