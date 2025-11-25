@@ -45,7 +45,7 @@ const Header: React.FC = () => {
         <Box sx={{ flex: 1, display: 'flex', justifyContent: 'center' }}>
           {isAuthenticated && user ? (
             <Typography variant="body2" color="text.secondary">
-              Signed in as{' '}
+              Logged in as{' '}
               <Box component="span" sx={{ color: 'text.primary', fontWeight: 500 }}>
                 {user.name ? `${user.name} (${user.email})` : user.email}
               </Box>
