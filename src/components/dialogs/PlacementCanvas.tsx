@@ -9,7 +9,8 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Stage, Layer, Image as KonvaImage, Rect, Transformer, Group, Line } from 'react-konva';
 import {
   Box, Typography, Stack, IconButton, Tooltip, Paper,
-  TextField, Select, MenuItem, FormControl, InputLabel, Grid, Slider
+  TextField, Select, MenuItem, FormControl, InputLabel, Grid, Slider,
+  FormControlLabel, Checkbox, CircularProgress
 } from '@mui/material';
 import { PanTool, RestartAlt, Timeline } from '@mui/icons-material';
 import Konva from 'konva';
@@ -27,6 +28,8 @@ interface PlacementCanvasProps {
   initialScaleX?: number;
   initialScaleY?: number;
   initialOpacity?: number; // Initial opacity (0-1), default 1
+  isFlipped?: boolean; // Current flip state
+  onFlipChange?: (isFlipped: boolean) => void; // Callback when flip changes
   copySizePixelsPerCm?: number; // For "Copy Size from Existing" - the calculated px/cm for the new image
   onPlacementChange: (offsetX: number, offsetY: number, rotation: number, scaleX?: number, scaleY?: number) => void;
   onOpacityChange?: (opacity: number) => void; // Callback when opacity changes
@@ -55,6 +58,8 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
   initialScaleX = 1,
   initialScaleY = 1,
   initialOpacity = 1,
+  isFlipped = false,
+  onFlipChange,
   copySizePixelsPerCm,
   onPlacementChange,
   onOpacityChange,
@@ -88,6 +93,9 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
 
   // Child overlay opacity (0-1, where 1 is fully opaque)
   const [childOpacity, setChildOpacity] = useState(initialOpacity);
+
+  // Flipping state
+  const [isFlipping, setIsFlipping] = useState(false);
 
   // State for Pixel Conversion Factor inputs
   const [pixelInput, setPixelInput] = useState('');
@@ -756,6 +764,45 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
     });
   }, [scaleMethod, widthInput, heightInput, sizeUnitInput, onScaleDataChange]);
 
+  // Handle flip checkbox change
+  const handleFlipChange = async () => {
+    if (!onFlipChange) return;
+
+    setIsFlipping(true);
+    try {
+      // Flip the child image on disk
+      await window.api?.flipImageHorizontal(childScratchPath);
+
+      // Reload the child image through the tile system (which will re-tile the flipped image)
+      const tileData = await window.api?.loadImageWithTiles(childScratchPath);
+      if (tileData) {
+        const mediumDataUrl = await window.api?.loadMedium(tileData.hash);
+        if (mediumDataUrl) {
+          const img = new window.Image();
+          img.onload = () => {
+            setChildImage(img);
+            setIsFlipping(false);
+          };
+          img.onerror = () => {
+            console.error('[PlacementCanvas] Failed to reload image after flip');
+            setIsFlipping(false);
+          };
+          img.src = mediumDataUrl;
+        } else {
+          setIsFlipping(false);
+        }
+      } else {
+        setIsFlipping(false);
+      }
+
+      // Update the flip state
+      onFlipChange(!isFlipped);
+    } catch (error) {
+      console.error('[PlacementCanvas] Error flipping image:', error);
+      setIsFlipping(false);
+    }
+  };
+
   // Pan/Zoom handlers
   const handleMouseDown = (e: Konva.KonvaEventObject<MouseEvent>) => {
     const stage = e.target.getStage();
@@ -1234,7 +1281,7 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
         </Paper>
       )}
 
-      {/* Opacity Slider */}
+      {/* Opacity Slider and Flip Checkbox */}
       <Box sx={{ width: CANVAS_WIDTH, display: 'flex', alignItems: 'center', gap: 2 }}>
         <Typography variant="body2" color="text.secondary" sx={{ minWidth: 90 }}>
           Transparency:
@@ -1254,6 +1301,25 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
         <Typography variant="body2" color="text.secondary" sx={{ minWidth: 40 }}>
           {Math.round(childOpacity * 100)}%
         </Typography>
+
+        {/* Flip checkbox - only show if onFlipChange is provided */}
+        {onFlipChange && (
+          <FormControlLabel
+            control={
+              isFlipping ? (
+                <CircularProgress size={20} sx={{ mx: 1.25 }} />
+              ) : (
+                <Checkbox
+                  checked={isFlipped}
+                  onChange={handleFlipChange}
+                  size="small"
+                />
+              )
+            }
+            label="Flip?"
+            sx={{ ml: 1, mr: 0 }}
+          />
+        )}
       </Box>
 
       {/* Canvas */}

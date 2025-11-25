@@ -314,6 +314,8 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
   const [micrographPreviewUrl, setMicrographPreviewUrl] = useState<string>('');
   const [isLoadingPreview, setIsLoadingPreview] = useState(false);
   const [canvasTool, setCanvasTool] = useState<Tool>('pointer');
+  const [isFlipped, setIsFlipped] = useState(false);
+  const [isFlipping, setIsFlipping] = useState(false);
   const canvasRef = useRef<ScaleBarCanvasRef>(null);
 
   // Determine if this is an associated micrograph (has a parent) or reference (no parent)
@@ -420,6 +422,11 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
     }
   }, [activeStep, formData.scaleMethod]);
 
+  // Reset flip state when a new micrograph file is selected
+  useEffect(() => {
+    setIsFlipped(false);
+  }, [formData.micrographFilePath]);
+
   const [scratchIdentifier, setScratchIdentifier] = useState<string | null>(null);
   const [conversionProgress, setConversionProgress] = useState<{ stage: string; percent: number } | null>(null);
 
@@ -496,6 +503,33 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
     setActiveStep((prevActiveStep) => prevActiveStep - 1);
   };
 
+  // Handle flip checkbox change for the image
+  const handleFlipImage = async () => {
+    if (!formData.micrographFilePath) return;
+
+    setIsFlipping(true);
+    try {
+      // Flip the image on disk
+      await window.api?.flipImageHorizontal(formData.micrographFilePath);
+
+      // Reload the image through the tile system (which will re-tile the flipped image)
+      const tileData = await window.api?.loadImageWithTiles(formData.micrographFilePath);
+      if (tileData) {
+        const mediumDataUrl = await window.api?.loadMedium(tileData.hash);
+        if (mediumDataUrl) {
+          setMicrographPreviewUrl(mediumDataUrl);
+        }
+      }
+
+      // Toggle flip state
+      setIsFlipped(!isFlipped);
+    } catch (error) {
+      console.error('[NewMicrographDialog] Error flipping image:', error);
+    } finally {
+      setIsFlipping(false);
+    }
+  };
+
   const handleCancel = async () => {
     // Clean up scratch file if exists
     if (scratchIdentifier && window.api) {
@@ -512,6 +546,7 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
     setDetectors([]);
     setScratchIdentifier(null);
     setConversionProgress(null);
+    setIsFlipped(false);
     onClose();
   };
 
@@ -1707,6 +1742,23 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
                   <RestartAlt />
                 </IconButton>
               </Tooltip>
+
+              {/* Flip checkbox */}
+              <FormControlLabel
+                control={
+                  isFlipping ? (
+                    <CircularProgress size={20} sx={{ mx: 1.25 }} />
+                  ) : (
+                    <Checkbox
+                      checked={isFlipped}
+                      onChange={handleFlipImage}
+                      size="small"
+                    />
+                  )
+                }
+                label="Flip?"
+                sx={{ ml: 1, mr: 0 }}
+              />
             </Stack>
 
             <Divider orientation="vertical" flexItem />
@@ -2330,6 +2382,8 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
             initialOffsetY={copySizeData?.yOffset ?? formData.offsetInParent.Y}
             initialRotation={copySizeData?.rotation ?? formData.rotationAngle}
             initialOpacity={formData.opacity}
+            isFlipped={isFlipped}
+            onFlipChange={setIsFlipped}
             copySizePixelsPerCm={copySizeData?.newImagePixelsPerCm}
             onPlacementChange={handlePlacementChange}
             onOpacityChange={handleOpacityChange}

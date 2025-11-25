@@ -893,7 +893,27 @@ export function ProjectTree() {
         confirmColor="error"
         onConfirm={() => {
           if (deletingMicrograph) {
+            const parentId = deletingMicrograph.parentID;
             deleteMicrograph(deletingMicrograph.id);
+
+            // Regenerate parent's composite thumbnail if this was a child micrograph
+            if (parentId && project) {
+              setTimeout(() => {
+                const freshProject = useAppStore.getState().project;
+                if (!freshProject) return;
+
+                window.api?.generateCompositeThumbnail(freshProject.id, parentId, freshProject)
+                  .then(() => {
+                    console.log('[ProjectTree] Successfully regenerated parent composite thumbnail after child deletion');
+                    window.dispatchEvent(new CustomEvent('thumbnail-generated', {
+                      detail: { micrographId: parentId }
+                    }));
+                  })
+                  .catch((error) => {
+                    console.error('[ProjectTree] Failed to regenerate parent composite thumbnail:', error);
+                  });
+              }, 0);
+            }
           }
           setShowDeleteMicrographConfirm(false);
           setDeletingMicrograph(null);
