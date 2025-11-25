@@ -268,6 +268,7 @@ interface Window {
         available: boolean;
         backend: string;
       }>;
+      notifyStateChanged: (isLoggedIn: boolean) => void;
     };
 
     // Auth menu events

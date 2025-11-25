@@ -75,6 +75,8 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
           isLoading: false,
           error: null,
         });
+        // Notify main process to update menu
+        window.api.auth.notifyStateChanged(true);
         console.log('[AuthStore] Login successful for:', result.user?.email);
         return true;
       } else {
@@ -126,6 +128,8 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
       error: null,
     });
 
+    // Notify main process to update menu
+    window.api?.auth?.notifyStateChanged(false);
     console.log('[AuthStore] Logged out');
   },
 
@@ -146,6 +150,7 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
           isAuthenticated: true,
           user: result.user,
         });
+        window.api.auth.notifyStateChanged(true);
         console.log('[AuthStore] User is logged in:', result.user?.email);
       } else if (result.needsRefresh) {
         // Token expired but we have refresh token - try to refresh
@@ -156,17 +161,20 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
             isAuthenticated: true,
             user: result.user,
           });
+          window.api.auth.notifyStateChanged(true);
         } else {
           set({
             isAuthenticated: false,
             user: null,
           });
+          window.api.auth.notifyStateChanged(false);
         }
       } else {
         set({
           isAuthenticated: false,
           user: null,
         });
+        window.api.auth.notifyStateChanged(false);
       }
     } catch (error) {
       console.error('[AuthStore] Auth check error:', error);
@@ -174,6 +182,7 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
         isAuthenticated: false,
         user: null,
       });
+      window.api?.auth?.notifyStateChanged(false);
     }
   },
 

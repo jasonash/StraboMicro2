@@ -172,8 +172,12 @@ function createWindow() {
   mainWindow.on('maximize', saveWindowState);
   mainWindow.on('unmaximize', saveWindowState);
 
-  // Create menu
-  const menuTemplate = [
+  // Track auth state for menu
+  let isLoggedIn = false;
+
+  // Function to build menu with current auth state
+  function buildMenu() {
+    const menuTemplate = [
     {
       label: 'File',
       submenu: [
@@ -247,6 +251,7 @@ function createWindow() {
       submenu: [
         {
           label: 'Login...',
+          enabled: !isLoggedIn,
           click: () => {
             if (mainWindow) {
               mainWindow.webContents.send('menu:login');
@@ -255,6 +260,7 @@ function createWindow() {
         },
         {
           label: 'Logout',
+          enabled: isLoggedIn,
           click: () => {
             if (mainWindow) {
               mainWindow.webContents.send('menu:logout');
@@ -419,8 +425,18 @@ function createWindow() {
     },
   ];
 
-  const menu = Menu.buildFromTemplate(menuTemplate);
-  Menu.setApplicationMenu(menu);
+    const menu = Menu.buildFromTemplate(menuTemplate);
+    Menu.setApplicationMenu(menu);
+  }
+
+  // Build initial menu
+  buildMenu();
+
+  // IPC handler to update auth state and rebuild menu
+  ipcMain.on('auth:state-changed', (event, loggedIn) => {
+    isLoggedIn = loggedIn;
+    buildMenu();
+  });
 
   // Load the app
   const isDev = process.env.NODE_ENV !== 'production';

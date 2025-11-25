@@ -112,6 +112,7 @@ contextBridge.exposeInMainWorld('api', {
     check: () => ipcRenderer.invoke('auth:check'),
     getToken: () => ipcRenderer.invoke('auth:get-token'),
     checkStorage: () => ipcRenderer.invoke('auth:check-storage'),
+    notifyStateChanged: (isLoggedIn) => ipcRenderer.send('auth:state-changed', isLoggedIn),
   },
 
   // Auth menu events
