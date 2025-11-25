@@ -300,6 +300,66 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
     }
   }, [childImage]);
 
+  // Auto-fit child to parent when child is larger (for better UX)
+  // This only affects initial display - the parentDisplayRatio correction handles the math
+  useEffect(() => {
+    // Only auto-fit for methods that allow manual resize (Stretch and Drag)
+    // Other methods calculate their own scale based on user input
+    if (scaleMethod !== 'Stretch and Drag') return;
+    if (!parentImage || !childImage) return;
+    // Only auto-fit if scale is still at default (1.0) - don't override user adjustments
+    if (childTransform.scaleX !== 1 || childTransform.scaleY !== 1) return;
+
+    // Check if child is larger than parent (in displayed coordinates)
+    const childDisplayWidth = childWidth; // Original child dimensions
+    const childDisplayHeight = childHeight;
+    const parentDisplayWidth = parentImage.width;
+    const parentDisplayHeight = parentImage.height;
+
+    // Only auto-scale if child is larger than parent
+    if (childDisplayWidth <= parentDisplayWidth && childDisplayHeight <= parentDisplayHeight) {
+      return; // Child already fits, no need to auto-scale
+    }
+
+    // Calculate scale to fit child within parent bounds (with some padding)
+    const padding = 0.9; // 90% of parent size for a bit of margin
+    const scaleToFitWidth = (parentDisplayWidth * padding) / childDisplayWidth;
+    const scaleToFitHeight = (parentDisplayHeight * padding) / childDisplayHeight;
+    const fitScale = Math.min(scaleToFitWidth, scaleToFitHeight);
+
+    console.log('[PlacementCanvas] Auto-fitting large child to parent:', {
+      childDisplayWidth,
+      childDisplayHeight,
+      parentDisplayWidth,
+      parentDisplayHeight,
+      fitScale,
+    });
+
+    // Center the child on the parent
+    const centerX = parentDisplayWidth / 2;
+    const centerY = parentDisplayHeight / 2;
+
+    setChildTransform(prev => ({
+      ...prev,
+      x: centerX,
+      y: centerY,
+      scaleX: fitScale,
+      scaleY: fitScale,
+    }));
+
+    // Notify parent of the initial placement (with corrected scale)
+    const topLeft = convertCenterToTopLeft(centerX, centerY, childTransform.rotation, fitScale, fitScale);
+    if (parentOriginalWidth && parentImage.width) {
+      const scaleRatio = parentOriginalWidth / parentImage.width;
+      const originalX = topLeft.x * scaleRatio;
+      const originalY = topLeft.y * scaleRatio;
+      // Apply the same parentDisplayRatio correction we use in handleChildTransformEnd
+      const parentDisplayRatio = parentOriginalWidth / parentImage.width;
+      const correctedScale = fitScale * parentDisplayRatio;
+      onPlacementChange(originalX, originalY, childTransform.rotation, correctedScale, correctedScale);
+    }
+  }, [scaleMethod, parentImage, childImage, childWidth, childHeight, parentOriginalWidth, childTransform.scaleX, childTransform.scaleY]);
+
   // Auto-calculate child scale for Pixel Conversion Factor method
   useEffect(() => {
     if (scaleMethod !== 'Pixel Conversion Factor') return;
