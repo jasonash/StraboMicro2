@@ -1938,6 +1938,9 @@ ipcMain.handle('auth:login', async (event, email, password, restServer) => {
     log.info('[Auth] Attempting login for:', email);
 
     const baseUrl = getRestServerFromPreferences(restServer);
+    log.info('[Auth] Using REST server:', baseUrl);
+    log.info('[Auth] Full login URL:', `${baseUrl}/jwtauth/login`);
+
     const response = await fetch(`${baseUrl}/jwtauth/login`, {
       method: 'POST',
       headers: {

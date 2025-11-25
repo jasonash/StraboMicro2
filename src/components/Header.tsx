@@ -47,12 +47,12 @@ const Header: React.FC = () => {
             <Typography variant="body2" color="text.secondary">
               Signed in as{' '}
               <Box component="span" sx={{ color: 'text.primary', fontWeight: 500 }}>
-                {user.name || user.email}
+                {user.name ? `${user.name} (${user.email})` : user.email}
               </Box>
             </Typography>
           ) : (
             <Typography variant="body2" color="text.secondary">
-              Not signed in
+              Not logged in. Log in above.
             </Typography>
           )}
         </Box>

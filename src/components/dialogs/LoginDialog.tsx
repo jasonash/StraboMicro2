@@ -71,7 +71,7 @@ export function LoginDialog({ isOpen, onClose }: LoginDialogProps) {
   const handleForgotPassword = async () => {
     // Open StraboSpot password reset page in browser
     if (window.api?.openExternalLink) {
-      await window.api.openExternalLink('https://strabospot.org/password/reset');
+      await window.api.openExternalLink('https://strabospot.org/forgotpassword');
     }
   };
 
