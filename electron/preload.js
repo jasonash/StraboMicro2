@@ -10,6 +10,7 @@ contextBridge.exposeInMainWorld('api', {
   onOpenProject: (callback) => ipcRenderer.on('menu:open-project', callback),
   onEditProject: (callback) => ipcRenderer.on('menu:edit-project', callback),
   onShowProjectDebug: (callback) => ipcRenderer.on('menu:show-project-debug', callback),
+  onPreferences: (callback) => ipcRenderer.on('menu:preferences', callback),
   onTestOrientationStep: (callback) => ipcRenderer.on('menu:test-orientation-step', callback),
   onTestScaleBarStep: (callback) => ipcRenderer.on('menu:test-scale-bar-step', callback),
   onClearProject: (callback) => ipcRenderer.on('menu:clear-project', callback),

@@ -206,6 +206,16 @@ function createWindow() {
         },
         { label: 'Save', accelerator: 'CmdOrCtrl+S' },
         { type: 'separator' },
+        {
+          label: 'Preferences...',
+          accelerator: 'CmdOrCtrl+,',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('menu:preferences');
+            }
+          }
+        },
+        { type: 'separator' },
         { role: 'quit' },
       ],
     },

@@ -80,6 +80,7 @@ interface Window {
     onOpenProject: (callback: () => void) => void;
     onEditProject: (callback: () => void) => void;
     onShowProjectDebug: (callback: () => void) => void;
+    onPreferences: (callback: () => void) => void;
     onTestOrientationStep: (callback: () => void) => void;
     onTestScaleBarStep: (callback: () => void) => void;
     onClearProject: (callback: () => void) => void;

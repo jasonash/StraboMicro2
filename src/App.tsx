@@ -3,6 +3,7 @@ import MainLayout from './components/MainLayout';
 import { NewProjectDialog } from './components/dialogs/NewProjectDialog';
 import { EditProjectDialog } from './components/dialogs/EditProjectDialog';
 import { ProjectDebugModal } from './components/dialogs/ProjectDebugModal';
+import { PreferencesDialog } from './components/dialogs/PreferencesDialog';
 import { useAppStore, useTemporalStore } from '@/store';
 import { useTheme } from './hooks/useTheme';
 import './App.css';
@@ -11,6 +12,7 @@ function App() {
   const [isNewProjectDialogOpen, setIsNewProjectDialogOpen] = useState(false);
   const [isEditProjectDialogOpen, setIsEditProjectDialogOpen] = useState(false);
   const [isDebugModalOpen, setIsDebugModalOpen] = useState(false);
+  const [isPreferencesOpen, setIsPreferencesOpen] = useState(false);
   const closeProject = useAppStore(state => state.closeProject);
   const project = useAppStore(state => state.project);
   const setTheme = useAppStore(state => state.setTheme);
@@ -57,6 +59,11 @@ function App() {
     // Debug: Show Project Structure
     window.api.onShowProjectDebug(() => {
       setIsDebugModalOpen(true);
+    });
+
+    // Preferences menu item
+    window.api.onPreferences(() => {
+      setIsPreferencesOpen(true);
     });
 
     // Debug: Clear Project
@@ -340,6 +347,10 @@ function App() {
       <ProjectDebugModal
         isOpen={isDebugModalOpen}
         onClose={() => setIsDebugModalOpen(false)}
+      />
+      <PreferencesDialog
+        isOpen={isPreferencesOpen}
+        onClose={() => setIsPreferencesOpen(false)}
       />
     </>
   );
