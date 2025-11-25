@@ -1447,15 +1447,41 @@ ipcMain.handle('composite:generate-thumbnail', async (event, projectId, microgra
           kernel: sharp.kernel.lanczos3
         });
 
+        // Get child opacity (default to 1 if not set)
+        const childOpacity = child.opacity ?? 1.0;
+        log.info(`[IPC]   Child opacity: ${childOpacity}`);
+
+        // Ensure we have alpha channel for opacity support
+        childImage = childImage.ensureAlpha();
+
+        // Apply opacity by multiplying the alpha channel
+        // We need to get the buffer, modify alpha values, then create new sharp instance
+        if (childOpacity < 1.0) {
+          const { data, info } = await childImage.raw().toBuffer({ resolveWithObject: true });
+
+          // Modify alpha channel (every 4th byte starting at index 3)
+          for (let i = 3; i < data.length; i += 4) {
+            data[i] = Math.round(data[i] * childOpacity);
+          }
+
+          // Recreate sharp instance with modified data
+          childImage = sharp(data, {
+            raw: {
+              width: info.width,
+              height: info.height,
+              channels: info.channels
+            }
+          });
+        }
+
         // Apply rotation if needed
         if (child.rotation) {
           // Calculate center position for rotation
           const centerX = thumbX + thumbChildWidth / 2;
           const centerY = thumbY + thumbChildHeight / 2;
 
-          // Convert to PNG with alpha channel before rotating
-          // This ensures the rotated corners are transparent, not black
-          childImage = childImage.ensureAlpha().rotate(child.rotation, {
+          // Rotate with transparent background
+          childImage = childImage.rotate(child.rotation, {
             background: { r: 0, g: 0, b: 0, alpha: 0 }
           });
 
@@ -1480,7 +1506,7 @@ ipcMain.handle('composite:generate-thumbnail', async (event, projectId, microgra
           });
         } else {
           compositeInputs.push({
-            input: await childImage.toBuffer(),
+            input: await childImage.png().toBuffer(),
             left: thumbX,
             top: thumbY
           });
