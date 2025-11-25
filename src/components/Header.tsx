@@ -9,15 +9,18 @@ import {
 } from '@mui/icons-material';
 import straboLogo from '../assets/strabo-logo.png';
 import { useAppStore } from '@/store';
+import { useAuthStore } from '@/store/useAuthStore';
 
 const Header: React.FC = () => {
   const viewerRef = useAppStore((state) => state.viewerRef);
+  const { isAuthenticated, user } = useAuthStore();
 
   const handleRecenter = () => {
     if (viewerRef?.current) {
       viewerRef.current.fitToScreen();
     }
   };
+
   return (
     <AppBar position="static" elevation={0}>
       <Toolbar sx={{ gap: 2 }}>
@@ -40,9 +43,18 @@ const Header: React.FC = () => {
 
         {/* Center: User info */}
         <Box sx={{ flex: 1, display: 'flex', justifyContent: 'center' }}>
-          <Typography variant="body2" color="text.secondary">
-            Logged in as user@example.com
-          </Typography>
+          {isAuthenticated && user ? (
+            <Typography variant="body2" color="text.secondary">
+              Signed in as{' '}
+              <Box component="span" sx={{ color: 'text.primary', fontWeight: 500 }}>
+                {user.name || user.email}
+              </Box>
+            </Typography>
+          ) : (
+            <Typography variant="body2" color="text.secondary">
+              Not signed in
+            </Typography>
+          )}
         </Box>
 
         {/* Right: Toolbar buttons */}

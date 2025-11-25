@@ -4,7 +4,9 @@ import { NewProjectDialog } from './components/dialogs/NewProjectDialog';
 import { EditProjectDialog } from './components/dialogs/EditProjectDialog';
 import { ProjectDebugModal } from './components/dialogs/ProjectDebugModal';
 import { PreferencesDialog } from './components/dialogs/PreferencesDialog';
+import { LoginDialog } from './components/dialogs/LoginDialog';
 import { useAppStore, useTemporalStore } from '@/store';
+import { useAuthStore } from '@/store/useAuthStore';
 import { useTheme } from './hooks/useTheme';
 import './App.css';
 
@@ -13,14 +15,21 @@ function App() {
   const [isEditProjectDialogOpen, setIsEditProjectDialogOpen] = useState(false);
   const [isDebugModalOpen, setIsDebugModalOpen] = useState(false);
   const [isPreferencesOpen, setIsPreferencesOpen] = useState(false);
+  const [isLoginDialogOpen, setIsLoginDialogOpen] = useState(false);
   const closeProject = useAppStore(state => state.closeProject);
   const project = useAppStore(state => state.project);
   const setTheme = useAppStore(state => state.setTheme);
   const setShowRulers = useAppStore(state => state.setShowRulers);
   const setShowSpotLabels = useAppStore(state => state.setShowSpotLabels);
+  const { checkAuthStatus, logout } = useAuthStore();
 
   // Initialize theme system
   useTheme();
+
+  // Check auth status on app startup
+  useEffect(() => {
+    checkAuthStatus();
+  }, [checkAuthStatus]);
 
   // Update window title when project changes
   useEffect(() => {
@@ -331,7 +340,17 @@ function App() {
     window.api.onToggleSpotLabels((checked) => {
       setShowSpotLabels(checked);
     });
-  }, [closeProject, setTheme, setShowRulers, setShowSpotLabels]);
+
+    // Account: Login menu item
+    window.api.onLoginRequest(() => {
+      setIsLoginDialogOpen(true);
+    });
+
+    // Account: Logout menu item
+    window.api.onLogoutRequest(async () => {
+      await logout();
+    });
+  }, [closeProject, setTheme, setShowRulers, setShowSpotLabels, logout]);
 
   return (
     <>
@@ -351,6 +370,10 @@ function App() {
       <PreferencesDialog
         isOpen={isPreferencesOpen}
         onClose={() => setIsPreferencesOpen(false)}
+      />
+      <LoginDialog
+        isOpen={isLoginDialogOpen}
+        onClose={() => setIsLoginDialogOpen(false)}
       />
     </>
   );

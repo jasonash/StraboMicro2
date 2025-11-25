@@ -241,22 +241,16 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
     const loadImage = async () => {
       const targetMode = determineRenderMode();
 
-      console.log(`[AssociatedImageRenderer] Current mode: ${imageState.mode}, Target mode: ${targetMode}, isLoading: ${imageState.isLoading}`);
-
       // If we're already in the right mode and have the image, skip
       if (imageState.mode === targetMode &&
           (imageState.imageObj || imageState.tiles.size > 0)) {
-        console.log(`[AssociatedImageRenderer] Already in ${targetMode} mode with image loaded, skipping`);
         return;
       }
 
       // Don't reload if already loading this target mode
       if (imageState.isLoading && imageState.targetMode === targetMode) {
-        console.log(`[AssociatedImageRenderer] Already loading ${targetMode}, skipping`);
         return;
       }
-
-      console.log(`[AssociatedImageRenderer] Starting load for mode: ${targetMode}`);
 
       // Mark that we're loading this target mode
       setImageState(prev => ({ ...prev, isLoading: true, targetMode }));
@@ -266,7 +260,6 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
         const folderPaths = await window.api!.getProjectFolderPaths(projectId);
         const fullPath = `${folderPaths.images}/${imagePath}`;
 
-        console.log(`[AssociatedImageRenderer] Loading overlay from: ${fullPath}`);
 
         if (targetMode === 'THUMBNAIL') {
           // Load 512x512 thumbnail

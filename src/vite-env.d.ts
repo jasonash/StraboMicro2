@@ -241,5 +241,37 @@ interface Window {
       canceled?: boolean;
       filePath?: string;
     }>;
+
+    // Authentication
+    auth: {
+      login: (email: string, password: string, restServer: string) => Promise<{
+        success: boolean;
+        user?: { pkey: string; email: string; name: string };
+        error?: string;
+      }>;
+      logout: (restServer: string) => Promise<{ success: boolean }>;
+      refresh: (restServer: string) => Promise<{
+        success: boolean;
+        error?: string;
+      }>;
+      check: () => Promise<{
+        isLoggedIn: boolean;
+        user?: { pkey: string; email: string; name: string } | null;
+        needsRefresh?: boolean;
+      }>;
+      getToken: () => Promise<{
+        token: string | null;
+        user?: { pkey: string; email: string; name: string };
+        expired?: boolean;
+      }>;
+      checkStorage: () => Promise<{
+        available: boolean;
+        backend: string;
+      }>;
+    };
+
+    // Auth menu events
+    onLoginRequest: (callback: () => void) => void;
+    onLogoutRequest: (callback: () => void) => void;
   };
 }

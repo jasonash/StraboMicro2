@@ -245,10 +245,22 @@ function createWindow() {
     {
       label: 'Account',
       submenu: [
-        { label: 'Login' },
-        { label: 'Logout' },
-        { type: 'separator' },
-        { label: 'Settings' },
+        {
+          label: 'Login...',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('menu:login');
+            }
+          }
+        },
+        {
+          label: 'Logout',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('menu:logout');
+            }
+          }
+        },
       ],
     },
     {
@@ -1895,4 +1907,245 @@ ipcMain.handle('debug:reset-everything', async () => {
     log.error('[IPC] Error during reset:', error);
     throw error;
   }
+});
+
+/**
+ * ============================================================================
+ * AUTHENTICATION HANDLERS (JWT-based)
+ * ============================================================================
+ *
+ * These handlers manage secure authentication with the StraboSpot server.
+ * JWT tokens are stored securely using Electron's safeStorage API.
+ */
+
+const tokenService = require('./tokenService');
+
+// Helper to get REST server URL from renderer's localStorage
+// We'll pass it from the renderer since preferences are stored there
+function getRestServerFromPreferences(restServer) {
+  return restServer || 'https://strabospot.org';
+}
+
+/**
+ * Login to StraboSpot server
+ * @param {string} email - User's email address
+ * @param {string} password - User's password
+ * @param {string} restServer - REST server URL from preferences
+ * @returns {object} { success, user, error }
+ */
+ipcMain.handle('auth:login', async (event, email, password, restServer) => {
+  try {
+    log.info('[Auth] Attempting login for:', email);
+
+    const baseUrl = getRestServerFromPreferences(restServer);
+    const response = await fetch(`${baseUrl}/jwtauth/login`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ email, password }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      log.warn('[Auth] Login failed:', data.message || 'Unknown error');
+      return {
+        success: false,
+        error: data.message || 'Invalid email or password',
+      };
+    }
+
+    // Login successful - save tokens securely
+    await tokenService.saveTokens(
+      data.access_token,
+      data.refresh_token,
+      data.expires_in,
+      data.user
+    );
+
+    log.info('[Auth] Login successful for:', data.user.email);
+
+    return {
+      success: true,
+      user: data.user,
+    };
+  } catch (error) {
+    log.error('[Auth] Login error:', error);
+    return {
+      success: false,
+      error: error.message || 'Network error - please check your connection',
+    };
+  }
+});
+
+/**
+ * Logout from StraboSpot server
+ * @param {string} restServer - REST server URL from preferences
+ * @returns {object} { success }
+ */
+ipcMain.handle('auth:logout', async (event, restServer) => {
+  try {
+    const tokens = tokenService.getTokens();
+
+    if (tokens && tokens.accessToken) {
+      const baseUrl = getRestServerFromPreferences(restServer);
+
+      try {
+        // Notify server to revoke refresh token
+        const response = await fetch(`${baseUrl}/jwtauth/logout`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${tokens.accessToken}`,
+          },
+          body: tokens.refreshToken
+            ? JSON.stringify({ refresh_token: tokens.refreshToken })
+            : undefined,
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          log.info('[Auth] Server logout response:', data.message);
+        } else {
+          log.warn('[Auth] Server logout failed, clearing local tokens anyway');
+        }
+      } catch (networkError) {
+        log.warn('[Auth] Could not reach server for logout, clearing local tokens');
+      }
+    }
+
+    // Always clear local tokens regardless of server response
+    tokenService.clearTokens();
+
+    log.info('[Auth] Logged out');
+    return { success: true };
+  } catch (error) {
+    log.error('[Auth] Logout error:', error);
+    // Still clear local tokens on error
+    tokenService.clearTokens();
+    return { success: true };
+  }
+});
+
+/**
+ * Refresh the access token using the refresh token
+ * @param {string} restServer - REST server URL from preferences
+ * @returns {object} { success, error }
+ */
+ipcMain.handle('auth:refresh', async (event, restServer) => {
+  try {
+    const tokens = tokenService.getTokens();
+
+    if (!tokens || !tokens.refreshToken) {
+      log.warn('[Auth] No refresh token available');
+      return { success: false, error: 'No refresh token' };
+    }
+
+    const baseUrl = getRestServerFromPreferences(restServer);
+    const response = await fetch(`${baseUrl}/jwtauth/refresh`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ refresh_token: tokens.refreshToken }),
+    });
+
+    if (!response.ok) {
+      log.error('[Auth] Token refresh failed - session expired');
+      // Clear tokens since refresh failed
+      tokenService.clearTokens();
+      return {
+        success: false,
+        error: 'Session expired. Please log in again.',
+      };
+    }
+
+    const data = await response.json();
+
+    // Update the access token
+    await tokenService.updateAccessToken(data.access_token, data.expires_in);
+
+    log.info('[Auth] Token refreshed successfully');
+    return { success: true };
+  } catch (error) {
+    log.error('[Auth] Token refresh error:', error);
+    return {
+      success: false,
+      error: error.message || 'Failed to refresh session',
+    };
+  }
+});
+
+/**
+ * Check if user is currently logged in with valid tokens
+ * @returns {object} { isLoggedIn, user }
+ */
+ipcMain.handle('auth:check', async () => {
+  try {
+    const tokens = tokenService.getTokens();
+
+    if (!tokens) {
+      return { isLoggedIn: false, user: null };
+    }
+
+    // Check if token is expired
+    const isExpired = tokenService.isTokenExpired(tokens);
+
+    if (isExpired) {
+      // Token expired but we have refresh token - let renderer know to refresh
+      return {
+        isLoggedIn: false,
+        user: tokens.user,
+        needsRefresh: true,
+      };
+    }
+
+    return {
+      isLoggedIn: true,
+      user: tokens.user,
+    };
+  } catch (error) {
+    log.error('[Auth] Auth check error:', error);
+    return { isLoggedIn: false, user: null };
+  }
+});
+
+/**
+ * Get the current access token for API calls
+ * Renderer should call this before making authenticated requests
+ * @returns {object} { token, user } or { token: null } if not logged in
+ */
+ipcMain.handle('auth:get-token', async () => {
+  try {
+    const tokens = tokenService.getTokens();
+
+    if (!tokens) {
+      return { token: null };
+    }
+
+    // Check if token is expired
+    if (tokenService.isTokenExpired(tokens)) {
+      return { token: null, expired: true };
+    }
+
+    return {
+      token: tokens.accessToken,
+      user: tokens.user,
+    };
+  } catch (error) {
+    log.error('[Auth] Get token error:', error);
+    return { token: null };
+  }
+});
+
+/**
+ * Check if secure storage is available
+ * @returns {object} { available, backend }
+ */
+ipcMain.handle('auth:check-storage', async () => {
+  return {
+    available: tokenService.isEncryptionAvailable(),
+    backend: tokenService.getStorageBackend(),
+  };
 });

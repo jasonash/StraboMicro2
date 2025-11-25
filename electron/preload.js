@@ -103,4 +103,18 @@ contextBridge.exposeInMainWorld('api', {
   // PDF export
   exportDetailedNotesToPDF: (projectData, micrographId, spotId) =>
     ipcRenderer.invoke('pdf:export-detailed-notes', projectData, micrographId, spotId),
+
+  // Authentication
+  auth: {
+    login: (email, password, restServer) => ipcRenderer.invoke('auth:login', email, password, restServer),
+    logout: (restServer) => ipcRenderer.invoke('auth:logout', restServer),
+    refresh: (restServer) => ipcRenderer.invoke('auth:refresh', restServer),
+    check: () => ipcRenderer.invoke('auth:check'),
+    getToken: () => ipcRenderer.invoke('auth:get-token'),
+    checkStorage: () => ipcRenderer.invoke('auth:check-storage'),
+  },
+
+  // Auth menu events
+  onLoginRequest: (callback) => ipcRenderer.on('menu:login', callback),
+  onLogoutRequest: (callback) => ipcRenderer.on('menu:logout', callback),
 });
