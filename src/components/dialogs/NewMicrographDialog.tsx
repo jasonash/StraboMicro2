@@ -622,6 +622,7 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
         }
       }
     } else if (isAssociated && formData.scaleMethod === 'Stretch and Drag') {
+      console.log('[NewMicrographDialog] Stretch and Drag - formData.scaleX at calculation time:', formData.scaleX);
       // For Stretch and Drag, the user manually sizes the overlay to match the parent
       // The scaleX represents the SIZE relationship, not magnification
       //
@@ -682,30 +683,34 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
             for (const sample of dataset.samples) {
               if (sample.micrographs) {
                 const parentMicrograph = sample.micrographs.find(m => m.id === parentMicrographId);
-                if (parentMicrograph?.scalePixelsPerCentimeter && parentMicrograph.width && parentMicrograph.height) {
-                  // Following Trace Scale Bar logic (line 450-455 in PlacementCanvas):
-                  // We need to account for parent downsampling
-                  // parentScaleInDisplayedImage = parentScale × parentDownsampleRatio
-                  // childScale = parentScaleInDisplayedImage / displayedScale
-                  //
-                  // But we don't have the downsample ratio here. We need to load the parent image
-                  // to get its displayed size. For now, assume no downsampling (will fix if needed).
-                  //
-                  // Actually, we can calculate it! Parent is always loaded at 2048px max dimension
-                  const maxDimension = Math.max(parentMicrograph.width, parentMicrograph.height);
-                  const parentDownsampleRatio = maxDimension > 2048 ? 2048 / maxDimension : 1;
-                  const parentScaleInDisplayedImage = parentMicrograph.scalePixelsPerCentimeter * parentDownsampleRatio;
+                // Use width/height or fall back to imageWidth/imageHeight
+                const parentWidth = parentMicrograph?.width || parentMicrograph?.imageWidth;
+                const parentHeight = parentMicrograph?.height || parentMicrograph?.imageHeight;
 
-                  scalePixelsPerCentimeter = parentScaleInDisplayedImage / formData.scaleX;
+                console.log('[NewMicrographDialog] Stretch and Drag - checking parent:', {
+                  parentId: parentMicrographId,
+                  found: !!parentMicrograph,
+                  scalePixelsPerCentimeter: parentMicrograph?.scalePixelsPerCentimeter,
+                  width: parentMicrograph?.width,
+                  height: parentMicrograph?.height,
+                  imageWidth: parentMicrograph?.imageWidth,
+                  imageHeight: parentMicrograph?.imageHeight,
+                  parentWidth,
+                  parentHeight,
+                });
 
-                  console.log('[NewMicrographDialog] Calculated scale from Stretch and Drag:', {
-                    parentScale: parentMicrograph.scalePixelsPerCentimeter,
-                    parentOriginalSize: `${parentMicrograph.width}x${parentMicrograph.height}`,
-                    maxDimension,
-                    parentDownsampleRatio,
-                    parentScaleInDisplayedImage,
-                    displayedScaleX: formData.scaleX,
-                    childScale: scalePixelsPerCentimeter,
+                if (parentMicrograph?.scalePixelsPerCentimeter && parentWidth && parentHeight) {
+                  // Simple formula: childPxPerCm = parentPxPerCm / displayScale
+                  // Where displayScale is the scaleX the user set in PlacementCanvas
+                  // This works because the child is rendered at its original dimensions in Konva
+                  scalePixelsPerCentimeter = parentMicrograph.scalePixelsPerCentimeter / formData.scaleX;
+
+                  console.log('[NewMicrographDialog] Stretch and Drag scale calculation:', {
+                    parentPxPerCm: parentMicrograph.scalePixelsPerCentimeter,
+                    userScaleX: formData.scaleX,
+                    calculatedChildPxPerCm: scalePixelsPerCentimeter,
+                    // Verification: what display scale will AssociatedImageRenderer calculate?
+                    verifyDisplayScale: parentMicrograph.scalePixelsPerCentimeter / scalePixelsPerCentimeter,
                   });
                   break;
                 }
@@ -2213,6 +2218,13 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
 
     // Handler for placement changes from the canvas
     const handlePlacementChange = (offsetX: number, offsetY: number, rotation: number, scaleX?: number, scaleY?: number) => {
+      console.log('[NewMicrographDialog] handlePlacementChange received:', {
+        offsetX,
+        offsetY,
+        rotation,
+        scaleX,
+        scaleY,
+      });
       setFormData((prev) => ({
         ...prev,
         offsetInParent: {

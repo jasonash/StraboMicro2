@@ -217,6 +217,13 @@ export function EditMicrographLocationDialog({
     newScaleX?: number,
     newScaleY?: number
   ) => {
+    console.log('[EditMicrographLocationDialog] handlePlacementChange called:', {
+      newOffsetX,
+      newOffsetY,
+      newRotation,
+      newScaleX,
+      newScaleY,
+    });
     setOffsetX(newOffsetX);
     setOffsetY(newOffsetY);
     setRotation(newRotation);
@@ -353,12 +360,28 @@ export function EditMicrographLocationDialog({
   const handleSave = () => {
     if (!micrograph || !parentMicrograph || !project) return;
 
+    // Calculate scalePixelsPerCentimeter from the display scale
+    // Formula: displayScale = parentPxPerCm / childPxPerCm
+    // So: childPxPerCm = parentPxPerCm / displayScale
+    const parentPxPerCm = parentMicrograph.scalePixelsPerCentimeter || 100;
+    const newChildPxPerCm = parentPxPerCm / scaleX; // scaleX is the display scale
+
+    console.log('[EditMicrographLocationDialog] handleSave called with:', {
+      locationMethod,
+      offsetX,
+      offsetY,
+      rotation,
+      scaleX,
+      scaleY,
+      parentPxPerCm,
+      newChildPxPerCm,
+    });
+
     if (locationMethod === 'Locate as a scaled rectangle') {
       updateMicrographMetadata(micrographId, {
         offsetInParent: { X: offsetX, Y: offsetY },
         rotation,
-        scaleX,
-        scaleY,
+        scalePixelsPerCentimeter: newChildPxPerCm,
         // Clear point placement if switching methods
         pointInParent: undefined,
       });

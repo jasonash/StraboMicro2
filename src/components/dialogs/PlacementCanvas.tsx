@@ -205,49 +205,27 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
           const y = (CANVAS_HEIGHT - img.height * initialScale) / 2;
           setStagePos({ x, y });
 
-          // Initialize child position and scale
+          // Initialize child position
           // Check for default/uninitialized values (0, 0) or (400, 300)
           if ((initialOffsetX === 0 && initialOffsetY === 0) ||
               (initialOffsetX === 400 && initialOffsetY === 300)) {
             // These are the default values, so center the child
             const centerX = img.width / 2;
             const centerY = img.height / 2;
-
-            // Calculate reasonable initial scale for "Stretch and Drag" mode
-            // Make child appear at ~25% of parent width (easier to see and manipulate)
-            let adjustedScaleX = initialScaleX;
-            let adjustedScaleY = initialScaleY;
-
-            if (scaleMethod === 'Stretch and Drag' && initialScaleX === 1 && initialScaleY === 1) {
-              // Target child width to be ~25% of parent width
-              const targetChildWidthRatio = 0.25;
-              const targetScale = (img.width * targetChildWidthRatio) / childWidth;
-              adjustedScaleX = targetScale;
-              adjustedScaleY = targetScale;
-              console.log('[PlacementCanvas] Auto-scaled child for Stretch and Drag mode:', {
-                parentWidth: img.width,
-                childWidth,
-                targetScale,
-                targetChildDisplayWidth: childWidth * targetScale
-              });
-            }
-
             setChildTransform(prev => ({
               ...prev,
               x: centerX,
               y: centerY,
-              scaleX: adjustedScaleX,
-              scaleY: adjustedScaleY,
             }));
             // Convert center to top-left for legacy compatibility
-            const topLeft = convertCenterToTopLeft(centerX, centerY, initialRotation, adjustedScaleX, adjustedScaleY);
+            const topLeft = convertCenterToTopLeft(centerX, centerY, initialRotation, initialScaleX, initialScaleY);
             // Convert to original image coordinates
             if (!parentOriginalWidth) return;
             const scaleRatio = parentOriginalWidth / img.width;
             const originalX = topLeft.x * scaleRatio;
             const originalY = topLeft.y * scaleRatio;
-            onPlacementChange(originalX, originalY, initialRotation, adjustedScaleX, adjustedScaleY);
-            console.log('[PlacementCanvas] Initialized child position to center:', { centerX, centerY, topLeft, originalX, originalY, scaleX: adjustedScaleX, scaleY: adjustedScaleY });
+            onPlacementChange(originalX, originalY, initialRotation, initialScaleX, initialScaleY);
+            console.log('[PlacementCanvas] Initialized child position to center:', { centerX, centerY, topLeft, originalX, originalY });
           } else {
             // We have existing values - convert from original image coordinates to displayed coordinates
             if (!parentOriginalWidth) return;
@@ -866,9 +844,12 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
     const originalX = topLeft.x * scaleRatio;
     const originalY = topLeft.y * scaleRatio;
 
-    // For Stretch and Drag, report the DISPLAYED scale (not converted)
-    // The scale calculation should happen at save time using: childScale = parentScale / displayedScale
-    onPlacementChange(originalX, originalY, newTransform.rotation, newTransform.scaleX, newTransform.scaleY);
+    // For Stretch and Drag, correct the scale for parent image display size vs original size
+    const parentDisplayRatio = parentOriginalWidth / parentImage.width;
+    const correctedScaleX = newTransform.scaleX * parentDisplayRatio;
+    const correctedScaleY = newTransform.scaleY * parentDisplayRatio;
+
+    onPlacementChange(originalX, originalY, newTransform.rotation, correctedScaleX, correctedScaleY);
   };
 
   const handleChildTransformEnd = () => {
@@ -898,9 +879,14 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
     const originalX = topLeft.x * scaleRatio;
     const originalY = topLeft.y * scaleRatio;
 
-    // For Stretch and Drag, report the DISPLAYED scale (not converted)
-    // The scale calculation should happen at save time using: childScale = parentScale / displayedScale
-    onPlacementChange(originalX, originalY, newTransform.rotation, displayedScaleX, displayedScaleY);
+    // For Stretch and Drag, we need to correct the scale for parent image display size vs original size
+    // The parent may be displayed larger than its original size (e.g., 250px original shown as 512px thumbnail)
+    // The scaleX from Konva is relative to the displayed parent, but we need it relative to the original
+    const parentDisplayRatio = parentOriginalWidth / parentImage.width;
+    const correctedScaleX = displayedScaleX * parentDisplayRatio;
+    const correctedScaleY = displayedScaleY * parentDisplayRatio;
+
+    onPlacementChange(originalX, originalY, newTransform.rotation, correctedScaleX, correctedScaleY);
   };
 
   const handleResetChild = () => {
@@ -1255,6 +1241,25 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
               </Group>
             )}
 
+            {/* Transformer on same layer as child so coordinates match */}
+            {childImage && (
+              <Transformer
+                ref={transformerRef}
+                rotateEnabled={enableRotate}
+                borderStroke="#e44c65"
+                anchorStroke="#e44c65"
+                anchorFill="#e44c65"
+                anchorSize={8 / scale}
+                anchorCornerRadius={4 / scale}
+                anchorStrokeWidth={2 / scale}
+                borderStrokeWidth={2 / scale}
+                enabledAnchors={enableResizeHandles ? ['top-left', 'top-right', 'bottom-left', 'bottom-right'] : []}
+                keepRatio={true}
+                rotateAnchorOffset={30 / scale}
+                ignoreStroke={true}
+              />
+            )}
+
             {/* Traced scale bar line for Trace Scale Bar method */}
             {scaleMethod === 'Trace Scale Bar and Drag' && currentLine && (
               <Line
@@ -1264,27 +1269,6 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
                 lineCap="round"
                 lineJoin="round"
                 listening={false}
-              />
-            )}
-          </Layer>
-
-          {/* Transformer layer - NOT scaled, stays at constant screen size */}
-          <Layer>
-            {childImage && (
-              <Transformer
-                ref={transformerRef}
-                rotateEnabled={enableRotate}
-                borderStroke="#e44c65"
-                anchorStroke="#e44c65"
-                anchorFill="#e44c65"
-                anchorSize={8}
-                anchorCornerRadius={4}
-                anchorStrokeWidth={2}
-                borderStrokeWidth={2}
-                enabledAnchors={enableResizeHandles ? ['top-left', 'top-right', 'bottom-left', 'bottom-right'] : []}
-                keepRatio={true}
-                rotateAnchorOffset={30}
-                ignoreStroke={true}
               />
             )}
           </Layer>

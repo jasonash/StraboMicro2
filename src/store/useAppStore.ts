@@ -411,8 +411,20 @@ export const useAppStore = create<AppState>()(
           updateMicrographMetadata: (id, updates) => set((state) => {
             if (!state.project) return state;
 
+            console.log('[Store] updateMicrographMetadata called:', { id, updates });
+
             const newProject = updateMicrograph(state.project, id, (micrograph) => {
+              console.log('[Store] Before update:', {
+                scaleX: micrograph.scaleX,
+                scaleY: micrograph.scaleY,
+                offsetInParent: micrograph.offsetInParent,
+              });
               Object.assign(micrograph, updates);
+              console.log('[Store] After update:', {
+                scaleX: micrograph.scaleX,
+                scaleY: micrograph.scaleY,
+                offsetInParent: micrograph.offsetInParent,
+              });
             });
 
             return {
