@@ -1234,6 +1234,28 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
         </Paper>
       )}
 
+      {/* Opacity Slider */}
+      <Box sx={{ width: CANVAS_WIDTH, display: 'flex', alignItems: 'center', gap: 2 }}>
+        <Typography variant="body2" color="text.secondary" sx={{ minWidth: 90 }}>
+          Transparency:
+        </Typography>
+        <Slider
+          value={childOpacity}
+          onChange={(_event, value) => {
+            const newOpacity = value as number;
+            setChildOpacity(newOpacity);
+            onOpacityChange?.(newOpacity);
+          }}
+          min={0}
+          max={1}
+          step={0.01}
+          sx={{ flex: 1 }}
+        />
+        <Typography variant="body2" color="text.secondary" sx={{ minWidth: 40 }}>
+          {Math.round(childOpacity * 100)}%
+        </Typography>
+      </Box>
+
       {/* Canvas */}
       <Box
         sx={{
@@ -1339,28 +1361,6 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
             )}
           </Layer>
         </Stage>
-      </Box>
-
-      {/* Opacity Slider */}
-      <Box sx={{ width: CANVAS_WIDTH, display: 'flex', alignItems: 'center', gap: 2 }}>
-        <Typography variant="body2" color="text.secondary" sx={{ minWidth: 180 }}>
-          Associated Micrograph Opacity:
-        </Typography>
-        <Slider
-          value={childOpacity}
-          onChange={(_event, value) => {
-            const newOpacity = value as number;
-            setChildOpacity(newOpacity);
-            onOpacityChange?.(newOpacity);
-          }}
-          min={0}
-          max={1}
-          step={0.01}
-          sx={{ flex: 1 }}
-        />
-        <Typography variant="body2" color="text.secondary" sx={{ minWidth: 40 }}>
-          {Math.round(childOpacity * 100)}%
-        </Typography>
       </Box>
 
       <Typography variant="caption" color="text.secondary" sx={{ width: CANVAS_WIDTH, textAlign: 'center' }}>
