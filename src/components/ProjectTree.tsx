@@ -38,7 +38,7 @@ import { NewMicrographDialog } from './dialogs/NewMicrographDialog';
 import { EditSampleDialog } from './dialogs/EditSampleDialog';
 import { ConfirmDialog } from './dialogs/ConfirmDialog';
 import { AddMicrographToGroupsDialog } from './dialogs/AddMicrographToGroupsDialog';
-import { MicrographInfoDialog } from './dialogs/metadata/MicrographInfoDialog';
+import { EditMicrographDialog } from './dialogs/metadata/EditMicrographDialog';
 import { EditMicrographLocationDialog } from './dialogs/EditMicrographLocationDialog';
 import type { DatasetMetadata, SampleMetadata, MicrographMetadata } from '@/types/project-types';
 
@@ -803,7 +803,7 @@ export function ProjectTree() {
 
       {/* Edit Micrograph Dialog */}
       {editingMicrographId && (
-        <MicrographInfoDialog
+        <EditMicrographDialog
           isOpen={showEditMicrograph}
           onClose={() => {
             setShowEditMicrograph(false);
