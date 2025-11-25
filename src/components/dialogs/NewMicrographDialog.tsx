@@ -14,7 +14,7 @@
  * 7. Scale Input (conditional based on method chosen in Step 6)
  */
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -44,6 +44,7 @@ import {
   Tooltip,
 } from '@mui/material';
 import { useAppStore } from '@/store';
+import type { MicrographMetadata } from '@/types/project-types';
 import { PeriodicTableModal } from './PeriodicTableModal';
 import { InstrumentDatabaseDialog, type InstrumentData } from './InstrumentDatabaseDialog';
 import { ScaleBarCanvas, type Tool, type ScaleBarCanvasRef } from '../ScaleBarCanvas';
@@ -320,6 +321,111 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
 
   // Determine if this is an associated micrograph (has a parent) or reference (no parent)
   const isAssociated = parentMicrographId !== null;
+
+  // Get project from store to access existing micrographs
+  const project = useAppStore((state) => state.project);
+
+  // Get all micrographs in the project for "Load Metadata from Previous Image" dropdown
+  const existingMicrographs = useMemo((): MicrographMetadata[] => {
+    if (!project) return [];
+
+    const micrographs: MicrographMetadata[] = [];
+    for (const dataset of project.datasets || []) {
+      for (const sample of dataset.samples || []) {
+        for (const micro of sample.micrographs || []) {
+          // Only include micrographs that have instrument data
+          if (micro.instrument?.instrumentType) {
+            micrographs.push(micro);
+          }
+        }
+      }
+    }
+    return micrographs;
+  }, [project]);
+
+  // Handler to copy metadata from an existing micrograph
+  const handleCopyFromExisting = (micrographId: string) => {
+    const sourceMicro = existingMicrographs.find(m => m.id === micrographId);
+    if (!sourceMicro || !sourceMicro.instrument) return;
+
+    const inst = sourceMicro.instrument;
+
+    // Copy all instrument-related fields
+    setFormData(prev => ({
+      ...prev,
+      instrumentType: inst.instrumentType || '',
+      otherInstrumentType: inst.otherInstrumentType || '',
+      dataType: inst.dataType || '',
+      imageType: sourceMicro.imageType || '',
+      instrumentBrand: inst.instrumentBrand || '',
+      instrumentModel: inst.instrumentModel || '',
+      university: inst.university || '',
+      laboratory: inst.laboratory || '',
+      dataCollectionSoftware: inst.dataCollectionSoftware || '',
+      dataCollectionSoftwareVersion: inst.dataCollectionSoftwareVersion || '',
+      postProcessingSoftware: inst.postProcessingSoftware || '',
+      postProcessingSoftwareVersion: inst.postProcessingSoftwareVersion || '',
+      filamentType: inst.filamentType || '',
+      instrumentNotes: inst.instrumentNotes || '',
+      // Instrument settings
+      accelerationVoltage: inst.accelerationVoltage?.toString() || '',
+      beamCurrent: inst.beamCurrent?.toString() || '',
+      spotSize: inst.spotSize?.toString() || '',
+      aperture: inst.aperture?.toString() || '',
+      cameraLength: inst.cameraLength?.toString() || '',
+      cameraBinning: inst.cameraBinning || '',
+      dwellTime: inst.dwellTime?.toString() || '',
+      analysisDwellTime: inst.analysisDwellTime?.toString() || '',
+      backgroundDwellTime: inst.backgroundDwellTime?.toString() || '',
+      workingDistance: inst.workingDistance?.toString() || '',
+      instrumentPurged: inst.instrumentPurged ? 'Yes' : inst.instrumentPurged === false ? 'No' : '',
+      instrumentPurgedGasType: inst.instrumentPurgedGasType || '',
+      environmentPurged: inst.environmentPurged ? 'Yes' : inst.environmentPurged === false ? 'No' : '',
+      environmentPurgedGasType: inst.environmentPurgedGasType || '',
+      scanTime: inst.scanTime?.toString() || '',
+      resolution: inst.resolution?.toString() || '',
+      spectralResolution: inst.spectralResolution?.toString() || '',
+      wavenumberRange: inst.wavenumberRange || '',
+      averaging: inst.averaging || '',
+      excitationWavelength: inst.excitationWavelength?.toString() || '',
+      laserPower: inst.laserPower?.toString() || '',
+      diffractionGrating: inst.diffractionGrating?.toString() || '',
+      integrationTime: inst.integrationTime?.toString() || '',
+      objective: inst.objective?.toString() || '',
+      calibration: inst.calibration || '',
+      cantileverStiffness: inst.cantileverStiffness?.toString() || '',
+      tipDiameter: inst.tipDiameter?.toString() || '',
+      operatingFrequency: inst.operatingFrequency?.toString() || '',
+      scanDimensions: inst.scanDimensions || '',
+      scanArea: inst.scanArea || '',
+      spatialResolution: inst.spatialResolution?.toString() || '',
+      temperatureOfRoom: inst.temperatureOfRoom?.toString() || '',
+      relativeHumidity: inst.relativeHumidity?.toString() || '',
+      sampleTemperature: inst.sampleTemperature?.toString() || '',
+      stepSize: inst.stepSize?.toString() || '',
+      backgroundCorrectionTechnique: inst.backgroundCorrectionTechnique || '',
+      deadTime: inst.deadTime?.toString() || '',
+      energyLoss: inst.energyLoss || '',
+      backgroundComposition: inst.backgroundComposition || '',
+      clColor: inst.color || '',
+      atomicMode: inst.atomicMode || '',
+      backgroundCorrectionFrequencyAndNotes: inst.backgroundCorrectionFrequencyAndNotes || '',
+      notesOnPostProcessing: inst.notesOnPostProcessing || '',
+      calibrationStandardNotes: inst.calibrationStandardNotes || '',
+      notesOnCrystalStructuresUsed: inst.notesOnCrystalStructuresUsed || '',
+    }));
+
+    // Copy detectors if present
+    if (inst.instrumentDetectors && inst.instrumentDetectors.length > 0) {
+      setDetectors(inst.instrumentDetectors.map(d => ({
+        type: d.detectorType || '',
+        make: d.detectorMake || '',
+        model: d.detectorModel || '',
+      })));
+    }
+
+    console.log('[NewMicrographDialog] Copied metadata from micrograph:', sourceMicro.name);
+  };
 
   const shouldShowInstrumentSettings = () => {
     return (
@@ -2494,6 +2600,33 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
       case 1:
         return (
           <Stack spacing={2}>
+            {/* Load Metadata from Previous Image - only show if there are existing micrographs with instrument data */}
+            {existingMicrographs.length > 0 && (
+              <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+                <Typography variant="body2" sx={{ whiteSpace: 'nowrap' }}>
+                  Load Metadata from Previous Image
+                </Typography>
+                <TextField
+                  select
+                  size="small"
+                  value=""
+                  onChange={(e) => {
+                    if (e.target.value) {
+                      handleCopyFromExisting(e.target.value);
+                    }
+                  }}
+                  sx={{ minWidth: 200 }}
+                >
+                  <MenuItem value="">Select...</MenuItem>
+                  {existingMicrographs.map((micro) => (
+                    <MenuItem key={micro.id} value={micro.id}>
+                      {micro.name}
+                    </MenuItem>
+                  ))}
+                </TextField>
+              </Box>
+            )}
+
             <TextField
               fullWidth
               required
