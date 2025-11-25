@@ -419,8 +419,8 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
               image={tile.imageObj}
               x={tile.x * TILE_SIZE}
               y={tile.y * TILE_SIZE}
-              width={TILE_SIZE + 1}  // 1px overlap to prevent seams
-              height={TILE_SIZE + 1} // 1px overlap to prevent seams
+              width={TILE_SIZE + 2}  // 2px overlap to prevent seams when rotated
+              height={TILE_SIZE + 2} // 2px overlap to prevent seams when rotated
               opacity={micrograph.opacity ?? 1.0}
             />
           );
