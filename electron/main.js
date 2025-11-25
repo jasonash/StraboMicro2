@@ -1415,8 +1415,9 @@ ipcMain.handle('composite:generate-thumbnail', async (event, projectId, microgra
           const centerX = thumbX + thumbChildWidth / 2;
           const centerY = thumbY + thumbChildHeight / 2;
 
-          // Sharp rotates around center, then we need to adjust position
-          childImage = childImage.rotate(child.rotation, {
+          // Convert to PNG with alpha channel before rotating
+          // This ensures the rotated corners are transparent, not black
+          childImage = childImage.ensureAlpha().rotate(child.rotation, {
             background: { r: 0, g: 0, b: 0, alpha: 0 }
           });
 
@@ -1435,7 +1436,7 @@ ipcMain.handle('composite:generate-thumbnail', async (event, projectId, microgra
           log.info(`[IPC]   Rotation: ${child.rotation}°, Rotated size: ${Math.round(rotatedWidth)}x${Math.round(rotatedHeight)}`);
 
           compositeInputs.push({
-            input: await childImage.toBuffer(),
+            input: await childImage.png().toBuffer(),
             left: adjustedX,
             top: adjustedY
           });
@@ -1688,7 +1689,9 @@ ipcMain.handle('composite:rebuild-all-thumbnails', async (event, projectId, proj
               const centerX = thumbX + thumbChildWidth / 2;
               const centerY = thumbY + thumbChildHeight / 2;
 
-              childImage = childImage.rotate(child.rotation, {
+              // Convert to PNG with alpha channel before rotating
+              // This ensures the rotated corners are transparent, not black
+              childImage = childImage.ensureAlpha().rotate(child.rotation, {
                 background: { r: 0, g: 0, b: 0, alpha: 0 }
               });
 
@@ -1704,7 +1707,7 @@ ipcMain.handle('composite:rebuild-all-thumbnails', async (event, projectId, proj
               const adjustedY = Math.round(centerY - rotatedHeight / 2);
 
               compositeInputs.push({
-                input: await childImage.toBuffer(),
+                input: await childImage.png().toBuffer(),
                 left: adjustedX,
                 top: adjustedY
               });
