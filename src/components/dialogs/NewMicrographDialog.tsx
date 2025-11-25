@@ -2600,10 +2600,10 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
       case 1:
         return (
           <Stack spacing={2}>
-            {/* Top row: Load from existing (left) and Find in Database (right) */}
+            {/* Top row: Load from existing (left) and Find in Database (right) - each 50% width */}
             <Box sx={{ display: 'flex', gap: 2, alignItems: 'flex-start' }}>
               {/* Load Metadata from Previous Image - only show if there are existing micrographs with instrument data */}
-              {existingMicrographs.length > 0 && (
+              {existingMicrographs.length > 0 ? (
                 <TextField
                   select
                   label="Load Metadata from Previous Image"
@@ -2613,7 +2613,7 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
                       handleCopyFromExisting(e.target.value);
                     }
                   }}
-                  sx={{ minWidth: 280 }}
+                  sx={{ flex: 1 }}
                 >
                   <MenuItem value="">Select...</MenuItem>
                   {existingMicrographs.map((micro) => (
@@ -2622,14 +2622,14 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
                     </MenuItem>
                   ))}
                 </TextField>
+              ) : (
+                <Box sx={{ flex: 1 }} />
               )}
 
-              <Box sx={{ flexGrow: 1 }} />
-
               <Button
-                variant="text"
+                variant="outlined"
                 onClick={() => setShowInstrumentDatabase(true)}
-                sx={{ whiteSpace: 'nowrap', mt: existingMicrographs.length > 0 ? 1 : 0 }}
+                sx={{ flex: 1, py: 1.8 }}
               >
                 Find Instrument in Database
               </Button>
