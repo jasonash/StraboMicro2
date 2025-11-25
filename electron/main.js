@@ -1272,6 +1272,49 @@ ipcMain.handle('image:is-valid', async (event, filePath) => {
 });
 
 /**
+ * Flip (mirror horizontally) an image file in place
+ * Uses Sharp's flop() for horizontal mirroring
+ * Also clears the tile cache for this image so it gets re-tiled
+ */
+ipcMain.handle('image:flip-horizontal', async (event, imagePath) => {
+  try {
+    log.info(`[IPC] Flipping image horizontally: ${imagePath}`);
+
+    // Read the image
+    const imageBuffer = await sharp(imagePath).flop().toBuffer();
+
+    // Get metadata to determine output format
+    const metadata = await sharp(imagePath).metadata();
+
+    // Write back to the same file
+    // Use PNG for lossless quality preservation
+    if (metadata.format === 'png' || imagePath.toLowerCase().endsWith('.png')) {
+      await sharp(imageBuffer).png().toFile(imagePath + '.tmp');
+    } else if (metadata.format === 'tiff' || imagePath.toLowerCase().endsWith('.tif') || imagePath.toLowerCase().endsWith('.tiff')) {
+      await sharp(imageBuffer).tiff().toFile(imagePath + '.tmp');
+    } else {
+      // Default to JPEG for other formats
+      await sharp(imageBuffer).jpeg({ quality: 95 }).toFile(imagePath + '.tmp');
+    }
+
+    // Replace original with flipped version
+    const fs = require('fs').promises;
+    await fs.unlink(imagePath);
+    await fs.rename(imagePath + '.tmp', imagePath);
+
+    // Clear tile cache for this image so it gets re-tiled
+    const imageHash = imageConverter.getImageHash(imagePath);
+    await imageConverter.clearImageCache(imageHash);
+
+    log.info(`[IPC] Successfully flipped image: ${imagePath}`);
+    return { success: true, hash: imageHash };
+  } catch (error) {
+    log.error('[IPC] Error flipping image:', error);
+    throw error;
+  }
+});
+
+/**
  * ============================================================================
  * COMPOSITE THUMBNAIL GENERATION HANDLERS
  * ============================================================================

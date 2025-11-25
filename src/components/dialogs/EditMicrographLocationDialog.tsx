@@ -84,6 +84,9 @@ export function EditMicrographLocationDialog({
   // Opacity state for associated micrograph overlay
   const [opacity, setOpacity] = useState(1);
 
+  // Flip state for associated micrograph
+  const [isFlipped, setIsFlipped] = useState(false);
+
   // Scale data state (for "Trace Scale Bar" methods)
   const [hasScaleData, setHasScaleData] = useState(false);
 
@@ -626,6 +629,8 @@ export function EditMicrographLocationDialog({
                 }
                 copySizePixelsPerCm={copySizeData?.newImagePixelsPerCm}
                 initialOpacity={opacity}
+                isFlipped={isFlipped}
+                onFlipChange={setIsFlipped}
                 onPlacementChange={handlePlacementChange}
                 onOpacityChange={setOpacity}
                 onScaleDataChange={handleScaleDataChange}

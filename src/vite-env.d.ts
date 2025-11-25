@@ -201,6 +201,7 @@ interface Window {
       format: string;
     }>;
     isValidImage: (filePath: string) => Promise<boolean>;
+    flipImageHorizontal: (imagePath: string) => Promise<{ success: boolean; hash: string }>;
 
     // Composite thumbnail generation
     generateCompositeThumbnail: (projectId: string, micrographId: string, projectData: any) => Promise<{

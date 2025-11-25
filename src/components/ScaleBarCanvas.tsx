@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
 import { Stage, Layer, Image as KonvaImage, Line } from 'react-konva';
-import { Box, Stack, IconButton, Tooltip, Paper } from '@mui/material';
+import { Box, Stack, IconButton, Tooltip, Paper, FormControlLabel, Checkbox, CircularProgress } from '@mui/material';
 import { PanTool, Timeline, ZoomIn, ZoomOut, RestartAlt } from '@mui/icons-material';
 import Konva from 'konva';
 
@@ -14,25 +14,32 @@ export interface ScaleBarCanvasRef {
 
 interface ScaleBarCanvasProps {
   imageUrl: string;
+  imagePath?: string; // Path to actual image file (for flipping)
   originalWidth: number;  // Original full-resolution image width
   originalHeight: number; // Original full-resolution image height
   onLineDrawn: (lineData: { start: { x: number; y: number }; end: { x: number; y: number }; lengthPixels: number }) => void;
   showToolbar?: boolean;
   currentTool?: Tool;
   onToolChange?: (tool: Tool) => void;
+  isFlipped?: boolean; // Current flip state
+  onFlipChange?: (isFlipped: boolean) => void; // Callback when flip changes
 }
 
 export const ScaleBarCanvas = forwardRef<ScaleBarCanvasRef, ScaleBarCanvasProps>(({
   imageUrl,
+  imagePath,
   originalWidth,
   // originalHeight - not currently used but may be needed in future
   onLineDrawn,
   showToolbar = true,
   currentTool,
-  onToolChange
+  onToolChange,
+  isFlipped = false,
+  onFlipChange,
 }, ref) => {
   const [image, setImage] = useState<HTMLImageElement | null>(null);
   const [internalTool, setInternalTool] = useState<Tool>('pointer');
+  const [isFlipping, setIsFlipping] = useState(false);
 
   // Use controlled tool if provided, otherwise use internal state
   const tool = currentTool ?? internalTool;
@@ -188,6 +195,43 @@ export const ScaleBarCanvas = forwardRef<ScaleBarCanvasRef, ScaleBarCanvasProps>
     setStagePos({ x, y });
   };
 
+  // Handle flip checkbox change
+  const handleFlipChange = async (checked: boolean) => {
+    if (!imagePath || !onFlipChange) return;
+
+    setIsFlipping(true);
+    try {
+      // Flip the image on disk
+      await window.api?.flipImageHorizontal(imagePath);
+
+      // Reload the image with cache-busting
+      const img = new window.Image();
+      img.src = imageUrl + '?t=' + Date.now();
+      img.onload = () => {
+        setImage(img);
+        // Re-center the image
+        const scaleX = CANVAS_WIDTH / img.width;
+        const scaleY = CANVAS_HEIGHT / img.height;
+        const initialScale = Math.min(scaleX, scaleY, 1);
+        setScale(initialScale);
+        const x = (CANVAS_WIDTH - img.width * initialScale) / 2;
+        const y = (CANVAS_HEIGHT - img.height * initialScale) / 2;
+        setStagePos({ x, y });
+        setIsFlipping(false);
+      };
+      img.onerror = () => {
+        console.error('[ScaleBarCanvas] Failed to reload image after flip');
+        setIsFlipping(false);
+      };
+
+      // Update the flip state
+      onFlipChange(checked);
+    } catch (error) {
+      console.error('[ScaleBarCanvas] Error flipping image:', error);
+      setIsFlipping(false);
+    }
+  };
+
   const handleWheel = (e: Konva.KonvaEventObject<WheelEvent>) => {
     e.evt.preventDefault();
 
@@ -301,6 +345,25 @@ export const ScaleBarCanvas = forwardRef<ScaleBarCanvasRef, ScaleBarCanvasProps>
                 <RestartAlt />
               </IconButton>
             </Tooltip>
+
+            {/* Flip checkbox - only show if imagePath and onFlipChange are provided */}
+            {imagePath && onFlipChange && (
+              <FormControlLabel
+                control={
+                  isFlipping ? (
+                    <CircularProgress size={20} sx={{ mx: 1.25 }} />
+                  ) : (
+                    <Checkbox
+                      checked={isFlipped}
+                      onChange={(e) => handleFlipChange(e.target.checked)}
+                      size="small"
+                    />
+                  )
+                }
+                label="Flip?"
+                sx={{ ml: 1, mr: 0 }}
+              />
+            )}
           </Stack>
         </Paper>
       )}

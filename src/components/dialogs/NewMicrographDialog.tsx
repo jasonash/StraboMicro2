@@ -314,6 +314,8 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
   const [micrographPreviewUrl, setMicrographPreviewUrl] = useState<string>('');
   const [isLoadingPreview, setIsLoadingPreview] = useState(false);
   const [canvasTool, setCanvasTool] = useState<Tool>('pointer');
+  const [isFlipped, setIsFlipped] = useState(false);
+  const [isFlipping, setIsFlipping] = useState(false);
   const canvasRef = useRef<ScaleBarCanvasRef>(null);
 
   // Determine if this is an associated micrograph (has a parent) or reference (no parent)
@@ -494,6 +496,27 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
 
   const handleBack = () => {
     setActiveStep((prevActiveStep) => prevActiveStep - 1);
+  };
+
+  // Handle flip checkbox change for the image
+  const handleFlipImage = async () => {
+    if (!formData.micrographFilePath) return;
+
+    setIsFlipping(true);
+    try {
+      // Flip the image on disk
+      await window.api?.flipImageHorizontal(formData.micrographFilePath);
+
+      // Update preview URL with cache-busting to force reload
+      setMicrographPreviewUrl(formData.micrographFilePath + '?t=' + Date.now());
+
+      // Toggle flip state
+      setIsFlipped(!isFlipped);
+    } catch (error) {
+      console.error('[NewMicrographDialog] Error flipping image:', error);
+    } finally {
+      setIsFlipping(false);
+    }
   };
 
   const handleCancel = async () => {
@@ -1707,6 +1730,23 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
                   <RestartAlt />
                 </IconButton>
               </Tooltip>
+
+              {/* Flip checkbox */}
+              <FormControlLabel
+                control={
+                  isFlipping ? (
+                    <CircularProgress size={20} sx={{ mx: 1.25 }} />
+                  ) : (
+                    <Checkbox
+                      checked={isFlipped}
+                      onChange={handleFlipImage}
+                      size="small"
+                    />
+                  )
+                }
+                label="Flip?"
+                sx={{ ml: 1, mr: 0 }}
+              />
             </Stack>
 
             <Divider orientation="vertical" flexItem />
@@ -2330,6 +2370,8 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
             initialOffsetY={copySizeData?.yOffset ?? formData.offsetInParent.Y}
             initialRotation={copySizeData?.rotation ?? formData.rotationAngle}
             initialOpacity={formData.opacity}
+            isFlipped={isFlipped}
+            onFlipChange={setIsFlipped}
             copySizePixelsPerCm={copySizeData?.newImagePixelsPerCm}
             onPlacementChange={handlePlacementChange}
             onOpacityChange={handleOpacityChange}
