@@ -314,14 +314,13 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
     }
   }, [childImage]);
 
-  // Auto-fit child to parent when child is larger (for better UX)
-  // This only affects initial display - the parentDisplayRatio correction handles the math
+  // Auto-fit child to parent when child is larger (for better UX on initial load)
+  // This ensures the child is visible and reasonably sized when the canvas first opens
+  // For "Stretch and Drag", this becomes the working scale
+  // For other methods, this is just initial display until user enters scale data
   useEffect(() => {
-    // Only auto-fit for methods that allow manual resize (Stretch and Drag)
-    // Other methods calculate their own scale based on user input
-    if (scaleMethod !== 'Stretch and Drag') return;
     if (!parentImage || !childImage) return;
-    // Only auto-fit if scale is still at default (1.0) - don't override user adjustments
+    // Only auto-fit if scale is still at default (1.0) - don't override user adjustments or calculated scales
     if (childTransform.scaleX !== 1 || childTransform.scaleY !== 1) return;
 
     // Check if child is larger than parent (in displayed coordinates)
@@ -361,16 +360,19 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
       scaleY: fitScale,
     }));
 
-    // Notify parent of the initial placement (with corrected scale)
-    const topLeft = convertCenterToTopLeft(centerX, centerY, childTransform.rotation, fitScale, fitScale);
-    if (parentOriginalWidth && parentImage.width) {
-      const scaleRatio = parentOriginalWidth / parentImage.width;
-      const originalX = topLeft.x * scaleRatio;
-      const originalY = topLeft.y * scaleRatio;
-      // Apply the same parentDisplayRatio correction we use in handleChildTransformEnd
-      const parentDisplayRatio = parentOriginalWidth / parentImage.width;
-      const correctedScale = fitScale * parentDisplayRatio;
-      onPlacementChange(originalX, originalY, childTransform.rotation, correctedScale, correctedScale);
+    // Only notify parent of the initial placement for "Stretch and Drag" mode
+    // Other methods will calculate their own scale based on user input
+    if (scaleMethod === 'Stretch and Drag') {
+      const topLeft = convertCenterToTopLeft(centerX, centerY, childTransform.rotation, fitScale, fitScale);
+      if (parentOriginalWidth && parentImage.width) {
+        const scaleRatio = parentOriginalWidth / parentImage.width;
+        const originalX = topLeft.x * scaleRatio;
+        const originalY = topLeft.y * scaleRatio;
+        // Apply the same parentDisplayRatio correction we use in handleChildTransformEnd
+        const parentDisplayRatio = parentOriginalWidth / parentImage.width;
+        const correctedScale = fitScale * parentDisplayRatio;
+        onPlacementChange(originalX, originalY, childTransform.rotation, correctedScale, correctedScale);
+      }
     }
   }, [scaleMethod, parentImage, childImage, childWidth, childHeight, parentOriginalWidth, childTransform.scaleX, childTransform.scaleY]);
 
