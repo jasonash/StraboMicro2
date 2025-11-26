@@ -1191,26 +1191,21 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
         const xplNameWithoutExt = xplFileName.substring(0, xplFileName.lastIndexOf('.')) || xplFileName;
 
         // Create XPL micrograph - inherits everything from PPL except imageType
+        // XPL is a SIBLING of the PPL (same parentID), not a child
         xplMicrograph = {
           ...micrograph,
           id: xplMicrographId,
           name: xplNameWithoutExt,
           imageFilename: xplFileName,
           imagePath: xplMicrographId,
-          // XPL is an associated micrograph of the PPL
-          parentID: micrograph.id,
-          // Same location as parent (perfectly overlapping)
-          offsetInParent: { X: 0, Y: 0 },
-          rotation: 0,
+          // XPL has the SAME parent as PPL (they are siblings)
+          // parentID is already inherited from micrograph via spread
           // Override imageType to Cross Polarized Light
           instrument: {
             ...micrograph.instrument,
             imageType: 'Cross Polarized Light',
           },
         };
-
-        // Remove point location fields if present (XPL uses rectangle location)
-        delete (xplMicrograph as Record<string, unknown>).pointInParent;
 
         useAppStore.getState().addMicrograph(targetSampleId, xplMicrograph);
         console.log('XPL micrograph created successfully:', xplMicrograph.id);
