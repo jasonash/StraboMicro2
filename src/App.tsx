@@ -5,6 +5,7 @@ import { EditProjectDialog } from './components/dialogs/EditProjectDialog';
 import { ProjectDebugModal } from './components/dialogs/ProjectDebugModal';
 import { PreferencesDialog } from './components/dialogs/PreferencesDialog';
 import { LoginDialog } from './components/dialogs/LoginDialog';
+import { ExportAllImagesDialog } from './components/dialogs/ExportAllImagesDialog';
 import { useAppStore, useTemporalStore } from '@/store';
 import { useAuthStore } from '@/store/useAuthStore';
 import { useTheme } from './hooks/useTheme';
@@ -16,6 +17,7 @@ function App() {
   const [isDebugModalOpen, setIsDebugModalOpen] = useState(false);
   const [isPreferencesOpen, setIsPreferencesOpen] = useState(false);
   const [isLoginDialogOpen, setIsLoginDialogOpen] = useState(false);
+  const [isExportAllImagesOpen, setIsExportAllImagesOpen] = useState(false);
   const closeProject = useAppStore(state => state.closeProject);
   const project = useAppStore(state => state.project);
   const setTheme = useAppStore(state => state.setTheme);
@@ -350,7 +352,16 @@ function App() {
     window.api.onLogoutRequest(async () => {
       await logout();
     });
-  }, [closeProject, setTheme, setShowRulers, setShowSpotLabels, logout]);
+
+    // File: Export All Images menu item
+    window.api.onExportAllImages(() => {
+      if (!project) {
+        alert('No project loaded. Please load a project first.');
+        return;
+      }
+      setIsExportAllImagesOpen(true);
+    });
+  }, [closeProject, setTheme, setShowRulers, setShowSpotLabels, logout, project]);
 
   return (
     <>
@@ -374,6 +385,12 @@ function App() {
       <LoginDialog
         isOpen={isLoginDialogOpen}
         onClose={() => setIsLoginDialogOpen(false)}
+      />
+      <ExportAllImagesDialog
+        open={isExportAllImagesOpen}
+        onClose={() => setIsExportAllImagesOpen(false)}
+        projectId={project?.id ?? null}
+        projectData={project}
       />
     </>
   );

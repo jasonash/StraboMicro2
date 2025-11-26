@@ -114,6 +114,17 @@ contextBridge.exposeInMainWorld('api', {
   exportCompositeMicrograph: (projectId, micrographId, projectData, options) =>
     ipcRenderer.invoke('micrograph:export-composite', projectId, micrographId, projectData, options),
 
+  // Export all images to ZIP
+  exportAllImages: (projectId, projectData) =>
+    ipcRenderer.invoke('project:export-all-images', projectId, projectData),
+  onExportAllImagesProgress: (callback) =>
+    ipcRenderer.on('export-all-images:progress', (event, progress) => callback(progress)),
+  removeExportAllImagesProgressListener: () =>
+    ipcRenderer.removeAllListeners('export-all-images:progress'),
+
+  // Menu event for export all images
+  onExportAllImages: (callback) => ipcRenderer.on('menu:export-all-images', callback),
+
   // Authentication
   auth: {
     login: (email, password, restServer) => ipcRenderer.invoke('auth:login', email, password, restServer),
