@@ -28,8 +28,6 @@ import {
   MoreVert,
   Visibility,
   VisibilityOff,
-  ArrowUpward,
-  ArrowDownward,
 } from '@mui/icons-material';
 import { useAppStore } from '@/store';
 import { NewDatasetDialog } from './dialogs/NewDatasetDialog';
@@ -517,29 +515,6 @@ export function ProjectTree() {
                 </IconButton>
               )}
 
-              {/* Move Up Button */}
-              <IconButton
-                size="small"
-                onClick={() => {
-                  // TODO: Implement move up
-                  console.log('Move up:', micrograph.id);
-                }}
-                sx={{ p: 0.5 }}
-              >
-                <ArrowUpward fontSize="small" />
-              </IconButton>
-
-              {/* Move Down Button */}
-              <IconButton
-                size="small"
-                onClick={() => {
-                  // TODO: Implement move down
-                  console.log('Move down:', micrograph.id);
-                }}
-                sx={{ p: 0.5 }}
-              >
-                <ArrowDownward fontSize="small" />
-              </IconButton>
             </Stack>
           </Stack>
         </Box>
