@@ -490,10 +490,10 @@ export function PropertiesPanel() {
           variant="filled"
           sx={{
             width: '100%',
-            // Use app's primary pinkish-red for info and success messages
-            ...((snackbar.severity === 'info' || snackbar.severity === 'success') && {
+            color: '#fff', // White text for all messages
+            // Use app's primary pinkish-red for info messages
+            ...(snackbar.severity === 'info' && {
               backgroundColor: '#e44c65',
-              color: '#fff',
             }),
           }}
         >
