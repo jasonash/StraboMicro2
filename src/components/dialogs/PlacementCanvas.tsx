@@ -1388,40 +1388,37 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
                 />
 
                 {/* Border outline to make overlay visible */}
+                {/* Inverse-scale by both layer scale and child scale to maintain consistent visual width */}
                 <Rect
                   width={childWidth}
                   height={childHeight}
                   stroke="#e44c65"
-                  strokeWidth={2 / (scale * (childTransform.scaleX || 1))}
+                  strokeWidth={2 / scale / (childTransform.scaleX || 1)}
                   listening={false}
                 />
               </Group>
             )}
 
             {/* Transformer on same layer as child so coordinates match */}
-            {childImage && (() => {
-              // Calculate combined scale: stage zoom * child transform scale
-              // This ensures handles remain constant size regardless of zoom or child scale
-              const combinedScale = scale * (childTransform.scaleX || 1);
-              // Use fixed pixel sizes for handles (8px anchors, 2px borders)
-              return (
-                <Transformer
-                  ref={transformerRef}
-                  rotateEnabled={enableRotate}
-                  borderStroke="#e44c65"
-                  anchorStroke="#e44c65"
-                  anchorFill="#e44c65"
-                  anchorSize={8 / combinedScale}
-                  anchorCornerRadius={2 / combinedScale}
-                  anchorStrokeWidth={1 / combinedScale}
-                  borderStrokeWidth={2 / combinedScale}
-                  enabledAnchors={enableResizeHandles ? ['top-left', 'top-right', 'bottom-left', 'bottom-right'] : []}
-                  keepRatio={true}
-                  rotateAnchorOffset={20 / combinedScale}
-                  ignoreStroke={true}
-                />
-              );
-            })()}
+            {/* Because the layer is scaled by `scale`, we need to inverse-scale the visual properties */}
+            {/* to keep them at a consistent screen size regardless of zoom level */}
+            {childImage && (
+              <Transformer
+                ref={transformerRef}
+                rotateEnabled={enableRotate}
+                borderStroke="#e44c65"
+                anchorStroke="#e44c65"
+                anchorFill="#e44c65"
+                anchorSize={10 / scale}
+                anchorCornerRadius={2 / scale}
+                anchorStrokeWidth={1 / scale}
+                borderStrokeWidth={2 / scale}
+                enabledAnchors={enableResizeHandles ? ['top-left', 'top-right', 'bottom-left', 'bottom-right'] : []}
+                keepRatio={true}
+                rotateAnchorOffset={25 / scale}
+                ignoreStroke={true}
+              />
+            )}
 
             {/* Traced scale bar line for Trace Scale Bar method */}
             {scaleMethod === 'Trace Scale Bar and Drag' && currentLine && (

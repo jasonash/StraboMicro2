@@ -1540,6 +1540,7 @@ ipcMain.handle('composite:generate-thumbnail', async (event, projectId, microgra
         }
 
         // Apply rotation if needed
+        let finalX, finalY, finalBuffer;
         if (child.rotation) {
           // Calculate center position for rotation
           const centerX = thumbX + thumbChildWidth / 2;
@@ -1559,23 +1560,77 @@ ipcMain.handle('composite:generate-thumbnail', async (event, projectId, microgra
           const rotatedHeight = thumbChildWidth * sin + thumbChildHeight * cos;
 
           // Adjust position to account for rotation
-          const adjustedX = Math.round(centerX - rotatedWidth / 2);
-          const adjustedY = Math.round(centerY - rotatedHeight / 2);
+          finalX = Math.round(centerX - rotatedWidth / 2);
+          finalY = Math.round(centerY - rotatedHeight / 2);
+          finalBuffer = await childImage.png().toBuffer();
 
           log.info(`[IPC]   Rotation: ${child.rotation}°, Rotated size: ${Math.round(rotatedWidth)}x${Math.round(rotatedHeight)}`);
-
-          compositeInputs.push({
-            input: await childImage.png().toBuffer(),
-            left: adjustedX,
-            top: adjustedY
-          });
         } else {
-          compositeInputs.push({
-            input: await childImage.png().toBuffer(),
-            left: thumbX,
-            top: thumbY
-          });
+          finalX = thumbX;
+          finalY = thumbY;
+          finalBuffer = await childImage.png().toBuffer();
         }
+
+        // Validate that the composite position is within bounds
+        // Sharp requires: left >= 0, top >= 0, and image fits within base
+        const childBufferMeta = await sharp(finalBuffer).metadata();
+        const childW = childBufferMeta.width;
+        const childH = childBufferMeta.height;
+
+        // Skip children that would be entirely outside the base image
+        if (finalX + childW <= 0 || finalY + childH <= 0 || finalX >= thumbWidth || finalY >= thumbHeight) {
+          log.info(`[IPC]   Skipping child ${child.id} - entirely outside base image bounds`);
+          continue;
+        }
+
+        // Crop child image if it extends outside base bounds
+        let cropX = 0, cropY = 0, cropW = childW, cropH = childH;
+        let compositeX = finalX, compositeY = finalY;
+
+        // Handle negative X (child extends past left edge)
+        if (finalX < 0) {
+          cropX = -finalX;
+          cropW -= cropX;
+          compositeX = 0;
+        }
+
+        // Handle negative Y (child extends past top edge)
+        if (finalY < 0) {
+          cropY = -finalY;
+          cropH -= cropY;
+          compositeY = 0;
+        }
+
+        // Handle overflow on right
+        if (compositeX + cropW > thumbWidth) {
+          cropW = thumbWidth - compositeX;
+        }
+
+        // Handle overflow on bottom
+        if (compositeY + cropH > thumbHeight) {
+          cropH = thumbHeight - compositeY;
+        }
+
+        // Validate crop dimensions are positive
+        if (cropW <= 0 || cropH <= 0) {
+          log.info(`[IPC]   Skipping child ${child.id} - crop dimensions invalid after bounds check`);
+          continue;
+        }
+
+        // If we need to crop, extract the visible region
+        let compositeBuffer = finalBuffer;
+        if (cropX > 0 || cropY > 0 || cropW !== childW || cropH !== childH) {
+          log.info(`[IPC]   Cropping child to visible region: extract(${cropX}, ${cropY}, ${cropW}, ${cropH})`);
+          compositeBuffer = await sharp(finalBuffer)
+            .extract({ left: cropX, top: cropY, width: cropW, height: cropH })
+            .toBuffer();
+        }
+
+        compositeInputs.push({
+          input: compositeBuffer,
+          left: compositeX,
+          top: compositeY
+        });
       } catch (error) {
         log.error(`[IPC] Failed to composite child ${child.id}:`, error);
         // Continue with other children
