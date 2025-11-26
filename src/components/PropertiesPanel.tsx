@@ -488,7 +488,14 @@ export function PropertiesPanel() {
           onClose={handleCloseSnackbar}
           severity={snackbar.severity}
           variant="filled"
-          sx={{ width: '100%' }}
+          sx={{
+            width: '100%',
+            // Use app's primary pinkish-red for info messages
+            ...(snackbar.severity === 'info' && {
+              backgroundColor: '#e44c65',
+              color: '#fff',
+            }),
+          }}
         >
           {snackbar.message}
         </Alert>
