@@ -407,9 +407,12 @@ export function EditMicrographLocationDialog({
 
     // Regenerate composite thumbnails for both the child and the parent micrograph
     // Use setTimeout to ensure store is updated before getting fresh project data
+    // Use 100ms delay to ensure React state updates have propagated
     setTimeout(() => {
       const freshProject = useAppStore.getState().project;
       if (!freshProject) return;
+
+      console.log('[EditMicrographLocationDialog] Regenerating thumbnails with fresh project data');
 
       // Regenerate the child's composite thumbnail (in case image was flipped)
       window.api?.generateCompositeThumbnail(freshProject.id, micrographId, freshProject)
@@ -436,7 +439,7 @@ export function EditMicrographLocationDialog({
         .catch((error) => {
           console.error('[EditMicrographLocationDialog] Failed to regenerate parent composite thumbnail:', error);
         });
-    }, 0);
+    }, 100);
 
     onClose();
   };
