@@ -1392,7 +1392,7 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
                   width={childWidth}
                   height={childHeight}
                   stroke="#e44c65"
-                  strokeWidth={2 / Math.max(0.2, Math.min(scale, 2))}
+                  strokeWidth={2 / (scale * (childTransform.scaleX || 1))}
                   listening={false}
                 />
               </Group>
@@ -1400,8 +1400,10 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
 
             {/* Transformer on same layer as child so coordinates match */}
             {childImage && (() => {
-              // Clamp scale factor to prevent handles from becoming too large or small
-              const handleScale = Math.max(0.2, Math.min(scale, 2));
+              // Calculate combined scale: stage zoom * child transform scale
+              // This ensures handles remain constant size regardless of zoom or child scale
+              const combinedScale = scale * (childTransform.scaleX || 1);
+              // Use fixed pixel sizes for handles (8px anchors, 2px borders)
               return (
                 <Transformer
                   ref={transformerRef}
@@ -1409,13 +1411,13 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
                   borderStroke="#e44c65"
                   anchorStroke="#e44c65"
                   anchorFill="#e44c65"
-                  anchorSize={8 / handleScale}
-                  anchorCornerRadius={2 / handleScale}
-                  anchorStrokeWidth={1 / handleScale}
-                  borderStrokeWidth={2 / handleScale}
+                  anchorSize={8 / combinedScale}
+                  anchorCornerRadius={2 / combinedScale}
+                  anchorStrokeWidth={1 / combinedScale}
+                  borderStrokeWidth={2 / combinedScale}
                   enabledAnchors={enableResizeHandles ? ['top-left', 'top-right', 'bottom-left', 'bottom-right'] : []}
                   keepRatio={true}
-                  rotateAnchorOffset={20 / handleScale}
+                  rotateAnchorOffset={20 / combinedScale}
                   ignoreStroke={true}
                 />
               );

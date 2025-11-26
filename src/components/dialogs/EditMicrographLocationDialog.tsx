@@ -405,6 +405,9 @@ export function EditMicrographLocationDialog({
       });
     }
 
+    // Capture parent ID before closing (parentMicrograph may become stale)
+    const parentId = parentMicrograph.id;
+
     // Regenerate composite thumbnails for both the child and the parent micrograph
     // Use setTimeout to ensure store is updated before getting fresh project data
     // Use 100ms delay to ensure React state updates have propagated
@@ -413,6 +416,7 @@ export function EditMicrographLocationDialog({
       if (!freshProject) return;
 
       console.log('[EditMicrographLocationDialog] Regenerating thumbnails with fresh project data');
+      console.log('[EditMicrographLocationDialog] Child ID:', micrographId, 'Parent ID:', parentId);
 
       // Regenerate the child's composite thumbnail (in case image was flipped)
       window.api?.generateCompositeThumbnail(freshProject.id, micrographId, freshProject)
@@ -427,13 +431,13 @@ export function EditMicrographLocationDialog({
           console.error('[EditMicrographLocationDialog] Failed to regenerate child composite thumbnail:', error);
         });
 
-      // Regenerate the parent's composite thumbnail
-      window.api?.generateCompositeThumbnail(freshProject.id, parentMicrograph.id, freshProject)
+      // Regenerate the parent's composite thumbnail (includes all children as overlays)
+      window.api?.generateCompositeThumbnail(freshProject.id, parentId, freshProject)
         .then(() => {
           console.log('[EditMicrographLocationDialog] Successfully regenerated parent composite thumbnail');
           // Trigger thumbnail refresh in UI
           window.dispatchEvent(new CustomEvent('thumbnail-generated', {
-            detail: { micrographId: parentMicrograph.id }
+            detail: { micrographId: parentId }
           }));
         })
         .catch((error) => {
