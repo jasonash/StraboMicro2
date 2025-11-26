@@ -155,21 +155,17 @@ export function PropertiesPanel() {
     }, 0);
   };
 
-  // Handle download micrograph image
+  // Handle download micrograph as composite image with overlays, spots, and labels
   const handleDownloadMicrograph = async () => {
-    if (!activeMicrographId) return;
+    if (!activeMicrographId || !project?.id) return;
 
-    // Find the micrograph to get its image path
-    for (const dataset of project?.datasets || []) {
-      for (const sample of dataset.samples || []) {
-        const micrograph = sample.micrographs?.find((m) => m.id === activeMicrographId);
-        if (micrograph?.imagePath) {
-          // Use the Electron API to trigger a save dialog
-          await window.api?.downloadMicrograph(micrograph.imagePath, micrograph.name || 'micrograph');
-          return;
-        }
-      }
-    }
+    // Export composite micrograph with all overlays, spots, and labels
+    await window.api?.exportCompositeMicrograph(
+      project.id,
+      activeMicrographId,
+      project,
+      { includeSpots: true, includeLabels: true }
+    );
   };
 
   // Handle delete confirmation
