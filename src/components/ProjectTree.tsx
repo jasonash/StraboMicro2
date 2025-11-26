@@ -458,7 +458,7 @@ export function ProjectTree() {
   };
 
   // Handle drag end for micrograph reordering
-  const handleMicrographDragEnd = (
+  const handleMicrographDragEnd = async (
     event: DragEndEvent,
     sampleId: string,
     parentId: string | null,
@@ -474,6 +474,21 @@ export function ProjectTree() {
 
     const newOrder = arrayMove(items, oldIndex, newIndex);
     reorderMicrographs(sampleId, parentId, newOrder.map((m) => m.id));
+
+    // Regenerate parent's composite thumbnail if we reordered children under a parent
+    if (parentId && project && window.api) {
+      try {
+        // Get updated project data for thumbnail generation
+        const currentProject = useAppStore.getState().project;
+        if (currentProject) {
+          await window.api.generateCompositeThumbnail(currentProject.id, parentId, currentProject);
+          // Dispatch event to notify thumbnail components to reload
+          window.dispatchEvent(new CustomEvent('thumbnail-generated', { detail: { micrographId: parentId } }));
+        }
+      } catch (error) {
+        console.error('[ProjectTree] Error regenerating parent thumbnail:', error);
+      }
+    }
   };
 
   // Handle drag end for sample reordering
@@ -495,7 +510,7 @@ export function ProjectTree() {
   };
 
   // Keyboard shortcut handlers for moving items up/down
-  const handleMicrographKeyDown = (
+  const handleMicrographKeyDown = async (
     e: React.KeyboardEvent,
     micrographId: string,
     sampleId: string,
@@ -507,14 +522,31 @@ export function ProjectTree() {
     const currentIndex = siblings.findIndex((m) => m.id === micrographId);
     if (currentIndex === -1) return;
 
+    let didReorder = false;
+
     if (e.key === 'ArrowUp' && currentIndex > 0) {
       e.preventDefault();
       const newOrder = arrayMove(siblings, currentIndex, currentIndex - 1);
       reorderMicrographs(sampleId, parentId, newOrder.map((m) => m.id));
+      didReorder = true;
     } else if (e.key === 'ArrowDown' && currentIndex < siblings.length - 1) {
       e.preventDefault();
       const newOrder = arrayMove(siblings, currentIndex, currentIndex + 1);
       reorderMicrographs(sampleId, parentId, newOrder.map((m) => m.id));
+      didReorder = true;
+    }
+
+    // Regenerate parent's composite thumbnail if we reordered children under a parent
+    if (didReorder && parentId && window.api) {
+      try {
+        const currentProject = useAppStore.getState().project;
+        if (currentProject) {
+          await window.api.generateCompositeThumbnail(currentProject.id, parentId, currentProject);
+          window.dispatchEvent(new CustomEvent('thumbnail-generated', { detail: { micrographId: parentId } }));
+        }
+      } catch (error) {
+        console.error('[ProjectTree] Error regenerating parent thumbnail:', error);
+      }
     }
   };
 
