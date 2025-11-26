@@ -90,6 +90,9 @@ export function EditMicrographLocationDialog({
   // Scale data state (for "Trace Scale Bar" methods)
   const [hasScaleData, setHasScaleData] = useState(false);
 
+  // Point placement state (for "Locate as a point" method)
+  const [hasPointPlaced, setHasPointPlaced] = useState(false);
+
   // Project folder paths for constructing image paths
   const [imagesFolder, setImagesFolder] = useState<string>('');
 
@@ -242,6 +245,7 @@ export function EditMicrographLocationDialog({
   const handlePointPlacementChange = (x: number, y: number) => {
     setPointX(x);
     setPointY(y);
+    setHasPointPlaced(true);
   };
 
   // Handle scale data changes from PlacementCanvas
@@ -294,10 +298,18 @@ export function EditMicrographLocationDialog({
 
   // Check if Save should be enabled
   const canSave = (): boolean => {
+    const isPointLocation = locationMethod === 'Locate by an approximate point';
+
+    // For point location, always require a point to be placed
+    if (isPointLocation && !hasPointPlaced) {
+      return false;
+    }
+
     // For methods that require scale data, check hasScaleData
     if (requiresScaleData()) {
       return hasScaleData;
     }
+
     // For other methods (Stretch and Drag, Copy Size), always allow save
     return true;
   };
@@ -314,16 +326,18 @@ export function EditMicrographLocationDialog({
     if (step === 0) {
       setStep(1);
     } else if (step === 1 && canProceedFromScaleMethod()) {
-      // Reset scale data when entering placement step
+      // Reset scale data and point placement when entering placement step
       setHasScaleData(false);
+      setHasPointPlaced(false);
       setStep(2);
     }
   };
 
   const handleBack = () => {
     if (step > 0) {
-      // Reset scale data when going back
+      // Reset scale data and point placement when going back
       setHasScaleData(false);
+      setHasPointPlaced(false);
       setStep(step - 1);
     }
   };
