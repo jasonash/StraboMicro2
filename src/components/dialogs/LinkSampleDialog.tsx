@@ -115,15 +115,24 @@ export function LinkSampleDialog({ open, onClose, onSelectSample }: LinkSampleDi
 
     try {
       const restServer = getRestServerUrl();
-      const response = await authenticatedFetch(`${restServer}/jwtdb/myProjects`);
+      const url = `${restServer}/jwtdb/myProjects`;
+      console.log('[LinkSampleDialog] Loading projects from:', url);
+
+      const response = await authenticatedFetch(url);
+      console.log('[LinkSampleDialog] Projects response status:', response.status);
 
       if (!response.ok) {
-        throw new Error(`Failed to load projects: ${response.status}`);
+        const errorText = await response.text();
+        console.error('[LinkSampleDialog] Projects error response:', errorText);
+        throw new Error(`Failed to load projects: ${response.status} - ${errorText}`);
       }
 
       const data = await response.json();
-      // API returns array of projects
-      setProjects(Array.isArray(data) ? data : []);
+      console.log('[LinkSampleDialog] Projects data:', data);
+      // API returns { projects: [...] } object, not a direct array
+      const projectsArray = data?.projects || (Array.isArray(data) ? data : []);
+      console.log('[LinkSampleDialog] Parsed projects array:', projectsArray);
+      setProjects(projectsArray);
     } catch (err) {
       console.error('[LinkSampleDialog] Error loading projects:', err);
       setError(err instanceof Error ? err.message : 'Failed to load projects');
@@ -138,14 +147,24 @@ export function LinkSampleDialog({ open, onClose, onSelectSample }: LinkSampleDi
 
     try {
       const restServer = getRestServerUrl();
-      const response = await authenticatedFetch(`${restServer}/jwtdb/projectDatasets/${projectId}`);
+      const url = `${restServer}/jwtdb/projectDatasets/${projectId}`;
+      console.log('[LinkSampleDialog] Loading datasets from:', url);
+
+      const response = await authenticatedFetch(url);
+      console.log('[LinkSampleDialog] Datasets response status:', response.status);
 
       if (!response.ok) {
-        throw new Error(`Failed to load datasets: ${response.status}`);
+        const errorText = await response.text();
+        console.error('[LinkSampleDialog] Datasets error response:', errorText);
+        throw new Error(`Failed to load datasets: ${response.status} - ${errorText}`);
       }
 
       const data = await response.json();
-      setDatasets(Array.isArray(data) ? data : []);
+      console.log('[LinkSampleDialog] Datasets data:', data);
+      // API might return { datasets: [...] } object or direct array
+      const datasetsArray = data?.datasets || (Array.isArray(data) ? data : []);
+      console.log('[LinkSampleDialog] Parsed datasets array:', datasetsArray);
+      setDatasets(datasetsArray);
     } catch (err) {
       console.error('[LinkSampleDialog] Error loading datasets:', err);
       setError(err instanceof Error ? err.message : 'Failed to load datasets');
@@ -160,27 +179,39 @@ export function LinkSampleDialog({ open, onClose, onSelectSample }: LinkSampleDi
 
     try {
       const restServer = getRestServerUrl();
-      const response = await authenticatedFetch(`${restServer}/jwtdb/datasetSpots/${datasetId}`);
+      const url = `${restServer}/jwtdb/datasetSpots/${datasetId}`;
+      console.log('[LinkSampleDialog] Loading spots from:', url);
+
+      const response = await authenticatedFetch(url);
+      console.log('[LinkSampleDialog] Spots response status:', response.status);
 
       if (!response.ok) {
-        throw new Error(`Failed to load spots: ${response.status}`);
+        const errorText = await response.text();
+        console.error('[LinkSampleDialog] Spots error response:', errorText);
+        throw new Error(`Failed to load spots: ${response.status} - ${errorText}`);
       }
 
       const data = await response.json();
+      console.log('[LinkSampleDialog] Spots data:', data);
 
       // Extract samples from spots
-      // Each spot can have a "samples" array in properties
+      // API returns a FeatureCollection: { type: "FeatureCollection", features: [...] }
+      // Each feature has properties.samples array
       const extractedSamples: ServerSample[] = [];
 
-      if (Array.isArray(data)) {
-        for (const spot of data) {
-          const spotSamples = spot?.properties?.samples;
-          if (Array.isArray(spotSamples)) {
-            extractedSamples.push(...spotSamples);
-          }
+      // Handle FeatureCollection format
+      const features = data?.features || (Array.isArray(data) ? data : []);
+      console.log('[LinkSampleDialog] Features to process:', features.length);
+
+      for (const feature of features) {
+        const spotSamples = feature?.properties?.samples;
+        if (Array.isArray(spotSamples)) {
+          console.log('[LinkSampleDialog] Found samples in spot:', feature?.properties?.name, spotSamples);
+          extractedSamples.push(...spotSamples);
         }
       }
 
+      console.log('[LinkSampleDialog] Total extracted samples:', extractedSamples.length, extractedSamples);
       setSamples(extractedSamples);
     } catch (err) {
       console.error('[LinkSampleDialog] Error loading samples:', err);

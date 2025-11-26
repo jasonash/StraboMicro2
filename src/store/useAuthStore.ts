@@ -271,15 +271,20 @@ export async function authenticatedFetch(
   url: string,
   options: RequestInit = {}
 ): Promise<Response> {
+  console.log('[authenticatedFetch] Fetching:', url);
+
   const token = await getAccessToken();
+  console.log('[authenticatedFetch] Token retrieved:', token ? `${token.substring(0, 20)}...` : 'null');
 
   if (!token) {
+    console.error('[authenticatedFetch] No token available - not authenticated');
     throw new Error('Not authenticated');
   }
 
   const headers = new Headers(options.headers);
   headers.set('Authorization', `Bearer ${token}`);
 
+  console.log('[authenticatedFetch] Making request with Authorization header');
   return fetch(url, {
     ...options,
     headers,
