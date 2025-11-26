@@ -3137,6 +3137,284 @@ ipcMain.handle('project:export-all-images', async (event, projectId, projectData
 });
 
 /**
+ * Convert SimpleCoord to legacy format (uppercase X/Y)
+ */
+function convertCoordToLegacy(coord) {
+  if (!coord) return null;
+  return {
+    X: coord.X ?? coord.x ?? null,
+    Y: coord.Y ?? coord.y ?? null
+  };
+}
+
+/**
+ * Convert GeoJSON geometry to legacy points array format
+ * Legacy format: geometryType + points array of {X, Y} objects
+ */
+function convertGeometryToLegacy(geometry) {
+  if (!geometry) return { geometryType: null, points: null };
+
+  const geometryType = geometry.type || null;
+  let points = null;
+
+  if (geometry.coordinates) {
+    switch (geometry.type) {
+      case 'Point':
+        // [x, y] -> [{X, Y}]
+        points = [{ X: geometry.coordinates[0], Y: geometry.coordinates[1] }];
+        break;
+      case 'LineString':
+        // [[x,y], [x,y], ...] -> [{X,Y}, {X,Y}, ...]
+        points = geometry.coordinates.map(coord => ({ X: coord[0], Y: coord[1] }));
+        break;
+      case 'Polygon':
+        // [[[x,y], [x,y], ...]] -> [{X,Y}, {X,Y}, ...] (first ring only)
+        if (geometry.coordinates[0]) {
+          points = geometry.coordinates[0].map(coord => ({ X: coord[0], Y: coord[1] }));
+        }
+        break;
+    }
+  }
+
+  return { geometryType, points };
+}
+
+/**
+ * Sanitize spot for legacy JSON export
+ */
+function sanitizeSpotForExport(spot) {
+  if (!spot) return null;
+
+  // Convert geometry to legacy format if present
+  const { geometryType, points } = spot.geometry
+    ? convertGeometryToLegacy(spot.geometry)
+    : { geometryType: spot.geometryType || null, points: spot.points || null };
+
+  // Convert points array to legacy format (uppercase X/Y)
+  const legacyPoints = points ? points.map(p => convertCoordToLegacy(p)) : null;
+
+  // Build legacy spot object - exclude runtime-only fields
+  const legacySpot = {
+    id: spot.id || null,
+    name: spot.name || null,
+    labelColor: spot.labelColor || null,
+    showLabel: spot.showLabel ?? null,
+    color: spot.color || null,
+    date: spot.date || null,
+    time: spot.time || null,
+    notes: spot.notes || null,
+    modifiedTimestamp: spot.modifiedTimestamp ?? null,
+    geometryType: geometryType,
+    points: legacyPoints,
+    // Feature info types
+    mineralogy: spot.mineralogy || null,
+    grainInfo: spot.grainInfo || null,
+    fabricInfo: spot.fabricInfo || null,
+    clasticDeformationBandInfo: spot.clasticDeformationBandInfo || null,
+    grainBoundaryInfo: spot.grainBoundaryInfo || null,
+    intraGrainInfo: spot.intraGrainInfo || null,
+    veinInfo: spot.veinInfo || null,
+    pseudotachylyteInfo: spot.pseudotachylyteInfo || null,
+    foldInfo: spot.foldInfo || null,
+    faultsShearZonesInfo: spot.faultsShearZonesInfo || null,
+    extinctionMicrostructureInfo: spot.extinctionMicrostructureInfo || null,
+    lithologyInfo: spot.lithologyInfo || null,
+    fractureInfo: spot.fractureInfo || null,
+    // Supporting data
+    associatedFiles: spot.associatedFiles || null,
+    links: spot.links || null,
+    tags: spot.tags || null
+  };
+
+  // Remove null/undefined values to keep JSON clean (optional, but matches legacy behavior)
+  return Object.fromEntries(Object.entries(legacySpot).filter(([_, v]) => v !== undefined));
+}
+
+/**
+ * Sanitize micrograph for legacy JSON export
+ */
+function sanitizeMicrographForExport(micrograph) {
+  if (!micrograph) return null;
+
+  // Build legacy micrograph object - exclude runtime-only fields
+  const legacyMicrograph = {
+    id: micrograph.id || null,
+    parentID: micrograph.parentID || null,
+    name: micrograph.name || null,
+    imageType: micrograph.imageType || null,
+    width: micrograph.width ?? micrograph.imageWidth ?? null,
+    height: micrograph.height ?? micrograph.imageHeight ?? null,
+    opacity: micrograph.opacity ?? null,
+    scale: micrograph.scale || null,
+    polish: micrograph.polish ?? null,
+    polishDescription: micrograph.polishDescription || null,
+    description: micrograph.description || null,
+    notes: micrograph.notes || null,
+    scalePixelsPerCentimeter: micrograph.scalePixelsPerCentimeter ?? null,
+    offsetInParent: convertCoordToLegacy(micrograph.offsetInParent),
+    pointInParent: convertCoordToLegacy(micrograph.pointInParent),
+    rotation: micrograph.rotation ?? null,
+    // Feature info types
+    mineralogy: micrograph.mineralogy || null,
+    grainInfo: micrograph.grainInfo || null,
+    fabricInfo: micrograph.fabricInfo || null,
+    orientationInfo: micrograph.orientationInfo || null,
+    clasticDeformationBandInfo: micrograph.clasticDeformationBandInfo || null,
+    grainBoundaryInfo: micrograph.grainBoundaryInfo || null,
+    intraGrainInfo: micrograph.intraGrainInfo || null,
+    veinInfo: micrograph.veinInfo || null,
+    pseudotachylyteInfo: micrograph.pseudotachylyteInfo || null,
+    foldInfo: micrograph.foldInfo || null,
+    faultsShearZonesInfo: micrograph.faultsShearZonesInfo || null,
+    extinctionMicrostructureInfo: micrograph.extinctionMicrostructureInfo || null,
+    lithologyInfo: micrograph.lithologyInfo || null,
+    fractureInfo: micrograph.fractureInfo || null,
+    // Supporting data
+    instrument: micrograph.instrument || null,
+    associatedFiles: micrograph.associatedFiles || null,
+    links: micrograph.links || null,
+    // UI/visibility state
+    isMicroVisible: micrograph.isMicroVisible ?? null,
+    isExpanded: micrograph.isExpanded ?? null,
+    isSpotExpanded: micrograph.isSpotExpanded ?? null,
+    isFlipped: micrograph.isFlipped ?? micrograph.flipped ?? null,
+    tags: micrograph.tags || null,
+    // Spots (recursively sanitize)
+    spots: micrograph.spots ? micrograph.spots.map(s => sanitizeSpotForExport(s)) : null
+  };
+
+  return Object.fromEntries(Object.entries(legacyMicrograph).filter(([_, v]) => v !== undefined));
+}
+
+/**
+ * Sanitize sample for legacy JSON export
+ * Maps modern 'name' field to legacy 'label' field
+ */
+function sanitizeSampleForExport(sample) {
+  if (!sample) return null;
+
+  const legacySample = {
+    id: sample.id || null,
+    existsOnServer: sample.existsOnServer ?? null,
+    // Map 'name' to 'label' for legacy compatibility
+    label: sample.label || sample.name || null,
+    sampleID: sample.sampleID || null,
+    longitude: sample.longitude ?? null,
+    latitude: sample.latitude ?? null,
+    mainSamplingPurpose: sample.mainSamplingPurpose || null,
+    sampleDescription: sample.sampleDescription || null,
+    materialType: sample.materialType || null,
+    inplacenessOfSample: sample.inplacenessOfSample || null,
+    orientedSample: sample.orientedSample || null,
+    sampleSize: sample.sampleSize || null,
+    degreeOfWeathering: sample.degreeOfWeathering || null,
+    sampleNotes: sample.sampleNotes || null,
+    sampleType: sample.sampleType || null,
+    color: sample.color || null,
+    lithology: sample.lithology || null,
+    sampleUnit: sample.sampleUnit || null,
+    otherMaterialType: sample.otherMaterialType || null,
+    sampleOrientationNotes: sample.sampleOrientationNotes || null,
+    otherSamplingPurpose: sample.otherSamplingPurpose || null,
+    // UI state
+    isExpanded: sample.isExpanded ?? null,
+    isSpotExpanded: sample.isSpotExpanded ?? null,
+    // Micrographs (recursively sanitize)
+    micrographs: sample.micrographs ? sample.micrographs.map(m => sanitizeMicrographForExport(m)) : null
+  };
+
+  return Object.fromEntries(Object.entries(legacySample).filter(([_, v]) => v !== undefined));
+}
+
+/**
+ * Sanitize dataset for legacy JSON export
+ */
+function sanitizeDatasetForExport(dataset) {
+  if (!dataset) return null;
+
+  const legacyDataset = {
+    id: dataset.id || null,
+    name: dataset.name || null,
+    date: dataset.date || null,
+    modifiedTimestamp: dataset.modifiedTimestamp || null,
+    samples: dataset.samples ? dataset.samples.map(s => sanitizeSampleForExport(s)) : null
+  };
+
+  return Object.fromEntries(Object.entries(legacyDataset).filter(([_, v]) => v !== undefined));
+}
+
+/**
+ * Sanitize group for legacy JSON export
+ */
+function sanitizeGroupForExport(group) {
+  if (!group) return null;
+
+  const legacyGroup = {
+    id: group.id || null,
+    name: group.name || null,
+    micrographs: group.micrographs || null,
+    isExpanded: group.isExpanded ?? null
+  };
+
+  return Object.fromEntries(Object.entries(legacyGroup).filter(([_, v]) => v !== undefined));
+}
+
+/**
+ * Sanitize tag for legacy JSON export
+ */
+function sanitizeTagForExport(tag) {
+  if (!tag) return null;
+
+  const legacyTag = {
+    id: tag.id || null,
+    name: tag.name || null,
+    tagType: tag.tagType || null,
+    tagSubtype: tag.tagSubtype || null,
+    otherConcept: tag.otherConcept || null,
+    otherDocumentation: tag.otherDocumentation || null,
+    otherTagType: tag.otherTagType || null,
+    lineColor: tag.lineColor || null,
+    fillColor: tag.fillColor || null,
+    transparency: tag.transparency ?? null,
+    tagSize: tag.tagSize ?? null,
+    notes: tag.notes || null
+  };
+
+  return Object.fromEntries(Object.entries(legacyTag).filter(([_, v]) => v !== undefined));
+}
+
+/**
+ * Sanitize entire project for legacy JSON export
+ * Removes runtime-only fields and maps modern fields to legacy equivalents
+ */
+function sanitizeProjectForExport(project) {
+  if (!project) return null;
+
+  const legacyProject = {
+    id: project.id || null,
+    name: project.name || null,
+    startDate: project.startDate || null,
+    endDate: project.endDate || null,
+    purposeOfStudy: project.purposeOfStudy || null,
+    otherTeamMembers: project.otherTeamMembers || null,
+    areaOfInterest: project.areaOfInterest || null,
+    instrumentsUsed: project.instrumentsUsed || null,
+    gpsDatum: project.gpsDatum || null,
+    magneticDeclination: project.magneticDeclination || null,
+    notes: project.notes || null,
+    date: project.date || null,
+    modifiedTimestamp: project.modifiedTimestamp || null,
+    projectLocation: project.projectLocation || null,
+    // Arrays (recursively sanitize)
+    datasets: project.datasets ? project.datasets.map(d => sanitizeDatasetForExport(d)) : null,
+    groups: project.groups ? project.groups.map(g => sanitizeGroupForExport(g)) : null,
+    tags: project.tags ? project.tags.map(t => sanitizeTagForExport(t)) : null
+  };
+
+  return Object.fromEntries(Object.entries(legacyProject).filter(([_, v]) => v !== undefined));
+}
+
+/**
  * Export project data as JSON file
  */
 ipcMain.handle('project:export-json', async (event, projectData) => {
@@ -3158,8 +3436,11 @@ ipcMain.handle('project:export-json', async (event, projectData) => {
       return { success: false, canceled: true };
     }
 
+    // Sanitize project data for legacy compatibility
+    const legacyProjectData = sanitizeProjectForExport(projectData);
+
     // Write JSON file with pretty formatting
-    const jsonContent = JSON.stringify(projectData, null, 2);
+    const jsonContent = JSON.stringify(legacyProjectData, null, 2);
     fs.writeFileSync(result.filePath, jsonContent, 'utf8');
 
     log.info(`[ExportJSON] Export complete: ${result.filePath}`);
