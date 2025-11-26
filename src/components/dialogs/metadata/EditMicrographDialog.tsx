@@ -544,7 +544,25 @@ export function EditMicrographDialog({ isOpen, onClose, micrographId }: EditMicr
   const isStepValid = (): boolean => {
     switch (activeStep) {
       case 0: // Instrument & Image Info
-        return formData.instrumentType !== '' && formData.dataType !== '' && formData.imageType !== '';
+        // Instrument type is always required
+        if (formData.instrumentType === '') return false;
+        // Other instrument type required if "Other" selected
+        if (formData.instrumentType === 'Other' && formData.otherInstrumentType === '') return false;
+
+        // For instruments that don't have a dataType dropdown (only imageType):
+        // FTIR, Raman, Scanner, AFM
+        const instrumentsWithoutDataType = [
+          'Fourier Transform Infrared Spectroscopy (FTIR)',
+          'Raman Spectroscopy',
+          'Scanner',
+          'Atomic Force Microscopy (AFM)',
+        ];
+        if (instrumentsWithoutDataType.includes(formData.instrumentType)) {
+          return formData.imageType !== '';
+        }
+
+        // For all other instruments, require dataType and imageType
+        return formData.dataType !== '' && formData.imageType !== '';
       case 1: // Instrument Data
         return true; // All fields optional
       case 2: // Instrument Settings (if shown) OR Metadata (if no settings)
@@ -661,6 +679,9 @@ export function EditMicrographDialog({ isOpen, onClose, micrographId }: EditMicr
             <MenuItem value="Plane Polarized Light">Plane Polarized Light</MenuItem>
             <MenuItem value="Cross Polarized Light">Cross Polarized Light</MenuItem>
             <MenuItem value="Reflected Light">Reflected Light</MenuItem>
+            <MenuItem value="1/4 Lambda Plate">1/4 Lambda Plate</MenuItem>
+            <MenuItem value="Cathodoluminescence">Cathodoluminescence</MenuItem>
+            <MenuItem value="Gypsum Plate">Gypsum Plate</MenuItem>
           </TextField>
         )}
 
@@ -680,11 +701,17 @@ export function EditMicrographDialog({ isOpen, onClose, micrographId }: EditMicr
             }}
           >
             <MenuItem value="">Select Data Type...</MenuItem>
-            <MenuItem value="Bright Field Image">Bright Field Image</MenuItem>
-            <MenuItem value="Dark Field Image">Dark Field Image</MenuItem>
+            <MenuItem value="Bright Field">Bright Field</MenuItem>
+            <MenuItem value="Dark Field">Dark Field</MenuItem>
             <MenuItem value="Electron Diffraction">Electron Diffraction</MenuItem>
             <MenuItem value="Energy Dispersive X-ray Spectroscopy (EDS)">
               Energy Dispersive X-ray Spectroscopy (EDS)
+            </MenuItem>
+            <MenuItem value="Automated Crystal Orientation Mapping (ACOM)">
+              Automated Crystal Orientation Mapping (ACOM)
+            </MenuItem>
+            <MenuItem value="Energy Dispersive X-ray Tomography">
+              Energy Dispersive X-ray Tomography
             </MenuItem>
           </TextField>
         )}
@@ -702,13 +729,17 @@ export function EditMicrographDialog({ isOpen, onClose, micrographId }: EditMicr
             }}
           >
             <MenuItem value="">Select Data Type...</MenuItem>
-            <MenuItem value="Bright Field Image">Bright Field Image</MenuItem>
-            <MenuItem value="Dark Field Image">Dark Field Image</MenuItem>
+            <MenuItem value="Bright Field">Bright Field</MenuItem>
+            <MenuItem value="Dark Field">Dark Field</MenuItem>
+            <MenuItem value="Annular Dark Field (ADF)">Annular Dark Field (ADF)</MenuItem>
             <MenuItem value="High-Angle Annular Dark Field (HAADF)">
               High-Angle Annular Dark Field (HAADF)
             </MenuItem>
             <MenuItem value="Energy Dispersive X-ray Spectroscopy (EDS)">
               Energy Dispersive X-ray Spectroscopy (EDS)
+            </MenuItem>
+            <MenuItem value="Electron Energy Loss Spectroscopy (EELS)">
+              Electron Energy Loss Spectroscopy (EELS)
             </MenuItem>
             <MenuItem value="Cathodoluminescence (CL)">Cathodoluminescence (CL)</MenuItem>
           </TextField>
@@ -727,12 +758,17 @@ export function EditMicrographDialog({ isOpen, onClose, micrographId }: EditMicr
             }}
           >
             <MenuItem value="">Select Data Type...</MenuItem>
-            <MenuItem value="Backscattered Electron Image (BSE)">
-              Backscattered Electron Image (BSE)
-            </MenuItem>
-            <MenuItem value="Secondary Electron Image (SE)">Secondary Electron Image (SE)</MenuItem>
+            <MenuItem value="Secondary Electron (SE)">Secondary Electron (SE)</MenuItem>
+            <MenuItem value="Backscatter Electron (BSE)">Backscatter Electron (BSE)</MenuItem>
+            <MenuItem value="Forescatter Electron (FSE)">Forescatter Electron (FSE)</MenuItem>
             <MenuItem value="Electron Backscatter Diffraction (EBSD)">
               Electron Backscatter Diffraction (EBSD)
+            </MenuItem>
+            <MenuItem value="Transmission Kikuchi Diffraction (TKD)">
+              Transmission Kikuchi Diffraction (TKD)
+            </MenuItem>
+            <MenuItem value="Electron Channeling Contrast Imaging (ECCI)">
+              Electron Channeling Contrast Imaging (ECCI)
             </MenuItem>
             <MenuItem value="Energy Dispersive X-ray Spectroscopy (EDS)">
               Energy Dispersive X-ray Spectroscopy (EDS)
@@ -760,10 +796,11 @@ export function EditMicrographDialog({ isOpen, onClose, micrographId }: EditMicr
             }}
           >
             <MenuItem value="">Select Data Type...</MenuItem>
-            <MenuItem value="Backscattered Electron Image (BSE)">
-              Backscattered Electron Image (BSE)
+            <MenuItem value="Secondary Electron (SE)">Secondary Electron (SE)</MenuItem>
+            <MenuItem value="Backscatter Electron (BSE)">Backscatter Electron (BSE)</MenuItem>
+            <MenuItem value="Electron Channeling Contrast Imaging (ECCI)">
+              Electron Channeling Contrast Imaging (ECCI)
             </MenuItem>
-            <MenuItem value="Secondary Electron Image (SE)">Secondary Electron Image (SE)</MenuItem>
             <MenuItem value="Energy Dispersive X-ray Spectroscopy (EDS)">
               Energy Dispersive X-ray Spectroscopy (EDS)
             </MenuItem>
@@ -791,8 +828,10 @@ export function EditMicrographDialog({ isOpen, onClose, micrographId }: EditMicr
             onChange={(e) => updateField('imageType', e.target.value)}
           >
             <MenuItem value="">Select Image Type...</MenuItem>
-            <MenuItem value="False Color Map">False Color Map</MenuItem>
-            <MenuItem value="Intensity Map">Intensity Map</MenuItem>
+            <MenuItem value="No Polarizer">No Polarizer</MenuItem>
+            <MenuItem value="Plane Polarized">Plane Polarized</MenuItem>
+            <MenuItem value="Cross Polarized">Cross Polarized</MenuItem>
+            <MenuItem value="Other">Other</MenuItem>
           </TextField>
         )}
 
@@ -807,6 +846,38 @@ export function EditMicrographDialog({ isOpen, onClose, micrographId }: EditMicr
           >
             <MenuItem value="">Select Image Type...</MenuItem>
             <MenuItem value="Topography Image">Topography Image</MenuItem>
+          </TextField>
+        )}
+
+        {/* FTIR Image Types */}
+        {formData.instrumentType === 'Fourier Transform Infrared Spectroscopy (FTIR)' && (
+          <TextField
+            fullWidth
+            required
+            select
+            label="Image Type"
+            value={formData.imageType}
+            onChange={(e) => updateField('imageType', e.target.value)}
+          >
+            <MenuItem value="">Select Image Type...</MenuItem>
+            <MenuItem value="False Color Map">False Color Map</MenuItem>
+            <MenuItem value="Intensity Map">Intensity Map</MenuItem>
+          </TextField>
+        )}
+
+        {/* Raman Spectroscopy Image Types */}
+        {formData.instrumentType === 'Raman Spectroscopy' && (
+          <TextField
+            fullWidth
+            required
+            select
+            label="Image Type"
+            value={formData.imageType}
+            onChange={(e) => updateField('imageType', e.target.value)}
+          >
+            <MenuItem value="">Select Image Type...</MenuItem>
+            <MenuItem value="False Color Map">False Color Map</MenuItem>
+            <MenuItem value="Intensity Map">Intensity Map</MenuItem>
           </TextField>
         )}
 

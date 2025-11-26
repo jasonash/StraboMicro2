@@ -1185,8 +1185,11 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
         case 0: // Load Image
           return formData.micrographFilePath !== '';
         case 1: // Instrument Info
+          // Legacy app requires both instrumentType AND imageType
           if (!formData.instrumentType) return false;
           if (formData.instrumentType === 'Other' && !formData.otherInstrumentType) return false;
+          // imageType is required (matches legacy validation)
+          if (!formData.imageType) return false;
           return true;
         case 2: // Instrument Data
           return true;
@@ -1300,9 +1303,11 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
         return formData.micrographFilePath !== '';
 
       case 1: // Instrument & Image Information
-        // Required: instrumentType
+        // Legacy app requires both instrumentType AND imageType
         if (!formData.instrumentType) return false;
         if (formData.instrumentType === 'Other' && !formData.otherInstrumentType) return false;
+        // imageType is required (matches legacy validation)
+        if (!formData.imageType) return false;
         return true;
 
       case 2: // Instrument Data - no required fields, all optional
