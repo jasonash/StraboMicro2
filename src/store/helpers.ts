@@ -281,6 +281,35 @@ export function getReferenceMicrographs(
 }
 
 /**
+ * Get the ancestor chain of micrographs from root to the given micrograph
+ * Returns array ordered from root (oldest ancestor) to the target micrograph
+ *
+ * Example: If micrograph "C" -> "flip" -> "top", calling with "top" returns [C, flip, top]
+ */
+export function getMicrographAncestorChain(
+  project: ProjectMetadata | null,
+  micrographId: string
+): MicrographMetadata[] {
+  if (!project) return [];
+
+  const micrograph = findMicrographById(project, micrographId);
+  if (!micrograph) return [];
+
+  const chain: MicrographMetadata[] = [micrograph];
+
+  // Walk up the parent chain
+  let current = micrograph;
+  while (current.parentID) {
+    const parent = findMicrographById(project, current.parentID);
+    if (!parent) break;
+    chain.unshift(parent); // Add to beginning to maintain root-to-leaf order
+    current = parent;
+  }
+
+  return chain;
+}
+
+/**
  * Get available mineral phases from a micrograph's or spot's mineralogy data
  * Used to populate "Which Phases?" checkboxes in grain/fabric/etc dialogs
  */

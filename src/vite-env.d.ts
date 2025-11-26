@@ -244,6 +244,13 @@ interface Window {
       filePath?: string;
     }>;
 
+    // Micrograph download
+    downloadMicrograph: (imagePath: string, suggestedName: string) => Promise<{
+      success: boolean;
+      canceled?: boolean;
+      filePath?: string;
+    }>;
+
     // Authentication
     auth: {
       login: (email: string, password: string, restServer: string) => Promise<{

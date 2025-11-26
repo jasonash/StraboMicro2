@@ -12,11 +12,12 @@ import {
   Select,
   MenuItem,
   FormControl,
-  Divider,
 } from '@mui/material';
 import { SelectChangeEvent } from '@mui/material/Select';
 import { useAppStore } from '@/store';
+import { BreadcrumbsBar } from './BreadcrumbsBar';
 import { DataTypeAutocomplete } from './DataTypeAutocomplete';
+import { ConfirmDialog } from './dialogs/ConfirmDialog';
 import { NotesDialog } from './dialogs/metadata/NotesDialog';
 import { SampleInfoDialog } from './dialogs/metadata/SampleInfoDialog';
 import { EditMicrographDialog } from './dialogs/metadata/EditMicrographDialog';
@@ -91,9 +92,14 @@ export function PropertiesPanel() {
   const project = useAppStore((state) => state.project);
   const activeMicrographId = useAppStore((state) => state.activeMicrographId);
   const activeSpotId = useAppStore((state) => state.activeSpotId);
+  const deleteMicrograph = useAppStore((state) => state.deleteMicrograph);
+  const deleteSpot = useAppStore((state) => state.deleteSpot);
+  const selectMicrograph = useAppStore((state) => state.selectMicrograph);
+  const selectActiveSpot = useAppStore((state) => state.selectActiveSpot);
 
   const [selectedDataType, setSelectedDataType] = useState('');
   const [openDialog, setOpenDialog] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<'micrograph' | 'spot' | null>(null);
 
   // Find the sample ID for the active micrograph
   const findSampleIdForMicrograph = (): string | undefined => {
@@ -149,6 +155,35 @@ export function PropertiesPanel() {
     }, 0);
   };
 
+  // Handle download micrograph image
+  const handleDownloadMicrograph = async () => {
+    if (!activeMicrographId) return;
+
+    // Find the micrograph to get its image path
+    for (const dataset of project?.datasets || []) {
+      for (const sample of dataset.samples || []) {
+        const micrograph = sample.micrographs?.find((m) => m.id === activeMicrographId);
+        if (micrograph?.imagePath) {
+          // Use the Electron API to trigger a save dialog
+          await window.api?.downloadMicrograph(micrograph.imagePath, micrograph.name || 'micrograph');
+          return;
+        }
+      }
+    }
+  };
+
+  // Handle delete confirmation
+  const handleConfirmDelete = () => {
+    if (confirmDelete === 'micrograph' && activeMicrographId) {
+      deleteMicrograph(activeMicrographId);
+      selectMicrograph(null);
+    } else if (confirmDelete === 'spot' && activeSpotId) {
+      deleteSpot(activeSpotId);
+      selectActiveSpot(null);
+    }
+    setConfirmDelete(null);
+  };
+
   // If nothing is selected, show placeholder
   if (!selectionType) {
     return (
@@ -162,12 +197,17 @@ export function PropertiesPanel() {
 
   return (
     <Box sx={{ p: 2, height: '100%', display: 'flex', flexDirection: 'column' }}>
-      {/* Header */}
-      <Typography variant="h6" sx={{ mb: 2 }}>
-        {selectionType === 'micrograph' ? 'Micrograph Properties' : 'Spot Properties'}
-      </Typography>
+      {/* Breadcrumbs Navigation Bar */}
+      <BreadcrumbsBar
+        onDownloadMicrograph={handleDownloadMicrograph}
+        onDeleteMicrograph={() => setConfirmDelete('micrograph')}
+        onDeleteSpot={() => setConfirmDelete('spot')}
+      />
 
-      <Divider sx={{ mb: 2 }} />
+      {/* Header */}
+      <Typography variant="subtitle1" sx={{ mb: 1, fontWeight: 600 }}>
+        Add Data:
+      </Typography>
 
       {/* Autocomplete Search */}
       <Box sx={{ mb: 2 }}>
@@ -390,6 +430,21 @@ export function PropertiesPanel() {
           spotId={activeSpotId || undefined}
         />
       )}
+
+      {/* Delete Confirmation Dialog */}
+      <ConfirmDialog
+        open={confirmDelete !== null}
+        onCancel={() => setConfirmDelete(null)}
+        onConfirm={handleConfirmDelete}
+        title={confirmDelete === 'micrograph' ? 'Delete Micrograph' : 'Delete Spot'}
+        message={
+          confirmDelete === 'micrograph'
+            ? 'Are you sure you want to delete this micrograph? This action cannot be undone.'
+            : 'Are you sure you want to delete this spot? This action cannot be undone.'
+        }
+        confirmLabel="Delete"
+        confirmColor="error"
+      />
     </Box>
   );
 }
