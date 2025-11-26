@@ -28,7 +28,25 @@ import {
   MoreVert,
   Visibility,
   VisibilityOff,
+  DragIndicator,
 } from '@mui/icons-material';
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+  useSortable,
+  arrayMove,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import { useAppStore } from '@/store';
 import { NewDatasetDialog } from './dialogs/NewDatasetDialog';
 import { NewSampleDialog } from './dialogs/NewSampleDialog';
@@ -165,6 +183,65 @@ function MicrographThumbnail({ micrographId, projectId, micrographName, width = 
   );
 }
 
+/**
+ * Sortable wrapper for drag handle
+ * Used to make items draggable within their sortable context
+ */
+interface SortableItemWrapperProps {
+  id: string;
+  children: React.ReactNode;
+}
+
+function SortableItemWrapper({ id, children }: SortableItemWrapperProps) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+
+  return (
+    <Box ref={setNodeRef} style={style} sx={{ display: 'flex', alignItems: 'flex-start' }}>
+      {/* Drag Handle */}
+      <IconButton
+        {...attributes}
+        {...listeners}
+        size="small"
+        sx={{
+          cursor: 'grab',
+          p: 0.25,
+          mr: 0.25,
+          mt: 1,
+          opacity: 0.4,
+          flexShrink: 0,
+          '&:hover': {
+            opacity: 1,
+            backgroundColor: 'action.hover',
+          },
+          '&:active': {
+            cursor: 'grabbing',
+          },
+        }}
+        tabIndex={-1}
+      >
+        <DragIndicator fontSize="small" />
+      </IconButton>
+      {/* Content */}
+      <Box sx={{ flex: 1, minWidth: 0 }}>
+        {children}
+      </Box>
+    </Box>
+  );
+}
+
 export function ProjectTree() {
   const project = useAppStore((state) => state.project);
   const selectMicrograph = useAppStore((state) => state.selectMicrograph);
@@ -172,6 +249,20 @@ export function ProjectTree() {
   const deleteSample = useAppStore((state) => state.deleteSample);
   const deleteMicrograph = useAppStore((state) => state.deleteMicrograph);
   const updateMicrographMetadata = useAppStore((state) => state.updateMicrographMetadata);
+  const reorderMicrographs = useAppStore((state) => state.reorderMicrographs);
+  const reorderSamples = useAppStore((state) => state.reorderSamples);
+
+  // Drag and drop sensors with activation constraint to distinguish from clicks
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 5, // 5px movement before drag starts
+      },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
 
   // Dialog states
   const [showNewDataset, setShowNewDataset] = useState(false);
@@ -366,6 +457,43 @@ export function ProjectTree() {
     return micrographs.filter((m) => (m.parentID || null) === parentId);
   };
 
+  // Handle drag end for micrograph reordering
+  const handleMicrographDragEnd = (
+    event: DragEndEvent,
+    sampleId: string,
+    parentId: string | null,
+    items: MicrographMetadata[]
+  ) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+
+    const oldIndex = items.findIndex((m) => m.id === active.id);
+    const newIndex = items.findIndex((m) => m.id === over.id);
+
+    if (oldIndex === -1 || newIndex === -1) return;
+
+    const newOrder = arrayMove(items, oldIndex, newIndex);
+    reorderMicrographs(sampleId, parentId, newOrder.map((m) => m.id));
+  };
+
+  // Handle drag end for sample reordering
+  const handleSampleDragEnd = (
+    event: DragEndEvent,
+    datasetId: string,
+    samples: SampleMetadata[]
+  ) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+
+    const oldIndex = samples.findIndex((s) => s.id === active.id);
+    const newIndex = samples.findIndex((s) => s.id === over.id);
+
+    if (oldIndex === -1 || newIndex === -1) return;
+
+    const newOrder = arrayMove(samples, oldIndex, newIndex);
+    reorderSamples(datasetId, newOrder.map((s) => s.id));
+  };
+
   // Color-coded left borders by hierarchy depth (cycles: red → green → blue → red...)
   const LEVEL_COLORS = [
     '#e44c65', // Red - first level associated
@@ -382,7 +510,8 @@ export function ProjectTree() {
   const renderMicrograph = (
     micrograph: MicrographMetadata,
     allMicrographs: MicrographMetadata[],
-    level: number
+    level: number,
+    sampleId: string
   ) => {
     const isExpanded = expandedMicrographs.has(micrograph.id);
     const isActive = micrograph.id === activeMicrographId;
@@ -528,11 +657,26 @@ export function ProjectTree() {
           </Stack>
         </Box>
 
-        {/* Children (Associated Micrographs) */}
+        {/* Children (Associated Micrographs) - with drag and drop support */}
         {hasChildren && (
           <Collapse in={isExpanded}>
             <Box sx={{ ml: 2 }}>
-              {children.map((child) => renderMicrograph(child, allMicrographs, level + 1))}
+              <DndContext
+                sensors={sensors}
+                collisionDetection={closestCenter}
+                onDragEnd={(event) => handleMicrographDragEnd(event, sampleId, micrograph.id, children)}
+              >
+                <SortableContext
+                  items={children.map((c) => c.id)}
+                  strategy={verticalListSortingStrategy}
+                >
+                  {children.map((child) => (
+                    <SortableItemWrapper key={child.id} id={child.id}>
+                      {renderMicrograph(child, allMicrographs, level + 1, sampleId)}
+                    </SortableItemWrapper>
+                  ))}
+                </SortableContext>
+              </DndContext>
             </Box>
           </Collapse>
         )}
@@ -638,10 +782,27 @@ export function ProjectTree() {
 
         <Collapse in={isExpanded}>
           <Box sx={{ ml: 1 }}>
-            {hasMicrographs &&
-              buildMicrographHierarchy(sample.micrographs!, null).map((micrograph) =>
-                renderMicrograph(micrograph, sample.micrographs!, 0)
-              )}
+            {hasMicrographs && (() => {
+              const referenceMicrographs = buildMicrographHierarchy(sample.micrographs!, null);
+              return (
+                <DndContext
+                  sensors={sensors}
+                  collisionDetection={closestCenter}
+                  onDragEnd={(event) => handleMicrographDragEnd(event, sample.id, null, referenceMicrographs)}
+                >
+                  <SortableContext
+                    items={referenceMicrographs.map((m) => m.id)}
+                    strategy={verticalListSortingStrategy}
+                  >
+                    {referenceMicrographs.map((micrograph) => (
+                      <SortableItemWrapper key={micrograph.id} id={micrograph.id}>
+                        {renderMicrograph(micrograph, sample.micrographs!, 0, sample.id)}
+                      </SortableItemWrapper>
+                    ))}
+                  </SortableContext>
+                </DndContext>
+              );
+            })()}
           </Box>
         </Collapse>
 
@@ -717,7 +878,24 @@ export function ProjectTree() {
 
         <Collapse in={isExpanded}>
           <Box sx={{ ml: 1 }}>
-            {hasSamples && dataset.samples!.map((sample) => renderSample(sample))}
+            {hasSamples && (
+              <DndContext
+                sensors={sensors}
+                collisionDetection={closestCenter}
+                onDragEnd={(event) => handleSampleDragEnd(event, dataset.id, dataset.samples!)}
+              >
+                <SortableContext
+                  items={dataset.samples!.map((s) => s.id)}
+                  strategy={verticalListSortingStrategy}
+                >
+                  {dataset.samples!.map((sample) => (
+                    <SortableItemWrapper key={sample.id} id={sample.id}>
+                      {renderSample(sample)}
+                    </SortableItemWrapper>
+                  ))}
+                </SortableContext>
+              </DndContext>
+            )}
           </Box>
         </Collapse>
 

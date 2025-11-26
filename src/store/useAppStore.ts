@@ -100,11 +100,13 @@ interface AppState {
   addSample: (datasetId: string, sample: SampleMetadata) => void;
   updateSample: (id: string, updates: Partial<SampleMetadata>) => void;
   deleteSample: (id: string) => void;
+  reorderSamples: (datasetId: string, orderedIds: string[]) => void;
 
   // ========== CRUD: MICROGRAPH ==========
   addMicrograph: (sampleId: string, micrograph: MicrographMetadata) => void;
   updateMicrographMetadata: (id: string, updates: Partial<MicrographMetadata>) => void;
   deleteMicrograph: (id: string) => void;
+  reorderMicrographs: (sampleId: string, parentId: string | null, orderedIds: string[]) => void;
 
   // ========== CRUD: SPOT ==========
   addSpot: (micrographId: string, spot: Spot) => void;
@@ -385,6 +387,37 @@ export const useAppStore = create<AppState>()(
             };
           }),
 
+          reorderSamples: (datasetId, orderedIds) => set((state) => {
+            if (!state.project) return state;
+
+            const newProject = structuredClone(state.project);
+
+            const dataset = newProject.datasets?.find(d => d.id === datasetId);
+            if (dataset && dataset.samples) {
+              // Create a map of samples by ID for quick lookup
+              const sampleMap = new Map(dataset.samples.map(s => [s.id, s]));
+              // Reorder samples based on orderedIds
+              const reorderedSamples: typeof dataset.samples = [];
+              for (const id of orderedIds) {
+                const sample = sampleMap.get(id);
+                if (sample) {
+                  reorderedSamples.push(sample);
+                  sampleMap.delete(id);
+                }
+              }
+              // Add any remaining samples that weren't in orderedIds (shouldn't happen, but be safe)
+              for (const sample of sampleMap.values()) {
+                reorderedSamples.push(sample);
+              }
+              dataset.samples = reorderedSamples;
+            }
+
+            return {
+              project: newProject,
+              isDirty: true,
+            };
+          }),
+
           // ========== CRUD: MICROGRAPH ==========
 
           addMicrograph: (sampleId, micrograph) => set((state) => {
@@ -450,6 +483,72 @@ export const useAppStore = create<AppState>()(
               isDirty: true,
               micrographIndex: buildMicrographIndex(newProject),
               spotIndex: buildSpotIndex(newProject),
+            };
+          }),
+
+          reorderMicrographs: (sampleId, parentId, orderedIds) => set((state) => {
+            if (!state.project) return state;
+
+            const newProject = structuredClone(state.project);
+
+            // Find the sample
+            for (const dataset of newProject.datasets || []) {
+              const sample = dataset.samples?.find(s => s.id === sampleId);
+              if (sample && sample.micrographs) {
+                // Get all micrographs at this level (same parentId)
+                const micrographsAtLevel = sample.micrographs.filter(m =>
+                  parentId === null ? !m.parentID : m.parentID === parentId
+                );
+
+                // Create a map for quick lookup
+                const micrographMap = new Map(micrographsAtLevel.map(m => [m.id, m]));
+
+                // Reorder based on orderedIds
+                const reorderedAtLevel: typeof micrographsAtLevel = [];
+                for (const id of orderedIds) {
+                  const micrograph = micrographMap.get(id);
+                  if (micrograph) {
+                    reorderedAtLevel.push(micrograph);
+                    micrographMap.delete(id);
+                  }
+                }
+                // Add any remaining (shouldn't happen, but be safe)
+                for (const micrograph of micrographMap.values()) {
+                  reorderedAtLevel.push(micrograph);
+                }
+
+                // Merge back: reordered level items + other level items
+                // We need to maintain relative positions, so insert reordered items
+                // where the first item of this level was originally
+                const result: typeof sample.micrographs = [];
+                let insertedReordered = false;
+
+                for (const m of sample.micrographs) {
+                  const isAtLevel = parentId === null ? !m.parentID : m.parentID === parentId;
+                  if (isAtLevel) {
+                    if (!insertedReordered) {
+                      result.push(...reorderedAtLevel);
+                      insertedReordered = true;
+                    }
+                    // Skip - already added in reorderedAtLevel
+                  } else {
+                    result.push(m);
+                  }
+                }
+                // If no items at level were found (edge case), append at end
+                if (!insertedReordered) {
+                  result.push(...reorderedAtLevel);
+                }
+
+                sample.micrographs = result;
+                break;
+              }
+            }
+
+            return {
+              project: newProject,
+              isDirty: true,
+              micrographIndex: buildMicrographIndex(newProject),
             };
           }),
 
