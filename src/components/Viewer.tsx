@@ -35,6 +35,14 @@ const Viewer: React.FC = () => {
 
           const micrograph = sample.micrographs.find((m) => m.id === activeMicrographId);
           if (micrograph && micrograph.imagePath) {
+            // Don't load micrographs without scale set (batch-imported)
+            // They need to go through SetScaleDialog or EditMicrographLocationDialog first
+            if (micrograph.scalePixelsPerCentimeter === undefined || micrograph.scalePixelsPerCentimeter === null) {
+              console.log(`[Viewer] Micrograph ${activeMicrographId} has no scale set, not loading`);
+              setActiveMicrographPath(null);
+              return;
+            }
+
             // imagePath is now just the micrograph ID
             // Build the full path: ~/Documents/StraboMicro2Data/<project-id>/images/<micrograph-id>
             try {
