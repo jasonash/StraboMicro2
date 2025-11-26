@@ -431,6 +431,25 @@ export const BatchImportDialog: React.FC<BatchImportDialogProps> = ({
         // Add micrograph to store
         useAppStore.getState().addMicrograph(targetSampleId, micrograph);
 
+        // Generate composite thumbnail for the new micrograph
+        // Use setTimeout to ensure this runs after store update
+        // Note: We don't regenerate parent thumbnails here because batch-imported
+        // associated micrographs don't have position data yet - that happens in
+        // EditMicrographLocationDialog when the user sets scale/location.
+        setTimeout(() => {
+          const freshProject = useAppStore.getState().project;
+          if (!freshProject || !window.api) return;
+
+          window.api.generateCompositeThumbnail(freshProject.id, micrographId, freshProject)
+            .then(() => {
+              console.log(`[BatchImport] Generated thumbnail for: ${micrographId}`);
+              window.dispatchEvent(new CustomEvent('thumbnail-generated', { detail: { micrographId } }));
+            })
+            .catch((err) => {
+              console.error(`[BatchImport] Failed to generate thumbnail for ${micrographId}:`, err);
+            });
+        }, 0);
+
         console.log(`[BatchImport] Successfully imported: ${file.name}`);
       } catch (error) {
         console.error(`[BatchImport] Error importing ${file.name}:`, error);
