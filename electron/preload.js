@@ -25,6 +25,7 @@ contextBridge.exposeInMainWorld('api', {
 
   // File dialogs
   openTiffDialog: () => ipcRenderer.invoke('dialog:open-tiff'),
+  openMultipleTiffDialog: () => ipcRenderer.invoke('dialog:open-multiple-tiff'),
   openFileDialog: () => ipcRenderer.invoke('dialog:open-file'),
 
   // External links

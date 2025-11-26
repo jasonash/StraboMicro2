@@ -40,6 +40,9 @@ import { ConfirmDialog } from './dialogs/ConfirmDialog';
 import { AddMicrographToGroupsDialog } from './dialogs/AddMicrographToGroupsDialog';
 import { EditMicrographDialog } from './dialogs/metadata/EditMicrographDialog';
 import { EditMicrographLocationDialog } from './dialogs/EditMicrographLocationDialog';
+import { BatchImportDialog } from './dialogs/BatchImportDialog';
+import { SetScaleDialog } from './dialogs/SetScaleDialog';
+import { findMicrographById } from '@/store/helpers';
 import type { DatasetMetadata, SampleMetadata, MicrographMetadata } from '@/types/project-types';
 
 /**
@@ -195,6 +198,15 @@ export function ProjectTree() {
   const [showDeleteMicrographConfirm, setShowDeleteMicrographConfirm] = useState(false);
   const [deletingMicrograph, setDeletingMicrograph] = useState<MicrographMetadata | null>(null);
 
+  // Batch import dialog states
+  const [showBatchImport, setShowBatchImport] = useState(false);
+  const [batchImportSampleId, setBatchImportSampleId] = useState<string | null>(null);
+  const [batchImportParentMicrographId, setBatchImportParentMicrographId] = useState<string | null>(null);
+
+  // Set scale dialog state (for batch-imported reference micrographs)
+  const [showSetScale, setShowSetScale] = useState(false);
+  const [setScaleMicrographId, setSetScaleMicrographId] = useState<string | null>(null);
+
   // Expansion states - Load from localStorage on mount
   const [expandedDatasets, setExpandedDatasets] = useState<Set<string>>(() => {
     const saved = localStorage.getItem('sidebar-expanded-datasets');
@@ -326,6 +338,29 @@ export function ProjectTree() {
   };
 
   const handleMicrographClick = (micrographId: string) => {
+    // Check if micrograph needs scale setup (batch-imported without scale)
+    if (project) {
+      const micrograph = findMicrographById(project, micrographId);
+      if (micrograph) {
+        // Check if micrograph has no scale set
+        if (micrograph.scalePixelsPerCentimeter === undefined || micrograph.scalePixelsPerCentimeter === null) {
+          const isAssociated = !!micrograph.parentID;
+
+          if (isAssociated) {
+            // For associated micrographs, use the location/scale dialog
+            setEditLocationMicrographId(micrographId);
+            setShowEditLocation(true);
+          } else {
+            // For reference micrographs, use the set scale dialog
+            setSetScaleMicrographId(micrographId);
+            setShowSetScale(true);
+          }
+          return;
+        }
+      }
+    }
+
+    // Normal selection if scale is set
     selectMicrograph(micrographId);
   };
 
@@ -578,8 +613,9 @@ export function ProjectTree() {
             Add Associated Micrograph
           </MenuItem>
           <MenuItem onClick={() => {
-            // TODO: Batch import associated
-            console.log('Batch import associated:', micrograph.id);
+            setBatchImportSampleId(null);
+            setBatchImportParentMicrographId(micrograph.id);
+            setShowBatchImport(true);
             setMicrographAddAnchor({ ...micrographAddAnchor, [micrograph.id]: null });
           }}>
             Batch Import Associated Micrographs
@@ -638,8 +674,9 @@ export function ProjectTree() {
             Add New Reference Micrograph
           </MenuItem>
           <MenuItem onClick={() => {
-            // TODO: Batch import reference micrographs
-            console.log('Batch import reference micrographs:', sample.id);
+            setBatchImportSampleId(sample.id);
+            setBatchImportParentMicrographId(null);
+            setShowBatchImport(true);
             setSampleMenuAnchor({ ...sampleMenuAnchor, [sample.id]: null });
           }}>
             Batch Import Reference Micrographs
@@ -923,6 +960,30 @@ export function ProjectTree() {
           setDeletingMicrograph(null);
         }}
       />
+
+      {/* Batch Import Dialog */}
+      <BatchImportDialog
+        isOpen={showBatchImport}
+        onClose={() => {
+          setShowBatchImport(false);
+          setBatchImportSampleId(null);
+          setBatchImportParentMicrographId(null);
+        }}
+        sampleId={batchImportSampleId}
+        parentMicrographId={batchImportParentMicrographId}
+      />
+
+      {/* Set Scale Dialog (for batch-imported reference micrographs) */}
+      {setScaleMicrographId && (
+        <SetScaleDialog
+          open={showSetScale}
+          onClose={() => {
+            setShowSetScale(false);
+            setSetScaleMicrographId(null);
+          }}
+          micrographId={setScaleMicrographId}
+        />
+      )}
     </Box>
   );
 }

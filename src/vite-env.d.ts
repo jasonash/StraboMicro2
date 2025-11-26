@@ -91,6 +91,7 @@ interface Window {
     onUndo: (callback: () => void) => void;
     onRedo: (callback: () => void) => void;
     openTiffDialog: () => Promise<string | null>;
+    openMultipleTiffDialog: () => Promise<string[]>;
     openFileDialog: () => Promise<string | null>;
     openExternalLink: (url: string) => Promise<{ success: boolean }>;
     loadTiffImage: (filePath: string) => Promise<{

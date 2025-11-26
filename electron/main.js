@@ -499,7 +499,7 @@ app.on('activate', () => {
 // IPC HANDLERS
 // =============================================================================
 
-// File dialog for TIFF selection
+// File dialog for TIFF selection (single file)
 ipcMain.handle('dialog:open-tiff', async () => {
   const result = await dialog.showOpenDialog(mainWindow, {
     title: 'Select Micrograph Image',
@@ -519,6 +519,28 @@ ipcMain.handle('dialog:open-tiff', async () => {
   }
 
   return result.filePaths[0];
+});
+
+// File dialog for multiple TIFF/image selection (batch import)
+ipcMain.handle('dialog:open-multiple-tiff', async () => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: 'Select Micrograph Images',
+    filters: [
+      { name: 'Image Files', extensions: ['tif', 'tiff', 'jpg', 'jpeg', 'png', 'bmp'] },
+      { name: 'TIFF Images', extensions: ['tif', 'tiff'] },
+      { name: 'JPEG Images', extensions: ['jpg', 'jpeg'] },
+      { name: 'PNG Images', extensions: ['png'] },
+      { name: 'BMP Images', extensions: ['bmp'] },
+      { name: 'All Files', extensions: ['*'] }
+    ],
+    properties: ['openFile', 'multiSelections']
+  });
+
+  if (result.canceled || result.filePaths.length === 0) {
+    return [];
+  }
+
+  return result.filePaths;
 });
 
 // Generic file dialog for associated files
