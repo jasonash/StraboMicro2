@@ -366,6 +366,19 @@ export function ProjectTree() {
     return micrographs.filter((m) => (m.parentID || null) === parentId);
   };
 
+  // Color-coded left borders by hierarchy depth (cycles: red → green → blue → red...)
+  const LEVEL_COLORS = [
+    '#e44c65', // Red - first level associated
+    '#39c088', // Green - second level
+    '#5480f1', // Blue - third level
+  ];
+
+  const getLevelColor = (level: number): string => {
+    if (level <= 0) return 'transparent';
+    // Cycle through colors: level 1 = red (index 0), level 2 = green (index 1), level 3 = blue (index 2), level 4 = red (index 0), etc.
+    return LEVEL_COLORS[(level - 1) % LEVEL_COLORS.length];
+  };
+
   const renderMicrograph = (
     micrograph: MicrographMetadata,
     allMicrographs: MicrographMetadata[],
@@ -382,8 +395,11 @@ export function ProjectTree() {
     // This allows thumbnails to shrink/grow with the sidebar width
     // No fixed pixel calculations needed - CSS will handle it automatically
 
+    // Use uniform indentation - only indent at first associated level
+    // Color-coded borders indicate depth instead of cumulative indentation
+
     return (
-      <Box key={micrograph.id} sx={{ ml: level * 2 }}>
+      <Box key={micrograph.id} sx={{ ml: isReference ? 0 : '7px' }}>
         {/* Micrograph Container */}
         <Box
           sx={{
@@ -394,9 +410,9 @@ export function ProjectTree() {
             '&:hover': {
               backgroundColor: isActive ? 'action.selected' : 'action.hover',
             },
-            // Add left border for associated micrographs to show hierarchy
+            // Add color-coded left border for associated micrographs to show hierarchy depth
             borderLeft: !isReference ? 3 : 0,
-            borderColor: !isReference ? 'primary.main' : 'transparent',
+            borderColor: getLevelColor(level),
             // Slight background tint for associated micrographs
             bgcolor: isActive
               ? 'action.selected'
@@ -452,7 +468,7 @@ export function ProjectTree() {
                 <Box
                   sx={{
                     width: '100%',
-                    maxWidth: 250 - (level * 30), // Still prefer smaller thumbs for deeper levels
+                    maxWidth: 250, // Uniform thumbnail size for all levels
                     '& > *': {
                       width: '100% !important',
                       height: 'auto !important',
