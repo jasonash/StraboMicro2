@@ -354,6 +354,8 @@ export const BatchImportDialog: React.FC<BatchImportDialogProps> = ({
         const micrograph: MicrographMetadata = {
           id: micrographId,
           name: nameWithoutExt,
+          imageFilename: file.name,
+          imagePath: micrographId, // Image stored as {micrographId} in project images folder
           imageWidth: conversionResult.jpegWidth,
           imageHeight: conversionResult.jpegHeight,
           width: conversionResult.jpegWidth,
