@@ -1399,27 +1399,6 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
               </Group>
             )}
 
-            {/* Transformer on same layer as child so coordinates match */}
-            {/* Because the layer is scaled by `scale`, we need to inverse-scale the visual properties */}
-            {/* to keep them at a consistent screen size regardless of zoom level */}
-            {childImage && (
-              <Transformer
-                ref={transformerRef}
-                rotateEnabled={enableRotate}
-                borderStroke="#e44c65"
-                anchorStroke="#e44c65"
-                anchorFill="#e44c65"
-                anchorSize={10 / scale}
-                anchorCornerRadius={2 / scale}
-                anchorStrokeWidth={1 / scale}
-                borderStrokeWidth={2 / scale}
-                enabledAnchors={enableResizeHandles ? ['top-left', 'top-right', 'bottom-left', 'bottom-right'] : []}
-                keepRatio={true}
-                rotateAnchorOffset={25 / scale}
-                ignoreStroke={true}
-              />
-            )}
-
             {/* Traced scale bar line for Trace Scale Bar method */}
             {scaleMethod === 'Trace Scale Bar and Drag' && currentLine && (
               <Line
@@ -1429,6 +1408,33 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
                 lineCap="round"
                 lineJoin="round"
                 listening={false}
+              />
+            )}
+          </Layer>
+
+          {/* Transformer layer - scaled the same as content so it tracks the child node */}
+          {/* But with inverse-scaled visual properties to maintain constant screen-pixel sizes */}
+          <Layer
+            scaleX={scale}
+            scaleY={scale}
+            x={stagePos.x}
+            y={stagePos.y}
+          >
+            {childImage && (
+              <Transformer
+                ref={transformerRef}
+                rotateEnabled={enableRotate}
+                borderStroke="#e44c65"
+                anchorStroke="#e44c65"
+                anchorFill="#e44c65"
+                anchorSize={10 / scale / (childTransform.scaleX || 1)}
+                anchorCornerRadius={2 / scale / (childTransform.scaleX || 1)}
+                anchorStrokeWidth={1 / scale / (childTransform.scaleX || 1)}
+                borderStrokeWidth={2 / scale / (childTransform.scaleX || 1)}
+                enabledAnchors={enableResizeHandles ? ['top-left', 'top-right', 'bottom-left', 'bottom-right'] : []}
+                keepRatio={true}
+                rotateAnchorOffset={25 / scale / (childTransform.scaleX || 1)}
+                ignoreStroke={true}
               />
             )}
           </Layer>
