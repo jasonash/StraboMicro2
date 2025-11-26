@@ -50,7 +50,7 @@ import { InstrumentDatabaseDialog, type InstrumentData } from './InstrumentDatab
 import { ScaleBarCanvas, type Tool, type ScaleBarCanvasRef } from '../ScaleBarCanvas';
 import PlacementCanvas from './PlacementCanvas';
 import { PointPlacementCanvas } from './PointPlacementCanvas';
-import { PanTool, Timeline, RestartAlt } from '@mui/icons-material';
+import { PanTool, Timeline, RestartAlt, CheckCircle, Cancel } from '@mui/icons-material';
 
 interface NewMicrographDialogProps {
   isOpen: boolean;
@@ -318,6 +318,16 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
   const [isFlipped, setIsFlipped] = useState(false);
   const [isFlipping, setIsFlipping] = useState(false);
   const canvasRef = useRef<ScaleBarCanvasRef>(null);
+
+  // State for corresponding cross-polarized (XPL) image
+  const [xplFilePath, setXplFilePath] = useState<string | null>(null);
+  const [xplFileName, setXplFileName] = useState<string | null>(null);
+  const [_xplWidth, setXplWidth] = useState<number | null>(null);
+  const [_xplHeight, setXplHeight] = useState<number | null>(null);
+  const [xplScratchIdentifier, setXplScratchIdentifier] = useState<string | null>(null);
+  const [isLoadingXpl, setIsLoadingXpl] = useState(false);
+  // Note: _xplWidth and _xplHeight are stored for future use (e.g., validation display)
+  void _xplWidth; void _xplHeight;
 
   // Determine if this is an associated micrograph (has a parent) or reference (no parent)
   const isAssociated = parentMicrographId !== null;
@@ -614,6 +624,18 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
               micrographHeight: conversionResult.jpegHeight,
             }));
 
+            // Clear any previously selected XPL image (dimensions may no longer match)
+            if (xplScratchIdentifier && window.api?.deleteScratchImage) {
+              window.api.deleteScratchImage(xplScratchIdentifier).catch(err =>
+                console.error('[NewMicrographDialog] Error cleaning up old XPL scratch:', err)
+              );
+            }
+            setXplFilePath(null);
+            setXplFileName(null);
+            setXplWidth(null);
+            setXplHeight(null);
+            setXplScratchIdentifier(null);
+
             setConversionProgress(null);
           } catch (error) {
             console.error('[NewMicrographDialog] Failed to convert/load image:', error);
@@ -626,6 +648,61 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
       } catch (error) {
         console.error('Error selecting image:', error);
       }
+    }
+  };
+
+  // Handle adding a corresponding cross-polarized (XPL) image
+  const handleAddXplImage = async () => {
+    if (!window.api?.openTiffDialog || !window.api?.convertToScratchJPEG) {
+      console.error('[NewMicrographDialog] API not available for XPL image selection');
+      return;
+    }
+
+    try {
+      const filePath = await window.api.openTiffDialog();
+      if (!filePath) return;
+
+      const fileName = filePath.split(/[\\/]/).pop() || '';
+      console.log('[NewMicrographDialog] Selected XPL file:', filePath);
+
+      setIsLoadingXpl(true);
+
+      // Convert to JPEG in scratch space to get dimensions
+      const conversionResult = await window.api.convertToScratchJPEG(filePath);
+
+      console.log('[NewMicrographDialog] XPL conversion complete:', conversionResult);
+
+      // Validate dimensions match the main PPL image
+      if (
+        conversionResult.jpegWidth !== formData.micrographWidth ||
+        conversionResult.jpegHeight !== formData.micrographHeight
+      ) {
+        alert(
+          `The XPL image dimensions (${conversionResult.jpegWidth} x ${conversionResult.jpegHeight}) ` +
+          `do not match the PPL image dimensions (${formData.micrographWidth} x ${formData.micrographHeight}).\n\n` +
+          `Both images must have the same pixel dimensions.`
+        );
+        // Clean up the scratch file
+        if (window.api.deleteScratchImage) {
+          await window.api.deleteScratchImage(conversionResult.identifier);
+        }
+        setIsLoadingXpl(false);
+        return;
+      }
+
+      // Dimensions match - store the XPL image info
+      setXplFilePath(conversionResult.scratchPath);
+      setXplFileName(fileName);
+      setXplWidth(conversionResult.jpegWidth);
+      setXplHeight(conversionResult.jpegHeight);
+      setXplScratchIdentifier(conversionResult.identifier);
+
+      console.log('[NewMicrographDialog] XPL image added successfully');
+    } catch (error) {
+      console.error('[NewMicrographDialog] Error adding XPL image:', error);
+      alert(`Error loading XPL image: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setIsLoadingXpl(false);
     }
   };
 
@@ -675,12 +752,28 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
       }
     }
 
+    // Clean up XPL scratch file if exists
+    if (xplScratchIdentifier && window.api) {
+      try {
+        console.log('[NewMicrographDialog] Cleaning up XPL scratch file:', xplScratchIdentifier);
+        await window.api.deleteScratchImage(xplScratchIdentifier);
+      } catch (error) {
+        console.error('[NewMicrographDialog] Error cleaning up XPL scratch file:', error);
+      }
+    }
+
     setFormData(initialFormData);
     setActiveStep(0);
     setDetectors([]);
     setScratchIdentifier(null);
     setConversionProgress(null);
     setIsFlipped(false);
+    // Reset XPL state
+    setXplFilePath(null);
+    setXplFileName(null);
+    setXplWidth(null);
+    setXplHeight(null);
+    setXplScratchIdentifier(null);
     onClose();
   };
 
@@ -1076,10 +1169,58 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
       // Add micrograph to store
       useAppStore.getState().addMicrograph(targetSampleId, micrograph);
 
-      // Select the newly created micrograph
-      useAppStore.getState().selectMicrograph(micrograph.id);
-
       console.log('Micrograph created successfully:', micrograph.id);
+
+      // If there's a corresponding XPL image, create it as an associated micrograph
+      let xplMicrograph: typeof micrograph | null = null;
+      if (xplScratchIdentifier && xplFileName && window.api) {
+        const xplMicrographId = crypto.randomUUID();
+
+        // Move XPL image from scratch to project folder
+        console.log(`[NewMicrographDialog] Moving XPL scratch JPEG to project folder for micrograph ${xplMicrographId}`);
+
+        const xplMoveResult = await window.api.moveFromScratch(
+          xplScratchIdentifier,
+          projectId,
+          xplMicrographId
+        );
+
+        console.log('[NewMicrographDialog] XPL image moved successfully:', xplMoveResult);
+
+        // Extract name without extension for XPL micrograph name
+        const xplNameWithoutExt = xplFileName.substring(0, xplFileName.lastIndexOf('.')) || xplFileName;
+
+        // Create XPL micrograph - inherits everything from PPL except imageType
+        xplMicrograph = {
+          ...micrograph,
+          id: xplMicrographId,
+          name: xplNameWithoutExt,
+          imageFilename: xplFileName,
+          imagePath: xplMicrographId,
+          // XPL is an associated micrograph of the PPL
+          parentID: micrograph.id,
+          // Same location as parent (perfectly overlapping)
+          offsetInParent: { X: 0, Y: 0 },
+          rotation: 0,
+          // Override imageType to Cross Polarized Light
+          instrument: {
+            ...micrograph.instrument,
+            imageType: 'Cross Polarized Light',
+          },
+        };
+
+        // Remove point location fields if present (XPL uses rectangle location)
+        delete (xplMicrograph as Record<string, unknown>).pointInParent;
+
+        useAppStore.getState().addMicrograph(targetSampleId, xplMicrograph);
+        console.log('XPL micrograph created successfully:', xplMicrograph.id);
+
+        // Clear XPL scratch identifier since it's been moved
+        setXplScratchIdentifier(null);
+      }
+
+      // Select the PPL micrograph (the main one the user was creating)
+      useAppStore.getState().selectMicrograph(micrograph.id);
 
       // Generate composite thumbnails in the background (non-blocking)
       // Use setTimeout to ensure these run AFTER the current execution context completes
@@ -1122,7 +1263,7 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
             });
         }
 
-        // Also generate thumbnail for the new micrograph itself (may have children in the future)
+        // Also generate thumbnail for the new micrograph itself (may have children in the future, including XPL)
         console.log(`[NewMicrographDialog] Generating composite thumbnail for new micrograph: ${micrograph.id}`);
 
         window.api.generateCompositeThumbnail(freshProject.id, micrograph.id, freshProject)
@@ -1134,6 +1275,20 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
           .catch((error) => {
             console.error('[NewMicrographDialog] Failed to generate composite thumbnail:', error);
           });
+
+        // If there's an XPL micrograph, generate its thumbnail too
+        if (xplMicrograph) {
+          console.log(`[NewMicrographDialog] Generating thumbnail for XPL micrograph: ${xplMicrograph.id}`);
+
+          window.api.generateCompositeThumbnail(freshProject.id, xplMicrograph.id, freshProject)
+            .then(() => {
+              console.log('[NewMicrographDialog] Successfully generated XPL thumbnail');
+              window.dispatchEvent(new CustomEvent('thumbnail-generated', { detail: { micrographId: xplMicrograph!.id } }));
+            })
+            .catch((error) => {
+              console.error('[NewMicrographDialog] Failed to generate XPL thumbnail:', error);
+            });
+        }
       }, 0);
 
       // Close dialog immediately (don't block on thumbnail generation)
@@ -2856,6 +3011,46 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
                 <MenuItem value="Gypsum Plate">Gypsum Plate</MenuItem>
               </TextField>
             )}
+
+            {/* Add Corresponding XPL Image button - shown for Optical Microscopy + Plane Polarized Light */}
+            {formData.instrumentType === 'Optical Microscopy' &&
+              formData.imageType === 'Plane Polarized Light' && (
+                <Box sx={{ mt: 1 }}>
+                  {xplFilePath ? (
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <CheckCircle color="success" fontSize="small" />
+                      <Typography variant="body2" sx={{ flex: 1 }}>
+                        XPL Image: {xplFileName}
+                      </Typography>
+                      <IconButton
+                        size="small"
+                        onClick={() => {
+                          setXplFilePath(null);
+                          setXplFileName(null);
+                          setXplWidth(null);
+                          setXplHeight(null);
+                          setXplScratchIdentifier(null);
+                        }}
+                        title="Remove XPL image"
+                      >
+                        <Cancel fontSize="small" />
+                      </IconButton>
+                    </Box>
+                  ) : (
+                    <Button
+                      variant="outlined"
+                      size="small"
+                      onClick={handleAddXplImage}
+                      disabled={isLoadingXpl}
+                    >
+                      {isLoadingXpl ? (
+                        <CircularProgress size={16} sx={{ mr: 1 }} />
+                      ) : null}
+                      Add Corresponding XPL Image?
+                    </Button>
+                  )}
+                </Box>
+              )}
 
             {formData.instrumentType === 'Scanner' && (
               <TextField
