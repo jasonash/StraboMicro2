@@ -14,6 +14,7 @@ import {
   TextField,
   Box,
   Typography,
+  useTheme,
 } from '@mui/material';
 import {
   MODAL_KEYWORDS,
@@ -28,9 +29,13 @@ interface DataTypeAutocompleteProps {
 
 /**
  * Highlight matching text in search results
- * Matches legacy dark red (#8B0000) bold highlight style
+ * Uses dark red (#8B0000) for light mode, pinkish (#FF6B9D) for dark mode
  */
-function highlightMatch(text: string, query: string): React.ReactNode {
+function highlightMatch(
+  text: string,
+  query: string,
+  isDarkMode: boolean
+): React.ReactNode {
   if (!query) return text;
 
   const lowerText = text.toLowerCase();
@@ -39,10 +44,12 @@ function highlightMatch(text: string, query: string): React.ReactNode {
 
   if (index === -1) return text;
 
+  const highlightColor = isDarkMode ? '#FF6B9D' : '#8B0000';
+
   return (
     <>
       {text.slice(0, index)}
-      <span style={{ color: '#8B0000', fontWeight: 'bold' }}>
+      <span style={{ color: highlightColor, fontWeight: 'bold' }}>
         {text.slice(index, index + query.length)}
       </span>
       {text.slice(index + query.length)}
@@ -52,6 +59,8 @@ function highlightMatch(text: string, query: string): React.ReactNode {
 
 export function DataTypeAutocomplete({ context, onSelectModal }: DataTypeAutocompleteProps) {
   const [inputValue, setInputValue] = useState('');
+  const theme = useTheme();
+  const isDarkMode = theme.palette.mode === 'dark';
 
   // Get keywords filtered by context (micrograph or spot)
   const contextKeywords = filterKeywordsByContext(MODAL_KEYWORDS, context);
@@ -94,7 +103,7 @@ export function DataTypeAutocomplete({ context, onSelectModal }: DataTypeAutocom
           <li key={key} {...otherProps}>
             <Box sx={{ py: 0.5 }}>
               <Typography variant="body2" component="div">
-                {highlightMatch(option.keyword, inputValue)}
+                {highlightMatch(option.keyword, inputValue, isDarkMode)}
               </Typography>
               <Typography
                 variant="caption"
