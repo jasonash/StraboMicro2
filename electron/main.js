@@ -754,14 +754,14 @@ ipcMain.handle('micrograph:export-composite', async (event, projectId, micrograp
         const childDisplayWidth = Math.round(childImageWidth * displayScale);
         const childDisplayHeight = Math.round(childImageHeight * displayScale);
 
-        // Get child position
+        // Get child position (ensure integers for Sharp)
         let topLeftX = 0, topLeftY = 0;
         if (child.offsetInParent) {
-          topLeftX = child.offsetInParent.X;
-          topLeftY = child.offsetInParent.Y;
+          topLeftX = Math.round(child.offsetInParent.X);
+          topLeftY = Math.round(child.offsetInParent.Y);
         } else if (child.xOffset !== undefined && child.yOffset !== undefined) {
-          topLeftX = child.xOffset;
-          topLeftY = child.yOffset;
+          topLeftX = Math.round(child.xOffset);
+          topLeftY = Math.round(child.yOffset);
         }
 
         // Resize child image to display dimensions
@@ -825,6 +825,14 @@ ipcMain.handle('micrograph:export-composite', async (event, projectId, micrograp
         if (compositeY + cropH > baseHeight) { cropH = baseHeight - compositeY; }
 
         if (cropW <= 0 || cropH <= 0) continue;
+
+        // Ensure all values are integers for Sharp
+        cropX = Math.round(cropX);
+        cropY = Math.round(cropY);
+        cropW = Math.round(cropW);
+        cropH = Math.round(cropH);
+        compositeX = Math.round(compositeX);
+        compositeY = Math.round(compositeY);
 
         let compositeBuffer = finalBuffer;
         if (cropX > 0 || cropY > 0 || cropW !== childW || cropH !== childH) {
