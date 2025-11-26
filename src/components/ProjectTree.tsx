@@ -251,6 +251,7 @@ export function ProjectTree() {
   const updateMicrographMetadata = useAppStore((state) => state.updateMicrographMetadata);
   const reorderMicrographs = useAppStore((state) => state.reorderMicrographs);
   const reorderSamples = useAppStore((state) => state.reorderSamples);
+  const reorderDatasets = useAppStore((state) => state.reorderDatasets);
 
   // Drag and drop sensors with activation constraint to distinguish from clicks
   const sensors = useSensors(
@@ -602,6 +603,44 @@ export function ProjectTree() {
       e.preventDefault();
       const newOrder = arrayMove(samples, currentIndex, currentIndex + 1);
       reorderSamples(datasetId, newOrder.map((s) => s.id));
+    }
+  };
+
+  // Handle drag end for dataset reordering
+  const handleDatasetDragEnd = (
+    event: DragEndEvent,
+    datasets: DatasetMetadata[]
+  ) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+
+    const oldIndex = datasets.findIndex((d) => d.id === active.id);
+    const newIndex = datasets.findIndex((d) => d.id === over.id);
+
+    if (oldIndex === -1 || newIndex === -1) return;
+
+    const newOrder = arrayMove(datasets, oldIndex, newIndex);
+    reorderDatasets(newOrder.map((d) => d.id));
+  };
+
+  const handleDatasetKeyDown = (
+    e: React.KeyboardEvent,
+    datasetId: string,
+    datasets: DatasetMetadata[]
+  ) => {
+    if (!e.ctrlKey && !e.metaKey) return;
+
+    const currentIndex = datasets.findIndex((d) => d.id === datasetId);
+    if (currentIndex === -1) return;
+
+    if (e.key === 'ArrowUp' && currentIndex > 0) {
+      e.preventDefault();
+      const newOrder = arrayMove(datasets, currentIndex, currentIndex - 1);
+      reorderDatasets(newOrder.map((d) => d.id));
+    } else if (e.key === 'ArrowDown' && currentIndex < datasets.length - 1) {
+      e.preventDefault();
+      const newOrder = arrayMove(datasets, currentIndex, currentIndex + 1);
+      reorderDatasets(newOrder.map((d) => d.id));
     }
   };
 
@@ -969,13 +1008,18 @@ export function ProjectTree() {
     );
   };
 
-  const renderDataset = (dataset: DatasetMetadata) => {
+  const renderDataset = (dataset: DatasetMetadata, allDatasets: DatasetMetadata[]) => {
     const isExpanded = expandedDatasets.has(dataset.id);
     const hasSamples = dataset.samples && dataset.samples.length > 0;
 
     return (
-      <Box key={dataset.id} sx={{ mb: 1 }}>
-        <Stack direction="row" alignItems="center" spacing={0.5} sx={{ py: 0.5, px: 1 }}>
+      <Box
+        key={dataset.id}
+        sx={{ mb: 1 }}
+        tabIndex={0}
+        onKeyDown={(e) => handleDatasetKeyDown(e, dataset.id, allDatasets)}
+      >
+        <Stack direction="row" alignItems="center" spacing={0.5} sx={{ py: 0.5, pr: 1 }}>
           <IconButton size="small" onClick={() => toggleDataset(dataset.id)} sx={{ p: 0 }}>
             {isExpanded ? <ExpandMore fontSize="small" /> : <ChevronRight fontSize="small" />}
           </IconButton>
@@ -1076,7 +1120,24 @@ export function ProjectTree() {
 
       {/* Dataset tree */}
       <Box sx={{ p: 1 }}>
-        {hasDatasets && project.datasets!.map((dataset) => renderDataset(dataset))}
+        {hasDatasets && (
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={(event) => handleDatasetDragEnd(event, project.datasets!)}
+          >
+            <SortableContext
+              items={project.datasets!.map((d) => d.id)}
+              strategy={verticalListSortingStrategy}
+            >
+              {project.datasets!.map((dataset) => (
+                <SortableItemWrapper key={dataset.id} id={dataset.id}>
+                  {renderDataset(dataset, project.datasets!)}
+                </SortableItemWrapper>
+              ))}
+            </SortableContext>
+          </DndContext>
+        )}
       </Box>
 
       {/* Project Menu */}

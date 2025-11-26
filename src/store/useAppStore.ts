@@ -95,6 +95,7 @@ interface AppState {
   addDataset: (dataset: DatasetMetadata) => void;
   updateDataset: (id: string, updates: Partial<DatasetMetadata>) => void;
   deleteDataset: (id: string) => void;
+  reorderDatasets: (orderedIds: string[]) => void;
 
   // ========== CRUD: SAMPLE ==========
   addSample: (datasetId: string, sample: SampleMetadata) => void;
@@ -331,6 +332,36 @@ export const useAppStore = create<AppState>()(
               isDirty: true,
               micrographIndex: buildMicrographIndex(newProject),
               spotIndex: buildSpotIndex(newProject),
+            };
+          }),
+
+          reorderDatasets: (orderedIds) => set((state) => {
+            if (!state.project) return state;
+
+            const newProject = structuredClone(state.project);
+
+            if (newProject.datasets) {
+              // Create a map of datasets by ID for quick lookup
+              const datasetMap = new Map(newProject.datasets.map(d => [d.id, d]));
+              // Reorder datasets based on orderedIds
+              const reorderedDatasets: typeof newProject.datasets = [];
+              for (const id of orderedIds) {
+                const dataset = datasetMap.get(id);
+                if (dataset) {
+                  reorderedDatasets.push(dataset);
+                  datasetMap.delete(id);
+                }
+              }
+              // Add any remaining datasets that weren't in orderedIds (shouldn't happen, but be safe)
+              for (const dataset of datasetMap.values()) {
+                reorderedDatasets.push(dataset);
+              }
+              newProject.datasets = reorderedDatasets;
+            }
+
+            return {
+              project: newProject,
+              isDirty: true,
             };
           }),
 
