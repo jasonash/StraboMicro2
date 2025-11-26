@@ -191,16 +191,11 @@ export function EditSampleDialog({ isOpen, onClose, sample }: EditSampleDialogPr
         sampleUnit: linkedSampleData.sampleUnit,
         sampleType: linkedSampleData.sampleType,
       }),
+      // Update the sample ID to the server's ID when linking
+      ...(linkedSampleId && {
+        id: linkedSampleId,
+      }),
     };
-
-    // If linking to a new server sample, we need to update the sample ID
-    // This is critical for backend linking
-    if (linkedSampleId) {
-      // Note: This changes the sample's ID which is unusual, but required for server linking
-      // The updateSample function will need to handle ID changes, or we delete and recreate
-      console.warn('[EditSampleDialog] Linking to server sample - ID change not fully implemented');
-      // For now, just update the metadata (ID change would require more complex handling)
-    }
 
     updateSample(sample.id, updates);
     onClose();

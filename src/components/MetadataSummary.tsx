@@ -761,7 +761,11 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
               {/* Linked to StraboField indicator */}
               {sample.existsOnServer && (
                 <Box
+                  onClick={() => {
+                    window.api?.openExternalLink(`https://strabospot.org/spotdetails/?s=${sample.id}`);
+                  }}
                   sx={{
+                    display: 'block',
                     p: 1,
                     mb: 1,
                     bgcolor: 'success.main',
@@ -770,9 +774,14 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
                     textAlign: 'center',
                     fontSize: '0.875rem',
                     fontWeight: 500,
+                    cursor: 'pointer',
+                    '&:hover': {
+                      bgcolor: 'success.dark',
+                      textDecoration: 'underline',
+                    },
                   }}
                 >
-                  Linked to StraboField
+                  Linked to StraboField (View on Server)
                 </Box>
               )}
               {sample.name && (
