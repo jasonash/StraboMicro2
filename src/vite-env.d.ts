@@ -266,6 +266,27 @@ interface Window {
       filePath?: string;
     }>;
 
+    // Export all images to ZIP
+    exportAllImages: (projectId: string, projectData: any) => Promise<{
+      success: boolean;
+      canceled?: boolean;
+      filePath?: string;
+      exported?: number;
+      error?: string;
+      errors?: Array<{ micrographId: string; name: string; error: string }>;
+    }>;
+    onExportAllImagesProgress: (callback: (progress: {
+      current: number;
+      total: number;
+      currentName: string;
+      status: 'processing' | 'complete' | 'error';
+      error?: string;
+    }) => void) => void;
+    removeExportAllImagesProgressListener: () => void;
+
+    // Menu event for export all images
+    onExportAllImages: (callback: () => void) => void;
+
     // Authentication
     auth: {
       login: (email: string, password: string, restServer: string) => Promise<{

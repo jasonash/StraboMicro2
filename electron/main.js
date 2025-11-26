@@ -11,6 +11,7 @@ const path = require('path');
 const fs = require('fs');
 const log = require('electron-log');
 const sharp = require('sharp');
+const archiver = require('archiver');
 const projectFolders = require('./projectFolders');
 const imageConverter = require('./imageConverter');
 const projectSerializer = require('./projectSerializer');
@@ -209,6 +210,15 @@ function createWindow() {
           }
         },
         { label: 'Save', accelerator: 'CmdOrCtrl+S' },
+        { type: 'separator' },
+        {
+          label: 'Export All Images...',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('menu:export-all-images');
+            }
+          }
+        },
         { type: 'separator' },
         {
           label: 'Preferences...',
@@ -2722,4 +2732,398 @@ ipcMain.handle('auth:check-storage', async () => {
     available: tokenService.isEncryptionAvailable(),
     backend: tokenService.getStorageBackend(),
   };
+});
+
+// =============================================================================
+// BATCH EXPORT ALL IMAGES TO ZIP
+// =============================================================================
+
+/**
+ * Helper: Generate composite image buffer for a micrograph
+ * Reuses logic from micrograph:export-composite but returns buffer instead of saving
+ */
+async function generateCompositeBuffer(projectId, micrograph, projectData, folderPaths) {
+  const includeSpots = true;
+  const includeLabels = true;
+
+  // Find child micrographs for this micrograph
+  let childMicrographs = [];
+  for (const dataset of projectData.datasets || []) {
+    for (const sample of dataset.samples || []) {
+      const children = (sample.micrographs || []).filter(
+        m => m.parentID === micrograph.id
+      );
+      childMicrographs.push(...children);
+    }
+  }
+
+  // Load base micrograph image
+  const basePath = path.join(folderPaths.images, micrograph.imagePath);
+  let baseImage = sharp(basePath);
+  const baseMetadata = await baseImage.metadata();
+  const baseWidth = baseMetadata.width;
+  const baseHeight = baseMetadata.height;
+
+  // Build composite layers for child micrographs
+  const compositeInputs = [];
+
+  for (const child of childMicrographs) {
+    try {
+      // Skip point-located micrographs
+      if (child.pointInParent) {
+        continue;
+      }
+
+      const childPath = path.join(folderPaths.images, child.imagePath);
+      let childImage = sharp(childPath);
+      const childMetadata = await childImage.metadata();
+
+      // Use stored dimensions
+      const childImageWidth = child.imageWidth || childMetadata.width;
+      const childImageHeight = child.imageHeight || childMetadata.height;
+
+      // Calculate display scale based on pixels per centimeter
+      const childPxPerCm = child.scalePixelsPerCentimeter || 100;
+      const parentPxPerCm = micrograph.scalePixelsPerCentimeter || 100;
+      const displayScale = parentPxPerCm / childPxPerCm;
+
+      // Calculate child dimensions in parent's coordinate space
+      const childDisplayWidth = Math.round(childImageWidth * displayScale);
+      const childDisplayHeight = Math.round(childImageHeight * displayScale);
+
+      // Get child position (ensure integers for Sharp)
+      let topLeftX = 0, topLeftY = 0;
+      if (child.offsetInParent) {
+        topLeftX = Math.round(child.offsetInParent.X);
+        topLeftY = Math.round(child.offsetInParent.Y);
+      } else if (child.xOffset !== undefined && child.yOffset !== undefined) {
+        topLeftX = Math.round(child.xOffset);
+        topLeftY = Math.round(child.yOffset);
+      }
+
+      // Resize child image to display dimensions
+      childImage = childImage.resize(childDisplayWidth, childDisplayHeight, {
+        fit: 'fill',
+        kernel: sharp.kernel.lanczos3
+      });
+
+      // Apply opacity
+      const childOpacity = child.opacity ?? 1.0;
+      childImage = childImage.ensureAlpha();
+
+      if (childOpacity < 1.0) {
+        const { data, info } = await childImage.raw().toBuffer({ resolveWithObject: true });
+        for (let i = 3; i < data.length; i += 4) {
+          data[i] = Math.round(data[i] * childOpacity);
+        }
+        childImage = sharp(data, {
+          raw: { width: info.width, height: info.height, channels: info.channels }
+        });
+      }
+
+      // Apply rotation if needed
+      let finalX = topLeftX, finalY = topLeftY, finalBuffer;
+      if (child.rotation) {
+        const centerX = topLeftX + childDisplayWidth / 2;
+        const centerY = topLeftY + childDisplayHeight / 2;
+
+        childImage = childImage.rotate(child.rotation, {
+          background: { r: 0, g: 0, b: 0, alpha: 0 }
+        });
+
+        const radians = (child.rotation * Math.PI) / 180;
+        const cos = Math.abs(Math.cos(radians));
+        const sin = Math.abs(Math.sin(radians));
+        const rotatedWidth = childDisplayWidth * cos + childDisplayHeight * sin;
+        const rotatedHeight = childDisplayWidth * sin + childDisplayHeight * cos;
+
+        finalX = Math.round(centerX - rotatedWidth / 2);
+        finalY = Math.round(centerY - rotatedHeight / 2);
+        finalBuffer = await childImage.png().toBuffer();
+      } else {
+        finalBuffer = await childImage.png().toBuffer();
+      }
+
+      // Bounds checking and cropping
+      const childBufferMeta = await sharp(finalBuffer).metadata();
+      const childW = childBufferMeta.width;
+      const childH = childBufferMeta.height;
+
+      if (finalX + childW <= 0 || finalY + childH <= 0 || finalX >= baseWidth || finalY >= baseHeight) {
+        continue;
+      }
+
+      let cropX = 0, cropY = 0, cropW = childW, cropH = childH;
+      let compositeX = finalX, compositeY = finalY;
+
+      if (finalX < 0) { cropX = -finalX; cropW -= cropX; compositeX = 0; }
+      if (finalY < 0) { cropY = -finalY; cropH -= cropY; compositeY = 0; }
+      if (compositeX + cropW > baseWidth) { cropW = baseWidth - compositeX; }
+      if (compositeY + cropH > baseHeight) { cropH = baseHeight - compositeY; }
+
+      if (cropW <= 0 || cropH <= 0) continue;
+
+      // Ensure all values are integers for Sharp
+      cropX = Math.round(cropX);
+      cropY = Math.round(cropY);
+      cropW = Math.round(cropW);
+      cropH = Math.round(cropH);
+      compositeX = Math.round(compositeX);
+      compositeY = Math.round(compositeY);
+
+      let compositeBuffer = finalBuffer;
+      if (cropX > 0 || cropY > 0 || cropW !== childW || cropH !== childH) {
+        compositeBuffer = await sharp(finalBuffer)
+          .extract({ left: cropX, top: cropY, width: cropW, height: cropH })
+          .toBuffer();
+      }
+
+      compositeInputs.push({ input: compositeBuffer, left: compositeX, top: compositeY });
+    } catch (error) {
+      log.error(`[BatchExport] Failed to composite child ${child.id}:`, error);
+    }
+  }
+
+  // Generate SVG overlay for spots and labels
+  if ((includeSpots || includeLabels) && micrograph.spots && micrograph.spots.length > 0) {
+    const longestSide = Math.max(baseWidth, baseHeight);
+    const sizeMultiplier = longestSide / 1000;
+
+    const basePointRadius = 6;
+    const basePointStrokeWidth = 2;
+    const baseLineStrokeWidth = 3;
+    const baseFontSize = 16;
+    const basePadding = 4;
+    const baseOffset = 8;
+    const baseCornerRadius = 3;
+
+    const pointRadius = Math.round(basePointRadius * sizeMultiplier);
+    const pointStrokeWidth = Math.round(basePointStrokeWidth * sizeMultiplier);
+    const lineStrokeWidth = Math.round(baseLineStrokeWidth * sizeMultiplier);
+    const fontSize = Math.round(baseFontSize * sizeMultiplier);
+    const padding = Math.round(basePadding * sizeMultiplier);
+    const labelOffset = Math.round(baseOffset * sizeMultiplier);
+    const cornerRadius = Math.round(baseCornerRadius * sizeMultiplier);
+    const charWidth = 8.5 * sizeMultiplier;
+
+    const svgParts = [];
+    svgParts.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${baseWidth}" height="${baseHeight}">`);
+    svgParts.push('<defs><style>text { font-family: Arial, sans-serif; font-weight: bold; }</style></defs>');
+
+    for (const spot of micrograph.spots) {
+      const geometryType = spot.geometryType || spot.geometry?.type;
+      const color = convertColor(spot.color || '#00ff00');
+      const labelColor = convertColor(spot.labelColor || '#ffffff');
+      const opacity = (spot.opacity ?? 50) / 100;
+      const showLabel = spot.showLabel !== false;
+
+      if (includeSpots) {
+        if (geometryType === 'point' || geometryType === 'Point') {
+          const x = Array.isArray(spot.geometry?.coordinates)
+            ? spot.geometry.coordinates[0]
+            : spot.points?.[0]?.X ?? 0;
+          const y = Array.isArray(spot.geometry?.coordinates)
+            ? spot.geometry.coordinates[1]
+            : spot.points?.[0]?.Y ?? 0;
+          svgParts.push(`<circle cx="${x}" cy="${y}" r="${pointRadius}" fill="${color}" stroke="#ffffff" stroke-width="${pointStrokeWidth}"/>`);
+        } else if (geometryType === 'line' || geometryType === 'LineString') {
+          const coords = Array.isArray(spot.geometry?.coordinates)
+            ? spot.geometry.coordinates
+            : spot.points?.map(p => [p.X ?? 0, p.Y ?? 0]) || [];
+          if (coords.length >= 2) {
+            const pathData = coords.map((c, i) => `${i === 0 ? 'M' : 'L'}${c[0]},${c[1]}`).join(' ');
+            svgParts.push(`<path d="${pathData}" fill="none" stroke="${color}" stroke-width="${lineStrokeWidth}" stroke-linecap="round" stroke-linejoin="round"/>`);
+          }
+        } else if (geometryType === 'polygon' || geometryType === 'Polygon') {
+          const coords = Array.isArray(spot.geometry?.coordinates)
+            ? (spot.geometry.coordinates[0] || [])
+            : spot.points?.map(p => [p.X ?? 0, p.Y ?? 0]) || [];
+          if (coords.length >= 3) {
+            const pointsStr = coords.map(c => `${c[0]},${c[1]}`).join(' ');
+            svgParts.push(`<polygon points="${pointsStr}" fill="${color}" fill-opacity="${opacity}" stroke="${color}" stroke-width="${lineStrokeWidth}"/>`);
+          }
+        }
+      }
+
+      if (includeLabels && showLabel && spot.name) {
+        let labelX = 0, labelY = 0;
+        if (geometryType === 'point' || geometryType === 'Point') {
+          labelX = (Array.isArray(spot.geometry?.coordinates) ? spot.geometry.coordinates[0] : spot.points?.[0]?.X) || 0;
+          labelY = (Array.isArray(spot.geometry?.coordinates) ? spot.geometry.coordinates[1] : spot.points?.[0]?.Y) || 0;
+        } else {
+          const coords = Array.isArray(spot.geometry?.coordinates)
+            ? (spot.geometry.coordinates[0] || spot.geometry.coordinates)
+            : spot.points?.map(p => [p.X ?? 0, p.Y ?? 0]) || [];
+          if (coords[0]) {
+            labelX = coords[0][0] || coords[0];
+            labelY = coords[0][1] || coords[1];
+          }
+        }
+        const labelWidth = spot.name.length * charWidth + padding * 2;
+        const labelHeight = fontSize + padding * 2;
+        svgParts.push(`<rect x="${labelX + labelOffset}" y="${labelY + labelOffset}" width="${labelWidth}" height="${labelHeight}" rx="${cornerRadius}" fill="#000000" fill-opacity="0.7"/>`);
+        svgParts.push(`<text x="${labelX + labelOffset + padding}" y="${labelY + labelOffset + fontSize + padding/2}" font-size="${fontSize}" fill="${labelColor}">${escapeXml(spot.name)}</text>`);
+      }
+    }
+
+    svgParts.push('</svg>');
+    const svgOverlay = Buffer.from(svgParts.join('\n'));
+    compositeInputs.push({ input: svgOverlay, left: 0, top: 0 });
+  }
+
+  // Apply all composites
+  let finalImage;
+  if (compositeInputs.length > 0) {
+    finalImage = baseImage.composite(compositeInputs);
+  } else {
+    finalImage = baseImage;
+  }
+
+  // Return JPEG buffer
+  return await finalImage.jpeg({ quality: 95 }).toBuffer();
+}
+
+/**
+ * Collect all micrographs from project (flattened list)
+ */
+function collectAllMicrographs(projectData) {
+  const micrographs = [];
+  for (const dataset of projectData.datasets || []) {
+    for (const sample of dataset.samples || []) {
+      for (const micrograph of sample.micrographs || []) {
+        micrographs.push({
+          micrograph,
+          datasetName: dataset.name || 'Unknown Dataset',
+          sampleName: sample.name || 'Unknown Sample',
+        });
+      }
+    }
+  }
+  return micrographs;
+}
+
+/**
+ * Export all micrographs to a ZIP file
+ * Sends progress updates to renderer via IPC
+ */
+ipcMain.handle('project:export-all-images', async (event, projectId, projectData) => {
+  try {
+    log.info(`[BatchExport] Starting batch export for project: ${projectId}`);
+
+    // Collect all micrographs
+    const allMicrographs = collectAllMicrographs(projectData);
+    const total = allMicrographs.length;
+
+    if (total === 0) {
+      return { success: false, error: 'No micrographs found in project' };
+    }
+
+    log.info(`[BatchExport] Found ${total} micrographs to export`);
+
+    // Show save dialog for ZIP file
+    const projectName = (projectData.name || 'project').replace(/[<>:"/\\|?*]/g, '_');
+    const result = await dialog.showSaveDialog({
+      title: 'Export All Images',
+      defaultPath: `${projectName}_images.zip`,
+      filters: [
+        { name: 'ZIP Archive', extensions: ['zip'] },
+        { name: 'All Files', extensions: ['*'] }
+      ]
+    });
+
+    if (result.canceled || !result.filePath) {
+      return { success: false, canceled: true };
+    }
+
+    // Get project folder paths
+    const folderPaths = await projectFolders.getProjectFolderPaths(projectId);
+
+    // Create ZIP file
+    const output = fs.createWriteStream(result.filePath);
+    const archive = archiver('zip', { zlib: { level: 6 } });
+
+    // Handle errors
+    archive.on('error', (err) => {
+      throw err;
+    });
+
+    // Pipe archive to output file
+    archive.pipe(output);
+
+    // Process each micrograph
+    let completed = 0;
+    const errors = [];
+
+    for (const { micrograph, datasetName, sampleName } of allMicrographs) {
+      try {
+        // Send progress update to renderer
+        const progress = {
+          current: completed + 1,
+          total,
+          currentName: micrograph.name || 'Unnamed',
+          status: 'processing'
+        };
+        event.sender.send('export-all-images:progress', progress);
+
+        log.info(`[BatchExport] Processing ${completed + 1}/${total}: ${micrograph.name}`);
+
+        // Generate composite buffer
+        const buffer = await generateCompositeBuffer(projectId, micrograph, projectData, folderPaths);
+
+        // Create filename (sanitize for ZIP)
+        const cleanName = (micrograph.name || 'micrograph').replace(/[<>:"/\\|?*]/g, '_');
+        const filename = `${cleanName}.jpg`;
+
+        // Add to archive
+        archive.append(buffer, { name: filename });
+
+        completed++;
+      } catch (error) {
+        log.error(`[BatchExport] Error processing ${micrograph.name}:`, error);
+        errors.push({
+          micrographId: micrograph.id,
+          name: micrograph.name,
+          error: error.message
+        });
+        completed++;
+      }
+    }
+
+    // Finalize archive
+    await archive.finalize();
+
+    // Wait for output stream to finish
+    await new Promise((resolve, reject) => {
+      output.on('close', resolve);
+      output.on('error', reject);
+    });
+
+    // Send completion
+    event.sender.send('export-all-images:progress', {
+      current: total,
+      total,
+      currentName: '',
+      status: 'complete'
+    });
+
+    log.info(`[BatchExport] Export complete: ${result.filePath} (${completed} images)`);
+
+    return {
+      success: true,
+      filePath: result.filePath,
+      exported: completed,
+      errors: errors.length > 0 ? errors : undefined
+    };
+
+  } catch (error) {
+    log.error('[BatchExport] Export failed:', error);
+    event.sender.send('export-all-images:progress', {
+      current: 0,
+      total: 0,
+      currentName: '',
+      status: 'error',
+      error: error.message
+    });
+    throw error;
+  }
 });
