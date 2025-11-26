@@ -13,7 +13,7 @@
  */
 
 import { useEffect, useRef, useState, useCallback, useImperativeHandle, forwardRef } from 'react';
-import { Stage, Layer, Image as KonvaImage } from 'react-konva';
+import { Stage, Layer, Image as KonvaImage, Circle } from 'react-konva';
 import { Box, CircularProgress, Typography } from '@mui/material';
 import { useAppStore } from '@/store';
 import { getChildMicrographs } from '@/store/helpers';
@@ -947,10 +947,20 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(({ image
                 );
               })}
 
-              {/* Render associated micrographs (overlays) */}
-              {/* Only render children that have scale set (not batch-imported without setup) */}
+              {/* Render associated micrographs (overlays) - only rectangle-located ones */}
+              {/* Filter out: batch-imported without scale, and point-located micrographs */}
               {activeMicrograph && project && childMicrographs
-                .filter((childMicro) => childMicro.scalePixelsPerCentimeter !== undefined && childMicro.scalePixelsPerCentimeter !== null)
+                .filter((childMicro) => {
+                  // Must have scale set
+                  if (childMicro.scalePixelsPerCentimeter === undefined || childMicro.scalePixelsPerCentimeter === null) {
+                    return false;
+                  }
+                  // Must NOT be point-located (pointInParent means it's a point, not an overlay)
+                  if ((childMicro as { pointInParent?: unknown }).pointInParent) {
+                    return false;
+                  }
+                  return true;
+                })
                 .map((childMicro) => (
                 <AssociatedImageRenderer
                   key={childMicro.id}
@@ -980,7 +990,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(({ image
               ))}
             </Layer>
 
-            {/* Spots Layer - render all saved spots */}
+            {/* Spots Layer - render all saved spots and point-located micrographs */}
             <Layer
               key="spots-layer"
               x={position.x}
@@ -988,6 +998,36 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(({ image
               scaleX={zoom}
               scaleY={zoom}
             >
+              {/* Render point-located associated micrographs as clickable markers */}
+              {activeMicrograph && project && childMicrographs
+                .filter((childMicro) => {
+                  // Must have pointInParent (point-located micrograph)
+                  const pointData = (childMicro as { pointInParent?: { x: number; y: number } }).pointInParent;
+                  return pointData !== undefined;
+                })
+                .map((childMicro) => {
+                  const pointData = (childMicro as { pointInParent: { x: number; y: number } }).pointInParent;
+                  return (
+                    <Circle
+                      key={`point-${childMicro.id}`}
+                      x={pointData.x}
+                      y={pointData.y}
+                      radius={12 / zoom}
+                      fill="#e44c65"
+                      stroke="#ffffff"
+                      strokeWidth={2 / zoom}
+                      onClick={() => {
+                        // Navigate to the child micrograph when clicked
+                        useAppStore.getState().selectMicrograph(childMicro.id);
+                      }}
+                      onTap={() => {
+                        useAppStore.getState().selectMicrograph(childMicro.id);
+                      }}
+                      style={{ cursor: 'pointer' }}
+                    />
+                  );
+                })}
+
               {/* First pass: Render all spot shapes */}
               {activeMicrograph?.spots?.map((spot) => (
                 <SpotRenderer

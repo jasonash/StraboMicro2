@@ -1452,6 +1452,12 @@ ipcMain.handle('composite:generate-thumbnail', async (event, projectId, microgra
 
     for (const child of childMicrographs) {
       try {
+        // Skip point-located micrographs - they should be rendered as point markers, not overlays
+        if (child.pointInParent) {
+          log.info(`[IPC] Skipping point-located child ${child.id} (${child.name}) - not rendered as overlay`);
+          continue;
+        }
+
         log.info(`[IPC] Processing child ${child.id} (${child.name})`);
 
         const childPath = path.join(folderPaths.images, child.imagePath);
@@ -1820,6 +1826,12 @@ ipcMain.handle('composite:rebuild-all-thumbnails', async (event, projectId, proj
         for (const child of childMicrographs) {
           try {
             if (!child.imagePath) continue;
+
+            // Skip point-located micrographs - they should be rendered as point markers, not overlays
+            if (child.pointInParent) {
+              log.info(`[IPC] Rebuild: Skipping point-located child ${child.id} - not rendered as overlay`);
+              continue;
+            }
 
             const childPath = path.join(folderPaths.images, child.imagePath);
 
