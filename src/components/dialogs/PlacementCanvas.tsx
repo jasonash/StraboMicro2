@@ -1412,14 +1412,9 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
             )}
           </Layer>
 
-          {/* Transformer layer - scaled the same as content so it tracks the child node */}
-          {/* But with inverse-scaled visual properties to maintain constant screen-pixel sizes */}
-          <Layer
-            scaleX={scale}
-            scaleY={scale}
-            x={stagePos.x}
-            y={stagePos.y}
-          >
+          {/* Transformer layer - NOT scaled, renders at screen coordinates */}
+          {/* This keeps handles at constant screen-pixel size regardless of zoom */}
+          <Layer>
             {childImage && (
               <Transformer
                 ref={transformerRef}
@@ -1427,13 +1422,13 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
                 borderStroke="#e44c65"
                 anchorStroke="#e44c65"
                 anchorFill="#e44c65"
-                anchorSize={10 / scale / (childTransform.scaleX || 1)}
-                anchorCornerRadius={2 / scale / (childTransform.scaleX || 1)}
-                anchorStrokeWidth={1 / scale / (childTransform.scaleX || 1)}
-                borderStrokeWidth={2 / scale / (childTransform.scaleX || 1)}
+                anchorSize={8}
+                anchorCornerRadius={2}
+                anchorStrokeWidth={1}
+                borderStrokeWidth={2}
                 enabledAnchors={enableResizeHandles ? ['top-left', 'top-right', 'bottom-left', 'bottom-right'] : []}
                 keepRatio={true}
-                rotateAnchorOffset={25 / scale / (childTransform.scaleX || 1)}
+                rotateAnchorOffset={20}
                 ignoreStroke={true}
               />
             )}
