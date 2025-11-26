@@ -251,6 +251,21 @@ interface Window {
       filePath?: string;
     }>;
 
+    // Export composite micrograph (with overlays, spots, and labels)
+    exportCompositeMicrograph: (
+      projectId: string,
+      micrographId: string,
+      projectData: any,
+      options?: {
+        includeSpots?: boolean;
+        includeLabels?: boolean;
+      }
+    ) => Promise<{
+      success: boolean;
+      canceled?: boolean;
+      filePath?: string;
+    }>;
+
     // Authentication
     auth: {
       login: (email: string, password: string, restServer: string) => Promise<{

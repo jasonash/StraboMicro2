@@ -110,6 +110,10 @@ contextBridge.exposeInMainWorld('api', {
   downloadMicrograph: (imagePath, suggestedName) =>
     ipcRenderer.invoke('micrograph:download', imagePath, suggestedName),
 
+  // Export composite micrograph (with overlays, spots, and labels)
+  exportCompositeMicrograph: (projectId, micrographId, projectData, options) =>
+    ipcRenderer.invoke('micrograph:export-composite', projectId, micrographId, projectData, options),
+
   // Authentication
   auth: {
     login: (email, password, restServer) => ipcRenderer.invoke('auth:login', email, password, restServer),
