@@ -311,6 +311,17 @@ export function ProjectTree() {
     return saved ? new Set(JSON.parse(saved)) : new Set();
   });
 
+  // Track known IDs to avoid re-expanding items the user has collapsed
+  // This is separate from expanded state - it tracks what we've "seen" before
+  const [knownDatasetIds, setKnownDatasetIds] = useState<Set<string>>(() => {
+    const saved = localStorage.getItem('sidebar-known-datasets');
+    return saved ? new Set(JSON.parse(saved)) : new Set();
+  });
+  const [knownSampleIds, setKnownSampleIds] = useState<Set<string>>(() => {
+    const saved = localStorage.getItem('sidebar-known-samples');
+    return saved ? new Set(JSON.parse(saved)) : new Set();
+  });
+
   // Menu states
   const [projectMenuAnchor, setProjectMenuAnchor] = useState<HTMLElement | null>(null);
   const [datasetMenuAnchor, setDatasetMenuAnchor] = useState<{ [key: string]: HTMLElement | null }>({});
@@ -332,33 +343,55 @@ export function ProjectTree() {
     localStorage.setItem('sidebar-expanded-micrographs', JSON.stringify(Array.from(expandedMicrographs)));
   }, [expandedMicrographs]);
 
-  // Auto-expand newly added datasets and samples (only if not already tracked)
+  // Save known IDs to localStorage
+  useEffect(() => {
+    localStorage.setItem('sidebar-known-datasets', JSON.stringify(Array.from(knownDatasetIds)));
+  }, [knownDatasetIds]);
+
+  useEffect(() => {
+    localStorage.setItem('sidebar-known-samples', JSON.stringify(Array.from(knownSampleIds)));
+  }, [knownSampleIds]);
+
+  // Auto-expand newly added datasets and samples (only ones we haven't seen before)
   useEffect(() => {
     if (!project?.datasets) return;
 
     const newExpandedDatasets = new Set(expandedDatasets);
     const newExpandedSamples = new Set(expandedSamples);
-    let changed = false;
+    const newKnownDatasets = new Set(knownDatasetIds);
+    const newKnownSamples = new Set(knownSampleIds);
+    let expandedChanged = false;
+    let knownChanged = false;
 
-    // Only expand datasets/samples that aren't already in our saved state
+    // Only expand datasets/samples that we haven't seen before
     project.datasets.forEach((dataset) => {
-      if (!newExpandedDatasets.has(dataset.id)) {
+      if (!newKnownDatasets.has(dataset.id)) {
+        // This is a new dataset - expand it and mark as known
         newExpandedDatasets.add(dataset.id);
-        changed = true;
+        newKnownDatasets.add(dataset.id);
+        expandedChanged = true;
+        knownChanged = true;
       }
 
-      // Expand all samples in each dataset
+      // Check samples in each dataset
       dataset.samples?.forEach((sample) => {
-        if (!newExpandedSamples.has(sample.id)) {
+        if (!newKnownSamples.has(sample.id)) {
+          // This is a new sample - expand it and mark as known
           newExpandedSamples.add(sample.id);
-          changed = true;
+          newKnownSamples.add(sample.id);
+          expandedChanged = true;
+          knownChanged = true;
         }
       });
     });
 
-    if (changed) {
+    if (expandedChanged) {
       setExpandedDatasets(newExpandedDatasets);
       setExpandedSamples(newExpandedSamples);
+    }
+    if (knownChanged) {
+      setKnownDatasetIds(newKnownDatasets);
+      setKnownSampleIds(newKnownSamples);
     }
   }, [project?.datasets]);
 
