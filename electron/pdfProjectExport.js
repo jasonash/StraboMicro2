@@ -602,14 +602,47 @@ class PDFProjectExporter {
         if (imageBuffer) {
           // Calculate image dimensions to fit page width while maintaining aspect ratio
           const maxWidth = CONTENT_WIDTH;
-          const maxHeight = 300; // Max height for image on page
+          const maxHeight = 350; // Max height for image on page
 
-          // Add image
-          doc.image(imageBuffer, MARGIN, doc.y, {
-            fit: [maxWidth, maxHeight],
-            align: 'center'
+          // Get image dimensions from sharp metadata
+          const sharp = require('sharp');
+          const metadata = await sharp(imageBuffer).metadata();
+          const imgWidth = metadata.width || 800;
+          const imgHeight = metadata.height || 600;
+
+          // Calculate scaled dimensions
+          let displayWidth = imgWidth;
+          let displayHeight = imgHeight;
+
+          // Scale to fit maxWidth
+          if (displayWidth > maxWidth) {
+            const scale = maxWidth / displayWidth;
+            displayWidth = maxWidth;
+            displayHeight = imgHeight * scale;
+          }
+
+          // Scale to fit maxHeight
+          if (displayHeight > maxHeight) {
+            const scale = maxHeight / displayHeight;
+            displayHeight = maxHeight;
+            displayWidth = displayWidth * scale;
+          }
+
+          // Check if we need a page break for the image
+          if (doc.y + displayHeight > PAGE_HEIGHT - MARGIN - 50) {
+            doc.addPage();
+          }
+
+          const startY = doc.y;
+
+          // Add image with calculated dimensions
+          doc.image(imageBuffer, MARGIN, startY, {
+            width: displayWidth,
+            height: displayHeight
           });
-          doc.moveDown(1);
+
+          // Manually move cursor below the image
+          doc.y = startY + displayHeight + 15;
         }
       } catch (err) {
         log.warn(`[PDFExport] Could not generate composite for ${micrographName}:`, err.message);
