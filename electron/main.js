@@ -849,6 +849,33 @@ ipcMain.handle('micrograph:export-composite', async (event, projectId, micrograp
 
     // Generate SVG overlay for spots and labels
     if ((includeSpots || includeLabels) && micrograph.spots && micrograph.spots.length > 0) {
+      // Calculate size multiplier based on image dimensions
+      // Base reference: 1000px image = multiplier of 1.0
+      // This scales spots/labels proportionally for larger/smaller images
+      const longestSide = Math.max(baseWidth, baseHeight);
+      const sizeMultiplier = longestSide / 1000;
+
+      log.info(`[IPC] Image size: ${baseWidth}x${baseHeight}, longest side: ${longestSide}, size multiplier: ${sizeMultiplier.toFixed(2)}`);
+
+      // Base sizes (for a ~1000px image)
+      const basePointRadius = 6;
+      const basePointStrokeWidth = 2;
+      const baseLineStrokeWidth = 3;
+      const baseFontSize = 16;
+      const basePadding = 4;
+      const baseOffset = 8;
+      const baseCornerRadius = 3;
+
+      // Scaled sizes
+      const pointRadius = Math.round(basePointRadius * sizeMultiplier);
+      const pointStrokeWidth = Math.round(basePointStrokeWidth * sizeMultiplier);
+      const lineStrokeWidth = Math.round(baseLineStrokeWidth * sizeMultiplier);
+      const fontSize = Math.round(baseFontSize * sizeMultiplier);
+      const padding = Math.round(basePadding * sizeMultiplier);
+      const labelOffset = Math.round(baseOffset * sizeMultiplier);
+      const cornerRadius = Math.round(baseCornerRadius * sizeMultiplier);
+      const charWidth = 8.5 * sizeMultiplier; // Approximate character width
+
       const svgParts = [];
       svgParts.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${baseWidth}" height="${baseHeight}">`);
       svgParts.push('<defs><style>text { font-family: Arial, sans-serif; font-weight: bold; }</style></defs>');
@@ -859,7 +886,6 @@ ipcMain.handle('micrograph:export-composite', async (event, projectId, micrograp
         const labelColor = convertColor(spot.labelColor || '#ffffff');
         const opacity = (spot.opacity ?? 50) / 100;
         const showLabel = spot.showLabel !== false;
-        const strokeWidth = 3;
 
         if (includeSpots) {
           // Render spot shape
@@ -871,8 +897,8 @@ ipcMain.handle('micrograph:export-composite', async (event, projectId, micrograp
               ? spot.geometry.coordinates[1]
               : spot.points?.[0]?.Y ?? 0;
 
-            // White outline circle
-            svgParts.push(`<circle cx="${x}" cy="${y}" r="6" fill="${color}" stroke="#ffffff" stroke-width="2"/>`);
+            // White outline circle (scaled)
+            svgParts.push(`<circle cx="${x}" cy="${y}" r="${pointRadius}" fill="${color}" stroke="#ffffff" stroke-width="${pointStrokeWidth}"/>`);
 
           } else if (geometryType === 'line' || geometryType === 'LineString') {
             const coords = Array.isArray(spot.geometry?.coordinates)
@@ -881,7 +907,7 @@ ipcMain.handle('micrograph:export-composite', async (event, projectId, micrograp
 
             if (coords.length >= 2) {
               const pathData = coords.map((c, i) => `${i === 0 ? 'M' : 'L'}${c[0]},${c[1]}`).join(' ');
-              svgParts.push(`<path d="${pathData}" fill="none" stroke="${color}" stroke-width="${strokeWidth}" stroke-linecap="round" stroke-linejoin="round"/>`);
+              svgParts.push(`<path d="${pathData}" fill="none" stroke="${color}" stroke-width="${lineStrokeWidth}" stroke-linecap="round" stroke-linejoin="round"/>`);
             }
 
           } else if (geometryType === 'polygon' || geometryType === 'Polygon') {
@@ -891,7 +917,7 @@ ipcMain.handle('micrograph:export-composite', async (event, projectId, micrograp
 
             if (coords.length >= 3) {
               const pointsStr = coords.map(c => `${c[0]},${c[1]}`).join(' ');
-              svgParts.push(`<polygon points="${pointsStr}" fill="${color}" fill-opacity="${opacity}" stroke="${color}" stroke-width="${strokeWidth}"/>`);
+              svgParts.push(`<polygon points="${pointsStr}" fill="${color}" fill-opacity="${opacity}" stroke="${color}" stroke-width="${lineStrokeWidth}"/>`);
             }
           }
         }
@@ -913,18 +939,14 @@ ipcMain.handle('micrograph:export-composite', async (event, projectId, micrograp
             }
           }
 
-          // Label positioning (offset from spot)
-          const offsetX = 8;
-          const offsetY = 8;
-          const fontSize = 16;
-          const padding = 4;
-          const labelWidth = spot.name.length * 8.5 + padding * 2;
+          // Label dimensions (scaled)
+          const labelWidth = spot.name.length * charWidth + padding * 2;
           const labelHeight = fontSize + padding * 2;
 
           // Black semi-transparent background box
-          svgParts.push(`<rect x="${labelX + offsetX}" y="${labelY + offsetY}" width="${labelWidth}" height="${labelHeight}" rx="3" fill="#000000" fill-opacity="0.7"/>`);
+          svgParts.push(`<rect x="${labelX + labelOffset}" y="${labelY + labelOffset}" width="${labelWidth}" height="${labelHeight}" rx="${cornerRadius}" fill="#000000" fill-opacity="0.7"/>`);
           // White label text
-          svgParts.push(`<text x="${labelX + offsetX + padding}" y="${labelY + offsetY + fontSize + padding/2}" font-size="${fontSize}" fill="${labelColor}">${escapeXml(spot.name)}</text>`);
+          svgParts.push(`<text x="${labelX + labelOffset + padding}" y="${labelY + labelOffset + fontSize + padding/2}" font-size="${fontSize}" fill="${labelColor}">${escapeXml(spot.name)}</text>`);
         }
       }
 
@@ -946,10 +968,10 @@ ipcMain.handle('micrograph:export-composite', async (event, projectId, micrograp
     const cleanName = (micrograph.name || 'micrograph').replace(/[<>:"/\\|?*]/g, '_');
     const result = await dialog.showSaveDialog({
       title: 'Export Composite Micrograph',
-      defaultPath: `${cleanName}_composite.png`,
+      defaultPath: `${cleanName}_composite.jpg`,
       filters: [
-        { name: 'PNG Image', extensions: ['png'] },
         { name: 'JPEG Image', extensions: ['jpg', 'jpeg'] },
+        // { name: 'PNG Image', extensions: ['png'] }, // Commented out for now - may re-enable later
         { name: 'All Files', extensions: ['*'] }
       ]
     });
@@ -960,10 +982,12 @@ ipcMain.handle('micrograph:export-composite', async (event, projectId, micrograp
 
     // Save based on extension
     const ext = path.extname(result.filePath).toLowerCase();
-    if (ext === '.jpg' || ext === '.jpeg') {
-      await finalImage.jpeg({ quality: 95 }).toFile(result.filePath);
-    } else {
+    if (ext === '.png') {
+      // PNG support kept for manual use via "All Files" filter
       await finalImage.png().toFile(result.filePath);
+    } else {
+      // Default to JPEG
+      await finalImage.jpeg({ quality: 95 }).toFile(result.filePath);
     }
 
     log.info(`[IPC] Composite micrograph exported to: ${result.filePath}`);
