@@ -5,12 +5,15 @@
  * Allows users to:
  * 1. Select multiple image files
  * 2. Choose which metadata to apply to all images
- * 3. Enter shared instrument info (optional)
- * 4. Enter shared orientation (optional, reference only)
- * 5. Create all micrographs at once
+ * 3. Enter shared instrument & image info (optional)
+ * 4. Enter shared instrument data - detectors, software, etc. (optional)
+ * 5. Enter shared orientation (optional, reference only)
+ * 6. Create all micrographs at once
  *
  * Note: Batch imported micrographs do NOT have scale/location data.
  * When clicked in the sidebar, they redirect to the scale/location dialog.
+ *
+ * IMPORTANT: Full data model compatibility with legacy JavaFX app is maintained.
  */
 
 import { useState, useMemo } from 'react';
@@ -40,7 +43,8 @@ import {
 import { Delete, CloudUpload } from '@mui/icons-material';
 import { useAppStore } from '@/store';
 import type { MicrographMetadata } from '@/types/project-types';
-import { InstrumentInfoForm, type InstrumentFormData, type Detector } from './InstrumentInfoForm';
+import { InstrumentInfoForm, type InstrumentFormData } from './InstrumentInfoForm';
+import { InstrumentDataForm, type InstrumentDataFormData, type Detector, initialInstrumentDataFormData } from './InstrumentDataForm';
 import { OrientationForm, type OrientationFormData, initialOrientationData, validateOrientationForm } from './OrientationForm';
 import type { InstrumentData } from './InstrumentDatabaseDialog';
 
@@ -56,21 +60,11 @@ interface SelectedFile {
   name: string;
 }
 
-const initialInstrumentData: InstrumentFormData = {
+const initialInstrumentInfoData: InstrumentFormData = {
   instrumentType: '',
   otherInstrumentType: '',
   dataType: '',
   imageType: '',
-  instrumentBrand: '',
-  instrumentModel: '',
-  university: '',
-  laboratory: '',
-  dataCollectionSoftware: '',
-  dataCollectionSoftwareVersion: '',
-  postProcessingSoftware: '',
-  postProcessingSoftwareVersion: '',
-  filamentType: '',
-  instrumentNotes: '',
 };
 
 export const BatchImportDialog: React.FC<BatchImportDialogProps> = ({
@@ -83,9 +77,18 @@ export const BatchImportDialog: React.FC<BatchImportDialogProps> = ({
   const [selectedFiles, setSelectedFiles] = useState<SelectedFile[]>([]);
   const [includeInstrumentInfo, setIncludeInstrumentInfo] = useState(false);
   const [includeOrientation, setIncludeOrientation] = useState(false);
-  const [instrumentData, setInstrumentData] = useState<InstrumentFormData>(initialInstrumentData);
+
+  // Instrument & Image Info (step 1)
+  const [instrumentInfoData, setInstrumentInfoData] = useState<InstrumentFormData>(initialInstrumentInfoData);
+
+  // Instrument Data (step 2) - detectors, software, etc.
+  const [instrumentDataFormData, setInstrumentDataFormData] = useState<InstrumentDataFormData>(initialInstrumentDataFormData);
   const [detectors, setDetectors] = useState<Detector[]>([{ type: '', make: '', model: '' }]);
+
+  // Orientation
   const [orientationData, setOrientationData] = useState<OrientationFormData>(initialOrientationData);
+
+  // Import state
   const [isImporting, setIsImporting] = useState(false);
   const [importProgress, setImportProgress] = useState({ current: 0, total: 0, currentFile: '' });
   const [importErrors, setImportErrors] = useState<string[]>([]);
@@ -117,6 +120,7 @@ export const BatchImportDialog: React.FC<BatchImportDialogProps> = ({
     const stepList = ['Select Files'];
     if (includeInstrumentInfo) {
       stepList.push('Instrument & Image Info');
+      stepList.push('Instrument Data');
     }
     if (includeOrientation && !isAssociated) {
       stepList.push('Orientation');
@@ -151,8 +155,14 @@ export const BatchImportDialog: React.FC<BatchImportDialogProps> = ({
     setSelectedFiles((prev) => prev.filter((f) => f.path !== path));
   };
 
-  const handleInstrumentChange = (field: keyof InstrumentFormData, value: string) => {
-    setInstrumentData((prev) => ({ ...prev, [field]: value }));
+  // Instrument Info handlers
+  const handleInstrumentInfoChange = (field: keyof InstrumentFormData, value: string) => {
+    setInstrumentInfoData((prev) => ({ ...prev, [field]: value }));
+  };
+
+  // Instrument Data handlers
+  const handleInstrumentDataChange = (field: keyof InstrumentDataFormData, value: string) => {
+    setInstrumentDataFormData((prev) => ({ ...prev, [field]: value }));
   };
 
   const handleDetectorChange = (index: number, field: keyof Detector, value: string) => {
@@ -171,6 +181,7 @@ export const BatchImportDialog: React.FC<BatchImportDialogProps> = ({
     setDetectors((prev) => prev.filter((_, i) => i !== index));
   };
 
+  // Orientation handlers
   const handleOrientationChange = <K extends keyof OrientationFormData>(
     field: K,
     value: OrientationFormData[K]
@@ -178,10 +189,16 @@ export const BatchImportDialog: React.FC<BatchImportDialogProps> = ({
     setOrientationData((prev) => ({ ...prev, [field]: value }));
   };
 
+  // Load from database
   const handleInstrumentFromDatabase = (instrument: InstrumentData) => {
-    setInstrumentData((prev) => ({
+    // Update instrument info (type)
+    setInstrumentInfoData((prev) => ({
       ...prev,
       instrumentType: instrument.instrumentType || prev.instrumentType,
+    }));
+
+    // Update instrument data (brand, model, etc.)
+    setInstrumentDataFormData({
       instrumentBrand: instrument.instrumentBrand || '',
       instrumentModel: instrument.instrumentModel || '',
       university: instrument.university || '',
@@ -192,8 +209,9 @@ export const BatchImportDialog: React.FC<BatchImportDialogProps> = ({
       postProcessingSoftwareVersion: instrument.postProcessingSoftwareVersion || '',
       filamentType: instrument.filamentType || '',
       instrumentNotes: instrument.instrumentNotes || '',
-    }));
+    });
 
+    // Update detectors
     if (instrument.detectors && instrument.detectors.length > 0) {
       setDetectors(
         instrument.detectors.map((d) => ({
@@ -205,16 +223,23 @@ export const BatchImportDialog: React.FC<BatchImportDialogProps> = ({
     }
   };
 
+  // Copy from existing micrograph
   const handleCopyFromExisting = (micrographId: string) => {
     const sourceMicro = existingMicrographs.find((m) => m.id === micrographId);
     if (!sourceMicro || !sourceMicro.instrument) return;
 
     const inst = sourceMicro.instrument;
-    setInstrumentData({
+
+    // Update instrument info
+    setInstrumentInfoData({
       instrumentType: inst.instrumentType || '',
       otherInstrumentType: inst.otherInstrumentType || '',
       dataType: inst.dataType || '',
       imageType: sourceMicro.imageType || '',
+    });
+
+    // Update instrument data
+    setInstrumentDataFormData({
       instrumentBrand: inst.instrumentBrand || '',
       instrumentModel: inst.instrumentModel || '',
       university: inst.university || '',
@@ -227,6 +252,7 @@ export const BatchImportDialog: React.FC<BatchImportDialogProps> = ({
       instrumentNotes: inst.instrumentNotes || '',
     });
 
+    // Update detectors
     if (inst.instrumentDetectors && inst.instrumentDetectors.length > 0) {
       setDetectors(
         inst.instrumentDetectors.map((d) => ({
@@ -247,9 +273,13 @@ export const BatchImportDialog: React.FC<BatchImportDialogProps> = ({
 
       case 'Instrument & Image Info':
         // Require instrumentType and imageType (matching legacy validation)
-        if (!instrumentData.instrumentType) return false;
-        if (instrumentData.instrumentType === 'Other' && !instrumentData.otherInstrumentType) return false;
-        if (!instrumentData.imageType) return false;
+        if (!instrumentInfoData.instrumentType) return false;
+        if (instrumentInfoData.instrumentType === 'Other' && !instrumentInfoData.otherInstrumentType) return false;
+        if (!instrumentInfoData.imageType) return false;
+        return true;
+
+      case 'Instrument Data':
+        // Instrument data step is always valid (all fields optional)
         return true;
 
       case 'Orientation':
@@ -329,27 +359,28 @@ export const BatchImportDialog: React.FC<BatchImportDialogProps> = ({
           width: conversionResult.jpegWidth,
           height: conversionResult.jpegHeight,
           // NO scalePixelsPerCentimeter - this is the key marker for batch-imported images
-          // scalePixelsPerCentimeter: undefined,
           parentID: isAssociated ? parentMicrographId : undefined,
         };
 
-        // Add instrument info if included
-        if (includeInstrumentInfo && instrumentData.instrumentType) {
-          micrograph.imageType = instrumentData.imageType;
+        // Add instrument info if included (FULL data model)
+        if (includeInstrumentInfo && instrumentInfoData.instrumentType) {
+          micrograph.imageType = instrumentInfoData.imageType;
           micrograph.instrument = {
-            instrumentType: instrumentData.instrumentType,
-            otherInstrumentType: instrumentData.otherInstrumentType || undefined,
-            dataType: instrumentData.dataType || undefined,
-            instrumentBrand: instrumentData.instrumentBrand || undefined,
-            instrumentModel: instrumentData.instrumentModel || undefined,
-            university: instrumentData.university || undefined,
-            laboratory: instrumentData.laboratory || undefined,
-            dataCollectionSoftware: instrumentData.dataCollectionSoftware || undefined,
-            dataCollectionSoftwareVersion: instrumentData.dataCollectionSoftwareVersion || undefined,
-            postProcessingSoftware: instrumentData.postProcessingSoftware || undefined,
-            postProcessingSoftwareVersion: instrumentData.postProcessingSoftwareVersion || undefined,
-            filamentType: instrumentData.filamentType || undefined,
-            instrumentNotes: instrumentData.instrumentNotes || undefined,
+            instrumentType: instrumentInfoData.instrumentType,
+            otherInstrumentType: instrumentInfoData.otherInstrumentType || undefined,
+            dataType: instrumentInfoData.dataType || undefined,
+            // Instrument data fields
+            instrumentBrand: instrumentDataFormData.instrumentBrand || undefined,
+            instrumentModel: instrumentDataFormData.instrumentModel || undefined,
+            university: instrumentDataFormData.university || undefined,
+            laboratory: instrumentDataFormData.laboratory || undefined,
+            dataCollectionSoftware: instrumentDataFormData.dataCollectionSoftware || undefined,
+            dataCollectionSoftwareVersion: instrumentDataFormData.dataCollectionSoftwareVersion || undefined,
+            postProcessingSoftware: instrumentDataFormData.postProcessingSoftware || undefined,
+            postProcessingSoftwareVersion: instrumentDataFormData.postProcessingSoftwareVersion || undefined,
+            filamentType: instrumentDataFormData.filamentType || undefined,
+            instrumentNotes: instrumentDataFormData.instrumentNotes || undefined,
+            // Detectors
             instrumentDetectors: detectors
               .filter((d) => d.type || d.make || d.model)
               .map((d) => ({
@@ -422,7 +453,8 @@ export const BatchImportDialog: React.FC<BatchImportDialogProps> = ({
     setSelectedFiles([]);
     setIncludeInstrumentInfo(false);
     setIncludeOrientation(false);
-    setInstrumentData(initialInstrumentData);
+    setInstrumentInfoData(initialInstrumentInfoData);
+    setInstrumentDataFormData(initialInstrumentDataFormData);
     setDetectors([{ type: '', make: '', model: '' }]);
     setOrientationData(initialOrientationData);
     setImportProgress({ current: 0, total: 0, currentFile: '' });
@@ -522,16 +554,25 @@ export const BatchImportDialog: React.FC<BatchImportDialogProps> = ({
       case 'Instrument & Image Info':
         return (
           <InstrumentInfoForm
-            formData={instrumentData}
-            detectors={detectors}
-            onFormChange={handleInstrumentChange}
-            onDetectorChange={handleDetectorChange}
-            onAddDetector={handleAddDetector}
-            onRemoveDetector={handleRemoveDetector}
+            formData={instrumentInfoData}
+            onFormChange={handleInstrumentInfoChange}
             onInstrumentFromDatabase={handleInstrumentFromDatabase}
             existingMicrographs={existingMicrographs}
             onCopyFromExisting={handleCopyFromExisting}
             showCopyFromExisting={true}
+          />
+        );
+
+      case 'Instrument Data':
+        return (
+          <InstrumentDataForm
+            formData={instrumentDataFormData}
+            detectors={detectors}
+            instrumentType={instrumentInfoData.instrumentType}
+            onFormChange={handleInstrumentDataChange}
+            onDetectorChange={handleDetectorChange}
+            onAddDetector={handleAddDetector}
+            onRemoveDetector={handleRemoveDetector}
           />
         );
 
