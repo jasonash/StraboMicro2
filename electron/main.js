@@ -628,6 +628,43 @@ ipcMain.handle('pdf:export-detailed-notes', async (event, projectData, micrograp
   }
 });
 
+// Download micrograph image to user's chosen location
+ipcMain.handle('micrograph:download', async (event, imagePath, suggestedName) => {
+  try {
+    log.info(`[IPC] Download micrograph: ${imagePath}`);
+
+    // Get the file extension from the source file
+    const ext = path.extname(imagePath).toLowerCase() || '.jpg';
+    const cleanName = (suggestedName || 'micrograph').replace(/[<>:"/\\|?*]/g, '_');
+    const defaultFileName = `${cleanName}${ext}`;
+
+    // Show save dialog
+    const result = await dialog.showSaveDialog({
+      title: 'Download Micrograph',
+      defaultPath: defaultFileName,
+      filters: [
+        { name: 'Image Files', extensions: ['jpg', 'jpeg', 'png', 'tif', 'tiff'] },
+        { name: 'All Files', extensions: ['*'] }
+      ]
+    });
+
+    if (result.canceled || !result.filePath) {
+      return { success: false, canceled: true };
+    }
+
+    // Copy the file to the chosen location
+    const fs = require('fs').promises;
+    await fs.copyFile(imagePath, result.filePath);
+
+    log.info(`[IPC] Micrograph downloaded to: ${result.filePath}`);
+    return { success: true, filePath: result.filePath };
+
+  } catch (error) {
+    log.error('[IPC] Error downloading micrograph:', error);
+    throw error;
+  }
+});
+
 // Image loading (supports TIFF, JPEG, PNG, BMP) - dimensions only for performance
 ipcMain.handle('load-tiff-image', async (event, filePath) => {
   try {

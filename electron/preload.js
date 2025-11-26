@@ -106,6 +106,10 @@ contextBridge.exposeInMainWorld('api', {
   exportDetailedNotesToPDF: (projectData, micrographId, spotId) =>
     ipcRenderer.invoke('pdf:export-detailed-notes', projectData, micrographId, spotId),
 
+  // Micrograph download (save to user's chosen location)
+  downloadMicrograph: (imagePath, suggestedName) =>
+    ipcRenderer.invoke('micrograph:download', imagePath, suggestedName),
+
   // Authentication
   auth: {
     login: (email, password, restServer) => ipcRenderer.invoke('auth:login', email, password, restServer),
