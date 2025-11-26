@@ -12,6 +12,8 @@ import {
   Select,
   MenuItem,
   FormControl,
+  Snackbar,
+  Alert,
 } from '@mui/material';
 import { SelectChangeEvent } from '@mui/material/Select';
 import { useAppStore } from '@/store';
@@ -101,6 +103,14 @@ export function PropertiesPanel() {
   const [openDialog, setOpenDialog] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<'micrograph' | 'spot' | null>(null);
 
+  // Export feedback state
+  const [isExporting, setIsExporting] = useState(false);
+  const [snackbar, setSnackbar] = useState<{
+    open: boolean;
+    message: string;
+    severity: 'success' | 'error' | 'info';
+  }>({ open: false, message: '', severity: 'info' });
+
   // Find the sample ID for the active micrograph
   const findSampleIdForMicrograph = (): string | undefined => {
     if (!activeMicrographId || !project) return undefined;
@@ -157,15 +167,39 @@ export function PropertiesPanel() {
 
   // Handle download micrograph as composite image with overlays, spots, and labels
   const handleDownloadMicrograph = async () => {
-    if (!activeMicrographId || !project?.id) return;
+    if (!activeMicrographId || !project?.id || isExporting) return;
 
-    // Export composite micrograph with all overlays, spots, and labels
-    await window.api?.exportCompositeMicrograph(
-      project.id,
-      activeMicrographId,
-      project,
-      { includeSpots: true, includeLabels: true }
-    );
+    setIsExporting(true);
+    setSnackbar({ open: true, message: 'Exporting micrograph...', severity: 'info' });
+
+    try {
+      const result = await window.api?.exportCompositeMicrograph(
+        project.id,
+        activeMicrographId,
+        project,
+        { includeSpots: true, includeLabels: true }
+      );
+
+      if (result?.success) {
+        setSnackbar({ open: true, message: 'Micrograph exported successfully', severity: 'success' });
+      } else if (result?.canceled) {
+        // User cancelled - close the "exporting" snackbar quietly
+        setSnackbar({ open: false, message: '', severity: 'info' });
+      }
+    } catch (error) {
+      setSnackbar({
+        open: true,
+        message: `Export failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        severity: 'error'
+      });
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  // Close snackbar
+  const handleCloseSnackbar = () => {
+    setSnackbar((prev) => ({ ...prev, open: false }));
   };
 
   // Handle delete confirmation
@@ -198,6 +232,7 @@ export function PropertiesPanel() {
         onDownloadMicrograph={handleDownloadMicrograph}
         onDeleteMicrograph={() => setConfirmDelete('micrograph')}
         onDeleteSpot={() => setConfirmDelete('spot')}
+        isDownloading={isExporting}
       />
 
       {/* Header */}
@@ -441,6 +476,23 @@ export function PropertiesPanel() {
         confirmLabel="Delete"
         confirmColor="error"
       />
+
+      {/* Export Feedback Snackbar */}
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={snackbar.severity === 'info' ? null : 4000}
+        onClose={handleCloseSnackbar}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert
+          onClose={handleCloseSnackbar}
+          severity={snackbar.severity}
+          variant="filled"
+          sx={{ width: '100%' }}
+        >
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 }

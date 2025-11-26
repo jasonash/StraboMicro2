@@ -14,7 +14,7 @@
  * - Delete button (micrograph or spot)
  */
 
-import { Box, Typography, IconButton, Tooltip } from '@mui/material';
+import { Box, Typography, IconButton, Tooltip, CircularProgress } from '@mui/material';
 import DownloadIcon from '@mui/icons-material/Download';
 import DeleteIcon from '@mui/icons-material/Delete';
 import { useAppStore } from '@/store';
@@ -24,12 +24,14 @@ interface BreadcrumbsBarProps {
   onDownloadMicrograph?: () => void;
   onDeleteMicrograph?: () => void;
   onDeleteSpot?: () => void;
+  isDownloading?: boolean;
 }
 
 export function BreadcrumbsBar({
   onDownloadMicrograph,
   onDeleteMicrograph,
   onDeleteSpot,
+  isDownloading = false,
 }: BreadcrumbsBarProps) {
   const project = useAppStore((state) => state.project);
   const activeMicrographId = useAppStore((state) => state.activeMicrographId);
@@ -140,14 +142,21 @@ export function BreadcrumbsBar({
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, ml: 1 }}>
         {/* Download button - only shown when viewing a micrograph (not a spot) */}
         {!isSpotView && onDownloadMicrograph && (
-          <Tooltip title="Download Micrograph">
-            <IconButton
-              size="small"
-              onClick={onDownloadMicrograph}
-              sx={{ color: 'text.secondary' }}
-            >
-              <DownloadIcon fontSize="small" />
-            </IconButton>
+          <Tooltip title={isDownloading ? 'Exporting...' : 'Download Micrograph'}>
+            <span> {/* Wrapper needed for Tooltip when button is disabled */}
+              <IconButton
+                size="small"
+                onClick={onDownloadMicrograph}
+                disabled={isDownloading}
+                sx={{ color: 'text.secondary' }}
+              >
+                {isDownloading ? (
+                  <CircularProgress size={18} color="inherit" />
+                ) : (
+                  <DownloadIcon fontSize="small" />
+                )}
+              </IconButton>
+            </span>
           </Tooltip>
         )}
 
