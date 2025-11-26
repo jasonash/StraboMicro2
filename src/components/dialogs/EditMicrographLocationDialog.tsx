@@ -667,6 +667,7 @@ export function EditMicrographLocationDialog({
                 initialOffsetX={copySizeData?.pointX ?? pointX}
                 initialOffsetY={copySizeData?.pointY ?? pointY}
                 onPlacementChange={(x, y) => handlePointPlacementChange(x, y)}
+                onScaleDataChange={handleScaleDataChange}
               />
             )}
           </Box>
