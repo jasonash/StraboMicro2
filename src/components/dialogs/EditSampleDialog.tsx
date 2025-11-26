@@ -59,12 +59,13 @@ export function EditSampleDialog({ isOpen, onClose, sample }: EditSampleDialogPr
   const [showLinkDialog, setShowLinkDialog] = useState(false);
   const [linkedSampleId, setLinkedSampleId] = useState<string | null>(null);
   const [linkedSampleData, setLinkedSampleData] = useState<Partial<SampleMetadata> | null>(null);
+  const [shouldUnlink, setShouldUnlink] = useState(false);
 
   const updateSample = useAppStore((state) => state.updateSample);
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
 
-  // Track if sample is already linked to server
-  const isAlreadyLinked = sample?.existsOnServer === true;
+  // Track if sample is already linked to server (and not being unlinked)
+  const isAlreadyLinked = sample?.existsOnServer === true && !shouldUnlink;
 
   // Load sample data when dialog opens
   useEffect(() => {
@@ -83,6 +84,7 @@ export function EditSampleDialog({ isOpen, onClose, sample }: EditSampleDialogPr
       // Reset linked sample state
       setLinkedSampleId(null);
       setLinkedSampleData(null);
+      setShouldUnlink(false);
     }
   }, [isOpen, sample]);
 
@@ -92,6 +94,7 @@ export function EditSampleDialog({ isOpen, onClose, sample }: EditSampleDialogPr
     // Store the linked sample ID and data
     setLinkedSampleId(mappedData.id);
     setLinkedSampleData(mappedData);
+    setShouldUnlink(false); // Clear unlink flag when linking to a new sample
 
     // Populate form fields with server data
     setFormData({
@@ -105,6 +108,12 @@ export function EditSampleDialog({ isOpen, onClose, sample }: EditSampleDialogPr
       otherMaterialType: '',
       sampleNotes: mappedData.sampleNotes || '',
     });
+  };
+
+  const handleUnlink = () => {
+    setShouldUnlink(true);
+    setLinkedSampleId(null);
+    setLinkedSampleData(null);
   };
 
   const updateField = (field: keyof SampleFormData, value: string) => {
@@ -195,6 +204,11 @@ export function EditSampleDialog({ isOpen, onClose, sample }: EditSampleDialogPr
       ...(linkedSampleId && {
         id: linkedSampleId,
       }),
+      // Handle unlinking - restore a new UUID and clear server flag
+      ...(shouldUnlink && {
+        id: crypto.randomUUID(),
+        existsOnServer: false,
+      }),
     };
 
     updateSample(sample.id, updates);
@@ -221,18 +235,11 @@ export function EditSampleDialog({ isOpen, onClose, sample }: EditSampleDialogPr
       <DialogContent>
         <Box sx={{ pt: 2 }}>
           <Stack spacing={3}>
-            {/* Link Sample From StraboField - only visible when logged in and not already linked */}
-            {isAuthenticated && !isAlreadyLinked && (
+            {/* Link/Unlink Sample From StraboField - only visible when logged in */}
+            {isAuthenticated && (
               <>
-                <Button
-                  variant="outlined"
-                  startIcon={<LinkIcon />}
-                  onClick={() => setShowLinkDialog(true)}
-                  fullWidth
-                >
-                  Link Sample From StraboField
-                </Button>
-                {linkedSampleId && (
+                {/* Show current linked status */}
+                {isAlreadyLinked && !linkedSampleId && (
                   <Box
                     sx={{
                       p: 1.5,
@@ -242,27 +249,62 @@ export function EditSampleDialog({ isOpen, onClose, sample }: EditSampleDialogPr
                       textAlign: 'center',
                     }}
                   >
-                    Linked to server sample (ID: {linkedSampleId})
+                    Linked to StraboField (ID: {sample?.id})
                   </Box>
                 )}
-                <Divider />
-              </>
-            )}
 
-            {/* Show linked status if already linked */}
-            {isAlreadyLinked && (
-              <>
-                <Box
-                  sx={{
-                    p: 1.5,
-                    bgcolor: 'info.main',
-                    color: 'info.contrastText',
-                    borderRadius: 1,
-                    textAlign: 'center',
-                  }}
+                {/* Show pending link status */}
+                {linkedSampleId && (
+                  <Box
+                    sx={{
+                      p: 1.5,
+                      bgcolor: 'warning.main',
+                      color: 'warning.contrastText',
+                      borderRadius: 1,
+                      textAlign: 'center',
+                    }}
+                  >
+                    Will link to server sample (ID: {linkedSampleId})
+                  </Box>
+                )}
+
+                {/* Show pending unlink status */}
+                {shouldUnlink && (
+                  <Box
+                    sx={{
+                      p: 1.5,
+                      bgcolor: 'warning.main',
+                      color: 'warning.contrastText',
+                      borderRadius: 1,
+                      textAlign: 'center',
+                    }}
+                  >
+                    Will unlink from StraboField (new UUID will be assigned)
+                  </Box>
+                )}
+
+                {/* Link/Re-link button */}
+                <Button
+                  variant="outlined"
+                  startIcon={<LinkIcon />}
+                  onClick={() => setShowLinkDialog(true)}
+                  fullWidth
                 >
-                  This sample is linked to StraboField (ID: {sample?.id})
-                </Box>
+                  {isAlreadyLinked ? 'Link to Different Sample' : 'Link Sample From StraboField'}
+                </Button>
+
+                {/* Unlink button - only show if already linked and not already pending unlink */}
+                {(isAlreadyLinked || linkedSampleId) && !shouldUnlink && (
+                  <Button
+                    variant="outlined"
+                    color="error"
+                    onClick={handleUnlink}
+                    fullWidth
+                  >
+                    Unlink from StraboField
+                  </Button>
+                )}
+
                 <Divider />
               </>
             )}
