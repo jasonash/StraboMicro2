@@ -171,6 +171,7 @@ export function ProjectTree() {
   const activeMicrographId = useAppStore((state) => state.activeMicrographId);
   const deleteSample = useAppStore((state) => state.deleteSample);
   const deleteMicrograph = useAppStore((state) => state.deleteMicrograph);
+  const updateMicrographMetadata = useAppStore((state) => state.updateMicrographMetadata);
 
   // Dialog states
   const [showNewDataset, setShowNewDataset] = useState(false);
@@ -226,8 +227,6 @@ export function ProjectTree() {
   const [micrographOptionsAnchor, setMicrographOptionsAnchor] = useState<{ [key: string]: HTMLElement | null }>({});
   const [micrographAddAnchor, setMicrographAddAnchor] = useState<{ [key: string]: HTMLElement | null }>({});
 
-  // Visibility states
-  const [hiddenMicrographs, setHiddenMicrographs] = useState<Set<string>>(new Set());
 
   // Save expansion states to localStorage whenever they change
   useEffect(() => {
@@ -377,7 +376,7 @@ export function ProjectTree() {
     const children = buildMicrographHierarchy(allMicrographs, micrograph.id);
     const hasChildren = children.length > 0;
     const isReference = !micrograph.parentID;
-    const isHidden = hiddenMicrographs.has(micrograph.id);
+    const isHidden = micrograph.isMicroVisible === false;
 
     // Use percentage-based sizing for responsive thumbnails
     // This allows thumbnails to shrink/grow with the sidebar width
@@ -499,15 +498,9 @@ export function ProjectTree() {
                 <IconButton
                   size="small"
                   onClick={() => {
-                    setHiddenMicrographs((prev) => {
-                      const next = new Set(prev);
-                      if (next.has(micrograph.id)) {
-                        next.delete(micrograph.id);
-                      } else {
-                        next.add(micrograph.id);
-                      }
-                      return next;
-                    });
+                    // Toggle visibility: if currently hidden (false), make visible (true); otherwise hide (false)
+                    const newVisibility = micrograph.isMicroVisible === false ? true : false;
+                    updateMicrographMetadata(micrograph.id, { isMicroVisible: newVisibility });
                   }}
                   sx={{ p: 0.5 }}
                 >

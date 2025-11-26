@@ -234,6 +234,7 @@ export function getSampleParentDataset(
 
 /**
  * Get all child micrographs of a parent micrograph (for overlay hierarchy)
+ * Only returns visible micrographs (isMicroVisible !== false)
  */
 export function getChildMicrographs(
   project: ProjectMetadata | null,
@@ -246,7 +247,7 @@ export function getChildMicrographs(
   for (const dataset of project.datasets) {
     for (const sample of dataset.samples || []) {
       for (const micrograph of sample.micrographs || []) {
-        if (micrograph.parentID === parentId) {
+        if (micrograph.parentID === parentId && micrograph.isMicroVisible !== false) {
           children.push(micrograph);
         }
       }
