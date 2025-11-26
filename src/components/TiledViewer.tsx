@@ -1002,16 +1002,19 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(({ image
               {activeMicrograph && project && childMicrographs
                 .filter((childMicro) => {
                   // Must have pointInParent (point-located micrograph)
-                  const pointData = (childMicro as { pointInParent?: { x: number; y: number } }).pointInParent;
+                  const pointData = (childMicro as { pointInParent?: { x?: number; y?: number; X?: number; Y?: number } }).pointInParent;
                   return pointData !== undefined;
                 })
                 .map((childMicro) => {
-                  const pointData = (childMicro as { pointInParent: { x: number; y: number } }).pointInParent;
+                  const pointData = (childMicro as { pointInParent: { x?: number; y?: number; X?: number; Y?: number } }).pointInParent;
+                  // Handle both lowercase (new) and uppercase (legacy) property names
+                  const px = pointData.x ?? pointData.X ?? 0;
+                  const py = pointData.y ?? pointData.Y ?? 0;
                   return (
                     <Circle
                       key={`point-${childMicro.id}`}
-                      x={pointData.x}
-                      y={pointData.y}
+                      x={px}
+                      y={py}
                       radius={9 / zoom}
                       fill="#e44c65"
                       stroke="#ffffff"
