@@ -125,6 +125,11 @@ contextBridge.exposeInMainWorld('api', {
   // Menu event for export all images
   onExportAllImages: (callback) => ipcRenderer.on('menu:export-all-images', callback),
 
+  // Export project as JSON
+  exportProjectJson: (projectData) =>
+    ipcRenderer.invoke('project:export-json', projectData),
+  onExportProjectJson: (callback) => ipcRenderer.on('menu:export-project-json', callback),
+
   // Authentication
   auth: {
     login: (email, password, restServer) => ipcRenderer.invoke('auth:login', email, password, restServer),

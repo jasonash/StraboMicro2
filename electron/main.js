@@ -219,6 +219,14 @@ function createWindow() {
             }
           }
         },
+        {
+          label: 'Export Project as JSON...',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('menu:export-project-json');
+            }
+          }
+        },
         { type: 'separator' },
         {
           label: 'Preferences...',
@@ -3124,6 +3132,45 @@ ipcMain.handle('project:export-all-images', async (event, projectId, projectData
       status: 'error',
       error: error.message
     });
+    throw error;
+  }
+});
+
+/**
+ * Export project data as JSON file
+ */
+ipcMain.handle('project:export-json', async (event, projectData) => {
+  try {
+    log.info('[ExportJSON] Starting JSON export');
+
+    // Show save dialog
+    const projectName = (projectData.name || 'project').replace(/[<>:"/\\|?*]/g, '_');
+    const result = await dialog.showSaveDialog({
+      title: 'Export Project as JSON',
+      defaultPath: `${projectName}.json`,
+      filters: [
+        { name: 'JSON Files', extensions: ['json'] },
+        { name: 'All Files', extensions: ['*'] }
+      ]
+    });
+
+    if (result.canceled || !result.filePath) {
+      return { success: false, canceled: true };
+    }
+
+    // Write JSON file with pretty formatting
+    const jsonContent = JSON.stringify(projectData, null, 2);
+    fs.writeFileSync(result.filePath, jsonContent, 'utf8');
+
+    log.info(`[ExportJSON] Export complete: ${result.filePath}`);
+
+    return {
+      success: true,
+      filePath: result.filePath
+    };
+
+  } catch (error) {
+    log.error('[ExportJSON] Export failed:', error);
     throw error;
   }
 });

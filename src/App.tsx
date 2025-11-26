@@ -361,6 +361,23 @@ function App() {
       }
       setIsExportAllImagesOpen(true);
     });
+
+    // File: Export Project as JSON menu item
+    window.api?.onExportProjectJson(async () => {
+      if (!project) {
+        alert('No project loaded. Please load a project first.');
+        return;
+      }
+      try {
+        const result = await window.api?.exportProjectJson(project);
+        if (result?.success && result.filePath) {
+          alert(`Project exported to:\n${result.filePath}`);
+        }
+      } catch (error) {
+        console.error('Failed to export project:', error);
+        alert('Failed to export project as JSON.');
+      }
+    });
   }, [closeProject, setTheme, setShowRulers, setShowSpotLabels, logout, project]);
 
   return (

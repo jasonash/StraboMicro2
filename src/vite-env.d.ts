@@ -287,6 +287,14 @@ interface Window {
     // Menu event for export all images
     onExportAllImages: (callback: () => void) => void;
 
+    // Export project as JSON
+    exportProjectJson: (projectData: any) => Promise<{
+      success: boolean;
+      canceled?: boolean;
+      filePath?: string;
+    }>;
+    onExportProjectJson: (callback: () => void) => void;
+
     // Authentication
     auth: {
       login: (email: string, password: string, restServer: string) => Promise<{
