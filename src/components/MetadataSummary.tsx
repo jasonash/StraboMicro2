@@ -758,6 +758,23 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
           </AccordionSummary>
           <AccordionDetails sx={{ py: 1 }}>
             <Stack spacing={0.5}>
+              {/* Linked to StraboField indicator */}
+              {sample.existsOnServer && (
+                <Box
+                  sx={{
+                    p: 1,
+                    mb: 1,
+                    bgcolor: 'success.main',
+                    color: 'success.contrastText',
+                    borderRadius: 1,
+                    textAlign: 'center',
+                    fontSize: '0.875rem',
+                    fontWeight: 500,
+                  }}
+                >
+                  Linked to StraboField
+                </Box>
+              )}
               {sample.name && (
                 <Box>
                   <Typography variant="caption" color="text.secondary">Name: </Typography>
