@@ -55,8 +55,9 @@ export const PointPlacementCanvas = ({
   const CANVAS_WIDTH = 800;
   const CANVAS_HEIGHT = 600;
 
-  // Child overlay position (for "Trace Scale Bar" method - in DISPLAYED image coordinates)
+  // Child overlay position and scale (for "Trace Scale Bar" method - in DISPLAYED image coordinates)
   const [childOverlayPos, setChildOverlayPos] = useState({ x: 0, y: 0 });
+  const [childOverlayScale, setChildOverlayScale] = useState(1); // Scale to fit child within parent
   const [isDraggingChild, setIsDraggingChild] = useState(false);
 
   // Point marker position (in DISPLAYED image coordinates) - only one point allowed
@@ -222,6 +223,25 @@ export const PointPlacementCanvas = ({
     setInitialized(true);
   }, [parentImage, parentOriginalWidth, initialOffsetX, initialOffsetY, initialized]);
 
+  // Auto-fit child overlay to parent when child image loads (for Trace Scale Bar method)
+  useEffect(() => {
+    if (scaleMethod !== 'Trace Scale Bar' || !parentImage || !childImage) return;
+
+    // Calculate scale to fit child within parent (with some padding)
+    const padding = 0.5; // 50% of parent size - make child reasonably sized
+    const scaleToFitWidth = (parentImage.width * padding) / childImage.width;
+    const scaleToFitHeight = (parentImage.height * padding) / childImage.height;
+    const fitScale = Math.min(scaleToFitWidth, scaleToFitHeight, 1); // Don't scale up if child is smaller
+
+    console.log('[PointPlacementCanvas] Auto-fitting child overlay:', {
+      parentSize: { width: parentImage.width, height: parentImage.height },
+      childSize: { width: childImage.width, height: childImage.height },
+      fitScale,
+    });
+
+    setChildOverlayScale(fitScale);
+  }, [scaleMethod, parentImage, childImage]);
+
   // Notify parent of scale data changes
   useEffect(() => {
     if (!onScaleDataChange) return;
@@ -316,10 +336,12 @@ export const PointPlacementCanvas = ({
 
     // Check if clicking on child overlay for "Trace Scale Bar" method
     if (scaleMethod === 'Trace Scale Bar' && childImage && activeTool === 'pan') {
-      const childLeft = childOverlayPos.x - childImage.width / 2;
-      const childRight = childOverlayPos.x + childImage.width / 2;
-      const childTop = childOverlayPos.y - childImage.height / 2;
-      const childBottom = childOverlayPos.y + childImage.height / 2;
+      const scaledChildWidth = childImage.width * childOverlayScale;
+      const scaledChildHeight = childImage.height * childOverlayScale;
+      const childLeft = childOverlayPos.x - scaledChildWidth / 2;
+      const childRight = childOverlayPos.x + scaledChildWidth / 2;
+      const childTop = childOverlayPos.y - scaledChildHeight / 2;
+      const childBottom = childOverlayPos.y + scaledChildHeight / 2;
 
       if (imageX >= childLeft && imageX <= childRight && imageY >= childTop && imageY <= childBottom) {
         // Start dragging the child overlay
@@ -429,15 +451,26 @@ export const PointPlacementCanvas = ({
     }
 
     if (isDrawingLine && currentLine) {
-      // Calculate line length in pixels
+      // Calculate line length in pixels (in parent image coordinate space)
       const dx = currentLine.x2 - currentLine.x1;
       const dy = currentLine.y2 - currentLine.y1;
-      const lengthInDisplayedImage = Math.sqrt(dx * dx + dy * dy);
+      const lengthInParentSpace = Math.sqrt(dx * dx + dy * dy);
 
       // Convert to original CHILD image pixel coordinates
-      // (not parent - the line is drawn on the child overlay)
+      // The line was drawn in parent space, but the child is scaled by childOverlayScale
+      // So we need to divide by childOverlayScale to get the length in the displayed child's space
+      // Then multiply by childScaleRatio to convert to original child pixels
+      const lengthInChildDisplayedSpace = lengthInParentSpace / childOverlayScale;
       const childScaleRatio = childWidth / (childImage?.width || 1);
-      const lengthPixels = lengthInDisplayedImage * childScaleRatio;
+      const lengthPixels = lengthInChildDisplayedSpace * childScaleRatio;
+
+      console.log('[PointPlacementCanvas] Scale bar line calculation:', {
+        lengthInParentSpace,
+        childOverlayScale,
+        lengthInChildDisplayedSpace,
+        childScaleRatio,
+        lengthPixels,
+      });
 
       setScaleBarPixelInput(lengthPixels.toFixed(2));
       setIsDrawingLine(false);
@@ -763,13 +796,14 @@ export const PointPlacementCanvas = ({
             )}
 
             {/* Child image overlay - only shown for "Trace Scale Bar" method */}
+            {/* Scaled down to fit within parent canvas */}
             {scaleMethod === 'Trace Scale Bar' && childImage && (
               <KonvaImage
                 image={childImage}
-                x={childOverlayPos.x - childImage.width / 2}
-                y={childOverlayPos.y - childImage.height / 2}
-                width={childImage.width}
-                height={childImage.height}
+                x={childOverlayPos.x - (childImage.width * childOverlayScale) / 2}
+                y={childOverlayPos.y - (childImage.height * childOverlayScale) / 2}
+                width={childImage.width * childOverlayScale}
+                height={childImage.height * childOverlayScale}
                 opacity={0.5}
                 listening={false}
               />
