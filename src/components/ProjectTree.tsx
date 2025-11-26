@@ -210,21 +210,20 @@ function SortableItemWrapper({ id, children }: SortableItemWrapperProps) {
 
   return (
     <Box ref={setNodeRef} style={style} sx={{ display: 'flex', alignItems: 'flex-start' }}>
-      {/* Drag Handle */}
-      <IconButton
+      {/* Drag Handle - compact to save space */}
+      <Box
         {...attributes}
         {...listeners}
-        size="small"
         sx={{
           cursor: 'grab',
           p: 0.25,
-          mr: 0.25,
-          mt: 1,
-          opacity: 0.4,
+          mt: 0.75,
+          opacity: 0.35,
           flexShrink: 0,
+          display: 'flex',
+          alignItems: 'center',
           '&:hover': {
             opacity: 1,
-            backgroundColor: 'action.hover',
           },
           '&:active': {
             cursor: 'grabbing',
@@ -232,8 +231,8 @@ function SortableItemWrapper({ id, children }: SortableItemWrapperProps) {
         }}
         tabIndex={-1}
       >
-        <DragIndicator fontSize="small" />
-      </IconButton>
+        <DragIndicator sx={{ fontSize: 14 }} />
+      </Box>
       {/* Content */}
       <Box sx={{ flex: 1, minWidth: 0 }}>
         {children}
