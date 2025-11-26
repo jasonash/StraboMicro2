@@ -391,20 +391,31 @@ export function EditMicrographDialog({ isOpen, onClose, micrographId }: EditMicr
 
   const handleInstrumentFromDatabase = (instrument: InstrumentData) => {
     // Update form data with instrument info
-    setFormData((prev) => ({
-      ...prev,
-      instrumentType: instrument.instrumentType || prev.instrumentType,
-      instrumentBrand: instrument.instrumentBrand || '',
-      instrumentModel: instrument.instrumentModel || '',
-      university: instrument.university || '',
-      laboratory: instrument.laboratory || '',
-      dataCollectionSoftware: instrument.dataCollectionSoftware || '',
-      dataCollectionSoftwareVersion: instrument.dataCollectionSoftwareVersion || '',
-      postProcessingSoftware: instrument.postProcessingSoftware || '',
-      postProcessingSoftwareVersion: instrument.postProcessingSoftwareVersion || '',
-      filamentType: instrument.filamentType || '',
-      instrumentNotes: instrument.instrumentNotes || '',
-    }));
+    // IMPORTANT: If instrumentType changes, clear dataType and imageType
+    // because the old values may not be valid for the new instrument type
+    setFormData((prev) => {
+      const newInstrumentType = instrument.instrumentType || prev.instrumentType;
+      const instrumentTypeChanged = newInstrumentType !== prev.instrumentType;
+
+      return {
+        ...prev,
+        instrumentType: newInstrumentType,
+        // Clear dataType and imageType if instrument type changed
+        // This forces user to reselect valid options for the new instrument
+        dataType: instrumentTypeChanged ? '' : prev.dataType,
+        imageType: instrumentTypeChanged ? '' : prev.imageType,
+        instrumentBrand: instrument.instrumentBrand || '',
+        instrumentModel: instrument.instrumentModel || '',
+        university: instrument.university || '',
+        laboratory: instrument.laboratory || '',
+        dataCollectionSoftware: instrument.dataCollectionSoftware || '',
+        dataCollectionSoftwareVersion: instrument.dataCollectionSoftwareVersion || '',
+        postProcessingSoftware: instrument.postProcessingSoftware || '',
+        postProcessingSoftwareVersion: instrument.postProcessingSoftwareVersion || '',
+        filamentType: instrument.filamentType || '',
+        instrumentNotes: instrument.instrumentNotes || '',
+      };
+    });
 
     // Update detectors
     if (instrument.detectors && instrument.detectors.length > 0) {
