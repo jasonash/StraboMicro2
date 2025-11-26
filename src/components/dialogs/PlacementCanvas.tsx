@@ -220,10 +220,13 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
           setStagePos({ x, y });
 
           // Initialize child position
+          // Use parentMicrograph.imageWidth directly (not state, which may not be set yet)
+          const parentOrigWidth = parentMicrograph.imageWidth || img.width;
+
           // Check for default/uninitialized values (0, 0) or (400, 300)
           if ((initialOffsetX === 0 && initialOffsetY === 0) ||
               (initialOffsetX === 400 && initialOffsetY === 300)) {
-            // These are the default values, so center the child
+            // These are the default values, so center the child on the parent
             const centerX = img.width / 2;
             const centerY = img.height / 2;
             setChildTransform(prev => ({
@@ -234,16 +237,14 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
             // Convert center to top-left for legacy compatibility
             const topLeft = convertCenterToTopLeft(centerX, centerY, initialRotation, initialScaleX, initialScaleY);
             // Convert to original image coordinates
-            if (!parentOriginalWidth) return;
-            const scaleRatio = parentOriginalWidth / img.width;
+            const scaleRatio = parentOrigWidth / img.width;
             const originalX = topLeft.x * scaleRatio;
             const originalY = topLeft.y * scaleRatio;
             onPlacementChange(originalX, originalY, initialRotation, initialScaleX, initialScaleY);
-            console.log('[PlacementCanvas] Initialized child position to center:', { centerX, centerY, topLeft, originalX, originalY });
+            console.log('[PlacementCanvas] Initialized child position to center:', { centerX, centerY, topLeft, originalX, originalY, parentOrigWidth });
           } else {
             // We have existing values - convert from original image coordinates to displayed coordinates
-            if (!parentOriginalWidth) return;
-            const scaleRatio = img.width / parentOriginalWidth;
+            const scaleRatio = img.width / parentOrigWidth;
             // Initial values are in top-left format, convert to center
             const centerX = (initialOffsetX * scaleRatio) + (childWidth * scaleRatio * initialScaleX) / 2;
             const centerY = (initialOffsetY * scaleRatio) + (childHeight * scaleRatio * initialScaleY) / 2;
@@ -1391,37 +1392,41 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
                   width={childWidth}
                   height={childHeight}
                   stroke="#e44c65"
-                  strokeWidth={2 / scale}
+                  strokeWidth={2 / Math.max(0.2, Math.min(scale, 2))}
                   listening={false}
                 />
               </Group>
             )}
 
             {/* Transformer on same layer as child so coordinates match */}
-            {childImage && (
-              <Transformer
-                ref={transformerRef}
-                rotateEnabled={enableRotate}
-                borderStroke="#e44c65"
-                anchorStroke="#e44c65"
-                anchorFill="#e44c65"
-                anchorSize={8 / scale}
-                anchorCornerRadius={4 / scale}
-                anchorStrokeWidth={2 / scale}
-                borderStrokeWidth={2 / scale}
-                enabledAnchors={enableResizeHandles ? ['top-left', 'top-right', 'bottom-left', 'bottom-right'] : []}
-                keepRatio={true}
-                rotateAnchorOffset={30 / scale}
-                ignoreStroke={true}
-              />
-            )}
+            {childImage && (() => {
+              // Clamp scale factor to prevent handles from becoming too large or small
+              const handleScale = Math.max(0.2, Math.min(scale, 2));
+              return (
+                <Transformer
+                  ref={transformerRef}
+                  rotateEnabled={enableRotate}
+                  borderStroke="#e44c65"
+                  anchorStroke="#e44c65"
+                  anchorFill="#e44c65"
+                  anchorSize={8 / handleScale}
+                  anchorCornerRadius={2 / handleScale}
+                  anchorStrokeWidth={1 / handleScale}
+                  borderStrokeWidth={2 / handleScale}
+                  enabledAnchors={enableResizeHandles ? ['top-left', 'top-right', 'bottom-left', 'bottom-right'] : []}
+                  keepRatio={true}
+                  rotateAnchorOffset={20 / handleScale}
+                  ignoreStroke={true}
+                />
+              );
+            })()}
 
             {/* Traced scale bar line for Trace Scale Bar method */}
             {scaleMethod === 'Trace Scale Bar and Drag' && currentLine && (
               <Line
                 points={[currentLine.x1, currentLine.y1, currentLine.x2, currentLine.y2]}
                 stroke="#00ff00"
-                strokeWidth={3 / scale}
+                strokeWidth={3 / Math.max(0.2, Math.min(scale, 2))}
                 lineCap="round"
                 lineJoin="round"
                 listening={false}
