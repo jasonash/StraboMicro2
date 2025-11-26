@@ -16,6 +16,7 @@ import {
 } from '@mui/material';
 import { SelectChangeEvent } from '@mui/material/Select';
 import { useAppStore } from '@/store';
+import { DataTypeAutocomplete } from './DataTypeAutocomplete';
 import { NotesDialog } from './dialogs/metadata/NotesDialog';
 import { SampleInfoDialog } from './dialogs/metadata/SampleInfoDialog';
 import { EditMicrographDialog } from './dialogs/metadata/EditMicrographDialog';
@@ -168,7 +169,21 @@ export function PropertiesPanel() {
 
       <Divider sx={{ mb: 2 }} />
 
-      {/* Data Type Selector */}
+      {/* Autocomplete Search */}
+      <Box sx={{ mb: 2 }}>
+        <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5, display: 'block' }}>
+          Search by Data Type:
+        </Typography>
+        <DataTypeAutocomplete
+          context={selectionType}
+          onSelectModal={(modal) => setOpenDialog(modal)}
+        />
+      </Box>
+
+      {/* Data Type Selector Dropdown */}
+      <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5, display: 'block' }}>
+        or Select Data Type:
+      </Typography>
       <FormControl fullWidth sx={{ mb: 3 }}>
         <Select
           value={selectedDataType}
