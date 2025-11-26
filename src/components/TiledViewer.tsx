@@ -948,7 +948,10 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(({ image
               })}
 
               {/* Render associated micrographs (overlays) */}
-              {activeMicrograph && project && childMicrographs.map((childMicro) => (
+              {/* Only render children that have scale set (not batch-imported without setup) */}
+              {activeMicrograph && project && childMicrographs
+                .filter((childMicro) => childMicro.scalePixelsPerCentimeter !== undefined && childMicro.scalePixelsPerCentimeter !== null)
+                .map((childMicro) => (
                 <AssociatedImageRenderer
                   key={childMicro.id}
                   micrograph={childMicro}
@@ -1083,7 +1086,10 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(({ image
                 })}
 
                 {/* Render associated micrographs (overlays) */}
-                {activeMicrograph && project && childMicrographs.map((childMicro) => (
+                {/* Only render children that have scale set (not batch-imported without setup) */}
+                {activeMicrograph && project && childMicrographs
+                  .filter((childMicro) => childMicro.scalePixelsPerCentimeter !== undefined && childMicro.scalePixelsPerCentimeter !== null)
+                  .map((childMicro) => (
                   <AssociatedImageRenderer
                     key={childMicro.id}
                     micrograph={childMicro}
