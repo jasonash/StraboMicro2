@@ -226,38 +226,47 @@ class PDFProjectExporter {
         this.reportProgress('Generating cover page', ++currentStep, totalSteps, 'Cover');
         this.generateCoverPage();
 
-        // Reserve page for TOC (we'll fill it in later)
+        // Calculate how many pages we need for TOC
+        const totalTocEntries = 1 + this.allDatasets.length + this.allSamples.length +
+                               this.allMicrographs.length + this.allSpots.length;
+        const entriesPerPage = Math.floor((PAGE_HEIGHT - MARGIN * 2 - 60) / 18);
+        const tocPagesNeeded = Math.max(1, Math.ceil(totalTocEntries / entriesPerPage));
+
+        // Reserve pages for TOC
         this.doc.addPage();
         const tocPageStart = this.currentPage;
+        for (let i = 1; i < tocPagesNeeded; i++) {
+          this.doc.addPage();
+        }
         this.reportProgress('Preparing table of contents', ++currentStep, totalSteps, 'TOC');
 
-        // Generate project details
+        // Generate project details (new page)
         this.doc.addPage();
         this.reportProgress('Generating project details', ++currentStep, totalSteps, 'Project Details');
         this.generateProjectDetails();
 
-        // Generate dataset sections
+        // Generate dataset sections (each on new page)
         for (const dataset of this.allDatasets) {
           this.doc.addPage();
           this.reportProgress('Generating dataset', ++currentStep, totalSteps, dataset.name || 'Dataset');
           this.generateDatasetSection(dataset);
         }
 
-        // Generate sample sections
+        // Generate sample sections (each on new page)
         for (const { sample, dataset } of this.allSamples) {
           this.doc.addPage();
           this.reportProgress('Generating sample', ++currentStep, totalSteps, sample.name || sample.label || 'Sample');
           this.generateSampleSection(sample, dataset);
         }
 
-        // Generate micrograph sections (with images)
+        // Generate micrograph sections (each on new page - these have images)
         for (const { micrograph, sample, dataset } of this.allMicrographs) {
           this.doc.addPage();
           this.reportProgress('Generating micrograph', ++currentStep, totalSteps, micrograph.name || 'Micrograph');
           await this.generateMicrographSection(micrograph, sample, dataset, compositeGenerator);
         }
 
-        // Generate spot sections
+        // Generate spot sections (each on new page)
         for (const { spot, micrograph, sample, dataset } of this.allSpots) {
           this.doc.addPage();
           this.reportProgress('Generating spot', ++currentStep, totalSteps, spot.name || 'Spot');
@@ -266,7 +275,7 @@ class PDFProjectExporter {
 
         // Now go back and fill in the TOC
         this.reportProgress('Finalizing PDF', totalSteps, totalSteps, 'TOC');
-        this.fillTableOfContents(tocPageStart);
+        this.fillTableOfContents(tocPageStart, tocPagesNeeded);
 
         // Add page numbers to all pages
         this.addPageNumbers();
@@ -367,29 +376,35 @@ class PDFProjectExporter {
   /**
    * Fill in the table of contents (called after all content is generated)
    */
-  fillTableOfContents(tocPageStart) {
+  fillTableOfContents(tocPageStart, tocPagesNeeded) {
     const doc = this.doc;
-    const pages = doc.bufferedPageRange();
+    const lineHeight = 18;
+    let currentTocPage = 0;
+    let y = MARGIN;
 
-    // Switch to TOC page
+    // Switch to first TOC page
     doc.switchToPage(tocPageStart - 1);
 
-    // Title
+    // Title on first page
     doc.fontSize(FONT_SIZES.heading1)
        .fillColor(COLORS.primary)
        .font('Helvetica-Bold')
        .text('Table of Contents', MARGIN, MARGIN);
 
-    doc.moveDown(1.5);
+    y = doc.y + 20;
 
     // TOC entries
-    let y = doc.y;
-    const lineHeight = 18;
-
     for (const entry of this.tocEntries) {
-      if (y > PAGE_HEIGHT - MARGIN - 50) {
-        // Would need to handle TOC overflow to multiple pages
-        break;
+      // Check if we need to move to next TOC page
+      if (y > PAGE_HEIGHT - MARGIN - 30) {
+        currentTocPage++;
+        if (currentTocPage < tocPagesNeeded) {
+          doc.switchToPage(tocPageStart - 1 + currentTocPage);
+          y = MARGIN;
+        } else {
+          // No more TOC pages available, stop
+          break;
+        }
       }
 
       const indent = entry.level * 15;
@@ -421,18 +436,20 @@ class PDFProjectExporter {
    */
   addPageNumbers() {
     const doc = this.doc;
-    const pages = doc.bufferedPageRange();
+    const range = doc.bufferedPageRange();
+    const totalPages = range.start + range.count;
 
-    for (let i = 0; i < pages.count; i++) {
+    for (let i = range.start; i < totalPages; i++) {
       doc.switchToPage(i);
 
-      // Skip cover page
+      // Skip cover page (page index 0)
       if (i === 0) continue;
 
+      // Add page number at bottom center
       doc.fontSize(FONT_SIZES.small)
          .fillColor(COLORS.lightText)
          .font('Helvetica')
-         .text(`Page ${i + 1}`, MARGIN, PAGE_HEIGHT - 30, {
+         .text(`Page ${i + 1} of ${totalPages}`, MARGIN, PAGE_HEIGHT - 30, {
            width: CONTENT_WIDTH,
            align: 'center'
          });
