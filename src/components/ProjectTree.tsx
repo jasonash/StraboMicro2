@@ -494,6 +494,52 @@ export function ProjectTree() {
     reorderSamples(datasetId, newOrder.map((s) => s.id));
   };
 
+  // Keyboard shortcut handlers for moving items up/down
+  const handleMicrographKeyDown = (
+    e: React.KeyboardEvent,
+    micrographId: string,
+    sampleId: string,
+    parentId: string | null,
+    siblings: MicrographMetadata[]
+  ) => {
+    if (!e.ctrlKey && !e.metaKey) return;
+
+    const currentIndex = siblings.findIndex((m) => m.id === micrographId);
+    if (currentIndex === -1) return;
+
+    if (e.key === 'ArrowUp' && currentIndex > 0) {
+      e.preventDefault();
+      const newOrder = arrayMove(siblings, currentIndex, currentIndex - 1);
+      reorderMicrographs(sampleId, parentId, newOrder.map((m) => m.id));
+    } else if (e.key === 'ArrowDown' && currentIndex < siblings.length - 1) {
+      e.preventDefault();
+      const newOrder = arrayMove(siblings, currentIndex, currentIndex + 1);
+      reorderMicrographs(sampleId, parentId, newOrder.map((m) => m.id));
+    }
+  };
+
+  const handleSampleKeyDown = (
+    e: React.KeyboardEvent,
+    sampleId: string,
+    datasetId: string,
+    samples: SampleMetadata[]
+  ) => {
+    if (!e.ctrlKey && !e.metaKey) return;
+
+    const currentIndex = samples.findIndex((s) => s.id === sampleId);
+    if (currentIndex === -1) return;
+
+    if (e.key === 'ArrowUp' && currentIndex > 0) {
+      e.preventDefault();
+      const newOrder = arrayMove(samples, currentIndex, currentIndex - 1);
+      reorderSamples(datasetId, newOrder.map((s) => s.id));
+    } else if (e.key === 'ArrowDown' && currentIndex < samples.length - 1) {
+      e.preventDefault();
+      const newOrder = arrayMove(samples, currentIndex, currentIndex + 1);
+      reorderSamples(datasetId, newOrder.map((s) => s.id));
+    }
+  };
+
   // Color-coded left borders by hierarchy depth (cycles: red → green → blue → red...)
   const LEVEL_COLORS = [
     '#e44c65', // Red - first level associated
@@ -511,7 +557,8 @@ export function ProjectTree() {
     micrograph: MicrographMetadata,
     allMicrographs: MicrographMetadata[],
     level: number,
-    sampleId: string
+    sampleId: string,
+    siblings: MicrographMetadata[]
   ) => {
     const isExpanded = expandedMicrographs.has(micrograph.id);
     const isActive = micrograph.id === activeMicrographId;
@@ -519,6 +566,7 @@ export function ProjectTree() {
     const hasChildren = children.length > 0;
     const isReference = !micrograph.parentID;
     const isHidden = micrograph.isMicroVisible === false;
+    const parentId = micrograph.parentID || null;
 
     // Use percentage-based sizing for responsive thumbnails
     // This allows thumbnails to shrink/grow with the sidebar width
@@ -528,7 +576,12 @@ export function ProjectTree() {
     // Color-coded borders indicate depth instead of cumulative indentation
 
     return (
-      <Box key={micrograph.id} sx={{ ml: isReference ? 0 : '7px' }}>
+      <Box
+        key={micrograph.id}
+        sx={{ ml: isReference ? 0 : '7px' }}
+        tabIndex={0}
+        onKeyDown={(e) => handleMicrographKeyDown(e, micrograph.id, sampleId, parentId, siblings)}
+      >
         {/* Micrograph Container */}
         <Box
           sx={{
@@ -672,7 +725,7 @@ export function ProjectTree() {
                 >
                   {children.map((child) => (
                     <SortableItemWrapper key={child.id} id={child.id}>
-                      {renderMicrograph(child, allMicrographs, level + 1, sampleId)}
+                      {renderMicrograph(child, allMicrographs, level + 1, sampleId, children)}
                     </SortableItemWrapper>
                   ))}
                 </SortableContext>
@@ -753,12 +806,17 @@ export function ProjectTree() {
     );
   };
 
-  const renderSample = (sample: SampleMetadata) => {
+  const renderSample = (sample: SampleMetadata, datasetId: string, allSamples: SampleMetadata[]) => {
     const isExpanded = expandedSamples.has(sample.id);
     const hasMicrographs = sample.micrographs && sample.micrographs.length > 0;
 
     return (
-      <Box key={sample.id} sx={{ ml: 2 }}>
+      <Box
+        key={sample.id}
+        sx={{ ml: 2 }}
+        tabIndex={0}
+        onKeyDown={(e) => handleSampleKeyDown(e, sample.id, datasetId, allSamples)}
+      >
         <Stack direction="row" alignItems="center" spacing={0.5} sx={{ py: 0.5, px: 1 }}>
           <IconButton size="small" onClick={() => toggleSample(sample.id)} sx={{ p: 0 }}>
             {isExpanded ? <ExpandMore fontSize="small" /> : <ChevronRight fontSize="small" />}
@@ -796,7 +854,7 @@ export function ProjectTree() {
                   >
                     {referenceMicrographs.map((micrograph) => (
                       <SortableItemWrapper key={micrograph.id} id={micrograph.id}>
-                        {renderMicrograph(micrograph, sample.micrographs!, 0, sample.id)}
+                        {renderMicrograph(micrograph, sample.micrographs!, 0, sample.id, referenceMicrographs)}
                       </SortableItemWrapper>
                     ))}
                   </SortableContext>
@@ -890,7 +948,7 @@ export function ProjectTree() {
                 >
                   {dataset.samples!.map((sample) => (
                     <SortableItemWrapper key={sample.id} id={sample.id}>
-                      {renderSample(sample)}
+                      {renderSample(sample, dataset.id, dataset.samples!)}
                     </SortableItemWrapper>
                   ))}
                 </SortableContext>
