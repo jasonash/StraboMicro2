@@ -1012,10 +1012,10 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(({ image
                       key={`point-${childMicro.id}`}
                       x={pointData.x}
                       y={pointData.y}
-                      radius={12 / zoom}
+                      radius={9 / zoom}
                       fill="#e44c65"
                       stroke="#ffffff"
-                      strokeWidth={2 / zoom}
+                      strokeWidth={1.5 / zoom}
                       onClick={() => {
                         // Navigate to the child micrograph when clicked
                         useAppStore.getState().selectMicrograph(childMicro.id);
