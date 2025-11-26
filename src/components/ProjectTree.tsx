@@ -610,7 +610,7 @@ export function ProjectTree() {
     return (
       <Box
         key={micrograph.id}
-        sx={{ ml: isReference ? 0 : '7px' }}
+        sx={{ ml: 0 }}
         tabIndex={0}
         onKeyDown={(e) => handleMicrographKeyDown(e, micrograph.id, sampleId, parentId, siblings)}
       >
@@ -618,7 +618,8 @@ export function ProjectTree() {
         <Box
           sx={{
             mb: 1,
-            p: 1,
+            py: 1,
+            pr: 1,
             borderRadius: 1,
             backgroundColor: isActive ? 'action.selected' : 'transparent',
             '&:hover': {
@@ -745,7 +746,7 @@ export function ProjectTree() {
         {/* Children (Associated Micrographs) - with drag and drop support */}
         {hasChildren && (
           <Collapse in={isExpanded}>
-            <Box sx={{ ml: 2 }}>
+            <Box sx={{ ml: 0 }}>
               <DndContext
                 sensors={sensors}
                 collisionDetection={closestCenter}
@@ -845,11 +846,11 @@ export function ProjectTree() {
     return (
       <Box
         key={sample.id}
-        sx={{ ml: 2 }}
+        sx={{ ml: 0 }}
         tabIndex={0}
         onKeyDown={(e) => handleSampleKeyDown(e, sample.id, datasetId, allSamples)}
       >
-        <Stack direction="row" alignItems="center" spacing={0.5} sx={{ py: 0.5, px: 1 }}>
+        <Stack direction="row" alignItems="center" spacing={0.5} sx={{ py: 0.5, pr: 1 }}>
           <IconButton size="small" onClick={() => toggleSample(sample.id)} sx={{ p: 0 }}>
             {isExpanded ? <ExpandMore fontSize="small" /> : <ChevronRight fontSize="small" />}
           </IconButton>
@@ -871,7 +872,7 @@ export function ProjectTree() {
         </Stack>
 
         <Collapse in={isExpanded}>
-          <Box sx={{ ml: 1 }}>
+          <Box sx={{ ml: 0 }}>
             {hasMicrographs && (() => {
               const referenceMicrographs = buildMicrographHierarchy(sample.micrographs!, null);
               return (
@@ -967,7 +968,7 @@ export function ProjectTree() {
         </Stack>
 
         <Collapse in={isExpanded}>
-          <Box sx={{ ml: 1 }}>
+          <Box sx={{ ml: 0 }}>
             {hasSamples && (
               <DndContext
                 sensors={sensors}
