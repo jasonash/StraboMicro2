@@ -147,8 +147,14 @@ export const InstrumentInfoForm: React.FC<InstrumentInfoFormProps> = ({
           label="Data Type"
           value={formData.dataType}
           onChange={(e) => {
-            onFormChange('dataType', e.target.value);
-            onFormChange('imageType', '');
+            const newDataType = e.target.value;
+            onFormChange('dataType', newDataType);
+            // Auto-set imageType for data types that don't need separate selection
+            if (newDataType && !['Electron Diffraction', 'Energy Dispersive X-ray Spectroscopy (EDS)'].includes(newDataType)) {
+              onFormChange('imageType', newDataType);
+            } else {
+              onFormChange('imageType', '');
+            }
           }}
         >
           <MenuItem value="">Select Data Type...</MenuItem>
@@ -174,8 +180,14 @@ export const InstrumentInfoForm: React.FC<InstrumentInfoFormProps> = ({
           label="Data Type"
           value={formData.dataType}
           onChange={(e) => {
-            onFormChange('dataType', e.target.value);
-            onFormChange('imageType', '');
+            const newDataType = e.target.value;
+            onFormChange('dataType', newDataType);
+            // Auto-set imageType for data types that don't need separate selection
+            if (newDataType && !['Energy Dispersive X-ray Spectroscopy (EDS)', 'Cathodoluminescence (CL)'].includes(newDataType)) {
+              onFormChange('imageType', newDataType);
+            } else {
+              onFormChange('imageType', '');
+            }
           }}
         >
           <MenuItem value="">Select Data Type...</MenuItem>
@@ -202,8 +214,21 @@ export const InstrumentInfoForm: React.FC<InstrumentInfoFormProps> = ({
           label="Data Type"
           value={formData.dataType}
           onChange={(e) => {
-            onFormChange('dataType', e.target.value);
-            onFormChange('imageType', '');
+            const newDataType = e.target.value;
+            onFormChange('dataType', newDataType);
+            // Auto-set imageType for data types that don't need separate selection
+            const needsSeparateImageType = [
+              'Electron Backscatter Diffraction (EBSD)',
+              'Energy Dispersive X-ray Spectroscopy (EDS)',
+              'Wavelength-dispersive X-ray spectroscopy (WDS)',
+              'Cathodoluminescence (CL)',
+              'Focused Ion Beam Scanning Electron Microscopy (FIB-SEM)',
+            ];
+            if (newDataType && !needsSeparateImageType.includes(newDataType)) {
+              onFormChange('imageType', newDataType);
+            } else {
+              onFormChange('imageType', '');
+            }
           }}
         >
           <MenuItem value="">Select Data Type...</MenuItem>
@@ -239,8 +264,19 @@ export const InstrumentInfoForm: React.FC<InstrumentInfoFormProps> = ({
           label="Data Type"
           value={formData.dataType}
           onChange={(e) => {
-            onFormChange('dataType', e.target.value);
-            onFormChange('imageType', '');
+            const newDataType = e.target.value;
+            onFormChange('dataType', newDataType);
+            // Auto-set imageType for data types that don't need separate selection
+            const needsSeparateImageType = [
+              'Energy Dispersive X-ray Spectroscopy (EDS)',
+              'Wavelength-dispersive X-ray spectroscopy (WDS)',
+              'Cathodoluminescence (CL)',
+            ];
+            if (newDataType && !needsSeparateImageType.includes(newDataType)) {
+              onFormChange('imageType', newDataType);
+            } else {
+              onFormChange('imageType', '');
+            }
           }}
         >
           <MenuItem value="">Select Data Type...</MenuItem>
