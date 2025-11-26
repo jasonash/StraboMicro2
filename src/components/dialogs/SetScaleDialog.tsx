@@ -96,7 +96,8 @@ export function SetScaleDialog({ open, onClose, micrographId }: SetScaleDialogPr
       setIsLoadingPreview(true);
       try {
         const paths = await window.api!.getProjectFolderPaths(project.id);
-        const imagePath = `${paths.images}/${micrograph.id}.jpg`;
+        // Use micrograph.imagePath which is the actual stored path (micrograph ID without extension)
+        const imagePath = `${paths.images}/${micrograph.imagePath}`;
 
         const tileResult = await window.api!.loadImageWithTiles(imagePath);
         const mediumDataUrl = await window.api!.loadMedium(tileResult.hash);
