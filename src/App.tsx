@@ -6,6 +6,7 @@ import { ProjectDebugModal } from './components/dialogs/ProjectDebugModal';
 import { PreferencesDialog } from './components/dialogs/PreferencesDialog';
 import { LoginDialog } from './components/dialogs/LoginDialog';
 import { ExportAllImagesDialog } from './components/dialogs/ExportAllImagesDialog';
+import { ExportPDFDialog } from './components/dialogs/ExportPDFDialog';
 import { useAppStore, useTemporalStore } from '@/store';
 import { useAuthStore } from '@/store/useAuthStore';
 import { useTheme } from './hooks/useTheme';
@@ -18,6 +19,7 @@ function App() {
   const [isPreferencesOpen, setIsPreferencesOpen] = useState(false);
   const [isLoginDialogOpen, setIsLoginDialogOpen] = useState(false);
   const [isExportAllImagesOpen, setIsExportAllImagesOpen] = useState(false);
+  const [isExportPDFOpen, setIsExportPDFOpen] = useState(false);
   const closeProject = useAppStore(state => state.closeProject);
   const project = useAppStore(state => state.project);
   const setTheme = useAppStore(state => state.setTheme);
@@ -378,6 +380,15 @@ function App() {
         alert('Failed to export project as JSON.');
       }
     });
+
+    // File: Export Project as PDF menu item
+    window.api?.onExportProjectPdf(() => {
+      if (!project) {
+        alert('No project loaded. Please load a project first.');
+        return;
+      }
+      setIsExportPDFOpen(true);
+    });
   }, [closeProject, setTheme, setShowRulers, setShowSpotLabels, logout, project]);
 
   return (
@@ -406,6 +417,12 @@ function App() {
       <ExportAllImagesDialog
         open={isExportAllImagesOpen}
         onClose={() => setIsExportAllImagesOpen(false)}
+        projectId={project?.id ?? null}
+        projectData={project}
+      />
+      <ExportPDFDialog
+        open={isExportPDFOpen}
+        onClose={() => setIsExportPDFOpen(false)}
         projectId={project?.id ?? null}
         projectData={project}
       />

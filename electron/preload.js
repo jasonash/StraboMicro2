@@ -130,6 +130,15 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('project:export-json', projectData),
   onExportProjectJson: (callback) => ipcRenderer.on('menu:export-project-json', callback),
 
+  // Export project as PDF
+  exportProjectPdf: (projectId, projectData) =>
+    ipcRenderer.invoke('project:export-pdf', projectId, projectData),
+  onExportProjectPdf: (callback) => ipcRenderer.on('menu:export-project-pdf', callback),
+  onExportPdfProgress: (callback) =>
+    ipcRenderer.on('export-pdf:progress', (event, progress) => callback(progress)),
+  removeExportPdfProgressListener: () =>
+    ipcRenderer.removeAllListeners('export-pdf:progress'),
+
   // Authentication
   auth: {
     login: (email, password, restServer) => ipcRenderer.invoke('auth:login', email, password, restServer),

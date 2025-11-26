@@ -295,6 +295,23 @@ interface Window {
     }>;
     onExportProjectJson: (callback: () => void) => void;
 
+    // Export project as PDF
+    exportProjectPdf: (projectId: string, projectData: any) => Promise<{
+      success: boolean;
+      canceled?: boolean;
+      filePath?: string;
+    }>;
+    onExportProjectPdf: (callback: () => void) => void;
+    onExportPdfProgress: (callback: (progress: {
+      phase: string;
+      current: number;
+      total: number;
+      itemName: string;
+      percentage: number;
+      error?: string;
+    }) => void) => void;
+    removeExportPdfProgressListener: () => void;
+
     // Authentication
     auth: {
       login: (email: string, password: string, restServer: string) => Promise<{

@@ -17,6 +17,7 @@ const imageConverter = require('./imageConverter');
 const projectSerializer = require('./projectSerializer');
 const scratchSpace = require('./scratchSpace');
 const pdfExport = require('./pdfExport');
+const pdfProjectExport = require('./pdfProjectExport');
 
 // Handle EPIPE errors at process level (prevents crash on broken stdout pipe)
 process.stdout.on('error', (err) => {
@@ -224,6 +225,14 @@ function createWindow() {
           click: () => {
             if (mainWindow) {
               mainWindow.webContents.send('menu:export-project-json');
+            }
+          }
+        },
+        {
+          label: 'Export Project as PDF...',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('menu:export-project-pdf');
             }
           }
         },
@@ -3452,6 +3461,68 @@ ipcMain.handle('project:export-json', async (event, projectData) => {
 
   } catch (error) {
     log.error('[ExportJSON] Export failed:', error);
+    throw error;
+  }
+});
+
+/**
+ * Export project as PDF file
+ * Generates a comprehensive PDF report with all project data and composite images
+ */
+ipcMain.handle('project:export-pdf', async (event, projectId, projectData) => {
+  try {
+    log.info('[ExportPDF] Starting PDF export');
+
+    // Show save dialog
+    const projectName = (projectData.name || 'project').replace(/[<>:"/\\|?*]/g, '_');
+    const result = await dialog.showSaveDialog({
+      title: 'Export Project as PDF',
+      defaultPath: `${projectName}_report.pdf`,
+      filters: [
+        { name: 'PDF Files', extensions: ['pdf'] },
+        { name: 'All Files', extensions: ['*'] }
+      ]
+    });
+
+    if (result.canceled || !result.filePath) {
+      return { success: false, canceled: true };
+    }
+
+    // Get project folder paths
+    const folderPaths = await projectFolders.getProjectFolderPaths(projectId);
+
+    // Progress callback to send updates to renderer
+    const progressCallback = (progress) => {
+      event.sender.send('export-pdf:progress', progress);
+    };
+
+    // Generate PDF with composite image generator
+    await pdfProjectExport.generateProjectPDF(
+      result.filePath,
+      projectData,
+      projectId,
+      folderPaths,
+      generateCompositeBuffer, // Pass the existing composite generator
+      progressCallback
+    );
+
+    log.info(`[ExportPDF] Export complete: ${result.filePath}`);
+
+    return {
+      success: true,
+      filePath: result.filePath
+    };
+
+  } catch (error) {
+    log.error('[ExportPDF] Export failed:', error);
+    event.sender.send('export-pdf:progress', {
+      phase: 'Error',
+      current: 0,
+      total: 0,
+      itemName: '',
+      percentage: 0,
+      error: error.message
+    });
     throw error;
   }
 });
