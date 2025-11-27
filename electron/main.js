@@ -3565,9 +3565,15 @@ ipcMain.handle('project:export-smz', async (event, projectId, projectData) => {
 
     // Show save dialog with overwrite confirmation
     const projectName = (projectData.name || 'project').replace(/[<>:"/\\|?*]/g, '_');
+    // Add timestamp: YYYY-MM-DD_HH-MM-SS
+    const now = new Date();
+    const timestamp = now.toISOString()
+      .replace(/T/, '_')
+      .replace(/:/g, '-')
+      .replace(/\..+/, '');
     const result = await dialog.showSaveDialog({
       title: 'Export Project as .smz',
-      defaultPath: `${projectName}.smz`,
+      defaultPath: `${projectName}_${timestamp}.smz`,
       filters: [
         { name: 'StraboMicro Project', extensions: ['smz'] },
         { name: 'All Files', extensions: ['*'] }
