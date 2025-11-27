@@ -17,7 +17,8 @@ const imageConverter = require('./imageConverter');
 const projectSerializer = require('./projectSerializer');
 const scratchSpace = require('./scratchSpace');
 const pdfExport = require('./pdfExport');
-const pdfProjectExport = require('./pdfProjectExport');
+// Use React-PDF for better layout and working internal links
+const pdfProjectExport = require('./pdfReactExport');
 
 // Handle EPIPE errors at process level (prevents crash on broken stdout pipe)
 process.stdout.on('error', (err) => {
