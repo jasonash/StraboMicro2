@@ -73,6 +73,163 @@ function collectAllMicrographs(projectData) {
 }
 
 /**
+ * Generate README.txt content for the archive
+ * @param {Object} projectData - Project data
+ * @param {Array} allMicrographs - Flattened list of micrographs
+ * @returns {string} README content
+ */
+function generateReadme(projectData, allMicrographs) {
+  const now = new Date();
+  const exportDate = now.toISOString().replace('T', ' ').replace(/\.\d{3}Z$/, ' UTC');
+
+  // Count statistics
+  const datasetCount = (projectData.datasets || []).length;
+  let sampleCount = 0;
+  let spotCount = 0;
+
+  for (const dataset of projectData.datasets || []) {
+    sampleCount += (dataset.samples || []).length;
+    for (const sample of dataset.samples || []) {
+      for (const micrograph of sample.micrographs || []) {
+        spotCount += (micrograph.spots || []).length;
+      }
+    }
+  }
+
+  // Count reference vs associated micrographs
+  const referenceMicrographs = allMicrographs.filter(m => !m.micrograph.parentID);
+  const associatedMicrographs = allMicrographs.filter(m => m.micrograph.parentID);
+
+  // Build sample list
+  const sampleList = [];
+  for (const dataset of projectData.datasets || []) {
+    for (const sample of dataset.samples || []) {
+      const microCount = (sample.micrographs || []).length;
+      sampleList.push(`    • ${sample.label || sample.name || 'Unnamed'} (${microCount} micrograph${microCount !== 1 ? 's' : ''})`);
+    }
+  }
+
+  const lines = [
+    '═══════════════════════════════════════════════════════════════════════════════',
+    '                         STRABOMICRO PROJECT ARCHIVE',
+    '═══════════════════════════════════════════════════════════════════════════════',
+    '',
+    `  Project Name:     ${projectData.name || 'Untitled Project'}`,
+    `  Project ID:       ${projectData.id}`,
+    `  Export Date:      ${exportDate}`,
+    '',
+    '───────────────────────────────────────────────────────────────────────────────',
+    '                              PROJECT SUMMARY',
+    '───────────────────────────────────────────────────────────────────────────────',
+    '',
+  ];
+
+  if (projectData.purposeOfStudy) {
+    lines.push(`  Purpose:          ${projectData.purposeOfStudy}`);
+  }
+  if (projectData.areaOfInterest) {
+    lines.push(`  Area of Interest: ${projectData.areaOfInterest}`);
+  }
+  if (projectData.startDate || projectData.endDate) {
+    lines.push(`  Date Range:       ${projectData.startDate || '?'} to ${projectData.endDate || '?'}`);
+  }
+  if (projectData.otherTeamMembers) {
+    lines.push(`  Team Members:     ${projectData.otherTeamMembers}`);
+  }
+  if (projectData.notes) {
+    lines.push(`  Notes:            ${projectData.notes}`);
+  }
+
+  lines.push(
+    '',
+    '───────────────────────────────────────────────────────────────────────────────',
+    '                               STATISTICS',
+    '───────────────────────────────────────────────────────────────────────────────',
+    '',
+    `  Datasets:              ${datasetCount}`,
+    `  Samples:               ${sampleCount}`,
+    `  Total Micrographs:     ${allMicrographs.length}`,
+    `    ├─ Reference:        ${referenceMicrographs.length}`,
+    `    └─ Associated:       ${associatedMicrographs.length}`,
+    `  Spots/Annotations:     ${spotCount}`,
+    '',
+  );
+
+  if (sampleList.length > 0) {
+    lines.push(
+      '───────────────────────────────────────────────────────────────────────────────',
+      '                                SAMPLES',
+      '───────────────────────────────────────────────────────────────────────────────',
+      '',
+      ...sampleList,
+      '',
+    );
+  }
+
+  lines.push(
+    '───────────────────────────────────────────────────────────────────────────────',
+    '                            ARCHIVE CONTENTS',
+    '───────────────────────────────────────────────────────────────────────────────',
+    '',
+    '  This .smz archive contains:',
+    '',
+    '  📄 project.json',
+    '     Complete project data in JSON format. This is the primary data file',
+    '     containing all metadata, sample information, micrograph properties,',
+    '     and spot annotations.',
+    '',
+    '  📄 project.pdf',
+    '     A comprehensive PDF report of the entire project including images,',
+    '     metadata, and all annotations. Useful for printing or sharing.',
+    '',
+    '  📁 images/',
+    '     Full-resolution micrograph images in JPEG format.',
+    '     Files are named by micrograph UUID (no file extension).',
+    '',
+    '  📁 uiImages/',
+    '     Micrograph images resized to 2500px (long edge).',
+    '     Plain images without overlays.',
+    '',
+    '  📁 compositeImages/',
+    '     Composite images (2000px) showing base micrograph with',
+    '     associated micrograph overlays. Does not include spots/annotations.',
+    '',
+    '  📁 compositeThumbnails/',
+    '     Small composite thumbnails (250px) for quick preview.',
+    '',
+    '  📁 webImages/',
+    '     Web-optimized composite images (750px) for online viewing.',
+    '',
+    '  📁 webThumbnails/',
+    '     Tiny thumbnails (200px) for web galleries and lists.',
+    '',
+    '  📁 associatedFiles/',
+    '     Any external files attached to the project (PDFs, documents, etc.).',
+    '',
+    '───────────────────────────────────────────────────────────────────────────────',
+    '                                 NOTES',
+    '───────────────────────────────────────────────────────────────────────────────',
+    '',
+    '  • Image files in this archive do not have file extensions but are',
+    '    standard JPEG format. Rename with .jpg extension if needed.',
+    '',
+    '  • This archive is compatible with StraboMicro (legacy) and StraboMicro2.',
+    '',
+    '  • The project.json file follows the legacy StraboMicro schema for',
+    '    maximum compatibility.',
+    '',
+    '  • For questions or support, visit: https://strabospot.org',
+    '',
+    '═══════════════════════════════════════════════════════════════════════════════',
+    `                    Generated by StraboMicro2 on ${now.toDateString()}`,
+    '═══════════════════════════════════════════════════════════════════════════════',
+    '',
+  ];
+
+  return lines.join('\n');
+}
+
+/**
  * Generate composite image buffer WITHOUT spots or labels
  * Only includes base image + child overlay micrographs
  *
@@ -365,6 +522,10 @@ async function exportSmz(
     const legacyJson = projectSerializer.serializeToLegacyFormat(projectData);
     const projectJsonContent = JSON.stringify(legacyJson, null, 2);
     archive.append(projectJsonContent, { name: `${projectId}/project.json` });
+
+    // --- Step 1b: Generate README.txt ---
+    const readmeContent = generateReadme(projectData, allMicrographs);
+    archive.append(readmeContent, { name: `${projectId}/README.txt` });
 
     // --- Step 2: Process each micrograph ---
     for (const { micrograph } of allMicrographs) {
