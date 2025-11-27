@@ -330,9 +330,9 @@ async function exportSmz(
     log.info(`[SmzExport] Found ${totalMicrographs} micrographs`);
 
     // Calculate total steps for progress
-    // Steps: project.json (1) + each micrograph * 6 image types + PDF (1)
+    // Steps: project.json (1) + each micrograph * 6 image types + associatedFiles (1) + PDF (1)
     // Image types: images(copy), uiImages, compositeImages, compositeThumbnails, webImages, webThumbnails
-    const totalSteps = 1 + (totalMicrographs * 6) + 1;
+    const totalSteps = 1 + (totalMicrographs * 6) + 1 + 1;
     let currentStep = 0;
 
     const sendProgress = (phase, itemName) => {
@@ -435,10 +435,34 @@ async function exportSmz(
       }
     }
 
-    // --- Step 3: Copy associatedFiles (only those referenced in project) ---
-    // Note: For now, we'll create an empty associatedFiles folder
-    // In the future, we can add logic to copy referenced files
-    archive.append('', { name: `${projectId}/associatedFiles/.gitkeep` });
+    // --- Step 3: Copy associatedFiles folder and all contents ---
+    sendProgress('Copying associated files', 'associatedFiles');
+    try {
+      const associatedFilesPath = folderPaths.associatedFiles;
+      if (fs.existsSync(associatedFilesPath)) {
+        const files = await fs.promises.readdir(associatedFilesPath);
+        for (const file of files) {
+          const filePath = path.join(associatedFilesPath, file);
+          const stat = await fs.promises.stat(filePath);
+          if (stat.isFile()) {
+            const fileBuffer = await fs.promises.readFile(filePath);
+            archive.append(fileBuffer, { name: `${projectId}/associatedFiles/${file}` });
+            log.info(`[SmzExport] Added associated file: ${file}`);
+          }
+        }
+        // If folder was empty, still create the directory in the archive
+        if (files.length === 0) {
+          archive.append('', { name: `${projectId}/associatedFiles/.gitkeep` });
+        }
+      } else {
+        // Create empty folder if it doesn't exist
+        archive.append('', { name: `${projectId}/associatedFiles/.gitkeep` });
+      }
+    } catch (err) {
+      log.error('[SmzExport] Failed to copy associated files:', err);
+      // Create empty folder on error
+      archive.append('', { name: `${projectId}/associatedFiles/.gitkeep` });
+    }
 
     // --- Step 4: Generate project.pdf ---
     sendProgress('Generating PDF report', 'project.pdf');
