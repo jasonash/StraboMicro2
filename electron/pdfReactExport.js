@@ -288,6 +288,18 @@ async function generateProjectPDF(outputPath, projectData, projectId, folderPath
       right: 0,
       textAlign: 'center',
       color: COLORS.lightText
+    },
+    // Back to TOC link
+    backToToc: {
+      fontSize: 9,
+      color: COLORS.accent,
+      textDecoration: 'none',
+      marginBottom: 10
+    },
+    backToTocContainer: {
+      flexDirection: 'row',
+      justifyContent: 'flex-end',
+      marginBottom: 5
     }
   });
 
@@ -300,8 +312,13 @@ async function generateProjectPDF(outputPath, projectData, projectId, folderPath
     );
   };
 
-  const SectionHeader = ({ title, id }) => {
+  const SectionHeader = ({ title, id, showBackLink = true }) => {
     return React.createElement(View, { id },
+      showBackLink && React.createElement(View, { style: styles.backToTocContainer },
+        React.createElement(Link, { src: '#toc', style: styles.backToToc },
+          React.createElement(Text, null, '← Back to Table of Contents')
+        )
+      ),
       React.createElement(Text, { style: styles.sectionHeader }, title),
       React.createElement(View, { style: styles.sectionUnderline })
     );
@@ -420,6 +437,8 @@ async function generateProjectPDF(outputPath, projectData, projectId, folderPath
 
     const tocElements = [];
     if (isFirstTocPage) {
+      // Add anchor for "Back to TOC" links
+      tocElements.push(React.createElement(View, { key: 'toc-anchor', id: 'toc' }));
       tocElements.push(React.createElement(Text, { key: 'toc-title', style: styles.tocTitle }, 'Table of Contents'));
     }
 
