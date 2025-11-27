@@ -19,6 +19,7 @@ const scratchSpace = require('./scratchSpace');
 const pdfExport = require('./pdfExport');
 // Use React-PDF for better layout and working internal links
 const pdfProjectExport = require('./pdfReactExport');
+const smzExport = require('./smzExport');
 
 // Handle EPIPE errors at process level (prevents crash on broken stdout pipe)
 process.stdout.on('error', (err) => {
@@ -211,7 +212,24 @@ function createWindow() {
             }
           }
         },
-        { label: 'Save', accelerator: 'CmdOrCtrl+S' },
+        {
+          label: 'Save Project',
+          accelerator: 'CmdOrCtrl+S',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('menu:save-project');
+            }
+          }
+        },
+        {
+          label: 'Export as .smz...',
+          accelerator: 'CmdOrCtrl+Shift+E',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('menu:export-smz');
+            }
+          }
+        },
         { type: 'separator' },
         {
           label: 'Export All Images...',
@@ -3522,6 +3540,109 @@ ipcMain.handle('project:export-pdf', async (event, projectId, projectData) => {
   } catch (error) {
     log.error('[ExportPDF] Export failed:', error);
     event.sender.send('export-pdf:progress', {
+      phase: 'Error',
+      current: 0,
+      total: 0,
+      itemName: '',
+      percentage: 0,
+      error: error.message
+    });
+    throw error;
+  }
+});
+
+// =============================================================================
+// EXPORT PROJECT AS .SMZ ARCHIVE
+// =============================================================================
+
+/**
+ * Export project as .smz file
+ * Generates all required image variants and packages them with project data
+ */
+ipcMain.handle('project:export-smz', async (event, projectId, projectData) => {
+  try {
+    log.info('[ExportSMZ] Starting .smz export');
+
+    // Show save dialog with overwrite confirmation
+    const projectName = (projectData.name || 'project').replace(/[<>:"/\\|?*]/g, '_');
+    // Add timestamp: YYYY-MM-DD_HH-MM-SS
+    const now = new Date();
+    const timestamp = now.toISOString()
+      .replace(/T/, '_')
+      .replace(/:/g, '-')
+      .replace(/\..+/, '');
+    const result = await dialog.showSaveDialog({
+      title: 'Export Project as .smz',
+      defaultPath: `${projectName}_${timestamp}.smz`,
+      filters: [
+        { name: 'StraboMicro Project', extensions: ['smz'] },
+        { name: 'All Files', extensions: ['*'] }
+      ],
+      properties: ['createDirectory', 'showOverwriteConfirmation']
+    });
+
+    if (result.canceled || !result.filePath) {
+      return { success: false, canceled: true };
+    }
+
+    // Check if file exists and prompt for overwrite (belt and suspenders)
+    if (fs.existsSync(result.filePath)) {
+      const { response } = await dialog.showMessageBox({
+        type: 'question',
+        buttons: ['Overwrite', 'Cancel'],
+        defaultId: 1,
+        title: 'File Exists',
+        message: `"${path.basename(result.filePath)}" already exists. Do you want to replace it?`,
+        detail: 'Replacing it will overwrite its current contents.',
+      });
+
+      if (response === 1) {
+        return { success: false, canceled: true };
+      }
+    }
+
+    // Get project folder paths
+    const folderPaths = await projectFolders.getProjectFolderPaths(projectId);
+
+    // Progress callback to send updates to renderer
+    const progressCallback = (progress) => {
+      event.sender.send('export-smz:progress', progress);
+    };
+
+    // PDF generator wrapper that uses the existing React-PDF generator
+    const pdfGenerator = async (outputPath, projData, projId, paths, progressCb) => {
+      await pdfProjectExport.generateProjectPDF(
+        outputPath,
+        projData,
+        projId,
+        paths,
+        generateCompositeBuffer, // Use the existing composite generator (with spots) for PDF
+        progressCb
+      );
+    };
+
+    // Export .smz
+    const exportResult = await smzExport.exportSmz(
+      result.filePath,
+      projectId,
+      projectData,
+      folderPaths,
+      progressCallback,
+      pdfGenerator,
+      projectSerializer
+    );
+
+    if (exportResult.success) {
+      log.info(`[ExportSMZ] Export complete: ${result.filePath}`);
+    } else {
+      log.error(`[ExportSMZ] Export failed: ${exportResult.error}`);
+    }
+
+    return exportResult;
+
+  } catch (error) {
+    log.error('[ExportSMZ] Export failed:', error);
+    event.sender.send('export-smz:progress', {
       phase: 'Error',
       current: 0,
       total: 0,

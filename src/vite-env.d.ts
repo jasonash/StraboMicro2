@@ -344,5 +344,26 @@ interface Window {
     // Auth menu events
     onLoginRequest: (callback: () => void) => void;
     onLogoutRequest: (callback: () => void) => void;
+
+    // Save/Export menu events
+    onSaveProject: (callback: () => void) => void;
+    onExportSmz: (callback: () => void) => void;
+
+    // Export as .smz
+    exportSmz: (projectId: string, projectData: any) => Promise<{
+      success: boolean;
+      canceled?: boolean;
+      filePath?: string;
+      error?: string;
+    }>;
+    onExportSmzProgress: (callback: (progress: {
+      phase: string;
+      current: number;
+      total: number;
+      itemName: string;
+      percentage: number;
+      error?: string;
+    }) => void) => void;
+    removeExportSmzProgressListener: () => void;
   };
 }

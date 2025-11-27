@@ -7,6 +7,7 @@ import { PreferencesDialog } from './components/dialogs/PreferencesDialog';
 import { LoginDialog } from './components/dialogs/LoginDialog';
 import { ExportAllImagesDialog } from './components/dialogs/ExportAllImagesDialog';
 import { ExportPDFDialog } from './components/dialogs/ExportPDFDialog';
+import { ExportSmzDialog } from './components/dialogs/ExportSmzDialog';
 import { useAppStore, useTemporalStore } from '@/store';
 import { useAuthStore } from '@/store/useAuthStore';
 import { useTheme } from './hooks/useTheme';
@@ -20,6 +21,7 @@ function App() {
   const [isLoginDialogOpen, setIsLoginDialogOpen] = useState(false);
   const [isExportAllImagesOpen, setIsExportAllImagesOpen] = useState(false);
   const [isExportPDFOpen, setIsExportPDFOpen] = useState(false);
+  const [isExportSmzOpen, setIsExportSmzOpen] = useState(false);
   const closeProject = useAppStore(state => state.closeProject);
   const project = useAppStore(state => state.project);
   const setTheme = useAppStore(state => state.setTheme);
@@ -389,6 +391,33 @@ function App() {
       }
       setIsExportPDFOpen(true);
     });
+
+    // File: Save Project menu item
+    window.api?.onSaveProject(async () => {
+      if (!project) {
+        alert('No project loaded. Please load a project first.');
+        return;
+      }
+      try {
+        const result = await window.api?.saveProjectJson(project, project.id);
+        if (result?.success) {
+          console.log('Project saved to:', result.path);
+          // Optionally show a brief notification
+        }
+      } catch (error) {
+        console.error('Failed to save project:', error);
+        alert('Failed to save project.');
+      }
+    });
+
+    // File: Export as .smz menu item
+    window.api?.onExportSmz(() => {
+      if (!project) {
+        alert('No project loaded. Please load a project first.');
+        return;
+      }
+      setIsExportSmzOpen(true);
+    });
   }, [closeProject, setTheme, setShowRulers, setShowSpotLabels, logout, project]);
 
   return (
@@ -423,6 +452,12 @@ function App() {
       <ExportPDFDialog
         open={isExportPDFOpen}
         onClose={() => setIsExportPDFOpen(false)}
+        projectId={project?.id ?? null}
+        projectData={project}
+      />
+      <ExportSmzDialog
+        open={isExportSmzOpen}
+        onClose={() => setIsExportSmzOpen(false)}
         projectId={project?.id ?? null}
         projectData={project}
       />

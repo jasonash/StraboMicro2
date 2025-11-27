@@ -153,4 +153,16 @@ contextBridge.exposeInMainWorld('api', {
   // Auth menu events
   onLoginRequest: (callback) => ipcRenderer.on('menu:login', callback),
   onLogoutRequest: (callback) => ipcRenderer.on('menu:logout', callback),
+
+  // Save/Export menu events
+  onSaveProject: (callback) => ipcRenderer.on('menu:save-project', callback),
+  onExportSmz: (callback) => ipcRenderer.on('menu:export-smz', callback),
+
+  // Export as .smz
+  exportSmz: (projectId, projectData) =>
+    ipcRenderer.invoke('project:export-smz', projectId, projectData),
+  onExportSmzProgress: (callback) =>
+    ipcRenderer.on('export-smz:progress', (event, progress) => callback(progress)),
+  removeExportSmzProgressListener: () =>
+    ipcRenderer.removeAllListeners('export-smz:progress'),
 });
