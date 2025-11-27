@@ -775,12 +775,10 @@ async function generateProjectPDF(outputPath, projectData, projectId, folderPath
     creator: 'StraboMicro2'
   }, ...pages);
 
-  // Render to PDF
-  const pdfInstance = pdf(documentElement);
-  const pdfBuffer = await pdfInstance.toBuffer();
-
-  // Write to file
-  fs.writeFileSync(outputPath, pdfBuffer);
+  // Render to PDF using renderToFile for Node.js
+  // Note: pdf().toBuffer() doesn't work the same way in ESM
+  const { renderToFile } = ReactPDF;
+  await renderToFile(documentElement, outputPath);
 
   log.info(`[ReactPDFExport] PDF generated successfully: ${outputPath}`);
   return outputPath;
