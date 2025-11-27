@@ -371,6 +371,7 @@ async function generateProjectPDF(outputPath, projectData, projectId, folderPath
 
       try {
         const imageBuffer = await compositeGenerator(projectId, micrograph, projectData, folderPaths);
+        log.info(`[ReactPDFExport] Image generated for ${micrograph.name}: ${imageBuffer ? `${imageBuffer.length} bytes, type: ${typeof imageBuffer}, isBuffer: ${Buffer.isBuffer(imageBuffer)}` : 'null'}`);
         micrographImages.push(imageBuffer);
       } catch (err) {
         log.warn(`[ReactPDFExport] Could not generate image for ${micrograph.name}:`, err.message);
@@ -551,11 +552,15 @@ async function generateProjectPDF(outputPath, projectData, projectId, folderPath
     const breadcrumb = `${dataset.name || 'Dataset'} > ${sample.name || sample.label || 'Sample'}`;
 
     // Convert buffer to base64 data URI for react-pdf
+    // Note: generateCompositeBuffer returns JPEG format
     let imageDataUri = null;
     const imageBuffer = micrographImages[index];
     if (imageBuffer) {
-      const base64 = imageBuffer.toString('base64');
-      imageDataUri = `data:image/png;base64,${base64}`;
+      const base64 = Buffer.isBuffer(imageBuffer) ? imageBuffer.toString('base64') : Buffer.from(imageBuffer).toString('base64');
+      imageDataUri = `data:image/jpeg;base64,${base64}`;
+      log.info(`[ReactPDFExport] Created data URI for ${micrographName}: length=${base64.length} chars`);
+    } else {
+      log.warn(`[ReactPDFExport] No image buffer for micrograph index ${index}: ${micrographName}`);
     }
 
     const pageElements = [
