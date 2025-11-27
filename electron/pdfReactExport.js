@@ -74,6 +74,261 @@ function hasGrainData(grainInfo) {
 }
 
 /**
+ * Format a field label from camelCase to Title Case with spaces
+ */
+function formatLabel(key) {
+  // Handle special cases
+  const specialCases = {
+    'id': 'ID',
+    'sampleID': 'Sample ID',
+    'parentID': 'Parent ID',
+    'gpsDatum': 'GPS Datum',
+    'ebsd': 'EBSD',
+    'eds': 'EDS',
+    'bse': 'BSE',
+    'sem': 'SEM',
+    'tem': 'TEM',
+    'wds': 'WDS',
+    'rgb': 'RGB',
+    'url': 'URL',
+    'scalePixelsPerCentimeter': 'Scale (px/cm)',
+    'imageWidth': 'Image Width',
+    'imageHeight': 'Image Height'
+  };
+
+  if (specialCases[key]) return specialCases[key];
+
+  // Convert camelCase to Title Case
+  return key
+    .replace(/([A-Z])/g, ' $1')
+    .replace(/^./, str => str.toUpperCase())
+    .trim();
+}
+
+/**
+ * Check if an object has any displayable data
+ */
+function hasDisplayableData(obj) {
+  if (!obj || typeof obj !== 'object') return false;
+  return Object.keys(obj).some(key => {
+    const value = obj[key];
+    if (isSkippedField(key)) return false;
+    return hasValue(value);
+  });
+}
+
+/**
+ * Fields to skip in output (internal/UI-only fields)
+ */
+function isSkippedField(key) {
+  const skippedFields = [
+    'id', 'parentID', 'isExpanded', 'isSpotExpanded', 'isMicroVisible',
+    'imagePath', 'imageFilename', 'geometry', 'points', 'offsetInParent',
+    'pointInParent', 'showLabel', 'opacity'
+  ];
+  return skippedFields.includes(key);
+}
+
+/**
+ * Feature info type definitions with their array keys and labels
+ */
+const FEATURE_INFO_TYPES = [
+  { key: 'mineralogy', label: 'Mineralogy', arrayKey: 'minerals' },
+  { key: 'grainInfo', label: 'Grain Information', arrayKey: null },
+  { key: 'fabricInfo', label: 'Fabric Information', arrayKey: 'fabrics' },
+  { key: 'orientationInfo', label: 'Orientation Information', arrayKey: null },
+  { key: 'instrument', label: 'Instrument Information', arrayKey: 'instrumentDetectors' },
+  { key: 'fractureInfo', label: 'Fracture Information', arrayKey: 'fractures' },
+  { key: 'foldInfo', label: 'Fold Information', arrayKey: 'folds' },
+  { key: 'veinInfo', label: 'Vein Information', arrayKey: 'veins' },
+  { key: 'pseudotachylyteInfo', label: 'Pseudotachylyte Information', arrayKey: 'pseudotachylytes' },
+  { key: 'faultsShearZonesInfo', label: 'Faults/Shear Zones', arrayKey: 'faultsShearZones' },
+  { key: 'clasticDeformationBandInfo', label: 'Clastic Deformation Bands', arrayKey: 'bands' },
+  { key: 'grainBoundaryInfo', label: 'Grain Boundary Information', arrayKey: 'boundaries' },
+  { key: 'intraGrainInfo', label: 'Intragrain Information', arrayKey: 'grains' },
+  { key: 'extinctionMicrostructureInfo', label: 'Extinction Microstructures', arrayKey: 'extinctionMicrostructures' },
+  { key: 'lithologyInfo', label: 'Lithology Information', arrayKey: 'lithologies' },
+  { key: 'associatedFiles', label: 'Associated Files', arrayKey: null, isArray: true },
+  { key: 'links', label: 'Links', arrayKey: null, isArray: true }
+];
+
+/**
+ * Render all feature info sections for an entity (micrograph or spot)
+ * Outputs all non-null fields from each feature info type
+ */
+function renderFeatureInfoSections(React, Text, View, Field, styles, entity) {
+  const elements = [];
+
+  for (const featureType of FEATURE_INFO_TYPES) {
+    const featureData = entity[featureType.key];
+    if (!featureData) continue;
+
+    // Handle direct arrays (associatedFiles, links)
+    if (featureType.isArray && Array.isArray(featureData) && featureData.length > 0) {
+      const sectionElements = [
+        React.createElement(Text, { style: styles.subsectionHeader }, featureType.label)
+      ];
+
+      const cardElements = [];
+      featureData.forEach((item, idx) => {
+        // Get a label for the item
+        const itemLabel = item.fileName || item.label || item.name || `Item ${idx + 1}`;
+        cardElements.push(
+          React.createElement(Text, { key: `item-${idx}`, style: { ...styles.listItem, fontFamily: 'Helvetica-Bold' } }, `• ${itemLabel}`)
+        );
+
+        // Output all fields of the item
+        Object.keys(item).forEach(key => {
+          if (isSkippedField(key) || key === 'fileName' || key === 'label' || key === 'name') return;
+          const value = item[key];
+          if (!hasValue(value)) return;
+          cardElements.push(
+            React.createElement(Text, { key: `item-${idx}-${key}`, style: { ...styles.listItem, marginLeft: 20 } },
+              `${formatLabel(key)}: ${formatValue(value)}`
+            )
+          );
+        });
+      });
+
+      sectionElements.push(React.createElement(View, { style: styles.card }, ...cardElements));
+      elements.push(React.createElement(View, null, ...sectionElements));
+      continue;
+    }
+
+    // Handle objects with potential nested arrays
+    if (typeof featureData !== 'object' || !hasDisplayableData(featureData)) continue;
+
+    const sectionElements = [
+      React.createElement(Text, { style: styles.subsectionHeader }, featureType.label)
+    ];
+
+    const cardElements = [];
+
+    // First, output all simple (non-object, non-array) fields
+    Object.keys(featureData).forEach(key => {
+      if (isSkippedField(key)) return;
+      const value = featureData[key];
+
+      // Skip arrays and objects for now - handle them separately
+      if (Array.isArray(value) || (typeof value === 'object' && value !== null)) return;
+
+      if (!hasValue(value)) return;
+      cardElements.push(
+        React.createElement(Field, { key: `field-${key}`, label: formatLabel(key), value: formatValue(value) })
+      );
+    });
+
+    // Now handle nested arrays within the feature
+    Object.keys(featureData).forEach(key => {
+      if (isSkippedField(key)) return;
+      const value = featureData[key];
+
+      if (Array.isArray(value) && value.length > 0) {
+        // Add a sub-label for the array
+        cardElements.push(
+          React.createElement(Text, { key: `array-label-${key}`, style: { ...styles.fieldLabel, marginTop: 8, marginBottom: 4 } },
+            `${formatLabel(key)}:`
+          )
+        );
+
+        value.forEach((item, idx) => {
+          if (typeof item === 'object' && item !== null) {
+            // Get an identifying field for the item
+            const itemName = item.name || item.label || item.fabricLabel || item.shape || item.type || `#${idx + 1}`;
+            cardElements.push(
+              React.createElement(Text, { key: `array-item-${key}-${idx}`, style: { ...styles.listItem, fontFamily: 'Helvetica-Bold' } },
+                `• ${itemName}`
+              )
+            );
+
+            // Output all fields of the array item
+            Object.keys(item).forEach(itemKey => {
+              if (isSkippedField(itemKey) || itemKey === 'name' || itemKey === 'label') return;
+              const itemValue = item[itemKey];
+              if (!hasValue(itemValue)) return;
+
+              // Handle nested arrays within array items (like phases)
+              if (Array.isArray(itemValue)) {
+                cardElements.push(
+                  React.createElement(Text, { key: `array-item-${key}-${idx}-${itemKey}`, style: { ...styles.listItem, marginLeft: 20 } },
+                    `${formatLabel(itemKey)}: ${itemValue.join(', ')}`
+                  )
+                );
+              } else if (typeof itemValue !== 'object') {
+                cardElements.push(
+                  React.createElement(Text, { key: `array-item-${key}-${idx}-${itemKey}`, style: { ...styles.listItem, marginLeft: 20 } },
+                    `${formatLabel(itemKey)}: ${formatValue(itemValue)}`
+                  )
+                );
+              }
+            });
+          } else {
+            // Simple array item
+            cardElements.push(
+              React.createElement(Text, { key: `array-item-${key}-${idx}`, style: styles.listItem },
+                `• ${formatValue(item)}`
+              )
+            );
+          }
+        });
+      }
+    });
+
+    // Handle nested objects (non-array)
+    Object.keys(featureData).forEach(key => {
+      if (isSkippedField(key)) return;
+      const value = featureData[key];
+
+      if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+        // Add a sub-label for the nested object
+        cardElements.push(
+          React.createElement(Text, { key: `obj-label-${key}`, style: { ...styles.fieldLabel, marginTop: 8, marginBottom: 4 } },
+            `${formatLabel(key)}:`
+          )
+        );
+
+        Object.keys(value).forEach(nestedKey => {
+          if (isSkippedField(nestedKey)) return;
+          const nestedValue = value[nestedKey];
+          if (!hasValue(nestedValue)) return;
+
+          if (Array.isArray(nestedValue)) {
+            cardElements.push(
+              React.createElement(Text, { key: `obj-${key}-${nestedKey}`, style: { ...styles.listItem, marginLeft: 10 } },
+                `${formatLabel(nestedKey)}: ${nestedValue.join(', ')}`
+              )
+            );
+          } else if (typeof nestedValue !== 'object') {
+            cardElements.push(
+              React.createElement(Text, { key: `obj-${key}-${nestedKey}`, style: { ...styles.listItem, marginLeft: 10 } },
+                `${formatLabel(nestedKey)}: ${formatValue(nestedValue)}`
+              )
+            );
+          }
+        });
+      }
+    });
+
+    if (cardElements.length > 0) {
+      sectionElements.push(React.createElement(View, { style: styles.card }, ...cardElements));
+      elements.push(React.createElement(View, null, ...sectionElements));
+    }
+  }
+
+  return elements;
+}
+
+/**
+ * Format a value for display
+ */
+function formatValue(value) {
+  if (value === null || value === undefined) return '';
+  if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+  if (typeof value === 'number') return String(value);
+  return String(value);
+}
+
+/**
  * Build TOC entries from project data
  */
 function buildTOCEntries(project) {
@@ -602,37 +857,23 @@ async function generateProjectPDF(outputPath, projectData, projectId, folderPath
       React.createElement(View, { key: 'card', style: styles.card },
         React.createElement(Field, { label: 'Name', value: micrograph.name }),
         React.createElement(Field, { label: 'Image Type', value: micrograph.imageType }),
-        React.createElement(Field, { label: 'Width (px)', value: micrograph.width }),
-        React.createElement(Field, { label: 'Height (px)', value: micrograph.height }),
+        React.createElement(Field, { label: 'Width (px)', value: micrograph.width || micrograph.imageWidth }),
+        React.createElement(Field, { label: 'Height (px)', value: micrograph.height || micrograph.imageHeight }),
         React.createElement(Field, { label: 'Scale (px/cm)', value: micrograph.scalePixelsPerCentimeter }),
         React.createElement(Field, { label: 'Scale Description', value: micrograph.scale }),
         React.createElement(Field, { label: 'Description', value: micrograph.description }),
         React.createElement(Field, { label: 'Notes', value: micrograph.notes }),
         React.createElement(Field, { label: 'Polish', value: micrograph.polish ? 'Yes' : null }),
-        React.createElement(Field, { label: 'Polish Description', value: micrograph.polishDescription })
+        React.createElement(Field, { label: 'Polish Description', value: micrograph.polishDescription }),
+        React.createElement(Field, { label: 'Flipped', value: micrograph.isFlipped ? 'Yes' : null }),
+        React.createElement(Field, { label: 'Rotation', value: micrograph.rotation ? `${micrograph.rotation}°` : null }),
+        React.createElement(Field, { label: 'Tags', value: micrograph.tags?.length > 0 ? micrograph.tags.join(', ') : null })
       )
     );
 
-    // Instrument info
-    if (micrograph.instrument && hasInstrumentData(micrograph.instrument)) {
-      pageElements.push(
-        React.createElement(View, { key: 'instrument' },
-          React.createElement(Text, { style: styles.subsectionHeader }, 'Instrument Information'),
-          React.createElement(View, { style: styles.card },
-            React.createElement(Field, { label: 'Instrument Type', value: micrograph.instrument.instrumentType }),
-            React.createElement(Field, { label: 'Data Type', value: micrograph.instrument.dataType }),
-            React.createElement(Field, { label: 'Brand', value: micrograph.instrument.instrumentBrand }),
-            React.createElement(Field, { label: 'Model', value: micrograph.instrument.instrumentModel }),
-            React.createElement(Field, { label: 'University', value: micrograph.instrument.university }),
-            React.createElement(Field, { label: 'Laboratory', value: micrograph.instrument.laboratory }),
-            React.createElement(Field, { label: 'Acceleration Voltage', value: micrograph.instrument.accelerationVoltage }),
-            React.createElement(Field, { label: 'Beam Current', value: micrograph.instrument.beamCurrent }),
-            React.createElement(Field, { label: 'Working Distance', value: micrograph.instrument.workingDistance }),
-            React.createElement(Field, { label: 'Notes', value: micrograph.instrument.instrumentNotes })
-          )
-        )
-      );
-    }
+    // Add all feature info sections for micrograph
+    const featureElements = renderFeatureInfoSections(React, Text, View, Field, styles, micrograph);
+    featureElements.forEach((el, i) => pageElements.push(React.cloneElement(el, { key: `feature-${i}` })));
 
     // Spots summary
     if (micrograph.spots && micrograph.spots.length > 0) {
@@ -685,97 +926,13 @@ async function generateProjectPDF(outputPath, projectData, projectId, folderPath
         React.createElement(Field, { label: 'Time', value: spot.time }),
         React.createElement(Field, { label: 'Last Modified', value: formatDate(spot.modifiedTimestamp) }),
         React.createElement(Field, { label: 'Notes', value: spot.notes }),
-        spot.tags && spot.tags.length > 0 ?
-          React.createElement(View, { style: styles.fieldRow },
-            React.createElement(Text, { style: styles.fieldLabel }, 'Tags:'),
-            React.createElement(Text, { style: styles.fieldValue }, spot.tags.join(', '))
-          ) : null
+        React.createElement(Field, { label: 'Tags', value: spot.tags?.length > 0 ? spot.tags.join(', ') : null })
       )
     ];
 
-    // Mineralogy
-    if (spot.mineralogy && (spot.mineralogy.minerals?.length > 0 || hasValue(spot.mineralogy.notes))) {
-      const mineralogyElements = [
-        React.createElement(Text, { key: 'min-header', style: styles.subsectionHeader }, 'Mineralogy')
-      ];
-
-      const cardElements = [];
-      if (hasValue(spot.mineralogy.mineralogyMethod)) {
-        cardElements.push(React.createElement(Field, { key: 'method', label: 'Method', value: spot.mineralogy.mineralogyMethod }));
-      }
-
-      if (spot.mineralogy.minerals) {
-        spot.mineralogy.minerals.forEach((mineral, i) => {
-          const percentage = hasValue(mineral.percentage) ? ` (${mineral.operator || ''}${mineral.percentage}%)` : '';
-          cardElements.push(
-            React.createElement(Text, { key: `mineral-${i}`, style: styles.listItem },
-              `• ${mineral.name || 'Unknown'}${percentage}`
-            )
-          );
-        });
-      }
-
-      if (hasValue(spot.mineralogy.notes)) {
-        cardElements.push(React.createElement(Text, { key: 'notes', style: styles.note }, `Notes: ${spot.mineralogy.notes}`));
-      }
-
-      mineralogyElements.push(React.createElement(View, { key: 'min-card', style: styles.card }, ...cardElements));
-      pageElements.push(React.createElement(View, { key: 'mineralogy' }, ...mineralogyElements));
-    }
-
-    // Grain Info
-    if (spot.grainInfo && hasGrainData(spot.grainInfo)) {
-      const grainElements = [
-        React.createElement(Text, { key: 'grain-header', style: styles.subsectionHeader }, 'Grain Information')
-      ];
-
-      const cardElements = [];
-      if (spot.grainInfo.grainSizeInfo) {
-        spot.grainInfo.grainSizeInfo.forEach((size, i) => {
-          const phases = size.phases?.join(', ') || 'All phases';
-          const stats = [];
-          if (hasValue(size.mean)) stats.push(`Mean: ${size.mean}`);
-          if (hasValue(size.median)) stats.push(`Median: ${size.median}`);
-          cardElements.push(
-            React.createElement(Text, { key: `size-${i}`, style: styles.listItem },
-              `• ${phases}: ${stats.join(', ')} ${size.sizeUnit || ''}`
-            )
-          );
-        });
-      }
-
-      if (hasValue(spot.grainInfo.grainSizeNotes)) {
-        cardElements.push(React.createElement(Text, { key: 'notes', style: styles.note }, `Notes: ${spot.grainInfo.grainSizeNotes}`));
-      }
-
-      grainElements.push(React.createElement(View, { key: 'grain-card', style: styles.card }, ...cardElements));
-      pageElements.push(React.createElement(View, { key: 'grain' }, ...grainElements));
-    }
-
-    // Fabric Info
-    if (spot.fabricInfo && (spot.fabricInfo.fabrics?.length > 0 || hasValue(spot.fabricInfo.notes))) {
-      const fabricElements = [
-        React.createElement(Text, { key: 'fabric-header', style: styles.subsectionHeader }, 'Fabric Information')
-      ];
-
-      const cardElements = [];
-      if (spot.fabricInfo.fabrics) {
-        spot.fabricInfo.fabrics.forEach((fabric, i) => {
-          cardElements.push(
-            React.createElement(Text, { key: `fabric-${i}`, style: styles.listItem },
-              `• ${fabric.fabricLabel || fabric.fabricElement || 'Fabric'}: ${fabric.fabricCategory || ''}`
-            )
-          );
-        });
-      }
-
-      if (hasValue(spot.fabricInfo.notes)) {
-        cardElements.push(React.createElement(Text, { key: 'notes', style: styles.note }, `Notes: ${spot.fabricInfo.notes}`));
-      }
-
-      fabricElements.push(React.createElement(View, { key: 'fabric-card', style: styles.card }, ...cardElements));
-      pageElements.push(React.createElement(View, { key: 'fabric' }, ...fabricElements));
-    }
+    // Add all feature info sections for spot
+    const featureElements = renderFeatureInfoSections(React, Text, View, Field, styles, spot);
+    featureElements.forEach((el, i) => pageElements.push(React.cloneElement(el, { key: `feature-${i}` })));
 
     // Page number
     pageElements.push(
