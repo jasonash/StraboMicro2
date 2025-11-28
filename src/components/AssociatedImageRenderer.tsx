@@ -356,20 +356,7 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
     loadImage();
   }, [micrograph, determineRenderMode, imageState.mode, imageState.imageObj, imageState.tiles.size, imageState.isLoading, projectId]);
 
-  /**
-   * Render based on current mode
-   * IMPORTANT: Keep rendering the current image even while loading a new one
-   */
-  if (!micrograph.imagePath) {
-    return null;
-  }
-
-  // If we're loading but have nothing to show yet, return null
-  if (imageState.isLoading && !imageState.imageObj && imageState.tiles.size === 0) {
-    return null;
-  }
-
-  // Handlers for click and cursor
+  // Handlers for click and cursor - MUST be before any early returns (React hooks rule)
   const handleClick = useCallback(() => {
     if (onClick) {
       onClick(micrograph.id);
@@ -393,6 +380,19 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
       }
     }
   }, [onClick]);
+
+  /**
+   * Render based on current mode
+   * IMPORTANT: Keep rendering the current image even while loading a new one
+   */
+  if (!micrograph.imagePath) {
+    return null;
+  }
+
+  // If we're loading but have nothing to show yet, return null
+  if (imageState.isLoading && !imageState.imageObj && imageState.tiles.size === 0) {
+    return null;
+  }
 
   const imageWidth = micrograph.imageWidth || 0;
   const imageHeight = micrograph.imageHeight || 0;
