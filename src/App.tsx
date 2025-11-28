@@ -38,7 +38,7 @@ function App() {
   useTheme();
 
   // Initialize autosave (5-minute timer when dirty)
-  const { manualSave, saveBeforeClose } = useAutosave();
+  const { manualSave, saveBeforeClose, saveBeforeSwitch } = useAutosave();
 
   // Check auth status on app startup
   useEffect(() => {
@@ -480,11 +480,43 @@ function App() {
       setIsVersionHistoryOpen(true);
     }));
 
+    // File: Switch Project (from Recent Projects menu)
+    unsubscribers.push(window.api?.onSwitchProject(async (_event, projectId) => {
+      console.log('[App] Switching to project:', projectId);
+
+      // Check for unsaved changes
+      const canSwitch = await saveBeforeSwitch();
+      if (!canSwitch) {
+        console.log('[App] Switch cancelled - save failed');
+        return;
+      }
+
+      // Close current project
+      closeProject();
+
+      // Load the new project
+      try {
+        const result = await window.api?.projects.load(projectId);
+        if (result?.success && result.project) {
+          // Load into store
+          const loadProject = useAppStore.getState().loadProject;
+          loadProject(result.project, null);
+          console.log('[App] Project loaded successfully:', result.project.name);
+        } else {
+          console.error('[App] Failed to load project:', result?.error);
+          alert(`Failed to load project: ${result?.error || 'Unknown error'}`);
+        }
+      } catch (error) {
+        console.error('[App] Error loading project:', error);
+        alert(`Error loading project: ${error}`);
+      }
+    }));
+
     // Cleanup: remove all listeners when dependencies change or component unmounts
     return () => {
       unsubscribers.forEach(unsub => unsub?.());
     };
-  }, [closeProject, setTheme, setShowRulers, setShowSpotLabels, logout, project, manualSave]);
+  }, [closeProject, setTheme, setShowRulers, setShowSpotLabels, logout, project, manualSave, saveBeforeSwitch]);
 
   return (
     <>

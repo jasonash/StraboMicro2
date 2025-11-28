@@ -22,6 +22,7 @@ const pdfProjectExport = require('./pdfReactExport');
 const smzExport = require('./smzExport');
 const serverUpload = require('./serverUpload');
 const versionHistory = require('./versionHistory');
+const projectsIndex = require('./projectsIndex');
 
 // Handle EPIPE errors at process level (prevents crash on broken stdout pipe)
 process.stdout.on('error', (err) => {
@@ -181,8 +182,42 @@ function createWindow() {
   // Track auth state for menu
   let isLoggedIn = false;
 
+  // Cache for recent projects (to avoid disk reads on every menu build)
+  let recentProjectsCache = [];
+
   // Function to build menu with current auth state
-  function buildMenu() {
+  async function buildMenu() {
+    // Fetch recent projects for submenu
+    try {
+      recentProjectsCache = await projectsIndex.getRecentProjects(10);
+    } catch (error) {
+      log.error('[Menu] Error fetching recent projects:', error);
+      recentProjectsCache = [];
+    }
+
+    // Build Recent Projects submenu items
+    const recentProjectsSubmenu = recentProjectsCache.length > 0
+      ? [
+          ...recentProjectsCache.map((proj) => ({
+            label: proj.name || 'Untitled Project',
+            click: () => {
+              if (mainWindow) {
+                mainWindow.webContents.send('menu:switch-project', proj.id);
+              }
+            }
+          })),
+          { type: 'separator' },
+          {
+            label: 'Clear Recent Projects',
+            click: async () => {
+              // Just rebuild index from disk (removes deleted projects)
+              await projectsIndex.rebuildIndex();
+              buildMenu();
+            }
+          }
+        ]
+      : [{ label: 'No Recent Projects', enabled: false }];
+
     const menuTemplate = [
     {
       label: 'File',
@@ -205,6 +240,11 @@ function createWindow() {
             }
           }
         },
+        {
+          label: 'Recent Projects',
+          submenu: recentProjectsSubmenu
+        },
+        { type: 'separator' },
         {
           label: 'Edit Project',
           accelerator: 'CmdOrCtrl+E',
@@ -501,6 +541,9 @@ function createWindow() {
     Menu.setApplicationMenu(menu);
   }
 
+  // Store reference to buildMenu for IPC handlers
+  buildMenuFn = buildMenu;
+
   // Build initial menu
   buildMenu();
 
@@ -541,11 +584,23 @@ function createWindow() {
   });
 }
 
+// Store a reference to buildMenu so we can call it from IPC handlers
+let buildMenuFn = null;
+
 app.whenReady().then(async () => {
   const isDev = process.env.NODE_ENV !== 'production';
 
   // Clean up scratch space on startup
   await scratchSpace.cleanupAll();
+
+  // Rebuild projects index on startup
+  log.info('[App] Rebuilding projects index on startup...');
+  try {
+    await projectsIndex.rebuildIndex();
+    log.info('[App] Projects index rebuilt successfully');
+  } catch (error) {
+    log.error('[App] Error rebuilding projects index:', error);
+  }
 
   // Install React DevTools in development mode
   if (isDev) {
@@ -3870,4 +3925,79 @@ ipcMain.handle('version:stats', async (event, projectId) => {
 ipcMain.handle('version:prune', async (event, projectId) => {
   log.info('[VersionHistory] Manual prune requested for project:', projectId);
   return versionHistory.pruneVersions(projectId);
+});
+
+// =============================================================================
+// PROJECTS INDEX HANDLERS (Recent Projects)
+// =============================================================================
+
+/**
+ * Rebuild the projects index from disk
+ * Called on app startup
+ */
+ipcMain.handle('projects:rebuild-index', async () => {
+  log.info('[ProjectsIndex] Rebuilding index...');
+  return projectsIndex.rebuildIndex();
+});
+
+/**
+ * Get recent projects (up to limit)
+ */
+ipcMain.handle('projects:get-recent', async (event, limit) => {
+  return projectsIndex.getRecentProjects(limit);
+});
+
+/**
+ * Get all projects in the index
+ */
+ipcMain.handle('projects:get-all', async () => {
+  return projectsIndex.getAllProjects();
+});
+
+/**
+ * Update the lastOpened timestamp for a project
+ * Called when opening or saving a project
+ */
+ipcMain.handle('projects:update-opened', async (event, projectId, projectName) => {
+  return projectsIndex.updateProjectOpened(projectId, projectName);
+});
+
+/**
+ * Remove a project from the index
+ * Called when deleting a project
+ */
+ipcMain.handle('projects:remove', async (event, projectId) => {
+  return projectsIndex.removeProject(projectId);
+});
+
+/**
+ * Load a project from disk by its ID
+ * Returns the full project data
+ */
+ipcMain.handle('projects:load', async (event, projectId) => {
+  log.info('[ProjectsIndex] Loading project:', projectId);
+  try {
+    const project = await projectSerializer.loadProjectJson(projectId);
+    // Update lastOpened in index
+    await projectsIndex.updateProjectOpened(projectId, project.name);
+    // Refresh menu to show updated recent projects
+    if (buildMenuFn) {
+      await buildMenuFn();
+    }
+    return { success: true, project };
+  } catch (error) {
+    log.error('[ProjectsIndex] Error loading project:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+/**
+ * Refresh the Recent Projects menu
+ * Called from renderer after saving/creating a project
+ */
+ipcMain.handle('projects:refresh-menu', async () => {
+  log.info('[ProjectsIndex] Refreshing menu...');
+  if (buildMenuFn) {
+    await buildMenuFn();
+  }
 });
