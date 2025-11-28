@@ -8,6 +8,7 @@ import { LoginDialog } from './components/dialogs/LoginDialog';
 import { ExportAllImagesDialog } from './components/dialogs/ExportAllImagesDialog';
 import { ExportPDFDialog } from './components/dialogs/ExportPDFDialog';
 import { ExportSmzDialog } from './components/dialogs/ExportSmzDialog';
+import { PushToServerDialog } from './components/dialogs/PushToServerDialog';
 import { useAppStore, useTemporalStore } from '@/store';
 import { useAuthStore } from '@/store/useAuthStore';
 import { useTheme } from './hooks/useTheme';
@@ -22,6 +23,7 @@ function App() {
   const [isExportAllImagesOpen, setIsExportAllImagesOpen] = useState(false);
   const [isExportPDFOpen, setIsExportPDFOpen] = useState(false);
   const [isExportSmzOpen, setIsExportSmzOpen] = useState(false);
+  const [isPushToServerOpen, setIsPushToServerOpen] = useState(false);
   const closeProject = useAppStore(state => state.closeProject);
   const project = useAppStore(state => state.project);
   const setTheme = useAppStore(state => state.setTheme);
@@ -418,6 +420,15 @@ function App() {
       }
       setIsExportSmzOpen(true);
     });
+
+    // File: Push to Server menu item
+    window.api?.onPushToServer(() => {
+      if (!project) {
+        alert('No project loaded. Please load a project first.');
+        return;
+      }
+      setIsPushToServerOpen(true);
+    });
   }, [closeProject, setTheme, setShowRulers, setShowSpotLabels, logout, project]);
 
   return (
@@ -458,6 +469,12 @@ function App() {
       <ExportSmzDialog
         open={isExportSmzOpen}
         onClose={() => setIsExportSmzOpen(false)}
+        projectId={project?.id ?? null}
+        projectData={project}
+      />
+      <PushToServerDialog
+        open={isPushToServerOpen}
+        onClose={() => setIsPushToServerOpen(false)}
         projectId={project?.id ?? null}
         projectData={project}
       />

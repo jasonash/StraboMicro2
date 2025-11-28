@@ -13,6 +13,7 @@
  * ├── uiImages/                       # 2500px long edge, plain images
  * ├── compositeImages/                # 2000px long edge, with overlays (no spots/labels)
  * ├── compositeThumbnails/            # 250px long edge, with overlays
+ * ├── thumbnailImages/                # 200px long edge, plain images (no overlays)
  * ├── webImages/                      # 750px long edge, with overlays
  * └── webThumbnails/                  # 200px long edge, with overlays
  */
@@ -30,6 +31,7 @@ const IMAGE_SIZES = {
   uiImages: { maxLongEdge: 2500, isComposite: false },
   compositeImages: { maxLongEdge: 2000, isComposite: true },
   compositeThumbnails: { maxLongEdge: 250, isComposite: true },
+  thumbnailImages: { maxLongEdge: 200, isComposite: false }, // Clean thumbnails, no overlays
   webImages: { maxLongEdge: 750, isComposite: true },
   webThumbnails: { maxLongEdge: 200, isComposite: true },
 };
@@ -196,6 +198,9 @@ function generateReadme(projectData, allMicrographs) {
     '',
     '  📁 compositeThumbnails/',
     '     Small composite thumbnails (250px) for quick preview.',
+    '',
+    '  📁 thumbnailImages/',
+    '     Plain thumbnail images (200px) without overlays.',
     '',
     '  📁 webImages/',
     '     Web-optimized composite images (750px) for online viewing.',
@@ -487,9 +492,9 @@ async function exportSmz(
     log.info(`[SmzExport] Found ${totalMicrographs} micrographs`);
 
     // Calculate total steps for progress
-    // Steps: project.json (1) + each micrograph * 6 image types + associatedFiles (1) + PDF (1)
-    // Image types: images(copy), uiImages, compositeImages, compositeThumbnails, webImages, webThumbnails
-    const totalSteps = 1 + (totalMicrographs * 6) + 1 + 1;
+    // Steps: project.json (1) + each micrograph * 7 image types + associatedFiles (1) + PDF (1)
+    // Image types: images(copy), uiImages, compositeImages, compositeThumbnails, thumbnailImages, webImages, webThumbnails
+    const totalSteps = 1 + (totalMicrographs * 7) + 1 + 1;
     let currentStep = 0;
 
     const sendProgress = (phase, itemName) => {
@@ -537,7 +542,7 @@ async function exportSmz(
       if (!fs.existsSync(sourceImagePath)) {
         log.warn(`[SmzExport] Source image not found: ${sourceImagePath}`);
         // Skip steps for this micrograph but still count them
-        currentStep += 6;
+        currentStep += 7;
         continue;
       }
 
@@ -575,7 +580,16 @@ async function exportSmz(
         log.error(`[SmzExport] Failed to generate compositeThumbnail for ${micrographId}:`, err);
       }
 
-      // 2e. Generate webImages (750px, with overlays, no spots)
+      // 2e. Generate thumbnailImages (200px, plain - no overlays)
+      sendProgress('Generating thumbnail images', micrographName);
+      try {
+        const thumbBuffer = await generatePlainResized(sourceImagePath, IMAGE_SIZES.thumbnailImages.maxLongEdge);
+        archive.append(thumbBuffer, { name: `${projectId}/thumbnailImages/${micrographId}` });
+      } catch (err) {
+        log.error(`[SmzExport] Failed to generate thumbnailImage for ${micrographId}:`, err);
+      }
+
+      // 2f. Generate webImages (750px, with overlays, no spots)
       sendProgress('Generating web images', micrographName);
       try {
         const compositeBuffer = await generateCompositeBufferNoSpots(projectId, micrograph, projectData, folderPaths);
@@ -585,7 +599,7 @@ async function exportSmz(
         log.error(`[SmzExport] Failed to generate webImage for ${micrographId}:`, err);
       }
 
-      // 2f. Generate webThumbnails (200px, with overlays, no spots)
+      // 2g. Generate webThumbnails (200px, with overlays, no spots)
       sendProgress('Generating web thumbnails', micrographName);
       try {
         const compositeBuffer = await generateCompositeBufferNoSpots(projectId, micrograph, projectData, folderPaths);

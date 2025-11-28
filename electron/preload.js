@@ -165,4 +165,17 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('export-smz:progress', (event, progress) => callback(progress)),
   removeExportSmzProgressListener: () =>
     ipcRenderer.removeAllListeners('export-smz:progress'),
+
+  // Push to Server
+  onPushToServer: (callback) => ipcRenderer.on('menu:push-to-server', callback),
+  server: {
+    checkConnectivity: () => ipcRenderer.invoke('server:check-connectivity'),
+    checkProjectExists: (projectId) => ipcRenderer.invoke('server:check-project-exists', projectId),
+    pushProject: (projectId, projectData, options) =>
+      ipcRenderer.invoke('server:push-project', projectId, projectData, options),
+    onPushProgress: (callback) =>
+      ipcRenderer.on('server:push-progress', (event, progress) => callback(progress)),
+    removePushProgressListener: () =>
+      ipcRenderer.removeAllListeners('server:push-progress'),
+  },
 });

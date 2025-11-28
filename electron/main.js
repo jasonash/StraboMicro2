@@ -20,6 +20,7 @@ const pdfExport = require('./pdfExport');
 // Use React-PDF for better layout and working internal links
 const pdfProjectExport = require('./pdfReactExport');
 const smzExport = require('./smzExport');
+const serverUpload = require('./serverUpload');
 
 // Handle EPIPE errors at process level (prevents crash on broken stdout pipe)
 process.stdout.on('error', (err) => {
@@ -227,6 +228,16 @@ function createWindow() {
           click: () => {
             if (mainWindow) {
               mainWindow.webContents.send('menu:export-smz');
+            }
+          }
+        },
+        {
+          label: 'Push to Server...',
+          accelerator: 'CmdOrCtrl+Shift+U',
+          enabled: isLoggedIn,
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('menu:push-to-server');
             }
           }
         },
@@ -3651,5 +3662,108 @@ ipcMain.handle('project:export-smz', async (event, projectId, projectData) => {
       error: error.message
     });
     throw error;
+  }
+});
+
+// =============================================================================
+// PUSH PROJECT TO SERVER
+// =============================================================================
+
+/**
+ * Check server connectivity
+ */
+ipcMain.handle('server:check-connectivity', async () => {
+  return serverUpload.checkConnectivity();
+});
+
+/**
+ * Check if project exists on server
+ */
+ipcMain.handle('server:check-project-exists', async (event, projectId) => {
+  try {
+    const tokens = await tokenService.getTokens();
+    if (!tokens?.accessToken) {
+      return { exists: false, error: 'Not authenticated. Please log in first.' };
+    }
+    return serverUpload.checkProjectExists(projectId, tokens.accessToken);
+  } catch (error) {
+    log.error('[ServerUpload] Check project exists failed:', error);
+    return { exists: false, error: error.message };
+  }
+});
+
+/**
+ * Push project to server
+ * Main handler that orchestrates the entire upload process
+ */
+ipcMain.handle('server:push-project', async (event, projectId, projectData, options) => {
+  try {
+    log.info('[ServerUpload] Starting push-to-server for project:', projectId);
+
+    const { overwrite = false } = options || {};
+
+    // Get tokens for authentication
+    const tokens = await tokenService.getTokens();
+    if (!tokens?.accessToken) {
+      return { success: false, error: 'Not authenticated. Please log in first.' };
+    }
+
+    // Check if token is expired and try to refresh
+    if (tokenService.isTokenExpired(tokens)) {
+      log.info('[ServerUpload] Token expired, attempting refresh...');
+      // Token refresh would be handled by the renderer via auth store
+      return { success: false, error: 'Session expired. Please log in again.' };
+    }
+
+    // Get project folder paths
+    const folderPaths = await projectFolders.getProjectFolderPaths(projectId);
+
+    // Progress callback to send updates to renderer
+    const progressCallback = (progress) => {
+      event.sender.send('server:push-progress', progress);
+    };
+
+    // PDF generator wrapper (same as export-smz)
+    const pdfGenerator = async (outputPath, projData, projId, paths, progressCb) => {
+      await pdfProjectExport.generateProjectPDF(
+        outputPath,
+        projData,
+        projId,
+        paths,
+        generateCompositeBuffer,
+        progressCb
+      );
+    };
+
+    // Execute the push
+    const result = await serverUpload.pushProject({
+      projectId,
+      projectData,
+      folderPaths,
+      accessToken: tokens.accessToken,
+      overwrite,
+      progressCallback,
+      pdfGenerator,
+      projectSerializer,
+    });
+
+    if (result.success) {
+      log.info('[ServerUpload] Push completed successfully');
+    } else if (result.needsOverwriteConfirm) {
+      log.info('[ServerUpload] Project exists, awaiting overwrite confirmation');
+    } else {
+      log.error('[ServerUpload] Push failed:', result.error);
+    }
+
+    return result;
+
+  } catch (error) {
+    log.error('[ServerUpload] Push failed with exception:', error);
+    event.sender.send('server:push-progress', {
+      phase: serverUpload.UploadPhase.ERROR,
+      percentage: 0,
+      message: error.message,
+    });
+    return { success: false, error: error.message };
   }
 });
