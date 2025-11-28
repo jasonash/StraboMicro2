@@ -70,6 +70,18 @@ async function loadProjectJson(projectId) {
     // Deserialize from legacy format
     const project = deserializeFromLegacyFormat(legacyJson);
 
+    // Reconstruct imagePath for each micrograph (runtime field not stored in JSON)
+    // Images are stored as: images/<micrograph-id> (no extension)
+    for (const dataset of project.datasets || []) {
+      for (const sample of dataset.samples || []) {
+        for (const micrograph of sample.micrographs || []) {
+          // imagePath is the micrograph ID (images are stored by ID in the images folder)
+          micrograph.imagePath = micrograph.id;
+          log.debug(`[ProjectSerializer] Set imagePath for micrograph ${micrograph.name}: ${micrograph.imagePath}`);
+        }
+      }
+    }
+
     log.info(`[ProjectSerializer] Successfully loaded project.json from: ${projectJsonPath}`);
     return project;
   } catch (error) {

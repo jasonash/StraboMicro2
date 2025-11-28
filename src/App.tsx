@@ -38,21 +38,23 @@ function App() {
   useTheme();
 
   // Initialize autosave (5-minute timer when dirty)
-  const { manualSave, saveBeforeClose } = useAutosave();
+  const { manualSave, saveBeforeClose, saveBeforeSwitch } = useAutosave();
 
   // Check auth status on app startup
   useEffect(() => {
     checkAuthStatus();
   }, [checkAuthStatus]);
 
-  // Update window title when project changes
+  // Update window title and notify main process when project changes
   useEffect(() => {
     if (!window.api) return;
 
     if (project && project.name) {
       window.api.setWindowTitle(`StraboMicro - ${project.name}`);
+      window.api.notifyProjectChanged(project.id);
     } else {
       window.api.setWindowTitle('StraboMicro');
+      window.api.notifyProjectChanged(null);
     }
   }, [project]);
 
@@ -480,11 +482,58 @@ function App() {
       setIsVersionHistoryOpen(true);
     }));
 
+    // File: Switch Project (from Recent Projects menu)
+    unsubscribers.push(window.api?.onSwitchProject(async (_event, projectId) => {
+      console.log('[App] Switching to project:', projectId);
+
+      // Check for unsaved changes
+      const canSwitch = await saveBeforeSwitch();
+      if (!canSwitch) {
+        console.log('[App] Switch cancelled - save failed');
+        return;
+      }
+
+      // Close current project
+      closeProject();
+
+      // Load the new project
+      try {
+        const result = await window.api?.projects.load(projectId);
+        if (result?.success && result.project) {
+          // Load into store
+          const loadProject = useAppStore.getState().loadProject;
+          loadProject(result.project, null);
+          console.log('[App] Project loaded successfully:', result.project.name);
+
+          // Auto-select the first reference micrograph (one without parentID)
+          const loadedProject = result.project;
+          for (const dataset of loadedProject.datasets || []) {
+            for (const sample of dataset.samples || []) {
+              const firstReferenceMicro = (sample.micrographs || []).find(
+                (m: { parentID?: string }) => !m.parentID
+              );
+              if (firstReferenceMicro) {
+                useAppStore.getState().selectMicrograph(firstReferenceMicro.id);
+                console.log('[App] Auto-selected micrograph:', firstReferenceMicro.name);
+                return; // Found one, stop searching
+              }
+            }
+          }
+        } else {
+          console.error('[App] Failed to load project:', result?.error);
+          alert(`Failed to load project: ${result?.error || 'Unknown error'}`);
+        }
+      } catch (error) {
+        console.error('[App] Error loading project:', error);
+        alert(`Error loading project: ${error}`);
+      }
+    }));
+
     // Cleanup: remove all listeners when dependencies change or component unmounts
     return () => {
       unsubscribers.forEach(unsub => unsub?.());
     };
-  }, [closeProject, setTheme, setShowRulers, setShowSpotLabels, logout, project, manualSave]);
+  }, [closeProject, setTheme, setShowRulers, setShowSpotLabels, logout, project, manualSave, saveBeforeSwitch]);
 
   return (
     <>

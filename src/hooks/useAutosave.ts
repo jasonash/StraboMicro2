@@ -46,6 +46,10 @@ export function useAutosave() {
           console.log(`[Autosave] Version created: ${versionResult.version}`);
         }
 
+        // Update project index and refresh menu
+        await window.api?.projects?.updateOpened(currentProject.id, currentProject.name || 'Untitled Project');
+        await window.api?.projects?.refreshMenu();
+
         // Mark as clean
         useAppStore.getState().markClean();
 

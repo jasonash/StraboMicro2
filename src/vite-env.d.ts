@@ -106,6 +106,7 @@ interface Window {
     }>;
     loadImagePreview: (filePath: string, size?: 'thumbnail' | 'medium' | 'full') => Promise<string>;
     setWindowTitle: (title: string) => void;
+    notifyProjectChanged: (projectId: string | null) => void;
     onThemeChange: (callback: (theme: 'dark' | 'light' | 'system') => void) => Unsubscribe;
     notifyThemeChanged: (theme: 'dark' | 'light' | 'system') => void;
     onToggleRulers: (callback: (checked: boolean) => void) => Unsubscribe;
@@ -403,6 +404,29 @@ interface Window {
     // App lifecycle
     onBeforeClose: (callback: () => void) => Unsubscribe;
 
+    // Recent Projects
+    onSwitchProject: (callback: (event: any, projectId: string) => void) => Unsubscribe;
+    projects: {
+      // Rebuild the index from disk (called on app startup)
+      rebuildIndex: () => Promise<{ projects: ProjectIndexEntry[] }>;
+      // Get recent projects (default limit 10)
+      getRecent: (limit?: number) => Promise<ProjectIndexEntry[]>;
+      // Get all projects
+      getAll: () => Promise<ProjectIndexEntry[]>;
+      // Update lastOpened timestamp (called on open/save)
+      updateOpened: (projectId: string, projectName: string) => Promise<void>;
+      // Remove project from index (called on delete)
+      remove: (projectId: string) => Promise<void>;
+      // Load a project by ID
+      load: (projectId: string) => Promise<{
+        success: boolean;
+        project?: any;
+        error?: string;
+      }>;
+      // Refresh the Recent Projects menu
+      refreshMenu: () => Promise<void>;
+    };
+
     // Version History
     onViewVersionHistory: (callback: () => void) => Unsubscribe;
     versionHistory: {
@@ -471,6 +495,13 @@ interface Window {
       }>;
     };
   };
+}
+
+// Projects Index Types
+interface ProjectIndexEntry {
+  id: string;
+  name: string;
+  lastOpened: string;
 }
 
 // Version History Types
