@@ -321,11 +321,11 @@ function deserializeMicrograph(micrograph) {
     parentID: micrograph.parentID,
     name: micrograph.name,
     imageType: micrograph.imageType,
-    // NOTE: Runtime-only fields NOT in legacy schema (do not serialize):
-    //   - imagePath (runtime file path, images stored separately in .smz)
-    //   - imageWidth/imageHeight (use width/height instead)
+    // Legacy JSON uses width/height, but renderer expects imageWidth/imageHeight
     width: micrograph.width,
     height: micrograph.height,
+    imageWidth: micrograph.width,   // Alias for renderer compatibility
+    imageHeight: micrograph.height, // Alias for renderer compatibility
     opacity: micrograph.opacity,
     scale: micrograph.scale,
     polish: micrograph.polish,
@@ -372,6 +372,7 @@ function deserializeSpot(spot) {
     labelColor: spot.labelColor,
     showLabel: spot.showLabel,
     color: spot.color,
+    opacity: spot.opacity, // Was missing - needed for polygon/spot opacity
     date: spot.date,
     time: spot.time,
     notes: spot.notes,
