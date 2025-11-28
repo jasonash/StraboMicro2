@@ -130,6 +130,8 @@ async function checkProjectExists(projectId, accessToken) {
 async function uploadZipFile(zipPath, projectId, overwrite, progressCallback) {
   try {
     log.info('[ServerUpload] Starting file upload:', zipPath);
+    log.info('[ServerUpload] Project ID:', projectId);
+    log.info('[ServerUpload] Overwrite:', overwrite);
 
     // Get file size for progress tracking
     const stats = await fs.promises.stat(zipPath);
@@ -137,33 +139,40 @@ async function uploadZipFile(zipPath, projectId, overwrite, progressCallback) {
 
     log.info('[ServerUpload] File size:', totalBytes, 'bytes');
 
-    // Create form data
+    // Read the file into a buffer (for reliable FormData handling)
+    const fileBuffer = await fs.promises.readFile(zipPath);
+
+    // Create form data with all required fields
+    // Order matters for some servers - put text fields first, then file
     const form = new FormData();
-
-    // Create a read stream with progress tracking
-    const fileStream = fs.createReadStream(zipPath);
-    let bytesRead = 0;
-
-    fileStream.on('data', (chunk) => {
-      bytesRead += chunk.length;
-      const percentage = Math.round((bytesRead / totalBytes) * 100);
-      progressCallback({
-        bytesUploaded: bytesRead,
-        bytesTotal: totalBytes,
-        percentage,
-      });
-    });
-
-    form.append('microProject', fileStream, {
+    form.append('overwrite', overwrite ? 'yes' : 'no');
+    form.append('project_id', projectId);
+    form.append('microProject', fileBuffer, {
       filename: 'temp.zip',
       contentType: 'application/octet-stream',
     });
-    form.append('overwrite', overwrite ? 'yes' : 'no');
-    form.append('project_id', projectId);
 
     // Build Basic Auth header for service credentials
     const authString = `${SERVICE_CREDENTIALS.username}:${SERVICE_CREDENTIALS.password}`;
     const authBase64 = Buffer.from(authString).toString('base64');
+
+    // Log what we're sending
+    log.info('[ServerUpload] Sending to:', ENDPOINTS.FILE_UPLOAD);
+    log.info('[ServerUpload] Form fields: overwrite=' + (overwrite ? 'yes' : 'no') + ', project_id=' + projectId);
+
+    // Track upload progress
+    let bytesSent = 0;
+    const formBuffer = form.getBuffer();
+    const formTotalBytes = formBuffer.length;
+
+    // Send progress updates periodically
+    const progressInterval = setInterval(() => {
+      progressCallback({
+        bytesUploaded: bytesSent,
+        bytesTotal: totalBytes,
+        percentage: Math.round((bytesSent / totalBytes) * 100),
+      });
+    }, 100);
 
     // Perform upload
     const response = await fetch(ENDPOINTS.FILE_UPLOAD, {
@@ -172,7 +181,16 @@ async function uploadZipFile(zipPath, projectId, overwrite, progressCallback) {
         'Authorization': `Basic ${authBase64}`,
         ...form.getHeaders(),
       },
-      body: form,
+      body: formBuffer,
+    });
+
+    clearInterval(progressInterval);
+
+    // Final progress update
+    progressCallback({
+      bytesUploaded: totalBytes,
+      bytesTotal: totalBytes,
+      percentage: 100,
     });
 
     if (!response.ok) {
@@ -223,11 +241,19 @@ async function uploadZipFile(zipPath, projectId, overwrite, progressCallback) {
 async function populateDatabase(projectId, overwrite, accessToken) {
   try {
     log.info('[ServerUpload] Triggering database population for:', projectId);
+    log.info('[ServerUpload] Project ID:', projectId);
+    log.info('[ServerUpload] Overwrite:', overwrite);
 
     // Create form data for the request
     const form = new FormData();
     form.append('overwrite', overwrite ? 'yes' : 'no');
     form.append('project_id', projectId);
+
+    // Get buffer for reliable transmission
+    const formBuffer = form.getBuffer();
+
+    log.info('[ServerUpload] Sending to:', ENDPOINTS.DB_POPULATE);
+    log.info('[ServerUpload] Form fields: overwrite=' + (overwrite ? 'yes' : 'no') + ', project_id=' + projectId);
 
     const response = await fetch(ENDPOINTS.DB_POPULATE, {
       method: 'POST',
@@ -235,7 +261,7 @@ async function populateDatabase(projectId, overwrite, accessToken) {
         'Authorization': `Bearer ${accessToken}`,
         ...form.getHeaders(),
       },
-      body: form,
+      body: formBuffer,
     });
 
     if (!response.ok) {
