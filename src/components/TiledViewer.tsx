@@ -73,6 +73,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(({ image
   const stageRef = useRef<any>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const drawingLayerRef = useRef<any>(null);
+  const loadingSessionRef = useRef<number>(0); // Track current loading session to abort stale loads
 
   // State
   const [stageSize, setStageSize] = useState({ width: 800, height: 600 });
@@ -199,6 +200,9 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(({ image
       return;
     }
 
+    // Increment session ID to invalidate any in-progress loads
+    const currentSession = ++loadingSessionRef.current;
+
     const loadImage = async () => {
       setIsLoading(true);
 
@@ -216,6 +220,12 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(({ image
 
         // Step 1: Load image metadata (fast, creates thumbnail)
         const result = await window.api!.loadImageWithTiles(imagePath);
+
+        // Check if we're still the current session (user may have switched images)
+        if (loadingSessionRef.current !== currentSession) {
+          console.log('[TiledViewer] Session invalidated during metadata load, aborting');
+          return;
+        }
 
         console.log('Metadata loaded:', {
           hash: result.hash,
@@ -237,11 +247,23 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(({ image
         console.log('=== Progressive Loading: Step 2 - Load thumbnail ===');
         const thumbnailDataUrl = await window.api!.loadThumbnail(result.hash);
 
+        // Check session again after async operation
+        if (loadingSessionRef.current !== currentSession) {
+          console.log('[TiledViewer] Session invalidated during thumbnail load, aborting');
+          return;
+        }
+
         const thumbnailImg = new Image();
         thumbnailImg.src = thumbnailDataUrl;
         await new Promise((resolve) => {
           thumbnailImg.onload = resolve;
         });
+
+        // Check session again after image decode
+        if (loadingSessionRef.current !== currentSession) {
+          console.log('[TiledViewer] Session invalidated during thumbnail decode, aborting');
+          return;
+        }
 
         setThumbnail({
           imageObj: thumbnailImg,
@@ -256,7 +278,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(({ image
 
         // Step 3: Load ALL tiles in background (not viewport-based)
         console.log('=== Progressive Loading: Step 3 - Loading all tiles in background ===');
-        loadAllTiles(result.hash, result.metadata.tilesX, result.metadata.tilesY, result.fromCache);
+        loadAllTiles(result.hash, result.metadata.tilesX, result.metadata.tilesY, result.fromCache, currentSession);
 
       } catch (error) {
         console.error('Failed to load image:', error);
@@ -285,8 +307,11 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(({ image
   /**
    * Load ALL tiles for the entire image in background
    * Uses chunked loading to keep UI responsive
+   *
+   * @param sessionId - The loading session ID; if it no longer matches loadingSessionRef.current,
+   *                    we abort the decode loop (but let main process tile generation continue)
    */
-  const loadAllTiles = useCallback(async (hash: string, tilesX: number, tilesY: number, fromCache: boolean) => {
+  const loadAllTiles = useCallback(async (hash: string, tilesX: number, tilesY: number, fromCache: boolean, sessionId: number) => {
     setIsLoadingTiles(true);
 
     // Set message based on whether tiles are cached or being generated
@@ -305,16 +330,31 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(({ image
         }
       }
 
-      console.log(`Loading all ${allTileCoords.length} tiles in background... (fromCache: ${fromCache})`);
+      console.log(`[Session ${sessionId}] Loading all ${allTileCoords.length} tiles in background... (fromCache: ${fromCache})`);
 
       // Load all tile data from disk (this happens in the main process)
+      // Note: We don't cancel this - let tile generation complete so it's cached for later
       const results = await window.api!.loadTilesBatch(hash, allTileCoords);
+
+      // Check if session is still valid before starting expensive decode loop
+      if (loadingSessionRef.current !== sessionId) {
+        console.log(`[Session ${sessionId}] Session invalidated after tile fetch, skipping decode (tiles are cached for later)`);
+        setIsLoadingTiles(false);
+        return;
+      }
 
       // Decode images in chunks to avoid blocking UI
       const newTiles = new Map<string, TileInfo>();
       const CHUNK_SIZE = 20; // Decode 20 images at a time
 
       for (let i = 0; i < results.length; i += CHUNK_SIZE) {
+        // Check session at start of each chunk - abort decode loop if user switched images
+        if (loadingSessionRef.current !== sessionId) {
+          console.log(`[Session ${sessionId}] Session invalidated during decode loop, aborting (decoded ${i}/${results.length} tiles)`);
+          setIsLoadingTiles(false);
+          return;
+        }
+
         const chunk = results.slice(i, i + CHUNK_SIZE);
         const chunkPromises: Promise<void>[] = [];
 
@@ -345,19 +385,29 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(({ image
         await new Promise(resolve => setTimeout(resolve, 0));
       }
 
-      console.log(`All ${allTileCoords.length} tiles loaded and ready`);
+      // Final session check before updating state
+      if (loadingSessionRef.current !== sessionId) {
+        console.log(`[Session ${sessionId}] Session invalidated after decode complete, discarding results`);
+        setIsLoadingTiles(false);
+        return;
+      }
+
+      console.log(`[Session ${sessionId}] All ${allTileCoords.length} tiles loaded and ready`);
 
       // Now update state ONCE with all tiles - triggers single re-render
       setTiles(newTiles);
 
       // Switch to tiled mode
-      console.log('=== All tiles loaded, switching to tiled mode ===');
+      console.log(`[Session ${sessionId}] Switching to tiled mode`);
       setRenderMode('tiled');
 
     } catch (error) {
       console.error('Failed to load all tiles:', error);
     } finally {
-      setIsLoadingTiles(false);
+      // Only clear loading state if we're still the active session
+      if (loadingSessionRef.current === sessionId) {
+        setIsLoadingTiles(false);
+      }
     }
   }, []);
 
