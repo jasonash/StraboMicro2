@@ -9,6 +9,7 @@ import { ExportAllImagesDialog } from './components/dialogs/ExportAllImagesDialo
 import { ExportPDFDialog } from './components/dialogs/ExportPDFDialog';
 import { ExportSmzDialog } from './components/dialogs/ExportSmzDialog';
 import { PushToServerDialog } from './components/dialogs/PushToServerDialog';
+import { VersionHistoryDialog } from './components/dialogs/VersionHistoryDialog';
 import { useAppStore, useTemporalStore } from '@/store';
 import { useAuthStore } from '@/store/useAuthStore';
 import { useTheme } from './hooks/useTheme';
@@ -24,6 +25,7 @@ function App() {
   const [isExportPDFOpen, setIsExportPDFOpen] = useState(false);
   const [isExportSmzOpen, setIsExportSmzOpen] = useState(false);
   const [isPushToServerOpen, setIsPushToServerOpen] = useState(false);
+  const [isVersionHistoryOpen, setIsVersionHistoryOpen] = useState(false);
   const closeProject = useAppStore(state => state.closeProject);
   const project = useAppStore(state => state.project);
   const setTheme = useAppStore(state => state.setTheme);
@@ -401,10 +403,23 @@ function App() {
         return;
       }
       try {
+        // Save project.json
         const result = await window.api?.saveProjectJson(project, project.id);
         if (result?.success) {
           console.log('Project saved to:', result.path);
-          // Optionally show a brief notification
+
+          // Create a version snapshot (auto-save)
+          const versionResult = await window.api?.versionHistory?.create(
+            project.id,
+            project,
+            null,
+            null
+          );
+          if (versionResult?.success) {
+            console.log('Version created:', versionResult.version);
+          } else if (versionResult?.error) {
+            console.warn('Failed to create version:', versionResult.error);
+          }
         }
       } catch (error) {
         console.error('Failed to save project:', error);
@@ -428,6 +443,15 @@ function App() {
         return;
       }
       setIsPushToServerOpen(true);
+    });
+
+    // File: View Version History menu item
+    window.api?.onViewVersionHistory(() => {
+      if (!project) {
+        alert('No project loaded. Please load a project first.');
+        return;
+      }
+      setIsVersionHistoryOpen(true);
     });
   }, [closeProject, setTheme, setShowRulers, setShowSpotLabels, logout, project]);
 
@@ -477,6 +501,11 @@ function App() {
         onClose={() => setIsPushToServerOpen(false)}
         projectId={project?.id ?? null}
         projectData={project}
+      />
+      <VersionHistoryDialog
+        open={isVersionHistoryOpen}
+        onClose={() => setIsVersionHistoryOpen(false)}
+        projectId={project?.id ?? ''}
       />
     </>
   );

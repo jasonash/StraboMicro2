@@ -178,4 +178,33 @@ contextBridge.exposeInMainWorld('api', {
     removePushProgressListener: () =>
       ipcRenderer.removeAllListeners('server:push-progress'),
   },
+
+  // Version History
+  onViewVersionHistory: (callback) => ipcRenderer.on('menu:view-version-history', callback),
+  versionHistory: {
+    // Create a new version (auto-save)
+    create: (projectId, projectState, name, description) =>
+      ipcRenderer.invoke('version:create', projectId, projectState, name, description),
+    // Create a named version (checkpoint)
+    createNamed: (projectId, projectState, name, description) =>
+      ipcRenderer.invoke('version:create-named', projectId, projectState, name, description),
+    // List all versions for a project
+    list: (projectId) => ipcRenderer.invoke('version:list', projectId),
+    // Get a specific version (includes full project snapshot)
+    get: (projectId, versionNumber) => ipcRenderer.invoke('version:get', projectId, versionNumber),
+    // Get version metadata only (without project snapshot)
+    getInfo: (projectId, versionNumber) => ipcRenderer.invoke('version:get-info', projectId, versionNumber),
+    // Restore a specific version (returns project state)
+    restore: (projectId, versionNumber) => ipcRenderer.invoke('version:restore', projectId, versionNumber),
+    // Delete a specific version
+    delete: (projectId, versionNumber) => ipcRenderer.invoke('version:delete', projectId, versionNumber),
+    // Clear all version history for a project
+    clear: (projectId) => ipcRenderer.invoke('version:clear', projectId),
+    // Compute diff between two versions
+    diff: (projectId, versionA, versionB) => ipcRenderer.invoke('version:diff', projectId, versionA, versionB),
+    // Get storage statistics
+    stats: (projectId) => ipcRenderer.invoke('version:stats', projectId),
+    // Manually trigger pruning
+    prune: (projectId) => ipcRenderer.invoke('version:prune', projectId),
+  },
 });

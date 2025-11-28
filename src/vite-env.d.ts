@@ -396,5 +396,119 @@ interface Window {
       }) => void) => void;
       removePushProgressListener: () => void;
     };
+
+    // Version History
+    onViewVersionHistory: (callback: () => void) => void;
+    versionHistory: {
+      // Create a new version (auto-save)
+      create: (
+        projectId: string,
+        projectState: any,
+        name?: string | null,
+        description?: string | null
+      ) => Promise<{
+        success: boolean;
+        version?: number;
+        error?: string;
+      }>;
+      // Create a named version (checkpoint)
+      createNamed: (
+        projectId: string,
+        projectState: any,
+        name: string,
+        description?: string | null
+      ) => Promise<{
+        success: boolean;
+        version?: number;
+        error?: string;
+      }>;
+      // List all versions for a project
+      list: (projectId: string) => Promise<VersionEntry[]>;
+      // Get a specific version (includes full project snapshot)
+      get: (projectId: string, versionNumber: number) => Promise<{
+        version: number;
+        timestamp: string;
+        checksum: string;
+        project: any;
+      } | null>;
+      // Get version metadata only (without project snapshot)
+      getInfo: (projectId: string, versionNumber: number) => Promise<VersionEntry | null>;
+      // Restore a specific version (returns project state)
+      restore: (projectId: string, versionNumber: number) => Promise<{
+        success: boolean;
+        project?: any;
+        error?: string;
+      }>;
+      // Delete a specific version
+      delete: (projectId: string, versionNumber: number) => Promise<{
+        success: boolean;
+        error?: string;
+      }>;
+      // Clear all version history for a project
+      clear: (projectId: string) => Promise<{
+        success: boolean;
+        error?: string;
+      }>;
+      // Compute diff between two versions
+      diff: (projectId: string, versionA: number, versionB: number) => Promise<{
+        success: boolean;
+        diff?: VersionDiff;
+        error?: string;
+      }>;
+      // Get storage statistics
+      stats: (projectId: string) => Promise<VersionStats | null>;
+      // Manually trigger pruning
+      prune: (projectId: string) => Promise<{
+        success: boolean;
+        prunedCount: number;
+        error?: string;
+      }>;
+    };
   };
+}
+
+// Version History Types
+interface VersionEntry {
+  version: number;
+  timestamp: string;
+  name: string | null;
+  description: string | null;
+  isAutoSave: boolean;
+  sizeBytes: number;
+  changeStats: {
+    datasetsAdded: number;
+    datasetsRemoved: number;
+    samplesAdded: number;
+    samplesRemoved: number;
+    micrographsAdded: number;
+    micrographsRemoved: number;
+    spotsAdded: number;
+    spotsRemoved: number;
+  };
+}
+
+interface VersionDiff {
+  versionA: number | null;
+  versionB: number | null;
+  changes: DiffEntry[];
+  summary: {
+    added: number;
+    removed: number;
+    modified: number;
+  };
+}
+
+interface DiffEntry {
+  type: 'added' | 'removed' | 'modified';
+  entityType: 'dataset' | 'sample' | 'micrograph' | 'spot' | 'group' | 'tag';
+  entityId: string;
+  entityName: string;
+  parentPath: string | null;
+}
+
+interface VersionStats {
+  totalVersions: number;
+  totalSizeBytes: number;
+  oldestTimestamp: string | null;
+  newestTimestamp: string | null;
 }
