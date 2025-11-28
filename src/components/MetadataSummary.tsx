@@ -35,7 +35,15 @@ import type {
   GrainSizeType,
   GrainShapeType,
   GrainOrientationType,
+  Spot,
 } from '@/types/project-types';
+import {
+  calculateLineLength,
+  calculatePolygonArea,
+  calculatePolygonPerimeter,
+  isLineSpot,
+  isPolygonSpot,
+} from '@/utils/geometryMeasurements';
 
 interface MetadataSummaryProps {
   micrographId?: string;
@@ -543,6 +551,53 @@ const formatPseudotachylyte = (pseudo: PseudotachylyteType): { label: string; se
   };
 };
 
+/**
+ * SpotMeasurements - displays calculated measurements for line and polygon spots
+ */
+function SpotMeasurements({ spot, scale }: { spot: Spot; scale: number }) {
+  const isLine = isLineSpot(spot.geometry, spot.geometryType);
+  const isPolygon = isPolygonSpot(spot.geometry, spot.geometryType);
+
+  if (!isLine && !isPolygon) return null;
+
+  const lineLength = isLine
+    ? calculateLineLength(spot.geometry, spot.points, scale)
+    : null;
+
+  const polygonArea = isPolygon
+    ? calculatePolygonArea(spot.geometry, spot.points, scale)
+    : null;
+
+  const polygonPerimeter = isPolygon
+    ? calculatePolygonPerimeter(spot.geometry, spot.points, scale)
+    : null;
+
+  if (!lineLength && !polygonArea && !polygonPerimeter) return null;
+
+  return (
+    <>
+      {lineLength && (
+        <Box>
+          <Typography variant="caption" color="text.secondary">Length: </Typography>
+          <Typography variant="body2" component="span">{lineLength.formatted}</Typography>
+        </Box>
+      )}
+      {polygonArea && (
+        <Box>
+          <Typography variant="caption" color="text.secondary">Area: </Typography>
+          <Typography variant="body2" component="span">{polygonArea.formatted}</Typography>
+        </Box>
+      )}
+      {polygonPerimeter && (
+        <Box>
+          <Typography variant="caption" color="text.secondary">Perimeter: </Typography>
+          <Typography variant="body2" component="span">{polygonPerimeter.formatted}</Typography>
+        </Box>
+      )}
+    </>
+  );
+}
+
 export function MetadataSummary({ micrographId, spotId, onEditSection }: MetadataSummaryProps) {
   const project = useAppStore((state) => state.project);
 
@@ -906,7 +961,11 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
                 <Typography variant="body2" component="span">{micrograph.imageType}</Typography>
               </Box>
             )}
-            {!data.name && !micrograph?.instrument && (
+            {/* Spot Measurements - only shown for spots with scale set */}
+            {spot && spotParentMicrograph?.scalePixelsPerCentimeter && (
+              <SpotMeasurements spot={spot} scale={spotParentMicrograph.scalePixelsPerCentimeter} />
+            )}
+            {!data.name && !micrograph?.instrument && !spot && (
               <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
                 No metadata set
               </Typography>
