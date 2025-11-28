@@ -5,6 +5,9 @@
  * projects for quick access via the "Recent Projects" menu. The index stores
  * project IDs, names, and last-opened timestamps.
  *
+ * The index is stored in the app's userData folder (not the projects folder)
+ * to be less intrusive to users' data directories.
+ *
  * The index is rebuilt on app startup by scanning ~/Documents/StraboMicro2Data/
  * and reading each project.json file. This ensures the index stays in sync
  * even if users manually add/remove project folders.
@@ -12,18 +15,19 @@
 
 const fs = require('fs');
 const path = require('path');
+const { app } = require('electron');
 const log = require('electron-log');
 const projectFolders = require('./projectFolders');
 
-// Index file location (inside StraboMicro2Data folder)
+// Index file location (inside app userData folder)
 const INDEX_FILENAME = 'projects-index.json';
 
 /**
  * Get the path to the projects index file
- * @returns {string} Path to projects-index.json
+ * @returns {string} Path to projects-index.json in app userData folder
  */
 function getIndexPath() {
-  return path.join(projectFolders.getStraboMicro2DataPath(), INDEX_FILENAME);
+  return path.join(app.getPath('userData'), INDEX_FILENAME);
 }
 
 /**
