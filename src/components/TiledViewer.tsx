@@ -14,7 +14,8 @@
 
 import { useEffect, useRef, useState, useCallback, useImperativeHandle, forwardRef } from 'react';
 import { Stage, Layer, Image as KonvaImage, Circle } from 'react-konva';
-import { Box, CircularProgress, Typography } from '@mui/material';
+import { Box, CircularProgress, Typography, IconButton, Tooltip } from '@mui/material';
+import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import { useAppStore } from '@/store';
 import { getChildMicrographs } from '@/store/helpers';
 import { AssociatedImageRenderer } from './AssociatedImageRenderer';
@@ -115,6 +116,10 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(({ image
   const setActiveTool = useAppStore((state) => state.setActiveTool);
   const addSpot = useAppStore((state) => state.addSpot);
   const deleteSpot = useAppStore((state) => state.deleteSpot);
+  const drillDownToMicrograph = useAppStore((state) => state.drillDownToMicrograph);
+  const navigateBack = useAppStore((state) => state.navigateBack);
+  const micrographNavigationStack = useAppStore((state) => state.micrographNavigationStack);
+  const micrographIndex = useAppStore((state) => state.micrographIndex);
 
   // Find active micrograph and its associated children
   const activeMicrograph = useCallback(() => {
@@ -798,6 +803,13 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(({ image
   }, [deleteSpot]);
 
   /**
+   * Handle overlay click for drill-down navigation
+   */
+  const handleOverlayClick = useCallback((micrographId: string) => {
+    drillDownToMicrograph(micrographId);
+  }, [drillDownToMicrograph]);
+
+  /**
    * Reset zoom (fit to screen)
    */
   const handleResetZoom = useCallback(() => {
@@ -839,6 +851,37 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(({ image
         onSave={() => geometryEditing.saveEdits()}
         onCancel={() => geometryEditing.cancelEdits()}
       />
+
+      {/* Back navigation button - shows when navigated via overlay click */}
+      {micrographNavigationStack.length > 0 && (
+        <Tooltip
+          title={(() => {
+            const previousId = micrographNavigationStack[micrographNavigationStack.length - 1];
+            const previousMicro = micrographIndex.get(previousId);
+            return `Back to ${previousMicro?.name || 'previous micrograph'}`;
+          })()}
+          placement="right"
+        >
+          <IconButton
+            onClick={navigateBack}
+            sx={{
+              position: 'absolute',
+              top: showRulers ? 40 : 10,
+              left: showRulers ? 40 : 10,
+              zIndex: 1001,
+              bgcolor: 'rgba(0, 0, 0, 0.7)',
+              color: 'white',
+              '&:hover': {
+                bgcolor: 'rgba(0, 0, 0, 0.85)',
+              },
+              boxShadow: '0 2px 8px rgba(0, 0, 0, 0.3)',
+            }}
+            size="medium"
+          >
+            <ArrowBackIcon />
+          </IconButton>
+        </Tooltip>
+      )}
 
       {imageMetadata && (
         <>
@@ -986,6 +1029,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(({ image
                   onTileLoadingEnd={() => {
                     setOverlayLoadingCount(prev => Math.max(0, prev - 1));
                   }}
+                  onClick={handleOverlayClick}
                 />
               ))}
             </Layer>
@@ -1157,6 +1201,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(({ image
                     onTileLoadingEnd={() => {
                       setOverlayLoadingCount(prev => Math.max(0, prev - 1));
                     }}
+                    onClick={handleOverlayClick}
                   />
                 ))}
               </Layer>

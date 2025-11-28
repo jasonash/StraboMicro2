@@ -13,7 +13,7 @@
  */
 
 import { useEffect, useState, useCallback, useMemo } from 'react';
-import { Group, Image as KonvaImage } from 'react-konva';
+import { Group, Image as KonvaImage, Rect } from 'react-konva';
 import { MicrographMetadata } from '@/types/project-types';
 
 // Render modes based on screen coverage and zoom
@@ -37,6 +37,7 @@ interface AssociatedImageRendererProps {
   stageScale: number; // Current stage scale factor
   onTileLoadingStart?: (message: string) => void; // Notify parent when tile loading starts
   onTileLoadingEnd?: () => void; // Notify parent when tile loading ends
+  onClick?: (micrographId: string) => void; // Called when overlay is clicked (for drill-down navigation)
 }
 
 interface TileInfo {
@@ -64,6 +65,7 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
   stageScale,
   onTileLoadingStart,
   onTileLoadingEnd,
+  onClick,
 }) => {
   const [imageState, setImageState] = useState<ImageState>({
     mode: 'THUMBNAIL',
@@ -354,6 +356,31 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
     loadImage();
   }, [micrograph, determineRenderMode, imageState.mode, imageState.imageObj, imageState.tiles.size, imageState.isLoading, projectId]);
 
+  // Handlers for click and cursor - MUST be before any early returns (React hooks rule)
+  const handleClick = useCallback(() => {
+    if (onClick) {
+      onClick(micrograph.id);
+    }
+  }, [onClick, micrograph.id]);
+
+  const handleMouseEnter = useCallback((e: any) => {
+    if (onClick) {
+      const container = e.target.getStage()?.container();
+      if (container) {
+        container.style.cursor = 'pointer';
+      }
+    }
+  }, [onClick]);
+
+  const handleMouseLeave = useCallback((e: any) => {
+    if (onClick) {
+      const container = e.target.getStage()?.container();
+      if (container) {
+        container.style.cursor = 'grab';
+      }
+    }
+  }, [onClick]);
+
   /**
    * Render based on current mode
    * IMPORTANT: Keep rendering the current image even while loading a new one
@@ -366,6 +393,9 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
   if (imageState.isLoading && !imageState.imageObj && imageState.tiles.size === 0) {
     return null;
   }
+
+  const imageWidth = micrograph.imageWidth || 0;
+  const imageHeight = micrograph.imageHeight || 0;
 
   if (imageState.mode === 'THUMBNAIL' || imageState.mode === 'MEDIUM') {
     // Render as single image
@@ -380,13 +410,27 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
         rotation={overlayTransform.rotation}
         offsetX={overlayTransform.offsetX}
         offsetY={overlayTransform.offsetY}
+        onClick={handleClick}
+        onTap={handleClick}
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleMouseLeave}
       >
         <KonvaImage
           image={imageState.imageObj}
-          width={micrograph.imageWidth || 0}
-          height={micrograph.imageHeight || 0}
+          width={imageWidth}
+          height={imageHeight}
           opacity={micrograph.opacity ?? 1.0}
         />
+        {/* Transparent hit area for reliable click detection */}
+        {onClick && (
+          <Rect
+            x={0}
+            y={0}
+            width={imageWidth}
+            height={imageHeight}
+            fill="transparent"
+          />
+        )}
       </Group>
     );
   } else {
@@ -402,6 +446,10 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
         rotation={overlayTransform.rotation}
         offsetX={overlayTransform.offsetX}
         offsetY={overlayTransform.offsetY}
+        onClick={handleClick}
+        onTap={handleClick}
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleMouseLeave}
       >
         {Array.from(imageState.tiles.values()).map((tile) => {
           if (!tile.imageObj) return null;
@@ -418,6 +466,16 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
             />
           );
         })}
+        {/* Transparent hit area for reliable click detection */}
+        {onClick && (
+          <Rect
+            x={0}
+            y={0}
+            width={imageWidth}
+            height={imageHeight}
+            fill="transparent"
+          />
+        )}
       </Group>
     );
   }
