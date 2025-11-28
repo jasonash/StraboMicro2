@@ -431,7 +431,7 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
             width={imageWidth}
             height={imageHeight}
             stroke="#cc3333"
-            strokeWidth={2 / stageScale} // Keep stroke width consistent regardless of zoom
+            strokeWidth={3 / (stageScale * overlayTransform.scaleX)} // Constant screen size regardless of zoom/scale
             listening={false}
           />
         )}
@@ -488,7 +488,7 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
             width={imageWidth}
             height={imageHeight}
             stroke="#cc3333"
-            strokeWidth={2 / stageScale} // Keep stroke width consistent regardless of zoom
+            strokeWidth={3 / (stageScale * overlayTransform.scaleX)} // Constant screen size regardless of zoom/scale
             listening={false}
           />
         )}
