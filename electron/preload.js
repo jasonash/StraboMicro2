@@ -177,6 +177,10 @@ contextBridge.exposeInMainWorld('api', {
   exportCompositeMicrograph: (projectId, micrographId, projectData, options) =>
     ipcRenderer.invoke('micrograph:export-composite', projectId, micrographId, projectData, options),
 
+  // Export micrograph as SVG (vector spots)
+  exportMicrographAsSvg: (projectId, micrographId, projectData) =>
+    ipcRenderer.invoke('micrograph:export-svg', projectId, micrographId, projectData),
+
   // Export all images to ZIP
   exportAllImages: (projectId, projectData) =>
     ipcRenderer.invoke('project:export-all-images', projectId, projectData),

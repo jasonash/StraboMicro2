@@ -271,6 +271,17 @@ interface Window {
       filePath?: string;
     }>;
 
+    // Export micrograph as SVG (vector spots)
+    exportMicrographAsSvg: (
+      projectId: string,
+      micrographId: string,
+      projectData: any
+    ) => Promise<{
+      success: boolean;
+      canceled?: boolean;
+      filePath?: string;
+    }>;
+
     // Export all images to ZIP
     exportAllImages: (projectId: string, projectData: any) => Promise<{
       success: boolean;

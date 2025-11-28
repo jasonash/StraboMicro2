@@ -165,12 +165,12 @@ export function PropertiesPanel() {
     }, 0);
   };
 
-  // Handle download micrograph as composite image with overlays, spots, and labels
-  const handleDownloadMicrograph = async () => {
+  // Handle download micrograph as JPEG
+  const handleDownloadJpeg = async () => {
     if (!activeMicrographId || !project?.id || isExporting) return;
 
     setIsExporting(true);
-    setSnackbar({ open: true, message: 'Exporting micrograph...', severity: 'info' });
+    setSnackbar({ open: true, message: 'Exporting as JPEG...', severity: 'info' });
 
     try {
       const result = await window.api?.exportCompositeMicrograph(
@@ -181,9 +181,38 @@ export function PropertiesPanel() {
       );
 
       if (result?.success) {
-        setSnackbar({ open: true, message: 'Micrograph exported successfully', severity: 'success' });
+        setSnackbar({ open: true, message: 'JPEG exported successfully', severity: 'success' });
       } else if (result?.canceled) {
-        // User cancelled - close the "exporting" snackbar quietly
+        setSnackbar({ open: false, message: '', severity: 'info' });
+      }
+    } catch (error) {
+      setSnackbar({
+        open: true,
+        message: `Export failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        severity: 'error'
+      });
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  // Handle download micrograph as SVG (vector)
+  const handleDownloadSvg = async () => {
+    if (!activeMicrographId || !project?.id || isExporting) return;
+
+    setIsExporting(true);
+    setSnackbar({ open: true, message: 'Exporting as SVG...', severity: 'info' });
+
+    try {
+      const result = await window.api?.exportMicrographAsSvg(
+        project.id,
+        activeMicrographId,
+        project
+      );
+
+      if (result?.success) {
+        setSnackbar({ open: true, message: 'SVG exported successfully', severity: 'success' });
+      } else if (result?.canceled) {
         setSnackbar({ open: false, message: '', severity: 'info' });
       }
     } catch (error) {
@@ -229,7 +258,8 @@ export function PropertiesPanel() {
     <Box sx={{ p: 2, height: '100%', display: 'flex', flexDirection: 'column' }}>
       {/* Breadcrumbs Navigation Bar */}
       <BreadcrumbsBar
-        onDownloadMicrograph={handleDownloadMicrograph}
+        onDownloadJpeg={handleDownloadJpeg}
+        onDownloadSvg={handleDownloadSvg}
         onDeleteMicrograph={() => setConfirmDelete('micrograph')}
         onDeleteSpot={() => setConfirmDelete('spot')}
         isDownloading={isExporting}

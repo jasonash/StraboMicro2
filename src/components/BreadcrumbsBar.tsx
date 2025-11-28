@@ -10,25 +10,31 @@
  * The current item (last micrograph or spot) is displayed but not clickable.
  *
  * Also includes action buttons on the right:
- * - Download button (micrograph only)
+ * - Download menu (micrograph only) - JPEG or SVG export
  * - Delete button (micrograph or spot)
  */
 
-import { Box, Typography, IconButton, Tooltip, CircularProgress } from '@mui/material';
+import { useState } from 'react';
+import { Box, Typography, IconButton, Tooltip, CircularProgress, Menu, MenuItem, ListItemIcon, ListItemText } from '@mui/material';
 import DownloadIcon from '@mui/icons-material/Download';
 import DeleteIcon from '@mui/icons-material/Delete';
+import ImageIcon from '@mui/icons-material/Image';
+import DrawIcon from '@mui/icons-material/Draw';
+import ArrowDropDownIcon from '@mui/icons-material/ArrowDropDown';
 import { useAppStore } from '@/store';
 import { getMicrographAncestorChain, findSpotById } from '@/store/helpers';
 
 interface BreadcrumbsBarProps {
-  onDownloadMicrograph?: () => void;
+  onDownloadJpeg?: () => void;
+  onDownloadSvg?: () => void;
   onDeleteMicrograph?: () => void;
   onDeleteSpot?: () => void;
   isDownloading?: boolean;
 }
 
 export function BreadcrumbsBar({
-  onDownloadMicrograph,
+  onDownloadJpeg,
+  onDownloadSvg,
   onDeleteMicrograph,
   onDeleteSpot,
   isDownloading = false,
@@ -38,6 +44,28 @@ export function BreadcrumbsBar({
   const activeSpotId = useAppStore((state) => state.activeSpotId);
   const selectMicrograph = useAppStore((state) => state.selectMicrograph);
   const selectActiveSpot = useAppStore((state) => state.selectActiveSpot);
+
+  // Download menu state
+  const [downloadMenuAnchor, setDownloadMenuAnchor] = useState<null | HTMLElement>(null);
+  const downloadMenuOpen = Boolean(downloadMenuAnchor);
+
+  const handleDownloadMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
+    setDownloadMenuAnchor(event.currentTarget);
+  };
+
+  const handleDownloadMenuClose = () => {
+    setDownloadMenuAnchor(null);
+  };
+
+  const handleDownloadJpeg = () => {
+    handleDownloadMenuClose();
+    onDownloadJpeg?.();
+  };
+
+  const handleDownloadSvg = () => {
+    handleDownloadMenuClose();
+    onDownloadSvg?.();
+  };
 
   // Get the micrograph ancestor chain
   const ancestorChain = activeMicrographId
@@ -140,24 +168,49 @@ export function BreadcrumbsBar({
 
       {/* Action buttons */}
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, ml: 1 }}>
-        {/* Download button - only shown when viewing a micrograph (not a spot) */}
-        {!isSpotView && onDownloadMicrograph && (
-          <Tooltip title={isDownloading ? 'Exporting...' : 'Download Micrograph'}>
-            <span> {/* Wrapper needed for Tooltip when button is disabled */}
-              <IconButton
-                size="small"
-                onClick={onDownloadMicrograph}
-                disabled={isDownloading}
-                sx={{ color: 'text.secondary' }}
-              >
-                {isDownloading ? (
-                  <CircularProgress size={18} color="inherit" />
-                ) : (
-                  <DownloadIcon fontSize="small" />
-                )}
-              </IconButton>
-            </span>
-          </Tooltip>
+        {/* Download menu - only shown when viewing a micrograph (not a spot) */}
+        {!isSpotView && (onDownloadJpeg || onDownloadSvg) && (
+          <>
+            <Tooltip title={isDownloading ? 'Exporting...' : 'Download Micrograph'}>
+              <span>
+                <IconButton
+                  size="small"
+                  onClick={handleDownloadMenuOpen}
+                  disabled={isDownloading}
+                  sx={{ color: 'text.secondary' }}
+                >
+                  {isDownloading ? (
+                    <CircularProgress size={18} color="inherit" />
+                  ) : (
+                    <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                      <DownloadIcon fontSize="small" />
+                      <ArrowDropDownIcon fontSize="small" sx={{ ml: -0.5 }} />
+                    </Box>
+                  )}
+                </IconButton>
+              </span>
+            </Tooltip>
+            <Menu
+              anchorEl={downloadMenuAnchor}
+              open={downloadMenuOpen}
+              onClose={handleDownloadMenuClose}
+              anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+              transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+            >
+              <MenuItem onClick={handleDownloadJpeg} disabled={!onDownloadJpeg}>
+                <ListItemIcon>
+                  <ImageIcon fontSize="small" />
+                </ListItemIcon>
+                <ListItemText>Download as JPEG</ListItemText>
+              </MenuItem>
+              <MenuItem onClick={handleDownloadSvg} disabled={!onDownloadSvg}>
+                <ListItemIcon>
+                  <DrawIcon fontSize="small" />
+                </ListItemIcon>
+                <ListItemText>Download as SVG (Vector)</ListItemText>
+              </MenuItem>
+            </Menu>
+          </>
         )}
 
         {/* Delete button */}
