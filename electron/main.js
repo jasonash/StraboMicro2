@@ -182,8 +182,38 @@ function createWindow() {
   // Track auth state for menu
   let isLoggedIn = false;
 
+  // Track current project ID for menu
+  let currentProjectId = null;
+
   // Cache for recent projects (to avoid disk reads on every menu build)
   let recentProjectsCache = [];
+
+  /**
+   * Format a relative date string (e.g., "Today", "Yesterday", "Nov 25")
+   */
+  function formatRelativeDate(isoString) {
+    if (!isoString) return '';
+
+    const date = new Date(isoString);
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const dateOnly = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+
+    if (dateOnly.getTime() === today.getTime()) {
+      return 'Today';
+    } else if (dateOnly.getTime() === yesterday.getTime()) {
+      return 'Yesterday';
+    } else {
+      // Format as "Nov 25" or "Nov 25, 2024" if different year
+      const options = { month: 'short', day: 'numeric' };
+      if (date.getFullYear() !== now.getFullYear()) {
+        options.year = 'numeric';
+      }
+      return date.toLocaleDateString('en-US', options);
+    }
+  }
 
   // Function to build menu with current auth state
   async function buildMenu() {
@@ -198,14 +228,25 @@ function createWindow() {
     // Build Recent Projects submenu items
     const recentProjectsSubmenu = recentProjectsCache.length > 0
       ? [
-          ...recentProjectsCache.map((proj) => ({
-            label: proj.name || 'Untitled Project',
-            click: () => {
-              if (mainWindow) {
-                mainWindow.webContents.send('menu:switch-project', proj.id);
+          ...recentProjectsCache.map((proj) => {
+            const isCurrentProject = proj.id === currentProjectId;
+            const dateStr = formatRelativeDate(proj.lastOpened);
+            const label = dateStr
+              ? `${proj.name || 'Untitled Project'}  (${dateStr})`
+              : proj.name || 'Untitled Project';
+
+            return {
+              label,
+              type: isCurrentProject ? 'checkbox' : 'normal',
+              checked: isCurrentProject,
+              enabled: !isCurrentProject,
+              click: () => {
+                if (mainWindow && !isCurrentProject) {
+                  mainWindow.webContents.send('menu:switch-project', proj.id);
+                }
               }
-            }
-          })),
+            };
+          }),
           { type: 'separator' },
           {
             label: 'Clear Recent Projects',
@@ -550,6 +591,12 @@ function createWindow() {
   // IPC handler to update auth state and rebuild menu
   ipcMain.on('auth:state-changed', (event, loggedIn) => {
     isLoggedIn = loggedIn;
+    buildMenu();
+  });
+
+  // IPC handler to update current project and rebuild menu
+  ipcMain.on('project:current-changed', (event, projectId) => {
+    currentProjectId = projectId;
     buildMenu();
   });
 

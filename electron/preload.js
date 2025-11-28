@@ -84,6 +84,9 @@ contextBridge.exposeInMainWorld('api', {
   // Window title
   setWindowTitle: (title) => ipcRenderer.send('set-window-title', title),
 
+  // Notify main process of current project change (for menu updates)
+  notifyProjectChanged: (projectId) => ipcRenderer.send('project:current-changed', projectId),
+
   // Theme management
   onThemeChange: (callback) => {
     const handler = (event, theme) => callback(theme);

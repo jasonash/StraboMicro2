@@ -106,6 +106,7 @@ interface Window {
     }>;
     loadImagePreview: (filePath: string, size?: 'thumbnail' | 'medium' | 'full') => Promise<string>;
     setWindowTitle: (title: string) => void;
+    notifyProjectChanged: (projectId: string | null) => void;
     onThemeChange: (callback: (theme: 'dark' | 'light' | 'system') => void) => Unsubscribe;
     notifyThemeChanged: (theme: 'dark' | 'light' | 'system') => void;
     onToggleRulers: (callback: (checked: boolean) => void) => Unsubscribe;

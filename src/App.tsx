@@ -45,14 +45,16 @@ function App() {
     checkAuthStatus();
   }, [checkAuthStatus]);
 
-  // Update window title when project changes
+  // Update window title and notify main process when project changes
   useEffect(() => {
     if (!window.api) return;
 
     if (project && project.name) {
       window.api.setWindowTitle(`StraboMicro - ${project.name}`);
+      window.api.notifyProjectChanged(project.id);
     } else {
       window.api.setWindowTitle('StraboMicro');
+      window.api.notifyProjectChanged(null);
     }
   }, [project]);
 
