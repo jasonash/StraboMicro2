@@ -208,34 +208,46 @@ export function VersionHistoryDialog({
 
     setShowRestoreConfirm(false);
     setIsRestoring(true);
+    setError(null);
+
+    // Store the version to restore before any operations
+    const versionToRestore = selectedVersion;
+    console.log('[VersionHistory] Starting restore to version:', versionToRestore);
 
     try {
       // First create a backup of current state
       if (project) {
-        await window.api?.versionHistory?.create(
+        console.log('[VersionHistory] Creating backup...');
+        const backupResult = await window.api?.versionHistory?.create(
           projectId,
           project,
           'Before restore',
-          `Backup before restoring to version ${selectedVersion}`
+          `Backup before restoring to version ${versionToRestore}`
         );
+        console.log('[VersionHistory] Backup result:', backupResult);
       }
 
-      // Now restore
+      // Now restore the originally selected version
+      console.log('[VersionHistory] Restoring version:', versionToRestore);
       const result = await window.api?.versionHistory?.restore(
         projectId,
-        selectedVersion
+        versionToRestore
       );
+      console.log('[VersionHistory] Restore result:', result);
 
       if (result?.success && result.project) {
         // Load the restored project into the app
+        console.log('[VersionHistory] Loading restored project into store');
         loadProject(result.project, null);
         onClose();
       } else {
-        setError(result?.error || 'Failed to restore version');
+        const errorMsg = result?.error || 'Failed to restore version';
+        console.error('[VersionHistory] Restore failed:', errorMsg);
+        setError(errorMsg);
       }
     } catch (err) {
-      console.error('Failed to restore version:', err);
-      setError('Failed to restore version');
+      console.error('[VersionHistory] Exception during restore:', err);
+      setError('Failed to restore version: ' + (err instanceof Error ? err.message : 'Unknown error'));
     } finally {
       setIsRestoring(false);
     }
@@ -377,7 +389,7 @@ export function VersionHistoryDialog({
             ) : (
               <List sx={{ flex: 1, overflow: 'auto', py: 0 }}>
                 {versions.map((version, index) => (
-                  <ListItem key={version.version} disablePadding>
+                  <ListItem key={`${version.version}-${version.timestamp}`} disablePadding>
                     <ListItemButton
                       selected={selectedVersion === version.version}
                       onClick={() => {

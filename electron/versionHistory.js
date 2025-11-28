@@ -291,6 +291,8 @@ class VersionHistoryService {
    */
   async createVersion(projectId, projectState, name = null, description = null) {
     try {
+      // Invalidate cache to ensure we have the latest version numbers
+      this.manifestCache.delete(projectId);
       const manifest = await this._loadManifest(projectId);
 
       // Get previous version for change stats
@@ -367,8 +369,11 @@ class VersionHistoryService {
    */
   async listVersions(projectId) {
     try {
+      // Invalidate cache to get fresh data from disk
+      this.manifestCache.delete(projectId);
       const manifest = await this._loadManifest(projectId);
-      return manifest.versions;
+      // Return a copy to prevent mutation issues
+      return [...manifest.versions];
     } catch (error) {
       log.error('[VersionHistory] Failed to list versions:', error);
       return [];
