@@ -504,6 +504,21 @@ function App() {
           const loadProject = useAppStore.getState().loadProject;
           loadProject(result.project, null);
           console.log('[App] Project loaded successfully:', result.project.name);
+
+          // Auto-select the first reference micrograph (one without parentID)
+          const loadedProject = result.project;
+          for (const dataset of loadedProject.datasets || []) {
+            for (const sample of dataset.samples || []) {
+              const firstReferenceMicro = (sample.micrographs || []).find(
+                (m: { parentID?: string }) => !m.parentID
+              );
+              if (firstReferenceMicro) {
+                useAppStore.getState().selectMicrograph(firstReferenceMicro.id);
+                console.log('[App] Auto-selected micrograph:', firstReferenceMicro.name);
+                return; // Found one, stop searching
+              }
+            }
+          }
         } else {
           console.error('[App] Failed to load project:', result?.error);
           alert(`Failed to load project: ${result?.error || 'Unknown error'}`);
