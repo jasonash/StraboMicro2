@@ -23,6 +23,7 @@ const smzExport = require('./smzExport');
 const serverUpload = require('./serverUpload');
 const versionHistory = require('./versionHistory');
 const projectsIndex = require('./projectsIndex');
+const svgExport = require('./svgExport');
 
 // Handle EPIPE errors at process level (prevents crash on broken stdout pipe)
 process.stdout.on('error', (err) => {
@@ -1185,6 +1186,62 @@ ipcMain.handle('micrograph:export-composite', async (event, projectId, micrograp
 
   } catch (error) {
     log.error('[IPC] Error exporting composite micrograph:', error);
+    throw error;
+  }
+});
+
+// Export micrograph as SVG with vector spots
+ipcMain.handle('micrograph:export-svg', async (event, projectId, micrographId, projectData) => {
+  try {
+    log.info(`[IPC] Exporting micrograph as SVG: ${micrographId}`);
+
+    // Get project folder paths
+    const folderPaths = await projectFolders.getProjectFolderPaths(projectId);
+
+    // Find the micrograph to get its name
+    let micrographName = 'micrograph';
+    for (const dataset of projectData.datasets || []) {
+      for (const sample of dataset.samples || []) {
+        for (const micro of sample.micrographs || []) {
+          if (micro.id === micrographId) {
+            micrographName = micro.name || 'micrograph';
+            break;
+          }
+        }
+      }
+    }
+
+    // Generate SVG
+    const { svg } = await svgExport.exportMicrographAsSvg(
+      projectId,
+      micrographId,
+      projectData,
+      folderPaths
+    );
+
+    // Show save dialog
+    const cleanName = micrographName.replace(/[<>:"/\\|?*]/g, '_');
+    const result = await dialog.showSaveDialog({
+      title: 'Export Micrograph as SVG',
+      defaultPath: `${cleanName}_composite.svg`,
+      filters: [
+        { name: 'SVG Image', extensions: ['svg'] },
+        { name: 'All Files', extensions: ['*'] }
+      ]
+    });
+
+    if (result.canceled || !result.filePath) {
+      return { success: false, canceled: true };
+    }
+
+    // Write SVG file
+    await fs.promises.writeFile(result.filePath, svg, 'utf8');
+
+    log.info(`[IPC] SVG exported to: ${result.filePath}`);
+    return { success: true, filePath: result.filePath };
+
+  } catch (error) {
+    log.error('[IPC] Error exporting SVG:', error);
     throw error;
   }
 });
