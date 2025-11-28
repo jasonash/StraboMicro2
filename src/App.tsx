@@ -13,6 +13,7 @@ import { VersionHistoryDialog } from './components/dialogs/VersionHistoryDialog'
 import { useAppStore, useTemporalStore } from '@/store';
 import { useAuthStore } from '@/store/useAuthStore';
 import { useTheme } from './hooks/useTheme';
+import { useAutosave } from './hooks/useAutosave';
 import './App.css';
 
 function App() {
@@ -36,6 +37,9 @@ function App() {
   // Initialize theme system
   useTheme();
 
+  // Initialize autosave (5-minute timer when dirty)
+  const { manualSave, saveBeforeClose } = useAutosave();
+
   // Check auth status on app startup
   useEffect(() => {
     checkAuthStatus();
@@ -51,6 +55,37 @@ function App() {
       window.api.setWindowTitle('StraboMicro');
     }
   }, [project]);
+
+  // Save before app close
+  useEffect(() => {
+    // Handle browser beforeunload (fallback)
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      const isDirty = useAppStore.getState().isDirty;
+      const currentProject = useAppStore.getState().project;
+
+      if (isDirty && currentProject) {
+        // Trigger save (async, but we do our best)
+        saveBeforeClose();
+
+        // Show browser confirmation dialog as fallback
+        e.preventDefault();
+        e.returnValue = 'You have unsaved changes. Are you sure you want to leave?';
+        return e.returnValue;
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
+    // Handle Electron app close event
+    window.api?.onBeforeClose(() => {
+      console.log('[App] Received before-close event from main process');
+      saveBeforeClose();
+    });
+
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [saveBeforeClose]);
 
   // Listen for menu events from Electron
   useEffect(() => {
@@ -403,23 +438,10 @@ function App() {
         return;
       }
       try {
-        // Save project.json
-        const result = await window.api?.saveProjectJson(project, project.id);
-        if (result?.success) {
-          console.log('Project saved to:', result.path);
-
-          // Create a version snapshot (auto-save)
-          const versionResult = await window.api?.versionHistory?.create(
-            project.id,
-            project,
-            null,
-            null
-          );
-          if (versionResult?.success) {
-            console.log('Version created:', versionResult.version);
-          } else if (versionResult?.error) {
-            console.warn('Failed to create version:', versionResult.error);
-          }
+        // Use manualSave which handles save + version + timer reset
+        const result = await manualSave();
+        if (!result.success) {
+          alert('Failed to save project.');
         }
       } catch (error) {
         console.error('Failed to save project:', error);
@@ -453,7 +475,7 @@ function App() {
       }
       setIsVersionHistoryOpen(true);
     });
-  }, [closeProject, setTheme, setShowRulers, setShowSpotLabels, logout, project]);
+  }, [closeProject, setTheme, setShowRulers, setShowSpotLabels, logout, project, manualSave]);
 
   return (
     <>

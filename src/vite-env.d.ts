@@ -397,6 +397,9 @@ interface Window {
       removePushProgressListener: () => void;
     };
 
+    // App lifecycle
+    onBeforeClose: (callback: () => void) => void;
+
     // Version History
     onViewVersionHistory: (callback: () => void) => void;
     versionHistory: {

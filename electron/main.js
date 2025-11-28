@@ -525,9 +525,15 @@ function createWindow() {
     mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
   }
 
-  mainWindow.on('close', () => {
+  mainWindow.on('close', (event) => {
     // Save final window state before closing
     saveWindowState();
+
+    // Send message to renderer to save if dirty
+    // The renderer will handle the actual save operation
+    if (mainWindow && mainWindow.webContents) {
+      mainWindow.webContents.send('app:before-close');
+    }
   });
 
   mainWindow.on('closed', () => {

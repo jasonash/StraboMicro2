@@ -179,6 +179,9 @@ contextBridge.exposeInMainWorld('api', {
       ipcRenderer.removeAllListeners('server:push-progress'),
   },
 
+  // App lifecycle
+  onBeforeClose: (callback) => ipcRenderer.on('app:before-close', callback),
+
   // Version History
   onViewVersionHistory: (callback) => ipcRenderer.on('menu:view-version-history', callback),
   versionHistory: {
