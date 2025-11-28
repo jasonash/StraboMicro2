@@ -9,9 +9,11 @@ import { ExportAllImagesDialog } from './components/dialogs/ExportAllImagesDialo
 import { ExportPDFDialog } from './components/dialogs/ExportPDFDialog';
 import { ExportSmzDialog } from './components/dialogs/ExportSmzDialog';
 import { PushToServerDialog } from './components/dialogs/PushToServerDialog';
+import { VersionHistoryDialog } from './components/dialogs/VersionHistoryDialog';
 import { useAppStore, useTemporalStore } from '@/store';
 import { useAuthStore } from '@/store/useAuthStore';
 import { useTheme } from './hooks/useTheme';
+import { useAutosave } from './hooks/useAutosave';
 import './App.css';
 
 function App() {
@@ -24,6 +26,7 @@ function App() {
   const [isExportPDFOpen, setIsExportPDFOpen] = useState(false);
   const [isExportSmzOpen, setIsExportSmzOpen] = useState(false);
   const [isPushToServerOpen, setIsPushToServerOpen] = useState(false);
+  const [isVersionHistoryOpen, setIsVersionHistoryOpen] = useState(false);
   const closeProject = useAppStore(state => state.closeProject);
   const project = useAppStore(state => state.project);
   const setTheme = useAppStore(state => state.setTheme);
@@ -33,6 +36,9 @@ function App() {
 
   // Initialize theme system
   useTheme();
+
+  // Initialize autosave (5-minute timer when dirty)
+  const { manualSave, saveBeforeClose } = useAutosave();
 
   // Check auth status on app startup
   useEffect(() => {
@@ -50,6 +56,38 @@ function App() {
     }
   }, [project]);
 
+  // Save before app close
+  useEffect(() => {
+    // Handle browser beforeunload (fallback)
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      const isDirty = useAppStore.getState().isDirty;
+      const currentProject = useAppStore.getState().project;
+
+      if (isDirty && currentProject) {
+        // Trigger save (async, but we do our best)
+        saveBeforeClose();
+
+        // Show browser confirmation dialog as fallback
+        e.preventDefault();
+        e.returnValue = 'You have unsaved changes. Are you sure you want to leave?';
+        return e.returnValue;
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
+    // Handle Electron app close event
+    const unsubscribeBeforeClose = window.api?.onBeforeClose(() => {
+      console.log('[App] Received before-close event from main process');
+      saveBeforeClose();
+    });
+
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      unsubscribeBeforeClose?.();
+    };
+  }, [saveBeforeClose]);
+
   // Listen for menu events from Electron
   useEffect(() => {
     // Check if window.api is available (Electron context)
@@ -58,41 +96,44 @@ function App() {
       return;
     }
 
+    // Collect all unsubscribe functions for cleanup
+    const unsubscribers: Array<(() => void) | undefined> = [];
+
     // New Project menu item
-    window.api.onNewProject(() => {
+    unsubscribers.push(window.api.onNewProject(() => {
       setIsNewProjectDialogOpen(true);
-    });
+    }));
 
     // Open Project menu item (TODO: implement)
-    window.api.onOpenProject(() => {
+    unsubscribers.push(window.api.onOpenProject(() => {
       console.log('Open Project clicked');
-    });
+    }));
 
     // Edit Project menu item
-    window.api.onEditProject(() => {
+    unsubscribers.push(window.api.onEditProject(() => {
       setIsEditProjectDialogOpen(true);
-    });
+    }));
 
     // Debug: Show Project Structure
-    window.api.onShowProjectDebug(() => {
+    unsubscribers.push(window.api.onShowProjectDebug(() => {
       setIsDebugModalOpen(true);
-    });
+    }));
 
     // Preferences menu item
-    window.api.onPreferences(() => {
+    unsubscribers.push(window.api.onPreferences(() => {
       setIsPreferencesOpen(true);
-    });
+    }));
 
     // Debug: Clear Project
-    window.api.onClearProject(() => {
+    unsubscribers.push(window.api.onClearProject(() => {
       if (confirm('Are you sure you want to clear the current project? This will remove it from localStorage.')) {
         closeProject();
         console.log('Project cleared');
       }
-    });
+    }));
 
     // Debug: Quick Load Image
-    window.api.onQuickLoadImage(async () => {
+    unsubscribers.push(window.api.onQuickLoadImage(async () => {
       try {
         console.log('=== Quick Load Image: Starting ===');
 
@@ -193,10 +234,10 @@ function App() {
         console.error('Quick Load Image failed:', error);
         alert('Failed to load image: ' + (error as Error).message);
       }
-    });
+    }));
 
     // Load Sample Project
-    window.api.onLoadSampleProject(() => {
+    unsubscribers.push(window.api.onLoadSampleProject(() => {
       console.log('Loading sample project...');
 
       const sampleProject = {
@@ -267,10 +308,10 @@ function App() {
 
       useAppStore.getState().loadProject(sampleProject, null);
       console.log('Sample project loaded successfully!');
-    });
+    }));
 
     // Reset Everything (Clean Test)
-    window.api?.onResetEverything(async () => {
+    unsubscribers.push(window.api?.onResetEverything(async () => {
       console.log('Resetting everything for clean test...');
 
       try {
@@ -286,10 +327,10 @@ function App() {
         console.error('Error during reset:', error);
         alert(`❌ Error during reset: ${error instanceof Error ? error.message : 'Unknown error'}`);
       }
-    });
+    }));
 
     // Rebuild All Thumbnails
-    window.api?.onRebuildAllThumbnails(async () => {
+    unsubscribers.push(window.api?.onRebuildAllThumbnails(async () => {
       const project = useAppStore.getState().project;
 
       if (!project) {
@@ -318,58 +359,58 @@ function App() {
         console.error('Error rebuilding thumbnails:', error);
         alert(`❌ Error rebuilding thumbnails: ${error instanceof Error ? error.message : 'Unknown error'}`);
       }
-    });
+    }));
 
     // Undo menu item
-    window.api.onUndo(() => {
+    unsubscribers.push(window.api.onUndo(() => {
       const temporalState = useTemporalStore.getState();
       temporalState.undo();
       console.log('Undo performed');
-    });
+    }));
 
     // Redo menu item
-    window.api.onRedo(() => {
+    unsubscribers.push(window.api.onRedo(() => {
       const temporalState = useTemporalStore.getState();
       temporalState.redo();
       console.log('Redo performed');
-    });
+    }));
 
     // Theme menu item
-    window.api.onThemeChange((theme) => {
+    unsubscribers.push(window.api.onThemeChange((theme) => {
       setTheme(theme);
-    });
+    }));
 
     // View: Toggle Rulers menu item
-    window.api.onToggleRulers((checked) => {
+    unsubscribers.push(window.api.onToggleRulers((checked) => {
       setShowRulers(checked);
-    });
+    }));
 
     // View: Toggle Spot Labels menu item
-    window.api.onToggleSpotLabels((checked) => {
+    unsubscribers.push(window.api.onToggleSpotLabels((checked) => {
       setShowSpotLabels(checked);
-    });
+    }));
 
     // Account: Login menu item
-    window.api.onLoginRequest(() => {
+    unsubscribers.push(window.api.onLoginRequest(() => {
       setIsLoginDialogOpen(true);
-    });
+    }));
 
     // Account: Logout menu item
-    window.api.onLogoutRequest(async () => {
+    unsubscribers.push(window.api.onLogoutRequest(async () => {
       await logout();
-    });
+    }));
 
     // File: Export All Images menu item
-    window.api.onExportAllImages(() => {
+    unsubscribers.push(window.api.onExportAllImages(() => {
       if (!project) {
         alert('No project loaded. Please load a project first.');
         return;
       }
       setIsExportAllImagesOpen(true);
-    });
+    }));
 
     // File: Export Project as JSON menu item
-    window.api?.onExportProjectJson(async () => {
+    unsubscribers.push(window.api?.onExportProjectJson(async () => {
       if (!project) {
         alert('No project loaded. Please load a project first.');
         return;
@@ -383,53 +424,67 @@ function App() {
         console.error('Failed to export project:', error);
         alert('Failed to export project as JSON.');
       }
-    });
+    }));
 
     // File: Export Project as PDF menu item
-    window.api?.onExportProjectPdf(() => {
+    unsubscribers.push(window.api?.onExportProjectPdf(() => {
       if (!project) {
         alert('No project loaded. Please load a project first.');
         return;
       }
       setIsExportPDFOpen(true);
-    });
+    }));
 
     // File: Save Project menu item
-    window.api?.onSaveProject(async () => {
+    unsubscribers.push(window.api?.onSaveProject(async () => {
       if (!project) {
         alert('No project loaded. Please load a project first.');
         return;
       }
       try {
-        const result = await window.api?.saveProjectJson(project, project.id);
-        if (result?.success) {
-          console.log('Project saved to:', result.path);
-          // Optionally show a brief notification
+        // Use manualSave which handles save + version + timer reset
+        const result = await manualSave();
+        if (!result.success) {
+          alert('Failed to save project.');
         }
       } catch (error) {
         console.error('Failed to save project:', error);
         alert('Failed to save project.');
       }
-    });
+    }));
 
     // File: Export as .smz menu item
-    window.api?.onExportSmz(() => {
+    unsubscribers.push(window.api?.onExportSmz(() => {
       if (!project) {
         alert('No project loaded. Please load a project first.');
         return;
       }
       setIsExportSmzOpen(true);
-    });
+    }));
 
     // File: Push to Server menu item
-    window.api?.onPushToServer(() => {
+    unsubscribers.push(window.api?.onPushToServer(() => {
       if (!project) {
         alert('No project loaded. Please load a project first.');
         return;
       }
       setIsPushToServerOpen(true);
-    });
-  }, [closeProject, setTheme, setShowRulers, setShowSpotLabels, logout, project]);
+    }));
+
+    // File: View Version History menu item
+    unsubscribers.push(window.api?.onViewVersionHistory(() => {
+      if (!project) {
+        alert('No project loaded. Please load a project first.');
+        return;
+      }
+      setIsVersionHistoryOpen(true);
+    }));
+
+    // Cleanup: remove all listeners when dependencies change or component unmounts
+    return () => {
+      unsubscribers.forEach(unsub => unsub?.());
+    };
+  }, [closeProject, setTheme, setShowRulers, setShowSpotLabels, logout, project, manualSave]);
 
   return (
     <>
@@ -477,6 +532,11 @@ function App() {
         onClose={() => setIsPushToServerOpen(false)}
         projectId={project?.id ?? null}
         projectData={project}
+      />
+      <VersionHistoryDialog
+        open={isVersionHistoryOpen}
+        onClose={() => setIsVersionHistoryOpen(false)}
+        projectId={project?.id ?? ''}
       />
     </>
   );

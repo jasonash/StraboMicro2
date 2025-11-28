@@ -114,6 +114,12 @@ export function NewProjectDialog({ isOpen, onClose }: NewProjectDialogProps) {
       // Load project into store (null filePath = unsaved project)
       loadProject(project, null);
 
+      // Clear any existing version history for this project ID
+      // (shouldn't exist, but just in case of ID collision)
+      window.api?.versionHistory?.clear(projectId).catch((err: unknown) => {
+        console.warn('[NewProjectDialog] Failed to clear version history:', err);
+      });
+
       // Reset form and close
       setFormData(initialFormData);
       setDateError('');

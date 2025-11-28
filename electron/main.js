@@ -21,6 +21,7 @@ const pdfExport = require('./pdfExport');
 const pdfProjectExport = require('./pdfReactExport');
 const smzExport = require('./smzExport');
 const serverUpload = require('./serverUpload');
+const versionHistory = require('./versionHistory');
 
 // Handle EPIPE errors at process level (prevents crash on broken stdout pipe)
 process.stdout.on('error', (err) => {
@@ -222,6 +223,15 @@ function createWindow() {
             }
           }
         },
+        {
+          label: 'View Version History...',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('menu:view-version-history');
+            }
+          }
+        },
+        { type: 'separator' },
         {
           label: 'Export as .smz...',
           accelerator: 'CmdOrCtrl+Shift+E',
@@ -515,9 +525,15 @@ function createWindow() {
     mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
   }
 
-  mainWindow.on('close', () => {
+  mainWindow.on('close', (event) => {
     // Save final window state before closing
     saveWindowState();
+
+    // Send message to renderer to save if dirty
+    // The renderer will handle the actual save operation
+    if (mainWindow && mainWindow.webContents) {
+      mainWindow.webContents.send('app:before-close');
+    }
   });
 
   mainWindow.on('closed', () => {
@@ -3766,4 +3782,92 @@ ipcMain.handle('server:push-project', async (event, projectId, projectData, opti
     });
     return { success: false, error: error.message };
   }
+});
+
+// =============================================================================
+// VERSION HISTORY
+// =============================================================================
+
+/**
+ * Create a new version snapshot
+ */
+ipcMain.handle('version:create', async (event, projectId, projectState, name, description) => {
+  log.info('[VersionHistory] Creating version for project:', projectId, name ? `(named: ${name})` : '(auto-save)');
+  return versionHistory.createVersion(projectId, projectState, name, description);
+});
+
+/**
+ * List all versions for a project
+ */
+ipcMain.handle('version:list', async (event, projectId) => {
+  return versionHistory.listVersions(projectId);
+});
+
+/**
+ * Get a specific version's data (including full project snapshot)
+ */
+ipcMain.handle('version:get', async (event, projectId, versionNumber) => {
+  return versionHistory.getVersion(projectId, versionNumber);
+});
+
+/**
+ * Get version metadata only (without loading full project)
+ */
+ipcMain.handle('version:get-info', async (event, projectId, versionNumber) => {
+  return versionHistory.getVersionInfo(projectId, versionNumber);
+});
+
+/**
+ * Restore a specific version
+ */
+ipcMain.handle('version:restore', async (event, projectId, versionNumber) => {
+  log.info('[VersionHistory] Restoring version', versionNumber, 'for project:', projectId);
+  return versionHistory.restoreVersion(projectId, versionNumber);
+});
+
+/**
+ * Delete a specific version
+ */
+ipcMain.handle('version:delete', async (event, projectId, versionNumber) => {
+  log.info('[VersionHistory] Deleting version', versionNumber, 'for project:', projectId);
+  return versionHistory.deleteVersion(projectId, versionNumber);
+});
+
+/**
+ * Clear all version history for a project
+ * Called when opening new project, downloading from server, or creating new project
+ */
+ipcMain.handle('version:clear', async (event, projectId) => {
+  log.info('[VersionHistory] Clearing history for project:', projectId);
+  return versionHistory.clearHistory(projectId);
+});
+
+/**
+ * Compute diff between two versions
+ */
+ipcMain.handle('version:diff', async (event, projectId, versionA, versionB) => {
+  return versionHistory.computeDiff(projectId, versionA, versionB);
+});
+
+/**
+ * Create a named version (checkpoint)
+ */
+ipcMain.handle('version:create-named', async (event, projectId, projectState, name, description) => {
+  log.info('[VersionHistory] Creating named version for project:', projectId, 'name:', name);
+  return versionHistory.createVersion(projectId, projectState, name, description);
+});
+
+/**
+ * Get storage statistics for a project's version history
+ */
+ipcMain.handle('version:stats', async (event, projectId) => {
+  return versionHistory.getStats(projectId);
+});
+
+/**
+ * Manually trigger pruning (normally runs automatically after create)
+ */
+ipcMain.handle('version:prune', async (event, projectId) => {
+  log.info('[VersionHistory] Manual prune requested for project:', projectId);
+  return versionHistory.pruneVersions(projectId);
 });

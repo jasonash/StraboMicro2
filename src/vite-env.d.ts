@@ -72,24 +72,27 @@ interface Window {
   getStoreState?: () => any;
 }
 
+// Unsubscribe function type for IPC event listeners
+type Unsubscribe = () => void;
+
 // Electron API declarations
 interface Window {
   api?: {
     version: string;
-    onNewProject: (callback: () => void) => void;
-    onOpenProject: (callback: () => void) => void;
-    onEditProject: (callback: () => void) => void;
-    onShowProjectDebug: (callback: () => void) => void;
-    onPreferences: (callback: () => void) => void;
-    onTestOrientationStep: (callback: () => void) => void;
-    onTestScaleBarStep: (callback: () => void) => void;
-    onClearProject: (callback: () => void) => void;
-    onQuickLoadImage: (callback: () => void) => void;
-    onLoadSampleProject: (callback: () => void) => void;
-    onResetEverything: (callback: () => void) => void;
-    onRebuildAllThumbnails: (callback: () => void) => void;
-    onUndo: (callback: () => void) => void;
-    onRedo: (callback: () => void) => void;
+    onNewProject: (callback: () => void) => Unsubscribe;
+    onOpenProject: (callback: () => void) => Unsubscribe;
+    onEditProject: (callback: () => void) => Unsubscribe;
+    onShowProjectDebug: (callback: () => void) => Unsubscribe;
+    onPreferences: (callback: () => void) => Unsubscribe;
+    onTestOrientationStep: (callback: () => void) => Unsubscribe;
+    onTestScaleBarStep: (callback: () => void) => Unsubscribe;
+    onClearProject: (callback: () => void) => Unsubscribe;
+    onQuickLoadImage: (callback: () => void) => Unsubscribe;
+    onLoadSampleProject: (callback: () => void) => Unsubscribe;
+    onResetEverything: (callback: () => void) => Unsubscribe;
+    onRebuildAllThumbnails: (callback: () => void) => Unsubscribe;
+    onUndo: (callback: () => void) => Unsubscribe;
+    onRedo: (callback: () => void) => Unsubscribe;
     openTiffDialog: () => Promise<string | null>;
     openMultipleTiffDialog: () => Promise<string[]>;
     openFileDialog: () => Promise<string | null>;
@@ -103,10 +106,10 @@ interface Window {
     }>;
     loadImagePreview: (filePath: string, size?: 'thumbnail' | 'medium' | 'full') => Promise<string>;
     setWindowTitle: (title: string) => void;
-    onThemeChange: (callback: (theme: 'dark' | 'light' | 'system') => void) => void;
+    onThemeChange: (callback: (theme: 'dark' | 'light' | 'system') => void) => Unsubscribe;
     notifyThemeChanged: (theme: 'dark' | 'light' | 'system') => void;
-    onToggleRulers: (callback: (checked: boolean) => void) => void;
-    onToggleSpotLabels: (callback: (checked: boolean) => void) => void;
+    onToggleRulers: (callback: (checked: boolean) => void) => Unsubscribe;
+    onToggleSpotLabels: (callback: (checked: boolean) => void) => Unsubscribe;
 
     // Tile-based image loading
     loadImageWithTiles: (imagePath: string) => Promise<{
@@ -285,7 +288,7 @@ interface Window {
     removeExportAllImagesProgressListener: () => void;
 
     // Menu event for export all images
-    onExportAllImages: (callback: () => void) => void;
+    onExportAllImages: (callback: () => void) => Unsubscribe;
 
     // Export project as JSON
     exportProjectJson: (projectData: any) => Promise<{
@@ -293,7 +296,7 @@ interface Window {
       canceled?: boolean;
       filePath?: string;
     }>;
-    onExportProjectJson: (callback: () => void) => void;
+    onExportProjectJson: (callback: () => void) => Unsubscribe;
 
     // Export project as PDF
     exportProjectPdf: (projectId: string, projectData: any) => Promise<{
@@ -301,7 +304,7 @@ interface Window {
       canceled?: boolean;
       filePath?: string;
     }>;
-    onExportProjectPdf: (callback: () => void) => void;
+    onExportProjectPdf: (callback: () => void) => Unsubscribe;
     onExportPdfProgress: (callback: (progress: {
       phase: string;
       current: number;
@@ -342,12 +345,12 @@ interface Window {
     };
 
     // Auth menu events
-    onLoginRequest: (callback: () => void) => void;
-    onLogoutRequest: (callback: () => void) => void;
+    onLoginRequest: (callback: () => void) => Unsubscribe;
+    onLogoutRequest: (callback: () => void) => Unsubscribe;
 
     // Save/Export menu events
-    onSaveProject: (callback: () => void) => void;
-    onExportSmz: (callback: () => void) => void;
+    onSaveProject: (callback: () => void) => Unsubscribe;
+    onExportSmz: (callback: () => void) => Unsubscribe;
 
     // Export as .smz
     exportSmz: (projectId: string, projectData: any) => Promise<{
@@ -367,7 +370,7 @@ interface Window {
     removeExportSmzProgressListener: () => void;
 
     // Push to Server
-    onPushToServer: (callback: () => void) => void;
+    onPushToServer: (callback: () => void) => Unsubscribe;
     server: {
       checkConnectivity: () => Promise<{
         online: boolean;
@@ -396,5 +399,122 @@ interface Window {
       }) => void) => void;
       removePushProgressListener: () => void;
     };
+
+    // App lifecycle
+    onBeforeClose: (callback: () => void) => Unsubscribe;
+
+    // Version History
+    onViewVersionHistory: (callback: () => void) => Unsubscribe;
+    versionHistory: {
+      // Create a new version (auto-save)
+      create: (
+        projectId: string,
+        projectState: any,
+        name?: string | null,
+        description?: string | null
+      ) => Promise<{
+        success: boolean;
+        version?: number;
+        error?: string;
+      }>;
+      // Create a named version (checkpoint)
+      createNamed: (
+        projectId: string,
+        projectState: any,
+        name: string,
+        description?: string | null
+      ) => Promise<{
+        success: boolean;
+        version?: number;
+        error?: string;
+      }>;
+      // List all versions for a project
+      list: (projectId: string) => Promise<VersionEntry[]>;
+      // Get a specific version (includes full project snapshot)
+      get: (projectId: string, versionNumber: number) => Promise<{
+        version: number;
+        timestamp: string;
+        checksum: string;
+        project: any;
+      } | null>;
+      // Get version metadata only (without project snapshot)
+      getInfo: (projectId: string, versionNumber: number) => Promise<VersionEntry | null>;
+      // Restore a specific version (returns project state)
+      restore: (projectId: string, versionNumber: number) => Promise<{
+        success: boolean;
+        project?: any;
+        error?: string;
+      }>;
+      // Delete a specific version
+      delete: (projectId: string, versionNumber: number) => Promise<{
+        success: boolean;
+        error?: string;
+      }>;
+      // Clear all version history for a project
+      clear: (projectId: string) => Promise<{
+        success: boolean;
+        error?: string;
+      }>;
+      // Compute diff between two versions
+      diff: (projectId: string, versionA: number, versionB: number) => Promise<{
+        success: boolean;
+        diff?: VersionDiff;
+        error?: string;
+      }>;
+      // Get storage statistics
+      stats: (projectId: string) => Promise<VersionStats | null>;
+      // Manually trigger pruning
+      prune: (projectId: string) => Promise<{
+        success: boolean;
+        prunedCount: number;
+        error?: string;
+      }>;
+    };
   };
+}
+
+// Version History Types
+interface VersionEntry {
+  version: number;
+  timestamp: string;
+  name: string | null;
+  description: string | null;
+  isAutoSave: boolean;
+  sizeBytes: number;
+  changeStats: {
+    datasetsAdded: number;
+    datasetsRemoved: number;
+    samplesAdded: number;
+    samplesRemoved: number;
+    micrographsAdded: number;
+    micrographsRemoved: number;
+    spotsAdded: number;
+    spotsRemoved: number;
+  };
+}
+
+interface VersionDiff {
+  versionA: number | null;
+  versionB: number | null;
+  changes: DiffEntry[];
+  summary: {
+    added: number;
+    removed: number;
+    modified: number;
+  };
+}
+
+interface DiffEntry {
+  type: 'added' | 'removed' | 'modified';
+  entityType: 'dataset' | 'sample' | 'micrograph' | 'spot' | 'group' | 'tag';
+  entityId: string;
+  entityName: string;
+  parentPath: string | null;
+}
+
+interface VersionStats {
+  totalVersions: number;
+  totalSizeBytes: number;
+  oldestTimestamp: string | null;
+  newestTimestamp: string | null;
 }

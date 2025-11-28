@@ -672,8 +672,9 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
         ]
       : [];
 
+    const projectId = crypto.randomUUID();
     const newProject = {
-      id: crypto.randomUUID(),
+      id: projectId,
       name: formData.name,
       startDate: formData.startDate || undefined,
       endDate: formData.endDate || undefined,
@@ -719,6 +720,12 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
     };
 
     loadProject(newProject, null);
+
+    // Clear any existing version history for this project ID
+    // (shouldn't exist, but just in case of ID collision)
+    window.api?.versionHistory?.clear(projectId).catch((err: unknown) => {
+      console.warn('[NewProjectWizard] Failed to clear version history:', err);
+    });
 
     // Set the newly created micrograph as active if it exists
     if (micrographs.length > 0) {
