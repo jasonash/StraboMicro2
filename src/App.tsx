@@ -32,6 +32,7 @@ function App() {
   const setTheme = useAppStore(state => state.setTheme);
   const setShowRulers = useAppStore(state => state.setShowRulers);
   const setShowSpotLabels = useAppStore(state => state.setShowSpotLabels);
+  const setShowMicrographOutlines = useAppStore(state => state.setShowMicrographOutlines);
   const { checkAuthStatus, logout } = useAuthStore();
 
   // Initialize theme system
@@ -392,6 +393,11 @@ function App() {
       setShowSpotLabels(checked);
     }));
 
+    // View: Toggle Overlay Outlines menu item
+    unsubscribers.push(window.api.onToggleOverlayOutlines((checked) => {
+      setShowMicrographOutlines(checked);
+    }));
+
     // Account: Login menu item
     unsubscribers.push(window.api.onLoginRequest(() => {
       setIsLoginDialogOpen(true);
@@ -533,7 +539,7 @@ function App() {
     return () => {
       unsubscribers.forEach(unsub => unsub?.());
     };
-  }, [closeProject, setTheme, setShowRulers, setShowSpotLabels, logout, project, manualSave, saveBeforeSwitch]);
+  }, [closeProject, setTheme, setShowRulers, setShowSpotLabels, setShowMicrographOutlines, logout, project, manualSave, saveBeforeSwitch]);
 
   return (
     <>

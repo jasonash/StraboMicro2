@@ -38,6 +38,7 @@ interface AssociatedImageRendererProps {
   onTileLoadingStart?: (message: string) => void; // Notify parent when tile loading starts
   onTileLoadingEnd?: () => void; // Notify parent when tile loading ends
   onClick?: (micrographId: string) => void; // Called when overlay is clicked (for drill-down navigation)
+  showOutline?: boolean; // Show red outline around overlay (like legacy app)
 }
 
 interface TileInfo {
@@ -66,6 +67,7 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
   onTileLoadingStart,
   onTileLoadingEnd,
   onClick,
+  showOutline = false,
 }) => {
   const [imageState, setImageState] = useState<ImageState>({
     mode: 'THUMBNAIL',
@@ -421,6 +423,18 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
           height={imageHeight}
           opacity={micrograph.opacity ?? 1.0}
         />
+        {/* Red outline around overlay */}
+        {showOutline && (
+          <Rect
+            x={0}
+            y={0}
+            width={imageWidth}
+            height={imageHeight}
+            stroke="#cc3333"
+            strokeWidth={2 / stageScale} // Keep stroke width consistent regardless of zoom
+            listening={false}
+          />
+        )}
         {/* Transparent hit area for reliable click detection */}
         {onClick && (
           <Rect
@@ -466,6 +480,18 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
             />
           );
         })}
+        {/* Red outline around overlay */}
+        {showOutline && (
+          <Rect
+            x={0}
+            y={0}
+            width={imageWidth}
+            height={imageHeight}
+            stroke="#cc3333"
+            strokeWidth={2 / stageScale} // Keep stroke width consistent regardless of zoom
+            listening={false}
+          />
+        )}
         {/* Transparent hit area for reliable click detection */}
         {onClick && (
           <Rect

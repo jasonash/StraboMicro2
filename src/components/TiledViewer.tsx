@@ -111,6 +111,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(({ image
   const activeTool = useAppStore((state) => state.activeTool);
   const activeSpotId = useAppStore((state) => state.activeSpotId);
   const showRulers = useAppStore((state) => state.showRulers);
+  const showMicrographOutlines = useAppStore((state) => state.showMicrographOutlines);
   const theme = useAppStore((state) => state.theme);
   const selectActiveSpot = useAppStore((state) => state.selectActiveSpot);
   const setActiveTool = useAppStore((state) => state.setActiveTool);
@@ -1030,6 +1031,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(({ image
                     setOverlayLoadingCount(prev => Math.max(0, prev - 1));
                   }}
                   onClick={handleOverlayClick}
+                  showOutline={showMicrographOutlines}
                 />
               ))}
             </Layer>
