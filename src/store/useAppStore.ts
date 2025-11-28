@@ -47,6 +47,7 @@ interface AppState {
   activeSampleId: string | null;
   activeMicrographId: string | null;
   activeSpotId: string | null; // Single active spot for properties panel
+  micrographNavigationStack: string[]; // Stack of micrograph IDs for back navigation (drill-down)
 
   // ========== SELECTION STATE ==========
   selectedSpotIds: string[]; // Multi-selection for batch operations
@@ -85,6 +86,9 @@ interface AppState {
   selectSample: (id: string | null) => void;
   selectMicrograph: (id: string | null) => void;
   selectActiveSpot: (id: string | null) => void;
+  drillDownToMicrograph: (id: string) => void; // Navigate to child micrograph (pushes current to stack)
+  navigateBack: () => void; // Go back to previous micrograph in stack
+  clearNavigationStack: () => void; // Clear the navigation stack
 
   // ========== SELECTION ACTIONS ==========
   selectSpot: (id: string, multiSelect?: boolean) => void;
@@ -170,6 +174,7 @@ export const useAppStore = create<AppState>()(
           activeSampleId: null,
           activeMicrographId: null,
           activeSpotId: null,
+          micrographNavigationStack: [],
 
           selectedSpotIds: [],
 
@@ -206,6 +211,7 @@ export const useAppStore = create<AppState>()(
               activeSampleId: null,
               activeMicrographId: null,
               activeSpotId: null,
+              micrographNavigationStack: [],
               selectedSpotIds: [],
               micrographIndex,
               spotIndex,
@@ -220,6 +226,7 @@ export const useAppStore = create<AppState>()(
             activeSampleId: null,
             activeMicrographId: null,
             activeSpotId: null,
+            micrographNavigationStack: [],
             selectedSpotIds: [],
             micrographIndex: new Map(),
             spotIndex: new Map(),
@@ -264,9 +271,42 @@ export const useAppStore = create<AppState>()(
 
           selectSample: (id) => set({ activeSampleId: id }),
 
-          selectMicrograph: (id) => set({ activeMicrographId: id, activeSpotId: null }),
+          selectMicrograph: (id) => set({
+            activeMicrographId: id,
+            activeSpotId: null,
+            micrographNavigationStack: [], // Clear stack when selecting from sidebar
+          }),
 
           selectActiveSpot: (id) => set({ activeSpotId: id }),
+
+          drillDownToMicrograph: (id) => {
+            const { activeMicrographId, micrographNavigationStack } = get();
+            if (!activeMicrographId || activeMicrographId === id) return;
+
+            // Push current micrograph onto stack and navigate to child
+            set({
+              activeMicrographId: id,
+              activeSpotId: null,
+              micrographNavigationStack: [...micrographNavigationStack, activeMicrographId],
+            });
+          },
+
+          navigateBack: () => {
+            const { micrographNavigationStack } = get();
+            if (micrographNavigationStack.length === 0) return;
+
+            // Pop the last micrograph from stack and navigate to it
+            const newStack = [...micrographNavigationStack];
+            const previousMicrographId = newStack.pop()!;
+
+            set({
+              activeMicrographId: previousMicrographId,
+              activeSpotId: null,
+              micrographNavigationStack: newStack,
+            });
+          },
+
+          clearNavigationStack: () => set({ micrographNavigationStack: [] }),
 
           // ========== SELECTION ACTIONS ==========
 
