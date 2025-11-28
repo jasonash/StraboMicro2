@@ -52,6 +52,7 @@ import { NewDatasetDialog } from './dialogs/NewDatasetDialog';
 import { NewSampleDialog } from './dialogs/NewSampleDialog';
 import { NewMicrographDialog } from './dialogs/NewMicrographDialog';
 import { EditSampleDialog } from './dialogs/EditSampleDialog';
+import { EditDatasetDialog } from './dialogs/EditDatasetDialog';
 import { ConfirmDialog } from './dialogs/ConfirmDialog';
 import { AddMicrographToGroupsDialog } from './dialogs/AddMicrographToGroupsDialog';
 import { EditMicrographDialog } from './dialogs/metadata/EditMicrographDialog';
@@ -273,6 +274,8 @@ export function ProjectTree() {
   const [selectedParentMicrographId, setSelectedParentMicrographId] = useState<string | null>(null);
 
   // Edit/Delete dialog states
+  const [showEditDataset, setShowEditDataset] = useState(false);
+  const [editingDatasetId, setEditingDatasetId] = useState<string | null>(null);
   const [showEditSample, setShowEditSample] = useState(false);
   const [editingSample, setEditingSample] = useState<SampleMetadata | null>(null);
   const [showEditMicrograph, setShowEditMicrograph] = useState(false);
@@ -1078,6 +1081,13 @@ export function ProjectTree() {
           }}>
             Add New Sample
           </MenuItem>
+          <MenuItem onClick={() => {
+            setEditingDatasetId(dataset.id);
+            setShowEditDataset(true);
+            setDatasetMenuAnchor({ ...datasetMenuAnchor, [dataset.id]: null });
+          }}>
+            Edit Dataset Metadata
+          </MenuItem>
         </Menu>
       </Box>
     );
@@ -1173,6 +1183,18 @@ export function ProjectTree() {
         sampleId={selectedSampleId}
         parentMicrographId={selectedParentMicrographId}
       />
+
+      {/* Edit Dataset Dialog */}
+      {editingDatasetId && (
+        <EditDatasetDialog
+          isOpen={showEditDataset}
+          onClose={() => {
+            setShowEditDataset(false);
+            setEditingDatasetId(null);
+          }}
+          datasetId={editingDatasetId}
+        />
+      )}
 
       {/* Edit Sample Dialog */}
       <EditSampleDialog
