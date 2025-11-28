@@ -210,8 +210,10 @@ export const useImperativeGeometryEditing = (refs: GeometryEditingRefs) => {
 
   /**
    * Enter edit mode for a spot
+   * @param spot - The spot to edit
+   * @param currentZoom - Optional current zoom level (more reliable than reading from stage)
    */
-  const enterEditMode = useCallback((spot: Spot) => {
+  const enterEditMode = useCallback((spot: Spot, currentZoom?: number) => {
     const overlayLayer = refs.layerRef.current;
     const stage = refs.stageRef.current?.getStage?.();
     if (!overlayLayer || !stage) {
@@ -234,7 +236,8 @@ export const useImperativeGeometryEditing = (refs: GeometryEditingRefs) => {
     const isPoint = geometryType === 'point' || geometryType === 'Point';
     const isClosed = geometryType === 'polygon' || geometryType === 'Polygon';
 
-    const scale = stage.scaleX();
+    // Use provided zoom or fall back to stage scale
+    const scale = currentZoom ?? stage.scaleX();
 
     // Handle point editing differently - just a draggable circle
     if (isPoint && geometry.length > 0) {
@@ -276,12 +279,13 @@ export const useImperativeGeometryEditing = (refs: GeometryEditingRefs) => {
     });
 
     // Create the temporary editing polygon/line imperatively
+    // Use red fill with 50% opacity for editing mode to clearly indicate editable state
     const polygon = new Konva.Line({
       points: points,
       stroke: '#ff9900', // Orange to indicate editing
       strokeWidth: 3 / scale,
-      fill: isClosed ? spot.color || '#00ff00' : undefined,
-      opacity: isClosed ? ((spot.opacity ?? 50) / 100) : undefined,
+      fill: isClosed ? '#ff0000' : undefined, // Red fill for editing mode
+      opacity: isClosed ? 0.5 : undefined, // 50% opacity for editing mode
       closed: isClosed,
       listening: true,
       draggable: true, // Allow dragging the whole shape
