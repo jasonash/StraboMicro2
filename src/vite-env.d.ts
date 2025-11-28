@@ -111,6 +111,7 @@ interface Window {
     notifyThemeChanged: (theme: 'dark' | 'light' | 'system') => void;
     onToggleRulers: (callback: (checked: boolean) => void) => Unsubscribe;
     onToggleSpotLabels: (callback: (checked: boolean) => void) => Unsubscribe;
+    onToggleOverlayOutlines: (callback: (checked: boolean) => void) => Unsubscribe;
 
     // Tile-based image loading
     loadImageWithTiles: (imagePath: string) => Promise<{

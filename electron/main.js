@@ -445,6 +445,16 @@ function createWindow() {
             }
           }
         },
+        {
+          label: 'Show Overlay Outlines',
+          type: 'checkbox',
+          checked: true,
+          click: (menuItem) => {
+            if (mainWindow) {
+              mainWindow.webContents.send('view:toggle-overlay-outlines', menuItem.checked);
+            }
+          }
+        },
         { type: 'separator' },
         {
           label: 'Theme',

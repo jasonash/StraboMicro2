@@ -106,6 +106,11 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('view:toggle-spot-labels', handler);
     return () => ipcRenderer.removeListener('view:toggle-spot-labels', handler);
   },
+  onToggleOverlayOutlines: (callback) => {
+    const handler = (event, checked) => callback(checked);
+    ipcRenderer.on('view:toggle-overlay-outlines', handler);
+    return () => ipcRenderer.removeListener('view:toggle-overlay-outlines', handler);
+  },
 
   // Tile-based image loading
   loadImageWithTiles: (imagePath) => ipcRenderer.invoke('image:load-with-tiles', imagePath),
