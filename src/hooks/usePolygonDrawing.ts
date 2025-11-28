@@ -79,9 +79,9 @@ export const usePolygonDrawing = ({ layer, scale, onComplete }: UsePolygonDrawin
         // Create new polygon
         const polygon = new Konva.Line({
           points: state.currentPoints.slice(),
-          stroke: '#00ff00',
+          stroke: '#cc3333',
           strokeWidth: 2 / scale,
-          fill: 'rgba(0, 255, 0, 0.2)',
+          fill: 'rgba(204, 51, 51, 0.2)',
           closed: false,
           listening: false,
           name: 'drawing-polygon', // Add unique name
@@ -92,10 +92,10 @@ export const usePolygonDrawing = ({ layer, scale, onComplete }: UsePolygonDrawin
         // Create preview line (shows complete polygon shape while drawing)
         const previewLine = new Konva.Line({
           points: [],
-          stroke: '#00ff00',
+          stroke: '#cc3333',
           strokeWidth: 2 / scale,
           dash: [10, 5],
-          fill: 'rgba(0, 255, 0, 0.1)',
+          fill: 'rgba(204, 51, 51, 0.1)',
           closed: true,
           listening: false,
           name: 'drawing-polygon-preview', // Add unique name

@@ -76,7 +76,7 @@ export const useLineDrawing = ({ layer, scale, onComplete }: UseLineDrawingOptio
         // Create new line
         const line = new Konva.Line({
           points: state.currentPoints.slice(),
-          stroke: '#00ff00',
+          stroke: '#cc3333',
           strokeWidth: 2 / scale,
           listening: false,
           lineCap: 'round',
@@ -89,7 +89,7 @@ export const useLineDrawing = ({ layer, scale, onComplete }: UseLineDrawingOptio
         // Create preview line (shows next segment while drawing)
         const previewLine = new Konva.Line({
           points: [],
-          stroke: '#00ff00',
+          stroke: '#cc3333',
           strokeWidth: 2 / scale,
           dash: [10, 5],
           listening: false,
