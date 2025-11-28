@@ -50,6 +50,7 @@
     "archiver": "^7.0.1",
     "canvas": "^3.2.0",
     "electron-store": "^11.0.2",
+    "form-data": "^4.0.5",
     "immer": "^10.2.0",
     "konva": "^9.3.22",
     "mui-color-input": "^7.0.0",

@@ -365,5 +365,36 @@ interface Window {
       error?: string;
     }) => void) => void;
     removeExportSmzProgressListener: () => void;
+
+    // Push to Server
+    onPushToServer: (callback: () => void) => void;
+    server: {
+      checkConnectivity: () => Promise<{
+        online: boolean;
+        error?: string;
+      }>;
+      checkProjectExists: (projectId: string) => Promise<{
+        exists: boolean;
+        error?: string;
+      }>;
+      pushProject: (
+        projectId: string,
+        projectData: any,
+        options?: { overwrite?: boolean }
+      ) => Promise<{
+        success: boolean;
+        needsOverwriteConfirm?: boolean;
+        error?: string;
+      }>;
+      onPushProgress: (callback: (progress: {
+        phase: string;
+        percentage: number;
+        message: string;
+        itemName?: string;
+        bytesUploaded?: number;
+        bytesTotal?: number;
+      }) => void) => void;
+      removePushProgressListener: () => void;
+    };
   };
 }
