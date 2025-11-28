@@ -113,18 +113,14 @@ async function rebuildIndex() {
     existingIndex.projects.map(p => [p.id, p])
   );
 
-  // Get all project folder UUIDs
+  // Get all project folders
   const projectIds = await projectFolders.listProjectFolders();
 
-  // Filter out non-UUID folders (like the index file itself)
-  const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-  const validProjectIds = projectIds.filter(id => uuidPattern.test(id));
+  log.info(`[ProjectsIndex] Found ${projectIds.length} project folder(s)`);
 
-  log.info(`[ProjectsIndex] Found ${validProjectIds.length} project folder(s)`);
-
-  // Read info from each project
+  // Read info from each project (only those with valid project.json)
   const projects = [];
-  for (const projectId of validProjectIds) {
+  for (const projectId of projectIds) {
     const info = await readProjectInfo(projectId);
     if (info) {
       // Preserve lastOpened from existing index, or use lastModified as initial value
