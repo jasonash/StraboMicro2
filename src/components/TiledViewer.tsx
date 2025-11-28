@@ -767,15 +767,15 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(({ image
   const handleEditGeometry = useCallback((spot: Spot) => {
     console.log('Edit geometry for spot:', spot.name);
 
-    // Enter imperative edit mode
-    geometryEditing.enterEditMode(spot);
+    // Enter imperative edit mode, passing current zoom for correct handle sizes
+    geometryEditing.enterEditMode(spot, zoom);
 
     // Also select the spot to highlight it
     selectActiveSpot(spot.id);
 
     // Disable any active drawing tool
     setActiveTool(null);
-  }, [geometryEditing, selectActiveSpot, setActiveTool]);
+  }, [geometryEditing, selectActiveSpot, setActiveTool, zoom]);
 
   /**
    * Handle edit spot metadata

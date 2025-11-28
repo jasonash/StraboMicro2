@@ -28,6 +28,7 @@ export const useImperativeGeometryEditing = (refs: GeometryEditingRefs) => {
   const midpointCirclesRef = useRef<Konva.Circle[]>([]);
   const originalGeometryRef = useRef<Array<{ X: number; Y: number }> | null>(null);
   const editingSpotIdRef = useRef<string | null>(null);
+  const currentScaleRef = useRef<number>(1); // Track current scale for drag handlers
 
   // Store actions
   const startEditingSpot = useAppStore((state) => state.startEditingSpot);
@@ -37,8 +38,11 @@ export const useImperativeGeometryEditing = (refs: GeometryEditingRefs) => {
 
   /**
    * Update vertex and midpoint handles
+   * @param polygon - The polygon being edited
+   * @param geometryType - The type of geometry (polygon, line, etc.)
+   * @param currentScale - Optional scale override (stage.scaleX() can be stale)
    */
-  const updateEditHandles = useCallback((polygon: Konva.Line, geometryType: string) => {
+  const updateEditHandles = useCallback((polygon: Konva.Line, geometryType: string, currentScale?: number) => {
     const overlayLayer = refs.layerRef.current;
     const stage = refs.stageRef.current?.getStage?.();
     if (!overlayLayer || !stage) return;
@@ -59,7 +63,10 @@ export const useImperativeGeometryEditing = (refs: GeometryEditingRefs) => {
     const points = polygon.points();
     const polygonX = polygon.x();
     const polygonY = polygon.y();
-    const scale = stage.scaleX();
+    const scale = currentScale ?? currentScaleRef.current;
+
+    // Update the ref so drag handlers use the current scale
+    currentScaleRef.current = scale;
 
     // Create draggable vertex circles
     const vertexCircles: Konva.Circle[] = [];
@@ -68,7 +75,7 @@ export const useImperativeGeometryEditing = (refs: GeometryEditingRefs) => {
         x: polygonX + points[i],
         y: polygonY + points[i + 1],
         radius: 6 / scale,
-        fill: '#ff9900',
+        fill: '#cc3333',
         stroke: '#ffffff',
         strokeWidth: 2 / scale,
         draggable: true,
@@ -121,10 +128,10 @@ export const useImperativeGeometryEditing = (refs: GeometryEditingRefs) => {
         overlayLayer?.batchDraw();
       });
 
-      // Recreate handles after drag end
+      // Recreate handles after drag end - use ref for current scale
       circle.on('dragend', (e) => {
         e.cancelBubble = true;
-        updateEditHandles(polygon, geometryType);
+        updateEditHandles(polygon, geometryType, currentScaleRef.current);
       });
 
       vertexCircles.push(circle);
@@ -146,7 +153,7 @@ export const useImperativeGeometryEditing = (refs: GeometryEditingRefs) => {
         x: midX,
         y: midY,
         radius: 4 / scale,
-        fill: 'rgba(255, 153, 0, 0.5)',
+        fill: 'rgba(204, 51, 51, 0.5)',
         stroke: '#ffffff',
         strokeWidth: 1 / scale,
         draggable: true,
@@ -169,13 +176,13 @@ export const useImperativeGeometryEditing = (refs: GeometryEditingRefs) => {
 
         polygon.points(newPoints);
 
-        // Mark as converted and update appearance
+        // Mark as converted and update appearance - use ref for current scale
         midCircle.setAttr('isConverted', true);
         midCircle.setAttr('vertexIndex', edgeStartIndex + 2);
-        midCircle.fill('#ff9900');
+        midCircle.fill('#cc3333');
         midCircle.opacity(1);
-        midCircle.radius(6 / stage.scaleX());
-        midCircle.strokeWidth(2 / stage.scaleX());
+        midCircle.radius(6 / currentScaleRef.current);
+        midCircle.strokeWidth(2 / currentScaleRef.current);
       });
 
       // Update polygon as new vertex is dragged
@@ -191,11 +198,11 @@ export const useImperativeGeometryEditing = (refs: GeometryEditingRefs) => {
         }
       });
 
-      // Recreate handles when drag ends
+      // Recreate handles when drag ends - use ref for current scale
       midCircle.on('dragend', (e) => {
         e.cancelBubble = true;
         if (midCircle.getAttr('isConverted')) {
-          updateEditHandles(polygon, geometryType);
+          updateEditHandles(polygon, geometryType, currentScaleRef.current);
         }
       });
 
@@ -210,8 +217,10 @@ export const useImperativeGeometryEditing = (refs: GeometryEditingRefs) => {
 
   /**
    * Enter edit mode for a spot
+   * @param spot - The spot to edit
+   * @param currentZoom - Optional current zoom level (more reliable than reading from stage)
    */
-  const enterEditMode = useCallback((spot: Spot) => {
+  const enterEditMode = useCallback((spot: Spot, currentZoom?: number) => {
     const overlayLayer = refs.layerRef.current;
     const stage = refs.stageRef.current?.getStage?.();
     if (!overlayLayer || !stage) {
@@ -234,7 +243,11 @@ export const useImperativeGeometryEditing = (refs: GeometryEditingRefs) => {
     const isPoint = geometryType === 'point' || geometryType === 'Point';
     const isClosed = geometryType === 'polygon' || geometryType === 'Polygon';
 
-    const scale = stage.scaleX();
+    // Use provided zoom or fall back to stage scale
+    const scale = currentZoom ?? stage.scaleX();
+
+    // Store in ref for drag handlers to use
+    currentScaleRef.current = scale;
 
     // Handle point editing differently - just a draggable circle
     if (isPoint && geometry.length > 0) {
@@ -243,7 +256,7 @@ export const useImperativeGeometryEditing = (refs: GeometryEditingRefs) => {
         x: point.X,
         y: point.Y,
         radius: 6 / scale, // Same size as vertex handles
-        fill: '#ff9900', // Orange to indicate editing
+        fill: '#cc3333', // Orange to indicate editing
         stroke: '#ffffff',
         strokeWidth: 2 / scale,
         draggable: true,
@@ -276,12 +289,13 @@ export const useImperativeGeometryEditing = (refs: GeometryEditingRefs) => {
     });
 
     // Create the temporary editing polygon/line imperatively
+    // Use red fill with 50% opacity for editing mode to clearly indicate editable state
     const polygon = new Konva.Line({
       points: points,
-      stroke: '#ff9900', // Orange to indicate editing
+      stroke: '#cc3333', // Red to match editing polygon fill
       strokeWidth: 3 / scale,
-      fill: isClosed ? spot.color || '#00ff00' : undefined,
-      opacity: isClosed ? ((spot.opacity ?? 50) / 100) : undefined,
+      fill: isClosed ? '#ff0000' : undefined, // Red fill for editing mode
+      opacity: isClosed ? 0.5 : undefined, // 50% opacity for editing mode
       closed: isClosed,
       listening: true,
       draggable: true, // Allow dragging the whole shape
@@ -294,7 +308,7 @@ export const useImperativeGeometryEditing = (refs: GeometryEditingRefs) => {
 
     polygon.on('dragmove', (e) => {
       e.cancelBubble = true;
-      updateEditHandles(polygon, geometryType);
+      updateEditHandles(polygon, geometryType, currentScaleRef.current);
     });
 
     polygon.on('dragend', (e) => {
@@ -304,8 +318,8 @@ export const useImperativeGeometryEditing = (refs: GeometryEditingRefs) => {
     editingPolygonRef.current = polygon;
     overlayLayer.add(polygon);
 
-    // Create editing handles for lines/polygons
-    updateEditHandles(polygon, geometryType);
+    // Create editing handles for lines/polygons, passing current scale for correct sizing
+    updateEditHandles(polygon, geometryType, scale);
 
     // Note: The React-rendered spot should be hidden via the `isEditing` prop in SpotRenderer
   }, [refs, startEditingSpot, updateEditHandles]);
@@ -406,6 +420,9 @@ export const useImperativeGeometryEditing = (refs: GeometryEditingRefs) => {
    * Update handle sizes when zoom changes
    */
   const updateHandleSizes = useCallback((newScale: number) => {
+    // Always update the ref so drag handlers use current scale
+    currentScaleRef.current = newScale;
+
     if (!editingPolygonRef.current) return;
 
     const shape = editingPolygonRef.current;
