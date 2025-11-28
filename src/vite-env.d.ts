@@ -72,24 +72,27 @@ interface Window {
   getStoreState?: () => any;
 }
 
+// Unsubscribe function type for IPC event listeners
+type Unsubscribe = () => void;
+
 // Electron API declarations
 interface Window {
   api?: {
     version: string;
-    onNewProject: (callback: () => void) => void;
-    onOpenProject: (callback: () => void) => void;
-    onEditProject: (callback: () => void) => void;
-    onShowProjectDebug: (callback: () => void) => void;
-    onPreferences: (callback: () => void) => void;
-    onTestOrientationStep: (callback: () => void) => void;
-    onTestScaleBarStep: (callback: () => void) => void;
-    onClearProject: (callback: () => void) => void;
-    onQuickLoadImage: (callback: () => void) => void;
-    onLoadSampleProject: (callback: () => void) => void;
-    onResetEverything: (callback: () => void) => void;
-    onRebuildAllThumbnails: (callback: () => void) => void;
-    onUndo: (callback: () => void) => void;
-    onRedo: (callback: () => void) => void;
+    onNewProject: (callback: () => void) => Unsubscribe;
+    onOpenProject: (callback: () => void) => Unsubscribe;
+    onEditProject: (callback: () => void) => Unsubscribe;
+    onShowProjectDebug: (callback: () => void) => Unsubscribe;
+    onPreferences: (callback: () => void) => Unsubscribe;
+    onTestOrientationStep: (callback: () => void) => Unsubscribe;
+    onTestScaleBarStep: (callback: () => void) => Unsubscribe;
+    onClearProject: (callback: () => void) => Unsubscribe;
+    onQuickLoadImage: (callback: () => void) => Unsubscribe;
+    onLoadSampleProject: (callback: () => void) => Unsubscribe;
+    onResetEverything: (callback: () => void) => Unsubscribe;
+    onRebuildAllThumbnails: (callback: () => void) => Unsubscribe;
+    onUndo: (callback: () => void) => Unsubscribe;
+    onRedo: (callback: () => void) => Unsubscribe;
     openTiffDialog: () => Promise<string | null>;
     openMultipleTiffDialog: () => Promise<string[]>;
     openFileDialog: () => Promise<string | null>;
@@ -103,10 +106,10 @@ interface Window {
     }>;
     loadImagePreview: (filePath: string, size?: 'thumbnail' | 'medium' | 'full') => Promise<string>;
     setWindowTitle: (title: string) => void;
-    onThemeChange: (callback: (theme: 'dark' | 'light' | 'system') => void) => void;
+    onThemeChange: (callback: (theme: 'dark' | 'light' | 'system') => void) => Unsubscribe;
     notifyThemeChanged: (theme: 'dark' | 'light' | 'system') => void;
-    onToggleRulers: (callback: (checked: boolean) => void) => void;
-    onToggleSpotLabels: (callback: (checked: boolean) => void) => void;
+    onToggleRulers: (callback: (checked: boolean) => void) => Unsubscribe;
+    onToggleSpotLabels: (callback: (checked: boolean) => void) => Unsubscribe;
 
     // Tile-based image loading
     loadImageWithTiles: (imagePath: string) => Promise<{
@@ -285,7 +288,7 @@ interface Window {
     removeExportAllImagesProgressListener: () => void;
 
     // Menu event for export all images
-    onExportAllImages: (callback: () => void) => void;
+    onExportAllImages: (callback: () => void) => Unsubscribe;
 
     // Export project as JSON
     exportProjectJson: (projectData: any) => Promise<{
@@ -293,7 +296,7 @@ interface Window {
       canceled?: boolean;
       filePath?: string;
     }>;
-    onExportProjectJson: (callback: () => void) => void;
+    onExportProjectJson: (callback: () => void) => Unsubscribe;
 
     // Export project as PDF
     exportProjectPdf: (projectId: string, projectData: any) => Promise<{
@@ -301,7 +304,7 @@ interface Window {
       canceled?: boolean;
       filePath?: string;
     }>;
-    onExportProjectPdf: (callback: () => void) => void;
+    onExportProjectPdf: (callback: () => void) => Unsubscribe;
     onExportPdfProgress: (callback: (progress: {
       phase: string;
       current: number;
@@ -342,12 +345,12 @@ interface Window {
     };
 
     // Auth menu events
-    onLoginRequest: (callback: () => void) => void;
-    onLogoutRequest: (callback: () => void) => void;
+    onLoginRequest: (callback: () => void) => Unsubscribe;
+    onLogoutRequest: (callback: () => void) => Unsubscribe;
 
     // Save/Export menu events
-    onSaveProject: (callback: () => void) => void;
-    onExportSmz: (callback: () => void) => void;
+    onSaveProject: (callback: () => void) => Unsubscribe;
+    onExportSmz: (callback: () => void) => Unsubscribe;
 
     // Export as .smz
     exportSmz: (projectId: string, projectData: any) => Promise<{
@@ -367,7 +370,7 @@ interface Window {
     removeExportSmzProgressListener: () => void;
 
     // Push to Server
-    onPushToServer: (callback: () => void) => void;
+    onPushToServer: (callback: () => void) => Unsubscribe;
     server: {
       checkConnectivity: () => Promise<{
         online: boolean;
@@ -398,10 +401,10 @@ interface Window {
     };
 
     // App lifecycle
-    onBeforeClose: (callback: () => void) => void;
+    onBeforeClose: (callback: () => void) => Unsubscribe;
 
     // Version History
-    onViewVersionHistory: (callback: () => void) => void;
+    onViewVersionHistory: (callback: () => void) => Unsubscribe;
     versionHistory: {
       // Create a new version (auto-save)
       create: (

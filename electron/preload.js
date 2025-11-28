@@ -6,22 +6,65 @@ contextBridge.exposeInMainWorld('api', {
   version: process.versions.electron,
 
   // Dialog triggers (from menu)
-  onNewProject: (callback) => ipcRenderer.on('menu:new-project', callback),
-  onOpenProject: (callback) => ipcRenderer.on('menu:open-project', callback),
-  onEditProject: (callback) => ipcRenderer.on('menu:edit-project', callback),
-  onShowProjectDebug: (callback) => ipcRenderer.on('menu:show-project-debug', callback),
-  onPreferences: (callback) => ipcRenderer.on('menu:preferences', callback),
-  onTestOrientationStep: (callback) => ipcRenderer.on('menu:test-orientation-step', callback),
-  onTestScaleBarStep: (callback) => ipcRenderer.on('menu:test-scale-bar-step', callback),
-  onClearProject: (callback) => ipcRenderer.on('menu:clear-project', callback),
-  onQuickLoadImage: (callback) => ipcRenderer.on('menu:quick-load-image', callback),
-  onLoadSampleProject: (callback) => ipcRenderer.on('menu:load-sample-project', callback),
-  onResetEverything: (callback) => ipcRenderer.on('menu:reset-everything', callback),
-  onRebuildAllThumbnails: (callback) => ipcRenderer.on('menu:rebuild-all-thumbnails', callback),
+  // Each returns an unsubscribe function to prevent listener accumulation
+  onNewProject: (callback) => {
+    ipcRenderer.on('menu:new-project', callback);
+    return () => ipcRenderer.removeListener('menu:new-project', callback);
+  },
+  onOpenProject: (callback) => {
+    ipcRenderer.on('menu:open-project', callback);
+    return () => ipcRenderer.removeListener('menu:open-project', callback);
+  },
+  onEditProject: (callback) => {
+    ipcRenderer.on('menu:edit-project', callback);
+    return () => ipcRenderer.removeListener('menu:edit-project', callback);
+  },
+  onShowProjectDebug: (callback) => {
+    ipcRenderer.on('menu:show-project-debug', callback);
+    return () => ipcRenderer.removeListener('menu:show-project-debug', callback);
+  },
+  onPreferences: (callback) => {
+    ipcRenderer.on('menu:preferences', callback);
+    return () => ipcRenderer.removeListener('menu:preferences', callback);
+  },
+  onTestOrientationStep: (callback) => {
+    ipcRenderer.on('menu:test-orientation-step', callback);
+    return () => ipcRenderer.removeListener('menu:test-orientation-step', callback);
+  },
+  onTestScaleBarStep: (callback) => {
+    ipcRenderer.on('menu:test-scale-bar-step', callback);
+    return () => ipcRenderer.removeListener('menu:test-scale-bar-step', callback);
+  },
+  onClearProject: (callback) => {
+    ipcRenderer.on('menu:clear-project', callback);
+    return () => ipcRenderer.removeListener('menu:clear-project', callback);
+  },
+  onQuickLoadImage: (callback) => {
+    ipcRenderer.on('menu:quick-load-image', callback);
+    return () => ipcRenderer.removeListener('menu:quick-load-image', callback);
+  },
+  onLoadSampleProject: (callback) => {
+    ipcRenderer.on('menu:load-sample-project', callback);
+    return () => ipcRenderer.removeListener('menu:load-sample-project', callback);
+  },
+  onResetEverything: (callback) => {
+    ipcRenderer.on('menu:reset-everything', callback);
+    return () => ipcRenderer.removeListener('menu:reset-everything', callback);
+  },
+  onRebuildAllThumbnails: (callback) => {
+    ipcRenderer.on('menu:rebuild-all-thumbnails', callback);
+    return () => ipcRenderer.removeListener('menu:rebuild-all-thumbnails', callback);
+  },
 
   // Undo/Redo
-  onUndo: (callback) => ipcRenderer.on('menu:undo', callback),
-  onRedo: (callback) => ipcRenderer.on('menu:redo', callback),
+  onUndo: (callback) => {
+    ipcRenderer.on('menu:undo', callback);
+    return () => ipcRenderer.removeListener('menu:undo', callback);
+  },
+  onRedo: (callback) => {
+    ipcRenderer.on('menu:redo', callback);
+    return () => ipcRenderer.removeListener('menu:redo', callback);
+  },
 
   // File dialogs
   openTiffDialog: () => ipcRenderer.invoke('dialog:open-tiff'),
@@ -42,12 +85,24 @@ contextBridge.exposeInMainWorld('api', {
   setWindowTitle: (title) => ipcRenderer.send('set-window-title', title),
 
   // Theme management
-  onThemeChange: (callback) => ipcRenderer.on('theme:set', (event, theme) => callback(theme)),
+  onThemeChange: (callback) => {
+    const handler = (event, theme) => callback(theme);
+    ipcRenderer.on('theme:set', handler);
+    return () => ipcRenderer.removeListener('theme:set', handler);
+  },
   notifyThemeChanged: (theme) => ipcRenderer.send('theme:changed', theme),
 
   // View preferences
-  onToggleRulers: (callback) => ipcRenderer.on('view:toggle-rulers', (event, checked) => callback(checked)),
-  onToggleSpotLabels: (callback) => ipcRenderer.on('view:toggle-spot-labels', (event, checked) => callback(checked)),
+  onToggleRulers: (callback) => {
+    const handler = (event, checked) => callback(checked);
+    ipcRenderer.on('view:toggle-rulers', handler);
+    return () => ipcRenderer.removeListener('view:toggle-rulers', handler);
+  },
+  onToggleSpotLabels: (callback) => {
+    const handler = (event, checked) => callback(checked);
+    ipcRenderer.on('view:toggle-spot-labels', handler);
+    return () => ipcRenderer.removeListener('view:toggle-spot-labels', handler);
+  },
 
   // Tile-based image loading
   loadImageWithTiles: (imagePath) => ipcRenderer.invoke('image:load-with-tiles', imagePath),
@@ -123,17 +178,26 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.removeAllListeners('export-all-images:progress'),
 
   // Menu event for export all images
-  onExportAllImages: (callback) => ipcRenderer.on('menu:export-all-images', callback),
+  onExportAllImages: (callback) => {
+    ipcRenderer.on('menu:export-all-images', callback);
+    return () => ipcRenderer.removeListener('menu:export-all-images', callback);
+  },
 
   // Export project as JSON
   exportProjectJson: (projectData) =>
     ipcRenderer.invoke('project:export-json', projectData),
-  onExportProjectJson: (callback) => ipcRenderer.on('menu:export-project-json', callback),
+  onExportProjectJson: (callback) => {
+    ipcRenderer.on('menu:export-project-json', callback);
+    return () => ipcRenderer.removeListener('menu:export-project-json', callback);
+  },
 
   // Export project as PDF
   exportProjectPdf: (projectId, projectData) =>
     ipcRenderer.invoke('project:export-pdf', projectId, projectData),
-  onExportProjectPdf: (callback) => ipcRenderer.on('menu:export-project-pdf', callback),
+  onExportProjectPdf: (callback) => {
+    ipcRenderer.on('menu:export-project-pdf', callback);
+    return () => ipcRenderer.removeListener('menu:export-project-pdf', callback);
+  },
   onExportPdfProgress: (callback) =>
     ipcRenderer.on('export-pdf:progress', (event, progress) => callback(progress)),
   removeExportPdfProgressListener: () =>
@@ -151,12 +215,24 @@ contextBridge.exposeInMainWorld('api', {
   },
 
   // Auth menu events
-  onLoginRequest: (callback) => ipcRenderer.on('menu:login', callback),
-  onLogoutRequest: (callback) => ipcRenderer.on('menu:logout', callback),
+  onLoginRequest: (callback) => {
+    ipcRenderer.on('menu:login', callback);
+    return () => ipcRenderer.removeListener('menu:login', callback);
+  },
+  onLogoutRequest: (callback) => {
+    ipcRenderer.on('menu:logout', callback);
+    return () => ipcRenderer.removeListener('menu:logout', callback);
+  },
 
   // Save/Export menu events
-  onSaveProject: (callback) => ipcRenderer.on('menu:save-project', callback),
-  onExportSmz: (callback) => ipcRenderer.on('menu:export-smz', callback),
+  onSaveProject: (callback) => {
+    ipcRenderer.on('menu:save-project', callback);
+    return () => ipcRenderer.removeListener('menu:save-project', callback);
+  },
+  onExportSmz: (callback) => {
+    ipcRenderer.on('menu:export-smz', callback);
+    return () => ipcRenderer.removeListener('menu:export-smz', callback);
+  },
 
   // Export as .smz
   exportSmz: (projectId, projectData) =>
@@ -167,7 +243,10 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.removeAllListeners('export-smz:progress'),
 
   // Push to Server
-  onPushToServer: (callback) => ipcRenderer.on('menu:push-to-server', callback),
+  onPushToServer: (callback) => {
+    ipcRenderer.on('menu:push-to-server', callback);
+    return () => ipcRenderer.removeListener('menu:push-to-server', callback);
+  },
   server: {
     checkConnectivity: () => ipcRenderer.invoke('server:check-connectivity'),
     checkProjectExists: (projectId) => ipcRenderer.invoke('server:check-project-exists', projectId),
@@ -180,10 +259,16 @@ contextBridge.exposeInMainWorld('api', {
   },
 
   // App lifecycle
-  onBeforeClose: (callback) => ipcRenderer.on('app:before-close', callback),
+  onBeforeClose: (callback) => {
+    ipcRenderer.on('app:before-close', callback);
+    return () => ipcRenderer.removeListener('app:before-close', callback);
+  },
 
   // Version History
-  onViewVersionHistory: (callback) => ipcRenderer.on('menu:view-version-history', callback),
+  onViewVersionHistory: (callback) => {
+    ipcRenderer.on('menu:view-version-history', callback);
+    return () => ipcRenderer.removeListener('menu:view-version-history', callback);
+  },
   versionHistory: {
     // Create a new version (auto-save)
     create: (projectId, projectState, name, description) =>
