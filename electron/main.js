@@ -112,6 +112,31 @@ function saveWindowState() {
   }
 }
 
+// Session state management (persists zustand store to file instead of localStorage)
+const sessionStateFile = path.join(app.getPath('userData'), 'session-state.json');
+
+function loadSessionState() {
+  try {
+    if (fs.existsSync(sessionStateFile)) {
+      const data = fs.readFileSync(sessionStateFile, 'utf8');
+      log.info('[Session] Loaded session state from file');
+      return data; // Return raw JSON string
+    }
+  } catch (error) {
+    log.error('[Session] Error loading session state:', error);
+  }
+  return null;
+}
+
+function saveSessionState(jsonString) {
+  try {
+    fs.writeFileSync(sessionStateFile, jsonString, 'utf8');
+    log.info('[Session] Saved session state to file');
+  } catch (error) {
+    log.error('[Session] Error saving session state:', error);
+  }
+}
+
 function ensureWindowIsVisible(bounds) {
   // Get all displays
   const displays = screen.getAllDisplays();
@@ -741,6 +766,15 @@ app.on('activate', () => {
 // =============================================================================
 // IPC HANDLERS
 // =============================================================================
+
+// Session state persistence (for zustand store)
+ipcMain.handle('session:get', () => {
+  return loadSessionState();
+});
+
+ipcMain.handle('session:set', (event, jsonString) => {
+  saveSessionState(jsonString);
+});
 
 // File dialog for TIFF selection (single file)
 ipcMain.handle('dialog:open-tiff', async () => {

@@ -5,6 +5,12 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('api', {
   version: process.versions.electron,
 
+  // Session state persistence (for zustand store - replaces localStorage)
+  session: {
+    getItem: () => ipcRenderer.invoke('session:get'),
+    setItem: (value) => ipcRenderer.invoke('session:set', value),
+  },
+
   // Dialog triggers (from menu)
   // Each returns an unsubscribe function to prevent listener accumulation
   onNewProject: (callback) => {
