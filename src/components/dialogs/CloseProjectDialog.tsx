@@ -144,8 +144,8 @@ export function CloseProjectDialog({
           <Alert severity="info" variant="outlined" sx={{ mb: 1 }}>
             <Typography variant="body2">
               <strong>Tip:</strong> You can have multiple projects on your computer at once.
-              Use <strong>File → Open Project</strong> or <strong>Recent Projects</strong> to
-              switch between them without deleting anything.
+              Use <strong>File → Recent Projects</strong> to switch between them without
+              deleting anything.
             </Typography>
           </Alert>
 
