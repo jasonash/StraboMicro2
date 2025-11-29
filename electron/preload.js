@@ -326,6 +326,9 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('app:before-close', callback);
     return () => ipcRenderer.removeListener('app:before-close', callback);
   },
+  signalCloseReady: () => {
+    ipcRenderer.send('app:close-ready');
+  },
 
   // Version History
   onViewVersionHistory: (callback) => {

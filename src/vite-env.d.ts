@@ -463,6 +463,7 @@ interface Window {
 
     // App lifecycle
     onBeforeClose: (callback: () => void) => Unsubscribe;
+    signalCloseReady: () => void;
 
     // Recent Projects
     onSwitchProject: (callback: (event: any, projectId: string) => void) => Unsubscribe;

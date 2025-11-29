@@ -92,9 +92,11 @@ function App() {
     window.addEventListener('beforeunload', handleBeforeUnload);
 
     // Handle Electron app close event
-    const unsubscribeBeforeClose = window.api?.onBeforeClose(() => {
+    const unsubscribeBeforeClose = window.api?.onBeforeClose(async () => {
       console.log('[App] Received before-close event from main process');
-      saveBeforeClose();
+      await saveBeforeClose();
+      console.log('[App] Save complete, signaling ready to close');
+      window.api?.signalCloseReady();
     });
 
     return () => {
