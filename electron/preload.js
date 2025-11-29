@@ -404,6 +404,13 @@ contextBridge.exposeInMainWorld('api', {
     },
   },
 
+  // File association - open .smz from double-click or command line
+  onOpenSmzFile: (callback) => {
+    const handler = (event, filePath) => callback(filePath);
+    ipcRenderer.on('file:open-smz', handler);
+    return () => ipcRenderer.removeListener('file:open-smz', handler);
+  },
+
   // Debug menu events (only used in development)
   onDebugTriggerTestError: (callback) => {
     const handler = () => callback();
