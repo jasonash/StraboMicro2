@@ -80,6 +80,12 @@
       "electron/**/*",
       "dist/**/*"
     ],
+    "extraResources": [
+      {
+        "from": "docs/images/new_strabomicro_icon.png",
+        "to": "splash-logo.png"
+      }
+    ],
     "asarUnpack": [
       "node_modules/sharp/**/*",
       "node_modules/@img/**/*",

@@ -69,6 +69,7 @@ log.info(`Node version: ${process.versions.node}`);
 log.info(`Chrome version: ${process.versions.chrome}`);
 
 let mainWindow;
+let splashWindow;
 
 // Window state management
 const windowStateFile = path.join(app.getPath('userData'), 'window-state.json');
@@ -169,6 +170,62 @@ function ensureWindowIsVisible(bounds) {
   return bounds;
 }
 
+function createSplashWindow() {
+  // Get package.json version
+  const packageJson = require('../package.json');
+  const version = packageJson.version;
+
+  splashWindow = new BrowserWindow({
+    width: 400,
+    height: 400,
+    frame: false,
+    transparent: true,
+    resizable: false,
+    center: true,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+    },
+  });
+
+  // Load splash HTML with logo embedded as base64
+  // Check if running in packaged app (app.isPackaged is more reliable than NODE_ENV)
+  const logoPath = app.isPackaged
+    ? path.join(process.resourcesPath, 'splash-logo.png')
+    : path.join(__dirname, '../docs/images/new_strabomicro_icon.png');
+  const splashHtmlPath = path.join(__dirname, 'splash.html');
+
+  log.info('[Splash] app.isPackaged:', app.isPackaged);
+  log.info('[Splash] Logo path:', logoPath);
+  log.info('[Splash] Logo exists:', fs.existsSync(logoPath));
+
+  // Read logo and convert to base64 data URL
+  let logoDataUrl = '';
+  try {
+    const logoBuffer = fs.readFileSync(logoPath);
+    logoDataUrl = `data:image/png;base64,${logoBuffer.toString('base64')}`;
+    log.info('[Splash] Logo loaded, base64 length:', logoDataUrl.length);
+  } catch (err) {
+    log.error('[Splash] Failed to load logo:', err);
+  }
+
+  // Read the HTML template and inject the logo and version
+  let splashHtml = fs.readFileSync(splashHtmlPath, 'utf8');
+  splashHtml = splashHtml.replace('LOGO_PATH', logoDataUrl);
+  splashHtml = splashHtml.replace('VERSION_NUMBER', version);
+
+  // Load the modified HTML as a data URL
+  splashWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(splashHtml)}`);
+
+  splashWindow.on('closed', () => {
+    splashWindow = null;
+  });
+
+  log.info('[Splash] Splash window created');
+}
+
 function createWindow() {
   // Load previous window state
   const savedState = loadWindowState();
@@ -183,6 +240,7 @@ function createWindow() {
     minHeight: 768,
     backgroundColor: '#1e1e1e',
     title: 'StraboMicro',
+    show: false, // Hidden until ready - splash screen shows during load
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -688,6 +746,24 @@ function createWindow() {
     buildMenu();
   });
 
+  // Show main window and close splash when ready
+  mainWindow.once('ready-to-show', () => {
+    log.info('[Main] Main window ready to show');
+
+    // Small delay to ensure the app is fully rendered
+    setTimeout(() => {
+      if (splashWindow && !splashWindow.isDestroyed()) {
+        splashWindow.close();
+      }
+      mainWindow.show();
+
+      // If window should be maximized, do it after showing
+      if (savedState.isMaximized) {
+        mainWindow.maximize();
+      }
+    }, 500);
+  });
+
   // Load the app
   const isDev = process.env.NODE_ENV !== 'production';
 
@@ -725,6 +801,9 @@ let buildMenuFn = null;
 app.whenReady().then(async () => {
   const isDev = process.env.NODE_ENV !== 'production';
 
+  // Show splash screen immediately
+  createSplashWindow();
+
   // Clean up scratch space on startup
   await scratchSpace.cleanupAll();
 
@@ -759,6 +838,8 @@ app.on('window-all-closed', () => {
 
 app.on('activate', () => {
   if (BrowserWindow.getAllWindows().length === 0) {
+    // Show splash on reactivation too
+    createSplashWindow();
     createWindow();
   }
 });
