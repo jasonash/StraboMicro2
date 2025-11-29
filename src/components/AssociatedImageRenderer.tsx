@@ -12,7 +12,7 @@
  * when zooming into overlays, no matter how small they are on the reference.
  */
 
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { Group, Image as KonvaImage, Rect } from 'react-konva';
 import { MicrographMetadata } from '@/types/project-types';
 
@@ -385,11 +385,42 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
     loadImage();
   }, [micrograph, determineRenderMode, imageState.mode, imageState.imageObj, imageState.tiles.size, imageState.isLoading, imageState.retryCount, projectId]);
 
+  // Track mouse position to distinguish clicks from drags
+  const mouseDownPosRef = useRef<{ x: number; y: number } | null>(null);
+  const DRAG_THRESHOLD = 5; // pixels - movement beyond this is considered a drag
+
   // Handlers for click and cursor - MUST be before any early returns (React hooks rule)
-  const handleClick = useCallback(() => {
-    if (onClick) {
-      onClick(micrograph.id);
+  const handleMouseDown = useCallback((e: any) => {
+    // Store the mouse position at mousedown
+    const stage = e.target.getStage();
+    if (stage) {
+      const pos = stage.getPointerPosition();
+      mouseDownPosRef.current = pos ? { x: pos.x, y: pos.y } : null;
     }
+  }, []);
+
+  const handleMouseUp = useCallback((e: any) => {
+    if (!onClick || !mouseDownPosRef.current) {
+      mouseDownPosRef.current = null;
+      return;
+    }
+
+    // Check if mouse moved significantly (was it a drag?)
+    const stage = e.target.getStage();
+    if (stage) {
+      const pos = stage.getPointerPosition();
+      if (pos) {
+        const dx = Math.abs(pos.x - mouseDownPosRef.current.x);
+        const dy = Math.abs(pos.y - mouseDownPosRef.current.y);
+
+        // Only trigger click if movement was within threshold
+        if (dx < DRAG_THRESHOLD && dy < DRAG_THRESHOLD) {
+          onClick(micrograph.id);
+        }
+      }
+    }
+
+    mouseDownPosRef.current = null;
   }, [onClick, micrograph.id]);
 
   const handleMouseEnter = useCallback((e: any) => {
@@ -439,8 +470,9 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
         rotation={overlayTransform.rotation}
         offsetX={overlayTransform.offsetX}
         offsetY={overlayTransform.offsetY}
-        onClick={handleClick}
-        onTap={handleClick}
+        onMouseDown={handleMouseDown}
+        onMouseUp={handleMouseUp}
+        onTap={handleMouseUp}
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
       >
@@ -487,8 +519,9 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
         rotation={overlayTransform.rotation}
         offsetX={overlayTransform.offsetX}
         offsetY={overlayTransform.offsetY}
-        onClick={handleClick}
-        onTap={handleClick}
+        onMouseDown={handleMouseDown}
+        onMouseUp={handleMouseUp}
+        onTap={handleMouseUp}
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
       >

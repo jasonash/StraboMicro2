@@ -90,11 +90,7 @@ export function CloseProjectDialog({
             {projectName || 'Untitled Project'}
           </Typography>
 
-          <Alert
-            severity="warning"
-            icon={<WarningIcon />}
-            sx={{ mb: 2 }}
-          >
+          <Alert severity="warning" icon={<WarningIcon />} sx={{ mb: 2 }}>
             <Typography variant="subtitle2" sx={{ fontWeight: 'bold', mb: 1 }}>
               This will permanently delete the project from your computer!
             </Typography>
@@ -135,7 +131,8 @@ export function CloseProjectDialog({
               </li>
               <li>
                 <Typography variant="body2">
-                  <strong>Upload to Strabo Server</strong> (File → Upload to Strabo Server) to save online
+                  <strong>Upload to Strabo Server</strong> (File → Upload to Strabo Server) to save
+                  online
                 </Typography>
               </li>
             </ul>
@@ -143,9 +140,9 @@ export function CloseProjectDialog({
 
           <Alert severity="info" variant="outlined" sx={{ mb: 1 }}>
             <Typography variant="body2">
-              <strong>Tip:</strong> You can have multiple projects on your computer at once.
-              Use <strong>File → Recent Projects</strong> to switch between them without
-              deleting anything.
+              <strong>Tip:</strong> You can have multiple projects open on your computer at once.
+              Use <strong>File → Recent Projects</strong> to switch between them without deleting
+              anything.
             </Typography>
           </Alert>
 
