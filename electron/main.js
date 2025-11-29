@@ -191,17 +191,22 @@ function createSplashWindow() {
   });
 
   // Load splash HTML with logo embedded as base64
-  const isDev = process.env.NODE_ENV !== 'production';
-  const logoPath = isDev
-    ? path.join(__dirname, '../docs/images/new_strabomicro_icon.png')
-    : path.join(process.resourcesPath, 'splash-logo.png');
+  // Check if running in packaged app (app.isPackaged is more reliable than NODE_ENV)
+  const logoPath = app.isPackaged
+    ? path.join(process.resourcesPath, 'splash-logo.png')
+    : path.join(__dirname, '../docs/images/new_strabomicro_icon.png');
   const splashHtmlPath = path.join(__dirname, 'splash.html');
+
+  log.info('[Splash] app.isPackaged:', app.isPackaged);
+  log.info('[Splash] Logo path:', logoPath);
+  log.info('[Splash] Logo exists:', fs.existsSync(logoPath));
 
   // Read logo and convert to base64 data URL
   let logoDataUrl = '';
   try {
     const logoBuffer = fs.readFileSync(logoPath);
     logoDataUrl = `data:image/png;base64,${logoBuffer.toString('base64')}`;
+    log.info('[Splash] Logo loaded, base64 length:', logoDataUrl.length);
   } catch (err) {
     log.error('[Splash] Failed to load logo:', err);
   }
