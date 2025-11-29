@@ -485,6 +485,16 @@ function createWindow() {
             }
           }
         },
+        {
+          label: 'Show Recursive Spots',
+          type: 'checkbox',
+          checked: false,
+          click: (menuItem) => {
+            if (mainWindow) {
+              mainWindow.webContents.send('view:toggle-recursive-spots', menuItem.checked);
+            }
+          }
+        },
         { type: 'separator' },
         {
           label: 'Theme',

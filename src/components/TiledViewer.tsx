@@ -19,6 +19,7 @@ import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import { useAppStore } from '@/store';
 import { getChildMicrographs } from '@/store/helpers';
 import { AssociatedImageRenderer } from './AssociatedImageRenderer';
+import { ChildSpotsRenderer } from './ChildSpotsRenderer';
 import { SpotRenderer } from './SpotRenderer';
 import { SpotContextMenu } from './SpotContextMenu';
 import { EditingToolbar } from './EditingToolbar';
@@ -116,6 +117,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
     const activeSpotId = useAppStore((state) => state.activeSpotId);
     const showRulers = useAppStore((state) => state.showRulers);
     const showMicrographOutlines = useAppStore((state) => state.showMicrographOutlines);
+    const showRecursiveSpots = useAppStore((state) => state.showRecursiveSpots);
     const theme = useAppStore((state) => state.theme);
     const selectActiveSpot = useAppStore((state) => state.selectActiveSpot);
     const setActiveTool = useAppStore((state) => state.setActiveTool);
@@ -1229,6 +1231,54 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                         );
                       })}
 
+                  {/* Recursive Spots: Render spots from child micrographs (overlays) */}
+                  {showRecursiveSpots &&
+                    activeMicrograph &&
+                    childMicrographs
+                      .filter((childMicro) => {
+                        // Same filter as overlay images - must have scale set and not be point-located
+                        if (
+                          childMicro.scalePixelsPerCentimeter === undefined ||
+                          childMicro.scalePixelsPerCentimeter === null
+                        ) {
+                          return false;
+                        }
+                        if ((childMicro as { pointInParent?: unknown }).pointInParent) {
+                          return false;
+                        }
+                        return true;
+                      })
+                      .map((childMicro) => (
+                        <ChildSpotsRenderer
+                          key={`child-spots-${childMicro.id}`}
+                          childMicrograph={childMicro}
+                          parentMetadata={{
+                            width:
+                              activeMicrograph.imageWidth ||
+                              activeMicrograph.width ||
+                              imageMetadata?.width ||
+                              0,
+                            height:
+                              activeMicrograph.imageHeight ||
+                              activeMicrograph.height ||
+                              imageMetadata?.height ||
+                              0,
+                            scalePixelsPerCentimeter:
+                              activeMicrograph.scalePixelsPerCentimeter || 100,
+                          }}
+                          stageScale={zoom}
+                          activeSpotId={activeSpotId}
+                          onSpotClick={(spot) => {
+                            selectActiveSpot(spot.id);
+                            setActiveTool(null);
+                          }}
+                          onSpotContextMenu={(spot, x, y) => {
+                            setContextMenuSpot(spot);
+                            setContextMenuPosition({ x, y });
+                          }}
+                        />
+                      ))}
+
                   {/* First pass: Render all spot shapes */}
                   {activeMicrograph?.spots?.map((spot) => (
                     <SpotRenderer
@@ -1373,6 +1423,54 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
 
                 {/* Spots Layer - render all saved spots */}
                 <Layer key="spots-layer" x={position.x} y={position.y} scaleX={zoom} scaleY={zoom}>
+                  {/* Recursive Spots: Render spots from child micrographs (overlays) */}
+                  {showRecursiveSpots &&
+                    activeMicrograph &&
+                    childMicrographs
+                      .filter((childMicro) => {
+                        // Same filter as overlay images - must have scale set and not be point-located
+                        if (
+                          childMicro.scalePixelsPerCentimeter === undefined ||
+                          childMicro.scalePixelsPerCentimeter === null
+                        ) {
+                          return false;
+                        }
+                        if ((childMicro as { pointInParent?: unknown }).pointInParent) {
+                          return false;
+                        }
+                        return true;
+                      })
+                      .map((childMicro) => (
+                        <ChildSpotsRenderer
+                          key={`child-spots-${childMicro.id}`}
+                          childMicrograph={childMicro}
+                          parentMetadata={{
+                            width:
+                              activeMicrograph.imageWidth ||
+                              activeMicrograph.width ||
+                              imageMetadata?.width ||
+                              0,
+                            height:
+                              activeMicrograph.imageHeight ||
+                              activeMicrograph.height ||
+                              imageMetadata?.height ||
+                              0,
+                            scalePixelsPerCentimeter:
+                              activeMicrograph.scalePixelsPerCentimeter || 100,
+                          }}
+                          stageScale={zoom}
+                          activeSpotId={activeSpotId}
+                          onSpotClick={(spot) => {
+                            selectActiveSpot(spot.id);
+                            setActiveTool(null);
+                          }}
+                          onSpotContextMenu={(spot, x, y) => {
+                            setContextMenuSpot(spot);
+                            setContextMenuPosition({ x, y });
+                          }}
+                        />
+                      ))}
+
                   {/* First pass: Render all spot shapes */}
                   {activeMicrograph?.spots?.map((spot) => (
                     <SpotRenderer

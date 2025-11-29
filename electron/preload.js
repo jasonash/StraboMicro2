@@ -111,6 +111,11 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('view:toggle-overlay-outlines', handler);
     return () => ipcRenderer.removeListener('view:toggle-overlay-outlines', handler);
   },
+  onToggleRecursiveSpots: (callback) => {
+    const handler = (event, checked) => callback(checked);
+    ipcRenderer.on('view:toggle-recursive-spots', handler);
+    return () => ipcRenderer.removeListener('view:toggle-recursive-spots', handler);
+  },
 
   // Tile-based image loading
   loadImageWithTiles: (imagePath) => ipcRenderer.invoke('image:load-with-tiles', imagePath),
