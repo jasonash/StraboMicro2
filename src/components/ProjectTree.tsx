@@ -16,6 +16,8 @@ import {
   CircularProgress,
   Menu,
   MenuItem,
+  Popover,
+  Slider,
 } from '@mui/material';
 import {
   ExpandMore,
@@ -301,6 +303,11 @@ export function ProjectTree() {
   // Set scale dialog state (for batch-imported reference micrographs)
   const [showSetScale, setShowSetScale] = useState(false);
   const [setScaleMicrographId, setSetScaleMicrographId] = useState<string | null>(null);
+
+  // Opacity popover state
+  const [opacityAnchorEl, setOpacityAnchorEl] = useState<HTMLElement | null>(null);
+  const [opacityMicrographId, setOpacityMicrographId] = useState<string | null>(null);
+  const [opacityValue, setOpacityValue] = useState<number>(1.0);
 
   // Expansion states - from zustand store (persisted via session state)
   const expandedDatasetsArray = useAppStore((state) => state.expandedDatasets);
@@ -887,9 +894,11 @@ export function ProjectTree() {
               }}>
                 Edit Micrograph Location
               </MenuItem>
-              <MenuItem onClick={() => {
-                // TODO: Edit opacity - requires opacity slider dialog
-                console.log('Edit opacity:', micrograph.id);
+              <MenuItem onClick={(event) => {
+                // Open opacity popover
+                setOpacityAnchorEl(event.currentTarget);
+                setOpacityMicrographId(micrograph.id);
+                setOpacityValue(micrograph.opacity ?? 1.0);
                 setMicrographOptionsAnchor({ ...micrographOptionsAnchor, [micrograph.id]: null });
               }}>
                 Edit Micrograph Opacity
@@ -1379,6 +1388,56 @@ export function ProjectTree() {
           micrographId={setScaleMicrographId}
         />
       )}
+
+      {/* Opacity Slider Popover */}
+      <Popover
+        open={Boolean(opacityAnchorEl)}
+        anchorEl={opacityAnchorEl}
+        onClose={() => {
+          // Save the opacity when closing
+          if (opacityMicrographId) {
+            updateMicrographMetadata(opacityMicrographId, { opacity: opacityValue });
+          }
+          setOpacityAnchorEl(null);
+          setOpacityMicrographId(null);
+        }}
+        anchorOrigin={{
+          vertical: 'bottom',
+          horizontal: 'left',
+        }}
+        transformOrigin={{
+          vertical: 'top',
+          horizontal: 'left',
+        }}
+      >
+        <Box sx={{ p: 2, width: 250 }}>
+          <Typography variant="subtitle2" gutterBottom>
+            Micrograph Opacity
+          </Typography>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+            <Slider
+              value={opacityValue}
+              onChange={(_, newValue) => {
+                const val = newValue as number;
+                setOpacityValue(val);
+                // Live update as user drags
+                if (opacityMicrographId) {
+                  updateMicrographMetadata(opacityMicrographId, { opacity: val });
+                }
+              }}
+              min={0}
+              max={1}
+              step={0.01}
+              valueLabelDisplay="auto"
+              valueLabelFormat={(value) => `${Math.round(value * 100)}%`}
+              sx={{ flex: 1 }}
+            />
+            <Typography variant="body2" sx={{ minWidth: 40, textAlign: 'right' }}>
+              {Math.round(opacityValue * 100)}%
+            </Typography>
+          </Box>
+        </Box>
+      </Popover>
     </Box>
   );
 }
