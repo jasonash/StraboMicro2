@@ -165,6 +165,9 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
 
   /**
    * Determine appropriate render mode based on coverage, zoom, and viewport visibility
+   *
+   * Priority: Zoom level takes precedence over coverage.
+   * If zoomed in enough to see detail, use high-res tiles even if only a corner is visible.
    */
   const determineRenderMode = useCallback((): RenderMode => {
     // If not in viewport, use THUMBNAIL (smallest memory footprint)
@@ -175,13 +178,26 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
     const coverage = calculateScreenCoverage();
     const effectiveZoom = viewport.zoom * stageScale;
 
-    if (effectiveZoom < 0.5 || coverage < 0.1) {
-      return 'THUMBNAIL'; // 512x512
-    } else if (effectiveZoom < 2.0 || coverage < 0.4) {
-      return 'MEDIUM'; // 2048x2048
-    } else {
+    // High zoom always gets tiles - user is looking at detail
+    if (effectiveZoom >= 2.0) {
       return 'TILED'; // Full resolution
     }
+
+    // Medium zoom gets tiles if significant coverage, otherwise medium res
+    if (effectiveZoom >= 0.5) {
+      if (coverage >= 0.4) {
+        return 'TILED';
+      }
+      return 'MEDIUM'; // 2048x2048
+    }
+
+    // Low zoom - use thumbnail unless large coverage
+    if (coverage >= 0.4) {
+      return 'MEDIUM';
+    } else if (coverage >= 0.1) {
+      return 'MEDIUM';
+    }
+    return 'THUMBNAIL'; // 512x512
   }, [isInViewport, calculateScreenCoverage, viewport.zoom, stageScale]);
 
   /**
