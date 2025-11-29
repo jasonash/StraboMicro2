@@ -13,6 +13,7 @@ import { VersionHistoryDialog } from './components/dialogs/VersionHistoryDialog'
 import { ImportSmzDialog } from './components/dialogs/ImportSmzDialog';
 import { RemoteProjectsDialog } from './components/dialogs/RemoteProjectsDialog';
 import { SharedProjectDialog } from './components/dialogs/SharedProjectDialog';
+import { CloseProjectDialog } from './components/dialogs/CloseProjectDialog';
 import { useAppStore, useTemporalStore } from '@/store';
 import { useAuthStore } from '@/store/useAuthStore';
 import { useTheme } from './hooks/useTheme';
@@ -33,6 +34,7 @@ function App() {
   const [isImportSmzOpen, setIsImportSmzOpen] = useState(false);
   const [isRemoteProjectsOpen, setIsRemoteProjectsOpen] = useState(false);
   const [isSharedProjectOpen, setIsSharedProjectOpen] = useState(false);
+  const [isCloseProjectOpen, setIsCloseProjectOpen] = useState(false);
   const closeProject = useAppStore(state => state.closeProject);
   const project = useAppStore(state => state.project);
   const setTheme = useAppStore(state => state.setTheme);
@@ -534,6 +536,15 @@ function App() {
       setIsSharedProjectOpen(true);
     }));
 
+    // File: Close Project menu item
+    unsubscribers.push(window.api?.onCloseProject(() => {
+      if (!project) {
+        alert('No project loaded.');
+        return;
+      }
+      setIsCloseProjectOpen(true);
+    }));
+
     // File: View Version History menu item
     unsubscribers.push(window.api?.onViewVersionHistory(() => {
       if (!project) {
@@ -718,6 +729,16 @@ function App() {
               }
             }
           }
+        }}
+      />
+      <CloseProjectDialog
+        open={isCloseProjectOpen}
+        projectId={project?.id || null}
+        projectName={project?.name || null}
+        onClose={() => setIsCloseProjectOpen(false)}
+        onConfirm={() => {
+          // Clear the project from the store after successful deletion
+          closeProject();
         }}
       />
     </>

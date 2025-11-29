@@ -293,6 +293,12 @@ contextBridge.exposeInMainWorld('api', {
     return () => ipcRenderer.removeListener('menu:open-shared-project', callback);
   },
 
+  // Close Project menu event
+  onCloseProject: (callback) => {
+    ipcRenderer.on('menu:close-project', callback);
+    return () => ipcRenderer.removeListener('menu:close-project', callback);
+  },
+
   // App lifecycle
   onBeforeClose: (callback) => {
     ipcRenderer.on('app:before-close', callback);
@@ -326,6 +332,8 @@ contextBridge.exposeInMainWorld('api', {
     load: (projectId) => ipcRenderer.invoke('projects:load', projectId),
     // Refresh the Recent Projects menu
     refreshMenu: () => ipcRenderer.invoke('projects:refresh-menu'),
+    // Close (delete) a project completely - removes from disk, index, and version history
+    close: (projectId) => ipcRenderer.invoke('projects:close', projectId),
   },
 
   versionHistory: {

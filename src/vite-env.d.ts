@@ -469,7 +469,15 @@ interface Window {
       }>;
       // Refresh the Recent Projects menu
       refreshMenu: () => Promise<void>;
+      // Close (delete) a project completely - removes from disk, index, and version history
+      close: (projectId: string) => Promise<{
+        success: boolean;
+        error?: string;
+      }>;
     };
+
+    // Close Project menu event
+    onCloseProject: (callback: () => void) => Unsubscribe;
 
     // Version History
     onViewVersionHistory: (callback: () => void) => Unsubscribe;
