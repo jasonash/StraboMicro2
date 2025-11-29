@@ -309,15 +309,6 @@ function createWindow() {
         },
         { type: 'separator' },
         {
-          label: 'Edit Project',
-          accelerator: 'CmdOrCtrl+E',
-          click: () => {
-            if (mainWindow) {
-              mainWindow.webContents.send('menu:edit-project');
-            }
-          }
-        },
-        {
           label: 'Save Project',
           accelerator: 'CmdOrCtrl+S',
           click: () => {
@@ -354,6 +345,15 @@ function createWindow() {
           }
         },
         { type: 'separator' },
+        {
+          label: 'Edit Project',
+          accelerator: 'CmdOrCtrl+E',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('menu:edit-project');
+            }
+          }
+        },
         {
           label: 'Export All Images...',
           click: () => {
