@@ -7,12 +7,14 @@ import {
   Straighten as RulerIcon,
   MyLocation as CrosshairIcon,
 } from '@mui/icons-material';
-import straboLogo from '../assets/strabo-logo.png';
+import appIcon from '../assets/app-icon.png';
 import { useAppStore } from '@/store';
 import { useAuthStore } from '@/store/useAuthStore';
 
 const Header: React.FC = () => {
   const viewerRef = useAppStore((state) => state.viewerRef);
+  const activeTool = useAppStore((state) => state.activeTool);
+  const setActiveTool = useAppStore((state) => state.setActiveTool);
   const { isAuthenticated, user } = useAuthStore();
 
   const handleRecenter = () => {
@@ -33,14 +35,22 @@ const Header: React.FC = () => {
     }
   };
 
+  const handlePointerTool = () => {
+    setActiveTool(null); // Reset to pan/select mode
+  };
+
+  const handleMeasureTool = () => {
+    setActiveTool('measure');
+  };
+
   return (
     <AppBar position="static" elevation={0}>
       <Toolbar sx={{ gap: 2 }}>
         {/* Left: Logo and Title */}
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, ml: -1 }}>
           <img
-            src={straboLogo}
-            alt="StraboSpot Logo"
+            src={appIcon}
+            alt="StraboMicro Logo"
             style={{ height: '32px', width: 'auto', borderRadius: '25%' }}
           />
           <Typography
@@ -72,7 +82,15 @@ const Header: React.FC = () => {
         {/* Right: Toolbar buttons */}
         <Box sx={{ display: 'flex', gap: 0.5 }}>
           <Tooltip title="Pan and Select" placement="bottom">
-            <IconButton color="inherit" size="small">
+            <IconButton
+              color="inherit"
+              size="small"
+              onClick={handlePointerTool}
+              sx={{
+                bgcolor: !activeTool || activeTool === 'select' ? 'action.selected' : 'transparent',
+                '&:hover': { bgcolor: 'action.hover' },
+              }}
+            >
               <PointerIcon />
             </IconButton>
           </Tooltip>
@@ -86,8 +104,16 @@ const Header: React.FC = () => {
               <ZoomOutIcon />
             </IconButton>
           </Tooltip>
-          <Tooltip title="Measure Distance on Micrograph" placement="bottom">
-            <IconButton color="inherit" size="small">
+          <Tooltip title="Measure Distance" placement="bottom">
+            <IconButton
+              color="inherit"
+              size="small"
+              onClick={handleMeasureTool}
+              sx={{
+                bgcolor: activeTool === 'measure' ? 'action.selected' : 'transparent',
+                '&:hover': { bgcolor: 'action.hover' },
+              }}
+            >
               <RulerIcon />
             </IconButton>
           </Tooltip>

@@ -29,6 +29,7 @@ import RulerCanvas from './RulerCanvas';
 import { Geometry, Spot } from '@/types/project-types';
 import { usePolygonDrawing } from '@/hooks/usePolygonDrawing';
 import { useLineDrawing } from '@/hooks/useLineDrawing';
+import { useRulerTool } from '@/hooks/useRulerTool';
 import { useImperativeGeometryEditing } from '@/hooks/useImperativeGeometryEditing';
 import { getEffectiveTheme } from '@/hooks/useTheme';
 import './TiledViewer.css';
@@ -190,11 +191,30 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
       },
     });
 
+    // Ruler/measurement tool hook
+    const rulerTool = useRulerTool({
+      layer: drawingLayerRef.current,
+      scale: zoom,
+      scalePixelsPerCentimeter: activeMicrograph?.scalePixelsPerCentimeter || null,
+    });
+
     // Imperative geometry editing hook (pass refs as stable object)
     const geometryEditing = useImperativeGeometryEditing({
       layerRef: drawingLayerRef,
       stageRef: stageRef,
     });
+
+    // Clear ruler when tool changes away from measure or when micrograph changes
+    useEffect(() => {
+      if (activeTool !== 'measure') {
+        rulerTool.reset();
+      }
+    }, [activeTool, rulerTool]);
+
+    useEffect(() => {
+      // Clear ruler when micrograph changes
+      rulerTool.reset();
+    }, [activeMicrographId, rulerTool]);
 
     /**
      * Load image metadata and initialize viewer
@@ -631,11 +651,12 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
         // Update stroke widths in drawing hooks
         polygonDrawing.updateStrokeWidth(newZoom);
         lineDrawing.updateStrokeWidth(newZoom);
+        rulerTool.updateStrokeWidth(newZoom);
 
         // Update editing handle sizes if in edit mode
         geometryEditing.updateHandleSizes(newZoom);
       },
-      [zoom, position, polygonDrawing, lineDrawing, geometryEditing]
+      [zoom, position, polygonDrawing, lineDrawing, rulerTool, geometryEditing]
     );
 
     /**
@@ -654,6 +675,18 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
           return; // Clicked on a draggable element, don't start panning
         }
 
+        // Handle measure tool (click and drag)
+        if (activeTool === 'measure') {
+          const stage = stageRef.current;
+          if (!stage) return;
+          const pos = stage.getPointerPosition();
+          if (!pos) return;
+          const imageX = (pos.x - position.x) / zoom;
+          const imageY = (pos.y - position.y) / zoom;
+          rulerTool.handleMouseDown(imageX, imageY);
+          return;
+        }
+
         // Only enable panning if no drawing tool is active
         if (!activeTool || activeTool === 'select') {
           setIsPanning(true);
@@ -663,7 +696,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
           setLastPointerPos(pos);
         }
       },
-      [activeTool]
+      [activeTool, position, zoom, rulerTool]
     );
 
     const handleMouseMove = useCallback(() => {
@@ -692,8 +725,8 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
         return; // Don't update drawing preview while panning
       }
 
-      // Handle drawing tool preview (polygon/line)
-      if (activeTool === 'polygon' || activeTool === 'line') {
+      // Handle drawing tool preview (polygon/line/measure)
+      if (activeTool === 'polygon' || activeTool === 'line' || activeTool === 'measure') {
         // Convert to image coordinates
         const imageX = (pos.x - position.x) / zoom;
         const imageY = (pos.y - position.y) / zoom;
@@ -702,6 +735,8 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
           polygonDrawing.handleMouseMove(imageX, imageY);
         } else if (activeTool === 'line') {
           lineDrawing.handleMouseMove(imageX, imageY);
+        } else if (activeTool === 'measure') {
+          rulerTool.handleMouseMove(imageX, imageY);
         }
       }
 
@@ -766,7 +801,12 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
     const handleMouseUp = useCallback(() => {
       setIsPanning(false);
       setLastPointerPos(null);
-    }, []);
+
+      // Finish measure tool if active
+      if (activeTool === 'measure') {
+        rulerTool.handleMouseUp();
+      }
+    }, [activeTool, rulerTool]);
 
     const handleMouseLeave = useCallback(() => {
       setIsPanning(false);
@@ -963,8 +1003,9 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
       setPosition(newPos);
       polygonDrawing.updateStrokeWidth(newZoom);
       lineDrawing.updateStrokeWidth(newZoom);
+      rulerTool.updateStrokeWidth(newZoom);
       geometryEditing.updateHandleSizes(newZoom);
-    }, [zoom, position, stageSize, polygonDrawing, lineDrawing, geometryEditing]);
+    }, [zoom, position, stageSize, polygonDrawing, lineDrawing, rulerTool, geometryEditing]);
 
     const handleZoomOut = useCallback(() => {
       const newZoom = Math.max(zoom / ZOOM_FACTOR, MIN_ZOOM);
@@ -983,8 +1024,9 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
       setPosition(newPos);
       polygonDrawing.updateStrokeWidth(newZoom);
       lineDrawing.updateStrokeWidth(newZoom);
+      rulerTool.updateStrokeWidth(newZoom);
       geometryEditing.updateHandleSizes(newZoom);
-    }, [zoom, position, stageSize, polygonDrawing, lineDrawing, geometryEditing]);
+    }, [zoom, position, stageSize, polygonDrawing, lineDrawing, rulerTool, geometryEditing]);
 
     // Expose methods to parent components via ref
     useImperativeHandle(
