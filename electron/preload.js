@@ -70,6 +70,7 @@ contextBridge.exposeInMainWorld('api', {
   openTiffDialog: () => ipcRenderer.invoke('dialog:open-tiff'),
   openMultipleTiffDialog: () => ipcRenderer.invoke('dialog:open-multiple-tiff'),
   openFileDialog: () => ipcRenderer.invoke('dialog:open-file'),
+  openFilesDialog: () => ipcRenderer.invoke('dialog:open-files'),
 
   // External links
   openExternalLink: (url) => ipcRenderer.invoke('open-external-link', url),

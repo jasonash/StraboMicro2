@@ -3,6 +3,7 @@
  *
  * LEGACY MATCH: editAssociatedFilesInfo.java + editAssociatedFilesInfo.fxml
  * Shows list of existing files + file picker for adding new files
+ * ENHANCED: Supports bulk import of multiple files at once
  */
 
 import { useState, useEffect } from 'react';
@@ -21,9 +22,12 @@ import {
   InputLabel,
   Divider,
   IconButton,
+  Chip,
+  CircularProgress,
 } from '@mui/material';
 import DeleteIcon from '@mui/icons-material/Delete';
 import EditIcon from '@mui/icons-material/Edit';
+import CloseIcon from '@mui/icons-material/Close';
 import { useAppStore } from '@/store';
 import { AssociatedFileType } from '@/types/project-types';
 import { findMicrographById, findSpotById } from '@/store/helpers';
@@ -52,11 +56,12 @@ export function AssociatedFilesInfoDialog({
   const [editingFile, setEditingFile] = useState<AssociatedFileData | null>(null);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
 
-  // New file form state (LEGACY: lines 33-36, 57-85 in editAssociatedFilesInfo.fxml)
-  const [selectedFilePath, setSelectedFilePath] = useState<string>('');
+  // New file form state - now supports multiple files
+  const [selectedFilePaths, setSelectedFilePaths] = useState<string[]>([]);
   const [newFileType, setNewFileType] = useState<string>('');
   const [newOtherType, setNewOtherType] = useState<string>('');
   const [newFileNotes, setNewFileNotes] = useState<string>('');
+  const [isAdding, setIsAdding] = useState<boolean>(false);
 
   useEffect(() => {
     if (!isOpen || !project) return;
@@ -70,10 +75,11 @@ export function AssociatedFilesInfoDialog({
     }
 
     // Reset new file form
-    setSelectedFilePath('');
+    setSelectedFilePaths([]);
     setNewFileType('');
     setNewOtherType('');
     setNewFileNotes('');
+    setIsAdding(false);
   }, [isOpen, micrographId, spotId, project]);
 
   const handleSave = () => {
@@ -129,65 +135,90 @@ export function AssociatedFilesInfoDialog({
     setEditingIndex(null);
   };
 
-  // Handle file selection using native Electron dialog
-  const handleBrowseFile = async () => {
-    if (!window.api?.openFileDialog) {
+  // Handle file selection using native Electron dialog (multi-select)
+  const handleBrowseFiles = async () => {
+    if (!window.api?.openFilesDialog) {
       console.error('File dialog API not available');
       return;
     }
 
     try {
-      const filePath = await window.api.openFileDialog();
-      if (filePath) {
-        setSelectedFilePath(filePath);
+      const filePaths = await window.api.openFilesDialog();
+      if (filePaths && filePaths.length > 0) {
+        // Add to existing selection (avoid duplicates)
+        setSelectedFilePaths(prev => {
+          const newPaths = filePaths.filter(p => !prev.includes(p));
+          return [...prev, ...newPaths];
+        });
       }
     } catch (error) {
       console.error('Error opening file dialog:', error);
     }
   };
 
-  // Handle adding new file (LEGACY: lines 133-172 in editAssociatedFilesInfo.java)
-  const handleAddFile = async () => {
-    if (!selectedFilePath || !project?.id) return;
+  // Remove a file from selection
+  const handleRemoveFromSelection = (pathToRemove: string) => {
+    setSelectedFilePaths(prev => prev.filter(p => p !== pathToRemove));
+  };
 
-    // Extract filename from path
-    const fileName = selectedFilePath.split(/[/\\]/).pop() || selectedFilePath;
+  // Handle adding multiple files at once
+  const handleAddFiles = async () => {
+    if (selectedFilePaths.length === 0 || !project?.id) return;
 
-    try {
-      // Copy file to project's associatedFiles folder
-      if (window.api?.copyToAssociatedFiles) {
-        await window.api.copyToAssociatedFiles(selectedFilePath, project.id, fileName);
-        console.log(`File copied to associatedFiles: ${fileName}`);
+    setIsAdding(true);
+    const newFiles: AssociatedFileData[] = [];
+    const errors: string[] = [];
+
+    for (const filePath of selectedFilePaths) {
+      // Extract filename from path
+      const fileName = filePath.split(/[/\\]/).pop() || filePath;
+
+      try {
+        // Copy file to project's associatedFiles folder
+        if (window.api?.copyToAssociatedFiles) {
+          await window.api.copyToAssociatedFiles(filePath, project.id, fileName);
+          console.log(`File copied to associatedFiles: ${fileName}`);
+        }
+
+        const newFile: AssociatedFileData = {
+          fileName: fileName,
+          originalPath: filePath,
+          fileType: newFileType,
+          otherType: newFileType === 'Other' ? newOtherType : '',
+          notes: newFileNotes,
+        };
+
+        newFiles.push(newFile);
+      } catch (error: any) {
+        console.error('Error copying file:', error);
+        errors.push(fileName);
       }
+    }
 
-      const newFile: AssociatedFileData = {
-        fileName: fileName,
-        originalPath: selectedFilePath,
-        fileType: newFileType,
-        otherType: newFileType === 'Other' ? newOtherType : '',
-        notes: newFileNotes,
-      };
+    // Add all successfully copied files
+    if (newFiles.length > 0) {
+      setFiles([...files, ...newFiles]);
+    }
 
-      setFiles([...files, newFile]);
+    // Reset form
+    setSelectedFilePaths([]);
+    setNewFileType('');
+    setNewOtherType('');
+    setNewFileNotes('');
+    setIsAdding(false);
 
-      // Reset form
-      setSelectedFilePath('');
-      setNewFileType('');
-      setNewOtherType('');
-      setNewFileNotes('');
-    } catch (error: any) {
-      console.error('Error copying file:', error);
-      // Show user-friendly error message
-      const errorMessage = error?.message || 'Failed to copy file. Please try again.';
-      alert(errorMessage);
+    // Show errors if any
+    if (errors.length > 0) {
+      alert(`Failed to add ${errors.length} file(s): ${errors.join(', ')}`);
     }
   };
 
-  // Validation for add button (LEGACY: lines 96-114 in editAssociatedFilesInfo.java)
-  const canAddFile = (() => {
-    if (!selectedFilePath) return false;
+  // Validation for add button
+  const canAddFiles = (() => {
+    if (selectedFilePaths.length === 0) return false;
     if (newFileType === '') return false;
     if (newFileType === 'Other' && newOtherType.trim() === '') return false;
+    if (isAdding) return false;
     return true;
   })();
 
@@ -282,41 +313,71 @@ export function AssociatedFilesInfoDialog({
 
         <Divider sx={{ my: 3 }} />
 
-        {/* Add New File Section - LEGACY: lines 52-85 in editAssociatedFilesInfo.fxml */}
+        {/* Add New Files Section - supports bulk import */}
         <Box>
           <Typography variant="h6" sx={{ mb: 2, textAlign: 'center' }}>
-            Add New File
+            Add Files
           </Typography>
 
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            {/* Choose File - LEGACY: lines 57-67 */}
+            {/* Choose Files - supports multiple selection */}
             <Box>
               <Typography variant="subtitle2" sx={{ mb: 1 }}>
-                Choose File:
+                Choose Files:
               </Typography>
-              <Box sx={{ display: 'flex', gap: 1 }}>
-                <TextField
-                  fullWidth
-                  value={selectedFilePath}
-                  placeholder="No file selected"
-                  InputProps={{
-                    readOnly: true,
+              <Button
+                variant="outlined"
+                onClick={handleBrowseFiles}
+                fullWidth
+                sx={{ mb: 1 }}
+              >
+                Browse Files...
+              </Button>
+
+              {/* Show selected files as chips */}
+              {selectedFilePaths.length > 0 && (
+                <Box
+                  sx={{
+                    display: 'flex',
+                    flexWrap: 'wrap',
+                    gap: 1,
+                    p: 1.5,
+                    border: '1px solid',
+                    borderColor: 'divider',
+                    borderRadius: 1,
+                    bgcolor: 'action.hover',
+                    maxHeight: 120,
+                    overflowY: 'auto',
                   }}
-                  onClick={handleBrowseFile}
-                  sx={{ cursor: 'pointer' }}
-                />
-                <Button variant="outlined" onClick={handleBrowseFile}>
-                  Browse
-                </Button>
-              </Box>
+                >
+                  {selectedFilePaths.map((filePath, index) => {
+                    const fileName = filePath.split(/[/\\]/).pop() || filePath;
+                    return (
+                      <Chip
+                        key={index}
+                        label={fileName}
+                        size="small"
+                        onDelete={() => handleRemoveFromSelection(filePath)}
+                        deleteIcon={<CloseIcon />}
+                      />
+                    );
+                  })}
+                </Box>
+              )}
+
+              {selectedFilePaths.length > 0 && (
+                <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+                  {selectedFilePaths.length} file{selectedFilePaths.length !== 1 ? 's' : ''} selected
+                </Typography>
+              )}
             </Box>
 
-            {/* File Type - LEGACY: lines 68-73 */}
+            {/* File Type - applied to all selected files */}
             <FormControl fullWidth>
-              <InputLabel>File Type</InputLabel>
+              <InputLabel>File Type (for all files)</InputLabel>
               <Select
                 value={newFileType}
-                label="File Type"
+                label="File Type (for all files)"
                 onChange={(e) => setNewFileType(e.target.value)}
               >
                 <MenuItem value="">
@@ -330,7 +391,7 @@ export function AssociatedFilesInfoDialog({
               </Select>
             </FormControl>
 
-            {/* Other Type - Conditional - LEGACY: lines 74, 84-93 */}
+            {/* Other Type - Conditional */}
             {newFileType === 'Other' && (
               <TextField
                 fullWidth
@@ -341,25 +402,30 @@ export function AssociatedFilesInfoDialog({
               />
             )}
 
-            {/* Notes - LEGACY: lines 75-80 */}
+            {/* Notes - applied to all selected files */}
             <TextField
               fullWidth
               multiline
               rows={3}
-              label="Notes"
+              label="Notes (for all files)"
               value={newFileNotes}
               onChange={(e) => setNewFileNotes(e.target.value)}
-              placeholder="Add notes about this file..."
+              placeholder="Add notes about these files..."
             />
 
-            {/* Add Button - LEGACY: lines 81-85 */}
+            {/* Add Button */}
             <Box sx={{ display: 'flex', justifyContent: 'center' }}>
               <Button
                 variant="contained"
-                onClick={handleAddFile}
-                disabled={!canAddFile}
+                onClick={handleAddFiles}
+                disabled={!canAddFiles}
+                startIcon={isAdding ? <CircularProgress size={16} color="inherit" /> : undefined}
               >
-                Add
+                {isAdding
+                  ? 'Adding...'
+                  : selectedFilePaths.length > 1
+                    ? `Add ${selectedFilePaths.length} Files`
+                    : 'Add'}
               </Button>
             </Box>
           </Box>

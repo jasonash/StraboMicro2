@@ -773,7 +773,7 @@ ipcMain.handle('dialog:open-multiple-tiff', async () => {
   return result.filePaths;
 });
 
-// Generic file dialog for associated files
+// Generic file dialog for associated files (single file)
 ipcMain.handle('dialog:open-file', async () => {
   const result = await dialog.showOpenDialog(mainWindow, {
     title: 'Select File',
@@ -788,6 +788,23 @@ ipcMain.handle('dialog:open-file', async () => {
   }
 
   return result.filePaths[0];
+});
+
+// Multi-file dialog for bulk associated files import
+ipcMain.handle('dialog:open-files', async () => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: 'Select Files',
+    filters: [
+      { name: 'All Files', extensions: ['*'] }
+    ],
+    properties: ['openFile', 'multiSelections']
+  });
+
+  if (result.canceled || result.filePaths.length === 0) {
+    return [];
+  }
+
+  return result.filePaths;
 });
 
 // Open external link in default browser
