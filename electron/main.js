@@ -190,16 +190,25 @@ function createSplashWindow() {
     },
   });
 
-  // Load splash HTML with logo path and version injected
+  // Load splash HTML with logo embedded as base64
   const isDev = process.env.NODE_ENV !== 'production';
   const logoPath = isDev
     ? path.join(__dirname, '../docs/images/new_strabomicro_icon.png')
     : path.join(process.resourcesPath, 'splash-logo.png');
   const splashHtmlPath = path.join(__dirname, 'splash.html');
 
-  // Read the HTML template and inject the logo path and version
+  // Read logo and convert to base64 data URL
+  let logoDataUrl = '';
+  try {
+    const logoBuffer = fs.readFileSync(logoPath);
+    logoDataUrl = `data:image/png;base64,${logoBuffer.toString('base64')}`;
+  } catch (err) {
+    log.error('[Splash] Failed to load logo:', err);
+  }
+
+  // Read the HTML template and inject the logo and version
   let splashHtml = fs.readFileSync(splashHtmlPath, 'utf8');
-  splashHtml = splashHtml.replace('LOGO_PATH', `file://${logoPath}`);
+  splashHtml = splashHtml.replace('LOGO_PATH', logoDataUrl);
   splashHtml = splashHtml.replace('VERSION_NUMBER', version);
 
   // Load the modified HTML as a data URL
