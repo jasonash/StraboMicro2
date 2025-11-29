@@ -327,15 +327,6 @@ function createWindow() {
           }
         },
         {
-          label: 'View Version History...',
-          click: () => {
-            if (mainWindow) {
-              mainWindow.webContents.send('menu:view-version-history');
-            }
-          }
-        },
-        { type: 'separator' },
-        {
           label: 'Export as .smz...',
           accelerator: 'CmdOrCtrl+Shift+E',
           click: () => {
@@ -345,12 +336,20 @@ function createWindow() {
           }
         },
         {
-          label: 'Push to Server...',
+          label: 'Upload to Strabo Server...',
           accelerator: 'CmdOrCtrl+Shift+U',
           enabled: isLoggedIn,
           click: () => {
             if (mainWindow) {
               mainWindow.webContents.send('menu:push-to-server');
+            }
+          }
+        },
+        {
+          label: 'View Version History...',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('menu:view-version-history');
             }
           }
         },
