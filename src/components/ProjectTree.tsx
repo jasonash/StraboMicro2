@@ -31,6 +31,7 @@ import {
   Visibility,
   VisibilityOff,
   DragIndicator,
+  Close as CloseIcon,
 } from '@mui/icons-material';
 import {
   DndContext,
@@ -1405,9 +1406,21 @@ export function ProjectTree() {
         }}
       >
         <Box sx={{ p: 2, width: 250 }}>
-          <Typography variant="subtitle2" gutterBottom>
-            Micrograph Opacity
-          </Typography>
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
+            <Typography variant="subtitle2">
+              Micrograph Opacity
+            </Typography>
+            <IconButton
+              size="small"
+              onClick={() => {
+                setOpacityAnchorPosition(null);
+                setOpacityMicrographId(null);
+              }}
+              sx={{ ml: 1, p: 0.5 }}
+            >
+              <CloseIcon sx={{ fontSize: 18 }} />
+            </IconButton>
+          </Box>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
             <Slider
               value={opacityValue}
