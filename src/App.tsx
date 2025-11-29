@@ -5,6 +5,7 @@ import { EditProjectDialog } from './components/dialogs/EditProjectDialog';
 import { ProjectDebugModal } from './components/dialogs/ProjectDebugModal';
 import { PreferencesDialog } from './components/dialogs/PreferencesDialog';
 import { LoginDialog } from './components/dialogs/LoginDialog';
+import { AboutDialog } from './components/dialogs/AboutDialog';
 import { ExportAllImagesDialog } from './components/dialogs/ExportAllImagesDialog';
 import { ExportPDFDialog } from './components/dialogs/ExportPDFDialog';
 import { ExportSmzDialog } from './components/dialogs/ExportSmzDialog';
@@ -35,6 +36,7 @@ function App() {
   const [isRemoteProjectsOpen, setIsRemoteProjectsOpen] = useState(false);
   const [isSharedProjectOpen, setIsSharedProjectOpen] = useState(false);
   const [isCloseProjectOpen, setIsCloseProjectOpen] = useState(false);
+  const [isAboutOpen, setIsAboutOpen] = useState(false);
   const closeProject = useAppStore(state => state.closeProject);
   const project = useAppStore(state => state.project);
   const setTheme = useAppStore(state => state.setTheme);
@@ -435,6 +437,11 @@ function App() {
       await logout();
     }));
 
+    // Help: About menu item
+    unsubscribers.push(window.api.onShowAbout(() => {
+      setIsAboutOpen(true);
+    }));
+
     // File: Export All Images menu item
     unsubscribers.push(window.api.onExportAllImages(() => {
       if (!project) {
@@ -635,6 +642,10 @@ function App() {
       <LoginDialog
         isOpen={isLoginDialogOpen}
         onClose={() => setIsLoginDialogOpen(false)}
+      />
+      <AboutDialog
+        isOpen={isAboutOpen}
+        onClose={() => setIsAboutOpen(false)}
       />
       <ExportAllImagesDialog
         open={isExportAllImagesOpen}

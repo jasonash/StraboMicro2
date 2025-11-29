@@ -245,6 +245,13 @@ contextBridge.exposeInMainWorld('api', {
     return () => ipcRenderer.removeListener('menu:logout', callback);
   },
 
+  // Help menu events
+  onShowAbout: (callback) => {
+    const handler = () => callback();
+    ipcRenderer.on('help:show-about', handler);
+    return () => ipcRenderer.removeListener('help:show-about', handler);
+  },
+
   // Save/Export menu events
   onSaveProject: (callback) => {
     ipcRenderer.on('menu:save-project', callback);

@@ -1,5 +1,8 @@
 /// <reference types="vite/client" />
 
+// App version injected by Vite at build time
+declare const __APP_VERSION__: string;
+
 declare module '*.csv?raw' {
   const value: string;
   export default value;
@@ -363,6 +366,9 @@ interface Window {
     // Auth menu events
     onLoginRequest: (callback: () => void) => Unsubscribe;
     onLogoutRequest: (callback: () => void) => Unsubscribe;
+
+    // Help menu events
+    onShowAbout: (callback: () => void) => Unsubscribe;
 
     // Save/Export menu events
     onSaveProject: (callback: () => void) => Unsubscribe;
