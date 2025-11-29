@@ -816,18 +816,41 @@ function createWindow() {
     mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
   }
 
+  // Track if we're in the process of closing
+  let isClosing = false;
+
   mainWindow.on('close', (event) => {
     // Save final window state before closing
     saveWindowState();
 
-    // Send message to renderer to save if dirty
-    // The renderer will handle the actual save operation
+    // If we're already closing (after save completed), allow the close
+    if (isClosing) {
+      return;
+    }
+
+    // Prevent the window from closing immediately
+    event.preventDefault();
+
+    // Send message to renderer to save if dirty, then close
+    // The renderer will respond with 'app:close-ready' when done
     if (mainWindow && mainWindow.webContents) {
       mainWindow.webContents.send('app:before-close');
     }
   });
 
+  // Listen for close-ready signal from renderer
+  const handleCloseReady = () => {
+    log.info('[App] Received close-ready signal, closing window');
+    isClosing = true;
+    if (mainWindow) {
+      mainWindow.close();
+    }
+  };
+  ipcMain.on('app:close-ready', handleCloseReady);
+
   mainWindow.on('closed', () => {
+    // Clean up the IPC listener when window is closed
+    ipcMain.removeListener('app:close-ready', handleCloseReady);
     mainWindow = null;
   });
 }
