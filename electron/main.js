@@ -534,8 +534,21 @@ function createWindow() {
     {
       label: 'Help',
       submenu: [
-        { label: 'Documentation' },
-        { label: 'About StraboMicro' },
+        {
+          label: 'About StraboMicro',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('help:show-about');
+            }
+          }
+        },
+        { type: 'separator' },
+        {
+          label: 'StraboMicro User Guide',
+          click: async () => {
+            await shell.openExternal('https://strabospot.org/manual/micro');
+          }
+        },
       ],
     },
     {
@@ -624,27 +637,6 @@ function createWindow() {
         },
         { type: 'separator' },
         { role: 'toggleDevTools' },
-      ],
-    },
-    // Help menu
-    {
-      label: 'Help',
-      submenu: [
-        {
-          label: 'About StraboMicro',
-          click: () => {
-            if (mainWindow) {
-              mainWindow.webContents.send('help:show-about');
-            }
-          }
-        },
-        { type: 'separator' },
-        {
-          label: 'StraboMicro User Guide',
-          click: async () => {
-            await shell.openExternal('https://strabospot.org/manual/micro');
-          }
-        },
       ],
     },
   ];
