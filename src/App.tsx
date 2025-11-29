@@ -11,6 +11,7 @@ import { ExportSmzDialog } from './components/dialogs/ExportSmzDialog';
 import { PushToServerDialog } from './components/dialogs/PushToServerDialog';
 import { VersionHistoryDialog } from './components/dialogs/VersionHistoryDialog';
 import { ImportSmzDialog } from './components/dialogs/ImportSmzDialog';
+import { RemoteProjectsDialog } from './components/dialogs/RemoteProjectsDialog';
 import { useAppStore, useTemporalStore } from '@/store';
 import { useAuthStore } from '@/store/useAuthStore';
 import { useTheme } from './hooks/useTheme';
@@ -29,6 +30,7 @@ function App() {
   const [isPushToServerOpen, setIsPushToServerOpen] = useState(false);
   const [isVersionHistoryOpen, setIsVersionHistoryOpen] = useState(false);
   const [isImportSmzOpen, setIsImportSmzOpen] = useState(false);
+  const [isRemoteProjectsOpen, setIsRemoteProjectsOpen] = useState(false);
   const closeProject = useAppStore(state => state.closeProject);
   const project = useAppStore(state => state.project);
   const setTheme = useAppStore(state => state.setTheme);
@@ -494,6 +496,24 @@ function App() {
       setIsPushToServerOpen(true);
     }));
 
+    // File: Open Remote Project menu item
+    unsubscribers.push(window.api?.onOpenRemoteProject(async () => {
+      // Check for unsaved changes first
+      const isDirty = useAppStore.getState().isDirty;
+      const currentProject = useAppStore.getState().project;
+
+      if (isDirty && currentProject) {
+        const shouldContinue = window.confirm(
+          'You have unsaved changes. Save before opening a remote project?'
+        );
+        if (shouldContinue) {
+          await saveBeforeSwitch();
+        }
+      }
+
+      setIsRemoteProjectsOpen(true);
+    }));
+
     // File: View Version History menu item
     unsubscribers.push(window.api?.onViewVersionHistory(() => {
       if (!project) {
@@ -612,6 +632,30 @@ function App() {
         open={isImportSmzOpen}
         onClose={() => setIsImportSmzOpen(false)}
         onImportComplete={(importedProject) => {
+          // Load the imported project into the store
+          useAppStore.getState().loadProject(importedProject, null);
+
+          // Select the first reference micrograph if available
+          const datasets = importedProject.datasets || [];
+          for (const dataset of datasets) {
+            for (const sample of dataset.samples || []) {
+              const referenceMicrograph = (sample.micrographs || []).find(
+                (m: any) => !m.parentID
+              );
+              if (referenceMicrograph) {
+                setTimeout(() => {
+                  useAppStore.getState().selectMicrograph(referenceMicrograph.id);
+                }, 100);
+                return;
+              }
+            }
+          }
+        }}
+      />
+      <RemoteProjectsDialog
+        open={isRemoteProjectsOpen}
+        onClose={() => setIsRemoteProjectsOpen(false)}
+        onImportComplete={(importedProject: any) => {
           // Load the imported project into the store
           useAppStore.getState().loadProject(importedProject, null);
 

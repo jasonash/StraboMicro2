@@ -268,6 +268,21 @@ contextBridge.exposeInMainWorld('api', {
       ipcRenderer.on('server:push-progress', (event, progress) => callback(progress)),
     removePushProgressListener: () =>
       ipcRenderer.removeAllListeners('server:push-progress'),
+    // Remote project download (Open Remote Project)
+    listProjects: () => ipcRenderer.invoke('server:list-projects'),
+    downloadProject: (projectId) => ipcRenderer.invoke('server:download-project', projectId),
+    cleanupDownload: (zipPath) => ipcRenderer.invoke('server:cleanup-download', zipPath),
+    onDownloadProgress: (callback) => {
+      const handler = (event, progress) => callback(progress);
+      ipcRenderer.on('server:download-progress', handler);
+      return () => ipcRenderer.removeListener('server:download-progress', handler);
+    },
+  },
+
+  // Open Remote Project menu event
+  onOpenRemoteProject: (callback) => {
+    ipcRenderer.on('menu:open-remote-project', callback);
+    return () => ipcRenderer.removeListener('menu:open-remote-project', callback);
   },
 
   // App lifecycle
