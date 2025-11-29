@@ -366,7 +366,10 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
           onTileLoadingEnd?.();
         }
       } catch (error) {
-        console.error('[AssociatedImageRenderer] Failed to load image:', error);
+        // Only log error on final retry attempt to avoid console noise
+        if (imageState.retryCount >= MAX_RETRIES - 1) {
+          console.error('[AssociatedImageRenderer] Failed to load image after retries:', error);
+        }
         // Reset loading state and schedule retry after delay
         // This handles race conditions during initial project load
         setTimeout(() => {
