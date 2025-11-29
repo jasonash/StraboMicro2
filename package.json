@@ -83,7 +83,7 @@
     ],
     "extraResources": [
       {
-        "from": "docs/images/new_strabomicro_icon.png",
+        "from": "src/assets/app-icon.png",
         "to": "splash-logo.png"
       }
     ],

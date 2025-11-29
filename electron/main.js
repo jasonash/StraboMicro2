@@ -214,7 +214,7 @@ function createSplashWindow() {
   // Check if running in packaged app (app.isPackaged is more reliable than NODE_ENV)
   const logoPath = app.isPackaged
     ? path.join(process.resourcesPath, 'splash-logo.png')
-    : path.join(__dirname, '../docs/images/new_strabomicro_icon.png');
+    : path.join(__dirname, '../src/assets/app-icon.png');
   const splashHtmlPath = path.join(__dirname, 'splash.html');
 
   log.info('[Splash] app.isPackaged:', app.isPackaged);
