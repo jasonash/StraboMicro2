@@ -54,6 +54,7 @@ interface ImageState {
   tiles: Map<string, TileInfo>;
   isLoading: boolean;
   targetMode?: RenderMode; // Track what mode we're currently loading
+  retryCount: number; // Track retries to avoid infinite loops
 }
 
 const TILE_SIZE = 256;
@@ -74,6 +75,7 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
     imageObj: null,
     tiles: new Map(),
     isLoading: false,
+    retryCount: 0,
   });
 
   /**
@@ -235,12 +237,17 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
 
   /**
    * Load image for the determined render mode
+   * Includes retry logic to handle race conditions during initial project load
    */
   useEffect(() => {
     if (!window.api || !micrograph.imagePath) return;
 
     // Capture imagePath in a non-null variable for TypeScript
     const imagePath = micrograph.imagePath;
+
+    // Max retries to avoid infinite loops
+    const MAX_RETRIES = 3;
+    const RETRY_DELAY_MS = 200;
 
     const loadImage = async () => {
       const targetMode = determineRenderMode();
@@ -253,6 +260,12 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
 
       // Don't reload if already loading this target mode
       if (imageState.isLoading && imageState.targetMode === targetMode) {
+        return;
+      }
+
+      // Give up after max retries
+      if (imageState.retryCount >= MAX_RETRIES) {
+        console.warn(`[AssociatedImageRenderer] Max retries (${MAX_RETRIES}) reached for ${micrograph.name}`);
         return;
       }
 
@@ -282,6 +295,7 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
             imageObj: img,
             tiles: new Map(),
             isLoading: false,
+            retryCount: 0, // Reset retry count on success
           });
 
         } else if (targetMode === 'MEDIUM') {
@@ -301,6 +315,7 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
             imageObj: img,
             tiles: new Map(),
             isLoading: false,
+            retryCount: 0, // Reset retry count on success
           });
 
         } else {
@@ -344,6 +359,7 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
             imageObj: null,
             tiles: newTiles,
             isLoading: false,
+            retryCount: 0, // Reset retry count on success
           });
 
           // Notify parent that we're done loading tiles
@@ -351,12 +367,20 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
         }
       } catch (error) {
         console.error('[AssociatedImageRenderer] Failed to load image:', error);
-        // Don't clear the current image on error - keep showing what we have
+        // Reset loading state and schedule retry after delay
+        // This handles race conditions during initial project load
+        setTimeout(() => {
+          setImageState(prev => ({
+            ...prev,
+            isLoading: false,
+            retryCount: prev.retryCount + 1,
+          }));
+        }, RETRY_DELAY_MS);
       }
     };
 
     loadImage();
-  }, [micrograph, determineRenderMode, imageState.mode, imageState.imageObj, imageState.tiles.size, imageState.isLoading, projectId]);
+  }, [micrograph, determineRenderMode, imageState.mode, imageState.imageObj, imageState.tiles.size, imageState.isLoading, imageState.retryCount, projectId]);
 
   // Handlers for click and cursor - MUST be before any early returns (React hooks rule)
   const handleClick = useCallback(() => {
