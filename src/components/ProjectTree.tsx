@@ -53,6 +53,7 @@ import { NewSampleDialog } from './dialogs/NewSampleDialog';
 import { NewMicrographDialog } from './dialogs/NewMicrographDialog';
 import { EditSampleDialog } from './dialogs/EditSampleDialog';
 import { EditDatasetDialog } from './dialogs/EditDatasetDialog';
+import { EditProjectDialog } from './dialogs/EditProjectDialog';
 import { ConfirmDialog } from './dialogs/ConfirmDialog';
 import { AddMicrographToGroupsDialog } from './dialogs/AddMicrographToGroupsDialog';
 import { EditMicrographDialog } from './dialogs/metadata/EditMicrographDialog';
@@ -274,6 +275,7 @@ export function ProjectTree() {
   const [selectedParentMicrographId, setSelectedParentMicrographId] = useState<string | null>(null);
 
   // Edit/Delete dialog states
+  const [showEditProject, setShowEditProject] = useState(false);
   const [showEditDataset, setShowEditDataset] = useState(false);
   const [editingDatasetId, setEditingDatasetId] = useState<string | null>(null);
   const [showEditSample, setShowEditSample] = useState(false);
@@ -1176,9 +1178,19 @@ export function ProjectTree() {
         }}>
           Add New Dataset
         </MenuItem>
+        <MenuItem onClick={() => {
+          setShowEditProject(true);
+          setProjectMenuAnchor(null);
+        }}>
+          Edit Project Metadata
+        </MenuItem>
       </Menu>
 
       {/* Dialogs */}
+      <EditProjectDialog
+        isOpen={showEditProject}
+        onClose={() => setShowEditProject(false)}
+      />
       <NewDatasetDialog isOpen={showNewDataset} onClose={() => setShowNewDataset(false)} />
       <NewSampleDialog
         isOpen={showNewSample}
