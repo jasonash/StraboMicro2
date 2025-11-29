@@ -281,7 +281,7 @@ export function AssociatedFilesInfoDialog({
                 >
                   {/* File info */}
                   <Box sx={{ flex: 1 }}>
-                    <AssociatedFileListItem file={file} />
+                    <AssociatedFileListItem file={file} projectId={project?.id} />
                   </Box>
 
                   {/* Action buttons */}

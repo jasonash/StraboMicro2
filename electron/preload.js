@@ -75,6 +75,9 @@ contextBridge.exposeInMainWorld('api', {
   // External links
   openExternalLink: (url) => ipcRenderer.invoke('open-external-link', url),
 
+  // Open file with system default application
+  openFilePath: (filePath) => ipcRenderer.invoke('shell:open-path', filePath),
+
   // TIFF loading
   loadTiffImage: (filePath) => ipcRenderer.invoke('load-tiff-image', filePath),
 

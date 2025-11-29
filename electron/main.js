@@ -819,6 +819,23 @@ ipcMain.handle('open-external-link', async (event, url) => {
   }
 });
 
+// Open file with system default application (like double-clicking in Finder/Explorer)
+ipcMain.handle('shell:open-path', async (event, filePath) => {
+  try {
+    log.info(`[IPC] Opening file with default app: ${filePath}`);
+    const result = await shell.openPath(filePath);
+    if (result) {
+      // openPath returns an error string if it fails, empty string on success
+      log.error(`[IPC] Error opening file: ${result}`);
+      return { success: false, error: result };
+    }
+    return { success: true };
+  } catch (error) {
+    log.error('[IPC] Error opening file:', error);
+    throw error;
+  }
+});
+
 // Export detailed notes to PDF
 ipcMain.handle('pdf:export-detailed-notes', async (event, projectData, micrographId, spotId) => {
   try {

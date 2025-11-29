@@ -98,6 +98,7 @@ interface Window {
     openFileDialog: () => Promise<string | null>;
     openFilesDialog: () => Promise<string[]>;
     openExternalLink: (url: string) => Promise<{ success: boolean }>;
+    openFilePath: (filePath: string) => Promise<{ success: boolean; error?: string }>;
     loadTiffImage: (filePath: string) => Promise<{
       width: number;
       height: number;
