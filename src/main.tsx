@@ -66,6 +66,7 @@ const getTheme = (mode: 'dark' | 'light'): Theme => createTheme({
         root: ({ theme }) => ({
           backgroundColor: theme.palette.background.paper,
           borderBottom: `1px solid ${theme.palette.divider}`,
+          color: theme.palette.text.primary,
         }),
       },
     },
