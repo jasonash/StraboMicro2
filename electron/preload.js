@@ -277,12 +277,20 @@ contextBridge.exposeInMainWorld('api', {
       ipcRenderer.on('server:download-progress', handler);
       return () => ipcRenderer.removeListener('server:download-progress', handler);
     },
+    // Shared project download (Open Shared Project)
+    downloadSharedProject: (shareCode) => ipcRenderer.invoke('server:download-shared-project', shareCode),
   },
 
   // Open Remote Project menu event
   onOpenRemoteProject: (callback) => {
     ipcRenderer.on('menu:open-remote-project', callback);
     return () => ipcRenderer.removeListener('menu:open-remote-project', callback);
+  },
+
+  // Open Shared Project menu event
+  onOpenSharedProject: (callback) => {
+    ipcRenderer.on('menu:open-shared-project', callback);
+    return () => ipcRenderer.removeListener('menu:open-shared-project', callback);
   },
 
   // App lifecycle

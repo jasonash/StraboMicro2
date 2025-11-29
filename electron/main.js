@@ -345,6 +345,15 @@ function createWindow() {
             }
           }
         },
+        {
+          label: 'Open Shared Project...',
+          enabled: isLoggedIn,
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('menu:open-shared-project');
+            }
+          }
+        },
         { type: 'separator' },
         {
           label: 'Export All Images...',
@@ -4255,4 +4264,33 @@ ipcMain.handle('server:cleanup-download', async (event, zipPath) => {
   log.info('[ServerDownload] Cleaning up:', zipPath);
   await serverDownload.cleanupDownload(zipPath);
   return { success: true };
+});
+
+/**
+ * Download a shared project by share code
+ * The share code is a 6-character alphanumeric string that resolves to a download key
+ */
+ipcMain.handle('server:download-shared-project', async (event, shareCode) => {
+  log.info('[ServerDownload] Downloading shared project with code:', shareCode);
+
+  // Get current auth token
+  const tokens = await tokenService.getTokens();
+
+  if (!tokens || !tokens.accessToken) {
+    log.warn('[ServerDownload] Not authenticated');
+    return { success: false, error: 'Not logged in. Please log in first.' };
+  }
+
+  const result = await serverDownload.downloadSharedProject(
+    shareCode,
+    tokens.accessToken,
+    (progress) => {
+      // Send progress updates to renderer
+      if (mainWindow) {
+        mainWindow.webContents.send('server:download-progress', progress);
+      }
+    }
+  );
+
+  return result;
 });
