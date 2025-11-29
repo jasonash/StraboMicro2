@@ -331,4 +331,20 @@ contextBridge.exposeInMainWorld('api', {
     // Manually trigger pruning
     prune: (projectId) => ipcRenderer.invoke('version:prune', projectId),
   },
+
+  // SMZ Import (Open .smz files)
+  smzImport: {
+    // Open file selection dialog for .smz files
+    selectFile: () => ipcRenderer.invoke('smz:select-file'),
+    // Inspect an .smz file (get project info without importing)
+    inspect: (smzPath) => ipcRenderer.invoke('smz:inspect', smzPath),
+    // Import an .smz file (DESTRUCTIVE - replaces existing project)
+    import: (smzPath) => ipcRenderer.invoke('smz:import', smzPath),
+    // Progress updates during import
+    onImportProgress: (callback) => {
+      const handler = (event, progress) => callback(progress);
+      ipcRenderer.on('smz:import-progress', handler);
+      return () => ipcRenderer.removeListener('smz:import-progress', handler);
+    },
+  },
 });

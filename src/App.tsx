@@ -10,6 +10,7 @@ import { ExportPDFDialog } from './components/dialogs/ExportPDFDialog';
 import { ExportSmzDialog } from './components/dialogs/ExportSmzDialog';
 import { PushToServerDialog } from './components/dialogs/PushToServerDialog';
 import { VersionHistoryDialog } from './components/dialogs/VersionHistoryDialog';
+import { ImportSmzDialog } from './components/dialogs/ImportSmzDialog';
 import { useAppStore, useTemporalStore } from '@/store';
 import { useAuthStore } from '@/store/useAuthStore';
 import { useTheme } from './hooks/useTheme';
@@ -27,6 +28,7 @@ function App() {
   const [isExportSmzOpen, setIsExportSmzOpen] = useState(false);
   const [isPushToServerOpen, setIsPushToServerOpen] = useState(false);
   const [isVersionHistoryOpen, setIsVersionHistoryOpen] = useState(false);
+  const [isImportSmzOpen, setIsImportSmzOpen] = useState(false);
   const closeProject = useAppStore(state => state.closeProject);
   const project = useAppStore(state => state.project);
   const setTheme = useAppStore(state => state.setTheme);
@@ -107,9 +109,22 @@ function App() {
       setIsNewProjectDialogOpen(true);
     }));
 
-    // Open Project menu item (TODO: implement)
-    unsubscribers.push(window.api.onOpenProject(() => {
-      console.log('Open Project clicked');
+    // Open Project menu item - opens file dialog for .smz files
+    unsubscribers.push(window.api.onOpenProject(async () => {
+      // Check for unsaved changes first
+      const isDirty = useAppStore.getState().isDirty;
+      const currentProject = useAppStore.getState().project;
+
+      if (isDirty && currentProject) {
+        const shouldContinue = window.confirm(
+          'You have unsaved changes. Save before opening a new project?'
+        );
+        if (shouldContinue) {
+          await saveBeforeSwitch();
+        }
+      }
+
+      setIsImportSmzOpen(true);
     }));
 
     // Edit Project menu item
@@ -592,6 +607,30 @@ function App() {
         open={isVersionHistoryOpen}
         onClose={() => setIsVersionHistoryOpen(false)}
         projectId={project?.id ?? ''}
+      />
+      <ImportSmzDialog
+        open={isImportSmzOpen}
+        onClose={() => setIsImportSmzOpen(false)}
+        onImportComplete={(importedProject) => {
+          // Load the imported project into the store
+          useAppStore.getState().loadProject(importedProject, null);
+
+          // Select the first reference micrograph if available
+          const datasets = importedProject.datasets || [];
+          for (const dataset of datasets) {
+            for (const sample of dataset.samples || []) {
+              const referenceMicrograph = (sample.micrographs || []).find(
+                (m: any) => !m.parentID
+              );
+              if (referenceMicrograph) {
+                setTimeout(() => {
+                  useAppStore.getState().selectMicrograph(referenceMicrograph.id);
+                }, 100);
+                return;
+              }
+            }
+          }
+        }}
       />
     </>
   );
