@@ -1267,6 +1267,15 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                               activeMicrograph.scalePixelsPerCentimeter || 100,
                           }}
                           stageScale={zoom}
+                          activeSpotId={activeSpotId}
+                          onSpotClick={(spot) => {
+                            selectActiveSpot(spot.id);
+                            setActiveTool(null);
+                          }}
+                          onSpotContextMenu={(spot, x, y) => {
+                            setContextMenuSpot(spot);
+                            setContextMenuPosition({ x, y });
+                          }}
                         />
                       ))}
 
@@ -1450,6 +1459,15 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                               activeMicrograph.scalePixelsPerCentimeter || 100,
                           }}
                           stageScale={zoom}
+                          activeSpotId={activeSpotId}
+                          onSpotClick={(spot) => {
+                            selectActiveSpot(spot.id);
+                            setActiveTool(null);
+                          }}
+                          onSpotContextMenu={(spot, x, y) => {
+                            setContextMenuSpot(spot);
+                            setContextMenuPosition({ x, y });
+                          }}
                         />
                       ))}
 

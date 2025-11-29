@@ -12,7 +12,7 @@
 
 import { useMemo } from 'react';
 import { Group } from 'react-konva';
-import { MicrographMetadata } from '@/types/project-types';
+import { MicrographMetadata, Spot } from '@/types/project-types';
 import { SpotRenderer } from './SpotRenderer';
 
 interface ChildSpotsRendererProps {
@@ -26,12 +26,21 @@ interface ChildSpotsRendererProps {
   };
   /** Current stage scale (zoom level) */
   stageScale: number;
+  /** Currently selected spot ID (for selection highlighting) */
+  activeSpotId: string | null;
+  /** Callback when a spot is clicked */
+  onSpotClick?: (spot: Spot) => void;
+  /** Callback when a spot is right-clicked */
+  onSpotContextMenu?: (spot: Spot, x: number, y: number) => void;
 }
 
 export const ChildSpotsRenderer: React.FC<ChildSpotsRendererProps> = ({
   childMicrograph,
   parentMetadata,
   stageScale,
+  activeSpotId,
+  onSpotClick,
+  onSpotContextMenu,
 }) => {
   // Skip if no spots
   if (!childMicrograph.spots || childMicrograph.spots.length === 0) {
@@ -97,17 +106,17 @@ export const ChildSpotsRenderer: React.FC<ChildSpotsRendererProps> = ({
       rotation={overlayTransform.rotation}
       offsetX={overlayTransform.offsetX}
       offsetY={overlayTransform.offsetY}
-      listening={false} // Recursive spots are display-only, not interactive
     >
-      {/* Render child spots (shapes only, no labels to reduce clutter) */}
+      {/* Render child spots - clickable for selection and editing */}
       {childMicrograph.spots.map((spot) => (
         <SpotRenderer
           key={spot.id}
           spot={spot}
           scale={effectiveScale}
-          isSelected={false}
+          isSelected={spot.id === activeSpotId}
+          onClick={onSpotClick}
+          onContextMenu={onSpotContextMenu}
           renderLabelsOnly={false}
-          // No click/context menu handlers - recursive spots are display-only
         />
       ))}
     </Group>
