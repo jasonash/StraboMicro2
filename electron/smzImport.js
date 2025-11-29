@@ -19,6 +19,73 @@ const projectSerializer = require('./projectSerializer');
 const versionHistory = require('./versionHistory');
 
 /**
+ * Ensure the images folder has files.
+ * Legacy .smz files may not have an images/ folder, only uiImages/.
+ * In that case, copy all files from uiImages/ to images/.
+ *
+ * @param {Object} folderPaths - Project folder paths
+ */
+async function ensureImagesFolder(folderPaths) {
+  try {
+    // Check if images folder exists and has files
+    let imagesFiles = [];
+    try {
+      imagesFiles = await fs.promises.readdir(folderPaths.images);
+    } catch (err) {
+      // Folder doesn't exist or can't be read
+      imagesFiles = [];
+    }
+
+    // Filter out hidden files and .gitkeep
+    imagesFiles = imagesFiles.filter(f => !f.startsWith('.') && f !== '.gitkeep');
+
+    if (imagesFiles.length > 0) {
+      log.info(`[SmzImport] Images folder has ${imagesFiles.length} files, no fallback needed`);
+      return;
+    }
+
+    // Images folder is empty - check uiImages
+    log.info('[SmzImport] Images folder is empty, checking uiImages for fallback...');
+
+    let uiImagesFiles = [];
+    try {
+      uiImagesFiles = await fs.promises.readdir(folderPaths.uiImages);
+    } catch (err) {
+      log.warn('[SmzImport] uiImages folder not found or empty');
+      return;
+    }
+
+    // Filter out hidden files and .gitkeep
+    uiImagesFiles = uiImagesFiles.filter(f => !f.startsWith('.') && f !== '.gitkeep');
+
+    if (uiImagesFiles.length === 0) {
+      log.warn('[SmzImport] Both images and uiImages folders are empty');
+      return;
+    }
+
+    // Copy files from uiImages to images
+    log.info(`[SmzImport] Copying ${uiImagesFiles.length} files from uiImages to images (legacy fallback)`);
+
+    for (const filename of uiImagesFiles) {
+      const sourcePath = path.join(folderPaths.uiImages, filename);
+      const destPath = path.join(folderPaths.images, filename);
+
+      try {
+        await fs.promises.copyFile(sourcePath, destPath);
+        log.debug(`[SmzImport] Copied ${filename} to images folder`);
+      } catch (err) {
+        log.error(`[SmzImport] Failed to copy ${filename}:`, err);
+      }
+    }
+
+    log.info('[SmzImport] Legacy image fallback complete');
+  } catch (error) {
+    log.error('[SmzImport] Error in ensureImagesFolder:', error);
+    // Don't throw - this is a best-effort fallback
+  }
+}
+
+/**
  * Extract and inspect an .smz file to get project info without importing
  * Used to check if project exists and show user confirmation dialog
  *
@@ -220,6 +287,11 @@ async function importSmz(smzPath, progressCallback) {
       const percentage = 20 + Math.round((processedFiles / totalFiles) * 70);
       sendProgress('Extracting files', percentage, path.basename(pathWithinProject));
     }
+
+    // Check if images folder is empty (legacy .smz files may not have it)
+    // If so, copy files from uiImages to images
+    sendProgress('Checking images', 92, 'Verifying image files...');
+    await ensureImagesFolder(folderPaths);
 
     // Load the project data
     log.info(`[SmzImport] Loading project data...`);
