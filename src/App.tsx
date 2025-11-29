@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import * as Sentry from '@sentry/electron/renderer';
 import MainLayout from './components/MainLayout';
 import { NewProjectDialog } from './components/dialogs/NewProjectDialog';
 import { EditProjectDialog } from './components/dialogs/EditProjectDialog';
@@ -445,7 +446,9 @@ function App() {
     // Debug: Trigger test error in renderer (only wired in development)
     unsubscribers.push(window.api.onDebugTriggerTestError(() => {
       console.log('[Debug] Triggering test error in renderer process...');
-      throw new Error('Test error from renderer process - triggered via Debug menu');
+      const error = new Error('Test error from renderer process - triggered via Debug menu');
+      Sentry.captureException(error);
+      console.log('[Debug] Error sent to Sentry');
     }));
 
     // File: Export All Images menu item
