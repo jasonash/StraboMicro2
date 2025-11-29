@@ -10,6 +10,26 @@ const { app, BrowserWindow, Menu, ipcMain, dialog, screen, nativeTheme, shell } 
 const path = require('path');
 const fs = require('fs');
 const log = require('electron-log');
+const Sentry = require('@sentry/electron/main');
+
+// Initialize Sentry for error tracking (production only)
+Sentry.init({
+  dsn: 'https://a0a059594ef2ba9bfecb1e6bf028afde@o4510450188484608.ingest.us.sentry.io/4510450322046976',
+  // Only enable in packaged builds
+  enabled: app.isPackaged,
+  // Add app version for release tracking
+  release: `strabomicro2@${app.getVersion()}`,
+  // Set environment
+  environment: app.isPackaged ? 'production' : 'development',
+  // Filter out sensitive file paths
+  beforeSend(event) {
+    // Scrub user home directory from file paths
+    const homeDir = app.getPath('home');
+    const eventStr = JSON.stringify(event);
+    const scrubbedStr = eventStr.replace(new RegExp(homeDir, 'g'), '~');
+    return JSON.parse(scrubbedStr);
+  },
+});
 const sharp = require('sharp');
 const archiver = require('archiver');
 const projectFolders = require('./projectFolders');
