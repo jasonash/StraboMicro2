@@ -12,7 +12,11 @@
     "typecheck:watch": "tsc --noEmit --watch --preserveWatchOutput",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "package": "npm run build && electron-builder"
+    "package": "npm run build && electron-builder",
+    "package:mac": "npm run build && electron-builder --mac --publish never",
+    "package:win": "npm run build && electron-builder --win --publish never",
+    "package:linux": "npm run build && electron-builder --linux --publish never",
+    "package:dir": "npm run build && electron-builder --dir"
   },
   "keywords": [
     "geology",
