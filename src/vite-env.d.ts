@@ -529,6 +529,9 @@ interface Window {
       }) => void) => Unsubscribe;
     };
 
+    // File association - open .smz from double-click or command line
+    onOpenSmzFile: (callback: (filePath: string) => void) => Unsubscribe;
+
     // Debug menu events (only used in development)
     onDebugTriggerTestError: (callback: () => void) => Unsubscribe;
 

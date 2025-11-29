@@ -91,6 +91,80 @@ log.info(`Chrome version: ${process.versions.chrome}`);
 let mainWindow;
 let splashWindow;
 
+// Track file to open when app launches (from double-click or command line)
+let pendingFileToOpen = null;
+
+// =============================================================================
+// FILE ASSOCIATION HANDLING (macOS and Windows)
+// =============================================================================
+
+/**
+ * Handle opening an .smz file
+ * Called when user double-clicks an .smz file or opens via command line
+ */
+function handleOpenFile(filePath) {
+  if (!filePath || !filePath.toLowerCase().endsWith('.smz')) {
+    log.info('[FileAssoc] Ignoring non-.smz file:', filePath);
+    return;
+  }
+
+  log.info('[FileAssoc] Opening .smz file:', filePath);
+
+  // Check if the file exists
+  if (!fs.existsSync(filePath)) {
+    log.error('[FileAssoc] File does not exist:', filePath);
+    return;
+  }
+
+  // If window is ready, send the file path to renderer
+  if (mainWindow && mainWindow.webContents) {
+    log.info('[FileAssoc] Sending file to renderer');
+    mainWindow.webContents.send('file:open-smz', filePath);
+  } else {
+    // Window not ready yet, store for later
+    log.info('[FileAssoc] Window not ready, storing file path for later');
+    pendingFileToOpen = filePath;
+  }
+}
+
+// macOS: Handle file open events (double-click on .smz file)
+// This event fires when file is opened while app is running OR when launching
+app.on('open-file', (event, filePath) => {
+  event.preventDefault();
+  log.info('[FileAssoc] macOS open-file event:', filePath);
+  handleOpenFile(filePath);
+});
+
+// Windows/Linux: Single instance lock and command line argument handling
+// When a second instance tries to open, we get the file path from argv
+const gotTheLock = app.requestSingleInstanceLock();
+
+if (!gotTheLock) {
+  // Another instance is already running, quit this one
+  // The other instance will receive the second-instance event with our argv
+  log.info('[FileAssoc] Another instance is running, quitting');
+  app.quit();
+} else {
+  // We got the lock, handle second-instance events
+  app.on('second-instance', (event, argv, workingDirectory) => {
+    log.info('[FileAssoc] second-instance event, argv:', argv);
+
+    // Find .smz file in command line arguments
+    const smzFile = argv.find(arg => arg.toLowerCase().endsWith('.smz'));
+    if (smzFile) {
+      handleOpenFile(smzFile);
+    }
+
+    // Focus our window
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) {
+        mainWindow.restore();
+      }
+      mainWindow.focus();
+    }
+  });
+}
+
 // Window state management
 const windowStateFile = path.join(app.getPath('userData'), 'window-state.json');
 
@@ -798,6 +872,26 @@ function createWindow() {
       if (savedState.isMaximized) {
         mainWindow.maximize();
       }
+
+      // Handle pending file from double-click or command line (with slight delay for renderer init)
+      setTimeout(() => {
+        // Check for pending file from macOS open-file event
+        if (pendingFileToOpen) {
+          log.info('[FileAssoc] Processing pending file:', pendingFileToOpen);
+          mainWindow.webContents.send('file:open-smz', pendingFileToOpen);
+          pendingFileToOpen = null;
+        }
+
+        // Windows: Check command line arguments on initial launch
+        // (macOS uses open-file event instead)
+        if (process.platform !== 'darwin') {
+          const smzFile = process.argv.find(arg => arg.toLowerCase().endsWith('.smz'));
+          if (smzFile && fs.existsSync(smzFile)) {
+            log.info('[FileAssoc] Found .smz in command line args:', smzFile);
+            mainWindow.webContents.send('file:open-smz', smzFile);
+          }
+        }
+      }, 500);
     }, 500);
   });
 

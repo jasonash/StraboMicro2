@@ -62,12 +62,15 @@ interface ImportSmzDialogProps {
   open: boolean;
   onClose: () => void;
   onImportComplete: (projectData: any) => void;
+  /** Optional file path to import directly (skips file selection dialog) */
+  initialFilePath?: string | null;
 }
 
 export function ImportSmzDialog({
   open,
   onClose,
   onImportComplete,
+  initialFilePath,
 }: ImportSmzDialogProps) {
   const [dialogState, setDialogState] = useState<DialogState>('selecting');
   const [filePath, setFilePath] = useState<string | null>(null);
@@ -89,24 +92,33 @@ export function ImportSmzDialog({
     };
   }, [open]);
 
-  // Start file selection when dialog opens
-  useEffect(() => {
-    if (open && dialogState === 'selecting') {
-      selectFile();
+  // Inspect a file directly (when initialFilePath is provided)
+  const inspectFile = useCallback(async (path: string) => {
+    if (!window.api?.smzImport?.inspect) {
+      setErrorMessage('SMZ import API not available');
+      setDialogState('error');
+      return;
     }
-  }, [open]);
 
-  // Reset state when dialog closes
-  useEffect(() => {
-    if (!open) {
-      setDialogState('selecting');
-      setFilePath(null);
-      setInspectResult(null);
-      setProgress(null);
-      setImportResult(null);
-      setErrorMessage(null);
+    try {
+      setFilePath(path);
+      setDialogState('inspecting');
+
+      const inspect = await window.api.smzImport.inspect(path);
+
+      if (!inspect.success) {
+        setErrorMessage(inspect.error || 'Failed to read .smz file');
+        setDialogState('error');
+        return;
+      }
+
+      setInspectResult(inspect);
+      setDialogState('confirm-import');
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Failed to inspect file');
+      setDialogState('error');
     }
-  }, [open]);
+  }, []);
 
   const selectFile = useCallback(async () => {
     if (!window.api?.smzImport?.selectFile) {
@@ -146,6 +158,30 @@ export function ImportSmzDialog({
       setDialogState('error');
     }
   }, [onClose]);
+
+  // Start file selection or inspection when dialog opens
+  useEffect(() => {
+    if (open && dialogState === 'selecting') {
+      if (initialFilePath) {
+        // Skip file selection dialog if we have an initial file path
+        inspectFile(initialFilePath);
+      } else {
+        selectFile();
+      }
+    }
+  }, [open, dialogState, initialFilePath, inspectFile, selectFile]);
+
+  // Reset state when dialog closes
+  useEffect(() => {
+    if (!open) {
+      setDialogState('selecting');
+      setFilePath(null);
+      setInspectResult(null);
+      setProgress(null);
+      setImportResult(null);
+      setErrorMessage(null);
+    }
+  }, [open]);
 
   const startImport = useCallback(async () => {
     if (!filePath || !window.api?.smzImport?.import) return;

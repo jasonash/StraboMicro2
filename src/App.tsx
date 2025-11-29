@@ -34,6 +34,7 @@ function App() {
   const [isPushToServerOpen, setIsPushToServerOpen] = useState(false);
   const [isVersionHistoryOpen, setIsVersionHistoryOpen] = useState(false);
   const [isImportSmzOpen, setIsImportSmzOpen] = useState(false);
+  const [importSmzFilePath, setImportSmzFilePath] = useState<string | null>(null);
   const [isRemoteProjectsOpen, setIsRemoteProjectsOpen] = useState(false);
   const [isSharedProjectOpen, setIsSharedProjectOpen] = useState(false);
   const [isCloseProjectOpen, setIsCloseProjectOpen] = useState(false);
@@ -136,6 +137,29 @@ function App() {
         }
       }
 
+      setImportSmzFilePath(null); // Clear any previous file path
+      setIsImportSmzOpen(true);
+    }));
+
+    // File association - open .smz from double-click or command line
+    unsubscribers.push(window.api.onOpenSmzFile(async (filePath: string) => {
+      console.log('[App] Received file association open request:', filePath);
+
+      // Check for unsaved changes first
+      const isDirty = useAppStore.getState().isDirty;
+      const currentProject = useAppStore.getState().project;
+
+      if (isDirty && currentProject) {
+        const shouldContinue = window.confirm(
+          'You have unsaved changes. Save before opening a new project?'
+        );
+        if (shouldContinue) {
+          await saveBeforeSwitch();
+        }
+      }
+
+      // Set the file path and open the import dialog
+      setImportSmzFilePath(filePath);
       setIsImportSmzOpen(true);
     }));
 
@@ -689,7 +713,11 @@ function App() {
       />
       <ImportSmzDialog
         open={isImportSmzOpen}
-        onClose={() => setIsImportSmzOpen(false)}
+        onClose={() => {
+          setIsImportSmzOpen(false);
+          setImportSmzFilePath(null); // Clear the file path when closing
+        }}
+        initialFilePath={importSmzFilePath}
         onImportComplete={(importedProject) => {
           // Load the imported project into the store
           useAppStore.getState().loadProject(importedProject, null);

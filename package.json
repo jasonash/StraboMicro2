@@ -81,6 +81,15 @@
       "electron/**/*",
       "dist/**/*"
     ],
+    "fileAssociations": [
+      {
+        "ext": "smz",
+        "name": "StraboMicro Project",
+        "description": "StraboMicro Project File",
+        "mimeType": "application/x-strabomicro",
+        "role": "Editor"
+      }
+    ],
     "extraResources": [
       {
         "from": "src/assets/app-icon.png",
