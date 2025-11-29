@@ -309,6 +309,15 @@ function createWindow() {
         },
         { type: 'separator' },
         {
+          label: 'Close Project...',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('menu:close-project');
+            }
+          }
+        },
+        { type: 'separator' },
+        {
           label: 'Save Project',
           accelerator: 'CmdOrCtrl+S',
           click: () => {
@@ -4102,6 +4111,41 @@ ipcMain.handle('projects:update-opened', async (event, projectId, projectName) =
  */
 ipcMain.handle('projects:remove', async (event, projectId) => {
   return projectsIndex.removeProject(projectId);
+});
+
+/**
+ * Close (delete) a project completely
+ * - Removes project folder from disk
+ * - Removes from projects index
+ * - Clears version history
+ * - Refreshes menu
+ */
+ipcMain.handle('projects:close', async (event, projectId) => {
+  log.info('[Projects] Closing (deleting) project:', projectId);
+
+  try {
+    // 1. Clear version history
+    await versionHistory.clearHistory(projectId);
+    log.info('[Projects] Cleared version history');
+
+    // 2. Delete project folder from disk
+    await projectFolders.deleteProjectFolder(projectId);
+    log.info('[Projects] Deleted project folder');
+
+    // 3. Remove from projects index
+    await projectsIndex.removeProject(projectId);
+    log.info('[Projects] Removed from index');
+
+    // 4. Refresh menu to update Recent Projects
+    if (buildMenuFn) {
+      await buildMenuFn();
+    }
+
+    return { success: true };
+  } catch (error) {
+    log.error('[Projects] Error closing project:', error);
+    return { success: false, error: error.message };
+  }
 });
 
 /**
