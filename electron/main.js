@@ -285,6 +285,25 @@ function createWindow() {
           }
         },
         {
+          label: 'Open Remote Project...',
+          accelerator: 'CmdOrCtrl+Shift+O',
+          enabled: isLoggedIn,
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('menu:open-remote-project');
+            }
+          }
+        },
+        {
+          label: 'Open Shared Project...',
+          enabled: isLoggedIn,
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('menu:open-shared-project');
+            }
+          }
+        },
+        {
           label: 'Recent Projects',
           submenu: recentProjectsSubmenu
         },
@@ -332,25 +351,6 @@ function createWindow() {
           click: () => {
             if (mainWindow) {
               mainWindow.webContents.send('menu:push-to-server');
-            }
-          }
-        },
-        {
-          label: 'Open Remote Project...',
-          accelerator: 'CmdOrCtrl+Shift+O',
-          enabled: isLoggedIn,
-          click: () => {
-            if (mainWindow) {
-              mainWindow.webContents.send('menu:open-remote-project');
-            }
-          }
-        },
-        {
-          label: 'Open Shared Project...',
-          enabled: isLoggedIn,
-          click: () => {
-            if (mainWindow) {
-              mainWindow.webContents.send('menu:open-shared-project');
             }
           }
         },
