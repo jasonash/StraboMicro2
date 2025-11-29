@@ -954,9 +954,10 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
     const isDark = effectiveTheme === 'dark';
     const rulerBgColor = isDark ? '#252525' : '#f5f5f0';
     const rulerBorderColor = isDark ? '#404040' : '#d0d0c8';
+    const canvasBgColor = isDark ? '#1e1e1e' : '#d0d0d0';
 
     return (
-      <div className="tiled-viewer" ref={containerRef}>
+      <div className="tiled-viewer" ref={containerRef} style={{ backgroundColor: canvasBgColor }}>
         {isLoading && (
           <div className="tiled-viewer-loading">
             <div className="spinner" />
