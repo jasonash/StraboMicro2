@@ -111,6 +111,7 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
 
   /**
    * Check if overlay is visible in the current viewport
+   * Accounts for rotation by computing the axis-aligned bounding box of the rotated rectangle
    */
   const isInViewport = useCallback((): boolean => {
     if (!micrograph.imageWidth || !micrograph.imageHeight) return false;
@@ -124,27 +125,43 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
     const scaledWidth = imageWidth * scaleFactor;
     const scaledHeight = imageHeight * scaleFactor;
 
-    // Get overlay position (top-left)
-    let topLeftX = 0;
-    let topLeftY = 0;
+    // Get overlay center position
+    let centerX = 0;
+    let centerY = 0;
 
     if (micrograph.offsetInParent) {
-      topLeftX = micrograph.offsetInParent.X ?? micrograph.offsetInParent.x ?? 0;
-      topLeftY = micrograph.offsetInParent.Y ?? micrograph.offsetInParent.y ?? 0;
+      const topLeftX = micrograph.offsetInParent.X ?? micrograph.offsetInParent.x ?? 0;
+      const topLeftY = micrograph.offsetInParent.Y ?? micrograph.offsetInParent.y ?? 0;
+      centerX = topLeftX + scaledWidth / 2;
+      centerY = topLeftY + scaledHeight / 2;
     } else if (micrograph.pointInParent) {
-      topLeftX = (micrograph.pointInParent.x ?? micrograph.pointInParent.X ?? 0) - scaledWidth / 2;
-      topLeftY = (micrograph.pointInParent.y ?? micrograph.pointInParent.Y ?? 0) - scaledHeight / 2;
+      centerX = micrograph.pointInParent.x ?? micrograph.pointInParent.X ?? 0;
+      centerY = micrograph.pointInParent.y ?? micrograph.pointInParent.Y ?? 0;
     } else if (micrograph.xOffset !== undefined && micrograph.xOffset !== null &&
                micrograph.yOffset !== undefined && micrograph.yOffset !== null) {
-      topLeftX = micrograph.xOffset;
-      topLeftY = micrograph.yOffset;
+      centerX = micrograph.xOffset + scaledWidth / 2;
+      centerY = micrograph.yOffset + scaledHeight / 2;
     }
 
-    // Apply stage transform to get screen coordinates
-    const screenX = topLeftX * stageScale + viewport.x;
-    const screenY = topLeftY * stageScale + viewport.y;
-    const screenWidth = scaledWidth * stageScale;
-    const screenHeight = scaledHeight * stageScale;
+    // Calculate the bounding box accounting for rotation
+    const rotation = micrograph.rotation || 0;
+    const radians = (rotation * Math.PI) / 180;
+    const cos = Math.abs(Math.cos(radians));
+    const sin = Math.abs(Math.sin(radians));
+
+    // Rotated bounding box dimensions
+    const rotatedWidth = scaledWidth * cos + scaledHeight * sin;
+    const rotatedHeight = scaledWidth * sin + scaledHeight * cos;
+
+    // Apply stage transform to get screen coordinates (center-based)
+    const screenCenterX = centerX * stageScale + viewport.x;
+    const screenCenterY = centerY * stageScale + viewport.y;
+    const screenWidth = rotatedWidth * stageScale;
+    const screenHeight = rotatedHeight * stageScale;
+
+    // Convert to top-left for intersection test
+    const screenX = screenCenterX - screenWidth / 2;
+    const screenY = screenCenterY - screenHeight / 2;
 
     // Check if overlay intersects with viewport
     const overlayRight = screenX + screenWidth;
@@ -164,41 +181,40 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
   }, [micrograph, parentMetadata, stageScale, viewport]);
 
   /**
-   * Determine appropriate render mode based on coverage, zoom, and viewport visibility
+   * Determine appropriate render mode based on zoom and viewport visibility
    *
-   * Priority: Zoom level takes precedence over coverage.
-   * If zoomed in enough to see detail, use high-res tiles even if only a corner is visible.
+   * Priority: Zoom level is the primary factor.
+   * If zoomed in enough to see detail, use high-res tiles.
+   * Coverage is only used at low zoom levels to optimize memory.
    */
   const determineRenderMode = useCallback((): RenderMode => {
-    // If not in viewport, use THUMBNAIL (smallest memory footprint)
+    // If not in viewport at all, use THUMBNAIL (smallest memory footprint)
     if (!isInViewport()) {
       return 'THUMBNAIL';
     }
 
-    const coverage = calculateScreenCoverage();
-    const effectiveZoom = viewport.zoom * stageScale;
+    // Use stageScale directly as the zoom level
+    // (viewport.zoom and stageScale are the same value)
+    const zoom = stageScale;
 
     // High zoom always gets tiles - user is looking at detail
-    if (effectiveZoom >= 2.0) {
+    // This ensures tiles load when zoomed in, regardless of coverage
+    if (zoom >= 1.0) {
       return 'TILED'; // Full resolution
     }
 
-    // Medium zoom gets tiles if significant coverage, otherwise medium res
-    if (effectiveZoom >= 0.5) {
-      if (coverage >= 0.4) {
-        return 'TILED';
-      }
+    // Medium zoom (0.5 to 1.0) - use medium resolution
+    if (zoom >= 0.5) {
       return 'MEDIUM'; // 2048x2048
     }
 
-    // Low zoom - use thumbnail unless large coverage
-    if (coverage >= 0.4) {
-      return 'MEDIUM';
-    } else if (coverage >= 0.1) {
+    // Low zoom (< 0.5) - use coverage to decide
+    const coverage = calculateScreenCoverage();
+    if (coverage >= 0.3) {
       return 'MEDIUM';
     }
     return 'THUMBNAIL'; // 512x512
-  }, [isInViewport, calculateScreenCoverage, viewport.zoom, stageScale]);
+  }, [isInViewport, calculateScreenCoverage, stageScale]);
 
   /**
    * Calculate position and scale for rendering overlay on parent
