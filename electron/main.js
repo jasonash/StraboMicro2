@@ -24,6 +24,7 @@ const serverUpload = require('./serverUpload');
 const versionHistory = require('./versionHistory');
 const projectsIndex = require('./projectsIndex');
 const svgExport = require('./svgExport');
+const smzImport = require('./smzImport');
 
 // Handle EPIPE errors at process level (prevents crash on broken stdout pipe)
 process.stdout.on('error', (err) => {
@@ -4114,4 +4115,71 @@ ipcMain.handle('projects:refresh-menu', async () => {
   if (buildMenuFn) {
     await buildMenuFn();
   }
+});
+
+/**
+ * ============================================================================
+ * SMZ IMPORT HANDLERS
+ * ============================================================================
+ */
+
+/**
+ * Show file dialog to select an .smz file
+ * Returns the selected file path or null if cancelled
+ */
+ipcMain.handle('smz:select-file', async () => {
+  log.info('[SmzImport] Opening file selection dialog...');
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: 'Open StraboMicro Project',
+    filters: [
+      { name: 'StraboMicro Project', extensions: ['smz'] },
+      { name: 'All Files', extensions: ['*'] }
+    ],
+    properties: ['openFile']
+  });
+
+  if (result.canceled || result.filePaths.length === 0) {
+    log.info('[SmzImport] File selection cancelled');
+    return { cancelled: true };
+  }
+
+  const filePath = result.filePaths[0];
+  log.info('[SmzImport] Selected file:', filePath);
+  return { cancelled: false, filePath };
+});
+
+/**
+ * Inspect an .smz file to get project info without importing
+ * Used to check if project exists locally and show confirmation dialog
+ */
+ipcMain.handle('smz:inspect', async (event, smzPath) => {
+  log.info('[SmzImport] Inspecting .smz file:', smzPath);
+  return smzImport.inspectSmz(smzPath);
+});
+
+/**
+ * Import an .smz file (DESTRUCTIVE - replaces existing project)
+ * Progress updates are sent via 'smz:import-progress' event
+ */
+ipcMain.handle('smz:import', async (event, smzPath) => {
+  log.info('[SmzImport] Starting import of:', smzPath);
+
+  const result = await smzImport.importSmz(smzPath, (progress) => {
+    // Send progress updates to renderer
+    if (mainWindow) {
+      mainWindow.webContents.send('smz:import-progress', progress);
+    }
+  });
+
+  // If successful, update projects index and refresh menu
+  if (result.success && result.projectId) {
+    const projectName = result.projectData?.name || 'Untitled Project';
+    await projectsIndex.updateProjectOpened(result.projectId, projectName);
+
+    if (buildMenuFn) {
+      await buildMenuFn();
+    }
+  }
+
+  return result;
 });

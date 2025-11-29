@@ -441,6 +441,37 @@ interface Window {
 
     // Version History
     onViewVersionHistory: (callback: () => void) => Unsubscribe;
+
+    // SMZ Import (Open .smz files)
+    smzImport: {
+      // Open file selection dialog for .smz files
+      selectFile: () => Promise<{
+        cancelled: boolean;
+        filePath?: string;
+      }>;
+      // Inspect an .smz file (get project info without importing)
+      inspect: (smzPath: string) => Promise<{
+        success: boolean;
+        projectId?: string;
+        projectName?: string;
+        projectExists?: boolean;
+        error?: string;
+      }>;
+      // Import an .smz file (DESTRUCTIVE - replaces existing project)
+      import: (smzPath: string) => Promise<{
+        success: boolean;
+        projectId?: string;
+        projectData?: any;
+        error?: string;
+      }>;
+      // Progress updates during import
+      onImportProgress: (callback: (progress: {
+        phase: string;
+        percentage: number;
+        detail: string;
+      }) => void) => Unsubscribe;
+    };
+
     versionHistory: {
       // Create a new version (auto-save)
       create: (
