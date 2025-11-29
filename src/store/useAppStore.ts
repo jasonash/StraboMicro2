@@ -144,6 +144,11 @@ interface AppState {
   detailsPanelOpen: boolean;
   theme: ThemeMode;
 
+  // ========== SIDEBAR EXPANSION STATE (persisted) ==========
+  expandedDatasets: string[];
+  expandedSamples: string[];
+  expandedMicrographs: string[];
+
   // ========== COMPUTED INDEXES (for performance) ==========
   micrographIndex: Map<string, MicrographMetadata>;
   spotIndex: Map<string, Spot>;
@@ -229,6 +234,14 @@ interface AppState {
   setSidebarTab: (tab: SidebarTab) => void;
   setDetailsPanelOpen: (open: boolean) => void;
   setTheme: (theme: ThemeMode) => void;
+
+  // ========== SIDEBAR EXPANSION ACTIONS ==========
+  setExpandedDatasets: (ids: string[]) => void;
+  setExpandedSamples: (ids: string[]) => void;
+  setExpandedMicrographs: (ids: string[]) => void;
+  toggleDatasetExpanded: (id: string) => void;
+  toggleSampleExpanded: (id: string) => void;
+  toggleMicrographExpanded: (id: string) => void;
 }
 
 // ============================================================================
@@ -269,6 +282,10 @@ export const useAppStore = create<AppState>()(
           sidebarTab: 'samples',
           detailsPanelOpen: true,
           theme: 'dark',
+
+          expandedDatasets: [],
+          expandedSamples: [],
+          expandedMicrographs: [],
 
           micrographIndex: new Map(),
           spotIndex: new Map(),
@@ -1072,6 +1089,44 @@ export const useAppStore = create<AppState>()(
           setDetailsPanelOpen: (open) => set({ detailsPanelOpen: open }),
 
           setTheme: (theme) => set({ theme }),
+
+          // ========== SIDEBAR EXPANSION ACTIONS ==========
+
+          setExpandedDatasets: (ids) => set({ expandedDatasets: ids }),
+
+          setExpandedSamples: (ids) => set({ expandedSamples: ids }),
+
+          setExpandedMicrographs: (ids) => set({ expandedMicrographs: ids }),
+
+          toggleDatasetExpanded: (id) => set((state) => {
+            const expanded = new Set(state.expandedDatasets);
+            if (expanded.has(id)) {
+              expanded.delete(id);
+            } else {
+              expanded.add(id);
+            }
+            return { expandedDatasets: Array.from(expanded) };
+          }),
+
+          toggleSampleExpanded: (id) => set((state) => {
+            const expanded = new Set(state.expandedSamples);
+            if (expanded.has(id)) {
+              expanded.delete(id);
+            } else {
+              expanded.add(id);
+            }
+            return { expandedSamples: Array.from(expanded) };
+          }),
+
+          toggleMicrographExpanded: (id) => set((state) => {
+            const expanded = new Set(state.expandedMicrographs);
+            if (expanded.has(id)) {
+              expanded.delete(id);
+            } else {
+              expanded.add(id);
+            }
+            return { expandedMicrographs: Array.from(expanded) };
+          }),
         }),
         {
           // Temporal (undo/redo) configuration
@@ -1103,6 +1158,11 @@ export const useAppStore = create<AppState>()(
           showRecursiveSpots: state.showRecursiveSpots,
           spotOverlayOpacity: state.spotOverlayOpacity,
           theme: state.theme,
+
+          // Sidebar expansion state
+          expandedDatasets: state.expandedDatasets,
+          expandedSamples: state.expandedSamples,
+          expandedMicrographs: state.expandedMicrographs,
         }),
         // Rebuild indexes after rehydrating from file storage
         onRehydrateStorage: () => (state) => {

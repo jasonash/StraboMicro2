@@ -300,22 +300,50 @@ export function ProjectTree() {
   const [showSetScale, setShowSetScale] = useState(false);
   const [setScaleMicrographId, setSetScaleMicrographId] = useState<string | null>(null);
 
-  // Expansion states - Load from localStorage on mount
-  const [expandedDatasets, setExpandedDatasets] = useState<Set<string>>(() => {
-    const saved = localStorage.getItem('sidebar-expanded-datasets');
-    return saved ? new Set(JSON.parse(saved)) : new Set();
-  });
-  const [expandedSamples, setExpandedSamples] = useState<Set<string>>(() => {
-    const saved = localStorage.getItem('sidebar-expanded-samples');
-    return saved ? new Set(JSON.parse(saved)) : new Set();
-  });
-  const [expandedMicrographs, setExpandedMicrographs] = useState<Set<string>>(() => {
-    const saved = localStorage.getItem('sidebar-expanded-micrographs');
-    return saved ? new Set(JSON.parse(saved)) : new Set();
-  });
+  // Expansion states - from zustand store (persisted via session state)
+  const expandedDatasetsArray = useAppStore((state) => state.expandedDatasets);
+  const expandedSamplesArray = useAppStore((state) => state.expandedSamples);
+  const expandedMicrographsArray = useAppStore((state) => state.expandedMicrographs);
+  const setExpandedDatasetsStore = useAppStore((state) => state.setExpandedDatasets);
+  const setExpandedSamplesStore = useAppStore((state) => state.setExpandedSamples);
+  const setExpandedMicrographsStore = useAppStore((state) => state.setExpandedMicrographs);
+
+  // Convert arrays to Sets for efficient lookup
+  const expandedDatasets = new Set(expandedDatasetsArray);
+  const expandedSamples = new Set(expandedSamplesArray);
+  const expandedMicrographs = new Set(expandedMicrographsArray);
+
+  // Helper functions to update expansion state
+  const setExpandedDatasets = useCallback((updater: Set<string> | ((prev: Set<string>) => Set<string>)) => {
+    if (typeof updater === 'function') {
+      const newSet = updater(expandedDatasets);
+      setExpandedDatasetsStore(Array.from(newSet));
+    } else {
+      setExpandedDatasetsStore(Array.from(updater));
+    }
+  }, [expandedDatasets, setExpandedDatasetsStore]);
+
+  const setExpandedSamples = useCallback((updater: Set<string> | ((prev: Set<string>) => Set<string>)) => {
+    if (typeof updater === 'function') {
+      const newSet = updater(expandedSamples);
+      setExpandedSamplesStore(Array.from(newSet));
+    } else {
+      setExpandedSamplesStore(Array.from(updater));
+    }
+  }, [expandedSamples, setExpandedSamplesStore]);
+
+  const setExpandedMicrographs = useCallback((updater: Set<string> | ((prev: Set<string>) => Set<string>)) => {
+    if (typeof updater === 'function') {
+      const newSet = updater(expandedMicrographs);
+      setExpandedMicrographsStore(Array.from(newSet));
+    } else {
+      setExpandedMicrographsStore(Array.from(updater));
+    }
+  }, [expandedMicrographs, setExpandedMicrographsStore]);
 
   // Track known IDs to avoid re-expanding items the user has collapsed
   // This is separate from expanded state - it tracks what we've "seen" before
+  // These remain in localStorage since they're just for auto-expand behavior
   const [knownDatasetIds, setKnownDatasetIds] = useState<Set<string>>(() => {
     const saved = localStorage.getItem('sidebar-known-datasets');
     return saved ? new Set(JSON.parse(saved)) : new Set();
@@ -333,20 +361,7 @@ export function ProjectTree() {
   const [micrographAddAnchor, setMicrographAddAnchor] = useState<{ [key: string]: HTMLElement | null }>({});
 
 
-  // Save expansion states to localStorage whenever they change
-  useEffect(() => {
-    localStorage.setItem('sidebar-expanded-datasets', JSON.stringify(Array.from(expandedDatasets)));
-  }, [expandedDatasets]);
-
-  useEffect(() => {
-    localStorage.setItem('sidebar-expanded-samples', JSON.stringify(Array.from(expandedSamples)));
-  }, [expandedSamples]);
-
-  useEffect(() => {
-    localStorage.setItem('sidebar-expanded-micrographs', JSON.stringify(Array.from(expandedMicrographs)));
-  }, [expandedMicrographs]);
-
-  // Save known IDs to localStorage
+  // Save known IDs to localStorage (expansion state is now in zustand store)
   useEffect(() => {
     localStorage.setItem('sidebar-known-datasets', JSON.stringify(Array.from(knownDatasetIds)));
   }, [knownDatasetIds]);
