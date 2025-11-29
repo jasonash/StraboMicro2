@@ -106,6 +106,9 @@ export const EditProjectDialog: React.FC<EditProjectDialogProps> = ({ isOpen, on
     const projectFilePath = useAppStore.getState().projectFilePath;
     loadProject(updatedProject, projectFilePath);
 
+    // Mark the project as dirty so changes will be saved
+    useAppStore.getState().markDirty();
+
     // Update the projects index with the new name and refresh the menu
     window.api?.projects?.updateOpened(project.id, formData.name).then(() => {
       window.api?.projects?.refreshMenu();
