@@ -25,6 +25,7 @@ const versionHistory = require('./versionHistory');
 const projectsIndex = require('./projectsIndex');
 const svgExport = require('./svgExport');
 const smzImport = require('./smzImport');
+const serverDownload = require('./serverDownload');
 
 // Handle EPIPE errors at process level (prevents crash on broken stdout pipe)
 process.stdout.on('error', (err) => {
@@ -331,6 +332,16 @@ function createWindow() {
           click: () => {
             if (mainWindow) {
               mainWindow.webContents.send('menu:push-to-server');
+            }
+          }
+        },
+        {
+          label: 'Open Remote Project...',
+          accelerator: 'CmdOrCtrl+Shift+O',
+          enabled: isLoggedIn,
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('menu:open-remote-project');
             }
           }
         },
@@ -4182,4 +4193,68 @@ ipcMain.handle('smz:import', async (event, smzPath) => {
   }
 
   return result;
+});
+
+/**
+ * ============================================================================
+ * SERVER DOWNLOAD HANDLERS (Open Remote Project)
+ * ============================================================================
+ */
+
+/**
+ * List user's remote projects from the server
+ * Requires authentication (JWT token)
+ */
+ipcMain.handle('server:list-projects', async () => {
+  log.info('[ServerDownload] Listing remote projects...');
+
+  // Get current auth token
+  const authService = require('./authService');
+  const authData = await authService.getStoredAuth();
+
+  if (!authData || !authData.access_token) {
+    log.warn('[ServerDownload] Not authenticated');
+    return { success: false, error: 'Not logged in. Please log in first.' };
+  }
+
+  return serverDownload.listProjects(authData.access_token);
+});
+
+/**
+ * Download a project from the server
+ * Returns the path to the downloaded .zip file for inspection/import
+ */
+ipcMain.handle('server:download-project', async (event, projectId) => {
+  log.info('[ServerDownload] Downloading project:', projectId);
+
+  // Get current auth token
+  const authService = require('./authService');
+  const authData = await authService.getStoredAuth();
+
+  if (!authData || !authData.access_token) {
+    log.warn('[ServerDownload] Not authenticated');
+    return { success: false, error: 'Not logged in. Please log in first.' };
+  }
+
+  const result = await serverDownload.downloadProject(
+    projectId,
+    authData.access_token,
+    (progress) => {
+      // Send progress updates to renderer
+      if (mainWindow) {
+        mainWindow.webContents.send('server:download-progress', progress);
+      }
+    }
+  );
+
+  return result;
+});
+
+/**
+ * Clean up a downloaded temp file
+ */
+ipcMain.handle('server:cleanup-download', async (event, zipPath) => {
+  log.info('[ServerDownload] Cleaning up:', zipPath);
+  await serverDownload.cleanupDownload(zipPath);
+  return { success: true };
 });

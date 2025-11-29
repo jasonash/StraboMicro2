@@ -384,6 +384,8 @@ interface Window {
 
     // Push to Server
     onPushToServer: (callback: () => void) => Unsubscribe;
+    // Open Remote Project
+    onOpenRemoteProject: (callback: () => void) => Unsubscribe;
     server: {
       checkConnectivity: () => Promise<{
         online: boolean;
@@ -411,6 +413,27 @@ interface Window {
         bytesTotal?: number;
       }) => void) => void;
       removePushProgressListener: () => void;
+      // Remote project download (Open Remote Project)
+      listProjects: () => Promise<{
+        success: boolean;
+        projects?: RemoteProject[];
+        error?: string;
+      }>;
+      downloadProject: (projectId: string) => Promise<{
+        success: boolean;
+        zipPath?: string;
+        error?: string;
+      }>;
+      cleanupDownload: (zipPath: string) => Promise<{
+        success: boolean;
+      }>;
+      onDownloadProgress: (callback: (progress: {
+        phase: string;
+        percentage: number;
+        message: string;
+        bytesDownloaded?: number;
+        bytesTotal?: number;
+      }) => void) => Unsubscribe;
     };
 
     // App lifecycle
@@ -591,4 +614,14 @@ interface VersionStats {
   totalSizeBytes: number;
   oldestTimestamp: string | null;
   newestTimestamp: string | null;
+}
+
+// Remote Project Types (Server Download)
+interface RemoteProject {
+  id: string;
+  name: string;
+  uploadDate: string;
+  modifiedTimestamp: number;
+  bytes: number;
+  bytesFormatted: string;
 }
