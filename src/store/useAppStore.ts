@@ -61,6 +61,7 @@ interface AppState {
   pan: { x: number; y: number };
   showSpotLabels: boolean;
   showMicrographOutlines: boolean;
+  showRecursiveSpots: boolean;
   showRulers: boolean;
   spotOverlayOpacity: number;
   viewerRef: React.RefObject<TiledViewerRef> | null;
@@ -140,6 +141,7 @@ interface AppState {
   setPan: (pan: { x: number; y: number }) => void;
   setShowSpotLabels: (show: boolean) => void;
   setShowMicrographOutlines: (show: boolean) => void;
+  setShowRecursiveSpots: (show: boolean) => void;
   setShowRulers: (show: boolean) => void;
   setSpotOverlayOpacity: (opacity: number) => void;
   setViewerRef: (ref: React.RefObject<TiledViewerRef> | null) => void;
@@ -186,6 +188,7 @@ export const useAppStore = create<AppState>()(
           pan: { x: 0, y: 0 },
           showSpotLabels: true,
           showMicrographOutlines: true,
+          showRecursiveSpots: false,
           showRulers: true,
           spotOverlayOpacity: 0.7,
           viewerRef: null,
@@ -909,6 +912,8 @@ export const useAppStore = create<AppState>()(
 
           setShowMicrographOutlines: (show) => set({ showMicrographOutlines: show }),
 
+          setShowRecursiveSpots: (show) => set({ showRecursiveSpots: show }),
+
           setShowRulers: (show) => set({ showRulers: show }),
 
           setSpotOverlayOpacity: (opacity) => set({ spotOverlayOpacity: opacity }),
@@ -1020,6 +1025,7 @@ export const useAppStore = create<AppState>()(
           detailsPanelOpen: state.detailsPanelOpen,
           showSpotLabels: state.showSpotLabels,
           showMicrographOutlines: state.showMicrographOutlines,
+          showRecursiveSpots: state.showRecursiveSpots,
           spotOverlayOpacity: state.spotOverlayOpacity,
           theme: state.theme,
         }),

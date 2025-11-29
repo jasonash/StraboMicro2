@@ -41,6 +41,7 @@ function App() {
   const setShowRulers = useAppStore(state => state.setShowRulers);
   const setShowSpotLabels = useAppStore(state => state.setShowSpotLabels);
   const setShowMicrographOutlines = useAppStore(state => state.setShowMicrographOutlines);
+  const setShowRecursiveSpots = useAppStore(state => state.setShowRecursiveSpots);
   const { checkAuthStatus, logout } = useAuthStore();
 
   // Initialize theme system
@@ -417,6 +418,11 @@ function App() {
     // View: Toggle Overlay Outlines menu item
     unsubscribers.push(window.api.onToggleOverlayOutlines((checked) => {
       setShowMicrographOutlines(checked);
+    }));
+
+    // View: Toggle Recursive Spots menu item
+    unsubscribers.push(window.api.onToggleRecursiveSpots((checked) => {
+      setShowRecursiveSpots(checked);
     }));
 
     // Account: Login menu item
