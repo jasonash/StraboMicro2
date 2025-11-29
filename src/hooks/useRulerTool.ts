@@ -8,7 +8,7 @@
  * - Each new measurement replaces the previous
  */
 
-import { useRef, useCallback, useState } from 'react';
+import { useRef, useCallback, useState, useMemo } from 'react';
 import Konva from 'konva';
 
 interface RulerState {
@@ -262,13 +262,16 @@ export const useRulerTool = ({ layer, scale, scalePixelsPerCentimeter }: UseRule
     setCurrentMeasurement(null);
   }, [clearRuler]);
 
-  return {
-    handleMouseDown,
-    handleMouseMove,
-    handleMouseUp,
-    updateStrokeWidth,
-    reset,
-    currentMeasurement,
-    isDrawing: stateRef.current.isDrawing,
-  };
+  return useMemo(
+    () => ({
+      handleMouseDown,
+      handleMouseMove,
+      handleMouseUp,
+      updateStrokeWidth,
+      reset,
+      currentMeasurement,
+      isDrawing: stateRef.current.isDrawing,
+    }),
+    [handleMouseDown, handleMouseMove, handleMouseUp, updateStrokeWidth, reset, currentMeasurement]
+  );
 };

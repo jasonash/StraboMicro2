@@ -204,17 +204,21 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
       stageRef: stageRef,
     });
 
-    // Clear ruler when tool changes away from measure or when micrograph changes
+    // Store reset function in ref to avoid dependency issues
+    const rulerResetRef = useRef(rulerTool.reset);
+    rulerResetRef.current = rulerTool.reset;
+
+    // Clear ruler when tool changes away from measure
     useEffect(() => {
       if (activeTool !== 'measure') {
-        rulerTool.reset();
+        rulerResetRef.current();
       }
-    }, [activeTool, rulerTool]);
+    }, [activeTool]);
 
+    // Clear ruler when micrograph changes
     useEffect(() => {
-      // Clear ruler when micrograph changes
-      rulerTool.reset();
-    }, [activeMicrographId, rulerTool]);
+      rulerResetRef.current();
+    }, [activeMicrographId]);
 
     /**
      * Load image metadata and initialize viewer
