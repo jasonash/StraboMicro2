@@ -1412,11 +1412,13 @@ export function ProjectTree() {
             <Slider
               value={opacityValue}
               onChange={(_, newValue) => {
-                const val = newValue as number;
-                setOpacityValue(val);
-                // Live update as user drags
+                // Only update local state while dragging (for UI feedback)
+                setOpacityValue(newValue as number);
+              }}
+              onChangeCommitted={(_, newValue) => {
+                // Commit to store only when user releases slider
                 if (opacityMicrographId) {
-                  updateMicrographMetadata(opacityMicrographId, { opacity: val });
+                  updateMicrographMetadata(opacityMicrographId, { opacity: newValue as number });
                 }
               }}
               min={0}
