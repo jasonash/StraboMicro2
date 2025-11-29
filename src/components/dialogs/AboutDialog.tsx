@@ -51,7 +51,7 @@ export function AboutDialog({ isOpen, onClose }: AboutDialogProps) {
             alt="StraboMicro Logo"
             sx={{ width: 48, height: 48, borderRadius: 1 }}
           />
-          <Typography variant="h5" sx={{ fontWeight: 600, letterSpacing: 2 }}>
+          <Typography variant="h5" sx={{ fontWeight: 300, letterSpacing: 0.5, fontSize: '1.75rem' }}>
             STRABOMICRO
           </Typography>
         </Box>
