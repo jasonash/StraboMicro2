@@ -1187,7 +1187,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                 onMouseLeave={handleMouseLeave}
                 style={{
                   cursor:
-                    activeTool === 'point' || activeTool === 'line' || activeTool === 'polygon'
+                    activeTool === 'point' || activeTool === 'line' || activeTool === 'polygon' || activeTool === 'measure'
                       ? 'crosshair'
                       : isPanning
                       ? 'grabbing'
@@ -1437,7 +1437,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                 onMouseLeave={handleMouseLeave}
                 style={{
                   cursor:
-                    activeTool === 'point' || activeTool === 'line' || activeTool === 'polygon'
+                    activeTool === 'point' || activeTool === 'line' || activeTool === 'polygon' || activeTool === 'measure'
                       ? 'crosshair'
                       : isPanning
                       ? 'grabbing'
