@@ -12,11 +12,12 @@ const fs = require('fs');
 const log = require('electron-log');
 const Sentry = require('@sentry/electron/main');
 
-// Initialize Sentry for error tracking (production only)
+// Initialize Sentry for error tracking
+// TODO: Change enabled back to app.isPackaged after testing
 Sentry.init({
   dsn: 'https://a0a059594ef2ba9bfecb1e6bf028afde@o4510450188484608.ingest.us.sentry.io/4510450322046976',
-  // Only enable in packaged builds
-  enabled: app.isPackaged,
+  // TEMPORARY: Enable in dev for testing (change back to app.isPackaged)
+  enabled: true,
   // Add app version for release tracking
   release: `strabomicro2@${app.getVersion()}`,
   // Set environment
