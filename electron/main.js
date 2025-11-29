@@ -4209,15 +4209,14 @@ ipcMain.handle('server:list-projects', async () => {
   log.info('[ServerDownload] Listing remote projects...');
 
   // Get current auth token
-  const authService = require('./authService');
-  const authData = await authService.getStoredAuth();
+  const tokens = await tokenService.getTokens();
 
-  if (!authData || !authData.access_token) {
+  if (!tokens || !tokens.accessToken) {
     log.warn('[ServerDownload] Not authenticated');
     return { success: false, error: 'Not logged in. Please log in first.' };
   }
 
-  return serverDownload.listProjects(authData.access_token);
+  return serverDownload.listProjects(tokens.accessToken);
 });
 
 /**
@@ -4228,17 +4227,16 @@ ipcMain.handle('server:download-project', async (event, projectId) => {
   log.info('[ServerDownload] Downloading project:', projectId);
 
   // Get current auth token
-  const authService = require('./authService');
-  const authData = await authService.getStoredAuth();
+  const tokens = await tokenService.getTokens();
 
-  if (!authData || !authData.access_token) {
+  if (!tokens || !tokens.accessToken) {
     log.warn('[ServerDownload] Not authenticated');
     return { success: false, error: 'Not logged in. Please log in first.' };
   }
 
   const result = await serverDownload.downloadProject(
     projectId,
-    authData.access_token,
+    tokens.accessToken,
     (progress) => {
       // Send progress updates to renderer
       if (mainWindow) {
