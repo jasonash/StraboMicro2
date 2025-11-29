@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
-import { Tabs, Tab, Box } from '@mui/material';
+import React, { useState, useMemo } from 'react';
+import { Tabs, Tab, Box, Typography } from '@mui/material';
 import { ProjectTree } from './ProjectTree';
 import { GroupsPanel } from './GroupsPanel';
 import { SpotsPanel } from './SpotsPanel';
 import { TagsPanel } from './TagsPanel';
+import { useAppStore } from '@/store';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -29,10 +30,29 @@ function TabPanel(props: TabPanelProps) {
 
 const Sidebar: React.FC = () => {
   const [activeTab, setActiveTab] = useState(0);
+  const project = useAppStore((state) => state.project);
 
   const handleChange = (_event: React.SyntheticEvent, newValue: number) => {
     setActiveTab(newValue);
   };
+
+  // Calculate project totals
+  const projectStats = useMemo(() => {
+    if (!project?.datasets) return null;
+
+    let totalSamples = 0;
+    let totalMicrographs = 0;
+
+    for (const dataset of project.datasets) {
+      const samples = dataset.samples || [];
+      totalSamples += samples.length;
+      for (const sample of samples) {
+        totalMicrographs += sample.micrographs?.length || 0;
+      }
+    }
+
+    return { totalSamples, totalMicrographs };
+  }, [project]);
 
   return (
     <Box sx={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
@@ -74,6 +94,23 @@ const Sidebar: React.FC = () => {
           <TagsPanel />
         </TabPanel>
       </Box>
+
+      {/* Project Stats Footer - only shown when project is open */}
+      {projectStats && (
+        <Box
+          sx={{
+            borderTop: 1,
+            borderColor: 'divider',
+            px: 2,
+            py: 1,
+            bgcolor: 'background.paper',
+          }}
+        >
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+            Total Samples: {projectStats.totalSamples} &nbsp;•&nbsp; Total Micrographs: {projectStats.totalMicrographs}
+          </Typography>
+        </Box>
+      )}
     </Box>
   );
 };
