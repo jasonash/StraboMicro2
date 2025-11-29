@@ -400,4 +400,11 @@ contextBridge.exposeInMainWorld('api', {
       return () => ipcRenderer.removeListener('smz:import-progress', handler);
     },
   },
+
+  // Debug menu events (only used in development)
+  onDebugTriggerTestError: (callback) => {
+    const handler = () => callback();
+    ipcRenderer.on('debug:trigger-test-error', handler);
+    return () => ipcRenderer.removeListener('debug:trigger-test-error', handler);
+  },
 });
