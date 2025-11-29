@@ -21,6 +21,18 @@ const Header: React.FC = () => {
     }
   };
 
+  const handleZoomIn = () => {
+    if (viewerRef?.current) {
+      viewerRef.current.zoomIn();
+    }
+  };
+
+  const handleZoomOut = () => {
+    if (viewerRef?.current) {
+      viewerRef.current.zoomOut();
+    }
+  };
+
   return (
     <AppBar position="static" elevation={0}>
       <Toolbar sx={{ gap: 2 }}>
@@ -65,12 +77,12 @@ const Header: React.FC = () => {
             </IconButton>
           </Tooltip>
           <Tooltip title="Zoom In" placement="bottom">
-            <IconButton color="inherit" size="small">
+            <IconButton color="inherit" size="small" onClick={handleZoomIn}>
               <ZoomInIcon />
             </IconButton>
           </Tooltip>
           <Tooltip title="Zoom Out" placement="bottom">
-            <IconButton color="inherit" size="small">
+            <IconButton color="inherit" size="small" onClick={handleZoomOut}>
               <ZoomOutIcon />
             </IconButton>
           </Tooltip>

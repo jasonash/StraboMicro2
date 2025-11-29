@@ -45,6 +45,8 @@ interface TiledViewerProps {
 
 export interface TiledViewerRef {
   fitToScreen: () => void;
+  zoomIn: () => void;
+  zoomOut: () => void;
 }
 
 interface TileInfo {
@@ -938,13 +940,60 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
       fitToScreen(imageMetadata.width, imageMetadata.height);
     }, [imageMetadata, fitToScreen]);
 
-    // Expose fitToScreen method to parent components via ref
+    /**
+     * Zoom in/out by a factor, centered on viewport
+     */
+    const ZOOM_FACTOR = 1.5;
+
+    const handleZoomIn = useCallback(() => {
+      const newZoom = Math.min(zoom * ZOOM_FACTOR, MAX_ZOOM);
+      // Zoom centered on viewport center
+      const centerX = stageSize.width / 2;
+      const centerY = stageSize.height / 2;
+      const mousePointTo = {
+        x: (centerX - position.x) / zoom,
+        y: (centerY - position.y) / zoom,
+      };
+      const newPos = {
+        x: centerX - mousePointTo.x * newZoom,
+        y: centerY - mousePointTo.y * newZoom,
+      };
+      setZoom(newZoom);
+      setPosition(newPos);
+      polygonDrawing.updateStrokeWidth(newZoom);
+      lineDrawing.updateStrokeWidth(newZoom);
+      geometryEditing.updateHandleSizes(newZoom);
+    }, [zoom, position, stageSize, polygonDrawing, lineDrawing, geometryEditing]);
+
+    const handleZoomOut = useCallback(() => {
+      const newZoom = Math.max(zoom / ZOOM_FACTOR, MIN_ZOOM);
+      // Zoom centered on viewport center
+      const centerX = stageSize.width / 2;
+      const centerY = stageSize.height / 2;
+      const mousePointTo = {
+        x: (centerX - position.x) / zoom,
+        y: (centerY - position.y) / zoom,
+      };
+      const newPos = {
+        x: centerX - mousePointTo.x * newZoom,
+        y: centerY - mousePointTo.y * newZoom,
+      };
+      setZoom(newZoom);
+      setPosition(newPos);
+      polygonDrawing.updateStrokeWidth(newZoom);
+      lineDrawing.updateStrokeWidth(newZoom);
+      geometryEditing.updateHandleSizes(newZoom);
+    }, [zoom, position, stageSize, polygonDrawing, lineDrawing, geometryEditing]);
+
+    // Expose methods to parent components via ref
     useImperativeHandle(
       ref,
       () => ({
         fitToScreen: handleResetZoom,
+        zoomIn: handleZoomIn,
+        zoomOut: handleZoomOut,
       }),
-      [handleResetZoom]
+      [handleResetZoom, handleZoomIn, handleZoomOut]
     );
 
     const RULER_SIZE = 30; // Width/height of ruler bars
