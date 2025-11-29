@@ -304,8 +304,8 @@ export function ProjectTree() {
   const [showSetScale, setShowSetScale] = useState(false);
   const [setScaleMicrographId, setSetScaleMicrographId] = useState<string | null>(null);
 
-  // Opacity popover state
-  const [opacityAnchorEl, setOpacityAnchorEl] = useState<HTMLElement | null>(null);
+  // Opacity popover state (use position instead of element to avoid anchor disappearing)
+  const [opacityAnchorPosition, setOpacityAnchorPosition] = useState<{ top: number; left: number } | null>(null);
   const [opacityMicrographId, setOpacityMicrographId] = useState<string | null>(null);
   const [opacityValue, setOpacityValue] = useState<number>(1.0);
 
@@ -895,8 +895,9 @@ export function ProjectTree() {
                 Edit Micrograph Location
               </MenuItem>
               <MenuItem onClick={(event) => {
-                // Open opacity popover
-                setOpacityAnchorEl(event.currentTarget);
+                // Open opacity popover - capture position before menu closes
+                const rect = event.currentTarget.getBoundingClientRect();
+                setOpacityAnchorPosition({ top: rect.bottom, left: rect.left });
                 setOpacityMicrographId(micrograph.id);
                 setOpacityValue(micrograph.opacity ?? 1.0);
                 setMicrographOptionsAnchor({ ...micrographOptionsAnchor, [micrograph.id]: null });
@@ -1391,19 +1392,12 @@ export function ProjectTree() {
 
       {/* Opacity Slider Popover */}
       <Popover
-        open={Boolean(opacityAnchorEl)}
-        anchorEl={opacityAnchorEl}
+        open={Boolean(opacityAnchorPosition)}
+        anchorReference="anchorPosition"
+        anchorPosition={opacityAnchorPosition ?? undefined}
         onClose={() => {
-          // Save the opacity when closing
-          if (opacityMicrographId) {
-            updateMicrographMetadata(opacityMicrographId, { opacity: opacityValue });
-          }
-          setOpacityAnchorEl(null);
+          setOpacityAnchorPosition(null);
           setOpacityMicrographId(null);
-        }}
-        anchorOrigin={{
-          vertical: 'bottom',
-          horizontal: 'left',
         }}
         transformOrigin={{
           vertical: 'top',
