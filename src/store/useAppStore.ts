@@ -5,12 +5,85 @@
  * - Project data (ProjectMetadata hierarchy)
  * - Navigation state (active selections)
  * - Viewer state (zoom, pan, tool)
- * - UI preferences (persisted to localStorage)
+ * - UI preferences (persisted to file via Electron IPC)
  */
 
 import { create } from 'zustand';
-import { devtools, persist } from 'zustand/middleware';
+import { devtools, persist, createJSONStorage, StateStorage } from 'zustand/middleware';
 import { temporal } from 'zundo';
+
+/**
+ * Custom storage adapter that uses Electron IPC to persist state to a file
+ * instead of localStorage. This ensures persistence works correctly in
+ * packaged builds where file:// localStorage can be unreliable.
+ *
+ * Falls back to localStorage when running outside Electron (e.g., in browser).
+ */
+const electronStorage: StateStorage = {
+  getItem: async (name: string): Promise<string | null> => {
+    // Use Electron IPC if available
+    if (window.api?.session) {
+      try {
+        const data = await window.api.session.getItem();
+        if (data) {
+          // The data is already a JSON string containing the full storage object
+          const parsed = JSON.parse(data);
+          return parsed[name] ? JSON.stringify(parsed[name]) : null;
+        }
+        return null;
+      } catch (error) {
+        console.error('[Store] Error loading from Electron storage:', error);
+        return null;
+      }
+    }
+    // Fall back to localStorage
+    return localStorage.getItem(name);
+  },
+
+  setItem: async (name: string, value: string): Promise<void> => {
+    // Use Electron IPC if available
+    if (window.api?.session) {
+      try {
+        // Load existing data to merge with
+        let existingData: Record<string, unknown> = {};
+        const existing = await window.api.session.getItem();
+        if (existing) {
+          existingData = JSON.parse(existing);
+        }
+        // Update with new value
+        existingData[name] = JSON.parse(value);
+        await window.api.session.setItem(JSON.stringify(existingData));
+      } catch (error) {
+        console.error('[Store] Error saving to Electron storage:', error);
+      }
+      return;
+    }
+    // Fall back to localStorage
+    localStorage.setItem(name, value);
+  },
+
+  removeItem: async (name: string): Promise<void> => {
+    // Use Electron IPC if available
+    if (window.api?.session) {
+      try {
+        const existing = await window.api.session.getItem();
+        if (existing) {
+          const data = JSON.parse(existing);
+          delete data[name];
+          await window.api.session.setItem(JSON.stringify(data));
+        }
+      } catch (error) {
+        console.error('[Store] Error removing from Electron storage:', error);
+      }
+      return;
+    }
+    // Fall back to localStorage
+    localStorage.removeItem(name);
+  },
+};
+
+// Create JSON storage with custom Electron backend
+const getElectronStorage = () => electronStorage;
 import {
   ProjectMetadata,
   DatasetMetadata,
@@ -1009,6 +1082,8 @@ export const useAppStore = create<AppState>()(
       {
         // Persistence configuration
         name: 'strabomicro-storage',
+        // Use custom Electron storage instead of localStorage for reliable persistence
+        storage: createJSONStorage(getElectronStorage),
         partialize: (state) => ({
           // Project data (metadata only, not large binary data)
           project: state.project,
@@ -1029,7 +1104,7 @@ export const useAppStore = create<AppState>()(
           spotOverlayOpacity: state.spotOverlayOpacity,
           theme: state.theme,
         }),
-        // Rebuild indexes after rehydrating from localStorage
+        // Rebuild indexes after rehydrating from file storage
         onRehydrateStorage: () => (state) => {
           if (state?.project) {
             // Rebuild the micrograph and spot indexes from the project data

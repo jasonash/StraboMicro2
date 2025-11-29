@@ -82,6 +82,13 @@ type Unsubscribe = () => void;
 interface Window {
   api?: {
     version: string;
+
+    // Session state persistence (replaces localStorage for packaged builds)
+    session: {
+      getItem: () => Promise<string | null>;
+      setItem: (value: string) => Promise<void>;
+    };
+
     onNewProject: (callback: () => void) => Unsubscribe;
     onOpenProject: (callback: () => void) => Unsubscribe;
     onEditProject: (callback: () => void) => Unsubscribe;
