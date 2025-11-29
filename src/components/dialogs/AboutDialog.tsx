@@ -13,7 +13,7 @@ import {
   Box,
   Typography,
 } from '@mui/material';
-import straboLogo from '@/assets/strabo-logo.png';
+import appIcon from '@/assets/app-icon.png';
 
 interface AboutDialogProps {
   isOpen: boolean;
@@ -47,9 +47,9 @@ export function AboutDialog({ isOpen, onClose }: AboutDialogProps) {
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 2, mb: 2 }}>
           <Box
             component="img"
-            src={straboLogo}
+            src={appIcon}
             alt="StraboMicro Logo"
-            sx={{ width: 48, height: 48 }}
+            sx={{ width: 48, height: 48, borderRadius: 1 }}
           />
           <Typography variant="h5" sx={{ fontWeight: 600, letterSpacing: 2 }}>
             STRABOMICRO
