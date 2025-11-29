@@ -16,9 +16,11 @@ import {
   Box,
   Stack,
   Chip,
+  Link,
 } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import EditIcon from '@mui/icons-material/Edit';
+import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import { useAppStore } from '@/store';
 import { findMicrographById, findSpotById, findSpotParentMicrograph, getMicrographParentSample, getSampleParentDataset } from '@/store/helpers';
 import type {
@@ -1728,9 +1730,37 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
           {hasData(data.associatedFiles) ? (
             <Stack spacing={0.5}>
               {data.associatedFiles?.map((file, index) => (
-                <Typography key={index} variant="body2">
-                  • {file.fileName}
-                </Typography>
+                <Box key={index} sx={{ display: 'flex', alignItems: 'center' }}>
+                  <Typography variant="body2" component="span">•&nbsp;</Typography>
+                  <Link
+                    component="button"
+                    variant="body2"
+                    onClick={async (e) => {
+                      e.stopPropagation();
+                      if (!project?.id || !window.api?.openFilePath || !window.api?.getProjectFolderPaths) return;
+                      try {
+                        const paths = await window.api.getProjectFolderPaths(project.id);
+                        const filePath = `${paths.associatedFiles}/${file.fileName}`;
+                        const result = await window.api.openFilePath(filePath);
+                        if (!result.success) {
+                          alert(`Could not open file: ${result.error || 'Unknown error'}`);
+                        }
+                      } catch (error) {
+                        alert('Failed to open file. It may have been moved or deleted.');
+                      }
+                    }}
+                    sx={{
+                      textAlign: 'left',
+                      cursor: 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 0.5,
+                    }}
+                  >
+                    {file.fileName}
+                    <OpenInNewIcon sx={{ fontSize: 12, opacity: 0.7 }} />
+                  </Link>
+                </Box>
               ))}
             </Stack>
           ) : (
