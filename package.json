@@ -27,6 +27,7 @@
   "author": "StraboSpot.org",
   "license": "MIT",
   "devDependencies": {
+    "@electron/rebuild": "^4.0.1",
     "@types/node": "^20.11.0",
     "@types/react": "^18.2.48",
     "@types/react-dom": "^18.2.18",
@@ -36,7 +37,6 @@
     "electron": "^28.2.0",
     "electron-builder": "^24.9.1",
     "electron-devtools-installer": "^4.0.0",
-    "electron-log": "^5.4.3",
     "react-devtools": "^7.0.1",
     "typescript": "^5.3.3",
     "vite": "^5.0.11",
@@ -53,6 +53,7 @@
     "@react-pdf/renderer": "^4.3.1",
     "archiver": "^7.0.1",
     "canvas": "^3.2.0",
+    "electron-log": "^5.4.3",
     "electron-store": "^11.0.2",
     "form-data": "^4.0.5",
     "immer": "^10.2.0",
@@ -79,6 +80,11 @@
       "electron/**/*",
       "dist/**/*"
     ],
+    "asarUnpack": [
+      "node_modules/sharp/**/*",
+      "node_modules/@img/**/*",
+      "node_modules/canvas/**/*"
+    ],
     "mac": {
       "category": "public.app-category.education",
       "icon": "build/icon.icns",
@@ -89,11 +95,17 @@
       "target": [
         {
           "target": "dmg",
-          "arch": ["x64", "arm64"]
+          "arch": [
+            "x64",
+            "arm64"
+          ]
         },
         {
           "target": "zip",
-          "arch": ["x64", "arm64"]
+          "arch": [
+            "x64",
+            "arm64"
+          ]
         }
       ]
     },
@@ -116,7 +128,9 @@
       "target": [
         {
           "target": "nsis",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         }
       ]
     },
