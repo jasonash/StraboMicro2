@@ -18,6 +18,8 @@ interface SpotContextMenuProps {
   onEditGeometry: (spot: Spot) => void;
   onEditMetadata: (spot: Spot) => void;
   onDelete: (spot: Spot) => void;
+  /** If true, spot belongs to a child micrograph (recursive spot) - hide geometry editing */
+  isRecursiveSpot?: boolean;
 }
 
 export const SpotContextMenu: React.FC<SpotContextMenuProps> = ({
@@ -27,6 +29,7 @@ export const SpotContextMenu: React.FC<SpotContextMenuProps> = ({
   onEditGeometry,
   onEditMetadata,
   onDelete,
+  isRecursiveSpot = false,
 }) => {
   const handleEditGeometry = () => {
     if (!spot) return;
@@ -55,12 +58,14 @@ export const SpotContextMenu: React.FC<SpotContextMenuProps> = ({
         anchorPosition ? { top: anchorPosition.y, left: anchorPosition.x } : undefined
       }
     >
-      <MenuItem onClick={handleEditGeometry}>
-        <ListItemIcon>
-          <ShapeLineIcon fontSize="small" />
-        </ListItemIcon>
-        <ListItemText>Edit Spot Geometry</ListItemText>
-      </MenuItem>
+      {!isRecursiveSpot && (
+        <MenuItem onClick={handleEditGeometry}>
+          <ListItemIcon>
+            <ShapeLineIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>Edit Spot Geometry</ListItemText>
+        </MenuItem>
+      )}
       <MenuItem onClick={handleEditMetadata}>
         <ListItemIcon>
           <EditIcon fontSize="small" />

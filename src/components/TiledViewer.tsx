@@ -111,6 +111,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
     const [contextMenuPosition, setContextMenuPosition] = useState<{ x: number; y: number } | null>(
       null
     );
+    const [isContextMenuRecursiveSpot, setIsContextMenuRecursiveSpot] = useState(false);
 
     // Get project and active micrograph from store
     const project = useAppStore((state) => state.project);
@@ -1325,6 +1326,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                           onSpotContextMenu={(spot, x, y) => {
                             setContextMenuSpot(spot);
                             setContextMenuPosition({ x, y });
+                            setIsContextMenuRecursiveSpot(true);
                           }}
                         />
                       ))}
@@ -1343,6 +1345,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                       onContextMenu={(spot, x, y) => {
                         setContextMenuSpot(spot);
                         setContextMenuPosition({ x, y });
+                        setIsContextMenuRecursiveSpot(false);
                       }}
                       renderLabelsOnly={false}
                     />
@@ -1517,6 +1520,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                           onSpotContextMenu={(spot, x, y) => {
                             setContextMenuSpot(spot);
                             setContextMenuPosition({ x, y });
+                            setIsContextMenuRecursiveSpot(true);
                           }}
                         />
                       ))}
@@ -1535,6 +1539,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                       onContextMenu={(spot, x, y) => {
                         setContextMenuSpot(spot);
                         setContextMenuPosition({ x, y });
+                        setIsContextMenuRecursiveSpot(false);
                       }}
                       renderLabelsOnly={false}
                     />
@@ -1628,10 +1633,12 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
           onClose={() => {
             setContextMenuSpot(null);
             setContextMenuPosition(null);
+            setIsContextMenuRecursiveSpot(false);
           }}
           onEditGeometry={handleEditGeometry}
           onEditMetadata={handleEditMetadata}
           onDelete={handleDeleteSpot}
+          isRecursiveSpot={isContextMenuRecursiveSpot}
         />
       </div>
     );
