@@ -442,6 +442,12 @@ function App() {
       setIsAboutOpen(true);
     }));
 
+    // Debug: Trigger test error in renderer (only wired in development)
+    unsubscribers.push(window.api.onDebugTriggerTestError(() => {
+      console.log('[Debug] Triggering test error in renderer process...');
+      throw new Error('Test error from renderer process - triggered via Debug menu');
+    }));
+
     // File: Export All Images menu item
     unsubscribers.push(window.api.onExportAllImages(() => {
       if (!project) {

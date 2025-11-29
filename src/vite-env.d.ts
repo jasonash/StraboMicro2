@@ -528,6 +528,9 @@ interface Window {
       }) => void) => Unsubscribe;
     };
 
+    // Debug menu events (only used in development)
+    onDebugTriggerTestError: (callback: () => void) => Unsubscribe;
+
     versionHistory: {
       // Create a new version (auto-save)
       create: (

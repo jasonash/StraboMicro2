@@ -654,7 +654,8 @@ function createWindow() {
         },
       ],
     },
-    {
+    // Debug menu only shown in development mode
+    ...(!app.isPackaged ? [{
       label: 'Debug',
       submenu: [
         { role: 'reload' },
@@ -664,6 +665,22 @@ function createWindow() {
           click: () => {
             if (mainWindow) {
               mainWindow.webContents.reloadIgnoringCache();
+            }
+          }
+        },
+        { type: 'separator' },
+        {
+          label: 'Trigger Test Error (Main Process)',
+          click: () => {
+            log.info('[Debug] Triggering test error in main process...');
+            throw new Error('Test error from main process - triggered via Debug menu');
+          }
+        },
+        {
+          label: 'Trigger Test Error (Renderer)',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('debug:trigger-test-error');
             }
           }
         },
@@ -741,7 +758,7 @@ function createWindow() {
         { type: 'separator' },
         { role: 'toggleDevTools' },
       ],
-    },
+    }] : []),
   ];
 
     const menu = Menu.buildFromTemplate(menuTemplate);
