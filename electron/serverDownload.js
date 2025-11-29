@@ -22,6 +22,8 @@ const http = require('http');
 const ENDPOINTS = {
   MY_PROJECTS: 'https://strabospot.org/jwtmicrodb/myProjects',
   PROJECT_URL: 'https://strabospot.org/jwtmicrodb/projectURL',
+  SHARED_PROJECT: 'https://strabospot.org/jwtmicrodb/sharedProject',
+  SHARED_FILES: 'https://strabospot.org/straboMicroFiles',
   BASE_URL: 'https://strabospot.org',
 };
 
@@ -356,12 +358,162 @@ async function cleanupDownload(zipPath) {
   }
 }
 
+/**
+ * Look up a shared project by share code
+ * @param {string} shareCode - The 6-character alphanumeric share code
+ * @param {string} accessToken - JWT access token
+ * @returns {Promise<{success: boolean, key?: string, error?: string}>}
+ */
+async function lookupSharedProject(shareCode, accessToken) {
+  try {
+    log.info(`[ServerDownload] Looking up shared project with code: ${shareCode}`);
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
+
+    const response = await fetch(`${ENDPOINTS.SHARED_PROJECT}/${shareCode}`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+      },
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      if (response.status === 401) {
+        return { success: false, error: 'Authentication expired. Please log in again.' };
+      }
+      if (response.status === 404) {
+        return { success: false, error: 'Invalid share code. Please check the code and try again.' };
+      }
+      return { success: false, error: `Server error: ${response.status}` };
+    }
+
+    const data = await response.json();
+
+    // Check if key is null/undefined (invalid share code)
+    if (!data.key) {
+      log.warn(`[ServerDownload] Share code returned null key: ${shareCode}`);
+      return { success: false, error: 'Invalid share code. Please check the code and try again.' };
+    }
+
+    log.info(`[ServerDownload] Share code resolved to key: ${data.key}`);
+    return { success: true, key: data.key };
+
+  } catch (error) {
+    log.error('[ServerDownload] Error looking up shared project:', error);
+    if (error.name === 'AbortError') {
+      return { success: false, error: 'Request timed out. Please try again.' };
+    }
+    return { success: false, error: error.message };
+  }
+}
+
+/**
+ * Download a shared project by share code
+ * Returns the path to the downloaded .zip file for subsequent import
+ *
+ * @param {string} shareCode - The 6-character alphanumeric share code
+ * @param {string} accessToken - JWT access token
+ * @param {Function} progressCallback - Progress callback
+ * @returns {Promise<{success: boolean, zipPath?: string, error?: string}>}
+ */
+async function downloadSharedProject(shareCode, accessToken, progressCallback) {
+  let tempZipPath = null;
+
+  try {
+    const sendProgress = (phase, percentage, message, extra = {}) => {
+      progressCallback({
+        phase,
+        percentage,
+        message,
+        ...extra,
+      });
+    };
+
+    // --- Step 1: Look up the share code to get the key ---
+    sendProgress(DownloadPhase.FETCHING_URL, 5, 'Validating share code...');
+
+    const lookupResult = await lookupSharedProject(shareCode, accessToken);
+    if (!lookupResult.success) {
+      return { success: false, error: lookupResult.error };
+    }
+
+    // --- Step 2: Download the file using the key ---
+    sendProgress(DownloadPhase.DOWNLOADING, 10, 'Starting download...');
+
+    // Create temp file path
+    tempZipPath = path.join(
+      app.getPath('temp'),
+      `strabomicro-shared-${shareCode}-${Date.now()}.zip`
+    );
+
+    // Construct download URL: /straboMicroFiles/<key>/project.zip
+    const downloadUrl = `${ENDPOINTS.SHARED_FILES}/${lookupResult.key}/project.zip`;
+    log.info(`[ServerDownload] Downloading shared project from: ${downloadUrl}`);
+
+    const downloadResult = await downloadFile(
+      downloadUrl,
+      tempZipPath,
+      (downloadProgress) => {
+        // Scale download progress from 10% to 95%
+        const scaledPercent = 10 + Math.round(downloadProgress.percentage * 0.85);
+        sendProgress(
+          DownloadPhase.DOWNLOADING,
+          scaledPercent,
+          `Downloading... (${downloadProgress.bytesDownloadedFormatted} / ${downloadProgress.bytesTotalFormatted})`,
+          {
+            bytesDownloaded: downloadProgress.bytesDownloaded,
+            bytesTotal: downloadProgress.bytesTotal,
+          }
+        );
+      }
+    );
+
+    if (!downloadResult.success) {
+      // Clean up temp file if it exists
+      if (tempZipPath) {
+        try {
+          await fs.promises.unlink(tempZipPath);
+        } catch (e) {
+          // Ignore cleanup errors
+        }
+      }
+      return { success: false, error: downloadResult.error };
+    }
+
+    sendProgress(DownloadPhase.COMPLETE, 100, 'Download complete!');
+
+    // Return the path to the downloaded file
+    // The caller (main.js) will pass this to smzImport
+    return { success: true, zipPath: tempZipPath };
+
+  } catch (error) {
+    log.error('[ServerDownload] Shared project download failed:', error);
+
+    // Clean up temp file on error
+    if (tempZipPath) {
+      try {
+        await fs.promises.unlink(tempZipPath);
+      } catch (e) {
+        // Ignore cleanup errors
+      }
+    }
+
+    return { success: false, error: error.message };
+  }
+}
+
 module.exports = {
   listProjects,
   getProjectUrl,
   downloadFile,
   downloadProject,
   cleanupDownload,
+  lookupSharedProject,
+  downloadSharedProject,
   formatBytes,
   DownloadPhase,
   ENDPOINTS,

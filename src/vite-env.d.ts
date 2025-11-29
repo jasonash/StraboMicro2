@@ -434,7 +434,16 @@ interface Window {
         bytesDownloaded?: number;
         bytesTotal?: number;
       }) => void) => Unsubscribe;
+      // Shared project download (Open Shared Project)
+      downloadSharedProject: (shareCode: string) => Promise<{
+        success: boolean;
+        zipPath?: string;
+        error?: string;
+      }>;
     };
+
+    // Open Shared Project
+    onOpenSharedProject: (callback: () => void) => Unsubscribe;
 
     // App lifecycle
     onBeforeClose: (callback: () => void) => Unsubscribe;
