@@ -138,66 +138,66 @@ const MainLayout: React.FC = () => {
           }}
         >
           <Sidebar />
+        </Box>
 
-          {/* Resize handle with integrated collapse button - only show when not collapsed */}
-          {!isLeftPanelCollapsed && (
+        {/* Resize handle for left panel - outside sidebar to avoid scrollbar overlap */}
+        {!isLeftPanelCollapsed && (
+          <Box
+            sx={{
+              position: 'relative',
+              width: '4px',
+              marginRight: '-4px',
+              zIndex: 10,
+            }}
+          >
+            {/* Resize handle (lower part) */}
             <Box
+              onMouseDown={handleMouseDown('left')}
               sx={{
                 position: 'absolute',
-                right: 0,
-                top: 0,
+                left: 0,
+                top: 60,
                 bottom: 0,
                 width: '4px',
+                cursor: 'col-resize',
+                '&:hover': {
+                  bgcolor: 'primary.main',
+                  width: '2px',
+                },
               }}
-            >
-              {/* Resize handle (lower part) */}
+            />
+
+            {/* Vertical collapse button on divider */}
+            <Tooltip title="Hide Panel" placement="right">
               <Box
-                onMouseDown={handleMouseDown('left')}
+                onClick={() => setIsLeftPanelCollapsed(true)}
                 sx={{
                   position: 'absolute',
-                  right: 0,
-                  top: 60,
-                  bottom: 0,
-                  width: '4px',
-                  cursor: 'col-resize',
+                  left: '-2px',
+                  top: 8,
+                  width: '12px',
+                  height: '40px',
+                  bgcolor: 'background.paper',
+                  border: 1,
+                  borderColor: 'divider',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  transition: 'background-color 0.2s, border-color 0.2s',
+                  zIndex: 11,
                   '&:hover': {
-                    bgcolor: 'primary.main',
-                    width: '2px',
+                    bgcolor: 'background.default',
+                    borderColor: 'primary.main',
                   },
                 }}
-              />
-
-              {/* Vertical collapse button on divider */}
-              <Tooltip title="Hide Panel" placement="right">
-                <Box
-                  onClick={() => setIsLeftPanelCollapsed(true)}
-                  sx={{
-                    position: 'absolute',
-                    right: '-4px',
-                    top: 8,
-                    width: '12px',
-                    height: '40px',
-                    bgcolor: 'background.paper',
-                    border: 1,
-                    borderColor: 'divider',
-                    borderRadius: '4px',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    transition: 'background-color 0.2s, border-color 0.2s',
-                    '&:hover': {
-                      bgcolor: 'background.default',
-                      borderColor: 'primary.main',
-                    },
-                  }}
-                >
-                  <ChevronLeft sx={{ fontSize: 14, color: 'text.secondary' }} />
-                </Box>
-              </Tooltip>
-            </Box>
-          )}
-        </Box>
+              >
+                <ChevronLeft sx={{ fontSize: 14, color: 'text.secondary' }} />
+              </Box>
+            </Tooltip>
+          </Box>
+        )}
 
         {/* Center Viewer */}
         <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>

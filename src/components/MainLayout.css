@@ -48,7 +48,7 @@
 }
 
 .resize-handle-right {
-  right: 0;
+  right: -4px;
 }
 
 .resize-handle-left {
