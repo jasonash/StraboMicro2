@@ -2,14 +2,14 @@
  * AssociatedImageRenderer Component
  *
  * Renders a single associated (overlay) micrograph with dynamic Level-of-Detail (LOD).
- * Implements a simplified LOD strategy:
+ * Implements the LOD strategy from docs/overlay-strategy-discussion.md:
  *
- * - THUMBNAIL mode: 512x512 (~500KB) - when <30% screen coverage or zoomed out
- * - MEDIUM mode: 2048x2048 (~3MB) - when >=30% coverage or moderate-high zoom
+ * - THUMBNAIL mode: 512x512 (~500KB) - when <10% screen coverage or zoomed out
+ * - MEDIUM mode: 2048x2048 (~3MB) - when 10-40% coverage, moderate zoom
+ * - TILED mode: Full resolution with tiling - when >40% coverage or high zoom
  *
- * NOTE: Overlays do NOT support TILED mode to prevent tile generation storms
- * when loading projects with many overlays. For full resolution, users should
- * use drill-down navigation to view the overlay as the main reference image.
+ * This solves the key limitation of the legacy app: extreme detail is preserved
+ * when zooming into overlays, no matter how small they are on the reference.
  */
 
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
@@ -17,9 +17,7 @@ import { Group, Image as KonvaImage, Rect } from 'react-konva';
 import { MicrographMetadata } from '@/types/project-types';
 
 // Render modes based on screen coverage and zoom
-// Note: TILED mode is intentionally excluded - overlays only use THUMBNAIL/MEDIUM
-// to prevent tile generation storms when loading projects with many overlays
-export type RenderMode = 'THUMBNAIL' | 'MEDIUM';
+export type RenderMode = 'THUMBNAIL' | 'MEDIUM' | 'TILED';
 
 interface AssociatedImageRendererProps {
   micrograph: MicrographMetadata;
@@ -37,19 +35,29 @@ interface AssociatedImageRendererProps {
     height: number;
   };
   stageScale: number; // Current stage scale factor
+  onTileLoadingStart?: (message: string) => void; // Notify parent when tile loading starts
+  onTileLoadingEnd?: () => void; // Notify parent when tile loading ends
   onClick?: (micrographId: string) => void; // Called when overlay is clicked (for drill-down navigation)
   showOutline?: boolean; // Show red outline around overlay (like legacy app)
 }
 
-// Note: TileInfo and TILE_SIZE removed - overlays now only use THUMBNAIL/MEDIUM modes
+interface TileInfo {
+  x: number;
+  y: number;
+  dataUrl: string;
+  imageObj?: HTMLImageElement;
+}
 
 interface ImageState {
   mode: RenderMode;
   imageObj: HTMLImageElement | null;
+  tiles: Map<string, TileInfo>;
   isLoading: boolean;
   targetMode?: RenderMode; // Track what mode we're currently loading
   retryCount: number; // Track retries to avoid infinite loops
 }
+
+const TILE_SIZE = 256;
 
 export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = ({
   micrograph,
@@ -57,12 +65,15 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
   parentMetadata,
   viewport,
   stageScale,
+  onTileLoadingStart,
+  onTileLoadingEnd,
   onClick,
   showOutline = false,
 }) => {
   const [imageState, setImageState] = useState<ImageState>({
     mode: 'THUMBNAIL',
     imageObj: null,
+    tiles: new Map(),
     isLoading: false,
     retryCount: 0,
   });
@@ -172,12 +183,8 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
   /**
    * Determine appropriate render mode based on zoom and viewport visibility
    *
-   * IMPORTANT: Overlays never use TILED mode to prevent multiple concurrent
-   * tile generation requests from overwhelming the system when loading projects.
-   * The MEDIUM resolution (2048x2048) is sufficient for most overlay viewing.
-   * Full tile resolution is only needed for the main reference micrograph.
-   *
    * Priority: Zoom level is the primary factor.
+   * If zoomed in enough to see detail, use high-res tiles.
    * Coverage is only used at low zoom levels to optimize memory.
    */
   const determineRenderMode = useCallback((): RenderMode => {
@@ -190,10 +197,15 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
     // (viewport.zoom and stageScale are the same value)
     const zoom = stageScale;
 
-    // For overlays, cap at MEDIUM mode to prevent tile generation storms
-    // High zoom (>= 0.5) uses MEDIUM resolution (2048x2048) - good enough for overlays
+    // High zoom always gets tiles - user is looking at detail
+    // This ensures tiles load when zoomed in, regardless of coverage
+    if (zoom >= 1.0) {
+      return 'TILED'; // Full resolution
+    }
+
+    // Medium zoom (0.5 to 1.0) - use medium resolution
     if (zoom >= 0.5) {
-      return 'MEDIUM';
+      return 'MEDIUM'; // 2048x2048
     }
 
     // Low zoom (< 0.5) - use coverage to decide
@@ -273,7 +285,8 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
       const targetMode = determineRenderMode();
 
       // If we're already in the right mode and have the image, skip
-      if (imageState.mode === targetMode && imageState.imageObj) {
+      if (imageState.mode === targetMode &&
+          (imageState.imageObj || imageState.tiles.size > 0)) {
         return;
       }
 
@@ -312,15 +325,13 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
           setImageState({
             mode: 'THUMBNAIL',
             imageObj: img,
+            tiles: new Map(),
             isLoading: false,
             retryCount: 0, // Reset retry count on success
           });
 
-        } else {
-          // MEDIUM mode - Load 2048x2048 medium resolution
-          // Note: Overlays no longer use TILED mode to prevent tile generation storms
-          // when loading projects with many overlays. MEDIUM (2048x2048) is sufficient
-          // for overlay viewing. Full tile resolution is only for the main micrograph.
+        } else if (targetMode === 'MEDIUM') {
+          // Load 2048x2048 medium resolution
           const result = await window.api!.loadImageWithTiles(fullPath);
           const mediumDataUrl = await window.api!.loadMedium(result.hash);
 
@@ -334,9 +345,57 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
           setImageState({
             mode: 'MEDIUM',
             imageObj: img,
+            tiles: new Map(),
             isLoading: false,
             retryCount: 0, // Reset retry count on success
           });
+
+        } else {
+          // TILED mode - load all tiles
+          const result = await window.api!.loadImageWithTiles(fullPath);
+          const tilesX = result.metadata.tilesX;
+          const tilesY = result.metadata.tilesY;
+
+          // Notify parent that we're loading tiles
+          const message = result.fromCache
+            ? `Loading overlay tiles from cache...`
+            : `Generating overlay tiles (first load)...`;
+          onTileLoadingStart?.(message);
+
+          // Generate tile coordinates
+          const tileCoords: Array<{ x: number; y: number }> = [];
+          for (let ty = 0; ty < tilesY; ty++) {
+            for (let tx = 0; tx < tilesX; tx++) {
+              tileCoords.push({ x: tx, y: ty });
+            }
+          }
+
+          // Load tiles
+          const tileResults = await window.api!.loadTilesBatch(result.hash, tileCoords);
+          const newTiles = new Map<string, TileInfo>();
+
+          // Decode tile images
+          for (const { x, y, dataUrl } of tileResults) {
+            const img = new Image();
+            img.src = dataUrl;
+            await new Promise((resolve) => {
+              img.onload = resolve;
+            });
+
+            newTiles.set(`${x}_${y}`, { x, y, dataUrl, imageObj: img });
+          }
+
+          // Swap to tiled mode AFTER all tiles are loaded (keep current image visible until then)
+          setImageState({
+            mode: 'TILED',
+            imageObj: null,
+            tiles: newTiles,
+            isLoading: false,
+            retryCount: 0, // Reset retry count on success
+          });
+
+          // Notify parent that we're done loading tiles
+          onTileLoadingEnd?.();
         }
       } catch (error) {
         // Only log error on final retry attempt to avoid console noise
@@ -356,7 +415,7 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
     };
 
     loadImage();
-  }, [micrograph, determineRenderMode, imageState.mode, imageState.imageObj, imageState.isLoading, imageState.retryCount, projectId]);
+  }, [micrograph, determineRenderMode, imageState.mode, imageState.imageObj, imageState.tiles.size, imageState.isLoading, imageState.retryCount, projectId]);
 
   // Track mouse position to distinguish clicks from drags
   const mouseDownPosRef = useRef<{ x: number; y: number } | null>(null);
@@ -423,60 +482,119 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
   }
 
   // If we're loading but have nothing to show yet, return null
-  if (imageState.isLoading && !imageState.imageObj) {
+  if (imageState.isLoading && !imageState.imageObj && imageState.tiles.size === 0) {
     return null;
   }
 
   const imageWidth = micrograph.imageWidth || 0;
   const imageHeight = micrograph.imageHeight || 0;
 
-  // Render as single image (THUMBNAIL or MEDIUM mode)
-  // Note: Overlays no longer support TILED mode to prevent tile generation storms
-  if (!imageState.imageObj) return null;
+  if (imageState.mode === 'THUMBNAIL' || imageState.mode === 'MEDIUM') {
+    // Render as single image
+    if (!imageState.imageObj) return null;
 
-  return (
-    <Group
-      x={overlayTransform.x}
-      y={overlayTransform.y}
-      scaleX={overlayTransform.scaleX}
-      scaleY={overlayTransform.scaleY}
-      rotation={overlayTransform.rotation}
-      offsetX={overlayTransform.offsetX}
-      offsetY={overlayTransform.offsetY}
-      onMouseDown={handleMouseDown}
-      onMouseUp={handleMouseUp}
-      onTap={handleMouseUp}
-      onMouseEnter={handleMouseEnter}
-      onMouseLeave={handleMouseLeave}
-    >
-      <KonvaImage
-        image={imageState.imageObj}
-        width={imageWidth}
-        height={imageHeight}
-        opacity={micrograph.opacity ?? 1.0}
-      />
-      {/* Red outline around overlay */}
-      {showOutline && (
-        <Rect
-          x={0}
-          y={0}
+    return (
+      <Group
+        x={overlayTransform.x}
+        y={overlayTransform.y}
+        scaleX={overlayTransform.scaleX}
+        scaleY={overlayTransform.scaleY}
+        rotation={overlayTransform.rotation}
+        offsetX={overlayTransform.offsetX}
+        offsetY={overlayTransform.offsetY}
+        onMouseDown={handleMouseDown}
+        onMouseUp={handleMouseUp}
+        onTap={handleMouseUp}
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleMouseLeave}
+      >
+        <KonvaImage
+          image={imageState.imageObj}
           width={imageWidth}
           height={imageHeight}
-          stroke="#cc3333"
-          strokeWidth={3 / (stageScale * overlayTransform.scaleX)} // Constant screen size regardless of zoom/scale
-          listening={false}
+          opacity={micrograph.opacity ?? 1.0}
         />
-      )}
-      {/* Transparent hit area for reliable click detection */}
-      {onClick && (
-        <Rect
-          x={0}
-          y={0}
-          width={imageWidth}
-          height={imageHeight}
-          fill="transparent"
-        />
-      )}
-    </Group>
-  );
+        {/* Red outline around overlay */}
+        {showOutline && (
+          <Rect
+            x={0}
+            y={0}
+            width={imageWidth}
+            height={imageHeight}
+            stroke="#cc3333"
+            strokeWidth={3 / (stageScale * overlayTransform.scaleX)} // Constant screen size regardless of zoom/scale
+            listening={false}
+          />
+        )}
+        {/* Transparent hit area for reliable click detection */}
+        {onClick && (
+          <Rect
+            x={0}
+            y={0}
+            width={imageWidth}
+            height={imageHeight}
+            fill="transparent"
+          />
+        )}
+      </Group>
+    );
+  } else {
+    // TILED mode - render individual tiles with 1px overlap to prevent seams
+    if (imageState.tiles.size === 0) return null;
+
+    return (
+      <Group
+        x={overlayTransform.x}
+        y={overlayTransform.y}
+        scaleX={overlayTransform.scaleX}
+        scaleY={overlayTransform.scaleY}
+        rotation={overlayTransform.rotation}
+        offsetX={overlayTransform.offsetX}
+        offsetY={overlayTransform.offsetY}
+        onMouseDown={handleMouseDown}
+        onMouseUp={handleMouseUp}
+        onTap={handleMouseUp}
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleMouseLeave}
+      >
+        {Array.from(imageState.tiles.values()).map((tile) => {
+          if (!tile.imageObj) return null;
+
+          return (
+            <KonvaImage
+              key={`${tile.x}_${tile.y}`}
+              image={tile.imageObj}
+              x={tile.x * TILE_SIZE}
+              y={tile.y * TILE_SIZE}
+              width={TILE_SIZE + 2}  // 2px overlap to prevent seams when rotated
+              height={TILE_SIZE + 2} // 2px overlap to prevent seams when rotated
+              opacity={micrograph.opacity ?? 1.0}
+            />
+          );
+        })}
+        {/* Red outline around overlay */}
+        {showOutline && (
+          <Rect
+            x={0}
+            y={0}
+            width={imageWidth}
+            height={imageHeight}
+            stroke="#cc3333"
+            strokeWidth={3 / (stageScale * overlayTransform.scaleX)} // Constant screen size regardless of zoom/scale
+            listening={false}
+          />
+        )}
+        {/* Transparent hit area for reliable click detection */}
+        {onClick && (
+          <Rect
+            x={0}
+            y={0}
+            width={imageWidth}
+            height={imageHeight}
+            fill="transparent"
+          />
+        )}
+      </Group>
+    );
+  }
 };
