@@ -24,7 +24,10 @@
     "electron",
     "react"
   ],
-  "author": "StraboSpot.org",
+  "author": {
+    "name": "StraboSpot.org",
+    "email": "contact@strabospot.org"
+  },
   "license": "MIT",
   "devDependencies": {
     "@electron/rebuild": "^4.0.1",

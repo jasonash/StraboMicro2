@@ -1,5 +1,6 @@
 # Development Build Workflow
 # Builds unsigned app for all platforms (macOS, Windows, Linux)
+# Creates/updates a "dev-latest" pre-release with downloadable artifacts
 # Triggered manually via GitHub Actions UI
 
 name: Dev Build
@@ -46,21 +47,18 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
 
-      # Linux-specific: Install build dependencies
+      # Linux-specific: Install build dependencies (libfuse2 for AppImage)
       - name: Install Linux dependencies
         if: matrix.platform == 'linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libvips-dev libfuse2
-
-      # macOS-specific: Install build dependencies
-      - name: Install macOS dependencies
-        if: matrix.platform == 'mac'
-        run: |
-          brew install vips
+          sudo apt-get install -y libfuse2
 
       - name: Install dependencies
         run: npm ci
+        env:
+          # Tell Sharp to use prebuilt binaries instead of system libvips
+          SHARP_IGNORE_GLOBAL_LIBVIPS: 1
 
       # Update version to include dev suffix
       - name: Update version for dev build
@@ -69,6 +67,7 @@ jobs:
           VERSION=$(node -p "require('./package.json').version")
           DEV_VERSION="${VERSION}-dev.${{ github.run_number }}"
           echo "Building dev version: $DEV_VERSION"
+          echo "DEV_VERSION=$DEV_VERSION" >> $GITHUB_ENV
           npm version $DEV_VERSION --no-git-tag-version
 
       - name: Build application
@@ -100,4 +99,85 @@ jobs:
             release/*.AppImage
             release/*.deb
           if-no-files-found: error
-          retention-days: 90
+          retention-days: 30
+
+  # Create/update the dev-latest release with all platform builds
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.branch }}
+
+      - name: Get version info
+        id: version
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          DEV_VERSION="${VERSION}-dev.${{ github.run_number }}"
+          echo "dev_version=$DEV_VERSION" >> $GITHUB_OUTPUT
+          echo "Building release for version: $DEV_VERSION"
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Display downloaded files
+        run: find artifacts -type f | head -50
+
+      # Delete existing dev-latest release and tag if they exist
+      - name: Delete existing dev-latest release
+        run: |
+          gh release delete dev-latest --yes || true
+          git push origin :refs/tags/dev-latest || true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create dev-latest release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: dev-latest
+          name: "Development Build (v${{ steps.version.outputs.dev_version }})"
+          draft: false
+          prerelease: true
+          files: |
+            artifacts/**/*.dmg
+            artifacts/**/*.zip
+            artifacts/**/*.exe
+            artifacts/**/*.AppImage
+            artifacts/**/*.deb
+          body: |
+            ## Development Build
+
+            **Version:** ${{ steps.version.outputs.dev_version }}
+            **Branch:** ${{ inputs.branch }}
+            **Build:** #${{ github.run_number }}
+            **Date:** ${{ github.event.repository.updated_at }}
+
+            ⚠️ **This is a development build for testing purposes.**
+            It is unsigned and may trigger security warnings on macOS and Windows.
+
+            ### Downloads
+
+            | Platform | File |
+            |----------|------|
+            | macOS (Apple Silicon) | `StraboMicro2-*-arm64.dmg` |
+            | macOS (Intel) | `StraboMicro2-*-x64.dmg` |
+            | Windows | `StraboMicro2-*.exe` |
+            | Linux (AppImage) | `StraboMicro2-*.AppImage` |
+            | Linux (Debian) | `strabomicro2_*.deb` |
+
+            ### Installation Notes
+
+            **macOS:** You may need to right-click and select "Open" the first time, or go to System Preferences > Security & Privacy to allow the app.
+
+            **Windows:** You may see a SmartScreen warning. Click "More info" then "Run anyway".
+
+            **Linux:** Make the AppImage executable with `chmod +x` before running.
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
