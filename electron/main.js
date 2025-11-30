@@ -895,8 +895,8 @@ function createWindow() {
     }, 500);
   });
 
-  // Load the app
-  const isDev = process.env.NODE_ENV !== 'production';
+  // Load the app - use app.isPackaged which is more reliable than NODE_ENV
+  const isDev = !app.isPackaged;
 
   if (isDev) {
     mainWindow.loadURL('http://localhost:5173');
@@ -953,7 +953,7 @@ function createWindow() {
 let buildMenuFn = null;
 
 app.whenReady().then(async () => {
-  const isDev = process.env.NODE_ENV !== 'production';
+  const isDev = !app.isPackaged;
 
   // Show splash screen immediately
   createSplashWindow();
