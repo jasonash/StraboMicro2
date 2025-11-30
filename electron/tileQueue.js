@@ -154,7 +154,7 @@ class TileQueue extends EventEmitter {
         cachedResults.push({
           x,
           y,
-          dataUrl: `data:image/jpeg;base64,${base64}`,
+          dataUrl: `data:image/webp;base64,${base64}`,
         });
       } else {
         uncachedTiles.push({ x, y });
@@ -387,7 +387,7 @@ class TileQueue extends EventEmitter {
         generatedResults.push({
           x,
           y,
-          dataUrl: `data:image/jpeg;base64,${base64}`,
+          dataUrl: `data:image/webp;base64,${base64}`,
         });
       }
 
