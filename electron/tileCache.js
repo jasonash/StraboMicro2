@@ -11,8 +11,8 @@
  *     thumbnail.jpg         - 512x512 thumbnail (for quick preview)
  *     medium.jpg            - 2048x2048 medium resolution
  *     tiles/
- *       tile_0_0.png        - Full resolution tiles (256x256 default)
- *       tile_0_1.png
+ *       tile_0_0.jpg        - Full resolution tiles (256x256 JPEG)
+ *       tile_0_1.jpg
  *       ...
  */
 
@@ -200,7 +200,7 @@ class TileCache {
    */
   getTilePath(imageHash, x, y) {
     const tilesDir = path.join(this.getCacheDir(imageHash), 'tiles');
-    return path.join(tilesDir, `tile_${x}_${y}.png`);
+    return path.join(tilesDir, `tile_${x}_${y}.jpg`);
   }
 
   /**
