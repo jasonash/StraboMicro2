@@ -65,7 +65,7 @@ class TileQueue extends EventEmitter {
 
   /**
    * Add an image to the preparation queue
-   * This generates thumbnails and medium resolution images
+   * This generates thumbnails, medium resolution, AND all full-resolution tiles
    *
    * @param {string} imagePath - Full path to source image
    * @param {string} imageName - Display name for progress UI
@@ -73,15 +73,34 @@ class TileQueue extends EventEmitter {
    * @returns {Promise<{hash: string, metadata: object, fromCache: boolean}>}
    */
   async queuePreparation(imagePath, imageName, priority = PRIORITY.PREPARATION) {
-    // Check if already cached
+    // Check if metadata exists
     const cacheStatus = await tileCache.isCacheValid(imagePath);
+
     if (cacheStatus.exists) {
-      return {
-        hash: cacheStatus.hash,
-        metadata: cacheStatus.metadata,
-        fromCache: true,
-        skipped: true,
-      };
+      // Metadata exists, but we need to check if ALL tiles are cached
+      const { tilesX, tilesY } = cacheStatus.metadata;
+      let allTilesCached = true;
+
+      for (let ty = 0; ty < tilesY && allTilesCached; ty++) {
+        for (let tx = 0; tx < tilesX && allTilesCached; tx++) {
+          const cached = await tileCache.loadTile(cacheStatus.hash, tx, ty);
+          if (!cached) {
+            allTilesCached = false;
+          }
+        }
+      }
+
+      if (allTilesCached) {
+        // Everything is fully cached, skip this image
+        return {
+          hash: cacheStatus.hash,
+          metadata: cacheStatus.metadata,
+          fromCache: true,
+          skipped: true,
+        };
+      }
+      // Otherwise, some tiles are missing - need to process
+      console.log(`[TileQueue] ${imageName}: metadata exists but some tiles missing, will regenerate`);
     }
 
     // Check if already queued/processing
@@ -295,7 +314,7 @@ class TileQueue extends EventEmitter {
   }
 
   /**
-   * Process a preparation request (thumbnail + medium)
+   * Process a preparation request (thumbnail + medium + ALL tiles)
    *
    * @param {object} request - Preparation request
    */
@@ -307,8 +326,16 @@ class TileQueue extends EventEmitter {
     this.emit('progress', { ...this.stats });
 
     try {
-      // Generate thumbnail and medium using tileGenerator
-      const result = await tileGenerator.processImage(imagePath);
+      // Generate thumbnail, medium, AND all tiles using processImageComplete
+      // This ensures everything is cached before user starts browsing
+      const result = await tileGenerator.processImageComplete(imagePath, (currentTile, totalTiles) => {
+        // Emit tile progress (optional - could be used for more detailed progress UI)
+        this.emit('tileProgress', {
+          imageName,
+          currentTile,
+          totalTiles,
+        });
+      });
 
       // Remove from pending set
       this.pendingImages.delete(hash);
@@ -321,6 +348,7 @@ class TileQueue extends EventEmitter {
         hash: result.hash,
         metadata: result.metadata,
         fromCache: result.fromCache,
+        tilesGenerated: result.tilesGenerated,
       });
     } catch (error) {
       this.pendingImages.delete(hash);

@@ -1,9 +1,14 @@
 /**
  * useProjectPreparation Hook
  *
- * Provides a function to prepare project images (generate thumbnails/medium)
+ * Provides a function to prepare project images (generate thumbnails, medium, AND all tiles)
  * before allowing the user to browse. This ensures smooth navigation
  * especially when loading large projects with uncached images.
+ *
+ * The preparation phase generates ALL tiles upfront so that browsing is instant.
+ * Users are forced to wait for tile generation to complete before they can interact.
+ * This prevents the "Loading overlay tiles..." stuck message that occurred when
+ * tiles were generated on-demand during browsing.
  *
  * Usage:
  *   const { prepareProject, isPreparingProject, preparationProgress } = useProjectPreparation();

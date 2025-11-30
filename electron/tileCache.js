@@ -11,7 +11,7 @@
  *     thumbnail.jpg         - 512x512 thumbnail (for quick preview)
  *     medium.jpg            - 2048x2048 medium resolution
  *     tiles/
- *       tile_0_0.png        - Full resolution tiles (256x256 default)
+ *       tile_0_0.png        - Full resolution tiles (512x512 default)
  *       tile_0_1.png
  *       ...
  */
@@ -23,7 +23,7 @@ const crypto = require('crypto');
 const { app } = require('electron');
 
 // Configuration
-const TILE_SIZE = 256;           // 256x256 pixel tiles
+const TILE_SIZE = 512;           // 512x512 pixel tiles (4x fewer tiles than 256)
 const THUMBNAIL_SIZE = 512;      // 512x512 thumbnail
 const MEDIUM_SIZE = 2048;        // 2048x2048 medium resolution
 const CACHE_VERSION = '1.0';     // Increment to invalidate old caches

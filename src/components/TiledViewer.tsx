@@ -34,7 +34,7 @@ import { useImperativeGeometryEditing } from '@/hooks/useImperativeGeometryEditi
 import { getEffectiveTheme } from '@/hooks/useTheme';
 import './TiledViewer.css';
 
-const TILE_SIZE = 256;
+const TILE_SIZE = 512;
 const MIN_ZOOM = 0.1;
 const MAX_ZOOM = 20; // Increased from 5x to 20x for detail work
 const ZOOM_STEP = 1.1;

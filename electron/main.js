@@ -2130,16 +2130,34 @@ ipcMain.handle('tile-queue:cancel', async (event, imageHash) => {
 });
 
 /**
- * Check if an image is cached (without generating anything)
+ * Check if an image is FULLY cached (metadata + all tiles)
  * Used to quickly check cache status before deciding whether to show prep dialog
  */
 ipcMain.handle('image:check-cache', async (event, imagePath) => {
   try {
     const cacheStatus = await tileCache.isCacheValid(imagePath);
+
+    if (!cacheStatus.exists) {
+      return { cached: false, hash: null, metadata: null };
+    }
+
+    // Metadata exists - now check if ALL tiles are cached
+    const { tilesX, tilesY } = cacheStatus.metadata;
+    let allTilesCached = true;
+
+    for (let ty = 0; ty < tilesY && allTilesCached; ty++) {
+      for (let tx = 0; tx < tilesX && allTilesCached; tx++) {
+        const cached = await tileCache.loadTile(cacheStatus.hash, tx, ty);
+        if (!cached) {
+          allTilesCached = false;
+        }
+      }
+    }
+
     return {
-      cached: cacheStatus.exists,
+      cached: allTilesCached,
       hash: cacheStatus.hash,
-      metadata: cacheStatus.metadata || null,
+      metadata: cacheStatus.metadata,
     };
   } catch (error) {
     log.error('[TileCache] Error checking cache:', error);
