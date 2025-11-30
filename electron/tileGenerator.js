@@ -26,7 +26,7 @@ const TILE_SIZE = 256;
 const THUMBNAIL_SIZE = 512;
 const MEDIUM_SIZE = 2048;
 const JPEG_QUALITY = 0.85; // 85% quality for thumbnails/medium
-const TILE_JPEG_QUALITY = 0.90; // 90% quality for tiles
+const TILE_WEBP_QUALITY = 90; // 90% quality for WebP tiles (Sharp uses 0-100 scale)
 
 class TileGenerator {
   /**
@@ -403,32 +403,29 @@ class TileGenerator {
     const tileWidth = Math.min(TILE_SIZE, width - x);
     const tileHeight = Math.min(TILE_SIZE, height - y);
 
-    // Create tile canvas
-    const tileCanvas = createCanvas(TILE_SIZE, TILE_SIZE);
-    const tileCtx = tileCanvas.getContext('2d');
-
-    // Fill with white background (for edge tiles - JPEG doesn't support transparency)
-    tileCtx.fillStyle = '#ffffff';
-    tileCtx.fillRect(0, 0, TILE_SIZE, TILE_SIZE);
-
-    // Extract tile data from source image
-    const tileData = tileCtx.createImageData(tileWidth, tileHeight);
+    // Create raw RGBA buffer for the tile (with transparent background)
+    const tileBuffer = Buffer.alloc(TILE_SIZE * TILE_SIZE * 4, 0); // All zeros = transparent
 
     // Copy pixel data for this tile
     for (let row = 0; row < tileHeight; row++) {
       const sourceRow = y + row;
       const sourceOffset = (sourceRow * width + x) * 4;
-      const tileOffset = row * tileWidth * 4;
+      const tileOffset = row * TILE_SIZE * 4; // Use TILE_SIZE for row stride
 
       const sourceSlice = data.slice(sourceOffset, sourceOffset + tileWidth * 4);
-      tileData.data.set(sourceSlice, tileOffset);
+      sourceSlice.copy(tileBuffer, tileOffset);
     }
 
-    // Draw tile data to canvas
-    tileCtx.putImageData(tileData, 0, 0);
-
-    // Save as JPEG (smaller and faster than PNG)
-    const buffer = tileCanvas.toBuffer('image/jpeg', { quality: TILE_JPEG_QUALITY });
+    // Use Sharp to encode as WebP with transparency support
+    const buffer = await sharp(tileBuffer, {
+      raw: {
+        width: TILE_SIZE,
+        height: TILE_SIZE,
+        channels: 4
+      }
+    })
+      .webp({ quality: TILE_WEBP_QUALITY })
+      .toBuffer();
     await tileCache.saveTile(hash, tileX, tileY, buffer);
 
     return buffer;
