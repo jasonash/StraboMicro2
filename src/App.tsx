@@ -103,7 +103,12 @@ function App() {
   // Validate persisted project on app startup
   // If the project folder was deleted, clear the session and show "No project loaded"
   useEffect(() => {
+    let hasRun = false; // Guard against StrictMode double-execution
+
     const validatePersistedProject = async () => {
+      if (hasRun) return;
+      hasRun = true;
+
       if (!window.api?.validateProjectExists) return;
 
       const currentProject = useAppStore.getState().project;
