@@ -57,7 +57,7 @@ interface ImageState {
   retryCount: number; // Track retries to avoid infinite loops
 }
 
-const TILE_SIZE = 512;
+const TILE_SIZE = 256;
 
 export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = ({
   micrograph,

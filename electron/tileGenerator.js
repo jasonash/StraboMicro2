@@ -4,7 +4,7 @@
  * Generates multi-resolution tiles from source images:
  * - Thumbnail (512x512) - Fast preview
  * - Medium (2048x2048) - Moderate zoom
- * - Full tiles (512x512 each) - High resolution viewing
+ * - Full tiles (256x256 each) - High resolution viewing
  *
  * Uses tiff library for TIFF decoding and node-canvas for image processing
  */
@@ -22,7 +22,7 @@ sharp.concurrency(1);
 sharp.cache({ memory: 512 }); // 512MB cache limit
 
 // Tile configuration
-const TILE_SIZE = 512;
+const TILE_SIZE = 256;
 const THUMBNAIL_SIZE = 512;
 const MEDIUM_SIZE = 2048;
 const JPEG_QUALITY = 0.85; // 85% quality for thumbnails/medium
