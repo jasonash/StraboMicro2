@@ -47,7 +47,11 @@ class TileCache {
 
   /**
    * Generate a unique hash for an image file
-   * Uses file path + modification time to detect changes
+   * Uses file path + size to identify images.
+   *
+   * Note: We intentionally exclude mtime because when importing .smz files,
+   * the extraction process sets a new mtime even though the content is identical.
+   * This allows the tile cache to be reused across project re-imports.
    *
    * @param {string} imagePath - Absolute path to image file
    * @returns {Promise<string>} - SHA-256 hash
@@ -55,7 +59,7 @@ class TileCache {
   async generateImageHash(imagePath) {
     try {
       const stats = await fs.stat(imagePath);
-      const hashInput = `${imagePath}:${stats.mtime.getTime()}:${stats.size}`;
+      const hashInput = `${imagePath}:${stats.size}`;
       return crypto.createHash('sha256').update(hashInput).digest('hex');
     } catch (error) {
       console.error('Failed to generate image hash:', error);
