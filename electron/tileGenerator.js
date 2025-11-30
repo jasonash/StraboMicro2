@@ -26,6 +26,7 @@ const TILE_SIZE = 256;
 const THUMBNAIL_SIZE = 512;
 const MEDIUM_SIZE = 2048;
 const JPEG_QUALITY = 0.85; // 85% quality for thumbnails/medium
+const TILE_JPEG_QUALITY = 0.90; // 90% quality for tiles
 
 class TileGenerator {
   /**
@@ -406,8 +407,9 @@ class TileGenerator {
     const tileCanvas = createCanvas(TILE_SIZE, TILE_SIZE);
     const tileCtx = tileCanvas.getContext('2d');
 
-    // Fill with transparent background (for edge tiles)
-    tileCtx.clearRect(0, 0, TILE_SIZE, TILE_SIZE);
+    // Fill with white background (for edge tiles - JPEG doesn't support transparency)
+    tileCtx.fillStyle = '#ffffff';
+    tileCtx.fillRect(0, 0, TILE_SIZE, TILE_SIZE);
 
     // Extract tile data from source image
     const tileData = tileCtx.createImageData(tileWidth, tileHeight);
@@ -425,8 +427,8 @@ class TileGenerator {
     // Draw tile data to canvas
     tileCtx.putImageData(tileData, 0, 0);
 
-    // Save as PNG
-    const buffer = tileCanvas.toBuffer('image/png');
+    // Save as JPEG (smaller and faster than PNG)
+    const buffer = tileCanvas.toBuffer('image/jpeg', { quality: TILE_JPEG_QUALITY });
     await tileCache.saveTile(hash, tileX, tileY, buffer);
 
     return buffer;
