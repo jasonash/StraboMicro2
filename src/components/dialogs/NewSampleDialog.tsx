@@ -32,6 +32,7 @@ interface NewSampleDialogProps {
 
 interface SampleFormData {
   sampleID: string;
+  igsn: string;
   longitude: string;
   latitude: string;
   mainSamplingPurpose: string;
@@ -44,6 +45,7 @@ interface SampleFormData {
 
 const initialFormData: SampleFormData = {
   sampleID: '',
+  igsn: '',
   longitude: '',
   latitude: '',
   mainSamplingPurpose: '',
@@ -132,6 +134,7 @@ export function NewSampleDialog({ isOpen, onClose, datasetId }: NewSampleDialogP
     // Populate form fields with server data
     setFormData({
       sampleID: mappedData.sampleID || mappedData.label || '',
+      igsn: mappedData.igsn || '',
       longitude: mappedData.longitude?.toString() || '',
       latitude: mappedData.latitude?.toString() || '',
       mainSamplingPurpose: mappedData.mainSamplingPurpose || '',
@@ -155,6 +158,7 @@ export function NewSampleDialog({ isOpen, onClose, datasetId }: NewSampleDialogP
       name: formData.sampleID.trim(),
       label: formData.sampleID.trim(),
       sampleID: formData.sampleID.trim(),
+      igsn: formData.igsn.trim() || undefined,
       longitude: formData.longitude ? parseFloat(formData.longitude) : undefined,
       latitude: formData.latitude ? parseFloat(formData.latitude) : undefined,
       mainSamplingPurpose: formData.mainSamplingPurpose || undefined,
@@ -250,6 +254,15 @@ export function NewSampleDialog({ isOpen, onClose, datasetId }: NewSampleDialogP
               required
               fullWidth
               autoFocus
+            />
+
+            <TextField
+              label="IGSN"
+              value={formData.igsn}
+              onChange={(e) => updateField('igsn', e.target.value)}
+              placeholder="e.g., IEMEG0001"
+              helperText="International Geo Sample Number"
+              fullWidth
             />
 
             <Stack direction="row" spacing={2}>

@@ -60,6 +60,7 @@ export interface SampleMetadata {
   existsOnServer?: boolean | null;
   label?: string | null;
   sampleID?: string | null;
+  igsn?: string | null;  // International Geo Sample Number
   longitude?: number | null;
   latitude?: number | null;
   mainSamplingPurpose?: string | null;

@@ -1063,8 +1063,8 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
 
         {!imagePath && !isLoading && (
           <div className="tiled-viewer-empty">
-            <p>No image loaded</p>
-            <p className="hint">Create a new project to get started</p>
+            <p>No micrograph loaded</p>
+            <p className="hint">Create or open a new project to get started</p>
           </div>
         )}
 
@@ -1187,7 +1187,10 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                 onMouseLeave={handleMouseLeave}
                 style={{
                   cursor:
-                    activeTool === 'point' || activeTool === 'line' || activeTool === 'polygon' || activeTool === 'measure'
+                    activeTool === 'point' ||
+                    activeTool === 'line' ||
+                    activeTool === 'polygon' ||
+                    activeTool === 'measure'
                       ? 'crosshair'
                       : isPanning
                       ? 'grabbing'
@@ -1437,7 +1440,10 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                 onMouseLeave={handleMouseLeave}
                 style={{
                   cursor:
-                    activeTool === 'point' || activeTool === 'line' || activeTool === 'polygon' || activeTool === 'measure'
+                    activeTool === 'point' ||
+                    activeTool === 'line' ||
+                    activeTool === 'polygon' ||
+                    activeTool === 'measure'
                       ? 'crosshair'
                       : isPanning
                       ? 'grabbing'

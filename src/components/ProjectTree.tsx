@@ -78,7 +78,13 @@ interface MicrographThumbnailProps {
   height?: number;
 }
 
-function MicrographThumbnail({ micrographId, projectId, micrographName, width = 40, height = 40 }: MicrographThumbnailProps) {
+function MicrographThumbnail({
+  micrographId,
+  projectId,
+  micrographName,
+  width = 40,
+  height = 40,
+}: MicrographThumbnailProps) {
   const [thumbnailDataUrl, setThumbnailDataUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -198,14 +204,9 @@ interface SortableItemWrapperProps {
 }
 
 function SortableItemWrapper({ id, children }: SortableItemWrapperProps) {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({ id });
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id,
+  });
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -239,9 +240,7 @@ function SortableItemWrapper({ id, children }: SortableItemWrapperProps) {
         <DragIndicator sx={{ fontSize: 14 }} />
       </Box>
       {/* Content */}
-      <Box sx={{ flex: 1, minWidth: 0 }}>
-        {children}
-      </Box>
+      <Box sx={{ flex: 1, minWidth: 0 }}>{children}</Box>
     </Box>
   );
 }
@@ -288,7 +287,9 @@ export function ProjectTree() {
   const [showEditLocation, setShowEditLocation] = useState(false);
   const [editLocationMicrographId, setEditLocationMicrographId] = useState<string | null>(null);
   const [showAddToGroups, setShowAddToGroups] = useState(false);
-  const [addToGroupsMicrograph, setAddToGroupsMicrograph] = useState<MicrographMetadata | null>(null);
+  const [addToGroupsMicrograph, setAddToGroupsMicrograph] = useState<MicrographMetadata | null>(
+    null
+  );
 
   // Confirm dialog states
   const [showDeleteSampleConfirm, setShowDeleteSampleConfirm] = useState(false);
@@ -299,14 +300,19 @@ export function ProjectTree() {
   // Batch import dialog states
   const [showBatchImport, setShowBatchImport] = useState(false);
   const [batchImportSampleId, setBatchImportSampleId] = useState<string | null>(null);
-  const [batchImportParentMicrographId, setBatchImportParentMicrographId] = useState<string | null>(null);
+  const [batchImportParentMicrographId, setBatchImportParentMicrographId] = useState<string | null>(
+    null
+  );
 
   // Set scale dialog state (for batch-imported reference micrographs)
   const [showSetScale, setShowSetScale] = useState(false);
   const [setScaleMicrographId, setSetScaleMicrographId] = useState<string | null>(null);
 
   // Opacity popover state (use position instead of element to avoid anchor disappearing)
-  const [opacityAnchorPosition, setOpacityAnchorPosition] = useState<{ top: number; left: number } | null>(null);
+  const [opacityAnchorPosition, setOpacityAnchorPosition] = useState<{
+    top: number;
+    left: number;
+  } | null>(null);
   const [opacityMicrographId, setOpacityMicrographId] = useState<string | null>(null);
   const [opacityValue, setOpacityValue] = useState<number>(1.0);
 
@@ -324,32 +330,41 @@ export function ProjectTree() {
   const expandedMicrographs = new Set(expandedMicrographsArray);
 
   // Helper functions to update expansion state
-  const setExpandedDatasets = useCallback((updater: Set<string> | ((prev: Set<string>) => Set<string>)) => {
-    if (typeof updater === 'function') {
-      const newSet = updater(expandedDatasets);
-      setExpandedDatasetsStore(Array.from(newSet));
-    } else {
-      setExpandedDatasetsStore(Array.from(updater));
-    }
-  }, [expandedDatasets, setExpandedDatasetsStore]);
+  const setExpandedDatasets = useCallback(
+    (updater: Set<string> | ((prev: Set<string>) => Set<string>)) => {
+      if (typeof updater === 'function') {
+        const newSet = updater(expandedDatasets);
+        setExpandedDatasetsStore(Array.from(newSet));
+      } else {
+        setExpandedDatasetsStore(Array.from(updater));
+      }
+    },
+    [expandedDatasets, setExpandedDatasetsStore]
+  );
 
-  const setExpandedSamples = useCallback((updater: Set<string> | ((prev: Set<string>) => Set<string>)) => {
-    if (typeof updater === 'function') {
-      const newSet = updater(expandedSamples);
-      setExpandedSamplesStore(Array.from(newSet));
-    } else {
-      setExpandedSamplesStore(Array.from(updater));
-    }
-  }, [expandedSamples, setExpandedSamplesStore]);
+  const setExpandedSamples = useCallback(
+    (updater: Set<string> | ((prev: Set<string>) => Set<string>)) => {
+      if (typeof updater === 'function') {
+        const newSet = updater(expandedSamples);
+        setExpandedSamplesStore(Array.from(newSet));
+      } else {
+        setExpandedSamplesStore(Array.from(updater));
+      }
+    },
+    [expandedSamples, setExpandedSamplesStore]
+  );
 
-  const setExpandedMicrographs = useCallback((updater: Set<string> | ((prev: Set<string>) => Set<string>)) => {
-    if (typeof updater === 'function') {
-      const newSet = updater(expandedMicrographs);
-      setExpandedMicrographsStore(Array.from(newSet));
-    } else {
-      setExpandedMicrographsStore(Array.from(updater));
-    }
-  }, [expandedMicrographs, setExpandedMicrographsStore]);
+  const setExpandedMicrographs = useCallback(
+    (updater: Set<string> | ((prev: Set<string>) => Set<string>)) => {
+      if (typeof updater === 'function') {
+        const newSet = updater(expandedMicrographs);
+        setExpandedMicrographsStore(Array.from(newSet));
+      } else {
+        setExpandedMicrographsStore(Array.from(updater));
+      }
+    },
+    [expandedMicrographs, setExpandedMicrographsStore]
+  );
 
   // Track known IDs to avoid re-expanding items the user has collapsed
   // This is separate from expanded state - it tracks what we've "seen" before
@@ -365,11 +380,18 @@ export function ProjectTree() {
 
   // Menu states
   const [projectMenuAnchor, setProjectMenuAnchor] = useState<HTMLElement | null>(null);
-  const [datasetMenuAnchor, setDatasetMenuAnchor] = useState<{ [key: string]: HTMLElement | null }>({});
-  const [sampleMenuAnchor, setSampleMenuAnchor] = useState<{ [key: string]: HTMLElement | null }>({});
-  const [micrographOptionsAnchor, setMicrographOptionsAnchor] = useState<{ [key: string]: HTMLElement | null }>({});
-  const [micrographAddAnchor, setMicrographAddAnchor] = useState<{ [key: string]: HTMLElement | null }>({});
-
+  const [datasetMenuAnchor, setDatasetMenuAnchor] = useState<{ [key: string]: HTMLElement | null }>(
+    {}
+  );
+  const [sampleMenuAnchor, setSampleMenuAnchor] = useState<{ [key: string]: HTMLElement | null }>(
+    {}
+  );
+  const [micrographOptionsAnchor, setMicrographOptionsAnchor] = useState<{
+    [key: string]: HTMLElement | null;
+  }>({});
+  const [micrographAddAnchor, setMicrographAddAnchor] = useState<{
+    [key: string]: HTMLElement | null;
+  }>({});
 
   // Save known IDs to localStorage (expansion state is now in zustand store)
   useEffect(() => {
@@ -492,7 +514,10 @@ export function ProjectTree() {
       const micrograph = findMicrographById(project, micrographId);
       if (micrograph) {
         // Check if micrograph has no scale set
-        if (micrograph.scalePixelsPerCentimeter === undefined || micrograph.scalePixelsPerCentimeter === null) {
+        if (
+          micrograph.scalePixelsPerCentimeter === undefined ||
+          micrograph.scalePixelsPerCentimeter === null
+        ) {
           const isAssociated = !!micrograph.parentID;
 
           if (isAssociated) {
@@ -514,7 +539,10 @@ export function ProjectTree() {
   };
 
   // Build hierarchy from flat micrograph array
-  const buildMicrographHierarchy = (micrographs: MicrographMetadata[], parentId: string | null = null): MicrographMetadata[] => {
+  const buildMicrographHierarchy = (
+    micrographs: MicrographMetadata[],
+    parentId: string | null = null
+  ): MicrographMetadata[] => {
     return micrographs.filter((m) => (m.parentID || null) === parentId);
   };
 
@@ -534,7 +562,11 @@ export function ProjectTree() {
     if (oldIndex === -1 || newIndex === -1) return;
 
     const newOrder = arrayMove(items, oldIndex, newIndex);
-    reorderMicrographs(sampleId, parentId, newOrder.map((m) => m.id));
+    reorderMicrographs(
+      sampleId,
+      parentId,
+      newOrder.map((m) => m.id)
+    );
 
     // Regenerate parent's composite thumbnail if we reordered children under a parent
     if (parentId && project && window.api) {
@@ -544,7 +576,9 @@ export function ProjectTree() {
         if (currentProject) {
           await window.api.generateCompositeThumbnail(currentProject.id, parentId, currentProject);
           // Dispatch event to notify thumbnail components to reload
-          window.dispatchEvent(new CustomEvent('thumbnail-generated', { detail: { micrographId: parentId } }));
+          window.dispatchEvent(
+            new CustomEvent('thumbnail-generated', { detail: { micrographId: parentId } })
+          );
         }
       } catch (error) {
         console.error('[ProjectTree] Error regenerating parent thumbnail:', error);
@@ -567,7 +601,10 @@ export function ProjectTree() {
     if (oldIndex === -1 || newIndex === -1) return;
 
     const newOrder = arrayMove(samples, oldIndex, newIndex);
-    reorderSamples(datasetId, newOrder.map((s) => s.id));
+    reorderSamples(
+      datasetId,
+      newOrder.map((s) => s.id)
+    );
   };
 
   // Keyboard shortcut handlers for moving items up/down
@@ -588,12 +625,20 @@ export function ProjectTree() {
     if (e.key === 'ArrowUp' && currentIndex > 0) {
       e.preventDefault();
       const newOrder = arrayMove(siblings, currentIndex, currentIndex - 1);
-      reorderMicrographs(sampleId, parentId, newOrder.map((m) => m.id));
+      reorderMicrographs(
+        sampleId,
+        parentId,
+        newOrder.map((m) => m.id)
+      );
       didReorder = true;
     } else if (e.key === 'ArrowDown' && currentIndex < siblings.length - 1) {
       e.preventDefault();
       const newOrder = arrayMove(siblings, currentIndex, currentIndex + 1);
-      reorderMicrographs(sampleId, parentId, newOrder.map((m) => m.id));
+      reorderMicrographs(
+        sampleId,
+        parentId,
+        newOrder.map((m) => m.id)
+      );
       didReorder = true;
     }
 
@@ -603,7 +648,9 @@ export function ProjectTree() {
         const currentProject = useAppStore.getState().project;
         if (currentProject) {
           await window.api.generateCompositeThumbnail(currentProject.id, parentId, currentProject);
-          window.dispatchEvent(new CustomEvent('thumbnail-generated', { detail: { micrographId: parentId } }));
+          window.dispatchEvent(
+            new CustomEvent('thumbnail-generated', { detail: { micrographId: parentId } })
+          );
         }
       } catch (error) {
         console.error('[ProjectTree] Error regenerating parent thumbnail:', error);
@@ -625,19 +672,22 @@ export function ProjectTree() {
     if (e.key === 'ArrowUp' && currentIndex > 0) {
       e.preventDefault();
       const newOrder = arrayMove(samples, currentIndex, currentIndex - 1);
-      reorderSamples(datasetId, newOrder.map((s) => s.id));
+      reorderSamples(
+        datasetId,
+        newOrder.map((s) => s.id)
+      );
     } else if (e.key === 'ArrowDown' && currentIndex < samples.length - 1) {
       e.preventDefault();
       const newOrder = arrayMove(samples, currentIndex, currentIndex + 1);
-      reorderSamples(datasetId, newOrder.map((s) => s.id));
+      reorderSamples(
+        datasetId,
+        newOrder.map((s) => s.id)
+      );
     }
   };
 
   // Handle drag end for dataset reordering
-  const handleDatasetDragEnd = (
-    event: DragEndEvent,
-    datasets: DatasetMetadata[]
-  ) => {
+  const handleDatasetDragEnd = (event: DragEndEvent, datasets: DatasetMetadata[]) => {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
 
@@ -728,11 +778,7 @@ export function ProjectTree() {
             borderLeft: !isReference ? 3 : 0,
             borderColor: getLevelColor(level),
             // Slight background tint for associated micrographs
-            bgcolor: isActive
-              ? 'action.selected'
-              : !isReference
-                ? 'action.hover'
-                : 'transparent',
+            bgcolor: isActive ? 'action.selected' : !isReference ? 'action.hover' : 'transparent',
           }}
         >
           {/* Micrograph Name with Expand/Collapse */}
@@ -805,7 +851,10 @@ export function ProjectTree() {
               <IconButton
                 size="small"
                 onClick={(e) => {
-                  setMicrographOptionsAnchor({ ...micrographOptionsAnchor, [micrograph.id]: e.currentTarget });
+                  setMicrographOptionsAnchor({
+                    ...micrographOptionsAnchor,
+                    [micrograph.id]: e.currentTarget,
+                  });
                 }}
                 sx={{ p: 0.5 }}
               >
@@ -816,7 +865,10 @@ export function ProjectTree() {
               <IconButton
                 size="small"
                 onClick={(e) => {
-                  setMicrographAddAnchor({ ...micrographAddAnchor, [micrograph.id]: e.currentTarget });
+                  setMicrographAddAnchor({
+                    ...micrographAddAnchor,
+                    [micrograph.id]: e.currentTarget,
+                  });
                 }}
                 sx={{ p: 0.5 }}
               >
@@ -837,7 +889,6 @@ export function ProjectTree() {
                   {isHidden ? <VisibilityOff fontSize="small" /> : <Visibility fontSize="small" />}
                 </IconButton>
               )}
-
             </Stack>
           </Stack>
         </Box>
@@ -849,7 +900,9 @@ export function ProjectTree() {
               <DndContext
                 sensors={sensors}
                 collisionDetection={closestCenter}
-                onDragEnd={(event) => handleMicrographDragEnd(event, sampleId, micrograph.id, children)}
+                onDragEnd={(event) =>
+                  handleMicrographDragEnd(event, sampleId, micrograph.id, children)
+                }
               >
                 <SortableContext
                   items={children.map((c) => c.id)}
@@ -870,48 +923,60 @@ export function ProjectTree() {
         <Menu
           anchorEl={micrographOptionsAnchor[micrograph.id]}
           open={Boolean(micrographOptionsAnchor[micrograph.id])}
-          onClose={() => setMicrographOptionsAnchor({ ...micrographOptionsAnchor, [micrograph.id]: null })}
+          onClose={() =>
+            setMicrographOptionsAnchor({ ...micrographOptionsAnchor, [micrograph.id]: null })
+          }
         >
-          <MenuItem onClick={() => {
-            setAddToGroupsMicrograph(micrograph);
-            setShowAddToGroups(true);
-            setMicrographOptionsAnchor({ ...micrographOptionsAnchor, [micrograph.id]: null });
-          }}>
+          <MenuItem
+            onClick={() => {
+              setAddToGroupsMicrograph(micrograph);
+              setShowAddToGroups(true);
+              setMicrographOptionsAnchor({ ...micrographOptionsAnchor, [micrograph.id]: null });
+            }}
+          >
             Add to Group(s)
           </MenuItem>
-          <MenuItem onClick={() => {
-            setEditingMicrographId(micrograph.id);
-            setShowEditMicrograph(true);
-            setMicrographOptionsAnchor({ ...micrographOptionsAnchor, [micrograph.id]: null });
-          }}>
+          <MenuItem
+            onClick={() => {
+              setEditingMicrographId(micrograph.id);
+              setShowEditMicrograph(true);
+              setMicrographOptionsAnchor({ ...micrographOptionsAnchor, [micrograph.id]: null });
+            }}
+          >
             Edit Micrograph Metadata
           </MenuItem>
           {!isReference && (
             <>
-              <MenuItem onClick={() => {
-                setEditLocationMicrographId(micrograph.id);
-                setShowEditLocation(true);
-                setMicrographOptionsAnchor({ ...micrographOptionsAnchor, [micrograph.id]: null });
-              }}>
+              <MenuItem
+                onClick={() => {
+                  setEditLocationMicrographId(micrograph.id);
+                  setShowEditLocation(true);
+                  setMicrographOptionsAnchor({ ...micrographOptionsAnchor, [micrograph.id]: null });
+                }}
+              >
                 Edit Micrograph Location
               </MenuItem>
-              <MenuItem onClick={(event) => {
-                // Open opacity popover - capture position before menu closes
-                const rect = event.currentTarget.getBoundingClientRect();
-                setOpacityAnchorPosition({ top: rect.bottom, left: rect.left });
-                setOpacityMicrographId(micrograph.id);
-                setOpacityValue(micrograph.opacity ?? 1.0);
-                setMicrographOptionsAnchor({ ...micrographOptionsAnchor, [micrograph.id]: null });
-              }}>
+              <MenuItem
+                onClick={(event) => {
+                  // Open opacity popover - capture position before menu closes
+                  const rect = event.currentTarget.getBoundingClientRect();
+                  setOpacityAnchorPosition({ top: rect.bottom, left: rect.left });
+                  setOpacityMicrographId(micrograph.id);
+                  setOpacityValue(micrograph.opacity ?? 1.0);
+                  setMicrographOptionsAnchor({ ...micrographOptionsAnchor, [micrograph.id]: null });
+                }}
+              >
                 Edit Micrograph Opacity
               </MenuItem>
             </>
           )}
-          <MenuItem onClick={() => {
-            setDeletingMicrograph(micrograph);
-            setShowDeleteMicrographConfirm(true);
-            setMicrographOptionsAnchor({ ...micrographOptionsAnchor, [micrograph.id]: null });
-          }}>
+          <MenuItem
+            onClick={() => {
+              setDeletingMicrograph(micrograph);
+              setShowDeleteMicrographConfirm(true);
+              setMicrographOptionsAnchor({ ...micrographOptionsAnchor, [micrograph.id]: null });
+            }}
+          >
             Delete Micrograph
           </MenuItem>
         </Menu>
@@ -922,18 +987,22 @@ export function ProjectTree() {
           open={Boolean(micrographAddAnchor[micrograph.id])}
           onClose={() => setMicrographAddAnchor({ ...micrographAddAnchor, [micrograph.id]: null })}
         >
-          <MenuItem onClick={() => {
-            handleAddAssociatedMicrograph(micrograph.id);
-            setMicrographAddAnchor({ ...micrographAddAnchor, [micrograph.id]: null });
-          }}>
+          <MenuItem
+            onClick={() => {
+              handleAddAssociatedMicrograph(micrograph.id);
+              setMicrographAddAnchor({ ...micrographAddAnchor, [micrograph.id]: null });
+            }}
+          >
             Add Associated Micrograph
           </MenuItem>
-          <MenuItem onClick={() => {
-            setBatchImportSampleId(null);
-            setBatchImportParentMicrographId(micrograph.id);
-            setShowBatchImport(true);
-            setMicrographAddAnchor({ ...micrographAddAnchor, [micrograph.id]: null });
-          }}>
+          <MenuItem
+            onClick={() => {
+              setBatchImportSampleId(null);
+              setBatchImportParentMicrographId(micrograph.id);
+              setShowBatchImport(true);
+              setMicrographAddAnchor({ ...micrographAddAnchor, [micrograph.id]: null });
+            }}
+          >
             Batch Import Associated Micrographs
           </MenuItem>
         </Menu>
@@ -941,7 +1010,11 @@ export function ProjectTree() {
     );
   };
 
-  const renderSample = (sample: SampleMetadata, datasetId: string, allSamples: SampleMetadata[]) => {
+  const renderSample = (
+    sample: SampleMetadata,
+    datasetId: string,
+    allSamples: SampleMetadata[]
+  ) => {
     const isExpanded = expandedSamples.has(sample.id);
     const hasMicrographs = sample.micrographs && sample.micrographs.length > 0;
 
@@ -975,27 +1048,36 @@ export function ProjectTree() {
 
         <Collapse in={isExpanded}>
           <Box sx={{ ml: 0 }}>
-            {hasMicrographs && (() => {
-              const referenceMicrographs = buildMicrographHierarchy(sample.micrographs!, null);
-              return (
-                <DndContext
-                  sensors={sensors}
-                  collisionDetection={closestCenter}
-                  onDragEnd={(event) => handleMicrographDragEnd(event, sample.id, null, referenceMicrographs)}
-                >
-                  <SortableContext
-                    items={referenceMicrographs.map((m) => m.id)}
-                    strategy={verticalListSortingStrategy}
+            {hasMicrographs &&
+              (() => {
+                const referenceMicrographs = buildMicrographHierarchy(sample.micrographs!, null);
+                return (
+                  <DndContext
+                    sensors={sensors}
+                    collisionDetection={closestCenter}
+                    onDragEnd={(event) =>
+                      handleMicrographDragEnd(event, sample.id, null, referenceMicrographs)
+                    }
                   >
-                    {referenceMicrographs.map((micrograph) => (
-                      <SortableItemWrapper key={micrograph.id} id={micrograph.id}>
-                        {renderMicrograph(micrograph, sample.micrographs!, 0, sample.id, referenceMicrographs)}
-                      </SortableItemWrapper>
-                    ))}
-                  </SortableContext>
-                </DndContext>
-              );
-            })()}
+                    <SortableContext
+                      items={referenceMicrographs.map((m) => m.id)}
+                      strategy={verticalListSortingStrategy}
+                    >
+                      {referenceMicrographs.map((micrograph) => (
+                        <SortableItemWrapper key={micrograph.id} id={micrograph.id}>
+                          {renderMicrograph(
+                            micrograph,
+                            sample.micrographs!,
+                            0,
+                            sample.id,
+                            referenceMicrographs
+                          )}
+                        </SortableItemWrapper>
+                      ))}
+                    </SortableContext>
+                  </DndContext>
+                );
+              })()}
           </Box>
         </Collapse>
 
@@ -1005,32 +1087,40 @@ export function ProjectTree() {
           open={Boolean(sampleMenuAnchor[sample.id])}
           onClose={() => setSampleMenuAnchor({ ...sampleMenuAnchor, [sample.id]: null })}
         >
-          <MenuItem onClick={() => {
-            handleAddReferenceMicrograph(sample.id);
-            setSampleMenuAnchor({ ...sampleMenuAnchor, [sample.id]: null });
-          }}>
+          <MenuItem
+            onClick={() => {
+              handleAddReferenceMicrograph(sample.id);
+              setSampleMenuAnchor({ ...sampleMenuAnchor, [sample.id]: null });
+            }}
+          >
             Add New Reference Micrograph
           </MenuItem>
-          <MenuItem onClick={() => {
-            setBatchImportSampleId(sample.id);
-            setBatchImportParentMicrographId(null);
-            setShowBatchImport(true);
-            setSampleMenuAnchor({ ...sampleMenuAnchor, [sample.id]: null });
-          }}>
+          <MenuItem
+            onClick={() => {
+              setBatchImportSampleId(sample.id);
+              setBatchImportParentMicrographId(null);
+              setShowBatchImport(true);
+              setSampleMenuAnchor({ ...sampleMenuAnchor, [sample.id]: null });
+            }}
+          >
             Batch Import Reference Micrographs
           </MenuItem>
-          <MenuItem onClick={() => {
-            setEditingSample(sample);
-            setShowEditSample(true);
-            setSampleMenuAnchor({ ...sampleMenuAnchor, [sample.id]: null });
-          }}>
+          <MenuItem
+            onClick={() => {
+              setEditingSample(sample);
+              setShowEditSample(true);
+              setSampleMenuAnchor({ ...sampleMenuAnchor, [sample.id]: null });
+            }}
+          >
             Edit Sample Metadata
           </MenuItem>
-          <MenuItem onClick={() => {
-            setDeletingSample(sample);
-            setShowDeleteSampleConfirm(true);
-            setSampleMenuAnchor({ ...sampleMenuAnchor, [sample.id]: null });
-          }}>
+          <MenuItem
+            onClick={() => {
+              setDeletingSample(sample);
+              setShowDeleteSampleConfirm(true);
+              setSampleMenuAnchor({ ...sampleMenuAnchor, [sample.id]: null });
+            }}
+          >
             Delete Sample
           </MenuItem>
         </Menu>
@@ -1103,17 +1193,21 @@ export function ProjectTree() {
           open={Boolean(datasetMenuAnchor[dataset.id])}
           onClose={() => setDatasetMenuAnchor({ ...datasetMenuAnchor, [dataset.id]: null })}
         >
-          <MenuItem onClick={() => {
-            handleAddSample(dataset.id);
-            setDatasetMenuAnchor({ ...datasetMenuAnchor, [dataset.id]: null });
-          }}>
+          <MenuItem
+            onClick={() => {
+              handleAddSample(dataset.id);
+              setDatasetMenuAnchor({ ...datasetMenuAnchor, [dataset.id]: null });
+            }}
+          >
             Add New Sample
           </MenuItem>
-          <MenuItem onClick={() => {
-            setEditingDatasetId(dataset.id);
-            setShowEditDataset(true);
-            setDatasetMenuAnchor({ ...datasetMenuAnchor, [dataset.id]: null });
-          }}>
+          <MenuItem
+            onClick={() => {
+              setEditingDatasetId(dataset.id);
+              setShowEditDataset(true);
+              setDatasetMenuAnchor({ ...datasetMenuAnchor, [dataset.id]: null });
+            }}
+          >
             Edit Dataset Metadata
           </MenuItem>
         </Menu>
@@ -1125,7 +1219,7 @@ export function ProjectTree() {
     return (
       <Box sx={{ p: 2, textAlign: 'center' }}>
         <Typography variant="body2" color="text.secondary">
-          No project loaded. Create a new project to get started.
+          No project loaded. Create or open a new project to get started.
         </Typography>
       </Box>
     );
@@ -1183,25 +1277,26 @@ export function ProjectTree() {
         open={Boolean(projectMenuAnchor)}
         onClose={() => setProjectMenuAnchor(null)}
       >
-        <MenuItem onClick={() => {
-          handleAddDataset();
-          setProjectMenuAnchor(null);
-        }}>
+        <MenuItem
+          onClick={() => {
+            handleAddDataset();
+            setProjectMenuAnchor(null);
+          }}
+        >
           Add New Dataset
         </MenuItem>
-        <MenuItem onClick={() => {
-          setShowEditProject(true);
-          setProjectMenuAnchor(null);
-        }}>
+        <MenuItem
+          onClick={() => {
+            setShowEditProject(true);
+            setProjectMenuAnchor(null);
+          }}
+        >
           Edit Project Metadata
         </MenuItem>
       </Menu>
 
       {/* Dialogs */}
-      <EditProjectDialog
-        isOpen={showEditProject}
-        onClose={() => setShowEditProject(false)}
-      />
+      <EditProjectDialog isOpen={showEditProject} onClose={() => setShowEditProject(false)} />
       <NewDatasetDialog isOpen={showNewDataset} onClose={() => setShowNewDataset(false)} />
       <NewSampleDialog
         isOpen={showNewSample}
@@ -1288,14 +1383,19 @@ export function ProjectTree() {
         message={
           deletingSample ? (
             <>
-              Are you sure you want to delete the sample "{deletingSample.sampleID || deletingSample.name}"?
-              <br /><br />
+              Are you sure you want to delete the sample "
+              {deletingSample.sampleID || deletingSample.name}"?
+              <br />
+              <br />
               This will remove all micrographs and spots within this sample from the project.
-              <br /><br />
-              <strong>Note:</strong> Image files will remain on disk and can be re-added later.
-              They will be excluded when exporting to .smz format.
+              <br />
+              <br />
+              <strong>Note:</strong> Image files will remain on disk and can be re-added later. They
+              will be excluded when exporting to .smz format.
             </>
-          ) : ''
+          ) : (
+            ''
+          )
         }
         confirmLabel="Delete"
         confirmColor="error"
@@ -1320,17 +1420,24 @@ export function ProjectTree() {
           deletingMicrograph ? (
             <>
               Are you sure you want to delete the micrograph "{deletingMicrograph.name}"?
-              <br /><br />
+              <br />
+              <br />
               {!deletingMicrograph.parentID ? (
-                <>This is a <strong>reference micrograph</strong>. All associated micrographs and spots will also be removed.</>
+                <>
+                  This is a <strong>reference micrograph</strong>. All associated micrographs and
+                  spots will also be removed.
+                </>
               ) : (
                 <>All spots on this micrograph will also be removed.</>
               )}
-              <br /><br />
-              <strong>Note:</strong> Image files will remain on disk and can be re-added later.
-              They will be excluded when exporting to .smz format.
+              <br />
+              <br />
+              <strong>Note:</strong> Image files will remain on disk and can be re-added later. They
+              will be excluded when exporting to .smz format.
             </>
-          ) : ''
+          ) : (
+            ''
+          )
         }
         confirmLabel="Delete"
         confirmColor="error"
@@ -1345,15 +1452,23 @@ export function ProjectTree() {
                 const freshProject = useAppStore.getState().project;
                 if (!freshProject) return;
 
-                window.api?.generateCompositeThumbnail(freshProject.id, parentId, freshProject)
+                window.api
+                  ?.generateCompositeThumbnail(freshProject.id, parentId, freshProject)
                   .then(() => {
-                    console.log('[ProjectTree] Successfully regenerated parent composite thumbnail after child deletion');
-                    window.dispatchEvent(new CustomEvent('thumbnail-generated', {
-                      detail: { micrographId: parentId }
-                    }));
+                    console.log(
+                      '[ProjectTree] Successfully regenerated parent composite thumbnail after child deletion'
+                    );
+                    window.dispatchEvent(
+                      new CustomEvent('thumbnail-generated', {
+                        detail: { micrographId: parentId },
+                      })
+                    );
                   })
                   .catch((error) => {
-                    console.error('[ProjectTree] Failed to regenerate parent composite thumbnail:', error);
+                    console.error(
+                      '[ProjectTree] Failed to regenerate parent composite thumbnail:',
+                      error
+                    );
                   });
               }, 0);
             }
@@ -1406,10 +1521,10 @@ export function ProjectTree() {
         }}
       >
         <Box sx={{ p: 2, width: 250 }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
-            <Typography variant="subtitle2">
-              Micrograph Opacity
-            </Typography>
+          <Box
+            sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}
+          >
+            <Typography variant="subtitle2">Micrograph Opacity</Typography>
             <IconButton
               size="small"
               onClick={() => {

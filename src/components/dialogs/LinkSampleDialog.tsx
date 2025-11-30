@@ -465,6 +465,7 @@ export function mapServerSampleToLocal(serverSample: ServerSample): {
   id: string;
   existsOnServer: boolean;
   sampleID?: string;
+  igsn?: string;
   label?: string;
   sampleDescription?: string;
   materialType?: string;
@@ -489,6 +490,7 @@ export function mapServerSampleToLocal(serverSample: ServerSample): {
 
     // Map snake_case server fields to camelCase local fields
     sampleID: serverSample.sample_id_name,
+    igsn: serverSample.Sample_IGSN,
     label: serverSample.label,
     sampleDescription: serverSample.sample_description,
     materialType: serverSample.material_type,
