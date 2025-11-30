@@ -26,7 +26,6 @@ const TILE_SIZE = 256;
 const THUMBNAIL_SIZE = 512;
 const MEDIUM_SIZE = 2048;
 const JPEG_QUALITY = 0.85; // 85% quality for thumbnails/medium
-const TILE_JPEG_QUALITY = 90; // 90% quality for tiles (higher since they're viewed at full zoom)
 
 class TileGenerator {
   /**
@@ -149,15 +148,9 @@ class TileGenerator {
       };
     }
 
-    // Generate missing tiles using Sharp extract() - no need to decode entire image
+    // Need to decode image and generate missing tiles
     console.log(`Generating tiles for: ${imagePath} (${tilesX}x${tilesY} = ${totalTiles} tiles)`);
-
-    // Create imageData object with path info for Sharp-based tile generation
-    const imageData = {
-      width: metadata.width,
-      height: metadata.height,
-      originalPath: imagePath,
-    };
+    const imageData = await this.decodeAuto(imagePath);
 
     for (let ty = 0; ty < tilesY; ty++) {
       for (let tx = 0; tx < tilesX; tx++) {
@@ -386,70 +379,15 @@ class TileGenerator {
   }
 
   /**
-   * Generate a single tile on-demand using Sharp extract()
-   * This is more memory efficient than loading the entire image into canvas
+   * Generate a single tile on-demand
    *
    * @param {string} hash - Image hash
-   * @param {Object} imageData - Image data (contains width, height, and originalPath)
+   * @param {Object} imageData - Image data
    * @param {number} tileX - Tile X coordinate
    * @param {number} tileY - Tile Y coordinate
-   * @returns {Promise<Buffer>} - JPEG tile buffer
+   * @returns {Promise<Buffer>} - PNG tile buffer
    */
   async generateTile(hash, imageData, tileX, tileY) {
-    const { width, height, originalPath } = imageData;
-
-    // Check if tile already cached
-    const cached = await tileCache.loadTile(hash, tileX, tileY);
-    if (cached) {
-      return cached;
-    }
-
-    // Calculate tile bounds
-    const x = tileX * TILE_SIZE;
-    const y = tileY * TILE_SIZE;
-    const tileWidth = Math.min(TILE_SIZE, width - x);
-    const tileHeight = Math.min(TILE_SIZE, height - y);
-
-    // Use Sharp to extract the tile region directly from the file
-    // This is much more memory efficient than loading entire image into JS
-    let buffer;
-
-    if (tileWidth === TILE_SIZE && tileHeight === TILE_SIZE) {
-      // Full tile - just extract and encode
-      buffer = await sharp(originalPath, { limitInputPixels: false })
-        .extract({ left: x, top: y, width: tileWidth, height: tileHeight })
-        .jpeg({ quality: TILE_JPEG_QUALITY })
-        .toBuffer();
-    } else {
-      // Edge tile - extract then extend to full tile size with white background
-      buffer = await sharp(originalPath, { limitInputPixels: false })
-        .extract({ left: x, top: y, width: tileWidth, height: tileHeight })
-        .extend({
-          top: 0,
-          bottom: TILE_SIZE - tileHeight,
-          left: 0,
-          right: TILE_SIZE - tileWidth,
-          background: { r: 255, g: 255, b: 255 }
-        })
-        .jpeg({ quality: TILE_JPEG_QUALITY })
-        .toBuffer();
-    }
-
-    await tileCache.saveTile(hash, tileX, tileY, buffer);
-    return buffer;
-  }
-
-  /**
-   * Generate a single tile using pre-decoded image data (legacy method)
-   * Kept for backwards compatibility with TIFF files that need special decoding
-   *
-   * @param {string} hash - Image hash
-   * @param {Object} imageData - Image data with RGBA buffer
-   * @param {number} tileX - Tile X coordinate
-   * @param {number} tileY - Tile Y coordinate
-   * @returns {Promise<Buffer>} - JPEG tile buffer
-   */
-  async generateTileFromData(hash, imageData, tileX, tileY) {
     const { width, height, data } = imageData;
 
     // Check if tile already cached
@@ -468,9 +406,8 @@ class TileGenerator {
     const tileCanvas = createCanvas(TILE_SIZE, TILE_SIZE);
     const tileCtx = tileCanvas.getContext('2d');
 
-    // Fill with white background (for edge tiles) - matches JPEG background
-    tileCtx.fillStyle = '#ffffff';
-    tileCtx.fillRect(0, 0, TILE_SIZE, TILE_SIZE);
+    // Fill with transparent background (for edge tiles)
+    tileCtx.clearRect(0, 0, TILE_SIZE, TILE_SIZE);
 
     // Extract tile data from source image
     const tileData = tileCtx.createImageData(tileWidth, tileHeight);
@@ -488,8 +425,8 @@ class TileGenerator {
     // Draw tile data to canvas
     tileCtx.putImageData(tileData, 0, 0);
 
-    // Save as JPEG (smaller and faster than PNG)
-    const buffer = tileCanvas.toBuffer('image/jpeg', { quality: TILE_JPEG_QUALITY });
+    // Save as PNG
+    const buffer = tileCanvas.toBuffer('image/png');
     await tileCache.saveTile(hash, tileX, tileY, buffer);
 
     return buffer;
