@@ -706,6 +706,16 @@ function createWindow() {
             },
           ],
         },
+        { type: 'separator' },
+        {
+          label: 'Toggle Developer Tools',
+          accelerator: 'Alt+CmdOrCtrl+I',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.toggleDevTools();
+            }
+          }
+        },
       ],
     },
     {
