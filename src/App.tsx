@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import * as Sentry from '@sentry/electron/renderer';
 import MainLayout from './components/MainLayout';
 import { NewProjectDialog } from './components/dialogs/NewProjectDialog';
@@ -100,14 +100,16 @@ function App() {
     checkAuthStatus();
   }, [checkAuthStatus]);
 
+  // Ref to track if project validation has already run (persists across StrictMode remounts)
+  const hasValidatedProject = useRef(false);
+
   // Validate persisted project on app startup
   // If the project folder was deleted, clear the session and show "No project loaded"
   useEffect(() => {
-    let hasRun = false; // Guard against StrictMode double-execution
-
     const validatePersistedProject = async () => {
-      if (hasRun) return;
-      hasRun = true;
+      // Guard against StrictMode double-execution
+      if (hasValidatedProject.current) return;
+      hasValidatedProject.current = true;
 
       if (!window.api?.validateProjectExists) return;
 
