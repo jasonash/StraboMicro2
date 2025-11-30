@@ -21,9 +21,6 @@ import {
   DialogContent,
   DialogActions,
   Button,
-  Stepper,
-  Step,
-  StepLabel,
   TextField,
   MenuItem,
   Box,
@@ -43,6 +40,7 @@ import {
   IconButton,
   Tooltip,
 } from '@mui/material';
+import { WizardProgress } from '../WizardProgress';
 import { useAppStore } from '@/store';
 import type { MicrographMetadata } from '@/types/project-types';
 import { PeriodicTableModal } from './PeriodicTableModal';
@@ -314,6 +312,25 @@ const initialFormData: MicrographFormData = {
   notesOnCrystalStructuresUsed: '',
 };
 
+// Step IDs for the wizard - using IDs instead of indices for clarity
+type StepId =
+  | 'load'
+  | 'instrument-info'
+  | 'instrument-data'
+  | 'instrument-settings'
+  | 'metadata'
+  | 'orientation'        // Reference only
+  | 'scale-method'       // Reference only
+  | 'scale-input'        // Reference only (Trace Scale Bar, Pixel Factor, or Width/Height)
+  | 'location-method'    // Associated only
+  | 'assoc-scale-method' // Associated only
+  | 'location-placement'; // Associated only
+
+interface StepConfig {
+  id: StepId;
+  label: string;
+}
+
 export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
   isOpen,
   onClose,
@@ -492,33 +509,48 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
     );
   };
 
-  // Reference micrograph steps (includes orientation)
-  const referenceBaseSteps = [
-    'Load Reference Micrograph',
-    'Instrument & Image Information',
-    'Instrument Data',
-    'Micrograph Metadata',
-    'Micrograph Orientation',
-    'Set Micrograph Scale',
-    'Trace Scale Bar',
-  ];
+  // Build steps array dynamically based on current state
+  const steps: StepConfig[] = useMemo(() => {
+    const stepList: StepConfig[] = [];
 
-  // Associated micrograph steps (NO orientation, adds location method → scale method → placement)
-  const associatedBaseSteps = [
-    'Load Associated Micrograph',
-    'Instrument & Image Information',
-    'Instrument Data',
-    'Micrograph Metadata',
-    'Location Method',
-    'Scale Method',
-    'Micrograph Location & Scale',
-  ];
+    // Step 1: Load image (always)
+    stepList.push({
+      id: 'load',
+      label: isAssociated ? 'Load Associated Micrograph' : 'Load Reference Micrograph',
+    });
 
-  const baseSteps = isAssociated ? associatedBaseSteps : referenceBaseSteps;
+    // Step 2: Instrument info (always)
+    stepList.push({ id: 'instrument-info', label: 'Instrument & Image Information' });
 
-  const steps = shouldShowInstrumentSettings()
-    ? [...baseSteps.slice(0, 3), 'Instrument Settings', ...baseSteps.slice(3)]
-    : baseSteps;
+    // Step 3: Instrument data (always)
+    stepList.push({ id: 'instrument-data', label: 'Instrument Data' });
+
+    // Step 4: Instrument settings (conditional - only for non-optical instruments)
+    if (shouldShowInstrumentSettings()) {
+      stepList.push({ id: 'instrument-settings', label: 'Instrument Settings' });
+    }
+
+    // Step 5: Metadata (always)
+    stepList.push({ id: 'metadata', label: 'Micrograph Metadata' });
+
+    if (isAssociated) {
+      // Associated micrograph flow
+      stepList.push({ id: 'location-method', label: 'Location Method' });
+      stepList.push({ id: 'assoc-scale-method', label: 'Scale Method' });
+      stepList.push({ id: 'location-placement', label: 'Micrograph Location & Scale' });
+    } else {
+      // Reference micrograph flow
+      stepList.push({ id: 'orientation', label: 'Micrograph Orientation' });
+      stepList.push({ id: 'scale-method', label: 'Set Micrograph Scale' });
+      stepList.push({ id: 'scale-input', label: 'Scale Input' });
+    }
+
+    return stepList;
+  }, [isAssociated, formData.instrumentType]);
+
+  // Get current step config
+  const currentStepConfig = steps[activeStep] || steps[0];
+  const currentStepId = currentStepConfig?.id;
 
   const updateField = (
     field: keyof MicrographFormData,
@@ -577,14 +609,10 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
 
   // Reset canvas tool to 'pointer' when entering the scale bar step
   useEffect(() => {
-    const isScaleBarStep =
-      (activeStep === 6 && !shouldShowInstrumentSettings()) ||
-      (activeStep === 7 && shouldShowInstrumentSettings());
-
-    if (isScaleBarStep && formData.scaleMethod === 'Trace Scale Bar') {
+    if (currentStepId === 'scale-input' && formData.scaleMethod === 'Trace Scale Bar') {
       setCanvasTool('pointer');
     }
-  }, [activeStep, formData.scaleMethod]);
+  }, [currentStepId, formData.scaleMethod]);
 
   // Reset flip state when a new micrograph file is selected
   useEffect(() => {
@@ -1456,154 +1484,12 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
   };
 
   const canProceed = () => {
-    // For associated micrographs, use different validation
-    if (isAssociated) {
-      const hasInstrumentSettings = shouldShowInstrumentSettings();
-
-      switch (activeStep) {
-        case 0: // Load Image
-          return formData.micrographFilePath !== '';
-        case 1: // Instrument Info
-          // Legacy app requires both instrumentType AND imageType
-          if (!formData.instrumentType) return false;
-          if (formData.instrumentType === 'Other' && !formData.otherInstrumentType) return false;
-          // imageType is required (matches legacy validation)
-          if (!formData.imageType) return false;
-          return true;
-        case 2: // Instrument Data
-          return true;
-        case 3: // Instrument Settings OR Metadata
-          if (hasInstrumentSettings) return true; // Instrument Settings
-          // Metadata step
-          return formData.micrographName?.trim() !== '';
-        case 4: // Metadata OR Location Method
-          if (hasInstrumentSettings) {
-            // Metadata step
-            return formData.micrographName?.trim() !== '';
-          } else {
-            // Location Method step
-            return formData.locationMethod !== '';
-          }
-        case 5: // Location Method OR Scale Method
-          if (hasInstrumentSettings) {
-            // Location Method step
-            return formData.locationMethod !== '';
-          } else {
-            // Scale Method step
-            if (formData.scaleMethod === '') return false;
-            // If "Copy Size from Existing", require a micrograph selection
-            if (formData.scaleMethod === 'Copy Size from Existing Micrograph') {
-              return formData.copySizeFromMicrographId !== '';
-            }
-            return true;
-          }
-        case 6: // Scale Method OR Location/Placement
-          if (hasInstrumentSettings) {
-            // Scale Method step
-            if (formData.scaleMethod === '') return false;
-            // If "Copy Size from Existing", require a micrograph selection
-            if (formData.scaleMethod === 'Copy Size from Existing Micrograph') {
-              return formData.copySizeFromMicrographId !== '';
-            }
-            return true;
-          } else {
-            // Location/Placement step - validate based on location method
-            if (formData.locationMethod === 'Locate by an approximate point') {
-              // Point must be placed (unless copying from existing, which pre-populates position)
-              if (
-                formData.scaleMethod !== 'Copy Size from Existing Micrograph' &&
-                formData.offsetInParent.X === 0 &&
-                formData.offsetInParent.Y === 0
-              )
-                return false;
-
-              // Validate scale inputs based on scale method
-              if (formData.scaleMethod === 'Trace Scale Bar') {
-                return !!(formData.scaleBarLineLengthPixels && formData.scaleBarPhysicalLength);
-              } else if (formData.scaleMethod === 'Pixel Conversion Factor') {
-                return !!(formData.pixels && formData.physicalLength);
-              } else if (formData.scaleMethod === 'Provide Width/Height of Image') {
-                return !!(formData.imageWidthPhysical || formData.imageHeightPhysical);
-              } else if (
-                formData.scaleMethod === 'Use Same Scale as Parent' ||
-                formData.scaleMethod === 'Copy Size from Existing Micrograph'
-              ) {
-                return true; // These methods don't need additional inputs
-              }
-              return false;
-            } else if (formData.locationMethod === 'Locate as a scaled rectangle') {
-              // Validate scale inputs based on scale method
-              if (formData.scaleMethod === 'Trace Scale Bar and Drag') {
-                return !!(formData.scaleBarLineLengthPixels && formData.scaleBarPhysicalLength);
-              } else if (formData.scaleMethod === 'Pixel Conversion Factor') {
-                return !!(formData.pixels && formData.physicalLength);
-              } else if (formData.scaleMethod === 'Provide Width/Height of Image') {
-                return !!(formData.imageWidthPhysical || formData.imageHeightPhysical);
-              } else if (
-                formData.scaleMethod === 'Stretch and Drag' ||
-                formData.scaleMethod === 'Use Same Scale as Parent' ||
-                formData.scaleMethod === 'Copy Size from Existing Micrograph'
-              ) {
-                return true; // These methods don't need additional inputs
-              }
-              return false;
-            }
-            return false;
-          }
-        case 7: // Location/Placement (when has settings)
-          // Validate based on location method
-          if (formData.locationMethod === 'Locate by an approximate point') {
-            // Point must be placed (unless copying from existing, which pre-populates position)
-            if (
-              formData.scaleMethod !== 'Copy Size from Existing Micrograph' &&
-              formData.offsetInParent.X === 0 &&
-              formData.offsetInParent.Y === 0
-            )
-              return false;
-
-            // Validate scale inputs based on scale method
-            if (formData.scaleMethod === 'Trace Scale Bar') {
-              return !!(formData.scaleBarLineLengthPixels && formData.scaleBarPhysicalLength);
-            } else if (formData.scaleMethod === 'Pixel Conversion Factor') {
-              return !!(formData.pixels && formData.physicalLength);
-            } else if (formData.scaleMethod === 'Provide Width/Height of Image') {
-              return !!(formData.imageWidthPhysical || formData.imageHeightPhysical);
-            } else if (
-              formData.scaleMethod === 'Use Same Scale as Parent' ||
-              formData.scaleMethod === 'Copy Size from Existing Micrograph'
-            ) {
-              return true; // These methods don't need additional inputs
-            }
-            return false;
-          } else if (formData.locationMethod === 'Locate as a scaled rectangle') {
-            // Validate scale inputs based on scale method
-            if (formData.scaleMethod === 'Trace Scale Bar and Drag') {
-              return !!(formData.scaleBarLineLengthPixels && formData.scaleBarPhysicalLength);
-            } else if (formData.scaleMethod === 'Pixel Conversion Factor') {
-              return !!(formData.pixels && formData.physicalLength);
-            } else if (formData.scaleMethod === 'Provide Width/Height of Image') {
-              return !!(formData.imageWidthPhysical || formData.imageHeightPhysical);
-            } else if (
-              formData.scaleMethod === 'Stretch and Drag' ||
-              formData.scaleMethod === 'Use Same Scale as Parent' ||
-              formData.scaleMethod === 'Copy Size from Existing Micrograph'
-            ) {
-              return true; // These methods don't need additional inputs
-            }
-            return false;
-          }
-          return false;
-        default:
-          return true;
-      }
-    }
-
-    // Reference micrograph validation (existing logic)
-    switch (activeStep) {
-      case 0: // Load Reference Micrograph
+    // Validate based on current step ID - much cleaner than numeric indices!
+    switch (currentStepId) {
+      case 'load':
         return formData.micrographFilePath !== '';
 
-      case 1: // Instrument & Image Information
+      case 'instrument-info':
         // Legacy app requires both instrumentType AND imageType
         if (!formData.instrumentType) return false;
         if (formData.instrumentType === 'Other' && !formData.otherInstrumentType) return false;
@@ -1611,65 +1497,28 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
         if (!formData.imageType) return false;
         return true;
 
-      case 2: // Instrument Data - no required fields, all optional
+      case 'instrument-data':
+        // No required fields, all optional
         return true;
 
-      case 3: // Either Instrument Settings OR Micrograph Metadata (depending on instrument type)
-        if (shouldShowInstrumentSettings()) {
-          // This is Step 3: Instrument Settings (when shown) - no required fields
-          return true;
-        } else {
-          // This is Step 3: Micrograph Metadata (when Instrument Settings not shown)
-          // Required: micrographName
-          if (!formData.micrographName || formData.micrographName.trim() === '') {
-            return false;
-          }
-          return true;
-        }
+      case 'instrument-settings':
+        // No required fields, all optional
+        return true;
 
-      case 4: // Either Micrograph Metadata (when Instrument Settings IS shown) OR Micrograph Orientation (when not shown)
-        if (shouldShowInstrumentSettings()) {
-          // This is Step 4: Micrograph Metadata (when Instrument Settings IS shown)
-          if (!formData.micrographName || formData.micrographName.trim() === '') {
-            return false;
-          }
-          return true;
-        } else {
-          // This is Step 4: Micrograph Orientation (when Instrument Settings NOT shown)
-          return validateOrientationStep();
-        }
+      case 'metadata':
+        // Required: micrographName
+        return formData.micrographName?.trim() !== '';
 
-      case 5: // Either Micrograph Orientation (when Instrument Settings IS shown) OR Set Micrograph Scale (when NOT shown)
-        if (shouldShowInstrumentSettings()) {
-          // This is Step 5: Micrograph Orientation (when Instrument Settings IS shown)
-          return validateOrientationStep();
-        } else {
-          // This is Step 5: Set Micrograph Scale (when Instrument Settings NOT shown)
-          return formData.scaleMethod !== '';
-        }
+      case 'orientation':
+        // Reference micrograph only - validate orientation fields
+        return validateOrientationStep();
 
-      case 6: // Either Set Micrograph Scale (when Instrument Settings IS shown) OR Trace Scale Bar (when NOT shown)
-        if (shouldShowInstrumentSettings()) {
-          // This is Step 6: Set Micrograph Scale (when Instrument Settings IS shown)
-          return formData.scaleMethod !== '';
-        } else {
-          // This is Step 6: Trace Scale Bar / Execute selected scale method (when Instrument Settings NOT shown)
-          if (formData.scaleMethod === 'Trace Scale Bar') {
-            return (
-              formData.scaleBarLineStart !== null &&
-              formData.scaleBarLineEnd !== null &&
-              formData.scaleBarLineLengthPixels !== '' &&
-              formData.scaleBarPhysicalLength !== ''
-            );
-          } else if (formData.scaleMethod === 'Pixel Conversion Factor') {
-            return formData.pixels !== '' && formData.physicalLength !== '';
-          } else if (formData.scaleMethod === 'Provide Width/Height of Image') {
-            return formData.imageWidthPhysical !== '' || formData.imageHeightPhysical !== '';
-          }
-          return false;
-        }
+      case 'scale-method':
+        // Reference micrograph only - must select a scale method
+        return formData.scaleMethod !== '';
 
-      case 7: // Trace Scale Bar (when Instrument Settings IS shown) - Execute selected scale method
+      case 'scale-input':
+        // Reference micrograph only - validate based on selected scale method
         if (formData.scaleMethod === 'Trace Scale Bar') {
           return (
             formData.scaleBarLineStart !== null &&
@@ -1681,6 +1530,66 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
           return formData.pixels !== '' && formData.physicalLength !== '';
         } else if (formData.scaleMethod === 'Provide Width/Height of Image') {
           return formData.imageWidthPhysical !== '' || formData.imageHeightPhysical !== '';
+        }
+        return false;
+
+      case 'location-method':
+        // Associated micrograph only - must select a location method
+        return formData.locationMethod !== '';
+
+      case 'assoc-scale-method':
+        // Associated micrograph only - must select a scale method
+        if (formData.scaleMethod === '') return false;
+        // If "Copy Size from Existing", require a micrograph selection
+        if (formData.scaleMethod === 'Copy Size from Existing Micrograph') {
+          return formData.copySizeFromMicrographId !== '';
+        }
+        return true;
+
+      case 'location-placement':
+        // Associated micrograph only - validate placement and scale inputs
+        if (formData.locationMethod === 'Locate by an approximate point') {
+          // Point must be placed (unless copying from existing, which pre-populates position)
+          if (
+            formData.scaleMethod !== 'Copy Size from Existing Micrograph' &&
+            formData.offsetInParent.X === 0 &&
+            formData.offsetInParent.Y === 0
+          )
+            return false;
+
+          // Validate scale inputs based on scale method
+          if (formData.scaleMethod === 'Trace Scale Bar') {
+            return !!(formData.scaleBarLineLengthPixels && formData.scaleBarPhysicalLength);
+          } else if (formData.scaleMethod === 'Pixel Conversion Factor') {
+            return !!(formData.pixels && formData.physicalLength);
+          } else if (formData.scaleMethod === 'Provide Width/Height of Image') {
+            return !!(formData.imageWidthPhysical || formData.imageHeightPhysical);
+          } else if (
+            formData.scaleMethod === 'Use Same Scale as Parent' ||
+            formData.scaleMethod === 'Copy Size from Existing Micrograph'
+          ) {
+            return true; // These methods don't need additional inputs
+          }
+          return false;
+        } else if (formData.locationMethod === 'Locate as a scaled rectangle') {
+          // Validate scale inputs based on scale method
+          if (formData.scaleMethod === 'Trace Scale Bar and Drag') {
+            return !!(formData.scaleBarLineLengthPixels && formData.scaleBarPhysicalLength);
+          } else if (formData.scaleMethod === 'Pixel Conversion Factor') {
+            return !!(formData.pixels && formData.physicalLength);
+          } else if (formData.scaleMethod === 'Provide Width/Height of Image') {
+            return !!(formData.imageWidthPhysical || formData.imageHeightPhysical);
+          } else if (
+            formData.scaleMethod === 'Stretch and Drag' ||
+            formData.scaleMethod === 'Use Same Scale as Parent' ||
+            formData.scaleMethod === 'Copy Size from Existing Micrograph'
+          ) {
+            return true; // These methods don't need additional inputs
+          }
+          return false;
+        } else if (formData.locationMethod === 'Not Located') {
+          // Not Located doesn't need position validation
+          return true;
         }
         return false;
 
@@ -2885,37 +2794,10 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
     );
   };
 
-  const renderStepContent = (step: number) => {
-    // For associated micrographs, route to different steps after metadata
-    if (isAssociated) {
-      const hasInstrumentSettings = shouldShowInstrumentSettings();
-
-      // Step mapping for associated micrographs:
-      // 0: Load Image
-      // 1: Instrument Info
-      // 2: Instrument Data
-      // 3: Instrument Settings (conditional)
-      // 4: Metadata (if has settings) OR Location Method (if no settings)
-      // 5: Location Method (if has settings) OR Scale Method (if no settings)
-      // 6: Scale Method (if has settings) OR Location/Placement (if no settings)
-      // 7: Location/Placement (if has settings)
-
-      if (hasInstrumentSettings) {
-        if (step === 4) return renderMetadataStep();
-        if (step === 5) return renderLocationMethodStep();
-        if (step === 6) return renderAssociatedScaleMethodStep();
-        if (step === 7) return renderLocationPlacementStep();
-      } else {
-        if (step === 3) return renderMetadataStep();
-        if (step === 4) return renderLocationMethodStep();
-        if (step === 5) return renderAssociatedScaleMethodStep();
-        if (step === 6) return renderLocationPlacementStep();
-      }
-      // Fall through to default handling for steps 0-3 (shared with reference)
-    }
-
-    switch (step) {
-      case 0:
+  const renderStepContent = () => {
+    // Route to content based on current step ID - much cleaner!
+    switch (currentStepId) {
+      case 'load':
         return (
           <Stack spacing={2}>
             <Typography variant="body2" color="text.secondary">
@@ -2943,7 +2825,7 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
             </Box>
           </Stack>
         );
-      case 1:
+      case 'instrument-info':
         return (
           <Stack spacing={2}>
             {/* Top row: Load from existing (left) and Find in Database (right) - each 50% width */}
@@ -3522,7 +3404,7 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
           </Stack>
         );
 
-      case 2:
+      case 'instrument-data':
         const showDetectors = [
           'Transmission Electron Microscopy (TEM)',
           'Scanning Transmission Electron Microscopy (STEM)',
@@ -3664,60 +3546,8 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
           </Stack>
         );
 
-      case 3:
-        // Step 7: Either Instrument Settings OR Micrograph Metadata (depending on instrument type)
-        if (!shouldShowInstrumentSettings()) {
-          // This is Micrograph Metadata (when Instrument Settings not shown)
-          return (
-            <Stack spacing={2}>
-              <Typography variant="body2" color="text.secondary">
-                Add descriptive information about this micrograph.
-              </Typography>
-              <TextField
-                fullWidth
-                required
-                label="Name"
-                value={formData.micrographName}
-                onChange={(e) => updateField('micrographName', e.target.value)}
-                helperText="Name for this micrograph"
-              />
-              <FormControlLabel
-                control={
-                  <Checkbox
-                    checked={formData.micrographPolished}
-                    onChange={(e) => {
-                      updateField('micrographPolished', e.target.checked);
-                      // Clear polish description if unchecking
-                      if (!e.target.checked) {
-                        updateField('micrographPolishDescription', '');
-                      }
-                    }}
-                  />
-                }
-                label="Polished?"
-              />
-              {formData.micrographPolished && (
-                <TextField
-                  fullWidth
-                  required
-                  label="Polish Description"
-                  value={formData.micrographPolishDescription}
-                  onChange={(e) => updateField('micrographPolishDescription', e.target.value)}
-                  helperText="Required when 'Polished?' is checked"
-                />
-              )}
-              <TextField
-                fullWidth
-                multiline
-                rows={4}
-                label="Notes"
-                value={formData.micrographNotes}
-                onChange={(e) => updateField('micrographNotes', e.target.value)}
-              />
-            </Stack>
-          );
-        }
-        // Otherwise, this is Instrument Settings
+      case 'instrument-settings':
+        // Instrument Settings - only shown for non-optical instruments
         return (
           <Stack spacing={2}>
             {/* TEM Settings */}
@@ -4742,160 +4572,70 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
           </Stack>
         );
 
-      case 4:
-        // Step 8: Either Micrograph Metadata (when Instrument Settings IS shown) OR Micrograph Orientation (when NOT shown)
-        if (shouldShowInstrumentSettings()) {
-          // This is Micrograph Metadata
-          return (
-            <Stack spacing={2}>
-              <Typography variant="body2" color="text.secondary">
-                Add descriptive information about this micrograph.
-              </Typography>
-              <TextField
-                fullWidth
-                required
-                label="Name"
-                value={formData.micrographName}
-                onChange={(e) => updateField('micrographName', e.target.value)}
-                helperText="Name for this micrograph"
-              />
+      case 'metadata':
+        // Micrograph Metadata - always shown
+        return renderMetadataStep();
+
+      case 'orientation':
+        // Micrograph Orientation - reference micrographs only
+        return renderOrientationStep();
+
+      case 'scale-method':
+        // Scale Method Selection - reference micrographs only
+        return (
+          <Stack spacing={3}>
+            <Typography variant="body2" color="text.secondary">
+              How do you wish to set the scale?
+            </Typography>
+            <RadioGroup
+              value={formData.scaleMethod}
+              onChange={(e) => updateField('scaleMethod', e.target.value)}
+            >
               <FormControlLabel
-                control={
-                  <Checkbox
-                    checked={formData.micrographPolished}
-                    onChange={(e) => {
-                      updateField('micrographPolished', e.target.checked);
-                      // Clear polish description if unchecking
-                      if (!e.target.checked) {
-                        updateField('micrographPolishDescription', '');
-                      }
-                    }}
-                  />
-                }
-                label="Polished?"
+                value="Trace Scale Bar"
+                control={<Radio />}
+                label="Trace Scale Bar"
               />
-              {formData.micrographPolished && (
-                <TextField
-                  fullWidth
-                  required
-                  label="Polish Description"
-                  value={formData.micrographPolishDescription}
-                  onChange={(e) => updateField('micrographPolishDescription', e.target.value)}
-                  helperText="Required when 'Polished?' is checked"
-                />
-              )}
-              <TextField
-                fullWidth
-                multiline
-                rows={4}
-                label="Notes"
-                value={formData.micrographNotes}
-                onChange={(e) => updateField('micrographNotes', e.target.value)}
+              <Typography variant="caption" color="text.secondary" sx={{ ml: 4, mt: -1, mb: 2 }}>
+                Draw a line over the scale bar in the micrograph (most accurate)
+              </Typography>
+
+              <FormControlLabel
+                value="Pixel Conversion Factor"
+                control={<Radio />}
+                label="Pixel Conversion Factor"
               />
-            </Stack>
-          );
-        } else {
-          // This is Micrograph Orientation (when Instrument Settings NOT shown)
-          return renderOrientationStep();
-        }
-
-      case 5:
-        // Step 9: Either Micrograph Orientation (when Instrument Settings IS shown) OR Set Micrograph Scale (when NOT shown)
-        if (shouldShowInstrumentSettings()) {
-          // This is Micrograph Orientation
-          return renderOrientationStep();
-        } else {
-          // This is Set Micrograph Scale (when Instrument Settings NOT shown)
-          return (
-            <Stack spacing={3}>
-              <Typography variant="body2" color="text.secondary">
-                How do you wish to set the scale?
+              <Typography variant="caption" color="text.secondary" sx={{ ml: 4, mt: -1, mb: 2 }}>
+                Enter the number of pixels per unit directly
               </Typography>
-              <RadioGroup
-                value={formData.scaleMethod}
-                onChange={(e) => updateField('scaleMethod', e.target.value)}
-              >
-                <FormControlLabel
-                  value="Trace Scale Bar"
-                  control={<Radio />}
-                  label="Trace Scale Bar"
-                />
-                <Typography variant="caption" color="text.secondary" sx={{ ml: 4, mt: -1, mb: 2 }}>
-                  Draw a line over the scale bar in the micrograph (most accurate)
-                </Typography>
 
-                <FormControlLabel
-                  value="Pixel Conversion Factor"
-                  control={<Radio />}
-                  label="Pixel Conversion Factor"
-                />
-                <Typography variant="caption" color="text.secondary" sx={{ ml: 4, mt: -1, mb: 2 }}>
-                  Enter the number of pixels per unit directly
-                </Typography>
-
-                <FormControlLabel
-                  value="Provide Width/Height of Image"
-                  control={<Radio />}
-                  label="Provide Width/Height of Image"
-                />
-                <Typography variant="caption" color="text.secondary" sx={{ ml: 4, mt: -1, mb: 2 }}>
-                  Enter the physical dimensions of the entire image
-                </Typography>
-              </RadioGroup>
-            </Stack>
-          );
-        }
-
-      case 6:
-        // Step 10: Either Set Micrograph Scale (when Instrument Settings IS shown) OR Trace Scale Bar (when NOT shown)
-        if (shouldShowInstrumentSettings()) {
-          // This is Set Micrograph Scale
-          return (
-            <Stack spacing={3}>
-              <Typography variant="body2" color="text.secondary">
-                How do you wish to set the scale?
+              <FormControlLabel
+                value="Provide Width/Height of Image"
+                control={<Radio />}
+                label="Provide Width/Height of Image"
+              />
+              <Typography variant="caption" color="text.secondary" sx={{ ml: 4, mt: -1, mb: 2 }}>
+                Enter the physical dimensions of the entire image
               </Typography>
-              <RadioGroup
-                value={formData.scaleMethod}
-                onChange={(e) => updateField('scaleMethod', e.target.value)}
-              >
-                <FormControlLabel
-                  value="Trace Scale Bar"
-                  control={<Radio />}
-                  label="Trace Scale Bar"
-                />
-                <Typography variant="caption" color="text.secondary" sx={{ ml: 4, mt: -1, mb: 2 }}>
-                  Draw a line over the scale bar in the micrograph (most accurate)
-                </Typography>
+            </RadioGroup>
+          </Stack>
+        );
 
-                <FormControlLabel
-                  value="Pixel Conversion Factor"
-                  control={<Radio />}
-                  label="Pixel Conversion Factor"
-                />
-                <Typography variant="caption" color="text.secondary" sx={{ ml: 4, mt: -1, mb: 2 }}>
-                  Enter the number of pixels per unit directly
-                </Typography>
-
-                <FormControlLabel
-                  value="Provide Width/Height of Image"
-                  control={<Radio />}
-                  label="Provide Width/Height of Image"
-                />
-                <Typography variant="caption" color="text.secondary" sx={{ ml: 4, mt: -1, mb: 2 }}>
-                  Enter the physical dimensions of the entire image
-                </Typography>
-              </RadioGroup>
-            </Stack>
-          );
-        } else {
-          // This is Trace Scale Bar (when Instrument Settings NOT shown)
-          return renderScaleInputStep();
-        }
-
-      case 7:
-        // Step 11: Trace Scale Bar (when Instrument Settings IS shown)
+      case 'scale-input':
+        // Scale Input - reference micrographs only
         return renderScaleInputStep();
+
+      case 'location-method':
+        // Location Method - associated micrographs only
+        return renderLocationMethodStep();
+
+      case 'assoc-scale-method':
+        // Scale Method - associated micrographs only
+        return renderAssociatedScaleMethodStep();
+
+      case 'location-placement':
+        // Location & Scale Placement - associated micrographs only
+        return renderLocationPlacementStep();
 
       default:
         return null;
@@ -4920,33 +4660,12 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
           {parentMicrographId ? 'New Associated Micrograph' : 'New Reference Micrograph'}
         </DialogTitle>
         <DialogContent>
-          <Stepper activeStep={activeStep} sx={{ pt: 3, pb: 5 }}>
-            {(() => {
-              const maxVisibleSteps = 5;
-              const totalSteps = steps.length;
-
-              // Calculate visible window
-              let startIndex = Math.max(0, activeStep - Math.floor(maxVisibleSteps / 2));
-              let endIndex = Math.min(totalSteps, startIndex + maxVisibleSteps);
-
-              // Adjust start if we're near the end
-              if (endIndex === totalSteps) {
-                startIndex = Math.max(0, totalSteps - maxVisibleSteps);
-              }
-
-              const visibleSteps = steps.slice(startIndex, endIndex);
-
-              return visibleSteps.map((label, index) => {
-                const actualIndex = startIndex + index;
-                return (
-                  <Step key={label} completed={actualIndex < activeStep}>
-                    <StepLabel>{label}</StepLabel>
-                  </Step>
-                );
-              });
-            })()}
-          </Stepper>
-          <Box sx={{ mt: 2, mb: 1 }}>{renderStepContent(activeStep)}</Box>
+          <WizardProgress
+            currentStep={activeStep}
+            totalSteps={steps.length}
+            stepLabel={currentStepConfig?.label || ''}
+          />
+          <Box sx={{ mt: 2, mb: 1 }}>{renderStepContent()}</Box>
         </DialogContent>
         <DialogActions>
           <Button onClick={handleCancel}>Cancel</Button>
