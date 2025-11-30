@@ -9,7 +9,11 @@ contextBridge.exposeInMainWorld('api', {
   session: {
     getItem: () => ipcRenderer.invoke('session:get'),
     setItem: (value) => ipcRenderer.invoke('session:set', value),
+    clear: () => ipcRenderer.invoke('session:clear'),
   },
+
+  // Project validation
+  validateProjectExists: (projectId) => ipcRenderer.invoke('project:validate-exists', projectId),
 
   // Dialog triggers (from menu)
   // Each returns an unsubscribe function to prevent listener accumulation

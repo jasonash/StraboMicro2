@@ -1024,6 +1024,37 @@ ipcMain.handle('session:set', (event, jsonString) => {
   saveSessionState(jsonString);
 });
 
+ipcMain.handle('session:clear', () => {
+  saveSessionState(null);
+  log.info('[IPC] Session state cleared');
+});
+
+// Validate that a project folder exists on disk
+ipcMain.handle('project:validate-exists', async (event, projectId) => {
+  if (!projectId) {
+    return { exists: false, reason: 'No project ID provided' };
+  }
+
+  try {
+    const exists = await projectFolders.projectFolderExists(projectId);
+    if (exists) {
+      // Also check if project.json exists
+      const paths = projectFolders.getProjectFolderPaths(projectId);
+      const fs = require('fs').promises;
+      try {
+        await fs.access(paths.projectJson);
+        return { exists: true };
+      } catch {
+        return { exists: false, reason: 'Project folder exists but project.json is missing' };
+      }
+    }
+    return { exists: false, reason: 'Project folder not found' };
+  } catch (error) {
+    log.error('[IPC] Error validating project:', error);
+    return { exists: false, reason: error.message };
+  }
+});
+
 // File dialog for TIFF selection (single file)
 ipcMain.handle('dialog:open-tiff', async () => {
   const result = await dialog.showOpenDialog(mainWindow, {

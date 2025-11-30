@@ -87,7 +87,11 @@ interface Window {
     session: {
       getItem: () => Promise<string | null>;
       setItem: (value: string) => Promise<void>;
+      clear: () => Promise<void>;
     };
+
+    // Project validation
+    validateProjectExists: (projectId: string) => Promise<{ exists: boolean; reason?: string }>;
 
     onNewProject: (callback: () => void) => Unsubscribe;
     onOpenProject: (callback: () => void) => Unsubscribe;

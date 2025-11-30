@@ -100,6 +100,34 @@ function App() {
     checkAuthStatus();
   }, [checkAuthStatus]);
 
+  // Validate persisted project on app startup
+  // If the project folder was deleted, clear the session and show "No project loaded"
+  useEffect(() => {
+    const validatePersistedProject = async () => {
+      if (!window.api?.validateProjectExists) return;
+
+      const currentProject = useAppStore.getState().project;
+      if (!currentProject?.id) return;
+
+      console.log('[App] Validating persisted project:', currentProject.id);
+      const result = await window.api.validateProjectExists(currentProject.id);
+
+      if (!result.exists) {
+        console.warn('[App] Project folder not found, clearing session:', result.reason);
+        // Clear the project from state
+        closeProject();
+        // Clear persisted session
+        await window.api.session.clear();
+        // Show user-friendly message
+        alert(`The previously opened project could not be found on disk.\n\nReason: ${result.reason}\n\nPlease open or create a new project.`);
+      } else {
+        console.log('[App] Project folder validated successfully');
+      }
+    };
+
+    validatePersistedProject();
+  }, []); // Run once on mount
+
   // Update window title and notify main process when project changes
   useEffect(() => {
     if (!window.api) return;
