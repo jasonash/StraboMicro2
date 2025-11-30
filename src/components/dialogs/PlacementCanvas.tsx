@@ -1227,7 +1227,7 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
                     fullWidth
                     size="small"
                     InputProps={{ readOnly: true }}
-                    helperText="Auto-filled from line"
+                    placeholder="Auto-filled from line"
                   />
                 </Grid>
                 <Grid size={4}>
