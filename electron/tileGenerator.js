@@ -82,6 +82,105 @@ class TileGenerator {
   }
 
   /**
+   * Process an image and generate ALL cached assets including full tiles
+   * This is used during project preparation to ensure everything is cached
+   * before the user starts browsing.
+   *
+   * @param {string} imagePath - Path to source image
+   * @param {function} onProgress - Progress callback (tileIndex, totalTiles)
+   * @returns {Promise<{hash: string, metadata: Object, tilesGenerated: number}>}
+   */
+  async processImageComplete(imagePath, onProgress = null) {
+    // Generate hash and check cache
+    const hash = await tileCache.generateImageHash(imagePath);
+    const cacheStatus = await tileCache.isCacheValid(imagePath);
+
+    // Get metadata (either from cache or generate)
+    let metadata;
+    let fromCache = false;
+
+    if (cacheStatus.exists) {
+      console.log(`Cache exists for image: ${imagePath}`);
+      metadata = cacheStatus.metadata;
+      fromCache = true;
+    } else {
+      console.log(`Cache miss - generating all assets for: ${imagePath}`);
+
+      // Get image dimensions using Sharp metadata
+      const sharpMetadata = await sharp(imagePath, { limitInputPixels: false }).metadata();
+      const { width, height } = sharpMetadata;
+
+      console.log(`Image dimensions: ${width}x${height} (format: ${sharpMetadata.format})`);
+
+      // Create and save metadata
+      metadata = tileCache.createMetadata(imagePath, width, height);
+      await tileCache.saveMetadata(hash, metadata);
+
+      // Generate thumbnail and medium
+      await this.generateThumbnailFromFile(hash, imagePath, metadata.width, metadata.height);
+      await this.generateMediumFromFile(hash, imagePath, metadata.width, metadata.height);
+    }
+
+    // Now generate all tiles (check each tile individually)
+    const { tilesX, tilesY } = metadata;
+    const totalTiles = tilesX * tilesY;
+    let tilesGenerated = 0;
+    let tilesSkipped = 0;
+
+    // Check if all tiles already exist
+    let allTilesCached = true;
+    for (let ty = 0; ty < tilesY && allTilesCached; ty++) {
+      for (let tx = 0; tx < tilesX && allTilesCached; tx++) {
+        const cached = await tileCache.loadTile(hash, tx, ty);
+        if (!cached) {
+          allTilesCached = false;
+        }
+      }
+    }
+
+    if (allTilesCached) {
+      console.log(`All ${totalTiles} tiles already cached for: ${imagePath}`);
+      return {
+        hash,
+        metadata,
+        tilesGenerated: 0,
+        fromCache: true,
+      };
+    }
+
+    // Need to decode image and generate missing tiles
+    console.log(`Generating tiles for: ${imagePath} (${tilesX}x${tilesY} = ${totalTiles} tiles)`);
+    const imageData = await this.decodeAuto(imagePath);
+
+    for (let ty = 0; ty < tilesY; ty++) {
+      for (let tx = 0; tx < tilesX; tx++) {
+        // Check if tile already exists
+        const cached = await tileCache.loadTile(hash, tx, ty);
+        if (cached) {
+          tilesSkipped++;
+        } else {
+          await this.generateTile(hash, imageData, tx, ty);
+          tilesGenerated++;
+        }
+
+        // Report progress
+        if (onProgress) {
+          onProgress(tilesSkipped + tilesGenerated, totalTiles);
+        }
+      }
+    }
+
+    console.log(`Tile generation complete: ${tilesGenerated} generated, ${tilesSkipped} skipped`);
+
+    return {
+      hash,
+      metadata,
+      tilesGenerated,
+      fromCache: false,
+    };
+  }
+
+  /**
    * Generate thumbnail directly from file using sharp (memory efficient)
    *
    * @param {string} hash - Image hash

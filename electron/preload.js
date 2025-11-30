@@ -136,6 +136,35 @@ contextBridge.exposeInMainWorld('api', {
   getCacheStats: () => ipcRenderer.invoke('image:cache-stats'),
   clearImageCache: (imageHash) => ipcRenderer.invoke('image:clear-cache', imageHash),
   clearAllCaches: () => ipcRenderer.invoke('image:clear-all-caches'),
+  checkImageCache: (imagePath) => ipcRenderer.invoke('image:check-cache', imagePath),
+
+  // Tile queue and project preparation
+  prepareProjectImages: (images) => ipcRenderer.invoke('project:prepare-images', images),
+  getTileQueueStatus: () => ipcRenderer.invoke('tile-queue:status'),
+  boostTileQueuePriority: (imageHash) => ipcRenderer.invoke('tile-queue:boost-priority', imageHash),
+  cancelTileQueueForImage: (imageHash) => ipcRenderer.invoke('tile-queue:cancel', imageHash),
+
+  // Tile queue progress events
+  onTileQueueProgress: (callback) => {
+    const handler = (event, progress) => callback(progress);
+    ipcRenderer.on('tile-queue:progress', handler);
+    return () => ipcRenderer.removeListener('tile-queue:progress', handler);
+  },
+  onTileQueuePreparationStart: (callback) => {
+    const handler = (event, data) => callback(data);
+    ipcRenderer.on('tile-queue:preparation-start', handler);
+    return () => ipcRenderer.removeListener('tile-queue:preparation-start', handler);
+  },
+  onTileQueuePreparationComplete: (callback) => {
+    const handler = (event, data) => callback(data);
+    ipcRenderer.on('tile-queue:preparation-complete', handler);
+    return () => ipcRenderer.removeListener('tile-queue:preparation-complete', handler);
+  },
+  onTileQueueTileProgress: (callback) => {
+    const handler = (event, data) => callback(data);
+    ipcRenderer.on('tile-queue:tile-progress', handler);
+    return () => ipcRenderer.removeListener('tile-queue:tile-progress', handler);
+  },
 
   // Project folder structure
   getProjectDataPath: () => ipcRenderer.invoke('project:get-data-path'),
