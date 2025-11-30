@@ -1,6 +1,6 @@
 {
   "name": "strabomicro2",
-  "version": "0.1.0",
+  "version": "2.0.0",
   "description": "StraboMicro - Geological Microanalysis Application",
   "main": "electron/main.js",
   "scripts": {
@@ -12,7 +12,11 @@
     "typecheck:watch": "tsc --noEmit --watch --preserveWatchOutput",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "package": "npm run build && electron-builder"
+    "package": "npm run build && electron-builder",
+    "package:mac": "npm run build && electron-builder --mac --publish never",
+    "package:win": "npm run build && electron-builder --win --publish never",
+    "package:linux": "npm run build && electron-builder --linux --publish never",
+    "package:dir": "npm run build && electron-builder --dir"
   },
   "keywords": [
     "geology",
@@ -23,33 +27,48 @@
   "author": "StraboSpot.org",
   "license": "MIT",
   "devDependencies": {
+    "@electron/rebuild": "^4.0.1",
     "@types/node": "^20.11.0",
     "@types/react": "^18.2.48",
     "@types/react-dom": "^18.2.18",
+    "@types/uuid": "^10.0.0",
     "@vitejs/plugin-react": "^4.2.1",
     "concurrently": "^8.2.2",
     "electron": "^28.2.0",
     "electron-builder": "^24.9.1",
     "electron-devtools-installer": "^4.0.0",
-    "electron-log": "^5.4.3",
     "react-devtools": "^7.0.1",
     "typescript": "^5.3.3",
     "vite": "^5.0.11",
     "wait-on": "^7.2.0"
   },
   "dependencies": {
+    "@dnd-kit/core": "^6.3.1",
+    "@dnd-kit/sortable": "^10.0.0",
+    "@dnd-kit/utilities": "^3.2.2",
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.1",
     "@mui/icons-material": "^7.3.5",
     "@mui/material": "^7.3.5",
+    "@react-pdf/renderer": "^4.3.1",
+    "@sentry/electron": "^7.4.0",
+    "archiver": "^7.0.1",
+    "bmp-js": "^0.1.0",
     "canvas": "^3.2.0",
+    "electron-log": "^5.4.3",
+    "electron-store": "^11.0.2",
+    "form-data": "^4.0.5",
     "immer": "^10.2.0",
     "konva": "^9.3.22",
+    "mui-color-input": "^7.0.0",
+    "pdfkit": "^0.17.2",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-konva": "^18.2.14",
     "sharp": "^0.34.5",
     "tiff": "^7.1.2",
+    "unzipper": "^0.12.3",
+    "uuid": "^13.0.0",
     "zundo": "^2.3.0",
     "zustand": "^5.0.8"
   },
@@ -57,14 +76,99 @@
     "appId": "org.strabospot.strabomicro2",
     "productName": "StraboMicro2",
     "directories": {
-      "output": "dist"
+      "output": "release"
     },
     "files": [
       "electron/**/*",
       "dist/**/*"
     ],
+    "fileAssociations": [
+      {
+        "ext": "smz",
+        "name": "StraboMicro Project",
+        "description": "StraboMicro Project File",
+        "mimeType": "application/x-strabomicro",
+        "role": "Editor"
+      }
+    ],
+    "extraResources": [
+      {
+        "from": "src/assets/app-icon.png",
+        "to": "splash-logo.png"
+      }
+    ],
+    "asarUnpack": [
+      "node_modules/sharp/**/*",
+      "node_modules/@img/**/*",
+      "node_modules/canvas/**/*"
+    ],
     "mac": {
-      "category": "public.app-category.education"
+      "category": "public.app-category.education",
+      "icon": "build/icon.icns",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ]
+    },
+    "dmg": {
+      "contents": [
+        {
+          "x": 130,
+          "y": 220
+        },
+        {
+          "x": 410,
+          "y": 220,
+          "type": "link",
+          "path": "/Applications"
+        }
+      ]
+    },
+    "win": {
+      "icon": "build/icon.ico",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "deleteAppDataOnUninstall": false
+    },
+    "linux": {
+      "icon": "build/icons",
+      "category": "Science",
+      "target": [
+        "AppImage",
+        "deb"
+      ]
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "StraboSpot",
+      "repo": "StraboMicro2"
     }
   }
 }

@@ -1,0 +1,103 @@
+# Development Build Workflow
+# Builds unsigned app for all platforms (macOS, Windows, Linux)
+# Triggered manually via GitHub Actions UI
+
+name: Dev Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Branch to build from'
+        required: true
+        default: 'develop'
+        type: string
+
+env:
+  NODE_VERSION: '20'
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            platform: mac
+            artifact_name: StraboMicro2-macOS-dev
+          - os: windows-latest
+            platform: win
+            artifact_name: StraboMicro2-Windows-dev
+          - os: ubuntu-latest
+            platform: linux
+            artifact_name: StraboMicro2-Linux-dev
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.branch }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      # Linux-specific: Install build dependencies
+      - name: Install Linux dependencies
+        if: matrix.platform == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libvips-dev libfuse2
+
+      # macOS-specific: Install build dependencies
+      - name: Install macOS dependencies
+        if: matrix.platform == 'mac'
+        run: |
+          brew install vips
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Update version to include dev suffix
+      - name: Update version for dev build
+        shell: bash
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          DEV_VERSION="${VERSION}-dev.${{ github.run_number }}"
+          echo "Building dev version: $DEV_VERSION"
+          npm version $DEV_VERSION --no-git-tag-version
+
+      - name: Build application
+        run: npm run build
+
+      # Build without signing for dev builds
+      - name: Package for macOS
+        if: matrix.platform == 'mac'
+        run: npx electron-builder --mac --publish never
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+
+      - name: Package for Windows
+        if: matrix.platform == 'win'
+        run: npx electron-builder --win --publish never
+
+      - name: Package for Linux
+        if: matrix.platform == 'linux'
+        run: npx electron-builder --linux --publish never
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}-${{ github.run_number }}
+          path: |
+            release/*.dmg
+            release/*.zip
+            release/*.exe
+            release/*.AppImage
+            release/*.deb
+          if-no-files-found: error
+          retention-days: 90

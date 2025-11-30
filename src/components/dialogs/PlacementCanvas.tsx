@@ -9,7 +9,8 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Stage, Layer, Image as KonvaImage, Rect, Transformer, Group, Line } from 'react-konva';
 import {
   Box, Typography, Stack, IconButton, Tooltip, Paper,
-  TextField, Select, MenuItem, FormControl, InputLabel, Grid
+  TextField, Select, MenuItem, FormControl, InputLabel, Grid, Slider,
+  FormControlLabel, Checkbox, CircularProgress
 } from '@mui/material';
 import { PanTool, RestartAlt, Timeline } from '@mui/icons-material';
 import Konva from 'konva';
@@ -26,8 +27,12 @@ interface PlacementCanvasProps {
   initialRotation?: number;
   initialScaleX?: number;
   initialScaleY?: number;
+  initialOpacity?: number; // Initial opacity (0-1), default 1
+  isFlipped?: boolean; // Current flip state
+  onFlipChange?: (isFlipped: boolean) => void; // Callback when flip changes
   copySizePixelsPerCm?: number; // For "Copy Size from Existing" - the calculated px/cm for the new image
   onPlacementChange: (offsetX: number, offsetY: number, rotation: number, scaleX?: number, scaleY?: number) => void;
+  onOpacityChange?: (opacity: number) => void; // Callback when opacity changes
   onScaleDataChange?: (data: {
     scaleBarLineLengthPixels?: number;
     scaleBarPhysicalLength?: number;
@@ -52,8 +57,12 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
   initialRotation = 0,
   initialScaleX = 1,
   initialScaleY = 1,
+  initialOpacity = 1,
+  isFlipped = false,
+  onFlipChange,
   copySizePixelsPerCm,
   onPlacementChange,
+  onOpacityChange,
   onScaleDataChange,
 }) => {
   const stageRef = useRef<Konva.Stage>(null);
@@ -82,6 +91,11 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
     scaleY: initialScaleY,
   });
 
+  // Child overlay opacity (0-1, where 1 is fully opaque)
+  const [childOpacity, setChildOpacity] = useState(initialOpacity);
+
+  // Flipping state
+  const [isFlipping, setIsFlipping] = useState(false);
 
   // State for Pixel Conversion Factor inputs
   const [pixelInput, setPixelInput] = useState('');
@@ -205,53 +219,32 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
           const y = (CANVAS_HEIGHT - img.height * initialScale) / 2;
           setStagePos({ x, y });
 
-          // Initialize child position and scale
+          // Initialize child position
+          // Use parentMicrograph.imageWidth directly (not state, which may not be set yet)
+          const parentOrigWidth = parentMicrograph.imageWidth || img.width;
+
           // Check for default/uninitialized values (0, 0) or (400, 300)
           if ((initialOffsetX === 0 && initialOffsetY === 0) ||
               (initialOffsetX === 400 && initialOffsetY === 300)) {
-            // These are the default values, so center the child
+            // These are the default values, so center the child on the parent
             const centerX = img.width / 2;
             const centerY = img.height / 2;
-
-            // Calculate reasonable initial scale for "Stretch and Drag" mode
-            // Make child appear at ~25% of parent width (easier to see and manipulate)
-            let adjustedScaleX = initialScaleX;
-            let adjustedScaleY = initialScaleY;
-
-            if (scaleMethod === 'Stretch and Drag' && initialScaleX === 1 && initialScaleY === 1) {
-              // Target child width to be ~25% of parent width
-              const targetChildWidthRatio = 0.25;
-              const targetScale = (img.width * targetChildWidthRatio) / childWidth;
-              adjustedScaleX = targetScale;
-              adjustedScaleY = targetScale;
-              console.log('[PlacementCanvas] Auto-scaled child for Stretch and Drag mode:', {
-                parentWidth: img.width,
-                childWidth,
-                targetScale,
-                targetChildDisplayWidth: childWidth * targetScale
-              });
-            }
-
             setChildTransform(prev => ({
               ...prev,
               x: centerX,
               y: centerY,
-              scaleX: adjustedScaleX,
-              scaleY: adjustedScaleY,
             }));
             // Convert center to top-left for legacy compatibility
-            const topLeft = convertCenterToTopLeft(centerX, centerY, initialRotation, adjustedScaleX, adjustedScaleY);
+            const topLeft = convertCenterToTopLeft(centerX, centerY, initialRotation, initialScaleX, initialScaleY);
             // Convert to original image coordinates
-            if (!parentOriginalWidth) return;
-            const scaleRatio = parentOriginalWidth / img.width;
+            const scaleRatio = parentOrigWidth / img.width;
             const originalX = topLeft.x * scaleRatio;
             const originalY = topLeft.y * scaleRatio;
-            onPlacementChange(originalX, originalY, initialRotation, adjustedScaleX, adjustedScaleY);
-            console.log('[PlacementCanvas] Initialized child position to center:', { centerX, centerY, topLeft, originalX, originalY, scaleX: adjustedScaleX, scaleY: adjustedScaleY });
+            onPlacementChange(originalX, originalY, initialRotation, initialScaleX, initialScaleY);
+            console.log('[PlacementCanvas] Initialized child position to center:', { centerX, centerY, topLeft, originalX, originalY, parentOrigWidth });
           } else {
             // We have existing values - convert from original image coordinates to displayed coordinates
-            if (!parentOriginalWidth) return;
-            const scaleRatio = img.width / parentOriginalWidth;
+            const scaleRatio = img.width / parentOrigWidth;
             // Initial values are in top-left format, convert to center
             const centerX = (initialOffsetX * scaleRatio) + (childWidth * scaleRatio * initialScaleX) / 2;
             const centerY = (initialOffsetY * scaleRatio) + (childHeight * scaleRatio * initialScaleY) / 2;
@@ -321,6 +314,68 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
       transformerRef.current.getLayer()?.batchDraw();
     }
   }, [childImage]);
+
+  // Auto-fit child to parent when child is larger (for better UX on initial load)
+  // This ensures the child is visible and reasonably sized when the canvas first opens
+  // For "Stretch and Drag", this becomes the working scale
+  // For other methods, this is just initial display until user enters scale data
+  useEffect(() => {
+    if (!parentImage || !childImage) return;
+    // Only auto-fit if scale is still at default (1.0) - don't override user adjustments or calculated scales
+    if (childTransform.scaleX !== 1 || childTransform.scaleY !== 1) return;
+
+    // Check if child is larger than parent (in displayed coordinates)
+    const childDisplayWidth = childWidth; // Original child dimensions
+    const childDisplayHeight = childHeight;
+    const parentDisplayWidth = parentImage.width;
+    const parentDisplayHeight = parentImage.height;
+
+    // Only auto-scale if child is larger than parent
+    if (childDisplayWidth <= parentDisplayWidth && childDisplayHeight <= parentDisplayHeight) {
+      return; // Child already fits, no need to auto-scale
+    }
+
+    // Calculate scale to fit child within parent bounds (with some padding)
+    const padding = 0.9; // 90% of parent size for a bit of margin
+    const scaleToFitWidth = (parentDisplayWidth * padding) / childDisplayWidth;
+    const scaleToFitHeight = (parentDisplayHeight * padding) / childDisplayHeight;
+    const fitScale = Math.min(scaleToFitWidth, scaleToFitHeight);
+
+    console.log('[PlacementCanvas] Auto-fitting large child to parent:', {
+      childDisplayWidth,
+      childDisplayHeight,
+      parentDisplayWidth,
+      parentDisplayHeight,
+      fitScale,
+    });
+
+    // Center the child on the parent
+    const centerX = parentDisplayWidth / 2;
+    const centerY = parentDisplayHeight / 2;
+
+    setChildTransform(prev => ({
+      ...prev,
+      x: centerX,
+      y: centerY,
+      scaleX: fitScale,
+      scaleY: fitScale,
+    }));
+
+    // Only notify parent of the initial placement for "Stretch and Drag" mode
+    // Other methods will calculate their own scale based on user input
+    if (scaleMethod === 'Stretch and Drag') {
+      const topLeft = convertCenterToTopLeft(centerX, centerY, childTransform.rotation, fitScale, fitScale);
+      if (parentOriginalWidth && parentImage.width) {
+        const scaleRatio = parentOriginalWidth / parentImage.width;
+        const originalX = topLeft.x * scaleRatio;
+        const originalY = topLeft.y * scaleRatio;
+        // Apply the same parentDisplayRatio correction we use in handleChildTransformEnd
+        const parentDisplayRatio = parentOriginalWidth / parentImage.width;
+        const correctedScale = fitScale * parentDisplayRatio;
+        onPlacementChange(originalX, originalY, childTransform.rotation, correctedScale, correctedScale);
+      }
+    }
+  }, [scaleMethod, parentImage, childImage, childWidth, childHeight, parentOriginalWidth, childTransform.scaleX, childTransform.scaleY]);
 
   // Auto-calculate child scale for Pixel Conversion Factor method
   useEffect(() => {
@@ -712,6 +767,45 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
     });
   }, [scaleMethod, widthInput, heightInput, sizeUnitInput, onScaleDataChange]);
 
+  // Handle flip checkbox change
+  const handleFlipChange = async () => {
+    if (!onFlipChange) return;
+
+    setIsFlipping(true);
+    try {
+      // Flip the child image on disk
+      await window.api?.flipImageHorizontal(childScratchPath);
+
+      // Reload the child image through the tile system (which will re-tile the flipped image)
+      const tileData = await window.api?.loadImageWithTiles(childScratchPath);
+      if (tileData) {
+        const mediumDataUrl = await window.api?.loadMedium(tileData.hash);
+        if (mediumDataUrl) {
+          const img = new window.Image();
+          img.onload = () => {
+            setChildImage(img);
+            setIsFlipping(false);
+          };
+          img.onerror = () => {
+            console.error('[PlacementCanvas] Failed to reload image after flip');
+            setIsFlipping(false);
+          };
+          img.src = mediumDataUrl;
+        } else {
+          setIsFlipping(false);
+        }
+      } else {
+        setIsFlipping(false);
+      }
+
+      // Update the flip state
+      onFlipChange(!isFlipped);
+    } catch (error) {
+      console.error('[PlacementCanvas] Error flipping image:', error);
+      setIsFlipping(false);
+    }
+  };
+
   // Pan/Zoom handlers
   const handleMouseDown = (e: Konva.KonvaEventObject<MouseEvent>) => {
     const stage = e.target.getStage();
@@ -866,9 +960,12 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
     const originalX = topLeft.x * scaleRatio;
     const originalY = topLeft.y * scaleRatio;
 
-    // For Stretch and Drag, report the DISPLAYED scale (not converted)
-    // The scale calculation should happen at save time using: childScale = parentScale / displayedScale
-    onPlacementChange(originalX, originalY, newTransform.rotation, newTransform.scaleX, newTransform.scaleY);
+    // For Stretch and Drag, correct the scale for parent image display size vs original size
+    const parentDisplayRatio = parentOriginalWidth / parentImage.width;
+    const correctedScaleX = newTransform.scaleX * parentDisplayRatio;
+    const correctedScaleY = newTransform.scaleY * parentDisplayRatio;
+
+    onPlacementChange(originalX, originalY, newTransform.rotation, correctedScaleX, correctedScaleY);
   };
 
   const handleChildTransformEnd = () => {
@@ -898,9 +995,14 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
     const originalX = topLeft.x * scaleRatio;
     const originalY = topLeft.y * scaleRatio;
 
-    // For Stretch and Drag, report the DISPLAYED scale (not converted)
-    // The scale calculation should happen at save time using: childScale = parentScale / displayedScale
-    onPlacementChange(originalX, originalY, newTransform.rotation, displayedScaleX, displayedScaleY);
+    // For Stretch and Drag, we need to correct the scale for parent image display size vs original size
+    // The parent may be displayed larger than its original size (e.g., 250px original shown as 512px thumbnail)
+    // The scaleX from Konva is relative to the displayed parent, but we need it relative to the original
+    const parentDisplayRatio = parentOriginalWidth / parentImage.width;
+    const correctedScaleX = displayedScaleX * parentDisplayRatio;
+    const correctedScaleY = displayedScaleY * parentDisplayRatio;
+
+    onPlacementChange(originalX, originalY, newTransform.rotation, correctedScaleX, correctedScaleY);
   };
 
   const handleResetChild = () => {
@@ -1182,6 +1284,47 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
         </Paper>
       )}
 
+      {/* Opacity Slider and Flip Checkbox */}
+      <Box sx={{ width: CANVAS_WIDTH, display: 'flex', alignItems: 'center', gap: 2 }}>
+        <Typography variant="body2" color="text.secondary" sx={{ minWidth: 90 }}>
+          Transparency:
+        </Typography>
+        <Slider
+          value={childOpacity}
+          onChange={(_event, value) => {
+            const newOpacity = value as number;
+            setChildOpacity(newOpacity);
+            onOpacityChange?.(newOpacity);
+          }}
+          min={0}
+          max={1}
+          step={0.01}
+          sx={{ flex: 1 }}
+        />
+        <Typography variant="body2" color="text.secondary" sx={{ minWidth: 40 }}>
+          {Math.round(childOpacity * 100)}%
+        </Typography>
+
+        {/* Flip checkbox - only show if onFlipChange is provided */}
+        {onFlipChange && (
+          <FormControlLabel
+            control={
+              isFlipping ? (
+                <CircularProgress size={20} sx={{ mx: 1.25 }} />
+              ) : (
+                <Checkbox
+                  checked={isFlipped}
+                  onChange={handleFlipChange}
+                  size="small"
+                />
+              )
+            }
+            label="Flip?"
+            sx={{ ml: 1, mr: 0 }}
+          />
+        )}
+      </Box>
+
       {/* Canvas */}
       <Box
         sx={{
@@ -1241,15 +1384,16 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
                   image={childImage}
                   width={childWidth}
                   height={childHeight}
-                  opacity={0.7}
+                  opacity={childOpacity}
                 />
 
                 {/* Border outline to make overlay visible */}
+                {/* Inverse-scale by both layer scale and child scale to maintain consistent visual width */}
                 <Rect
                   width={childWidth}
                   height={childHeight}
                   stroke="#e44c65"
-                  strokeWidth={2 / scale}
+                  strokeWidth={2 / scale / (childTransform.scaleX || 1)}
                   listening={false}
                 />
               </Group>
@@ -1260,7 +1404,7 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
               <Line
                 points={[currentLine.x1, currentLine.y1, currentLine.x2, currentLine.y2]}
                 stroke="#00ff00"
-                strokeWidth={3 / scale}
+                strokeWidth={3 / Math.max(0.2, Math.min(scale, 2))}
                 lineCap="round"
                 lineJoin="round"
                 listening={false}
@@ -1268,7 +1412,8 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
             )}
           </Layer>
 
-          {/* Transformer layer - NOT scaled, stays at constant screen size */}
+          {/* Transformer layer - NOT scaled, renders at screen coordinates */}
+          {/* This keeps handles at constant screen-pixel size regardless of zoom */}
           <Layer>
             {childImage && (
               <Transformer
@@ -1278,12 +1423,12 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
                 anchorStroke="#e44c65"
                 anchorFill="#e44c65"
                 anchorSize={8}
-                anchorCornerRadius={4}
-                anchorStrokeWidth={2}
+                anchorCornerRadius={2}
+                anchorStrokeWidth={1}
                 borderStrokeWidth={2}
                 enabledAnchors={enableResizeHandles ? ['top-left', 'top-right', 'bottom-left', 'bottom-right'] : []}
                 keepRatio={true}
-                rotateAnchorOffset={30}
+                rotateAnchorOffset={20}
                 ignoreStroke={true}
               />
             )}

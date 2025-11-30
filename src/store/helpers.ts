@@ -82,6 +82,27 @@ export function findSpotById(
 }
 
 /**
+ * Find a spot's parent micrograph by spot ID
+ */
+export function findSpotParentMicrograph(
+  project: ProjectMetadata | null,
+  spotId: string
+): MicrographMetadata | null {
+  if (!project?.datasets) return null;
+
+  for (const dataset of project.datasets) {
+    for (const sample of dataset.samples || []) {
+      for (const micrograph of sample.micrographs || []) {
+        const spot = micrograph.spots?.find(s => s.id === spotId);
+        if (spot) return micrograph;
+      }
+    }
+  }
+
+  return null;
+}
+
+/**
  * Update a micrograph immutably within the project hierarchy
  */
 export function updateMicrograph(
@@ -131,6 +152,8 @@ export function updateSpot(
 
 /**
  * Build an index of all micrographs in the project for fast lookups
+ * This includes both reference micrographs and associated micrographs
+ * (Associated micrographs are stored in the same array with parentID set)
  */
 export function buildMicrographIndex(
   project: ProjectMetadata | null
@@ -211,6 +234,7 @@ export function getSampleParentDataset(
 
 /**
  * Get all child micrographs of a parent micrograph (for overlay hierarchy)
+ * Only returns visible micrographs (isMicroVisible !== false)
  */
 export function getChildMicrographs(
   project: ProjectMetadata | null,
@@ -223,7 +247,7 @@ export function getChildMicrographs(
   for (const dataset of project.datasets) {
     for (const sample of dataset.samples || []) {
       for (const micrograph of sample.micrographs || []) {
-        if (micrograph.parentID === parentId) {
+        if (micrograph.parentID === parentId && micrograph.isMicroVisible !== false) {
           children.push(micrograph);
         }
       }
@@ -254,4 +278,72 @@ export function getReferenceMicrographs(
   }
 
   return references;
+}
+
+/**
+ * Get the ancestor chain of micrographs from root to the given micrograph
+ * Returns array ordered from root (oldest ancestor) to the target micrograph
+ *
+ * Example: If micrograph "C" -> "flip" -> "top", calling with "top" returns [C, flip, top]
+ */
+export function getMicrographAncestorChain(
+  project: ProjectMetadata | null,
+  micrographId: string
+): MicrographMetadata[] {
+  if (!project) return [];
+
+  const micrograph = findMicrographById(project, micrographId);
+  if (!micrograph) return [];
+
+  const chain: MicrographMetadata[] = [micrograph];
+
+  // Walk up the parent chain
+  let current = micrograph;
+  while (current.parentID) {
+    const parent = findMicrographById(project, current.parentID);
+    if (!parent) break;
+    chain.unshift(parent); // Add to beginning to maintain root-to-leaf order
+    current = parent;
+  }
+
+  return chain;
+}
+
+/**
+ * Get available mineral phases from a micrograph's or spot's mineralogy data
+ * Used to populate "Which Phases?" checkboxes in grain/fabric/etc dialogs
+ */
+export function getAvailablePhasesFromMicrograph(
+  micrograph: MicrographMetadata | null
+): string[] {
+  if (!micrograph?.mineralogy?.minerals || micrograph.mineralogy.minerals.length === 0) {
+    return [];
+  }
+
+  // Extract unique mineral names from the minerals array
+  const phases = micrograph.mineralogy.minerals
+    .map((m) => m.name)
+    .filter((name): name is string => !!name); // Type guard to filter out undefined
+
+  // Return unique phases
+  return Array.from(new Set(phases));
+}
+
+/**
+ * Get available mineral phases from a spot's mineralogy data
+ */
+export function getAvailablePhasesFromSpot(
+  spot: Spot | null
+): string[] {
+  if (!spot?.mineralogy?.minerals || spot.mineralogy.minerals.length === 0) {
+    return [];
+  }
+
+  // Extract unique mineral names from the minerals array
+  const phases = spot.mineralogy.minerals
+    .map((m) => m.name)
+    .filter((name): name is string => !!name);
+
+  // Return unique phases
+  return Array.from(new Set(phases));
 }

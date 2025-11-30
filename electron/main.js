@@ -6,15 +6,46 @@ process.env.VIPS_DISC_THRESHOLD = '0';
 // Remove libvips memory limits entirely
 process.env.VIPS_NOVECTOR = '1';
 
-const { app, BrowserWindow, Menu, ipcMain, dialog, screen, nativeTheme } = require('electron');
+const { app, BrowserWindow, Menu, ipcMain, dialog, screen, nativeTheme, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const log = require('electron-log');
+const Sentry = require('@sentry/electron/main');
+
+// Initialize Sentry for error tracking (production only)
+Sentry.init({
+  dsn: 'https://a0a059594ef2ba9bfecb1e6bf028afde@o4510450188484608.ingest.us.sentry.io/4510450322046976',
+  // Only enable in packaged builds
+  enabled: app.isPackaged,
+  // Add app version for release tracking
+  release: `strabomicro2@${app.getVersion()}`,
+  // Set environment
+  environment: app.isPackaged ? 'production' : 'development',
+  // Filter out sensitive file paths
+  beforeSend(event) {
+    // Scrub user home directory from file paths
+    const homeDir = app.getPath('home');
+    const eventStr = JSON.stringify(event);
+    const scrubbedStr = eventStr.replace(new RegExp(homeDir, 'g'), '~');
+    return JSON.parse(scrubbedStr);
+  },
+});
 const sharp = require('sharp');
+const archiver = require('archiver');
 const projectFolders = require('./projectFolders');
 const imageConverter = require('./imageConverter');
 const projectSerializer = require('./projectSerializer');
 const scratchSpace = require('./scratchSpace');
+const pdfExport = require('./pdfExport');
+// Use React-PDF for better layout and working internal links
+const pdfProjectExport = require('./pdfReactExport');
+const smzExport = require('./smzExport');
+const serverUpload = require('./serverUpload');
+const versionHistory = require('./versionHistory');
+const projectsIndex = require('./projectsIndex');
+const svgExport = require('./svgExport');
+const smzImport = require('./smzImport');
+const serverDownload = require('./serverDownload');
 
 // Handle EPIPE errors at process level (prevents crash on broken stdout pipe)
 process.stdout.on('error', (err) => {
@@ -58,6 +89,81 @@ log.info(`Node version: ${process.versions.node}`);
 log.info(`Chrome version: ${process.versions.chrome}`);
 
 let mainWindow;
+let splashWindow;
+
+// Track file to open when app launches (from double-click or command line)
+let pendingFileToOpen = null;
+
+// =============================================================================
+// FILE ASSOCIATION HANDLING (macOS and Windows)
+// =============================================================================
+
+/**
+ * Handle opening an .smz file
+ * Called when user double-clicks an .smz file or opens via command line
+ */
+function handleOpenFile(filePath) {
+  if (!filePath || !filePath.toLowerCase().endsWith('.smz')) {
+    log.info('[FileAssoc] Ignoring non-.smz file:', filePath);
+    return;
+  }
+
+  log.info('[FileAssoc] Opening .smz file:', filePath);
+
+  // Check if the file exists
+  if (!fs.existsSync(filePath)) {
+    log.error('[FileAssoc] File does not exist:', filePath);
+    return;
+  }
+
+  // If window is ready, send the file path to renderer
+  if (mainWindow && mainWindow.webContents) {
+    log.info('[FileAssoc] Sending file to renderer');
+    mainWindow.webContents.send('file:open-smz', filePath);
+  } else {
+    // Window not ready yet, store for later
+    log.info('[FileAssoc] Window not ready, storing file path for later');
+    pendingFileToOpen = filePath;
+  }
+}
+
+// macOS: Handle file open events (double-click on .smz file)
+// This event fires when file is opened while app is running OR when launching
+app.on('open-file', (event, filePath) => {
+  event.preventDefault();
+  log.info('[FileAssoc] macOS open-file event:', filePath);
+  handleOpenFile(filePath);
+});
+
+// Windows/Linux: Single instance lock and command line argument handling
+// When a second instance tries to open, we get the file path from argv
+const gotTheLock = app.requestSingleInstanceLock();
+
+if (!gotTheLock) {
+  // Another instance is already running, quit this one
+  // The other instance will receive the second-instance event with our argv
+  log.info('[FileAssoc] Another instance is running, quitting');
+  app.quit();
+} else {
+  // We got the lock, handle second-instance events
+  app.on('second-instance', (event, argv, workingDirectory) => {
+    log.info('[FileAssoc] second-instance event, argv:', argv);
+
+    // Find .smz file in command line arguments
+    const smzFile = argv.find(arg => arg.toLowerCase().endsWith('.smz'));
+    if (smzFile) {
+      handleOpenFile(smzFile);
+    }
+
+    // Focus our window
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) {
+        mainWindow.restore();
+      }
+      mainWindow.focus();
+    }
+  });
+}
 
 // Window state management
 const windowStateFile = path.join(app.getPath('userData'), 'window-state.json');
@@ -101,6 +207,31 @@ function saveWindowState() {
   }
 }
 
+// Session state management (persists zustand store to file instead of localStorage)
+const sessionStateFile = path.join(app.getPath('userData'), 'session-state.json');
+
+function loadSessionState() {
+  try {
+    if (fs.existsSync(sessionStateFile)) {
+      const data = fs.readFileSync(sessionStateFile, 'utf8');
+      log.info('[Session] Loaded session state from file');
+      return data; // Return raw JSON string
+    }
+  } catch (error) {
+    log.error('[Session] Error loading session state:', error);
+  }
+  return null;
+}
+
+function saveSessionState(jsonString) {
+  try {
+    fs.writeFileSync(sessionStateFile, jsonString, 'utf8');
+    log.info('[Session] Saved session state to file');
+  } catch (error) {
+    log.error('[Session] Error saving session state:', error);
+  }
+}
+
 function ensureWindowIsVisible(bounds) {
   // Get all displays
   const displays = screen.getAllDisplays();
@@ -133,6 +264,62 @@ function ensureWindowIsVisible(bounds) {
   return bounds;
 }
 
+function createSplashWindow() {
+  // Get package.json version
+  const packageJson = require('../package.json');
+  const version = packageJson.version;
+
+  splashWindow = new BrowserWindow({
+    width: 400,
+    height: 400,
+    frame: false,
+    transparent: true,
+    resizable: false,
+    center: true,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+    },
+  });
+
+  // Load splash HTML with logo embedded as base64
+  // Check if running in packaged app (app.isPackaged is more reliable than NODE_ENV)
+  const logoPath = app.isPackaged
+    ? path.join(process.resourcesPath, 'splash-logo.png')
+    : path.join(__dirname, '../src/assets/app-icon.png');
+  const splashHtmlPath = path.join(__dirname, 'splash.html');
+
+  log.info('[Splash] app.isPackaged:', app.isPackaged);
+  log.info('[Splash] Logo path:', logoPath);
+  log.info('[Splash] Logo exists:', fs.existsSync(logoPath));
+
+  // Read logo and convert to base64 data URL
+  let logoDataUrl = '';
+  try {
+    const logoBuffer = fs.readFileSync(logoPath);
+    logoDataUrl = `data:image/png;base64,${logoBuffer.toString('base64')}`;
+    log.info('[Splash] Logo loaded, base64 length:', logoDataUrl.length);
+  } catch (err) {
+    log.error('[Splash] Failed to load logo:', err);
+  }
+
+  // Read the HTML template and inject the logo and version
+  let splashHtml = fs.readFileSync(splashHtmlPath, 'utf8');
+  splashHtml = splashHtml.replace('LOGO_PATH', logoDataUrl);
+  splashHtml = splashHtml.replace('VERSION_NUMBER', version);
+
+  // Load the modified HTML as a data URL
+  splashWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(splashHtml)}`);
+
+  splashWindow.on('closed', () => {
+    splashWindow = null;
+  });
+
+  log.info('[Splash] Splash window created');
+}
+
 function createWindow() {
   // Load previous window state
   const savedState = loadWindowState();
@@ -147,6 +334,7 @@ function createWindow() {
     minHeight: 768,
     backgroundColor: '#1e1e1e',
     title: 'StraboMicro',
+    show: false, // Hidden until ready - splash screen shows during load
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -171,8 +359,87 @@ function createWindow() {
   mainWindow.on('maximize', saveWindowState);
   mainWindow.on('unmaximize', saveWindowState);
 
-  // Create menu
-  const menuTemplate = [
+  // Track auth state for menu
+  let isLoggedIn = false;
+
+  // Track current project ID for menu
+  let currentProjectId = null;
+
+  // Cache for recent projects (to avoid disk reads on every menu build)
+  let recentProjectsCache = [];
+
+  /**
+   * Format a relative date string (e.g., "Today", "Yesterday", "Nov 25")
+   */
+  function formatRelativeDate(isoString) {
+    if (!isoString) return '';
+
+    const date = new Date(isoString);
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const dateOnly = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+
+    if (dateOnly.getTime() === today.getTime()) {
+      return 'Today';
+    } else if (dateOnly.getTime() === yesterday.getTime()) {
+      return 'Yesterday';
+    } else {
+      // Format as "Nov 25" or "Nov 25, 2024" if different year
+      const options = { month: 'short', day: 'numeric' };
+      if (date.getFullYear() !== now.getFullYear()) {
+        options.year = 'numeric';
+      }
+      return date.toLocaleDateString('en-US', options);
+    }
+  }
+
+  // Function to build menu with current auth state
+  async function buildMenu() {
+    // Fetch recent projects for submenu
+    try {
+      recentProjectsCache = await projectsIndex.getRecentProjects(10);
+    } catch (error) {
+      log.error('[Menu] Error fetching recent projects:', error);
+      recentProjectsCache = [];
+    }
+
+    // Build Recent Projects submenu items
+    const recentProjectsSubmenu = recentProjectsCache.length > 0
+      ? [
+          ...recentProjectsCache.map((proj) => {
+            const isCurrentProject = proj.id === currentProjectId;
+            const dateStr = formatRelativeDate(proj.lastOpened);
+            const label = dateStr
+              ? `${proj.name || 'Untitled Project'}  (${dateStr})`
+              : proj.name || 'Untitled Project';
+
+            return {
+              label,
+              type: isCurrentProject ? 'checkbox' : 'normal',
+              checked: isCurrentProject,
+              enabled: !isCurrentProject,
+              click: () => {
+                if (mainWindow && !isCurrentProject) {
+                  mainWindow.webContents.send('menu:switch-project', proj.id);
+                }
+              }
+            };
+          }),
+          { type: 'separator' },
+          {
+            label: 'Clear Recent Projects',
+            click: async () => {
+              // Just rebuild index from disk (removes deleted projects)
+              await projectsIndex.rebuildIndex();
+              buildMenu();
+            }
+          }
+        ]
+      : [{ label: 'No Recent Projects', enabled: false }];
+
+    const menuTemplate = [
     {
       label: 'File',
       submenu: [
@@ -195,6 +462,76 @@ function createWindow() {
           }
         },
         {
+          label: 'Open Remote Project...',
+          accelerator: 'CmdOrCtrl+Shift+O',
+          enabled: isLoggedIn,
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('menu:open-remote-project');
+            }
+          }
+        },
+        {
+          label: 'Open Shared Project...',
+          enabled: isLoggedIn,
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('menu:open-shared-project');
+            }
+          }
+        },
+        {
+          label: 'Recent Projects',
+          submenu: recentProjectsSubmenu
+        },
+        { type: 'separator' },
+        {
+          label: 'Close Project...',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('menu:close-project');
+            }
+          }
+        },
+        { type: 'separator' },
+        {
+          label: 'Save Project',
+          accelerator: 'CmdOrCtrl+S',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('menu:save-project');
+            }
+          }
+        },
+        {
+          label: 'Export as .smz...',
+          accelerator: 'CmdOrCtrl+Shift+E',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('menu:export-smz');
+            }
+          }
+        },
+        {
+          label: 'Upload to Strabo Server...',
+          accelerator: 'CmdOrCtrl+Shift+U',
+          enabled: isLoggedIn,
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('menu:push-to-server');
+            }
+          }
+        },
+        {
+          label: 'View Version History...',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('menu:view-version-history');
+            }
+          }
+        },
+        { type: 'separator' },
+        {
           label: 'Edit Project',
           accelerator: 'CmdOrCtrl+E',
           click: () => {
@@ -203,7 +540,40 @@ function createWindow() {
             }
           }
         },
-        { label: 'Save', accelerator: 'CmdOrCtrl+S' },
+        {
+          label: 'Export All Images...',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('menu:export-all-images');
+            }
+          }
+        },
+        {
+          label: 'Export Project as JSON...',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('menu:export-project-json');
+            }
+          }
+        },
+        {
+          label: 'Export Project as PDF...',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('menu:export-project-pdf');
+            }
+          }
+        },
+        { type: 'separator' },
+        {
+          label: 'Preferences...',
+          accelerator: 'CmdOrCtrl+,',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('menu:preferences');
+            }
+          }
+        },
         { type: 'separator' },
         { role: 'quit' },
       ],
@@ -229,20 +599,80 @@ function createWindow() {
             }
           }
         },
+        { type: 'separator' },
+        { role: 'cut' },
+        { role: 'copy' },
+        { role: 'paste' },
+        { role: 'selectAll' },
       ],
     },
     {
       label: 'Account',
       submenu: [
-        { label: 'Login' },
-        { label: 'Logout' },
-        { type: 'separator' },
-        { label: 'Settings' },
+        {
+          label: 'Login...',
+          enabled: !isLoggedIn,
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('menu:login');
+            }
+          }
+        },
+        {
+          label: 'Logout',
+          enabled: isLoggedIn,
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('menu:logout');
+            }
+          }
+        },
       ],
     },
     {
       label: 'View',
       submenu: [
+        {
+          label: 'Show Rulers',
+          type: 'checkbox',
+          checked: true,
+          click: (menuItem) => {
+            if (mainWindow) {
+              mainWindow.webContents.send('view:toggle-rulers', menuItem.checked);
+            }
+          }
+        },
+        {
+          label: 'Show Spot Labels',
+          type: 'checkbox',
+          checked: true,
+          click: (menuItem) => {
+            if (mainWindow) {
+              mainWindow.webContents.send('view:toggle-spot-labels', menuItem.checked);
+            }
+          }
+        },
+        {
+          label: 'Show Overlay Outlines',
+          type: 'checkbox',
+          checked: true,
+          click: (menuItem) => {
+            if (mainWindow) {
+              mainWindow.webContents.send('view:toggle-overlay-outlines', menuItem.checked);
+            }
+          }
+        },
+        {
+          label: 'Show Recursive Spots',
+          type: 'checkbox',
+          checked: false,
+          click: (menuItem) => {
+            if (mainWindow) {
+              mainWindow.webContents.send('view:toggle-recursive-spots', menuItem.checked);
+            }
+          }
+        },
+        { type: 'separator' },
         {
           label: 'Theme',
           submenu: [
@@ -281,11 +711,25 @@ function createWindow() {
     {
       label: 'Help',
       submenu: [
-        { label: 'Documentation' },
-        { label: 'About StraboMicro' },
+        {
+          label: 'About StraboMicro',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('help:show-about');
+            }
+          }
+        },
+        { type: 'separator' },
+        {
+          label: 'StraboMicro User Guide',
+          click: async () => {
+            await shell.openExternal('https://strabospot.org/manual/micro');
+          }
+        },
       ],
     },
-    {
+    // Debug menu only shown in development mode
+    ...(!app.isPackaged ? [{
       label: 'Debug',
       submenu: [
         { role: 'reload' },
@@ -295,6 +739,22 @@ function createWindow() {
           click: () => {
             if (mainWindow) {
               mainWindow.webContents.reloadIgnoringCache();
+            }
+          }
+        },
+        { type: 'separator' },
+        {
+          label: 'Trigger Test Error (Main Process)',
+          click: () => {
+            log.info('[Debug] Triggering test error in main process...');
+            throw new Error('Test error from main process - triggered via Debug menu');
+          }
+        },
+        {
+          label: 'Trigger Test Error (Renderer)',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('debug:trigger-test-error');
             }
           }
         },
@@ -372,11 +832,68 @@ function createWindow() {
         { type: 'separator' },
         { role: 'toggleDevTools' },
       ],
-    },
+    }] : []),
   ];
 
-  const menu = Menu.buildFromTemplate(menuTemplate);
-  Menu.setApplicationMenu(menu);
+    const menu = Menu.buildFromTemplate(menuTemplate);
+    Menu.setApplicationMenu(menu);
+  }
+
+  // Store reference to buildMenu for IPC handlers
+  buildMenuFn = buildMenu;
+
+  // Build initial menu
+  buildMenu();
+
+  // IPC handler to update auth state and rebuild menu
+  ipcMain.on('auth:state-changed', (event, loggedIn) => {
+    isLoggedIn = loggedIn;
+    buildMenu();
+  });
+
+  // IPC handler to update current project and rebuild menu
+  ipcMain.on('project:current-changed', (event, projectId) => {
+    currentProjectId = projectId;
+    buildMenu();
+  });
+
+  // Show main window and close splash when ready
+  mainWindow.once('ready-to-show', () => {
+    log.info('[Main] Main window ready to show');
+
+    // Small delay to ensure the app is fully rendered
+    setTimeout(() => {
+      if (splashWindow && !splashWindow.isDestroyed()) {
+        splashWindow.close();
+      }
+      mainWindow.show();
+
+      // If window should be maximized, do it after showing
+      if (savedState.isMaximized) {
+        mainWindow.maximize();
+      }
+
+      // Handle pending file from double-click or command line (with slight delay for renderer init)
+      setTimeout(() => {
+        // Check for pending file from macOS open-file event
+        if (pendingFileToOpen) {
+          log.info('[FileAssoc] Processing pending file:', pendingFileToOpen);
+          mainWindow.webContents.send('file:open-smz', pendingFileToOpen);
+          pendingFileToOpen = null;
+        }
+
+        // Windows: Check command line arguments on initial launch
+        // (macOS uses open-file event instead)
+        if (process.platform !== 'darwin') {
+          const smzFile = process.argv.find(arg => arg.toLowerCase().endsWith('.smz'));
+          if (smzFile && fs.existsSync(smzFile)) {
+            log.info('[FileAssoc] Found .smz in command line args:', smzFile);
+            mainWindow.webContents.send('file:open-smz', smzFile);
+          }
+        }
+      }, 500);
+    }, 500);
+  });
 
   // Load the app
   const isDev = process.env.NODE_ENV !== 'production';
@@ -393,21 +910,65 @@ function createWindow() {
     mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
   }
 
-  mainWindow.on('close', () => {
+  // Track if we're in the process of closing
+  let isClosing = false;
+
+  mainWindow.on('close', (event) => {
     // Save final window state before closing
     saveWindowState();
+
+    // If we're already closing (after save completed), allow the close
+    if (isClosing) {
+      return;
+    }
+
+    // Prevent the window from closing immediately
+    event.preventDefault();
+
+    // Send message to renderer to save if dirty, then close
+    // The renderer will respond with 'app:close-ready' when done
+    if (mainWindow && mainWindow.webContents) {
+      mainWindow.webContents.send('app:before-close');
+    }
   });
 
+  // Listen for close-ready signal from renderer
+  const handleCloseReady = () => {
+    log.info('[App] Received close-ready signal, closing window');
+    isClosing = true;
+    if (mainWindow) {
+      mainWindow.close();
+    }
+  };
+  ipcMain.on('app:close-ready', handleCloseReady);
+
   mainWindow.on('closed', () => {
+    // Clean up the IPC listener when window is closed
+    ipcMain.removeListener('app:close-ready', handleCloseReady);
     mainWindow = null;
   });
 }
 
+// Store a reference to buildMenu so we can call it from IPC handlers
+let buildMenuFn = null;
+
 app.whenReady().then(async () => {
   const isDev = process.env.NODE_ENV !== 'production';
 
+  // Show splash screen immediately
+  createSplashWindow();
+
   // Clean up scratch space on startup
   await scratchSpace.cleanupAll();
+
+  // Rebuild projects index on startup
+  log.info('[App] Rebuilding projects index on startup...');
+  try {
+    await projectsIndex.rebuildIndex();
+    log.info('[App] Projects index rebuilt successfully');
+  } catch (error) {
+    log.error('[App] Error rebuilding projects index:', error);
+  }
 
   // Install React DevTools in development mode
   if (isDev) {
@@ -431,6 +992,8 @@ app.on('window-all-closed', () => {
 
 app.on('activate', () => {
   if (BrowserWindow.getAllWindows().length === 0) {
+    // Show splash on reactivation too
+    createSplashWindow();
     createWindow();
   }
 });
@@ -439,7 +1002,16 @@ app.on('activate', () => {
 // IPC HANDLERS
 // =============================================================================
 
-// File dialog for TIFF selection
+// Session state persistence (for zustand store)
+ipcMain.handle('session:get', () => {
+  return loadSessionState();
+});
+
+ipcMain.handle('session:set', (event, jsonString) => {
+  saveSessionState(jsonString);
+});
+
+// File dialog for TIFF selection (single file)
 ipcMain.handle('dialog:open-tiff', async () => {
   const result = await dialog.showOpenDialog(mainWindow, {
     title: 'Select Micrograph Image',
@@ -460,6 +1032,600 @@ ipcMain.handle('dialog:open-tiff', async () => {
 
   return result.filePaths[0];
 });
+
+// File dialog for multiple TIFF/image selection (batch import)
+ipcMain.handle('dialog:open-multiple-tiff', async () => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: 'Select Micrograph Images',
+    filters: [
+      { name: 'Image Files', extensions: ['tif', 'tiff', 'jpg', 'jpeg', 'png', 'bmp'] },
+      { name: 'TIFF Images', extensions: ['tif', 'tiff'] },
+      { name: 'JPEG Images', extensions: ['jpg', 'jpeg'] },
+      { name: 'PNG Images', extensions: ['png'] },
+      { name: 'BMP Images', extensions: ['bmp'] },
+      { name: 'All Files', extensions: ['*'] }
+    ],
+    properties: ['openFile', 'multiSelections']
+  });
+
+  if (result.canceled || result.filePaths.length === 0) {
+    return [];
+  }
+
+  return result.filePaths;
+});
+
+// Generic file dialog for associated files (single file)
+ipcMain.handle('dialog:open-file', async () => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: 'Select File',
+    filters: [
+      { name: 'All Files', extensions: ['*'] }
+    ],
+    properties: ['openFile']
+  });
+
+  if (result.canceled || result.filePaths.length === 0) {
+    return null;
+  }
+
+  return result.filePaths[0];
+});
+
+// Multi-file dialog for bulk associated files import
+ipcMain.handle('dialog:open-files', async () => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: 'Select Files',
+    filters: [
+      { name: 'All Files', extensions: ['*'] }
+    ],
+    properties: ['openFile', 'multiSelections']
+  });
+
+  if (result.canceled || result.filePaths.length === 0) {
+    return [];
+  }
+
+  return result.filePaths;
+});
+
+// Open external link in default browser
+ipcMain.handle('open-external-link', async (event, url) => {
+  try {
+    log.info(`[IPC] Opening external link: ${url}`);
+    await shell.openExternal(url);
+    return { success: true };
+  } catch (error) {
+    log.error('[IPC] Error opening external link:', error);
+    throw error;
+  }
+});
+
+// Open file with system default application (like double-clicking in Finder/Explorer)
+ipcMain.handle('shell:open-path', async (event, filePath) => {
+  try {
+    log.info(`[IPC] Opening file with default app: ${filePath}`);
+    const result = await shell.openPath(filePath);
+    if (result) {
+      // openPath returns an error string if it fails, empty string on success
+      log.error(`[IPC] Error opening file: ${result}`);
+      return { success: false, error: result };
+    }
+    return { success: true };
+  } catch (error) {
+    log.error('[IPC] Error opening file:', error);
+    throw error;
+  }
+});
+
+// Export detailed notes to PDF
+ipcMain.handle('pdf:export-detailed-notes', async (event, projectData, micrographId, spotId) => {
+  try {
+    log.info('[IPC] Exporting detailed notes to PDF');
+
+    // Determine entity name for default filename
+    let entityName = 'Unknown';
+    let entityType = micrographId ? 'Micrograph' : 'Spot';
+
+    if (micrographId) {
+      // Find micrograph name
+      for (const dataset of projectData.datasets || []) {
+        for (const sample of dataset.samples || []) {
+          const micrograph = sample.micrographs?.find(m => m.id === micrographId);
+          if (micrograph) {
+            entityName = micrograph.name || 'Unnamed';
+            break;
+          }
+        }
+      }
+    }
+
+    // Clean filename (remove invalid characters)
+    const cleanName = entityName.replace(/[<>:"/\\|?*]/g, '_');
+    const defaultFileName = `${entityType}_${cleanName}_Notes.pdf`;
+
+    // Show save dialog
+    const result = await dialog.showSaveDialog({
+      title: 'Export Detailed Notes to PDF',
+      defaultPath: defaultFileName,
+      filters: [
+        { name: 'PDF Files', extensions: ['pdf'] }
+      ]
+    });
+
+    if (result.canceled || !result.filePath) {
+      return { success: false, canceled: true };
+    }
+
+    // Generate PDF
+    await pdfExport.generateDetailedNotesPDF(
+      result.filePath,
+      projectData,
+      micrographId,
+      spotId
+    );
+
+    log.info(`[IPC] PDF exported successfully to: ${result.filePath}`);
+    return { success: true, filePath: result.filePath };
+
+  } catch (error) {
+    log.error('[IPC] Error exporting PDF:', error);
+    throw error;
+  }
+});
+
+// Download micrograph image to user's chosen location
+ipcMain.handle('micrograph:download', async (event, imagePath, suggestedName) => {
+  try {
+    log.info(`[IPC] Download micrograph: ${imagePath}`);
+
+    // Get the file extension from the source file
+    const ext = path.extname(imagePath).toLowerCase() || '.jpg';
+    const cleanName = (suggestedName || 'micrograph').replace(/[<>:"/\\|?*]/g, '_');
+    const defaultFileName = `${cleanName}${ext}`;
+
+    // Show save dialog
+    const result = await dialog.showSaveDialog({
+      title: 'Download Micrograph',
+      defaultPath: defaultFileName,
+      filters: [
+        { name: 'Image Files', extensions: ['jpg', 'jpeg', 'png', 'tif', 'tiff'] },
+        { name: 'All Files', extensions: ['*'] }
+      ]
+    });
+
+    if (result.canceled || !result.filePath) {
+      return { success: false, canceled: true };
+    }
+
+    // Copy the file to the chosen location
+    const fs = require('fs').promises;
+    await fs.copyFile(imagePath, result.filePath);
+
+    log.info(`[IPC] Micrograph downloaded to: ${result.filePath}`);
+    return { success: true, filePath: result.filePath };
+
+  } catch (error) {
+    log.error('[IPC] Error downloading micrograph:', error);
+    throw error;
+  }
+});
+
+/**
+ * Export composite micrograph image with overlays, spots, and labels
+ *
+ * Creates a full-resolution image with:
+ * - Base micrograph
+ * - All child micrographs (associated images) overlaid in correct positions
+ * - Spots (points, lines, polygons) with their colors and opacity
+ * - Labels with black semi-transparent background boxes and white text
+ *
+ * @param {string} projectId - Project ID
+ * @param {string} micrographId - Micrograph ID to export
+ * @param {object} projectData - Current project data from renderer
+ * @param {object} options - Export options
+ * @param {boolean} options.includeSpots - Include spot shapes (default: true)
+ * @param {boolean} options.includeLabels - Include spot labels (default: true)
+ */
+ipcMain.handle('micrograph:export-composite', async (event, projectId, micrographId, projectData, options = {}) => {
+  try {
+    log.info(`[IPC] Exporting composite micrograph: ${micrographId}`);
+
+    const includeSpots = options.includeSpots !== false;
+    const includeLabels = options.includeLabels !== false;
+
+    // Get project folder paths
+    const folderPaths = await projectFolders.getProjectFolderPaths(projectId);
+
+    // Find the micrograph in the project hierarchy
+    let micrograph = null;
+    let childMicrographs = [];
+
+    for (const dataset of projectData.datasets || []) {
+      for (const sample of dataset.samples || []) {
+        for (const micro of sample.micrographs || []) {
+          if (micro.id === micrographId) {
+            micrograph = micro;
+            childMicrographs = (sample.micrographs || []).filter(
+              m => m.parentID === micrographId
+            );
+            break;
+          }
+        }
+        if (micrograph) break;
+      }
+      if (micrograph) break;
+    }
+
+    if (!micrograph) {
+      throw new Error(`Micrograph ${micrographId} not found in project`);
+    }
+
+    // Load base micrograph image
+    const basePath = path.join(folderPaths.images, micrograph.imagePath);
+    log.info(`[IPC] Loading base image: ${basePath}`);
+
+    let baseImage = sharp(basePath);
+    const baseMetadata = await baseImage.metadata();
+    const baseWidth = baseMetadata.width;
+    const baseHeight = baseMetadata.height;
+
+    log.info(`[IPC] Base image dimensions: ${baseWidth}x${baseHeight}`);
+
+    // Build composite layers for child micrographs
+    const compositeInputs = [];
+
+    for (const child of childMicrographs) {
+      try {
+        // Skip point-located micrographs
+        if (child.pointInParent) {
+          log.info(`[IPC] Skipping point-located child ${child.id}`);
+          continue;
+        }
+
+        const childPath = path.join(folderPaths.images, child.imagePath);
+        let childImage = sharp(childPath);
+        const childMetadata = await childImage.metadata();
+
+        // Use stored dimensions
+        const childImageWidth = child.imageWidth || childMetadata.width;
+        const childImageHeight = child.imageHeight || childMetadata.height;
+
+        // Calculate display scale based on pixels per centimeter
+        const childPxPerCm = child.scalePixelsPerCentimeter || 100;
+        const parentPxPerCm = micrograph.scalePixelsPerCentimeter || 100;
+        const displayScale = parentPxPerCm / childPxPerCm;
+
+        // Calculate child dimensions in parent's coordinate space
+        const childDisplayWidth = Math.round(childImageWidth * displayScale);
+        const childDisplayHeight = Math.round(childImageHeight * displayScale);
+
+        // Get child position (ensure integers for Sharp)
+        let topLeftX = 0, topLeftY = 0;
+        if (child.offsetInParent) {
+          topLeftX = Math.round(child.offsetInParent.X);
+          topLeftY = Math.round(child.offsetInParent.Y);
+        } else if (child.xOffset !== undefined && child.yOffset !== undefined) {
+          topLeftX = Math.round(child.xOffset);
+          topLeftY = Math.round(child.yOffset);
+        }
+
+        // Resize child image to display dimensions
+        childImage = childImage.resize(childDisplayWidth, childDisplayHeight, {
+          fit: 'fill',
+          kernel: sharp.kernel.lanczos3
+        });
+
+        // Apply opacity
+        const childOpacity = child.opacity ?? 1.0;
+        childImage = childImage.ensureAlpha();
+
+        if (childOpacity < 1.0) {
+          const { data, info } = await childImage.raw().toBuffer({ resolveWithObject: true });
+          for (let i = 3; i < data.length; i += 4) {
+            data[i] = Math.round(data[i] * childOpacity);
+          }
+          childImage = sharp(data, {
+            raw: { width: info.width, height: info.height, channels: info.channels }
+          });
+        }
+
+        // Apply rotation if needed
+        let finalX = topLeftX, finalY = topLeftY, finalBuffer;
+        if (child.rotation) {
+          const centerX = topLeftX + childDisplayWidth / 2;
+          const centerY = topLeftY + childDisplayHeight / 2;
+
+          childImage = childImage.rotate(child.rotation, {
+            background: { r: 0, g: 0, b: 0, alpha: 0 }
+          });
+
+          const radians = (child.rotation * Math.PI) / 180;
+          const cos = Math.abs(Math.cos(radians));
+          const sin = Math.abs(Math.sin(radians));
+          const rotatedWidth = childDisplayWidth * cos + childDisplayHeight * sin;
+          const rotatedHeight = childDisplayWidth * sin + childDisplayHeight * cos;
+
+          finalX = Math.round(centerX - rotatedWidth / 2);
+          finalY = Math.round(centerY - rotatedHeight / 2);
+          finalBuffer = await childImage.png().toBuffer();
+        } else {
+          finalBuffer = await childImage.png().toBuffer();
+        }
+
+        // Bounds checking and cropping (similar to thumbnail generator)
+        const childBufferMeta = await sharp(finalBuffer).metadata();
+        const childW = childBufferMeta.width;
+        const childH = childBufferMeta.height;
+
+        if (finalX + childW <= 0 || finalY + childH <= 0 || finalX >= baseWidth || finalY >= baseHeight) {
+          continue;
+        }
+
+        let cropX = 0, cropY = 0, cropW = childW, cropH = childH;
+        let compositeX = finalX, compositeY = finalY;
+
+        if (finalX < 0) { cropX = -finalX; cropW -= cropX; compositeX = 0; }
+        if (finalY < 0) { cropY = -finalY; cropH -= cropY; compositeY = 0; }
+        if (compositeX + cropW > baseWidth) { cropW = baseWidth - compositeX; }
+        if (compositeY + cropH > baseHeight) { cropH = baseHeight - compositeY; }
+
+        if (cropW <= 0 || cropH <= 0) continue;
+
+        // Ensure all values are integers for Sharp
+        cropX = Math.round(cropX);
+        cropY = Math.round(cropY);
+        cropW = Math.round(cropW);
+        cropH = Math.round(cropH);
+        compositeX = Math.round(compositeX);
+        compositeY = Math.round(compositeY);
+
+        let compositeBuffer = finalBuffer;
+        if (cropX > 0 || cropY > 0 || cropW !== childW || cropH !== childH) {
+          compositeBuffer = await sharp(finalBuffer)
+            .extract({ left: cropX, top: cropY, width: cropW, height: cropH })
+            .toBuffer();
+        }
+
+        compositeInputs.push({ input: compositeBuffer, left: compositeX, top: compositeY });
+      } catch (error) {
+        log.error(`[IPC] Failed to composite child ${child.id}:`, error);
+      }
+    }
+
+    // Generate SVG overlay for spots and labels
+    if ((includeSpots || includeLabels) && micrograph.spots && micrograph.spots.length > 0) {
+      // Calculate size multiplier based on image dimensions
+      // Base reference: 1000px image = multiplier of 1.0
+      // This scales spots/labels proportionally for larger/smaller images
+      const longestSide = Math.max(baseWidth, baseHeight);
+      const sizeMultiplier = longestSide / 1000;
+
+      log.info(`[IPC] Image size: ${baseWidth}x${baseHeight}, longest side: ${longestSide}, size multiplier: ${sizeMultiplier.toFixed(2)}`);
+
+      // Base sizes (for a ~1000px image)
+      const basePointRadius = 6;
+      const basePointStrokeWidth = 2;
+      const baseLineStrokeWidth = 3;
+      const baseFontSize = 16;
+      const basePadding = 4;
+      const baseOffset = 8;
+      const baseCornerRadius = 3;
+
+      // Scaled sizes
+      const pointRadius = Math.round(basePointRadius * sizeMultiplier);
+      const pointStrokeWidth = Math.round(basePointStrokeWidth * sizeMultiplier);
+      const lineStrokeWidth = Math.round(baseLineStrokeWidth * sizeMultiplier);
+      const fontSize = Math.round(baseFontSize * sizeMultiplier);
+      const padding = Math.round(basePadding * sizeMultiplier);
+      const labelOffset = Math.round(baseOffset * sizeMultiplier);
+      const cornerRadius = Math.round(baseCornerRadius * sizeMultiplier);
+      const charWidth = 8.5 * sizeMultiplier; // Approximate character width
+
+      const svgParts = [];
+      svgParts.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${baseWidth}" height="${baseHeight}">`);
+      svgParts.push('<defs><style>text { font-family: Arial, sans-serif; font-weight: bold; }</style></defs>');
+
+      for (const spot of micrograph.spots) {
+        const geometryType = spot.geometryType || spot.geometry?.type;
+        const color = convertColor(spot.color || '#00ff00');
+        const labelColor = convertColor(spot.labelColor || '#ffffff');
+        const opacity = (spot.opacity ?? 50) / 100;
+        const showLabel = spot.showLabel !== false;
+
+        if (includeSpots) {
+          // Render spot shape
+          if (geometryType === 'point' || geometryType === 'Point') {
+            const x = Array.isArray(spot.geometry?.coordinates)
+              ? spot.geometry.coordinates[0]
+              : spot.points?.[0]?.X ?? 0;
+            const y = Array.isArray(spot.geometry?.coordinates)
+              ? spot.geometry.coordinates[1]
+              : spot.points?.[0]?.Y ?? 0;
+
+            // White outline circle (scaled)
+            svgParts.push(`<circle cx="${x}" cy="${y}" r="${pointRadius}" fill="${color}" stroke="#ffffff" stroke-width="${pointStrokeWidth}"/>`);
+
+          } else if (geometryType === 'line' || geometryType === 'LineString') {
+            const coords = Array.isArray(spot.geometry?.coordinates)
+              ? spot.geometry.coordinates
+              : spot.points?.map(p => [p.X ?? 0, p.Y ?? 0]) || [];
+
+            if (coords.length >= 2) {
+              const pathData = coords.map((c, i) => `${i === 0 ? 'M' : 'L'}${c[0]},${c[1]}`).join(' ');
+              svgParts.push(`<path d="${pathData}" fill="none" stroke="${color}" stroke-width="${lineStrokeWidth}" stroke-linecap="round" stroke-linejoin="round"/>`);
+            }
+
+          } else if (geometryType === 'polygon' || geometryType === 'Polygon') {
+            const coords = Array.isArray(spot.geometry?.coordinates)
+              ? (spot.geometry.coordinates[0] || [])
+              : spot.points?.map(p => [p.X ?? 0, p.Y ?? 0]) || [];
+
+            if (coords.length >= 3) {
+              const pointsStr = coords.map(c => `${c[0]},${c[1]}`).join(' ');
+              svgParts.push(`<polygon points="${pointsStr}" fill="${color}" fill-opacity="${opacity}" stroke="${color}" stroke-width="${lineStrokeWidth}"/>`);
+            }
+          }
+        }
+
+        // Render label
+        if (includeLabels && showLabel && spot.name) {
+          let labelX = 0, labelY = 0;
+
+          if (geometryType === 'point' || geometryType === 'Point') {
+            labelX = (Array.isArray(spot.geometry?.coordinates) ? spot.geometry.coordinates[0] : spot.points?.[0]?.X) || 0;
+            labelY = (Array.isArray(spot.geometry?.coordinates) ? spot.geometry.coordinates[1] : spot.points?.[0]?.Y) || 0;
+          } else {
+            const coords = Array.isArray(spot.geometry?.coordinates)
+              ? (spot.geometry.coordinates[0] || spot.geometry.coordinates)
+              : spot.points?.map(p => [p.X ?? 0, p.Y ?? 0]) || [];
+            if (coords[0]) {
+              labelX = coords[0][0] || coords[0];
+              labelY = coords[0][1] || coords[1];
+            }
+          }
+
+          // Label dimensions (scaled)
+          const labelWidth = spot.name.length * charWidth + padding * 2;
+          const labelHeight = fontSize + padding * 2;
+
+          // Black semi-transparent background box
+          svgParts.push(`<rect x="${labelX + labelOffset}" y="${labelY + labelOffset}" width="${labelWidth}" height="${labelHeight}" rx="${cornerRadius}" fill="#000000" fill-opacity="0.7"/>`);
+          // White label text
+          svgParts.push(`<text x="${labelX + labelOffset + padding}" y="${labelY + labelOffset + fontSize + padding/2}" font-size="${fontSize}" fill="${labelColor}">${escapeXml(spot.name)}</text>`);
+        }
+      }
+
+      svgParts.push('</svg>');
+
+      const svgOverlay = Buffer.from(svgParts.join('\n'));
+      compositeInputs.push({ input: svgOverlay, left: 0, top: 0 });
+    }
+
+    // Apply all composites
+    let finalImage;
+    if (compositeInputs.length > 0) {
+      finalImage = baseImage.composite(compositeInputs);
+    } else {
+      finalImage = baseImage;
+    }
+
+    // Show save dialog
+    const cleanName = (micrograph.name || 'micrograph').replace(/[<>:"/\\|?*]/g, '_');
+    const result = await dialog.showSaveDialog({
+      title: 'Export Composite Micrograph',
+      defaultPath: `${cleanName}_composite.jpg`,
+      filters: [
+        { name: 'JPEG Image', extensions: ['jpg', 'jpeg'] },
+        // { name: 'PNG Image', extensions: ['png'] }, // Commented out for now - may re-enable later
+        { name: 'All Files', extensions: ['*'] }
+      ]
+    });
+
+    if (result.canceled || !result.filePath) {
+      return { success: false, canceled: true };
+    }
+
+    // Save based on extension
+    const ext = path.extname(result.filePath).toLowerCase();
+    if (ext === '.png') {
+      // PNG support kept for manual use via "All Files" filter
+      await finalImage.png().toFile(result.filePath);
+    } else {
+      // Default to JPEG
+      await finalImage.jpeg({ quality: 95 }).toFile(result.filePath);
+    }
+
+    log.info(`[IPC] Composite micrograph exported to: ${result.filePath}`);
+    return { success: true, filePath: result.filePath };
+
+  } catch (error) {
+    log.error('[IPC] Error exporting composite micrograph:', error);
+    throw error;
+  }
+});
+
+// Export micrograph as SVG with vector spots
+ipcMain.handle('micrograph:export-svg', async (event, projectId, micrographId, projectData) => {
+  try {
+    log.info(`[IPC] Exporting micrograph as SVG: ${micrographId}`);
+
+    // Get project folder paths
+    const folderPaths = await projectFolders.getProjectFolderPaths(projectId);
+
+    // Find the micrograph to get its name
+    let micrographName = 'micrograph';
+    for (const dataset of projectData.datasets || []) {
+      for (const sample of dataset.samples || []) {
+        for (const micro of sample.micrographs || []) {
+          if (micro.id === micrographId) {
+            micrographName = micro.name || 'micrograph';
+            break;
+          }
+        }
+      }
+    }
+
+    // Generate SVG
+    const { svg } = await svgExport.exportMicrographAsSvg(
+      projectId,
+      micrographId,
+      projectData,
+      folderPaths
+    );
+
+    // Show save dialog
+    const cleanName = micrographName.replace(/[<>:"/\\|?*]/g, '_');
+    const result = await dialog.showSaveDialog({
+      title: 'Export Micrograph as SVG',
+      defaultPath: `${cleanName}_composite.svg`,
+      filters: [
+        { name: 'SVG Image', extensions: ['svg'] },
+        { name: 'All Files', extensions: ['*'] }
+      ]
+    });
+
+    if (result.canceled || !result.filePath) {
+      return { success: false, canceled: true };
+    }
+
+    // Write SVG file
+    await fs.promises.writeFile(result.filePath, svg, 'utf8');
+
+    log.info(`[IPC] SVG exported to: ${result.filePath}`);
+    return { success: true, filePath: result.filePath };
+
+  } catch (error) {
+    log.error('[IPC] Error exporting SVG:', error);
+    throw error;
+  }
+});
+
+/**
+ * Helper: Convert legacy color format (0xRRGGBBAA) to web format (#RRGGBB)
+ */
+function convertColor(color) {
+  if (!color) return '#00ff00';
+  if (color.startsWith('#')) return color;
+  if (color.startsWith('0x')) {
+    const hex = color.slice(2);
+    const rgb = hex.slice(0, 6);
+    return '#' + rgb;
+  }
+  return color;
+}
+
+/**
+ * Helper: Escape XML special characters for SVG
+ */
+function escapeXml(str) {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
 
 // Image loading (supports TIFF, JPEG, PNG, BMP) - dimensions only for performance
 ipcMain.handle('load-tiff-image', async (event, filePath) => {
@@ -964,6 +2130,36 @@ ipcMain.handle('project:delete-folder', async (event, projectId) => {
 });
 
 /**
+ * Copy a file to the project's associatedFiles folder
+ */
+ipcMain.handle('project:copy-to-associated-files', async (event, sourcePath, projectId, fileName) => {
+  try {
+    log.info(`[IPC] Copying file to associatedFiles: ${fileName}`);
+    const result = await projectFolders.copyFileToAssociatedFiles(sourcePath, projectId, fileName);
+    log.info('[IPC] Successfully copied file to associatedFiles');
+    return result;
+  } catch (error) {
+    log.error('[IPC] Error copying file to associatedFiles:', error);
+    throw error;
+  }
+});
+
+/**
+ * Delete a file from the project's associatedFiles folder
+ */
+ipcMain.handle('project:delete-from-associated-files', async (event, projectId, fileName) => {
+  try {
+    log.info(`[IPC] Deleting file from associatedFiles: ${fileName}`);
+    const result = await projectFolders.deleteFromAssociatedFiles(projectId, fileName);
+    log.info('[IPC] Successfully deleted file from associatedFiles');
+    return result;
+  } catch (error) {
+    log.error('[IPC] Error deleting file from associatedFiles:', error);
+    throw error;
+  }
+});
+
+/**
  * ============================================================================
  * IMAGE CONVERSION HANDLERS
  * ============================================================================
@@ -1097,6 +2293,49 @@ ipcMain.handle('image:is-valid', async (event, filePath) => {
 });
 
 /**
+ * Flip (mirror horizontally) an image file in place
+ * Uses Sharp's flop() for horizontal mirroring
+ * Also clears the tile cache for this image so it gets re-tiled
+ */
+ipcMain.handle('image:flip-horizontal', async (event, imagePath) => {
+  try {
+    log.info(`[IPC] Flipping image horizontally: ${imagePath}`);
+
+    // Read the image
+    const imageBuffer = await sharp(imagePath).flop().toBuffer();
+
+    // Get metadata to determine output format
+    const metadata = await sharp(imagePath).metadata();
+
+    // Write back to the same file
+    // Use PNG for lossless quality preservation
+    if (metadata.format === 'png' || imagePath.toLowerCase().endsWith('.png')) {
+      await sharp(imageBuffer).png().toFile(imagePath + '.tmp');
+    } else if (metadata.format === 'tiff' || imagePath.toLowerCase().endsWith('.tif') || imagePath.toLowerCase().endsWith('.tiff')) {
+      await sharp(imageBuffer).tiff().toFile(imagePath + '.tmp');
+    } else {
+      // Default to JPEG for other formats
+      await sharp(imageBuffer).jpeg({ quality: 95 }).toFile(imagePath + '.tmp');
+    }
+
+    // Replace original with flipped version
+    const fs = require('fs').promises;
+    await fs.unlink(imagePath);
+    await fs.rename(imagePath + '.tmp', imagePath);
+
+    // Clear tile cache for this image so it gets re-tiled
+    const imageHash = await tileCache.generateImageHash(imagePath);
+    await tileCache.clearImageCache(imageHash);
+
+    log.info(`[IPC] Successfully flipped image: ${imagePath}`);
+    return { success: true, hash: imageHash };
+  } catch (error) {
+    log.error('[IPC] Error flipping image:', error);
+    throw error;
+  }
+});
+
+/**
  * ============================================================================
  * COMPOSITE THUMBNAIL GENERATION HANDLERS
  * ============================================================================
@@ -1212,10 +2451,13 @@ ipcMain.handle('composite:generate-thumbnail', async (event, projectId, microgra
 
     for (const child of childMicrographs) {
       try {
+        // Skip point-located micrographs - they should be rendered as point markers, not overlays
+        if (child.pointInParent) {
+          log.info(`[IPC] Skipping point-located child ${child.id} (${child.name}) - not rendered as overlay`);
+          continue;
+        }
+
         log.info(`[IPC] Processing child ${child.id} (${child.name})`);
-        log.info(`[IPC]   Child rotation value: ${child.rotation} (type: ${typeof child.rotation})`);
-        log.info(`[IPC]   Child rotationAngle value: ${child.rotationAngle} (type: ${typeof child.rotationAngle})`);
-        log.info(`[IPC]   All child keys:`, Object.keys(child));
 
         const childPath = path.join(folderPaths.images, child.imagePath);
 
@@ -1275,49 +2517,125 @@ ipcMain.handle('composite:generate-thumbnail', async (event, projectId, microgra
           kernel: sharp.kernel.lanczos3
         });
 
-        // Apply rotation if needed
-        if (child.rotation && child.rotation !== 0) {
-          log.info(`[IPC]   Applying rotation: ${child.rotation}°`);
+        // Get child opacity (default to 1 if not set)
+        const childOpacity = child.opacity ?? 1.0;
+        log.info(`[IPC]   Child opacity: ${childOpacity}`);
 
-          // Rotate the resized image
+        // Ensure we have alpha channel for opacity support
+        childImage = childImage.ensureAlpha();
+
+        // Apply opacity by multiplying the alpha channel
+        // We need to get the buffer, modify alpha values, then create new sharp instance
+        if (childOpacity < 1.0) {
+          const { data, info } = await childImage.raw().toBuffer({ resolveWithObject: true });
+
+          // Modify alpha channel (every 4th byte starting at index 3)
+          for (let i = 3; i < data.length; i += 4) {
+            data[i] = Math.round(data[i] * childOpacity);
+          }
+
+          // Recreate sharp instance with modified data
+          childImage = sharp(data, {
+            raw: {
+              width: info.width,
+              height: info.height,
+              channels: info.channels
+            }
+          });
+        }
+
+        // Apply rotation if needed
+        let finalX, finalY, finalBuffer;
+        if (child.rotation) {
+          // Calculate center position for rotation
+          const centerX = thumbX + thumbChildWidth / 2;
+          const centerY = thumbY + thumbChildHeight / 2;
+
+          // Rotate with transparent background
           childImage = childImage.rotate(child.rotation, {
             background: { r: 0, g: 0, b: 0, alpha: 0 }
           });
 
-          // Calculate rotation using RESIZED dimensions (thumbChildWidth/Height)
-          // NOT metadata which returns original file dimensions
-          // Rotation expands the bounding box, so we need to calculate the new dimensions
+          // Calculate rotated bounding box dimensions mathematically
+          // Sharp's metadata() on a pipeline returns input metadata, not post-transform
           const radians = (child.rotation * Math.PI) / 180;
           const cos = Math.abs(Math.cos(radians));
           const sin = Math.abs(Math.sin(radians));
-          const rotatedWidth = Math.round(thumbChildWidth * cos + thumbChildHeight * sin);
-          const rotatedHeight = Math.round(thumbChildWidth * sin + thumbChildHeight * cos);
+          const rotatedWidth = thumbChildWidth * cos + thumbChildHeight * sin;
+          const rotatedHeight = thumbChildWidth * sin + thumbChildHeight * cos;
 
-          log.info(`[IPC]   Calculated rotated dims: ${rotatedWidth}x${rotatedHeight} (from ${thumbChildWidth}x${thumbChildHeight})`);
+          // Adjust position to account for rotation
+          finalX = Math.round(centerX - rotatedWidth / 2);
+          finalY = Math.round(centerY - rotatedHeight / 2);
+          finalBuffer = await childImage.png().toBuffer();
 
-          const originalCenterX = thumbX + thumbChildWidth / 2;
-          const originalCenterY = thumbY + thumbChildHeight / 2;
-          const rotatedLeft = Math.round(originalCenterX - rotatedWidth / 2);
-          const rotatedTop = Math.round(originalCenterY - rotatedHeight / 2);
-
-          log.info(`[IPC]   Rotated pos: (${rotatedLeft}, ${rotatedTop}), center: (${originalCenterX}, ${originalCenterY})`);
-
-          // Convert to buffer with PNG to preserve alpha channel
-          const rotatedBuffer = await childImage.png().toBuffer();
-          log.info(`[IPC]   Rotated buffer size: ${rotatedBuffer.length} bytes`);
-
-          compositeInputs.push({
-            input: rotatedBuffer,
-            left: rotatedLeft,
-            top: rotatedTop
-          });
+          log.info(`[IPC]   Rotation: ${child.rotation}°, Rotated size: ${Math.round(rotatedWidth)}x${Math.round(rotatedHeight)}`);
         } else {
-          compositeInputs.push({
-            input: await childImage.toBuffer(),
-            left: thumbX,
-            top: thumbY
-          });
+          finalX = thumbX;
+          finalY = thumbY;
+          finalBuffer = await childImage.png().toBuffer();
         }
+
+        // Validate that the composite position is within bounds
+        // Sharp requires: left >= 0, top >= 0, and image fits within base
+        const childBufferMeta = await sharp(finalBuffer).metadata();
+        const childW = childBufferMeta.width;
+        const childH = childBufferMeta.height;
+
+        // Skip children that would be entirely outside the base image
+        if (finalX + childW <= 0 || finalY + childH <= 0 || finalX >= thumbWidth || finalY >= thumbHeight) {
+          log.info(`[IPC]   Skipping child ${child.id} - entirely outside base image bounds`);
+          continue;
+        }
+
+        // Crop child image if it extends outside base bounds
+        let cropX = 0, cropY = 0, cropW = childW, cropH = childH;
+        let compositeX = finalX, compositeY = finalY;
+
+        // Handle negative X (child extends past left edge)
+        if (finalX < 0) {
+          cropX = -finalX;
+          cropW -= cropX;
+          compositeX = 0;
+        }
+
+        // Handle negative Y (child extends past top edge)
+        if (finalY < 0) {
+          cropY = -finalY;
+          cropH -= cropY;
+          compositeY = 0;
+        }
+
+        // Handle overflow on right
+        if (compositeX + cropW > thumbWidth) {
+          cropW = thumbWidth - compositeX;
+        }
+
+        // Handle overflow on bottom
+        if (compositeY + cropH > thumbHeight) {
+          cropH = thumbHeight - compositeY;
+        }
+
+        // Validate crop dimensions are positive
+        if (cropW <= 0 || cropH <= 0) {
+          log.info(`[IPC]   Skipping child ${child.id} - crop dimensions invalid after bounds check`);
+          continue;
+        }
+
+        // If we need to crop, extract the visible region
+        let compositeBuffer = finalBuffer;
+        if (cropX > 0 || cropY > 0 || cropW !== childW || cropH !== childH) {
+          log.info(`[IPC]   Cropping child to visible region: extract(${cropX}, ${cropY}, ${cropW}, ${cropH})`);
+          compositeBuffer = await sharp(finalBuffer)
+            .extract({ left: cropX, top: cropY, width: cropW, height: cropH })
+            .toBuffer();
+        }
+
+        compositeInputs.push({
+          input: compositeBuffer,
+          left: compositeX,
+          top: compositeY
+        });
       } catch (error) {
         log.error(`[IPC] Failed to composite child ${child.id}:`, error);
         // Continue with other children
@@ -1506,11 +2824,13 @@ ipcMain.handle('composite:rebuild-all-thumbnails', async (event, projectId, proj
 
         for (const child of childMicrographs) {
           try {
-            log.info(`[IPC] Rebuild: Processing child ${child.id} (${child.name})`);
-            log.info(`[IPC] Rebuild: Child rotation value: ${child.rotation} (type: ${typeof child.rotation})`);
-            log.info(`[IPC] Rebuild: Child rotationAngle value: ${child.rotationAngle} (type: ${typeof child.rotationAngle})`);
-
             if (!child.imagePath) continue;
+
+            // Skip point-located micrographs - they should be rendered as point markers, not overlays
+            if (child.pointInParent) {
+              log.info(`[IPC] Rebuild: Skipping point-located child ${child.id} - not rendered as overlay`);
+              continue;
+            }
 
             const childPath = path.join(folderPaths.images, child.imagePath);
 
@@ -1555,46 +2875,36 @@ ipcMain.handle('composite:rebuild-all-thumbnails', async (event, projectId, proj
             const thumbChildWidth = Math.round(childDisplayWidth * thumbnailScale);
             const thumbChildHeight = Math.round(childDisplayHeight * thumbnailScale);
 
-            log.info(`[IPC] Rebuild: Thumbnail child dimensions: ${thumbChildWidth}x${thumbChildHeight}, pos: (${thumbX}, ${thumbY})`);
-
             childImage = childImage.resize(thumbChildWidth, thumbChildHeight, {
               fit: 'fill',
               kernel: sharp.kernel.lanczos3
             });
 
-            if (child.rotation && child.rotation !== 0) {
-              log.info(`[IPC] Rebuild: Applying rotation: ${child.rotation}°`);
+            if (child.rotation) {
+              const centerX = thumbX + thumbChildWidth / 2;
+              const centerY = thumbY + thumbChildHeight / 2;
 
-              // Rotate the resized image
-              childImage = childImage.rotate(child.rotation, {
+              // Convert to PNG with alpha channel before rotating
+              // This ensures the rotated corners are transparent, not black
+              childImage = childImage.ensureAlpha().rotate(child.rotation, {
                 background: { r: 0, g: 0, b: 0, alpha: 0 }
               });
 
-              // Calculate rotation using RESIZED dimensions (thumbChildWidth/Height)
-              // NOT metadata which returns original file dimensions
-              // Rotation expands the bounding box, so we need to calculate the new dimensions
+              // Calculate rotated bounding box dimensions mathematically
+              // Sharp's metadata() on a pipeline returns input metadata, not post-transform
               const radians = (child.rotation * Math.PI) / 180;
               const cos = Math.abs(Math.cos(radians));
               const sin = Math.abs(Math.sin(radians));
-              const rotatedWidth = Math.round(thumbChildWidth * cos + thumbChildHeight * sin);
-              const rotatedHeight = Math.round(thumbChildWidth * sin + thumbChildHeight * cos);
+              const rotatedWidth = thumbChildWidth * cos + thumbChildHeight * sin;
+              const rotatedHeight = thumbChildWidth * sin + thumbChildHeight * cos;
 
-              log.info(`[IPC] Rebuild: Calculated rotated dims: ${rotatedWidth}x${rotatedHeight} (from ${thumbChildWidth}x${thumbChildHeight})`);
-
-              const originalCenterX = thumbX + thumbChildWidth / 2;
-              const originalCenterY = thumbY + thumbChildHeight / 2;
-              const rotatedLeft = Math.round(originalCenterX - rotatedWidth / 2);
-              const rotatedTop = Math.round(originalCenterY - rotatedHeight / 2);
-
-              log.info(`[IPC] Rebuild: Rotated pos: (${rotatedLeft}, ${rotatedTop}), center: (${originalCenterX}, ${originalCenterY})`);
-
-              const rotatedBuffer = await childImage.png().toBuffer();
-              log.info(`[IPC] Rebuild: Rotated buffer size: ${rotatedBuffer.length} bytes`);
+              const adjustedX = Math.round(centerX - rotatedWidth / 2);
+              const adjustedY = Math.round(centerY - rotatedHeight / 2);
 
               compositeInputs.push({
-                input: rotatedBuffer,
-                left: rotatedLeft,
-                top: rotatedTop
+                input: await childImage.png().toBuffer(),
+                left: adjustedX,
+                top: adjustedY
               });
             } else {
               compositeInputs.push({
@@ -1770,4 +3080,1596 @@ ipcMain.handle('debug:reset-everything', async () => {
     log.error('[IPC] Error during reset:', error);
     throw error;
   }
+});
+
+/**
+ * ============================================================================
+ * AUTHENTICATION HANDLERS (JWT-based)
+ * ============================================================================
+ *
+ * These handlers manage secure authentication with the StraboSpot server.
+ * JWT tokens are stored securely using Electron's safeStorage API.
+ */
+
+const tokenService = require('./tokenService');
+
+// Helper to get REST server URL from renderer's localStorage
+// We'll pass it from the renderer since preferences are stored there
+function getRestServerFromPreferences(restServer) {
+  return restServer || 'https://strabospot.org';
+}
+
+/**
+ * Login to StraboSpot server
+ * @param {string} email - User's email address
+ * @param {string} password - User's password
+ * @param {string} restServer - REST server URL from preferences
+ * @returns {object} { success, user, error }
+ */
+ipcMain.handle('auth:login', async (event, email, password, restServer) => {
+  try {
+    log.info('[Auth] Attempting login for:', email);
+
+    const baseUrl = getRestServerFromPreferences(restServer);
+    log.info('[Auth] Using REST server:', baseUrl);
+    log.info('[Auth] Full login URL:', `${baseUrl}/jwtauth/login`);
+
+    const response = await fetch(`${baseUrl}/jwtauth/login`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ email, password }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      log.warn('[Auth] Login failed:', data.message || 'Unknown error');
+      return {
+        success: false,
+        error: data.message || 'Invalid email or password',
+      };
+    }
+
+    // Login successful - save tokens securely
+    await tokenService.saveTokens(
+      data.access_token,
+      data.refresh_token,
+      data.expires_in,
+      data.user
+    );
+
+    log.info('[Auth] Login successful for:', data.user.email);
+
+    return {
+      success: true,
+      user: data.user,
+    };
+  } catch (error) {
+    log.error('[Auth] Login error:', error);
+    return {
+      success: false,
+      error: error.message || 'Network error - please check your connection',
+    };
+  }
+});
+
+/**
+ * Logout from StraboSpot server
+ * @param {string} restServer - REST server URL from preferences
+ * @returns {object} { success }
+ */
+ipcMain.handle('auth:logout', async (event, restServer) => {
+  try {
+    const tokens = await tokenService.getTokens();
+
+    if (tokens && tokens.accessToken) {
+      const baseUrl = getRestServerFromPreferences(restServer);
+
+      try {
+        // Notify server to revoke refresh token
+        const response = await fetch(`${baseUrl}/jwtauth/logout`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${tokens.accessToken}`,
+          },
+          body: tokens.refreshToken
+            ? JSON.stringify({ refresh_token: tokens.refreshToken })
+            : undefined,
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          log.info('[Auth] Server logout response:', data.message);
+        } else {
+          log.warn('[Auth] Server logout failed, clearing local tokens anyway');
+        }
+      } catch (networkError) {
+        log.warn('[Auth] Could not reach server for logout, clearing local tokens');
+      }
+    }
+
+    // Always clear local tokens regardless of server response
+    await tokenService.clearTokens();
+
+    log.info('[Auth] Logged out');
+    return { success: true };
+  } catch (error) {
+    log.error('[Auth] Logout error:', error);
+    // Still clear local tokens on error
+    await tokenService.clearTokens();
+    return { success: true };
+  }
+});
+
+/**
+ * Refresh the access token using the refresh token
+ * @param {string} restServer - REST server URL from preferences
+ * @returns {object} { success, error }
+ */
+ipcMain.handle('auth:refresh', async (event, restServer) => {
+  try {
+    const tokens = await tokenService.getTokens();
+
+    if (!tokens || !tokens.refreshToken) {
+      log.warn('[Auth] No refresh token available');
+      return { success: false, error: 'No refresh token' };
+    }
+
+    const baseUrl = getRestServerFromPreferences(restServer);
+    const response = await fetch(`${baseUrl}/jwtauth/refresh`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ refresh_token: tokens.refreshToken }),
+    });
+
+    if (!response.ok) {
+      log.error('[Auth] Token refresh failed - session expired');
+      // Clear tokens since refresh failed
+      await tokenService.clearTokens();
+      return {
+        success: false,
+        error: 'Session expired. Please log in again.',
+      };
+    }
+
+    const data = await response.json();
+
+    // Update the access token
+    await tokenService.updateAccessToken(data.access_token, data.expires_in);
+
+    log.info('[Auth] Token refreshed successfully');
+    return { success: true };
+  } catch (error) {
+    log.error('[Auth] Token refresh error:', error);
+    return {
+      success: false,
+      error: error.message || 'Failed to refresh session',
+    };
+  }
+});
+
+/**
+ * Check if user is currently logged in with valid tokens
+ * @returns {object} { isLoggedIn, user }
+ */
+ipcMain.handle('auth:check', async () => {
+  try {
+    const tokens = await tokenService.getTokens();
+
+    if (!tokens) {
+      return { isLoggedIn: false, user: null };
+    }
+
+    // Check if token is expired
+    const isExpired = tokenService.isTokenExpired(tokens);
+
+    if (isExpired) {
+      // Token expired but we have refresh token - let renderer know to refresh
+      return {
+        isLoggedIn: false,
+        user: tokens.user,
+        needsRefresh: true,
+      };
+    }
+
+    return {
+      isLoggedIn: true,
+      user: tokens.user,
+    };
+  } catch (error) {
+    log.error('[Auth] Auth check error:', error);
+    return { isLoggedIn: false, user: null };
+  }
+});
+
+/**
+ * Get the current access token for API calls
+ * Renderer should call this before making authenticated requests
+ * @returns {object} { token, user } or { token: null } if not logged in
+ */
+ipcMain.handle('auth:get-token', async () => {
+  try {
+    const tokens = await tokenService.getTokens();
+
+    if (!tokens) {
+      return { token: null };
+    }
+
+    // Check if token is expired
+    if (tokenService.isTokenExpired(tokens)) {
+      return { token: null, expired: true };
+    }
+
+    return {
+      token: tokens.accessToken,
+      user: tokens.user,
+    };
+  } catch (error) {
+    log.error('[Auth] Get token error:', error);
+    return { token: null };
+  }
+});
+
+/**
+ * Check if secure storage is available
+ * @returns {object} { available, backend }
+ */
+ipcMain.handle('auth:check-storage', async () => {
+  return {
+    available: tokenService.isEncryptionAvailable(),
+    backend: tokenService.getStorageBackend(),
+  };
+});
+
+// =============================================================================
+// BATCH EXPORT ALL IMAGES TO ZIP
+// =============================================================================
+
+/**
+ * Helper: Generate composite image buffer for a micrograph
+ * Reuses logic from micrograph:export-composite but returns buffer instead of saving
+ */
+async function generateCompositeBuffer(projectId, micrograph, projectData, folderPaths) {
+  const includeSpots = true;
+  const includeLabels = true;
+
+  // Find child micrographs for this micrograph
+  let childMicrographs = [];
+  for (const dataset of projectData.datasets || []) {
+    for (const sample of dataset.samples || []) {
+      const children = (sample.micrographs || []).filter(
+        m => m.parentID === micrograph.id
+      );
+      childMicrographs.push(...children);
+    }
+  }
+
+  // Load base micrograph image
+  const basePath = path.join(folderPaths.images, micrograph.imagePath);
+  let baseImage = sharp(basePath);
+  const baseMetadata = await baseImage.metadata();
+  const baseWidth = baseMetadata.width;
+  const baseHeight = baseMetadata.height;
+
+  // Build composite layers for child micrographs
+  const compositeInputs = [];
+
+  for (const child of childMicrographs) {
+    try {
+      // Skip point-located micrographs
+      if (child.pointInParent) {
+        continue;
+      }
+
+      const childPath = path.join(folderPaths.images, child.imagePath);
+      let childImage = sharp(childPath);
+      const childMetadata = await childImage.metadata();
+
+      // Use stored dimensions
+      const childImageWidth = child.imageWidth || childMetadata.width;
+      const childImageHeight = child.imageHeight || childMetadata.height;
+
+      // Calculate display scale based on pixels per centimeter
+      const childPxPerCm = child.scalePixelsPerCentimeter || 100;
+      const parentPxPerCm = micrograph.scalePixelsPerCentimeter || 100;
+      const displayScale = parentPxPerCm / childPxPerCm;
+
+      // Calculate child dimensions in parent's coordinate space
+      const childDisplayWidth = Math.round(childImageWidth * displayScale);
+      const childDisplayHeight = Math.round(childImageHeight * displayScale);
+
+      // Get child position (ensure integers for Sharp)
+      let topLeftX = 0, topLeftY = 0;
+      if (child.offsetInParent) {
+        topLeftX = Math.round(child.offsetInParent.X);
+        topLeftY = Math.round(child.offsetInParent.Y);
+      } else if (child.xOffset !== undefined && child.yOffset !== undefined) {
+        topLeftX = Math.round(child.xOffset);
+        topLeftY = Math.round(child.yOffset);
+      }
+
+      // Resize child image to display dimensions
+      childImage = childImage.resize(childDisplayWidth, childDisplayHeight, {
+        fit: 'fill',
+        kernel: sharp.kernel.lanczos3
+      });
+
+      // Apply opacity
+      const childOpacity = child.opacity ?? 1.0;
+      childImage = childImage.ensureAlpha();
+
+      if (childOpacity < 1.0) {
+        const { data, info } = await childImage.raw().toBuffer({ resolveWithObject: true });
+        for (let i = 3; i < data.length; i += 4) {
+          data[i] = Math.round(data[i] * childOpacity);
+        }
+        childImage = sharp(data, {
+          raw: { width: info.width, height: info.height, channels: info.channels }
+        });
+      }
+
+      // Apply rotation if needed
+      let finalX = topLeftX, finalY = topLeftY, finalBuffer;
+      if (child.rotation) {
+        const centerX = topLeftX + childDisplayWidth / 2;
+        const centerY = topLeftY + childDisplayHeight / 2;
+
+        childImage = childImage.rotate(child.rotation, {
+          background: { r: 0, g: 0, b: 0, alpha: 0 }
+        });
+
+        const radians = (child.rotation * Math.PI) / 180;
+        const cos = Math.abs(Math.cos(radians));
+        const sin = Math.abs(Math.sin(radians));
+        const rotatedWidth = childDisplayWidth * cos + childDisplayHeight * sin;
+        const rotatedHeight = childDisplayWidth * sin + childDisplayHeight * cos;
+
+        finalX = Math.round(centerX - rotatedWidth / 2);
+        finalY = Math.round(centerY - rotatedHeight / 2);
+        finalBuffer = await childImage.png().toBuffer();
+      } else {
+        finalBuffer = await childImage.png().toBuffer();
+      }
+
+      // Bounds checking and cropping
+      const childBufferMeta = await sharp(finalBuffer).metadata();
+      const childW = childBufferMeta.width;
+      const childH = childBufferMeta.height;
+
+      if (finalX + childW <= 0 || finalY + childH <= 0 || finalX >= baseWidth || finalY >= baseHeight) {
+        continue;
+      }
+
+      let cropX = 0, cropY = 0, cropW = childW, cropH = childH;
+      let compositeX = finalX, compositeY = finalY;
+
+      if (finalX < 0) { cropX = -finalX; cropW -= cropX; compositeX = 0; }
+      if (finalY < 0) { cropY = -finalY; cropH -= cropY; compositeY = 0; }
+      if (compositeX + cropW > baseWidth) { cropW = baseWidth - compositeX; }
+      if (compositeY + cropH > baseHeight) { cropH = baseHeight - compositeY; }
+
+      if (cropW <= 0 || cropH <= 0) continue;
+
+      // Ensure all values are integers for Sharp
+      cropX = Math.round(cropX);
+      cropY = Math.round(cropY);
+      cropW = Math.round(cropW);
+      cropH = Math.round(cropH);
+      compositeX = Math.round(compositeX);
+      compositeY = Math.round(compositeY);
+
+      let compositeBuffer = finalBuffer;
+      if (cropX > 0 || cropY > 0 || cropW !== childW || cropH !== childH) {
+        compositeBuffer = await sharp(finalBuffer)
+          .extract({ left: cropX, top: cropY, width: cropW, height: cropH })
+          .toBuffer();
+      }
+
+      compositeInputs.push({ input: compositeBuffer, left: compositeX, top: compositeY });
+    } catch (error) {
+      log.error(`[BatchExport] Failed to composite child ${child.id}:`, error);
+    }
+  }
+
+  // Generate SVG overlay for spots and labels
+  if ((includeSpots || includeLabels) && micrograph.spots && micrograph.spots.length > 0) {
+    const longestSide = Math.max(baseWidth, baseHeight);
+    const sizeMultiplier = longestSide / 1000;
+
+    const basePointRadius = 6;
+    const basePointStrokeWidth = 2;
+    const baseLineStrokeWidth = 3;
+    const baseFontSize = 16;
+    const basePadding = 4;
+    const baseOffset = 8;
+    const baseCornerRadius = 3;
+
+    const pointRadius = Math.round(basePointRadius * sizeMultiplier);
+    const pointStrokeWidth = Math.round(basePointStrokeWidth * sizeMultiplier);
+    const lineStrokeWidth = Math.round(baseLineStrokeWidth * sizeMultiplier);
+    const fontSize = Math.round(baseFontSize * sizeMultiplier);
+    const padding = Math.round(basePadding * sizeMultiplier);
+    const labelOffset = Math.round(baseOffset * sizeMultiplier);
+    const cornerRadius = Math.round(baseCornerRadius * sizeMultiplier);
+    const charWidth = 8.5 * sizeMultiplier;
+
+    const svgParts = [];
+    svgParts.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${baseWidth}" height="${baseHeight}">`);
+    svgParts.push('<defs><style>text { font-family: Arial, sans-serif; font-weight: bold; }</style></defs>');
+
+    for (const spot of micrograph.spots) {
+      const geometryType = spot.geometryType || spot.geometry?.type;
+      const color = convertColor(spot.color || '#00ff00');
+      const labelColor = convertColor(spot.labelColor || '#ffffff');
+      const opacity = (spot.opacity ?? 50) / 100;
+      const showLabel = spot.showLabel !== false;
+
+      if (includeSpots) {
+        if (geometryType === 'point' || geometryType === 'Point') {
+          const x = Array.isArray(spot.geometry?.coordinates)
+            ? spot.geometry.coordinates[0]
+            : spot.points?.[0]?.X ?? 0;
+          const y = Array.isArray(spot.geometry?.coordinates)
+            ? spot.geometry.coordinates[1]
+            : spot.points?.[0]?.Y ?? 0;
+          svgParts.push(`<circle cx="${x}" cy="${y}" r="${pointRadius}" fill="${color}" stroke="#ffffff" stroke-width="${pointStrokeWidth}"/>`);
+        } else if (geometryType === 'line' || geometryType === 'LineString') {
+          const coords = Array.isArray(spot.geometry?.coordinates)
+            ? spot.geometry.coordinates
+            : spot.points?.map(p => [p.X ?? 0, p.Y ?? 0]) || [];
+          if (coords.length >= 2) {
+            const pathData = coords.map((c, i) => `${i === 0 ? 'M' : 'L'}${c[0]},${c[1]}`).join(' ');
+            svgParts.push(`<path d="${pathData}" fill="none" stroke="${color}" stroke-width="${lineStrokeWidth}" stroke-linecap="round" stroke-linejoin="round"/>`);
+          }
+        } else if (geometryType === 'polygon' || geometryType === 'Polygon') {
+          const coords = Array.isArray(spot.geometry?.coordinates)
+            ? (spot.geometry.coordinates[0] || [])
+            : spot.points?.map(p => [p.X ?? 0, p.Y ?? 0]) || [];
+          if (coords.length >= 3) {
+            const pointsStr = coords.map(c => `${c[0]},${c[1]}`).join(' ');
+            svgParts.push(`<polygon points="${pointsStr}" fill="${color}" fill-opacity="${opacity}" stroke="${color}" stroke-width="${lineStrokeWidth}"/>`);
+          }
+        }
+      }
+
+      if (includeLabels && showLabel && spot.name) {
+        let labelX = 0, labelY = 0;
+        if (geometryType === 'point' || geometryType === 'Point') {
+          labelX = (Array.isArray(spot.geometry?.coordinates) ? spot.geometry.coordinates[0] : spot.points?.[0]?.X) || 0;
+          labelY = (Array.isArray(spot.geometry?.coordinates) ? spot.geometry.coordinates[1] : spot.points?.[0]?.Y) || 0;
+        } else {
+          const coords = Array.isArray(spot.geometry?.coordinates)
+            ? (spot.geometry.coordinates[0] || spot.geometry.coordinates)
+            : spot.points?.map(p => [p.X ?? 0, p.Y ?? 0]) || [];
+          if (coords[0]) {
+            labelX = coords[0][0] || coords[0];
+            labelY = coords[0][1] || coords[1];
+          }
+        }
+        const labelWidth = spot.name.length * charWidth + padding * 2;
+        const labelHeight = fontSize + padding * 2;
+        svgParts.push(`<rect x="${labelX + labelOffset}" y="${labelY + labelOffset}" width="${labelWidth}" height="${labelHeight}" rx="${cornerRadius}" fill="#000000" fill-opacity="0.7"/>`);
+        svgParts.push(`<text x="${labelX + labelOffset + padding}" y="${labelY + labelOffset + fontSize + padding/2}" font-size="${fontSize}" fill="${labelColor}">${escapeXml(spot.name)}</text>`);
+      }
+    }
+
+    svgParts.push('</svg>');
+    const svgOverlay = Buffer.from(svgParts.join('\n'));
+    compositeInputs.push({ input: svgOverlay, left: 0, top: 0 });
+  }
+
+  // Apply all composites
+  let finalImage;
+  if (compositeInputs.length > 0) {
+    finalImage = baseImage.composite(compositeInputs);
+  } else {
+    finalImage = baseImage;
+  }
+
+  // Return JPEG buffer
+  return await finalImage.jpeg({ quality: 95 }).toBuffer();
+}
+
+/**
+ * Collect all micrographs from project (flattened list)
+ */
+function collectAllMicrographs(projectData) {
+  const micrographs = [];
+  for (const dataset of projectData.datasets || []) {
+    for (const sample of dataset.samples || []) {
+      for (const micrograph of sample.micrographs || []) {
+        micrographs.push({
+          micrograph,
+          datasetName: dataset.name || 'Unknown Dataset',
+          sampleName: sample.name || 'Unknown Sample',
+        });
+      }
+    }
+  }
+  return micrographs;
+}
+
+/**
+ * Export all micrographs to a ZIP file
+ * Sends progress updates to renderer via IPC
+ */
+ipcMain.handle('project:export-all-images', async (event, projectId, projectData, format = 'jpeg') => {
+  try {
+    log.info(`[BatchExport] Starting batch export for project: ${projectId} (format: ${format})`);
+
+    // Collect all micrographs
+    const allMicrographs = collectAllMicrographs(projectData);
+    const total = allMicrographs.length;
+
+    if (total === 0) {
+      return { success: false, error: 'No micrographs found in project' };
+    }
+
+    log.info(`[BatchExport] Found ${total} micrographs to export`);
+
+    // Determine file extension based on format
+    const fileExtension = format === 'svg' ? 'svg' : 'jpg';
+
+    // Show save dialog for ZIP file
+    const projectName = (projectData.name || 'project').replace(/[<>:"/\\|?*]/g, '_');
+    const result = await dialog.showSaveDialog({
+      title: 'Export All Images',
+      defaultPath: `${projectName}_images.zip`,
+      filters: [
+        { name: 'ZIP Archive', extensions: ['zip'] },
+        { name: 'All Files', extensions: ['*'] }
+      ]
+    });
+
+    if (result.canceled || !result.filePath) {
+      return { success: false, canceled: true };
+    }
+
+    // Get project folder paths
+    const folderPaths = await projectFolders.getProjectFolderPaths(projectId);
+
+    // Create ZIP file
+    const output = fs.createWriteStream(result.filePath);
+    const archive = archiver('zip', { zlib: { level: 6 } });
+
+    // Handle errors
+    archive.on('error', (err) => {
+      throw err;
+    });
+
+    // Pipe archive to output file
+    archive.pipe(output);
+
+    // Process each micrograph
+    let completed = 0;
+    const errors = [];
+
+    // Import SVG export module if needed
+    const svgExport = format === 'svg' ? require('./svgExport') : null;
+
+    for (const { micrograph, datasetName, sampleName } of allMicrographs) {
+      try {
+        // Send progress update to renderer
+        const progress = {
+          current: completed + 1,
+          total,
+          currentName: micrograph.name || 'Unnamed',
+          status: 'processing'
+        };
+        event.sender.send('export-all-images:progress', progress);
+
+        log.info(`[BatchExport] Processing ${completed + 1}/${total}: ${micrograph.name}`);
+
+        // Create filename (sanitize for ZIP)
+        const cleanName = (micrograph.name || 'micrograph').replace(/[<>:"/\\|?*]/g, '_');
+        const filename = `${cleanName}.${fileExtension}`;
+
+        if (format === 'svg') {
+          // Generate SVG
+          const { svg } = await svgExport.exportMicrographAsSvg(projectId, micrograph.id, projectData, folderPaths);
+          archive.append(svg, { name: filename });
+        } else {
+          // Generate JPEG composite buffer
+          const buffer = await generateCompositeBuffer(projectId, micrograph, projectData, folderPaths);
+          archive.append(buffer, { name: filename });
+        }
+
+        completed++;
+      } catch (error) {
+        log.error(`[BatchExport] Error processing ${micrograph.name}:`, error);
+        errors.push({
+          micrographId: micrograph.id,
+          name: micrograph.name,
+          error: error.message
+        });
+        completed++;
+      }
+    }
+
+    // Finalize archive
+    await archive.finalize();
+
+    // Wait for output stream to finish
+    await new Promise((resolve, reject) => {
+      output.on('close', resolve);
+      output.on('error', reject);
+    });
+
+    // Send completion
+    event.sender.send('export-all-images:progress', {
+      current: total,
+      total,
+      currentName: '',
+      status: 'complete'
+    });
+
+    log.info(`[BatchExport] Export complete: ${result.filePath} (${completed} images)`);
+
+    return {
+      success: true,
+      filePath: result.filePath,
+      exported: completed,
+      errors: errors.length > 0 ? errors : undefined
+    };
+
+  } catch (error) {
+    log.error('[BatchExport] Export failed:', error);
+    event.sender.send('export-all-images:progress', {
+      current: 0,
+      total: 0,
+      currentName: '',
+      status: 'error',
+      error: error.message
+    });
+    throw error;
+  }
+});
+
+/**
+ * Convert SimpleCoord to legacy format (uppercase X/Y)
+ */
+function convertCoordToLegacy(coord) {
+  if (!coord) return null;
+  return {
+    X: coord.X ?? coord.x ?? null,
+    Y: coord.Y ?? coord.y ?? null
+  };
+}
+
+/**
+ * Convert GeoJSON geometry to legacy points array format
+ * Legacy format: geometryType + points array of {X, Y} objects
+ */
+function convertGeometryToLegacy(geometry) {
+  if (!geometry) return { geometryType: null, points: null };
+
+  const geometryType = geometry.type || null;
+  let points = null;
+
+  if (geometry.coordinates) {
+    switch (geometry.type) {
+      case 'Point':
+        // [x, y] -> [{X, Y}]
+        points = [{ X: geometry.coordinates[0], Y: geometry.coordinates[1] }];
+        break;
+      case 'LineString':
+        // [[x,y], [x,y], ...] -> [{X,Y}, {X,Y}, ...]
+        points = geometry.coordinates.map(coord => ({ X: coord[0], Y: coord[1] }));
+        break;
+      case 'Polygon':
+        // [[[x,y], [x,y], ...]] -> [{X,Y}, {X,Y}, ...] (first ring only)
+        if (geometry.coordinates[0]) {
+          points = geometry.coordinates[0].map(coord => ({ X: coord[0], Y: coord[1] }));
+        }
+        break;
+    }
+  }
+
+  return { geometryType, points };
+}
+
+/**
+ * Sanitize spot for legacy JSON export
+ */
+function sanitizeSpotForExport(spot) {
+  if (!spot) return null;
+
+  // Convert geometry to legacy format if present
+  const { geometryType, points } = spot.geometry
+    ? convertGeometryToLegacy(spot.geometry)
+    : { geometryType: spot.geometryType || null, points: spot.points || null };
+
+  // Convert points array to legacy format (uppercase X/Y)
+  const legacyPoints = points ? points.map(p => convertCoordToLegacy(p)) : null;
+
+  // Build legacy spot object - exclude runtime-only fields
+  const legacySpot = {
+    id: spot.id || null,
+    name: spot.name || null,
+    labelColor: spot.labelColor || null,
+    showLabel: spot.showLabel ?? null,
+    color: spot.color || null,
+    date: spot.date || null,
+    time: spot.time || null,
+    notes: spot.notes || null,
+    modifiedTimestamp: spot.modifiedTimestamp ?? null,
+    geometryType: geometryType,
+    points: legacyPoints,
+    // Feature info types
+    mineralogy: spot.mineralogy || null,
+    grainInfo: spot.grainInfo || null,
+    fabricInfo: spot.fabricInfo || null,
+    clasticDeformationBandInfo: spot.clasticDeformationBandInfo || null,
+    grainBoundaryInfo: spot.grainBoundaryInfo || null,
+    intraGrainInfo: spot.intraGrainInfo || null,
+    veinInfo: spot.veinInfo || null,
+    pseudotachylyteInfo: spot.pseudotachylyteInfo || null,
+    foldInfo: spot.foldInfo || null,
+    faultsShearZonesInfo: spot.faultsShearZonesInfo || null,
+    extinctionMicrostructureInfo: spot.extinctionMicrostructureInfo || null,
+    lithologyInfo: spot.lithologyInfo || null,
+    fractureInfo: spot.fractureInfo || null,
+    // Supporting data
+    associatedFiles: spot.associatedFiles || null,
+    links: spot.links || null,
+    tags: spot.tags || null
+  };
+
+  // Remove null/undefined values to keep JSON clean (optional, but matches legacy behavior)
+  return Object.fromEntries(Object.entries(legacySpot).filter(([_, v]) => v !== undefined));
+}
+
+/**
+ * Sanitize micrograph for legacy JSON export
+ */
+function sanitizeMicrographForExport(micrograph) {
+  if (!micrograph) return null;
+
+  // Build legacy micrograph object - exclude runtime-only fields
+  const legacyMicrograph = {
+    id: micrograph.id || null,
+    parentID: micrograph.parentID || null,
+    name: micrograph.name || null,
+    imageType: micrograph.imageType || null,
+    width: micrograph.width ?? micrograph.imageWidth ?? null,
+    height: micrograph.height ?? micrograph.imageHeight ?? null,
+    opacity: micrograph.opacity ?? null,
+    scale: micrograph.scale || null,
+    polish: micrograph.polish ?? null,
+    polishDescription: micrograph.polishDescription || null,
+    description: micrograph.description || null,
+    notes: micrograph.notes || null,
+    scalePixelsPerCentimeter: micrograph.scalePixelsPerCentimeter ?? null,
+    offsetInParent: convertCoordToLegacy(micrograph.offsetInParent),
+    pointInParent: convertCoordToLegacy(micrograph.pointInParent),
+    rotation: micrograph.rotation ?? null,
+    // Feature info types
+    mineralogy: micrograph.mineralogy || null,
+    grainInfo: micrograph.grainInfo || null,
+    fabricInfo: micrograph.fabricInfo || null,
+    orientationInfo: micrograph.orientationInfo || null,
+    clasticDeformationBandInfo: micrograph.clasticDeformationBandInfo || null,
+    grainBoundaryInfo: micrograph.grainBoundaryInfo || null,
+    intraGrainInfo: micrograph.intraGrainInfo || null,
+    veinInfo: micrograph.veinInfo || null,
+    pseudotachylyteInfo: micrograph.pseudotachylyteInfo || null,
+    foldInfo: micrograph.foldInfo || null,
+    faultsShearZonesInfo: micrograph.faultsShearZonesInfo || null,
+    extinctionMicrostructureInfo: micrograph.extinctionMicrostructureInfo || null,
+    lithologyInfo: micrograph.lithologyInfo || null,
+    fractureInfo: micrograph.fractureInfo || null,
+    // Supporting data
+    instrument: micrograph.instrument || null,
+    associatedFiles: micrograph.associatedFiles || null,
+    links: micrograph.links || null,
+    // UI/visibility state
+    isMicroVisible: micrograph.isMicroVisible ?? null,
+    isExpanded: micrograph.isExpanded ?? null,
+    isSpotExpanded: micrograph.isSpotExpanded ?? null,
+    isFlipped: micrograph.isFlipped ?? micrograph.flipped ?? null,
+    tags: micrograph.tags || null,
+    // Spots (recursively sanitize)
+    spots: micrograph.spots ? micrograph.spots.map(s => sanitizeSpotForExport(s)) : null
+  };
+
+  return Object.fromEntries(Object.entries(legacyMicrograph).filter(([_, v]) => v !== undefined));
+}
+
+/**
+ * Sanitize sample for legacy JSON export
+ * Maps modern 'name' field to legacy 'label' field
+ */
+function sanitizeSampleForExport(sample) {
+  if (!sample) return null;
+
+  const legacySample = {
+    id: sample.id || null,
+    existsOnServer: sample.existsOnServer ?? null,
+    // Map 'name' to 'label' for legacy compatibility
+    label: sample.label || sample.name || null,
+    sampleID: sample.sampleID || null,
+    longitude: sample.longitude ?? null,
+    latitude: sample.latitude ?? null,
+    mainSamplingPurpose: sample.mainSamplingPurpose || null,
+    sampleDescription: sample.sampleDescription || null,
+    materialType: sample.materialType || null,
+    inplacenessOfSample: sample.inplacenessOfSample || null,
+    orientedSample: sample.orientedSample || null,
+    sampleSize: sample.sampleSize || null,
+    degreeOfWeathering: sample.degreeOfWeathering || null,
+    sampleNotes: sample.sampleNotes || null,
+    sampleType: sample.sampleType || null,
+    color: sample.color || null,
+    lithology: sample.lithology || null,
+    sampleUnit: sample.sampleUnit || null,
+    otherMaterialType: sample.otherMaterialType || null,
+    sampleOrientationNotes: sample.sampleOrientationNotes || null,
+    otherSamplingPurpose: sample.otherSamplingPurpose || null,
+    // UI state
+    isExpanded: sample.isExpanded ?? null,
+    isSpotExpanded: sample.isSpotExpanded ?? null,
+    // Micrographs (recursively sanitize)
+    micrographs: sample.micrographs ? sample.micrographs.map(m => sanitizeMicrographForExport(m)) : null
+  };
+
+  return Object.fromEntries(Object.entries(legacySample).filter(([_, v]) => v !== undefined));
+}
+
+/**
+ * Sanitize dataset for legacy JSON export
+ */
+function sanitizeDatasetForExport(dataset) {
+  if (!dataset) return null;
+
+  const legacyDataset = {
+    id: dataset.id || null,
+    name: dataset.name || null,
+    date: dataset.date || null,
+    modifiedTimestamp: dataset.modifiedTimestamp || null,
+    samples: dataset.samples ? dataset.samples.map(s => sanitizeSampleForExport(s)) : null
+  };
+
+  return Object.fromEntries(Object.entries(legacyDataset).filter(([_, v]) => v !== undefined));
+}
+
+/**
+ * Sanitize group for legacy JSON export
+ */
+function sanitizeGroupForExport(group) {
+  if (!group) return null;
+
+  const legacyGroup = {
+    id: group.id || null,
+    name: group.name || null,
+    micrographs: group.micrographs || null,
+    isExpanded: group.isExpanded ?? null
+  };
+
+  return Object.fromEntries(Object.entries(legacyGroup).filter(([_, v]) => v !== undefined));
+}
+
+/**
+ * Sanitize tag for legacy JSON export
+ */
+function sanitizeTagForExport(tag) {
+  if (!tag) return null;
+
+  const legacyTag = {
+    id: tag.id || null,
+    name: tag.name || null,
+    tagType: tag.tagType || null,
+    tagSubtype: tag.tagSubtype || null,
+    otherConcept: tag.otherConcept || null,
+    otherDocumentation: tag.otherDocumentation || null,
+    otherTagType: tag.otherTagType || null,
+    lineColor: tag.lineColor || null,
+    fillColor: tag.fillColor || null,
+    transparency: tag.transparency ?? null,
+    tagSize: tag.tagSize ?? null,
+    notes: tag.notes || null
+  };
+
+  return Object.fromEntries(Object.entries(legacyTag).filter(([_, v]) => v !== undefined));
+}
+
+/**
+ * Sanitize entire project for legacy JSON export
+ * Removes runtime-only fields and maps modern fields to legacy equivalents
+ */
+function sanitizeProjectForExport(project) {
+  if (!project) return null;
+
+  const legacyProject = {
+    id: project.id || null,
+    name: project.name || null,
+    startDate: project.startDate || null,
+    endDate: project.endDate || null,
+    purposeOfStudy: project.purposeOfStudy || null,
+    otherTeamMembers: project.otherTeamMembers || null,
+    areaOfInterest: project.areaOfInterest || null,
+    instrumentsUsed: project.instrumentsUsed || null,
+    gpsDatum: project.gpsDatum || null,
+    magneticDeclination: project.magneticDeclination || null,
+    notes: project.notes || null,
+    date: project.date || null,
+    modifiedTimestamp: project.modifiedTimestamp || null,
+    projectLocation: project.projectLocation || null,
+    // Arrays (recursively sanitize)
+    datasets: project.datasets ? project.datasets.map(d => sanitizeDatasetForExport(d)) : null,
+    groups: project.groups ? project.groups.map(g => sanitizeGroupForExport(g)) : null,
+    tags: project.tags ? project.tags.map(t => sanitizeTagForExport(t)) : null
+  };
+
+  return Object.fromEntries(Object.entries(legacyProject).filter(([_, v]) => v !== undefined));
+}
+
+/**
+ * Export project data as JSON file
+ */
+ipcMain.handle('project:export-json', async (event, projectData) => {
+  try {
+    log.info('[ExportJSON] Starting JSON export');
+
+    // Show save dialog
+    const projectName = (projectData.name || 'project').replace(/[<>:"/\\|?*]/g, '_');
+    const result = await dialog.showSaveDialog({
+      title: 'Export Project as JSON',
+      defaultPath: `${projectName}.json`,
+      filters: [
+        { name: 'JSON Files', extensions: ['json'] },
+        { name: 'All Files', extensions: ['*'] }
+      ]
+    });
+
+    if (result.canceled || !result.filePath) {
+      return { success: false, canceled: true };
+    }
+
+    // Sanitize project data for legacy compatibility
+    const legacyProjectData = sanitizeProjectForExport(projectData);
+
+    // Write JSON file with pretty formatting
+    const jsonContent = JSON.stringify(legacyProjectData, null, 2);
+    fs.writeFileSync(result.filePath, jsonContent, 'utf8');
+
+    log.info(`[ExportJSON] Export complete: ${result.filePath}`);
+
+    return {
+      success: true,
+      filePath: result.filePath
+    };
+
+  } catch (error) {
+    log.error('[ExportJSON] Export failed:', error);
+    throw error;
+  }
+});
+
+/**
+ * Export project as PDF file
+ * Generates a comprehensive PDF report with all project data and composite images
+ */
+ipcMain.handle('project:export-pdf', async (event, projectId, projectData) => {
+  try {
+    log.info('[ExportPDF] Starting PDF export');
+
+    // Show save dialog
+    const projectName = (projectData.name || 'project').replace(/[<>:"/\\|?*]/g, '_');
+    const result = await dialog.showSaveDialog({
+      title: 'Export Project as PDF',
+      defaultPath: `${projectName}_report.pdf`,
+      filters: [
+        { name: 'PDF Files', extensions: ['pdf'] },
+        { name: 'All Files', extensions: ['*'] }
+      ]
+    });
+
+    if (result.canceled || !result.filePath) {
+      return { success: false, canceled: true };
+    }
+
+    // Get project folder paths
+    const folderPaths = await projectFolders.getProjectFolderPaths(projectId);
+
+    // Progress callback to send updates to renderer
+    const progressCallback = (progress) => {
+      event.sender.send('export-pdf:progress', progress);
+    };
+
+    // Generate PDF with composite image generator
+    await pdfProjectExport.generateProjectPDF(
+      result.filePath,
+      projectData,
+      projectId,
+      folderPaths,
+      generateCompositeBuffer, // Pass the existing composite generator
+      progressCallback
+    );
+
+    log.info(`[ExportPDF] Export complete: ${result.filePath}`);
+
+    return {
+      success: true,
+      filePath: result.filePath
+    };
+
+  } catch (error) {
+    log.error('[ExportPDF] Export failed:', error);
+    event.sender.send('export-pdf:progress', {
+      phase: 'Error',
+      current: 0,
+      total: 0,
+      itemName: '',
+      percentage: 0,
+      error: error.message
+    });
+    throw error;
+  }
+});
+
+// =============================================================================
+// EXPORT PROJECT AS .SMZ ARCHIVE
+// =============================================================================
+
+/**
+ * Export project as .smz file
+ * Generates all required image variants and packages them with project data
+ */
+ipcMain.handle('project:export-smz', async (event, projectId, projectData) => {
+  try {
+    log.info('[ExportSMZ] Starting .smz export');
+
+    // Show save dialog with overwrite confirmation
+    const projectName = (projectData.name || 'project').replace(/[<>:"/\\|?*]/g, '_');
+    // Add timestamp: YYYY-MM-DD_HH-MM-SS
+    const now = new Date();
+    const timestamp = now.toISOString()
+      .replace(/T/, '_')
+      .replace(/:/g, '-')
+      .replace(/\..+/, '');
+    const result = await dialog.showSaveDialog({
+      title: 'Export Project as .smz',
+      defaultPath: `${projectName}_${timestamp}.smz`,
+      filters: [
+        { name: 'StraboMicro Project', extensions: ['smz'] },
+        { name: 'All Files', extensions: ['*'] }
+      ],
+      properties: ['createDirectory', 'showOverwriteConfirmation']
+    });
+
+    if (result.canceled || !result.filePath) {
+      return { success: false, canceled: true };
+    }
+
+    // Check if file exists and prompt for overwrite (belt and suspenders)
+    if (fs.existsSync(result.filePath)) {
+      const { response } = await dialog.showMessageBox({
+        type: 'question',
+        buttons: ['Overwrite', 'Cancel'],
+        defaultId: 1,
+        title: 'File Exists',
+        message: `"${path.basename(result.filePath)}" already exists. Do you want to replace it?`,
+        detail: 'Replacing it will overwrite its current contents.',
+      });
+
+      if (response === 1) {
+        return { success: false, canceled: true };
+      }
+    }
+
+    // Get project folder paths
+    const folderPaths = await projectFolders.getProjectFolderPaths(projectId);
+
+    // Progress callback to send updates to renderer
+    const progressCallback = (progress) => {
+      event.sender.send('export-smz:progress', progress);
+    };
+
+    // PDF generator wrapper that uses the existing React-PDF generator
+    const pdfGenerator = async (outputPath, projData, projId, paths, progressCb) => {
+      await pdfProjectExport.generateProjectPDF(
+        outputPath,
+        projData,
+        projId,
+        paths,
+        generateCompositeBuffer, // Use the existing composite generator (with spots) for PDF
+        progressCb
+      );
+    };
+
+    // Export .smz
+    const exportResult = await smzExport.exportSmz(
+      result.filePath,
+      projectId,
+      projectData,
+      folderPaths,
+      progressCallback,
+      pdfGenerator,
+      projectSerializer
+    );
+
+    if (exportResult.success) {
+      log.info(`[ExportSMZ] Export complete: ${result.filePath}`);
+    } else {
+      log.error(`[ExportSMZ] Export failed: ${exportResult.error}`);
+    }
+
+    return exportResult;
+
+  } catch (error) {
+    log.error('[ExportSMZ] Export failed:', error);
+    event.sender.send('export-smz:progress', {
+      phase: 'Error',
+      current: 0,
+      total: 0,
+      itemName: '',
+      percentage: 0,
+      error: error.message
+    });
+    throw error;
+  }
+});
+
+// =============================================================================
+// PUSH PROJECT TO SERVER
+// =============================================================================
+
+/**
+ * Check server connectivity
+ */
+ipcMain.handle('server:check-connectivity', async () => {
+  return serverUpload.checkConnectivity();
+});
+
+/**
+ * Check if project exists on server
+ */
+ipcMain.handle('server:check-project-exists', async (event, projectId) => {
+  try {
+    const tokens = await tokenService.getTokens();
+    if (!tokens?.accessToken) {
+      return { exists: false, error: 'Not authenticated. Please log in first.' };
+    }
+    return serverUpload.checkProjectExists(projectId, tokens.accessToken);
+  } catch (error) {
+    log.error('[ServerUpload] Check project exists failed:', error);
+    return { exists: false, error: error.message };
+  }
+});
+
+/**
+ * Push project to server
+ * Main handler that orchestrates the entire upload process
+ */
+ipcMain.handle('server:push-project', async (event, projectId, projectData, options) => {
+  try {
+    log.info('[ServerUpload] Starting push-to-server for project:', projectId);
+
+    const { overwrite = false } = options || {};
+
+    // Get tokens for authentication
+    const tokens = await tokenService.getTokens();
+    if (!tokens?.accessToken) {
+      return { success: false, error: 'Not authenticated. Please log in first.' };
+    }
+
+    // Check if token is expired and try to refresh
+    if (tokenService.isTokenExpired(tokens)) {
+      log.info('[ServerUpload] Token expired, attempting refresh...');
+      // Token refresh would be handled by the renderer via auth store
+      return { success: false, error: 'Session expired. Please log in again.' };
+    }
+
+    // Get project folder paths
+    const folderPaths = await projectFolders.getProjectFolderPaths(projectId);
+
+    // Progress callback to send updates to renderer
+    const progressCallback = (progress) => {
+      event.sender.send('server:push-progress', progress);
+    };
+
+    // PDF generator wrapper (same as export-smz)
+    const pdfGenerator = async (outputPath, projData, projId, paths, progressCb) => {
+      await pdfProjectExport.generateProjectPDF(
+        outputPath,
+        projData,
+        projId,
+        paths,
+        generateCompositeBuffer,
+        progressCb
+      );
+    };
+
+    // Execute the push
+    const result = await serverUpload.pushProject({
+      projectId,
+      projectData,
+      folderPaths,
+      accessToken: tokens.accessToken,
+      overwrite,
+      progressCallback,
+      pdfGenerator,
+      projectSerializer,
+    });
+
+    if (result.success) {
+      log.info('[ServerUpload] Push completed successfully');
+    } else if (result.needsOverwriteConfirm) {
+      log.info('[ServerUpload] Project exists, awaiting overwrite confirmation');
+    } else {
+      log.error('[ServerUpload] Push failed:', result.error);
+    }
+
+    return result;
+
+  } catch (error) {
+    log.error('[ServerUpload] Push failed with exception:', error);
+    event.sender.send('server:push-progress', {
+      phase: serverUpload.UploadPhase.ERROR,
+      percentage: 0,
+      message: error.message,
+    });
+    return { success: false, error: error.message };
+  }
+});
+
+// =============================================================================
+// VERSION HISTORY
+// =============================================================================
+
+/**
+ * Create a new version snapshot
+ */
+ipcMain.handle('version:create', async (event, projectId, projectState, name, description) => {
+  log.info('[VersionHistory] Creating version for project:', projectId, name ? `(named: ${name})` : '(auto-save)');
+  return versionHistory.createVersion(projectId, projectState, name, description);
+});
+
+/**
+ * List all versions for a project
+ */
+ipcMain.handle('version:list', async (event, projectId) => {
+  return versionHistory.listVersions(projectId);
+});
+
+/**
+ * Get a specific version's data (including full project snapshot)
+ */
+ipcMain.handle('version:get', async (event, projectId, versionNumber) => {
+  return versionHistory.getVersion(projectId, versionNumber);
+});
+
+/**
+ * Get version metadata only (without loading full project)
+ */
+ipcMain.handle('version:get-info', async (event, projectId, versionNumber) => {
+  return versionHistory.getVersionInfo(projectId, versionNumber);
+});
+
+/**
+ * Restore a specific version
+ */
+ipcMain.handle('version:restore', async (event, projectId, versionNumber) => {
+  log.info('[VersionHistory] Restoring version', versionNumber, 'for project:', projectId);
+  return versionHistory.restoreVersion(projectId, versionNumber);
+});
+
+/**
+ * Delete a specific version
+ */
+ipcMain.handle('version:delete', async (event, projectId, versionNumber) => {
+  log.info('[VersionHistory] Deleting version', versionNumber, 'for project:', projectId);
+  return versionHistory.deleteVersion(projectId, versionNumber);
+});
+
+/**
+ * Clear all version history for a project
+ * Called when opening new project, downloading from server, or creating new project
+ */
+ipcMain.handle('version:clear', async (event, projectId) => {
+  log.info('[VersionHistory] Clearing history for project:', projectId);
+  return versionHistory.clearHistory(projectId);
+});
+
+/**
+ * Compute diff between two versions
+ */
+ipcMain.handle('version:diff', async (event, projectId, versionA, versionB) => {
+  return versionHistory.computeDiff(projectId, versionA, versionB);
+});
+
+/**
+ * Create a named version (checkpoint)
+ */
+ipcMain.handle('version:create-named', async (event, projectId, projectState, name, description) => {
+  log.info('[VersionHistory] Creating named version for project:', projectId, 'name:', name);
+  return versionHistory.createVersion(projectId, projectState, name, description);
+});
+
+/**
+ * Get storage statistics for a project's version history
+ */
+ipcMain.handle('version:stats', async (event, projectId) => {
+  return versionHistory.getStats(projectId);
+});
+
+/**
+ * Manually trigger pruning (normally runs automatically after create)
+ */
+ipcMain.handle('version:prune', async (event, projectId) => {
+  log.info('[VersionHistory] Manual prune requested for project:', projectId);
+  return versionHistory.pruneVersions(projectId);
+});
+
+// =============================================================================
+// PROJECTS INDEX HANDLERS (Recent Projects)
+// =============================================================================
+
+/**
+ * Rebuild the projects index from disk
+ * Called on app startup
+ */
+ipcMain.handle('projects:rebuild-index', async () => {
+  log.info('[ProjectsIndex] Rebuilding index...');
+  return projectsIndex.rebuildIndex();
+});
+
+/**
+ * Get recent projects (up to limit)
+ */
+ipcMain.handle('projects:get-recent', async (event, limit) => {
+  return projectsIndex.getRecentProjects(limit);
+});
+
+/**
+ * Get all projects in the index
+ */
+ipcMain.handle('projects:get-all', async () => {
+  return projectsIndex.getAllProjects();
+});
+
+/**
+ * Update the lastOpened timestamp for a project
+ * Called when opening or saving a project
+ */
+ipcMain.handle('projects:update-opened', async (event, projectId, projectName) => {
+  return projectsIndex.updateProjectOpened(projectId, projectName);
+});
+
+/**
+ * Remove a project from the index
+ * Called when deleting a project
+ */
+ipcMain.handle('projects:remove', async (event, projectId) => {
+  return projectsIndex.removeProject(projectId);
+});
+
+/**
+ * Close (delete) a project completely
+ * - Removes project folder from disk
+ * - Removes from projects index
+ * - Clears version history
+ * - Refreshes menu
+ */
+ipcMain.handle('projects:close', async (event, projectId) => {
+  log.info('[Projects] Closing (deleting) project:', projectId);
+
+  try {
+    // 1. Clear version history
+    await versionHistory.clearHistory(projectId);
+    log.info('[Projects] Cleared version history');
+
+    // 2. Delete project folder from disk
+    await projectFolders.deleteProjectFolder(projectId);
+    log.info('[Projects] Deleted project folder');
+
+    // 3. Remove from projects index
+    await projectsIndex.removeProject(projectId);
+    log.info('[Projects] Removed from index');
+
+    // 4. Refresh menu to update Recent Projects
+    if (buildMenuFn) {
+      await buildMenuFn();
+    }
+
+    return { success: true };
+  } catch (error) {
+    log.error('[Projects] Error closing project:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+/**
+ * Load a project from disk by its ID
+ * Returns the full project data
+ */
+ipcMain.handle('projects:load', async (event, projectId) => {
+  log.info('[ProjectsIndex] Loading project:', projectId);
+  try {
+    const project = await projectSerializer.loadProjectJson(projectId);
+    // Update lastOpened in index
+    await projectsIndex.updateProjectOpened(projectId, project.name);
+    // Refresh menu to show updated recent projects
+    if (buildMenuFn) {
+      await buildMenuFn();
+    }
+    return { success: true, project };
+  } catch (error) {
+    log.error('[ProjectsIndex] Error loading project:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+/**
+ * Refresh the Recent Projects menu
+ * Called from renderer after saving/creating a project
+ */
+ipcMain.handle('projects:refresh-menu', async () => {
+  log.info('[ProjectsIndex] Refreshing menu...');
+  if (buildMenuFn) {
+    await buildMenuFn();
+  }
+});
+
+/**
+ * ============================================================================
+ * SMZ IMPORT HANDLERS
+ * ============================================================================
+ */
+
+/**
+ * Show file dialog to select an .smz file
+ * Returns the selected file path or null if cancelled
+ */
+ipcMain.handle('smz:select-file', async () => {
+  log.info('[SmzImport] Opening file selection dialog...');
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: 'Open StraboMicro Project',
+    filters: [
+      { name: 'StraboMicro Project', extensions: ['smz'] },
+      { name: 'All Files', extensions: ['*'] }
+    ],
+    properties: ['openFile']
+  });
+
+  if (result.canceled || result.filePaths.length === 0) {
+    log.info('[SmzImport] File selection cancelled');
+    return { cancelled: true };
+  }
+
+  const filePath = result.filePaths[0];
+  log.info('[SmzImport] Selected file:', filePath);
+  return { cancelled: false, filePath };
+});
+
+/**
+ * Inspect an .smz file to get project info without importing
+ * Used to check if project exists locally and show confirmation dialog
+ */
+ipcMain.handle('smz:inspect', async (event, smzPath) => {
+  log.info('[SmzImport] Inspecting .smz file:', smzPath);
+  return smzImport.inspectSmz(smzPath);
+});
+
+/**
+ * Import an .smz file (DESTRUCTIVE - replaces existing project)
+ * Progress updates are sent via 'smz:import-progress' event
+ */
+ipcMain.handle('smz:import', async (event, smzPath) => {
+  log.info('[SmzImport] Starting import of:', smzPath);
+
+  const result = await smzImport.importSmz(smzPath, (progress) => {
+    // Send progress updates to renderer
+    if (mainWindow) {
+      mainWindow.webContents.send('smz:import-progress', progress);
+    }
+  });
+
+  // If successful, update projects index and refresh menu
+  if (result.success && result.projectId) {
+    const projectName = result.projectData?.name || 'Untitled Project';
+    await projectsIndex.updateProjectOpened(result.projectId, projectName);
+
+    if (buildMenuFn) {
+      await buildMenuFn();
+    }
+  }
+
+  return result;
+});
+
+/**
+ * ============================================================================
+ * SERVER DOWNLOAD HANDLERS (Open Remote Project)
+ * ============================================================================
+ */
+
+/**
+ * List user's remote projects from the server
+ * Requires authentication (JWT token)
+ */
+ipcMain.handle('server:list-projects', async () => {
+  log.info('[ServerDownload] Listing remote projects...');
+
+  // Get current auth token
+  const tokens = await tokenService.getTokens();
+
+  if (!tokens || !tokens.accessToken) {
+    log.warn('[ServerDownload] Not authenticated');
+    return { success: false, error: 'Not logged in. Please log in first.' };
+  }
+
+  return serverDownload.listProjects(tokens.accessToken);
+});
+
+/**
+ * Download a project from the server
+ * Returns the path to the downloaded .zip file for inspection/import
+ */
+ipcMain.handle('server:download-project', async (event, projectId) => {
+  log.info('[ServerDownload] Downloading project:', projectId);
+
+  // Get current auth token
+  const tokens = await tokenService.getTokens();
+
+  if (!tokens || !tokens.accessToken) {
+    log.warn('[ServerDownload] Not authenticated');
+    return { success: false, error: 'Not logged in. Please log in first.' };
+  }
+
+  const result = await serverDownload.downloadProject(
+    projectId,
+    tokens.accessToken,
+    (progress) => {
+      // Send progress updates to renderer
+      if (mainWindow) {
+        mainWindow.webContents.send('server:download-progress', progress);
+      }
+    }
+  );
+
+  return result;
+});
+
+/**
+ * Clean up a downloaded temp file
+ */
+ipcMain.handle('server:cleanup-download', async (event, zipPath) => {
+  log.info('[ServerDownload] Cleaning up:', zipPath);
+  await serverDownload.cleanupDownload(zipPath);
+  return { success: true };
+});
+
+/**
+ * Download a shared project by share code
+ * The share code is a 6-character alphanumeric string that resolves to a download key
+ */
+ipcMain.handle('server:download-shared-project', async (event, shareCode) => {
+  log.info('[ServerDownload] Downloading shared project with code:', shareCode);
+
+  // Get current auth token
+  const tokens = await tokenService.getTokens();
+
+  if (!tokens || !tokens.accessToken) {
+    log.warn('[ServerDownload] Not authenticated');
+    return { success: false, error: 'Not logged in. Please log in first.' };
+  }
+
+  const result = await serverDownload.downloadSharedProject(
+    shareCode,
+    tokens.accessToken,
+    (progress) => {
+      // Send progress updates to renderer
+      if (mainWindow) {
+        mainWindow.webContents.send('server:download-progress', progress);
+      }
+    }
+  );
+
+  return result;
 });

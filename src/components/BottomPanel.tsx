@@ -1,13 +1,53 @@
-import React from 'react';
-import { Box, Typography } from '@mui/material';
+import React, { useState } from 'react';
+import { Box } from '@mui/material';
+import { DetailedNotesPanel } from './DetailedNotesPanel';
+import { DetailedNotesDialog } from './dialogs/DetailedNotesDialog';
+import { NotesDialog } from './dialogs/metadata/NotesDialog';
+import { SampleInfoDialog } from './dialogs/metadata/SampleInfoDialog';
+import { EditMicrographDialog } from './dialogs/metadata/EditMicrographDialog';
+import { EditDatasetDialog } from './dialogs/EditDatasetDialog';
+import { EditProjectDialog } from './dialogs/EditProjectDialog';
+import { MineralogyDialog } from './dialogs/metadata/MineralogyDialog';
+import { GrainInfoDialog } from './dialogs/metadata/graininfo/GrainInfoDialog';
+import { FabricsDialog } from './dialogs/metadata/fabrics/FabricsDialog';
+import { FracturesDialog } from './dialogs/metadata/fractures/FracturesDialog';
+import { VeinsDialog } from './dialogs/metadata/veins/VeinsDialog';
+import { FoldsDialog } from './dialogs/metadata/folds/FoldsDialog';
+import { GrainBoundaryInfoDialog } from './dialogs/metadata/grainboundary/GrainBoundaryInfoDialog';
+import { IntraGrainInfoDialog } from './dialogs/metadata/intragrain/IntraGrainInfoDialog';
+import { ClasticDeformationBandInfoDialog } from './dialogs/metadata/clasticdeformationband/ClasticDeformationBandInfoDialog';
+import { PseudotachylyteInfoDialog } from './dialogs/metadata/pseudotachylyte/PseudotachylyteInfoDialog';
+import { FaultsShearZonesInfoDialog } from './dialogs/metadata/faultsshearzon es/FaultsShearZonesInfoDialog';
+import { ExtinctionMicrostructureInfoDialog } from './dialogs/metadata/extinctionmicrostructure/ExtinctionMicrostructureInfoDialog';
+import { useAppStore } from '@/store';
 
 /**
  * BottomPanel - Collapsible panel for detailed notes
  *
- * Displays project notes, sample notes, and other detailed information.
+ * Displays project notes, sample notes, and other detailed information from the selected micrograph or spot.
  * Height and collapse state managed by parent Viewer component.
  */
 const BottomPanel: React.FC = () => {
+  const [openDialog, setOpenDialog] = useState<string | null>(null);
+  const activeMicrographId = useAppStore((state) => state.activeMicrographId);
+  const activeSpotId = useAppStore((state) => state.activeSpotId);
+  const project = useAppStore((state) => state.project);
+
+  // Find the sample ID and dataset ID for the active micrograph
+  const findMicrographParentIds = (): { sampleId?: string; datasetId?: string } => {
+    if (!activeMicrographId || !project) return {};
+    for (const dataset of project.datasets || []) {
+      for (const sample of dataset.samples || []) {
+        if (sample.micrographs?.some((m) => m.id === activeMicrographId)) {
+          return { sampleId: sample.id, datasetId: dataset.id };
+        }
+      }
+    }
+    return {};
+  };
+
+  const { sampleId, datasetId } = findMicrographParentIds();
+
   return (
     <Box
       sx={{
@@ -19,92 +59,173 @@ const BottomPanel: React.FC = () => {
       }}
     >
       {/* Panel content */}
-      <Box sx={{ flex: 1, overflow: 'auto', p: 2 }}>
-        <Box sx={{ mb: 3 }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-            <Typography variant="subtitle2" color="text.primary" sx={{ fontWeight: 500 }}>
-              Detailed Notes:
-            </Typography>
-            <Typography
-              variant="caption"
-              sx={{ color: 'primary.main', cursor: 'pointer', textDecoration: 'underline' }}
-            >
-              (details)
-            </Typography>
-          </Box>
-          <Typography variant="body2" color="text.secondary" sx={{ pl: 1 }}>
-            Curabitur pretium tincidunt lacus. Nulla gravida orci a odio. Nullam varius, turpis et
-            commodo pharetra, est eros bibendum elit, nec luctus magna felis sollicitudin mauris.
-            Integer in mauris eu nibh euismod gravida. Duis ac tellus et risus vulputate vehicula.
-            Donec lobortis risus a elit. Etiam tempor. Ut ullamcorper, ligula eu tempor congue,
-            eros est euismod turpis, id tincidunt sapien risus a quam.
-          </Typography>
-        </Box>
-
-        {/* Project Notes Section */}
-        <Box sx={{ mb: 2 }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
-            <Typography variant="body2" sx={{ fontWeight: 500 }}>
-              Project Notes
-            </Typography>
-            <Typography
-              variant="caption"
-              sx={{ color: 'primary.main', cursor: 'pointer', textDecoration: 'underline' }}
-            >
-              (edit)
-            </Typography>
-          </Box>
-          <Typography variant="body2" color="text.secondary" sx={{ pl: 1 }}>
-            Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor
-            incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud
-            exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure
-            dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur.
-            Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt
-            mollit anim id est laborum.
-          </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ pl: 1, mt: 1 }}>
-            Sed ut perspiciatis unde omnis iste natus error sit voluptatem accusantium doloremque
-            laudantium, totam rem aperiam, eaque ipsa quae ab illo inventore veritatis et quasi
-            architecto beatae vitae dicta sunt explicabo. Nemo enim ipsam voluptatem quia voluptas
-            sit aspernatur aut odit aut fugit, sed quia consequuntur magni dolores eos qui ratione
-            voluptatem sequi nesciunt.
-          </Typography>
-        </Box>
-
-        {/* Sample Notes Section */}
-        <Box>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
-            <Typography variant="body2" sx={{ fontWeight: 500 }}>
-              Sample Notes
-            </Typography>
-            <Typography
-              variant="caption"
-              sx={{ color: 'primary.main', cursor: 'pointer', textDecoration: 'underline' }}
-            >
-              (edit)
-            </Typography>
-          </Box>
-          <Typography variant="body2" color="text.secondary" sx={{ pl: 1 }}>
-            At vero eos et accusamus et iusto odio dignissimos ducimus qui blanditiis praesentium
-            voluptatum deleniti atque corrupti quos dolores et quas molestias excepturi sint
-            occaecati cupiditate non provident, similique sunt in culpa qui officia deserunt
-            mollitia animi, id est laborum et dolorum fuga.
-          </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ pl: 1, mt: 1 }}>
-            Et harum quidem rerum facilis est et expedita distinctio. Nam libero tempore, cum soluta
-            nobis est eligendi optio cumque nihil impedit quo minus id quod maxime placeat facere
-            possimus, omnis voluptas assumenda est, omnis dolor repellendus. Temporibus autem
-            quibusdam et aut officiis debitis aut rerum necessitatibus saepe eveniet ut et
-            voluptates repudiandae sint et molestiae non recusandae.
-          </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ pl: 1, mt: 1 }}>
-            Itaque earum rerum hic tenetur a sapiente delectus, ut aut reiciendis voluptatibus
-            maiores alias consequatur aut perferendis doloribus asperiores repellat. Lorem ipsum
-            dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore
-            et dolore magna aliqua.
-          </Typography>
-        </Box>
+      <Box sx={{ flex: 1, overflow: 'auto' }}>
+        <DetailedNotesPanel
+          micrographId={activeSpotId ? undefined : (activeMicrographId || undefined)}
+          spotId={activeSpotId || undefined}
+          onEditSection={(sectionId) => setOpenDialog(sectionId)}
+          onViewAllNotes={() => setOpenDialog('detailedNotes')}
+        />
       </Box>
+
+      {/* Dialogs */}
+      {openDialog === 'notes' && (
+        <NotesDialog
+          isOpen={true}
+          onClose={() => setOpenDialog(null)}
+          micrographId={activeSpotId ? undefined : (activeMicrographId || undefined)}
+          spotId={activeSpotId || undefined}
+        />
+      )}
+
+      {openDialog === 'project' && project && (
+        <EditProjectDialog
+          isOpen={true}
+          onClose={() => setOpenDialog(null)}
+        />
+      )}
+
+      {openDialog === 'dataset' && datasetId && (
+        <EditDatasetDialog
+          isOpen={true}
+          onClose={() => setOpenDialog(null)}
+          datasetId={datasetId}
+        />
+      )}
+
+      {openDialog === 'sample' && sampleId && (
+        <SampleInfoDialog
+          isOpen={true}
+          onClose={() => setOpenDialog(null)}
+          sampleId={sampleId}
+        />
+      )}
+
+      {openDialog === 'micrograph' && activeMicrographId && (
+        <EditMicrographDialog
+          isOpen={true}
+          onClose={() => setOpenDialog(null)}
+          micrographId={activeMicrographId}
+        />
+      )}
+
+      {openDialog === 'mineralogy' && (
+        <MineralogyDialog
+          isOpen={true}
+          onClose={() => setOpenDialog(null)}
+          micrographId={activeSpotId ? undefined : (activeMicrographId || undefined)}
+          spotId={activeSpotId || undefined}
+        />
+      )}
+
+      {openDialog === 'grain' && (
+        <GrainInfoDialog
+          isOpen={true}
+          onClose={() => setOpenDialog(null)}
+          micrographId={activeSpotId ? undefined : (activeMicrographId || undefined)}
+          spotId={activeSpotId || undefined}
+        />
+      )}
+
+      {openDialog === 'fabric' && (
+        <FabricsDialog
+          isOpen={true}
+          onClose={() => setOpenDialog(null)}
+          micrographId={activeSpotId ? undefined : (activeMicrographId || undefined)}
+          spotId={activeSpotId || undefined}
+        />
+      )}
+
+      {openDialog === 'fracture' && (
+        <FracturesDialog
+          isOpen={true}
+          onClose={() => setOpenDialog(null)}
+          micrographId={activeSpotId ? undefined : (activeMicrographId || undefined)}
+          spotId={activeSpotId || undefined}
+        />
+      )}
+
+      {openDialog === 'vein' && (
+        <VeinsDialog
+          isOpen={true}
+          onClose={() => setOpenDialog(null)}
+          micrographId={activeSpotId ? undefined : (activeMicrographId || undefined)}
+          spotId={activeSpotId || undefined}
+        />
+      )}
+
+      {openDialog === 'fold' && (
+        <FoldsDialog
+          isOpen={true}
+          onClose={() => setOpenDialog(null)}
+          micrographId={activeSpotId ? undefined : (activeMicrographId || undefined)}
+          spotId={activeSpotId || undefined}
+        />
+      )}
+
+      {openDialog === 'grainBoundary' && (
+        <GrainBoundaryInfoDialog
+          isOpen={true}
+          onClose={() => setOpenDialog(null)}
+          micrographId={activeSpotId ? undefined : (activeMicrographId || undefined)}
+          spotId={activeSpotId || undefined}
+        />
+      )}
+
+      {openDialog === 'intraGrain' && (
+        <IntraGrainInfoDialog
+          isOpen={true}
+          onClose={() => setOpenDialog(null)}
+          micrographId={activeSpotId ? undefined : (activeMicrographId || undefined)}
+          spotId={activeSpotId || undefined}
+        />
+      )}
+
+      {openDialog === 'clastic' && (
+        <ClasticDeformationBandInfoDialog
+          isOpen={true}
+          onClose={() => setOpenDialog(null)}
+          micrographId={activeSpotId ? undefined : (activeMicrographId || undefined)}
+          spotId={activeSpotId || undefined}
+        />
+      )}
+
+      {openDialog === 'pseudotachylyte' && (
+        <PseudotachylyteInfoDialog
+          isOpen={true}
+          onClose={() => setOpenDialog(null)}
+          micrographId={activeSpotId ? undefined : (activeMicrographId || undefined)}
+          spotId={activeSpotId || undefined}
+        />
+      )}
+
+      {openDialog === 'faultsShearZones' && (
+        <FaultsShearZonesInfoDialog
+          isOpen={true}
+          onClose={() => setOpenDialog(null)}
+          micrographId={activeSpotId ? undefined : (activeMicrographId || undefined)}
+          spotId={activeSpotId || undefined}
+        />
+      )}
+
+      {openDialog === 'extinctionMicrostructures' && (
+        <ExtinctionMicrostructureInfoDialog
+          isOpen={true}
+          onClose={() => setOpenDialog(null)}
+          micrographId={activeSpotId ? undefined : (activeMicrographId || undefined)}
+          spotId={activeSpotId || undefined}
+        />
+      )}
+
+      {openDialog === 'detailedNotes' && (
+        <DetailedNotesDialog
+          isOpen={true}
+          onClose={() => setOpenDialog(null)}
+          micrographId={activeSpotId ? undefined : (activeMicrographId || undefined)}
+          spotId={activeSpotId || undefined}
+          onEditSection={(sectionId) => setOpenDialog(sectionId)}
+        />
+      )}
     </Box>
   );
 };

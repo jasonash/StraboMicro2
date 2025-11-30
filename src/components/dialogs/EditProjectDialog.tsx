@@ -89,22 +89,27 @@ export const EditProjectDialog: React.FC<EditProjectDialogProps> = ({ isOpen, on
       return;
     }
 
-    const updatedProject = {
-      ...project,
-      name: formData.name,
-      startDate: formData.startDate,
-      endDate: formData.endDate,
-      purposeOfStudy: formData.purposeOfStudy,
-      otherTeamMembers: formData.otherTeamMembers,
-      areaOfInterest: formData.areaOfInterest,
-      gpsDatum: formData.gpsDatum,
-      magneticDeclination: formData.magneticDeclination,
-      notes: formData.notes,
-    };
+    // Update project metadata directly in the store (without resetting navigation state)
+    useAppStore.setState((state) => ({
+      project: state.project ? {
+        ...state.project,
+        name: formData.name,
+        startDate: formData.startDate,
+        endDate: formData.endDate,
+        purposeOfStudy: formData.purposeOfStudy,
+        otherTeamMembers: formData.otherTeamMembers,
+        areaOfInterest: formData.areaOfInterest,
+        gpsDatum: formData.gpsDatum,
+        magneticDeclination: formData.magneticDeclination,
+        notes: formData.notes,
+      } : null,
+      isDirty: true,
+    }));
 
-    const loadProject = useAppStore.getState().loadProject;
-    const projectFilePath = useAppStore.getState().projectFilePath;
-    loadProject(updatedProject, projectFilePath);
+    // Update the projects index with the new name and refresh the menu
+    window.api?.projects?.updateOpened(project.id, formData.name).then(() => {
+      window.api?.projects?.refreshMenu();
+    });
 
     onClose();
   };

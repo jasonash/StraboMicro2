@@ -1,0 +1,160 @@
+﻿pkey,level1,level2,level3,showhide
+1,Igneous,Volcanic,Basalt,show
+2,Igneous,Volcanic,Rhyolite,show
+3,Igneous,Volcanic,Basaltic-Andesite,show
+4,Igneous,Volcanic,Andesite,show
+5,Igneous,Volcanic,Dacite,show
+6,Igneous,Volcanic,Obsidian,show
+7,Igneous,Volcanic,Tachylite,show
+8,Igneous,Volcanic,Trachyte,show
+9,Igneous,Volcanic,Rhyodacite,show
+10,Igneous,Volcanic,Trachyandesite,show
+11,Igneous,Volcanic,Trachybasalt,show
+12,Igneous,Volcanic,Latite,show
+13,Igneous,Volcanic,Tuff,show
+14,Igneous,Volcanic,Ash-Fall Tuff,show
+15,Igneous,Volcanic,Ash-Flow Tuff,show
+16,Igneous,Volcanic,Vitrophyre,show
+17,Igneous,Volcanic,Tuff Breccia,show
+18,Igneous,Volcanic,Lapilli Tuff,show
+19,Igneous,Volcanic,Other,show
+20,Igneous,Plutonic,Granite,show
+21,Igneous,Plutonic,Granodiorite,show
+22,Igneous,Plutonic,Diorite,show
+23,Igneous,Plutonic,Gabbro,show
+24,Igneous,Plutonic,Alkali Feldspar Granite,show
+25,Igneous,Plutonic,Anorthosite,show
+26,Igneous,Plutonic,Aplite,show
+27,Igneous,Plutonic,Diabase,show
+28,Igneous,Plutonic,Dunite,show
+29,Igneous,Plutonic,Harzburgite,show
+30,Igneous,Plutonic,Monzonite,show
+31,Igneous,Plutonic,Norite,show
+32,Igneous,Plutonic,Pegmatite,show
+33,Igneous,Plutonic,Peridotite,show
+34,Igneous,Plutonic,Quartz Monzonite,show
+35,Igneous,Plutonic,Syenite,show
+36,Igneous,Plutonic,Tonalite,show
+37,Igneous,Plutonic,Migmatite,show
+38,Igneous,Plutonic,Other,show
+39,Igneous,Other,,show
+40,Metamorphic,Slate,,show
+41,Metamorphic,Phyllite,,show
+42,Metamorphic,Schist,,show
+43,Metamorphic,Paragneiss,,show
+44,Metamorphic,Marble,,show
+45,Metamorphic,Calc-Silicate,,show
+46,Metamorphic,Quartzite,,show
+47,Metamorphic,Metagreywacke,,show
+48,Metamorphic,Orthogneiss,,show
+49,Metamorphic,Granulite,,show
+50,Metamorphic,Migmatite,,show
+51,Metamorphic,Metabasite,,show
+52,Metamorphic,Greenstone,,show
+53,Metamorphic,Greenschist,,show
+54,Metamorphic,Amphibolite,,show
+55,Metamorphic,Blueschist,,show
+56,Metamorphic,Eclogite,,show
+57,Metamorphic,Meta-Ultramafic,,show
+58,Metamorphic,Serpentinite,,show
+59,Metamorphic,Hornfels,,show
+60,Metamorphic,Granofels,,show
+61,Metamorphic,Skarn,,show
+62,Metamorphic,Gneiss (Undifferentiated),,show
+63,Metamorphic,Metaigneous,,show
+64,Metamorphic,Metagranite,,show
+65,Metamorphic,Metavolcanic,,show
+66,Metamorphic,Metasomatite,,show
+67,Metamorphic,Metacarbonate,,show
+68,Metamorphic,Metapelite,,show
+69,Metamorphic,Metaarkose,,show
+70,Metamorphic,Calc Schist,,show
+71,Metamorphic,Cataclasite,,show
+72,Metamorphic,Phyllonite,,show
+73,Metamorphic,Mylonite,,show
+74,Metamorphic,Jadeite,,show
+75,Metamorphic,Glaucophanite,,show
+76,Metamorphic,Garnetite,,show
+77,Metamorphic,Pyroxenite,,show
+78,Metamorphic,Cordierite-Anthophyllite,,show
+79,Metamorphic,Blackwall,,show
+80,Metamorphic,Meta-Iron Formation,,show
+81,Metamorphic,Other,,show
+82,Sedimentary,Siliciclastic,Claystone,show
+83,Sedimentary,Siliciclastic,Mudstone,show
+84,Sedimentary,Siliciclastic,Shale,show
+85,Sedimentary,Siliciclastic,Siltstone,show
+86,Sedimentary,Siliciclastic,Sandstone,show
+87,Sedimentary,Siliciclastic,Conglomerate,show
+88,Sedimentary,Siliciclastic,Breccia,show
+89,Sedimentary,Siliciclastic,Other,show
+90,Sedimentary,Limestone/Dolostone,Mudstone,show
+91,Sedimentary,Limestone/Dolostone,Wackestone,show
+92,Sedimentary,Limestone/Dolostone,Packstone,show
+93,Sedimentary,Limestone/Dolostone,Grainstone,show
+94,Sedimentary,Limestone/Dolostone,Boundstone,show
+95,Sedimentary,Limestone/Dolostone,Cementstone,show
+96,Sedimentary,Limestone/Dolostone,Recrystallized,show
+97,Sedimentary,Limestone/Dolostone,Floatstone,show
+98,Sedimentary,Limestone/Dolostone,Rudstone,show
+99,Sedimentary,Limestone/Dolostone,Framestone,show
+100,Sedimentary,Limestone/Dolostone,Bafflestone,show
+101,Sedimentary,Limestone/Dolostone,Bindstone,show
+102,Sedimentary,Limestone/Dolostone,Other,show
+103,Sedimentary,Organic/Coal,Amber,show
+104,Sedimentary,Organic/Coal,Peat,show
+105,Sedimentary,Organic/Coal,Lignite,show
+106,Sedimentary,Organic/Coal,Subbituminous,show
+107,Sedimentary,Organic/Coal,Bituminous,show
+108,Sedimentary,Organic/Coal,Coal Ball,show
+109,Sedimentary,Organic/Coal,Tar,show
+110,Sedimentary,Organic/Coal,Other,show
+111,Sedimentary,Evaporite,Gypsum - Anhydrite Primary,show
+112,Sedimentary,Evaporite,Gypsum - Anhydrite Diagenetic,show
+113,Sedimentary,Evaporite,Halite - Primary,show
+114,Sedimentary,Evaporite,Halite - Diagenetic,show
+115,Sedimentary,Volcaniclastic,Volcanic Mudstone,show
+116,Sedimentary,Volcaniclastic,Volcanic Sandstone,show
+117,Sedimentary,Volcaniclastic,Lapillistone,show
+118,Sedimentary,Volcaniclastic,Agglomerate,show
+119,Sedimentary,Volcaniclastic,Volcanic Breccia,show
+120,Sedimentary,Volcaniclastic,Bentonite,show
+121,Sedimentary,Volcaniclastic,Tuff,show
+122,Sedimentary,Volcaniclastic,Welded Tuff,show
+123,Sedimentary,Volcaniclastic,Ignimbrite,show
+124,Sedimentary,Volcaniclastic,Other,show
+125,Sedimentary,Chert,,show
+126,Sedimentary,Ironstone,,show
+127,Sedimentary,Phosphatic,,show
+128,Sedimentary,Other,,show
+129,Fault and Shear Zone,Breccia,,show
+130,Fault and Shear Zone,Gouge,,show
+131,Fault and Shear Zone,Pseudotachylite,,show
+132,Fault and Shear Zone,Protocataclasite,,show
+133,Fault and Shear Zone,Cataclasite,,show
+134,Fault and Shear Zone,Ultracataclasite,,show
+135,Fault and Shear Zone,Protomylonite,,show
+136,Fault and Shear Zone,Mylonite,,show
+137,Fault and Shear Zone,Ultramylonite,,show
+138,Fault and Shear Zone,Blastomylonite,,show
+139,Fault and Shear Zone,Other,,show
+140,Alteration Ore,Skarn,,hide
+141,Alteration Ore,Hornfels,,hide
+142,Alteration Ore,Dolorite/Mica Replacement,,hide
+143,Alteration Ore,Rodingite,,hide
+144,Alteration Ore,Carbonatite,,hide
+145,Alteration Ore,Chromite Ore,,hide
+146,Alteration Ore,Magmatic-Hosted Ore,,hide
+147,Alteration Ore,Pegmatite-Hosted Ore,,hide
+148,Alteration Ore,Vein-Hosted Ore,,hide
+149,Alteration Ore,Greisen Ore,,hide
+150,Alteration Ore,Carbonate-Replacement,,hide
+151,Alteration Ore,BIF,,hide
+152,Alteration Ore,Sedimentary Precipitated Ore,,hide
+153,Alteration Ore,Sedimentary Hosted Ore (U),,hide
+154,Alteration Ore,Kimberlite,,hide
+155,Alteration Ore,Komatiites,,hide
+156,Alteration Ore,Placer,,hide
+157,Alteration Ore,Laterite,,hide
+158,Alteration Ore,Other,,hide
+159,Other,,,hide

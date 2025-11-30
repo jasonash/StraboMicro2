@@ -12,11 +12,9 @@ import {
   DialogActions,
   Button,
   TextField,
-  Grid,
   Box,
 } from '@mui/material';
 import { useAppStore } from '@/store';
-import { MicrographMetadata } from '@/types/project-types';
 import { findMicrographById } from '@/store/helpers';
 
 interface MicrographInfoDialogProps {
@@ -29,11 +27,7 @@ export function MicrographInfoDialog({ isOpen, onClose, micrographId }: Microgra
   const project = useAppStore((state) => state.project);
   const updateMicrographMetadata = useAppStore((state) => state.updateMicrographMetadata);
 
-  const [formData, setFormData] = useState<Partial<MicrographMetadata>>({
-    name: '',
-    micronPerPixel: undefined,
-    scalePixelsPerCentimeter: undefined,
-  });
+  const [name, setName] = useState('');
 
   // Load existing micrograph data when dialog opens
   useEffect(() => {
@@ -43,16 +37,12 @@ export function MicrographInfoDialog({ isOpen, onClose, micrographId }: Microgra
     console.log('[MicrographInfoDialog] Loading data for micrograph:', micrographId, micrograph);
 
     if (micrograph) {
-      setFormData({
-        name: micrograph.name,
-        micronPerPixel: micrograph.micronPerPixel,
-        scalePixelsPerCentimeter: micrograph.scalePixelsPerCentimeter,
-      });
+      setName(micrograph.name);
     }
   }, [isOpen, micrographId, project]);
 
   const handleSave = () => {
-    updateMicrographMetadata(micrographId, formData);
+    updateMicrographMetadata(micrographId, { name });
     onClose();
   };
 
@@ -60,28 +50,9 @@ export function MicrographInfoDialog({ isOpen, onClose, micrographId }: Microgra
     // Reset to original values
     const micrograph = findMicrographById(project, micrographId);
     if (micrograph) {
-      setFormData({
-        name: micrograph.name,
-        micronPerPixel: micrograph.micronPerPixel,
-        scalePixelsPerCentimeter: micrograph.scalePixelsPerCentimeter,
-      });
+      setName(micrograph.name);
     }
     onClose();
-  };
-
-  const handleChange = (field: keyof typeof formData) => (
-    e: React.ChangeEvent<HTMLInputElement>
-  ) => {
-    const value = e.target.value;
-    setFormData((prev) => ({
-      ...prev,
-      [field]:
-        field === 'micronPerPixel' || field === 'scalePixelsPerCentimeter'
-          ? value === ''
-            ? undefined
-            : parseFloat(value)
-          : value,
-    }));
   };
 
   return (
@@ -89,45 +60,19 @@ export function MicrographInfoDialog({ isOpen, onClose, micrographId }: Microgra
       <DialogTitle>Micrograph Information</DialogTitle>
       <DialogContent>
         <Box sx={{ pt: 1 }}>
-          <Grid container spacing={2}>
-            <Grid size={12}>
-              <TextField
-                autoFocus
-                fullWidth
-                label="Micrograph Name"
-                value={formData.name || ''}
-                onChange={handleChange('name')}
-                required
-              />
-            </Grid>
-            <Grid size={12}>
-              <TextField
-                fullWidth
-                label="Microns per Pixel"
-                type="number"
-                value={formData.micronPerPixel ?? ''}
-                onChange={handleChange('micronPerPixel')}
-                inputProps={{ step: 'any', min: 0 }}
-                helperText="Scale calibration (μm/pixel)"
-              />
-            </Grid>
-            <Grid size={12}>
-              <TextField
-                fullWidth
-                label="Pixels per Centimeter"
-                type="number"
-                value={formData.scalePixelsPerCentimeter ?? ''}
-                onChange={handleChange('scalePixelsPerCentimeter')}
-                inputProps={{ step: 'any', min: 0 }}
-                helperText="Alternative scale measurement (pixels/cm)"
-              />
-            </Grid>
-          </Grid>
+          <TextField
+            autoFocus
+            fullWidth
+            label="Micrograph Name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            required
+          />
         </Box>
       </DialogContent>
       <DialogActions>
         <Button onClick={handleCancel}>Cancel</Button>
-        <Button onClick={handleSave} variant="contained" disabled={!formData.name}>
+        <Button onClick={handleSave} variant="contained" disabled={!name}>
           Save
         </Button>
       </DialogActions>

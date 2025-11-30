@@ -9,6 +9,7 @@ import { useAppStore } from '../store';
 const Viewer: React.FC = () => {
   const [bottomHeight, setBottomHeight] = useState(200);
   const tiledViewerRef = useRef<TiledViewerRef>(null);
+  const [cursorCoords, setCursorCoords] = useState<{ x: number; y: number; unit: string; decimals: number } | null>(null);
 
   // Get active micrograph from store
   const project = useAppStore((state) => state.project);
@@ -34,6 +35,14 @@ const Viewer: React.FC = () => {
 
           const micrograph = sample.micrographs.find((m) => m.id === activeMicrographId);
           if (micrograph && micrograph.imagePath) {
+            // Don't load micrographs without scale set (batch-imported)
+            // They need to go through SetScaleDialog or EditMicrographLocationDialog first
+            if (micrograph.scalePixelsPerCentimeter === undefined || micrograph.scalePixelsPerCentimeter === null) {
+              console.log(`[Viewer] Micrograph ${activeMicrographId} has no scale set, not loading`);
+              setActiveMicrographPath(null);
+              return;
+            }
+
             // imagePath is now just the micrograph ID
             // Build the full path: ~/Documents/StraboMicro2Data/<project-id>/images/<micrograph-id>
             try {
@@ -142,7 +151,7 @@ const Viewer: React.FC = () => {
     >
       {/* Canvas area */}
       <Box sx={{ flex: 1, bgcolor: 'background.default', position: 'relative' }}>
-        <TiledViewer ref={tiledViewerRef} imagePath={activeMicrographPath} />
+        <TiledViewer ref={tiledViewerRef} imagePath={activeMicrographPath} onCursorMove={setCursorCoords} />
         <DrawingToolbar />
 
         {/* Floating toggle button when bottom panel is collapsed */}
@@ -185,7 +194,9 @@ const Viewer: React.FC = () => {
         }}
       >
         <Typography variant="body2" color="text.secondary">
-          X: 0.000 cm Y: 0.000 cm
+          {cursorCoords
+            ? `X: ${cursorCoords.x.toFixed(cursorCoords.decimals)} ${cursorCoords.unit} × Y: ${cursorCoords.y.toFixed(cursorCoords.decimals)} ${cursorCoords.unit}`
+            : 'X: 0.000 cm × Y: 0.000 cm'}
         </Typography>
       </Box>
 

@@ -229,6 +229,108 @@ async function listProjectFolders() {
   }
 }
 
+/**
+ * Copy a file to the project's associatedFiles folder
+ * @param {string} sourcePath - Full path to the source file
+ * @param {string} projectId - UUID of the project
+ * @param {string} fileName - Desired filename in the associatedFiles folder
+ * @returns {Promise<Object>} Object with destinationPath and fileName
+ */
+async function copyFileToAssociatedFiles(sourcePath, projectId, fileName) {
+  console.log(`[ProjectFolders] Copying file to associatedFiles for project: ${projectId}`);
+  console.log(`[ProjectFolders] Source: ${sourcePath}`);
+  console.log(`[ProjectFolders] Filename: ${fileName}`);
+
+  try {
+    // Get project folder paths
+    const paths = getProjectFolderPaths(projectId);
+
+    // Ensure associatedFiles folder exists
+    await fs.promises.mkdir(paths.associatedFiles, { recursive: true });
+
+    // Build destination path
+    const destinationPath = path.join(paths.associatedFiles, fileName);
+
+    // Check if file already exists in associatedFiles folder
+    try {
+      await fs.promises.access(destinationPath, fs.constants.F_OK);
+      // File exists - throw error to prevent overwriting
+      const error = new Error(`A file with the name "${fileName}" already exists in the associatedFiles folder. Please rename the file before adding it.`);
+      error.code = 'FILE_EXISTS';
+      console.error(`[ProjectFolders] File already exists: ${destinationPath}`);
+      throw error;
+    } catch (error) {
+      // If error is not ENOENT (file not found), rethrow it
+      if (error.code !== 'ENOENT' && error.code !== undefined) {
+        throw error;
+      }
+      // File doesn't exist - proceed with copy
+    }
+
+    // Check if source file exists
+    await fs.promises.access(sourcePath, fs.constants.R_OK);
+
+    // Copy the file
+    await fs.promises.copyFile(sourcePath, destinationPath);
+
+    console.log(`[ProjectFolders] Successfully copied file to: ${destinationPath}`);
+
+    return {
+      destinationPath,
+      fileName,
+      success: true
+    };
+  } catch (error) {
+    console.error(`[ProjectFolders] Error copying file:`, error);
+    throw error;
+  }
+}
+
+/**
+ * Delete a file from the project's associatedFiles folder
+ * @param {string} projectId - UUID of the project
+ * @param {string} fileName - Filename to delete from associatedFiles folder
+ * @returns {Promise<Object>} Object with success status
+ */
+async function deleteFromAssociatedFiles(projectId, fileName) {
+  console.log(`[ProjectFolders] Deleting file from associatedFiles for project: ${projectId}`);
+  console.log(`[ProjectFolders] Filename: ${fileName}`);
+
+  try {
+    // Get project folder paths
+    const paths = getProjectFolderPaths(projectId);
+
+    // Build file path
+    const filePath = path.join(paths.associatedFiles, fileName);
+
+    // Check if file exists
+    try {
+      await fs.promises.access(filePath, fs.constants.F_OK);
+    } catch (error) {
+      // File doesn't exist, consider it already deleted
+      console.log(`[ProjectFolders] File does not exist (already deleted?): ${filePath}`);
+      return {
+        success: true,
+        fileName,
+        message: 'File does not exist'
+      };
+    }
+
+    // Delete the file
+    await fs.promises.unlink(filePath);
+
+    console.log(`[ProjectFolders] Successfully deleted file: ${filePath}`);
+
+    return {
+      success: true,
+      fileName
+    };
+  } catch (error) {
+    console.error(`[ProjectFolders] Error deleting file:`, error);
+    throw error;
+  }
+}
+
 module.exports = {
   getDocumentsPath,
   getStraboMicro2DataPath,
@@ -238,5 +340,7 @@ module.exports = {
   projectFolderExists,
   getProjectFolderPaths,
   deleteProjectFolder,
-  listProjectFolders
+  listProjectFolders,
+  copyFileToAssociatedFiles,
+  deleteFromAssociatedFiles
 };

@@ -2,9 +2,16 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { ThemeProvider, createTheme, Theme } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
+import * as Sentry from '@sentry/electron/renderer';
 import App from './App';
 import './index.css';
 import { useTheme } from './hooks/useTheme';
+
+// Initialize Sentry for renderer process error tracking
+// Only enabled in production (main process controls this via IPC)
+Sentry.init({
+  dsn: 'https://a0a059594ef2ba9bfecb1e6bf028afde@o4510450188484608.ingest.us.sentry.io/4510450322046976',
+});
 
 // Shared theme configuration
 const getTheme = (mode: 'dark' | 'light'): Theme => createTheme({
@@ -59,6 +66,7 @@ const getTheme = (mode: 'dark' | 'light'): Theme => createTheme({
         root: ({ theme }) => ({
           backgroundColor: theme.palette.background.paper,
           borderBottom: `1px solid ${theme.palette.divider}`,
+          color: theme.palette.text.primary,
         }),
       },
     },

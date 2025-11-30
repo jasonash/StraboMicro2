@@ -12,8 +12,8 @@
  * when zooming into overlays, no matter how small they are on the reference.
  */
 
-import { useEffect, useState, useCallback, useMemo } from 'react';
-import { Group, Image as KonvaImage } from 'react-konva';
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
+import { Group, Image as KonvaImage, Rect } from 'react-konva';
 import { MicrographMetadata } from '@/types/project-types';
 
 // Render modes based on screen coverage and zoom
@@ -37,6 +37,8 @@ interface AssociatedImageRendererProps {
   stageScale: number; // Current stage scale factor
   onTileLoadingStart?: (message: string) => void; // Notify parent when tile loading starts
   onTileLoadingEnd?: () => void; // Notify parent when tile loading ends
+  onClick?: (micrographId: string) => void; // Called when overlay is clicked (for drill-down navigation)
+  showOutline?: boolean; // Show red outline around overlay (like legacy app)
 }
 
 interface TileInfo {
@@ -52,6 +54,7 @@ interface ImageState {
   tiles: Map<string, TileInfo>;
   isLoading: boolean;
   targetMode?: RenderMode; // Track what mode we're currently loading
+  retryCount: number; // Track retries to avoid infinite loops
 }
 
 const TILE_SIZE = 256;
@@ -64,12 +67,15 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
   stageScale,
   onTileLoadingStart,
   onTileLoadingEnd,
+  onClick,
+  showOutline = false,
 }) => {
   const [imageState, setImageState] = useState<ImageState>({
     mode: 'THUMBNAIL',
     imageObj: null,
     tiles: new Map(),
     isLoading: false,
+    retryCount: 0,
   });
 
   /**
@@ -105,6 +111,7 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
 
   /**
    * Check if overlay is visible in the current viewport
+   * Accounts for rotation by computing the axis-aligned bounding box of the rotated rectangle
    */
   const isInViewport = useCallback((): boolean => {
     if (!micrograph.imageWidth || !micrograph.imageHeight) return false;
@@ -118,26 +125,43 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
     const scaledWidth = imageWidth * scaleFactor;
     const scaledHeight = imageHeight * scaleFactor;
 
-    // Get overlay position (top-left)
-    let topLeftX = 0;
-    let topLeftY = 0;
+    // Get overlay center position
+    let centerX = 0;
+    let centerY = 0;
 
     if (micrograph.offsetInParent) {
-      topLeftX = micrograph.offsetInParent.X;
-      topLeftY = micrograph.offsetInParent.Y;
+      const topLeftX = micrograph.offsetInParent.X ?? micrograph.offsetInParent.x ?? 0;
+      const topLeftY = micrograph.offsetInParent.Y ?? micrograph.offsetInParent.y ?? 0;
+      centerX = topLeftX + scaledWidth / 2;
+      centerY = topLeftY + scaledHeight / 2;
     } else if (micrograph.pointInParent) {
-      topLeftX = micrograph.pointInParent.x - scaledWidth / 2;
-      topLeftY = micrograph.pointInParent.y - scaledHeight / 2;
-    } else if (micrograph.xOffset !== undefined && micrograph.yOffset !== undefined) {
-      topLeftX = micrograph.xOffset;
-      topLeftY = micrograph.yOffset;
+      centerX = micrograph.pointInParent.x ?? micrograph.pointInParent.X ?? 0;
+      centerY = micrograph.pointInParent.y ?? micrograph.pointInParent.Y ?? 0;
+    } else if (micrograph.xOffset !== undefined && micrograph.xOffset !== null &&
+               micrograph.yOffset !== undefined && micrograph.yOffset !== null) {
+      centerX = micrograph.xOffset + scaledWidth / 2;
+      centerY = micrograph.yOffset + scaledHeight / 2;
     }
 
-    // Apply stage transform to get screen coordinates
-    const screenX = topLeftX * stageScale + viewport.x;
-    const screenY = topLeftY * stageScale + viewport.y;
-    const screenWidth = scaledWidth * stageScale;
-    const screenHeight = scaledHeight * stageScale;
+    // Calculate the bounding box accounting for rotation
+    const rotation = micrograph.rotation || 0;
+    const radians = (rotation * Math.PI) / 180;
+    const cos = Math.abs(Math.cos(radians));
+    const sin = Math.abs(Math.sin(radians));
+
+    // Rotated bounding box dimensions
+    const rotatedWidth = scaledWidth * cos + scaledHeight * sin;
+    const rotatedHeight = scaledWidth * sin + scaledHeight * cos;
+
+    // Apply stage transform to get screen coordinates (center-based)
+    const screenCenterX = centerX * stageScale + viewport.x;
+    const screenCenterY = centerY * stageScale + viewport.y;
+    const screenWidth = rotatedWidth * stageScale;
+    const screenHeight = rotatedHeight * stageScale;
+
+    // Convert to top-left for intersection test
+    const screenX = screenCenterX - screenWidth / 2;
+    const screenY = screenCenterY - screenHeight / 2;
 
     // Check if overlay intersects with viewport
     const overlayRight = screenX + screenWidth;
@@ -157,25 +181,40 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
   }, [micrograph, parentMetadata, stageScale, viewport]);
 
   /**
-   * Determine appropriate render mode based on coverage, zoom, and viewport visibility
+   * Determine appropriate render mode based on zoom and viewport visibility
+   *
+   * Priority: Zoom level is the primary factor.
+   * If zoomed in enough to see detail, use high-res tiles.
+   * Coverage is only used at low zoom levels to optimize memory.
    */
   const determineRenderMode = useCallback((): RenderMode => {
-    // If not in viewport, use THUMBNAIL (smallest memory footprint)
+    // If not in viewport at all, use THUMBNAIL (smallest memory footprint)
     if (!isInViewport()) {
       return 'THUMBNAIL';
     }
 
-    const coverage = calculateScreenCoverage();
-    const effectiveZoom = viewport.zoom * stageScale;
+    // Use stageScale directly as the zoom level
+    // (viewport.zoom and stageScale are the same value)
+    const zoom = stageScale;
 
-    if (effectiveZoom < 0.5 || coverage < 0.1) {
-      return 'THUMBNAIL'; // 512x512
-    } else if (effectiveZoom < 2.0 || coverage < 0.4) {
-      return 'MEDIUM'; // 2048x2048
-    } else {
+    // High zoom always gets tiles - user is looking at detail
+    // This ensures tiles load when zoomed in, regardless of coverage
+    if (zoom >= 1.0) {
       return 'TILED'; // Full resolution
     }
-  }, [isInViewport, calculateScreenCoverage, viewport.zoom, stageScale]);
+
+    // Medium zoom (0.5 to 1.0) - use medium resolution
+    if (zoom >= 0.5) {
+      return 'MEDIUM'; // 2048x2048
+    }
+
+    // Low zoom (< 0.5) - use coverage to decide
+    const coverage = calculateScreenCoverage();
+    if (coverage >= 0.3) {
+      return 'MEDIUM';
+    }
+    return 'THUMBNAIL'; // 512x512
+  }, [isInViewport, calculateScreenCoverage, stageScale]);
 
   /**
    * Calculate position and scale for rendering overlay on parent
@@ -202,15 +241,16 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
     // Get position from appropriate field
     if (micrograph.offsetInParent) {
       // offsetInParent is top-left corner position, convert to center
-      const topLeftX = micrograph.offsetInParent.X;
-      const topLeftY = micrograph.offsetInParent.Y;
+      const topLeftX = micrograph.offsetInParent.X ?? micrograph.offsetInParent.x ?? 0;
+      const topLeftY = micrograph.offsetInParent.Y ?? micrograph.offsetInParent.y ?? 0;
       centerX = topLeftX + scaledWidth / 2;
       centerY = topLeftY + scaledHeight / 2;
     } else if (micrograph.pointInParent) {
       // For point placement, position is already the center
-      centerX = micrograph.pointInParent.x;
-      centerY = micrograph.pointInParent.y;
-    } else if (micrograph.xOffset !== undefined && micrograph.yOffset !== undefined) {
+      centerX = micrograph.pointInParent.x ?? micrograph.pointInParent.X ?? 0;
+      centerY = micrograph.pointInParent.y ?? micrograph.pointInParent.Y ?? 0;
+    } else if (micrograph.xOffset !== undefined && micrograph.xOffset !== null &&
+               micrograph.yOffset !== undefined && micrograph.yOffset !== null) {
       // Legacy fields - assume top-left, convert to center
       centerX = micrograph.xOffset + scaledWidth / 2;
       centerY = micrograph.yOffset + scaledHeight / 2;
@@ -229,6 +269,7 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
 
   /**
    * Load image for the determined render mode
+   * Includes retry logic to handle race conditions during initial project load
    */
   useEffect(() => {
     if (!window.api || !micrograph.imagePath) return;
@@ -236,25 +277,29 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
     // Capture imagePath in a non-null variable for TypeScript
     const imagePath = micrograph.imagePath;
 
+    // Max retries to avoid infinite loops
+    const MAX_RETRIES = 3;
+    const RETRY_DELAY_MS = 200;
+
     const loadImage = async () => {
       const targetMode = determineRenderMode();
-
-      console.log(`[AssociatedImageRenderer] Current mode: ${imageState.mode}, Target mode: ${targetMode}, isLoading: ${imageState.isLoading}`);
 
       // If we're already in the right mode and have the image, skip
       if (imageState.mode === targetMode &&
           (imageState.imageObj || imageState.tiles.size > 0)) {
-        console.log(`[AssociatedImageRenderer] Already in ${targetMode} mode with image loaded, skipping`);
         return;
       }
 
       // Don't reload if already loading this target mode
       if (imageState.isLoading && imageState.targetMode === targetMode) {
-        console.log(`[AssociatedImageRenderer] Already loading ${targetMode}, skipping`);
         return;
       }
 
-      console.log(`[AssociatedImageRenderer] Starting load for mode: ${targetMode}`);
+      // Give up after max retries
+      if (imageState.retryCount >= MAX_RETRIES) {
+        console.warn(`[AssociatedImageRenderer] Max retries (${MAX_RETRIES}) reached for ${micrograph.name}`);
+        return;
+      }
 
       // Mark that we're loading this target mode
       setImageState(prev => ({ ...prev, isLoading: true, targetMode }));
@@ -264,7 +309,6 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
         const folderPaths = await window.api!.getProjectFolderPaths(projectId);
         const fullPath = `${folderPaths.images}/${imagePath}`;
 
-        console.log(`[AssociatedImageRenderer] Loading overlay from: ${fullPath}`);
 
         if (targetMode === 'THUMBNAIL') {
           // Load 512x512 thumbnail
@@ -283,6 +327,7 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
             imageObj: img,
             tiles: new Map(),
             isLoading: false,
+            retryCount: 0, // Reset retry count on success
           });
 
         } else if (targetMode === 'MEDIUM') {
@@ -302,6 +347,7 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
             imageObj: img,
             tiles: new Map(),
             isLoading: false,
+            retryCount: 0, // Reset retry count on success
           });
 
         } else {
@@ -345,19 +391,87 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
             imageObj: null,
             tiles: newTiles,
             isLoading: false,
+            retryCount: 0, // Reset retry count on success
           });
 
           // Notify parent that we're done loading tiles
           onTileLoadingEnd?.();
         }
       } catch (error) {
-        console.error('[AssociatedImageRenderer] Failed to load image:', error);
-        // Don't clear the current image on error - keep showing what we have
+        // Only log error on final retry attempt to avoid console noise
+        if (imageState.retryCount >= MAX_RETRIES - 1) {
+          console.error('[AssociatedImageRenderer] Failed to load image after retries:', error);
+        }
+        // Reset loading state and schedule retry after delay
+        // This handles race conditions during initial project load
+        setTimeout(() => {
+          setImageState(prev => ({
+            ...prev,
+            isLoading: false,
+            retryCount: prev.retryCount + 1,
+          }));
+        }, RETRY_DELAY_MS);
       }
     };
 
     loadImage();
-  }, [micrograph, determineRenderMode, imageState.mode, imageState.imageObj, imageState.tiles.size, imageState.isLoading, projectId]);
+  }, [micrograph, determineRenderMode, imageState.mode, imageState.imageObj, imageState.tiles.size, imageState.isLoading, imageState.retryCount, projectId]);
+
+  // Track mouse position to distinguish clicks from drags
+  const mouseDownPosRef = useRef<{ x: number; y: number } | null>(null);
+  const DRAG_THRESHOLD = 5; // pixels - movement beyond this is considered a drag
+
+  // Handlers for click and cursor - MUST be before any early returns (React hooks rule)
+  const handleMouseDown = useCallback((e: any) => {
+    // Store the mouse position at mousedown
+    const stage = e.target.getStage();
+    if (stage) {
+      const pos = stage.getPointerPosition();
+      mouseDownPosRef.current = pos ? { x: pos.x, y: pos.y } : null;
+    }
+  }, []);
+
+  const handleMouseUp = useCallback((e: any) => {
+    if (!onClick || !mouseDownPosRef.current) {
+      mouseDownPosRef.current = null;
+      return;
+    }
+
+    // Check if mouse moved significantly (was it a drag?)
+    const stage = e.target.getStage();
+    if (stage) {
+      const pos = stage.getPointerPosition();
+      if (pos) {
+        const dx = Math.abs(pos.x - mouseDownPosRef.current.x);
+        const dy = Math.abs(pos.y - mouseDownPosRef.current.y);
+
+        // Only trigger click if movement was within threshold
+        if (dx < DRAG_THRESHOLD && dy < DRAG_THRESHOLD) {
+          onClick(micrograph.id);
+        }
+      }
+    }
+
+    mouseDownPosRef.current = null;
+  }, [onClick, micrograph.id]);
+
+  const handleMouseEnter = useCallback((e: any) => {
+    if (onClick) {
+      const container = e.target.getStage()?.container();
+      if (container) {
+        container.style.cursor = 'pointer';
+      }
+    }
+  }, [onClick]);
+
+  const handleMouseLeave = useCallback((e: any) => {
+    if (onClick) {
+      const container = e.target.getStage()?.container();
+      if (container) {
+        container.style.cursor = 'grab';
+      }
+    }
+  }, [onClick]);
 
   /**
    * Render based on current mode
@@ -372,6 +486,9 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
     return null;
   }
 
+  const imageWidth = micrograph.imageWidth || 0;
+  const imageHeight = micrograph.imageHeight || 0;
+
   if (imageState.mode === 'THUMBNAIL' || imageState.mode === 'MEDIUM') {
     // Render as single image
     if (!imageState.imageObj) return null;
@@ -385,13 +502,40 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
         rotation={overlayTransform.rotation}
         offsetX={overlayTransform.offsetX}
         offsetY={overlayTransform.offsetY}
+        onMouseDown={handleMouseDown}
+        onMouseUp={handleMouseUp}
+        onTap={handleMouseUp}
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleMouseLeave}
       >
         <KonvaImage
           image={imageState.imageObj}
-          width={micrograph.imageWidth || 0}
-          height={micrograph.imageHeight || 0}
+          width={imageWidth}
+          height={imageHeight}
           opacity={micrograph.opacity ?? 1.0}
         />
+        {/* Red outline around overlay */}
+        {showOutline && (
+          <Rect
+            x={0}
+            y={0}
+            width={imageWidth}
+            height={imageHeight}
+            stroke="#cc3333"
+            strokeWidth={3 / (stageScale * overlayTransform.scaleX)} // Constant screen size regardless of zoom/scale
+            listening={false}
+          />
+        )}
+        {/* Transparent hit area for reliable click detection */}
+        {onClick && (
+          <Rect
+            x={0}
+            y={0}
+            width={imageWidth}
+            height={imageHeight}
+            fill="transparent"
+          />
+        )}
       </Group>
     );
   } else {
@@ -407,6 +551,11 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
         rotation={overlayTransform.rotation}
         offsetX={overlayTransform.offsetX}
         offsetY={overlayTransform.offsetY}
+        onMouseDown={handleMouseDown}
+        onMouseUp={handleMouseUp}
+        onTap={handleMouseUp}
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleMouseLeave}
       >
         {Array.from(imageState.tiles.values()).map((tile) => {
           if (!tile.imageObj) return null;
@@ -417,12 +566,34 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
               image={tile.imageObj}
               x={tile.x * TILE_SIZE}
               y={tile.y * TILE_SIZE}
-              width={TILE_SIZE + 1}  // 1px overlap to prevent seams
-              height={TILE_SIZE + 1} // 1px overlap to prevent seams
+              width={TILE_SIZE + 2}  // 2px overlap to prevent seams when rotated
+              height={TILE_SIZE + 2} // 2px overlap to prevent seams when rotated
               opacity={micrograph.opacity ?? 1.0}
             />
           );
         })}
+        {/* Red outline around overlay */}
+        {showOutline && (
+          <Rect
+            x={0}
+            y={0}
+            width={imageWidth}
+            height={imageHeight}
+            stroke="#cc3333"
+            strokeWidth={3 / (stageScale * overlayTransform.scaleX)} // Constant screen size regardless of zoom/scale
+            listening={false}
+          />
+        )}
+        {/* Transparent hit area for reliable click detection */}
+        {onClick && (
+          <Rect
+            x={0}
+            y={0}
+            width={imageWidth}
+            height={imageHeight}
+            fill="transparent"
+          />
+        )}
       </Group>
     );
   }

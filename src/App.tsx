@@ -1,33 +1,110 @@
 import { useState, useEffect } from 'react';
+import * as Sentry from '@sentry/electron/renderer';
 import MainLayout from './components/MainLayout';
 import { NewProjectDialog } from './components/dialogs/NewProjectDialog';
 import { EditProjectDialog } from './components/dialogs/EditProjectDialog';
 import { ProjectDebugModal } from './components/dialogs/ProjectDebugModal';
+import { PreferencesDialog } from './components/dialogs/PreferencesDialog';
+import { LoginDialog } from './components/dialogs/LoginDialog';
+import { AboutDialog } from './components/dialogs/AboutDialog';
+import { ExportAllImagesDialog } from './components/dialogs/ExportAllImagesDialog';
+import { ExportPDFDialog } from './components/dialogs/ExportPDFDialog';
+import { ExportSmzDialog } from './components/dialogs/ExportSmzDialog';
+import { PushToServerDialog } from './components/dialogs/PushToServerDialog';
+import { VersionHistoryDialog } from './components/dialogs/VersionHistoryDialog';
+import { ImportSmzDialog } from './components/dialogs/ImportSmzDialog';
+import { RemoteProjectsDialog } from './components/dialogs/RemoteProjectsDialog';
+import { SharedProjectDialog } from './components/dialogs/SharedProjectDialog';
+import { CloseProjectDialog } from './components/dialogs/CloseProjectDialog';
 import { useAppStore, useTemporalStore } from '@/store';
+import { useAuthStore } from '@/store/useAuthStore';
 import { useTheme } from './hooks/useTheme';
+import { useAutosave } from './hooks/useAutosave';
 import './App.css';
 
 function App() {
   const [isNewProjectDialogOpen, setIsNewProjectDialogOpen] = useState(false);
   const [isEditProjectDialogOpen, setIsEditProjectDialogOpen] = useState(false);
   const [isDebugModalOpen, setIsDebugModalOpen] = useState(false);
+  const [isPreferencesOpen, setIsPreferencesOpen] = useState(false);
+  const [isLoginDialogOpen, setIsLoginDialogOpen] = useState(false);
+  const [isExportAllImagesOpen, setIsExportAllImagesOpen] = useState(false);
+  const [isExportPDFOpen, setIsExportPDFOpen] = useState(false);
+  const [isExportSmzOpen, setIsExportSmzOpen] = useState(false);
+  const [isPushToServerOpen, setIsPushToServerOpen] = useState(false);
+  const [isVersionHistoryOpen, setIsVersionHistoryOpen] = useState(false);
+  const [isImportSmzOpen, setIsImportSmzOpen] = useState(false);
+  const [importSmzFilePath, setImportSmzFilePath] = useState<string | null>(null);
+  const [isRemoteProjectsOpen, setIsRemoteProjectsOpen] = useState(false);
+  const [isSharedProjectOpen, setIsSharedProjectOpen] = useState(false);
+  const [isCloseProjectOpen, setIsCloseProjectOpen] = useState(false);
+  const [isAboutOpen, setIsAboutOpen] = useState(false);
   const closeProject = useAppStore(state => state.closeProject);
   const project = useAppStore(state => state.project);
   const setTheme = useAppStore(state => state.setTheme);
+  const setShowRulers = useAppStore(state => state.setShowRulers);
+  const setShowSpotLabels = useAppStore(state => state.setShowSpotLabels);
+  const setShowMicrographOutlines = useAppStore(state => state.setShowMicrographOutlines);
+  const setShowRecursiveSpots = useAppStore(state => state.setShowRecursiveSpots);
+  const { checkAuthStatus, logout } = useAuthStore();
 
   // Initialize theme system
   useTheme();
 
-  // Update window title when project changes
+  // Initialize autosave (5-minute timer when dirty)
+  const { manualSave, saveBeforeClose, saveBeforeSwitch } = useAutosave();
+
+  // Check auth status on app startup
+  useEffect(() => {
+    checkAuthStatus();
+  }, [checkAuthStatus]);
+
+  // Update window title and notify main process when project changes
   useEffect(() => {
     if (!window.api) return;
 
     if (project && project.name) {
       window.api.setWindowTitle(`StraboMicro - ${project.name}`);
+      window.api.notifyProjectChanged(project.id);
     } else {
       window.api.setWindowTitle('StraboMicro');
+      window.api.notifyProjectChanged(null);
     }
   }, [project]);
+
+  // Save before app close
+  useEffect(() => {
+    // Handle browser beforeunload (fallback)
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      const isDirty = useAppStore.getState().isDirty;
+      const currentProject = useAppStore.getState().project;
+
+      if (isDirty && currentProject) {
+        // Trigger save (async, but we do our best)
+        saveBeforeClose();
+
+        // Show browser confirmation dialog as fallback
+        e.preventDefault();
+        e.returnValue = 'You have unsaved changes. Are you sure you want to leave?';
+        return e.returnValue;
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
+    // Handle Electron app close event
+    const unsubscribeBeforeClose = window.api?.onBeforeClose(async () => {
+      console.log('[App] Received before-close event from main process');
+      await saveBeforeClose();
+      console.log('[App] Save complete, signaling ready to close');
+      window.api?.signalCloseReady();
+    });
+
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      unsubscribeBeforeClose?.();
+    };
+  }, [saveBeforeClose]);
 
   // Listen for menu events from Electron
   useEffect(() => {
@@ -37,36 +114,80 @@ function App() {
       return;
     }
 
-    // New Project menu item
-    window.api.onNewProject(() => {
-      setIsNewProjectDialogOpen(true);
-    });
+    // Collect all unsubscribe functions for cleanup
+    const unsubscribers: Array<(() => void) | undefined> = [];
 
-    // Open Project menu item (TODO: implement)
-    window.api.onOpenProject(() => {
-      console.log('Open Project clicked');
-    });
+    // New Project menu item
+    unsubscribers.push(window.api.onNewProject(() => {
+      setIsNewProjectDialogOpen(true);
+    }));
+
+    // Open Project menu item - opens file dialog for .smz files
+    unsubscribers.push(window.api.onOpenProject(async () => {
+      // Check for unsaved changes first
+      const isDirty = useAppStore.getState().isDirty;
+      const currentProject = useAppStore.getState().project;
+
+      if (isDirty && currentProject) {
+        const shouldContinue = window.confirm(
+          'You have unsaved changes. Save before opening a new project?'
+        );
+        if (shouldContinue) {
+          await saveBeforeSwitch();
+        }
+      }
+
+      setImportSmzFilePath(null); // Clear any previous file path
+      setIsImportSmzOpen(true);
+    }));
+
+    // File association - open .smz from double-click or command line
+    unsubscribers.push(window.api.onOpenSmzFile(async (filePath: string) => {
+      console.log('[App] Received file association open request:', filePath);
+
+      // Check for unsaved changes first
+      const isDirty = useAppStore.getState().isDirty;
+      const currentProject = useAppStore.getState().project;
+
+      if (isDirty && currentProject) {
+        const shouldContinue = window.confirm(
+          'You have unsaved changes. Save before opening a new project?'
+        );
+        if (shouldContinue) {
+          await saveBeforeSwitch();
+        }
+      }
+
+      // Set the file path and open the import dialog
+      setImportSmzFilePath(filePath);
+      setIsImportSmzOpen(true);
+    }));
 
     // Edit Project menu item
-    window.api.onEditProject(() => {
+    unsubscribers.push(window.api.onEditProject(() => {
       setIsEditProjectDialogOpen(true);
-    });
+    }));
 
     // Debug: Show Project Structure
-    window.api.onShowProjectDebug(() => {
+    unsubscribers.push(window.api.onShowProjectDebug(() => {
       setIsDebugModalOpen(true);
-    });
+    }));
+
+    // Preferences menu item
+    unsubscribers.push(window.api.onPreferences(() => {
+      setIsPreferencesOpen(true);
+    }));
 
     // Debug: Clear Project
-    window.api.onClearProject(() => {
+    unsubscribers.push(window.api.onClearProject(() => {
       if (confirm('Are you sure you want to clear the current project? This will remove it from localStorage.')) {
         closeProject();
         console.log('Project cleared');
       }
-    });
+    }));
 
     // Debug: Quick Load Image
-    window.api.onQuickLoadImage(async () => {
+    unsubscribers.push(window.api.onQuickLoadImage(async () => {
       try {
         console.log('=== Quick Load Image: Starting ===');
 
@@ -167,10 +288,10 @@ function App() {
         console.error('Quick Load Image failed:', error);
         alert('Failed to load image: ' + (error as Error).message);
       }
-    });
+    }));
 
     // Load Sample Project
-    window.api.onLoadSampleProject(() => {
+    unsubscribers.push(window.api.onLoadSampleProject(() => {
       console.log('Loading sample project...');
 
       const sampleProject = {
@@ -241,10 +362,10 @@ function App() {
 
       useAppStore.getState().loadProject(sampleProject, null);
       console.log('Sample project loaded successfully!');
-    });
+    }));
 
     // Reset Everything (Clean Test)
-    window.api?.onResetEverything(async () => {
+    unsubscribers.push(window.api?.onResetEverything(async () => {
       console.log('Resetting everything for clean test...');
 
       try {
@@ -260,10 +381,10 @@ function App() {
         console.error('Error during reset:', error);
         alert(`❌ Error during reset: ${error instanceof Error ? error.message : 'Unknown error'}`);
       }
-    });
+    }));
 
     // Rebuild All Thumbnails
-    window.api?.onRebuildAllThumbnails(async () => {
+    unsubscribers.push(window.api?.onRebuildAllThumbnails(async () => {
       const project = useAppStore.getState().project;
 
       if (!project) {
@@ -292,27 +413,247 @@ function App() {
         console.error('Error rebuilding thumbnails:', error);
         alert(`❌ Error rebuilding thumbnails: ${error instanceof Error ? error.message : 'Unknown error'}`);
       }
-    });
+    }));
 
     // Undo menu item
-    window.api.onUndo(() => {
+    unsubscribers.push(window.api.onUndo(() => {
       const temporalState = useTemporalStore.getState();
       temporalState.undo();
       console.log('Undo performed');
-    });
+    }));
 
     // Redo menu item
-    window.api.onRedo(() => {
+    unsubscribers.push(window.api.onRedo(() => {
       const temporalState = useTemporalStore.getState();
       temporalState.redo();
       console.log('Redo performed');
-    });
+    }));
 
     // Theme menu item
-    window.api.onThemeChange((theme) => {
+    unsubscribers.push(window.api.onThemeChange((theme) => {
       setTheme(theme);
-    });
-  }, [closeProject, setTheme]);
+    }));
+
+    // View: Toggle Rulers menu item
+    unsubscribers.push(window.api.onToggleRulers((checked) => {
+      setShowRulers(checked);
+    }));
+
+    // View: Toggle Spot Labels menu item
+    unsubscribers.push(window.api.onToggleSpotLabels((checked) => {
+      setShowSpotLabels(checked);
+    }));
+
+    // View: Toggle Overlay Outlines menu item
+    unsubscribers.push(window.api.onToggleOverlayOutlines((checked) => {
+      setShowMicrographOutlines(checked);
+    }));
+
+    // View: Toggle Recursive Spots menu item
+    unsubscribers.push(window.api.onToggleRecursiveSpots((checked) => {
+      setShowRecursiveSpots(checked);
+    }));
+
+    // Account: Login menu item
+    unsubscribers.push(window.api.onLoginRequest(() => {
+      setIsLoginDialogOpen(true);
+    }));
+
+    // Account: Logout menu item
+    unsubscribers.push(window.api.onLogoutRequest(async () => {
+      await logout();
+    }));
+
+    // Help: About menu item
+    unsubscribers.push(window.api.onShowAbout(() => {
+      setIsAboutOpen(true);
+    }));
+
+    // Debug: Trigger test error in renderer (only wired in development)
+    unsubscribers.push(window.api.onDebugTriggerTestError(() => {
+      console.log('[Debug] Triggering test error in renderer process...');
+      const error = new Error('Test error from renderer process - triggered via Debug menu');
+      Sentry.captureException(error);
+      console.log('[Debug] Error sent to Sentry');
+    }));
+
+    // File: Export All Images menu item
+    unsubscribers.push(window.api.onExportAllImages(() => {
+      if (!project) {
+        alert('No project loaded. Please load a project first.');
+        return;
+      }
+      setIsExportAllImagesOpen(true);
+    }));
+
+    // File: Export Project as JSON menu item
+    unsubscribers.push(window.api?.onExportProjectJson(async () => {
+      if (!project) {
+        alert('No project loaded. Please load a project first.');
+        return;
+      }
+      try {
+        const result = await window.api?.exportProjectJson(project);
+        if (result?.success && result.filePath) {
+          alert(`Project exported to:\n${result.filePath}`);
+        }
+      } catch (error) {
+        console.error('Failed to export project:', error);
+        alert('Failed to export project as JSON.');
+      }
+    }));
+
+    // File: Export Project as PDF menu item
+    unsubscribers.push(window.api?.onExportProjectPdf(() => {
+      if (!project) {
+        alert('No project loaded. Please load a project first.');
+        return;
+      }
+      setIsExportPDFOpen(true);
+    }));
+
+    // File: Save Project menu item
+    unsubscribers.push(window.api?.onSaveProject(async () => {
+      if (!project) {
+        alert('No project loaded. Please load a project first.');
+        return;
+      }
+      try {
+        // Use manualSave which handles save + version + timer reset
+        const result = await manualSave();
+        if (!result.success) {
+          alert('Failed to save project.');
+        }
+      } catch (error) {
+        console.error('Failed to save project:', error);
+        alert('Failed to save project.');
+      }
+    }));
+
+    // File: Export as .smz menu item
+    unsubscribers.push(window.api?.onExportSmz(() => {
+      if (!project) {
+        alert('No project loaded. Please load a project first.');
+        return;
+      }
+      setIsExportSmzOpen(true);
+    }));
+
+    // File: Push to Server menu item
+    unsubscribers.push(window.api?.onPushToServer(() => {
+      if (!project) {
+        alert('No project loaded. Please load a project first.');
+        return;
+      }
+      setIsPushToServerOpen(true);
+    }));
+
+    // File: Open Remote Project menu item
+    unsubscribers.push(window.api?.onOpenRemoteProject(async () => {
+      // Check for unsaved changes first
+      const isDirty = useAppStore.getState().isDirty;
+      const currentProject = useAppStore.getState().project;
+
+      if (isDirty && currentProject) {
+        const shouldContinue = window.confirm(
+          'You have unsaved changes. Save before opening a remote project?'
+        );
+        if (shouldContinue) {
+          await saveBeforeSwitch();
+        }
+      }
+
+      setIsRemoteProjectsOpen(true);
+    }));
+
+    // File: Open Shared Project menu item
+    unsubscribers.push(window.api?.onOpenSharedProject(async () => {
+      // Check for unsaved changes first
+      const isDirty = useAppStore.getState().isDirty;
+      const currentProject = useAppStore.getState().project;
+
+      if (isDirty && currentProject) {
+        const shouldContinue = window.confirm(
+          'You have unsaved changes. Save before opening a shared project?'
+        );
+        if (shouldContinue) {
+          await saveBeforeSwitch();
+        }
+      }
+
+      setIsSharedProjectOpen(true);
+    }));
+
+    // File: Close Project menu item
+    unsubscribers.push(window.api?.onCloseProject(() => {
+      if (!project) {
+        alert('No project loaded.');
+        return;
+      }
+      setIsCloseProjectOpen(true);
+    }));
+
+    // File: View Version History menu item
+    unsubscribers.push(window.api?.onViewVersionHistory(() => {
+      if (!project) {
+        alert('No project loaded. Please load a project first.');
+        return;
+      }
+      setIsVersionHistoryOpen(true);
+    }));
+
+    // File: Switch Project (from Recent Projects menu)
+    unsubscribers.push(window.api?.onSwitchProject(async (_event, projectId) => {
+      console.log('[App] Switching to project:', projectId);
+
+      // Check for unsaved changes
+      const canSwitch = await saveBeforeSwitch();
+      if (!canSwitch) {
+        console.log('[App] Switch cancelled - save failed');
+        return;
+      }
+
+      // Close current project
+      closeProject();
+
+      // Load the new project
+      try {
+        const result = await window.api?.projects.load(projectId);
+        if (result?.success && result.project) {
+          // Load into store
+          const loadProject = useAppStore.getState().loadProject;
+          loadProject(result.project, null);
+          console.log('[App] Project loaded successfully:', result.project.name);
+
+          // Auto-select the first reference micrograph (one without parentID)
+          const loadedProject = result.project;
+          for (const dataset of loadedProject.datasets || []) {
+            for (const sample of dataset.samples || []) {
+              const firstReferenceMicro = (sample.micrographs || []).find(
+                (m: { parentID?: string }) => !m.parentID
+              );
+              if (firstReferenceMicro) {
+                useAppStore.getState().selectMicrograph(firstReferenceMicro.id);
+                console.log('[App] Auto-selected micrograph:', firstReferenceMicro.name);
+                return; // Found one, stop searching
+              }
+            }
+          }
+        } else {
+          console.error('[App] Failed to load project:', result?.error);
+          alert(`Failed to load project: ${result?.error || 'Unknown error'}`);
+        }
+      } catch (error) {
+        console.error('[App] Error loading project:', error);
+        alert(`Error loading project: ${error}`);
+      }
+    }));
+
+    // Cleanup: remove all listeners when dependencies change or component unmounts
+    return () => {
+      unsubscribers.forEach(unsub => unsub?.());
+    };
+  }, [closeProject, setTheme, setShowRulers, setShowSpotLabels, setShowMicrographOutlines, logout, project, manualSave, saveBeforeSwitch]);
 
   return (
     <>
@@ -328,6 +669,133 @@ function App() {
       <ProjectDebugModal
         isOpen={isDebugModalOpen}
         onClose={() => setIsDebugModalOpen(false)}
+      />
+      <PreferencesDialog
+        isOpen={isPreferencesOpen}
+        onClose={() => setIsPreferencesOpen(false)}
+      />
+      <LoginDialog
+        isOpen={isLoginDialogOpen}
+        onClose={() => setIsLoginDialogOpen(false)}
+      />
+      <AboutDialog
+        isOpen={isAboutOpen}
+        onClose={() => setIsAboutOpen(false)}
+      />
+      <ExportAllImagesDialog
+        open={isExportAllImagesOpen}
+        onClose={() => setIsExportAllImagesOpen(false)}
+        projectId={project?.id ?? null}
+        projectData={project}
+      />
+      <ExportPDFDialog
+        open={isExportPDFOpen}
+        onClose={() => setIsExportPDFOpen(false)}
+        projectId={project?.id ?? null}
+        projectData={project}
+      />
+      <ExportSmzDialog
+        open={isExportSmzOpen}
+        onClose={() => setIsExportSmzOpen(false)}
+        projectId={project?.id ?? null}
+        projectData={project}
+      />
+      <PushToServerDialog
+        open={isPushToServerOpen}
+        onClose={() => setIsPushToServerOpen(false)}
+        projectId={project?.id ?? null}
+        projectData={project}
+      />
+      <VersionHistoryDialog
+        open={isVersionHistoryOpen}
+        onClose={() => setIsVersionHistoryOpen(false)}
+        projectId={project?.id ?? ''}
+      />
+      <ImportSmzDialog
+        open={isImportSmzOpen}
+        onClose={() => {
+          setIsImportSmzOpen(false);
+          setImportSmzFilePath(null); // Clear the file path when closing
+        }}
+        initialFilePath={importSmzFilePath}
+        onImportComplete={(importedProject) => {
+          // Load the imported project into the store
+          useAppStore.getState().loadProject(importedProject, null);
+
+          // Select the first reference micrograph if available
+          const datasets = importedProject.datasets || [];
+          for (const dataset of datasets) {
+            for (const sample of dataset.samples || []) {
+              const referenceMicrograph = (sample.micrographs || []).find(
+                (m: any) => !m.parentID
+              );
+              if (referenceMicrograph) {
+                setTimeout(() => {
+                  useAppStore.getState().selectMicrograph(referenceMicrograph.id);
+                }, 100);
+                return;
+              }
+            }
+          }
+        }}
+      />
+      <RemoteProjectsDialog
+        open={isRemoteProjectsOpen}
+        onClose={() => setIsRemoteProjectsOpen(false)}
+        onImportComplete={(importedProject: any) => {
+          // Load the imported project into the store
+          useAppStore.getState().loadProject(importedProject, null);
+
+          // Select the first reference micrograph if available
+          const datasets = importedProject.datasets || [];
+          for (const dataset of datasets) {
+            for (const sample of dataset.samples || []) {
+              const referenceMicrograph = (sample.micrographs || []).find(
+                (m: any) => !m.parentID
+              );
+              if (referenceMicrograph) {
+                setTimeout(() => {
+                  useAppStore.getState().selectMicrograph(referenceMicrograph.id);
+                }, 100);
+                return;
+              }
+            }
+          }
+        }}
+      />
+      <SharedProjectDialog
+        open={isSharedProjectOpen}
+        onClose={() => setIsSharedProjectOpen(false)}
+        onImportComplete={(importedProject: any) => {
+          // Load the imported project into the store
+          useAppStore.getState().loadProject(importedProject, null);
+
+          // Select the first reference micrograph if available
+          const datasets = importedProject.datasets || [];
+          for (const dataset of datasets) {
+            for (const sample of dataset.samples || []) {
+              const referenceMicrograph = (sample.micrographs || []).find(
+                (m: any) => !m.parentID
+              );
+              if (referenceMicrograph) {
+                setTimeout(() => {
+                  useAppStore.getState().selectMicrograph(referenceMicrograph.id);
+                }, 100);
+                return;
+              }
+            }
+          }
+        }}
+      />
+      <CloseProjectDialog
+        open={isCloseProjectOpen}
+        projectId={project?.id || null}
+        projectName={project?.name || null}
+        onClose={() => setIsCloseProjectOpen(false)}
+        onConfirm={() => {
+          // Clear the project from the store after successful deletion
+          closeProject();
+        }}
       />
     </>
   );

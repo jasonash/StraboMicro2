@@ -1,5 +1,6 @@
 import React from 'react';
 import { Box, IconButton, Tooltip } from '@mui/material';
+import { useAppStore } from '@/store';
 import './DrawingToolbar.css';
 
 /**
@@ -9,23 +10,26 @@ import './DrawingToolbar.css';
  * Contains three drawing tools: Point, Line, and Polygon.
  */
 const DrawingToolbar: React.FC = () => {
+  const activeTool = useAppStore((state) => state.activeTool);
+  const setActiveTool = useAppStore((state) => state.setActiveTool);
+
   const handlePointClick = () => {
-    console.log('Point tool selected');
+    setActiveTool(activeTool === 'point' ? null : 'point');
   };
 
   const handleLineClick = () => {
-    console.log('Line tool selected');
+    setActiveTool(activeTool === 'line' ? null : 'line');
   };
 
   const handlePolygonClick = () => {
-    console.log('Polygon tool selected');
+    setActiveTool(activeTool === 'polygon' ? null : 'polygon');
   };
 
   return (
     <Box className="drawing-toolbar">
       <Tooltip title="Point Tool" placement="left">
         <IconButton
-          className="toolbar-button"
+          className={`toolbar-button ${activeTool === 'point' ? 'active' : ''}`}
           onClick={handlePointClick}
           aria-label="Point tool"
         >
@@ -39,7 +43,7 @@ const DrawingToolbar: React.FC = () => {
 
       <Tooltip title="Line Tool" placement="left">
         <IconButton
-          className="toolbar-button"
+          className={`toolbar-button ${activeTool === 'line' ? 'active' : ''}`}
           onClick={handleLineClick}
           aria-label="Line tool"
         >
@@ -54,7 +58,7 @@ const DrawingToolbar: React.FC = () => {
 
       <Tooltip title="Polygon Tool" placement="left">
         <IconButton
-          className="toolbar-button"
+          className={`toolbar-button ${activeTool === 'polygon' ? 'active' : ''}`}
           onClick={handlePolygonClick}
           aria-label="Polygon tool"
         >

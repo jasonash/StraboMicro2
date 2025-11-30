@@ -16,8 +16,12 @@ import {
   MenuItem,
   Box,
   Stack,
+  Divider,
 } from '@mui/material';
+import { Link as LinkIcon } from '@mui/icons-material';
 import { useAppStore } from '@/store';
+import { useAuthStore } from '@/store/useAuthStore';
+import { LinkSampleDialog, mapServerSampleToLocal } from './LinkSampleDialog';
 import type { SampleMetadata } from '@/types/project-types';
 
 interface NewSampleDialogProps {
@@ -28,6 +32,7 @@ interface NewSampleDialogProps {
 
 interface SampleFormData {
   sampleID: string;
+  igsn: string;
   longitude: string;
   latitude: string;
   mainSamplingPurpose: string;
@@ -40,6 +45,7 @@ interface SampleFormData {
 
 const initialFormData: SampleFormData = {
   sampleID: '',
+  igsn: '',
   longitude: '',
   latitude: '',
   mainSamplingPurpose: '',
@@ -52,7 +58,12 @@ const initialFormData: SampleFormData = {
 
 export function NewSampleDialog({ isOpen, onClose, datasetId }: NewSampleDialogProps) {
   const [formData, setFormData] = useState<SampleFormData>(initialFormData);
+  const [showLinkDialog, setShowLinkDialog] = useState(false);
+  const [linkedSampleId, setLinkedSampleId] = useState<string | null>(null);
+  const [linkedSampleData, setLinkedSampleData] = useState<Partial<SampleMetadata> | null>(null);
+
   const addSample = useAppStore((state) => state.addSample);
+  const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
 
   const updateField = (field: keyof SampleFormData, value: string) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
@@ -113,17 +124,41 @@ export function NewSampleDialog({ isOpen, onClose, datasetId }: NewSampleDialogP
     return true;
   };
 
+  const handleLinkedSampleSelect = (serverSample: Parameters<typeof mapServerSampleToLocal>[0]) => {
+    const mappedData = mapServerSampleToLocal(serverSample);
+
+    // Store the linked sample ID and data
+    setLinkedSampleId(mappedData.id);
+    setLinkedSampleData(mappedData);
+
+    // Populate form fields with server data
+    setFormData({
+      sampleID: mappedData.sampleID || mappedData.label || '',
+      igsn: mappedData.igsn || '',
+      longitude: mappedData.longitude?.toString() || '',
+      latitude: mappedData.latitude?.toString() || '',
+      mainSamplingPurpose: mappedData.mainSamplingPurpose || '',
+      otherSamplingPurpose: '',
+      sampleDescription: mappedData.sampleDescription || '',
+      materialType: mappedData.materialType || '',
+      otherMaterialType: '',
+      sampleNotes: mappedData.sampleNotes || '',
+    });
+  };
+
   const handleCreate = () => {
     if (!validateForm() || !datasetId) {
       return;
     }
 
     // Create sample structure
+    // Use linked sample ID if available, otherwise generate new UUID
     const sample: SampleMetadata = {
-      id: crypto.randomUUID(),
+      id: linkedSampleId || crypto.randomUUID(),
       name: formData.sampleID.trim(),
       label: formData.sampleID.trim(),
       sampleID: formData.sampleID.trim(),
+      igsn: formData.igsn.trim() || undefined,
       longitude: formData.longitude ? parseFloat(formData.longitude) : undefined,
       latitude: formData.latitude ? parseFloat(formData.latitude) : undefined,
       mainSamplingPurpose: formData.mainSamplingPurpose || undefined,
@@ -132,6 +167,19 @@ export function NewSampleDialog({ isOpen, onClose, datasetId }: NewSampleDialogP
       materialType: formData.materialType || undefined,
       otherMaterialType: formData.otherMaterialType || undefined,
       sampleNotes: formData.sampleNotes || undefined,
+      // Include additional fields from linked sample
+      ...(linkedSampleData && {
+        existsOnServer: true,
+        inplacenessOfSample: linkedSampleData.inplacenessOfSample,
+        orientedSample: linkedSampleData.orientedSample,
+        sampleOrientationNotes: linkedSampleData.sampleOrientationNotes,
+        sampleSize: linkedSampleData.sampleSize,
+        degreeOfWeathering: linkedSampleData.degreeOfWeathering,
+        color: linkedSampleData.color,
+        lithology: linkedSampleData.lithology,
+        sampleUnit: linkedSampleData.sampleUnit,
+        sampleType: linkedSampleData.sampleType,
+      }),
       micrographs: [],
     };
 
@@ -139,12 +187,18 @@ export function NewSampleDialog({ isOpen, onClose, datasetId }: NewSampleDialogP
     addSample(datasetId, sample);
 
     // Reset form and close
-    setFormData(initialFormData);
+    resetForm();
     onClose();
   };
 
-  const handleCancel = () => {
+  const resetForm = () => {
     setFormData(initialFormData);
+    setLinkedSampleId(null);
+    setLinkedSampleData(null);
+  };
+
+  const handleCancel = () => {
+    resetForm();
     onClose();
   };
 
@@ -165,6 +219,34 @@ export function NewSampleDialog({ isOpen, onClose, datasetId }: NewSampleDialogP
       <DialogContent>
         <Box sx={{ pt: 2 }}>
           <Stack spacing={3}>
+            {/* Link Sample From StraboField - only visible when logged in */}
+            {isAuthenticated && (
+              <>
+                <Button
+                  variant="outlined"
+                  startIcon={<LinkIcon />}
+                  onClick={() => setShowLinkDialog(true)}
+                  fullWidth
+                >
+                  Link Sample From StraboField
+                </Button>
+                {linkedSampleId && (
+                  <Box
+                    sx={{
+                      p: 1.5,
+                      bgcolor: 'success.main',
+                      color: 'success.contrastText',
+                      borderRadius: 1,
+                      textAlign: 'center',
+                    }}
+                  >
+                    Linked to server sample (ID: {linkedSampleId})
+                  </Box>
+                )}
+                <Divider />
+              </>
+            )}
+
             <TextField
               label="Sample ID"
               value={formData.sampleID}
@@ -172,6 +254,15 @@ export function NewSampleDialog({ isOpen, onClose, datasetId }: NewSampleDialogP
               required
               fullWidth
               autoFocus
+            />
+
+            <TextField
+              label="IGSN"
+              value={formData.igsn}
+              onChange={(e) => updateField('igsn', e.target.value)}
+              placeholder="e.g., IEMEG0001"
+              helperText="International Geo Sample Number"
+              fullWidth
             />
 
             <Stack direction="row" spacing={2}>
@@ -287,6 +378,13 @@ export function NewSampleDialog({ isOpen, onClose, datasetId }: NewSampleDialogP
           Create Sample
         </Button>
       </DialogActions>
+
+      {/* Link Sample Dialog */}
+      <LinkSampleDialog
+        open={showLinkDialog}
+        onClose={() => setShowLinkDialog(false)}
+        onSelectSample={handleLinkedSampleSelect}
+      />
     </Dialog>
   );
 }

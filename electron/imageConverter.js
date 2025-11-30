@@ -16,6 +16,7 @@ const fs = require('fs');
 const path = require('path');
 const log = require('electron-log');
 const scratchSpace = require('./scratchSpace');
+const bmp = require('bmp-js');
 
 // tiff is an ES module, we'll import it dynamically when needed
 let decodeTIFF = null;
@@ -140,9 +141,77 @@ async function convertToScratchJPEG(inputPath, progressCallback = null) {
         jpegHeight: info.height,
         jpegSize: info.size,
       };
+    } else if (ext === '.bmp') {
+      // Use bmp-js library for BMP files (Sharp/libvips doesn't support BMP)
+      log.info(`[ImageConverter] Detected BMP file, using bmp-js library...`);
+
+      // Read BMP file
+      const buffer = await fs.promises.readFile(inputPath);
+
+      if (progressCallback) {
+        progressCallback({ stage: 'converting', percent: 30 });
+      }
+
+      // Decode BMP
+      const bmpData = bmp.decode(buffer);
+      const width = bmpData.width;
+      const height = bmpData.height;
+      log.info(`[ImageConverter] BMP dimensions: ${width}x${height}`);
+
+      if (progressCallback) {
+        progressCallback({ stage: 'converting', percent: 60 });
+      }
+
+      // bmp-js returns ABGR format (4 bytes per pixel: Alpha, Blue, Green, Red)
+      // We need to convert to RGB for Sharp (JPEG doesn't support alpha anyway)
+      const pixelCount = width * height;
+      const rgbBuffer = Buffer.alloc(pixelCount * 3);
+
+      for (let i = 0; i < pixelCount; i++) {
+        const srcOffset = i * 4;
+        const dstOffset = i * 3;
+        // Convert ABGR to RGB (skip alpha, reorder BGR to RGB)
+        rgbBuffer[dstOffset] = bmpData.data[srcOffset + 3];     // R (was at position 3)
+        rgbBuffer[dstOffset + 1] = bmpData.data[srcOffset + 2]; // G (was at position 2)
+        rgbBuffer[dstOffset + 2] = bmpData.data[srcOffset + 1]; // B (was at position 1)
+      }
+
+      log.info(`[ImageConverter] Converting BMP raw pixel data to JPEG with Sharp...`);
+
+      // Use Sharp to convert raw pixel data to JPEG
+      const info = await sharp(rgbBuffer, {
+        raw: {
+          width,
+          height,
+          channels: 3,
+        },
+      })
+        .jpeg({
+          quality: 95,
+          mozjpeg: true,
+        })
+        .toFile(scratchPath);
+
+      if (progressCallback) {
+        progressCallback({ stage: 'complete', percent: 100 });
+      }
+
+      log.info(`[ImageConverter] Successfully converted BMP to JPEG: ${info.width}x${info.height}, ${info.size} bytes`);
+      log.info(`[ImageConverter] Scratch location: ${scratchPath}`);
+
+      return {
+        identifier,
+        scratchPath,
+        originalWidth: width,
+        originalHeight: height,
+        originalFormat: 'bmp',
+        jpegWidth: info.width,
+        jpegHeight: info.height,
+        jpegSize: info.size,
+      };
     } else {
-      // For non-TIFF files, use Sharp directly
-      log.info(`[ImageConverter] Using Sharp for non-TIFF file...`);
+      // For other files (JPEG, PNG), use Sharp directly
+      log.info(`[ImageConverter] Using Sharp for standard image file...`);
 
       const metadata = await sharp(inputPath, {
         limitInputPixels: false,

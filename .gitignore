@@ -33,3 +33,10 @@ Thumbs.db
 
 # Electron
 out/
+release/
+
+# Code signing certificates (NEVER commit these)
+*.p12
+*.pfx
+*.cer
+*.pem

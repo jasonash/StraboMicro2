@@ -70,6 +70,18 @@ async function loadProjectJson(projectId) {
     // Deserialize from legacy format
     const project = deserializeFromLegacyFormat(legacyJson);
 
+    // Reconstruct imagePath for each micrograph (runtime field not stored in JSON)
+    // Images are stored as: images/<micrograph-id> (no extension)
+    for (const dataset of project.datasets || []) {
+      for (const sample of dataset.samples || []) {
+        for (const micrograph of sample.micrographs || []) {
+          // imagePath is the micrograph ID (images are stored by ID in the images folder)
+          micrograph.imagePath = micrograph.id;
+          log.debug(`[ProjectSerializer] Set imagePath for micrograph ${micrograph.name}: ${micrograph.imagePath}`);
+        }
+      }
+    }
+
     log.info(`[ProjectSerializer] Successfully loaded project.json from: ${projectJsonPath}`);
     return project;
   } catch (error) {
@@ -127,6 +139,7 @@ function serializeSample(sample) {
     existsOnServer: sample.existsOnServer || false,
     label: sample.label || '',
     sampleID: sample.sampleID || '',
+    igsn: sample.igsn || '',
     longitude: sample.longitude || 0,
     latitude: sample.latitude || 0,
     mainSamplingPurpose: sample.mainSamplingPurpose || '',
@@ -277,6 +290,7 @@ function deserializeSample(sample) {
     existsOnServer: sample.existsOnServer,
     label: sample.label,
     sampleID: sample.sampleID,
+    igsn: sample.igsn,
     longitude: sample.longitude,
     latitude: sample.latitude,
     mainSamplingPurpose: sample.mainSamplingPurpose,
@@ -309,12 +323,11 @@ function deserializeMicrograph(micrograph) {
     parentID: micrograph.parentID,
     name: micrograph.name,
     imageType: micrograph.imageType,
-    // Store just the ID as imagePath (image is in project/images/<id>)
-    imagePath: micrograph.id,
-    imageWidth: micrograph.width,
-    imageHeight: micrograph.height,
-    width: micrograph.width, // Legacy field
-    height: micrograph.height, // Legacy field
+    // Legacy JSON uses width/height, but renderer expects imageWidth/imageHeight
+    width: micrograph.width,
+    height: micrograph.height,
+    imageWidth: micrograph.width,   // Alias for renderer compatibility
+    imageHeight: micrograph.height, // Alias for renderer compatibility
     opacity: micrograph.opacity,
     scale: micrograph.scale,
     polish: micrograph.polish,
@@ -361,6 +374,7 @@ function deserializeSpot(spot) {
     labelColor: spot.labelColor,
     showLabel: spot.showLabel,
     color: spot.color,
+    opacity: spot.opacity, // Was missing - needed for polygon/spot opacity
     date: spot.date,
     time: spot.time,
     notes: spot.notes,

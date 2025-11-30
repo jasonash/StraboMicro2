@@ -17,9 +17,6 @@ import {
   DialogContent,
   DialogActions,
   Button,
-  Stepper,
-  Step,
-  StepLabel,
   TextField,
   MenuItem,
   Box,
@@ -36,6 +33,7 @@ import {
   IconButton,
   Tooltip,
 } from '@mui/material';
+import { WizardProgress } from '../WizardProgress';
 import { useAppStore } from '@/store';
 import { PeriodicTableModal } from './PeriodicTableModal';
 import { ScaleBarCanvas, type Tool, type ScaleBarCanvasRef } from '../ScaleBarCanvas';
@@ -323,6 +321,25 @@ const initialFormData: ProjectFormData = {
   notesOnCrystalStructuresUsed: '',
 };
 
+// Step IDs for the wizard
+type ProjectStepId =
+  | 'project-metadata'
+  | 'dataset-info'
+  | 'sample-info'
+  | 'load-micrograph'
+  | 'instrument-info'
+  | 'instrument-data'
+  | 'instrument-settings'
+  | 'metadata'
+  | 'orientation'
+  | 'scale-method'
+  | 'scale-input';
+
+interface StepConfig {
+  id: ProjectStepId;
+  label: string;
+}
+
 export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
   isOpen,
   onClose,
@@ -349,21 +366,31 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
     );
   };
 
-  const baseSteps = [
-    'Project Metadata',
-    'Dataset Information',
-    'Sample Information',
-    'Load Reference Micrograph',
-    'Instrument & Image Information',
-    'Instrument Data',
-    'Micrograph Metadata',
-    'Micrograph Orientation',
-    'Set Micrograph Scale',
-    'Trace Scale Bar',
-  ];
-  const steps = shouldShowInstrumentSettings()
-    ? [...baseSteps.slice(0, 6), 'Instrument Settings', ...baseSteps.slice(6)]
-    : baseSteps;
+  // Build steps array dynamically based on current state
+  const steps: StepConfig[] = (() => {
+    const stepList: StepConfig[] = [
+      { id: 'project-metadata', label: 'Project Metadata' },
+      { id: 'dataset-info', label: 'Dataset Information' },
+      { id: 'sample-info', label: 'Sample Information' },
+      { id: 'load-micrograph', label: 'Load Reference Micrograph' },
+      { id: 'instrument-info', label: 'Instrument & Image Information' },
+      { id: 'instrument-data', label: 'Instrument Data' },
+    ];
+    if (shouldShowInstrumentSettings()) {
+      stepList.push({ id: 'instrument-settings', label: 'Instrument Settings' });
+    }
+    stepList.push(
+      { id: 'metadata', label: 'Micrograph Metadata' },
+      { id: 'orientation', label: 'Micrograph Orientation' },
+      { id: 'scale-method', label: 'Set Micrograph Scale' },
+      { id: 'scale-input', label: 'Scale Input' }
+    );
+    return stepList;
+  })();
+
+  // Get current step config
+  const currentStepConfig = steps[activeStep] || steps[0];
+  const currentStepId = currentStepConfig?.id;
 
   const updateField = (
     field: keyof ProjectFormData,
@@ -672,8 +699,9 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
         ]
       : [];
 
+    const projectId = crypto.randomUUID();
     const newProject = {
-      id: crypto.randomUUID(),
+      id: projectId,
       name: formData.name,
       startDate: formData.startDate || undefined,
       endDate: formData.endDate || undefined,
@@ -719,6 +747,12 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
     };
 
     loadProject(newProject, null);
+
+    // Clear any existing version history for this project ID
+    // (shouldn't exist, but just in case of ID collision)
+    window.api?.versionHistory?.clear(projectId).catch((err: unknown) => {
+      console.warn('[NewProjectWizard] Failed to clear version history:', err);
+    });
 
     // Set the newly created micrograph as active if it exists
     if (micrographs.length > 0) {
@@ -786,59 +820,52 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
   };
 
   const canProceed = () => {
-    if (activeStep === 0) {
-      // Project name is required
-      if (formData.name.trim() === '') return false;
-      // If both dates are provided, validate that start <= end
-      if (formData.startDate && formData.endDate && formData.startDate > formData.endDate)
-        return false;
-      return true;
-    }
-    if (activeStep === 1) return formData.datasetName.trim() !== '';
-    if (activeStep === 2) {
-      // Sample ID is required
-      if (formData.sampleID.trim() === '') return false;
+    switch (currentStepId) {
+      case 'project-metadata':
+        // Project name is required
+        if (formData.name.trim() === '') return false;
+        // If both dates are provided, validate that start <= end
+        if (formData.startDate && formData.endDate && formData.startDate > formData.endDate)
+          return false;
+        return true;
 
-      // If "other" is selected for Main Sampling Purpose, require text in Other Sampling Purpose
-      if (formData.mainSamplingPurpose === 'other' && formData.otherSamplingPurpose.trim() === '') {
-        return false;
-      }
+      case 'dataset-info':
+        return formData.datasetName.trim() !== '';
 
-      // If "other" is selected for Material Type, require text in Other Material Type
-      if (formData.materialType === 'other' && formData.otherMaterialType.trim() === '') {
-        return false;
-      }
+      case 'sample-info':
+        // Sample ID is required
+        if (formData.sampleID.trim() === '') return false;
+        // If "other" is selected for Main Sampling Purpose, require text in Other Sampling Purpose
+        if (formData.mainSamplingPurpose === 'other' && formData.otherSamplingPurpose.trim() === '') {
+          return false;
+        }
+        // If "other" is selected for Material Type, require text in Other Material Type
+        if (formData.materialType === 'other' && formData.otherMaterialType.trim() === '') {
+          return false;
+        }
+        return true;
 
-      return true;
-    }
-    if (activeStep === 3) {
-      // Micrograph file is required
-      return formData.micrographFilePath.trim() !== '';
-    }
-    if (activeStep === 4) {
-      // Instrument Type is required
-      if (formData.instrumentType.trim() === '') return false;
+      case 'load-micrograph':
+        return formData.micrographFilePath.trim() !== '';
 
-      // If "Other" is selected for Instrument Type, require text in Other Instrument Type
-      if (formData.instrumentType === 'Other' && formData.otherInstrumentType.trim() === '') {
-        return false;
-      }
+      case 'instrument-info':
+        // Instrument Type is required
+        if (formData.instrumentType.trim() === '') return false;
+        // If "Other" is selected for Instrument Type, require text in Other Instrument Type
+        if (formData.instrumentType === 'Other' && formData.otherInstrumentType.trim() === '') {
+          return false;
+        }
+        // Image Type is required only when shown (not shown for "Other" instrument type)
+        if (formData.instrumentType !== 'Other' && formData.imageType.trim() === '') {
+          return false;
+        }
+        return true;
 
-      // Image Type is required only when shown (not shown for "Other" instrument type)
-      if (formData.instrumentType !== 'Other' && formData.imageType.trim() === '') {
-        return false;
-      }
+      case 'instrument-data':
+        return true; // All fields optional
 
-      return true;
-    }
-    if (activeStep === 5) {
-      // Step 6: Instrument Data - no required fields, all optional
-      return true;
-    }
-    if (activeStep === 6) {
-      // Step 7: Instrument Settings (only shown for certain instrument types) OR Step 7: Micrograph Metadata
-      // For Instrument Settings - validation for conditional "Other" fields
-      if (shouldShowInstrumentSettings()) {
+      case 'instrument-settings':
+        // Validation for conditional "Other" fields
         if (
           formData.instrumentPurged === 'Yes' &&
           formData.instrumentPurgedGasType === 'Other' &&
@@ -860,45 +887,21 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
           return false;
         }
         return true;
-      } else {
-        // This is Step 7: Micrograph Metadata (when Instrument Settings not shown)
+
+      case 'metadata':
         // Name is required, and if polished is checked, polish description is required
         if (formData.micrographName.trim() === '') return false;
         if (formData.micrographPolished && formData.micrographPolishDescription.trim() === '')
           return false;
         return true;
-      }
-    }
-    if (activeStep === 7) {
-      // Step 8: Micrograph Metadata (when Instrument Settings IS shown) OR Step 8: Micrograph Orientation (when not shown)
-      if (shouldShowInstrumentSettings()) {
-        // This is Micrograph Metadata
-        if (formData.micrographName.trim() === '') return false;
-        if (formData.micrographPolished && formData.micrographPolishDescription.trim() === '')
-          return false;
-        return true;
-      } else {
-        // This is Micrograph Orientation
+
+      case 'orientation':
         return validateOrientationStep();
-      }
-    }
-    if (activeStep === 8) {
-      // Step 9: Either Micrograph Orientation (when Instrument Settings IS shown) OR Set Micrograph Scale (when NOT shown)
-      if (shouldShowInstrumentSettings()) {
-        // This is Micrograph Orientation
-        return validateOrientationStep();
-      } else {
-        // This is Set Micrograph Scale
+
+      case 'scale-method':
         return formData.scaleMethod !== '';
-      }
-    }
-    if (activeStep === 9) {
-      // Step 10: Either Set Micrograph Scale (when Instrument Settings IS shown) OR Trace Scale Bar (when NOT shown)
-      if (shouldShowInstrumentSettings()) {
-        // This is Set Micrograph Scale - Method Selection
-        return formData.scaleMethod !== '';
-      } else {
-        // This is Trace Scale Bar - Execute selected scale method
+
+      case 'scale-input':
         if (formData.scaleMethod === 'Trace Scale Bar') {
           return (
             formData.scaleBarLineLengthPixels !== '' &&
@@ -921,37 +924,10 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
           );
         }
         return false;
-      }
+
+      default:
+        return true;
     }
-    if (activeStep === 10) {
-      // Step 11: Trace Scale Bar (when Instrument Settings IS shown) - Execute selected scale method
-      if (formData.scaleMethod === 'Trace Scale Bar') {
-        // Line must be drawn, and physical length must be provided
-        return (
-          formData.scaleBarLineLengthPixels !== '' &&
-          formData.scaleBarPhysicalLength !== '' &&
-          parseFloat(formData.scaleBarPhysicalLength) > 0
-        );
-      } else if (formData.scaleMethod === 'Pixel Conversion Factor') {
-        // Pixels and physical length must be provided
-        return (
-          formData.pixels !== '' &&
-          formData.physicalLength !== '' &&
-          parseFloat(formData.pixels) > 0 &&
-          parseFloat(formData.physicalLength) > 0
-        );
-      } else if (formData.scaleMethod === 'Provide Width/Height of Image') {
-        // Width and height must be provided
-        return (
-          formData.imageWidthPhysical !== '' &&
-          formData.imageHeightPhysical !== '' &&
-          parseFloat(formData.imageWidthPhysical) > 0 &&
-          parseFloat(formData.imageHeightPhysical) > 0
-        );
-      }
-      return false;
-    }
-    return true;
   };
 
   const renderOrientationStep = () => {
@@ -1666,9 +1642,9 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
     );
   };
 
-  const renderStepContent = (step: number) => {
-    switch (step) {
-      case 0:
+  const renderStepContent = () => {
+    switch (currentStepId) {
+      case 'project-metadata':
         return (
           <Stack spacing={2}>
             <TextField
@@ -1770,7 +1746,7 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
           </Stack>
         );
 
-      case 1:
+      case 'dataset-info':
         return (
           <TextField
             fullWidth
@@ -1781,7 +1757,7 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
           />
         );
 
-      case 2:
+      case 'sample-info':
         return (
           <Stack spacing={2}>
             <TextField
@@ -1888,7 +1864,7 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
           </Stack>
         );
 
-      case 3:
+      case 'load-micrograph':
         return (
           <Stack spacing={2}>
             <Typography variant="body2" color="text.secondary">
@@ -1915,7 +1891,7 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
           </Stack>
         );
 
-      case 4:
+      case 'instrument-info':
         return (
           <Stack spacing={2}>
             <TextField
@@ -2421,7 +2397,7 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
           </Stack>
         );
 
-      case 5:
+      case 'instrument-data':
         const showDetectors = [
           'Transmission Electron Microscopy (TEM)',
           'Scanning Transmission Electron Microscopy (STEM)',
@@ -2563,60 +2539,8 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
           </Stack>
         );
 
-      case 6:
-        // Step 7: Either Instrument Settings OR Micrograph Metadata (depending on instrument type)
-        if (!shouldShowInstrumentSettings()) {
-          // This is Micrograph Metadata (when Instrument Settings not shown)
-          return (
-            <Stack spacing={2}>
-              <Typography variant="body2" color="text.secondary">
-                Add descriptive information about this micrograph.
-              </Typography>
-              <TextField
-                fullWidth
-                required
-                label="Name"
-                value={formData.micrographName}
-                onChange={(e) => updateField('micrographName', e.target.value)}
-                helperText="Name for this micrograph"
-              />
-              <FormControlLabel
-                control={
-                  <Checkbox
-                    checked={formData.micrographPolished}
-                    onChange={(e) => {
-                      updateField('micrographPolished', e.target.checked);
-                      // Clear polish description if unchecking
-                      if (!e.target.checked) {
-                        updateField('micrographPolishDescription', '');
-                      }
-                    }}
-                  />
-                }
-                label="Polished?"
-              />
-              {formData.micrographPolished && (
-                <TextField
-                  fullWidth
-                  required
-                  label="Polish Description"
-                  value={formData.micrographPolishDescription}
-                  onChange={(e) => updateField('micrographPolishDescription', e.target.value)}
-                  helperText="Required when 'Polished?' is checked"
-                />
-              )}
-              <TextField
-                fullWidth
-                multiline
-                rows={4}
-                label="Notes"
-                value={formData.micrographNotes}
-                onChange={(e) => updateField('micrographNotes', e.target.value)}
-              />
-            </Stack>
-          );
-        }
-        // Otherwise, this is Instrument Settings
+      case 'instrument-settings':
+        // Instrument Settings - only shown for non-optical instruments
         return (
           <Stack spacing={2}>
             {/* TEM Settings */}
@@ -3641,159 +3565,104 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
           </Stack>
         );
 
-      case 7:
-        // Step 8: Either Micrograph Metadata (when Instrument Settings IS shown) OR Micrograph Orientation (when NOT shown)
-        if (shouldShowInstrumentSettings()) {
-          // This is Micrograph Metadata
-          return (
-            <Stack spacing={2}>
-              <Typography variant="body2" color="text.secondary">
-                Add descriptive information about this micrograph.
-              </Typography>
+      case 'metadata':
+        // Micrograph Metadata - always shown
+        return (
+          <Stack spacing={2}>
+            <Typography variant="body2" color="text.secondary">
+              Add descriptive information about this micrograph.
+            </Typography>
+            <TextField
+              fullWidth
+              required
+              label="Name"
+              value={formData.micrographName}
+              onChange={(e) => updateField('micrographName', e.target.value)}
+              helperText="Name for this micrograph"
+            />
+            <FormControlLabel
+              control={
+                <Checkbox
+                  checked={formData.micrographPolished}
+                  onChange={(e) => {
+                    updateField('micrographPolished', e.target.checked);
+                    // Clear polish description if unchecking
+                    if (!e.target.checked) {
+                      updateField('micrographPolishDescription', '');
+                    }
+                  }}
+                />
+              }
+              label="Polished?"
+            />
+            {formData.micrographPolished && (
               <TextField
                 fullWidth
                 required
-                label="Name"
-                value={formData.micrographName}
-                onChange={(e) => updateField('micrographName', e.target.value)}
-                helperText="Name for this micrograph"
+                label="Polish Description"
+                value={formData.micrographPolishDescription}
+                onChange={(e) => updateField('micrographPolishDescription', e.target.value)}
+                helperText="Required when 'Polished?' is checked"
               />
+            )}
+            <TextField
+              fullWidth
+              multiline
+              rows={4}
+              label="Notes"
+              value={formData.micrographNotes}
+              onChange={(e) => updateField('micrographNotes', e.target.value)}
+            />
+          </Stack>
+        );
+
+      case 'orientation':
+        // Micrograph Orientation
+        return renderOrientationStep();
+
+      case 'scale-method':
+        // Scale Method Selection
+        return (
+          <Stack spacing={3}>
+            <Typography variant="body2" color="text.secondary">
+              How do you wish to set the scale?
+            </Typography>
+            <RadioGroup
+              value={formData.scaleMethod}
+              onChange={(e) => updateField('scaleMethod', e.target.value)}
+            >
               <FormControlLabel
-                control={
-                  <Checkbox
-                    checked={formData.micrographPolished}
-                    onChange={(e) => {
-                      updateField('micrographPolished', e.target.checked);
-                      // Clear polish description if unchecking
-                      if (!e.target.checked) {
-                        updateField('micrographPolishDescription', '');
-                      }
-                    }}
-                  />
-                }
-                label="Polished?"
+                value="Trace Scale Bar"
+                control={<Radio />}
+                label="Trace Scale Bar"
               />
-              {formData.micrographPolished && (
-                <TextField
-                  fullWidth
-                  required
-                  label="Polish Description"
-                  value={formData.micrographPolishDescription}
-                  onChange={(e) => updateField('micrographPolishDescription', e.target.value)}
-                  helperText="Required when 'Polished?' is checked"
-                />
-              )}
-              <TextField
-                fullWidth
-                multiline
-                rows={4}
-                label="Notes"
-                value={formData.micrographNotes}
-                onChange={(e) => updateField('micrographNotes', e.target.value)}
+              <Typography variant="caption" color="text.secondary" sx={{ ml: 4, mt: -1, mb: 2 }}>
+                Draw a line over the scale bar in the micrograph (most accurate)
+              </Typography>
+
+              <FormControlLabel
+                value="Pixel Conversion Factor"
+                control={<Radio />}
+                label="Pixel Conversion Factor"
               />
-            </Stack>
-          );
-        } else {
-          // This is Micrograph Orientation (when Instrument Settings NOT shown)
-          return renderOrientationStep();
-        }
-
-      case 8:
-        // Step 9: Either Micrograph Orientation (when Instrument Settings IS shown) OR Set Micrograph Scale (when NOT shown)
-        if (shouldShowInstrumentSettings()) {
-          // This is Micrograph Orientation
-          return renderOrientationStep();
-        } else {
-          // This is Set Micrograph Scale (when Instrument Settings NOT shown)
-          return (
-            <Stack spacing={3}>
-              <Typography variant="body2" color="text.secondary">
-                How do you wish to set the scale?
+              <Typography variant="caption" color="text.secondary" sx={{ ml: 4, mt: -1, mb: 2 }}>
+                Enter the number of pixels per unit directly
               </Typography>
-              <RadioGroup
-                value={formData.scaleMethod}
-                onChange={(e) => updateField('scaleMethod', e.target.value)}
-              >
-                <FormControlLabel
-                  value="Trace Scale Bar"
-                  control={<Radio />}
-                  label="Trace Scale Bar"
-                />
-                <Typography variant="caption" color="text.secondary" sx={{ ml: 4, mt: -1, mb: 2 }}>
-                  Draw a line over the scale bar in the micrograph (most accurate)
-                </Typography>
 
-                <FormControlLabel
-                  value="Pixel Conversion Factor"
-                  control={<Radio />}
-                  label="Pixel Conversion Factor"
-                />
-                <Typography variant="caption" color="text.secondary" sx={{ ml: 4, mt: -1, mb: 2 }}>
-                  Enter the number of pixels per unit directly
-                </Typography>
-
-                <FormControlLabel
-                  value="Provide Width/Height of Image"
-                  control={<Radio />}
-                  label="Provide Width/Height of Image"
-                />
-                <Typography variant="caption" color="text.secondary" sx={{ ml: 4, mt: -1, mb: 2 }}>
-                  Enter the physical dimensions of the entire image
-                </Typography>
-              </RadioGroup>
-            </Stack>
-          );
-        }
-
-      case 9:
-        // Step 10: Either Set Micrograph Scale (when Instrument Settings IS shown) OR Trace Scale Bar (when NOT shown)
-        if (shouldShowInstrumentSettings()) {
-          // This is Set Micrograph Scale
-          return (
-            <Stack spacing={3}>
-              <Typography variant="body2" color="text.secondary">
-                How do you wish to set the scale?
+              <FormControlLabel
+                value="Provide Width/Height of Image"
+                control={<Radio />}
+                label="Provide Width/Height of Image"
+              />
+              <Typography variant="caption" color="text.secondary" sx={{ ml: 4, mt: -1, mb: 2 }}>
+                Enter the physical dimensions of the entire image
               </Typography>
-              <RadioGroup
-                value={formData.scaleMethod}
-                onChange={(e) => updateField('scaleMethod', e.target.value)}
-              >
-                <FormControlLabel
-                  value="Trace Scale Bar"
-                  control={<Radio />}
-                  label="Trace Scale Bar"
-                />
-                <Typography variant="caption" color="text.secondary" sx={{ ml: 4, mt: -1, mb: 2 }}>
-                  Draw a line over the scale bar in the micrograph (most accurate)
-                </Typography>
+            </RadioGroup>
+          </Stack>
+        );
 
-                <FormControlLabel
-                  value="Pixel Conversion Factor"
-                  control={<Radio />}
-                  label="Pixel Conversion Factor"
-                />
-                <Typography variant="caption" color="text.secondary" sx={{ ml: 4, mt: -1, mb: 2 }}>
-                  Enter the number of pixels per unit directly
-                </Typography>
-
-                <FormControlLabel
-                  value="Provide Width/Height of Image"
-                  control={<Radio />}
-                  label="Provide Width/Height of Image"
-                />
-                <Typography variant="caption" color="text.secondary" sx={{ ml: 4, mt: -1, mb: 2 }}>
-                  Enter the physical dimensions of the entire image
-                </Typography>
-              </RadioGroup>
-            </Stack>
-          );
-        } else {
-          // This is Trace Scale Bar (when Instrument Settings NOT shown)
-          return renderScaleInputStep();
-        }
-
-      case 10:
-        // Step 11: Trace Scale Bar (when Instrument Settings IS shown)
+      case 'scale-input':
+        // Scale Input
         return renderScaleInputStep();
 
       default:
@@ -3817,33 +3686,12 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
       >
         <DialogTitle>New Project</DialogTitle>
         <DialogContent>
-          <Stepper activeStep={activeStep} sx={{ pt: 3, pb: 5 }}>
-            {(() => {
-              const maxVisibleSteps = 5;
-              const totalSteps = steps.length;
-
-              // Calculate visible window
-              let startIndex = Math.max(0, activeStep - Math.floor(maxVisibleSteps / 2));
-              let endIndex = Math.min(totalSteps, startIndex + maxVisibleSteps);
-
-              // Adjust start if we're near the end
-              if (endIndex === totalSteps) {
-                startIndex = Math.max(0, totalSteps - maxVisibleSteps);
-              }
-
-              const visibleSteps = steps.slice(startIndex, endIndex);
-
-              return visibleSteps.map((label, index) => {
-                const actualIndex = startIndex + index;
-                return (
-                  <Step key={label} completed={actualIndex < activeStep}>
-                    <StepLabel>{label}</StepLabel>
-                  </Step>
-                );
-              });
-            })()}
-          </Stepper>
-          <Box sx={{ mt: 2, mb: 1 }}>{renderStepContent(activeStep)}</Box>
+          <WizardProgress
+            currentStep={activeStep}
+            totalSteps={steps.length}
+            stepLabel={currentStepConfig?.label || ''}
+          />
+          <Box sx={{ mt: 2, mb: 1 }}>{renderStepContent()}</Box>
         </DialogContent>
         <DialogActions>
           <Button onClick={handleCancel}>Cancel</Button>
