@@ -23,14 +23,22 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # macOS builds - separate jobs for each architecture to handle Sharp native modules
+          - os: macos-13
+            platform: mac
+            arch: x64
+            artifact_name: StraboMicro2-macOS-x64-dev
           - os: macos-latest
             platform: mac
-            artifact_name: StraboMicro2-macOS-dev
+            arch: arm64
+            artifact_name: StraboMicro2-macOS-arm64-dev
           - os: windows-latest
             platform: win
+            arch: x64
             artifact_name: StraboMicro2-Windows-dev
           - os: ubuntu-latest
             platform: linux
+            arch: x64
             artifact_name: StraboMicro2-Linux-dev
 
     runs-on: ${{ matrix.os }}
@@ -54,7 +62,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libfuse2
 
-      # On macOS, unset PKG_CONFIG_PATH to prevent Sharp from detecting system libvips
+      # On macOS, prevent Sharp from detecting system libvips
       - name: Install dependencies (macOS)
         if: matrix.platform == 'mac'
         run: |
@@ -81,10 +89,10 @@ jobs:
       - name: Build application
         run: npm run build
 
-      # Build without signing for dev builds
+      # Build without signing for dev builds - build only for the runner's native architecture
       - name: Package for macOS
         if: matrix.platform == 'mac'
-        run: npx electron-builder --mac --publish never
+        run: npx electron-builder --mac --${{ matrix.arch }} --publish never
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: false
 

@@ -26,6 +26,7 @@ const TILE_SIZE = 256;
 const THUMBNAIL_SIZE = 512;
 const MEDIUM_SIZE = 2048;
 const JPEG_QUALITY = 0.85; // 85% quality for thumbnails/medium
+const TILE_WEBP_QUALITY = 90; // 90% quality for WebP tiles (Sharp uses 0-100 scale)
 
 class TileGenerator {
   /**
@@ -77,6 +78,105 @@ class TileGenerator {
     return {
       hash,
       metadata,
+      fromCache: false,
+    };
+  }
+
+  /**
+   * Process an image and generate ALL cached assets including full tiles
+   * This is used during project preparation to ensure everything is cached
+   * before the user starts browsing.
+   *
+   * @param {string} imagePath - Path to source image
+   * @param {function} onProgress - Progress callback (tileIndex, totalTiles)
+   * @returns {Promise<{hash: string, metadata: Object, tilesGenerated: number}>}
+   */
+  async processImageComplete(imagePath, onProgress = null) {
+    // Generate hash and check cache
+    const hash = await tileCache.generateImageHash(imagePath);
+    const cacheStatus = await tileCache.isCacheValid(imagePath);
+
+    // Get metadata (either from cache or generate)
+    let metadata;
+    let fromCache = false;
+
+    if (cacheStatus.exists) {
+      console.log(`Cache exists for image: ${imagePath}`);
+      metadata = cacheStatus.metadata;
+      fromCache = true;
+    } else {
+      console.log(`Cache miss - generating all assets for: ${imagePath}`);
+
+      // Get image dimensions using Sharp metadata
+      const sharpMetadata = await sharp(imagePath, { limitInputPixels: false }).metadata();
+      const { width, height } = sharpMetadata;
+
+      console.log(`Image dimensions: ${width}x${height} (format: ${sharpMetadata.format})`);
+
+      // Create and save metadata
+      metadata = tileCache.createMetadata(imagePath, width, height);
+      await tileCache.saveMetadata(hash, metadata);
+
+      // Generate thumbnail and medium
+      await this.generateThumbnailFromFile(hash, imagePath, metadata.width, metadata.height);
+      await this.generateMediumFromFile(hash, imagePath, metadata.width, metadata.height);
+    }
+
+    // Now generate all tiles (check each tile individually)
+    const { tilesX, tilesY } = metadata;
+    const totalTiles = tilesX * tilesY;
+    let tilesGenerated = 0;
+    let tilesSkipped = 0;
+
+    // Check if all tiles already exist
+    let allTilesCached = true;
+    for (let ty = 0; ty < tilesY && allTilesCached; ty++) {
+      for (let tx = 0; tx < tilesX && allTilesCached; tx++) {
+        const cached = await tileCache.loadTile(hash, tx, ty);
+        if (!cached) {
+          allTilesCached = false;
+        }
+      }
+    }
+
+    if (allTilesCached) {
+      console.log(`All ${totalTiles} tiles already cached for: ${imagePath}`);
+      return {
+        hash,
+        metadata,
+        tilesGenerated: 0,
+        fromCache: true,
+      };
+    }
+
+    // Need to decode image and generate missing tiles
+    console.log(`Generating tiles for: ${imagePath} (${tilesX}x${tilesY} = ${totalTiles} tiles)`);
+    const imageData = await this.decodeAuto(imagePath);
+
+    for (let ty = 0; ty < tilesY; ty++) {
+      for (let tx = 0; tx < tilesX; tx++) {
+        // Check if tile already exists
+        const cached = await tileCache.loadTile(hash, tx, ty);
+        if (cached) {
+          tilesSkipped++;
+        } else {
+          await this.generateTile(hash, imageData, tx, ty);
+          tilesGenerated++;
+        }
+
+        // Report progress
+        if (onProgress) {
+          onProgress(tilesSkipped + tilesGenerated, totalTiles);
+        }
+      }
+    }
+
+    console.log(`Tile generation complete: ${tilesGenerated} generated, ${tilesSkipped} skipped`);
+
+    return {
+      hash,
+      metadata,
+      tilesGenerated,
       fromCache: false,
     };
   }
@@ -303,31 +403,29 @@ class TileGenerator {
     const tileWidth = Math.min(TILE_SIZE, width - x);
     const tileHeight = Math.min(TILE_SIZE, height - y);
 
-    // Create tile canvas
-    const tileCanvas = createCanvas(TILE_SIZE, TILE_SIZE);
-    const tileCtx = tileCanvas.getContext('2d');
-
-    // Fill with transparent background (for edge tiles)
-    tileCtx.clearRect(0, 0, TILE_SIZE, TILE_SIZE);
-
-    // Extract tile data from source image
-    const tileData = tileCtx.createImageData(tileWidth, tileHeight);
+    // Create raw RGBA buffer for the tile (with transparent background)
+    const tileBuffer = Buffer.alloc(TILE_SIZE * TILE_SIZE * 4, 0); // All zeros = transparent
 
     // Copy pixel data for this tile
     for (let row = 0; row < tileHeight; row++) {
       const sourceRow = y + row;
       const sourceOffset = (sourceRow * width + x) * 4;
-      const tileOffset = row * tileWidth * 4;
+      const tileOffset = row * TILE_SIZE * 4; // Use TILE_SIZE for row stride
 
       const sourceSlice = data.slice(sourceOffset, sourceOffset + tileWidth * 4);
-      tileData.data.set(sourceSlice, tileOffset);
+      sourceSlice.copy(tileBuffer, tileOffset);
     }
 
-    // Draw tile data to canvas
-    tileCtx.putImageData(tileData, 0, 0);
-
-    // Save as PNG
-    const buffer = tileCanvas.toBuffer('image/png');
+    // Use Sharp to encode as WebP with transparency support
+    const buffer = await sharp(tileBuffer, {
+      raw: {
+        width: TILE_SIZE,
+        height: TILE_SIZE,
+        channels: 4
+      }
+    })
+      .webp({ quality: TILE_WEBP_QUALITY })
+      .toBuffer();
     await tileCache.saveTile(hash, tileX, tileY, buffer);
 
     return buffer;

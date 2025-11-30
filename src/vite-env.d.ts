@@ -87,7 +87,11 @@ interface Window {
     session: {
       getItem: () => Promise<string | null>;
       setItem: (value: string) => Promise<void>;
+      clear: () => Promise<void>;
     };
+
+    // Project validation
+    validateProjectExists: (projectId: string) => Promise<{ exists: boolean; reason?: string }>;
 
     onNewProject: (callback: () => void) => Unsubscribe;
     onOpenProject: (callback: () => void) => Unsubscribe;
@@ -139,6 +143,48 @@ interface Window {
     getCacheStats: () => Promise<CacheStats>;
     clearImageCache: (imageHash: string) => Promise<{ success: boolean }>;
     clearAllCaches: () => Promise<{ success: boolean }>;
+    checkImageCache: (imagePath: string) => Promise<{
+      cached: boolean;
+      hash: string | null;
+      metadata: TileMetadata | null;
+    }>;
+
+    // Tile queue and project preparation
+    prepareProjectImages: (images: Array<{ imagePath: string; imageName: string }>) => Promise<{
+      prepared: number;
+      cached: number;
+      total: number;
+    }>;
+    getTileQueueStatus: () => Promise<{
+      queueLength: number;
+      isProcessing: boolean;
+      currentRequest: { type: string; imageName?: string } | null;
+      stats: {
+        totalImages: number;
+        completedImages: number;
+        currentImageName: string;
+        isPreparationPhase: boolean;
+      };
+    }>;
+    boostTileQueuePriority: (imageHash: string) => Promise<{ success: boolean }>;
+    cancelTileQueueForImage: (imageHash: string) => Promise<{ success: boolean }>;
+    onTileQueueProgress: (callback: (progress: {
+      totalImages: number;
+      completedImages: number;
+      currentImageName: string;
+      isPreparationPhase: boolean;
+    }) => void) => Unsubscribe;
+    onTileQueuePreparationStart: (callback: (data: { total: number }) => void) => Unsubscribe;
+    onTileQueuePreparationComplete: (callback: (data: {
+      prepared: number;
+      cached: number;
+      total: number;
+    }) => void) => Unsubscribe;
+    onTileQueueTileProgress: (callback: (data: {
+      imageName: string;
+      currentTile: number;
+      totalTiles: number;
+    }) => void) => Unsubscribe;
 
     // Project folder structure
     getProjectDataPath: () => Promise<string>;

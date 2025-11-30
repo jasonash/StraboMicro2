@@ -706,6 +706,19 @@ function createWindow() {
             },
           ],
         },
+        // Developer Tools only shown in dev builds (version contains "-dev")
+        ...(app.getVersion().includes('-dev') ? [
+          { type: 'separator' },
+          {
+            label: 'Toggle Developer Tools',
+            accelerator: 'Alt+CmdOrCtrl+I',
+            click: () => {
+              if (mainWindow) {
+                mainWindow.webContents.toggleDevTools();
+              }
+            }
+          },
+        ] : []),
       ],
     },
     {
@@ -895,8 +908,8 @@ function createWindow() {
     }, 500);
   });
 
-  // Load the app
-  const isDev = process.env.NODE_ENV !== 'production';
+  // Load the app - use app.isPackaged which is more reliable than NODE_ENV
+  const isDev = !app.isPackaged;
 
   if (isDev) {
     mainWindow.loadURL('http://localhost:5173');
@@ -953,7 +966,7 @@ function createWindow() {
 let buildMenuFn = null;
 
 app.whenReady().then(async () => {
-  const isDev = process.env.NODE_ENV !== 'production';
+  const isDev = !app.isPackaged;
 
   // Show splash screen immediately
   createSplashWindow();
@@ -1009,6 +1022,37 @@ ipcMain.handle('session:get', () => {
 
 ipcMain.handle('session:set', (event, jsonString) => {
   saveSessionState(jsonString);
+});
+
+ipcMain.handle('session:clear', () => {
+  saveSessionState(null);
+  log.info('[IPC] Session state cleared');
+});
+
+// Validate that a project folder exists on disk
+ipcMain.handle('project:validate-exists', async (event, projectId) => {
+  if (!projectId) {
+    return { exists: false, reason: 'No project ID provided' };
+  }
+
+  try {
+    const exists = await projectFolders.projectFolderExists(projectId);
+    if (exists) {
+      // Also check if project.json exists
+      const paths = projectFolders.getProjectFolderPaths(projectId);
+      const fs = require('fs').promises;
+      try {
+        await fs.access(paths.projectJson);
+        return { exists: true };
+      } catch {
+        return { exists: false, reason: 'Project folder exists but project.json is missing' };
+      }
+    }
+    return { exists: false, reason: 'Project folder not found' };
+  } catch (error) {
+    log.error('[IPC] Error validating project:', error);
+    return { exists: false, reason: error.message };
+  }
 });
 
 // File dialog for TIFF selection (single file)
@@ -1800,9 +1844,10 @@ ipcMain.on('theme:changed', (event, theme) => {
 });
 
 // ========== Tile-Based Image Loading System ==========
-// Import tile cache and generator
+// Import tile cache, generator, and queue
 const tileCache = require('./tileCache');
 const tileGenerator = require('./tileGenerator');
+const tileQueue = require('./tileQueue');
 
 /**
  * Load and process an image with tiling support
@@ -1922,7 +1967,7 @@ ipcMain.handle('image:load-tile', async (event, imageHash, tileX, tileY) => {
 
     // Convert to base64 data URL
     const base64 = buffer.toString('base64');
-    return `data:image/png;base64,${base64}`;
+    return `data:image/webp;base64,${base64}`;
   } catch (error) {
     log.error(`Error loading tile (${tileX}, ${tileY}):`, error);
     throw error;
@@ -1960,7 +2005,7 @@ ipcMain.handle('image:load-tiles-batch', async (event, imageHash, tiles) => {
       results.push({
         x,
         y,
-        dataUrl: `data:image/png;base64,${base64}`,
+        dataUrl: `data:image/webp;base64,${base64}`,
       });
     }
 
@@ -2020,6 +2065,142 @@ ipcMain.handle('image:clear-all-caches', async () => {
   } catch (error) {
     log.error('Error clearing all caches:', error);
     throw error;
+  }
+});
+
+// ========== Tile Queue and Project Preparation ==========
+
+/**
+ * Prepare all images in a project (generate thumbnails + medium)
+ * This is called when loading a project to ensure fast browsing
+ */
+ipcMain.handle('project:prepare-images', async (event, images) => {
+  try {
+    log.info(`[TileQueue] Preparing ${images.length} images for project...`);
+
+    // Set up progress reporting to renderer
+    const progressHandler = (progress) => {
+      // Send progress to renderer
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('tile-queue:progress', progress);
+      }
+    };
+
+    const preparationStartHandler = (data) => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('tile-queue:preparation-start', data);
+      }
+    };
+
+    const preparationCompleteHandler = (data) => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('tile-queue:preparation-complete', data);
+      }
+    };
+
+    const tileProgressHandler = (data) => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('tile-queue:tile-progress', data);
+      }
+    };
+
+    // Listen for progress events
+    tileQueue.on('progress', progressHandler);
+    tileQueue.on('preparationStart', preparationStartHandler);
+    tileQueue.on('preparationComplete', preparationCompleteHandler);
+    tileQueue.on('tileProgress', tileProgressHandler);
+
+    try {
+      // Run preparation
+      const result = await tileQueue.prepareProject(images);
+      log.info(`[TileQueue] Preparation complete: ${result.prepared} generated, ${result.cached} cached, ${result.total} total`);
+      return result;
+    } finally {
+      // Clean up listeners
+      tileQueue.off('progress', progressHandler);
+      tileQueue.off('preparationStart', preparationStartHandler);
+      tileQueue.off('preparationComplete', preparationCompleteHandler);
+      tileQueue.off('tileProgress', tileProgressHandler);
+    }
+  } catch (error) {
+    log.error('[TileQueue] Error preparing project images:', error);
+    throw error;
+  }
+});
+
+/**
+ * Get tile queue status
+ */
+ipcMain.handle('tile-queue:status', async () => {
+  try {
+    return tileQueue.getStatus();
+  } catch (error) {
+    log.error('[TileQueue] Error getting queue status:', error);
+    throw error;
+  }
+});
+
+/**
+ * Boost priority of an image in the queue
+ * Used when user selects a new micrograph
+ */
+ipcMain.handle('tile-queue:boost-priority', async (event, imageHash) => {
+  try {
+    tileQueue.boostPriority(imageHash);
+    return { success: true };
+  } catch (error) {
+    log.error('[TileQueue] Error boosting priority:', error);
+    throw error;
+  }
+});
+
+/**
+ * Cancel pending requests for an image
+ * Used when user navigates away
+ */
+ipcMain.handle('tile-queue:cancel', async (event, imageHash) => {
+  try {
+    tileQueue.cancelForImage(imageHash);
+    return { success: true };
+  } catch (error) {
+    log.error('[TileQueue] Error cancelling requests:', error);
+    throw error;
+  }
+});
+
+/**
+ * Check if an image is FULLY cached (metadata + all tiles)
+ * Used to quickly check cache status before deciding whether to show prep dialog
+ */
+ipcMain.handle('image:check-cache', async (event, imagePath) => {
+  try {
+    const cacheStatus = await tileCache.isCacheValid(imagePath);
+
+    if (!cacheStatus.exists) {
+      return { cached: false, hash: null, metadata: null };
+    }
+
+    // Metadata exists - now check if ALL tiles are cached
+    const { tilesX, tilesY } = cacheStatus.metadata;
+    let allTilesCached = true;
+
+    for (let ty = 0; ty < tilesY && allTilesCached; ty++) {
+      for (let tx = 0; tx < tilesX && allTilesCached; tx++) {
+        const cached = await tileCache.loadTile(cacheStatus.hash, tx, ty);
+        if (!cached) {
+          allTilesCached = false;
+        }
+      }
+    }
+
+    return {
+      cached: allTilesCached,
+      hash: cacheStatus.hash,
+      metadata: cacheStatus.metadata,
+    };
+  } catch (error) {
+    log.error('[TileCache] Error checking cache:', error);
+    return { cached: false, hash: null, metadata: null };
   }
 });
 
