@@ -1936,7 +1936,7 @@ ipcMain.handle('image:load-tile', async (event, imageHash, tileX, tileY) => {
 
     // Convert to base64 data URL
     const base64 = buffer.toString('base64');
-    return `data:image/png;base64,${base64}`;
+    return `data:image/jpeg;base64,${base64}`;
   } catch (error) {
     log.error(`Error loading tile (${tileX}, ${tileY}):`, error);
     throw error;
@@ -1974,7 +1974,7 @@ ipcMain.handle('image:load-tiles-batch', async (event, imageHash, tiles) => {
       results.push({
         x,
         y,
-        dataUrl: `data:image/png;base64,${base64}`,
+        dataUrl: `data:image/jpeg;base64,${base64}`,
       });
     }
 

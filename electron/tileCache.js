@@ -200,7 +200,7 @@ class TileCache {
    */
   getTilePath(imageHash, x, y) {
     const tilesDir = path.join(this.getCacheDir(imageHash), 'tiles');
-    return path.join(tilesDir, `tile_${x}_${y}.png`);
+    return path.join(tilesDir, `tile_${x}_${y}.jpg`);
   }
 
   /**
