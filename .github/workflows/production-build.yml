@@ -161,17 +161,21 @@ jobs:
 
       # Import certificate for signing (if available)
       - name: Import Code Signing Certificate
-        if: secrets.WINDOWS_CERTIFICATE != ''
         shell: powershell
         env:
           WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
           WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
         run: |
-          $certificateBytes = [System.Convert]::FromBase64String($env:WINDOWS_CERTIFICATE)
-          $certPath = "$env:RUNNER_TEMP\certificate.pfx"
-          [System.IO.File]::WriteAllBytes($certPath, $certificateBytes)
-          echo "WIN_CSC_LINK=$certPath" >> $env:GITHUB_ENV
-          echo "WIN_CSC_KEY_PASSWORD=$env:WINDOWS_CERTIFICATE_PASSWORD" >> $env:GITHUB_ENV
+          if ($env:WINDOWS_CERTIFICATE) {
+            $certificateBytes = [System.Convert]::FromBase64String($env:WINDOWS_CERTIFICATE)
+            $certPath = "$env:RUNNER_TEMP\certificate.pfx"
+            [System.IO.File]::WriteAllBytes($certPath, $certificateBytes)
+            echo "WIN_CSC_LINK=$certPath" >> $env:GITHUB_ENV
+            echo "WIN_CSC_KEY_PASSWORD=$env:WINDOWS_CERTIFICATE_PASSWORD" >> $env:GITHUB_ENV
+            Write-Host "Certificate imported successfully"
+          } else {
+            Write-Host "No certificate provided, skipping code signing"
+          }
 
       - name: Package for Windows
         run: npx electron-builder --win --publish never
