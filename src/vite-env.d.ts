@@ -296,7 +296,7 @@ interface Window {
     }>;
 
     // Export all images to ZIP
-    exportAllImages: (projectId: string, projectData: any) => Promise<{
+    exportAllImages: (projectId: string, projectData: any, format?: 'jpeg' | 'svg') => Promise<{
       success: boolean;
       canceled?: boolean;
       filePath?: string;

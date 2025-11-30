@@ -1,7 +1,7 @@
 /**
  * Export All Images Dialog Component
  *
- * Displays progress while exporting all micrograph images to a ZIP file.
+ * Displays format selection and progress while exporting all micrograph images to a ZIP file.
  * Shows current image being processed and overall progress.
  */
 
@@ -16,9 +16,16 @@ import {
   Typography,
   LinearProgress,
   Alert,
+  FormControl,
+  FormLabel,
+  RadioGroup,
+  FormControlLabel,
+  Radio,
 } from '@mui/material';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import ErrorIcon from '@mui/icons-material/Error';
+
+type ExportFormat = 'jpeg' | 'svg';
 
 interface ExportProgress {
   current: number;
@@ -41,6 +48,8 @@ export function ExportAllImagesDialog({
   projectData,
   onClose,
 }: ExportAllImagesDialogProps) {
+  const [format, setFormat] = useState<ExportFormat>('jpeg');
+  const [step, setStep] = useState<'select' | 'exporting'>('select');
   const [progress, setProgress] = useState<ExportProgress | null>(null);
   const [isExporting, setIsExporting] = useState(false);
   const [result, setResult] = useState<{
@@ -51,12 +60,15 @@ export function ExportAllImagesDialog({
     error?: string;
   } | null>(null);
 
-  // Start export when dialog opens
+  // Reset to format selection when dialog opens
   useEffect(() => {
-    if (open && projectId && projectData && !isExporting && !result) {
-      startExport();
+    if (open) {
+      setStep('select');
+      setProgress(null);
+      setResult(null);
+      setIsExporting(false);
     }
-  }, [open, projectId, projectData]);
+  }, [open]);
 
   // Set up progress listener
   useEffect(() => {
@@ -76,16 +88,18 @@ export function ExportAllImagesDialog({
   const startExport = useCallback(async () => {
     if (!projectId || !projectData || !window.api?.exportAllImages) return;
 
+    setStep('exporting');
     setIsExporting(true);
     setProgress(null);
     setResult(null);
 
     try {
-      const exportResult = await window.api.exportAllImages(projectId, projectData);
+      const exportResult = await window.api.exportAllImages(projectId, projectData, format);
 
       if (exportResult.canceled) {
-        // User canceled the save dialog
-        handleClose();
+        // User canceled the save dialog - go back to format selection
+        setStep('select');
+        setIsExporting(false);
         return;
       }
 
@@ -98,10 +112,11 @@ export function ExportAllImagesDialog({
     } finally {
       setIsExporting(false);
     }
-  }, [projectId, projectData]);
+  }, [projectId, projectData, format]);
 
   const handleClose = () => {
     // Reset state when closing
+    setStep('select');
     setProgress(null);
     setResult(null);
     setIsExporting(false);
@@ -115,7 +130,7 @@ export function ExportAllImagesDialog({
   return (
     <Dialog
       open={open}
-      onClose={result ? handleClose : undefined}
+      onClose={step === 'select' || result ? handleClose : undefined}
       maxWidth="sm"
       fullWidth
       disableEscapeKeyDown={isExporting}
@@ -123,8 +138,44 @@ export function ExportAllImagesDialog({
       <DialogTitle>Export All Images</DialogTitle>
       <DialogContent>
         <Box sx={{ py: 2 }}>
+          {/* Format selection step */}
+          {step === 'select' && (
+            <FormControl component="fieldset">
+              <FormLabel component="legend">Export Format</FormLabel>
+              <RadioGroup
+                value={format}
+                onChange={(e) => setFormat(e.target.value as ExportFormat)}
+              >
+                <FormControlLabel
+                  value="jpeg"
+                  control={<Radio />}
+                  label={
+                    <Box>
+                      <Typography variant="body1">JPEG (Raster)</Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        Standard image format, smaller file size
+                      </Typography>
+                    </Box>
+                  }
+                />
+                <FormControlLabel
+                  value="svg"
+                  control={<Radio />}
+                  label={
+                    <Box>
+                      <Typography variant="body1">SVG (Vector)</Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        Editable spots and labels in Illustrator, Inkscape, etc.
+                      </Typography>
+                    </Box>
+                  }
+                />
+              </RadioGroup>
+            </FormControl>
+          )}
+
           {/* Progress state */}
-          {isExporting && progress && (
+          {step === 'exporting' && isExporting && progress && (
             <>
               <Box sx={{ mb: 2 }}>
                 <Typography variant="body2" color="text.secondary" gutterBottom>
@@ -153,7 +204,7 @@ export function ExportAllImagesDialog({
           )}
 
           {/* Initializing state */}
-          {isExporting && !progress && (
+          {step === 'exporting' && isExporting && !progress && (
             <Box sx={{ textAlign: 'center', py: 2 }}>
               <Typography variant="body1" color="text.secondary">
                 Preparing export...
@@ -196,9 +247,18 @@ export function ExportAllImagesDialog({
         </Box>
       </DialogContent>
       <DialogActions>
-        {isExporting ? (
+        {step === 'select' && (
+          <>
+            <Button onClick={handleClose}>Cancel</Button>
+            <Button onClick={startExport} variant="contained">
+              Export
+            </Button>
+          </>
+        )}
+        {step === 'exporting' && isExporting && (
           <Button disabled>Exporting...</Button>
-        ) : (
+        )}
+        {step === 'exporting' && !isExporting && result && (
           <Button onClick={handleClose} variant="contained">
             {result?.success ? 'Done' : 'Close'}
           </Button>

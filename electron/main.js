@@ -3598,9 +3598,9 @@ function collectAllMicrographs(projectData) {
  * Export all micrographs to a ZIP file
  * Sends progress updates to renderer via IPC
  */
-ipcMain.handle('project:export-all-images', async (event, projectId, projectData) => {
+ipcMain.handle('project:export-all-images', async (event, projectId, projectData, format = 'jpeg') => {
   try {
-    log.info(`[BatchExport] Starting batch export for project: ${projectId}`);
+    log.info(`[BatchExport] Starting batch export for project: ${projectId} (format: ${format})`);
 
     // Collect all micrographs
     const allMicrographs = collectAllMicrographs(projectData);
@@ -3611,6 +3611,9 @@ ipcMain.handle('project:export-all-images', async (event, projectId, projectData
     }
 
     log.info(`[BatchExport] Found ${total} micrographs to export`);
+
+    // Determine file extension based on format
+    const fileExtension = format === 'svg' ? 'svg' : 'jpg';
 
     // Show save dialog for ZIP file
     const projectName = (projectData.name || 'project').replace(/[<>:"/\\|?*]/g, '_');
@@ -3646,6 +3649,9 @@ ipcMain.handle('project:export-all-images', async (event, projectId, projectData
     let completed = 0;
     const errors = [];
 
+    // Import SVG export module if needed
+    const svgExport = format === 'svg' ? require('./svgExport') : null;
+
     for (const { micrograph, datasetName, sampleName } of allMicrographs) {
       try {
         // Send progress update to renderer
@@ -3659,15 +3665,19 @@ ipcMain.handle('project:export-all-images', async (event, projectId, projectData
 
         log.info(`[BatchExport] Processing ${completed + 1}/${total}: ${micrograph.name}`);
 
-        // Generate composite buffer
-        const buffer = await generateCompositeBuffer(projectId, micrograph, projectData, folderPaths);
-
         // Create filename (sanitize for ZIP)
         const cleanName = (micrograph.name || 'micrograph').replace(/[<>:"/\\|?*]/g, '_');
-        const filename = `${cleanName}.jpg`;
+        const filename = `${cleanName}.${fileExtension}`;
 
-        // Add to archive
-        archive.append(buffer, { name: filename });
+        if (format === 'svg') {
+          // Generate SVG
+          const { svg } = await svgExport.exportMicrographAsSvg(projectId, micrograph.id, projectData, folderPaths);
+          archive.append(svg, { name: filename });
+        } else {
+          // Generate JPEG composite buffer
+          const buffer = await generateCompositeBuffer(projectId, micrograph, projectData, folderPaths);
+          archive.append(buffer, { name: filename });
+        }
 
         completed++;
       } catch (error) {

@@ -197,8 +197,8 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('micrograph:export-svg', projectId, micrographId, projectData),
 
   // Export all images to ZIP
-  exportAllImages: (projectId, projectData) =>
-    ipcRenderer.invoke('project:export-all-images', projectId, projectData),
+  exportAllImages: (projectId, projectData, format = 'jpeg') =>
+    ipcRenderer.invoke('project:export-all-images', projectId, projectData, format),
   onExportAllImagesProgress: (callback) =>
     ipcRenderer.on('export-all-images:progress', (event, progress) => callback(progress)),
   removeExportAllImagesProgressListener: () =>
