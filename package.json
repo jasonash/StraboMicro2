@@ -53,6 +53,7 @@
     "@react-pdf/renderer": "^4.3.1",
     "@sentry/electron": "^7.4.0",
     "archiver": "^7.0.1",
+    "bmp-js": "^0.1.0",
     "canvas": "^3.2.0",
     "electron-log": "^5.4.3",
     "electron-store": "^11.0.2",
