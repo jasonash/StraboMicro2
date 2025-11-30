@@ -46,21 +46,18 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
 
-      # Linux-specific: Install build dependencies
+      # Linux-specific: Install build dependencies (libfuse2 for AppImage)
       - name: Install Linux dependencies
         if: matrix.platform == 'linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libvips-dev libfuse2
-
-      # macOS-specific: Install build dependencies
-      - name: Install macOS dependencies
-        if: matrix.platform == 'mac'
-        run: |
-          brew install vips
+          sudo apt-get install -y libfuse2
 
       - name: Install dependencies
         run: npm ci
+        env:
+          # Tell Sharp to use prebuilt binaries instead of system libvips
+          SHARP_IGNORE_GLOBAL_LIBVIPS: 1
 
       # Update version to include dev suffix
       - name: Update version for dev build
