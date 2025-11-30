@@ -19,9 +19,6 @@ import {
   DialogContent,
   DialogActions,
   Button,
-  Stepper,
-  Step,
-  StepLabel,
   TextField,
   MenuItem,
   Box,
@@ -33,6 +30,7 @@ import {
   Divider,
   IconButton,
 } from '@mui/material';
+import { WizardProgress } from '../../WizardProgress';
 import { Delete as DeleteIcon } from '@mui/icons-material';
 import { useAppStore } from '@/store';
 import { findMicrographById } from '@/store/helpers';
@@ -196,6 +194,14 @@ const initialFormData: MicrographFormData = {
   calibrationStandardNotes: '',
   notesOnCrystalStructuresUsed: '',
 };
+
+// Step IDs for the edit wizard
+type EditStepId = 'instrument-info' | 'instrument-data' | 'instrument-settings' | 'metadata';
+
+interface EditStepConfig {
+  id: EditStepId;
+  label: string;
+}
 
 export function EditMicrographDialog({ isOpen, onClose, micrographId }: EditMicrographDialogProps) {
   const project = useAppStore((state) => state.project);
@@ -443,14 +449,22 @@ export function EditMicrographDialog({ isOpen, onClose, micrographId }: EditMicr
     return instrumentsWithSettings.includes(formData.instrumentType);
   };
 
-  const getStepLabels = (): string[] => {
-    const labels = ['Instrument & Image Info', 'Instrument Data'];
+  // Build steps array dynamically
+  const steps: EditStepConfig[] = (() => {
+    const stepList: EditStepConfig[] = [
+      { id: 'instrument-info', label: 'Instrument & Image Info' },
+      { id: 'instrument-data', label: 'Instrument Data' },
+    ];
     if (shouldShowInstrumentSettings()) {
-      labels.push('Instrument Settings');
+      stepList.push({ id: 'instrument-settings', label: 'Instrument Settings' });
     }
-    labels.push('Metadata');
-    return labels;
-  };
+    stepList.push({ id: 'metadata', label: 'Metadata' });
+    return stepList;
+  })();
+
+  // Get current step config
+  const currentStepConfig = steps[activeStep] || steps[0];
+  const currentStepId = currentStepConfig?.id;
 
   const handleNext = () => {
     setActiveStep((prev) => prev + 1);
@@ -553,8 +567,8 @@ export function EditMicrographDialog({ isOpen, onClose, micrographId }: EditMicr
   };
 
   const isStepValid = (): boolean => {
-    switch (activeStep) {
-      case 0: // Instrument & Image Info
+    switch (currentStepId) {
+      case 'instrument-info':
         // Instrument type is always required
         if (formData.instrumentType === '') return false;
         // Other instrument type required if "Other" selected
@@ -574,46 +588,34 @@ export function EditMicrographDialog({ isOpen, onClose, micrographId }: EditMicr
 
         // For all other instruments, require dataType and imageType
         return formData.dataType !== '' && formData.imageType !== '';
-      case 1: // Instrument Data
+
+      case 'instrument-data':
         return true; // All fields optional
-      case 2: // Instrument Settings (if shown) OR Metadata (if no settings)
-        if (shouldShowInstrumentSettings()) {
-          return true; // All fields optional
-        } else {
-          // This is the metadata step
-          return formData.micrographName !== '' && (!formData.micrographPolished || formData.micrographPolishDescription !== '');
-        }
-      case 3: // Metadata (only if settings shown)
+
+      case 'instrument-settings':
+        return true; // All fields optional
+
+      case 'metadata':
         return formData.micrographName !== '' && (!formData.micrographPolished || formData.micrographPolishDescription !== '');
+
       default:
         return true;
     }
   };
 
   const renderStepContent = () => {
-    const hasInstrumentSettings = shouldShowInstrumentSettings();
-
-    // Map logical steps to UI
-    // Step 0: Instrument & Image Info
-    // Step 1: Instrument Data
-    // Step 2: Instrument Settings (if applicable) OR Metadata (if not)
-    // Step 3: Metadata (only if instrument settings shown)
-
-    if (activeStep === 0) {
-      return renderInstrumentInfoStep();
-    } else if (activeStep === 1) {
-      return renderInstrumentDataStep();
-    } else if (activeStep === 2) {
-      if (hasInstrumentSettings) {
+    switch (currentStepId) {
+      case 'instrument-info':
+        return renderInstrumentInfoStep();
+      case 'instrument-data':
+        return renderInstrumentDataStep();
+      case 'instrument-settings':
         return renderInstrumentSettingsStep();
-      } else {
+      case 'metadata':
         return renderMetadataStep();
-      }
-    } else if (activeStep === 3) {
-      return renderMetadataStep();
+      default:
+        return null;
     }
-
-    return null;
   };
 
   const renderInstrumentInfoStep = () => {
@@ -2292,24 +2294,19 @@ export function EditMicrographDialog({ isOpen, onClose, micrographId }: EditMicr
     );
   };
 
-  const stepLabels = getStepLabels();
-  const isLastStep = activeStep === stepLabels.length - 1;
+  const isLastStep = activeStep === steps.length - 1;
 
   return (
     <>
       <Dialog open={isOpen} onClose={handleCancel} maxWidth="md" fullWidth>
         <DialogTitle>Edit Micrograph Metadata</DialogTitle>
         <DialogContent>
-          <Box sx={{ pt: 2 }}>
-            <Stepper activeStep={activeStep}>
-              {stepLabels.map((label) => (
-                <Step key={label}>
-                  <StepLabel>{label}</StepLabel>
-                </Step>
-              ))}
-            </Stepper>
-            <Box sx={{ mt: 3 }}>{renderStepContent()}</Box>
-          </Box>
+          <WizardProgress
+            currentStep={activeStep}
+            totalSteps={steps.length}
+            stepLabel={currentStepConfig?.label || ''}
+          />
+          <Box sx={{ mt: 2 }}>{renderStepContent()}</Box>
         </DialogContent>
         <DialogActions>
           <Button onClick={handleCancel}>Cancel</Button>
