@@ -27,6 +27,8 @@ interface ProjectPrepDialogProps {
   totalImages: number;
   completedImages: number;
   currentImageName: string;
+  currentTile: number;
+  totalTiles: number;
 }
 
 export const ProjectPrepDialog: React.FC<ProjectPrepDialogProps> = ({
@@ -34,6 +36,8 @@ export const ProjectPrepDialog: React.FC<ProjectPrepDialogProps> = ({
   totalImages,
   completedImages,
   currentImageName,
+  currentTile,
+  totalTiles,
 }) => {
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
 
@@ -52,7 +56,8 @@ export const ProjectPrepDialog: React.FC<ProjectPrepDialogProps> = ({
   }, [open]);
 
   // Calculate progress percentage
-  const progress = totalImages > 0 ? (completedImages / totalImages) * 100 : 0;
+  const imageProgress = totalImages > 0 ? (completedImages / totalImages) * 100 : 0;
+  const tileProgress = totalTiles > 0 ? (currentTile / totalTiles) * 100 : 0;
 
   // Format elapsed time
   const formatTime = (seconds: number): string => {
@@ -105,19 +110,19 @@ export const ProjectPrepDialog: React.FC<ProjectPrepDialogProps> = ({
           </Typography>
         </Box>
 
-        {/* Progress bar */}
+        {/* Overall image progress bar */}
         <Box sx={{ mb: 2 }}>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
             <Typography variant="body2" fontWeight="medium">
-              {completedImages} of {totalImages} images
+              Image {completedImages + 1} of {totalImages}
             </Typography>
             <Typography variant="body2" color="text.secondary">
-              {Math.round(progress)}%
+              {Math.round(imageProgress)}%
             </Typography>
           </Box>
           <LinearProgress
             variant="determinate"
-            value={progress}
+            value={imageProgress}
             sx={{
               height: 8,
               borderRadius: 1,
@@ -127,6 +132,32 @@ export const ProjectPrepDialog: React.FC<ProjectPrepDialogProps> = ({
             }}
           />
         </Box>
+
+        {/* Tile progress bar (shows progress within current image) */}
+        {totalTiles > 0 && (
+          <Box sx={{ mb: 2 }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
+              <Typography variant="body2" color="text.secondary">
+                Generating tile {currentTile} of {totalTiles}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                {Math.round(tileProgress)}%
+              </Typography>
+            </Box>
+            <LinearProgress
+              variant="determinate"
+              value={tileProgress}
+              color="secondary"
+              sx={{
+                height: 6,
+                borderRadius: 1,
+                '& .MuiLinearProgress-bar': {
+                  borderRadius: 1,
+                },
+              }}
+            />
+          </Box>
+        )}
 
         {/* Current file and time info */}
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>

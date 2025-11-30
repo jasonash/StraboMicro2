@@ -2067,10 +2067,17 @@ ipcMain.handle('project:prepare-images', async (event, images) => {
       }
     };
 
+    const tileProgressHandler = (data) => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('tile-queue:tile-progress', data);
+      }
+    };
+
     // Listen for progress events
     tileQueue.on('progress', progressHandler);
     tileQueue.on('preparationStart', preparationStartHandler);
     tileQueue.on('preparationComplete', preparationCompleteHandler);
+    tileQueue.on('tileProgress', tileProgressHandler);
 
     try {
       // Run preparation
@@ -2082,6 +2089,7 @@ ipcMain.handle('project:prepare-images', async (event, images) => {
       tileQueue.off('progress', progressHandler);
       tileQueue.off('preparationStart', preparationStartHandler);
       tileQueue.off('preparationComplete', preparationCompleteHandler);
+      tileQueue.off('tileProgress', tileProgressHandler);
     }
   } catch (error) {
     log.error('[TileQueue] Error preparing project images:', error);

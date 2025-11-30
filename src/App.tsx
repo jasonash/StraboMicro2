@@ -779,6 +779,8 @@ function App() {
         totalImages={preparationProgress.totalImages}
         completedImages={preparationProgress.completedImages}
         currentImageName={preparationProgress.currentImageName}
+        currentTile={preparationProgress.currentTile}
+        totalTiles={preparationProgress.totalTiles}
       />
     </>
   );

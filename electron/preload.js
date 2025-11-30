@@ -160,6 +160,11 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('tile-queue:preparation-complete', handler);
     return () => ipcRenderer.removeListener('tile-queue:preparation-complete', handler);
   },
+  onTileQueueTileProgress: (callback) => {
+    const handler = (event, data) => callback(data);
+    ipcRenderer.on('tile-queue:tile-progress', handler);
+    return () => ipcRenderer.removeListener('tile-queue:tile-progress', handler);
+  },
 
   // Project folder structure
   getProjectDataPath: () => ipcRenderer.invoke('project:get-data-path'),

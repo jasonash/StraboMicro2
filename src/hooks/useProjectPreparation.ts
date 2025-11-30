@@ -25,6 +25,8 @@ interface PreparationProgress {
   totalImages: number;
   completedImages: number;
   currentImageName: string;
+  currentTile: number;
+  totalTiles: number;
 }
 
 interface UseProjectPreparationResult {
@@ -56,6 +58,8 @@ export function useProjectPreparation(): UseProjectPreparationResult {
     totalImages: 0,
     completedImages: 0,
     currentImageName: '',
+    currentTile: 0,
+    totalTiles: 0,
   });
 
   // Listen for progress events from main process
@@ -64,16 +68,26 @@ export function useProjectPreparation(): UseProjectPreparationResult {
 
     const unsubProgress = window.api.onTileQueueProgress((progress) => {
       if (progress.isPreparationPhase) {
-        setPreparationProgress({
+        setPreparationProgress((prev) => ({
+          ...prev,
           totalImages: progress.totalImages,
           completedImages: progress.completedImages,
           currentImageName: progress.currentImageName,
-        });
+        }));
       }
+    });
+
+    const unsubTileProgress = window.api.onTileQueueTileProgress((tileProgress) => {
+      setPreparationProgress((prev) => ({
+        ...prev,
+        currentTile: tileProgress.currentTile,
+        totalTiles: tileProgress.totalTiles,
+      }));
     });
 
     return () => {
       unsubProgress?.();
+      unsubTileProgress?.();
     };
   }, []);
 
@@ -138,6 +152,8 @@ export function useProjectPreparation(): UseProjectPreparationResult {
       totalImages: imagesToPrepare.length,
       completedImages: 0,
       currentImageName: '',
+      currentTile: 0,
+      totalTiles: 0,
     });
 
     try {
@@ -151,6 +167,8 @@ export function useProjectPreparation(): UseProjectPreparationResult {
         totalImages: 0,
         completedImages: 0,
         currentImageName: '',
+        currentTile: 0,
+        totalTiles: 0,
       });
     }
   }, []);

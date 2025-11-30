@@ -176,6 +176,11 @@ interface Window {
       cached: number;
       total: number;
     }) => void) => Unsubscribe;
+    onTileQueueTileProgress: (callback: (data: {
+      imageName: string;
+      currentTile: number;
+      totalTiles: number;
+    }) => void) => Unsubscribe;
 
     // Project folder structure
     getProjectDataPath: () => Promise<string>;
