@@ -97,7 +97,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
     const [hasDragged, setHasDragged] = useState(false); // Track if user has dragged since mousedown
 
     // Track overlay tile loading state
-    const [overlayLoadingCount, setOverlayLoadingCount] = useState(0);
+    // Note: overlayLoadingCount removed - overlays now use MEDIUM mode only, no tiles
 
     // New Spot Dialog state
     const [newSpotDialogOpen, setNewSpotDialogOpen] = useState(false);
@@ -1273,13 +1273,6 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                             height: stageSize.height,
                           }}
                           stageScale={zoom}
-                          onTileLoadingStart={(message) => {
-                            setTileLoadingMessage(message);
-                            setOverlayLoadingCount((prev) => prev + 1);
-                          }}
-                          onTileLoadingEnd={() => {
-                            setOverlayLoadingCount((prev) => Math.max(0, prev - 1));
-                          }}
                           onClick={handleOverlayClick}
                           showOutline={showMicrographOutlines}
                         />
@@ -1514,13 +1507,6 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                             height: stageSize.height,
                           }}
                           stageScale={zoom}
-                          onTileLoadingStart={(message) => {
-                            setTileLoadingMessage(message);
-                            setOverlayLoadingCount((prev) => prev + 1);
-                          }}
-                          onTileLoadingEnd={() => {
-                            setOverlayLoadingCount((prev) => Math.max(0, prev - 1));
-                          }}
                           onClick={handleOverlayClick}
                         />
                       ))}
@@ -1623,8 +1609,8 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
               </Stage>
             )}
 
-            {/* Tile loading indicator - shows for both reference and overlay tiles */}
-            {(isLoadingTiles || overlayLoadingCount > 0) && (
+            {/* Tile loading indicator - shows for main reference micrograph only */}
+            {isLoadingTiles && (
               <Box
                 sx={{
                   position: 'absolute',
@@ -1646,8 +1632,6 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                 <CircularProgress size={18} sx={{ color: '#ffffffff' }} />
                 <Typography variant="body2" sx={{ fontWeight: 500, color: '#ffffffff' }}>
                   {tileLoadingMessage || 'Loading tiles...'}
-                  {overlayLoadingCount > 0 &&
-                    ` (${overlayLoadingCount} overlay${overlayLoadingCount > 1 ? 's' : ''})`}
                 </Typography>
               </Box>
             )}
