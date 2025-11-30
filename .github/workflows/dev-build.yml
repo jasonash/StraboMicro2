@@ -54,12 +54,15 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libfuse2
 
-      # On macOS, unset PKG_CONFIG_PATH to prevent Sharp from detecting system libvips
+      # On macOS, install dependencies and ensure Sharp has binaries for both architectures
       - name: Install dependencies (macOS)
         if: matrix.platform == 'mac'
         run: |
           unset PKG_CONFIG_PATH
           npm ci
+          # Install Sharp binaries for both architectures (needed for universal builds)
+          npm rebuild sharp --platform=darwin --arch=x64
+          npm rebuild sharp --platform=darwin --arch=arm64
         env:
           SHARP_IGNORE_GLOBAL_LIBVIPS: "true"
           npm_config_sharp_libvips_local_prebuilds: "true"
