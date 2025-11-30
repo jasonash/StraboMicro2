@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import * as Sentry from '@sentry/electron/renderer';
 import MainLayout from './components/MainLayout';
 import { NewProjectDialog } from './components/dialogs/NewProjectDialog';
@@ -16,10 +16,13 @@ import { ImportSmzDialog } from './components/dialogs/ImportSmzDialog';
 import { RemoteProjectsDialog } from './components/dialogs/RemoteProjectsDialog';
 import { SharedProjectDialog } from './components/dialogs/SharedProjectDialog';
 import { CloseProjectDialog } from './components/dialogs/CloseProjectDialog';
+import { ProjectPrepDialog } from './components/dialogs/ProjectPrepDialog';
 import { useAppStore, useTemporalStore } from '@/store';
 import { useAuthStore } from '@/store/useAuthStore';
 import { useTheme } from './hooks/useTheme';
 import { useAutosave } from './hooks/useAutosave';
+import { useProjectPreparation } from './hooks/useProjectPreparation';
+import { ProjectMetadata } from '@/types/project-types';
 import './App.css';
 
 function App() {
@@ -53,6 +56,44 @@ function App() {
 
   // Initialize autosave (5-minute timer when dirty)
   const { manualSave, saveBeforeClose, saveBeforeSwitch } = useAutosave();
+
+  // Initialize project preparation hook (for caching thumbnails on project load)
+  const { prepareProject, isPreparingProject, preparationProgress } = useProjectPreparation();
+
+  /**
+   * Helper function to load a project with preparation
+   * Prepares image cache (thumbnails + medium) before loading into store
+   */
+  const loadProjectWithPreparation = useCallback(async (
+    projectData: ProjectMetadata,
+    filePath: string | null,
+    options?: { selectFirstMicrograph?: boolean }
+  ) => {
+    // Prepare images (generates thumbnails/medium for uncached images)
+    // This shows a progress dialog if there are uncached images
+    await prepareProject(projectData);
+
+    // Load project into store
+    useAppStore.getState().loadProject(projectData, filePath);
+
+    // Optionally select the first reference micrograph
+    if (options?.selectFirstMicrograph !== false) {
+      const datasets = projectData.datasets || [];
+      for (const dataset of datasets) {
+        for (const sample of dataset.samples || []) {
+          const referenceMicrograph = (sample.micrographs || []).find(
+            (m) => !m.parentID
+          );
+          if (referenceMicrograph) {
+            setTimeout(() => {
+              useAppStore.getState().selectMicrograph(referenceMicrograph.id);
+            }, 100);
+            return;
+          }
+        }
+      }
+    }
+  }, [prepareProject]);
 
   // Check auth status on app startup
   useEffect(() => {
@@ -620,25 +661,9 @@ function App() {
       try {
         const result = await window.api?.projects.load(projectId);
         if (result?.success && result.project) {
-          // Load into store
-          const loadProject = useAppStore.getState().loadProject;
-          loadProject(result.project, null);
+          // Load with preparation (prepares image cache before loading into store)
+          await loadProjectWithPreparation(result.project, null);
           console.log('[App] Project loaded successfully:', result.project.name);
-
-          // Auto-select the first reference micrograph (one without parentID)
-          const loadedProject = result.project;
-          for (const dataset of loadedProject.datasets || []) {
-            for (const sample of dataset.samples || []) {
-              const firstReferenceMicro = (sample.micrographs || []).find(
-                (m: { parentID?: string }) => !m.parentID
-              );
-              if (firstReferenceMicro) {
-                useAppStore.getState().selectMicrograph(firstReferenceMicro.id);
-                console.log('[App] Auto-selected micrograph:', firstReferenceMicro.name);
-                return; // Found one, stop searching
-              }
-            }
-          }
         } else {
           console.error('[App] Failed to load project:', result?.error);
           alert(`Failed to load project: ${result?.error || 'Unknown error'}`);
@@ -653,7 +678,7 @@ function App() {
     return () => {
       unsubscribers.forEach(unsub => unsub?.());
     };
-  }, [closeProject, setTheme, setShowRulers, setShowSpotLabels, setShowMicrographOutlines, logout, project, manualSave, saveBeforeSwitch]);
+  }, [closeProject, setTheme, setShowRulers, setShowSpotLabels, setShowMicrographOutlines, logout, project, manualSave, saveBeforeSwitch, loadProjectWithPreparation]);
 
   return (
     <>
@@ -719,72 +744,24 @@ function App() {
         }}
         initialFilePath={importSmzFilePath}
         onImportComplete={(importedProject) => {
-          // Load the imported project into the store
-          useAppStore.getState().loadProject(importedProject, null);
-
-          // Select the first reference micrograph if available
-          const datasets = importedProject.datasets || [];
-          for (const dataset of datasets) {
-            for (const sample of dataset.samples || []) {
-              const referenceMicrograph = (sample.micrographs || []).find(
-                (m: any) => !m.parentID
-              );
-              if (referenceMicrograph) {
-                setTimeout(() => {
-                  useAppStore.getState().selectMicrograph(referenceMicrograph.id);
-                }, 100);
-                return;
-              }
-            }
-          }
+          // Load the imported project with image preparation
+          loadProjectWithPreparation(importedProject, null);
         }}
       />
       <RemoteProjectsDialog
         open={isRemoteProjectsOpen}
         onClose={() => setIsRemoteProjectsOpen(false)}
         onImportComplete={(importedProject: any) => {
-          // Load the imported project into the store
-          useAppStore.getState().loadProject(importedProject, null);
-
-          // Select the first reference micrograph if available
-          const datasets = importedProject.datasets || [];
-          for (const dataset of datasets) {
-            for (const sample of dataset.samples || []) {
-              const referenceMicrograph = (sample.micrographs || []).find(
-                (m: any) => !m.parentID
-              );
-              if (referenceMicrograph) {
-                setTimeout(() => {
-                  useAppStore.getState().selectMicrograph(referenceMicrograph.id);
-                }, 100);
-                return;
-              }
-            }
-          }
+          // Load the imported project with image preparation
+          loadProjectWithPreparation(importedProject, null);
         }}
       />
       <SharedProjectDialog
         open={isSharedProjectOpen}
         onClose={() => setIsSharedProjectOpen(false)}
         onImportComplete={(importedProject: any) => {
-          // Load the imported project into the store
-          useAppStore.getState().loadProject(importedProject, null);
-
-          // Select the first reference micrograph if available
-          const datasets = importedProject.datasets || [];
-          for (const dataset of datasets) {
-            for (const sample of dataset.samples || []) {
-              const referenceMicrograph = (sample.micrographs || []).find(
-                (m: any) => !m.parentID
-              );
-              if (referenceMicrograph) {
-                setTimeout(() => {
-                  useAppStore.getState().selectMicrograph(referenceMicrograph.id);
-                }, 100);
-                return;
-              }
-            }
-          }
+          // Load the imported project with image preparation
+          loadProjectWithPreparation(importedProject, null);
         }}
       />
       <CloseProjectDialog
@@ -796,6 +773,12 @@ function App() {
           // Clear the project from the store after successful deletion
           closeProject();
         }}
+      />
+      <ProjectPrepDialog
+        open={isPreparingProject}
+        totalImages={preparationProgress.totalImages}
+        completedImages={preparationProgress.completedImages}
+        currentImageName={preparationProgress.currentImageName}
       />
     </>
   );
