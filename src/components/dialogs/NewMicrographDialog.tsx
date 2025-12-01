@@ -402,8 +402,10 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
     if (!sourceMicro || !sourceMicro.instrument) return;
 
     const inst = sourceMicro.instrument;
-    const sourceDataType = inst.dataType || '';
-    const sourceImageType = normalizeImageType(sourceMicro.imageType || '');
+    // LEGACY COMPATIBILITY: In legacy format, micrograph.imageType and instrument.dataType
+    // contain the same value. Read from instrument.dataType first (legacy), fall back to
+    // micrograph.imageType (also legacy). This value will populate the UI's imageType field.
+    const sourceImageType = normalizeImageType(inst.dataType || sourceMicro.imageType || '');
 
     // Copy all instrument-related fields
     // First set instrumentType and other non-dependent fields
@@ -485,18 +487,12 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
       );
     }
 
-    // Set dataType and imageType after a short delay to allow dropdowns to populate
+    // Set imageType after a short delay to allow dropdowns to populate
     // based on the newly set instrumentType
     setTimeout(() => {
-      if (sourceDataType) {
-        setFormData((prev) => ({ ...prev, dataType: sourceDataType }));
+      if (sourceImageType) {
+        setFormData((prev) => ({ ...prev, imageType: sourceImageType }));
       }
-      // Set imageType after another delay to allow it to populate based on dataType
-      setTimeout(() => {
-        if (sourceImageType) {
-          setFormData((prev) => ({ ...prev, imageType: sourceImageType }));
-        }
-      }, 50);
     }, 50);
 
     console.log('[NewMicrographDialog] Copied metadata from micrograph:', sourceMicro.name);
@@ -1247,6 +1243,9 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
         width: formData.micrographWidth, // Legacy field
         height: formData.micrographHeight, // Legacy field
         opacity: formData.opacity,
+        // LEGACY COMPATIBILITY: imageType must be at micrograph level AND duplicated in instrument.dataType
+        // The legacy app writes the same value to both locations. See instrument object below.
+        imageType: formData.imageType || undefined,
         polish: formData.micrographPolished,
         polishDescription: formData.micrographPolishDescription || undefined,
         orientationInfo,
@@ -1271,8 +1270,10 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
         instrument: {
           instrumentType: formData.instrumentType || undefined,
           otherInstrumentType: formData.otherInstrumentType || undefined,
-          dataType: formData.dataType || undefined,
-          imageType: formData.imageType || undefined,
+          // LEGACY COMPATIBILITY: instrument.dataType duplicates micrograph.imageType
+          // The legacy app writes the UI "Image Type" value to both locations.
+          // Note: instrument.imageType does NOT exist in the legacy schema.
+          dataType: formData.imageType || undefined,
           instrumentBrand: formData.instrumentBrand || undefined,
           instrumentModel: formData.instrumentModel || undefined,
           university: formData.university || undefined,
@@ -1325,10 +1326,12 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
           imagePath: xplMicrographId,
           // XPL has the SAME parent as PPL (they are siblings)
           // parentID is already inherited from micrograph via spread
-          // Override imageType to Cross Polarized Light
+          // Override imageType to Cross Polarized Light (at micrograph level)
+          imageType: 'Cross Polarized Light',
+          // LEGACY COMPATIBILITY: Also set instrument.dataType to match
           instrument: {
             ...micrograph.instrument,
-            imageType: 'Cross Polarized Light',
+            dataType: 'Cross Polarized Light',
           },
         };
 
