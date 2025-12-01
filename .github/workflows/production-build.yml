@@ -50,12 +50,11 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
 
-      - name: Install macOS dependencies
-        run: |
-          brew install vips
-
       - name: Install dependencies
         run: npm ci
+        env:
+          # Prevent Sharp from detecting system libvips and building from source
+          npm_config_sharp_libvips_local_prebuilds: 1
 
       - name: Update version
         run: npm version ${{ inputs.version }} --no-git-tag-version
@@ -183,9 +182,7 @@ jobs:
 
       - name: Package for Windows
         run: npx electron-builder --win --publish never
-        env:
-          WIN_CSC_LINK: ${{ env.WIN_CSC_LINK }}
-          WIN_CSC_KEY_PASSWORD: ${{ env.WIN_CSC_KEY_PASSWORD }}
+        # WIN_CSC_LINK and WIN_CSC_KEY_PASSWORD are set by the previous step if certificate exists
 
       - name: Upload Windows artifacts
         uses: actions/upload-artifact@v4
