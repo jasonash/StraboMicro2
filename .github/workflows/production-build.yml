@@ -354,11 +354,15 @@ jobs:
 
           # Deduplicate latest*.yml files (keep only one copy of each)
           # Each macOS job creates its own latest-mac.yml, we only need one
-          mkdir -p artifacts/yml-temp
-          find artifacts -name "latest*.yml" -exec cp {} artifacts/yml-temp/ \;
-          find artifacts -name "latest*.yml" -delete
-          mv artifacts/yml-temp/* artifacts/
-          rm -rf artifacts/yml-temp
+          mkdir -p artifacts/yml-dedup
+          for f in $(find artifacts -name "latest*.yml"); do
+            cp "$f" "artifacts/yml-dedup/$(basename "$f")"
+          done
+          find artifacts -path "artifacts/yml-dedup" -prune -o -name "latest*.yml" -exec rm {} \;
+          if [ -n "$(ls -A artifacts/yml-dedup 2>/dev/null)" ]; then
+            mv artifacts/yml-dedup/* artifacts/
+          fi
+          rm -rf artifacts/yml-dedup
 
           # List what we're uploading
           echo "Files to upload:"
