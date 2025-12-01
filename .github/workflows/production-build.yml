@@ -36,7 +36,8 @@ jobs:
           fi
           echo "Version $VERSION is valid"
 
-  build-macos:
+  # macOS ARM64 (Apple Silicon) - runs on macos-latest (ARM64 runner)
+  build-macos-arm64:
     needs: validate
     runs-on: macos-latest
 
@@ -53,7 +54,6 @@ jobs:
       - name: Install dependencies
         run: npm ci
         env:
-          # Prevent Sharp from detecting system libvips and building from source
           npm_config_sharp_libvips_local_prebuilds: 1
 
       - name: Update version
@@ -62,22 +62,18 @@ jobs:
       - name: Build application
         run: npm run build
 
-      # Import certificate for signing
       - name: Import Code Signing Certificate
         env:
           MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
           MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
         run: |
-          # Create a temporary keychain
           KEYCHAIN_PATH=$RUNNER_TEMP/signing.keychain-db
           KEYCHAIN_PASSWORD=$(openssl rand -base64 32)
 
-          # Create keychain
           security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
           security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
 
-          # Import certificate
           echo "$MACOS_CERTIFICATE" | base64 --decode > $RUNNER_TEMP/certificate.p12
           security import $RUNNER_TEMP/certificate.p12 \
             -P "$MACOS_CERTIFICATE_PASSWORD" \
@@ -86,51 +82,124 @@ jobs:
             -f pkcs12 \
             -k "$KEYCHAIN_PATH"
 
-          # Set keychain as default
           security list-keychains -d user -s "$KEYCHAIN_PATH" login.keychain
           security default-keychain -s "$KEYCHAIN_PATH"
-
-          # Allow codesign to access the certificate
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-
-          # Verify certificate
           security find-identity -v -p codesigning "$KEYCHAIN_PATH"
 
-      # Build and sign for macOS (both Intel and Apple Silicon)
-      # Use --publish never initially, then upload to release after notarization
-      - name: Package and Sign for macOS
-        run: npx electron-builder --mac --x64 --arm64 --publish never
+      - name: Package and Sign for macOS (ARM64)
+        run: npx electron-builder --mac --arm64 --publish never
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
 
-      # Notarize the app
       - name: Notarize macOS App
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
-          # Find the DMG files
           for DMG in release/*.dmg; do
             echo "Notarizing $DMG..."
-
-            # Submit for notarization
             xcrun notarytool submit "$DMG" \
               --apple-id "$APPLE_ID" \
               --password "$APPLE_ID_PASSWORD" \
               --team-id "$APPLE_TEAM_ID" \
               --wait
-
-            # Staple the notarization ticket
             xcrun stapler staple "$DMG"
           done
 
-      - name: Upload macOS artifacts
+      - name: Upload macOS ARM64 artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: StraboMicro2-macOS-${{ inputs.version }}
+          name: StraboMicro2-macOS-arm64-${{ inputs.version }}
+          path: |
+            release/*.dmg
+            release/*.zip
+            release/*.yml
+            release/*.blockmap
+          if-no-files-found: error
+          retention-days: 90
+
+  # macOS x64 (Intel) - runs on macos-13 (Intel runner)
+  build-macos-x64:
+    needs: validate
+    runs-on: macos-13
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+        env:
+          npm_config_sharp_libvips_local_prebuilds: 1
+
+      - name: Update version
+        run: npm version ${{ inputs.version }} --no-git-tag-version
+
+      - name: Build application
+        run: npm run build
+
+      - name: Import Code Signing Certificate
+        env:
+          MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+        run: |
+          KEYCHAIN_PATH=$RUNNER_TEMP/signing.keychain-db
+          KEYCHAIN_PASSWORD=$(openssl rand -base64 32)
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+          echo "$MACOS_CERTIFICATE" | base64 --decode > $RUNNER_TEMP/certificate.p12
+          security import $RUNNER_TEMP/certificate.p12 \
+            -P "$MACOS_CERTIFICATE_PASSWORD" \
+            -A \
+            -t cert \
+            -f pkcs12 \
+            -k "$KEYCHAIN_PATH"
+
+          security list-keychains -d user -s "$KEYCHAIN_PATH" login.keychain
+          security default-keychain -s "$KEYCHAIN_PATH"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security find-identity -v -p codesigning "$KEYCHAIN_PATH"
+
+      - name: Package and Sign for macOS (x64)
+        run: npx electron-builder --mac --x64 --publish never
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+
+      - name: Notarize macOS App
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          for DMG in release/*.dmg; do
+            echo "Notarizing $DMG..."
+            xcrun notarytool submit "$DMG" \
+              --apple-id "$APPLE_ID" \
+              --password "$APPLE_ID_PASSWORD" \
+              --team-id "$APPLE_TEAM_ID" \
+              --wait
+            xcrun stapler staple "$DMG"
+          done
+
+      - name: Upload macOS x64 artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: StraboMicro2-macOS-x64-${{ inputs.version }}
           path: |
             release/*.dmg
             release/*.zip
@@ -162,7 +231,6 @@ jobs:
       - name: Build application
         run: npm run build
 
-      # Import certificate for signing (if available)
       - name: Import Code Signing Certificate
         shell: powershell
         env:
@@ -182,7 +250,6 @@ jobs:
 
       - name: Package for Windows
         run: npx electron-builder --win --publish never
-        # WIN_CSC_LINK and WIN_CSC_KEY_PASSWORD are set by the previous step if certificate exists
 
       - name: Upload Windows artifacts
         uses: actions/upload-artifact@v4
@@ -239,7 +306,7 @@ jobs:
 
   # Create GitHub Release with all artifacts
   release:
-    needs: [build-macos, build-windows, build-linux]
+    needs: [build-macos-arm64, build-macos-x64, build-windows, build-linux]
     if: ${{ inputs.create_release }}
     runs-on: ubuntu-latest
     permissions:
