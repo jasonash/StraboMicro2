@@ -457,7 +457,7 @@ function createWindow() {
           }
         },
         {
-          label: 'Open Project',
+          label: 'Open Local Project (.smz)',
           accelerator: 'CmdOrCtrl+O',
           click: () => {
             if (mainWindow) {
