@@ -97,6 +97,7 @@ jobs:
           security find-identity -v -p codesigning "$KEYCHAIN_PATH"
 
       # Build and sign for macOS (both Intel and Apple Silicon)
+      # Use --publish never initially, then upload to release after notarization
       - name: Package and Sign for macOS
         run: npx electron-builder --mac --publish never
         env:
@@ -133,6 +134,8 @@ jobs:
           path: |
             release/*.dmg
             release/*.zip
+            release/*.yml
+            release/*.blockmap
           if-no-files-found: error
           retention-days: 90
 
@@ -189,6 +192,8 @@ jobs:
           name: StraboMicro2-Windows-${{ inputs.version }}
           path: |
             release/*.exe
+            release/*.yml
+            release/*.blockmap
           if-no-files-found: error
           retention-days: 90
 
@@ -230,6 +235,7 @@ jobs:
           path: |
             release/*.AppImage
             release/*.deb
+            release/*.yml
           if-no-files-found: error
           retention-days: 90
 
@@ -279,6 +285,8 @@ jobs:
             artifacts/**/*.exe
             artifacts/**/*.AppImage
             artifacts/**/*.deb
+            artifacts/**/*.yml
+            artifacts/**/*.blockmap
           body: |
             ## StraboMicro2 v${{ inputs.version }}
 
