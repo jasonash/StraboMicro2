@@ -469,4 +469,14 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('debug:trigger-test-error', handler);
     return () => ipcRenderer.removeListener('debug:trigger-test-error', handler);
   },
+  onDebugGenerateTestSpots: (callback) => {
+    const handler = () => callback();
+    ipcRenderer.on('debug:generate-test-spots', handler);
+    return () => ipcRenderer.removeListener('debug:generate-test-spots', handler);
+  },
+  onDebugClearAllSpots: (callback) => {
+    const handler = () => callback();
+    ipcRenderer.on('debug:clear-all-spots', handler);
+    return () => ipcRenderer.removeListener('debug:clear-all-spots', handler);
+  },
 });

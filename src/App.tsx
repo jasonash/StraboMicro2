@@ -23,8 +23,125 @@ import { useAuthStore } from '@/store/useAuthStore';
 import { useTheme } from './hooks/useTheme';
 import { useAutosave } from './hooks/useAutosave';
 import { useProjectPreparation } from './hooks/useProjectPreparation';
-import { ProjectMetadata } from '@/types/project-types';
+import { ProjectMetadata, Spot } from '@/types/project-types';
 import './App.css';
+
+/**
+ * Generate non-overlapping test spots for performance testing.
+ * Uses a grid-based approach to place spots without overlap.
+ * Creates a mix of points (33%), lines (33%), and polygons (34%).
+ */
+function generateTestSpots(count: number, imageWidth: number, imageHeight: number): Spot[] {
+  const spots: Spot[] = [];
+
+  // Use a grid to ensure no overlaps
+  // Calculate grid dimensions to fit the requested count
+  const cols = Math.ceil(Math.sqrt(count * (imageWidth / imageHeight)));
+  const rows = Math.ceil(count / cols);
+
+  const cellWidth = imageWidth / cols;
+  const cellHeight = imageHeight / rows;
+
+  // Leave padding within each cell to prevent edge touching
+  const padding = Math.min(cellWidth, cellHeight) * 0.1;
+
+  // Random colors for variety
+  const colors = ['#cc3333', '#33cc33', '#3333cc', '#cc33cc', '#33cccc', '#cccc33', '#ff6600', '#0066ff'];
+
+  let spotIndex = 0;
+  for (let row = 0; row < rows && spotIndex < count; row++) {
+    for (let col = 0; col < cols && spotIndex < count; col++) {
+      const cellX = col * cellWidth + padding;
+      const cellY = row * cellHeight + padding;
+      const availableWidth = cellWidth - 2 * padding;
+      const availableHeight = cellHeight - 2 * padding;
+
+      // Decide spot type: 33% point, 33% line, 34% polygon
+      const typeRoll = spotIndex % 3;
+      const color = colors[spotIndex % colors.length];
+
+      let spot: Spot;
+
+      if (typeRoll === 0) {
+        // Point spot - place at center of cell with some randomization
+        const x = cellX + availableWidth * (0.3 + Math.random() * 0.4);
+        const y = cellY + availableHeight * (0.3 + Math.random() * 0.4);
+
+        spot = {
+          id: crypto.randomUUID(),
+          name: `Test Point ${spotIndex + 1}`,
+          color,
+          opacity: 70,
+          showLabel: true,
+          geometry: {
+            type: 'Point' as const,
+            coordinates: [x, y],
+          },
+        };
+      } else if (typeRoll === 1) {
+        // Line spot - draw a line within the cell
+        const numPoints = 2 + Math.floor(Math.random() * 3); // 2-4 points
+        const lineCoords: Array<[number, number]> = [];
+
+        for (let i = 0; i < numPoints; i++) {
+          const x = cellX + availableWidth * (0.1 + (i / (numPoints - 1)) * 0.8);
+          const y = cellY + availableHeight * (0.2 + Math.random() * 0.6);
+          lineCoords.push([x, y]);
+        }
+
+        spot = {
+          id: crypto.randomUUID(),
+          name: `Test Line ${spotIndex + 1}`,
+          color,
+          opacity: 80,
+          showLabel: true,
+          geometry: {
+            type: 'LineString' as const,
+            coordinates: lineCoords,
+          },
+        };
+      } else {
+        // Polygon spot - create a polygon within the cell
+        // Use 4-6 vertices
+        const numVertices = 4 + Math.floor(Math.random() * 3);
+        const centerX = cellX + availableWidth / 2;
+        const centerY = cellY + availableHeight / 2;
+        const radiusX = availableWidth * 0.35;
+        const radiusY = availableHeight * 0.35;
+
+        const polyCoords: Array<[number, number]> = [];
+        for (let i = 0; i < numVertices; i++) {
+          const angle = (i / numVertices) * 2 * Math.PI - Math.PI / 2;
+          // Add some randomization to make irregular polygons
+          const rX = radiusX * (0.7 + Math.random() * 0.3);
+          const rY = radiusY * (0.7 + Math.random() * 0.3);
+          const x = centerX + Math.cos(angle) * rX;
+          const y = centerY + Math.sin(angle) * rY;
+          polyCoords.push([x, y]);
+        }
+        // Close the polygon
+        polyCoords.push(polyCoords[0]);
+
+        spot = {
+          id: crypto.randomUUID(),
+          name: `Test Polygon ${spotIndex + 1}`,
+          color,
+          opacity: 50,
+          showLabel: true,
+          geometry: {
+            type: 'Polygon' as const,
+            coordinates: [polyCoords],
+          },
+        };
+      }
+
+      spots.push(spot);
+      spotIndex++;
+    }
+  }
+
+  return spots;
+}
 
 function App() {
   const [isNewProjectDialogOpen, setIsNewProjectDialogOpen] = useState(false);
@@ -51,6 +168,10 @@ function App() {
   const setShowSpotLabels = useAppStore(state => state.setShowSpotLabels);
   const setShowMicrographOutlines = useAppStore(state => state.setShowMicrographOutlines);
   const setShowRecursiveSpots = useAppStore(state => state.setShowRecursiveSpots);
+  const activeMicrographId = useAppStore(state => state.activeMicrographId);
+  const micrographIndex = useAppStore(state => state.micrographIndex);
+  const addSpot = useAppStore(state => state.addSpot);
+  const updateMicrographMetadata = useAppStore(state => state.updateMicrographMetadata);
   const { checkAuthStatus, logout } = useAuthStore();
 
   // Initialize theme system
@@ -560,6 +681,61 @@ function App() {
       console.log('[Debug] Error sent to Sentry');
     }));
 
+    // Debug: Generate 100 test spots on current micrograph
+    unsubscribers.push(window.api.onDebugGenerateTestSpots(() => {
+      if (!activeMicrographId) {
+        alert('No micrograph selected. Please select a micrograph first.');
+        return;
+      }
+      const micrograph = micrographIndex.get(activeMicrographId);
+      if (!micrograph) {
+        alert('Could not find micrograph data.');
+        return;
+      }
+
+      const imageWidth = micrograph.imageWidth || micrograph.width || 2000;
+      const imageHeight = micrograph.imageHeight || micrograph.height || 2000;
+
+      console.log(`[Debug] Generating 100 test spots on micrograph ${activeMicrographId} (${imageWidth}x${imageHeight})`);
+
+      // Generate 100 non-overlapping spots using a grid-based approach
+      const spots = generateTestSpots(100, imageWidth, imageHeight);
+
+      // Add each spot to the micrograph
+      for (const spot of spots) {
+        addSpot(activeMicrographId, spot);
+      }
+
+      console.log(`[Debug] Generated ${spots.length} test spots`);
+    }));
+
+    // Debug: Clear all spots on current micrograph
+    unsubscribers.push(window.api.onDebugClearAllSpots(() => {
+      if (!activeMicrographId) {
+        alert('No micrograph selected. Please select a micrograph first.');
+        return;
+      }
+
+      const micrograph = micrographIndex.get(activeMicrographId);
+      const spotCount = micrograph?.spots?.length || 0;
+
+      if (spotCount === 0) {
+        alert('No spots to clear on this micrograph.');
+        return;
+      }
+
+      if (!confirm(`Are you sure you want to delete all ${spotCount} spots on this micrograph?`)) {
+        return;
+      }
+
+      console.log(`[Debug] Clearing ${spotCount} spots from micrograph ${activeMicrographId}`);
+
+      // Clear spots by updating the micrograph with an empty spots array
+      updateMicrographMetadata(activeMicrographId, { spots: [] });
+
+      console.log('[Debug] All spots cleared');
+    }));
+
     // File: Export All Images menu item
     unsubscribers.push(window.api.onExportAllImages(() => {
       if (!project) {
@@ -720,7 +896,7 @@ function App() {
     return () => {
       unsubscribers.forEach(unsub => unsub?.());
     };
-  }, [closeProject, setTheme, setShowRulers, setShowSpotLabels, setShowMicrographOutlines, logout, project, manualSave, saveBeforeSwitch, loadProjectWithPreparation]);
+  }, [closeProject, setTheme, setShowRulers, setShowSpotLabels, setShowMicrographOutlines, logout, project, manualSave, saveBeforeSwitch, loadProjectWithPreparation, activeMicrographId, micrographIndex, addSpot, updateMicrographMetadata]);
 
   return (
     <>

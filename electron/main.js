@@ -855,6 +855,23 @@ function createWindow() {
           }
         },
         { type: 'separator' },
+        {
+          label: 'Generate 100 Test Spots',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('debug:generate-test-spots');
+            }
+          }
+        },
+        {
+          label: 'Clear All Spots on Current Micrograph',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('debug:clear-all-spots');
+            }
+          }
+        },
+        { type: 'separator' },
         { role: 'toggleDevTools' },
       ],
     }] : []),
