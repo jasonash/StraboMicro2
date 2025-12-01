@@ -638,7 +638,26 @@ export const useAppStore = create<AppState>()(
 
             for (const dataset of newProject.datasets || []) {
               for (const sample of dataset.samples || []) {
-                sample.micrographs = sample.micrographs?.filter(m => m.id !== id) || [];
+                if (!sample.micrographs) continue;
+
+                // Build set of IDs to delete: the target + all descendants
+                const idsToDelete = new Set<string>();
+                idsToDelete.add(id);
+
+                // Recursively find all descendants
+                let foundMore = true;
+                while (foundMore) {
+                  foundMore = false;
+                  for (const m of sample.micrographs) {
+                    if (m.parentID && idsToDelete.has(m.parentID) && !idsToDelete.has(m.id)) {
+                      idsToDelete.add(m.id);
+                      foundMore = true;
+                    }
+                  }
+                }
+
+                // Filter out all micrographs that are in the delete set
+                sample.micrographs = sample.micrographs.filter(m => !idsToDelete.has(m.id));
               }
             }
 
