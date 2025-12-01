@@ -49,6 +49,7 @@ export default function UpdateNotification({
   const [showSnackbar, setShowSnackbar] = useState(false);
   const [showRestartDialog, setShowRestartDialog] = useState(false);
   const [showNoUpdateDialog, setShowNoUpdateDialog] = useState(false);
+  const [showDevModeDialog, setShowDevModeDialog] = useState(false);
 
   // Subscribe to update status events
   useEffect(() => {
@@ -92,7 +93,12 @@ export default function UpdateNotification({
   // Trigger manual check when requested
   useEffect(() => {
     if (manualCheck && window.api?.autoUpdater) {
-      window.api.autoUpdater.checkForUpdates();
+      window.api.autoUpdater.checkForUpdates().then((result) => {
+        // If in dev mode, show a message
+        if (result?.status === 'dev-mode') {
+          setShowDevModeDialog(true);
+        }
+      });
     }
   }, [manualCheck]);
 
@@ -114,6 +120,11 @@ export default function UpdateNotification({
 
   const handleCloseNoUpdateDialog = useCallback(() => {
     setShowNoUpdateDialog(false);
+    onManualCheckComplete?.();
+  }, [onManualCheckComplete]);
+
+  const handleCloseDevModeDialog = useCallback(() => {
+    setShowDevModeDialog(false);
     onManualCheckComplete?.();
   }, [onManualCheckComplete]);
 
@@ -238,6 +249,22 @@ export default function UpdateNotification({
         </DialogContent>
         <DialogActions>
           <Button onClick={handleCloseNoUpdateDialog} variant="contained">
+            OK
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Dev mode dialog */}
+      <Dialog open={showDevModeDialog} onClose={handleCloseDevModeDialog}>
+        <DialogTitle>Development Mode</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            Auto-updates are disabled in development mode. Build and package the
+            app to test auto-updates.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseDevModeDialog} variant="contained">
             OK
           </Button>
         </DialogActions>
