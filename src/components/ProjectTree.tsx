@@ -984,6 +984,33 @@ export function ProjectTree() {
           >
             Delete Micrograph
           </MenuItem>
+          {/* Show/Hide All Associated Micrographs - only if has children */}
+          {hasChildren && (
+            <>
+              <MenuItem
+                onClick={() => {
+                  // Set isMicroVisible: true on all direct children
+                  children.forEach((child) => {
+                    updateMicrographMetadata(child.id, { isMicroVisible: true });
+                  });
+                  setMicrographOptionsAnchor({ ...micrographOptionsAnchor, [micrograph.id]: null });
+                }}
+              >
+                Show All Associated Micrographs
+              </MenuItem>
+              <MenuItem
+                onClick={() => {
+                  // Set isMicroVisible: false on all direct children
+                  children.forEach((child) => {
+                    updateMicrographMetadata(child.id, { isMicroVisible: false });
+                  });
+                  setMicrographOptionsAnchor({ ...micrographOptionsAnchor, [micrograph.id]: null });
+                }}
+              >
+                Hide All Associated Micrographs
+              </MenuItem>
+            </>
+          )}
         </Menu>
 
         {/* Add Menu */}
