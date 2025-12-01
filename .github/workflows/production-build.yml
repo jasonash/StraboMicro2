@@ -99,7 +99,7 @@ jobs:
       # Build and sign for macOS (both Intel and Apple Silicon)
       # Use --publish never initially, then upload to release after notarization
       - name: Package and Sign for macOS
-        run: npx electron-builder --mac --publish never
+        run: npx electron-builder --mac --x64 --arm64 --publish never
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
@@ -311,10 +311,10 @@ jobs:
             | Platform | Download |
             |----------|----------|
             | macOS (Apple Silicon) | `StraboMicro2-${{ inputs.version }}-arm64.dmg` |
-            | macOS (Intel) | `StraboMicro2-${{ inputs.version }}-x64.dmg` |
-            | Windows | `StraboMicro2-${{ inputs.version }}.exe` |
+            | macOS (Intel) | `StraboMicro2-${{ inputs.version }}.dmg` |
+            | Windows | `StraboMicro2 Setup ${{ inputs.version }}.exe` |
             | Linux (AppImage) | `StraboMicro2-${{ inputs.version }}.AppImage` |
-            | Linux (Debian) | `StraboMicro2-${{ inputs.version }}.deb` |
+            | Linux (Debian) | `strabomicro2_${{ inputs.version }}_amd64.deb` |
 
             ### Installation
 

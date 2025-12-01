@@ -183,10 +183,10 @@ jobs:
             | Platform | File |
             |----------|------|
             | macOS (Apple Silicon) | `StraboMicro2-*-arm64.dmg` |
-            | macOS (Intel) | `StraboMicro2-*-x64.dmg` |
-            | Windows | `StraboMicro2-*.exe` |
+            | macOS (Intel) | `StraboMicro2-*.dmg` (no arch suffix) |
+            | Windows | `StraboMicro2 Setup *.exe` |
             | Linux (AppImage) | `StraboMicro2-*.AppImage` |
-            | Linux (Debian) | `strabomicro2_*.deb` |
+            | Linux (Debian) | `strabomicro2_*_amd64.deb` |
 
             ### Installation Notes
 
