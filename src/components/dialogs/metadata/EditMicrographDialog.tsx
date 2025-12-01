@@ -496,7 +496,9 @@ export function EditMicrographDialog({ isOpen, onClose, micrographId }: EditMicr
     updates.instrument = {
       instrumentType: formData.instrumentType || null,
       otherInstrumentType: formData.otherInstrumentType || null,
-      dataType: formData.dataType || null,
+      // LEGACY COMPATIBILITY: instrument.dataType duplicates micrograph.imageType
+      // The legacy app writes the UI "Image Type" value to both locations.
+      dataType: formData.imageType || null,
       instrumentBrand: formData.instrumentBrand || null,
       instrumentModel: formData.instrumentModel || null,
       university: formData.university || null,
