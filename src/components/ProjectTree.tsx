@@ -770,15 +770,20 @@ export function ProjectTree() {
             py: 1,
             pr: 1,
             borderRadius: 1,
-            backgroundColor: isActive ? 'action.selected' : 'transparent',
+            // Selected state: tinted coral/red background
+            backgroundColor: isActive
+              ? 'rgba(204, 51, 51, 0.20)'
+              : !isReference
+                ? 'action.hover'
+                : 'transparent',
             '&:hover': {
-              backgroundColor: isActive ? 'action.selected' : 'action.hover',
+              backgroundColor: isActive
+                ? 'rgba(204, 51, 51, 0.25)'
+                : 'action.hover',
             },
-            // Add color-coded left border for associated micrographs to show hierarchy depth
+            // Color-coded left border for associated micrographs to show hierarchy depth
             borderLeft: !isReference ? 3 : 0,
             borderColor: getLevelColor(level),
-            // Slight background tint for associated micrographs
-            bgcolor: isActive ? 'action.selected' : !isReference ? 'action.hover' : 'transparent',
           }}
         >
           {/* Micrograph Name with Expand/Collapse */}

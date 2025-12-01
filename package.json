@@ -4,7 +4,7 @@
   "description": "StraboMicro - Geological Microanalysis Application",
   "main": "electron/main.js",
   "scripts": {
-    "dev": "concurrently \"npm run dev:vite\" \"npm run dev:electron\"",
+    "dev": "concurrently --kill-others \"npm run dev:vite\" \"npm run dev:electron\"",
     "dev:vite": "vite",
     "dev:electron": "wait-on http://localhost:5173 && electron .",
     "dev:typecheck": "concurrently \"npm run dev:vite\" \"npm run dev:electron\" \"npm run typecheck:watch\"",
@@ -118,6 +118,7 @@
       ]
     },
     "dmg": {
+      "background": "build/dmg-background.png",
       "contents": [
         {
           "x": 130,
@@ -146,7 +147,9 @@
       "oneClick": false,
       "perMachine": false,
       "allowToChangeInstallationDirectory": true,
-      "deleteAppDataOnUninstall": false
+      "deleteAppDataOnUninstall": false,
+      "installerHeader": "build/installerHeader.bmp",
+      "installerSidebar": "build/installerSidebar.bmp"
     },
     "linux": {
       "icon": "build/icons",

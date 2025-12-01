@@ -402,6 +402,10 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
     if (!sourceMicro || !sourceMicro.instrument) return;
 
     const inst = sourceMicro.instrument;
+    // LEGACY COMPATIBILITY:
+    // - instrument.dataType: The "Data Type" dropdown value (for TEM/STEM/SEM/Microprobe)
+    // - micrograph.imageType: The final "Image Type" value (either from secondary dropdown or same as dataType)
+    // For Optical/Scanner/FTIR/Raman/AFM, only imageType is used (dataType is empty)
     const sourceDataType = inst.dataType || '';
     const sourceImageType = normalizeImageType(sourceMicro.imageType || '');
 
@@ -488,10 +492,12 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
     // Set dataType and imageType after a short delay to allow dropdowns to populate
     // based on the newly set instrumentType
     setTimeout(() => {
+      // First set dataType (for TEM/STEM/SEM/Microprobe instruments)
       if (sourceDataType) {
         setFormData((prev) => ({ ...prev, dataType: sourceDataType }));
       }
-      // Set imageType after another delay to allow it to populate based on dataType
+      // Then set imageType after another delay to allow imageType dropdown to populate
+      // based on the selected dataType
       setTimeout(() => {
         if (sourceImageType) {
           setFormData((prev) => ({ ...prev, imageType: sourceImageType }));
@@ -1247,6 +1253,9 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
         width: formData.micrographWidth, // Legacy field
         height: formData.micrographHeight, // Legacy field
         opacity: formData.opacity,
+        // LEGACY COMPATIBILITY: imageType must be at micrograph level AND duplicated in instrument.dataType
+        // The legacy app writes the same value to both locations. See instrument object below.
+        imageType: formData.imageType || undefined,
         polish: formData.micrographPolished,
         polishDescription: formData.micrographPolishDescription || undefined,
         orientationInfo,
@@ -1271,8 +1280,11 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
         instrument: {
           instrumentType: formData.instrumentType || undefined,
           otherInstrumentType: formData.otherInstrumentType || undefined,
+          // LEGACY COMPATIBILITY: instrument.dataType stores the "Data Type" dropdown value
+          // For TEM/STEM/SEM/Microprobe, this is the primary data type selection.
+          // For Optical/Scanner/FTIR/Raman/AFM, dataType is empty (they only have imageType).
+          // Note: instrument.imageType does NOT exist in the legacy schema.
           dataType: formData.dataType || undefined,
-          imageType: formData.imageType || undefined,
           instrumentBrand: formData.instrumentBrand || undefined,
           instrumentModel: formData.instrumentModel || undefined,
           university: formData.university || undefined,
@@ -1325,11 +1337,10 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
           imagePath: xplMicrographId,
           // XPL has the SAME parent as PPL (they are siblings)
           // parentID is already inherited from micrograph via spread
-          // Override imageType to Cross Polarized Light
-          instrument: {
-            ...micrograph.instrument,
-            imageType: 'Cross Polarized Light',
-          },
+          // Override imageType to Cross Polarized Light (at micrograph level)
+          imageType: 'Cross Polarized Light',
+          // For Optical Microscopy, instrument.dataType is empty (only imageType is used)
+          // The instrument object is inherited from PPL via spread, which is correct
         };
 
         useAppStore.getState().addMicrograph(targetSampleId, xplMicrograph);

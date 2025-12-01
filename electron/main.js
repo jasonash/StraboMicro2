@@ -91,6 +91,9 @@ log.info(`Chrome version: ${process.versions.chrome}`);
 let mainWindow;
 let splashWindow;
 
+// Track if the user has requested to quit the app (via Cmd+Q or menu)
+let isQuitting = false;
+
 // Track file to open when app launches (from double-click or command line)
 let pendingFileToOpen = null;
 
@@ -923,7 +926,7 @@ function createWindow() {
     mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
   }
 
-  // Track if we're in the process of closing
+  // Track if we're in the process of closing this window
   let isClosing = false;
 
   mainWindow.on('close', (event) => {
@@ -937,20 +940,34 @@ function createWindow() {
 
     // Prevent the window from closing immediately
     event.preventDefault();
+    isClosing = true;
 
     // Send message to renderer to save if dirty, then close
     // The renderer will respond with 'app:close-ready' when done
     if (mainWindow && mainWindow.webContents) {
       mainWindow.webContents.send('app:before-close');
+
+      // Set a timeout to force close if renderer doesn't respond
+      // This prevents the app from hanging if something goes wrong
+      setTimeout(() => {
+        log.warn('[App] Close timeout - forcing window close');
+        if (mainWindow) {
+          mainWindow.destroy();
+        }
+      }, 5000);
+    } else {
+      // No window or webContents, just close
+      if (mainWindow) {
+        mainWindow.destroy();
+      }
     }
   });
 
   // Listen for close-ready signal from renderer
   const handleCloseReady = () => {
-    log.info('[App] Received close-ready signal, closing window');
-    isClosing = true;
+    log.info('[App] Received close-ready signal, destroying window');
     if (mainWindow) {
-      mainWindow.close();
+      mainWindow.destroy();
     }
   };
   ipcMain.on('app:close-ready', handleCloseReady);
@@ -997,8 +1014,16 @@ app.whenReady().then(async () => {
   createWindow();
 });
 
+// Set isQuitting flag when user requests quit (Cmd+Q, menu quit, etc.)
+app.on('before-quit', () => {
+  log.info('[App] before-quit event - setting isQuitting flag');
+  isQuitting = true;
+});
+
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
+  // On macOS, quit if the user explicitly requested it (Cmd+Q)
+  // Otherwise, the app stays running (standard macOS behavior)
+  if (process.platform !== 'darwin' || isQuitting) {
     app.quit();
   }
 });

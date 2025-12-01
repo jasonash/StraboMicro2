@@ -12,7 +12,7 @@
  * 4. Micrograph Metadata (name, polished, notes) - Save button here
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -36,7 +36,7 @@ import { useAppStore } from '@/store';
 import { findMicrographById } from '@/store/helpers';
 import { PeriodicTableModal } from '../PeriodicTableModal';
 import { InstrumentDatabaseDialog, type InstrumentData } from '../InstrumentDatabaseDialog';
-import type { InstrumentDetectorType } from '@/types/project-types';
+import type { InstrumentDetectorType, MicrographMetadata } from '@/types/project-types';
 
 interface EditMicrographDialogProps {
   isOpen: boolean;
@@ -212,6 +212,126 @@ export function EditMicrographDialog({ isOpen, onClose, micrographId }: EditMicr
   const [detectors, setDetectors] = useState<Detector[]>([{ type: '', make: '', model: '' }]);
   const [showPeriodicTable, setShowPeriodicTable] = useState(false);
   const [showInstrumentDatabase, setShowInstrumentDatabase] = useState(false);
+
+  // Get all micrographs in the project for "Load Metadata from Previous Image" dropdown
+  // Excludes the current micrograph being edited
+  const existingMicrographs = useMemo((): MicrographMetadata[] => {
+    if (!project) return [];
+
+    const micrographs: MicrographMetadata[] = [];
+    for (const dataset of project.datasets || []) {
+      for (const sample of dataset.samples || []) {
+        for (const micrograph of sample.micrographs || []) {
+          // Only include micrographs that have instrument data and aren't the current one
+          if (micrograph.instrument && micrograph.id !== micrographId) {
+            micrographs.push(micrograph);
+          }
+        }
+      }
+    }
+    return micrographs;
+  }, [project, micrographId]);
+
+  // Handler to copy metadata from an existing micrograph
+  const handleCopyFromExisting = (sourceMicrographId: string) => {
+    const sourceMicro = existingMicrographs.find((m) => m.id === sourceMicrographId);
+    if (!sourceMicro || !sourceMicro.instrument) return;
+
+    const inst = sourceMicro.instrument;
+    // LEGACY COMPATIBILITY:
+    // - instrument.dataType: The "Data Type" dropdown value (for TEM/STEM/SEM/Microprobe)
+    // - micrograph.imageType: The final "Image Type" value
+    const sourceDataType = inst.dataType || '';
+    const sourceImageType = sourceMicro.imageType || '';
+
+    // Copy all instrument-related fields
+    setFormData((prev) => ({
+      ...prev,
+      instrumentType: inst.instrumentType || '',
+      otherInstrumentType: inst.otherInstrumentType || '',
+      instrumentBrand: inst.instrumentBrand || '',
+      instrumentModel: inst.instrumentModel || '',
+      university: inst.university || '',
+      laboratory: inst.laboratory || '',
+      dataCollectionSoftware: inst.dataCollectionSoftware || '',
+      dataCollectionSoftwareVersion: inst.dataCollectionSoftwareVersion || '',
+      postProcessingSoftware: inst.postProcessingSoftware || '',
+      postProcessingSoftwareVersion: inst.postProcessingSoftwareVersion || '',
+      filamentType: inst.filamentType || '',
+      instrumentNotes: inst.instrumentNotes || '',
+      // Instrument settings
+      accelerationVoltage: inst.accelerationVoltage?.toString() || '',
+      beamCurrent: inst.beamCurrent?.toString() || '',
+      spotSize: inst.spotSize?.toString() || '',
+      aperture: inst.aperture?.toString() || '',
+      cameraLength: inst.cameraLength?.toString() || '',
+      cameraBinning: inst.cameraBinning || '',
+      dwellTime: inst.dwellTime?.toString() || '',
+      analysisDwellTime: inst.analysisDwellTime?.toString() || '',
+      backgroundDwellTime: inst.backgroundDwellTime?.toString() || '',
+      workingDistance: inst.workingDistance?.toString() || '',
+      instrumentPurged: inst.instrumentPurged ? 'Yes' : inst.instrumentPurged === false ? 'No' : '',
+      instrumentPurgedGasType: inst.instrumentPurgedGasType || '',
+      environmentPurged: inst.environmentPurged ? 'Yes' : inst.environmentPurged === false ? 'No' : '',
+      environmentPurgedGasType: inst.environmentPurgedGasType || '',
+      scanTime: inst.scanTime?.toString() || '',
+      resolution: inst.resolution?.toString() || '',
+      spectralResolution: inst.spectralResolution?.toString() || '',
+      wavenumberRange: inst.wavenumberRange || '',
+      averaging: inst.averaging || '',
+      excitationWavelength: inst.excitationWavelength?.toString() || '',
+      laserPower: inst.laserPower?.toString() || '',
+      diffractionGrating: inst.diffractionGrating?.toString() || '',
+      integrationTime: inst.integrationTime?.toString() || '',
+      objective: inst.objective?.toString() || '',
+      calibration: inst.calibration || '',
+      cantileverStiffness: inst.cantileverStiffness?.toString() || '',
+      tipDiameter: inst.tipDiameter?.toString() || '',
+      operatingFrequency: inst.operatingFrequency?.toString() || '',
+      scanDimensions: inst.scanDimensions || '',
+      scanArea: inst.scanArea || '',
+      spatialResolution: inst.spatialResolution?.toString() || '',
+      temperatureOfRoom: inst.temperatureOfRoom?.toString() || '',
+      relativeHumidity: inst.relativeHumidity?.toString() || '',
+      sampleTemperature: inst.sampleTemperature?.toString() || '',
+      stepSize: inst.stepSize?.toString() || '',
+      backgroundCorrectionTechnique: inst.backgroundCorrectionTechnique || '',
+      deadTime: inst.deadTime?.toString() || '',
+      energyLoss: inst.energyLoss || '',
+      backgroundComposition: inst.backgroundComposition || '',
+      clColor: inst.color || '',
+      atomicMode: inst.atomicMode || '',
+      backgroundCorrectionFrequencyAndNotes: inst.backgroundCorrectionFrequencyAndNotes || '',
+      notesOnPostProcessing: inst.notesOnPostProcessing || '',
+      calibrationStandardNotes: inst.calibrationStandardNotes || '',
+      notesOnCrystalStructuresUsed: inst.notesOnCrystalStructuresUsed || '',
+    }));
+
+    // Copy detectors if present
+    if (inst.instrumentDetectors && inst.instrumentDetectors.length > 0) {
+      setDetectors(
+        inst.instrumentDetectors.map((d) => ({
+          type: d.detectorType || '',
+          make: d.detectorMake || '',
+          model: d.detectorModel || '',
+        }))
+      );
+    }
+
+    // Set dataType and imageType after a short delay to allow dropdowns to populate
+    setTimeout(() => {
+      if (sourceDataType) {
+        setFormData((prev) => ({ ...prev, dataType: sourceDataType }));
+      }
+      setTimeout(() => {
+        if (sourceImageType) {
+          setFormData((prev) => ({ ...prev, imageType: sourceImageType }));
+        }
+      }, 50);
+    }, 50);
+
+    console.log('[EditMicrographDialog] Copied metadata from micrograph:', sourceMicro.name);
+  };
 
   // Load existing micrograph data when dialog opens
   useEffect(() => {
@@ -496,6 +616,9 @@ export function EditMicrographDialog({ isOpen, onClose, micrographId }: EditMicr
     updates.instrument = {
       instrumentType: formData.instrumentType || null,
       otherInstrumentType: formData.otherInstrumentType || null,
+      // LEGACY COMPATIBILITY: instrument.dataType stores the "Data Type" dropdown value
+      // For TEM/STEM/SEM/Microprobe, this is the primary data type selection.
+      // For Optical/Scanner/FTIR/Raman/AFM, dataType is empty (they only have imageType).
       dataType: formData.dataType || null,
       instrumentBrand: formData.instrumentBrand || null,
       instrumentModel: formData.instrumentModel || null,
@@ -621,6 +744,41 @@ export function EditMicrographDialog({ isOpen, onClose, micrographId }: EditMicr
   const renderInstrumentInfoStep = () => {
     return (
       <Stack spacing={2}>
+        {/* Top row: Load from existing (left) and Find in Database (right) - each 50% width */}
+        <Box sx={{ display: 'flex', gap: 2, alignItems: 'flex-start' }}>
+          {/* Load Metadata from Previous Image - only show if there are existing micrographs with instrument data */}
+          {existingMicrographs.length > 0 ? (
+            <TextField
+              select
+              label="Load Metadata from Previous Image"
+              value=""
+              onChange={(e) => {
+                if (e.target.value) {
+                  handleCopyFromExisting(e.target.value);
+                }
+              }}
+              sx={{ flex: 1 }}
+            >
+              <MenuItem value="">Select...</MenuItem>
+              {existingMicrographs.map((micro) => (
+                <MenuItem key={micro.id} value={micro.id}>
+                  {micro.name}
+                </MenuItem>
+              ))}
+            </TextField>
+          ) : (
+            <Box sx={{ flex: 1 }} />
+          )}
+
+          <Button
+            variant="outlined"
+            onClick={() => setShowInstrumentDatabase(true)}
+            sx={{ flex: 1, py: 1.8 }}
+          >
+            Find Instrument in Database
+          </Button>
+        </Box>
+
         <TextField
           fullWidth
           required
@@ -658,13 +816,6 @@ export function EditMicrographDialog({ isOpen, onClose, micrographId }: EditMicr
           <MenuItem value="Other">Other</MenuItem>
         </TextField>
 
-        <Button
-          variant="outlined"
-          onClick={() => setShowInstrumentDatabase(true)}
-        >
-          Find Instrument in Database
-        </Button>
-
         {formData.instrumentType === 'Other' && (
           <TextField
             fullWidth
@@ -675,20 +826,17 @@ export function EditMicrographDialog({ isOpen, onClose, micrographId }: EditMicr
           />
         )}
 
-        {/* Data Type dropdown - conditional based on Instrument Type */}
+        {/* Image Type dropdown - for Optical Microscopy (uses imageType, not dataType) */}
         {formData.instrumentType === 'Optical Microscopy' && (
           <TextField
             fullWidth
             required
             select
-            label="Data Type"
-            value={formData.dataType}
-            onChange={(e) => {
-              updateField('dataType', e.target.value);
-              updateField('imageType', ''); // Clear image type when data type changes
-            }}
+            label="Image Type"
+            value={formData.imageType}
+            onChange={(e) => updateField('imageType', e.target.value)}
           >
-            <MenuItem value="">Select Data Type...</MenuItem>
+            <MenuItem value="">Select Image Type...</MenuItem>
             <MenuItem value="Plane Polarized Light">Plane Polarized Light</MenuItem>
             <MenuItem value="Cross Polarized Light">Cross Polarized Light</MenuItem>
             <MenuItem value="Reflected Light">Reflected Light</MenuItem>
