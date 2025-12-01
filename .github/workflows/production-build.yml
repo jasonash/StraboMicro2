@@ -280,6 +280,14 @@ jobs:
             echo "is_prerelease=false" >> $GITHUB_OUTPUT
           fi
 
+      - name: Clean up duplicate and debug files
+        run: |
+          # Remove builder-debug.yml files (duplicates from each platform)
+          find artifacts -name "builder-debug.yml" -delete
+          # List what we're uploading
+          echo "Files to upload:"
+          find artifacts -type f | sort
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
@@ -293,7 +301,7 @@ jobs:
             artifacts/**/*.exe
             artifacts/**/*.AppImage
             artifacts/**/*.deb
-            artifacts/**/*.yml
+            artifacts/**/latest*.yml
             artifacts/**/*.blockmap
           body: |
             ## StraboMicro2 v${{ inputs.version }}
