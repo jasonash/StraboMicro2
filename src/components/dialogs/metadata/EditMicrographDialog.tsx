@@ -496,9 +496,10 @@ export function EditMicrographDialog({ isOpen, onClose, micrographId }: EditMicr
     updates.instrument = {
       instrumentType: formData.instrumentType || null,
       otherInstrumentType: formData.otherInstrumentType || null,
-      // LEGACY COMPATIBILITY: instrument.dataType duplicates micrograph.imageType
-      // The legacy app writes the UI "Image Type" value to both locations.
-      dataType: formData.imageType || null,
+      // LEGACY COMPATIBILITY: instrument.dataType stores the "Data Type" dropdown value
+      // For TEM/STEM/SEM/Microprobe, this is the primary data type selection.
+      // For Optical/Scanner/FTIR/Raman/AFM, dataType is empty (they only have imageType).
+      dataType: formData.dataType || null,
       instrumentBrand: formData.instrumentBrand || null,
       instrumentModel: formData.instrumentModel || null,
       university: formData.university || null,
