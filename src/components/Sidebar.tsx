@@ -47,7 +47,14 @@ const Sidebar: React.FC = () => {
       const samples = dataset.samples || [];
       totalSamples += samples.length;
       for (const sample of samples) {
-        totalMicrographs += sample.micrographs?.length || 0;
+        const micrographs = sample.micrographs || [];
+        // Build a set of all micrograph IDs in this sample
+        const micrographIds = new Set(micrographs.map(m => m.id));
+        // Count only micrographs that are either root (no parentID) or have a valid parent
+        const validMicrographs = micrographs.filter(m =>
+          !m.parentID || micrographIds.has(m.parentID)
+        );
+        totalMicrographs += validMicrographs.length;
       }
     }
 
