@@ -736,6 +736,12 @@ function createWindow() {
             }
           }
         },
+        {
+          label: 'StraboMicro User Guide',
+          click: async () => {
+            await shell.openExternal('https://strabospot.org/manual/micro');
+          }
+        },
         { type: 'separator' },
         {
           label: 'Check for Updates...',
@@ -743,13 +749,6 @@ function createWindow() {
             if (mainWindow) {
               mainWindow.webContents.send('update:check-manual');
             }
-          }
-        },
-        { type: 'separator' },
-        {
-          label: 'StraboMicro User Guide',
-          click: async () => {
-            await shell.openExternal('https://strabospot.org/manual/micro');
           }
         },
       ],
