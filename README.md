@@ -1,7 +1,7 @@
 # StraboMicro2
 
 <p align="center">
-  <img src=".github/assets/new_strabomicro_icon.png" alt="StraboMicro Logo" width="128" height="128">
+  <img src=".github/assets/strabomicro_icon.png" alt="StraboMicro Logo" width="128" height="128">
 </p>
 
 <p align="center">
