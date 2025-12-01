@@ -46,6 +46,7 @@ const projectsIndex = require('./projectsIndex');
 const svgExport = require('./svgExport');
 const smzImport = require('./smzImport');
 const serverDownload = require('./serverDownload');
+const autoUpdaterModule = require('./autoUpdater');
 
 // Handle EPIPE errors at process level (prevents crash on broken stdout pipe)
 process.stdout.on('error', (err) => {
@@ -735,11 +736,19 @@ function createWindow() {
             }
           }
         },
-        { type: 'separator' },
         {
           label: 'StraboMicro User Guide',
           click: async () => {
             await shell.openExternal('https://strabospot.org/manual/micro');
+          }
+        },
+        { type: 'separator' },
+        {
+          label: 'Check for Updates...',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('update:check-manual');
+            }
           }
         },
       ],
@@ -883,6 +892,16 @@ function createWindow() {
         splashWindow.close();
       }
       mainWindow.show();
+
+      // Initialize auto-updater (only in production)
+      if (app.isPackaged) {
+        autoUpdaterModule.initAutoUpdater(mainWindow);
+        // Check for updates after a short delay (let the app settle first)
+        setTimeout(() => {
+          log.info('[AutoUpdater] Checking for updates on startup...');
+          autoUpdaterModule.checkForUpdates(true); // silent = true
+        }, 5000);
+      }
 
       // If window should be maximized, do it after showing
       if (savedState.isMaximized) {
@@ -1039,6 +1058,26 @@ app.on('activate', () => {
 // =============================================================================
 // IPC HANDLERS
 // =============================================================================
+
+// Auto-updater handlers
+ipcMain.handle('update:check', async () => {
+  if (!app.isPackaged) {
+    return { status: 'dev-mode', message: 'Auto-updates disabled in development mode' };
+  }
+  await autoUpdaterModule.checkForUpdates(false); // not silent
+});
+
+ipcMain.handle('update:download', async () => {
+  await autoUpdaterModule.downloadUpdate();
+});
+
+ipcMain.handle('update:install', () => {
+  autoUpdaterModule.quitAndInstall();
+});
+
+ipcMain.handle('update:get-state', () => {
+  return autoUpdaterModule.getUpdateState();
+});
 
 // Session state persistence (for zustand store)
 ipcMain.handle('session:get', () => {

@@ -291,6 +291,25 @@ contextBridge.exposeInMainWorld('api', {
     return () => ipcRenderer.removeListener('help:show-about', handler);
   },
 
+  // Auto-updater
+  autoUpdater: {
+    checkForUpdates: () => ipcRenderer.invoke('update:check'),
+    downloadUpdate: () => ipcRenderer.invoke('update:download'),
+    installUpdate: () => ipcRenderer.invoke('update:install'),
+    getState: () => ipcRenderer.invoke('update:get-state'),
+    onUpdateStatus: (callback) => {
+      const handler = (event, data) => callback(data);
+      ipcRenderer.on('update-status', handler);
+      return () => ipcRenderer.removeListener('update-status', handler);
+    },
+  },
+  // Manual check for updates from Help menu
+  onCheckForUpdates: (callback) => {
+    const handler = () => callback();
+    ipcRenderer.on('update:check-manual', handler);
+    return () => ipcRenderer.removeListener('update:check-manual', handler);
+  },
+
   // Save/Export menu events
   onSaveProject: (callback) => {
     ipcRenderer.on('menu:save-project', callback);

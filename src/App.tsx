@@ -17,6 +17,7 @@ import { RemoteProjectsDialog } from './components/dialogs/RemoteProjectsDialog'
 import { SharedProjectDialog } from './components/dialogs/SharedProjectDialog';
 import { CloseProjectDialog } from './components/dialogs/CloseProjectDialog';
 import { ProjectPrepDialog } from './components/dialogs/ProjectPrepDialog';
+import UpdateNotification from './components/UpdateNotification';
 import { useAppStore, useTemporalStore } from '@/store';
 import { useAuthStore } from '@/store/useAuthStore';
 import { useTheme } from './hooks/useTheme';
@@ -42,6 +43,7 @@ function App() {
   const [isSharedProjectOpen, setIsSharedProjectOpen] = useState(false);
   const [isCloseProjectOpen, setIsCloseProjectOpen] = useState(false);
   const [isAboutOpen, setIsAboutOpen] = useState(false);
+  const [isManualUpdateCheck, setIsManualUpdateCheck] = useState(false);
   const closeProject = useAppStore(state => state.closeProject);
   const project = useAppStore(state => state.project);
   const setTheme = useAppStore(state => state.setTheme);
@@ -545,6 +547,11 @@ function App() {
       setIsAboutOpen(true);
     }));
 
+    // Help: Check for Updates menu item
+    unsubscribers.push(window.api.onCheckForUpdates(() => {
+      setIsManualUpdateCheck(true);
+    }));
+
     // Debug: Trigger test error in renderer (only wired in development)
     unsubscribers.push(window.api.onDebugTriggerTestError(() => {
       console.log('[Debug] Triggering test error in renderer process...');
@@ -816,6 +823,10 @@ function App() {
         currentImageName={preparationProgress.currentImageName}
         currentTile={preparationProgress.currentTile}
         totalTiles={preparationProgress.totalTiles}
+      />
+      <UpdateNotification
+        manualCheck={isManualUpdateCheck}
+        onManualCheckComplete={() => setIsManualUpdateCheck(false)}
       />
     </>
   );

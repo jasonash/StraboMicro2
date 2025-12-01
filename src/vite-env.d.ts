@@ -422,6 +422,39 @@ interface Window {
 
     // Help menu events
     onShowAbout: (callback: () => void) => Unsubscribe;
+    onCheckForUpdates: (callback: () => void) => Unsubscribe;
+
+    // Auto-updater
+    autoUpdater: {
+      checkForUpdates: () => Promise<any>;
+      downloadUpdate: () => Promise<void>;
+      installUpdate: () => void;
+      getState: () => Promise<{
+        updateAvailable: {
+          version: string;
+          releaseDate?: string;
+          releaseNotes?: string;
+        } | null;
+        downloadProgress: {
+          percent: number;
+          bytesPerSecond: number;
+          transferred: number;
+          total: number;
+        } | null;
+        updateDownloaded: boolean;
+      }>;
+      onUpdateStatus: (callback: (data: {
+        status: 'checking' | 'available' | 'not-available' | 'downloading' | 'downloaded' | 'error';
+        version?: string;
+        releaseDate?: string;
+        releaseNotes?: string;
+        percent?: number;
+        bytesPerSecond?: number;
+        transferred?: number;
+        total?: number;
+        message?: string;
+      }) => void) => Unsubscribe;
+    };
 
     // Save/Export menu events
     onSaveProject: (callback: () => void) => Unsubscribe;
