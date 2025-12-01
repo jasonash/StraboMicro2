@@ -711,13 +711,29 @@ function App() {
 
     // Debug: Clear all spots on current micrograph
     unsubscribers.push(window.api.onDebugClearAllSpots(() => {
-      if (!activeMicrographId) {
+      // Get fresh state from store (don't use stale closure references)
+      const currentMicrographId = useAppStore.getState().activeMicrographId;
+      const currentProject = useAppStore.getState().project;
+
+      if (!currentMicrographId) {
         alert('No micrograph selected. Please select a micrograph first.');
         return;
       }
 
-      const micrograph = micrographIndex.get(activeMicrographId);
-      const spotCount = micrograph?.spots?.length || 0;
+      // Find the micrograph directly from project data (micrographIndex may be stale)
+      let spotCount = 0;
+      if (currentProject) {
+        for (const dataset of currentProject.datasets || []) {
+          for (const sample of dataset.samples || []) {
+            for (const micrograph of sample.micrographs || []) {
+              if (micrograph.id === currentMicrographId) {
+                spotCount = micrograph.spots?.length || 0;
+                break;
+              }
+            }
+          }
+        }
+      }
 
       if (spotCount === 0) {
         alert('No spots to clear on this micrograph.');
@@ -728,10 +744,10 @@ function App() {
         return;
       }
 
-      console.log(`[Debug] Clearing ${spotCount} spots from micrograph ${activeMicrographId}`);
+      console.log(`[Debug] Clearing ${spotCount} spots from micrograph ${currentMicrographId}`);
 
       // Clear spots by updating the micrograph with an empty spots array
-      updateMicrographMetadata(activeMicrographId, { spots: [] });
+      updateMicrographMetadata(currentMicrographId, { spots: [] });
 
       console.log('[Debug] All spots cleared');
     }));
