@@ -118,6 +118,7 @@
       ]
     },
     "dmg": {
+      "background": "build/dmg-background.png",
       "contents": [
         {
           "x": 130,
@@ -146,7 +147,9 @@
       "oneClick": false,
       "perMachine": false,
       "allowToChangeInstallationDirectory": true,
-      "deleteAppDataOnUninstall": false
+      "deleteAppDataOnUninstall": false,
+      "installerHeader": "build/installerHeader.bmp",
+      "installerSidebar": "build/installerSidebar.bmp"
     },
     "linux": {
       "icon": "build/icons",
