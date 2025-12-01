@@ -291,6 +291,25 @@ contextBridge.exposeInMainWorld('api', {
     return () => ipcRenderer.removeListener('help:show-about', handler);
   },
 
+  // Auto-updater
+  autoUpdater: {
+    checkForUpdates: () => ipcRenderer.invoke('update:check'),
+    downloadUpdate: () => ipcRenderer.invoke('update:download'),
+    installUpdate: () => ipcRenderer.invoke('update:install'),
+    getState: () => ipcRenderer.invoke('update:get-state'),
+    onUpdateStatus: (callback) => {
+      const handler = (event, data) => callback(data);
+      ipcRenderer.on('update-status', handler);
+      return () => ipcRenderer.removeListener('update-status', handler);
+    },
+  },
+  // Manual check for updates from Help menu
+  onCheckForUpdates: (callback) => {
+    const handler = () => callback();
+    ipcRenderer.on('update:check-manual', handler);
+    return () => ipcRenderer.removeListener('update:check-manual', handler);
+  },
+
   // Save/Export menu events
   onSaveProject: (callback) => {
     ipcRenderer.on('menu:save-project', callback);
@@ -449,5 +468,15 @@ contextBridge.exposeInMainWorld('api', {
     const handler = () => callback();
     ipcRenderer.on('debug:trigger-test-error', handler);
     return () => ipcRenderer.removeListener('debug:trigger-test-error', handler);
+  },
+  onDebugGenerateTestSpots: (callback) => {
+    const handler = () => callback();
+    ipcRenderer.on('debug:generate-test-spots', handler);
+    return () => ipcRenderer.removeListener('debug:generate-test-spots', handler);
+  },
+  onDebugClearAllSpots: (callback) => {
+    const handler = () => callback();
+    ipcRenderer.on('debug:clear-all-spots', handler);
+    return () => ipcRenderer.removeListener('debug:clear-all-spots', handler);
   },
 });
