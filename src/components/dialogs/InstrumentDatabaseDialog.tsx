@@ -98,10 +98,15 @@ export function InstrumentDatabaseDialog({
   const [isLoadingDetail, setIsLoadingDetail] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Fetch instrument list on dialog open
+  // Fetch instrument list on dialog open - always fetch fresh data
+  // (no caching, so users see updates they made to the online repository)
   useEffect(() => {
-    if (isOpen && instruments.length === 0) {
+    if (isOpen) {
       fetchInstrumentList();
+      // Reset selection when dialog opens
+      setSelectedInstrument(null);
+      setInstrumentDetail(null);
+      setSearchQuery('');
     }
   }, [isOpen]);
 
