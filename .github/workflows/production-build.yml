@@ -351,6 +351,15 @@ jobs:
         run: |
           # Remove builder-debug.yml files (duplicates from each platform)
           find artifacts -name "builder-debug.yml" -delete
+
+          # Deduplicate latest*.yml files (keep only one copy of each)
+          # Each macOS job creates its own latest-mac.yml, we only need one
+          mkdir -p artifacts/yml-temp
+          find artifacts -name "latest*.yml" -exec cp {} artifacts/yml-temp/ \;
+          find artifacts -name "latest*.yml" -delete
+          mv artifacts/yml-temp/* artifacts/
+          rm -rf artifacts/yml-temp
+
           # List what we're uploading
           echo "Files to upload:"
           find artifacts -type f | sort
