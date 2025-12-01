@@ -162,7 +162,7 @@
     },
     "publish": {
       "provider": "github",
-      "owner": "StraboSpot",
+      "owner": "jasonash",
       "repo": "StraboMicro2"
     }
   }
