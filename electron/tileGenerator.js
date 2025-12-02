@@ -457,9 +457,12 @@ class TileGenerator {
     const { decode } = await import('tiff');
     const fs = require('fs').promises;
 
-    // Read TIFF file
-    const buffer = await fs.readFile(imagePath);
-    const tiffData = decode(buffer);
+    // Read TIFF file - use let so we can release after decode
+    let fileBuffer = await fs.readFile(imagePath);
+    let tiffData = decode(fileBuffer);
+
+    // Release file buffer immediately - no longer needed
+    fileBuffer = null;
 
     // Get first image (page 0)
     const image = tiffData[0];
@@ -470,6 +473,10 @@ class TileGenerator {
     console.log(`TIFF decoded: ${width}x${height}, ${data.length} bytes, ${bytesPerPixel} bytes/pixel`);
 
     const sourceData = new Uint8Array(data);
+
+    // Release tiffData - we've extracted what we need
+    tiffData = null;
+
     let rgbaData;
 
     if (bytesPerPixel === 3) {
