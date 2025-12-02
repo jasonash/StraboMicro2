@@ -143,6 +143,7 @@ interface Window {
     getCacheStats: () => Promise<CacheStats>;
     clearImageCache: (imageHash: string) => Promise<{ success: boolean }>;
     clearAllCaches: () => Promise<{ success: boolean }>;
+    releaseMemory: () => Promise<{ success: boolean; error?: string }>;
     checkImageCache: (imagePath: string) => Promise<{
       cached: boolean;
       hash: string | null;

@@ -13,13 +13,8 @@ const { createCanvas, loadImage } = require('canvas');
 const tileCache = require('./tileCache');
 const sharp = require('sharp');
 
-// Configure Sharp for large images
-// Set concurrency to 1 to reduce memory usage
-sharp.concurrency(1);
-
-// Set memory limits (optional, but helps prevent OOM)
-// This limits the pixel cache size Sharp uses
-sharp.cache({ memory: 512 }); // 512MB cache limit
+// Note: Sharp configuration is centralized in main.js to prevent conflicts
+// Do not configure sharp.cache() or sharp.concurrency() here
 
 // Tile configuration
 const TILE_SIZE = 256;

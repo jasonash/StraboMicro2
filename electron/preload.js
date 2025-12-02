@@ -140,6 +140,7 @@ contextBridge.exposeInMainWorld('api', {
   getCacheStats: () => ipcRenderer.invoke('image:cache-stats'),
   clearImageCache: (imageHash) => ipcRenderer.invoke('image:clear-cache', imageHash),
   clearAllCaches: () => ipcRenderer.invoke('image:clear-all-caches'),
+  releaseMemory: () => ipcRenderer.invoke('image:release-memory'),
   checkImageCache: (imagePath) => ipcRenderer.invoke('image:check-cache', imagePath),
 
   // Tile queue and project preparation

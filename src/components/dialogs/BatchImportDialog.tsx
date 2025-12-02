@@ -337,6 +337,12 @@ export const BatchImportDialog: React.FC<BatchImportDialogProps> = ({
       setImportProgress({ current: i + 1, total: selectedFiles.length, currentFile: file.name });
 
       try {
+        // Release memory between imports to prevent OOM crashes
+        // This is especially important for large batch imports (9+ images)
+        if (i > 0) {
+          await window.api!.releaseMemory();
+        }
+
         // Convert image to scratch JPEG
         console.log(`[BatchImport] Converting file ${i + 1}/${selectedFiles.length}: ${file.name}`);
         const conversionResult = await window.api!.convertToScratchJPEG(file.path);

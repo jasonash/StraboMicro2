@@ -31,6 +31,12 @@ Sentry.init({
   },
 });
 const sharp = require('sharp');
+
+// Centralized Sharp/libvips configuration to prevent OOM crashes
+// These settings apply to all modules that use sharp
+sharp.concurrency(1); // Single-threaded to reduce memory pressure
+sharp.cache({ memory: 256, files: 0, items: 50 }); // Conservative 256MB cache
+
 const archiver = require('archiver');
 const projectFolders = require('./projectFolders');
 const imageConverter = require('./imageConverter');
@@ -2146,6 +2152,33 @@ ipcMain.handle('image:clear-all-caches', async () => {
   } catch (error) {
     log.error('Error clearing all caches:', error);
     throw error;
+  }
+});
+
+/**
+ * Release memory in the main process
+ * Call this between batch operations to prevent OOM crashes
+ * Clears Sharp/libvips cache and suggests garbage collection
+ */
+ipcMain.handle('image:release-memory', async () => {
+  try {
+    log.info('[Memory] Releasing Sharp cache and suggesting GC...');
+
+    // Clear Sharp's internal cache
+    sharp.cache(false); // Disable cache temporarily
+    sharp.cache({ memory: 256, files: 0, items: 50 }); // Re-enable with limits
+
+    // Suggest garbage collection (won't force it, but helps)
+    if (global.gc) {
+      global.gc();
+      log.info('[Memory] Manual GC triggered');
+    }
+
+    return { success: true };
+  } catch (error) {
+    log.error('[Memory] Error releasing memory:', error);
+    // Don't throw - this is best-effort
+    return { success: false, error: error.message };
   }
 });
 

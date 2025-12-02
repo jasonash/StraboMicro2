@@ -28,12 +28,8 @@ async function getTiffDecoder() {
   return decodeTIFF;
 }
 
-// Configure Sharp/libvips for handling large images
-// Disable concurrency to reduce memory usage
-sharp.concurrency(1);
-
-// Increase cache limits (default is 50MB, we'll set to 2GB)
-sharp.cache({ memory: 2048, files: 0, items: 100 });
+// Note: Sharp configuration is centralized in main.js to prevent conflicts
+// Do not configure sharp.cache() or sharp.concurrency() here
 
 /**
  * Convert TIFF (or other format) to JPEG in scratch space
