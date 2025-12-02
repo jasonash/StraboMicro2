@@ -2773,6 +2773,14 @@ ipcMain.handle('composite:generate-thumbnail', async (event, projectId, microgra
           continue;
         }
 
+        // Skip children that haven't been located yet (no position data)
+        // This is critical for batch-imported micrographs which don't have position until user sets it
+        // Without this check, ALL children would be loaded from disk causing massive memory spike
+        if (!child.offsetInParent && child.xOffset === undefined) {
+          log.info(`[IPC] Skipping unlocated child ${child.id} (${child.name}) - no position data yet`);
+          continue;
+        }
+
         log.info(`[IPC] Processing child ${child.id} (${child.name})`);
 
         const childPath = path.join(folderPaths.images, child.imagePath);
@@ -2967,6 +2975,11 @@ ipcMain.handle('composite:generate-thumbnail', async (event, projectId, microgra
 
     log.info(`[IPC] Successfully generated composite thumbnail: ${outputPath}`);
 
+    // Release Sharp memory after thumbnail generation
+    // This prevents memory accumulation when generating multiple thumbnails
+    sharp.cache(false);
+    sharp.cache({ memory: 256, files: 20, items: 100 });
+
     return {
       success: true,
       thumbnailPath: outputPath,
@@ -2976,6 +2989,9 @@ ipcMain.handle('composite:generate-thumbnail', async (event, projectId, microgra
 
   } catch (error) {
     log.error('[IPC] Error generating composite thumbnail:', error);
+    // Still try to release memory on error
+    sharp.cache(false);
+    sharp.cache({ memory: 256, files: 20, items: 100 });
     throw error;
   }
 });

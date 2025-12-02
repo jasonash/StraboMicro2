@@ -25,9 +25,20 @@ async function saveProjectJson(project, projectId) {
   try {
     log.info(`[ProjectSerializer] Serializing project: ${projectId}`);
 
+    if (!project) {
+      throw new Error('Cannot save: project is null or undefined');
+    }
+    if (!projectId) {
+      throw new Error('Cannot save: projectId is null or undefined');
+    }
+
     // Get project folder paths
     const folderPaths = projectFolders.getProjectFolderPaths(projectId);
     const projectJsonPath = folderPaths.projectJson;
+
+    // Ensure parent directory exists (handles edge case where folder was deleted)
+    const parentDir = path.dirname(projectJsonPath);
+    await fs.promises.mkdir(parentDir, { recursive: true });
 
     // Serialize project to legacy format
     const legacyJson = serializeToLegacyFormat(project);

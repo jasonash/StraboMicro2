@@ -107,8 +107,6 @@ class TileCache {
       // Check if original file still exists and hasn't changed
       if (metadata.originalPath !== imagePath) {
         console.log('Image path mismatch, invalidating cache');
-        console.log('  Expected:', metadata.originalPath);
-        console.log('  Got:', imagePath);
         return { exists: false, hash };
       }
 
