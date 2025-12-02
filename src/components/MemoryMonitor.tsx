@@ -31,12 +31,20 @@ const formatBytes = (bytes: number): string => {
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)}GB`;
 };
 
-// Get color based on memory pressure
-const getMemoryColor = (used: number, total: number): string => {
-  const ratio = used / total;
+// Get color based on memory pressure (ratio-based for renderer)
+const getMemoryColor = (used: number, limit: number): string => {
+  const ratio = used / limit;
   if (ratio < 0.6) return '#4caf50'; // Green
   if (ratio < 0.8) return '#ff9800'; // Orange
   return '#f44336'; // Red
+};
+
+// Get color for main process RSS (absolute thresholds make more sense here)
+const getMainMemoryColor = (rss: number): string => {
+  const rssMB = rss / (1024 * 1024);
+  if (rssMB < 500) return '#4caf50'; // Green: under 500MB is healthy
+  if (rssMB < 1000) return '#ff9800'; // Orange: 500MB-1GB is elevated
+  return '#f44336'; // Red: over 1GB is concerning
 };
 
 export const MemoryMonitor = () => {
@@ -103,10 +111,7 @@ export const MemoryMonitor = () => {
     memoryInfo.renderer.usedJSHeapSize,
     memoryInfo.renderer.jsHeapSizeLimit
   );
-  const mainColor = getMemoryColor(
-    memoryInfo.main.heapUsed,
-    memoryInfo.main.heapTotal
-  );
+  const mainColor = getMainMemoryColor(memoryInfo.main.rss);
 
   const tooltipContent = (
     <Box sx={{ p: 0.5 }}>
