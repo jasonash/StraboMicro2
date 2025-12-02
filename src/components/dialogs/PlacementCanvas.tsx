@@ -72,21 +72,34 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
   const [parentImage, setParentImage] = useState<HTMLImageElement | null>(null);
   const [childImage, setChildImage] = useState<HTMLImageElement | null>(null);
 
-  // Cleanup Image objects on unmount to prevent memory leaks
+  // Store refs to track images for cleanup (avoid stale closure issues)
+  const parentImageRef = useRef<HTMLImageElement | null>(null);
+  const childImageRef = useRef<HTMLImageElement | null>(null);
+
+  // Keep refs in sync with state
+  useEffect(() => {
+    parentImageRef.current = parentImage;
+  }, [parentImage]);
+
+  useEffect(() => {
+    childImageRef.current = childImage;
+  }, [childImage]);
+
+  // Cleanup Image objects on unmount only (empty dependency array)
   useEffect(() => {
     return () => {
-      if (parentImage) {
-        parentImage.src = '';
-        parentImage.onload = null;
-        parentImage.onerror = null;
+      if (parentImageRef.current) {
+        parentImageRef.current.src = '';
+        parentImageRef.current.onload = null;
+        parentImageRef.current.onerror = null;
       }
-      if (childImage) {
-        childImage.src = '';
-        childImage.onload = null;
-        childImage.onerror = null;
+      if (childImageRef.current) {
+        childImageRef.current.src = '';
+        childImageRef.current.onload = null;
+        childImageRef.current.onerror = null;
       }
     };
-  }, [parentImage, childImage]);
+  }, []);
 
   // Stage pan/zoom state (for parent background)
   const [scale, setScale] = useState(1);
