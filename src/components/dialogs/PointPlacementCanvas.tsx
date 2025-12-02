@@ -172,15 +172,16 @@ export const PointPlacementCanvas = ({
         const tileData = await window.api?.loadImageWithTiles(fullParentPath);
         if (!tileData) return;
 
-        // Load medium resolution for placement canvas
-        const mediumDataUrl = await window.api?.loadMedium(tileData.hash);
-        if (!mediumDataUrl) return;
+        // Load thumbnail resolution for placement canvas (512x512 max)
+        // This is sufficient for an 800x600 canvas and uses much less memory
+        const thumbnailDataUrl = await window.api?.loadThumbnail(tileData.hash);
+        if (!thumbnailDataUrl) return;
 
         const img = new window.Image();
         img.onload = () => {
           setParentImage(img);
 
-          // Fit image to canvas
+          // Fit thumbnail to canvas
           const scaleX = CANVAS_WIDTH / img.width;
           const scaleY = CANVAS_HEIGHT / img.height;
           const initialScale = Math.min(scaleX, scaleY, 1);
@@ -191,7 +192,7 @@ export const PointPlacementCanvas = ({
           const y = (CANVAS_HEIGHT - img.height * initialScale) / 2;
           setStagePos({ x, y });
         };
-        img.src = mediumDataUrl;
+        img.src = thumbnailDataUrl;
       } catch (error) {
         console.error('[PointPlacementCanvas] Failed to load parent image:', error);
       }
@@ -209,17 +210,17 @@ export const PointPlacementCanvas = ({
       }
 
       try {
-        // Load child from scratch space via tile cache
+        // Load child from scratch space via tile cache (use thumbnail for memory efficiency)
         const tileData = await window.api?.loadImageWithTiles(childScratchPath);
         if (!tileData) return;
-        const mediumDataUrl = await window.api?.loadMedium(tileData.hash);
-        if (!mediumDataUrl) return;
+        const thumbnailDataUrl = await window.api?.loadThumbnail(tileData.hash);
+        if (!thumbnailDataUrl) return;
 
         const img = new window.Image();
         img.onload = () => {
           setChildImage(img);
         };
-        img.src = mediumDataUrl;
+        img.src = thumbnailDataUrl;
       } catch (error) {
         console.error('[PointPlacementCanvas] Failed to load child image:', error);
       }

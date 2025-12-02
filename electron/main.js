@@ -2169,25 +2169,27 @@ ipcMain.handle('image:clear-all-caches', async () => {
  * Release memory in the main process
  * Call this between batch operations to prevent OOM crashes
  * Clears Sharp/libvips cache and suggests garbage collection
+ *
+ * NOTE: libvips/glibc memory fragmentation means RSS may stay elevated
+ * even after clearing caches. This is expected behavior - the memory
+ * is marked as free in the allocator but not returned to the OS.
  */
 ipcMain.handle('image:release-memory', async () => {
   try {
-    log.info('[Memory] Releasing Sharp cache and suggesting GC...');
+    log.info('[Memory] Releasing Sharp cache...');
 
-    // Aggressively clear Sharp's internal cache
-    // First disable completely to flush everything
+    // Completely disable Sharp's cache to force libvips to release resources
+    // Keep it disabled to prevent memory accumulation
     sharp.cache(false);
-
-    // Also zero out the operation cache
     sharp.cache({ memory: 0, files: 0, items: 0 });
 
-    // Small delay to allow libvips to release resources
-    await new Promise(resolve => setTimeout(resolve, 100));
+    // Also limit concurrency to reduce memory pressure
+    sharp.concurrency(1);
 
-    // Re-enable with conservative limits
-    sharp.cache({ memory: 256, files: 0, items: 50 });
+    // Small delay to allow libvips to process the cache clear
+    await new Promise(resolve => setTimeout(resolve, 50));
 
-    // Suggest garbage collection (won't force it, but helps)
+    // Suggest garbage collection (won't force it, but helps with JS heap)
     if (global.gc) {
       global.gc();
       log.info('[Memory] Manual GC triggered');

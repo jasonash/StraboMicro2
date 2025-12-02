@@ -229,9 +229,11 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
         const tileData = await window.api?.loadImageWithTiles(fullParentPath);
         if (!tileData) return;
 
-        // Load medium resolution for placement canvas
-        const mediumDataUrl = await window.api?.loadMedium(tileData.hash);
-        if (!mediumDataUrl) return;
+        // Load thumbnail resolution for placement canvas (512x512 max)
+        // This is sufficient for an 800x600 canvas and uses much less memory
+        // than medium resolution (2048x2048) - roughly 16x less memory per image
+        const thumbnailDataUrl = await window.api?.loadThumbnail(tileData.hash);
+        if (!thumbnailDataUrl) return;
 
         const img = new window.Image();
         img.onload = () => {
@@ -297,7 +299,7 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
             initialScale,
           });
         };
-        img.src = mediumDataUrl;
+        img.src = thumbnailDataUrl;
       } catch (error) {
         console.error('[PlacementCanvas] Error loading parent image:', error);
       }
@@ -307,17 +309,18 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [parentMicrographId]); // Only reload when parent ID changes, not on every offset/scale update
 
-  // Load child micrograph from scratch space
+  // Load child micrograph from project images folder
   useEffect(() => {
     const loadChildImage = async () => {
       try {
-        // Load the tiled image from scratch path
+        // Load the tiled image from the final path (in project images folder)
         const tileData = await window.api?.loadImageWithTiles(childScratchPath);
         if (!tileData) return;
 
-        // Load medium resolution for placement canvas
-        const mediumDataUrl = await window.api?.loadMedium(tileData.hash);
-        if (!mediumDataUrl) return;
+        // Load thumbnail resolution for placement canvas (512x512 max)
+        // This is sufficient for an 800x600 canvas and uses much less memory
+        const thumbnailDataUrl = await window.api?.loadThumbnail(tileData.hash);
+        if (!thumbnailDataUrl) return;
 
         const img = new window.Image();
         img.onload = () => {
@@ -327,7 +330,7 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
             height: img.height,
           });
         };
-        img.src = mediumDataUrl;
+        img.src = thumbnailDataUrl;
       } catch (error) {
         console.error('[PlacementCanvas] Error loading child image:', error);
       }
