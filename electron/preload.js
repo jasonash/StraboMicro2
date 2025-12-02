@@ -213,6 +213,7 @@ contextBridge.exposeInMainWorld('api', {
 
   // Debug utilities
   resetEverything: () => ipcRenderer.invoke('debug:reset-everything'),
+  getMemoryInfo: () => ipcRenderer.invoke('debug:get-memory-info'),
 
   // PDF export
   exportDetailedNotesToPDF: (projectData, micrographId, spotId) =>
@@ -479,5 +480,10 @@ contextBridge.exposeInMainWorld('api', {
     const handler = () => callback();
     ipcRenderer.on('debug:clear-all-spots', handler);
     return () => ipcRenderer.removeListener('debug:clear-all-spots', handler);
+  },
+  onDebugToggleMemoryMonitor: (callback) => {
+    const handler = () => callback();
+    ipcRenderer.on('debug:toggle-memory-monitor', handler);
+    return () => ipcRenderer.removeListener('debug:toggle-memory-monitor', handler);
   },
 });

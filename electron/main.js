@@ -791,6 +791,16 @@ function createWindow() {
         },
         { type: 'separator' },
         {
+          label: 'Toggle Memory Monitor',
+          accelerator: 'CmdOrCtrl+Shift+M',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('debug:toggle-memory-monitor');
+            }
+          }
+        },
+        { type: 'separator' },
+        {
           label: 'Show Project Structure',
           accelerator: 'CmdOrCtrl+Shift+D',
           click: () => {
@@ -3271,6 +3281,23 @@ ipcMain.handle('project:load-json', async (event, projectId) => {
     log.error('[IPC] Error loading project.json:', error);
     throw error;
   }
+});
+
+/**
+ * Get memory usage information for both main and renderer processes
+ * Used by the memory monitor status bar indicator
+ */
+ipcMain.handle('debug:get-memory-info', async () => {
+  const mainMemory = process.memoryUsage();
+  return {
+    main: {
+      heapUsed: mainMemory.heapUsed,
+      heapTotal: mainMemory.heapTotal,
+      external: mainMemory.external,
+      rss: mainMemory.rss, // Resident Set Size - total memory allocated
+    },
+    timestamp: Date.now(),
+  };
 });
 
 /**

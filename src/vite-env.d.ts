@@ -301,6 +301,15 @@ interface Window {
       project: any;
       message: string;
     }>;
+    getMemoryInfo: () => Promise<{
+      main: {
+        heapUsed: number;
+        heapTotal: number;
+        external: number;
+        rss: number;
+      };
+      timestamp: number;
+    }>;
 
     // PDF export
     exportDetailedNotesToPDF: (projectData: any, micrographId?: string, spotId?: string) => Promise<{
@@ -616,6 +625,7 @@ interface Window {
     onDebugTriggerTestError: (callback: () => void) => Unsubscribe;
     onDebugGenerateTestSpots: (callback: () => void) => Unsubscribe;
     onDebugClearAllSpots: (callback: () => void) => Unsubscribe;
+    onDebugToggleMemoryMonitor: (callback: () => void) => Unsubscribe;
 
     versionHistory: {
       // Create a new version (auto-save)
