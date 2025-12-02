@@ -2169,25 +2169,27 @@ ipcMain.handle('image:clear-all-caches', async () => {
  * Release memory in the main process
  * Call this between batch operations to prevent OOM crashes
  * Clears Sharp/libvips cache and suggests garbage collection
+ *
+ * NOTE: libvips/glibc memory fragmentation means RSS may stay elevated
+ * even after clearing caches. This is expected behavior - the memory
+ * is marked as free in the allocator but not returned to the OS.
  */
 ipcMain.handle('image:release-memory', async () => {
   try {
-    log.info('[Memory] Releasing Sharp cache and suggesting GC...');
+    log.info('[Memory] Releasing Sharp cache...');
 
-    // Aggressively clear Sharp's internal cache
-    // First disable completely to flush everything
+    // Completely disable Sharp's cache to force libvips to release resources
+    // Keep it disabled to prevent memory accumulation
     sharp.cache(false);
-
-    // Also zero out the operation cache
     sharp.cache({ memory: 0, files: 0, items: 0 });
 
-    // Small delay to allow libvips to release resources
-    await new Promise(resolve => setTimeout(resolve, 100));
+    // Also limit concurrency to reduce memory pressure
+    sharp.concurrency(1);
 
-    // Re-enable with conservative limits
-    sharp.cache({ memory: 256, files: 0, items: 50 });
+    // Small delay to allow libvips to process the cache clear
+    await new Promise(resolve => setTimeout(resolve, 50));
 
-    // Suggest garbage collection (won't force it, but helps)
+    // Suggest garbage collection (won't force it, but helps with JS heap)
     if (global.gc) {
       global.gc();
       log.info('[Memory] Manual GC triggered');
@@ -2771,6 +2773,14 @@ ipcMain.handle('composite:generate-thumbnail', async (event, projectId, microgra
           continue;
         }
 
+        // Skip children that haven't been located yet (no position data)
+        // This is critical for batch-imported micrographs which don't have position until user sets it
+        // Without this check, ALL children would be loaded from disk causing massive memory spike
+        if (!child.offsetInParent && child.xOffset === undefined) {
+          log.info(`[IPC] Skipping unlocated child ${child.id} (${child.name}) - no position data yet`);
+          continue;
+        }
+
         log.info(`[IPC] Processing child ${child.id} (${child.name})`);
 
         const childPath = path.join(folderPaths.images, child.imagePath);
@@ -2965,6 +2975,11 @@ ipcMain.handle('composite:generate-thumbnail', async (event, projectId, microgra
 
     log.info(`[IPC] Successfully generated composite thumbnail: ${outputPath}`);
 
+    // Release Sharp memory after thumbnail generation
+    // This prevents memory accumulation when generating multiple thumbnails
+    sharp.cache(false);
+    sharp.cache({ memory: 256, files: 20, items: 100 });
+
     return {
       success: true,
       thumbnailPath: outputPath,
@@ -2974,6 +2989,9 @@ ipcMain.handle('composite:generate-thumbnail', async (event, projectId, microgra
 
   } catch (error) {
     log.error('[IPC] Error generating composite thumbnail:', error);
+    // Still try to release memory on error
+    sharp.cache(false);
+    sharp.cache({ memory: 256, files: 20, items: 100 });
     throw error;
   }
 });

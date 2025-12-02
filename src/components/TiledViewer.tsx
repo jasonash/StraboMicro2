@@ -281,6 +281,10 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
         // This prevents OOM crashes when rapidly switching between large micrographs
         cleanupTileMemoryRef.current();
 
+        // Release main process Sharp/libvips memory before loading new image
+        // This is critical to prevent memory accumulation when switching micrographs
+        await window.api?.releaseMemory();
+
         // Clear previous image state immediately
         setImageMetadata(null);
         setRenderMode('thumbnail');

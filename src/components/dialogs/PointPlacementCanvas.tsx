@@ -44,21 +44,34 @@ export const PointPlacementCanvas = ({
   const [childImage, setChildImage] = useState<HTMLImageElement | null>(null);
   const [_parentScale, setParentScale] = useState<number>(0); // Currently unused but may be needed
 
-  // Cleanup Image objects on unmount to prevent memory leaks
+  // Store refs to track images for cleanup (avoid stale closure issues)
+  const parentImageRef = useRef<HTMLImageElement | null>(null);
+  const childImageRef = useRef<HTMLImageElement | null>(null);
+
+  // Keep refs in sync with state
+  useEffect(() => {
+    parentImageRef.current = parentImage;
+  }, [parentImage]);
+
+  useEffect(() => {
+    childImageRef.current = childImage;
+  }, [childImage]);
+
+  // Cleanup Image objects on unmount only (empty dependency array)
   useEffect(() => {
     return () => {
-      if (parentImage) {
-        parentImage.src = '';
-        parentImage.onload = null;
-        parentImage.onerror = null;
+      if (parentImageRef.current) {
+        parentImageRef.current.src = '';
+        parentImageRef.current.onload = null;
+        parentImageRef.current.onerror = null;
       }
-      if (childImage) {
-        childImage.src = '';
-        childImage.onload = null;
-        childImage.onerror = null;
+      if (childImageRef.current) {
+        childImageRef.current.src = '';
+        childImageRef.current.onload = null;
+        childImageRef.current.onerror = null;
       }
     };
-  }, [parentImage, childImage]);
+  }, []);
   const [parentOriginalWidth, setParentOriginalWidth] = useState<number>(0);
 
   // Stage pan/zoom state
@@ -159,15 +172,16 @@ export const PointPlacementCanvas = ({
         const tileData = await window.api?.loadImageWithTiles(fullParentPath);
         if (!tileData) return;
 
-        // Load medium resolution for placement canvas
-        const mediumDataUrl = await window.api?.loadMedium(tileData.hash);
-        if (!mediumDataUrl) return;
+        // Load thumbnail resolution for placement canvas (512x512 max)
+        // This is sufficient for an 800x600 canvas and uses much less memory
+        const thumbnailDataUrl = await window.api?.loadThumbnail(tileData.hash);
+        if (!thumbnailDataUrl) return;
 
         const img = new window.Image();
         img.onload = () => {
           setParentImage(img);
 
-          // Fit image to canvas
+          // Fit thumbnail to canvas
           const scaleX = CANVAS_WIDTH / img.width;
           const scaleY = CANVAS_HEIGHT / img.height;
           const initialScale = Math.min(scaleX, scaleY, 1);
@@ -178,7 +192,7 @@ export const PointPlacementCanvas = ({
           const y = (CANVAS_HEIGHT - img.height * initialScale) / 2;
           setStagePos({ x, y });
         };
-        img.src = mediumDataUrl;
+        img.src = thumbnailDataUrl;
       } catch (error) {
         console.error('[PointPlacementCanvas] Failed to load parent image:', error);
       }
@@ -196,17 +210,17 @@ export const PointPlacementCanvas = ({
       }
 
       try {
-        // Load child from scratch space via tile cache
+        // Load child from scratch space via tile cache (use thumbnail for memory efficiency)
         const tileData = await window.api?.loadImageWithTiles(childScratchPath);
         if (!tileData) return;
-        const mediumDataUrl = await window.api?.loadMedium(tileData.hash);
-        if (!mediumDataUrl) return;
+        const thumbnailDataUrl = await window.api?.loadThumbnail(tileData.hash);
+        if (!thumbnailDataUrl) return;
 
         const img = new window.Image();
         img.onload = () => {
           setChildImage(img);
         };
-        img.src = mediumDataUrl;
+        img.src = thumbnailDataUrl;
       } catch (error) {
         console.error('[PointPlacementCanvas] Failed to load child image:', error);
       }

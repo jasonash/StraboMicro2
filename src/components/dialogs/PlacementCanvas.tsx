@@ -72,21 +72,34 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
   const [parentImage, setParentImage] = useState<HTMLImageElement | null>(null);
   const [childImage, setChildImage] = useState<HTMLImageElement | null>(null);
 
-  // Cleanup Image objects on unmount to prevent memory leaks
+  // Store refs to track images for cleanup (avoid stale closure issues)
+  const parentImageRef = useRef<HTMLImageElement | null>(null);
+  const childImageRef = useRef<HTMLImageElement | null>(null);
+
+  // Keep refs in sync with state
+  useEffect(() => {
+    parentImageRef.current = parentImage;
+  }, [parentImage]);
+
+  useEffect(() => {
+    childImageRef.current = childImage;
+  }, [childImage]);
+
+  // Cleanup Image objects on unmount only (empty dependency array)
   useEffect(() => {
     return () => {
-      if (parentImage) {
-        parentImage.src = '';
-        parentImage.onload = null;
-        parentImage.onerror = null;
+      if (parentImageRef.current) {
+        parentImageRef.current.src = '';
+        parentImageRef.current.onload = null;
+        parentImageRef.current.onerror = null;
       }
-      if (childImage) {
-        childImage.src = '';
-        childImage.onload = null;
-        childImage.onerror = null;
+      if (childImageRef.current) {
+        childImageRef.current.src = '';
+        childImageRef.current.onload = null;
+        childImageRef.current.onerror = null;
       }
     };
-  }, [parentImage, childImage]);
+  }, []);
 
   // Stage pan/zoom state (for parent background)
   const [scale, setScale] = useState(1);
@@ -216,9 +229,11 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
         const tileData = await window.api?.loadImageWithTiles(fullParentPath);
         if (!tileData) return;
 
-        // Load medium resolution for placement canvas
-        const mediumDataUrl = await window.api?.loadMedium(tileData.hash);
-        if (!mediumDataUrl) return;
+        // Load thumbnail resolution for placement canvas (512x512 max)
+        // This is sufficient for an 800x600 canvas and uses much less memory
+        // than medium resolution (2048x2048) - roughly 16x less memory per image
+        const thumbnailDataUrl = await window.api?.loadThumbnail(tileData.hash);
+        if (!thumbnailDataUrl) return;
 
         const img = new window.Image();
         img.onload = () => {
@@ -284,7 +299,7 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
             initialScale,
           });
         };
-        img.src = mediumDataUrl;
+        img.src = thumbnailDataUrl;
       } catch (error) {
         console.error('[PlacementCanvas] Error loading parent image:', error);
       }
@@ -294,17 +309,18 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [parentMicrographId]); // Only reload when parent ID changes, not on every offset/scale update
 
-  // Load child micrograph from scratch space
+  // Load child micrograph from project images folder
   useEffect(() => {
     const loadChildImage = async () => {
       try {
-        // Load the tiled image from scratch path
+        // Load the tiled image from the final path (in project images folder)
         const tileData = await window.api?.loadImageWithTiles(childScratchPath);
         if (!tileData) return;
 
-        // Load medium resolution for placement canvas
-        const mediumDataUrl = await window.api?.loadMedium(tileData.hash);
-        if (!mediumDataUrl) return;
+        // Load thumbnail resolution for placement canvas (512x512 max)
+        // This is sufficient for an 800x600 canvas and uses much less memory
+        const thumbnailDataUrl = await window.api?.loadThumbnail(tileData.hash);
+        if (!thumbnailDataUrl) return;
 
         const img = new window.Image();
         img.onload = () => {
@@ -314,7 +330,7 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
             height: img.height,
           });
         };
-        img.src = mediumDataUrl;
+        img.src = thumbnailDataUrl;
       } catch (error) {
         console.error('[PlacementCanvas] Error loading child image:', error);
       }
