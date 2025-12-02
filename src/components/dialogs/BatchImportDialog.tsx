@@ -332,6 +332,10 @@ export const BatchImportDialog: React.FC<BatchImportDialogProps> = ({
 
     const errors: string[] = [];
 
+    // Ensure all project folders exist (images, compositeThumbnails, etc.)
+    // This is idempotent - safe to call even if folders already exist
+    await window.api!.createProjectFolders(project.id);
+
     // Get project folder paths for constructing final image paths
     const folderPaths = await window.api!.getProjectFolderPaths(project.id);
     if (!folderPaths) {
