@@ -136,6 +136,17 @@ export function EditMicrographLocationDialog({
     return siblings;
   }, [project, micrograph, parentMicrograph, locationMethod]);
 
+  // Release memory when dialog closes to prevent accumulation
+  // This is critical when opening/closing the dialog for multiple micrographs
+  useEffect(() => {
+    if (!open) {
+      // Dialog just closed - release Sharp/libvips memory
+      window.api?.releaseMemory().catch((err) => {
+        console.error('[EditMicrographLocationDialog] Error releasing memory:', err);
+      });
+    }
+  }, [open]);
+
   // Load project folder paths when dialog opens
   useEffect(() => {
     if (!open || !project) return;
@@ -462,7 +473,10 @@ export function EditMicrographLocationDialog({
     onClose();
   };
 
-  const handleCancel = () => {
+  const handleCancel = async () => {
+    // Release memory when closing dialog to prevent accumulation
+    // This is important when opening/closing the dialog multiple times
+    await window.api?.releaseMemory();
     onClose();
   };
 
