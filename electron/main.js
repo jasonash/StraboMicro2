@@ -2174,9 +2174,18 @@ ipcMain.handle('image:release-memory', async () => {
   try {
     log.info('[Memory] Releasing Sharp cache and suggesting GC...');
 
-    // Clear Sharp's internal cache
-    sharp.cache(false); // Disable cache temporarily
-    sharp.cache({ memory: 256, files: 0, items: 50 }); // Re-enable with limits
+    // Aggressively clear Sharp's internal cache
+    // First disable completely to flush everything
+    sharp.cache(false);
+
+    // Also zero out the operation cache
+    sharp.cache({ memory: 0, files: 0, items: 0 });
+
+    // Small delay to allow libvips to release resources
+    await new Promise(resolve => setTimeout(resolve, 100));
+
+    // Re-enable with conservative limits
+    sharp.cache({ memory: 256, files: 0, items: 50 });
 
     // Suggest garbage collection (won't force it, but helps)
     if (global.gc) {

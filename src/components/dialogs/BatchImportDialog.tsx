@@ -465,6 +465,10 @@ export const BatchImportDialog: React.FC<BatchImportDialogProps> = ({
       }
     }
 
+    // Final memory cleanup after all imports complete
+    // This helps release any accumulated memory from libvips/Sharp
+    await window.api!.releaseMemory();
+
     setImportErrors(errors);
     setIsImporting(false);
 
