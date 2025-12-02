@@ -72,6 +72,22 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
   const [parentImage, setParentImage] = useState<HTMLImageElement | null>(null);
   const [childImage, setChildImage] = useState<HTMLImageElement | null>(null);
 
+  // Cleanup Image objects on unmount to prevent memory leaks
+  useEffect(() => {
+    return () => {
+      if (parentImage) {
+        parentImage.src = '';
+        parentImage.onload = null;
+        parentImage.onerror = null;
+      }
+      if (childImage) {
+        childImage.src = '';
+        childImage.onload = null;
+        childImage.onerror = null;
+      }
+    };
+  }, [parentImage, childImage]);
+
   // Stage pan/zoom state (for parent background)
   const [scale, setScale] = useState(1);
   const [stagePos, setStagePos] = useState({ x: 0, y: 0 });

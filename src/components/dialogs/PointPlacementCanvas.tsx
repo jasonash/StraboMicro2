@@ -43,6 +43,22 @@ export const PointPlacementCanvas = ({
   const [parentImage, setParentImage] = useState<HTMLImageElement | null>(null);
   const [childImage, setChildImage] = useState<HTMLImageElement | null>(null);
   const [_parentScale, setParentScale] = useState<number>(0); // Currently unused but may be needed
+
+  // Cleanup Image objects on unmount to prevent memory leaks
+  useEffect(() => {
+    return () => {
+      if (parentImage) {
+        parentImage.src = '';
+        parentImage.onload = null;
+        parentImage.onerror = null;
+      }
+      if (childImage) {
+        childImage.src = '';
+        childImage.onload = null;
+        childImage.onerror = null;
+      }
+    };
+  }, [parentImage, childImage]);
   const [parentOriginalWidth, setParentOriginalWidth] = useState<number>(0);
 
   // Stage pan/zoom state
