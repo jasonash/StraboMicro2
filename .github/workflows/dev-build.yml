@@ -1,5 +1,5 @@
 # Development Build Workflow
-# Builds unsigned app for all platforms (macOS, Windows, Linux)
+# Builds signed and notarized app for all platforms (macOS, Windows, Linux)
 # Creates/updates a "dev-latest" pre-release with downloadable artifacts
 # Triggered manually via GitHub Actions UI
 
@@ -18,30 +18,9 @@ env:
   NODE_VERSION: '20'
 
 jobs:
-  build:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          # macOS builds - separate jobs for each architecture to handle Sharp native modules
-          - os: macos-13
-            platform: mac
-            arch: x64
-            artifact_name: StraboMicro2-macOS-x64-dev
-          - os: macos-latest
-            platform: mac
-            arch: arm64
-            artifact_name: StraboMicro2-macOS-arm64-dev
-          - os: windows-latest
-            platform: win
-            arch: x64
-            artifact_name: StraboMicro2-Windows-dev
-          - os: ubuntu-latest
-            platform: linux
-            arch: x64
-            artifact_name: StraboMicro2-Linux-dev
-
-    runs-on: ${{ matrix.os }}
+  # macOS ARM64 (Apple Silicon) - runs on macos-latest (ARM64 runner)
+  build-macos-arm64:
+    runs-on: macos-latest
 
     steps:
       - name: Checkout code
@@ -55,28 +34,11 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
 
-      # Linux-specific: Install build dependencies (libfuse2 for AppImage)
-      - name: Install Linux dependencies
-        if: matrix.platform == 'linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libfuse2
-
-      # On macOS, prevent Sharp from detecting system libvips
-      - name: Install dependencies (macOS)
-        if: matrix.platform == 'mac'
-        run: |
-          unset PKG_CONFIG_PATH
-          npm ci
-        env:
-          SHARP_IGNORE_GLOBAL_LIBVIPS: "true"
-          npm_config_sharp_libvips_local_prebuilds: "true"
-
-      - name: Install dependencies (non-macOS)
-        if: matrix.platform != 'mac'
+      - name: Install dependencies
         run: npm ci
+        env:
+          npm_config_sharp_libvips_local_prebuilds: 1
 
-      # Update version to include dev suffix
       - name: Update version for dev build
         shell: bash
         run: |
@@ -89,29 +51,259 @@ jobs:
       - name: Build application
         run: npm run build
 
-      # Build without signing for dev builds - build only for the runner's native architecture
-      - name: Package for macOS
-        if: matrix.platform == 'mac'
-        run: npx electron-builder --mac --${{ matrix.arch }} --publish never
+      - name: Import Code Signing Certificate
         env:
-          CSC_IDENTITY_AUTO_DISCOVERY: false
+          MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+        run: |
+          KEYCHAIN_PATH=$RUNNER_TEMP/signing.keychain-db
+          KEYCHAIN_PASSWORD=$(openssl rand -base64 32)
 
-      - name: Package for Windows
-        if: matrix.platform == 'win'
-        run: npx electron-builder --win --publish never
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
 
-      - name: Package for Linux
-        if: matrix.platform == 'linux'
-        run: npx electron-builder --linux --publish never
+          echo "$MACOS_CERTIFICATE" | base64 --decode > $RUNNER_TEMP/certificate.p12
+          security import $RUNNER_TEMP/certificate.p12 \
+            -P "$MACOS_CERTIFICATE_PASSWORD" \
+            -A \
+            -t cert \
+            -f pkcs12 \
+            -k "$KEYCHAIN_PATH"
 
-      - name: Upload artifacts
+          security list-keychains -d user -s "$KEYCHAIN_PATH" login.keychain
+          security default-keychain -s "$KEYCHAIN_PATH"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security find-identity -v -p codesigning "$KEYCHAIN_PATH"
+
+      - name: Package and Sign for macOS (ARM64)
+        run: npx electron-builder --mac --arm64 --publish never
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+
+      - name: Notarize macOS App
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          for DMG in release/*.dmg; do
+            echo "Notarizing $DMG..."
+            xcrun notarytool submit "$DMG" \
+              --apple-id "$APPLE_ID" \
+              --password "$APPLE_ID_PASSWORD" \
+              --team-id "$APPLE_TEAM_ID" \
+              --wait
+            xcrun stapler staple "$DMG"
+          done
+
+      - name: Upload macOS ARM64 artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact_name }}-${{ github.run_number }}
+          name: StraboMicro2-macOS-arm64-dev-${{ github.run_number }}
           path: |
             release/*.dmg
             release/*.zip
+          if-no-files-found: error
+          retention-days: 30
+
+  # macOS x64 (Intel) - runs on macos-13 (Intel runner)
+  build-macos-x64:
+    runs-on: macos-13
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.branch }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+        env:
+          npm_config_sharp_libvips_local_prebuilds: 1
+
+      - name: Update version for dev build
+        shell: bash
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          DEV_VERSION="${VERSION}-dev.${{ github.run_number }}"
+          echo "Building dev version: $DEV_VERSION"
+          echo "DEV_VERSION=$DEV_VERSION" >> $GITHUB_ENV
+          npm version $DEV_VERSION --no-git-tag-version
+
+      - name: Build application
+        run: npm run build
+
+      - name: Import Code Signing Certificate
+        env:
+          MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+        run: |
+          KEYCHAIN_PATH=$RUNNER_TEMP/signing.keychain-db
+          KEYCHAIN_PASSWORD=$(openssl rand -base64 32)
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+          echo "$MACOS_CERTIFICATE" | base64 --decode > $RUNNER_TEMP/certificate.p12
+          security import $RUNNER_TEMP/certificate.p12 \
+            -P "$MACOS_CERTIFICATE_PASSWORD" \
+            -A \
+            -t cert \
+            -f pkcs12 \
+            -k "$KEYCHAIN_PATH"
+
+          security list-keychains -d user -s "$KEYCHAIN_PATH" login.keychain
+          security default-keychain -s "$KEYCHAIN_PATH"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security find-identity -v -p codesigning "$KEYCHAIN_PATH"
+
+      - name: Package and Sign for macOS (x64)
+        run: npx electron-builder --mac --x64 --publish never
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+
+      - name: Notarize macOS App
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          for DMG in release/*.dmg; do
+            echo "Notarizing $DMG..."
+            xcrun notarytool submit "$DMG" \
+              --apple-id "$APPLE_ID" \
+              --password "$APPLE_ID_PASSWORD" \
+              --team-id "$APPLE_TEAM_ID" \
+              --wait
+            xcrun stapler staple "$DMG"
+          done
+
+      - name: Upload macOS x64 artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: StraboMicro2-macOS-x64-dev-${{ github.run_number }}
+          path: |
+            release/*.dmg
+            release/*.zip
+          if-no-files-found: error
+          retention-days: 30
+
+  # Windows build
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.branch }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Update version for dev build
+        shell: bash
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          DEV_VERSION="${VERSION}-dev.${{ github.run_number }}"
+          echo "Building dev version: $DEV_VERSION"
+          echo "DEV_VERSION=$DEV_VERSION" >> $GITHUB_ENV
+          npm version $DEV_VERSION --no-git-tag-version
+
+      - name: Build application
+        run: npm run build
+
+      - name: Import Code Signing Certificate
+        shell: powershell
+        env:
+          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        run: |
+          if ($env:WINDOWS_CERTIFICATE) {
+            $certificateBytes = [System.Convert]::FromBase64String($env:WINDOWS_CERTIFICATE)
+            $certPath = "$env:RUNNER_TEMP\certificate.pfx"
+            [System.IO.File]::WriteAllBytes($certPath, $certificateBytes)
+            echo "WIN_CSC_LINK=$certPath" >> $env:GITHUB_ENV
+            echo "WIN_CSC_KEY_PASSWORD=$env:WINDOWS_CERTIFICATE_PASSWORD" >> $env:GITHUB_ENV
+            Write-Host "Certificate imported successfully"
+          } else {
+            Write-Host "No certificate provided, building unsigned"
+          }
+
+      - name: Package for Windows
+        run: npx electron-builder --win --publish never
+
+      - name: Upload Windows artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: StraboMicro2-Windows-dev-${{ github.run_number }}
+          path: |
             release/*.exe
+          if-no-files-found: error
+          retention-days: 30
+
+  # Linux build
+  build-linux:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.branch }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libfuse2
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Update version for dev build
+        shell: bash
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          DEV_VERSION="${VERSION}-dev.${{ github.run_number }}"
+          echo "Building dev version: $DEV_VERSION"
+          echo "DEV_VERSION=$DEV_VERSION" >> $GITHUB_ENV
+          npm version $DEV_VERSION --no-git-tag-version
+
+      - name: Build application
+        run: npm run build
+
+      - name: Package for Linux
+        run: npx electron-builder --linux --publish never
+
+      - name: Upload Linux artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: StraboMicro2-Linux-dev-${{ github.run_number }}
+          path: |
             release/*.AppImage
             release/*.deb
           if-no-files-found: error
@@ -119,7 +311,7 @@ jobs:
 
   # Create/update the dev-latest release with all platform builds
   release:
-    needs: build
+    needs: [build-macos-arm64, build-macos-x64, build-windows, build-linux]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -176,7 +368,6 @@ jobs:
             **Date:** ${{ github.event.repository.updated_at }}
 
             ⚠️ **This is a development build for testing purposes.**
-            It is unsigned and may trigger security warnings on macOS and Windows.
 
             ### Downloads
 
@@ -188,12 +379,12 @@ jobs:
             | Linux (AppImage) | `StraboMicro2-*.AppImage` |
             | Linux (Debian) | `strabomicro2_*_amd64.deb` |
 
-            ### Installation Notes
+            ### Installation
 
-            **macOS:** You may need to right-click and select "Open" the first time, or go to System Preferences > Security & Privacy to allow the app.
+            **macOS**: Download the DMG, open it, and drag StraboMicro2 to your Applications folder. The app is signed and notarized.
 
-            **Windows:** You may see a SmartScreen warning. Click "More info" then "Run anyway".
+            **Windows**: Download and run the installer. You may see a SmartScreen warning since the Windows build is not code-signed. Click "More info" then "Run anyway".
 
-            **Linux:** Make the AppImage executable with `chmod +x` before running.
+            **Linux**: Download the AppImage, make it executable (`chmod +x`), and run it. Or install the .deb package.
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
