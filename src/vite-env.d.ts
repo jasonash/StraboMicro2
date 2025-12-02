@@ -143,6 +143,7 @@ interface Window {
     getCacheStats: () => Promise<CacheStats>;
     clearImageCache: (imageHash: string) => Promise<{ success: boolean }>;
     clearAllCaches: () => Promise<{ success: boolean }>;
+    releaseMemory: () => Promise<{ success: boolean; error?: string }>;
     checkImageCache: (imagePath: string) => Promise<{
       cached: boolean;
       hash: string | null;
@@ -299,6 +300,15 @@ interface Window {
       success: boolean;
       project: any;
       message: string;
+    }>;
+    getMemoryInfo: () => Promise<{
+      main: {
+        heapUsed: number;
+        heapTotal: number;
+        external: number;
+        rss: number;
+      };
+      timestamp: number;
     }>;
 
     // PDF export
@@ -615,6 +625,7 @@ interface Window {
     onDebugTriggerTestError: (callback: () => void) => Unsubscribe;
     onDebugGenerateTestSpots: (callback: () => void) => Unsubscribe;
     onDebugClearAllSpots: (callback: () => void) => Unsubscribe;
+    onDebugToggleMemoryMonitor: (callback: () => void) => Unsubscribe;
 
     versionHistory: {
       // Create a new version (auto-save)

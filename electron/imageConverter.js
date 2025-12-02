@@ -28,12 +28,8 @@ async function getTiffDecoder() {
   return decodeTIFF;
 }
 
-// Configure Sharp/libvips for handling large images
-// Disable concurrency to reduce memory usage
-sharp.concurrency(1);
-
-// Increase cache limits (default is 50MB, we'll set to 2GB)
-sharp.cache({ memory: 2048, files: 0, items: 100 });
+// Note: Sharp configuration is centralized in main.js to prevent conflicts
+// Do not configure sharp.cache() or sharp.concurrency() here
 
 /**
  * Convert TIFF (or other format) to JPEG in scratch space
@@ -70,15 +66,18 @@ async function convertToScratchJPEG(inputPath, progressCallback = null) {
       // Get decode function (dynamic import)
       const decode = await getTiffDecoder();
 
-      // Read TIFF file
-      const buffer = await fs.promises.readFile(inputPath);
+      // Read TIFF file - use let so we can null it after use
+      let fileBuffer = await fs.promises.readFile(inputPath);
 
       if (progressCallback) {
         progressCallback({ stage: 'converting', percent: 30 });
       }
 
       // Decode TIFF (this library handles large TIFFs efficiently)
-      const tiffData = decode(buffer);
+      let tiffData = decode(fileBuffer);
+
+      // Release file buffer immediately - no longer needed after decode
+      fileBuffer = null;
 
       // Get first image (page 0)
       const image = tiffData[0];
@@ -108,6 +107,9 @@ async function convertToScratchJPEG(inputPath, progressCallback = null) {
         throw new Error('TIFF image data format not supported');
       }
 
+      // Release tiffData - we've extracted what we need into rawBuffer
+      tiffData = null;
+
       log.info(`[ImageConverter] Converting raw pixel data to JPEG with Sharp...`);
 
       // Use Sharp to convert raw pixel data to JPEG
@@ -123,6 +125,9 @@ async function convertToScratchJPEG(inputPath, progressCallback = null) {
           mozjpeg: true,
         })
         .toFile(scratchPath);
+
+      // Release rawBuffer - JPEG is now on disk
+      rawBuffer = null;
 
       if (progressCallback) {
         progressCallback({ stage: 'complete', percent: 100 });
@@ -145,15 +150,19 @@ async function convertToScratchJPEG(inputPath, progressCallback = null) {
       // Use bmp-js library for BMP files (Sharp/libvips doesn't support BMP)
       log.info(`[ImageConverter] Detected BMP file, using bmp-js library...`);
 
-      // Read BMP file
-      const buffer = await fs.promises.readFile(inputPath);
+      // Read BMP file - use let so we can null it after use
+      let fileBuffer = await fs.promises.readFile(inputPath);
 
       if (progressCallback) {
         progressCallback({ stage: 'converting', percent: 30 });
       }
 
       // Decode BMP
-      const bmpData = bmp.decode(buffer);
+      let bmpData = bmp.decode(fileBuffer);
+
+      // Release file buffer immediately
+      fileBuffer = null;
+
       const width = bmpData.width;
       const height = bmpData.height;
       log.info(`[ImageConverter] BMP dimensions: ${width}x${height}`);
@@ -165,7 +174,7 @@ async function convertToScratchJPEG(inputPath, progressCallback = null) {
       // bmp-js returns ABGR format (4 bytes per pixel: Alpha, Blue, Green, Red)
       // We need to convert to RGB for Sharp (JPEG doesn't support alpha anyway)
       const pixelCount = width * height;
-      const rgbBuffer = Buffer.alloc(pixelCount * 3);
+      let rgbBuffer = Buffer.alloc(pixelCount * 3);
 
       for (let i = 0; i < pixelCount; i++) {
         const srcOffset = i * 4;
@@ -175,6 +184,9 @@ async function convertToScratchJPEG(inputPath, progressCallback = null) {
         rgbBuffer[dstOffset + 1] = bmpData.data[srcOffset + 2]; // G (was at position 2)
         rgbBuffer[dstOffset + 2] = bmpData.data[srcOffset + 1]; // B (was at position 1)
       }
+
+      // Release bmpData - we've extracted what we need
+      bmpData = null;
 
       log.info(`[ImageConverter] Converting BMP raw pixel data to JPEG with Sharp...`);
 
@@ -191,6 +203,9 @@ async function convertToScratchJPEG(inputPath, progressCallback = null) {
           mozjpeg: true,
         })
         .toFile(scratchPath);
+
+      // Release rgbBuffer - JPEG is now on disk
+      rgbBuffer = null;
 
       if (progressCallback) {
         progressCallback({ stage: 'complete', percent: 100 });

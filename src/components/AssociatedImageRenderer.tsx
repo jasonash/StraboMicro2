@@ -78,6 +78,26 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
     retryCount: 0,
   });
 
+  // Cleanup on unmount to prevent memory leaks
+  useEffect(() => {
+    return () => {
+      // Clean up main image
+      if (imageState.imageObj) {
+        imageState.imageObj.src = '';
+        imageState.imageObj.onload = null;
+        imageState.imageObj.onerror = null;
+      }
+      // Clean up all tiles
+      for (const [, tileInfo] of imageState.tiles) {
+        if (tileInfo.imageObj) {
+          tileInfo.imageObj.src = '';
+          tileInfo.imageObj.onload = null;
+          tileInfo.imageObj.onerror = null;
+        }
+      }
+    };
+  }, [imageState.imageObj, imageState.tiles]);
+
   /**
    * Calculate screen coverage percentage (0.0 to 1.0)
    * How much of the viewport does this overlay occupy?
