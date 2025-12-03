@@ -550,9 +550,14 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
       const containerWidth = containerRef.current.clientWidth;
       const containerHeight = containerRef.current.clientHeight;
 
+      // Add padding to ensure entire image is visible with some margin
+      const padding = 20;
+      const availableWidth = containerWidth - padding * 2;
+      const availableHeight = containerHeight - padding * 2;
+
       // Calculate zoom to fit
-      const scaleX = containerWidth / width;
-      const scaleY = containerHeight / height;
+      const scaleX = availableWidth / width;
+      const scaleY = availableHeight / height;
       const newZoom = Math.min(scaleX, scaleY, 1); // Don't zoom in beyond 100%
 
       // Center the image
