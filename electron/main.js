@@ -759,8 +759,8 @@ function createWindow() {
         },
       ],
     },
-    // Debug menu only shown in development mode
-    ...(!app.isPackaged ? [{
+    // Debug menu shown in development mode OR dev builds (version contains "-dev.")
+    ...((!app.isPackaged || app.getVersion().includes('-dev.')) ? [{
       label: 'Debug',
       submenu: [
         { role: 'reload' },
