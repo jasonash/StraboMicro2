@@ -1432,6 +1432,13 @@ ipcMain.handle('micrograph:export-composite', async (event, projectId, micrograp
           continue;
         }
 
+        // Skip children that haven't been located yet (no position data)
+        // This prevents loading ALL child images when only some have position data
+        if (!child.offsetInParent && child.xOffset === undefined) {
+          log.info(`[IPC] Skipping unlocated child ${child.id} (${child.name}) - no position data yet`);
+          continue;
+        }
+
         const childPath = path.join(folderPaths.images, child.imagePath);
         let childImage = sharp(childPath);
         const childMetadata = await childImage.metadata();
@@ -3172,6 +3179,13 @@ ipcMain.handle('composite:rebuild-all-thumbnails', async (event, projectId, proj
               continue;
             }
 
+            // Skip children that haven't been located yet (no position data)
+            // This prevents loading ALL child images when only some have position data
+            if (!child.offsetInParent && child.xOffset === undefined) {
+              log.info(`[IPC] Rebuild: Skipping unlocated child ${child.id} - no position data yet`);
+              continue;
+            }
+
             const childPath = path.join(folderPaths.images, child.imagePath);
 
             // Check if child image exists
@@ -3720,6 +3734,12 @@ async function generateCompositeBuffer(projectId, micrograph, projectData, folde
     try {
       // Skip point-located micrographs
       if (child.pointInParent) {
+        continue;
+      }
+
+      // Skip children that haven't been located yet (no position data)
+      // This prevents loading ALL child images when only some have position data
+      if (!child.offsetInParent && child.xOffset === undefined) {
         continue;
       }
 

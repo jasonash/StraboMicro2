@@ -49,6 +49,10 @@ async function generateCompositeBaseImage(micrograph, projectData, folderPaths) 
       // Skip hidden micrographs
       if (child.isMicroVisible === false) continue;
 
+      // Skip children that haven't been located yet (no position data)
+      // This prevents loading ALL child images when only some have position data
+      if (!child.offsetInParent && child.xOffset === undefined) continue;
+
       const childPath = path.join(folderPaths.images, child.imagePath);
 
       // Check if child image exists
