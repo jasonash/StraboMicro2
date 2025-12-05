@@ -900,7 +900,7 @@ export function ProjectTree() {
             </Box>
 
             {/* Button Column - hidden when micrograph needs setup */}
-            {!needsSetup && (
+            {!needsSetup ? (
               <Stack direction="column" spacing={0.5} sx={{ flexShrink: 0, width: 40 }}>
                 {/* Options Menu Button */}
                 <IconButton
@@ -945,6 +945,9 @@ export function ProjectTree() {
                   </IconButton>
                 )}
               </Stack>
+            ) : (
+              // Placeholder to maintain consistent width when buttons are hidden
+              <Box sx={{ flexShrink: 0, width: 40 }} />
             )}
           </Stack>
         </Box>
