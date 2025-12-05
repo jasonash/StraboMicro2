@@ -172,7 +172,8 @@ export function AssociatedFilesInfoDialog({
 
     setIsAdding(true);
     const newFiles: AssociatedFileData[] = [];
-    const errors: string[] = [];
+    const duplicateFiles: string[] = [];
+    const otherErrors: string[] = [];
 
     for (const filePath of selectedFilePaths) {
       // Extract filename from path
@@ -196,7 +197,12 @@ export function AssociatedFilesInfoDialog({
         newFiles.push(newFile);
       } catch (error: any) {
         console.error('Error copying file:', error);
-        errors.push(fileName);
+        // Check if it's a duplicate file error
+        if (error?.message?.includes('already exists')) {
+          duplicateFiles.push(fileName);
+        } else {
+          otherErrors.push(fileName);
+        }
       }
     }
 
@@ -212,9 +218,16 @@ export function AssociatedFilesInfoDialog({
     setNewFileNotes('');
     setIsAdding(false);
 
-    // Show errors if any
-    if (errors.length > 0) {
-      alert(`Failed to add ${errors.length} file(s): ${errors.join(', ')}`);
+    // Show specific error messages
+    const messages: string[] = [];
+    if (duplicateFiles.length > 0) {
+      messages.push(`Already added: ${duplicateFiles.join(', ')}`);
+    }
+    if (otherErrors.length > 0) {
+      messages.push(`Failed to add: ${otherErrors.join(', ')}`);
+    }
+    if (messages.length > 0) {
+      alert(messages.join('\n\n'));
     }
   };
 
