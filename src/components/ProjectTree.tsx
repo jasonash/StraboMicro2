@@ -793,7 +793,9 @@ export function ProjectTree() {
 
     // Check if micrograph needs setup (missing scale or location)
     const needsScale = !micrograph.scalePixelsPerCentimeter;
-    const needsLocation = !isReference && !micrograph.offsetInParent && micrograph.xOffset === undefined;
+    // Location can be set via offsetInParent (scaled rectangle) or pointInParent (approximate point)
+    const hasLocation = micrograph.offsetInParent || micrograph.pointInParent || micrograph.xOffset !== undefined;
+    const needsLocation = !isReference && !hasLocation;
     const needsSetup = needsScale || needsLocation;
 
     // Use percentage-based sizing for responsive thumbnails

@@ -133,7 +133,9 @@ export function findIncompleteMicrographs(project: ProjectMetadata): IncompleteM
       for (const micro of sample.micrographs ?? []) {
         const isReference = !micro.parentID;
         const needsScale = !micro.scalePixelsPerCentimeter;
-        const needsLocation = !isReference && !micro.offsetInParent && micro.xOffset === undefined;
+        // Location can be set via offsetInParent (scaled rectangle) or pointInParent (approximate point)
+        const hasLocation = micro.offsetInParent || micro.pointInParent || micro.xOffset !== undefined;
+        const needsLocation = !isReference && !hasLocation;
 
         if (needsScale || needsLocation) {
           incomplete.push({
