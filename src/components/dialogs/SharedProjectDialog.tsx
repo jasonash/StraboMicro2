@@ -32,6 +32,7 @@ import ShareIcon from '@mui/icons-material/Share';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import ErrorIcon from '@mui/icons-material/Error';
 import WarningIcon from '@mui/icons-material/Warning';
+import { useAuthStore } from '@/store/useAuthStore';
 
 interface DownloadProgress {
   phase: string;
@@ -91,6 +92,8 @@ export function SharedProjectDialog({
   const [importProgress, setImportProgress] = useState<ImportProgress | null>(null);
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  const { logout } = useAuthStore();
 
   // Set up progress listeners
   useEffect(() => {
@@ -158,6 +161,11 @@ export function SharedProjectDialog({
       const result = await window.api.server.downloadSharedProject(shareCode);
 
       if (!result.success) {
+        // If session expired, log out the user
+        if (result.sessionExpired) {
+          console.log('[SharedProjectDialog] Session expired, logging out...');
+          await logout();
+        }
         setErrorMessage(result.error || 'Download failed');
         setDialogState('error');
         return;
@@ -189,7 +197,7 @@ export function SharedProjectDialog({
       setErrorMessage(error instanceof Error ? error.message : 'Download failed');
       setDialogState('error');
     }
-  }, [shareCode]);
+  }, [shareCode, logout]);
 
   const startImport = useCallback(async (zipPath?: string) => {
     const pathToImport = zipPath || downloadedZipPath;
