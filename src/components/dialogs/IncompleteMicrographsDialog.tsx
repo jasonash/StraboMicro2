@@ -110,9 +110,7 @@ export function IncompleteMicrographsDialog({
         </Box>
 
         <Typography variant="body2" color="text.secondary">
-          <strong>To set scale:</strong> Right-click the micrograph in the tree and select "Set Scale"
-          <br />
-          <strong>To set location:</strong> Right-click the micrograph and select "Edit Location"
+          Click on each micrograph in the project tree to open the setup dialog.
         </Typography>
       </DialogContent>
       <DialogActions>
