@@ -791,6 +791,11 @@ export function ProjectTree() {
     const isHidden = micrograph.isMicroVisible === false;
     const parentId = micrograph.parentID || null;
 
+    // Check if micrograph needs setup (missing scale or location)
+    const needsScale = !micrograph.scalePixelsPerCentimeter;
+    const needsLocation = !isReference && !micrograph.offsetInParent && micrograph.xOffset === undefined;
+    const needsSetup = needsScale || needsLocation;
+
     // Use percentage-based sizing for responsive thumbnails
     // This allows thumbnails to shrink/grow with the sidebar width
     // No fixed pixel calculations needed - CSS will handle it automatically
@@ -887,58 +892,60 @@ export function ProjectTree() {
                     micrographId={micrograph.id}
                     projectId={project.id}
                     micrographName={micrograph.name || micrograph.imageFilename || 'Unnamed'}
-                    needsScale={!micrograph.scalePixelsPerCentimeter}
-                    needsLocation={!isReference && !micrograph.offsetInParent && micrograph.xOffset === undefined}
+                    needsScale={needsScale}
+                    needsLocation={needsLocation}
                   />
                 </Box>
               )}
             </Box>
 
-            {/* Button Column - fixed width to prevent overflow */}
-            <Stack direction="column" spacing={0.5} sx={{ flexShrink: 0, width: 40 }}>
-              {/* Options Menu Button */}
-              <IconButton
-                size="small"
-                onClick={(e) => {
-                  setMicrographOptionsAnchor({
-                    ...micrographOptionsAnchor,
-                    [micrograph.id]: e.currentTarget,
-                  });
-                }}
-                sx={{ p: 0.5 }}
-              >
-                <MoreVert fontSize="small" />
-              </IconButton>
-
-              {/* Add Menu Button */}
-              <IconButton
-                size="small"
-                onClick={(e) => {
-                  setMicrographAddAnchor({
-                    ...micrographAddAnchor,
-                    [micrograph.id]: e.currentTarget,
-                  });
-                }}
-                sx={{ p: 0.5 }}
-              >
-                <Add fontSize="small" />
-              </IconButton>
-
-              {/* Visibility Toggle Button - Only for associated micrographs */}
-              {!isReference && (
+            {/* Button Column - hidden when micrograph needs setup */}
+            {!needsSetup && (
+              <Stack direction="column" spacing={0.5} sx={{ flexShrink: 0, width: 40 }}>
+                {/* Options Menu Button */}
                 <IconButton
                   size="small"
-                  onClick={() => {
-                    // Toggle visibility: if currently hidden (false), make visible (true); otherwise hide (false)
-                    const newVisibility = micrograph.isMicroVisible === false ? true : false;
-                    updateMicrographMetadata(micrograph.id, { isMicroVisible: newVisibility });
+                  onClick={(e) => {
+                    setMicrographOptionsAnchor({
+                      ...micrographOptionsAnchor,
+                      [micrograph.id]: e.currentTarget,
+                    });
                   }}
                   sx={{ p: 0.5 }}
                 >
-                  {isHidden ? <VisibilityOff fontSize="small" /> : <Visibility fontSize="small" />}
+                  <MoreVert fontSize="small" />
                 </IconButton>
-              )}
-            </Stack>
+
+                {/* Add Menu Button */}
+                <IconButton
+                  size="small"
+                  onClick={(e) => {
+                    setMicrographAddAnchor({
+                      ...micrographAddAnchor,
+                      [micrograph.id]: e.currentTarget,
+                    });
+                  }}
+                  sx={{ p: 0.5 }}
+                >
+                  <Add fontSize="small" />
+                </IconButton>
+
+                {/* Visibility Toggle Button - Only for associated micrographs */}
+                {!isReference && (
+                  <IconButton
+                    size="small"
+                    onClick={() => {
+                      // Toggle visibility: if currently hidden (false), make visible (true); otherwise hide (false)
+                      const newVisibility = micrograph.isMicroVisible === false ? true : false;
+                      updateMicrographMetadata(micrograph.id, { isMicroVisible: newVisibility });
+                    }}
+                    sx={{ p: 0.5 }}
+                  >
+                    {isHidden ? <VisibilityOff fontSize="small" /> : <Visibility fontSize="small" />}
+                  </IconButton>
+                )}
+              </Stack>
+            )}
           </Stack>
         </Box>
 
