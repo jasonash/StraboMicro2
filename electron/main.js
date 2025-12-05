@@ -4622,11 +4622,12 @@ ipcMain.handle('server:check-connectivity', async () => {
  */
 ipcMain.handle('server:check-project-exists', async (event, projectId) => {
   try {
-    const tokens = await tokenService.getTokens();
-    if (!tokens?.accessToken) {
-      return { exists: false, error: 'Not authenticated. Please log in first.' };
+    // Get valid token with auto-refresh
+    const tokenResult = await tokenService.getValidAccessToken();
+    if (!tokenResult.success) {
+      return { exists: false, error: tokenResult.error, sessionExpired: tokenResult.sessionExpired };
     }
-    return serverUpload.checkProjectExists(projectId, tokens.accessToken);
+    return serverUpload.checkProjectExists(projectId, tokenResult.accessToken);
   } catch (error) {
     log.error('[ServerUpload] Check project exists failed:', error);
     return { exists: false, error: error.message };
@@ -4643,17 +4644,10 @@ ipcMain.handle('server:push-project', async (event, projectId, projectData, opti
 
     const { overwrite = false } = options || {};
 
-    // Get tokens for authentication
-    const tokens = await tokenService.getTokens();
-    if (!tokens?.accessToken) {
-      return { success: false, error: 'Not authenticated. Please log in first.' };
-    }
-
-    // Check if token is expired and try to refresh
-    if (tokenService.isTokenExpired(tokens)) {
-      log.info('[ServerUpload] Token expired, attempting refresh...');
-      // Token refresh would be handled by the renderer via auth store
-      return { success: false, error: 'Session expired. Please log in again.' };
+    // Get valid token with auto-refresh
+    const tokenResult = await tokenService.getValidAccessToken();
+    if (!tokenResult.success) {
+      return { success: false, error: tokenResult.error, sessionExpired: tokenResult.sessionExpired };
     }
 
     // Get project folder paths
@@ -4681,7 +4675,7 @@ ipcMain.handle('server:push-project', async (event, projectId, projectData, opti
       projectId,
       projectData,
       folderPaths,
-      accessToken: tokens.accessToken,
+      accessToken: tokenResult.accessToken,
       overwrite,
       progressCallback,
       pdfGenerator,
@@ -4987,15 +4981,14 @@ ipcMain.handle('smz:import', async (event, smzPath) => {
 ipcMain.handle('server:list-projects', async () => {
   log.info('[ServerDownload] Listing remote projects...');
 
-  // Get current auth token
-  const tokens = await tokenService.getTokens();
-
-  if (!tokens || !tokens.accessToken) {
-    log.warn('[ServerDownload] Not authenticated');
-    return { success: false, error: 'Not logged in. Please log in first.' };
+  // Get valid token with auto-refresh
+  const tokenResult = await tokenService.getValidAccessToken();
+  if (!tokenResult.success) {
+    log.warn('[ServerDownload] Not authenticated or session expired');
+    return { success: false, error: tokenResult.error, sessionExpired: tokenResult.sessionExpired };
   }
 
-  return serverDownload.listProjects(tokens.accessToken);
+  return serverDownload.listProjects(tokenResult.accessToken);
 });
 
 /**
@@ -5005,17 +4998,16 @@ ipcMain.handle('server:list-projects', async () => {
 ipcMain.handle('server:download-project', async (event, projectId) => {
   log.info('[ServerDownload] Downloading project:', projectId);
 
-  // Get current auth token
-  const tokens = await tokenService.getTokens();
-
-  if (!tokens || !tokens.accessToken) {
-    log.warn('[ServerDownload] Not authenticated');
-    return { success: false, error: 'Not logged in. Please log in first.' };
+  // Get valid token with auto-refresh
+  const tokenResult = await tokenService.getValidAccessToken();
+  if (!tokenResult.success) {
+    log.warn('[ServerDownload] Not authenticated or session expired');
+    return { success: false, error: tokenResult.error, sessionExpired: tokenResult.sessionExpired };
   }
 
   const result = await serverDownload.downloadProject(
     projectId,
-    tokens.accessToken,
+    tokenResult.accessToken,
     (progress) => {
       // Send progress updates to renderer
       if (mainWindow) {
@@ -5043,17 +5035,16 @@ ipcMain.handle('server:cleanup-download', async (event, zipPath) => {
 ipcMain.handle('server:download-shared-project', async (event, shareCode) => {
   log.info('[ServerDownload] Downloading shared project with code:', shareCode);
 
-  // Get current auth token
-  const tokens = await tokenService.getTokens();
-
-  if (!tokens || !tokens.accessToken) {
-    log.warn('[ServerDownload] Not authenticated');
-    return { success: false, error: 'Not logged in. Please log in first.' };
+  // Get valid token with auto-refresh
+  const tokenResult = await tokenService.getValidAccessToken();
+  if (!tokenResult.success) {
+    log.warn('[ServerDownload] Not authenticated or session expired');
+    return { success: false, error: tokenResult.error, sessionExpired: tokenResult.sessionExpired };
   }
 
   const result = await serverDownload.downloadSharedProject(
     shareCode,
-    tokens.accessToken,
+    tokenResult.accessToken,
     (progress) => {
       // Send progress updates to renderer
       if (mainWindow) {

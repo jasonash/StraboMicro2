@@ -41,6 +41,7 @@ import ErrorIcon from '@mui/icons-material/Error';
 import WarningIcon from '@mui/icons-material/Warning';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import StorageIcon from '@mui/icons-material/Storage';
+import { useAuthStore } from '@/store/useAuthStore';
 
 interface RemoteProject {
   id: string;
@@ -111,6 +112,8 @@ export function RemoteProjectsDialog({
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
+  const { logout } = useAuthStore();
+
   // Set up progress listeners
   useEffect(() => {
     if (!open) return;
@@ -172,6 +175,11 @@ export function RemoteProjectsDialog({
       const result = await window.api.server.listProjects();
 
       if (!result.success) {
+        // If session expired, log out the user
+        if (result.sessionExpired) {
+          console.log('[RemoteProjectsDialog] Session expired, logging out...');
+          await logout();
+        }
         setErrorMessage(result.error || 'Failed to load projects');
         setDialogState('error');
         return;
@@ -183,7 +191,7 @@ export function RemoteProjectsDialog({
       setErrorMessage(error instanceof Error ? error.message : 'Failed to load projects');
       setDialogState('error');
     }
-  }, []);
+  }, [logout]);
 
   const startDownload = useCallback(async (project: RemoteProject) => {
     if (!window.api?.server?.downloadProject) return;
@@ -196,6 +204,11 @@ export function RemoteProjectsDialog({
       const result = await window.api.server.downloadProject(project.id);
 
       if (!result.success) {
+        // If session expired, log out the user
+        if (result.sessionExpired) {
+          console.log('[RemoteProjectsDialog] Session expired, logging out...');
+          await logout();
+        }
         setErrorMessage(result.error || 'Download failed');
         setDialogState('error');
         return;
@@ -227,7 +240,7 @@ export function RemoteProjectsDialog({
       setErrorMessage(error instanceof Error ? error.message : 'Download failed');
       setDialogState('error');
     }
-  }, []);
+  }, [logout]);
 
   const startImport = useCallback(async (zipPath?: string) => {
     const pathToImport = zipPath || downloadedZipPath;

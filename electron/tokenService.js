@@ -195,6 +195,89 @@ const tokenService = {
     );
 
     log.info('[TokenService] Access token updated');
+  },
+
+  /**
+   * Get a valid access token, automatically refreshing if expired.
+   * This is the main method server handlers should use.
+   * @param {string} restServer - REST server URL for refresh endpoint
+   * @returns {object} { success, accessToken, user, error, sessionExpired }
+   *   - sessionExpired: true if refresh token is invalid (user needs to log in again)
+   */
+  async getValidAccessToken(restServer) {
+    const tokens = await this.getTokens();
+
+    // No tokens at all
+    if (!tokens || !tokens.accessToken) {
+      return {
+        success: false,
+        error: 'Not authenticated. Please log in first.',
+        sessionExpired: true,
+      };
+    }
+
+    // Token is still valid
+    if (!this.isTokenExpired(tokens)) {
+      return {
+        success: true,
+        accessToken: tokens.accessToken,
+        user: tokens.user,
+      };
+    }
+
+    // Token expired - try to refresh
+    log.info('[TokenService] Access token expired, attempting refresh...');
+
+    if (!tokens.refreshToken) {
+      log.warn('[TokenService] No refresh token available');
+      await this.clearTokens();
+      return {
+        success: false,
+        error: 'Session expired. Please log in again.',
+        sessionExpired: true,
+      };
+    }
+
+    try {
+      const baseUrl = restServer || 'https://strabospot.org';
+      const response = await fetch(`${baseUrl}/jwtauth/refresh`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ refresh_token: tokens.refreshToken }),
+      });
+
+      if (!response.ok) {
+        log.error('[TokenService] Token refresh failed - refresh token expired or invalid');
+        await this.clearTokens();
+        return {
+          success: false,
+          error: 'Session expired. Please log in again.',
+          sessionExpired: true,
+        };
+      }
+
+      const data = await response.json();
+
+      // Update the access token
+      await this.updateAccessToken(data.access_token, data.expires_in);
+
+      log.info('[TokenService] Token refreshed successfully');
+
+      return {
+        success: true,
+        accessToken: data.access_token,
+        user: tokens.user,
+      };
+    } catch (error) {
+      log.error('[TokenService] Token refresh error:', error);
+      return {
+        success: false,
+        error: error.message || 'Failed to refresh session',
+        sessionExpired: false, // Network error, not necessarily expired
+      };
+    }
   }
 };
 

@@ -525,11 +525,13 @@ interface Window {
         success: boolean;
         projects?: RemoteProject[];
         error?: string;
+        sessionExpired?: boolean;
       }>;
       downloadProject: (projectId: string) => Promise<{
         success: boolean;
         zipPath?: string;
         error?: string;
+        sessionExpired?: boolean;
       }>;
       cleanupDownload: (zipPath: string) => Promise<{
         success: boolean;
@@ -546,6 +548,7 @@ interface Window {
         success: boolean;
         zipPath?: string;
         error?: string;
+        sessionExpired?: boolean;
       }>;
     };
 
