@@ -53,6 +53,7 @@ export function AssociatedFilesInfoDialog({
   const updateSpotData = useAppStore((state) => state.updateSpotData);
 
   const [files, setFiles] = useState<AssociatedFileData[]>([]);
+  const [initialFiles, setInitialFiles] = useState<AssociatedFileData[]>([]);
   const [editingFile, setEditingFile] = useState<AssociatedFileData | null>(null);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
 
@@ -68,10 +69,14 @@ export function AssociatedFilesInfoDialog({
 
     if (micrographId) {
       const micrograph = findMicrographById(project, micrographId);
-      setFiles((micrograph?.associatedFiles || []) as AssociatedFileData[]);
+      const existingFiles = (micrograph?.associatedFiles || []) as AssociatedFileData[];
+      setFiles(existingFiles);
+      setInitialFiles(existingFiles);
     } else if (spotId) {
       const spot = findSpotById(project, spotId);
-      setFiles((spot?.associatedFiles || []) as AssociatedFileData[]);
+      const existingFiles = (spot?.associatedFiles || []) as AssociatedFileData[];
+      setFiles(existingFiles);
+      setInitialFiles(existingFiles);
     }
 
     // Reset new file form
@@ -220,6 +225,13 @@ export function AssociatedFilesInfoDialog({
     if (newFileType === 'Other' && newOtherType.trim() === '') return false;
     if (isAdding) return false;
     return true;
+  })();
+
+  // Check if any changes have been made (for Save button)
+  const hasChanges = (() => {
+    if (files.length !== initialFiles.length) return true;
+    // Deep compare files array
+    return JSON.stringify(files) !== JSON.stringify(initialFiles);
   })();
 
   const title = micrographId
@@ -433,7 +445,7 @@ export function AssociatedFilesInfoDialog({
       </DialogContent>
       <DialogActions>
         <Button onClick={handleCancel}>Cancel</Button>
-        <Button onClick={handleSave} variant="contained">
+        <Button onClick={handleSave} variant="contained" disabled={!hasChanges}>
           Save
         </Button>
       </DialogActions>
