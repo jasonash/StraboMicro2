@@ -18,6 +18,11 @@ import { RemoteProjectsDialog } from './components/dialogs/RemoteProjectsDialog'
 import { SharedProjectDialog } from './components/dialogs/SharedProjectDialog';
 import { CloseProjectDialog } from './components/dialogs/CloseProjectDialog';
 import { ProjectPrepDialog } from './components/dialogs/ProjectPrepDialog';
+import {
+  IncompleteMicrographsDialog,
+  findIncompleteMicrographs,
+  IncompleteMicrograph,
+} from './components/dialogs/IncompleteMicrographsDialog';
 import UpdateNotification from './components/UpdateNotification';
 import { useAppStore, useTemporalStore } from '@/store';
 import { useAuthStore } from '@/store/useAuthStore';
@@ -156,6 +161,9 @@ function App() {
   const [isExportSmzOpen, setIsExportSmzOpen] = useState(false);
   const [isPushToServerOpen, setIsPushToServerOpen] = useState(false);
   const [isVersionHistoryOpen, setIsVersionHistoryOpen] = useState(false);
+  const [isIncompleteMicrographsOpen, setIsIncompleteMicrographsOpen] = useState(false);
+  const [incompleteMicrographs, setIncompleteMicrographs] = useState<IncompleteMicrograph[]>([]);
+  const [incompleteActionName, setIncompleteActionName] = useState('export');
   const [isImportSmzOpen, setIsImportSmzOpen] = useState(false);
   const [importSmzFilePath, setImportSmzFilePath] = useState<string | null>(null);
   const [isRemoteProjectsOpen, setIsRemoteProjectsOpen] = useState(false);
@@ -818,6 +826,14 @@ function App() {
         alert('No project loaded. Please load a project first.');
         return;
       }
+      // Check for incomplete micrographs before allowing export
+      const incomplete = findIncompleteMicrographs(project);
+      if (incomplete.length > 0) {
+        setIncompleteMicrographs(incomplete);
+        setIncompleteActionName('export');
+        setIsIncompleteMicrographsOpen(true);
+        return;
+      }
       setIsExportSmzOpen(true);
     }));
 
@@ -825,6 +841,14 @@ function App() {
     unsubscribers.push(window.api?.onPushToServer(() => {
       if (!project) {
         alert('No project loaded. Please load a project first.');
+        return;
+      }
+      // Check for incomplete micrographs before allowing upload
+      const incomplete = findIncompleteMicrographs(project);
+      if (incomplete.length > 0) {
+        setIncompleteMicrographs(incomplete);
+        setIncompleteActionName('upload');
+        setIsIncompleteMicrographsOpen(true);
         return;
       }
       setIsPushToServerOpen(true);
@@ -975,6 +999,12 @@ function App() {
         onClose={() => setIsPushToServerOpen(false)}
         projectId={project?.id ?? null}
         projectData={project}
+      />
+      <IncompleteMicrographsDialog
+        open={isIncompleteMicrographsOpen}
+        onClose={() => setIsIncompleteMicrographsOpen(false)}
+        micrographs={incompleteMicrographs}
+        actionName={incompleteActionName}
       />
       <VersionHistoryDialog
         open={isVersionHistoryOpen}
