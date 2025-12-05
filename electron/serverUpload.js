@@ -9,6 +9,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const https = require('https');
 const log = require('electron-log');
 const { app } = require('electron');
 const FormData = require('form-data');
@@ -128,107 +129,158 @@ async function checkProjectExists(projectId, accessToken) {
  * @returns {Promise<{success: boolean, error?: string}>}
  */
 async function uploadZipFile(zipPath, projectId, overwrite, progressCallback) {
-  try {
-    log.info('[ServerUpload] Starting file upload:', zipPath);
-    log.info('[ServerUpload] Project ID:', projectId);
-    log.info('[ServerUpload] Overwrite:', overwrite);
+  return new Promise(async (resolve) => {
+    try {
+      log.info('[ServerUpload] Starting file upload:', zipPath);
+      log.info('[ServerUpload] Project ID:', projectId);
+      log.info('[ServerUpload] Overwrite:', overwrite);
 
-    // Get file size for progress tracking
-    const stats = await fs.promises.stat(zipPath);
-    const totalBytes = stats.size;
+      // Get file size for progress tracking
+      const stats = await fs.promises.stat(zipPath);
+      const totalBytes = stats.size;
 
-    log.info('[ServerUpload] File size:', totalBytes, 'bytes');
+      log.info('[ServerUpload] File size:', totalBytes, 'bytes');
 
-    // Read the file into a buffer (for reliable FormData handling)
-    const fileBuffer = await fs.promises.readFile(zipPath);
+      // Read the file into a buffer (for reliable FormData handling)
+      const fileBuffer = await fs.promises.readFile(zipPath);
 
-    // Create form data with all required fields
-    // Order matters for some servers - put text fields first, then file
-    const form = new FormData();
-    form.append('overwrite', overwrite ? 'yes' : 'no');
-    form.append('project_id', projectId);
-    form.append('microProject', fileBuffer, {
-      filename: 'temp.zip',
-      contentType: 'application/octet-stream',
-    });
-
-    // Build Basic Auth header for service credentials
-    const authString = `${SERVICE_CREDENTIALS.username}:${SERVICE_CREDENTIALS.password}`;
-    const authBase64 = Buffer.from(authString).toString('base64');
-
-    // Log what we're sending
-    log.info('[ServerUpload] Sending to:', ENDPOINTS.FILE_UPLOAD);
-    log.info('[ServerUpload] Form fields: overwrite=' + (overwrite ? 'yes' : 'no') + ', project_id=' + projectId);
-
-    // Track upload progress
-    let bytesSent = 0;
-    const formBuffer = form.getBuffer();
-    const formTotalBytes = formBuffer.length;
-
-    // Send progress updates periodically
-    const progressInterval = setInterval(() => {
-      progressCallback({
-        bytesUploaded: bytesSent,
-        bytesTotal: totalBytes,
-        percentage: Math.round((bytesSent / totalBytes) * 100),
+      // Create form data with all required fields
+      // Order matters for some servers - put text fields first, then file
+      const form = new FormData();
+      form.append('overwrite', overwrite ? 'yes' : 'no');
+      form.append('project_id', projectId);
+      form.append('microProject', fileBuffer, {
+        filename: 'temp.zip',
+        contentType: 'application/octet-stream',
       });
-    }, 100);
 
-    // Perform upload
-    const response = await fetch(ENDPOINTS.FILE_UPLOAD, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Basic ${authBase64}`,
-        ...form.getHeaders(),
-      },
-      body: formBuffer,
-    });
+      // Build Basic Auth header for service credentials
+      const authString = `${SERVICE_CREDENTIALS.username}:${SERVICE_CREDENTIALS.password}`;
+      const authBase64 = Buffer.from(authString).toString('base64');
 
-    clearInterval(progressInterval);
+      // Log what we're sending
+      log.info('[ServerUpload] Sending to:', ENDPOINTS.FILE_UPLOAD);
+      log.info('[ServerUpload] Form fields: overwrite=' + (overwrite ? 'yes' : 'no') + ', project_id=' + projectId);
 
-    // Final progress update
-    progressCallback({
-      bytesUploaded: totalBytes,
-      bytesTotal: totalBytes,
-      percentage: 100,
-    });
+      // Parse the upload URL
+      const uploadUrl = new URL(ENDPOINTS.FILE_UPLOAD);
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      log.error('[ServerUpload] Upload failed:', response.status, errorText);
+      // Set up the request options
+      const options = {
+        hostname: uploadUrl.hostname,
+        port: 443,
+        path: uploadUrl.pathname,
+        method: 'POST',
+        headers: {
+          'Authorization': `Basic ${authBase64}`,
+          ...form.getHeaders(),
+        },
+      };
 
-      // Try to parse error message from response
-      let errorMessage = `Upload failed: ${response.status}`;
-      try {
-        const errorJson = JSON.parse(errorText);
-        if (errorJson.message) {
-          errorMessage = errorJson.message;
+      // Track bytes sent for progress
+      let bytesSent = 0;
+
+      const req = https.request(options, (res) => {
+        let responseData = '';
+
+        res.on('data', (chunk) => {
+          responseData += chunk;
+        });
+
+        res.on('end', () => {
+          console.log('[ServerUpload] Upload response (status ' + res.statusCode + '):\n', responseData);
+
+          if (res.statusCode < 200 || res.statusCode >= 300) {
+            let errorMessage = `Upload failed: ${res.statusCode}`;
+            try {
+              const errorJson = JSON.parse(responseData);
+              if (errorJson.message) {
+                errorMessage = errorJson.message;
+              }
+            } catch {
+              if (responseData.includes('<html') || responseData.includes('<HTML')) {
+                errorMessage = 'Server error during upload. Please try again.';
+              } else if (responseData.length < 200) {
+                errorMessage = responseData;
+              }
+            }
+            resolve({ success: false, error: errorMessage });
+            return;
+          }
+
+          let result;
+          try {
+            result = JSON.parse(responseData);
+          } catch (parseError) {
+            resolve({ success: false, error: `Server returned invalid JSON: ${responseData.substring(0, 500)}` });
+            return;
+          }
+
+          if (result.status === 'error') {
+            resolve({ success: false, error: result.message || 'Upload failed' });
+            return;
+          }
+
+          resolve({ success: true });
+        });
+      });
+
+      req.on('error', (error) => {
+        console.error('[ServerUpload] Upload error:', error);
+        resolve({ success: false, error: error.message });
+      });
+
+      // Track upload progress by monitoring the socket
+      req.on('socket', (socket) => {
+        socket.on('data', () => {
+          // This is for response data, not upload
+        });
+      });
+
+      // Use form-data's pipe with progress tracking
+      // Get the form as a buffer and write in chunks to track progress
+      const formBuffer = form.getBuffer();
+      const chunkSize = 64 * 1024; // 64KB chunks
+      let offset = 0;
+
+      const writeNextChunk = () => {
+        while (offset < formBuffer.length) {
+          const end = Math.min(offset + chunkSize, formBuffer.length);
+          const chunk = formBuffer.slice(offset, end);
+          const canContinue = req.write(chunk);
+
+          bytesSent += chunk.length;
+
+          // Calculate progress based on form buffer (includes overhead) but display file size
+          const progressPercent = Math.min(100, Math.round((bytesSent / formBuffer.length) * 100));
+          const estimatedFileBytes = Math.min(totalBytes, Math.round((bytesSent / formBuffer.length) * totalBytes));
+
+          progressCallback({
+            bytesUploaded: estimatedFileBytes,
+            bytesTotal: totalBytes,
+            percentage: progressPercent,
+          });
+
+          offset = end;
+
+          if (!canContinue) {
+            // Wait for drain event before continuing
+            req.once('drain', writeNextChunk);
+            return;
+          }
         }
-      } catch {
-        // If not JSON, check if it's HTML and extract text
-        if (errorText.includes('<html') || errorText.includes('<HTML')) {
-          errorMessage = 'Server error during upload. Please try again.';
-        } else if (errorText.length < 200) {
-          errorMessage = errorText;
-        }
-      }
 
-      return { success: false, error: errorMessage };
+        // All data written, end the request
+        req.end();
+      };
+
+      writeNextChunk();
+
+    } catch (error) {
+      console.error('[ServerUpload] Upload error:', error);
+      resolve({ success: false, error: error.message });
     }
-
-    // Parse success response
-    const result = await response.json();
-    log.info('[ServerUpload] Upload response:', result);
-
-    if (result.status === 'error') {
-      return { success: false, error: result.message || 'Upload failed' };
-    }
-
-    return { success: true };
-  } catch (error) {
-    log.error('[ServerUpload] Upload error:', error.message);
-    return { success: false, error: error.message };
-  }
+  });
 }
 
 /**
@@ -266,7 +318,10 @@ async function populateDatabase(projectId, overwrite, accessToken) {
 
     if (!response.ok) {
       const errorText = await response.text();
-      log.error('[ServerUpload] DB population failed:', response.status, errorText);
+      log.error('[ServerUpload] DB population failed:', response.status);
+      log.error('[ServerUpload] Raw server response:', errorText);
+      console.error('[ServerUpload] DB population failed - Status:', response.status);
+      console.error('[ServerUpload] Raw server response:\n', errorText);
 
       if (response.status === 401) {
         return { success: false, error: 'Authentication expired. Please log in again.' };
@@ -287,8 +342,16 @@ async function populateDatabase(projectId, overwrite, accessToken) {
       return { success: false, error: errorMessage };
     }
 
-    const result = await response.json();
-    log.info('[ServerUpload] DB population response:', result);
+    // Get response as text first so we can log it
+    const responseText = await response.text();
+    console.log('[ServerUpload] DB population response (status ' + response.status + '):\n', responseText);
+
+    let result;
+    try {
+      result = JSON.parse(responseText);
+    } catch (parseError) {
+      return { success: false, error: `Server returned invalid JSON: ${responseText.substring(0, 500)}` };
+    }
 
     if (result.status === 'error') {
       return { success: false, error: result.message || 'Database sync failed' };
@@ -296,7 +359,7 @@ async function populateDatabase(projectId, overwrite, accessToken) {
 
     return { success: true };
   } catch (error) {
-    log.error('[ServerUpload] DB population error:', error.message);
+    console.error('[ServerUpload] DB population error:', error);
     return { success: false, error: error.message };
   }
 }

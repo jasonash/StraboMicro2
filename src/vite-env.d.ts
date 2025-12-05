@@ -97,6 +97,8 @@ interface Window {
     onOpenProject: (callback: () => void) => Unsubscribe;
     onEditProject: (callback: () => void) => Unsubscribe;
     onShowProjectDebug: (callback: () => void) => Unsubscribe;
+    onShowSerializedJson: (callback: () => void) => Unsubscribe;
+    getSerializedProjectJson: (projectData: unknown) => Promise<string>;
     onPreferences: (callback: () => void) => Unsubscribe;
     onTestOrientationStep: (callback: () => void) => Unsubscribe;
     onTestScaleBarStep: (callback: () => void) => Unsubscribe;

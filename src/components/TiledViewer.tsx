@@ -1389,9 +1389,9 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                             pointInParent: { x?: number; y?: number; X?: number; Y?: number };
                           }
                         ).pointInParent;
-                        // Handle both lowercase (new) and uppercase (legacy) property names
-                        const px = pointData.x ?? pointData.X ?? 0;
-                        const py = pointData.y ?? pointData.Y ?? 0;
+                        // Handle both uppercase (standard) and lowercase (legacy compatibility)
+                        const px = pointData.X ?? pointData.x ?? 0;
+                        const py = pointData.Y ?? pointData.y ?? 0;
                         return (
                           <Circle
                             key={`point-${childMicro.id}`}

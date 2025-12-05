@@ -810,6 +810,14 @@ function createWindow() {
           }
         },
         {
+          label: 'Show Serialized JSON (for upload)',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('menu:show-serialized-json');
+            }
+          }
+        },
+        {
           label: 'Test Orientation Step',
           accelerator: 'CmdOrCtrl+Shift+O',
           click: () => {
@@ -4379,8 +4387,9 @@ ipcMain.handle('project:export-json', async (event, projectData) => {
       return { success: false, canceled: true };
     }
 
-    // Sanitize project data for legacy compatibility
-    const legacyProjectData = sanitizeProjectForExport(projectData);
+    // Use the project serializer for proper formatting and numeric rounding
+    // This ensures consistency with SMZ export and server upload
+    const legacyProjectData = projectSerializer.serializeToLegacyFormat(projectData);
 
     // Write JSON file with pretty formatting
     const jsonContent = JSON.stringify(legacyProjectData, null, 2);
@@ -4395,6 +4404,19 @@ ipcMain.handle('project:export-json', async (event, projectData) => {
 
   } catch (error) {
     log.error('[ExportJSON] Export failed:', error);
+    throw error;
+  }
+});
+
+/**
+ * Get serialized project JSON (for debug preview before upload)
+ */
+ipcMain.handle('project:get-serialized-json', async (event, projectData) => {
+  try {
+    const legacyProjectData = projectSerializer.serializeToLegacyFormat(projectData);
+    return JSON.stringify(legacyProjectData, null, 2);
+  } catch (error) {
+    log.error('[GetSerializedJSON] Failed:', error);
     throw error;
   }
 });

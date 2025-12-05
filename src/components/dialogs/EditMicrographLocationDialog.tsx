@@ -421,7 +421,7 @@ export function EditMicrographLocationDialog({
       });
     } else {
       updateMicrographMetadata(micrographId, {
-        pointInParent: { x: pointX, y: pointY },
+        pointInParent: { X: pointX, Y: pointY },
         // Clear rectangle placement if switching methods
         offsetInParent: undefined,
         rotation: undefined,
