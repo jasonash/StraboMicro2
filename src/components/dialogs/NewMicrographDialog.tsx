@@ -1273,8 +1273,8 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
         ...(isAssociated &&
           formData.locationMethod === 'Locate by an approximate point' && {
             pointInParent: {
-              x: formData.offsetInParent.X,
-              y: formData.offsetInParent.Y,
+              X: formData.offsetInParent.X,
+              Y: formData.offsetInParent.Y,
             },
           }),
         instrument: {

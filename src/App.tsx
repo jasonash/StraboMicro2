@@ -4,6 +4,7 @@ import MainLayout from './components/MainLayout';
 import { NewProjectDialog } from './components/dialogs/NewProjectDialog';
 import { EditProjectDialog } from './components/dialogs/EditProjectDialog';
 import { ProjectDebugModal } from './components/dialogs/ProjectDebugModal';
+import { SerializedJsonModal } from './components/dialogs/SerializedJsonModal';
 import { PreferencesDialog } from './components/dialogs/PreferencesDialog';
 import { LoginDialog } from './components/dialogs/LoginDialog';
 import { AboutDialog } from './components/dialogs/AboutDialog';
@@ -147,6 +148,7 @@ function App() {
   const [isNewProjectDialogOpen, setIsNewProjectDialogOpen] = useState(false);
   const [isEditProjectDialogOpen, setIsEditProjectDialogOpen] = useState(false);
   const [isDebugModalOpen, setIsDebugModalOpen] = useState(false);
+  const [isSerializedJsonModalOpen, setIsSerializedJsonModalOpen] = useState(false);
   const [isPreferencesOpen, setIsPreferencesOpen] = useState(false);
   const [isLoginDialogOpen, setIsLoginDialogOpen] = useState(false);
   const [isExportAllImagesOpen, setIsExportAllImagesOpen] = useState(false);
@@ -370,6 +372,11 @@ function App() {
     // Debug: Show Project Structure
     unsubscribers.push(window.api.onShowProjectDebug(() => {
       setIsDebugModalOpen(true);
+    }));
+
+    // Debug: Show Serialized JSON
+    unsubscribers.push(window.api.onShowSerializedJson(() => {
+      setIsSerializedJsonModalOpen(true);
     }));
 
     // Preferences menu item
@@ -928,6 +935,10 @@ function App() {
       <ProjectDebugModal
         isOpen={isDebugModalOpen}
         onClose={() => setIsDebugModalOpen(false)}
+      />
+      <SerializedJsonModal
+        isOpen={isSerializedJsonModalOpen}
+        onClose={() => setIsSerializedJsonModalOpen(false)}
       />
       <PreferencesDialog
         isOpen={isPreferencesOpen}

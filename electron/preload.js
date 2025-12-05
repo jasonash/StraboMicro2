@@ -33,6 +33,12 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('menu:show-project-debug', callback);
     return () => ipcRenderer.removeListener('menu:show-project-debug', callback);
   },
+  onShowSerializedJson: (callback) => {
+    ipcRenderer.on('menu:show-serialized-json', callback);
+    return () => ipcRenderer.removeListener('menu:show-serialized-json', callback);
+  },
+  getSerializedProjectJson: (projectData) =>
+    ipcRenderer.invoke('project:get-serialized-json', projectData),
   onPreferences: (callback) => {
     ipcRenderer.on('menu:preferences', callback);
     return () => ipcRenderer.removeListener('menu:preferences', callback);
