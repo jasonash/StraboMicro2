@@ -173,12 +173,22 @@ export function ImageComparatorDialog({
 
     const loadThumbnails = async () => {
       const newThumbnails: Record<string, string> = {};
+      const folderPaths = await window.api?.getProjectFolderPaths(project.id);
+      if (!folderPaths) return;
 
       for (const micro of matchingMicrographs) {
         try {
-          const thumbPath = await window.api?.getCompositeThumbnailPath(project.id, micro.id);
-          if (thumbPath) {
-            newThumbnails[micro.id] = `file://${thumbPath}`;
+          // Build path: images/<micrograph-id> (no extension)
+          const imagePath = `${folderPaths.images}/${micro.id}`;
+
+          // Check if cached, get hash
+          const cacheInfo = await window.api?.checkImageCache(imagePath);
+          if (cacheInfo?.cached && cacheInfo.hash) {
+            // Load thumbnail using hash
+            const thumbDataUrl = await window.api?.loadThumbnail(cacheInfo.hash);
+            if (thumbDataUrl) {
+              newThumbnails[micro.id] = thumbDataUrl;
+            }
           }
         } catch (err) {
           console.error(`Failed to load thumbnail for ${micro.id}:`, err);
@@ -231,12 +241,12 @@ export function ImageComparatorDialog({
     setIsLoading(true);
 
     try {
-      // Get image paths
+      // Get image paths (no extension - images stored as micrograph ID)
       const folderPaths = await window.api?.getProjectFolderPaths(project.id);
       if (!folderPaths) throw new Error('Could not get project folder paths');
 
-      const leftPath = `${folderPaths.images}/${sourceMicrographId}.jpg`;
-      const rightPath = `${folderPaths.images}/${selectedMicrographId}.jpg`;
+      const leftPath = `${folderPaths.images}/${sourceMicrographId}`;
+      const rightPath = `${folderPaths.images}/${selectedMicrographId}`;
 
       // Load metadata and tiles for both images
       const [leftResult, rightResult] = await Promise.all([
