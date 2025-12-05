@@ -18,6 +18,7 @@ import {
   MenuItem,
   Popover,
   Slider,
+  Tooltip,
 } from '@mui/material';
 import {
   ExpandMore,
@@ -32,6 +33,7 @@ import {
   VisibilityOff,
   DragIndicator,
   Close as CloseIcon,
+  Warning as WarningIcon,
 } from '@mui/icons-material';
 import {
   DndContext,
@@ -76,6 +78,10 @@ interface MicrographThumbnailProps {
   micrographName: string;
   width?: number;
   height?: number;
+  /** Whether this micrograph needs scale to be set */
+  needsScale?: boolean;
+  /** Whether this micrograph needs location to be set (associated micrographs only) */
+  needsLocation?: boolean;
 }
 
 function MicrographThumbnail({
@@ -84,7 +90,10 @@ function MicrographThumbnail({
   micrographName,
   width = 40,
   height = 40,
+  needsScale = false,
+  needsLocation = false,
 }: MicrographThumbnailProps) {
+  const needsSetup = needsScale || needsLocation;
   const [thumbnailDataUrl, setThumbnailDataUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -180,18 +189,51 @@ function MicrographThumbnail({
     );
   }
 
-  return (
-    <Avatar
-      variant="rounded"
-      src={thumbnailDataUrl}
-      alt={micrographName}
-      sx={{
-        width,
-        height,
-        objectFit: 'cover',
-      }}
-    />
+  // Build tooltip message for incomplete setup
+  const tooltipMessage = needsSetup
+    ? [
+        needsScale && 'Scale not set',
+        needsLocation && 'Location not set',
+      ].filter(Boolean).join(' • ')
+    : '';
+
+  const thumbnail = (
+    <Box sx={{ position: 'relative', width: '100%', height: '100%' }}>
+      <Avatar
+        variant="rounded"
+        src={thumbnailDataUrl}
+        alt={micrographName}
+        sx={{
+          width: '100%',
+          height: '100%',
+          objectFit: 'cover',
+        }}
+      />
+      {needsSetup && (
+        <Tooltip title={tooltipMessage} placement="top" arrow>
+          <Box
+            sx={{
+              position: 'absolute',
+              top: 6,
+              right: 6,
+              backgroundColor: 'warning.main',
+              borderRadius: '50%',
+              width: 26,
+              height: 26,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              boxShadow: 2,
+            }}
+          >
+            <WarningIcon sx={{ fontSize: 18, color: 'warning.contrastText' }} />
+          </Box>
+        </Tooltip>
+      )}
+    </Box>
   );
+
+  return thumbnail;
 }
 
 /**
@@ -845,6 +887,8 @@ export function ProjectTree() {
                     micrographId={micrograph.id}
                     projectId={project.id}
                     micrographName={micrograph.name || micrograph.imageFilename || 'Unnamed'}
+                    needsScale={!micrograph.scalePixelsPerCentimeter}
+                    needsLocation={!isReference && !micrograph.offsetInParent && micrograph.xOffset === undefined}
                   />
                 </Box>
               )}
