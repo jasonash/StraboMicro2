@@ -419,7 +419,7 @@ export function AssociatedFilesInfoDialog({
               fullWidth
               multiline
               rows={3}
-              label="Notes (for all files)"
+              label="Notes (added to each file)"
               value={newFileNotes}
               onChange={(e) => setNewFileNotes(e.target.value)}
               placeholder="Add notes about these files..."
