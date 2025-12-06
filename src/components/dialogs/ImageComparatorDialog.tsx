@@ -162,34 +162,37 @@ export function ImageComparatorDialog({
     setMatchingMicrographs(matches);
   }, [open, project, sourceMicrographId, sourceMicrograph]);
 
-  // Load thumbnails for matching micrographs
+  // Load thumbnails for matching micrographs (use medium resolution for speed)
   useEffect(() => {
     if (!open || !project || matchingMicrographs.length === 0) return;
 
     const loadThumbnails = async () => {
-      const newThumbnails: Record<string, string> = {};
       const folderPaths = await window.api?.getProjectFolderPaths(project.id);
       if (!folderPaths) return;
 
-      for (const micro of matchingMicrographs) {
+      // Load thumbnails in parallel for speed
+      const thumbnailPromises = matchingMicrographs.map(async (micro) => {
         try {
-          // Build path: images/<micrograph-id> (no extension)
           const imagePath = `${folderPaths.images}/${micro.id}`;
-
-          // Check if cached, get hash
           const cacheInfo = await window.api?.checkImageCache(imagePath);
           if (cacheInfo?.cached && cacheInfo.hash) {
-            // Load thumbnail using hash
-            const thumbDataUrl = await window.api?.loadThumbnail(cacheInfo.hash);
-            if (thumbDataUrl) {
-              newThumbnails[micro.id] = thumbDataUrl;
-            }
+            // Use medium resolution (faster than thumbnail which may need generation)
+            const dataUrl = await window.api?.loadThumbnail(cacheInfo.hash);
+            return { id: micro.id, dataUrl };
           }
         } catch (err) {
           console.error(`Failed to load thumbnail for ${micro.id}:`, err);
         }
-      }
+        return null;
+      });
 
+      const results = await Promise.all(thumbnailPromises);
+      const newThumbnails: Record<string, string> = {};
+      for (const result of results) {
+        if (result?.dataUrl) {
+          newThumbnails[result.id] = result.dataUrl;
+        }
+      }
       setThumbnails(newThumbnails);
     };
 
@@ -227,7 +230,7 @@ export function ImageComparatorDialog({
     return () => window.removeEventListener('resize', updateSize);
   }, [stage]);
 
-  // Load image data and thumbnails for comparison
+  // Load image data and thumbnails for comparison (progressive loading like TiledViewer)
   const loadComparisonImages = useCallback(async () => {
     if (!project || !sourceMicrographId || !selectedMicrographId) return;
 
@@ -241,67 +244,82 @@ export function ImageComparatorDialog({
       const leftPath = `${folderPaths.images}/${sourceMicrographId}`;
       const rightPath = `${folderPaths.images}/${selectedMicrographId}`;
 
-      // Load metadata and tiles for both images
+      // Step 1: Load metadata for both images (fast)
       const [leftResult, rightResult] = await Promise.all([
         window.api?.loadImageWithTiles(leftPath),
         window.api?.loadImageWithTiles(rightPath),
       ]);
 
-      if (leftResult) {
-        setLeftImageData({
-          hash: leftResult.hash,
-          width: leftResult.metadata.width,
-          height: leftResult.metadata.height,
-          tilesX: leftResult.metadata.tilesX,
-          tilesY: leftResult.metadata.tilesY,
-          imagePath: leftPath,
-        });
+      if (!leftResult || !rightResult) {
+        throw new Error('Failed to load image metadata');
+      }
 
-        // Load thumbnail
-        const thumbDataUrl = await window.api?.loadThumbnail(leftResult.hash);
-        if (thumbDataUrl) {
+      // Set image data immediately
+      setLeftImageData({
+        hash: leftResult.hash,
+        width: leftResult.metadata.width,
+        height: leftResult.metadata.height,
+        tilesX: leftResult.metadata.tilesX,
+        tilesY: leftResult.metadata.tilesY,
+        imagePath: leftPath,
+      });
+
+      setRightImageData({
+        hash: rightResult.hash,
+        width: rightResult.metadata.width,
+        height: rightResult.metadata.height,
+        tilesX: rightResult.metadata.tilesX,
+        tilesY: rightResult.metadata.tilesY,
+        imagePath: rightPath,
+      });
+
+      // Step 2: Load thumbnails in parallel and wait for them to decode
+      const [leftThumbDataUrl, rightThumbDataUrl] = await Promise.all([
+        window.api?.loadThumbnail(leftResult.hash),
+        window.api?.loadThumbnail(rightResult.hash),
+      ]);
+
+      // Create Image objects and wait for them to load
+      const loadImage = (dataUrl: string): Promise<HTMLImageElement> => {
+        return new Promise((resolve, reject) => {
           const img = new Image();
-          img.onload = () => setLeftThumbnail(img);
-          img.src = thumbDataUrl;
-        }
-      }
-
-      if (rightResult) {
-        setRightImageData({
-          hash: rightResult.hash,
-          width: rightResult.metadata.width,
-          height: rightResult.metadata.height,
-          tilesX: rightResult.metadata.tilesX,
-          tilesY: rightResult.metadata.tilesY,
-          imagePath: rightPath,
+          img.onload = () => resolve(img);
+          img.onerror = reject;
+          img.src = dataUrl;
         });
+      };
 
-        // Load thumbnail
-        const thumbDataUrl = await window.api?.loadThumbnail(rightResult.hash);
-        if (thumbDataUrl) {
-          const img = new Image();
-          img.onload = () => setRightThumbnail(img);
-          img.src = thumbDataUrl;
+      const [leftImg, rightImg] = await Promise.all([
+        leftThumbDataUrl ? loadImage(leftThumbDataUrl) : Promise.resolve(null),
+        rightThumbDataUrl ? loadImage(rightThumbDataUrl) : Promise.resolve(null),
+      ]);
+
+      if (leftImg) setLeftThumbnail(leftImg);
+      if (rightImg) setRightThumbnail(rightImg);
+
+      // Step 3: Fit to screen and clear loading state
+      // Container should be sized by now since we're in compare stage
+      // Use a small delay to ensure container is rendered
+      setTimeout(() => {
+        if (containerRef.current) {
+          const containerWidth = containerRef.current.clientWidth;
+          const containerHeight = containerRef.current.clientHeight;
+          const scaleX = containerWidth / leftResult.metadata.width;
+          const scaleY = containerHeight / leftResult.metadata.height;
+          const newZoom = Math.min(scaleX, scaleY) * 0.9;
+
+          setZoom(newZoom);
+          setPosition({
+            x: (containerWidth - leftResult.metadata.width * newZoom) / 2,
+            y: (containerHeight - leftResult.metadata.height * newZoom) / 2,
+          });
         }
-      }
+        // Clear loading AFTER thumbnails are ready - tiles will load progressively
+        setIsLoading(false);
+      }, 50);
 
-      // Fit both images to screen
-      if (leftResult && containerRef.current) {
-        const containerWidth = containerRef.current.clientWidth;
-        const containerHeight = containerRef.current.clientHeight;
-        const scaleX = containerWidth / leftResult.metadata.width;
-        const scaleY = containerHeight / leftResult.metadata.height;
-        const newZoom = Math.min(scaleX, scaleY) * 0.9;
-
-        setZoom(newZoom);
-        setPosition({
-          x: (containerWidth - leftResult.metadata.width * newZoom) / 2,
-          y: (containerHeight - leftResult.metadata.height * newZoom) / 2,
-        });
-      }
     } catch (err) {
       console.error('Failed to load comparison images:', err);
-    } finally {
       setIsLoading(false);
     }
   }, [project, sourceMicrographId, selectedMicrographId]);
