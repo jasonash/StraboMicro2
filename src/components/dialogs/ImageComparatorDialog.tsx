@@ -23,10 +23,8 @@ import {
   ListItemText,
   ListItemAvatar,
   Avatar,
-  Slider,
   IconButton,
   Tooltip,
-  Stack,
   CircularProgress,
 } from '@mui/material';
 import CompareIcon from '@mui/icons-material/Compare';
@@ -103,9 +101,6 @@ export function ImageComparatorDialog({
   const [leftThumbnail, setLeftThumbnail] = useState<HTMLImageElement | null>(null);
   const [rightThumbnail, setRightThumbnail] = useState<HTMLImageElement | null>(null);
 
-  // Opacity controls
-  const [leftOpacity, setLeftOpacity] = useState(1);
-  const [rightOpacity, setRightOpacity] = useState(1);
 
   // Loading state
   const [isLoading, setIsLoading] = useState(false);
@@ -207,8 +202,6 @@ export function ImageComparatorDialog({
       setStage('select');
       setSelectedMicrographId(null);
       setScrubberPosition(0.5);
-      setLeftOpacity(1);
-      setRightOpacity(1);
       setLeftTiles(new Map());
       setRightTiles(new Map());
       setLeftThumbnail(null);
@@ -470,8 +463,7 @@ export function ImageComparatorDialog({
   const renderTiles = (
     tiles: Map<string, TileInfo>,
     thumbnail: HTMLImageElement | null,
-    imageData: ImageData | null,
-    opacity: number
+    imageData: ImageData | null
   ) => {
     if (!imageData) return null;
 
@@ -485,7 +477,6 @@ export function ImageComparatorDialog({
             image={tile.imageObj}
             x={tile.x * TILE_SIZE}
             y={tile.y * TILE_SIZE}
-            opacity={opacity}
           />
         );
       });
@@ -500,7 +491,6 @@ export function ImageComparatorDialog({
           y={0}
           width={imageData.width}
           height={imageData.height}
-          opacity={opacity}
         />
       );
     }
@@ -608,39 +598,9 @@ export function ImageComparatorDialog({
         borderBottom: 1,
         borderColor: 'divider',
       }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-          <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <CompareIcon /> Image Comparator
-          </Typography>
-
-          {/* Opacity controls */}
-          <Stack direction="row" spacing={2} alignItems="center" sx={{ ml: 4 }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 150 }}>
-              <Typography variant="caption" sx={{ whiteSpace: 'nowrap' }}>Left:</Typography>
-              <Slider
-                size="small"
-                value={leftOpacity}
-                onChange={(_, v) => setLeftOpacity(v as number)}
-                min={0}
-                max={1}
-                step={0.1}
-                sx={{ width: 80 }}
-              />
-            </Box>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 150 }}>
-              <Typography variant="caption" sx={{ whiteSpace: 'nowrap' }}>Right:</Typography>
-              <Slider
-                size="small"
-                value={rightOpacity}
-                onChange={(_, v) => setRightOpacity(v as number)}
-                min={0}
-                max={1}
-                step={0.1}
-                sx={{ width: 80 }}
-              />
-            </Box>
-          </Stack>
-        </Box>
+        <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <CompareIcon /> Image Comparator
+        </Typography>
 
         <Tooltip title="Close">
           <IconButton onClick={onClose}>
@@ -689,7 +649,7 @@ export function ImageComparatorDialog({
               }}
             >
               <Group x={position.x} y={position.y} scaleX={zoom} scaleY={zoom}>
-                {renderTiles(leftTiles, leftThumbnail, leftImageData, leftOpacity)}
+                {renderTiles(leftTiles, leftThumbnail, leftImageData)}
               </Group>
             </Layer>
 
@@ -700,7 +660,7 @@ export function ImageComparatorDialog({
               }}
             >
               <Group x={position.x} y={position.y} scaleX={zoom} scaleY={zoom}>
-                {renderTiles(rightTiles, rightThumbnail, rightImageData, rightOpacity)}
+                {renderTiles(rightTiles, rightThumbnail, rightImageData)}
               </Group>
             </Layer>
 
