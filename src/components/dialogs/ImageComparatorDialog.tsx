@@ -273,10 +273,10 @@ export function ImageComparatorDialog({
         imagePath: rightPath,
       });
 
-      // Step 2: Load thumbnails in parallel and wait for them to decode
+      // Step 2: Load medium resolution images in parallel (2048px - much better than 512px thumbnail)
       const [leftThumbDataUrl, rightThumbDataUrl] = await Promise.all([
-        window.api?.loadThumbnail(leftResult.hash),
-        window.api?.loadThumbnail(rightResult.hash),
+        window.api?.loadMedium(leftResult.hash),
+        window.api?.loadMedium(rightResult.hash),
       ]);
 
       // Create Image objects and wait for them to load
@@ -478,6 +478,7 @@ export function ImageComparatorDialog({
   }, []);
 
   // Render tile images for one side
+  // Shows medium-res thumbnail as base, with tiles rendered on top as they load
   const renderTiles = (
     tiles: Map<string, TileInfo>,
     thumbnail: HTMLImageElement | null,
@@ -485,25 +486,13 @@ export function ImageComparatorDialog({
   ) => {
     if (!imageData) return null;
 
-    // If we have tiles, render them
-    if (tiles.size > 0) {
-      return Array.from(tiles.values()).map((tile) => {
-        if (!tile.imageObj) return null;
-        return (
-          <KonvaImage
-            key={`tile_${tile.x}_${tile.y}`}
-            image={tile.imageObj}
-            x={tile.x * TILE_SIZE}
-            y={tile.y * TILE_SIZE}
-          />
-        );
-      });
-    }
+    const elements: React.ReactNode[] = [];
 
-    // Otherwise render thumbnail scaled up
+    // Always render thumbnail first as base layer (medium res - 2048px)
     if (thumbnail) {
-      return (
+      elements.push(
         <KonvaImage
+          key="thumbnail"
           image={thumbnail}
           x={0}
           y={0}
@@ -513,7 +502,23 @@ export function ImageComparatorDialog({
       );
     }
 
-    return null;
+    // Render tiles on top as they load (full resolution)
+    if (tiles.size > 0) {
+      for (const tile of tiles.values()) {
+        if (tile.imageObj) {
+          elements.push(
+            <KonvaImage
+              key={`tile_${tile.x}_${tile.y}`}
+              image={tile.imageObj}
+              x={tile.x * TILE_SIZE}
+              y={tile.y * TILE_SIZE}
+            />
+          );
+        }
+      }
+    }
+
+    return elements;
   };
 
   // Selection stage UI
