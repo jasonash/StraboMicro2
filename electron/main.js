@@ -776,7 +776,7 @@ function createWindow() {
         },
         { type: 'separator' },
         {
-          label: 'View Log File...',
+          label: 'Report Error...',
           click: () => {
             if (mainWindow) {
               mainWindow.webContents.send('help:show-logs');
