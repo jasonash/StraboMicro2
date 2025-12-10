@@ -109,9 +109,9 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-  # macOS x64 (Intel) - runs on macos-13 (Intel runner)
+  # macOS x64 (Intel) - runs on macos-15-intel runner
   build-macos-x64:
-    runs-on: macos-13
+    runs-on: macos-15-large
 
     steps:
       - name: Checkout code
