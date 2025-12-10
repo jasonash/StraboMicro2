@@ -17,6 +17,7 @@ import {
   Stack,
   Chip,
   Link,
+  styled,
 } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import EditIcon from '@mui/icons-material/Edit';
@@ -56,6 +57,31 @@ interface MetadataSummaryProps {
 interface AccordionState {
   [key: string]: boolean;
 }
+
+// Styled Accordion with left border accent when expanded
+const StyledAccordion = styled(Accordion)(({ theme }) => ({
+  '&:before': { display: 'none' },
+  borderLeft: '3px solid transparent',
+  transition: 'border-color 0.2s ease',
+  '&.Mui-expanded': {
+    borderLeftColor: theme.palette.primary.main,
+  },
+}));
+
+// Styled AccordionSummary with background tint when expanded
+const StyledAccordionSummary = styled(AccordionSummary)(({ theme }) => ({
+  minHeight: 48,
+  transition: 'background-color 0.2s ease',
+  '& .MuiAccordionSummary-content': {
+    alignItems: 'center',
+    gap: 8,
+  },
+  '.Mui-expanded &, &.Mui-expanded': {
+    backgroundColor: theme.palette.mode === 'dark'
+      ? 'rgba(228, 76, 101, 0.12)'  // Primary color with transparency for dark mode
+      : 'rgba(228, 76, 101, 0.08)', // Lighter for light mode
+  },
+}));
 
 // Helper function to capitalize first letter
 const ucFirst = (str: string | null | undefined): string => {
@@ -672,19 +698,12 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
   return (
     <Stack spacing={0.5}>
       {/* Project Metadata */}
-      <Accordion
+      <StyledAccordion
         expanded={expanded['project'] || false}
         onChange={handleExpand('project')}
         disableGutters
-        sx={{ '&:before': { display: 'none' } }}
       >
-        <AccordionSummary
-          expandIcon={<ExpandMoreIcon />}
-          sx={{
-            minHeight: 48,
-            '& .MuiAccordionSummary-content': { alignItems: 'center', gap: 1 },
-          }}
-        >
+        <StyledAccordionSummary expandIcon={<ExpandMoreIcon />}>
           <Typography variant="subtitle2">Project Metadata</Typography>
           <Box sx={{ flexGrow: 1 }} />
           <Box
@@ -703,7 +722,7 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
           >
             <EditIcon fontSize="small" />
           </Box>
-        </AccordionSummary>
+        </StyledAccordionSummary>
         <AccordionDetails sx={{ py: 1 }}>
           <Stack spacing={0.5}>
             {project?.name && (
@@ -725,23 +744,17 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
             )}
           </Stack>
         </AccordionDetails>
-      </Accordion>
+      </StyledAccordion>
 
       {/* Dataset Metadata */}
       {dataset && (
-        <Accordion
+        <StyledAccordion
           expanded={expanded['dataset'] || false}
           onChange={handleExpand('dataset')}
           disableGutters
           sx={{ '&:before': { display: 'none' } }}
         >
-          <AccordionSummary
-            expandIcon={<ExpandMoreIcon />}
-            sx={{
-              minHeight: 48,
-              '& .MuiAccordionSummary-content': { alignItems: 'center', gap: 1 },
-            }}
-          >
+          <StyledAccordionSummary expandIcon={<ExpandMoreIcon />}>
             <Typography variant="subtitle2">Dataset Metadata</Typography>
             <Box sx={{ flexGrow: 1 }} />
             <Box
@@ -760,7 +773,7 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
             >
               <EditIcon fontSize="small" />
             </Box>
-          </AccordionSummary>
+          </StyledAccordionSummary>
           <AccordionDetails sx={{ py: 1 }}>
             <Stack spacing={0.5}>
               {dataset.name && (
@@ -776,24 +789,18 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
               )}
             </Stack>
           </AccordionDetails>
-        </Accordion>
+        </StyledAccordion>
       )}
 
       {/* Sample Metadata */}
       {sample && (
-        <Accordion
+        <StyledAccordion
           expanded={expanded['sample'] || false}
           onChange={handleExpand('sample')}
           disableGutters
           sx={{ '&:before': { display: 'none' } }}
         >
-          <AccordionSummary
-            expandIcon={<ExpandMoreIcon />}
-            sx={{
-              minHeight: 48,
-              '& .MuiAccordionSummary-content': { alignItems: 'center', gap: 1 },
-            }}
-          >
+          <StyledAccordionSummary expandIcon={<ExpandMoreIcon />}>
             <Typography variant="subtitle2">Sample Metadata</Typography>
             <Box sx={{ flexGrow: 1 }} />
             <Box
@@ -812,7 +819,7 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
             >
               <EditIcon fontSize="small" />
             </Box>
-          </AccordionSummary>
+          </StyledAccordionSummary>
           <AccordionDetails sx={{ py: 1 }}>
             <Stack spacing={0.5}>
               {/* Linked to StraboField indicator */}
@@ -894,23 +901,16 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
               )}
             </Stack>
           </AccordionDetails>
-        </Accordion>
+        </StyledAccordion>
       )}
 
       {/* Micrograph/Spot Metadata */}
-      <Accordion
+      <StyledAccordion
         expanded={expanded['metadata'] || false}
         onChange={handleExpand('metadata')}
         disableGutters
-        sx={{ '&:before': { display: 'none' } }}
       >
-        <AccordionSummary
-          expandIcon={<ExpandMoreIcon />}
-          sx={{
-            minHeight: 48,
-            '& .MuiAccordionSummary-content': { alignItems: 'center', gap: 1 },
-          }}
-        >
+        <StyledAccordionSummary expandIcon={<ExpandMoreIcon />}>
           <Typography variant="subtitle2">
             {micrographId ? 'Micrograph' : 'Spot'} Metadata
           </Typography>
@@ -931,7 +931,7 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
           >
             <EditIcon fontSize="small" />
           </Box>
-        </AccordionSummary>
+        </StyledAccordionSummary>
         <AccordionDetails sx={{ py: 1 }}>
           <Stack spacing={0.5}>
             {data.name && (
@@ -974,23 +974,17 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
             )}
           </Stack>
         </AccordionDetails>
-      </Accordion>
+      </StyledAccordion>
 
       {/* Mineralogy/Lithology */}
       {(hasData(data.mineralogy) || hasData(data.lithologyInfo)) && (
-        <Accordion
+        <StyledAccordion
           expanded={expanded['mineralogy'] || false}
           onChange={handleExpand('mineralogy')}
           disableGutters
           sx={{ '&:before': { display: 'none' } }}
         >
-          <AccordionSummary
-            expandIcon={<ExpandMoreIcon />}
-            sx={{
-              minHeight: 48,
-              '& .MuiAccordionSummary-content': { alignItems: 'center', gap: 1 },
-            }}
-          >
+          <StyledAccordionSummary expandIcon={<ExpandMoreIcon />}>
             <Typography variant="subtitle2">Mineralogy/Lithology</Typography>
             {data.mineralogy?.minerals && data.mineralogy.minerals.length > 0 && (
               <Chip label={`${data.mineralogy.minerals.length} minerals`} size="small" />
@@ -1012,7 +1006,7 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
             >
               <EditIcon fontSize="small" />
             </Box>
-          </AccordionSummary>
+          </StyledAccordionSummary>
           <AccordionDetails sx={{ py: 1 }}>
             <Stack spacing={1}>
               {data.mineralogy?.minerals && data.mineralogy.minerals.length > 0 && (
@@ -1044,26 +1038,20 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
               )}
             </Stack>
           </AccordionDetails>
-        </Accordion>
+        </StyledAccordion>
       )}
 
       {/* Grain Info */}
       {(hasData(data.grainInfo?.grainSizeInfo) ||
         hasData(data.grainInfo?.grainShapeInfo) ||
         hasData(data.grainInfo?.grainOrientationInfo)) && (
-        <Accordion
+        <StyledAccordion
           expanded={expanded['grain'] || false}
           onChange={handleExpand('grain')}
           disableGutters
           sx={{ '&:before': { display: 'none' } }}
         >
-          <AccordionSummary
-            expandIcon={<ExpandMoreIcon />}
-            sx={{
-              minHeight: 48,
-              '& .MuiAccordionSummary-content': { alignItems: 'center', gap: 1 },
-            }}
-          >
+          <StyledAccordionSummary expandIcon={<ExpandMoreIcon />}>
             <Typography variant="subtitle2">Grain Info</Typography>
             <Chip
               label={`${
@@ -1090,7 +1078,7 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
             >
               <EditIcon fontSize="small" />
             </Box>
-          </AccordionSummary>
+          </StyledAccordionSummary>
           <AccordionDetails sx={{ py: 1 }}>
             <Stack spacing={1.5}>
               {/* Grain Size */}
@@ -1142,24 +1130,18 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
               )}
             </Stack>
           </AccordionDetails>
-        </Accordion>
+        </StyledAccordion>
       )}
 
       {/* Fabric Info */}
       {hasData(data.fabricInfo?.fabrics) && (
-        <Accordion
+        <StyledAccordion
           expanded={expanded['fabric'] || false}
           onChange={handleExpand('fabric')}
           disableGutters
           sx={{ '&:before': { display: 'none' } }}
         >
-          <AccordionSummary
-            expandIcon={<ExpandMoreIcon />}
-            sx={{
-              minHeight: 48,
-              '& .MuiAccordionSummary-content': { alignItems: 'center', gap: 1 },
-            }}
-          >
+          <StyledAccordionSummary expandIcon={<ExpandMoreIcon />}>
             <Typography variant="subtitle2">Fabric Info</Typography>
             <Chip label={`${getItemCount(data.fabricInfo?.fabrics)} fabrics`} size="small" />
             <Box sx={{ flexGrow: 1 }} />
@@ -1179,7 +1161,7 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
             >
               <EditIcon fontSize="small" />
             </Box>
-          </AccordionSummary>
+          </StyledAccordionSummary>
           <AccordionDetails sx={{ py: 1 }}>
             <Stack spacing={1.5}>
               {data.fabricInfo?.fabrics?.map((fabric: FabricType, index: number) => {
@@ -1197,24 +1179,18 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
               })}
             </Stack>
           </AccordionDetails>
-        </Accordion>
+        </StyledAccordion>
       )}
 
       {/* Clastic Deformation Bands */}
       {hasData(data.clasticDeformationBandInfo?.bands) && (
-        <Accordion
+        <StyledAccordion
           expanded={expanded['clastic'] || false}
           onChange={handleExpand('clastic')}
           disableGutters
           sx={{ '&:before': { display: 'none' } }}
         >
-          <AccordionSummary
-            expandIcon={<ExpandMoreIcon />}
-            sx={{
-              minHeight: 48,
-              '& .MuiAccordionSummary-content': { alignItems: 'center', gap: 1 },
-            }}
-          >
+          <StyledAccordionSummary expandIcon={<ExpandMoreIcon />}>
             <Typography variant="subtitle2">Clastic Deformation Bands</Typography>
             <Chip label={`${getItemCount(data.clasticDeformationBandInfo?.bands)} bands`} size="small" />
             <Box sx={{ flexGrow: 1 }} />
@@ -1234,7 +1210,7 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
             >
               <EditIcon fontSize="small" />
             </Box>
-          </AccordionSummary>
+          </StyledAccordionSummary>
           <AccordionDetails sx={{ py: 1 }}>
             <Stack spacing={0.5}>
               {data.clasticDeformationBandInfo?.bands?.map((band: ClasticDeformationBandType, index: number) => (
@@ -1244,24 +1220,18 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
               ))}
             </Stack>
           </AccordionDetails>
-        </Accordion>
+        </StyledAccordion>
       )}
 
       {/* Faults and Shear Zones */}
       {hasData(data.faultsShearZonesInfo?.faultsShearZones) && (
-        <Accordion
+        <StyledAccordion
           expanded={expanded['faultsShearZones'] || false}
           onChange={handleExpand('faultsShearZones')}
           disableGutters
           sx={{ '&:before': { display: 'none' } }}
         >
-          <AccordionSummary
-            expandIcon={<ExpandMoreIcon />}
-            sx={{
-              minHeight: 48,
-              '& .MuiAccordionSummary-content': { alignItems: 'center', gap: 1 },
-            }}
-          >
+          <StyledAccordionSummary expandIcon={<ExpandMoreIcon />}>
             <Typography variant="subtitle2">Faults and Shear Zones</Typography>
             <Chip label={`${getItemCount(data.faultsShearZonesInfo?.faultsShearZones)} items`} size="small" />
             <Box sx={{ flexGrow: 1 }} />
@@ -1281,7 +1251,7 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
             >
               <EditIcon fontSize="small" />
             </Box>
-          </AccordionSummary>
+          </StyledAccordionSummary>
           <AccordionDetails sx={{ py: 1 }}>
             <Stack spacing={0.5}>
               {data.faultsShearZonesInfo?.faultsShearZones?.map((fault: FaultsShearZonesType, index: number) => (
@@ -1291,24 +1261,18 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
               ))}
             </Stack>
           </AccordionDetails>
-        </Accordion>
+        </StyledAccordion>
       )}
 
       {/* Extinction Microstructures */}
       {hasData(data.extinctionMicrostructureInfo?.extinctionMicrostructures) && (
-        <Accordion
+        <StyledAccordion
           expanded={expanded['extinctionMicrostructures'] || false}
           onChange={handleExpand('extinctionMicrostructures')}
           disableGutters
           sx={{ '&:before': { display: 'none' } }}
         >
-          <AccordionSummary
-            expandIcon={<ExpandMoreIcon />}
-            sx={{
-              minHeight: 48,
-              '& .MuiAccordionSummary-content': { alignItems: 'center', gap: 1 },
-            }}
-          >
+          <StyledAccordionSummary expandIcon={<ExpandMoreIcon />}>
             <Typography variant="subtitle2">Extinction Microstructures</Typography>
             <Chip label={`${getItemCount(data.extinctionMicrostructureInfo?.extinctionMicrostructures)} items`} size="small" />
             <Box sx={{ flexGrow: 1 }} />
@@ -1328,7 +1292,7 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
             >
               <EditIcon fontSize="small" />
             </Box>
-          </AccordionSummary>
+          </StyledAccordionSummary>
           <AccordionDetails sx={{ py: 1 }}>
             <Stack spacing={0.5}>
               {data.extinctionMicrostructureInfo?.extinctionMicrostructures?.map((ext: ExtinctionMicrostructureType, index: number) => (
@@ -1338,24 +1302,18 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
               ))}
             </Stack>
           </AccordionDetails>
-        </Accordion>
+        </StyledAccordion>
       )}
 
       {/* Grain Boundary/Contact Info */}
       {hasData(data.grainBoundaryInfo?.boundaries) && (
-        <Accordion
+        <StyledAccordion
           expanded={expanded['grainBoundary'] || false}
           onChange={handleExpand('grainBoundary')}
           disableGutters
           sx={{ '&:before': { display: 'none' } }}
         >
-          <AccordionSummary
-            expandIcon={<ExpandMoreIcon />}
-            sx={{
-              minHeight: 48,
-              '& .MuiAccordionSummary-content': { alignItems: 'center', gap: 1 },
-            }}
-          >
+          <StyledAccordionSummary expandIcon={<ExpandMoreIcon />}>
             <Typography variant="subtitle2">Grain Boundary/Contact Info</Typography>
             <Chip label={`${getItemCount(data.grainBoundaryInfo?.boundaries)} items`} size="small" />
             <Box sx={{ flexGrow: 1 }} />
@@ -1375,7 +1333,7 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
             >
               <EditIcon fontSize="small" />
             </Box>
-          </AccordionSummary>
+          </StyledAccordionSummary>
           <AccordionDetails sx={{ py: 1 }}>
             <Stack spacing={0.5}>
               {data.grainBoundaryInfo?.boundaries?.map((boundary: GrainBoundaryType, index: number) => (
@@ -1385,24 +1343,18 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
               ))}
             </Stack>
           </AccordionDetails>
-        </Accordion>
+        </StyledAccordion>
       )}
 
       {/* Intragrain Info */}
       {hasData(data.intraGrainInfo?.grains) && (
-        <Accordion
+        <StyledAccordion
           expanded={expanded['intraGrain'] || false}
           onChange={handleExpand('intraGrain')}
           disableGutters
           sx={{ '&:before': { display: 'none' } }}
         >
-          <AccordionSummary
-            expandIcon={<ExpandMoreIcon />}
-            sx={{
-              minHeight: 48,
-              '& .MuiAccordionSummary-content': { alignItems: 'center', gap: 1 },
-            }}
-          >
+          <StyledAccordionSummary expandIcon={<ExpandMoreIcon />}>
             <Typography variant="subtitle2">Intragrain (Single Grain) Info</Typography>
             <Chip label={`${getItemCount(data.intraGrainInfo?.grains)} items`} size="small" />
             <Box sx={{ flexGrow: 1 }} />
@@ -1422,7 +1374,7 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
             >
               <EditIcon fontSize="small" />
             </Box>
-          </AccordionSummary>
+          </StyledAccordionSummary>
           <AccordionDetails sx={{ py: 1 }}>
             <Stack spacing={0.5}>
               {data.intraGrainInfo?.grains?.map((grain: IntraGrainType, index: number) => (
@@ -1432,24 +1384,18 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
               ))}
             </Stack>
           </AccordionDetails>
-        </Accordion>
+        </StyledAccordion>
       )}
 
       {/* Vein Info */}
       {hasData(data.veinInfo?.veins) && (
-        <Accordion
+        <StyledAccordion
           expanded={expanded['vein'] || false}
           onChange={handleExpand('vein')}
           disableGutters
           sx={{ '&:before': { display: 'none' } }}
         >
-          <AccordionSummary
-            expandIcon={<ExpandMoreIcon />}
-            sx={{
-              minHeight: 48,
-              '& .MuiAccordionSummary-content': { alignItems: 'center', gap: 1 },
-            }}
-          >
+          <StyledAccordionSummary expandIcon={<ExpandMoreIcon />}>
             <Typography variant="subtitle2">Vein Info</Typography>
             <Chip label={`${getItemCount(data.veinInfo?.veins)} veins`} size="small" />
             <Box sx={{ flexGrow: 1 }} />
@@ -1469,7 +1415,7 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
             >
               <EditIcon fontSize="small" />
             </Box>
-          </AccordionSummary>
+          </StyledAccordionSummary>
           <AccordionDetails sx={{ py: 1 }}>
             <Stack spacing={0.5}>
               {data.veinInfo?.veins?.map((vein: VeinType, index: number) => (
@@ -1479,24 +1425,18 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
               ))}
             </Stack>
           </AccordionDetails>
-        </Accordion>
+        </StyledAccordion>
       )}
 
       {/* Pseudotachylyte Info */}
       {hasData(data.pseudotachylyteInfo?.pseudotachylytes) && (
-        <Accordion
+        <StyledAccordion
           expanded={expanded['pseudotachylyte'] || false}
           onChange={handleExpand('pseudotachylyte')}
           disableGutters
           sx={{ '&:before': { display: 'none' } }}
         >
-          <AccordionSummary
-            expandIcon={<ExpandMoreIcon />}
-            sx={{
-              minHeight: 48,
-              '& .MuiAccordionSummary-content': { alignItems: 'center', gap: 1 },
-            }}
-          >
+          <StyledAccordionSummary expandIcon={<ExpandMoreIcon />}>
             <Typography variant="subtitle2">Pseudotachylyte Info</Typography>
             <Chip label={`${getItemCount(data.pseudotachylyteInfo?.pseudotachylytes)} items`} size="small" />
             <Box sx={{ flexGrow: 1 }} />
@@ -1516,7 +1456,7 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
             >
               <EditIcon fontSize="small" />
             </Box>
-          </AccordionSummary>
+          </StyledAccordionSummary>
           <AccordionDetails sx={{ py: 1 }}>
             <Stack spacing={1.5}>
               {data.pseudotachylyteInfo?.pseudotachylytes?.map((pseudo: PseudotachylyteType, index: number) => {
@@ -1541,24 +1481,18 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
               })}
             </Stack>
           </AccordionDetails>
-        </Accordion>
+        </StyledAccordion>
       )}
 
       {/* Fold Info */}
       {hasData(data.foldInfo?.folds) && (
-        <Accordion
+        <StyledAccordion
           expanded={expanded['fold'] || false}
           onChange={handleExpand('fold')}
           disableGutters
           sx={{ '&:before': { display: 'none' } }}
         >
-          <AccordionSummary
-            expandIcon={<ExpandMoreIcon />}
-            sx={{
-              minHeight: 48,
-              '& .MuiAccordionSummary-content': { alignItems: 'center', gap: 1 },
-            }}
-          >
+          <StyledAccordionSummary expandIcon={<ExpandMoreIcon />}>
             <Typography variant="subtitle2">Fold Info</Typography>
             <Chip label={`${getItemCount(data.foldInfo?.folds)} folds`} size="small" />
             <Box sx={{ flexGrow: 1 }} />
@@ -1578,7 +1512,7 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
             >
               <EditIcon fontSize="small" />
             </Box>
-          </AccordionSummary>
+          </StyledAccordionSummary>
           <AccordionDetails sx={{ py: 1 }}>
             <Stack spacing={1.5}>
               {data.foldInfo?.folds?.map((fold: FoldType, index: number) => {
@@ -1596,24 +1530,18 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
               })}
             </Stack>
           </AccordionDetails>
-        </Accordion>
+        </StyledAccordion>
       )}
 
       {/* Fracture Info */}
       {hasData(data.fractureInfo?.fractures) && (
-        <Accordion
+        <StyledAccordion
           expanded={expanded['fracture'] || false}
           onChange={handleExpand('fracture')}
           disableGutters
           sx={{ '&:before': { display: 'none' } }}
         >
-          <AccordionSummary
-            expandIcon={<ExpandMoreIcon />}
-            sx={{
-              minHeight: 48,
-              '& .MuiAccordionSummary-content': { alignItems: 'center', gap: 1 },
-            }}
-          >
+          <StyledAccordionSummary expandIcon={<ExpandMoreIcon />}>
             <Typography variant="subtitle2">Fracture Info</Typography>
             <Chip label={`${getItemCount(data.fractureInfo?.fractures)} fractures`} size="small" />
             <Box sx={{ flexGrow: 1 }} />
@@ -1633,7 +1561,7 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
             >
               <EditIcon fontSize="small" />
             </Box>
-          </AccordionSummary>
+          </StyledAccordionSummary>
           <AccordionDetails sx={{ py: 1 }}>
             <Stack spacing={0.5}>
               {data.fractureInfo?.fractures?.map((fracture: FractureType, index: number) => (
@@ -1643,23 +1571,16 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
               ))}
             </Stack>
           </AccordionDetails>
-        </Accordion>
+        </StyledAccordion>
       )}
 
       {/* Notes */}
-      <Accordion
+      <StyledAccordion
         expanded={expanded['notes'] || false}
         onChange={handleExpand('notes')}
         disableGutters
-        sx={{ '&:before': { display: 'none' } }}
       >
-        <AccordionSummary
-          expandIcon={<ExpandMoreIcon />}
-          sx={{
-            minHeight: 48,
-            '& .MuiAccordionSummary-content': { alignItems: 'center', gap: 1 },
-          }}
-        >
+        <StyledAccordionSummary expandIcon={<ExpandMoreIcon />}>
           <Typography variant="subtitle2">Notes</Typography>
           <Box sx={{ flexGrow: 1 }} />
           <Box
@@ -1678,7 +1599,7 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
           >
             <EditIcon fontSize="small" />
           </Box>
-        </AccordionSummary>
+        </StyledAccordionSummary>
         <AccordionDetails sx={{ py: 1 }}>
           {data.notes ? (
             <Typography variant="body2">{data.notes}</Typography>
@@ -1688,22 +1609,15 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
             </Typography>
           )}
         </AccordionDetails>
-      </Accordion>
+      </StyledAccordion>
 
       {/* Associated Files */}
-      <Accordion
+      <StyledAccordion
         expanded={expanded['files'] || false}
         onChange={handleExpand('files')}
         disableGutters
-        sx={{ '&:before': { display: 'none' } }}
       >
-        <AccordionSummary
-          expandIcon={<ExpandMoreIcon />}
-          sx={{
-            minHeight: 48,
-            '& .MuiAccordionSummary-content': { alignItems: 'center', gap: 1 },
-          }}
-        >
+        <StyledAccordionSummary expandIcon={<ExpandMoreIcon />}>
           <Typography variant="subtitle2">Associated Files</Typography>
           {hasData(data.associatedFiles) && (
             <Chip label={`${getItemCount(data.associatedFiles)} files`} size="small" />
@@ -1725,7 +1639,7 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
           >
             <EditIcon fontSize="small" />
           </Box>
-        </AccordionSummary>
+        </StyledAccordionSummary>
         <AccordionDetails sx={{ py: 1 }}>
           {hasData(data.associatedFiles) ? (
             <Stack spacing={0.5}>
@@ -1769,23 +1683,17 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
             </Typography>
           )}
         </AccordionDetails>
-      </Accordion>
+      </StyledAccordion>
 
       {/* Links */}
       {hasData(data.links) && (
-        <Accordion
+        <StyledAccordion
           expanded={expanded['links'] || false}
           onChange={handleExpand('links')}
           disableGutters
           sx={{ '&:before': { display: 'none' } }}
         >
-          <AccordionSummary
-            expandIcon={<ExpandMoreIcon />}
-            sx={{
-              minHeight: 48,
-              '& .MuiAccordionSummary-content': { alignItems: 'center', gap: 1 },
-            }}
-          >
+          <StyledAccordionSummary expandIcon={<ExpandMoreIcon />}>
             <Typography variant="subtitle2">Links</Typography>
             <Chip label={`${getItemCount(data.links)} links`} size="small" />
             <Box sx={{ flexGrow: 1 }} />
@@ -1805,7 +1713,7 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
             >
               <EditIcon fontSize="small" />
             </Box>
-          </AccordionSummary>
+          </StyledAccordionSummary>
           <AccordionDetails sx={{ py: 1 }}>
             <Stack spacing={0.5}>
               {data.links?.map((link, index) => (
@@ -1818,7 +1726,7 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
               ))}
             </Stack>
           </AccordionDetails>
-        </Accordion>
+        </StyledAccordion>
       )}
 
       {/* Show empty state if no metadata exists */}
