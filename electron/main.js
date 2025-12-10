@@ -53,6 +53,7 @@ const svgExport = require('./svgExport');
 const smzImport = require('./smzImport');
 const serverDownload = require('./serverDownload');
 const autoUpdaterModule = require('./autoUpdater');
+const logService = require('./logService');
 
 // Handle EPIPE errors at process level (prevents crash on broken stdout pipe)
 process.stdout.on('error', (err) => {
@@ -757,6 +758,15 @@ function createWindow() {
             }
           }
         },
+        { type: 'separator' },
+        {
+          label: 'View Log File...',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('help:show-logs');
+            }
+          }
+        },
       ],
     },
     // Debug menu shown in development mode OR dev builds (version contains "-dev.")
@@ -1044,6 +1054,9 @@ let buildMenuFn = null;
 
 app.whenReady().then(async () => {
   const isDev = !app.isPackaged;
+
+  // Initialize log service (persistent logging to file)
+  logService.init();
 
   // Show splash screen immediately
   createSplashWindow();
@@ -5054,4 +5067,31 @@ ipcMain.handle('server:download-shared-project', async (event, shareCode) => {
   );
 
   return result;
+});
+
+// =============================================================================
+// LOG SERVICE IPC HANDLERS
+// =============================================================================
+
+/**
+ * Read the current log file contents
+ */
+ipcMain.handle('logs:read', async () => {
+  return logService.readLog();
+});
+
+/**
+ * Get the path to the log file
+ */
+ipcMain.handle('logs:get-path', async () => {
+  return logService.getLogPath();
+});
+
+/**
+ * Write a log entry from the renderer process
+ * Used to capture console.error() messages
+ */
+ipcMain.handle('logs:write', async (event, level, message, source) => {
+  logService.fromRenderer(level, message, source);
+  return { success: true };
 });

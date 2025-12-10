@@ -434,7 +434,15 @@ interface Window {
 
     // Help menu events
     onShowAbout: (callback: () => void) => Unsubscribe;
+    onShowLogs: (callback: () => void) => Unsubscribe;
     onCheckForUpdates: (callback: () => void) => Unsubscribe;
+
+    // Log service (persistent logging to file)
+    logs: {
+      read: () => Promise<string>;
+      getPath: () => Promise<string>;
+      write: (level: string, message: string, source?: string) => Promise<{ success: boolean }>;
+    };
 
     // Auto-updater
     autoUpdater: {
