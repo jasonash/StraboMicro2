@@ -8,6 +8,7 @@ import { SerializedJsonModal } from './components/dialogs/SerializedJsonModal';
 import { PreferencesDialog } from './components/dialogs/PreferencesDialog';
 import { LoginDialog } from './components/dialogs/LoginDialog';
 import { AboutDialog } from './components/dialogs/AboutDialog';
+import { LogViewerModal } from './components/dialogs/LogViewerModal';
 import { ExportAllImagesDialog } from './components/dialogs/ExportAllImagesDialog';
 import { ExportPDFDialog } from './components/dialogs/ExportPDFDialog';
 import { ExportSmzDialog } from './components/dialogs/ExportSmzDialog';
@@ -170,6 +171,7 @@ function App() {
   const [isSharedProjectOpen, setIsSharedProjectOpen] = useState(false);
   const [isCloseProjectOpen, setIsCloseProjectOpen] = useState(false);
   const [isAboutOpen, setIsAboutOpen] = useState(false);
+  const [isLogViewerOpen, setIsLogViewerOpen] = useState(false);
   const [isManualUpdateCheck, setIsManualUpdateCheck] = useState(false);
   const closeProject = useAppStore(state => state.closeProject);
   const project = useAppStore(state => state.project);
@@ -683,6 +685,11 @@ function App() {
       setIsAboutOpen(true);
     }));
 
+    // Help: View Log File menu item
+    unsubscribers.push(window.api.onShowLogs(() => {
+      setIsLogViewerOpen(true);
+    }));
+
     // Help: Check for Updates menu item
     unsubscribers.push(window.api.onCheckForUpdates(() => {
       setIsManualUpdateCheck(true);
@@ -975,6 +982,10 @@ function App() {
       <AboutDialog
         isOpen={isAboutOpen}
         onClose={() => setIsAboutOpen(false)}
+      />
+      <LogViewerModal
+        open={isLogViewerOpen}
+        onClose={() => setIsLogViewerOpen(false)}
       />
       <ExportAllImagesDialog
         open={isExportAllImagesOpen}

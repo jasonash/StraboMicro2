@@ -298,6 +298,18 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('help:show-about', handler);
     return () => ipcRenderer.removeListener('help:show-about', handler);
   },
+  onShowLogs: (callback) => {
+    const handler = () => callback();
+    ipcRenderer.on('help:show-logs', handler);
+    return () => ipcRenderer.removeListener('help:show-logs', handler);
+  },
+
+  // Log service (persistent logging to file)
+  logs: {
+    read: () => ipcRenderer.invoke('logs:read'),
+    getPath: () => ipcRenderer.invoke('logs:get-path'),
+    write: (level, message, source) => ipcRenderer.invoke('logs:write', level, message, source),
+  },
 
   // Auto-updater
   autoUpdater: {
