@@ -752,8 +752,24 @@ function createWindow() {
         { type: 'separator' },
         {
           label: 'Check for Updates...',
-          click: () => {
-            if (mainWindow) {
+          click: async () => {
+            const version = app.getVersion();
+            const isDevBuild = version.includes('-dev.');
+            if (isDevBuild) {
+              // Show dialog for dev builds explaining updates are manual
+              const { dialog } = require('electron');
+              dialog.showMessageBox(mainWindow, {
+                type: 'info',
+                title: 'Dev Build',
+                message: 'Automatic updates are disabled for dev builds.',
+                detail: `You are running version ${version}.\n\nTo get the latest dev build, download it from:\nhttps://github.com/jasonash/StraboMicro2/releases/tag/dev-latest`,
+                buttons: ['OK', 'Open Downloads Page']
+              }).then(({ response }) => {
+                if (response === 1) {
+                  shell.openExternal('https://github.com/jasonash/StraboMicro2/releases/tag/dev-latest');
+                }
+              });
+            } else if (mainWindow) {
               mainWindow.webContents.send('update:check-manual');
             }
           }
@@ -944,14 +960,19 @@ function createWindow() {
       }
       mainWindow.show();
 
-      // Initialize auto-updater (only in production)
-      if (app.isPackaged) {
+      // Initialize auto-updater (only in production releases, not dev builds)
+      // Dev builds have version like "2.0.0-beta.8-dev.123" - skip auto-update for these
+      const appVersion = app.getVersion();
+      const isDevBuild = appVersion.includes('-dev.');
+      if (app.isPackaged && !isDevBuild) {
         autoUpdaterModule.initAutoUpdater(mainWindow);
         // Check for updates after a short delay (let the app settle first)
         setTimeout(() => {
           log.info('[AutoUpdater] Checking for updates on startup...');
           autoUpdaterModule.checkForUpdates(true); // silent = true
         }, 5000);
+      } else if (isDevBuild) {
+        log.info('[AutoUpdater] Skipping auto-update for dev build:', appVersion);
       }
 
       // If window should be maximized, do it after showing
