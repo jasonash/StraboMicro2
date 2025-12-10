@@ -685,7 +685,7 @@ function App() {
       setIsAboutOpen(true);
     }));
 
-    // Help: View Log File menu item
+    // Help: Report Error menu item
     unsubscribers.push(window.api.onShowLogs(() => {
       setIsLogViewerOpen(true);
     }));
