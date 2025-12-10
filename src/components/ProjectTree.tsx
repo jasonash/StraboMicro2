@@ -425,7 +425,7 @@ export function ProjectTree() {
     return saved ? new Set(JSON.parse(saved)) : new Set();
   });
 
-  // Menu states
+  // Menu states - Options (three-dot) menus
   const [projectMenuAnchor, setProjectMenuAnchor] = useState<HTMLElement | null>(null);
   const [datasetMenuAnchor, setDatasetMenuAnchor] = useState<{ [key: string]: HTMLElement | null }>(
     {}
@@ -436,6 +436,15 @@ export function ProjectTree() {
   const [micrographOptionsAnchor, setMicrographOptionsAnchor] = useState<{
     [key: string]: HTMLElement | null;
   }>({});
+
+  // Menu states - Add (plus) menus
+  const [projectAddAnchor, setProjectAddAnchor] = useState<HTMLElement | null>(null);
+  const [datasetAddAnchor, setDatasetAddAnchor] = useState<{ [key: string]: HTMLElement | null }>(
+    {}
+  );
+  const [sampleAddAnchor, setSampleAddAnchor] = useState<{ [key: string]: HTMLElement | null }>(
+    {}
+  );
   const [micrographAddAnchor, setMicrographAddAnchor] = useState<{
     [key: string]: HTMLElement | null;
   }>({});
@@ -1146,6 +1155,17 @@ export function ProjectTree() {
           >
             <MoreVert fontSize="small" />
           </IconButton>
+
+          {/* Sample Add Menu Button */}
+          <IconButton
+            size="small"
+            onClick={(e) => {
+              setSampleAddAnchor({ ...sampleAddAnchor, [sample.id]: e.currentTarget });
+            }}
+            sx={{ p: 0.5 }}
+          >
+            <Add fontSize="small" />
+          </IconButton>
         </Stack>
 
         <Collapse in={isExpanded}>
@@ -1183,30 +1203,12 @@ export function ProjectTree() {
           </Box>
         </Collapse>
 
-        {/* Sample Menu */}
+        {/* Sample Options Menu */}
         <Menu
           anchorEl={sampleMenuAnchor[sample.id]}
           open={Boolean(sampleMenuAnchor[sample.id])}
           onClose={() => setSampleMenuAnchor({ ...sampleMenuAnchor, [sample.id]: null })}
         >
-          <MenuItem
-            onClick={() => {
-              handleAddReferenceMicrograph(sample.id);
-              setSampleMenuAnchor({ ...sampleMenuAnchor, [sample.id]: null });
-            }}
-          >
-            Add New Reference Micrograph
-          </MenuItem>
-          <MenuItem
-            onClick={() => {
-              setBatchImportSampleId(sample.id);
-              setBatchImportParentMicrographId(null);
-              setShowBatchImport(true);
-              setSampleMenuAnchor({ ...sampleMenuAnchor, [sample.id]: null });
-            }}
-          >
-            Batch Import Reference Micrographs
-          </MenuItem>
           <MenuItem
             onClick={() => {
               setEditingSample(sample);
@@ -1224,6 +1226,32 @@ export function ProjectTree() {
             }}
           >
             Delete Sample
+          </MenuItem>
+        </Menu>
+
+        {/* Sample Add Menu */}
+        <Menu
+          anchorEl={sampleAddAnchor[sample.id]}
+          open={Boolean(sampleAddAnchor[sample.id])}
+          onClose={() => setSampleAddAnchor({ ...sampleAddAnchor, [sample.id]: null })}
+        >
+          <MenuItem
+            onClick={() => {
+              handleAddReferenceMicrograph(sample.id);
+              setSampleAddAnchor({ ...sampleAddAnchor, [sample.id]: null });
+            }}
+          >
+            Add New Reference Micrograph
+          </MenuItem>
+          <MenuItem
+            onClick={() => {
+              setBatchImportSampleId(sample.id);
+              setBatchImportParentMicrographId(null);
+              setShowBatchImport(true);
+              setSampleAddAnchor({ ...sampleAddAnchor, [sample.id]: null });
+            }}
+          >
+            Batch Import Reference Micrographs
           </MenuItem>
         </Menu>
       </Box>
@@ -1264,6 +1292,17 @@ export function ProjectTree() {
           >
             <MoreVert fontSize="small" />
           </IconButton>
+
+          {/* Dataset Add Menu Button */}
+          <IconButton
+            size="small"
+            onClick={(e) => {
+              setDatasetAddAnchor({ ...datasetAddAnchor, [dataset.id]: e.currentTarget });
+            }}
+            sx={{ p: 0.5 }}
+          >
+            <Add fontSize="small" />
+          </IconButton>
         </Stack>
 
         <Collapse in={isExpanded}>
@@ -1289,20 +1328,12 @@ export function ProjectTree() {
           </Box>
         </Collapse>
 
-        {/* Dataset Menu */}
+        {/* Dataset Options Menu */}
         <Menu
           anchorEl={datasetMenuAnchor[dataset.id]}
           open={Boolean(datasetMenuAnchor[dataset.id])}
           onClose={() => setDatasetMenuAnchor({ ...datasetMenuAnchor, [dataset.id]: null })}
         >
-          <MenuItem
-            onClick={() => {
-              handleAddSample(dataset.id);
-              setDatasetMenuAnchor({ ...datasetMenuAnchor, [dataset.id]: null });
-            }}
-          >
-            Add New Sample
-          </MenuItem>
           <MenuItem
             onClick={() => {
               setEditingDatasetId(dataset.id);
@@ -1311,6 +1342,22 @@ export function ProjectTree() {
             }}
           >
             Edit Dataset Metadata
+          </MenuItem>
+        </Menu>
+
+        {/* Dataset Add Menu */}
+        <Menu
+          anchorEl={datasetAddAnchor[dataset.id]}
+          open={Boolean(datasetAddAnchor[dataset.id])}
+          onClose={() => setDatasetAddAnchor({ ...datasetAddAnchor, [dataset.id]: null })}
+        >
+          <MenuItem
+            onClick={() => {
+              handleAddSample(dataset.id);
+              setDatasetAddAnchor({ ...datasetAddAnchor, [dataset.id]: null });
+            }}
+          >
+            Add New Sample
           </MenuItem>
         </Menu>
       </Box>
@@ -1348,6 +1395,17 @@ export function ProjectTree() {
           >
             <MoreVert fontSize="small" />
           </IconButton>
+
+          {/* Project Add Menu Button */}
+          <IconButton
+            size="small"
+            onClick={(e) => {
+              setProjectAddAnchor(e.currentTarget);
+            }}
+            sx={{ p: 0.5 }}
+          >
+            <Add fontSize="small" />
+          </IconButton>
         </Stack>
       </Box>
 
@@ -1373,7 +1431,7 @@ export function ProjectTree() {
         )}
       </Box>
 
-      {/* Project Menu */}
+      {/* Project Options Menu */}
       <Menu
         anchorEl={projectMenuAnchor}
         open={Boolean(projectMenuAnchor)}
@@ -1381,19 +1439,27 @@ export function ProjectTree() {
       >
         <MenuItem
           onClick={() => {
-            handleAddDataset();
-            setProjectMenuAnchor(null);
-          }}
-        >
-          Add New Dataset
-        </MenuItem>
-        <MenuItem
-          onClick={() => {
             setShowEditProject(true);
             setProjectMenuAnchor(null);
           }}
         >
           Edit Project Metadata
+        </MenuItem>
+      </Menu>
+
+      {/* Project Add Menu */}
+      <Menu
+        anchorEl={projectAddAnchor}
+        open={Boolean(projectAddAnchor)}
+        onClose={() => setProjectAddAnchor(null)}
+      >
+        <MenuItem
+          onClick={() => {
+            handleAddDataset();
+            setProjectAddAnchor(null);
+          }}
+        >
+          Add New Dataset
         </MenuItem>
       </Menu>
 
