@@ -79,6 +79,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
     const containerRef = useRef<HTMLDivElement>(null);
     const drawingLayerRef = useRef<any>(null);
     const loadingSessionRef = useRef<number>(0); // Track current loading session to abort stale loads
+    const pendingTileImagesRef = useRef<Set<HTMLImageElement>>(new Set()); // Track Image objects for cleanup
 
     // State
     const [stageSize, setStageSize] = useState({ width: 800, height: 600 });
@@ -131,6 +132,41 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
     const navigateBack = useAppStore((state) => state.navigateBack);
     const micrographNavigationStack = useAppStore((state) => state.micrographNavigationStack);
     const micrographIndex = useAppStore((state) => state.micrographIndex);
+
+    /**
+     * Aggressively clean up tile memory to prevent OOM crashes.
+     * This is critical when rapidly switching between large micrographs.
+     */
+    const cleanupTileMemory = useCallback(() => {
+      // Clear all pending Image objects (abort their loading)
+      for (const img of pendingTileImagesRef.current) {
+        img.src = ''; // Cancel any in-progress loading
+        img.onload = null;
+        img.onerror = null;
+      }
+      pendingTileImagesRef.current.clear();
+
+      // Clear thumbnail
+      if (thumbnail?.imageObj) {
+        thumbnail.imageObj.src = '';
+        thumbnail.imageObj.onload = null;
+        thumbnail.imageObj.onerror = null;
+      }
+
+      // Clear all tile Image objects from state
+      for (const [, tileInfo] of tiles) {
+        if (tileInfo.imageObj) {
+          tileInfo.imageObj.src = '';
+          tileInfo.imageObj.onload = null;
+          tileInfo.imageObj.onerror = null;
+        }
+      }
+
+      // Force state clear
+      setTiles(new Map());
+      setThumbnail(null);
+      setVisibleTiles([]);
+    }, [tiles, thumbnail]);
 
     // Find active micrograph and its associated children
     const activeMicrograph = useCallback(() => {
@@ -220,15 +256,18 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
       rulerResetRef.current();
     }, [activeMicrographId]);
 
+    // Store cleanup function in ref to avoid dependency issues
+    const cleanupTileMemoryRef = useRef(cleanupTileMemory);
+    cleanupTileMemoryRef.current = cleanupTileMemory;
+
     /**
      * Load image metadata and initialize viewer
      */
     useEffect(() => {
       if (!imagePath || !window.api) {
-        // Clear state when no image
+        // Clear state when no image - use aggressive cleanup
+        cleanupTileMemoryRef.current();
         setImageMetadata(null);
-        setTiles(new Map());
-        setVisibleTiles([]);
         return;
       }
 
@@ -238,12 +277,17 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
       const loadImage = async () => {
         setIsLoading(true);
 
+        // CRITICAL: Aggressively clean up previous image memory BEFORE loading new one
+        // This prevents OOM crashes when rapidly switching between large micrographs
+        cleanupTileMemoryRef.current();
+
+        // Release main process Sharp/libvips memory before loading new image
+        // This is critical to prevent memory accumulation when switching micrographs
+        await window.api?.releaseMemory();
+
         // Clear previous image state immediately
         setImageMetadata(null);
         setRenderMode('thumbnail');
-        setThumbnail(null);
-        setTiles(new Map());
-        setVisibleTiles([]);
         setZoom(1);
         setPosition({ x: 0, y: 0 });
 
@@ -324,6 +368,14 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
       };
 
       loadImage();
+
+      // Cleanup on unmount or when imagePath changes
+      return () => {
+        // Invalidate session so any in-progress loads will abort
+        loadingSessionRef.current++;
+        // Aggressive cleanup
+        cleanupTileMemoryRef.current();
+      };
     }, [imagePath]);
 
     /**
@@ -393,6 +445,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
 
           // Decode images in chunks to avoid blocking UI
           const newTiles = new Map<string, TileInfo>();
+          const sessionImages: HTMLImageElement[] = []; // Track images for this session
           const CHUNK_SIZE = 20; // Decode 20 images at a time
 
           for (let i = 0; i < results.length; i += CHUNK_SIZE) {
@@ -401,6 +454,13 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
               console.log(
                 `[Session ${sessionId}] Session invalidated during decode loop, aborting (decoded ${i}/${results.length} tiles)`
               );
+              // Clean up any images we created for this aborted session
+              for (const img of sessionImages) {
+                img.src = '';
+                img.onload = null;
+                img.onerror = null;
+                pendingTileImagesRef.current.delete(img);
+              }
               setIsLoadingTiles(false);
               return;
             }
@@ -412,9 +472,19 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
               const tileKey = `${x}_${y}`;
               const img = new Image();
 
+              // Track this image for potential cleanup
+              pendingTileImagesRef.current.add(img);
+              sessionImages.push(img);
+
               const loadPromise = new Promise<void>((resolve) => {
-                img.onload = () => resolve();
-                img.onerror = () => resolve(); // Don't block on errors
+                img.onload = () => {
+                  pendingTileImagesRef.current.delete(img); // No longer pending
+                  resolve();
+                };
+                img.onerror = () => {
+                  pendingTileImagesRef.current.delete(img);
+                  resolve(); // Don't block on errors
+                };
               });
               chunkPromises.push(loadPromise);
 
@@ -440,6 +510,13 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
             console.log(
               `[Session ${sessionId}] Session invalidated after decode complete, discarding results`
             );
+            // Clean up all images from this aborted session
+            for (const img of sessionImages) {
+              img.src = '';
+              img.onload = null;
+              img.onerror = null;
+              pendingTileImagesRef.current.delete(img);
+            }
             setIsLoadingTiles(false);
             return;
           }
@@ -473,9 +550,14 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
       const containerWidth = containerRef.current.clientWidth;
       const containerHeight = containerRef.current.clientHeight;
 
+      // Add padding to ensure entire image is visible with some margin
+      const padding = 20;
+      const availableWidth = containerWidth - padding * 2;
+      const availableHeight = containerHeight - padding * 2;
+
       // Calculate zoom to fit
-      const scaleX = containerWidth / width;
-      const scaleY = containerHeight / height;
+      const scaleX = availableWidth / width;
+      const scaleY = availableHeight / height;
       const newZoom = Math.min(scaleX, scaleY, 1); // Don't zoom in beyond 100%
 
       // Center the image
@@ -1307,9 +1389,9 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                             pointInParent: { x?: number; y?: number; X?: number; Y?: number };
                           }
                         ).pointInParent;
-                        // Handle both lowercase (new) and uppercase (legacy) property names
-                        const px = pointData.x ?? pointData.X ?? 0;
-                        const py = pointData.y ?? pointData.Y ?? 0;
+                        // Handle both uppercase (standard) and lowercase (legacy compatibility)
+                        const px = pointData.X ?? pointData.x ?? 0;
+                        const py = pointData.Y ?? pointData.y ?? 0;
                         return (
                           <Circle
                             key={`point-${childMicro.id}`}
@@ -1320,11 +1402,11 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                             stroke="#ffffff"
                             strokeWidth={1.5 / zoom}
                             onClick={() => {
-                              // Navigate to the child micrograph when clicked
-                              useAppStore.getState().selectMicrograph(childMicro.id);
+                              // Navigate to the child micrograph when clicked (drill-down enables back button)
+                              useAppStore.getState().drillDownToMicrograph(childMicro.id);
                             }}
                             onTap={() => {
-                              useAppStore.getState().selectMicrograph(childMicro.id);
+                              useAppStore.getState().drillDownToMicrograph(childMicro.id);
                             }}
                             style={{ cursor: 'pointer' }}
                           />

@@ -4,9 +4,11 @@ import MainLayout from './components/MainLayout';
 import { NewProjectDialog } from './components/dialogs/NewProjectDialog';
 import { EditProjectDialog } from './components/dialogs/EditProjectDialog';
 import { ProjectDebugModal } from './components/dialogs/ProjectDebugModal';
+import { SerializedJsonModal } from './components/dialogs/SerializedJsonModal';
 import { PreferencesDialog } from './components/dialogs/PreferencesDialog';
 import { LoginDialog } from './components/dialogs/LoginDialog';
 import { AboutDialog } from './components/dialogs/AboutDialog';
+import { LogViewerModal } from './components/dialogs/LogViewerModal';
 import { ExportAllImagesDialog } from './components/dialogs/ExportAllImagesDialog';
 import { ExportPDFDialog } from './components/dialogs/ExportPDFDialog';
 import { ExportSmzDialog } from './components/dialogs/ExportSmzDialog';
@@ -17,6 +19,11 @@ import { RemoteProjectsDialog } from './components/dialogs/RemoteProjectsDialog'
 import { SharedProjectDialog } from './components/dialogs/SharedProjectDialog';
 import { CloseProjectDialog } from './components/dialogs/CloseProjectDialog';
 import { ProjectPrepDialog } from './components/dialogs/ProjectPrepDialog';
+import {
+  IncompleteMicrographsDialog,
+  findIncompleteMicrographs,
+  IncompleteMicrograph,
+} from './components/dialogs/IncompleteMicrographsDialog';
 import UpdateNotification from './components/UpdateNotification';
 import { useAppStore, useTemporalStore } from '@/store';
 import { useAuthStore } from '@/store/useAuthStore';
@@ -147,6 +154,7 @@ function App() {
   const [isNewProjectDialogOpen, setIsNewProjectDialogOpen] = useState(false);
   const [isEditProjectDialogOpen, setIsEditProjectDialogOpen] = useState(false);
   const [isDebugModalOpen, setIsDebugModalOpen] = useState(false);
+  const [isSerializedJsonModalOpen, setIsSerializedJsonModalOpen] = useState(false);
   const [isPreferencesOpen, setIsPreferencesOpen] = useState(false);
   const [isLoginDialogOpen, setIsLoginDialogOpen] = useState(false);
   const [isExportAllImagesOpen, setIsExportAllImagesOpen] = useState(false);
@@ -154,12 +162,16 @@ function App() {
   const [isExportSmzOpen, setIsExportSmzOpen] = useState(false);
   const [isPushToServerOpen, setIsPushToServerOpen] = useState(false);
   const [isVersionHistoryOpen, setIsVersionHistoryOpen] = useState(false);
+  const [isIncompleteMicrographsOpen, setIsIncompleteMicrographsOpen] = useState(false);
+  const [incompleteMicrographs, setIncompleteMicrographs] = useState<IncompleteMicrograph[]>([]);
+  const [incompleteActionName, setIncompleteActionName] = useState('export');
   const [isImportSmzOpen, setIsImportSmzOpen] = useState(false);
   const [importSmzFilePath, setImportSmzFilePath] = useState<string | null>(null);
   const [isRemoteProjectsOpen, setIsRemoteProjectsOpen] = useState(false);
   const [isSharedProjectOpen, setIsSharedProjectOpen] = useState(false);
   const [isCloseProjectOpen, setIsCloseProjectOpen] = useState(false);
   const [isAboutOpen, setIsAboutOpen] = useState(false);
+  const [isLogViewerOpen, setIsLogViewerOpen] = useState(false);
   const [isManualUpdateCheck, setIsManualUpdateCheck] = useState(false);
   const closeProject = useAppStore(state => state.closeProject);
   const project = useAppStore(state => state.project);
@@ -370,6 +382,11 @@ function App() {
     // Debug: Show Project Structure
     unsubscribers.push(window.api.onShowProjectDebug(() => {
       setIsDebugModalOpen(true);
+    }));
+
+    // Debug: Show Serialized JSON
+    unsubscribers.push(window.api.onShowSerializedJson(() => {
+      setIsSerializedJsonModalOpen(true);
     }));
 
     // Preferences menu item
@@ -668,6 +685,11 @@ function App() {
       setIsAboutOpen(true);
     }));
 
+    // Help: Report Error menu item
+    unsubscribers.push(window.api.onShowLogs(() => {
+      setIsLogViewerOpen(true);
+    }));
+
     // Help: Check for Updates menu item
     unsubscribers.push(window.api.onCheckForUpdates(() => {
       setIsManualUpdateCheck(true);
@@ -811,6 +833,14 @@ function App() {
         alert('No project loaded. Please load a project first.');
         return;
       }
+      // Check for incomplete micrographs before allowing export
+      const incomplete = findIncompleteMicrographs(project);
+      if (incomplete.length > 0) {
+        setIncompleteMicrographs(incomplete);
+        setIncompleteActionName('export');
+        setIsIncompleteMicrographsOpen(true);
+        return;
+      }
       setIsExportSmzOpen(true);
     }));
 
@@ -818,6 +848,14 @@ function App() {
     unsubscribers.push(window.api?.onPushToServer(() => {
       if (!project) {
         alert('No project loaded. Please load a project first.');
+        return;
+      }
+      // Check for incomplete micrographs before allowing upload
+      const incomplete = findIncompleteMicrographs(project);
+      if (incomplete.length > 0) {
+        setIncompleteMicrographs(incomplete);
+        setIncompleteActionName('upload');
+        setIsIncompleteMicrographsOpen(true);
         return;
       }
       setIsPushToServerOpen(true);
@@ -929,6 +967,10 @@ function App() {
         isOpen={isDebugModalOpen}
         onClose={() => setIsDebugModalOpen(false)}
       />
+      <SerializedJsonModal
+        isOpen={isSerializedJsonModalOpen}
+        onClose={() => setIsSerializedJsonModalOpen(false)}
+      />
       <PreferencesDialog
         isOpen={isPreferencesOpen}
         onClose={() => setIsPreferencesOpen(false)}
@@ -940,6 +982,10 @@ function App() {
       <AboutDialog
         isOpen={isAboutOpen}
         onClose={() => setIsAboutOpen(false)}
+      />
+      <LogViewerModal
+        open={isLogViewerOpen}
+        onClose={() => setIsLogViewerOpen(false)}
       />
       <ExportAllImagesDialog
         open={isExportAllImagesOpen}
@@ -964,6 +1010,12 @@ function App() {
         onClose={() => setIsPushToServerOpen(false)}
         projectId={project?.id ?? null}
         projectData={project}
+      />
+      <IncompleteMicrographsDialog
+        open={isIncompleteMicrographsOpen}
+        onClose={() => setIsIncompleteMicrographsOpen(false)}
+        micrographs={incompleteMicrographs}
+        actionName={incompleteActionName}
       />
       <VersionHistoryDialog
         open={isVersionHistoryOpen}

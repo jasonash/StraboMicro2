@@ -13,13 +13,8 @@ const { createCanvas, loadImage } = require('canvas');
 const tileCache = require('./tileCache');
 const sharp = require('sharp');
 
-// Configure Sharp for large images
-// Set concurrency to 1 to reduce memory usage
-sharp.concurrency(1);
-
-// Set memory limits (optional, but helps prevent OOM)
-// This limits the pixel cache size Sharp uses
-sharp.cache({ memory: 512 }); // 512MB cache limit
+// Note: Sharp configuration is centralized in main.js to prevent conflicts
+// Do not configure sharp.cache() or sharp.concurrency() here
 
 // Tile configuration
 const TILE_SIZE = 256;
@@ -462,9 +457,12 @@ class TileGenerator {
     const { decode } = await import('tiff');
     const fs = require('fs').promises;
 
-    // Read TIFF file
-    const buffer = await fs.readFile(imagePath);
-    const tiffData = decode(buffer);
+    // Read TIFF file - use let so we can release after decode
+    let fileBuffer = await fs.readFile(imagePath);
+    let tiffData = decode(fileBuffer);
+
+    // Release file buffer immediately - no longer needed
+    fileBuffer = null;
 
     // Get first image (page 0)
     const image = tiffData[0];
@@ -475,6 +473,10 @@ class TileGenerator {
     console.log(`TIFF decoded: ${width}x${height}, ${data.length} bytes, ${bytesPerPixel} bytes/pixel`);
 
     const sourceData = new Uint8Array(data);
+
+    // Release tiffData - we've extracted what we need
+    tiffData = null;
+
     let rgbaData;
 
     if (bytesPerPixel === 3) {

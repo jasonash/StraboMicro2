@@ -97,6 +97,8 @@ interface Window {
     onOpenProject: (callback: () => void) => Unsubscribe;
     onEditProject: (callback: () => void) => Unsubscribe;
     onShowProjectDebug: (callback: () => void) => Unsubscribe;
+    onShowSerializedJson: (callback: () => void) => Unsubscribe;
+    getSerializedProjectJson: (projectData: unknown) => Promise<string>;
     onPreferences: (callback: () => void) => Unsubscribe;
     onTestOrientationStep: (callback: () => void) => Unsubscribe;
     onTestScaleBarStep: (callback: () => void) => Unsubscribe;
@@ -143,6 +145,7 @@ interface Window {
     getCacheStats: () => Promise<CacheStats>;
     clearImageCache: (imageHash: string) => Promise<{ success: boolean }>;
     clearAllCaches: () => Promise<{ success: boolean }>;
+    releaseMemory: () => Promise<{ success: boolean; error?: string }>;
     checkImageCache: (imagePath: string) => Promise<{
       cached: boolean;
       hash: string | null;
@@ -300,6 +303,15 @@ interface Window {
       project: any;
       message: string;
     }>;
+    getMemoryInfo: () => Promise<{
+      main: {
+        heapUsed: number;
+        heapTotal: number;
+        external: number;
+        rss: number;
+      };
+      timestamp: number;
+    }>;
 
     // PDF export
     exportDetailedNotesToPDF: (projectData: any, micrographId?: string, spotId?: string) => Promise<{
@@ -422,7 +434,15 @@ interface Window {
 
     // Help menu events
     onShowAbout: (callback: () => void) => Unsubscribe;
+    onShowLogs: (callback: () => void) => Unsubscribe;
     onCheckForUpdates: (callback: () => void) => Unsubscribe;
+
+    // Log service (persistent logging to file)
+    logs: {
+      read: () => Promise<string>;
+      getPath: () => Promise<string>;
+      write: (level: string, message: string, source?: string) => Promise<{ success: boolean }>;
+    };
 
     // Auto-updater
     autoUpdater: {
@@ -513,11 +533,13 @@ interface Window {
         success: boolean;
         projects?: RemoteProject[];
         error?: string;
+        sessionExpired?: boolean;
       }>;
       downloadProject: (projectId: string) => Promise<{
         success: boolean;
         zipPath?: string;
         error?: string;
+        sessionExpired?: boolean;
       }>;
       cleanupDownload: (zipPath: string) => Promise<{
         success: boolean;
@@ -534,6 +556,7 @@ interface Window {
         success: boolean;
         zipPath?: string;
         error?: string;
+        sessionExpired?: boolean;
       }>;
     };
 
@@ -615,6 +638,7 @@ interface Window {
     onDebugTriggerTestError: (callback: () => void) => Unsubscribe;
     onDebugGenerateTestSpots: (callback: () => void) => Unsubscribe;
     onDebugClearAllSpots: (callback: () => void) => Unsubscribe;
+    onDebugToggleMemoryMonitor: (callback: () => void) => Unsubscribe;
 
     versionHistory: {
       // Create a new version (auto-save)

@@ -32,6 +32,13 @@ interface PushProgress {
   bytesTotal?: number;
 }
 
+interface PushResult {
+  success: boolean;
+  error?: string;
+  needsOverwriteConfirm?: boolean;
+  sessionExpired?: boolean;
+}
+
 interface PushToServerDialogProps {
   open: boolean;
   onClose: () => void;
@@ -48,12 +55,9 @@ export function PushToServerDialog({
   const [progress, setProgress] = useState<PushProgress | null>(null);
   const [isPushing, setIsPushing] = useState(false);
   const [showOverwriteConfirm, setShowOverwriteConfirm] = useState(false);
-  const [result, setResult] = useState<{
-    success: boolean;
-    error?: string;
-  } | null>(null);
+  const [result, setResult] = useState<PushResult | null>(null);
 
-  const { isAuthenticated } = useAuthStore();
+  const { isAuthenticated, logout } = useAuthStore();
 
   // Set up progress listener
   useEffect(() => {
@@ -86,11 +90,20 @@ export function PushToServerDialog({
     setShowOverwriteConfirm(false);
 
     try {
-      const pushResult = await window.api.server.pushProject(
+      const pushResult: PushResult = await window.api.server.pushProject(
         projectId,
         projectData,
         { overwrite }
       );
+
+      // If session expired, log out the user
+      if (pushResult.sessionExpired) {
+        console.log('[PushToServerDialog] Session expired, logging out...');
+        await logout();
+        setResult(pushResult);
+        setIsPushing(false);
+        return;
+      }
 
       // If server says project exists, prompt for overwrite
       if (pushResult.needsOverwriteConfirm) {
@@ -108,7 +121,7 @@ export function PushToServerDialog({
     } finally {
       setIsPushing(false);
     }
-  }, [projectId, projectData]);
+  }, [projectId, projectData, logout]);
 
   const handleOverwriteConfirm = () => {
     setShowOverwriteConfirm(false);

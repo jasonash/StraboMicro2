@@ -31,6 +31,12 @@ Sentry.init({
   },
 });
 const sharp = require('sharp');
+
+// Centralized Sharp/libvips configuration to prevent OOM crashes
+// These settings apply to all modules that use sharp
+sharp.concurrency(1); // Single-threaded to reduce memory pressure
+sharp.cache({ memory: 256, files: 0, items: 50 }); // Conservative 256MB cache
+
 const archiver = require('archiver');
 const projectFolders = require('./projectFolders');
 const imageConverter = require('./imageConverter');
@@ -47,6 +53,7 @@ const svgExport = require('./svgExport');
 const smzImport = require('./smzImport');
 const serverDownload = require('./serverDownload');
 const autoUpdaterModule = require('./autoUpdater');
+const logService = require('./logService');
 
 // Handle EPIPE errors at process level (prevents crash on broken stdout pipe)
 process.stdout.on('error', (err) => {
@@ -745,16 +752,41 @@ function createWindow() {
         { type: 'separator' },
         {
           label: 'Check for Updates...',
+          click: async () => {
+            const version = app.getVersion();
+            const isDevBuild = version.includes('-dev.');
+            if (isDevBuild) {
+              // Show dialog for dev builds explaining updates are manual
+              const { dialog } = require('electron');
+              dialog.showMessageBox(mainWindow, {
+                type: 'info',
+                title: 'Dev Build',
+                message: 'Automatic updates are disabled for dev builds.',
+                detail: `You are running version ${version}.\n\nTo get the latest dev build, download it from:\nhttps://github.com/jasonash/StraboMicro2/releases/tag/dev-latest`,
+                buttons: ['OK', 'Open Downloads Page']
+              }).then(({ response }) => {
+                if (response === 1) {
+                  shell.openExternal('https://github.com/jasonash/StraboMicro2/releases/tag/dev-latest');
+                }
+              });
+            } else if (mainWindow) {
+              mainWindow.webContents.send('update:check-manual');
+            }
+          }
+        },
+        { type: 'separator' },
+        {
+          label: 'Report Error...',
           click: () => {
             if (mainWindow) {
-              mainWindow.webContents.send('update:check-manual');
+              mainWindow.webContents.send('help:show-logs');
             }
           }
         },
       ],
     },
-    // Debug menu only shown in development mode
-    ...(!app.isPackaged ? [{
+    // Debug menu shown in development mode OR dev builds (version contains "-dev.")
+    ...((!app.isPackaged || app.getVersion().includes('-dev.')) ? [{
       label: 'Debug',
       submenu: [
         { role: 'reload' },
@@ -785,11 +817,29 @@ function createWindow() {
         },
         { type: 'separator' },
         {
+          label: 'Toggle Memory Monitor',
+          accelerator: 'CmdOrCtrl+Shift+M',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('debug:toggle-memory-monitor');
+            }
+          }
+        },
+        { type: 'separator' },
+        {
           label: 'Show Project Structure',
           accelerator: 'CmdOrCtrl+Shift+D',
           click: () => {
             if (mainWindow) {
               mainWindow.webContents.send('menu:show-project-debug');
+            }
+          }
+        },
+        {
+          label: 'Show Serialized JSON (for upload)',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('menu:show-serialized-json');
             }
           }
         },
@@ -910,14 +960,19 @@ function createWindow() {
       }
       mainWindow.show();
 
-      // Initialize auto-updater (only in production)
-      if (app.isPackaged) {
+      // Initialize auto-updater (only in production releases, not dev builds)
+      // Dev builds have version like "2.0.0-beta.8-dev.123" - skip auto-update for these
+      const appVersion = app.getVersion();
+      const isDevBuild = appVersion.includes('-dev.');
+      if (app.isPackaged && !isDevBuild) {
         autoUpdaterModule.initAutoUpdater(mainWindow);
         // Check for updates after a short delay (let the app settle first)
         setTimeout(() => {
           log.info('[AutoUpdater] Checking for updates on startup...');
           autoUpdaterModule.checkForUpdates(true); // silent = true
         }, 5000);
+      } else if (isDevBuild) {
+        log.info('[AutoUpdater] Skipping auto-update for dev build:', appVersion);
       }
 
       // If window should be maximized, do it after showing
@@ -1020,6 +1075,9 @@ let buildMenuFn = null;
 
 app.whenReady().then(async () => {
   const isDev = !app.isPackaged;
+
+  // Initialize log service (persistent logging to file)
+  logService.init();
 
   // Show splash screen immediately
   createSplashWindow();
@@ -1405,6 +1463,13 @@ ipcMain.handle('micrograph:export-composite', async (event, projectId, micrograp
         // Skip point-located micrographs
         if (child.pointInParent) {
           log.info(`[IPC] Skipping point-located child ${child.id}`);
+          continue;
+        }
+
+        // Skip children that haven't been located yet (no position data)
+        // This prevents loading ALL child images when only some have position data
+        if (!child.offsetInParent && child.xOffset === undefined) {
+          log.info(`[IPC] Skipping unlocated child ${child.id} (${child.name}) - no position data yet`);
           continue;
         }
 
@@ -2149,6 +2214,44 @@ ipcMain.handle('image:clear-all-caches', async () => {
   }
 });
 
+/**
+ * Release memory in the main process
+ * Call this between batch operations to prevent OOM crashes
+ * Clears Sharp/libvips cache and suggests garbage collection
+ *
+ * NOTE: libvips/glibc memory fragmentation means RSS may stay elevated
+ * even after clearing caches. This is expected behavior - the memory
+ * is marked as free in the allocator but not returned to the OS.
+ */
+ipcMain.handle('image:release-memory', async () => {
+  try {
+    log.info('[Memory] Releasing Sharp cache...');
+
+    // Completely disable Sharp's cache to force libvips to release resources
+    // Keep it disabled to prevent memory accumulation
+    sharp.cache(false);
+    sharp.cache({ memory: 0, files: 0, items: 0 });
+
+    // Also limit concurrency to reduce memory pressure
+    sharp.concurrency(1);
+
+    // Small delay to allow libvips to process the cache clear
+    await new Promise(resolve => setTimeout(resolve, 50));
+
+    // Suggest garbage collection (won't force it, but helps with JS heap)
+    if (global.gc) {
+      global.gc();
+      log.info('[Memory] Manual GC triggered');
+    }
+
+    return { success: true };
+  } catch (error) {
+    log.error('[Memory] Error releasing memory:', error);
+    // Don't throw - this is best-effort
+    return { success: false, error: error.message };
+  }
+});
+
 // ========== Tile Queue and Project Preparation ==========
 
 /**
@@ -2719,6 +2822,14 @@ ipcMain.handle('composite:generate-thumbnail', async (event, projectId, microgra
           continue;
         }
 
+        // Skip children that haven't been located yet (no position data)
+        // This is critical for batch-imported micrographs which don't have position until user sets it
+        // Without this check, ALL children would be loaded from disk causing massive memory spike
+        if (!child.offsetInParent && child.xOffset === undefined) {
+          log.info(`[IPC] Skipping unlocated child ${child.id} (${child.name}) - no position data yet`);
+          continue;
+        }
+
         log.info(`[IPC] Processing child ${child.id} (${child.name})`);
 
         const childPath = path.join(folderPaths.images, child.imagePath);
@@ -2913,6 +3024,11 @@ ipcMain.handle('composite:generate-thumbnail', async (event, projectId, microgra
 
     log.info(`[IPC] Successfully generated composite thumbnail: ${outputPath}`);
 
+    // Release Sharp memory after thumbnail generation
+    // This prevents memory accumulation when generating multiple thumbnails
+    sharp.cache(false);
+    sharp.cache({ memory: 256, files: 20, items: 100 });
+
     return {
       success: true,
       thumbnailPath: outputPath,
@@ -2922,6 +3038,9 @@ ipcMain.handle('composite:generate-thumbnail', async (event, projectId, microgra
 
   } catch (error) {
     log.error('[IPC] Error generating composite thumbnail:', error);
+    // Still try to release memory on error
+    sharp.cache(false);
+    sharp.cache({ memory: 256, files: 20, items: 100 });
     throw error;
   }
 });
@@ -3094,6 +3213,13 @@ ipcMain.handle('composite:rebuild-all-thumbnails', async (event, projectId, proj
               continue;
             }
 
+            // Skip children that haven't been located yet (no position data)
+            // This prevents loading ALL child images when only some have position data
+            if (!child.offsetInParent && child.xOffset === undefined) {
+              log.info(`[IPC] Rebuild: Skipping unlocated child ${child.id} - no position data yet`);
+              continue;
+            }
+
             const childPath = path.join(folderPaths.images, child.imagePath);
 
             // Check if child image exists
@@ -3238,6 +3364,23 @@ ipcMain.handle('project:load-json', async (event, projectId) => {
     log.error('[IPC] Error loading project.json:', error);
     throw error;
   }
+});
+
+/**
+ * Get memory usage information for both main and renderer processes
+ * Used by the memory monitor status bar indicator
+ */
+ipcMain.handle('debug:get-memory-info', async () => {
+  const mainMemory = process.memoryUsage();
+  return {
+    main: {
+      heapUsed: mainMemory.heapUsed,
+      heapTotal: mainMemory.heapTotal,
+      external: mainMemory.external,
+      rss: mainMemory.rss, // Resident Set Size - total memory allocated
+    },
+    timestamp: Date.now(),
+  };
 });
 
 /**
@@ -3625,6 +3768,12 @@ async function generateCompositeBuffer(projectId, micrograph, projectData, folde
     try {
       // Skip point-located micrographs
       if (child.pointInParent) {
+        continue;
+      }
+
+      // Skip children that haven't been located yet (no position data)
+      // This prevents loading ALL child images when only some have position data
+      if (!child.offsetInParent && child.xOffset === undefined) {
         continue;
       }
 
@@ -4292,8 +4441,9 @@ ipcMain.handle('project:export-json', async (event, projectData) => {
       return { success: false, canceled: true };
     }
 
-    // Sanitize project data for legacy compatibility
-    const legacyProjectData = sanitizeProjectForExport(projectData);
+    // Use the project serializer for proper formatting and numeric rounding
+    // This ensures consistency with SMZ export and server upload
+    const legacyProjectData = projectSerializer.serializeToLegacyFormat(projectData);
 
     // Write JSON file with pretty formatting
     const jsonContent = JSON.stringify(legacyProjectData, null, 2);
@@ -4308,6 +4458,19 @@ ipcMain.handle('project:export-json', async (event, projectData) => {
 
   } catch (error) {
     log.error('[ExportJSON] Export failed:', error);
+    throw error;
+  }
+});
+
+/**
+ * Get serialized project JSON (for debug preview before upload)
+ */
+ipcMain.handle('project:get-serialized-json', async (event, projectData) => {
+  try {
+    const legacyProjectData = projectSerializer.serializeToLegacyFormat(projectData);
+    return JSON.stringify(legacyProjectData, null, 2);
+  } catch (error) {
+    log.error('[GetSerializedJSON] Failed:', error);
     throw error;
   }
 });
@@ -4493,11 +4656,12 @@ ipcMain.handle('server:check-connectivity', async () => {
  */
 ipcMain.handle('server:check-project-exists', async (event, projectId) => {
   try {
-    const tokens = await tokenService.getTokens();
-    if (!tokens?.accessToken) {
-      return { exists: false, error: 'Not authenticated. Please log in first.' };
+    // Get valid token with auto-refresh
+    const tokenResult = await tokenService.getValidAccessToken();
+    if (!tokenResult.success) {
+      return { exists: false, error: tokenResult.error, sessionExpired: tokenResult.sessionExpired };
     }
-    return serverUpload.checkProjectExists(projectId, tokens.accessToken);
+    return serverUpload.checkProjectExists(projectId, tokenResult.accessToken);
   } catch (error) {
     log.error('[ServerUpload] Check project exists failed:', error);
     return { exists: false, error: error.message };
@@ -4514,17 +4678,10 @@ ipcMain.handle('server:push-project', async (event, projectId, projectData, opti
 
     const { overwrite = false } = options || {};
 
-    // Get tokens for authentication
-    const tokens = await tokenService.getTokens();
-    if (!tokens?.accessToken) {
-      return { success: false, error: 'Not authenticated. Please log in first.' };
-    }
-
-    // Check if token is expired and try to refresh
-    if (tokenService.isTokenExpired(tokens)) {
-      log.info('[ServerUpload] Token expired, attempting refresh...');
-      // Token refresh would be handled by the renderer via auth store
-      return { success: false, error: 'Session expired. Please log in again.' };
+    // Get valid token with auto-refresh
+    const tokenResult = await tokenService.getValidAccessToken();
+    if (!tokenResult.success) {
+      return { success: false, error: tokenResult.error, sessionExpired: tokenResult.sessionExpired };
     }
 
     // Get project folder paths
@@ -4552,7 +4709,7 @@ ipcMain.handle('server:push-project', async (event, projectId, projectData, opti
       projectId,
       projectData,
       folderPaths,
-      accessToken: tokens.accessToken,
+      accessToken: tokenResult.accessToken,
       overwrite,
       progressCallback,
       pdfGenerator,
@@ -4858,15 +5015,14 @@ ipcMain.handle('smz:import', async (event, smzPath) => {
 ipcMain.handle('server:list-projects', async () => {
   log.info('[ServerDownload] Listing remote projects...');
 
-  // Get current auth token
-  const tokens = await tokenService.getTokens();
-
-  if (!tokens || !tokens.accessToken) {
-    log.warn('[ServerDownload] Not authenticated');
-    return { success: false, error: 'Not logged in. Please log in first.' };
+  // Get valid token with auto-refresh
+  const tokenResult = await tokenService.getValidAccessToken();
+  if (!tokenResult.success) {
+    log.warn('[ServerDownload] Not authenticated or session expired');
+    return { success: false, error: tokenResult.error, sessionExpired: tokenResult.sessionExpired };
   }
 
-  return serverDownload.listProjects(tokens.accessToken);
+  return serverDownload.listProjects(tokenResult.accessToken);
 });
 
 /**
@@ -4876,17 +5032,16 @@ ipcMain.handle('server:list-projects', async () => {
 ipcMain.handle('server:download-project', async (event, projectId) => {
   log.info('[ServerDownload] Downloading project:', projectId);
 
-  // Get current auth token
-  const tokens = await tokenService.getTokens();
-
-  if (!tokens || !tokens.accessToken) {
-    log.warn('[ServerDownload] Not authenticated');
-    return { success: false, error: 'Not logged in. Please log in first.' };
+  // Get valid token with auto-refresh
+  const tokenResult = await tokenService.getValidAccessToken();
+  if (!tokenResult.success) {
+    log.warn('[ServerDownload] Not authenticated or session expired');
+    return { success: false, error: tokenResult.error, sessionExpired: tokenResult.sessionExpired };
   }
 
   const result = await serverDownload.downloadProject(
     projectId,
-    tokens.accessToken,
+    tokenResult.accessToken,
     (progress) => {
       // Send progress updates to renderer
       if (mainWindow) {
@@ -4914,17 +5069,16 @@ ipcMain.handle('server:cleanup-download', async (event, zipPath) => {
 ipcMain.handle('server:download-shared-project', async (event, shareCode) => {
   log.info('[ServerDownload] Downloading shared project with code:', shareCode);
 
-  // Get current auth token
-  const tokens = await tokenService.getTokens();
-
-  if (!tokens || !tokens.accessToken) {
-    log.warn('[ServerDownload] Not authenticated');
-    return { success: false, error: 'Not logged in. Please log in first.' };
+  // Get valid token with auto-refresh
+  const tokenResult = await tokenService.getValidAccessToken();
+  if (!tokenResult.success) {
+    log.warn('[ServerDownload] Not authenticated or session expired');
+    return { success: false, error: tokenResult.error, sessionExpired: tokenResult.sessionExpired };
   }
 
   const result = await serverDownload.downloadSharedProject(
     shareCode,
-    tokens.accessToken,
+    tokenResult.accessToken,
     (progress) => {
       // Send progress updates to renderer
       if (mainWindow) {
@@ -4934,4 +5088,31 @@ ipcMain.handle('server:download-shared-project', async (event, shareCode) => {
   );
 
   return result;
+});
+
+// =============================================================================
+// LOG SERVICE IPC HANDLERS
+// =============================================================================
+
+/**
+ * Read the current log file contents
+ */
+ipcMain.handle('logs:read', async () => {
+  return logService.readLog();
+});
+
+/**
+ * Get the path to the log file
+ */
+ipcMain.handle('logs:get-path', async () => {
+  return logService.getLogPath();
+});
+
+/**
+ * Write a log entry from the renderer process
+ * Used to capture console.error() messages
+ */
+ipcMain.handle('logs:write', async (event, level, message, source) => {
+  logService.fromRenderer(level, message, source);
+  return { success: true };
 });

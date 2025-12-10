@@ -698,8 +698,9 @@ export function EditMicrographDialog({ isOpen, onClose, micrographId }: EditMicr
         if (formData.instrumentType === 'Other' && formData.otherInstrumentType === '') return false;
 
         // For instruments that don't have a dataType dropdown (only imageType):
-        // FTIR, Raman, Scanner, AFM
+        // Optical Microscopy, FTIR, Raman, Scanner, AFM
         const instrumentsWithoutDataType = [
+          'Optical Microscopy',
           'Fourier Transform Infrared Spectroscopy (FTIR)',
           'Raman Spectroscopy',
           'Scanner',

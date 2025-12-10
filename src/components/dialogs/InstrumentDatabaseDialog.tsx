@@ -22,9 +22,6 @@ import {
   CircularProgress,
   Alert,
   InputAdornment,
-  Divider,
-  Chip,
-  Stack,
 } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
 import { getRestServerUrl } from '@/components/dialogs/PreferencesDialog';
@@ -93,9 +90,8 @@ export function InstrumentDatabaseDialog({
   const [filteredInstruments, setFilteredInstruments] = useState<InstrumentListItem[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedInstrument, setSelectedInstrument] = useState<InstrumentListItem | null>(null);
-  const [instrumentDetail, setInstrumentDetail] = useState<InstrumentDetail | null>(null);
   const [isLoadingList, setIsLoadingList] = useState(false);
-  const [isLoadingDetail, setIsLoadingDetail] = useState(false);
+  const [isSelecting, setIsSelecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Fetch instrument list on dialog open - always fetch fresh data
@@ -105,8 +101,8 @@ export function InstrumentDatabaseDialog({
       fetchInstrumentList();
       // Reset selection when dialog opens
       setSelectedInstrument(null);
-      setInstrumentDetail(null);
       setSearchQuery('');
+      setError(null);
     }
   }, [isOpen]);
 
@@ -121,15 +117,6 @@ export function InstrumentDatabaseDialog({
       );
     }
   }, [searchQuery, instruments]);
-
-  // Fetch instrument detail when selection changes
-  useEffect(() => {
-    if (selectedInstrument) {
-      fetchInstrumentDetail(selectedInstrument.id);
-    } else {
-      setInstrumentDetail(null);
-    }
-  }, [selectedInstrument]);
 
   const fetchInstrumentList = async () => {
     setIsLoadingList(true);
@@ -154,63 +141,59 @@ export function InstrumentDatabaseDialog({
     }
   };
 
-  const fetchInstrumentDetail = async (id: string) => {
-    setIsLoadingDetail(true);
+  const handleSelectInstrument = useCallback(async (inst: InstrumentListItem) => {
+    setSelectedInstrument(inst);
+    setIsSelecting(true);
 
     try {
       const restServer = getRestServerUrl();
-      const response = await fetch(`${restServer}/instrument_detail/${id}`);
+      const response = await fetch(`${restServer}/instrument_detail/${inst.id}`);
 
       if (!response.ok) {
         throw new Error(`Failed to fetch instrument details: ${response.status}`);
       }
 
-      const data: InstrumentDetail = await response.json();
-      setInstrumentDetail(data);
+      const detail: InstrumentDetail = await response.json();
+
+      // Map API response to our instrument data format
+      const instrumentData: InstrumentData = {
+        instrumentType: detail.instrumenttype || '',
+        instrumentBrand: detail.instrumentbrand || '',
+        instrumentModel: detail.instrumentmodel || '',
+        university: detail.university || '',
+        laboratory: detail.laboratory || '',
+        dataCollectionSoftware: detail.datacollectionsoftware || '',
+        dataCollectionSoftwareVersion: detail.datacollectionsoftwareversion || '',
+        postProcessingSoftware: detail.postprocessingsoftware || '',
+        postProcessingSoftwareVersion: detail.postprocessingsoftwareversion || '',
+        filamentType: detail.filamenttype || '',
+        instrumentNotes: detail.instrumentnotes || '',
+        detectors: (detail.detectors || []).map((d) => ({
+          detectorType: d.type || '',
+          detectorMake: d.make || '',
+          detectorModel: d.model || '',
+        })),
+      };
+
+      onSelect(instrumentData);
+      handleClose();
     } catch (err) {
       console.error('[InstrumentDatabase] Failed to fetch detail:', err);
-      setInstrumentDetail(null);
+      setError(err instanceof Error ? err.message : 'Failed to load instrument details');
     } finally {
-      setIsLoadingDetail(false);
+      setIsSelecting(false);
     }
-  };
-
-  const handleSelect = useCallback(() => {
-    if (!instrumentDetail) return;
-
-    // Map API response to our instrument data format
-    const instrumentData: InstrumentData = {
-      instrumentType: instrumentDetail.instrumenttype || '',
-      instrumentBrand: instrumentDetail.instrumentbrand || '',
-      instrumentModel: instrumentDetail.instrumentmodel || '',
-      university: instrumentDetail.university || '',
-      laboratory: instrumentDetail.laboratory || '',
-      dataCollectionSoftware: instrumentDetail.datacollectionsoftware || '',
-      dataCollectionSoftwareVersion: instrumentDetail.datacollectionsoftwareversion || '',
-      postProcessingSoftware: instrumentDetail.postprocessingsoftware || '',
-      postProcessingSoftwareVersion: instrumentDetail.postprocessingsoftwareversion || '',
-      filamentType: instrumentDetail.filamenttype || '',
-      instrumentNotes: instrumentDetail.instrumentnotes || '',
-      detectors: (instrumentDetail.detectors || []).map((d) => ({
-        detectorType: d.type || '',
-        detectorMake: d.make || '',
-        detectorModel: d.model || '',
-      })),
-    };
-
-    onSelect(instrumentData);
-    handleClose();
-  }, [instrumentDetail, onSelect]);
+  }, [onSelect]);
 
   const handleClose = () => {
     setSelectedInstrument(null);
-    setInstrumentDetail(null);
     setSearchQuery('');
+    setError(null);
     onClose();
   };
 
   return (
-    <Dialog open={isOpen} onClose={handleClose} maxWidth="md" fullWidth>
+    <Dialog open={isOpen} onClose={handleClose} maxWidth="sm" fullWidth>
       <DialogTitle>Find Instrument in Database</DialogTitle>
       <DialogContent>
         {error && (
@@ -219,216 +202,72 @@ export function InstrumentDatabaseDialog({
           </Alert>
         )}
 
-        <Box sx={{ display: 'flex', gap: 2, height: 400 }}>
-          {/* Left side: Search and list */}
-          <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-            <TextField
-              fullWidth
-              placeholder="Search instruments..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              size="small"
-              sx={{ mb: 1 }}
-              InputProps={{
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <SearchIcon />
-                  </InputAdornment>
-                ),
+        <Box sx={{ display: 'flex', flexDirection: 'column', height: 400 }}>
+          <TextField
+            fullWidth
+            placeholder="Search instruments..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            size="small"
+            sx={{ mb: 1 }}
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <SearchIcon />
+                </InputAdornment>
+              ),
+            }}
+          />
+
+          {isLoadingList ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+              <CircularProgress />
+            </Box>
+          ) : (
+            <List
+              sx={{
+                flex: 1,
+                overflow: 'auto',
+                border: 1,
+                borderColor: 'divider',
+                borderRadius: 1,
               }}
-            />
-
-            {isLoadingList ? (
-              <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
-                <CircularProgress />
-              </Box>
-            ) : (
-              <List
-                sx={{
-                  flex: 1,
-                  overflow: 'auto',
-                  border: 1,
-                  borderColor: 'divider',
-                  borderRadius: 1,
-                }}
-              >
-                {filteredInstruments.length === 0 ? (
-                  <Typography
-                    variant="body2"
-                    color="text.secondary"
-                    sx={{ p: 2, textAlign: 'center' }}
+            >
+              {filteredInstruments.length === 0 ? (
+                <Typography
+                  variant="body2"
+                  color="text.secondary"
+                  sx={{ p: 2, textAlign: 'center' }}
+                >
+                  {searchQuery ? 'No instruments match your search' : 'No instruments available'}
+                </Typography>
+              ) : (
+                filteredInstruments.map((inst) => (
+                  <ListItemButton
+                    key={inst.id}
+                    selected={selectedInstrument?.id === inst.id}
+                    onClick={() => handleSelectInstrument(inst)}
+                    disabled={isSelecting}
                   >
-                    {searchQuery ? 'No instruments match your search' : 'No instruments available'}
-                  </Typography>
-                ) : (
-                  filteredInstruments.map((inst) => (
-                    <ListItemButton
-                      key={inst.id}
-                      selected={selectedInstrument?.id === inst.id}
-                      onClick={() => setSelectedInstrument(inst)}
-                    >
-                      <ListItemText
-                        primary={inst.name}
-                        primaryTypographyProps={{
-                          variant: 'body2',
-                          noWrap: true,
-                        }}
-                      />
-                    </ListItemButton>
-                  ))
-                )}
-              </List>
-            )}
+                    <ListItemText
+                      primary={inst.name}
+                      primaryTypographyProps={{
+                        variant: 'body2',
+                      }}
+                    />
+                  </ListItemButton>
+                ))
+              )}
+            </List>
+          )}
 
-            <Typography variant="caption" color="text.secondary" sx={{ mt: 1 }}>
-              {filteredInstruments.length} instrument{filteredInstruments.length !== 1 ? 's' : ''}{' '}
-              {searchQuery && `matching "${searchQuery}"`}
-            </Typography>
-          </Box>
-
-          <Divider orientation="vertical" flexItem />
-
-          {/* Right side: Selected instrument details */}
-          <Box sx={{ flex: 1, overflow: 'auto' }}>
-            {isLoadingDetail ? (
-              <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
-                <CircularProgress size={24} />
-              </Box>
-            ) : instrumentDetail ? (
-              <Stack spacing={2}>
-                <Typography variant="h6" sx={{ fontSize: '1rem' }}>
-                  {instrumentDetail.instrumentname}
-                </Typography>
-
-                <Box>
-                  <Typography variant="caption" color="text.secondary">
-                    Type
-                  </Typography>
-                  <Typography variant="body2">{instrumentDetail.instrumenttype || '—'}</Typography>
-                </Box>
-
-                <Box sx={{ display: 'flex', gap: 2 }}>
-                  <Box sx={{ flex: 1 }}>
-                    <Typography variant="caption" color="text.secondary">
-                      Brand
-                    </Typography>
-                    <Typography variant="body2">
-                      {instrumentDetail.instrumentbrand || '—'}
-                    </Typography>
-                  </Box>
-                  <Box sx={{ flex: 1 }}>
-                    <Typography variant="caption" color="text.secondary">
-                      Model
-                    </Typography>
-                    <Typography variant="body2">
-                      {instrumentDetail.instrumentmodel || '—'}
-                    </Typography>
-                  </Box>
-                </Box>
-
-                <Box sx={{ display: 'flex', gap: 2 }}>
-                  <Box sx={{ flex: 1 }}>
-                    <Typography variant="caption" color="text.secondary">
-                      University
-                    </Typography>
-                    <Typography variant="body2">{instrumentDetail.university || '—'}</Typography>
-                  </Box>
-                  <Box sx={{ flex: 1 }}>
-                    <Typography variant="caption" color="text.secondary">
-                      Laboratory
-                    </Typography>
-                    <Typography variant="body2">{instrumentDetail.laboratory || '—'}</Typography>
-                  </Box>
-                </Box>
-
-                {instrumentDetail.datacollectionsoftware && (
-                  <Box>
-                    <Typography variant="caption" color="text.secondary">
-                      Data Collection Software
-                    </Typography>
-                    <Typography variant="body2">
-                      {instrumentDetail.datacollectionsoftware}
-                      {instrumentDetail.datacollectionsoftwareversion &&
-                        ` (v${instrumentDetail.datacollectionsoftwareversion})`}
-                    </Typography>
-                  </Box>
-                )}
-
-                {instrumentDetail.postprocessingsoftware && (
-                  <Box>
-                    <Typography variant="caption" color="text.secondary">
-                      Post-Processing Software
-                    </Typography>
-                    <Typography variant="body2">
-                      {instrumentDetail.postprocessingsoftware}
-                      {instrumentDetail.postprocessingsoftwareversion &&
-                        ` (v${instrumentDetail.postprocessingsoftwareversion})`}
-                    </Typography>
-                  </Box>
-                )}
-
-                {instrumentDetail.filamenttype && (
-                  <Box>
-                    <Typography variant="caption" color="text.secondary">
-                      Filament Type
-                    </Typography>
-                    <Typography variant="body2">{instrumentDetail.filamenttype}</Typography>
-                  </Box>
-                )}
-
-                {instrumentDetail.detectors && instrumentDetail.detectors.length > 0 && (
-                  <Box>
-                    <Typography variant="caption" color="text.secondary">
-                      Detectors
-                    </Typography>
-                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mt: 0.5 }}>
-                      {instrumentDetail.detectors.map((det, idx) => (
-                        <Chip
-                          key={idx}
-                          label={det.type || 'Unknown'}
-                          size="small"
-                          variant="outlined"
-                        />
-                      ))}
-                    </Box>
-                  </Box>
-                )}
-
-                {instrumentDetail.instrumentnotes && (
-                  <Box>
-                    <Typography variant="caption" color="text.secondary">
-                      Notes
-                    </Typography>
-                    <Typography variant="body2">{instrumentDetail.instrumentnotes}</Typography>
-                  </Box>
-                )}
-              </Stack>
-            ) : (
-              <Box
-                sx={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  height: '100%',
-                }}
-              >
-                <Typography variant="body2" color="text.secondary">
-                  Select an instrument to view details
-                </Typography>
-              </Box>
-            )}
-          </Box>
+          <Typography variant="caption" color="text.secondary" sx={{ mt: 1 }}>
+            {filteredInstruments.length} instrument{filteredInstruments.length !== 1 ? 's' : ''}
+          </Typography>
         </Box>
       </DialogContent>
       <DialogActions>
         <Button onClick={handleClose}>Cancel</Button>
-        <Button
-          onClick={handleSelect}
-          variant="contained"
-          disabled={!instrumentDetail}
-        >
-          Use This Instrument
-        </Button>
       </DialogActions>
     </Dialog>
   );

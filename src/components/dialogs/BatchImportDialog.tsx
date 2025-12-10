@@ -332,20 +332,48 @@ export const BatchImportDialog: React.FC<BatchImportDialogProps> = ({
 
     const errors: string[] = [];
 
+    // Ensure all project folders exist (images, compositeThumbnails, etc.)
+    // This is idempotent - safe to call even if folders already exist
+    await window.api!.createProjectFolders(project.id);
+
+    // Get project folder paths for constructing final image paths
+    const folderPaths = await window.api!.getProjectFolderPaths(project.id);
+    if (!folderPaths) {
+      console.error('[BatchImport] Could not get project folder paths');
+      return;
+    }
+
     for (let i = 0; i < selectedFiles.length; i++) {
       const file = selectedFiles[i];
       setImportProgress({ current: i + 1, total: selectedFiles.length, currentFile: file.name });
 
       try {
+        // Release memory between imports to prevent OOM crashes
+        // This is especially important for large batch imports (9+ images)
+        if (i > 0) {
+          await window.api!.releaseMemory();
+        }
+
+        // Generate micrograph ID FIRST (before conversion)
+        // This allows us to move to final location before generating tile cache
+        const micrographId = crypto.randomUUID();
+
         // Convert image to scratch JPEG
         console.log(`[BatchImport] Converting file ${i + 1}/${selectedFiles.length}: ${file.name}`);
         const conversionResult = await window.api!.convertToScratchJPEG(file.path);
 
-        // Load into tile system (ensures tiles are generated)
-        await window.api!.loadImageWithTiles(conversionResult.scratchPath);
+        // Move scratch image to project storage BEFORE generating tile cache
+        // This ensures the tile cache originalPath points to the permanent location
+        await window.api!.moveFromScratch(
+          conversionResult.identifier,
+          project.id,
+          micrographId
+        );
 
-        // Generate micrograph ID
-        const micrographId = crypto.randomUUID();
+        // Now load into tile system from the FINAL path
+        // This ensures tiles are cached with the correct originalPath
+        const finalImagePath = `${folderPaths.images}/${micrographId}`;
+        await window.api!.loadImageWithTiles(finalImagePath);
 
         // Extract name without extension
         const nameWithoutExt = file.name.substring(0, file.name.lastIndexOf('.')) || file.name;
@@ -423,14 +451,8 @@ export const BatchImportDialog: React.FC<BatchImportDialogProps> = ({
           }
         }
 
-        // Move scratch image to project storage
-        await window.api!.moveFromScratch(
-          conversionResult.identifier,
-          project.id,
-          micrographId
-        );
-
         // Add micrograph to store
+        // Note: moveFromScratch was already called above before loadImageWithTiles
         useAppStore.getState().addMicrograph(targetSampleId, micrograph);
 
         // Generate composite thumbnail for the new micrograph
@@ -458,6 +480,10 @@ export const BatchImportDialog: React.FC<BatchImportDialogProps> = ({
         errors.push(`${file.name}: ${error instanceof Error ? error.message : 'Unknown error'}`);
       }
     }
+
+    // Final memory cleanup after all imports complete
+    // This helps release any accumulated memory from libvips/Sharp
+    await window.api!.releaseMemory();
 
     setImportErrors(errors);
     setIsImporting(false);

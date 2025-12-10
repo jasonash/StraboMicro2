@@ -13,6 +13,80 @@ Sentry.init({
   dsn: 'https://a0a059594ef2ba9bfecb1e6bf028afde@o4510450188484608.ingest.us.sentry.io/4510450322046976',
 });
 
+// =============================================================================
+// ERROR CAPTURE: Send console.error to Sentry and log file
+// =============================================================================
+
+// Store the original console.error function
+const originalConsoleError = console.error;
+
+// Override console.error to capture errors
+console.error = (...args: unknown[]) => {
+  // Call the original console.error first
+  originalConsoleError.apply(console, args);
+
+  // Format the message
+  const message = args
+    .map((arg) => {
+      if (arg instanceof Error) {
+        return `${arg.name}: ${arg.message}\n${arg.stack || ''}`;
+      }
+      if (typeof arg === 'object') {
+        try {
+          return JSON.stringify(arg, null, 2);
+        } catch {
+          return String(arg);
+        }
+      }
+      return String(arg);
+    })
+    .join(' ');
+
+  // Send to Sentry (errors only, not warnings)
+  Sentry.captureMessage(message, 'error');
+
+  // Send to log file via IPC
+  if (window.api?.logs?.write) {
+    window.api.logs.write('ERROR', message, 'console').catch(() => {
+      // Silently fail if logging fails to avoid infinite recursion
+    });
+  }
+};
+
+// Capture unhandled promise rejections
+window.addEventListener('unhandledrejection', (event) => {
+  const reason = event.reason;
+  const message =
+    reason instanceof Error
+      ? `Unhandled Promise Rejection: ${reason.name}: ${reason.message}\n${reason.stack || ''}`
+      : `Unhandled Promise Rejection: ${String(reason)}`;
+
+  // Send to Sentry
+  Sentry.captureException(reason);
+
+  // Send to log file
+  if (window.api?.logs?.write) {
+    window.api.logs.write('ERROR', message, 'unhandledRejection').catch(() => {
+      // Silently fail
+    });
+  }
+});
+
+// Capture uncaught errors
+window.addEventListener('error', (event) => {
+  const { message: errorMessage, filename, lineno, colno, error } = event;
+  const fullMessage = error
+    ? `Uncaught Error: ${error.name}: ${error.message}\n${error.stack || ''}`
+    : `Uncaught Error: ${errorMessage} at ${filename}:${lineno}:${colno}`;
+
+  // Sentry automatically captures these, but we also want them in the log file
+  if (window.api?.logs?.write) {
+    window.api.logs.write('ERROR', fullMessage, 'uncaughtError').catch(() => {
+      // Silently fail
+    });
+  }
+});
+
 // Shared theme configuration
 const getTheme = (mode: 'dark' | 'light'): Theme => createTheme({
   palette: {

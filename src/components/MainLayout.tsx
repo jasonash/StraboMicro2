@@ -5,6 +5,7 @@ import Header from './Header';
 import Sidebar from './Sidebar';
 import Viewer from './Viewer';
 import { PropertiesPanel } from './PropertiesPanel';
+import { MemoryMonitor } from './MemoryMonitor';
 
 const MainLayout: React.FC = () => {
   const [leftWidth, setLeftWidth] = useState(360);
@@ -303,6 +304,9 @@ const MainLayout: React.FC = () => {
           </Tooltip>
         )}
       </Box>
+
+      {/* Memory Monitor - toggleable via Debug menu (Cmd+Shift+M) */}
+      <MemoryMonitor />
     </Box>
   );
 };

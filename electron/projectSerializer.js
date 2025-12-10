@@ -16,6 +16,127 @@ const log = require('electron-log');
 const projectFolders = require('./projectFolders');
 
 /**
+ * Round a number to a safe precision for PostgreSQL double precision.
+ * PostgreSQL double precision has ~15-17 significant decimal digits.
+ * We round to 10 decimal places to avoid floating point representation issues
+ * like 14590.699999999999 which should be 14590.7
+ * @param {number|undefined} value - The number to round
+ * @returns {number|undefined} Rounded number or undefined if input is not a number
+ */
+function roundForDb(value) {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value !== 'number' || !isFinite(value)) return value;
+  // Round to 10 decimal places - safe for double precision and fixes JS float issues
+  return Math.round(value * 1e10) / 1e10;
+}
+
+/**
+ * Round all numeric properties in an object recursively.
+ * Used for objects like offsetInParent, pointInParent, etc.
+ * @param {Object|undefined} obj - Object with numeric properties
+ * @returns {Object|undefined} Object with rounded numeric properties
+ */
+function roundObjectNumbers(obj) {
+  if (obj === undefined || obj === null) return undefined;
+  if (typeof obj !== 'object') return obj;
+
+  const result = {};
+  for (const [key, value] of Object.entries(obj)) {
+    if (typeof value === 'number') {
+      result[key] = roundForDb(value);
+    } else if (typeof value === 'object' && value !== null) {
+      result[key] = roundObjectNumbers(value);
+    } else {
+      result[key] = value;
+    }
+  }
+  return result;
+}
+
+/**
+ * Serialize a coordinate object (SimpleCoordType) to legacy format.
+ * Legacy schema uses uppercase X and Y, but internal code may use lowercase.
+ * This function normalizes to uppercase and rounds values.
+ * @param {Object|undefined} coord - Coordinate object with x/X and y/Y properties
+ * @returns {Object|undefined} Object with uppercase X, Y and rounded values
+ */
+function serializeCoordinate(coord) {
+  if (coord === undefined || coord === null) return undefined;
+  if (typeof coord !== 'object') return undefined;
+
+  // Handle both lowercase (x, y) and uppercase (X, Y) input
+  const x = coord.X !== undefined ? coord.X : coord.x;
+  const y = coord.Y !== undefined ? coord.Y : coord.y;
+
+  if (x === undefined && y === undefined) return undefined;
+
+  return {
+    X: roundForDb(x),
+    Y: roundForDb(y),
+  };
+}
+
+/**
+ * Deserialize a coordinate object from legacy format.
+ * Legacy schema uses uppercase X and Y, but we normalize to uppercase for internal use.
+ * Handles both uppercase (legacy) and lowercase (if present) input.
+ * @param {Object|undefined} coord - Coordinate object from JSON
+ * @returns {Object|undefined} Object with uppercase X, Y
+ */
+function deserializeCoordinate(coord) {
+  if (coord === undefined || coord === null) return undefined;
+  if (typeof coord !== 'object') return undefined;
+
+  // Handle both lowercase (x, y) and uppercase (X, Y) input
+  const x = coord.X !== undefined ? coord.X : coord.x;
+  const y = coord.Y !== undefined ? coord.Y : coord.y;
+
+  if (x === undefined && y === undefined) return undefined;
+
+  // Return with uppercase keys (legacy format)
+  return { X: x, Y: y };
+}
+
+/**
+ * Clean an object for database compatibility:
+ * - Converts null values to undefined (omitted from JSON)
+ * - Rounds numeric values
+ * - Recursively processes nested objects
+ * Used for instrument objects and other nested data.
+ * @param {Object|undefined} obj - Object to clean
+ * @returns {Object|undefined} Cleaned object or undefined if empty/null
+ */
+function cleanObjectForDb(obj) {
+  if (obj === undefined || obj === null) return undefined;
+  if (typeof obj !== 'object') return obj;
+
+  const result = {};
+  let hasValues = false;
+
+  for (const [key, value] of Object.entries(obj)) {
+    if (value === null || value === undefined) {
+      // Skip null/undefined values - they will be omitted from JSON
+      continue;
+    } else if (typeof value === 'number') {
+      result[key] = roundForDb(value);
+      hasValues = true;
+    } else if (typeof value === 'object') {
+      const cleaned = cleanObjectForDb(value);
+      if (cleaned !== undefined) {
+        result[key] = cleaned;
+        hasValues = true;
+      }
+    } else if (value !== '') {
+      // Keep non-empty strings and other types
+      result[key] = value;
+      hasValues = true;
+    }
+  }
+
+  return hasValues ? result : undefined;
+}
+
+/**
  * Serialize project data to legacy JSON format and save to disk
  * @param {Object} project - Project data from Zustand store
  * @param {string} projectId - UUID of the project
@@ -25,9 +146,20 @@ async function saveProjectJson(project, projectId) {
   try {
     log.info(`[ProjectSerializer] Serializing project: ${projectId}`);
 
+    if (!project) {
+      throw new Error('Cannot save: project is null or undefined');
+    }
+    if (!projectId) {
+      throw new Error('Cannot save: projectId is null or undefined');
+    }
+
     // Get project folder paths
     const folderPaths = projectFolders.getProjectFolderPaths(projectId);
     const projectJsonPath = folderPaths.projectJson;
+
+    // Ensure parent directory exists (handles edge case where folder was deleted)
+    const parentDir = path.dirname(projectJsonPath);
+    await fs.promises.mkdir(parentDir, { recursive: true });
 
     // Serialize project to legacy format
     const legacyJson = serializeToLegacyFormat(project);
@@ -132,6 +264,7 @@ function serializeDataset(dataset) {
 
 /**
  * Serialize a sample to legacy format
+ * Note: Numeric values are rounded to avoid PostgreSQL double precision issues
  */
 function serializeSample(sample) {
   return {
@@ -140,8 +273,8 @@ function serializeSample(sample) {
     label: sample.label || '',
     sampleID: sample.sampleID || '',
     igsn: sample.igsn || '',
-    longitude: sample.longitude || 0,
-    latitude: sample.latitude || 0,
+    longitude: roundForDb(sample.longitude) || 0,
+    latitude: roundForDb(sample.latitude) || 0,
     mainSamplingPurpose: sample.mainSamplingPurpose || '',
     sampleDescription: sample.sampleDescription || '',
     materialType: sample.materialType || '',
@@ -165,6 +298,8 @@ function serializeSample(sample) {
 
 /**
  * Serialize a micrograph to legacy format
+ * Note: Numeric values are rounded to avoid PostgreSQL double precision issues
+ * Note: Nested objects (instrument, *Info) are cleaned to remove null values
  */
 function serializeMicrograph(micrograph) {
   return {
@@ -174,34 +309,36 @@ function serializeMicrograph(micrograph) {
     imageType: micrograph.imageType || '',
     width: micrograph.width || micrograph.imageWidth || 0,
     height: micrograph.height || micrograph.imageHeight || 0,
-    opacity: micrograph.opacity || 1.0,
+    imageWidth: micrograph.width || micrograph.imageWidth || 0,
+    imageHeight: micrograph.height || micrograph.imageHeight || 0,
+    opacity: roundForDb(micrograph.opacity) || 1.0,
     scale: micrograph.scale || '',
     polish: micrograph.polish || false,
     polishDescription: micrograph.polishDescription || '',
     description: micrograph.description || '',
     notes: micrograph.notes || '',
-    scalePixelsPerCentimeter: micrograph.scalePixelsPerCentimeter || 100,
-    offsetInParent: micrograph.offsetInParent || undefined,
-    pointInParent: micrograph.pointInParent || undefined,
-    rotation: micrograph.rotation || 0,
-    mineralogy: micrograph.mineralogy || undefined,
+    scalePixelsPerCentimeter: roundForDb(micrograph.scalePixelsPerCentimeter) || 100,
+    offsetInParent: serializeCoordinate(micrograph.offsetInParent),
+    pointInParent: serializeCoordinate(micrograph.pointInParent),
+    rotation: roundForDb(micrograph.rotation) || 0,
+    mineralogy: cleanObjectForDb(micrograph.mineralogy),
     spots: (micrograph.spots || []).map(serializeSpot),
-    grainInfo: micrograph.grainInfo || undefined,
-    fabricInfo: micrograph.fabricInfo || undefined,
-    orientationInfo: micrograph.orientationInfo || undefined,
+    grainInfo: cleanObjectForDb(micrograph.grainInfo),
+    fabricInfo: cleanObjectForDb(micrograph.fabricInfo),
+    orientationInfo: cleanObjectForDb(micrograph.orientationInfo),
     associatedFiles: micrograph.associatedFiles || [],
     links: micrograph.links || [],
-    instrument: micrograph.instrument || undefined,
-    clasticDeformationBandInfo: micrograph.clasticDeformationBandInfo || undefined,
-    grainBoundaryInfo: micrograph.grainBoundaryInfo || undefined,
-    intraGrainInfo: micrograph.intraGrainInfo || undefined,
-    veinInfo: micrograph.veinInfo || undefined,
-    pseudotachylyteInfo: micrograph.pseudotachylyteInfo || undefined,
-    foldInfo: micrograph.foldInfo || undefined,
-    faultsShearZonesInfo: micrograph.faultsShearZonesInfo || undefined,
-    extinctionMicrostructureInfo: micrograph.extinctionMicrostructureInfo || undefined,
-    lithologyInfo: micrograph.lithologyInfo || undefined,
-    fractureInfo: micrograph.fractureInfo || undefined,
+    instrument: cleanObjectForDb(micrograph.instrument),
+    clasticDeformationBandInfo: cleanObjectForDb(micrograph.clasticDeformationBandInfo),
+    grainBoundaryInfo: cleanObjectForDb(micrograph.grainBoundaryInfo),
+    intraGrainInfo: cleanObjectForDb(micrograph.intraGrainInfo),
+    veinInfo: cleanObjectForDb(micrograph.veinInfo),
+    pseudotachylyteInfo: cleanObjectForDb(micrograph.pseudotachylyteInfo),
+    foldInfo: cleanObjectForDb(micrograph.foldInfo),
+    faultsShearZonesInfo: cleanObjectForDb(micrograph.faultsShearZonesInfo),
+    extinctionMicrostructureInfo: cleanObjectForDb(micrograph.extinctionMicrostructureInfo),
+    lithologyInfo: cleanObjectForDb(micrograph.lithologyInfo),
+    fractureInfo: cleanObjectForDb(micrograph.fractureInfo),
     isMicroVisible: micrograph.isMicroVisible !== undefined ? micrograph.isMicroVisible : true,
     isExpanded: micrograph.isExpanded || false,
     isSpotExpanded: micrograph.isSpotExpanded || false,
@@ -212,35 +349,46 @@ function serializeMicrograph(micrograph) {
 
 /**
  * Serialize a spot to legacy format
+ * Note: Numeric values are rounded to avoid PostgreSQL double precision issues
+ * Note: Nested objects (*Info) are cleaned to remove null values
  */
 function serializeSpot(spot) {
+  // Round numeric values in points array
+  const roundedPoints = (spot.points || []).map(point => {
+    if (typeof point === 'object' && point !== null) {
+      return roundObjectNumbers(point);
+    }
+    return point;
+  });
+
   return {
     id: spot.id,
     name: spot.name || '',
     labelColor: spot.labelColor || '',
     showLabel: spot.showLabel || false,
     color: spot.color || '',
+    opacity: roundForDb(spot.opacity),
     date: spot.date || '',
     time: spot.time || '',
     notes: spot.notes || '',
     modifiedTimestamp: spot.modifiedTimestamp || Date.now(),
     geometryType: spot.geometryType || '',
-    points: spot.points || [],
-    mineralogy: spot.mineralogy || undefined,
-    grainInfo: spot.grainInfo || undefined,
-    fabricInfo: spot.fabricInfo || undefined,
+    points: roundedPoints,
+    mineralogy: cleanObjectForDb(spot.mineralogy),
+    grainInfo: cleanObjectForDb(spot.grainInfo),
+    fabricInfo: cleanObjectForDb(spot.fabricInfo),
     associatedFiles: spot.associatedFiles || [],
     links: spot.links || [],
-    clasticDeformationBandInfo: spot.clasticDeformationBandInfo || undefined,
-    grainBoundaryInfo: spot.grainBoundaryInfo || undefined,
-    intraGrainInfo: spot.intraGrainInfo || undefined,
-    veinInfo: spot.veinInfo || undefined,
-    pseudotachylyteInfo: spot.pseudotachylyteInfo || undefined,
-    foldInfo: spot.foldInfo || undefined,
-    faultsShearZonesInfo: spot.faultsShearZonesInfo || undefined,
-    extinctionMicrostructureInfo: spot.extinctionMicrostructureInfo || undefined,
-    lithologyInfo: spot.lithologyInfo || undefined,
-    fractureInfo: spot.fractureInfo || undefined,
+    clasticDeformationBandInfo: cleanObjectForDb(spot.clasticDeformationBandInfo),
+    grainBoundaryInfo: cleanObjectForDb(spot.grainBoundaryInfo),
+    intraGrainInfo: cleanObjectForDb(spot.intraGrainInfo),
+    veinInfo: cleanObjectForDb(spot.veinInfo),
+    pseudotachylyteInfo: cleanObjectForDb(spot.pseudotachylyteInfo),
+    foldInfo: cleanObjectForDb(spot.foldInfo),
+    faultsShearZonesInfo: cleanObjectForDb(spot.faultsShearZonesInfo),
+    extinctionMicrostructureInfo: cleanObjectForDb(spot.extinctionMicrostructureInfo),
+    lithologyInfo: cleanObjectForDb(spot.lithologyInfo),
+    fractureInfo: cleanObjectForDb(spot.fractureInfo),
     tags: spot.tags || [],
   };
 }
@@ -335,8 +483,8 @@ function deserializeMicrograph(micrograph) {
     description: micrograph.description,
     notes: micrograph.notes,
     scalePixelsPerCentimeter: micrograph.scalePixelsPerCentimeter,
-    offsetInParent: micrograph.offsetInParent,
-    pointInParent: micrograph.pointInParent,
+    offsetInParent: deserializeCoordinate(micrograph.offsetInParent),
+    pointInParent: deserializeCoordinate(micrograph.pointInParent),
     rotation: micrograph.rotation,
     mineralogy: micrograph.mineralogy,
     spots: (micrograph.spots || []).map(deserializeSpot),

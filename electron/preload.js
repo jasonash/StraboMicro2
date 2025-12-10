@@ -33,6 +33,12 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('menu:show-project-debug', callback);
     return () => ipcRenderer.removeListener('menu:show-project-debug', callback);
   },
+  onShowSerializedJson: (callback) => {
+    ipcRenderer.on('menu:show-serialized-json', callback);
+    return () => ipcRenderer.removeListener('menu:show-serialized-json', callback);
+  },
+  getSerializedProjectJson: (projectData) =>
+    ipcRenderer.invoke('project:get-serialized-json', projectData),
   onPreferences: (callback) => {
     ipcRenderer.on('menu:preferences', callback);
     return () => ipcRenderer.removeListener('menu:preferences', callback);
@@ -140,6 +146,7 @@ contextBridge.exposeInMainWorld('api', {
   getCacheStats: () => ipcRenderer.invoke('image:cache-stats'),
   clearImageCache: (imageHash) => ipcRenderer.invoke('image:clear-cache', imageHash),
   clearAllCaches: () => ipcRenderer.invoke('image:clear-all-caches'),
+  releaseMemory: () => ipcRenderer.invoke('image:release-memory'),
   checkImageCache: (imagePath) => ipcRenderer.invoke('image:check-cache', imagePath),
 
   // Tile queue and project preparation
@@ -212,6 +219,7 @@ contextBridge.exposeInMainWorld('api', {
 
   // Debug utilities
   resetEverything: () => ipcRenderer.invoke('debug:reset-everything'),
+  getMemoryInfo: () => ipcRenderer.invoke('debug:get-memory-info'),
 
   // PDF export
   exportDetailedNotesToPDF: (projectData, micrographId, spotId) =>
@@ -289,6 +297,18 @@ contextBridge.exposeInMainWorld('api', {
     const handler = () => callback();
     ipcRenderer.on('help:show-about', handler);
     return () => ipcRenderer.removeListener('help:show-about', handler);
+  },
+  onShowLogs: (callback) => {
+    const handler = () => callback();
+    ipcRenderer.on('help:show-logs', handler);
+    return () => ipcRenderer.removeListener('help:show-logs', handler);
+  },
+
+  // Log service (persistent logging to file)
+  logs: {
+    read: () => ipcRenderer.invoke('logs:read'),
+    getPath: () => ipcRenderer.invoke('logs:get-path'),
+    write: (level, message, source) => ipcRenderer.invoke('logs:write', level, message, source),
   },
 
   // Auto-updater
@@ -478,5 +498,10 @@ contextBridge.exposeInMainWorld('api', {
     const handler = () => callback();
     ipcRenderer.on('debug:clear-all-spots', handler);
     return () => ipcRenderer.removeListener('debug:clear-all-spots', handler);
+  },
+  onDebugToggleMemoryMonitor: (callback) => {
+    const handler = () => callback();
+    ipcRenderer.on('debug:toggle-memory-monitor', handler);
+    return () => ipcRenderer.removeListener('debug:toggle-memory-monitor', handler);
   },
 });

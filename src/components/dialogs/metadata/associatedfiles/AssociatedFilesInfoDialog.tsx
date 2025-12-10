@@ -53,6 +53,7 @@ export function AssociatedFilesInfoDialog({
   const updateSpotData = useAppStore((state) => state.updateSpotData);
 
   const [files, setFiles] = useState<AssociatedFileData[]>([]);
+  const [initialFiles, setInitialFiles] = useState<AssociatedFileData[]>([]);
   const [editingFile, setEditingFile] = useState<AssociatedFileData | null>(null);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
 
@@ -68,10 +69,14 @@ export function AssociatedFilesInfoDialog({
 
     if (micrographId) {
       const micrograph = findMicrographById(project, micrographId);
-      setFiles((micrograph?.associatedFiles || []) as AssociatedFileData[]);
+      const existingFiles = (micrograph?.associatedFiles || []) as AssociatedFileData[];
+      setFiles(existingFiles);
+      setInitialFiles(existingFiles);
     } else if (spotId) {
       const spot = findSpotById(project, spotId);
-      setFiles((spot?.associatedFiles || []) as AssociatedFileData[]);
+      const existingFiles = (spot?.associatedFiles || []) as AssociatedFileData[];
+      setFiles(existingFiles);
+      setInitialFiles(existingFiles);
     }
 
     // Reset new file form
@@ -167,7 +172,8 @@ export function AssociatedFilesInfoDialog({
 
     setIsAdding(true);
     const newFiles: AssociatedFileData[] = [];
-    const errors: string[] = [];
+    const duplicateFiles: string[] = [];
+    const otherErrors: string[] = [];
 
     for (const filePath of selectedFilePaths) {
       // Extract filename from path
@@ -191,7 +197,12 @@ export function AssociatedFilesInfoDialog({
         newFiles.push(newFile);
       } catch (error: any) {
         console.error('Error copying file:', error);
-        errors.push(fileName);
+        // Check if it's a duplicate file error
+        if (error?.message?.includes('already exists')) {
+          duplicateFiles.push(fileName);
+        } else {
+          otherErrors.push(fileName);
+        }
       }
     }
 
@@ -207,9 +218,16 @@ export function AssociatedFilesInfoDialog({
     setNewFileNotes('');
     setIsAdding(false);
 
-    // Show errors if any
-    if (errors.length > 0) {
-      alert(`Failed to add ${errors.length} file(s): ${errors.join(', ')}`);
+    // Show specific error messages
+    const messages: string[] = [];
+    if (duplicateFiles.length > 0) {
+      messages.push(`Already added: ${duplicateFiles.join(', ')}`);
+    }
+    if (otherErrors.length > 0) {
+      messages.push(`Failed to add: ${otherErrors.join(', ')}`);
+    }
+    if (messages.length > 0) {
+      alert(messages.join('\n\n'));
     }
   };
 
@@ -220,6 +238,13 @@ export function AssociatedFilesInfoDialog({
     if (newFileType === 'Other' && newOtherType.trim() === '') return false;
     if (isAdding) return false;
     return true;
+  })();
+
+  // Check if any changes have been made (for Save button)
+  const hasChanges = (() => {
+    if (files.length !== initialFiles.length) return true;
+    // Deep compare files array
+    return JSON.stringify(files) !== JSON.stringify(initialFiles);
   })();
 
   const title = micrographId
@@ -407,7 +432,7 @@ export function AssociatedFilesInfoDialog({
               fullWidth
               multiline
               rows={3}
-              label="Notes (for all files)"
+              label="Notes (added to each file)"
               value={newFileNotes}
               onChange={(e) => setNewFileNotes(e.target.value)}
               placeholder="Add notes about these files..."
@@ -433,7 +458,7 @@ export function AssociatedFilesInfoDialog({
       </DialogContent>
       <DialogActions>
         <Button onClick={handleCancel}>Cancel</Button>
-        <Button onClick={handleSave} variant="contained">
+        <Button onClick={handleSave} variant="contained" disabled={!hasChanges}>
           Save
         </Button>
       </DialogActions>

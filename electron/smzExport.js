@@ -278,6 +278,13 @@ async function generateCompositeBufferNoSpots(projectId, micrograph, projectData
         continue;
       }
 
+      // Skip children that haven't been located yet (no position data)
+      // This prevents loading ALL child images when only some have position data
+      if (!child.offsetInParent && child.xOffset === undefined) {
+        log.info(`[SmzExport] Skipping unlocated child ${child.id} - no position data yet`);
+        continue;
+      }
+
       const childPath = path.join(folderPaths.images, child.id);
 
       // Check if child image exists
