@@ -1402,11 +1402,11 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                             stroke="#ffffff"
                             strokeWidth={1.5 / zoom}
                             onClick={() => {
-                              // Navigate to the child micrograph when clicked
-                              useAppStore.getState().selectMicrograph(childMicro.id);
+                              // Navigate to the child micrograph when clicked (drill-down enables back button)
+                              useAppStore.getState().drillDownToMicrograph(childMicro.id);
                             }}
                             onTap={() => {
-                              useAppStore.getState().selectMicrograph(childMicro.id);
+                              useAppStore.getState().drillDownToMicrograph(childMicro.id);
                             }}
                             style={{ cursor: 'pointer' }}
                           />
