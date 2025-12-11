@@ -23,7 +23,7 @@ import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import EditIcon from '@mui/icons-material/Edit';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import { useAppStore } from '@/store';
-import { findMicrographById, findSpotById, findSpotParentMicrograph, getMicrographParentSample, getSampleParentDataset } from '@/store/helpers';
+import { findMicrographById, findSpotById, findSpotParentMicrograph, getMicrographParentSample } from '@/store/helpers';
 import type {
   FractureType,
   FabricType,
@@ -663,11 +663,6 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
     ? getMicrographParentSample(project, activeMicrographId)
     : undefined;
 
-  // Get the parent dataset
-  const dataset = sample && project
-    ? getSampleParentDataset(project, sample.id)
-    : undefined;
-
   if (!data) {
     return (
       <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic', p: 2 }}>
@@ -745,52 +740,6 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
           </Stack>
         </AccordionDetails>
       </StyledAccordion>
-
-      {/* Dataset Metadata */}
-      {dataset && (
-        <StyledAccordion
-          expanded={expanded['dataset'] || false}
-          onChange={handleExpand('dataset')}
-          disableGutters
-          sx={{ '&:before': { display: 'none' } }}
-        >
-          <StyledAccordionSummary expandIcon={<ExpandMoreIcon />}>
-            <Typography variant="subtitle2">Dataset Metadata</Typography>
-            <Box sx={{ flexGrow: 1 }} />
-            <Box
-              onClick={handleEdit('dataset')}
-              sx={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                width: 32,
-                height: 32,
-                mr: 1,
-                cursor: 'pointer',
-                borderRadius: '50%',
-                '&:hover': { bgcolor: 'action.hover' },
-              }}
-            >
-              <EditIcon fontSize="small" />
-            </Box>
-          </StyledAccordionSummary>
-          <AccordionDetails sx={{ py: 1 }}>
-            <Stack spacing={0.5}>
-              {dataset.name && (
-                <Box>
-                  <Typography variant="caption" color="text.secondary">Name: </Typography>
-                  <Typography variant="body2" component="span">{dataset.name}</Typography>
-                </Box>
-              )}
-              {!dataset.name && (
-                <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
-                  No dataset metadata set
-                </Typography>
-              )}
-            </Stack>
-          </AccordionDetails>
-        </StyledAccordion>
-      )}
 
       {/* Sample Metadata */}
       {sample && (
