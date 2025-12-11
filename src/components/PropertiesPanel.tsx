@@ -9,16 +9,12 @@ import { useState } from 'react';
 import {
   Box,
   Typography,
-  Select,
-  MenuItem,
-  FormControl,
   Snackbar,
   Alert,
 } from '@mui/material';
-import { SelectChangeEvent } from '@mui/material/Select';
 import { useAppStore } from '@/store';
 import { BreadcrumbsBar } from './BreadcrumbsBar';
-import { DataTypeAutocomplete } from './DataTypeAutocomplete';
+import { CombinedDataTypeSelector } from './CombinedDataTypeSelector';
 import { ConfirmDialog } from './dialogs/ConfirmDialog';
 import { NotesDialog } from './dialogs/metadata/NotesDialog';
 import { SampleInfoDialog } from './dialogs/metadata/SampleInfoDialog';
@@ -42,53 +38,6 @@ import { AssociatedFilesInfoDialog } from './dialogs/metadata/associatedfiles/As
 import { LinksInfoDialog } from './dialogs/metadata/links/LinksInfoDialog';
 import { MetadataSummary } from './MetadataSummary';
 
-/**
- * Data type options for micrographs
- */
-const MICROGRAPH_DATA_TYPES = [
-  { id: '', label: 'Select Data Type...' },
-  { id: 'sample', label: 'Sample Info' },
-  { id: 'micrograph', label: 'Micrograph Info' },
-  { id: 'mineralogy', label: 'Mineralogy/Lithology' },
-  { id: 'grain', label: 'Grain Size/Shape/SPO' },
-  { id: 'fabric', label: 'Fabrics' },
-  { id: 'clastic', label: 'Clastic Deformation Bands' },
-  { id: 'grainBoundary', label: 'Grain Boundaries / Contacts' },
-  { id: 'intraGrain', label: 'Intragranular Structures' },
-  { id: 'vein', label: 'Veins' },
-  { id: 'pseudotachylyte', label: 'Pseudotachylyte' },
-  { id: 'fold', label: 'Folds' },
-  { id: 'faultsShearZones', label: 'Faults and Shear Zones' },
-  { id: 'extinctionMicrostructures', label: 'Extinction Microstructures' },
-  { id: 'fracture', label: 'Fractures' },
-  { id: 'notes', label: 'Notes' },
-  { id: 'files', label: 'Associated Files' },
-  { id: 'links', label: 'Links' },
-] as const;
-
-/**
- * Data type options for spots
- */
-const SPOT_DATA_TYPES = [
-  { id: '', label: 'Select Data Type...' },
-  { id: 'sample', label: 'Sample Info' },
-  { id: 'spot', label: 'Spot Data' },
-  { id: 'mineralogy', label: 'Mineralogy/Lithology' },
-  { id: 'grain', label: 'Grain Size/Shape/SPO' },
-  { id: 'fabric', label: 'Fabrics' },
-  { id: 'clastic', label: 'Clastic Deformation Bands' },
-  { id: 'grainBoundary', label: 'Grain Boundaries / Contacts' },
-  { id: 'intraGrain', label: 'Intragranular Structures' },
-  { id: 'vein', label: 'Veins' },
-  { id: 'pseudotachylyte', label: 'Pseudotachylyte' },
-  { id: 'fold', label: 'Folds' },
-  { id: 'faultsShearZones', label: 'Faults and Shear Zones' },
-  { id: 'extinctionMicrostructures', label: 'Extinction Microstructures' },
-  { id: 'fracture', label: 'Fractures' },
-  { id: 'notes', label: 'Notes' },
-  { id: 'files', label: 'Associated Files' },
-  { id: 'links', label: 'Links' },
-] as const;
 
 export function PropertiesPanel() {
   const project = useAppStore((state) => state.project);
@@ -99,7 +48,6 @@ export function PropertiesPanel() {
   const selectMicrograph = useAppStore((state) => state.selectMicrograph);
   const selectActiveSpot = useAppStore((state) => state.selectActiveSpot);
 
-  const [selectedDataType, setSelectedDataType] = useState('');
   const [openDialog, setOpenDialog] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<'micrograph' | 'spot' | null>(null);
 
@@ -142,28 +90,6 @@ export function PropertiesPanel() {
 
   // Determine what type of entity is selected (check spot first since it's more specific)
   const selectionType = activeSpotId ? 'spot' : activeMicrographId ? 'micrograph' : null;
-
-  // Get appropriate data types based on selection
-  const dataTypes = selectionType === 'micrograph'
-    ? MICROGRAPH_DATA_TYPES
-    : selectionType === 'spot'
-      ? SPOT_DATA_TYPES
-      : [];
-
-  const handleDataTypeChange = (event: SelectChangeEvent<string>) => {
-    const dataType = event.target.value;
-
-    if (dataType) {
-      // Open the corresponding dialog
-      setOpenDialog(dataType);
-    }
-
-    // Always reset dropdown to "Select Data Type..." after any selection
-    // Use setTimeout to ensure the menu closes first
-    setTimeout(() => {
-      setSelectedDataType('');
-    }, 0);
-  };
 
   // Handle download micrograph as JPEG
   const handleDownloadJpeg = async () => {
@@ -270,44 +196,16 @@ export function PropertiesPanel() {
         isDownloading={isExporting}
       />
 
-      {/* Header */}
+      {/* Combined Data Type Selector */}
       <Typography variant="subtitle1" sx={{ mb: 1, fontWeight: 600 }}>
         Add Data:
       </Typography>
-
-      {/* Autocomplete Search */}
-      <Box sx={{ mb: 2 }}>
-        <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5, display: 'block' }}>
-          Search by Data Type:
-        </Typography>
-        <DataTypeAutocomplete
+      <Box sx={{ mb: 3 }}>
+        <CombinedDataTypeSelector
           context={selectionType}
           onSelectModal={(modal) => setOpenDialog(modal)}
         />
       </Box>
-
-      {/* Data Type Selector Dropdown */}
-      <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5, display: 'block' }}>
-        or Select Data Type:
-      </Typography>
-      <FormControl fullWidth sx={{ mb: 3 }}>
-        <Select
-          value={selectedDataType}
-          onChange={handleDataTypeChange}
-          displayEmpty
-          sx={{
-            '& .MuiSelect-select': {
-              py: 1.5,
-            }
-          }}
-        >
-          {dataTypes.map((type) => (
-            <MenuItem key={type.id} value={type.id} disabled={type.id === ''}>
-              {type.label}
-            </MenuItem>
-          ))}
-        </Select>
-      </FormControl>
 
       {/* Metadata Summary Section */}
       <Box sx={{ flex: 1, overflow: 'auto' }}>
