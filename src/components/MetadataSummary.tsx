@@ -68,13 +68,21 @@ const StyledAccordion = styled(Accordion)(({ theme }) => ({
   },
 }));
 
-// Styled AccordionSummary with background tint when expanded
+// Styled AccordionSummary with background tint when expanded - compact height
 const StyledAccordionSummary = styled(AccordionSummary)(({ theme }) => ({
-  minHeight: 48,
+  minHeight: 32,
+  padding: '0 12px',
   transition: 'background-color 0.2s ease',
   '& .MuiAccordionSummary-content': {
     alignItems: 'center',
     gap: 8,
+    margin: '6px 0',
+  },
+  '&.Mui-expanded': {
+    minHeight: 32,
+  },
+  '& .MuiAccordionSummary-content.Mui-expanded': {
+    margin: '6px 0',
   },
   '.Mui-expanded &, &.Mui-expanded': {
     backgroundColor: theme.palette.mode === 'dark'
