@@ -289,8 +289,9 @@ export function DetailedNotesPanel({ micrographId, spotId, onEditSection, onView
         </Box>
 
         {isEditing ? (
-          <Box sx={{ display: 'flex', gap: 1, mt: 1, alignItems: 'flex-start' }}>
+          <Box sx={{ mt: 1 }}>
             <TextField
+              fullWidth
               multiline
               minRows={2}
               maxRows={6}
@@ -301,23 +302,23 @@ export function DetailedNotesPanel({ micrographId, spotId, onEditSection, onView
               size="small"
               autoFocus
               sx={{
-                flex: 1,
                 '& .MuiOutlinedInput-root': {
                   backgroundColor: 'action.hover',
                 },
               }}
             />
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+            <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1, mt: 1 }}>
               <Button size="small" onClick={cancelEditing}>
                 Cancel
               </Button>
               <Button
                 size="small"
                 variant="contained"
+                color="error"
                 onClick={saveEditing}
                 disabled={editing.currentValue === editing.originalValue}
               >
-                Save
+                Save Changes
               </Button>
             </Box>
           </Box>
