@@ -5,16 +5,22 @@ import DrawingToolbar from './DrawingToolbar';
 import BottomPanel from './BottomPanel';
 import { TiledViewer, TiledViewerRef } from './TiledViewer';
 import { useAppStore } from '../store';
+import { findMicrographById, findSpotById } from '../store/helpers';
 
 const Viewer: React.FC = () => {
   const [bottomHeight, setBottomHeight] = useState(200);
   const tiledViewerRef = useRef<TiledViewerRef>(null);
   const [cursorCoords, setCursorCoords] = useState<{ x: number; y: number; unit: string; decimals: number } | null>(null);
 
-  // Get active micrograph from store
+  // Get active micrograph and spot from store
   const project = useAppStore((state) => state.project);
   const activeMicrographId = useAppStore((state) => state.activeMicrographId);
+  const activeSpotId = useAppStore((state) => state.activeSpotId);
   const setViewerRef = useAppStore((state) => state.setViewerRef);
+
+  // Get names for status bar title
+  const activeMicrograph = activeMicrographId ? findMicrographById(project, activeMicrographId) : null;
+  const activeSpot = activeSpotId ? findSpotById(project, activeSpotId) : null;
 
   // Build the full path to the active micrograph's image
   const [activeMicrographPath, setActiveMicrographPath] = React.useState<string | null>(null);
@@ -179,10 +185,33 @@ const Viewer: React.FC = () => {
         )}
       </Box>
 
-      {/* Status bar */}
+      {/* Title bar - shows active spot or micrograph name */}
       <Box
         sx={{
-          height: 32,
+          height: 36,
+          borderTop: 1,
+          borderColor: 'divider',
+          bgcolor: 'background.paper',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          px: 2,
+          flexShrink: 0,
+        }}
+      >
+        <Typography variant="subtitle1" color="text.primary" sx={{ fontWeight: 500 }}>
+          {activeSpot
+            ? `Spot: ${activeSpot.name || 'Unnamed'}`
+            : activeMicrograph
+              ? `Micrograph: ${activeMicrograph.name || 'Unnamed'}`
+              : ''}
+        </Typography>
+      </Box>
+
+      {/* Status bar - cursor coordinates */}
+      <Box
+        sx={{
+          height: 28,
           borderTop: 1,
           borderColor: 'divider',
           bgcolor: 'background.paper',
