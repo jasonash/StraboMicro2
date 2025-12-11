@@ -359,6 +359,14 @@ export function ProjectTree() {
   const [opacityMicrographId, setOpacityMicrographId] = useState<string | null>(null);
   const [opacityValue, setOpacityValue] = useState<number>(1.0);
 
+  // Batch opacity editing state (for all overlay children)
+  const [batchOpacityAnchorPosition, setBatchOpacityAnchorPosition] = useState<{
+    top: number;
+    left: number;
+  } | null>(null);
+  const [batchOpacityParentId, setBatchOpacityParentId] = useState<string | null>(null);
+  const [batchOpacityValue, setBatchOpacityValue] = useState<number>(1.0);
+
   // Image comparator dialog state
   const [showImageComparator, setShowImageComparator] = useState(false);
   const [comparatorMicrographId, setComparatorMicrographId] = useState<string | null>(null);
@@ -1090,6 +1098,25 @@ export function ProjectTree() {
               </MenuItem>
             </>
           )}
+          {/* Edit All Associated Micrographs Opacity - only if has overlay children */}
+          {children.some((child) => child.offsetInParent) && (
+            <MenuItem
+              onClick={(event) => {
+                // Get average opacity of all overlay children for initial value
+                const overlayChildren = children.filter((child) => child.offsetInParent);
+                const avgOpacity = overlayChildren.length > 0
+                  ? overlayChildren.reduce((sum, child) => sum + (child.opacity ?? 1.0), 0) / overlayChildren.length
+                  : 1.0;
+                const rect = event.currentTarget.getBoundingClientRect();
+                setBatchOpacityAnchorPosition({ top: rect.bottom, left: rect.left });
+                setBatchOpacityParentId(micrograph.id);
+                setBatchOpacityValue(avgOpacity);
+                setMicrographOptionsAnchor({ ...micrographOptionsAnchor, [micrograph.id]: null });
+              }}
+            >
+              Edit All Associated Micrographs Opacity
+            </MenuItem>
+          )}
         </Menu>
 
         {/* Add Menu */}
@@ -1736,6 +1763,74 @@ export function ProjectTree() {
             />
             <Typography variant="body2" sx={{ minWidth: 40, textAlign: 'right' }}>
               {Math.round(opacityValue * 100)}%
+            </Typography>
+          </Box>
+        </Box>
+      </Popover>
+
+      {/* Batch Opacity Slider Popover (for all overlay children) */}
+      <Popover
+        open={Boolean(batchOpacityAnchorPosition)}
+        anchorReference="anchorPosition"
+        anchorPosition={batchOpacityAnchorPosition ?? undefined}
+        onClose={() => {
+          setBatchOpacityAnchorPosition(null);
+          setBatchOpacityParentId(null);
+        }}
+        transformOrigin={{
+          vertical: 'top',
+          horizontal: 'left',
+        }}
+      >
+        <Box sx={{ p: 2, width: 300 }}>
+          <Box
+            sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}
+          >
+            <Typography variant="subtitle2">All Associated Micrographs Opacity</Typography>
+            <IconButton
+              size="small"
+              onClick={() => {
+                setBatchOpacityAnchorPosition(null);
+                setBatchOpacityParentId(null);
+              }}
+              sx={{ ml: 1, p: 0.5 }}
+            >
+              <CloseIcon sx={{ fontSize: 18 }} />
+            </IconButton>
+          </Box>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+            <Slider
+              value={batchOpacityValue}
+              onChange={(_, newValue) => {
+                // Only update local state while dragging (for UI feedback)
+                setBatchOpacityValue(newValue as number);
+              }}
+              onChangeCommitted={(_, newValue) => {
+                // Commit to store - update all overlay children
+                if (batchOpacityParentId && project) {
+                  // Find all micrographs in the project
+                  const allMicrographs = project.datasets?.flatMap(d =>
+                    d.samples?.flatMap(s => s.micrographs || []) || []
+                  ) || [];
+                  // Filter to overlay children of this parent (have offsetInParent)
+                  const overlayChildren = allMicrographs.filter(
+                    m => m.parentID === batchOpacityParentId && m.offsetInParent
+                  );
+                  // Update each overlay child's opacity
+                  overlayChildren.forEach(child => {
+                    updateMicrographMetadata(child.id, { opacity: newValue as number });
+                  });
+                }
+              }}
+              min={0}
+              max={1}
+              step={0.01}
+              valueLabelDisplay="auto"
+              valueLabelFormat={(value) => `${Math.round(value * 100)}%`}
+              sx={{ flex: 1 }}
+            />
+            <Typography variant="body2" sx={{ minWidth: 40, textAlign: 'right' }}>
+              {Math.round(batchOpacityValue * 100)}%
             </Typography>
           </Box>
         </Box>
