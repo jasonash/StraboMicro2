@@ -69,7 +69,8 @@ export function DetailedNotesPanel({ micrographId, spotId, onEditSection, onView
   // Get the micrograph or spot data
   const micrograph = micrographId ? findMicrographById(project, micrographId) : undefined;
   const spot = spotId ? findSpotById(project, spotId) : undefined;
-  const data = micrograph || spot;
+  // Use spot data when viewing a spot, otherwise use micrograph data
+  const data = spot || micrograph;
 
   // Get parent sample
   const sample = micrographId && project
