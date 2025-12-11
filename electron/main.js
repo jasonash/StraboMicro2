@@ -776,10 +776,18 @@ function createWindow() {
         },
         { type: 'separator' },
         {
-          label: 'Report Error...',
+          label: 'View Error Logs...',
           click: () => {
             if (mainWindow) {
               mainWindow.webContents.send('help:show-logs');
+            }
+          }
+        },
+        {
+          label: 'Send Error Report...',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('help:send-error-report');
             }
           }
         },
@@ -5115,4 +5123,117 @@ ipcMain.handle('logs:get-path', async () => {
 ipcMain.handle('logs:write', async (event, level, message, source) => {
   logService.fromRenderer(level, message, source);
   return { success: true };
+});
+
+/**
+ * Send error report to StraboSpot server
+ * Sends: notes (user description), appversion, log_file
+ */
+ipcMain.handle('logs:send-report', async (event, notes) => {
+  const FormData = require('form-data');
+  const https = require('https');
+  const fs = require('fs');
+
+  try {
+    log.info('[ErrorReport] Sending error report to server...');
+
+    // Get valid token with auto-refresh
+    const tokenResult = await tokenService.getValidAccessToken();
+    if (!tokenResult.success) {
+      log.warn('[ErrorReport] Not authenticated or session expired');
+      return { success: false, error: tokenResult.error, sessionExpired: tokenResult.sessionExpired };
+    }
+
+    // Get app version
+    const appVersion = app.getVersion();
+
+    // Get log file path and read contents
+    const logPath = logService.getLogPath();
+    if (!fs.existsSync(logPath)) {
+      log.warn('[ErrorReport] Log file not found:', logPath);
+      return { success: false, error: 'Log file not found' };
+    }
+
+    // Create form data
+    const form = new FormData();
+    form.append('notes', notes);
+    form.append('appversion', `v${appVersion}`);
+    form.append('log_file', fs.createReadStream(logPath), {
+      filename: 'app.log',
+      contentType: 'text/plain',
+    });
+
+    // Parse the upload URL
+    const uploadUrl = new URL('https://strabospot.org/jwtmicrodb/logs');
+
+    return new Promise((resolve) => {
+      const options = {
+        hostname: uploadUrl.hostname,
+        port: 443,
+        path: uploadUrl.pathname,
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${tokenResult.accessToken}`,
+          ...form.getHeaders(),
+        },
+      };
+
+      const req = https.request(options, (res) => {
+        let responseData = '';
+
+        res.on('data', (chunk) => {
+          responseData += chunk;
+        });
+
+        res.on('end', () => {
+          log.info('[ErrorReport] Server response (status ' + res.statusCode + '):', responseData);
+
+          if (res.statusCode === 401) {
+            resolve({ success: false, error: 'Session expired. Please log in again.', sessionExpired: true });
+            return;
+          }
+
+          if (res.statusCode < 200 || res.statusCode >= 300) {
+            let errorMessage = `Server error: ${res.statusCode}`;
+            try {
+              const errorJson = JSON.parse(responseData);
+              if (errorJson.Error) {
+                errorMessage = errorJson.Error;
+              }
+            } catch {
+              // Use default error message
+            }
+            resolve({ success: false, error: errorMessage });
+            return;
+          }
+
+          try {
+            const result = JSON.parse(responseData);
+            if (result.Status === 'Success') {
+              log.info('[ErrorReport] Error report sent successfully');
+              resolve({ success: true });
+            } else if (result.Error) {
+              resolve({ success: false, error: result.Error });
+            } else {
+              resolve({ success: true });
+            }
+          } catch (parseError) {
+            log.error('[ErrorReport] Failed to parse response:', parseError);
+            resolve({ success: false, error: 'Invalid server response' });
+          }
+        });
+      });
+
+      req.on('error', (error) => {
+        log.error('[ErrorReport] Request error:', error);
+        resolve({ success: false, error: error.message });
+      });
+
+      // Pipe the form data to the request
+      form.pipe(req);
+    });
+  } catch (error) {
+    log.error('[ErrorReport] Failed to send error report:', error);
+    return { success: false, error: error.message };
+  }
 });

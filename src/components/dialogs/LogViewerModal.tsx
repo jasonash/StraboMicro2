@@ -101,7 +101,7 @@ export function LogViewerModal({ open, onClose }: LogViewerModalProps) {
       >
         <DialogTitle sx={{ m: 0, p: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
           <Typography variant="h6" component="span" sx={{ flexGrow: 1 }}>
-            Report Error
+            Error Logs
           </Typography>
           <IconButton
             onClick={loadLogs}

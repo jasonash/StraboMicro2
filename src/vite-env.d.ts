@@ -435,6 +435,7 @@ interface Window {
     // Help menu events
     onShowAbout: (callback: () => void) => Unsubscribe;
     onShowLogs: (callback: () => void) => Unsubscribe;
+    onSendErrorReport: (callback: () => void) => Unsubscribe;
     onCheckForUpdates: (callback: () => void) => Unsubscribe;
 
     // Log service (persistent logging to file)
@@ -443,6 +444,9 @@ interface Window {
       getPath: () => Promise<string>;
       write: (level: string, message: string, source?: string) => Promise<{ success: boolean }>;
     };
+
+    // Send error report to server
+    sendErrorReport: (notes: string) => Promise<{ success: boolean; error?: string; sessionExpired?: boolean }>;
 
     // Auto-updater
     autoUpdater: {
