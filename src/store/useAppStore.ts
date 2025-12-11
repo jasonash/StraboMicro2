@@ -149,6 +149,11 @@ interface AppState {
   expandedSamples: string[];
   expandedMicrographs: string[];
 
+  // ========== NAVIGATION GUARD (for unsaved changes warnings) ==========
+  // Callback that returns true if navigation should proceed, false to block
+  // Used by DetailedNotesPanel to intercept navigation when there are unsaved notes
+  navigationGuard: (() => Promise<boolean>) | null;
+
   // ========== COMPUTED INDEXES (for performance) ==========
   micrographIndex: Map<string, MicrographMetadata>;
   spotIndex: Map<string, Spot>;
@@ -163,10 +168,10 @@ interface AppState {
   // ========== NAVIGATION ACTIONS ==========
   selectDataset: (id: string | null) => void;
   selectSample: (id: string | null) => void;
-  selectMicrograph: (id: string | null) => void;
-  selectActiveSpot: (id: string | null) => void;
-  drillDownToMicrograph: (id: string) => void; // Navigate to child micrograph (pushes current to stack)
-  navigateBack: () => void; // Go back to previous micrograph in stack
+  selectMicrograph: (id: string | null) => Promise<boolean>; // Returns true if navigation succeeded
+  selectActiveSpot: (id: string | null) => Promise<boolean>; // Returns true if navigation succeeded
+  drillDownToMicrograph: (id: string) => Promise<boolean>; // Navigate to child micrograph (pushes current to stack)
+  navigateBack: () => Promise<boolean>; // Go back to previous micrograph in stack
   clearNavigationStack: () => void; // Clear the navigation stack
 
   // ========== SELECTION ACTIONS ==========
@@ -242,6 +247,9 @@ interface AppState {
   toggleDatasetExpanded: (id: string) => void;
   toggleSampleExpanded: (id: string) => void;
   toggleMicrographExpanded: (id: string) => void;
+
+  // ========== NAVIGATION GUARD ACTIONS ==========
+  setNavigationGuard: (guard: (() => Promise<boolean>) | null) => void;
 }
 
 // ============================================================================
@@ -286,6 +294,8 @@ export const useAppStore = create<AppState>()(
           expandedDatasets: [],
           expandedSamples: [],
           expandedMicrographs: [],
+
+          navigationGuard: null,
 
           micrographIndex: new Map(),
           spotIndex: new Map(),
@@ -364,17 +374,51 @@ export const useAppStore = create<AppState>()(
 
           selectSample: (id) => set({ activeSampleId: id }),
 
-          selectMicrograph: (id) => set({
-            activeMicrographId: id,
-            activeSpotId: null,
-            micrographNavigationStack: [], // Clear stack when selecting from sidebar
-          }),
+          selectMicrograph: async (id) => {
+            const { navigationGuard, activeMicrographId } = get();
 
-          selectActiveSpot: (id) => set({ activeSpotId: id }),
+            // Skip guard if selecting the same micrograph
+            if (id === activeMicrographId) return true;
 
-          drillDownToMicrograph: (id) => {
-            const { activeMicrographId, micrographNavigationStack } = get();
-            if (!activeMicrographId || activeMicrographId === id) return;
+            // Check navigation guard if one is set
+            if (navigationGuard) {
+              const canProceed = await navigationGuard();
+              if (!canProceed) return false;
+            }
+
+            set({
+              activeMicrographId: id,
+              activeSpotId: null,
+              micrographNavigationStack: [], // Clear stack when selecting from sidebar
+            });
+            return true;
+          },
+
+          selectActiveSpot: async (id) => {
+            const { navigationGuard, activeSpotId } = get();
+
+            // Skip guard if selecting the same spot
+            if (id === activeSpotId) return true;
+
+            // Check navigation guard if one is set
+            if (navigationGuard) {
+              const canProceed = await navigationGuard();
+              if (!canProceed) return false;
+            }
+
+            set({ activeSpotId: id });
+            return true;
+          },
+
+          drillDownToMicrograph: async (id) => {
+            const { activeMicrographId, micrographNavigationStack, navigationGuard } = get();
+            if (!activeMicrographId || activeMicrographId === id) return true;
+
+            // Check navigation guard if one is set
+            if (navigationGuard) {
+              const canProceed = await navigationGuard();
+              if (!canProceed) return false;
+            }
 
             // Push current micrograph onto stack and navigate to child
             set({
@@ -382,11 +426,18 @@ export const useAppStore = create<AppState>()(
               activeSpotId: null,
               micrographNavigationStack: [...micrographNavigationStack, activeMicrographId],
             });
+            return true;
           },
 
-          navigateBack: () => {
-            const { micrographNavigationStack } = get();
-            if (micrographNavigationStack.length === 0) return;
+          navigateBack: async () => {
+            const { micrographNavigationStack, navigationGuard } = get();
+            if (micrographNavigationStack.length === 0) return true;
+
+            // Check navigation guard if one is set
+            if (navigationGuard) {
+              const canProceed = await navigationGuard();
+              if (!canProceed) return false;
+            }
 
             // Pop the last micrograph from stack and navigate to it
             const newStack = [...micrographNavigationStack];
@@ -397,6 +448,7 @@ export const useAppStore = create<AppState>()(
               activeSpotId: null,
               micrographNavigationStack: newStack,
             });
+            return true;
           },
 
           clearNavigationStack: () => set({ micrographNavigationStack: [] }),
@@ -1146,6 +1198,10 @@ export const useAppStore = create<AppState>()(
             }
             return { expandedMicrographs: Array.from(expanded) };
           }),
+
+          // ========== NAVIGATION GUARD ACTIONS ==========
+
+          setNavigationGuard: (guard) => set({ navigationGuard: guard }),
         }),
         {
           // Temporal (undo/redo) configuration

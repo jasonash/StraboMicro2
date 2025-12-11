@@ -9,7 +9,7 @@
  * Conditional sections: All other metadata notes (only shown if they have content)
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Box,
   Typography,
@@ -56,15 +56,15 @@ export function DetailedNotesPanel({ micrographId, spotId, onEditSection, onView
   const updateSample = useAppStore((state) => state.updateSample);
   const updateMicrographMetadata = useAppStore((state) => state.updateMicrographMetadata);
   const updateSpotData = useAppStore((state) => state.updateSpotData);
-
-  // Store subscription for detecting navigation changes
-  const activeMicrographIdFromStore = useAppStore((state) => state.activeMicrographId);
-  const activeSpotIdFromStore = useAppStore((state) => state.activeSpotId);
+  const setNavigationGuard = useAppStore((state) => state.setNavigationGuard);
 
   // Editing state
   const [editing, setEditing] = useState<EditingState | null>(null);
   const [showUnsavedDialog, setShowUnsavedDialog] = useState(false);
   const [pendingAction, setPendingAction] = useState<(() => void) | null>(null);
+
+  // Ref to store resolve function for navigation guard promise
+  const guardResolveRef = useRef<((proceed: boolean) => void) | null>(null);
 
   // Get the micrograph or spot data
   const micrograph = micrographId ? findMicrographById(project, micrographId) : undefined;
@@ -79,29 +79,41 @@ export function DetailedNotesPanel({ micrographId, spotId, onEditSection, onView
   // Check if there are unsaved changes
   const hasUnsavedChanges = editing !== null && editing.currentValue !== editing.originalValue;
 
-  // Handle unsaved changes warning
-  const checkUnsavedAndProceed = useCallback((action: () => void) => {
-    if (hasUnsavedChanges) {
-      setPendingAction(() => action);
-      setShowUnsavedDialog(true);
-    } else {
-      action();
-    }
-  }, [hasUnsavedChanges]);
+  // Keep a ref to the current editing state for the navigation guard
+  const editingRef = useRef(editing);
+  editingRef.current = editing;
 
-  // Detect navigation changes and warn about unsaved changes
+  const hasUnsavedChangesRef = useRef(hasUnsavedChanges);
+  hasUnsavedChangesRef.current = hasUnsavedChanges;
+
+  // Register/unregister navigation guard when editing state changes
   useEffect(() => {
-    // This effect runs when the active micrograph or spot changes
-    // If we have unsaved changes, show the warning dialog
-    if (hasUnsavedChanges) {
-      setShowUnsavedDialog(true);
-      setPendingAction(() => () => {
-        // Just close the editing state when navigation happens
-        setEditing(null);
-      });
+    if (editing) {
+      // Set up navigation guard that will be called before navigation
+      const guard = async (): Promise<boolean> => {
+        // Check current state via ref (not stale closure)
+        if (!hasUnsavedChangesRef.current) {
+          return true; // No unsaved changes, allow navigation
+        }
+
+        // Show dialog and wait for user response
+        return new Promise<boolean>((resolve) => {
+          guardResolveRef.current = resolve;
+          setShowUnsavedDialog(true);
+        });
+      };
+
+      setNavigationGuard(guard);
+    } else {
+      // Clear navigation guard when not editing
+      setNavigationGuard(null);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeMicrographIdFromStore, activeSpotIdFromStore]);
+
+    return () => {
+      // Cleanup on unmount
+      setNavigationGuard(null);
+    };
+  }, [editing, setNavigationGuard]);
 
   // Handle beforeunload event for browser/app close
   useEffect(() => {
@@ -115,6 +127,16 @@ export function DetailedNotesPanel({ micrographId, spotId, onEditSection, onView
 
     window.addEventListener('beforeunload', handleBeforeUnload);
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [hasUnsavedChanges]);
+
+  // Handle unsaved changes warning for internal actions (not navigation)
+  const checkUnsavedAndProceed = useCallback((action: () => void) => {
+    if (hasUnsavedChanges) {
+      setPendingAction(() => action);
+      setShowUnsavedDialog(true);
+    } else {
+      action();
+    }
   }, [hasUnsavedChanges]);
 
   // Start editing a section
@@ -134,16 +156,15 @@ export function DetailedNotesPanel({ micrographId, spotId, onEditSection, onView
   };
 
   // Save the current edit
-  const saveEditing = () => {
-    if (!editing || !project) return;
+  const saveEditing = useCallback(() => {
+    const currentEditing = editingRef.current;
+    if (!currentEditing || !project) return;
 
-    const { sectionId, currentValue } = editing;
+    const { sectionId, currentValue } = currentEditing;
 
     switch (sectionId) {
       case 'project-notes':
-        // Update project notes - need to update the whole project
-        // Since there's no direct updateProjectNotes, we'll use a workaround
-        // by updating the project directly through the store
+        // Update project notes directly through the store
         if (project) {
           const updatedProject = { ...project, notes: currentValue || undefined };
           useAppStore.setState({ project: updatedProject, isDirty: true });
@@ -170,12 +191,20 @@ export function DetailedNotesPanel({ micrographId, spotId, onEditSection, onView
     }
 
     setEditing(null);
-  };
+  }, [project, sample, micrographId, spotId, updateSample, updateMicrographMetadata, updateSpotData]);
 
   // Handle dialog actions
   const handleDialogDiscard = () => {
     setShowUnsavedDialog(false);
     setEditing(null);
+
+    // If this was triggered by navigation guard, resolve the promise
+    if (guardResolveRef.current) {
+      guardResolveRef.current(true); // Allow navigation
+      guardResolveRef.current = null;
+    }
+
+    // If this was triggered by internal action, execute it
     if (pendingAction) {
       pendingAction();
       setPendingAction(null);
@@ -185,11 +214,25 @@ export function DetailedNotesPanel({ micrographId, spotId, onEditSection, onView
   const handleDialogCancel = () => {
     setShowUnsavedDialog(false);
     setPendingAction(null);
+
+    // If this was triggered by navigation guard, resolve the promise
+    if (guardResolveRef.current) {
+      guardResolveRef.current(false); // Block navigation
+      guardResolveRef.current = null;
+    }
   };
 
   const handleDialogSave = () => {
     saveEditing();
     setShowUnsavedDialog(false);
+
+    // If this was triggered by navigation guard, resolve the promise
+    if (guardResolveRef.current) {
+      guardResolveRef.current(true); // Allow navigation after save
+      guardResolveRef.current = null;
+    }
+
+    // If this was triggered by internal action, execute it
     if (pendingAction) {
       pendingAction();
       setPendingAction(null);
