@@ -2,16 +2,27 @@
  * Detailed Notes Panel Component
  *
  * Displays all notes from various metadata sections for a micrograph or spot.
- * Shows notes with headings and edit links, matching legacy showMicrographDetails.java
- * and showSpotDetails.java allNotesVBox behavior.
+ * Supports inline editing - user clicks "edit" to make a section editable,
+ * can type while panning/zooming, and must explicitly save or cancel.
+ *
+ * Always-visible sections: Project Notes, Sample Notes, Micrograph/Spot Notes
+ * Conditional sections: All other metadata notes (only shown if they have content)
  */
 
+import { useState, useEffect, useCallback } from 'react';
 import {
   Box,
   Typography,
   Divider,
   Link,
   Stack,
+  TextField,
+  Button,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogContentText,
+  DialogActions,
 } from '@mui/material';
 import { useAppStore } from '@/store';
 import { findMicrographById, findSpotById, getMicrographParentSample } from '@/store/helpers';
@@ -23,8 +34,37 @@ interface DetailedNotesPanelProps {
   onViewAllNotes: () => void;
 }
 
+// Section IDs for the always-visible sections that support inline editing
+type InlineEditableSectionId = 'project-notes' | 'sample-notes' | 'micrograph-notes' | 'spot-notes';
+
+// All section IDs (inline editable + modal-only)
+type SectionId = InlineEditableSectionId |
+  'polish-description' | 'instrument-notes' | 'post-processing-notes' |
+  'mineralogy-notes' | 'lithology-notes' | 'grain-size-notes' | 'grain-shape-notes' |
+  'grain-orientation-notes' | 'fabric-notes' | 'clastic-notes' | 'grain-boundary-notes' |
+  'intragrain-notes' | 'vein-notes' | 'pseudotachylyte-notes' | 'fold-notes' |
+  'faults-shear-zones-notes' | 'extinction-microstructures-notes' | 'fracture-notes';
+
+interface EditingState {
+  sectionId: InlineEditableSectionId;
+  originalValue: string;
+  currentValue: string;
+}
+
 export function DetailedNotesPanel({ micrographId, spotId, onEditSection, onViewAllNotes }: DetailedNotesPanelProps) {
   const project = useAppStore((state) => state.project);
+  const updateSample = useAppStore((state) => state.updateSample);
+  const updateMicrographMetadata = useAppStore((state) => state.updateMicrographMetadata);
+  const updateSpotData = useAppStore((state) => state.updateSpotData);
+
+  // Store subscription for detecting navigation changes
+  const activeMicrographIdFromStore = useAppStore((state) => state.activeMicrographId);
+  const activeSpotIdFromStore = useAppStore((state) => state.activeSpotId);
+
+  // Editing state
+  const [editing, setEditing] = useState<EditingState | null>(null);
+  const [showUnsavedDialog, setShowUnsavedDialog] = useState(false);
+  const [pendingAction, setPendingAction] = useState<(() => void) | null>(null);
 
   // Get the micrograph or spot data
   const micrograph = micrographId ? findMicrographById(project, micrographId) : undefined;
@@ -36,12 +76,232 @@ export function DetailedNotesPanel({ micrographId, spotId, onEditSection, onView
     ? getMicrographParentSample(project, micrographId)
     : undefined;
 
-  if (!data) {
+  // Check if there are unsaved changes
+  const hasUnsavedChanges = editing !== null && editing.currentValue !== editing.originalValue;
+
+  // Handle unsaved changes warning
+  const checkUnsavedAndProceed = useCallback((action: () => void) => {
+    if (hasUnsavedChanges) {
+      setPendingAction(() => action);
+      setShowUnsavedDialog(true);
+    } else {
+      action();
+    }
+  }, [hasUnsavedChanges]);
+
+  // Detect navigation changes and warn about unsaved changes
+  useEffect(() => {
+    // This effect runs when the active micrograph or spot changes
+    // If we have unsaved changes, show the warning dialog
+    if (hasUnsavedChanges) {
+      setShowUnsavedDialog(true);
+      setPendingAction(() => () => {
+        // Just close the editing state when navigation happens
+        setEditing(null);
+      });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeMicrographIdFromStore, activeSpotIdFromStore]);
+
+  // Handle beforeunload event for browser/app close
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (hasUnsavedChanges) {
+        e.preventDefault();
+        e.returnValue = 'You have unsaved changes to your notes. Are you sure you want to leave?';
+        return e.returnValue;
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [hasUnsavedChanges]);
+
+  // Start editing a section
+  const startEditing = (sectionId: InlineEditableSectionId, currentValue: string) => {
+    checkUnsavedAndProceed(() => {
+      setEditing({
+        sectionId,
+        originalValue: currentValue,
+        currentValue: currentValue,
+      });
+    });
+  };
+
+  // Cancel editing
+  const cancelEditing = () => {
+    setEditing(null);
+  };
+
+  // Save the current edit
+  const saveEditing = () => {
+    if (!editing || !project) return;
+
+    const { sectionId, currentValue } = editing;
+
+    switch (sectionId) {
+      case 'project-notes':
+        // Update project notes - need to update the whole project
+        // Since there's no direct updateProjectNotes, we'll use a workaround
+        // by updating the project directly through the store
+        if (project) {
+          const updatedProject = { ...project, notes: currentValue || undefined };
+          useAppStore.setState({ project: updatedProject, isDirty: true });
+        }
+        break;
+
+      case 'sample-notes':
+        if (sample) {
+          updateSample(sample.id, { sampleNotes: currentValue || undefined });
+        }
+        break;
+
+      case 'micrograph-notes':
+        if (micrographId) {
+          updateMicrographMetadata(micrographId, { notes: currentValue || undefined });
+        }
+        break;
+
+      case 'spot-notes':
+        if (spotId) {
+          updateSpotData(spotId, { notes: currentValue || undefined });
+        }
+        break;
+    }
+
+    setEditing(null);
+  };
+
+  // Handle dialog actions
+  const handleDialogDiscard = () => {
+    setShowUnsavedDialog(false);
+    setEditing(null);
+    if (pendingAction) {
+      pendingAction();
+      setPendingAction(null);
+    }
+  };
+
+  const handleDialogCancel = () => {
+    setShowUnsavedDialog(false);
+    setPendingAction(null);
+  };
+
+  const handleDialogSave = () => {
+    saveEditing();
+    setShowUnsavedDialog(false);
+    if (pendingAction) {
+      pendingAction();
+      setPendingAction(null);
+    }
+  };
+
+  // Open modal editor for complex sections (non-inline editable)
+  const handleEditSection = (sectionId: string) => {
+    checkUnsavedAndProceed(() => {
+      onEditSection(sectionId);
+    });
+  };
+
+  // Handle View All Notes
+  const handleViewAllNotes = () => {
+    checkUnsavedAndProceed(() => {
+      onViewAllNotes();
+    });
+  };
+
+  if (!data && !project) {
     return null;
   }
 
-  // Helper to render a notes section
-  const renderNoteSection = (label: string, notes: string | null | undefined, sectionId: string, showDivider: boolean = true) => {
+  // Helper to render an inline-editable notes section (always visible)
+  const renderInlineEditableSection = (
+    label: string,
+    notes: string | null | undefined,
+    sectionId: InlineEditableSectionId,
+    showDivider: boolean = true
+  ) => {
+    const isEditing = editing?.sectionId === sectionId;
+    const displayValue = isEditing ? editing.currentValue : (notes || '');
+    const isEmpty = !notes || notes.trim() === '';
+
+    return (
+      <Box key={sectionId}>
+        {showDivider && <Divider sx={{ my: 1 }} />}
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
+          <Typography variant="subtitle2" sx={{ fontWeight: 'bold' }}>
+            {label}
+          </Typography>
+          {!isEditing && (
+            <Link
+              component="button"
+              variant="caption"
+              onClick={() => startEditing(sectionId, notes || '')}
+              sx={{ textDecoration: 'none', cursor: 'pointer' }}
+            >
+              (edit)
+            </Link>
+          )}
+        </Box>
+
+        {isEditing ? (
+          <Box sx={{ mt: 1 }}>
+            <TextField
+              fullWidth
+              multiline
+              minRows={3}
+              maxRows={10}
+              value={displayValue}
+              onChange={(e) => setEditing(prev => prev ? { ...prev, currentValue: e.target.value } : null)}
+              placeholder={`Enter ${label.toLowerCase()}...`}
+              variant="outlined"
+              size="small"
+              autoFocus
+              sx={{
+                '& .MuiOutlinedInput-root': {
+                  backgroundColor: 'action.hover',
+                },
+              }}
+            />
+            <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1, mt: 1 }}>
+              <Button size="small" onClick={cancelEditing}>
+                Cancel
+              </Button>
+              <Button
+                size="small"
+                variant="contained"
+                onClick={saveEditing}
+                disabled={editing.currentValue === editing.originalValue}
+              >
+                Save
+              </Button>
+            </Box>
+          </Box>
+        ) : (
+          <Typography
+            variant="body2"
+            sx={{
+              whiteSpace: 'pre-wrap',
+              wordBreak: 'break-word',
+              fontStyle: isEmpty ? 'italic' : 'normal',
+              color: isEmpty ? 'text.secondary' : 'text.primary',
+            }}
+          >
+            {isEmpty ? `No ${label.toLowerCase()} recorded` : notes}
+          </Typography>
+        )}
+      </Box>
+    );
+  };
+
+  // Helper to render a read-only notes section with edit link (conditional visibility)
+  const renderReadOnlySection = (
+    label: string,
+    notes: string | null | undefined,
+    sectionId: SectionId,
+    showDivider: boolean = true
+  ) => {
+    // Only show if there's content
     if (!notes || notes.trim() === '') return null;
 
     return (
@@ -54,7 +314,7 @@ export function DetailedNotesPanel({ micrographId, spotId, onEditSection, onView
           <Link
             component="button"
             variant="caption"
-            onClick={() => onEditSection(sectionId)}
+            onClick={() => handleEditSection(sectionId)}
             sx={{ textDecoration: 'none', cursor: 'pointer' }}
           >
             (edit)
@@ -67,216 +327,97 @@ export function DetailedNotesPanel({ micrographId, spotId, onEditSection, onView
     );
   };
 
-  // Collect all note sections
-  const noteSections: JSX.Element[] = [];
+  // Build the sections
+  const sections: JSX.Element[] = [];
   let isFirst = true;
 
+  // Always-visible sections (inline editable)
   // Project notes
-  const projectNotes = renderNoteSection('Project Notes', project?.notes, 'project', !isFirst);
-  if (projectNotes) {
-    noteSections.push(projectNotes);
-    isFirst = false;
-  }
-
-  // Dataset notes (if dataset has notes field in the future)
-  // Note: Dataset currently doesn't have notes field, but keeping structure for consistency
+  sections.push(renderInlineEditableSection('Project Notes', project?.notes, 'project-notes', !isFirst));
+  isFirst = false;
 
   // Sample notes
-  if (sample?.sampleNotes) {
-    const result = renderNoteSection('Sample Notes', sample.sampleNotes, 'sample', !isFirst);
-    if (result) {
-      noteSections.push(result);
-      isFirst = false;
-    }
+  sections.push(renderInlineEditableSection('Sample Notes', sample?.sampleNotes, 'sample-notes', !isFirst));
+
+  // Micrograph or Spot notes (depending on what's active)
+  if (spotId) {
+    sections.push(renderInlineEditableSection('Spot Notes', spot?.notes, 'spot-notes', !isFirst));
+  } else if (micrographId) {
+    sections.push(renderInlineEditableSection('Micrograph Notes', micrograph?.notes, 'micrograph-notes', !isFirst));
   }
 
-  // Micrograph/Spot notes
-  if (micrograph?.notes) {
-    const result = renderNoteSection('Micrograph Notes', micrograph.notes, 'micrograph-notes', !isFirst);
-    if (result) {
-      noteSections.push(result);
-      isFirst = false;
-    }
-  } else if (spot?.notes) {
-    const result = renderNoteSection('Spot Notes', spot.notes, 'spot-notes', !isFirst);
-    if (result) {
-      noteSections.push(result);
-      isFirst = false;
-    }
-  }
-
+  // Conditional sections (only shown if they have content, open modal to edit)
   // Polish description
-  if (micrograph?.polishDescription) {
-    const result = renderNoteSection('Polish Description', micrograph.polishDescription, 'polish-description', !isFirst);
-    if (result) {
-      noteSections.push(result);
-      isFirst = false;
-    }
-  }
+  const polishSection = renderReadOnlySection('Polish Description', micrograph?.polishDescription, 'polish-description', true);
+  if (polishSection) sections.push(polishSection);
 
   // Instrument notes
-  if (micrograph?.instrument?.instrumentNotes) {
-    const result = renderNoteSection('Instrument Notes', micrograph.instrument.instrumentNotes, 'instrument-notes', !isFirst);
-    if (result) {
-      noteSections.push(result);
-      isFirst = false;
-    }
-  }
+  const instrumentSection = renderReadOnlySection('Instrument Notes', micrograph?.instrument?.instrumentNotes, 'instrument-notes', true);
+  if (instrumentSection) sections.push(instrumentSection);
 
   // Post processing notes
-  if (micrograph?.instrument?.notesOnPostProcessing) {
-    const result = renderNoteSection('Post Processing Notes', micrograph.instrument.notesOnPostProcessing, 'post-processing-notes', !isFirst);
-    if (result) {
-      noteSections.push(result);
-      isFirst = false;
-    }
-  }
+  const postProcessingSection = renderReadOnlySection('Post Processing Notes', micrograph?.instrument?.notesOnPostProcessing, 'post-processing-notes', true);
+  if (postProcessingSection) sections.push(postProcessingSection);
 
   // Mineralogy notes
-  if (data.mineralogy?.notes) {
-    const result = renderNoteSection('Mineralogy Notes', data.mineralogy.notes, 'mineralogy-notes', !isFirst);
-    if (result) {
-      noteSections.push(result);
-      isFirst = false;
-    }
-  }
+  const mineralogySection = renderReadOnlySection('Mineralogy Notes', data?.mineralogy?.notes, 'mineralogy-notes', true);
+  if (mineralogySection) sections.push(mineralogySection);
 
   // Lithology notes
-  if (data.lithologyInfo?.notes) {
-    const result = renderNoteSection('Lithology Notes', data.lithologyInfo.notes, 'lithology-notes', !isFirst);
-    if (result) {
-      noteSections.push(result);
-      isFirst = false;
-    }
-  }
+  const lithologySection = renderReadOnlySection('Lithology Notes', data?.lithologyInfo?.notes, 'lithology-notes', true);
+  if (lithologySection) sections.push(lithologySection);
 
   // Grain size notes
-  if (data.grainInfo?.grainSizeNotes) {
-    const result = renderNoteSection('Grain Size Notes', data.grainInfo.grainSizeNotes, 'grain-size-notes', !isFirst);
-    if (result) {
-      noteSections.push(result);
-      isFirst = false;
-    }
-  }
+  const grainSizeSection = renderReadOnlySection('Grain Size Notes', data?.grainInfo?.grainSizeNotes, 'grain-size-notes', true);
+  if (grainSizeSection) sections.push(grainSizeSection);
 
   // Grain shape notes
-  if (data.grainInfo?.grainShapeNotes) {
-    const result = renderNoteSection('Grain Shape Notes', data.grainInfo.grainShapeNotes, 'grain-shape-notes', !isFirst);
-    if (result) {
-      noteSections.push(result);
-      isFirst = false;
-    }
-  }
+  const grainShapeSection = renderReadOnlySection('Grain Shape Notes', data?.grainInfo?.grainShapeNotes, 'grain-shape-notes', true);
+  if (grainShapeSection) sections.push(grainShapeSection);
 
   // Grain orientation notes
-  if (data.grainInfo?.grainOrientationNotes) {
-    const result = renderNoteSection('Grain Orientation Notes', data.grainInfo.grainOrientationNotes, 'grain-orientation-notes', !isFirst);
-    if (result) {
-      noteSections.push(result);
-      isFirst = false;
-    }
-  }
+  const grainOrientationSection = renderReadOnlySection('Grain Orientation Notes', data?.grainInfo?.grainOrientationNotes, 'grain-orientation-notes', true);
+  if (grainOrientationSection) sections.push(grainOrientationSection);
 
   // Fabric notes
-  if (data.fabricInfo?.notes) {
-    const result = renderNoteSection('Fabric Notes', data.fabricInfo.notes, 'fabric-notes', !isFirst);
-    if (result) {
-      noteSections.push(result);
-      isFirst = false;
-    }
-  }
+  const fabricSection = renderReadOnlySection('Fabric Notes', data?.fabricInfo?.notes, 'fabric-notes', true);
+  if (fabricSection) sections.push(fabricSection);
 
   // Clastic deformation band notes
-  if (data.clasticDeformationBandInfo?.notes) {
-    const result = renderNoteSection('Clastic Deformation Band Notes', data.clasticDeformationBandInfo.notes, 'clastic-notes', !isFirst);
-    if (result) {
-      noteSections.push(result);
-      isFirst = false;
-    }
-  }
+  const clasticSection = renderReadOnlySection('Clastic Deformation Band Notes', data?.clasticDeformationBandInfo?.notes, 'clastic-notes', true);
+  if (clasticSection) sections.push(clasticSection);
 
   // Grain boundary notes
-  if (data.grainBoundaryInfo?.notes) {
-    const result = renderNoteSection('Grain Boundary/Contact Notes', data.grainBoundaryInfo.notes, 'grain-boundary-notes', !isFirst);
-    if (result) {
-      noteSections.push(result);
-      isFirst = false;
-    }
-  }
+  const grainBoundarySection = renderReadOnlySection('Grain Boundary/Contact Notes', data?.grainBoundaryInfo?.notes, 'grain-boundary-notes', true);
+  if (grainBoundarySection) sections.push(grainBoundarySection);
 
   // Intragrain notes
-  if (data.intraGrainInfo?.notes) {
-    const result = renderNoteSection('Intragrain (Single Grain) Notes', data.intraGrainInfo.notes, 'intragrain-notes', !isFirst);
-    if (result) {
-      noteSections.push(result);
-      isFirst = false;
-    }
-  }
+  const intragrainSection = renderReadOnlySection('Intragrain (Single Grain) Notes', data?.intraGrainInfo?.notes, 'intragrain-notes', true);
+  if (intragrainSection) sections.push(intragrainSection);
 
   // Vein notes
-  if (data.veinInfo?.notes) {
-    const result = renderNoteSection('Vein Notes', data.veinInfo.notes, 'vein-notes', !isFirst);
-    if (result) {
-      noteSections.push(result);
-      isFirst = false;
-    }
-  }
+  const veinSection = renderReadOnlySection('Vein Notes', data?.veinInfo?.notes, 'vein-notes', true);
+  if (veinSection) sections.push(veinSection);
 
   // Pseudotachylyte notes
-  if (data.pseudotachylyteInfo?.notes) {
-    const result = renderNoteSection('Pseudotachylyte Notes', data.pseudotachylyteInfo.notes, 'pseudotachylyte-notes', !isFirst);
-    if (result) {
-      noteSections.push(result);
-      isFirst = false;
-    }
-  }
+  const pseudotachylyteSection = renderReadOnlySection('Pseudotachylyte Notes', data?.pseudotachylyteInfo?.notes, 'pseudotachylyte-notes', true);
+  if (pseudotachylyteSection) sections.push(pseudotachylyteSection);
 
   // Fold notes
-  if (data.foldInfo?.notes) {
-    const result = renderNoteSection('Fold Notes', data.foldInfo.notes, 'fold-notes', !isFirst);
-    if (result) {
-      noteSections.push(result);
-      isFirst = false;
-    }
-  }
+  const foldSection = renderReadOnlySection('Fold Notes', data?.foldInfo?.notes, 'fold-notes', true);
+  if (foldSection) sections.push(foldSection);
 
   // Faults/Shear zones notes
-  if (data.faultsShearZonesInfo?.notes) {
-    const result = renderNoteSection('Faults/Shear Zones Notes', data.faultsShearZonesInfo.notes, 'faults-shear-zones-notes', !isFirst);
-    if (result) {
-      noteSections.push(result);
-      isFirst = false;
-    }
-  }
+  const faultsSection = renderReadOnlySection('Faults/Shear Zones Notes', data?.faultsShearZonesInfo?.notes, 'faults-shear-zones-notes', true);
+  if (faultsSection) sections.push(faultsSection);
 
   // Extinction microstructures notes
-  if (data.extinctionMicrostructureInfo?.notes) {
-    const result = renderNoteSection('Extinction Microstructures Notes', data.extinctionMicrostructureInfo.notes, 'extinction-microstructures-notes', !isFirst);
-    if (result) {
-      noteSections.push(result);
-      isFirst = false;
-    }
-  }
+  const extinctionSection = renderReadOnlySection('Extinction Microstructures Notes', data?.extinctionMicrostructureInfo?.notes, 'extinction-microstructures-notes', true);
+  if (extinctionSection) sections.push(extinctionSection);
 
   // Fracture notes
-  if (data.fractureInfo?.notes) {
-    const result = renderNoteSection('Fracture Notes', data.fractureInfo.notes, 'fracture-notes', !isFirst);
-    if (result) {
-      noteSections.push(result);
-      isFirst = false;
-    }
-  }
-
-  // If no notes exist at all
-  if (noteSections.length === 0) {
-    return (
-      <Box sx={{ p: 2 }}>
-        <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic', textAlign: 'center' }}>
-          No detailed notes recorded
-        </Typography>
-      </Box>
-    );
-  }
+  const fractureSection = renderReadOnlySection('Fracture Notes', data?.fractureInfo?.notes, 'fracture-notes', true);
+  if (fractureSection) sections.push(fractureSection);
 
   return (
     <Box sx={{ p: 2 }}>
@@ -285,15 +426,39 @@ export function DetailedNotesPanel({ micrographId, spotId, onEditSection, onView
         <Link
           component="button"
           variant="body2"
-          onClick={onViewAllNotes}
+          onClick={handleViewAllNotes}
           sx={{ cursor: 'pointer' }}
         >
           View All Notes
         </Link>
       </Box>
       <Stack spacing={1}>
-        {noteSections}
+        {sections}
       </Stack>
+
+      {/* Unsaved Changes Dialog */}
+      <Dialog
+        open={showUnsavedDialog}
+        onClose={handleDialogCancel}
+      >
+        <DialogTitle>Unsaved Changes</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            You have unsaved changes to your notes. Would you like to save them before continuing?
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleDialogDiscard} color="error">
+            Discard
+          </Button>
+          <Button onClick={handleDialogCancel}>
+            Cancel
+          </Button>
+          <Button onClick={handleDialogSave} variant="contained">
+            Save
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }
