@@ -211,6 +211,7 @@ export function CombinedDataTypeSelector({ context, onSelectModal }: CombinedDat
       filterOptions={filterOptions}
       getOptionLabel={getOptionLabel}
       renderOption={renderOption}
+      value={null}
       onChange={handleChange}
       inputValue={inputValue}
       onInputChange={(_event, value, reason) => {

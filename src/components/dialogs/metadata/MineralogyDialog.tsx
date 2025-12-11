@@ -203,15 +203,25 @@ export function MineralogyDialog({
       notes: formData.lithologyNotes || null,
     };
 
+    // Check if mineralogy has any data worth saving (minerals OR notes OR methods)
+    const hasMineralogyData = mineralogy.minerals.length > 0 ||
+      mineralogy.notes ||
+      mineralogy.mineralogyMethod ||
+      mineralogy.percentageCalculationMethod;
+
+    // Check if lithology has any data worth saving (lithologies OR notes)
+    const hasLithologyData = (lithologyInfo.lithologies && lithologyInfo.lithologies.length > 0) ||
+      lithologyInfo.notes;
+
     if (micrographId) {
       updateMicrographMetadata(micrographId, {
-        mineralogy: mineralogy.minerals.length > 0 ? mineralogy : null,
-        lithologyInfo: (lithologyInfo.lithologies && lithologyInfo.lithologies.length > 0) ? lithologyInfo : null,
+        mineralogy: hasMineralogyData ? mineralogy : null,
+        lithologyInfo: hasLithologyData ? lithologyInfo : null,
       });
     } else if (spotId) {
       updateSpotData(spotId, {
-        mineralogy: mineralogy.minerals.length > 0 ? mineralogy : null,
-        lithologyInfo: (lithologyInfo.lithologies && lithologyInfo.lithologies.length > 0) ? lithologyInfo : null,
+        mineralogy: hasMineralogyData ? mineralogy : null,
+        lithologyInfo: hasLithologyData ? lithologyInfo : null,
       });
     }
 
