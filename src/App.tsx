@@ -9,6 +9,7 @@ import { PreferencesDialog } from './components/dialogs/PreferencesDialog';
 import { LoginDialog } from './components/dialogs/LoginDialog';
 import { AboutDialog } from './components/dialogs/AboutDialog';
 import { LogViewerModal } from './components/dialogs/LogViewerModal';
+import { SendErrorReportModal } from './components/dialogs/SendErrorReportModal';
 import { ExportAllImagesDialog } from './components/dialogs/ExportAllImagesDialog';
 import { ExportPDFDialog } from './components/dialogs/ExportPDFDialog';
 import { ExportSmzDialog } from './components/dialogs/ExportSmzDialog';
@@ -172,6 +173,7 @@ function App() {
   const [isCloseProjectOpen, setIsCloseProjectOpen] = useState(false);
   const [isAboutOpen, setIsAboutOpen] = useState(false);
   const [isLogViewerOpen, setIsLogViewerOpen] = useState(false);
+  const [isSendErrorReportOpen, setIsSendErrorReportOpen] = useState(false);
   const [isManualUpdateCheck, setIsManualUpdateCheck] = useState(false);
   const closeProject = useAppStore(state => state.closeProject);
   const project = useAppStore(state => state.project);
@@ -184,7 +186,7 @@ function App() {
   const micrographIndex = useAppStore(state => state.micrographIndex);
   const addSpot = useAppStore(state => state.addSpot);
   const updateMicrographMetadata = useAppStore(state => state.updateMicrographMetadata);
-  const { checkAuthStatus, logout } = useAuthStore();
+  const { checkAuthStatus, logout, isAuthenticated } = useAuthStore();
 
   // Initialize theme system
   useTheme();
@@ -685,9 +687,14 @@ function App() {
       setIsAboutOpen(true);
     }));
 
-    // Help: Report Error menu item
+    // Help: View Error Logs menu item
     unsubscribers.push(window.api.onShowLogs(() => {
       setIsLogViewerOpen(true);
+    }));
+
+    // Help: Send Error Report menu item
+    unsubscribers.push(window.api.onSendErrorReport(() => {
+      setIsSendErrorReportOpen(true);
     }));
 
     // Help: Check for Updates menu item
@@ -986,6 +993,12 @@ function App() {
       <LogViewerModal
         open={isLogViewerOpen}
         onClose={() => setIsLogViewerOpen(false)}
+      />
+      <SendErrorReportModal
+        open={isSendErrorReportOpen}
+        onClose={() => setIsSendErrorReportOpen(false)}
+        isLoggedIn={isAuthenticated}
+        onLoginRequest={() => setIsLoginDialogOpen(true)}
       />
       <ExportAllImagesDialog
         open={isExportAllImagesOpen}
