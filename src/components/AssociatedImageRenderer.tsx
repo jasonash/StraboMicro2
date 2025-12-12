@@ -15,6 +15,7 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { Group, Image as KonvaImage, Rect } from 'react-konva';
 import { MicrographMetadata } from '@/types/project-types';
+import { useAppStore } from '@/store';
 
 // Render modes based on screen coverage and zoom
 export type RenderMode = 'THUMBNAIL' | 'MEDIUM' | 'TILED';
@@ -77,6 +78,9 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
     isLoading: false,
     retryCount: 0,
   });
+
+  // Get active tool to avoid changing cursor when drawing/measuring
+  const activeTool = useAppStore((state) => state.activeTool);
 
   // Cleanup on unmount to prevent memory leaks
   useEffect(() => {
@@ -476,22 +480,26 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
   }, [onClick, micrograph.id]);
 
   const handleMouseEnter = useCallback((e: any) => {
+    // Don't change cursor if a drawing/measure tool is active
+    if (activeTool) return;
     if (onClick) {
       const container = e.target.getStage()?.container();
       if (container) {
         container.style.cursor = 'pointer';
       }
     }
-  }, [onClick]);
+  }, [onClick, activeTool]);
 
   const handleMouseLeave = useCallback((e: any) => {
+    // Don't change cursor if a drawing/measure tool is active
+    if (activeTool) return;
     if (onClick) {
       const container = e.target.getStage()?.container();
       if (container) {
         container.style.cursor = 'grab';
       }
     }
-  }, [onClick]);
+  }, [onClick, activeTool]);
 
   /**
    * Render based on current mode
