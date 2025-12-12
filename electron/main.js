@@ -701,6 +701,16 @@ function createWindow() {
             }
           }
         },
+        {
+          label: 'Show Archived Spots',
+          type: 'checkbox',
+          checked: false,
+          click: (menuItem) => {
+            if (mainWindow) {
+              mainWindow.webContents.send('view:toggle-archived-spots', menuItem.checked);
+            }
+          }
+        },
         { type: 'separator' },
         {
           label: 'Theme',

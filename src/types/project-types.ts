@@ -295,6 +295,12 @@ export interface Spot {
    * For split operations: ID of spot this was split from
    */
   splitFrom?: string | null;
+
+  /**
+   * Whether this spot is archived (hidden from normal view)
+   * Archived spots are preserved but not displayed unless "Show Archived Spots" is enabled
+   */
+  archived?: boolean;
 }
 
 // ============================================================================

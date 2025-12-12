@@ -187,6 +187,7 @@ function App() {
   const setShowSpotLabels = useAppStore(state => state.setShowSpotLabels);
   const setShowMicrographOutlines = useAppStore(state => state.setShowMicrographOutlines);
   const setShowRecursiveSpots = useAppStore(state => state.setShowRecursiveSpots);
+  const setShowArchivedSpots = useAppStore(state => state.setShowArchivedSpots);
   const activeMicrographId = useAppStore(state => state.activeMicrographId);
   const micrographIndex = useAppStore(state => state.micrographIndex);
   const addSpot = useAppStore(state => state.addSpot);
@@ -708,6 +709,11 @@ function App() {
     // View: Toggle Recursive Spots menu item
     unsubscribers.push(window.api.onToggleRecursiveSpots((checked) => {
       setShowRecursiveSpots(checked);
+    }));
+
+    // View: Toggle Archived Spots menu item
+    unsubscribers.push(window.api.onToggleArchivedSpots((checked) => {
+      setShowArchivedSpots(checked);
     }));
 
     // Account: Login menu item
