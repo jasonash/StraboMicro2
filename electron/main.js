@@ -713,6 +713,15 @@ function createWindow() {
         },
         { type: 'separator' },
         {
+          label: 'Show Quick Classify Toolbar',
+          accelerator: 'CmdOrCtrl+K',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('view:toggle-quick-classify');
+            }
+          }
+        },
+        {
           label: 'Point Count Statistics...',
           accelerator: 'CmdOrCtrl+Shift+S',
           click: () => {

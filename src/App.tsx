@@ -190,6 +190,7 @@ function App() {
   const setShowMicrographOutlines = useAppStore(state => state.setShowMicrographOutlines);
   const setShowRecursiveSpots = useAppStore(state => state.setShowRecursiveSpots);
   const setShowArchivedSpots = useAppStore(state => state.setShowArchivedSpots);
+  const setQuickClassifyVisible = useAppStore(state => state.setQuickClassifyVisible);
   const activeMicrographId = useAppStore(state => state.activeMicrographId);
   const micrographIndex = useAppStore(state => state.micrographIndex);
   const addSpot = useAppStore(state => state.addSpot);
@@ -721,6 +722,13 @@ function App() {
     // View: Point Count Statistics menu item
     unsubscribers.push(window.api.onShowPointCountStatistics(() => {
       setIsPointCountStatisticsOpen(true);
+    }));
+
+    // View: Toggle Quick Classify Toolbar menu item
+    unsubscribers.push(window.api.onToggleQuickClassify(() => {
+      // Get current state at time of callback to avoid stale closure
+      const currentVisible = useAppStore.getState().quickClassifyVisible;
+      setQuickClassifyVisible(!currentVisible);
     }));
 
     // Account: Login menu item

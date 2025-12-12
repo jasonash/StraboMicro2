@@ -154,6 +154,11 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('view:show-point-count-statistics', handler);
     return () => ipcRenderer.removeListener('view:show-point-count-statistics', handler);
   },
+  onToggleQuickClassify: (callback) => {
+    const handler = () => callback();
+    ipcRenderer.on('view:toggle-quick-classify', handler);
+    return () => ipcRenderer.removeListener('view:toggle-quick-classify', handler);
+  },
 
   // Tile-based image loading
   loadImageWithTiles: (imagePath) => ipcRenderer.invoke('image:load-with-tiles', imagePath),
