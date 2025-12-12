@@ -38,7 +38,8 @@ export const GenerateSpotsPreview = ({
 }: GenerateSpotsPreviewProps) => {
   const [image, setImage] = useState<HTMLImageElement | null>(null);
   const [imageSize, setImageSize] = useState<{ width: number; height: number }>({ width: 0, height: 0 });
-  const [displayScale, setDisplayScale] = useState(1);
+  const [thumbnailScale, setThumbnailScale] = useState(1); // Scale thumbnail to fit canvas
+  const [pointScale, setPointScale] = useState(1); // Scale points from original coords to canvas
   const [isLoading, setIsLoading] = useState(true);
 
   // Store ref for cleanup
@@ -114,10 +115,10 @@ export const GenerateSpotsPreview = ({
           return;
         }
 
-        // Load thumbnail (512px max for dialog)
-        const thumbnailDataUrl = await window.api?.loadThumbnail(tileData.hash);
-        if (!thumbnailDataUrl) {
-          console.error('[GenerateSpotsPreview] Failed to load thumbnail');
+        // Load medium resolution image (2048px max for better quality in dialog)
+        const mediumDataUrl = await window.api?.loadMedium(tileData.hash);
+        if (!mediumDataUrl) {
+          console.error('[GenerateSpotsPreview] Failed to load medium resolution image');
           return;
         }
 
@@ -128,11 +129,17 @@ export const GenerateSpotsPreview = ({
         img.onload = () => {
           setImage(img);
 
-          // Calculate scale to fit in canvas
-          const scaleX = CANVAS_WIDTH / imgWidth;
-          const scaleY = CANVAS_HEIGHT / imgHeight;
-          const fitScale = Math.min(scaleX, scaleY);
-          setDisplayScale(fitScale);
+          // Calculate scale to fit thumbnail in canvas
+          const thumbScaleX = CANVAS_WIDTH / img.width;
+          const thumbScaleY = CANVAS_HEIGHT / img.height;
+          const thumbFitScale = Math.min(thumbScaleX, thumbScaleY);
+          setThumbnailScale(thumbFitScale);
+
+          // Calculate scale to map original image coordinates to canvas
+          // Points are in original image coords, need to map to displayed size
+          const pScale = (img.width / imgWidth) * thumbFitScale;
+          setPointScale(pScale);
+
           setScale(1);
           setStagePos({ x: 0, y: 0 });
           setIsLoading(false);
@@ -143,7 +150,7 @@ export const GenerateSpotsPreview = ({
           setIsLoading(false);
         };
 
-        img.src = thumbnailDataUrl;
+        img.src = mediumDataUrl;
 
       } catch (error) {
         console.error('[GenerateSpotsPreview] Error loading image:', error);
@@ -196,8 +203,8 @@ export const GenerateSpotsPreview = ({
       setLastPanPos(pointer);
     } else if (activeTool === 'region') {
       // Convert screen coordinates to image coordinates
-      const imageX = (pointer.x - stagePos.x) / scale / displayScale;
-      const imageY = (pointer.y - stagePos.y) / scale / displayScale;
+      const imageX = (pointer.x - stagePos.x) / scale / pointScale;
+      const imageY = (pointer.y - stagePos.y) / scale / pointScale;
 
       setIsDrawingRegion(true);
       setRegionStart({ x: imageX, y: imageY });
@@ -223,8 +230,8 @@ export const GenerateSpotsPreview = ({
       setLastPanPos(pointer);
     } else if (isDrawingRegion && regionStart) {
       // Convert screen coordinates to image coordinates
-      const imageX = (pointer.x - stagePos.x) / scale / displayScale;
-      const imageY = (pointer.y - stagePos.y) / scale / displayScale;
+      const imageX = (pointer.x - stagePos.x) / scale / pointScale;
+      const imageY = (pointer.y - stagePos.y) / scale / pointScale;
 
       // Calculate region bounds (handle negative width/height)
       const x = Math.min(regionStart.x, imageX);
@@ -396,18 +403,18 @@ export const GenerateSpotsPreview = ({
               {image && (
                 <KonvaImage
                   image={image}
-                  scaleX={displayScale}
-                  scaleY={displayScale}
+                  scaleX={thumbnailScale}
+                  scaleY={thumbnailScale}
                 />
               )}
 
               {/* Region selection rectangle */}
               {displayedRegion && (
                 <Rect
-                  x={displayedRegion.x * displayScale}
-                  y={displayedRegion.y * displayScale}
-                  width={displayedRegion.width * displayScale}
-                  height={displayedRegion.height * displayScale}
+                  x={displayedRegion.x * pointScale}
+                  y={displayedRegion.y * pointScale}
+                  width={displayedRegion.width * pointScale}
+                  height={displayedRegion.height * pointScale}
                   stroke="#2196F3"
                   strokeWidth={2 / scale}
                   dash={[8 / scale, 4 / scale]}
@@ -419,8 +426,8 @@ export const GenerateSpotsPreview = ({
               {visiblePoints.map((point, idx) => (
                 <Circle
                   key={`point-${idx}`}
-                  x={point.x * displayScale}
-                  y={point.y * displayScale}
+                  x={point.x * pointScale}
+                  y={point.y * pointScale}
                   radius={pointRadius / scale}
                   fill={pointColor}
                   stroke="#ffffff"
@@ -429,7 +436,7 @@ export const GenerateSpotsPreview = ({
               ))}
 
               {/* Grid lines for regular grid visualization */}
-              {generatedPoints.length > 0 && !regionBounds && displayScale > 0 && (() => {
+              {generatedPoints.length > 0 && !regionBounds && pointScale > 0 && (() => {
                 // Find grid dimensions
                 const rows = new Set(generatedPoints.map(p => p.row));
                 const cols = new Set(generatedPoints.map(p => p.col));
@@ -455,7 +462,7 @@ export const GenerateSpotsPreview = ({
                   points.sort((a, b) => a.col - b.col);
                   const linePoints: number[] = [];
                   points.forEach(p => {
-                    linePoints.push(p.x * displayScale, p.y * displayScale);
+                    linePoints.push(p.x * pointScale, p.y * pointScale);
                   });
                   if (linePoints.length >= 4) {
                     lines.push(
@@ -474,7 +481,7 @@ export const GenerateSpotsPreview = ({
                   points.sort((a, b) => a.row - b.row);
                   const linePoints: number[] = [];
                   points.forEach(p => {
-                    linePoints.push(p.x * displayScale, p.y * displayScale);
+                    linePoints.push(p.x * pointScale, p.y * pointScale);
                   });
                   if (linePoints.length >= 4) {
                     lines.push(
