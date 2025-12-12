@@ -96,6 +96,8 @@ interface Window {
     onNewProject: (callback: () => void) => Unsubscribe;
     onOpenProject: (callback: () => void) => Unsubscribe;
     onEditProject: (callback: () => void) => Unsubscribe;
+    onGenerateSpots: (callback: () => void) => Unsubscribe;
+    onClearAllSpots: (callback: () => void) => Unsubscribe;
     onShowProjectDebug: (callback: () => void) => Unsubscribe;
     onShowSerializedJson: (callback: () => void) => Unsubscribe;
     getSerializedProjectJson: (projectData: unknown) => Promise<string>;
@@ -131,6 +133,7 @@ interface Window {
     onToggleSpotLabels: (callback: (checked: boolean) => void) => Unsubscribe;
     onToggleOverlayOutlines: (callback: (checked: boolean) => void) => Unsubscribe;
     onToggleRecursiveSpots: (callback: (checked: boolean) => void) => Unsubscribe;
+    onToggleArchivedSpots: (callback: (checked: boolean) => void) => Unsubscribe;
 
     // Tile-based image loading
     loadImageWithTiles: (imagePath: string) => Promise<{

@@ -615,6 +615,24 @@ function createWindow() {
         { role: 'copy' },
         { role: 'paste' },
         { role: 'selectAll' },
+        { type: 'separator' },
+        {
+          label: 'Generate Spots...',
+          accelerator: 'CmdOrCtrl+Shift+G',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('menu:generate-spots');
+            }
+          }
+        },
+        {
+          label: 'Clear All Spots...',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('menu:clear-all-spots');
+            }
+          }
+        },
       ],
     },
     {
@@ -680,6 +698,16 @@ function createWindow() {
           click: (menuItem) => {
             if (mainWindow) {
               mainWindow.webContents.send('view:toggle-recursive-spots', menuItem.checked);
+            }
+          }
+        },
+        {
+          label: 'Show Archived Spots',
+          type: 'checkbox',
+          checked: false,
+          click: (menuItem) => {
+            if (mainWindow) {
+              mainWindow.webContents.send('view:toggle-archived-spots', menuItem.checked);
             }
           }
         },

@@ -29,6 +29,14 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('menu:edit-project', callback);
     return () => ipcRenderer.removeListener('menu:edit-project', callback);
   },
+  onGenerateSpots: (callback) => {
+    ipcRenderer.on('menu:generate-spots', callback);
+    return () => ipcRenderer.removeListener('menu:generate-spots', callback);
+  },
+  onClearAllSpots: (callback) => {
+    ipcRenderer.on('menu:clear-all-spots', callback);
+    return () => ipcRenderer.removeListener('menu:clear-all-spots', callback);
+  },
   onShowProjectDebug: (callback) => {
     ipcRenderer.on('menu:show-project-debug', callback);
     return () => ipcRenderer.removeListener('menu:show-project-debug', callback);
@@ -135,6 +143,11 @@ contextBridge.exposeInMainWorld('api', {
     const handler = (event, checked) => callback(checked);
     ipcRenderer.on('view:toggle-recursive-spots', handler);
     return () => ipcRenderer.removeListener('view:toggle-recursive-spots', handler);
+  },
+  onToggleArchivedSpots: (callback) => {
+    const handler = (event, checked) => callback(checked);
+    ipcRenderer.on('view:toggle-archived-spots', handler);
+    return () => ipcRenderer.removeListener('view:toggle-archived-spots', handler);
   },
 
   // Tile-based image loading

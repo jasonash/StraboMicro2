@@ -179,6 +179,7 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
           y={y}
           radius={6 / scale}
           fill={color}
+          opacity={opacity}
           stroke="#ffffff"
           strokeWidth={2 / scale}
         />
