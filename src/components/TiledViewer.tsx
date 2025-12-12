@@ -12,7 +12,7 @@
  * - Support for 100MB+ TIFF files
  */
 
-import { useEffect, useRef, useState, useCallback, useImperativeHandle, forwardRef } from 'react';
+import { useEffect, useRef, useState, useCallback, useImperativeHandle, forwardRef, useMemo } from 'react';
 import { Stage, Layer, Image as KonvaImage, Circle } from 'react-konva';
 import { Box, CircularProgress, Typography, IconButton, Tooltip } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
@@ -606,6 +606,74 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
 
       setVisibleTiles(visible);
     }, [imageMetadata, position, zoom, stageSize]);
+
+    /**
+     * Calculate which spots are visible in the current viewport
+     * Uses bounding box intersection - if any part of spot overlaps viewport, render it
+     */
+    const visibleSpots = useMemo(() => {
+      const spots = activeMicrograph?.spots;
+      if (!spots || spots.length === 0) return [];
+
+      // Get viewport bounds in image space
+      const viewportX = -position.x / zoom;
+      const viewportY = -position.y / zoom;
+      const viewportWidth = stageSize.width / zoom;
+      const viewportHeight = stageSize.height / zoom;
+
+      // Add padding to viewport (render spots slightly outside viewport for smoother panning)
+      const padding = 50; // pixels in image space
+      const vLeft = viewportX - padding;
+      const vRight = viewportX + viewportWidth + padding;
+      const vTop = viewportY - padding;
+      const vBottom = viewportY + viewportHeight + padding;
+
+      return spots.filter((spot) => {
+        // Get spot coordinates
+        const geometryType = spot.geometryType || spot.geometry?.type;
+        let coords: Array<{ x: number; y: number }> = [];
+
+        if (geometryType === 'point' || geometryType === 'Point') {
+          const x = Array.isArray(spot.geometry?.coordinates)
+            ? (spot.geometry.coordinates as number[])[0]
+            : spot.points?.[0]?.X ?? 0;
+          const y = Array.isArray(spot.geometry?.coordinates)
+            ? (spot.geometry.coordinates as number[])[1]
+            : spot.points?.[0]?.Y ?? 0;
+          coords = [{ x, y }];
+        } else if (geometryType === 'line' || geometryType === 'LineString') {
+          coords = Array.isArray(spot.geometry?.coordinates)
+            ? (spot.geometry.coordinates as number[][]).map(c => ({ x: c[0], y: c[1] }))
+            : spot.points?.map(p => ({ x: p.X ?? 0, y: p.Y ?? 0 })) || [];
+        } else if (geometryType === 'polygon' || geometryType === 'Polygon') {
+          const ring = Array.isArray(spot.geometry?.coordinates)
+            ? (spot.geometry.coordinates as number[][][])[0] || []
+            : [];
+          coords = ring.length > 0
+            ? ring.map(c => ({ x: c[0], y: c[1] }))
+            : spot.points?.map(p => ({ x: p.X ?? 0, y: p.Y ?? 0 })) || [];
+        }
+
+        if (coords.length === 0) return false;
+
+        // Calculate bounding box
+        let minX = Infinity, maxX = -Infinity;
+        let minY = Infinity, maxY = -Infinity;
+        for (const c of coords) {
+          if (c.x < minX) minX = c.x;
+          if (c.x > maxX) maxX = c.x;
+          if (c.y < minY) minY = c.y;
+          if (c.y > maxY) maxY = c.y;
+        }
+
+        // Check if bounding box intersects viewport
+        // Two rectangles intersect if they overlap on both axes
+        const intersectsX = maxX >= vLeft && minX <= vRight;
+        const intersectsY = maxY >= vTop && minY <= vBottom;
+
+        return intersectsX && intersectsY;
+      });
+    }, [activeMicrograph?.spots, position, zoom, stageSize]);
 
     /**
      * Load tiles that are visible but not yet loaded (only in tiled mode)
@@ -1466,8 +1534,8 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                         />
                       ))}
 
-                  {/* First pass: Render all spot shapes */}
-                  {activeMicrograph?.spots?.map((spot) => (
+                  {/* First pass: Render visible spot shapes (viewport culled for performance) */}
+                  {visibleSpots.map((spot) => (
                     <SpotRenderer
                       key={spot.id}
                       spot={spot}
@@ -1488,8 +1556,8 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                     />
                   ))}
 
-                  {/* Second pass: Render all spot labels (ensures labels are on top) */}
-                  {showSpotLabels && activeMicrograph?.spots?.map((spot) => (
+                  {/* Second pass: Render visible spot labels (ensures labels are on top) */}
+                  {showSpotLabels && visibleSpots.map((spot) => (
                     <SpotRenderer
                       key={`${spot.id}-label`}
                       spot={spot}
@@ -1667,8 +1735,8 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                         />
                       ))}
 
-                  {/* First pass: Render all spot shapes */}
-                  {activeMicrograph?.spots?.map((spot) => (
+                  {/* First pass: Render visible spot shapes (viewport culled for performance) */}
+                  {visibleSpots.map((spot) => (
                     <SpotRenderer
                       key={spot.id}
                       spot={spot}
@@ -1689,8 +1757,8 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                     />
                   ))}
 
-                  {/* Second pass: Render all spot labels */}
-                  {showSpotLabels && activeMicrograph?.spots?.map((spot) => (
+                  {/* Second pass: Render visible spot labels */}
+                  {showSpotLabels && visibleSpots.map((spot) => (
                     <SpotRenderer
                       key={`${spot.id}-label`}
                       spot={spot}
