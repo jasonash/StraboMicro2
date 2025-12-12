@@ -402,6 +402,8 @@ export function CreateTagDialog({
             onChange={(newColor) => setFillColor(newColor)}
             format="hex"
             fullWidth
+            sx={{ '& input': { caretColor: 'transparent', cursor: 'pointer' } }}
+            onKeyDown={(e) => e.preventDefault()}
           />
 
           {/* Transparency Slider */}
