@@ -160,6 +160,8 @@ interface AppState {
   quickClassifyVisible: boolean;
   /** User-configured keyboard shortcuts for classification (key -> mineral name) */
   quickClassifyShortcuts: Record<string, string>;
+  /** Whether Statistics Panel is visible */
+  statisticsPanelVisible: boolean;
 
   // ========== GENERATE SPOTS DIALOG STATE ==========
   /** Whether Generate Spots dialog is open */
@@ -250,6 +252,8 @@ interface AppState {
   setQuickClassifyVisible: (visible: boolean) => void;
   /** Update keyboard shortcut configuration */
   setQuickClassifyShortcuts: (shortcuts: Record<string, string>) => void;
+  /** Toggle Statistics Panel visibility */
+  setStatisticsPanelVisible: (visible: boolean) => void;
 
   // ========== GENERATE SPOTS DIALOG ACTIONS ==========
   /** Open the Generate Spots dialog for a specific micrograph */
@@ -384,6 +388,7 @@ export const useAppStore = create<AppState>()(
             'z': 'zircon',
             'u': 'unknown',
           },
+          statisticsPanelVisible: false,
 
           // Generate Spots dialog state
           generateSpotsDialogOpen: false,
@@ -1372,6 +1377,8 @@ export const useAppStore = create<AppState>()(
           setQuickClassifyVisible: (visible) => set({ quickClassifyVisible: visible }),
 
           setQuickClassifyShortcuts: (shortcuts) => set({ quickClassifyShortcuts: shortcuts }),
+
+          setStatisticsPanelVisible: (visible) => set({ statisticsPanelVisible: visible }),
 
           // ========== GENERATE SPOTS DIALOG ACTIONS ==========
 

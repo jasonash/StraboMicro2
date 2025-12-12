@@ -722,7 +722,7 @@ function createWindow() {
           }
         },
         {
-          label: 'Point Count Statistics...',
+          label: 'Point Count Statistics',
           accelerator: 'CmdOrCtrl+Shift+S',
           click: () => {
             if (mainWindow) {

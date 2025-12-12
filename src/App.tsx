@@ -10,7 +10,6 @@ import { LoginDialog } from './components/dialogs/LoginDialog';
 import { AboutDialog } from './components/dialogs/AboutDialog';
 import { LogViewerModal } from './components/dialogs/LogViewerModal';
 import { SendErrorReportModal } from './components/dialogs/SendErrorReportModal';
-import { PointCountStatisticsDialog } from './components/dialogs/PointCountStatisticsDialog';
 import { ExportAllImagesDialog } from './components/dialogs/ExportAllImagesDialog';
 import { ExportPDFDialog } from './components/dialogs/ExportPDFDialog';
 import { ExportSmzDialog } from './components/dialogs/ExportSmzDialog';
@@ -176,7 +175,6 @@ function App() {
   const [isAboutOpen, setIsAboutOpen] = useState(false);
   const [isLogViewerOpen, setIsLogViewerOpen] = useState(false);
   const [isSendErrorReportOpen, setIsSendErrorReportOpen] = useState(false);
-  const [isPointCountStatisticsOpen, setIsPointCountStatisticsOpen] = useState(false);
   const [isManualUpdateCheck, setIsManualUpdateCheck] = useState(false);
   const generateSpotsDialogOpen = useAppStore(state => state.generateSpotsDialogOpen);
   const generateSpotsTargetMicrographId = useAppStore(state => state.generateSpotsTargetMicrographId);
@@ -191,6 +189,7 @@ function App() {
   const setShowRecursiveSpots = useAppStore(state => state.setShowRecursiveSpots);
   const setShowArchivedSpots = useAppStore(state => state.setShowArchivedSpots);
   const setQuickClassifyVisible = useAppStore(state => state.setQuickClassifyVisible);
+  const setStatisticsPanelVisible = useAppStore(state => state.setStatisticsPanelVisible);
   const activeMicrographId = useAppStore(state => state.activeMicrographId);
   const micrographIndex = useAppStore(state => state.micrographIndex);
   const addSpot = useAppStore(state => state.addSpot);
@@ -719,9 +718,10 @@ function App() {
       setShowArchivedSpots(checked);
     }));
 
-    // View: Point Count Statistics menu item
+    // View: Point Count Statistics menu item - toggle the panel
     unsubscribers.push(window.api.onShowPointCountStatistics(() => {
-      setIsPointCountStatisticsOpen(true);
+      const currentVisible = useAppStore.getState().statisticsPanelVisible;
+      setStatisticsPanelVisible(!currentVisible);
     }));
 
     // View: Toggle Quick Classify Toolbar menu item
@@ -1058,11 +1058,6 @@ function App() {
         onClose={() => setIsSendErrorReportOpen(false)}
         isLoggedIn={isAuthenticated}
         onLoginRequest={() => setIsLoginDialogOpen(true)}
-      />
-      <PointCountStatisticsDialog
-        isOpen={isPointCountStatisticsOpen}
-        onClose={() => setIsPointCountStatisticsOpen(false)}
-        micrographId={activeMicrographId}
       />
       <ExportAllImagesDialog
         open={isExportAllImagesOpen}

@@ -5,6 +5,7 @@ import DrawingToolbar from './DrawingToolbar';
 import BottomPanel from './BottomPanel';
 import { TiledViewer, TiledViewerRef } from './TiledViewer';
 import { QuickClassifyToolbar } from './QuickClassifyToolbar';
+import { StatisticsPanel } from './StatisticsPanel';
 import { ConfigureShortcutsDialog } from './dialogs/ConfigureShortcutsDialog';
 import { useAppStore } from '../store';
 import { findMicrographById, findSpotById } from '../store/helpers';
@@ -20,6 +21,8 @@ const Viewer: React.FC = () => {
   const activeMicrographId = useAppStore((state) => state.activeMicrographId);
   const activeSpotId = useAppStore((state) => state.activeSpotId);
   const setViewerRef = useAppStore((state) => state.setViewerRef);
+  const statisticsPanelVisible = useAppStore((state) => state.statisticsPanelVisible);
+  const setStatisticsPanelVisible = useAppStore((state) => state.setStatisticsPanelVisible);
 
   // Get names for status bar title
   const activeMicrograph = activeMicrographId ? findMicrographById(project, activeMicrographId) : null;
@@ -163,8 +166,10 @@ const Viewer: React.FC = () => {
         <TiledViewer ref={tiledViewerRef} imagePath={activeMicrographPath} onCursorMove={setCursorCoords} />
         <DrawingToolbar />
         <QuickClassifyToolbar
+          onOpenStatistics={() => setStatisticsPanelVisible(!statisticsPanelVisible)}
           onOpenSettings={() => setIsConfigureShortcutsOpen(true)}
         />
+        <StatisticsPanel />
         <ConfigureShortcutsDialog
           open={isConfigureShortcutsOpen}
           onClose={() => setIsConfigureShortcutsOpen(false)}
