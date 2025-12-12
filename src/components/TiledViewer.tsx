@@ -48,6 +48,8 @@ export interface TiledViewerRef {
   fitToScreen: () => void;
   zoomIn: () => void;
   zoomOut: () => void;
+  /** Ensure a point is visible on screen, panning only if necessary (lazy/soft pan) */
+  panToPoint: (x: number, y: number) => void;
 }
 
 interface TileInfo {
@@ -1188,6 +1190,48 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
       geometryEditing.updateHandleSizes(newZoom);
     }, [zoom, position, stageSize, polygonDrawing, lineDrawing, rulerTool, geometryEditing]);
 
+    // Ensure a point is visible on screen, panning only if necessary (lazy/soft pan)
+    const panToPoint = useCallback((x: number, y: number) => {
+      // Calculate where the point currently is in screen coordinates
+      const screenX = position.x + x * zoom;
+      const screenY = position.y + y * zoom;
+
+      // Define a margin/inset from the viewport edges (15% of viewport or at least 50px)
+      const marginX = Math.max(50, stageSize.width * 0.15);
+      const marginY = Math.max(50, stageSize.height * 0.15);
+
+      // Calculate the "safe zone" - if the point is within this zone, no panning needed
+      const safeLeft = marginX;
+      const safeRight = stageSize.width - marginX;
+      const safeTop = marginY;
+      const safeBottom = stageSize.height - marginY;
+
+      let newX = position.x;
+      let newY = position.y;
+
+      // Check if point is outside the safe zone and calculate minimum pan
+      if (screenX < safeLeft) {
+        // Point is off the left - pan so it's at the left margin
+        newX = safeLeft - x * zoom;
+      } else if (screenX > safeRight) {
+        // Point is off the right - pan so it's at the right margin
+        newX = safeRight - x * zoom;
+      }
+
+      if (screenY < safeTop) {
+        // Point is off the top - pan so it's at the top margin
+        newY = safeTop - y * zoom;
+      } else if (screenY > safeBottom) {
+        // Point is off the bottom - pan so it's at the bottom margin
+        newY = safeBottom - y * zoom;
+      }
+
+      // Only update position if we actually need to pan
+      if (newX !== position.x || newY !== position.y) {
+        setPosition({ x: newX, y: newY });
+      }
+    }, [stageSize, zoom, position]);
+
     // Expose methods to parent components via ref
     useImperativeHandle(
       ref,
@@ -1195,8 +1239,9 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
         fitToScreen: handleResetZoom,
         zoomIn: handleZoomIn,
         zoomOut: handleZoomOut,
+        panToPoint,
       }),
-      [handleResetZoom, handleZoomIn, handleZoomOut]
+      [handleResetZoom, handleZoomIn, handleZoomOut, panToPoint]
     );
 
     const RULER_SIZE = 30; // Width/height of ruler bars
