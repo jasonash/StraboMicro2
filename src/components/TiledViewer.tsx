@@ -124,6 +124,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
     const showSpotLabels = useAppStore((state) => state.showSpotLabels);
     const showMicrographOutlines = useAppStore((state) => state.showMicrographOutlines);
     const showRecursiveSpots = useAppStore((state) => state.showRecursiveSpots);
+    const showArchivedSpots = useAppStore((state) => state.showArchivedSpots);
     const theme = useAppStore((state) => state.theme);
     const selectActiveSpot = useAppStore((state) => state.selectActiveSpot);
     const setActiveTool = useAppStore((state) => state.setActiveTool);
@@ -629,6 +630,9 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
       const vBottom = viewportY + viewportHeight + padding;
 
       return spots.filter((spot) => {
+        // Filter out archived spots unless showArchivedSpots is enabled
+        if (spot.archived && !showArchivedSpots) return false;
+
         // Get spot coordinates
         const geometryType = spot.geometryType || spot.geometry?.type;
         let coords: Array<{ x: number; y: number }> = [];
@@ -673,7 +677,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
 
         return intersectsX && intersectsY;
       });
-    }, [activeMicrograph?.spots, position, zoom, stageSize]);
+    }, [activeMicrograph?.spots, position, zoom, stageSize, showArchivedSpots]);
 
     /**
      * Load tiles that are visible but not yet loaded (only in tiled mode)

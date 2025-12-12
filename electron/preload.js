@@ -144,6 +144,11 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('view:toggle-recursive-spots', handler);
     return () => ipcRenderer.removeListener('view:toggle-recursive-spots', handler);
   },
+  onToggleArchivedSpots: (callback) => {
+    const handler = (event, checked) => callback(checked);
+    ipcRenderer.on('view:toggle-archived-spots', handler);
+    return () => ipcRenderer.removeListener('view:toggle-archived-spots', handler);
+  },
 
   // Tile-based image loading
   loadImageWithTiles: (imagePath) => ipcRenderer.invoke('image:load-with-tiles', imagePath),
