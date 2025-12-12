@@ -47,6 +47,7 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
   const selectActiveSpot = useAppStore((state) => state.selectActiveSpot);
   const updateSpotData = useAppStore((state) => state.updateSpotData);
   const activeTool = useAppStore((state) => state.activeTool);
+  const viewerRef = useAppStore((state) => state.viewerRef);
 
   // Flash state for visual feedback
   const [flashSpotId, setFlashSpotId] = useState<string | null>(null);
@@ -311,6 +312,58 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
       }
     }
   }, [quickClassifyVisible, spots, activeSpotId, selectActiveSpot]);
+
+  // Pan canvas to center on current spot when it changes during Quick Classify
+  useEffect(() => {
+    if (!quickClassifyVisible || !activeSpotId || !viewerRef?.current) return;
+
+    const spot = spots.find((s) => s.id === activeSpotId);
+    if (!spot) return;
+
+    // Get spot coordinates based on geometry type
+    const geometryType = spot.geometryType || spot.geometry?.type;
+    let x = 0;
+    let y = 0;
+
+    if (geometryType === 'point' || geometryType === 'Point') {
+      // Point: use coordinates directly
+      if (Array.isArray(spot.geometry?.coordinates)) {
+        const coords = spot.geometry.coordinates as number[];
+        x = coords[0];
+        y = coords[1];
+      } else if (spot.points?.[0]) {
+        x = spot.points[0].X ?? 0;
+        y = spot.points[0].Y ?? 0;
+      }
+    } else if (geometryType === 'line' || geometryType === 'LineString') {
+      // Line: use center of bounding box
+      const coords: number[][] = Array.isArray(spot.geometry?.coordinates)
+        ? (spot.geometry.coordinates as number[][])
+        : spot.points?.map((p) => [p.X ?? 0, p.Y ?? 0]) || [];
+      if (coords.length > 0) {
+        const xs = coords.map((c) => c[0]);
+        const ys = coords.map((c) => c[1]);
+        x = (Math.min(...xs) + Math.max(...xs)) / 2;
+        y = (Math.min(...ys) + Math.max(...ys)) / 2;
+      }
+    } else if (geometryType === 'polygon' || geometryType === 'Polygon') {
+      // Polygon: use center of bounding box
+      const coords: number[][] = Array.isArray(spot.geometry?.coordinates)
+        ? ((spot.geometry.coordinates as number[][][])[0] || [])
+        : spot.points?.map((p) => [p.X ?? 0, p.Y ?? 0]) || [];
+      if (coords.length > 0) {
+        const xs = coords.map((c) => c[0]);
+        const ys = coords.map((c) => c[1]);
+        x = (Math.min(...xs) + Math.max(...xs)) / 2;
+        y = (Math.min(...ys) + Math.max(...ys)) / 2;
+      }
+    }
+
+    // Pan to center on the spot
+    if (x !== 0 || y !== 0) {
+      viewerRef.current.panToPoint(x, y);
+    }
+  }, [quickClassifyVisible, activeSpotId, spots, viewerRef]);
 
   // Initialize scroll state when toolbar becomes visible
   useEffect(() => {
