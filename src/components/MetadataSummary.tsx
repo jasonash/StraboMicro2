@@ -740,7 +740,83 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
                 <Typography variant="body2" component="span">{project.description}</Typography>
               </Box>
             )}
-            {!project?.name && (
+            {project?.purposeOfStudy && (
+              <Box>
+                <Typography variant="caption" color="text.secondary">Purpose of Study: </Typography>
+                <Typography variant="body2" component="span">{project.purposeOfStudy}</Typography>
+              </Box>
+            )}
+            {project?.areaOfInterest && (
+              <Box>
+                <Typography variant="caption" color="text.secondary">Area of Interest: </Typography>
+                <Typography variant="body2" component="span">{project.areaOfInterest}</Typography>
+              </Box>
+            )}
+            {(project?.startDate || project?.endDate) && (
+              <Box>
+                <Typography variant="caption" color="text.secondary">Date Range: </Typography>
+                <Typography variant="body2" component="span">
+                  {project?.startDate || '?'} - {project?.endDate || '?'}
+                </Typography>
+              </Box>
+            )}
+            {project?.owner && (
+              <Box>
+                <Typography variant="caption" color="text.secondary">Owner: </Typography>
+                <Typography variant="body2" component="span">
+                  {project.owner}
+                  {project.ownerAffiliation && ` (${project.ownerAffiliation})`}
+                </Typography>
+              </Box>
+            )}
+            {project?.principalInvestigator && (
+              <Box>
+                <Typography variant="caption" color="text.secondary">Principal Investigator: </Typography>
+                <Typography variant="body2" component="span">
+                  {project.principalInvestigator}
+                  {project.principalInvestigatorAffiliation && ` (${project.principalInvestigatorAffiliation})`}
+                </Typography>
+              </Box>
+            )}
+            {project?.otherTeamMembers && (
+              <Box>
+                <Typography variant="caption" color="text.secondary">Other Team Members: </Typography>
+                <Typography variant="body2" component="span">{project.otherTeamMembers}</Typography>
+              </Box>
+            )}
+            {(project?.grantNumber || project?.fundingSource) && (
+              <Box>
+                <Typography variant="caption" color="text.secondary">Funding: </Typography>
+                <Typography variant="body2" component="span">
+                  {[project.fundingSource, project.grantNumber].filter(Boolean).join(' - ')}
+                </Typography>
+              </Box>
+            )}
+            {project?.instrumentsUsed && (
+              <Box>
+                <Typography variant="caption" color="text.secondary">Instruments Used: </Typography>
+                <Typography variant="body2" component="span">{project.instrumentsUsed}</Typography>
+              </Box>
+            )}
+            {project?.gpsDatum && (
+              <Box>
+                <Typography variant="caption" color="text.secondary">GPS Datum: </Typography>
+                <Typography variant="body2" component="span">{project.gpsDatum}</Typography>
+              </Box>
+            )}
+            {project?.magneticDeclination && (
+              <Box>
+                <Typography variant="caption" color="text.secondary">Magnetic Declination: </Typography>
+                <Typography variant="body2" component="span">{project.magneticDeclination}</Typography>
+              </Box>
+            )}
+            {project?.notes && (
+              <Box>
+                <Typography variant="caption" color="text.secondary">Notes: </Typography>
+                <Typography variant="body2" component="span">{project.notes}</Typography>
+              </Box>
+            )}
+            {!project?.name && !project?.description && !project?.owner && !project?.principalInvestigator && (
               <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
                 No project metadata set
               </Typography>
