@@ -23,7 +23,9 @@ import {
   DialogContent,
   DialogContentText,
   DialogActions,
+  IconButton,
 } from '@mui/material';
+import EditIcon from '@mui/icons-material/Edit';
 import { useAppStore } from '@/store';
 import { findMicrographById, findSpotById, getMicrographParentSample } from '@/store/helpers';
 
@@ -277,14 +279,13 @@ export function DetailedNotesPanel({ micrographId, spotId, onEditSection, onView
             {label}
           </Typography>
           {!isEditing && (
-            <Link
-              component="button"
-              variant="caption"
+            <IconButton
+              size="small"
               onClick={() => startEditing(sectionId, notes || '')}
-              sx={{ textDecoration: 'none', cursor: 'pointer' }}
+              sx={{ p: 0.25 }}
             >
-              (edit)
-            </Link>
+              <EditIcon sx={{ fontSize: 16 }} />
+            </IconButton>
           )}
         </Box>
 
@@ -356,14 +357,13 @@ export function DetailedNotesPanel({ micrographId, spotId, onEditSection, onView
           <Typography variant="subtitle2" sx={{ fontWeight: 'bold' }}>
             {label}
           </Typography>
-          <Link
-            component="button"
-            variant="caption"
+          <IconButton
+            size="small"
             onClick={() => handleEditSection(sectionId)}
-            sx={{ textDecoration: 'none', cursor: 'pointer' }}
+            sx={{ p: 0.25 }}
           >
-            (edit)
-          </Link>
+            <EditIcon sx={{ fontSize: 16 }} />
+          </IconButton>
         </Box>
         <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
           {notes}
