@@ -395,6 +395,30 @@ function App() {
       }
     }));
 
+    // Clear All Spots menu item (Edit menu)
+    unsubscribers.push(window.api.onClearAllSpots(() => {
+      const currentMicrographId = useAppStore.getState().activeMicrographId;
+      if (!currentMicrographId) {
+        alert('No micrograph selected. Please select a micrograph first.');
+        return;
+      }
+
+      const micrograph = useAppStore.getState().micrographIndex.get(currentMicrographId);
+      const spotCount = micrograph?.spots?.length || 0;
+
+      if (spotCount === 0) {
+        alert('No spots to clear on this micrograph.');
+        return;
+      }
+
+      if (!confirm(`Are you sure you want to delete all ${spotCount} spots on this micrograph?\n\nThis action cannot be undone.`)) {
+        return;
+      }
+
+      useAppStore.getState().clearAllSpots(currentMicrographId);
+      console.log(`[App] Cleared ${spotCount} spots from micrograph ${currentMicrographId}`);
+    }));
+
     // Debug: Show Project Structure
     unsubscribers.push(window.api.onShowProjectDebug(() => {
       setIsDebugModalOpen(true);

@@ -241,6 +241,8 @@ interface AppState {
   /** Update multiple spots with the same changes (batch edit) */
   batchUpdateSpots: (spotIds: string[], updates: Partial<Spot>) => void;
   deleteSpot: (id: string) => void;
+  /** Clear all spots from a specific micrograph */
+  clearAllSpots: (micrographId: string) => void;
 
   // ========== QUICK CLASSIFY ACTIONS ==========
   /** Toggle Quick Classify toolbar visibility */
@@ -963,6 +965,28 @@ export const useAppStore = create<AppState>()(
               project: newProject,
               isDirty: true,
               selectedSpotIds: state.selectedSpotIds.filter(sid => sid !== id),
+              spotIndex: buildSpotIndex(newProject),
+            };
+          }),
+
+          clearAllSpots: (micrographId) => set((state) => {
+            if (!state.project) return state;
+
+            const newProject = updateMicrograph(state.project, micrographId, (micrograph) => {
+              // Get spot IDs being deleted to clean up selection
+              const deletedSpotIds = new Set((micrograph.spots || []).map(s => s.id));
+              micrograph.spots = [];
+              return deletedSpotIds;
+            });
+
+            // Get the deleted spot IDs from the old project
+            const oldMicrograph = state.micrographIndex.get(micrographId);
+            const deletedSpotIds = new Set((oldMicrograph?.spots || []).map(s => s.id));
+
+            return {
+              project: newProject,
+              isDirty: true,
+              selectedSpotIds: state.selectedSpotIds.filter(sid => !deletedSpotIds.has(sid)),
               spotIndex: buildSpotIndex(newProject),
             };
           }),

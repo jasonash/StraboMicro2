@@ -33,6 +33,10 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('menu:generate-spots', callback);
     return () => ipcRenderer.removeListener('menu:generate-spots', callback);
   },
+  onClearAllSpots: (callback) => {
+    ipcRenderer.on('menu:clear-all-spots', callback);
+    return () => ipcRenderer.removeListener('menu:clear-all-spots', callback);
+  },
   onShowProjectDebug: (callback) => {
     ipcRenderer.on('menu:show-project-debug', callback);
     return () => ipcRenderer.removeListener('menu:show-project-debug', callback);

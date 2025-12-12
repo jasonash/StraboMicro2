@@ -161,6 +161,66 @@ function generateRegularGrid(
 }
 
 /**
+ * Generate purely random points
+ * Points are distributed randomly across the image with no structure
+ */
+function generateRandomPoints(
+  imageWidth: number,
+  imageHeight: number,
+  pointCount: number
+): Array<{ x: number; y: number; row: number; col: number }> {
+  const points: Array<{ x: number; y: number; row: number; col: number }> = [];
+
+  for (let i = 0; i < pointCount; i++) {
+    points.push({
+      x: Math.random() * imageWidth,
+      y: Math.random() * imageHeight,
+      row: i, // No grid structure, use index
+      col: 0,
+    });
+  }
+
+  return points;
+}
+
+/**
+ * Generate stratified random points
+ * Image is divided into a grid, with one random point placed in each cell
+ * This ensures even coverage while maintaining randomness
+ */
+function generateStratifiedRandomPoints(
+  imageWidth: number,
+  imageHeight: number,
+  pointCount: number
+): Array<{ x: number; y: number; row: number; col: number }> {
+  const aspectRatio = imageWidth / imageHeight;
+  const cols = Math.round(Math.sqrt(pointCount * aspectRatio));
+  const rows = Math.round(pointCount / cols);
+
+  const cellWidth = imageWidth / cols;
+  const cellHeight = imageHeight / rows;
+
+  const points: Array<{ x: number; y: number; row: number; col: number }> = [];
+
+  for (let row = 0; row < rows; row++) {
+    for (let col = 0; col < cols; col++) {
+      // Place one random point within each cell
+      const cellX = col * cellWidth;
+      const cellY = row * cellHeight;
+
+      points.push({
+        x: cellX + Math.random() * cellWidth,
+        y: cellY + Math.random() * cellHeight,
+        row,
+        col,
+      });
+    }
+  }
+
+  return points;
+}
+
+/**
  * Calculate grid dimensions for display
  */
 function calculateGridDimensions(
@@ -237,12 +297,33 @@ export function GenerateSpotsDialog({
   const generatedPoints: GeneratedPoint[] = useMemo(() => {
     if (method !== 'point-count') return [];
 
-    const allPoints = generateRegularGrid(
-      imageWidth,
-      imageHeight,
-      pointCountOptions.pointCount,
-      pointCountOptions.offsetByHalfSpacing
-    );
+    let allPoints: Array<{ x: number; y: number; row: number; col: number }>;
+
+    switch (pointCountOptions.gridType) {
+      case 'random':
+        allPoints = generateRandomPoints(
+          imageWidth,
+          imageHeight,
+          pointCountOptions.pointCount
+        );
+        break;
+      case 'stratified':
+        allPoints = generateStratifiedRandomPoints(
+          imageWidth,
+          imageHeight,
+          pointCountOptions.pointCount
+        );
+        break;
+      case 'regular':
+      default:
+        allPoints = generateRegularGrid(
+          imageWidth,
+          imageHeight,
+          pointCountOptions.pointCount,
+          pointCountOptions.offsetByHalfSpacing
+        );
+        break;
+    }
 
     // Filter by region if set
     if (regionBounds) {
@@ -255,7 +336,7 @@ export function GenerateSpotsDialog({
     }
 
     return allPoints;
-  }, [method, imageWidth, imageHeight, pointCountOptions.pointCount, pointCountOptions.offsetByHalfSpacing, regionBounds]);
+  }, [method, imageWidth, imageHeight, pointCountOptions.pointCount, pointCountOptions.gridType, pointCountOptions.offsetByHalfSpacing, regionBounds]);
 
   // Handlers
   const handleMethodChange = (newMethod: GenerationMethod) => {

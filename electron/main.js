@@ -625,6 +625,14 @@ function createWindow() {
             }
           }
         },
+        {
+          label: 'Clear All Spots...',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('menu:clear-all-spots');
+            }
+          }
+        },
       ],
     },
     {
