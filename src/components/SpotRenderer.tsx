@@ -79,9 +79,6 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
   const strokeColor = (isHovered && !isSelected) ? '#ffff00' : color;
   const strokeWidth = (isHovered && !isSelected) ? 4 / scale : 3 / scale;
 
-  // Use dashed stroke for unclassified spots (visual indicator for Quick Classify)
-  const dashArray = isClassified ? undefined : [6 / scale, 4 / scale];
-
   const handleClick = () => {
     onClick?.(spot);
   };
@@ -178,17 +175,16 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
           />
         )}
 
-        {/* Solid circle with white outline (dashed if unclassified) */}
+        {/* Circle: filled if classified, hollow if unclassified */}
         <Circle
           key="point"
           x={x}
           y={y}
           radius={6 / scale}
-          fill={color}
-          opacity={opacity}
-          stroke="#ffffff"
+          fill={isClassified ? color : 'transparent'}
+          opacity={isClassified ? opacity : 1}
+          stroke={isClassified ? '#ffffff' : color}
           strokeWidth={2 / scale}
-          dash={dashArray}
         />
       </Group>
     );
@@ -258,13 +254,14 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
           />
         )}
 
-        {/* Line (dashed if unclassified) */}
+        {/* Line: solid if classified, dashed if unclassified */}
         <Line
           key="line"
           points={points}
           stroke={isSelected ? 'transparent' : strokeColor}
           strokeWidth={isSelected ? 0 : strokeWidth}
-          dash={dashArray}
+          dash={isClassified ? undefined : [8 / scale, 4 / scale]}
+          opacity={isClassified ? 1 : 0.6}
           listening={true}
           lineCap="round"
           lineJoin="round"
@@ -337,15 +334,15 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
           />
         )}
 
-        {/* Polygon (dashed stroke if unclassified) */}
+        {/* Polygon: solid fill if classified, faded with dashed stroke if unclassified */}
         <Line
           key="polygon"
           points={points}
           stroke={isSelected ? 'transparent' : strokeColor}
           strokeWidth={isSelected ? 0 : strokeWidth}
-          dash={dashArray}
+          dash={isClassified ? undefined : [8 / scale, 4 / scale]}
           fill={color}
-          opacity={opacity}
+          opacity={isClassified ? opacity : opacity * 0.4}
           closed={true}
           listening={true}
         />
