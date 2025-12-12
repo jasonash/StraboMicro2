@@ -891,6 +891,7 @@ export const useAppStore = create<AppState>()(
             return {
               project: newProject,
               isDirty: true,
+              micrographIndex: buildMicrographIndex(newProject),
               spotIndex: buildSpotIndex(newProject),
             };
           }),
@@ -905,6 +906,7 @@ export const useAppStore = create<AppState>()(
             return {
               project: newProject,
               isDirty: true,
+              micrographIndex: buildMicrographIndex(newProject),
               spotIndex: buildSpotIndex(newProject),
             };
           }),
