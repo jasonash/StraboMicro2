@@ -121,6 +121,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
     const activeTool = useAppStore((state) => state.activeTool);
     const activeSpotId = useAppStore((state) => state.activeSpotId);
     const showRulers = useAppStore((state) => state.showRulers);
+    const showSpotLabels = useAppStore((state) => state.showSpotLabels);
     const showMicrographOutlines = useAppStore((state) => state.showMicrographOutlines);
     const showRecursiveSpots = useAppStore((state) => state.showRecursiveSpots);
     const theme = useAppStore((state) => state.theme);
@@ -1483,7 +1484,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                   ))}
 
                   {/* Second pass: Render all spot labels (ensures labels are on top) */}
-                  {activeMicrograph?.spots?.map((spot) => (
+                  {showSpotLabels && activeMicrograph?.spots?.map((spot) => (
                     <SpotRenderer
                       key={`${spot.id}-label`}
                       spot={spot}
@@ -1680,7 +1681,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                   ))}
 
                   {/* Second pass: Render all spot labels */}
-                  {activeMicrograph?.spots?.map((spot) => (
+                  {showSpotLabels && activeMicrograph?.spots?.map((spot) => (
                     <SpotRenderer
                       key={`${spot.id}-label`}
                       spot={spot}
