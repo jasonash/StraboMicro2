@@ -1,4 +1,4 @@
-import React, { useEffect, useCallback, useMemo, useState } from 'react';
+import React, { useEffect, useCallback, useMemo, useState, useRef } from 'react';
 import {
   Box,
   Typography,
@@ -12,6 +12,8 @@ import {
   Settings as SettingsIcon,
   BarChart as StatsIcon,
   Close as CloseIcon,
+  ChevronLeft as ChevronLeftIcon,
+  ChevronRight as ChevronRightIcon,
 } from '@mui/icons-material';
 import { useAppStore } from '../store';
 import { findMicrographById, findSpotById } from '../store/helpers';
@@ -47,6 +49,34 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
 
   // Flash state for visual feedback
   const [flashSpotId, setFlashSpotId] = useState<string | null>(null);
+
+  // Scroll state for shortcut chips
+  const chipsContainerRef = useRef<HTMLDivElement>(null);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
+
+  // Update scroll button visibility
+  const updateScrollState = useCallback(() => {
+    const container = chipsContainerRef.current;
+    if (container) {
+      setCanScrollLeft(container.scrollLeft > 0);
+      setCanScrollRight(
+        container.scrollLeft < container.scrollWidth - container.clientWidth - 1
+      );
+    }
+  }, []);
+
+  // Scroll chips left/right
+  const scrollChips = useCallback((direction: 'left' | 'right') => {
+    const container = chipsContainerRef.current;
+    if (container) {
+      const scrollAmount = 200;
+      container.scrollBy({
+        left: direction === 'left' ? -scrollAmount : scrollAmount,
+        behavior: 'smooth',
+      });
+    }
+  }, []);
 
   // Get the active micrograph and its spots
   const activeMicrograph = useMemo(() => {
@@ -265,6 +295,14 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
     }
   }, [quickClassifyVisible, spots, activeSpotId, selectActiveSpot]);
 
+  // Initialize scroll state when toolbar becomes visible
+  useEffect(() => {
+    if (quickClassifyVisible) {
+      // Small delay to ensure container is rendered
+      setTimeout(updateScrollState, 100);
+    }
+  }, [quickClassifyVisible, updateScrollState]);
+
   // Don't render if not visible or no micrograph
   if (!quickClassifyVisible || !activeMicrographId || spots.length === 0) {
     return null;
@@ -305,34 +343,56 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
           Quick Classify
         </Typography>
 
+        {/* Scroll left button */}
+        {canScrollLeft && (
+          <IconButton
+            size="small"
+            onClick={() => scrollChips('left')}
+            sx={{ p: 0.25, mr: 0.5 }}
+          >
+            <ChevronLeftIcon fontSize="small" />
+          </IconButton>
+        )}
+
         {/* Shortcut chips - scrollable */}
         <Box
+          ref={chipsContainerRef}
+          onScroll={updateScrollState}
           sx={{
             flex: 1,
             display: 'flex',
             gap: 0.5,
             overflowX: 'auto',
-            '&::-webkit-scrollbar': { height: 4 },
-            '&::-webkit-scrollbar-thumb': {
-              bgcolor: 'divider',
-              borderRadius: 2,
-            },
+            scrollbarWidth: 'none', // Firefox
+            '&::-webkit-scrollbar': { display: 'none' }, // Chrome/Safari
           }}
         >
           {sortedShortcuts.map(([key, mineral]) => (
-            <Chip
-              key={key}
-              label={`${key.toUpperCase()} ${formatMineralName(mineral).slice(0, 4)}`}
-              size="small"
-              onClick={() => classifySpot(mineral)}
-              sx={{
-                cursor: 'pointer',
-                minWidth: 60,
-                '&:hover': { bgcolor: 'action.hover' },
-              }}
-            />
+            <Tooltip key={key} title={`${key.toUpperCase()} = ${formatMineralName(mineral)}`} arrow>
+              <Chip
+                label={`${key.toUpperCase()} ${formatMineralName(mineral).slice(0, 3)}`}
+                size="small"
+                onClick={() => classifySpot(mineral)}
+                sx={{
+                  cursor: 'pointer',
+                  flexShrink: 0,
+                  '&:hover': { bgcolor: 'action.hover' },
+                }}
+              />
+            </Tooltip>
           ))}
         </Box>
+
+        {/* Scroll right button */}
+        {canScrollRight && (
+          <IconButton
+            size="small"
+            onClick={() => scrollChips('right')}
+            sx={{ p: 0.25, ml: 0.5 }}
+          >
+            <ChevronRightIcon fontSize="small" />
+          </IconButton>
+        )}
 
         {/* Action buttons */}
         <Box sx={{ display: 'flex', gap: 0.5, ml: 1 }}>
