@@ -134,6 +134,7 @@ interface Window {
     onToggleOverlayOutlines: (callback: (checked: boolean) => void) => Unsubscribe;
     onToggleRecursiveSpots: (callback: (checked: boolean) => void) => Unsubscribe;
     onToggleArchivedSpots: (callback: (checked: boolean) => void) => Unsubscribe;
+    onShowPointCountStatistics: (callback: () => void) => Unsubscribe;
 
     // Tile-based image loading
     loadImageWithTiles: (imagePath: string) => Promise<{

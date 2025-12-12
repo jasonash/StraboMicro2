@@ -149,6 +149,11 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('view:toggle-archived-spots', handler);
     return () => ipcRenderer.removeListener('view:toggle-archived-spots', handler);
   },
+  onShowPointCountStatistics: (callback) => {
+    const handler = () => callback();
+    ipcRenderer.on('view:show-point-count-statistics', handler);
+    return () => ipcRenderer.removeListener('view:show-point-count-statistics', handler);
+  },
 
   // Tile-based image loading
   loadImageWithTiles: (imagePath) => ipcRenderer.invoke('image:load-with-tiles', imagePath),

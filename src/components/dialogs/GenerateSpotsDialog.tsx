@@ -42,13 +42,18 @@ import { useAppStore } from '@/store';
 import type { Spot } from '@/types/project-types';
 import { v4 as uuidv4 } from 'uuid';
 import { GenerateSpotsPreview, type GeneratedPoint, type RegionBounds } from './GenerateSpotsPreview';
+import {
+  generatePoints,
+  calculateGridDimensions,
+  filterPointsByRegion,
+  type GridType,
+} from '@/services/pointCounting';
 
 // ============================================================================
 // TYPES
 // ============================================================================
 
 export type GenerationMethod = 'point-count' | 'grain-detection';
-export type GridType = 'regular' | 'random' | 'stratified';
 
 interface PointCountOptions {
   gridType: GridType;
@@ -104,137 +109,6 @@ const DEFAULT_GRAIN_DETECTION_OPTIONS: GrainDetectionOptions = {
   namingPattern: 'Grain {n}',
 };
 
-// ============================================================================
-// HELPER FUNCTIONS
-// ============================================================================
-
-/**
- * Calculate confidence interval for a proportion (Chayes method)
- * @param count Number of points hitting this mineral
- * @param total Total number of classified points
- * @returns 95% confidence interval as ± percentage points
- */
-function calculateConfidenceInterval(count: number, total: number): number {
-  if (total === 0) return 0;
-  const p = count / total;
-  const z = 1.96; // 95% confidence
-  const se = Math.sqrt((p * (1 - p)) / total);
-  return z * se * 100;
-}
-
-// Note: calculateConfidenceInterval will be used in Phase 4 Statistics Panel
-void calculateConfidenceInterval; // Suppress unused warning
-
-/**
- * Generate regular grid points
- */
-function generateRegularGrid(
-  imageWidth: number,
-  imageHeight: number,
-  pointCount: number,
-  offsetByHalfSpacing: boolean
-): Array<{ x: number; y: number; row: number; col: number }> {
-  const aspectRatio = imageWidth / imageHeight;
-  const cols = Math.round(Math.sqrt(pointCount * aspectRatio));
-  const rows = Math.round(pointCount / cols);
-
-  const spacingX = imageWidth / cols;
-  const spacingY = imageHeight / rows;
-
-  const offsetX = offsetByHalfSpacing ? spacingX / 2 : 0;
-  const offsetY = offsetByHalfSpacing ? spacingY / 2 : 0;
-
-  const points: Array<{ x: number; y: number; row: number; col: number }> = [];
-
-  for (let row = 0; row < rows; row++) {
-    for (let col = 0; col < cols; col++) {
-      points.push({
-        x: offsetX + col * spacingX,
-        y: offsetY + row * spacingY,
-        row,
-        col,
-      });
-    }
-  }
-
-  return points;
-}
-
-/**
- * Generate purely random points
- * Points are distributed randomly across the image with no structure
- */
-function generateRandomPoints(
-  imageWidth: number,
-  imageHeight: number,
-  pointCount: number
-): Array<{ x: number; y: number; row: number; col: number }> {
-  const points: Array<{ x: number; y: number; row: number; col: number }> = [];
-
-  for (let i = 0; i < pointCount; i++) {
-    points.push({
-      x: Math.random() * imageWidth,
-      y: Math.random() * imageHeight,
-      row: i, // No grid structure, use index
-      col: 0,
-    });
-  }
-
-  return points;
-}
-
-/**
- * Generate stratified random points
- * Image is divided into a grid, with one random point placed in each cell
- * This ensures even coverage while maintaining randomness
- */
-function generateStratifiedRandomPoints(
-  imageWidth: number,
-  imageHeight: number,
-  pointCount: number
-): Array<{ x: number; y: number; row: number; col: number }> {
-  const aspectRatio = imageWidth / imageHeight;
-  const cols = Math.round(Math.sqrt(pointCount * aspectRatio));
-  const rows = Math.round(pointCount / cols);
-
-  const cellWidth = imageWidth / cols;
-  const cellHeight = imageHeight / rows;
-
-  const points: Array<{ x: number; y: number; row: number; col: number }> = [];
-
-  for (let row = 0; row < rows; row++) {
-    for (let col = 0; col < cols; col++) {
-      // Place one random point within each cell
-      const cellX = col * cellWidth;
-      const cellY = row * cellHeight;
-
-      points.push({
-        x: cellX + Math.random() * cellWidth,
-        y: cellY + Math.random() * cellHeight,
-        row,
-        col,
-      });
-    }
-  }
-
-  return points;
-}
-
-/**
- * Calculate grid dimensions for display
- */
-function calculateGridDimensions(
-  imageWidth: number,
-  imageHeight: number,
-  pointCount: number
-): { rows: number; cols: number; spacingX: number; spacingY: number } {
-  const aspectRatio = imageWidth / imageHeight;
-  const cols = Math.round(Math.sqrt(pointCount * aspectRatio));
-  const rows = Math.round(pointCount / cols);
-  const spacingX = imageWidth / cols;
-  const spacingY = imageHeight / rows;
-  return { rows, cols, spacingX, spacingY };
-}
 
 // ============================================================================
 // COMPONENT
@@ -293,46 +167,21 @@ export function GenerateSpotsDialog({
     }
   }, [isOpen, lastPointCountSettings, lastGrainDetectionSettings]);
 
-  // Generate preview points
+  // Generate preview points using the point counting service
   const generatedPoints: GeneratedPoint[] = useMemo(() => {
     if (method !== 'point-count') return [];
 
-    let allPoints: Array<{ x: number; y: number; row: number; col: number }>;
-
-    switch (pointCountOptions.gridType) {
-      case 'random':
-        allPoints = generateRandomPoints(
-          imageWidth,
-          imageHeight,
-          pointCountOptions.pointCount
-        );
-        break;
-      case 'stratified':
-        allPoints = generateStratifiedRandomPoints(
-          imageWidth,
-          imageHeight,
-          pointCountOptions.pointCount
-        );
-        break;
-      case 'regular':
-      default:
-        allPoints = generateRegularGrid(
-          imageWidth,
-          imageHeight,
-          pointCountOptions.pointCount,
-          pointCountOptions.offsetByHalfSpacing
-        );
-        break;
-    }
+    const allPoints = generatePoints(
+      pointCountOptions.gridType,
+      imageWidth,
+      imageHeight,
+      pointCountOptions.pointCount,
+      pointCountOptions.offsetByHalfSpacing
+    );
 
     // Filter by region if set
     if (regionBounds) {
-      return allPoints.filter(p =>
-        p.x >= regionBounds.x &&
-        p.x <= regionBounds.x + regionBounds.width &&
-        p.y >= regionBounds.y &&
-        p.y <= regionBounds.y + regionBounds.height
-      );
+      return filterPointsByRegion(allPoints, regionBounds);
     }
 
     return allPoints;

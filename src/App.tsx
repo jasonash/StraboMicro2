@@ -10,6 +10,7 @@ import { LoginDialog } from './components/dialogs/LoginDialog';
 import { AboutDialog } from './components/dialogs/AboutDialog';
 import { LogViewerModal } from './components/dialogs/LogViewerModal';
 import { SendErrorReportModal } from './components/dialogs/SendErrorReportModal';
+import { PointCountStatisticsDialog } from './components/dialogs/PointCountStatisticsDialog';
 import { ExportAllImagesDialog } from './components/dialogs/ExportAllImagesDialog';
 import { ExportPDFDialog } from './components/dialogs/ExportPDFDialog';
 import { ExportSmzDialog } from './components/dialogs/ExportSmzDialog';
@@ -175,6 +176,7 @@ function App() {
   const [isAboutOpen, setIsAboutOpen] = useState(false);
   const [isLogViewerOpen, setIsLogViewerOpen] = useState(false);
   const [isSendErrorReportOpen, setIsSendErrorReportOpen] = useState(false);
+  const [isPointCountStatisticsOpen, setIsPointCountStatisticsOpen] = useState(false);
   const [isManualUpdateCheck, setIsManualUpdateCheck] = useState(false);
   const generateSpotsDialogOpen = useAppStore(state => state.generateSpotsDialogOpen);
   const generateSpotsTargetMicrographId = useAppStore(state => state.generateSpotsTargetMicrographId);
@@ -716,6 +718,11 @@ function App() {
       setShowArchivedSpots(checked);
     }));
 
+    // View: Point Count Statistics menu item
+    unsubscribers.push(window.api.onShowPointCountStatistics(() => {
+      setIsPointCountStatisticsOpen(true);
+    }));
+
     // Account: Login menu item
     unsubscribers.push(window.api.onLoginRequest(() => {
       setIsLoginDialogOpen(true);
@@ -1043,6 +1050,11 @@ function App() {
         onClose={() => setIsSendErrorReportOpen(false)}
         isLoggedIn={isAuthenticated}
         onLoginRequest={() => setIsLoginDialogOpen(true)}
+      />
+      <PointCountStatisticsDialog
+        isOpen={isPointCountStatisticsOpen}
+        onClose={() => setIsPointCountStatisticsOpen(false)}
+        micrographId={activeMicrographId}
       />
       <ExportAllImagesDialog
         open={isExportAllImagesOpen}

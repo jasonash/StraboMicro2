@@ -713,6 +713,16 @@ function createWindow() {
         },
         { type: 'separator' },
         {
+          label: 'Point Count Statistics...',
+          accelerator: 'CmdOrCtrl+Shift+S',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('view:show-point-count-statistics');
+            }
+          }
+        },
+        { type: 'separator' },
+        {
           label: 'Theme',
           submenu: [
             {
