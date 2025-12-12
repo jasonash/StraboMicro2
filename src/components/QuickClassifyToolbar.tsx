@@ -26,6 +26,7 @@ const NAVIGATION_KEYS: Record<string, string> = {
   'Escape': 'exit',      // Exit Quick Classify mode
   'Enter': 'confirm',    // Confirm and advance (same as skip for now)
   'Tab': 'nextUnclassified', // Jump to next unclassified
+  'Delete': 'clear',     // Clear mineralogy from current spot
 };
 
 interface QuickClassifyToolbarProps {
@@ -208,6 +209,18 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
     [activeSpotId, updateSpotData, selectNextUnclassified]
   );
 
+  // Clear mineralogy from current spot
+  const clearMineralogy = useCallback(() => {
+    if (!activeSpotId) return;
+
+    // Clear mineralogy by setting to undefined
+    updateSpotData(activeSpotId, { mineralogy: undefined });
+
+    // Flash visual feedback (use null flash to indicate clearing)
+    setFlashSpotId(activeSpotId);
+    setTimeout(() => setFlashSpotId(null), 300);
+  }, [activeSpotId, updateSpotData]);
+
   // Handle keyboard events
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
@@ -247,6 +260,9 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
           case 'nextUnclassified':
             selectNextUnclassified('forward');
             break;
+          case 'clear':
+            clearMineralogy();
+            break;
         }
         return;
       }
@@ -267,6 +283,7 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
       setQuickClassifyVisible,
       selectNextUnclassified,
       classifySpot,
+      clearMineralogy,
     ]
   );
 
@@ -467,7 +484,7 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
 
         {/* Navigation hints */}
         <Typography variant="caption" color="text.secondary">
-          Space=Skip &nbsp; ⌫=Back &nbsp; Esc=Exit
+          Space=Skip &nbsp; ⌫=Back &nbsp; Del=Clear &nbsp; Esc=Exit
         </Typography>
 
         {/* Done button */}

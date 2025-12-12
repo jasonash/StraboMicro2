@@ -72,9 +72,15 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
   const showLabel = spot.showLabel ?? true;
   const opacity = (spot.opacity ?? 50) / 100; // Convert 0-100 to 0-1
 
+  // Check if spot has mineralogy classification
+  const isClassified = !!(spot.mineralogy?.minerals?.[0]?.name);
+
   // Don't show hover effect when spot is selected
   const strokeColor = (isHovered && !isSelected) ? '#ffff00' : color;
   const strokeWidth = (isHovered && !isSelected) ? 4 / scale : 3 / scale;
+
+  // Use dashed stroke for unclassified spots (visual indicator for Quick Classify)
+  const dashArray = isClassified ? undefined : [6 / scale, 4 / scale];
 
   const handleClick = () => {
     onClick?.(spot);
@@ -172,7 +178,7 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
           />
         )}
 
-        {/* Solid circle with white outline */}
+        {/* Solid circle with white outline (dashed if unclassified) */}
         <Circle
           key="point"
           x={x}
@@ -182,6 +188,7 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
           opacity={opacity}
           stroke="#ffffff"
           strokeWidth={2 / scale}
+          dash={dashArray}
         />
       </Group>
     );
@@ -251,12 +258,13 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
           />
         )}
 
-        {/* Line */}
+        {/* Line (dashed if unclassified) */}
         <Line
           key="line"
           points={points}
           stroke={isSelected ? 'transparent' : strokeColor}
           strokeWidth={isSelected ? 0 : strokeWidth}
+          dash={dashArray}
           listening={true}
           lineCap="round"
           lineJoin="round"
@@ -329,12 +337,13 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
           />
         )}
 
-        {/* Polygon */}
+        {/* Polygon (dashed stroke if unclassified) */}
         <Line
           key="polygon"
           points={points}
           stroke={isSelected ? 'transparent' : strokeColor}
           strokeWidth={isSelected ? 0 : strokeWidth}
+          dash={dashArray}
           fill={color}
           opacity={opacity}
           closed={true}
