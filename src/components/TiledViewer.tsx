@@ -1052,10 +1052,11 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
 
     /**
      * Handle overlay click for drill-down navigation
+     * Uses async/await to respect navigation guard
      */
     const handleOverlayClick = useCallback(
-      (micrographId: string) => {
-        drillDownToMicrograph(micrographId);
+      async (micrographId: string) => {
+        await drillDownToMicrograph(micrographId);
       },
       [drillDownToMicrograph]
     );
@@ -1402,12 +1403,12 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                             fill="#e44c65"
                             stroke="#ffffff"
                             strokeWidth={1.5 / zoom}
-                            onClick={() => {
+                            onClick={async () => {
                               // Navigate to the child micrograph when clicked (drill-down enables back button)
-                              useAppStore.getState().drillDownToMicrograph(childMicro.id);
+                              await useAppStore.getState().drillDownToMicrograph(childMicro.id);
                             }}
-                            onTap={() => {
-                              useAppStore.getState().drillDownToMicrograph(childMicro.id);
+                            onTap={async () => {
+                              await useAppStore.getState().drillDownToMicrograph(childMicro.id);
                             }}
                             style={{ cursor: 'pointer' }}
                           />
@@ -1451,9 +1452,11 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                           }}
                           stageScale={zoom}
                           activeSpotId={activeSpotId}
-                          onSpotClick={(spot) => {
-                            selectActiveSpot(spot.id);
-                            setActiveTool(null);
+                          onSpotClick={async (spot) => {
+                            const didNavigate = await selectActiveSpot(spot.id);
+                            if (didNavigate) {
+                              setActiveTool(null);
+                            }
                           }}
                           onSpotContextMenu={(spot, x, y) => {
                             setContextMenuSpot(spot);
@@ -1470,9 +1473,11 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                       spot={spot}
                       scale={zoom}
                       isSelected={spot.id === activeSpotId}
-                      onClick={(spot) => {
-                        selectActiveSpot(spot.id);
-                        setActiveTool(null); // Deactivate drawing tool when selecting spot
+                      onClick={async (spot) => {
+                        const didNavigate = await selectActiveSpot(spot.id);
+                        if (didNavigate) {
+                          setActiveTool(null); // Deactivate drawing tool when selecting spot
+                        }
                       }}
                       onContextMenu={(spot, x, y) => {
                         setContextMenuSpot(spot);
@@ -1648,9 +1653,11 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                           }}
                           stageScale={zoom}
                           activeSpotId={activeSpotId}
-                          onSpotClick={(spot) => {
-                            selectActiveSpot(spot.id);
-                            setActiveTool(null);
+                          onSpotClick={async (spot) => {
+                            const didNavigate = await selectActiveSpot(spot.id);
+                            if (didNavigate) {
+                              setActiveTool(null);
+                            }
                           }}
                           onSpotContextMenu={(spot, x, y) => {
                             setContextMenuSpot(spot);
@@ -1667,9 +1674,11 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                       spot={spot}
                       scale={zoom}
                       isSelected={spot.id === activeSpotId}
-                      onClick={(spot) => {
-                        selectActiveSpot(spot.id);
-                        setActiveTool(null);
+                      onClick={async (spot) => {
+                        const didNavigate = await selectActiveSpot(spot.id);
+                        if (didNavigate) {
+                          setActiveTool(null);
+                        }
                       }}
                       onContextMenu={(spot, x, y) => {
                         setContextMenuSpot(spot);
