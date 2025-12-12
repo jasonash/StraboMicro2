@@ -362,21 +362,25 @@ export const useAppStore = create<AppState>()(
 
           // Quick Classify state
           quickClassifyVisible: false,
+          // Default mineral shortcuts for Quick Classify - common rock-forming minerals
+          // Note: Non-mineral categories (matrix, void, lithic, opaque) are intentionally
+          // excluded - the mineralogy schema only supports actual mineral names.
+          // See PROJECT_STATUS.md for future schema expansion plans.
           quickClassifyShortcuts: {
             'q': 'quartz',
             'p': 'plagioclase',
             'k': 'k-feldspar',
-            'b': 'biotite',
-            'm': 'muscovite',
-            'h': 'hornblende',
             'o': 'olivine',
             'x': 'pyroxene',
+            'a': 'amphibole',
+            'h': 'hornblende',
+            'b': 'biotite',
+            'm': 'muscovite',
             'g': 'garnet',
             'c': 'calcite',
             'd': 'dolomite',
-            'a': 'amphibole',
             'e': 'epidote',
-            't': 'tourmaline',
+            's': 'serpentine',
             'z': 'zircon',
             'u': 'unknown',
           },
