@@ -319,6 +319,8 @@ export const NewSpotDialog: React.FC<NewSpotDialogProps> = ({
             onChange={(newColor) => setSpotColor(newColor)}
             format="hex"
             fullWidth
+            sx={{ '& input': { caretColor: 'transparent', cursor: 'pointer' } }}
+            onKeyDown={(e) => e.preventDefault()}
           />
 
           {/* Opacity */}

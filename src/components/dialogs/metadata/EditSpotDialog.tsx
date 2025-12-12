@@ -156,6 +156,8 @@ export function EditSpotDialog({ isOpen, onClose, spotId }: EditSpotDialogProps)
             onChange={(newColor) => setSpotColor(newColor)}
             format="hex"
             fullWidth
+            sx={{ '& input': { caretColor: 'transparent', cursor: 'pointer' } }}
+            onKeyDown={(e) => e.preventDefault()}
           />
 
           {/* Opacity */}
