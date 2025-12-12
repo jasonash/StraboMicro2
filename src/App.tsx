@@ -20,6 +20,7 @@ import { RemoteProjectsDialog } from './components/dialogs/RemoteProjectsDialog'
 import { SharedProjectDialog } from './components/dialogs/SharedProjectDialog';
 import { CloseProjectDialog } from './components/dialogs/CloseProjectDialog';
 import { ProjectPrepDialog } from './components/dialogs/ProjectPrepDialog';
+import { GenerateSpotsDialog } from './components/dialogs/GenerateSpotsDialog';
 import {
   IncompleteMicrographsDialog,
   findIncompleteMicrographs,
@@ -175,6 +176,10 @@ function App() {
   const [isLogViewerOpen, setIsLogViewerOpen] = useState(false);
   const [isSendErrorReportOpen, setIsSendErrorReportOpen] = useState(false);
   const [isManualUpdateCheck, setIsManualUpdateCheck] = useState(false);
+  const generateSpotsDialogOpen = useAppStore(state => state.generateSpotsDialogOpen);
+  const generateSpotsTargetMicrographId = useAppStore(state => state.generateSpotsTargetMicrographId);
+  const openGenerateSpotsDialog = useAppStore(state => state.openGenerateSpotsDialog);
+  const closeGenerateSpotsDialog = useAppStore(state => state.closeGenerateSpotsDialog);
   const closeProject = useAppStore(state => state.closeProject);
   const project = useAppStore(state => state.project);
   const setTheme = useAppStore(state => state.setTheme);
@@ -379,6 +384,15 @@ function App() {
     // Edit Project menu item
     unsubscribers.push(window.api.onEditProject(() => {
       setIsEditProjectDialogOpen(true);
+    }));
+
+    // Generate Spots menu item (Edit menu with Cmd+Shift+G)
+    unsubscribers.push(window.api.onGenerateSpots(() => {
+      if (activeMicrographId) {
+        openGenerateSpotsDialog(activeMicrographId);
+      } else {
+        console.warn('[App] Generate Spots: No micrograph selected');
+      }
     }));
 
     // Debug: Show Project Structure
@@ -957,7 +971,7 @@ function App() {
     return () => {
       unsubscribers.forEach(unsub => unsub?.());
     };
-  }, [closeProject, setTheme, setShowRulers, setShowSpotLabels, setShowMicrographOutlines, logout, project, manualSave, saveBeforeSwitch, loadProjectWithPreparation, activeMicrographId, micrographIndex, addSpot, updateMicrographMetadata]);
+  }, [closeProject, setTheme, setShowRulers, setShowSpotLabels, setShowMicrographOutlines, logout, project, manualSave, saveBeforeSwitch, loadProjectWithPreparation, activeMicrographId, micrographIndex, addSpot, updateMicrographMetadata, openGenerateSpotsDialog]);
 
   return (
     <>
@@ -1084,6 +1098,11 @@ function App() {
       <UpdateNotification
         manualCheck={isManualUpdateCheck}
         onManualCheckComplete={() => setIsManualUpdateCheck(false)}
+      />
+      <GenerateSpotsDialog
+        isOpen={generateSpotsDialogOpen}
+        onClose={closeGenerateSpotsDialog}
+        micrographId={generateSpotsTargetMicrographId}
       />
     </>
   );

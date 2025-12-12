@@ -96,6 +96,7 @@ interface Window {
     onNewProject: (callback: () => void) => Unsubscribe;
     onOpenProject: (callback: () => void) => Unsubscribe;
     onEditProject: (callback: () => void) => Unsubscribe;
+    onGenerateSpots: (callback: () => void) => Unsubscribe;
     onShowProjectDebug: (callback: () => void) => Unsubscribe;
     onShowSerializedJson: (callback: () => void) => Unsubscribe;
     getSerializedProjectJson: (projectData: unknown) => Promise<string>;

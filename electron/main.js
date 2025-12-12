@@ -615,6 +615,16 @@ function createWindow() {
         { role: 'copy' },
         { role: 'paste' },
         { role: 'selectAll' },
+        { type: 'separator' },
+        {
+          label: 'Generate Spots...',
+          accelerator: 'CmdOrCtrl+Shift+G',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('menu:generate-spots');
+            }
+          }
+        },
       ],
     },
     {

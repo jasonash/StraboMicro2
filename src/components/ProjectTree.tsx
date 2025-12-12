@@ -296,6 +296,7 @@ export function ProjectTree() {
   const deleteMicrograph = useAppStore((state) => state.deleteMicrograph);
   const updateMicrographMetadata = useAppStore((state) => state.updateMicrographMetadata);
   const reorderMicrographs = useAppStore((state) => state.reorderMicrographs);
+  const openGenerateSpotsDialog = useAppStore((state) => state.openGenerateSpotsDialog);
   const reorderSamples = useAppStore((state) => state.reorderSamples);
   const reorderDatasets = useAppStore((state) => state.reorderDatasets);
 
@@ -1027,6 +1028,14 @@ export function ProjectTree() {
             }}
           >
             Edit Micrograph Metadata
+          </MenuItem>
+          <MenuItem
+            onClick={() => {
+              openGenerateSpotsDialog(micrograph.id);
+              setMicrographOptionsAnchor({ ...micrographOptionsAnchor, [micrograph.id]: null });
+            }}
+          >
+            Generate Spots...
           </MenuItem>
           {!isReference && (
             <>

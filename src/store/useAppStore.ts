@@ -154,6 +154,42 @@ interface AppState {
   // Used by DetailedNotesPanel to intercept navigation when there are unsaved notes
   navigationGuard: (() => Promise<boolean>) | null;
 
+  // ========== QUICK CLASSIFY STATE ==========
+  /** Whether Quick Classify toolbar is visible */
+  quickClassifyVisible: boolean;
+  /** User-configured keyboard shortcuts for classification (key -> mineral name) */
+  quickClassifyShortcuts: Record<string, string>;
+
+  // ========== GENERATE SPOTS DIALOG STATE ==========
+  /** Whether Generate Spots dialog is open */
+  generateSpotsDialogOpen: boolean;
+  /** Target micrograph ID for Generate Spots dialog */
+  generateSpotsTargetMicrographId: string | null;
+
+  // ========== GENERATION SETTINGS (persisted) ==========
+  /** Last used point counting settings */
+  lastPointCountSettings: {
+    gridType: 'regular' | 'random' | 'stratified';
+    pointCount: number;
+    offsetByHalfSpacing: boolean;
+    pointSize: number;
+    color: string;
+    opacity: number;
+    namingPattern: string;
+  } | null;
+  /** Last used grain detection settings */
+  lastGrainDetectionSettings: {
+    sensitivity: number;
+    minGrainSize: number;
+    edgeContrast: number;
+    simplifyOutlines: boolean;
+    outputType: 'polygons' | 'points';
+    presetName: string;
+    color: string;
+    opacity: number;
+    namingPattern: string;
+  } | null;
+
   // ========== COMPUTED INDEXES (for performance) ==========
   micrographIndex: Map<string, MicrographMetadata>;
   spotIndex: Map<string, Spot>;
@@ -199,8 +235,30 @@ interface AppState {
 
   // ========== CRUD: SPOT ==========
   addSpot: (micrographId: string, spot: Spot) => void;
+  /** Add multiple spots at once (for generation results) - more efficient than calling addSpot N times */
+  addSpots: (micrographId: string, spots: Spot[]) => void;
   updateSpotData: (id: string, updates: Partial<Spot>) => void;
+  /** Update multiple spots with the same changes (batch edit) */
+  batchUpdateSpots: (spotIds: string[], updates: Partial<Spot>) => void;
   deleteSpot: (id: string) => void;
+
+  // ========== QUICK CLASSIFY ACTIONS ==========
+  /** Toggle Quick Classify toolbar visibility */
+  setQuickClassifyVisible: (visible: boolean) => void;
+  /** Update keyboard shortcut configuration */
+  setQuickClassifyShortcuts: (shortcuts: Record<string, string>) => void;
+
+  // ========== GENERATE SPOTS DIALOG ACTIONS ==========
+  /** Open the Generate Spots dialog for a specific micrograph */
+  openGenerateSpotsDialog: (micrographId: string) => void;
+  /** Close the Generate Spots dialog */
+  closeGenerateSpotsDialog: () => void;
+
+  // ========== GENERATION SETTINGS ACTIONS ==========
+  /** Update last used point counting settings */
+  setLastPointCountSettings: (settings: AppState['lastPointCountSettings']) => void;
+  /** Update last used grain detection settings */
+  setLastGrainDetectionSettings: (settings: AppState['lastGrainDetectionSettings']) => void;
 
   // ========== CRUD: GROUP ==========
   createGroup: (group: GroupMetadata) => void;
@@ -296,6 +354,35 @@ export const useAppStore = create<AppState>()(
           expandedMicrographs: [],
 
           navigationGuard: null,
+
+          // Quick Classify state
+          quickClassifyVisible: false,
+          quickClassifyShortcuts: {
+            'q': 'quartz',
+            'p': 'plagioclase',
+            'k': 'k-feldspar',
+            'b': 'biotite',
+            'm': 'muscovite',
+            'h': 'hornblende',
+            'o': 'olivine',
+            'x': 'pyroxene',
+            'g': 'garnet',
+            'c': 'calcite',
+            'd': 'dolomite',
+            'a': 'amphibole',
+            'e': 'epidote',
+            't': 'tourmaline',
+            'z': 'zircon',
+            'u': 'unknown',
+          },
+
+          // Generate Spots dialog state
+          generateSpotsDialogOpen: false,
+          generateSpotsTargetMicrographId: null,
+
+          // Generation settings (persisted defaults)
+          lastPointCountSettings: null,
+          lastGrainDetectionSettings: null,
 
           micrographIndex: new Map(),
           spotIndex: new Map(),
@@ -803,12 +890,54 @@ export const useAppStore = create<AppState>()(
             };
           }),
 
+          addSpots: (micrographId, spots) => set((state) => {
+            if (!state.project || spots.length === 0) return state;
+
+            const newProject = updateMicrograph(state.project, micrographId, (micrograph) => {
+              micrograph.spots = [...(micrograph.spots || []), ...spots];
+            });
+
+            return {
+              project: newProject,
+              isDirty: true,
+              spotIndex: buildSpotIndex(newProject),
+            };
+          }),
+
           updateSpotData: (id, updates) => set((state) => {
             if (!state.project) return state;
 
             const newProject = updateSpot(state.project, id, (spot) => {
               Object.assign(spot, updates);
             });
+
+            return {
+              project: newProject,
+              isDirty: true,
+              spotIndex: buildSpotIndex(newProject),
+            };
+          }),
+
+          batchUpdateSpots: (spotIds, updates) => set((state) => {
+            if (!state.project || spotIds.length === 0) return state;
+
+            const spotIdSet = new Set(spotIds);
+            const newProject = structuredClone(state.project);
+
+            // Update all matching spots in all micrographs
+            for (const dataset of newProject.datasets || []) {
+              for (const sample of dataset.samples || []) {
+                for (const micrograph of sample.micrographs || []) {
+                  if (micrograph.spots) {
+                    for (const spot of micrograph.spots) {
+                      if (spotIdSet.has(spot.id)) {
+                        Object.assign(spot, updates);
+                      }
+                    }
+                  }
+                }
+              }
+            }
 
             return {
               project: newProject,
@@ -1202,6 +1331,30 @@ export const useAppStore = create<AppState>()(
           // ========== NAVIGATION GUARD ACTIONS ==========
 
           setNavigationGuard: (guard) => set({ navigationGuard: guard }),
+
+          // ========== QUICK CLASSIFY ACTIONS ==========
+
+          setQuickClassifyVisible: (visible) => set({ quickClassifyVisible: visible }),
+
+          setQuickClassifyShortcuts: (shortcuts) => set({ quickClassifyShortcuts: shortcuts }),
+
+          // ========== GENERATE SPOTS DIALOG ACTIONS ==========
+
+          openGenerateSpotsDialog: (micrographId) => set({
+            generateSpotsDialogOpen: true,
+            generateSpotsTargetMicrographId: micrographId,
+          }),
+
+          closeGenerateSpotsDialog: () => set({
+            generateSpotsDialogOpen: false,
+            generateSpotsTargetMicrographId: null,
+          }),
+
+          // ========== GENERATION SETTINGS ACTIONS ==========
+
+          setLastPointCountSettings: (settings) => set({ lastPointCountSettings: settings }),
+
+          setLastGrainDetectionSettings: (settings) => set({ lastGrainDetectionSettings: settings }),
         }),
         {
           // Temporal (undo/redo) configuration
@@ -1238,6 +1391,13 @@ export const useAppStore = create<AppState>()(
           expandedDatasets: state.expandedDatasets,
           expandedSamples: state.expandedSamples,
           expandedMicrographs: state.expandedMicrographs,
+
+          // Quick Classify settings
+          quickClassifyShortcuts: state.quickClassifyShortcuts,
+
+          // Generation settings
+          lastPointCountSettings: state.lastPointCountSettings,
+          lastGrainDetectionSettings: state.lastGrainDetectionSettings,
         }),
         // Rebuild indexes after rehydrating from file storage
         onRehydrateStorage: () => (state) => {
