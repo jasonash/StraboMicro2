@@ -32,11 +32,8 @@ const CROSSHAIR_LENGTH = 20;
 /** Stroke width for point outlines */
 const STROKE_WIDTH = 2;
 
-/** Fill color for unclassified points (white for visibility) */
-const UNCLASSIFIED_FILL = '#FFFFFF';
-
-/** Outline color for unclassified points (dark for contrast) */
-const UNCLASSIFIED_OUTLINE = '#222222';
+/** Fill color for unclassified points - light gray, visible on most backgrounds */
+const UNCLASSIFIED_FILL = '#CCCCCC';
 
 /** Color for current point highlight */
 const CURRENT_POINT_HIGHLIGHT = '#FFD700'; // Gold
@@ -70,11 +67,8 @@ const Point = memo(function Point({ point, index, scale, isCurrent, onClick }: P
 
   // Scale-adjusted sizes
   const radius = (isCurrent ? CURRENT_POINT_RADIUS : POINT_RADIUS) / scale;
-  const strokeWidth = STROKE_WIDTH / scale;
+  const strokeWidth = STROKE_WIDTH / scale; // Used for crosshair
   const crosshairLength = CROSSHAIR_LENGTH / scale;
-
-  // Stroke color: gold for current point, mineral color otherwise
-  const strokeColor = isCurrent ? CURRENT_POINT_HIGHLIGHT : mineralColor;
 
   return (
     <Group>
@@ -130,32 +124,16 @@ const Point = memo(function Point({ point, index, scale, isCurrent, onClick }: P
         </>
       )}
 
-      {/* The point itself */}
-      {isClassified ? (
-        // Classified: Filled circle with mineral color
-        <Circle
-          x={point.x}
-          y={point.y}
-          radius={radius}
-          fill={mineralColor}
-          stroke={strokeColor}
-          strokeWidth={strokeWidth}
-          opacity={0.9}
-          listening={false}
-        />
-      ) : (
-        // Unclassified: White filled circle with dark outline (visible on any background)
-        <Circle
-          x={point.x}
-          y={point.y}
-          radius={radius}
-          fill={UNCLASSIFIED_FILL}
-          stroke={isCurrent ? CURRENT_POINT_HIGHLIGHT : UNCLASSIFIED_OUTLINE}
-          strokeWidth={strokeWidth * 1.5}
-          opacity={0.9}
-          listening={false}
-        />
-      )}
+      {/* The point itself - simple filled circles for performance (no strokes) */}
+      <Circle
+        x={point.x}
+        y={point.y}
+        radius={radius}
+        fill={isClassified ? mineralColor : UNCLASSIFIED_FILL}
+        opacity={0.9}
+        onClick={() => onClick?.(index)}
+        onTap={() => onClick?.(index)}
+      />
 
       {/* Current point outer ring highlight */}
       {isCurrent && (
