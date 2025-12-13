@@ -130,7 +130,8 @@ export const SpotContextMenu: React.FC<SpotContextMenuProps> = ({
         </MenuItem>
       )}
 
-      {!isRecursiveSpot && (
+      {/* Single-spot operations - hide when multiple spots selected */}
+      {selectedCount <= 1 && !isRecursiveSpot && (
         <MenuItem onClick={handleEditGeometry}>
           <ListItemIcon>
             <ShapeLineIcon fontSize="small" />
@@ -138,12 +139,14 @@ export const SpotContextMenu: React.FC<SpotContextMenuProps> = ({
           <ListItemText>Edit Spot Geometry</ListItemText>
         </MenuItem>
       )}
-      <MenuItem onClick={handleEditMetadata}>
-        <ListItemIcon>
-          <EditIcon fontSize="small" />
-        </ListItemIcon>
-        <ListItemText>Edit Spot Metadata</ListItemText>
-      </MenuItem>
+      {selectedCount <= 1 && (
+        <MenuItem onClick={handleEditMetadata}>
+          <ListItemIcon>
+            <EditIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>Edit Spot Metadata</ListItemText>
+        </MenuItem>
+      )}
       <Divider />
       <MenuItem onClick={handleDelete}>
         <ListItemIcon>
