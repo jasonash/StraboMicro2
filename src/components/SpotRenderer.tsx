@@ -33,7 +33,7 @@ interface SpotRendererProps {
   spot: Spot;
   scale: number; // Current zoom level for size scaling
   isSelected?: boolean;
-  onClick?: (spot: Spot) => void;
+  onClick?: (spot: Spot, event: any) => void;
   onContextMenu?: (spot: Spot, x: number, y: number) => void;
   renderLabelsOnly?: boolean; // If true, only render labels (for layering)
 }
@@ -79,8 +79,8 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
   const strokeColor = (isHovered && !isSelected) ? '#ffff00' : color;
   const strokeWidth = (isHovered && !isSelected) ? 4 / scale : 3 / scale;
 
-  const handleClick = () => {
-    onClick?.(spot);
+  const handleClick = (e: any) => {
+    onClick?.(spot, e);
   };
 
   const handleContextMenu = (e: any) => {
