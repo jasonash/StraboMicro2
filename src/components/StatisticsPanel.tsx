@@ -1,9 +1,9 @@
 /**
- * Statistics Panel - Draggable floating window for point counting statistics
+ * Statistics Panel - Draggable, resizable floating window for point counting statistics
  *
  * Displays live modal analysis statistics while the user is classifying spots.
  * Can be toggled via View menu (Cmd+Shift+S) or Quick Classify toolbar button.
- * Can be dragged anywhere on the canvas.
+ * Can be dragged anywhere in the window and resized by dragging the left edge.
  */
 
 import React, { useState, useCallback, useRef, useEffect } from 'react';
@@ -24,7 +24,9 @@ import {
 import { useAppStore } from '../store';
 import { PointCountingStatistics } from './PointCountingStatistics';
 
-const PANEL_WIDTH = 340;
+const PANEL_DEFAULT_WIDTH = 340;
+const PANEL_MIN_WIDTH = 280;
+const PANEL_MAX_WIDTH = 600;
 const PANEL_DEFAULT_X_OFFSET = 20; // From right edge
 const PANEL_DEFAULT_Y_OFFSET = 180; // From bottom (room for Quick Classify toolbar)
 
@@ -36,27 +38,35 @@ export const StatisticsPanel: React.FC = () => {
   // Expanded/collapsed state for the panel content
   const [isExpanded, setIsExpanded] = useState(true);
 
+  // Panel size state
+  const [width, setWidth] = useState(PANEL_DEFAULT_WIDTH);
+
   // Dragging state
   const [position, setPosition] = useState<{ x: number; y: number } | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const dragStartRef = useRef<{ mouseX: number; mouseY: number; panelX: number; panelY: number } | null>(null);
   const panelRef = useRef<HTMLDivElement>(null);
 
+  // Resizing state
+  const [isResizing, setIsResizing] = useState(false);
+  const resizeStartRef = useRef<{ mouseX: number; startWidth: number; startX: number } | null>(null);
+
   // Initialize position on first render (use window dimensions)
   // Position at bottom-right, above the Quick Classify toolbar
   useEffect(() => {
     if (statisticsPanelVisible && position === null) {
       setPosition({
-        x: window.innerWidth - PANEL_WIDTH - PANEL_DEFAULT_X_OFFSET,
+        x: window.innerWidth - width - PANEL_DEFAULT_X_OFFSET,
         y: window.innerHeight - PANEL_DEFAULT_Y_OFFSET - 350, // Panel is ~350px tall
       });
     }
-  }, [statisticsPanelVisible, position]);
+  }, [statisticsPanelVisible, position, width]);
 
   // Reset position when panel is hidden (so it re-positions next time)
   useEffect(() => {
     if (!statisticsPanelVisible) {
       setPosition(null);
+      setWidth(PANEL_DEFAULT_WIDTH); // Reset width too
     }
   }, [statisticsPanelVisible]);
 
@@ -100,7 +110,7 @@ export const StatisticsPanel: React.FC = () => {
       let newY = dragStartRef.current.panelY + deltaY;
 
       // Constrain to window bounds
-      newX = Math.max(0, Math.min(newX, window.innerWidth - PANEL_WIDTH));
+      newX = Math.max(0, Math.min(newX, window.innerWidth - width));
       newY = Math.max(0, Math.min(newY, window.innerHeight - 100)); // Leave room for panel
 
       setPosition({ x: newX, y: newY });
@@ -120,7 +130,65 @@ export const StatisticsPanel: React.FC = () => {
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [isDragging]);
+  }, [isDragging, width]);
+
+  // Resize handlers (resize from left edge)
+  const handleResizeStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    if (!position) return;
+
+    setIsResizing(true);
+    resizeStartRef.current = {
+      mouseX: e.clientX,
+      startWidth: width,
+      startX: position.x,
+    };
+
+    document.body.style.cursor = 'ew-resize';
+    document.body.style.userSelect = 'none';
+  }, [position, width]);
+
+  useEffect(() => {
+    if (!isResizing) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!resizeStartRef.current || !position) return;
+
+      // Dragging left edge: moving left = wider, moving right = narrower
+      const deltaX = resizeStartRef.current.mouseX - e.clientX;
+      let newWidth = resizeStartRef.current.startWidth + deltaX;
+
+      // Constrain width
+      newWidth = Math.max(PANEL_MIN_WIDTH, Math.min(newWidth, PANEL_MAX_WIDTH));
+
+      // Adjust position to keep right edge fixed
+      const actualDelta = newWidth - resizeStartRef.current.startWidth;
+      const newX = resizeStartRef.current.startX - actualDelta;
+
+      // Don't let it go off screen
+      if (newX >= 0) {
+        setWidth(newWidth);
+        setPosition({ x: newX, y: position.y });
+      }
+    };
+
+    const handleMouseUp = () => {
+      setIsResizing(false);
+      resizeStartRef.current = null;
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isResizing, position]);
 
   // Don't render if not visible or no micrograph
   if (!statisticsPanelVisible || !activeMicrographId) {
@@ -133,18 +201,38 @@ export const StatisticsPanel: React.FC = () => {
       elevation={8}
       sx={{
         position: 'fixed',
-        left: position?.x ?? window.innerWidth - PANEL_WIDTH - PANEL_DEFAULT_X_OFFSET,
+        left: position?.x ?? window.innerWidth - width - PANEL_DEFAULT_X_OFFSET,
         top: position?.y ?? window.innerHeight - PANEL_DEFAULT_Y_OFFSET - 350,
-        width: PANEL_WIDTH,
+        width: width,
         maxHeight: 'calc(100vh - 150px)',
         zIndex: 1500, // Above everything (MUI dialogs are 1300)
         bgcolor: 'background.paper',
         borderRadius: 1,
         overflow: 'hidden',
-        boxShadow: isDragging ? 12 : 6,
-        transition: isDragging ? 'none' : 'box-shadow 0.2s ease',
+        boxShadow: isDragging || isResizing ? 12 : 6,
+        transition: isDragging || isResizing ? 'none' : 'box-shadow 0.2s ease',
       }}
     >
+      {/* Left resize handle */}
+      <Box
+        onMouseDown={handleResizeStart}
+        sx={{
+          position: 'absolute',
+          left: 0,
+          top: 0,
+          bottom: 0,
+          width: 6,
+          cursor: 'ew-resize',
+          bgcolor: isResizing ? 'primary.main' : 'transparent',
+          transition: 'background-color 0.2s',
+          '&:hover': {
+            bgcolor: 'primary.main',
+            opacity: 0.5,
+          },
+          zIndex: 1,
+        }}
+      />
+
       {/* Header - Drag Handle */}
       <Box
         onMouseDown={handleDragStart}
