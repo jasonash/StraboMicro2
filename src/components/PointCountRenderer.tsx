@@ -141,8 +141,7 @@ const Point = memo(function Point({ point, index, scale, isCurrent, onClick }: P
           stroke={strokeColor}
           strokeWidth={strokeWidth}
           opacity={0.9}
-          onClick={() => onClick?.(index)}
-          onTap={() => onClick?.(index)}
+          listening={false}
         />
       ) : (
         // Unclassified: White filled circle with dark outline (visible on any background)
@@ -154,8 +153,7 @@ const Point = memo(function Point({ point, index, scale, isCurrent, onClick }: P
           stroke={isCurrent ? CURRENT_POINT_HIGHLIGHT : UNCLASSIFIED_OUTLINE}
           strokeWidth={strokeWidth * 1.5}
           opacity={0.9}
-          onClick={() => onClick?.(index)}
-          onTap={() => onClick?.(index)}
+          listening={false}
         />
       )}
 
