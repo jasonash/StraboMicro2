@@ -1259,62 +1259,104 @@ export const useAppStore = create<AppState>()(
               console.log('[Store] Split line coords:', lineCoords);
               console.log('[Store] Polygon coords:', coords);
 
-              // Strategy: Use polygon-clipping library to cut the polygon with a thin buffer
+              // Strategy: Use polygon-clipping library to cut the polygon with a buffer
+              // around the ENTIRE polyline (not just start-to-end)
               // This works with pixel coordinates (no geographic assumptions)
 
-              // Get line start and end
-              const start = lineCoords[0];
-              const end = lineCoords[lineCoords.length - 1];
-              const dx = end[0] - start[0];
-              const dy = end[1] - start[1];
-              const len = Math.sqrt(dx * dx + dy * dy);
+              // Buffer width in pixels
+              const bufferWidth = 2;
 
-              if (len === 0) {
-                console.warn('[Store] Split line has zero length');
-                return null;
-              }
-
-              // Unit vectors along and perpendicular to the line
-              const unitX = dx / len;
-              const unitY = dy / len;
-              const perpX = -unitY;
-              const perpY = unitX;
-
-              // Buffer width in pixels - make it thin but not zero
-              const bufferWidth = 1;
-
-              // Extend the line well beyond the polygon to ensure complete cut
+              // Extend the line beyond the polygon bounds
               const bbox = turf.bbox(polygon);
               const diagonal = Math.sqrt(
                 Math.pow(bbox[2] - bbox[0], 2) + Math.pow(bbox[3] - bbox[1], 2)
               ) * 2;
 
-              const extendedStart: [number, number] = [
-                start[0] - unitX * diagonal,
-                start[1] - unitY * diagonal,
-              ];
-              const extendedEnd: [number, number] = [
-                end[0] + unitX * diagonal,
-                end[1] + unitY * diagonal,
+              // Helper to get perpendicular unit vector for a segment
+              const getPerp = (p1: [number, number], p2: [number, number]): [number, number] => {
+                const dx = p2[0] - p1[0];
+                const dy = p2[1] - p1[1];
+                const len = Math.sqrt(dx * dx + dy * dy);
+                if (len === 0) return [0, 1];
+                return [-dy / len, dx / len]; // perpendicular
+              };
+
+              // Helper to get unit direction vector
+              const getDir = (p1: [number, number], p2: [number, number]): [number, number] => {
+                const dx = p2[0] - p1[0];
+                const dy = p2[1] - p1[1];
+                const len = Math.sqrt(dx * dx + dy * dy);
+                if (len === 0) return [1, 0];
+                return [dx / len, dy / len];
+              };
+
+              // Extend the first and last points of the line beyond the polygon
+              const extendedLineCoords = [...lineCoords];
+
+              // Extend start
+              if (extendedLineCoords.length >= 2) {
+                const dir = getDir(extendedLineCoords[1], extendedLineCoords[0]);
+                extendedLineCoords[0] = [
+                  extendedLineCoords[0][0] + dir[0] * diagonal,
+                  extendedLineCoords[0][1] + dir[1] * diagonal,
+                ];
+              }
+
+              // Extend end
+              if (extendedLineCoords.length >= 2) {
+                const lastIdx = extendedLineCoords.length - 1;
+                const dir = getDir(extendedLineCoords[lastIdx - 1], extendedLineCoords[lastIdx]);
+                extendedLineCoords[lastIdx] = [
+                  extendedLineCoords[lastIdx][0] + dir[0] * diagonal,
+                  extendedLineCoords[lastIdx][1] + dir[1] * diagonal,
+                ];
+              }
+
+              // Build cutting polygon by walking along both sides of the polyline
+              // Left side (positive perpendicular offset)
+              const leftSide: [number, number][] = [];
+              // Right side (negative perpendicular offset) - will be reversed
+              const rightSide: [number, number][] = [];
+
+              for (let i = 0; i < extendedLineCoords.length; i++) {
+                const curr = extendedLineCoords[i];
+                let perp: [number, number];
+
+                if (i === 0) {
+                  // First point: use direction to next point
+                  perp = getPerp(curr, extendedLineCoords[i + 1]);
+                } else if (i === extendedLineCoords.length - 1) {
+                  // Last point: use direction from previous point
+                  perp = getPerp(extendedLineCoords[i - 1], curr);
+                } else {
+                  // Middle point: average of adjacent segment perpendiculars
+                  const perp1 = getPerp(extendedLineCoords[i - 1], curr);
+                  const perp2 = getPerp(curr, extendedLineCoords[i + 1]);
+                  const avgX = (perp1[0] + perp2[0]) / 2;
+                  const avgY = (perp1[1] + perp2[1]) / 2;
+                  const avgLen = Math.sqrt(avgX * avgX + avgY * avgY);
+                  perp = avgLen > 0 ? [avgX / avgLen, avgY / avgLen] : perp1;
+                }
+
+                leftSide.push([curr[0] + perp[0] * bufferWidth, curr[1] + perp[1] * bufferWidth]);
+                rightSide.push([curr[0] - perp[0] * bufferWidth, curr[1] - perp[1] * bufferWidth]);
+              }
+
+              // Combine into cutting polygon: left side forward, then right side backward
+              const cuttingPolygon: [number, number][] = [
+                ...leftSide,
+                ...rightSide.reverse(),
+                leftSide[0], // Close the ring
               ];
 
-              // Create a thin cutting rectangle (buffer around the extended line)
-              const cuttingRect: [number, number][] = [
-                [extendedStart[0] + perpX * bufferWidth, extendedStart[1] + perpY * bufferWidth],
-                [extendedEnd[0] + perpX * bufferWidth, extendedEnd[1] + perpY * bufferWidth],
-                [extendedEnd[0] - perpX * bufferWidth, extendedEnd[1] - perpY * bufferWidth],
-                [extendedStart[0] - perpX * bufferWidth, extendedStart[1] - perpY * bufferWidth],
-                [extendedStart[0] + perpX * bufferWidth, extendedStart[1] + perpY * bufferWidth], // Close
-              ];
+              console.log('[Store] Cutting polygon points:', cuttingPolygon.length);
 
-              console.log('[Store] Cutting rect:', cuttingRect);
-
-              // Use polygon-clipping to subtract the cutting rectangle from the polygon
+              // Use polygon-clipping to subtract the cutting polygon from the original
               // This works with raw pixel coordinates (no geographic assumptions)
               // polygon-clipping expects: Polygon = Ring[], Ring = [number, number][]
               const result = polygonClipping.difference(
-                [coords],       // subject polygon (array of rings, first is exterior)
-                [cuttingRect]   // clip polygon (the cutting line buffer)
+                [coords],          // subject polygon (array of rings, first is exterior)
+                [cuttingPolygon]   // clip polygon (the cutting line buffer)
               );
 
               console.log('[Store] polygon-clipping result:', result);
