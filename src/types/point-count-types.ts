@@ -169,7 +169,7 @@ export function getMineralColor(mineral: string): string {
 }
 
 /**
- * Generate a default session name with current date
+ * Generate a default session name with current date and time
  */
 export function generateDefaultSessionName(): string {
   const date = new Date();
@@ -178,7 +178,11 @@ export function generateDefaultSessionName(): string {
   const month = monthNames[date.getMonth()];
   const day = date.getDate();
   const year = date.getFullYear();
-  return `Point Count - ${month} ${day}, ${year}`;
+  const hours = date.getHours();
+  const minutes = date.getMinutes().toString().padStart(2, '0');
+  const ampm = hours >= 12 ? 'PM' : 'AM';
+  const hour12 = hours % 12 || 12;
+  return `Point Count - ${month} ${day}, ${year} ${hour12}:${minutes} ${ampm}`;
 }
 
 /**
