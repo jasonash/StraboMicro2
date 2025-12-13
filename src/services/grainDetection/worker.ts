@@ -50,9 +50,9 @@ let cv: any = null;
 
 /**
  * Maximum image dimension for processing.
- * 1536 balances quality vs speed for grain boundary detection.
+ * 1024 for faster detection - can increase if quality is insufficient.
  */
-const MAX_PROCESSING_SIZE = 1536;
+const MAX_PROCESSING_SIZE = 1024;
 
 /**
  * Load OpenCV.js in the worker context using fetch + eval
