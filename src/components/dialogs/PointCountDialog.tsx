@@ -586,7 +586,6 @@ export function PointCountDialog({
                   micrographId={micrographId}
                   gridType={gridType}
                   pointCount={pointCount}
-                  width={500}
                   height={375}
                 />
               </Box>

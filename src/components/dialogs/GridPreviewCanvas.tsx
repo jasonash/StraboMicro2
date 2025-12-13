@@ -21,8 +21,6 @@ interface GridPreviewCanvasProps {
   micrographId: string;
   gridType: GridType;
   pointCount: number;
-  /** Canvas width in pixels */
-  width?: number;
   /** Canvas height in pixels */
   height?: number;
 }
@@ -38,9 +36,7 @@ interface GeneratedPoint {
 // CONSTANTS
 // ============================================================================
 
-const DEFAULT_WIDTH = 500;
 const DEFAULT_HEIGHT = 375;
-const MIN_ZOOM = 0.1;
 const MAX_ZOOM = 10;
 const ZOOM_STEP = 1.2;
 const POINT_RADIUS = 3; // Base radius at zoom 1
@@ -54,10 +50,13 @@ export function GridPreviewCanvas({
   micrographId,
   gridType,
   pointCount,
-  width = DEFAULT_WIDTH,
   height = DEFAULT_HEIGHT,
 }: GridPreviewCanvasProps) {
   const stageRef = useRef<any>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Container width (responsive)
+  const [containerWidth, setContainerWidth] = useState(500);
 
   // Image state
   const [image, setImage] = useState<HTMLImageElement | null>(null);
@@ -67,9 +66,31 @@ export function GridPreviewCanvas({
 
   // View state
   const [zoom, setZoom] = useState(1);
+  const [fitZoom, setFitZoom] = useState(0.1); // Track the "fit to screen" zoom level
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const [isPanning, setIsPanning] = useState(false);
   const [lastPointerPos, setLastPointerPos] = useState<{ x: number; y: number } | null>(null);
+
+  // Measure container width
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        setContainerWidth(entry.contentRect.width);
+      }
+    });
+
+    observer.observe(container);
+    // Set initial width
+    setContainerWidth(container.clientWidth || 500);
+
+    return () => observer.disconnect();
+  }, []);
+
+  // Use container width as canvas width
+  const width = containerWidth;
 
   // Store
   const project = useAppStore((s) => s.project);
@@ -164,6 +185,7 @@ export function GridPreviewCanvas({
             const scaleY = height / imageHeight;
             const initialZoom = Math.min(scaleX, scaleY) * 0.9;
             setZoom(initialZoom);
+            setFitZoom(initialZoom); // Store as minimum zoom
 
             // Center image
             const x = (width - imageWidth * initialZoom) / 2;
@@ -201,6 +223,7 @@ export function GridPreviewCanvas({
     const scaleY = height / imageHeight;
     const newZoom = Math.min(scaleX, scaleY) * 0.9;
     setZoom(newZoom);
+    setFitZoom(newZoom); // Update fit zoom when dimensions change
 
     const x = (width - imageWidth * newZoom) / 2;
     const y = (height - imageHeight * newZoom) / 2;
@@ -213,8 +236,8 @@ export function GridPreviewCanvas({
   }, []);
 
   const handleZoomOut = useCallback(() => {
-    setZoom((z) => Math.max(z / ZOOM_STEP, MIN_ZOOM));
-  }, []);
+    setZoom((z) => Math.max(z / ZOOM_STEP, fitZoom));
+  }, [fitZoom]);
 
   // Mouse wheel zoom
   const handleWheel = useCallback((e: any) => {
@@ -234,7 +257,7 @@ export function GridPreviewCanvas({
     const direction = e.evt.deltaY > 0 ? -1 : 1;
     const newZoom = direction > 0
       ? Math.min(oldZoom * ZOOM_STEP, MAX_ZOOM)
-      : Math.max(oldZoom / ZOOM_STEP, MIN_ZOOM);
+      : Math.max(oldZoom / ZOOM_STEP, fitZoom);
 
     const newPos = {
       x: pointer.x - mousePointTo.x * newZoom,
@@ -243,7 +266,7 @@ export function GridPreviewCanvas({
 
     setZoom(newZoom);
     setPosition(newPos);
-  }, [zoom, position]);
+  }, [zoom, position, fitZoom]);
 
   // Pan handling
   const handleMouseDown = useCallback((e: any) => {
@@ -286,18 +309,20 @@ export function GridPreviewCanvas({
   // Render loading state
   if (isLoading) {
     return (
-      <Box
-        sx={{
-          width,
-          height,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          bgcolor: 'grey.900',
-          borderRadius: 1,
-        }}
-      >
-        <CircularProgress size={32} />
+      <Box ref={containerRef} sx={{ width: '100%' }}>
+        <Box
+          sx={{
+            width: '100%',
+            height,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            bgcolor: 'grey.900',
+            borderRadius: 1,
+          }}
+        >
+          <CircularProgress size={32} />
+        </Box>
       </Box>
     );
   }
@@ -305,24 +330,27 @@ export function GridPreviewCanvas({
   // Render error state
   if (error) {
     return (
-      <Box
-        sx={{
-          width,
-          height,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          bgcolor: 'grey.900',
-          borderRadius: 1,
-        }}
-      >
-        <Typography color="error">{error}</Typography>
+      <Box ref={containerRef} sx={{ width: '100%' }}>
+        <Box
+          sx={{
+            width: '100%',
+            height,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            bgcolor: 'grey.900',
+            borderRadius: 1,
+          }}
+        >
+          <Typography color="error">{error}</Typography>
+        </Box>
       </Box>
     );
   }
 
   return (
-    <Box sx={{ position: 'relative', width, height }}>
+    <Box ref={containerRef} sx={{ width: '100%' }}>
+      <Box sx={{ position: 'relative', width, height }}>
       {/* Zoom controls */}
       <Stack
         direction="row"
@@ -438,6 +466,7 @@ export function GridPreviewCanvas({
           ))}
         </Layer>
       </Stage>
+      </Box>
     </Box>
   );
 }
