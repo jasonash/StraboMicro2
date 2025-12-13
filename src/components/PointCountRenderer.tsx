@@ -6,13 +6,12 @@
  * not permanent features of interest.
  *
  * Visual features:
- * - Unclassified points: Gray outline, hollow
+ * - Unclassified points: White fill with dark outline (visible on any background)
  * - Classified points: Filled with mineral color
- * - Current point: Crosshair highlight, larger size
- * - Hover effect for point selection
+ * - Current point: Gold crosshair highlight, larger size
  */
 
-import { useState, useMemo, useCallback } from 'react';
+import { useMemo, useCallback } from 'react';
 import { Circle, Line, Group, Ring } from 'react-konva';
 import { useAppStore } from '@/store';
 import { PointCountPoint, getMineralColor } from '@/types/point-count-types';
@@ -42,9 +41,6 @@ const UNCLASSIFIED_OUTLINE = '#222222';
 /** Color for current point highlight */
 const CURRENT_POINT_HIGHLIGHT = '#FFD700'; // Gold
 
-/** Hover highlight color */
-const HOVER_COLOR = '#00FFFF'; // Cyan for better visibility
-
 // ============================================================================
 // TYPES
 // ============================================================================
@@ -69,8 +65,6 @@ interface PointProps {
 }
 
 function Point({ point, index, scale, isCurrent, onClick }: PointProps) {
-  const [isHovered, setIsHovered] = useState(false);
-
   const isClassified = !!point.mineral;
   const mineralColor = point.mineral ? getMineralColor(point.mineral) : UNCLASSIFIED_FILL;
 
@@ -83,24 +77,8 @@ function Point({ point, index, scale, isCurrent, onClick }: PointProps) {
     onClick?.(index);
   }, [onClick, index]);
 
-  const handleMouseEnter = useCallback((e: any) => {
-    setIsHovered(true);
-    const container = e.target.getStage()?.container();
-    if (container) {
-      container.style.cursor = 'pointer';
-    }
-  }, []);
-
-  const handleMouseLeave = useCallback((e: any) => {
-    setIsHovered(false);
-    const container = e.target.getStage()?.container();
-    if (container) {
-      container.style.cursor = 'crosshair';
-    }
-  }, []);
-
-  // Determine stroke color based on state
-  const strokeColor = isHovered ? HOVER_COLOR : (isCurrent ? CURRENT_POINT_HIGHLIGHT : mineralColor);
+  // Stroke color: gold for current point, mineral color otherwise
+  const strokeColor = isCurrent ? CURRENT_POINT_HIGHLIGHT : mineralColor;
 
   return (
     <Group>
@@ -169,8 +147,6 @@ function Point({ point, index, scale, isCurrent, onClick }: PointProps) {
           opacity={0.9}
           onClick={handleClick}
           onTap={handleClick}
-          onMouseEnter={handleMouseEnter}
-          onMouseLeave={handleMouseLeave}
         />
       ) : (
         // Unclassified: White filled circle with dark outline (visible on any background)
@@ -178,14 +154,12 @@ function Point({ point, index, scale, isCurrent, onClick }: PointProps) {
           x={point.x}
           y={point.y}
           radius={radius}
-          fill={isHovered ? HOVER_COLOR : UNCLASSIFIED_FILL}
+          fill={UNCLASSIFIED_FILL}
           stroke={isCurrent ? CURRENT_POINT_HIGHLIGHT : UNCLASSIFIED_OUTLINE}
           strokeWidth={strokeWidth * 1.5}
           opacity={0.9}
           onClick={handleClick}
           onTap={handleClick}
-          onMouseEnter={handleMouseEnter}
-          onMouseLeave={handleMouseLeave}
         />
       )}
 
