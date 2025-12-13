@@ -50,9 +50,9 @@ let cv: any = null;
 
 /**
  * Maximum image dimension for processing.
- * With Web Worker, we can use higher resolution since it doesn't block UI.
+ * 1536 balances quality vs speed for grain boundary detection.
  */
-const MAX_PROCESSING_SIZE = 2048;
+const MAX_PROCESSING_SIZE = 1536;
 
 /**
  * Load OpenCV.js in the worker context using fetch + eval
