@@ -21,6 +21,7 @@ import { getChildMicrographs } from '@/store/helpers';
 import { AssociatedImageRenderer } from './AssociatedImageRenderer';
 import { ChildSpotsRenderer } from './ChildSpotsRenderer';
 import { SpotRenderer } from './SpotRenderer';
+import { PointCountRenderer } from './PointCountRenderer';
 import { SpotContextMenu } from './SpotContextMenu';
 import { EditingToolbar } from './EditingToolbar';
 import { NewSpotDialog } from './dialogs/NewSpotDialog';
@@ -1615,6 +1616,9 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                       renderLabelsOnly={true}
                     />
                   ))}
+
+                  {/* Point Count points (rendered on top of spots when in point count mode) */}
+                  <PointCountRenderer scale={zoom} />
                 </Layer>
 
                 {/* Drawing Layer - for temporary drawing in progress */}
@@ -1816,6 +1820,9 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                       renderLabelsOnly={true}
                     />
                   ))}
+
+                  {/* Point Count points (rendered on top of spots when in point count mode) */}
+                  <PointCountRenderer scale={zoom} />
                 </Layer>
 
                 {/* Drawing Layer */}
