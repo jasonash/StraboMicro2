@@ -1,3 +1,10 @@
+/**
+ * Quick Classify Toolbar - Draggable floating toolbar for rapid spot classification
+ *
+ * Provides keyboard shortcuts for classifying spots with minerals.
+ * Can be dragged anywhere in the window.
+ */
+
 import React, { useEffect, useCallback, useMemo, useState, useRef } from 'react';
 import {
   Box,
@@ -7,6 +14,7 @@ import {
   LinearProgress,
   IconButton,
   Tooltip,
+  Paper,
 } from '@mui/material';
 import {
   Settings as SettingsIcon,
@@ -14,6 +22,7 @@ import {
   Close as CloseIcon,
   ChevronLeft as ChevronLeftIcon,
   ChevronRight as ChevronRightIcon,
+  DragIndicator as DragIcon,
 } from '@mui/icons-material';
 import { useAppStore } from '../store';
 import { findMicrographById, findSpotById } from '../store/helpers';
@@ -29,13 +38,14 @@ const NAVIGATION_KEYS: Record<string, string> = {
   'Delete': 'clear',     // Clear mineralogy from current spot
 };
 
+const TOOLBAR_WIDTH = 700;
+const TOOLBAR_DEFAULT_Y_OFFSET = 120; // From bottom of screen
+
 interface QuickClassifyToolbarProps {
-  onOpenStatistics?: () => void;
   onOpenSettings?: () => void;
 }
 
 export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
-  onOpenStatistics,
   onOpenSettings,
 }) => {
   const project = useAppStore((state) => state.project);
@@ -44,6 +54,7 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
   const quickClassifyVisible = useAppStore((state) => state.quickClassifyVisible);
   const shortcuts = useAppStore((state) => state.quickClassifyShortcuts);
   const setQuickClassifyVisible = useAppStore((state) => state.setQuickClassifyVisible);
+  const setStatisticsPanelVisible = useAppStore((state) => state.setStatisticsPanelVisible);
   const selectActiveSpot = useAppStore((state) => state.selectActiveSpot);
   const updateSpotData = useAppStore((state) => state.updateSpotData);
   const activeTool = useAppStore((state) => state.activeTool);
@@ -56,6 +67,30 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
   const chipsContainerRef = useRef<HTMLDivElement>(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
+
+  // Dragging state
+  const [position, setPosition] = useState<{ x: number; y: number } | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const dragStartRef = useRef<{ mouseX: number; mouseY: number; panelX: number; panelY: number } | null>(null);
+  const toolbarRef = useRef<HTMLDivElement>(null);
+
+  // Initialize position when toolbar becomes visible
+  useEffect(() => {
+    if (quickClassifyVisible && position === null) {
+      // Center horizontally, near bottom of screen
+      setPosition({
+        x: (window.innerWidth - TOOLBAR_WIDTH) / 2,
+        y: window.innerHeight - TOOLBAR_DEFAULT_Y_OFFSET,
+      });
+    }
+  }, [quickClassifyVisible, position]);
+
+  // Reset position when toolbar is hidden (so it re-centers next time)
+  useEffect(() => {
+    if (!quickClassifyVisible) {
+      setPosition(null);
+    }
+  }, [quickClassifyVisible]);
 
   // Update scroll button visibility
   const updateScrollState = useCallback(() => {
@@ -79,6 +114,60 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
       });
     }
   }, []);
+
+  // Drag handlers
+  const handleDragStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    if (!position) return;
+
+    setIsDragging(true);
+    dragStartRef.current = {
+      mouseX: e.clientX,
+      mouseY: e.clientY,
+      panelX: position.x,
+      panelY: position.y,
+    };
+
+    document.body.style.cursor = 'grabbing';
+    document.body.style.userSelect = 'none';
+  }, [position]);
+
+  useEffect(() => {
+    if (!isDragging) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!dragStartRef.current) return;
+
+      const deltaX = e.clientX - dragStartRef.current.mouseX;
+      const deltaY = e.clientY - dragStartRef.current.mouseY;
+
+      let newX = dragStartRef.current.panelX + deltaX;
+      let newY = dragStartRef.current.panelY + deltaY;
+
+      // Constrain to window bounds
+      newX = Math.max(0, Math.min(newX, window.innerWidth - TOOLBAR_WIDTH));
+      newY = Math.max(0, Math.min(newY, window.innerHeight - 80));
+
+      setPosition({ x: newX, y: newY });
+    };
+
+    const handleMouseUp = () => {
+      setIsDragging(false);
+      dragStartRef.current = null;
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isDragging]);
 
   // Get the active micrograph and its spots
   const activeMicrograph = useMemo(() => {
@@ -373,6 +462,12 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
     }
   }, [quickClassifyVisible, updateScrollState]);
 
+  // Toggle statistics panel
+  const toggleStatistics = useCallback(() => {
+    const current = useAppStore.getState().statisticsPanelVisible;
+    setStatisticsPanelVisible(!current);
+  }, [setStatisticsPanelVisible]);
+
   // Don't render if not visible or no micrograph
   if (!quickClassifyVisible || !activeMicrographId || spots.length === 0) {
     return null;
@@ -389,93 +484,63 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
   };
 
   return (
-    <Box
+    <Paper
+      ref={toolbarRef}
+      elevation={8}
       sx={{
-        position: 'absolute',
-        bottom: 8,
-        left: '50%',
-        transform: 'translateX(-50%)',
+        position: 'fixed',
+        left: position?.x ?? (window.innerWidth - TOOLBAR_WIDTH) / 2,
+        top: position?.y ?? window.innerHeight - TOOLBAR_DEFAULT_Y_OFFSET,
+        width: TOOLBAR_WIDTH,
+        zIndex: 1500, // Same as Statistics Panel
         bgcolor: 'background.paper',
-        borderRadius: 2,
-        boxShadow: 3,
-        p: 1.5,
-        minWidth: 600,
-        maxWidth: '90%',
-        zIndex: 100,
+        borderRadius: 1,
+        overflow: 'hidden',
+        boxShadow: isDragging ? 12 : 6,
+        transition: isDragging ? 'none' : 'box-shadow 0.2s ease',
       }}
     >
-      {/* Header row */}
-      <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-        <Typography
-          variant="subtitle2"
-          sx={{ fontWeight: 600, mr: 2, color: 'primary.main' }}
-        >
-          Quick Classify
-        </Typography>
-
-        {/* Scroll left button */}
-        {canScrollLeft && (
-          <IconButton
-            size="small"
-            onClick={() => scrollChips('left')}
-            sx={{ p: 0.25, mr: 0.5 }}
-          >
-            <ChevronLeftIcon fontSize="small" />
-          </IconButton>
-        )}
-
-        {/* Shortcut chips - scrollable */}
-        <Box
-          ref={chipsContainerRef}
-          onScroll={updateScrollState}
-          sx={{
-            flex: 1,
-            display: 'flex',
-            gap: 0.5,
-            overflowX: 'auto',
-            scrollbarWidth: 'none', // Firefox
-            '&::-webkit-scrollbar': { display: 'none' }, // Chrome/Safari
-          }}
-        >
-          {sortedShortcuts.map(([key, mineral]) => (
-            <Tooltip key={key} title={`${key.toUpperCase()} = ${formatMineralName(mineral)}`} arrow>
-              <Chip
-                label={`${key.toUpperCase()} ${formatMineralName(mineral).slice(0, 3)}`}
-                size="small"
-                onClick={() => classifySpot(mineral)}
-                sx={{
-                  cursor: 'pointer',
-                  flexShrink: 0,
-                  '&:hover': { bgcolor: 'action.hover' },
-                }}
-              />
-            </Tooltip>
-          ))}
+      {/* Header - Drag Handle */}
+      <Box
+        onMouseDown={handleDragStart}
+        sx={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          px: 1,
+          py: 0.5,
+          borderBottom: 1,
+          borderColor: 'divider',
+          bgcolor: 'grey.800',
+          cursor: isDragging ? 'grabbing' : 'grab',
+          userSelect: 'none',
+        }}
+      >
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+          <DragIcon fontSize="small" sx={{ color: 'grey.500', fontSize: 16 }} />
+          <Typography variant="body2" sx={{ fontWeight: 600, color: 'primary.main' }}>
+            Quick Classify
+          </Typography>
         </Box>
-
-        {/* Scroll right button */}
-        {canScrollRight && (
-          <IconButton
-            size="small"
-            onClick={() => scrollChips('right')}
-            sx={{ p: 0.25, ml: 0.5 }}
-          >
-            <ChevronRightIcon fontSize="small" />
-          </IconButton>
-        )}
-
-        {/* Action buttons */}
-        <Box sx={{ display: 'flex', gap: 0.5, ml: 1 }}>
-          {onOpenStatistics && (
-            <Tooltip title="Statistics">
-              <IconButton size="small" onClick={onOpenStatistics}>
-                <StatsIcon fontSize="small" />
-              </IconButton>
-            </Tooltip>
-          )}
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25 }}>
+          <Tooltip title="Statistics">
+            <IconButton
+              size="small"
+              onClick={(e) => { e.stopPropagation(); toggleStatistics(); }}
+              onMouseDown={(e) => e.stopPropagation()}
+              sx={{ color: 'grey.400', p: 0.5 }}
+            >
+              <StatsIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
           {onOpenSettings && (
             <Tooltip title="Configure Shortcuts">
-              <IconButton size="small" onClick={onOpenSettings}>
+              <IconButton
+                size="small"
+                onClick={(e) => { e.stopPropagation(); onOpenSettings(); }}
+                onMouseDown={(e) => e.stopPropagation()}
+                sx={{ color: 'grey.400', p: 0.5 }}
+              >
                 <SettingsIcon fontSize="small" />
               </IconButton>
             </Tooltip>
@@ -483,7 +548,9 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
           <Tooltip title="Close (Esc)">
             <IconButton
               size="small"
-              onClick={() => setQuickClassifyVisible(false)}
+              onClick={(e) => { e.stopPropagation(); setQuickClassifyVisible(false); }}
+              onMouseDown={(e) => e.stopPropagation()}
+              sx={{ color: 'grey.400', p: 0.5 }}
             >
               <CloseIcon fontSize="small" />
             </IconButton>
@@ -491,66 +558,123 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
         </Box>
       </Box>
 
-      {/* Progress bar */}
-      <Box sx={{ mb: 1 }}>
-        <LinearProgress
-          variant="determinate"
-          value={stats.percentage}
-          sx={{
-            height: 8,
-            borderRadius: 1,
-            bgcolor: 'grey.300',
-            '& .MuiLinearProgress-bar': {
-              bgcolor: stats.percentage === 100 ? 'success.main' : 'primary.main',
-            },
-          }}
-        />
-      </Box>
+      {/* Content */}
+      <Box sx={{ p: 1.5, bgcolor: 'grey.900' }}>
+        {/* Shortcut chips row */}
+        <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+          {/* Scroll left button */}
+          {canScrollLeft && (
+            <IconButton
+              size="small"
+              onClick={() => scrollChips('left')}
+              sx={{ p: 0.25, mr: 0.5 }}
+            >
+              <ChevronLeftIcon fontSize="small" />
+            </IconButton>
+          )}
 
-      {/* Status row */}
-      <Box
-        sx={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-        }}
-      >
-        {/* Progress text */}
-        <Typography variant="body2" color="text.secondary">
-          {stats.classified}/{stats.total} classified ({stats.percentage}%)
-        </Typography>
+          {/* Shortcut chips - scrollable */}
+          <Box
+            ref={chipsContainerRef}
+            onScroll={updateScrollState}
+            sx={{
+              flex: 1,
+              display: 'flex',
+              gap: 0.5,
+              overflowX: 'auto',
+              scrollbarWidth: 'none', // Firefox
+              '&::-webkit-scrollbar': { display: 'none' }, // Chrome/Safari
+            }}
+          >
+            {sortedShortcuts.map(([key, mineral]) => (
+              <Tooltip key={key} title={`${key.toUpperCase()} = ${formatMineralName(mineral)}`} arrow>
+                <Chip
+                  label={`${key.toUpperCase()} ${formatMineralName(mineral).slice(0, 3)}`}
+                  size="small"
+                  onClick={() => classifySpot(mineral)}
+                  sx={{
+                    cursor: 'pointer',
+                    flexShrink: 0,
+                    '&:hover': { bgcolor: 'action.hover' },
+                  }}
+                />
+              </Tooltip>
+            ))}
+          </Box>
 
-        {/* Current spot indicator */}
-        <Typography
-          variant="body2"
-          color="text.primary"
+          {/* Scroll right button */}
+          {canScrollRight && (
+            <IconButton
+              size="small"
+              onClick={() => scrollChips('right')}
+              sx={{ p: 0.25, ml: 0.5 }}
+            >
+              <ChevronRightIcon fontSize="small" />
+            </IconButton>
+          )}
+        </Box>
+
+        {/* Progress bar */}
+        <Box sx={{ mb: 1 }}>
+          <LinearProgress
+            variant="determinate"
+            value={stats.percentage}
+            sx={{
+              height: 8,
+              borderRadius: 1,
+              bgcolor: 'grey.700',
+              '& .MuiLinearProgress-bar': {
+                bgcolor: stats.percentage === 100 ? 'success.main' : 'primary.main',
+              },
+            }}
+          />
+        </Box>
+
+        {/* Status row */}
+        <Box
           sx={{
-            fontWeight: 500,
-            transition: 'background-color 0.3s ease',
-            bgcolor: flashSpotId === activeSpotId ? 'success.light' : 'transparent',
-            px: 1,
-            borderRadius: 1,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
           }}
         >
-          Current: {activeSpot?.name || `Spot ${currentIndex + 1}`}
-        </Typography>
+          {/* Progress text */}
+          <Typography variant="body2" color="text.secondary">
+            {stats.classified}/{stats.total} classified ({stats.percentage}%)
+          </Typography>
 
-        {/* Navigation hints */}
-        <Typography variant="caption" color="text.secondary">
-          Space=Skip &nbsp; ⌫=Back &nbsp; Del=Clear &nbsp; Esc=Exit
-        </Typography>
+          {/* Current spot indicator */}
+          <Typography
+            variant="body2"
+            color="text.primary"
+            sx={{
+              fontWeight: 500,
+              transition: 'background-color 0.3s ease',
+              bgcolor: flashSpotId === activeSpotId ? 'success.light' : 'transparent',
+              px: 1,
+              borderRadius: 1,
+            }}
+          >
+            Current: {activeSpot?.name || `Spot ${currentIndex + 1}`}
+          </Typography>
 
-        {/* Done button */}
-        <Button
-          variant="contained"
-          size="small"
-          onClick={() => setQuickClassifyVisible(false)}
-          sx={{ ml: 1 }}
-        >
-          Done
-        </Button>
+          {/* Navigation hints */}
+          <Typography variant="caption" color="text.secondary">
+            Space=Skip &nbsp; ⌫=Back &nbsp; Del=Clear &nbsp; Esc=Exit
+          </Typography>
+
+          {/* Done button */}
+          <Button
+            variant="contained"
+            size="small"
+            onClick={() => setQuickClassifyVisible(false)}
+            sx={{ ml: 1 }}
+          >
+            Done
+          </Button>
+        </Box>
       </Box>
-    </Box>
+    </Paper>
   );
 };
 

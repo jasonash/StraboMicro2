@@ -25,8 +25,8 @@ import { useAppStore } from '../store';
 import { PointCountingStatistics } from './PointCountingStatistics';
 
 const PANEL_WIDTH = 300;
-const PANEL_DEFAULT_X = 80; // From right edge (room for drawing tools)
-const PANEL_DEFAULT_Y = 100; // From top edge (room for header)
+const PANEL_DEFAULT_X_OFFSET = 20; // From right edge
+const PANEL_DEFAULT_Y_OFFSET = 180; // From bottom (room for Quick Classify toolbar)
 
 export const StatisticsPanel: React.FC = () => {
   const statisticsPanelVisible = useAppStore((s) => s.statisticsPanelVisible);
@@ -43,15 +43,22 @@ export const StatisticsPanel: React.FC = () => {
   const panelRef = useRef<HTMLDivElement>(null);
 
   // Initialize position on first render (use window dimensions)
+  // Position at bottom-right, above the Quick Classify toolbar
   useEffect(() => {
     if (statisticsPanelVisible && position === null) {
-      // Position in top-right area, away from drawing tools
       setPosition({
-        x: window.innerWidth - PANEL_WIDTH - PANEL_DEFAULT_X,
-        y: PANEL_DEFAULT_Y,
+        x: window.innerWidth - PANEL_WIDTH - PANEL_DEFAULT_X_OFFSET,
+        y: window.innerHeight - PANEL_DEFAULT_Y_OFFSET - 350, // Panel is ~350px tall
       });
     }
   }, [statisticsPanelVisible, position]);
+
+  // Reset position when panel is hidden (so it re-positions next time)
+  useEffect(() => {
+    if (!statisticsPanelVisible) {
+      setPosition(null);
+    }
+  }, [statisticsPanelVisible]);
 
   const handleClose = useCallback(() => {
     setStatisticsPanelVisible(false);
@@ -126,8 +133,8 @@ export const StatisticsPanel: React.FC = () => {
       elevation={8}
       sx={{
         position: 'fixed',
-        left: position?.x ?? window.innerWidth - PANEL_WIDTH - PANEL_DEFAULT_X,
-        top: position?.y ?? PANEL_DEFAULT_Y,
+        left: position?.x ?? window.innerWidth - PANEL_WIDTH - PANEL_DEFAULT_X_OFFSET,
+        top: position?.y ?? window.innerHeight - PANEL_DEFAULT_Y_OFFSET - 350,
         width: PANEL_WIDTH,
         maxHeight: 'calc(100vh - 150px)',
         zIndex: 1500, // Above everything (MUI dialogs are 1300)

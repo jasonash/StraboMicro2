@@ -1374,7 +1374,14 @@ export const useAppStore = create<AppState>()(
 
           // ========== QUICK CLASSIFY ACTIONS ==========
 
-          setQuickClassifyVisible: (visible) => set({ quickClassifyVisible: visible }),
+          setQuickClassifyVisible: (visible) => {
+            // When showing Quick Classify, also show the Statistics Panel
+            if (visible) {
+              set({ quickClassifyVisible: true, statisticsPanelVisible: true });
+            } else {
+              set({ quickClassifyVisible: false });
+            }
+          },
 
           setQuickClassifyShortcuts: (shortcuts) => set({ quickClassifyShortcuts: shortcuts }),
 

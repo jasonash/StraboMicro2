@@ -16,6 +16,8 @@ import { ExportSmzDialog } from './components/dialogs/ExportSmzDialog';
 import { PushToServerDialog } from './components/dialogs/PushToServerDialog';
 import { VersionHistoryDialog } from './components/dialogs/VersionHistoryDialog';
 import { StatisticsPanel } from './components/StatisticsPanel';
+import { QuickClassifyToolbar } from './components/QuickClassifyToolbar';
+import { ConfigureShortcutsDialog } from './components/dialogs/ConfigureShortcutsDialog';
 import { ImportSmzDialog } from './components/dialogs/ImportSmzDialog';
 import { RemoteProjectsDialog } from './components/dialogs/RemoteProjectsDialog';
 import { SharedProjectDialog } from './components/dialogs/SharedProjectDialog';
@@ -177,6 +179,7 @@ function App() {
   const [isLogViewerOpen, setIsLogViewerOpen] = useState(false);
   const [isSendErrorReportOpen, setIsSendErrorReportOpen] = useState(false);
   const [isManualUpdateCheck, setIsManualUpdateCheck] = useState(false);
+  const [isConfigureShortcutsOpen, setIsConfigureShortcutsOpen] = useState(false);
   const generateSpotsDialogOpen = useAppStore(state => state.generateSpotsDialogOpen);
   const generateSpotsTargetMicrographId = useAppStore(state => state.generateSpotsTargetMicrographId);
   const openGenerateSpotsDialog = useAppStore(state => state.openGenerateSpotsDialog);
@@ -1151,6 +1154,13 @@ function App() {
         micrographId={generateSpotsTargetMicrographId}
       />
       <StatisticsPanel />
+      <QuickClassifyToolbar
+        onOpenSettings={() => setIsConfigureShortcutsOpen(true)}
+      />
+      <ConfigureShortcutsDialog
+        open={isConfigureShortcutsOpen}
+        onClose={() => setIsConfigureShortcutsOpen(false)}
+      />
     </>
   );
 }

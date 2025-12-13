@@ -4,8 +4,6 @@ import { KeyboardArrowDown, KeyboardArrowUp } from '@mui/icons-material';
 import DrawingToolbar from './DrawingToolbar';
 import BottomPanel from './BottomPanel';
 import { TiledViewer, TiledViewerRef } from './TiledViewer';
-import { QuickClassifyToolbar } from './QuickClassifyToolbar';
-import { ConfigureShortcutsDialog } from './dialogs/ConfigureShortcutsDialog';
 import { useAppStore } from '../store';
 import { findMicrographById, findSpotById } from '../store/helpers';
 
@@ -13,15 +11,12 @@ const Viewer: React.FC = () => {
   const [bottomHeight, setBottomHeight] = useState(200);
   const tiledViewerRef = useRef<TiledViewerRef>(null);
   const [cursorCoords, setCursorCoords] = useState<{ x: number; y: number; unit: string; decimals: number } | null>(null);
-  const [isConfigureShortcutsOpen, setIsConfigureShortcutsOpen] = useState(false);
 
   // Get active micrograph and spot from store
   const project = useAppStore((state) => state.project);
   const activeMicrographId = useAppStore((state) => state.activeMicrographId);
   const activeSpotId = useAppStore((state) => state.activeSpotId);
   const setViewerRef = useAppStore((state) => state.setViewerRef);
-  const statisticsPanelVisible = useAppStore((state) => state.statisticsPanelVisible);
-  const setStatisticsPanelVisible = useAppStore((state) => state.setStatisticsPanelVisible);
 
   // Get names for status bar title
   const activeMicrograph = activeMicrographId ? findMicrographById(project, activeMicrographId) : null;
@@ -164,14 +159,6 @@ const Viewer: React.FC = () => {
       <Box sx={{ flex: 1, bgcolor: 'background.default', position: 'relative' }}>
         <TiledViewer ref={tiledViewerRef} imagePath={activeMicrographPath} onCursorMove={setCursorCoords} />
         <DrawingToolbar />
-        <QuickClassifyToolbar
-          onOpenStatistics={() => setStatisticsPanelVisible(!statisticsPanelVisible)}
-          onOpenSettings={() => setIsConfigureShortcutsOpen(true)}
-        />
-        <ConfigureShortcutsDialog
-          open={isConfigureShortcutsOpen}
-          onClose={() => setIsConfigureShortcutsOpen(false)}
-        />
 
         {/* Floating toggle button when bottom panel is collapsed */}
         {isBottomPanelCollapsed && (
