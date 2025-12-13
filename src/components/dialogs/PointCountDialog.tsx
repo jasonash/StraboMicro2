@@ -56,6 +56,7 @@ import {
   type GridType,
 } from '@/services/pointCounting';
 import { v4 as uuidv4 } from 'uuid';
+import { GridPreviewCanvas } from './GridPreviewCanvas';
 
 // ============================================================================
 // TYPES
@@ -516,7 +517,7 @@ export function PointCountDialog({
 
   // Render new session view (grid configuration)
   return (
-    <Dialog open={isOpen} onClose={onClose} maxWidth="sm" fullWidth>
+    <Dialog open={isOpen} onClose={onClose} maxWidth="md" fullWidth>
       <DialogTitle>Point Count</DialogTitle>
       <DialogContent>
         <Stack spacing={3} sx={{ mt: 1 }}>
@@ -568,6 +569,32 @@ export function PointCountDialog({
               Grid: {gridDimensions.rows}×{gridDimensions.cols} • {spacing}px spacing
             </Typography>
           </Box>
+
+          {/* Grid Preview */}
+          {micrographId && (
+            <Box>
+              <Typography variant="subtitle2" sx={{ mb: 1, color: 'text.secondary' }}>
+                Preview
+              </Typography>
+              <Box sx={{
+                border: 1,
+                borderColor: 'divider',
+                borderRadius: 1,
+                overflow: 'hidden',
+              }}>
+                <GridPreviewCanvas
+                  micrographId={micrographId}
+                  gridType={gridType}
+                  pointCount={pointCount}
+                  width={500}
+                  height={375}
+                />
+              </Box>
+              <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+                Scroll to zoom • Drag to pan
+              </Typography>
+            </Box>
+          )}
 
           {/* Back button if coming from return entry */}
           {pointCountSessionList.length > 0 && (
