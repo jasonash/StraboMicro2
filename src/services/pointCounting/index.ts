@@ -59,6 +59,7 @@ export {
   getUniqueMinerals,
   calculatePointCountStatistics,
   calculatePointCountStatisticsForMicrograph,
+  calculateStatisticsFromSession,
   exportStatisticsToCSV,
   formatMineralStats,
 } from './statistics';

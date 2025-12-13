@@ -34,6 +34,8 @@ export const StatisticsPanel: React.FC = () => {
   const statisticsPanelVisible = useAppStore((s) => s.statisticsPanelVisible);
   const setStatisticsPanelVisible = useAppStore((s) => s.setStatisticsPanelVisible);
   const activeMicrographId = useAppStore((s) => s.activeMicrographId);
+  const pointCountMode = useAppStore((s) => s.pointCountMode);
+  const activeSession = useAppStore((s) => s.activePointCountSession);
 
   // Expanded/collapsed state for the panel content
   const [isExpanded, setIsExpanded] = useState(true);
@@ -190,8 +192,11 @@ export const StatisticsPanel: React.FC = () => {
     };
   }, [isResizing, position]);
 
-  // Don't render if not visible or no micrograph
-  if (!statisticsPanelVisible || !activeMicrographId) {
+  // Don't render if not visible
+  // In point count mode, we can show stats without a micrograph (session is independent)
+  // In regular mode, we need a micrograph
+  const hasValidContext = pointCountMode ? !!activeSession : !!activeMicrographId;
+  if (!statisticsPanelVisible || !hasValidContext) {
     return null;
   }
 
@@ -249,10 +254,21 @@ export const StatisticsPanel: React.FC = () => {
           userSelect: 'none',
         }}
       >
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-          <DragIcon fontSize="small" sx={{ color: 'grey.500', fontSize: 16 }} />
-          <Typography variant="body2" sx={{ fontWeight: 600, color: 'grey.100' }}>
-            Point Count Statistics
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, overflow: 'hidden' }}>
+          <DragIcon fontSize="small" sx={{ color: 'grey.500', fontSize: 16, flexShrink: 0 }} />
+          <Typography
+            variant="body2"
+            sx={{
+              fontWeight: 600,
+              color: 'grey.100',
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+            }}
+          >
+            {pointCountMode && activeSession
+              ? `Statistics: ${activeSession.name}`
+              : 'Point Count Statistics'}
           </Typography>
         </Box>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25 }}>

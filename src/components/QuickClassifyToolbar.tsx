@@ -1,7 +1,10 @@
 /**
- * Quick Classify Toolbar - Draggable floating toolbar for rapid spot classification
+ * Quick Classify Toolbar - Draggable floating toolbar for rapid classification
  *
- * Provides keyboard shortcuts for classifying spots with minerals.
+ * Provides keyboard shortcuts for classifying:
+ * - Spots (when NOT in point count mode)
+ * - Point Count session points (when IN point count mode)
+ *
  * Can be dragged anywhere in the window.
  */
 
@@ -23,6 +26,7 @@ import {
   ChevronLeft as ChevronLeftIcon,
   ChevronRight as ChevronRightIcon,
   DragIndicator as DragIcon,
+  Save as SaveIcon,
 } from '@mui/icons-material';
 import { useAppStore } from '../store';
 import { findMicrographById, findSpotById } from '../store/helpers';
@@ -31,11 +35,11 @@ import type { MineralogyType, MineralType } from '../types/project-types';
 // Navigation keys that are not configurable
 const NAVIGATION_KEYS: Record<string, string> = {
   ' ': 'skip',           // Space - next without classifying
-  'Backspace': 'back',   // Go to previous spot
+  'Backspace': 'back',   // Go to previous spot/point
   'Escape': 'exit',      // Exit Quick Classify mode
   'Enter': 'confirm',    // Confirm and advance (same as skip for now)
   'Tab': 'nextUnclassified', // Jump to next unclassified
-  'Delete': 'clear',     // Clear mineralogy from current spot
+  'Delete': 'clear',     // Clear mineralogy from current spot/point
 };
 
 const TOOLBAR_WIDTH = 700;
@@ -48,20 +52,36 @@ interface QuickClassifyToolbarProps {
 export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
   onOpenSettings,
 }) => {
+  // Store - common
   const project = useAppStore((state) => state.project);
   const activeMicrographId = useAppStore((state) => state.activeMicrographId);
-  const activeSpotId = useAppStore((state) => state.activeSpotId);
   const quickClassifyVisible = useAppStore((state) => state.quickClassifyVisible);
   const shortcuts = useAppStore((state) => state.quickClassifyShortcuts);
   const setQuickClassifyVisible = useAppStore((state) => state.setQuickClassifyVisible);
   const setStatisticsPanelVisible = useAppStore((state) => state.setStatisticsPanelVisible);
-  const selectActiveSpot = useAppStore((state) => state.selectActiveSpot);
-  const updateSpotData = useAppStore((state) => state.updateSpotData);
   const activeTool = useAppStore((state) => state.activeTool);
   const viewerRef = useAppStore((state) => state.viewerRef);
 
+  // Store - spot mode (when not in point count mode)
+  const activeSpotId = useAppStore((state) => state.activeSpotId);
+  const selectActiveSpot = useAppStore((state) => state.selectActiveSpot);
+  const updateSpotData = useAppStore((state) => state.updateSpotData);
+
+  // Store - point count mode
+  const pointCountMode = useAppStore((state) => state.pointCountMode);
+  const activePointCountSession = useAppStore((state) => state.activePointCountSession);
+  const currentPointIndex = useAppStore((state) => state.currentPointIndex);
+  const setCurrentPointIndex = useAppStore((state) => state.setCurrentPointIndex);
+  const classifyPoint = useAppStore((state) => state.classifyPoint);
+  const clearPointClassification = useAppStore((state) => state.clearPointClassification);
+  const goToNextUnclassifiedPoint = useAppStore((state) => state.goToNextUnclassifiedPoint);
+  const goToPreviousPoint = useAppStore((state) => state.goToPreviousPoint);
+  const exitPointCountMode = useAppStore((state) => state.exitPointCountMode);
+  const savePointCountSession = useAppStore((state) => state.savePointCountSession);
+
   // Flash state for visual feedback
-  const [flashSpotId, setFlashSpotId] = useState<string | null>(null);
+  const [flashId, setFlashId] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
 
   // Scroll state for shortcut chips
   const chipsContainerRef = useRef<HTMLDivElement>(null);
@@ -77,7 +97,6 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
   // Initialize position when toolbar becomes visible
   useEffect(() => {
     if (quickClassifyVisible && position === null) {
-      // Center horizontally, near bottom of screen
       setPosition({
         x: (window.innerWidth - TOOLBAR_WIDTH) / 2,
         y: window.innerHeight - TOOLBAR_DEFAULT_Y_OFFSET,
@@ -85,7 +104,7 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
     }
   }, [quickClassifyVisible, position]);
 
-  // Reset position when toolbar is hidden (so it re-centers next time)
+  // Reset position when toolbar is hidden
   useEffect(() => {
     if (!quickClassifyVisible) {
       setPosition(null);
@@ -119,7 +138,6 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
   const handleDragStart = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-
     if (!position) return;
 
     setIsDragging(true);
@@ -146,7 +164,6 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
       let newX = dragStartRef.current.panelX + deltaX;
       let newY = dragStartRef.current.panelY + deltaY;
 
-      // Constrain to window bounds
       newX = Math.max(0, Math.min(newX, window.innerWidth - TOOLBAR_WIDTH));
       newY = Math.max(0, Math.min(newY, window.innerHeight - 80));
 
@@ -169,7 +186,10 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
     };
   }, [isDragging]);
 
-  // Get the active micrograph and its spots
+  // ============================================================================
+  // SPOT MODE DATA (when not in point count mode)
+  // ============================================================================
+
   const activeMicrograph = useMemo(() => {
     if (!project || !activeMicrographId) return null;
     return findMicrographById(project, activeMicrographId);
@@ -179,14 +199,12 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
     return activeMicrograph?.spots || [];
   }, [activeMicrograph]);
 
-  // Get the active spot
   const activeSpot = useMemo(() => {
     if (!activeSpotId || !project) return null;
     return findSpotById(project, activeSpotId);
   }, [project, activeSpotId]);
 
-  // Calculate statistics
-  const stats = useMemo(() => {
+  const spotStats = useMemo(() => {
     const total = spots.length;
     const classified = spots.filter((s) => {
       const minerals = s.mineralogy?.minerals;
@@ -197,23 +215,55 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
     return { total, classified, unclassified, percentage };
   }, [spots]);
 
-  // Find current spot index
-  const currentIndex = useMemo(() => {
+  const currentSpotIndex = useMemo(() => {
     if (!activeSpotId) return -1;
     return spots.findIndex((s) => s.id === activeSpotId);
   }, [spots, activeSpotId]);
 
-  // Select next unclassified spot
-  const selectNextUnclassified = useCallback(
+  // ============================================================================
+  // POINT COUNT MODE DATA
+  // ============================================================================
+
+  const pointCountStats = useMemo(() => {
+    if (!activePointCountSession) {
+      return { total: 0, classified: 0, unclassified: 0, percentage: 0 };
+    }
+    const total = activePointCountSession.points.length;
+    const classified = activePointCountSession.points.filter(p => p.mineral).length;
+    const unclassified = total - classified;
+    const percentage = total > 0 ? Math.round((classified / total) * 100) : 0;
+    return { total, classified, unclassified, percentage };
+  }, [activePointCountSession]);
+
+  const currentPoint = useMemo(() => {
+    if (!activePointCountSession || currentPointIndex < 0) return null;
+    return activePointCountSession.points[currentPointIndex] || null;
+  }, [activePointCountSession, currentPointIndex]);
+
+  // ============================================================================
+  // UNIFIED STATISTICS (switch based on mode)
+  // ============================================================================
+
+  const stats = pointCountMode ? pointCountStats : spotStats;
+  const currentName = pointCountMode
+    ? (currentPoint ? `Point ${currentPointIndex + 1}` : 'No point selected')
+    : (activeSpot?.name || `Spot ${currentSpotIndex + 1}`);
+  const currentMineral = pointCountMode
+    ? currentPoint?.mineral
+    : activeSpot?.mineralogy?.minerals?.[0]?.name;
+
+  // ============================================================================
+  // SPOT MODE NAVIGATION
+  // ============================================================================
+
+  const selectNextUnclassifiedSpot = useCallback(
     (direction: 'forward' | 'backward' = 'forward') => {
       const unclassified = spots.filter((s) => {
         const minerals = s.mineralogy?.minerals;
         return !minerals || minerals.length === 0 || !minerals[0].name;
       });
 
-      if (unclassified.length === 0) {
-        return; // All classified
-      }
+      if (unclassified.length === 0) return;
 
       if (!activeSpotId) {
         selectActiveSpot(unclassified[0].id);
@@ -223,7 +273,6 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
       const currentIdx = spots.findIndex((s) => s.id === activeSpotId);
 
       if (direction === 'forward') {
-        // Find next unclassified after current
         for (let i = currentIdx + 1; i < spots.length; i++) {
           const minerals = spots[i].mineralogy?.minerals;
           if (!minerals || minerals.length === 0 || !minerals[0].name) {
@@ -231,7 +280,6 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
             return;
           }
         }
-        // Wrap around to beginning
         for (let i = 0; i < currentIdx; i++) {
           const minerals = spots[i].mineralogy?.minerals;
           if (!minerals || minerals.length === 0 || !minerals[0].name) {
@@ -240,7 +288,6 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
           }
         }
       } else {
-        // Find previous unclassified before current
         for (let i = currentIdx - 1; i >= 0; i--) {
           const minerals = spots[i].mineralogy?.minerals;
           if (!minerals || minerals.length === 0 || !minerals[0].name) {
@@ -248,7 +295,6 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
             return;
           }
         }
-        // Wrap around to end
         for (let i = spots.length - 1; i > currentIdx; i--) {
           const minerals = spots[i].mineralogy?.minerals;
           if (!minerals || minerals.length === 0 || !minerals[0].name) {
@@ -261,63 +307,150 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
     [spots, activeSpotId, selectActiveSpot]
   );
 
-  // Advance to next spot (any spot, not just unclassified)
-  const advanceToNext = useCallback(() => {
+  const advanceToNextSpot = useCallback(() => {
     if (spots.length === 0) return;
-    const nextIdx = currentIndex >= spots.length - 1 ? 0 : currentIndex + 1;
+    const nextIdx = currentSpotIndex >= spots.length - 1 ? 0 : currentSpotIndex + 1;
     selectActiveSpot(spots[nextIdx].id);
-  }, [spots, currentIndex, selectActiveSpot]);
+  }, [spots, currentSpotIndex, selectActiveSpot]);
 
-  // Go back to previous spot
-  const goToPrevious = useCallback(() => {
+  const goToPreviousSpot = useCallback(() => {
     if (spots.length === 0) return;
-    const prevIdx = currentIndex <= 0 ? spots.length - 1 : currentIndex - 1;
+    const prevIdx = currentSpotIndex <= 0 ? spots.length - 1 : currentSpotIndex - 1;
     selectActiveSpot(spots[prevIdx].id);
-  }, [spots, currentIndex, selectActiveSpot]);
+  }, [spots, currentSpotIndex, selectActiveSpot]);
 
-  // Classify the current spot with a mineral
-  const classifySpot = useCallback(
+  // ============================================================================
+  // POINT COUNT MODE NAVIGATION
+  // ============================================================================
+
+  const advanceToNextPoint = useCallback(() => {
+    if (!activePointCountSession) return;
+    const total = activePointCountSession.points.length;
+    if (total === 0) return;
+    const nextIdx = currentPointIndex >= total - 1 ? 0 : currentPointIndex + 1;
+    setCurrentPointIndex(nextIdx);
+  }, [activePointCountSession, currentPointIndex, setCurrentPointIndex]);
+
+  // ============================================================================
+  // UNIFIED CLASSIFICATION
+  // ============================================================================
+
+  const classifyCurrentItem = useCallback(
     (mineralName: string) => {
-      if (!activeSpotId) return;
+      if (pointCountMode) {
+        // Point Count mode
+        if (!currentPoint) return;
 
-      // Create mineralogy with single mineral entry
-      const mineralogy: MineralogyType = {
-        minerals: [{ name: mineralName } as MineralType],
-      };
+        classifyPoint(currentPoint.id, mineralName);
 
-      updateSpotData(activeSpotId, { mineralogy });
+        // Flash visual feedback
+        setFlashId(currentPoint.id);
+        setTimeout(() => setFlashId(null), 300);
 
-      // Flash visual feedback
-      setFlashSpotId(activeSpotId);
-      setTimeout(() => setFlashSpotId(null), 300);
+        // Auto-advance to next unclassified point
+        setTimeout(() => {
+          goToNextUnclassifiedPoint();
+        }, 50);
+      } else {
+        // Spot mode
+        if (!activeSpotId) return;
 
-      // Auto-advance to next unclassified spot
-      setTimeout(() => {
-        selectNextUnclassified('forward');
-      }, 50);
+        const mineralogy: MineralogyType = {
+          minerals: [{ name: mineralName } as MineralType],
+        };
+
+        updateSpotData(activeSpotId, { mineralogy });
+
+        setFlashId(activeSpotId);
+        setTimeout(() => setFlashId(null), 300);
+
+        setTimeout(() => {
+          selectNextUnclassifiedSpot('forward');
+        }, 50);
+      }
     },
-    [activeSpotId, updateSpotData, selectNextUnclassified]
+    [
+      pointCountMode,
+      currentPoint,
+      activeSpotId,
+      classifyPoint,
+      updateSpotData,
+      goToNextUnclassifiedPoint,
+      selectNextUnclassifiedSpot,
+    ]
   );
 
-  // Clear mineralogy from current spot
-  const clearMineralogy = useCallback(() => {
-    if (!activeSpotId) return;
+  const clearCurrentItem = useCallback(() => {
+    if (pointCountMode) {
+      if (!currentPoint) return;
+      clearPointClassification(currentPoint.id);
+      setFlashId(currentPoint.id);
+      setTimeout(() => setFlashId(null), 300);
+    } else {
+      if (!activeSpotId) return;
+      updateSpotData(activeSpotId, { mineralogy: undefined });
+      setFlashId(activeSpotId);
+      setTimeout(() => setFlashId(null), 300);
+    }
+  }, [pointCountMode, currentPoint, activeSpotId, clearPointClassification, updateSpotData]);
 
-    // Clear mineralogy by setting to undefined
-    updateSpotData(activeSpotId, { mineralogy: undefined });
+  // ============================================================================
+  // UNIFIED NAVIGATION
+  // ============================================================================
 
-    // Flash visual feedback (use null flash to indicate clearing)
-    setFlashSpotId(activeSpotId);
-    setTimeout(() => setFlashSpotId(null), 300);
-  }, [activeSpotId, updateSpotData]);
+  const advanceToNext = useCallback(() => {
+    if (pointCountMode) {
+      advanceToNextPoint();
+    } else {
+      advanceToNextSpot();
+    }
+  }, [pointCountMode, advanceToNextPoint, advanceToNextSpot]);
 
-  // Handle keyboard events
+  const goToPrevious = useCallback(() => {
+    if (pointCountMode) {
+      goToPreviousPoint();
+    } else {
+      goToPreviousSpot();
+    }
+  }, [pointCountMode, goToPreviousPoint, goToPreviousSpot]);
+
+  const selectNextUnclassified = useCallback(() => {
+    if (pointCountMode) {
+      goToNextUnclassifiedPoint();
+    } else {
+      selectNextUnclassifiedSpot('forward');
+    }
+  }, [pointCountMode, goToNextUnclassifiedPoint, selectNextUnclassifiedSpot]);
+
+  // ============================================================================
+  // EXIT HANDLING
+  // ============================================================================
+
+  const handleClose = useCallback(async () => {
+    if (pointCountMode) {
+      // Exit point count mode (auto-saves session)
+      await exitPointCountMode();
+    } else {
+      setQuickClassifyVisible(false);
+    }
+  }, [pointCountMode, exitPointCountMode, setQuickClassifyVisible]);
+
+  const handleManualSave = useCallback(async () => {
+    if (pointCountMode) {
+      setIsSaving(true);
+      await savePointCountSession();
+      setIsSaving(false);
+    }
+  }, [pointCountMode, savePointCountSession]);
+
+  // ============================================================================
+  // KEYBOARD HANDLING
+  // ============================================================================
+
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
-      // Don't handle if toolbar is not visible
       if (!quickClassifyVisible) return;
 
-      // Don't handle if user is typing in an input
       if (
         e.target instanceof HTMLInputElement ||
         e.target instanceof HTMLTextAreaElement
@@ -325,7 +458,6 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
         return;
       }
 
-      // Don't handle if a drawing tool is active
       if (activeTool && activeTool !== 'select') {
         return;
       }
@@ -345,13 +477,13 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
             goToPrevious();
             break;
           case 'exit':
-            setQuickClassifyVisible(false);
+            handleClose();
             break;
           case 'nextUnclassified':
-            selectNextUnclassified('forward');
+            selectNextUnclassified();
             break;
           case 'clear':
-            clearMineralogy();
+            clearCurrentItem();
             break;
         }
         return;
@@ -360,7 +492,7 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
       // Check mineral shortcuts
       if (shortcuts[key]) {
         e.preventDefault();
-        classifySpot(shortcuts[key]);
+        classifyCurrentItem(shortcuts[key]);
         return;
       }
     },
@@ -370,14 +502,13 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
       shortcuts,
       advanceToNext,
       goToPrevious,
-      setQuickClassifyVisible,
+      handleClose,
       selectNextUnclassified,
-      classifySpot,
-      clearMineralogy,
+      clearCurrentItem,
+      classifyCurrentItem,
     ]
   );
 
-  // Add keyboard listener
   useEffect(() => {
     window.addEventListener('keydown', handleKeyDown);
     return () => {
@@ -385,10 +516,12 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
     };
   }, [handleKeyDown]);
 
-  // Auto-select first unclassified spot when toolbar becomes visible
+  // ============================================================================
+  // AUTO-SELECT FIRST ITEM
+  // ============================================================================
+
   useEffect(() => {
-    if (quickClassifyVisible && spots.length > 0 && !activeSpotId) {
-      // Find first unclassified spot
+    if (quickClassifyVisible && !pointCountMode && spots.length > 0 && !activeSpotId) {
       const firstUnclassified = spots.find((s) => {
         const minerals = s.mineralogy?.minerals;
         return !minerals || minerals.length === 0 || !minerals[0].name;
@@ -396,80 +529,102 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
       if (firstUnclassified) {
         selectActiveSpot(firstUnclassified.id);
       } else if (spots.length > 0) {
-        // All classified, select first spot
         selectActiveSpot(spots[0].id);
       }
     }
-  }, [quickClassifyVisible, spots, activeSpotId, selectActiveSpot]);
+  }, [quickClassifyVisible, pointCountMode, spots, activeSpotId, selectActiveSpot]);
 
-  // Pan canvas to center on current spot when it changes during Quick Classify
+  // ============================================================================
+  // PAN TO CURRENT ITEM
+  // ============================================================================
+
   useEffect(() => {
-    if (!quickClassifyVisible || !activeSpotId || !viewerRef?.current) return;
+    if (!quickClassifyVisible || !viewerRef?.current) return;
 
-    const spot = spots.find((s) => s.id === activeSpotId);
-    if (!spot) return;
-
-    // Get spot coordinates based on geometry type
-    const geometryType = spot.geometryType || spot.geometry?.type;
     let x = 0;
     let y = 0;
 
-    if (geometryType === 'point' || geometryType === 'Point') {
-      // Point: use coordinates directly
-      if (Array.isArray(spot.geometry?.coordinates)) {
-        const coords = spot.geometry.coordinates as number[];
-        x = coords[0];
-        y = coords[1];
-      } else if (spot.points?.[0]) {
-        x = spot.points[0].X ?? 0;
-        y = spot.points[0].Y ?? 0;
-      }
-    } else if (geometryType === 'line' || geometryType === 'LineString') {
-      // Line: use center of bounding box
-      const coords: number[][] = Array.isArray(spot.geometry?.coordinates)
-        ? (spot.geometry.coordinates as number[][])
-        : spot.points?.map((p) => [p.X ?? 0, p.Y ?? 0]) || [];
-      if (coords.length > 0) {
-        const xs = coords.map((c) => c[0]);
-        const ys = coords.map((c) => c[1]);
-        x = (Math.min(...xs) + Math.max(...xs)) / 2;
-        y = (Math.min(...ys) + Math.max(...ys)) / 2;
-      }
-    } else if (geometryType === 'polygon' || geometryType === 'Polygon') {
-      // Polygon: use center of bounding box
-      const coords: number[][] = Array.isArray(spot.geometry?.coordinates)
-        ? ((spot.geometry.coordinates as number[][][])[0] || [])
-        : spot.points?.map((p) => [p.X ?? 0, p.Y ?? 0]) || [];
-      if (coords.length > 0) {
-        const xs = coords.map((c) => c[0]);
-        const ys = coords.map((c) => c[1]);
-        x = (Math.min(...xs) + Math.max(...xs)) / 2;
-        y = (Math.min(...ys) + Math.max(...ys)) / 2;
+    if (pointCountMode && currentPoint) {
+      x = currentPoint.x;
+      y = currentPoint.y;
+    } else if (!pointCountMode && activeSpotId) {
+      const spot = spots.find((s) => s.id === activeSpotId);
+      if (!spot) return;
+
+      const geometryType = spot.geometryType || spot.geometry?.type;
+
+      if (geometryType === 'point' || geometryType === 'Point') {
+        if (Array.isArray(spot.geometry?.coordinates)) {
+          const coords = spot.geometry.coordinates as number[];
+          x = coords[0];
+          y = coords[1];
+        } else if (spot.points?.[0]) {
+          x = spot.points[0].X ?? 0;
+          y = spot.points[0].Y ?? 0;
+        }
+      } else if (geometryType === 'line' || geometryType === 'LineString') {
+        const coords: number[][] = Array.isArray(spot.geometry?.coordinates)
+          ? (spot.geometry.coordinates as number[][])
+          : spot.points?.map((p) => [p.X ?? 0, p.Y ?? 0]) || [];
+        if (coords.length > 0) {
+          const xs = coords.map((c) => c[0]);
+          const ys = coords.map((c) => c[1]);
+          x = (Math.min(...xs) + Math.max(...xs)) / 2;
+          y = (Math.min(...ys) + Math.max(...ys)) / 2;
+        }
+      } else if (geometryType === 'polygon' || geometryType === 'Polygon') {
+        const coords: number[][] = Array.isArray(spot.geometry?.coordinates)
+          ? ((spot.geometry.coordinates as number[][][])[0] || [])
+          : spot.points?.map((p) => [p.X ?? 0, p.Y ?? 0]) || [];
+        if (coords.length > 0) {
+          const xs = coords.map((c) => c[0]);
+          const ys = coords.map((c) => c[1]);
+          x = (Math.min(...xs) + Math.max(...xs)) / 2;
+          y = (Math.min(...ys) + Math.max(...ys)) / 2;
+        }
       }
     }
 
-    // Pan to center on the spot
     if (x !== 0 || y !== 0) {
       viewerRef.current.panToPoint(x, y);
     }
-  }, [quickClassifyVisible, activeSpotId, spots, viewerRef]);
+  }, [quickClassifyVisible, pointCountMode, currentPoint, currentPointIndex, activeSpotId, spots, viewerRef]);
 
-  // Initialize scroll state when toolbar becomes visible
+  // ============================================================================
+  // INITIALIZE SCROLL STATE
+  // ============================================================================
+
   useEffect(() => {
     if (quickClassifyVisible) {
-      // Small delay to ensure container is rendered
       setTimeout(updateScrollState, 100);
     }
   }, [quickClassifyVisible, updateScrollState]);
 
-  // Toggle statistics panel
+  // ============================================================================
+  // TOGGLE STATISTICS PANEL
+  // ============================================================================
+
   const toggleStatistics = useCallback(() => {
     const current = useAppStore.getState().statisticsPanelVisible;
     setStatisticsPanelVisible(!current);
   }, [setStatisticsPanelVisible]);
 
-  // Don't render if not visible or no micrograph
-  if (!quickClassifyVisible || !activeMicrographId || spots.length === 0) {
+  // ============================================================================
+  // RENDER CONDITIONS
+  // ============================================================================
+
+  // Don't render if not visible
+  if (!quickClassifyVisible) {
+    return null;
+  }
+
+  // In point count mode, check for session
+  if (pointCountMode && !activePointCountSession) {
+    return null;
+  }
+
+  // In spot mode, check for micrograph and spots
+  if (!pointCountMode && (!activeMicrographId || spots.length === 0)) {
     return null;
   }
 
@@ -478,7 +633,6 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
     a.localeCompare(b)
   );
 
-  // Format mineral name for display (capitalize first letter)
   const formatMineralName = (name: string) => {
     return name.charAt(0).toUpperCase() + name.slice(1);
   };
@@ -492,7 +646,7 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
         left: position?.x ?? (window.innerWidth - TOOLBAR_WIDTH) / 2,
         top: position?.y ?? window.innerHeight - TOOLBAR_DEFAULT_Y_OFFSET,
         width: TOOLBAR_WIDTH,
-        zIndex: 1500, // Same as Statistics Panel
+        zIndex: 1500,
         bgcolor: 'background.paper',
         borderRadius: 1,
         overflow: 'hidden',
@@ -511,18 +665,36 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
           py: 0.5,
           borderBottom: 1,
           borderColor: 'divider',
-          bgcolor: 'grey.800',
+          bgcolor: pointCountMode ? 'primary.dark' : 'grey.800',
           cursor: isDragging ? 'grabbing' : 'grab',
           userSelect: 'none',
         }}
       >
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
           <DragIcon fontSize="small" sx={{ color: 'grey.500', fontSize: 16 }} />
-          <Typography variant="body2" sx={{ fontWeight: 600, color: 'primary.main' }}>
-            Quick Classify
+          <Typography variant="body2" sx={{ fontWeight: 600, color: pointCountMode ? 'grey.100' : 'primary.main' }}>
+            {pointCountMode ? 'Point Count' : 'Quick Classify'}
           </Typography>
+          {pointCountMode && activePointCountSession && (
+            <Typography variant="caption" sx={{ color: 'grey.400', ml: 1 }}>
+              {activePointCountSession.name}
+            </Typography>
+          )}
         </Box>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25 }}>
+          {pointCountMode && (
+            <Tooltip title="Save Session">
+              <IconButton
+                size="small"
+                onClick={(e) => { e.stopPropagation(); handleManualSave(); }}
+                onMouseDown={(e) => e.stopPropagation()}
+                disabled={isSaving}
+                sx={{ color: 'grey.400', p: 0.5 }}
+              >
+                <SaveIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          )}
           <Tooltip title="Statistics">
             <IconButton
               size="small"
@@ -548,7 +720,7 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
           <Tooltip title="Close (Esc)">
             <IconButton
               size="small"
-              onClick={(e) => { e.stopPropagation(); setQuickClassifyVisible(false); }}
+              onClick={(e) => { e.stopPropagation(); handleClose(); }}
               onMouseDown={(e) => e.stopPropagation()}
               sx={{ color: 'grey.400', p: 0.5 }}
             >
@@ -562,7 +734,6 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
       <Box sx={{ p: 1.5, bgcolor: 'grey.900' }}>
         {/* Shortcut chips row */}
         <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-          {/* Scroll left button */}
           {canScrollLeft && (
             <IconButton
               size="small"
@@ -573,7 +744,6 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
             </IconButton>
           )}
 
-          {/* Shortcut chips - scrollable */}
           <Box
             ref={chipsContainerRef}
             onScroll={updateScrollState}
@@ -582,8 +752,8 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
               display: 'flex',
               gap: 0.5,
               overflowX: 'auto',
-              scrollbarWidth: 'none', // Firefox
-              '&::-webkit-scrollbar': { display: 'none' }, // Chrome/Safari
+              scrollbarWidth: 'none',
+              '&::-webkit-scrollbar': { display: 'none' },
             }}
           >
             {sortedShortcuts.map(([key, mineral]) => (
@@ -591,7 +761,7 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
                 <Chip
                   label={`${key.toUpperCase()} ${formatMineralName(mineral).slice(0, 3)}`}
                   size="small"
-                  onClick={() => classifySpot(mineral)}
+                  onClick={() => classifyCurrentItem(mineral)}
                   sx={{
                     cursor: 'pointer',
                     flexShrink: 0,
@@ -602,7 +772,6 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
             ))}
           </Box>
 
-          {/* Scroll right button */}
           {canScrollRight && (
             <IconButton
               size="small"
@@ -643,31 +812,36 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
             {stats.classified}/{stats.total} classified ({stats.percentage}%)
           </Typography>
 
-          {/* Current spot indicator */}
+          {/* Current item indicator */}
           <Typography
             variant="body2"
             color="text.primary"
             sx={{
               fontWeight: 500,
               transition: 'background-color 0.3s ease',
-              bgcolor: flashSpotId === activeSpotId ? 'success.light' : 'transparent',
+              bgcolor: flashId ? 'success.light' : 'transparent',
               px: 1,
               borderRadius: 1,
             }}
           >
-            Current: {activeSpot?.name || `Spot ${currentIndex + 1}`}
+            {currentName}
+            {currentMineral && (
+              <Typography component="span" variant="body2" color="text.secondary" sx={{ ml: 1 }}>
+                ({formatMineralName(currentMineral)})
+              </Typography>
+            )}
           </Typography>
 
           {/* Navigation hints */}
           <Typography variant="caption" color="text.secondary">
-            Space=Skip &nbsp; ⌫=Back &nbsp; Del=Clear &nbsp; Esc=Exit
+            Space=Skip ⌫=Back Del=Clear Esc=Exit
           </Typography>
 
           {/* Done button */}
           <Button
             variant="contained"
             size="small"
-            onClick={() => setQuickClassifyVisible(false)}
+            onClick={handleClose}
             sx={{ ml: 1 }}
           >
             Done

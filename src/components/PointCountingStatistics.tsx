@@ -29,6 +29,7 @@ import {
 import { useAppStore } from '@/store';
 import {
   calculatePointCountStatisticsForMicrograph,
+  calculateStatisticsFromSession,
   exportStatisticsToCSV,
   type PointCountStatistics as Stats,
 } from '@/services/pointCounting';
@@ -112,19 +113,29 @@ export function PointCountingStatistics({
   showExport = true,
   compact = false,
 }: PointCountingStatisticsProps) {
-  // Store
+  // Store - basic state
   const activeMicrographId = useAppStore((s) => s.activeMicrographId);
   const micrographIndex = useAppStore((s) => s.micrographIndex);
+
+  // Store - point count mode state
+  const pointCountMode = useAppStore((s) => s.pointCountMode);
+  const activeSession = useAppStore((s) => s.activePointCountSession);
 
   const targetMicrographId = micrographId ?? activeMicrographId;
   const micrograph = targetMicrographId ? micrographIndex.get(targetMicrographId) : null;
   const spots = micrograph?.spots ?? [];
 
-  // Calculate statistics
+  // Calculate statistics - from session when in point count mode, from spots otherwise
   const stats: Stats | null = useMemo(() => {
+    // When in point count mode, use session data
+    if (pointCountMode && activeSession) {
+      return calculateStatisticsFromSession(activeSession);
+    }
+
+    // Otherwise use spots-based calculation
     if (!spots || spots.length === 0) return null;
     return calculatePointCountStatisticsForMicrograph(spots);
-  }, [spots]);
+  }, [pointCountMode, activeSession, spots]);
 
   // Handle export
   const handleExport = useCallback(() => {
@@ -135,19 +146,31 @@ export function PointCountingStatistics({
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `point-count-statistics-${new Date().toISOString().slice(0, 10)}.csv`;
+
+    // Use session name in filename when in point count mode
+    const dateStr = new Date().toISOString().slice(0, 10);
+    const baseName = pointCountMode && activeSession
+      ? activeSession.name.replace(/[^a-zA-Z0-9-_]/g, '-')
+      : 'point-count-statistics';
+    a.download = `${baseName}-${dateStr}.csv`;
     a.click();
     URL.revokeObjectURL(url);
-  }, [stats]);
+  }, [stats, pointCountMode, activeSession]);
 
   // No stats to show
   if (!stats || stats.totalPoints === 0) {
     return (
       <Paper variant="outlined" sx={{ p: 2 }}>
         <Typography color="text.secondary" align="center">
-          No point count data available.
-          <br />
-          Generate points using Edit &rarr; Generate Spots...
+          {pointCountMode
+            ? 'No points in this session. Start a new session with Tools → Point Count.'
+            : (
+              <>
+                No point count data available.
+                <br />
+                Generate points using Edit &rarr; Generate Spots...
+              </>
+            )}
         </Typography>
       </Paper>
     );
@@ -167,9 +190,9 @@ export function PointCountingStatistics({
           </Typography>
         </Box>
         <Typography color="text.secondary" align="center">
-          Classify points to see modal statistics.
-          <br />
-          Use the Quick Classify toolbar (coming in Phase 3).
+          {pointCountMode
+            ? 'Click on the canvas to create points, then classify using the toolbar.'
+            : 'Classify points to see modal statistics using the Quick Classify toolbar.'}
         </Typography>
       </Paper>
     );

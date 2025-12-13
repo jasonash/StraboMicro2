@@ -12,6 +12,7 @@ import type {
 } from './types';
 import { Z_SCORES } from './types';
 import type { Spot } from '@/types/project-types';
+import type { PointCountSession } from '@/types/point-count-types';
 
 // Re-export Z_SCORES for convenience
 export { Z_SCORES };
@@ -215,6 +216,55 @@ export function calculatePointCountStatisticsForMicrograph(
     (spot) => spot.generationMethod === 'point-count'
   );
   return calculatePointCountStatistics(pointCountSpots, confidenceLevel);
+}
+
+/**
+ * Calculate statistics from a Point Count Session.
+ *
+ * Converts session data (using new PointCountSession format) to the
+ * PointCountStatistics format used by the statistics display components.
+ *
+ * @param session - Point count session with points and modal composition
+ * @param confidenceLevel - Confidence level for intervals (default 0.95)
+ * @returns Complete statistics including per-mineral breakdown
+ */
+export function calculateStatisticsFromSession(
+  session: PointCountSession,
+  confidenceLevel: ConfidenceLevel = 0.95
+): PointCountStatistics {
+  const { summary } = session;
+  const totalPoints = summary.totalPoints;
+  const classifiedPoints = summary.classifiedCount;
+  const unclassifiedPoints = totalPoints - classifiedPoints;
+
+  // Calculate per-mineral statistics from modalComposition
+  const mineralStats: MineralStats[] = [];
+
+  for (const [name, count] of Object.entries(summary.modalComposition)) {
+    const percentage = classifiedPoints > 0 ? (count / classifiedPoints) * 100 : 0;
+    const ci = calculateConfidenceInterval(count, classifiedPoints, confidenceLevel);
+
+    mineralStats.push({
+      name,
+      count,
+      percentage,
+      confidenceInterval: ci,
+      percentageLow: Math.max(0, percentage - ci),
+      percentageHigh: Math.min(100, percentage + ci),
+    });
+  }
+
+  // Sort by count descending
+  mineralStats.sort((a, b) => b.count - a.count);
+
+  return {
+    totalPoints,
+    classifiedPoints,
+    unclassifiedPoints,
+    classificationProgress: totalPoints > 0 ? (classifiedPoints / totalPoints) * 100 : 0,
+    mineralStats,
+    calculatedAt: new Date().toISOString(),
+  };
 }
 
 // ============================================================================
