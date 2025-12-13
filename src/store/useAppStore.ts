@@ -94,6 +94,11 @@ import {
   Tag,
 } from '@/types/project-types';
 import {
+  PointCountSession,
+  PointCountSessionSummary,
+  calculateSessionSummary,
+} from '@/types/point-count-types';
+import {
   updateMicrograph,
   updateSpot,
   buildMicrographIndex,
@@ -162,6 +167,16 @@ interface AppState {
   quickClassifyShortcuts: Record<string, string>;
   /** Whether Statistics Panel is visible */
   statisticsPanelVisible: boolean;
+
+  // ========== POINT COUNT MODE STATE ==========
+  /** Whether Point Count mode is active (separate from spots) */
+  pointCountMode: boolean;
+  /** Currently active Point Count session */
+  activePointCountSession: PointCountSession | null;
+  /** List of sessions for the current micrograph (summaries only, not full data) */
+  pointCountSessionList: PointCountSessionSummary[];
+  /** Index of the currently selected point in the session (-1 = none) */
+  currentPointIndex: number;
 
   // ========== GENERATE SPOTS DIALOG STATE ==========
   /** Whether Generate Spots dialog is open */
@@ -254,6 +269,28 @@ interface AppState {
   setQuickClassifyShortcuts: (shortcuts: Record<string, string>) => void;
   /** Toggle Statistics Panel visibility */
   setStatisticsPanelVisible: (visible: boolean) => void;
+
+  // ========== POINT COUNT MODE ACTIONS ==========
+  /** Enter Point Count mode with a session */
+  enterPointCountMode: (session: PointCountSession) => void;
+  /** Exit Point Count mode (auto-saves) */
+  exitPointCountMode: () => Promise<void>;
+  /** Classify a point with a mineral */
+  classifyPoint: (pointId: string, mineral: string) => void;
+  /** Clear classification from a point */
+  clearPointClassification: (pointId: string) => void;
+  /** Save the current point count session to disk */
+  savePointCountSession: () => Promise<void>;
+  /** Load session list for a micrograph */
+  loadPointCountSessions: (micrographId: string) => Promise<void>;
+  /** Set the current point index */
+  setCurrentPointIndex: (index: number) => void;
+  /** Navigate to next unclassified point */
+  goToNextUnclassifiedPoint: () => void;
+  /** Navigate to previous point */
+  goToPreviousPoint: () => void;
+  /** Update session name */
+  updatePointCountSessionName: (name: string) => void;
 
   // ========== GENERATE SPOTS DIALOG ACTIONS ==========
   /** Open the Generate Spots dialog for a specific micrograph */
@@ -389,6 +426,12 @@ export const useAppStore = create<AppState>()(
             'u': 'unknown',
           },
           statisticsPanelVisible: false,
+
+          // Point Count mode state
+          pointCountMode: false,
+          activePointCountSession: null,
+          pointCountSessionList: [],
+          currentPointIndex: -1,
 
           // Generate Spots dialog state
           generateSpotsDialogOpen: false,
@@ -1386,6 +1429,199 @@ export const useAppStore = create<AppState>()(
           setQuickClassifyShortcuts: (shortcuts) => set({ quickClassifyShortcuts: shortcuts }),
 
           setStatisticsPanelVisible: (visible) => set({ statisticsPanelVisible: visible }),
+
+          // ========== POINT COUNT MODE ACTIONS ==========
+
+          enterPointCountMode: (session) => {
+            // Find first unclassified point index
+            const firstUnclassifiedIndex = session.points.findIndex(p => !p.mineral);
+            const initialIndex = firstUnclassifiedIndex >= 0 ? firstUnclassifiedIndex : 0;
+
+            set({
+              pointCountMode: true,
+              activePointCountSession: session,
+              currentPointIndex: session.points.length > 0 ? initialIndex : -1,
+              // Show Quick Classify toolbar and Statistics Panel
+              quickClassifyVisible: true,
+              statisticsPanelVisible: true,
+            });
+          },
+
+          exitPointCountMode: async () => {
+            const { activePointCountSession, project } = get();
+
+            // Auto-save session before exiting
+            if (activePointCountSession && project && window.api?.pointCount) {
+              try {
+                // Update summary before saving
+                const updatedSession = {
+                  ...activePointCountSession,
+                  summary: calculateSessionSummary(activePointCountSession.points),
+                };
+                await window.api.pointCount.saveSession(project.id, updatedSession);
+                console.log('[Store] Point count session saved on exit');
+              } catch (error) {
+                console.error('[Store] Error saving point count session:', error);
+              }
+            }
+
+            set({
+              pointCountMode: false,
+              activePointCountSession: null,
+              currentPointIndex: -1,
+              quickClassifyVisible: false,
+            });
+          },
+
+          classifyPoint: (pointId, mineral) => {
+            const { activePointCountSession } = get();
+            if (!activePointCountSession) return;
+
+            const now = new Date().toISOString();
+            const updatedPoints = activePointCountSession.points.map(p =>
+              p.id === pointId
+                ? { ...p, mineral, classifiedAt: now }
+                : p
+            );
+
+            const updatedSession = {
+              ...activePointCountSession,
+              points: updatedPoints,
+              updatedAt: now,
+              summary: calculateSessionSummary(updatedPoints),
+            };
+
+            set({ activePointCountSession: updatedSession });
+          },
+
+          clearPointClassification: (pointId) => {
+            const { activePointCountSession } = get();
+            if (!activePointCountSession) return;
+
+            const updatedPoints = activePointCountSession.points.map(p =>
+              p.id === pointId
+                ? { ...p, mineral: undefined, classifiedAt: undefined }
+                : p
+            );
+
+            const updatedSession = {
+              ...activePointCountSession,
+              points: updatedPoints,
+              updatedAt: new Date().toISOString(),
+              summary: calculateSessionSummary(updatedPoints),
+            };
+
+            set({ activePointCountSession: updatedSession });
+          },
+
+          savePointCountSession: async () => {
+            const { activePointCountSession, project } = get();
+            if (!activePointCountSession || !project) {
+              console.warn('[Store] No active point count session to save');
+              return;
+            }
+
+            if (!window.api?.pointCount) {
+              console.warn('[Store] Point count API not available');
+              return;
+            }
+
+            try {
+              const result = await window.api.pointCount.saveSession(
+                project.id,
+                activePointCountSession
+              );
+              if (result.success && result.session) {
+                set({ activePointCountSession: result.session });
+                console.log('[Store] Point count session saved');
+              } else {
+                console.error('[Store] Error saving point count session:', result.error);
+              }
+            } catch (error) {
+              console.error('[Store] Error saving point count session:', error);
+            }
+          },
+
+          loadPointCountSessions: async (micrographId) => {
+            const { project } = get();
+            if (!project) {
+              console.warn('[Store] No project loaded');
+              return;
+            }
+
+            if (!window.api?.pointCount) {
+              console.warn('[Store] Point count API not available');
+              return;
+            }
+
+            try {
+              const result = await window.api.pointCount.listSessions(
+                project.id,
+                micrographId
+              );
+              if (result.success) {
+                set({ pointCountSessionList: result.sessions });
+                console.log(`[Store] Loaded ${result.sessions.length} point count sessions`);
+              } else {
+                console.error('[Store] Error loading point count sessions:', result.error);
+                set({ pointCountSessionList: [] });
+              }
+            } catch (error) {
+              console.error('[Store] Error loading point count sessions:', error);
+              set({ pointCountSessionList: [] });
+            }
+          },
+
+          setCurrentPointIndex: (index) => set({ currentPointIndex: index }),
+
+          goToNextUnclassifiedPoint: () => {
+            const { activePointCountSession, currentPointIndex } = get();
+            if (!activePointCountSession) return;
+
+            const points = activePointCountSession.points;
+            const startIndex = currentPointIndex + 1;
+
+            // Search from current position to end
+            for (let i = startIndex; i < points.length; i++) {
+              if (!points[i].mineral) {
+                set({ currentPointIndex: i });
+                return;
+              }
+            }
+
+            // Wrap around and search from start
+            for (let i = 0; i < startIndex && i < points.length; i++) {
+              if (!points[i].mineral) {
+                set({ currentPointIndex: i });
+                return;
+              }
+            }
+
+            // No unclassified points found, stay at current or go to first
+            if (currentPointIndex < 0 && points.length > 0) {
+              set({ currentPointIndex: 0 });
+            }
+          },
+
+          goToPreviousPoint: () => {
+            const { activePointCountSession, currentPointIndex } = get();
+            if (!activePointCountSession || currentPointIndex <= 0) return;
+
+            set({ currentPointIndex: currentPointIndex - 1 });
+          },
+
+          updatePointCountSessionName: (name) => {
+            const { activePointCountSession } = get();
+            if (!activePointCountSession) return;
+
+            set({
+              activePointCountSession: {
+                ...activePointCountSession,
+                name,
+                updatedAt: new Date().toISOString(),
+              },
+            });
+          },
 
           // ========== GENERATE SPOTS DIALOG ACTIONS ==========
 
