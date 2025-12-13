@@ -16,11 +16,13 @@ const Viewer: React.FC = () => {
   const project = useAppStore((state) => state.project);
   const activeMicrographId = useAppStore((state) => state.activeMicrographId);
   const activeSpotId = useAppStore((state) => state.activeSpotId);
+  const selectedSpotIds = useAppStore((state) => state.selectedSpotIds);
   const setViewerRef = useAppStore((state) => state.setViewerRef);
 
   // Get names for status bar title
   const activeMicrograph = activeMicrographId ? findMicrographById(project, activeMicrographId) : null;
   const activeSpot = activeSpotId ? findSpotById(project, activeSpotId) : null;
+  const selectionCount = selectedSpotIds.length;
 
   // Build the full path to the active micrograph's image
   const [activeMicrographPath, setActiveMicrographPath] = React.useState<string | null>(null);
@@ -200,11 +202,13 @@ const Viewer: React.FC = () => {
         }}
       >
         <Typography variant="subtitle1" color="text.primary" sx={{ fontWeight: 500 }}>
-          {activeSpot
-            ? `Spot: ${activeSpot.name || 'Unnamed'}`
-            : activeMicrograph
-              ? `Micrograph: ${activeMicrograph.name || 'Unnamed'}`
-              : ''}
+          {selectionCount > 1
+            ? `${selectionCount} Spots Selected`
+            : activeSpot
+              ? `Spot: ${activeSpot.name || 'Unnamed'}`
+              : activeMicrograph
+                ? `Micrograph: ${activeMicrograph.name || 'Unnamed'}`
+                : ''}
         </Typography>
       </Box>
 
