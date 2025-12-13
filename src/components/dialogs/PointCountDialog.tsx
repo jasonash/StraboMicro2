@@ -38,8 +38,6 @@ import {
   Add as AddIcon,
   Delete as DeleteIcon,
   Edit as EditIcon,
-  Check as CheckIcon,
-  Close as CloseIcon,
   FolderOpen as FolderIcon,
 } from '@mui/icons-material';
 import { useAppStore } from '@/store';
@@ -53,6 +51,7 @@ import {
 import {
   generatePoints,
   calculateGridDimensions,
+  calculateConfidenceInterval,
   type GridType,
 } from '@/services/pointCounting';
 import { v4 as uuidv4 } from 'uuid';
@@ -542,19 +541,47 @@ export function PointCountDialog({
 
           <Divider />
 
-          {/* Grid Type */}
-          <FormControl component="fieldset">
-            <FormLabel component="legend">Grid Type</FormLabel>
-            <RadioGroup
-              row
-              value={gridType}
-              onChange={(e) => setGridType(e.target.value as GridType)}
+          {/* Grid Type + Recommendations */}
+          <Box sx={{ display: 'flex', gap: 3, alignItems: 'flex-start' }}>
+            <FormControl component="fieldset" sx={{ flex: 1 }}>
+              <FormLabel component="legend">Grid Type</FormLabel>
+              <RadioGroup
+                row
+                value={gridType}
+                onChange={(e) => setGridType(e.target.value as GridType)}
+              >
+                <FormControlLabel value="regular" control={<Radio />} label="Regular" />
+                <FormControlLabel value="random" control={<Radio />} label="Random" />
+                <FormControlLabel value="stratified" control={<Radio />} label="Stratified Random" />
+              </RadioGroup>
+            </FormControl>
+
+            {/* Recommended Points Info Box */}
+            <Paper
+              variant="outlined"
+              sx={{
+                p: 1.5,
+                minWidth: 200,
+                bgcolor: 'background.default',
+              }}
             >
-              <FormControlLabel value="regular" control={<Radio />} label="Regular" />
-              <FormControlLabel value="random" control={<Radio />} label="Random" />
-              <FormControlLabel value="stratified" control={<Radio />} label="Stratified Random" />
-            </RadioGroup>
-          </FormControl>
+              <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>
+                Recommended Points
+              </Typography>
+              <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>
+                • 300 points: ±{calculateConfidenceInterval(75, 300).toFixed(1)}% at 25%
+              </Typography>
+              <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>
+                • 400 points: ±{calculateConfidenceInterval(100, 400).toFixed(1)}% at 25%
+              </Typography>
+              <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>
+                • 500 points: ±{calculateConfidenceInterval(125, 500).toFixed(1)}% at 25%
+              </Typography>
+              <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block', fontStyle: 'italic' }}>
+                (95% confidence interval)
+              </Typography>
+            </Paper>
+          </Box>
 
           {/* Point Count Slider */}
           <Box>
