@@ -445,6 +445,7 @@ export function PointCountDialog({
             onContinue={() => handleContinueSession(mostRecentSession)}
             onRename={(name) => handleRenameSession(mostRecentSession.id, name)}
             onDelete={() => setDeleteConfirmSession(mostRecentSession)}
+            showActions
           />
 
           <Divider sx={{ my: 2 }} />
