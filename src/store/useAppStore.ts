@@ -1128,26 +1128,43 @@ export const useAppStore = create<AppState>()(
                 return turf.polygon([coords]);
               });
 
-              // Union all polygons
+              // Try union first - works well for overlapping polygons
               let merged = turfPolygons[0];
+              let useConvexHull = false;
+
               for (let i = 1; i < turfPolygons.length; i++) {
                 const result = turf.union(turf.featureCollection([merged, turfPolygons[i]]));
                 if (result && result.geometry.type === 'Polygon') {
                   merged = result as ReturnType<typeof turf.polygon>;
                 } else if (result && result.geometry.type === 'MultiPolygon') {
-                  // If result is MultiPolygon, take the largest part
-                  const parts = result.geometry.coordinates;
-                  let largestArea = 0;
-                  let largestPart: number[][] = [];
-                  for (const part of parts) {
-                    const poly = turf.polygon(part as number[][][]);
-                    const area = turf.area(poly);
-                    if (area > largestArea) {
-                      largestArea = area;
-                      largestPart = part[0] as number[][]; // Outer ring
-                    }
+                  // Non-overlapping polygons produce MultiPolygon - use convex hull instead
+                  useConvexHull = true;
+                  break;
+                }
+              }
+
+              // If polygons don't overlap, use convex hull to create enclosing polygon
+              if (useConvexHull) {
+                // Collect all points from all polygons
+                const allPoints: [number, number][] = [];
+                for (const poly of turfPolygons) {
+                  const coords = poly.geometry.coordinates[0];
+                  for (const coord of coords) {
+                    allPoints.push([coord[0], coord[1]]);
                   }
-                  merged = turf.polygon([largestPart]);
+                }
+
+                // Create convex hull from all points
+                const points = turf.featureCollection(
+                  allPoints.map(p => turf.point(p))
+                );
+                const hull = turf.convex(points);
+
+                if (hull && hull.geometry.type === 'Polygon') {
+                  merged = hull as ReturnType<typeof turf.polygon>;
+                } else {
+                  console.warn('[Store] Could not create convex hull');
+                  return null;
                 }
               }
 
