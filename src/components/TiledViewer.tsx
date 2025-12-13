@@ -1753,6 +1753,10 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                           onSpotClick={async (spot, e) => {
                             const isMultiSelect = e?.evt?.metaKey || e?.evt?.ctrlKey;
                             if (isMultiSelect) {
+                              // Include activeSpotId in selection if not already there
+                              if (activeSpotId && !selectedSpotIds.includes(activeSpotId)) {
+                                selectSpot(activeSpotId, true);
+                              }
                               selectSpot(spot.id, true);
                             } else {
                               clearSpotSelection();
@@ -1782,6 +1786,10 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                         const isMultiSelect = e?.evt?.metaKey || e?.evt?.ctrlKey;
                         if (isMultiSelect) {
                           // Multi-select: toggle selection
+                          // Include activeSpotId in selection if not already there
+                          if (activeSpotId && !selectedSpotIds.includes(activeSpotId)) {
+                            selectSpot(activeSpotId, true);
+                          }
                           selectSpot(spot.id, true);
                         } else {
                           // Single select: clear multi-selection and select this spot
@@ -1985,6 +1993,10 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                           onSpotClick={async (spot, e) => {
                             const isMultiSelect = e?.evt?.metaKey || e?.evt?.ctrlKey;
                             if (isMultiSelect) {
+                              // Include activeSpotId in selection if not already there
+                              if (activeSpotId && !selectedSpotIds.includes(activeSpotId)) {
+                                selectSpot(activeSpotId, true);
+                              }
                               selectSpot(spot.id, true);
                             } else {
                               clearSpotSelection();
@@ -2014,6 +2026,10 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                         const isMultiSelect = e?.evt?.metaKey || e?.evt?.ctrlKey;
                         if (isMultiSelect) {
                           // Multi-select: toggle selection
+                          // Include activeSpotId in selection if not already there
+                          if (activeSpotId && !selectedSpotIds.includes(activeSpotId)) {
+                            selectSpot(activeSpotId, true);
+                          }
                           selectSpot(spot.id, true);
                         } else {
                           // Single select: clear multi-selection and select this spot
