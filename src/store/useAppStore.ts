@@ -1255,25 +1255,49 @@ export const useAppStore = create<AppState>()(
               // Convert split line coordinates
               const lineCoords = splitLine.map(p => [p.X ?? p.x ?? 0, p.Y ?? p.y ?? 0] as [number, number]);
 
-              // Split the polygon using the line
-              // We'll create a buffer around the line and use difference to cut the polygon
+              // Create line for validation
+              const splitLineFeature = turf.lineString(lineCoords);
 
-              // Extend the line to ensure it crosses the polygon completely
+              // Check if the line actually crosses the polygon
+              // booleanCrosses checks if line enters and exits the polygon
+              const lineIntersectsPolygon = turf.booleanIntersects(polygon, splitLineFeature);
+              console.log('[Store] Line intersects polygon:', lineIntersectsPolygon);
+              console.log('[Store] Split line coords:', lineCoords);
+              console.log('[Store] Polygon coords:', coords);
+
+              if (!lineIntersectsPolygon) {
+                console.warn('[Store] Split line does not intersect the polygon');
+                return null;
+              }
+
+              // Strategy: Create a large cutting rectangle from the line
+              // We'll create two half-planes and use intersection to get each half
+
               const bbox = turf.bbox(polygon);
               const diagonal = Math.sqrt(
                 Math.pow(bbox[2] - bbox[0], 2) + Math.pow(bbox[3] - bbox[1], 2)
-              );
+              ) * 2; // Make it extra large
 
-              // Get line bearing and extend in both directions
+              // Get line direction
               const start = lineCoords[0];
               const end = lineCoords[lineCoords.length - 1];
               const dx = end[0] - start[0];
               const dy = end[1] - start[1];
               const len = Math.sqrt(dx * dx + dy * dy);
+
+              if (len === 0) {
+                console.warn('[Store] Split line has zero length');
+                return null;
+              }
+
               const unitX = dx / len;
               const unitY = dy / len;
 
-              // Extended line coordinates
+              // Perpendicular direction (for creating the half-plane rectangles)
+              const perpX = -unitY;
+              const perpY = unitX;
+
+              // Extend the line well beyond the polygon
               const extendedStart: [number, number] = [
                 start[0] - unitX * diagonal,
                 start[1] - unitY * diagonal,
@@ -1283,20 +1307,51 @@ export const useAppStore = create<AppState>()(
                 end[1] + unitY * diagonal,
               ];
 
-              // Create a thin buffer around the extended line to use as a cutting tool
-              const extendedLine = turf.lineString([extendedStart, extendedEnd]);
-              const buffer = turf.buffer(extendedLine, 0.5, { units: 'meters' });
+              // Create a large rectangle on one side of the line (half-plane 1)
+              const halfPlane1: [number, number][] = [
+                extendedStart,
+                extendedEnd,
+                [extendedEnd[0] + perpX * diagonal, extendedEnd[1] + perpY * diagonal],
+                [extendedStart[0] + perpX * diagonal, extendedStart[1] + perpY * diagonal],
+                extendedStart, // Close the ring
+              ];
 
-              if (!buffer) {
-                console.warn('[Store] Could not create buffer for split line');
-                return null;
-              }
+              // Create a large rectangle on the other side of the line (half-plane 2)
+              const halfPlane2: [number, number][] = [
+                extendedStart,
+                extendedEnd,
+                [extendedEnd[0] - perpX * diagonal, extendedEnd[1] - perpY * diagonal],
+                [extendedStart[0] - perpX * diagonal, extendedStart[1] - perpY * diagonal],
+                extendedStart, // Close the ring
+              ];
 
-              // Use difference to cut the polygon
-              const diff = turf.difference(turf.featureCollection([polygon, buffer]));
+              // Create and rewind half-plane polygons to ensure correct winding (counter-clockwise)
+              const halfPlanePoly1Raw = turf.polygon([halfPlane1]);
+              const halfPlanePoly2Raw = turf.polygon([halfPlane2]);
 
-              if (!diff) {
-                console.warn('[Store] Split did not produce any result');
+              // Rewind to ensure GeoJSON-compliant counter-clockwise exterior rings
+              // Cast back to polygon feature type since turf.rewind has broad return type
+              type PolygonFeature = ReturnType<typeof turf.polygon>;
+              const halfPlanePoly1 = turf.rewind(halfPlanePoly1Raw) as PolygonFeature;
+              const halfPlanePoly2 = turf.rewind(halfPlanePoly2Raw) as PolygonFeature;
+
+              console.log('[Store] Half-plane 1 valid:', turf.booleanValid(halfPlanePoly1));
+              console.log('[Store] Half-plane 2 valid:', turf.booleanValid(halfPlanePoly2));
+              console.log('[Store] Original polygon valid:', turf.booleanValid(polygon));
+
+              // Intersect the original polygon with each half-plane
+              const part1 = turf.intersect(turf.featureCollection([polygon, halfPlanePoly1]));
+              const part2 = turf.intersect(turf.featureCollection([polygon, halfPlanePoly2]));
+
+              console.log('[Store] Split results:', {
+                part1: !!part1,
+                part2: !!part2,
+                part1Type: part1?.geometry?.type,
+                part2Type: part2?.geometry?.type
+              });
+
+              if (!part1 && !part2) {
+                console.warn('[Store] Split did not produce any result - line may not cross polygon');
                 return null;
               }
 
@@ -1330,16 +1385,30 @@ export const useAppStore = create<AppState>()(
                 }
               };
 
-              if (diff.geometry.type === 'Polygon') {
-                processPolygon(diff.geometry.coordinates as number[][][]);
-              } else if (diff.geometry.type === 'MultiPolygon') {
-                for (const part of diff.geometry.coordinates) {
-                  processPolygon(part as number[][][]);
+              // Process part1
+              if (part1) {
+                if (part1.geometry.type === 'Polygon') {
+                  processPolygon(part1.geometry.coordinates as number[][][]);
+                } else if (part1.geometry.type === 'MultiPolygon') {
+                  for (const part of part1.geometry.coordinates) {
+                    processPolygon(part as number[][][]);
+                  }
+                }
+              }
+
+              // Process part2
+              if (part2) {
+                if (part2.geometry.type === 'Polygon') {
+                  processPolygon(part2.geometry.coordinates as number[][][]);
+                } else if (part2.geometry.type === 'MultiPolygon') {
+                  for (const part of part2.geometry.coordinates) {
+                    processPolygon(part as number[][][]);
+                  }
                 }
               }
 
               if (newSpots.length < 2) {
-                console.warn('[Store] Split did not create multiple polygons');
+                console.warn('[Store] Split did not create multiple polygons - line may not fully cross the polygon');
                 return null;
               }
 
