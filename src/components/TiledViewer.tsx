@@ -27,6 +27,7 @@ import { SpotContextMenu } from './SpotContextMenu';
 import { EditingToolbar } from './EditingToolbar';
 import { NewSpotDialog } from './dialogs/NewSpotDialog';
 import { EditSpotDialog } from './dialogs/metadata/EditSpotDialog';
+import { BatchEditSpotsDialog } from './dialogs/BatchEditSpotsDialog';
 import RulerCanvas from './RulerCanvas';
 import { Geometry, Spot } from '@/types/project-types';
 import { usePolygonDrawing } from '@/hooks/usePolygonDrawing';
@@ -112,6 +113,10 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
     // Edit Spot Dialog state
     const [editSpotDialogOpen, setEditSpotDialogOpen] = useState(false);
     const [editingSpot, setEditingSpot] = useState<Spot | null>(null);
+
+    // Batch Edit Dialog state (from store for global access)
+    const batchEditDialogOpen = useAppStore((state) => state.batchEditDialogOpen);
+    const setBatchEditDialogOpen = useAppStore((state) => state.setBatchEditDialogOpen);
 
     // Context Menu state
     const [contextMenuSpot, setContextMenuSpot] = useState<Spot | null>(null);
@@ -2131,6 +2136,14 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
           onEditMetadata={handleEditMetadata}
           onDelete={handleDeleteSpot}
           isRecursiveSpot={isContextMenuRecursiveSpot}
+          selectedCount={selectedSpotIds.length}
+          onBatchEdit={() => setBatchEditDialogOpen(true)}
+        />
+
+        {/* Batch Edit Spots Dialog */}
+        <BatchEditSpotsDialog
+          isOpen={batchEditDialogOpen}
+          onClose={() => setBatchEditDialogOpen(false)}
         />
       </div>
     );
