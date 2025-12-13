@@ -261,7 +261,7 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
           stroke={isSelected ? 'transparent' : strokeColor}
           strokeWidth={isSelected ? 0 : strokeWidth}
           dash={isClassified ? undefined : [8 / scale, 4 / scale]}
-          opacity={isClassified ? 1 : 0.6}
+          opacity={opacity}
           listening={true}
           lineCap="round"
           lineJoin="round"
@@ -342,7 +342,7 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
           strokeWidth={isSelected ? 0 : strokeWidth}
           dash={isClassified ? undefined : [8 / scale, 4 / scale]}
           fill={color}
-          opacity={isClassified ? opacity : opacity * 0.4}
+          opacity={opacity}
           closed={true}
           listening={true}
         />
