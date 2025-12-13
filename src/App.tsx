@@ -183,6 +183,7 @@ function App() {
   const [isConfigureShortcutsOpen, setIsConfigureShortcutsOpen] = useState(false);
   const [isPointCountDialogOpen, setIsPointCountDialogOpen] = useState(false);
   const [isGrainDetectionDialogOpen, setIsGrainDetectionDialogOpen] = useState(false);
+  const setSplitModeSpotId = useAppStore(state => state.setSplitModeSpotId);
   const closeProject = useAppStore(state => state.closeProject);
   const project = useAppStore(state => state.project);
   const setTheme = useAppStore(state => state.setTheme);
@@ -442,6 +443,61 @@ function App() {
         return;
       }
       useAppStore.getState().setBatchEditDialogOpen(true);
+    }));
+
+    // Merge Selected Spots menu item (Edit menu, Cmd+M)
+    unsubscribers.push(window.api.onMergeSpots(() => {
+      const state = useAppStore.getState();
+      const selectedIds = state.selectedSpotIds;
+      const activeSpotId = state.activeSpotId;
+
+      // Include activeSpotId in selection if not already
+      const allSelectedIds = activeSpotId && !selectedIds.includes(activeSpotId)
+        ? [...selectedIds, activeSpotId]
+        : selectedIds;
+
+      if (allSelectedIds.length < 2) {
+        alert('Please select 2 or more polygon spots to merge.\n\nTip: Use Cmd+Click to select multiple spots.');
+        return;
+      }
+
+      // Check if all selected spots are polygons
+      const polygonCount = allSelectedIds.filter(id => {
+        const spot = state.spotIndex.get(id);
+        return spot && (spot.points?.length ?? 0) >= 3;
+      }).length;
+
+      if (polygonCount < 2) {
+        alert('Merge requires at least 2 polygon spots.\n\nPoints and lines cannot be merged.');
+        return;
+      }
+
+      const result = state.mergeSpots(allSelectedIds);
+      if (result) {
+        console.log(`[App] Merged ${allSelectedIds.length} spots into ${result}`);
+      } else {
+        alert('Failed to merge spots. Make sure the selected spots are valid polygons.');
+      }
+    }));
+
+    // Split Spot with Line menu item (Edit menu, Cmd+/)
+    unsubscribers.push(window.api.onSplitSpot(() => {
+      const state = useAppStore.getState();
+      const activeSpotId = state.activeSpotId;
+
+      if (!activeSpotId) {
+        alert('Please select a polygon spot to split.');
+        return;
+      }
+
+      const spot = state.spotIndex.get(activeSpotId);
+      if (!spot || (spot.points?.length ?? 0) < 3) {
+        alert('Only polygon spots can be split.\n\nSelect a polygon spot first.');
+        return;
+      }
+
+      // Activate split line drawing mode
+      setSplitModeSpotId(activeSpotId);
     }));
 
     // Debug: Show Project Structure

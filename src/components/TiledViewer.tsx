@@ -154,6 +154,11 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
     const activePointCountSession = useAppStore((state) => state.activePointCountSession);
     const setSelectedPointIndices = useAppStore((state) => state.setSelectedPointIndices);
 
+    // Split mode state
+    const splitModeSpotId = useAppStore((state) => state.splitModeSpotId);
+    const setSplitModeSpotId = useAppStore((state) => state.setSplitModeSpotId);
+    const splitSpot = useAppStore((state) => state.splitSpot);
+
     // Initialize lasso hook
     const lasso = useLasso();
 
@@ -251,6 +256,32 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
 
         setPendingSpotGeometry(lineGeometry);
         setNewSpotDialogOpen(true);
+      },
+    });
+
+    // Split line drawing hook (separate from regular line tool)
+    const splitLineDrawing = useLineDrawing({
+      layer: drawingLayerRef.current,
+      scale: zoom,
+      lineColor: '#ff0000', // Red line for split
+      onComplete: (points) => {
+        if (!splitModeSpotId) return;
+
+        // Convert points to SimpleCoord array
+        const splitLine: Array<{ X: number; Y: number }> = [];
+        for (let i = 0; i < points.length; i += 2) {
+          splitLine.push({ X: points[i], Y: points[i + 1] });
+        }
+
+        // Call split and clear split mode
+        const result = splitSpot(splitModeSpotId, splitLine);
+        setSplitModeSpotId(null);
+
+        if (result) {
+          console.log(`[TiledViewer] Split spot into ${result.length} spots`);
+        } else {
+          alert('Failed to split spot. Make sure the line crosses through the polygon.');
+        }
       },
     });
 
@@ -1026,6 +1057,13 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
         }
       }
 
+      // Handle split mode preview
+      if (splitModeSpotId) {
+        const imageX = (pos.x - position.x) / zoom;
+        const imageY = (pos.y - position.y) / zoom;
+        splitLineDrawing.handleMouseMove(imageX, imageY);
+      }
+
       // Update cursor location (convert screen coords to image coords)
       const imageX = (pos.x - position.x) / zoom;
       const imageY = (pos.y - position.y) / zoom;
@@ -1085,6 +1123,8 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
       lasso,
       lassoToolActive,
       pointCountMode,
+      splitModeSpotId,
+      splitLineDrawing,
     ]);
 
     const handleMouseUp = useCallback(() => {
@@ -1211,8 +1251,13 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
         if (activeTool === 'line') {
           lineDrawing.handleClick(imageX, imageY);
         }
+
+        // Handle split mode (special line drawing for splitting spots)
+        if (splitModeSpotId) {
+          splitLineDrawing.handleClick(imageX, imageY);
+        }
       },
-      [activeTool, position, zoom, polygonDrawing, lineDrawing, selectActiveSpot, hasDragged]
+      [activeTool, position, zoom, polygonDrawing, lineDrawing, selectActiveSpot, hasDragged, splitModeSpotId, splitLineDrawing]
     );
 
     /**
@@ -1226,6 +1271,30 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
         lineDrawing.cleanup();
       }
     }, [activeTool, polygonDrawing, lineDrawing]);
+
+    /**
+     * Cleanup split line when split mode exits
+     */
+    useEffect(() => {
+      if (!splitModeSpotId) {
+        splitLineDrawing.cleanup();
+      }
+    }, [splitModeSpotId, splitLineDrawing]);
+
+    /**
+     * Handle ESC key to cancel split mode
+     */
+    useEffect(() => {
+      const handleKeyDown = (e: KeyboardEvent) => {
+        if (e.key === 'Escape' && splitModeSpotId) {
+          setSplitModeSpotId(null);
+          splitLineDrawing.cancel();
+        }
+      };
+
+      window.addEventListener('keydown', handleKeyDown);
+      return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [splitModeSpotId, setSplitModeSpotId, splitLineDrawing]);
 
     /**
      * Handle saving new spot from dialog
@@ -2154,6 +2223,39 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
           isRecursiveSpot={isContextMenuRecursiveSpot}
           selectedCount={selectedSpotIds.length}
           onBatchEdit={() => setBatchEditDialogOpen(true)}
+          onMergeSpots={() => {
+            // Merge all selected spots + context menu spot
+            const allIds = activeSpotId && !selectedSpotIds.includes(activeSpotId)
+              ? [...selectedSpotIds, activeSpotId]
+              : [...selectedSpotIds];
+            if (contextMenuSpot && !allIds.includes(contextMenuSpot.id)) {
+              allIds.push(contextMenuSpot.id);
+            }
+            if (allIds.length >= 2) {
+              const result = useAppStore.getState().mergeSpots(allIds);
+              if (!result) {
+                alert('Failed to merge spots. Make sure all selected spots are valid polygons.');
+              }
+            }
+          }}
+          onSplitSpot={(spot) => {
+            setSplitModeSpotId(spot.id);
+          }}
+          canMerge={(() => {
+            // Check if all selected spots are polygons
+            const allIds = activeSpotId && !selectedSpotIds.includes(activeSpotId)
+              ? [...selectedSpotIds, activeSpotId]
+              : [...selectedSpotIds];
+            if (contextMenuSpot && !allIds.includes(contextMenuSpot.id)) {
+              allIds.push(contextMenuSpot.id);
+            }
+            if (allIds.length < 2) return false;
+            const spotIndex = useAppStore.getState().spotIndex;
+            return allIds.every(id => {
+              const spot = spotIndex.get(id);
+              return spot && (spot.points?.length ?? 0) >= 3;
+            });
+          })()}
         />
 
         {/* Batch Edit Spots Dialog */}
