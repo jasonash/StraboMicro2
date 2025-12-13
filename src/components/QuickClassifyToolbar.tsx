@@ -39,7 +39,7 @@ const NAVIGATION_KEYS: Record<string, string> = {
 };
 
 const TOOLBAR_WIDTH = 700;
-const TOOLBAR_DEFAULT_Y_OFFSET = 120; // From bottom of screen
+const TOOLBAR_DEFAULT_Y_OFFSET = 160; // From bottom of screen
 
 interface QuickClassifyToolbarProps {
   onOpenSettings?: () => void;
