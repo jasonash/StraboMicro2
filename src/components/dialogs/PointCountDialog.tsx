@@ -129,25 +129,21 @@ function SessionCard({ session, onContinue, onRename, onDelete, showActions = fa
       <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 2 }}>
         <Box sx={{ flex: 1 }}>
           {isEditing ? (
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-              <TextField
-                size="small"
-                value={editName}
-                onChange={(e) => setEditName(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') handleSaveName();
-                  if (e.key === 'Escape') setIsEditing(false);
-                }}
-                autoFocus
-                sx={{ flex: 1 }}
-              />
-              <IconButton size="small" onClick={handleSaveName} color="primary">
-                <CheckIcon fontSize="small" />
-              </IconButton>
-              <IconButton size="small" onClick={() => setIsEditing(false)}>
-                <CloseIcon fontSize="small" />
-              </IconButton>
-            </Box>
+            <TextField
+              size="small"
+              value={editName}
+              onChange={(e) => setEditName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleSaveName();
+                if (e.key === 'Escape') {
+                  setEditName(session.name);
+                  setIsEditing(false);
+                }
+              }}
+              autoFocus
+              fullWidth
+              sx={{ mb: 1 }}
+            />
           ) : (
             <Typography variant="subtitle1" sx={{ fontWeight: 500, mb: 0.5 }}>
               {session.name}
@@ -169,29 +165,42 @@ function SessionCard({ session, onContinue, onRename, onDelete, showActions = fa
           />
         </Box>
 
-        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
-          {showActions && !isEditing && (
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5, alignItems: 'flex-end' }}>
+          {isEditing ? (
+            <Button
+              variant="contained"
+              size="small"
+              onClick={handleSaveName}
+              sx={{ minWidth: 80 }}
+            >
+              Save
+            </Button>
+          ) : (
             <>
-              <Tooltip title="Rename">
-                <IconButton size="small" onClick={() => setIsEditing(true)}>
-                  <EditIcon fontSize="small" />
-                </IconButton>
-              </Tooltip>
-              <Tooltip title="Delete">
-                <IconButton size="small" onClick={onDelete} color="error">
-                  <DeleteIcon fontSize="small" />
-                </IconButton>
-              </Tooltip>
+              {showActions && (
+                <Box sx={{ display: 'flex', gap: 0.5 }}>
+                  <Tooltip title="Rename">
+                    <IconButton size="small" onClick={() => setIsEditing(true)}>
+                      <EditIcon fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
+                  <Tooltip title="Delete">
+                    <IconButton size="small" onClick={onDelete} color="error">
+                      <DeleteIcon fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
+                </Box>
+              )}
+              <Button
+                variant="contained"
+                size="small"
+                onClick={onContinue}
+                sx={{ minWidth: 80 }}
+              >
+                Continue
+              </Button>
             </>
           )}
-          <Button
-            variant="contained"
-            size="small"
-            onClick={onContinue}
-            sx={{ minWidth: 80 }}
-          >
-            Continue
-          </Button>
         </Box>
       </Box>
     </Paper>
