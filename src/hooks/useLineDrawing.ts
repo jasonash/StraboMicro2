@@ -23,11 +23,12 @@ interface UseLineDrawingOptions {
   layer: Konva.Layer | null;
   scale: number;
   onComplete: (points: number[]) => void;
+  lineColor?: string; // Optional line color (default: #cc3333)
 }
 
 const DOUBLE_CLICK_THRESHOLD = 500; // 500ms threshold for double-click
 
-export const useLineDrawing = ({ layer, scale, onComplete }: UseLineDrawingOptions) => {
+export const useLineDrawing = ({ layer, scale, onComplete, lineColor = '#cc3333' }: UseLineDrawingOptions) => {
   const stateRef = useRef<LineDrawingState>({
     currentLine: null,
     previewLine: null,
@@ -76,7 +77,7 @@ export const useLineDrawing = ({ layer, scale, onComplete }: UseLineDrawingOptio
         // Create new line
         const line = new Konva.Line({
           points: state.currentPoints.slice(),
-          stroke: '#cc3333',
+          stroke: lineColor,
           strokeWidth: 2 / scale,
           listening: false,
           lineCap: 'round',
@@ -89,7 +90,7 @@ export const useLineDrawing = ({ layer, scale, onComplete }: UseLineDrawingOptio
         // Create preview line (shows next segment while drawing)
         const previewLine = new Konva.Line({
           points: [],
-          stroke: '#cc3333',
+          stroke: lineColor,
           strokeWidth: 2 / scale,
           dash: [10, 5],
           listening: false,
@@ -106,7 +107,7 @@ export const useLineDrawing = ({ layer, scale, onComplete }: UseLineDrawingOptio
 
       layer.batchDraw();
     },
-    [layer, scale, onComplete]
+    [layer, scale, onComplete, lineColor]
   );
 
   /**

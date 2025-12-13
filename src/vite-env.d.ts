@@ -98,6 +98,8 @@ interface Window {
     onEditProject: (callback: () => void) => Unsubscribe;
     onClearAllSpots: (callback: () => void) => Unsubscribe;
     onBatchEditSpots: (callback: () => void) => Unsubscribe;
+    onMergeSpots: (callback: () => void) => Unsubscribe;
+    onSplitSpot: (callback: () => void) => Unsubscribe;
     onShowProjectDebug: (callback: () => void) => Unsubscribe;
     onShowSerializedJson: (callback: () => void) => Unsubscribe;
     getSerializedProjectJson: (projectData: unknown) => Promise<string>;

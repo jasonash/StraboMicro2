@@ -92,7 +92,9 @@ import {
   Spot,
   GroupMetadata,
   Tag,
+  SimpleCoord,
 } from '@/types/project-types';
+import * as turf from '@turf/turf';
 import {
   PointCountSession,
   PointCountSessionSummary,
@@ -129,6 +131,9 @@ interface AppState {
 
   // ========== SELECTION STATE ==========
   selectedSpotIds: string[]; // Multi-selection for batch operations
+
+  // ========== SPLIT MODE STATE ==========
+  splitModeSpotId: string | null; // When set, user is drawing a split line on this spot
 
   // ========== VIEWER STATE ==========
   activeTool: DrawingTool;
@@ -233,6 +238,9 @@ interface AppState {
   deselectSpot: (id: string) => void;
   clearSpotSelection: () => void;
 
+  // ========== SPLIT MODE ACTIONS ==========
+  setSplitModeSpotId: (spotId: string | null) => void;
+
   // ========== CRUD: DATASET ==========
   addDataset: (dataset: DatasetMetadata) => void;
   updateDataset: (id: string, updates: Partial<DatasetMetadata>) => void;
@@ -261,6 +269,10 @@ interface AppState {
   deleteSpot: (id: string) => void;
   /** Clear all spots from a specific micrograph */
   clearAllSpots: (micrographId: string) => void;
+  /** Merge multiple polygon spots into a single spot */
+  mergeSpots: (spotIds: string[]) => string | null;
+  /** Split a polygon spot with a line, creating multiple spots */
+  splitSpot: (spotId: string, splitLine: SimpleCoord[]) => string[] | null;
 
   // ========== QUICK CLASSIFY ACTIONS ==========
   /** Toggle Quick Classify toolbar visibility */
@@ -380,6 +392,8 @@ export const useAppStore = create<AppState>()(
           micrographNavigationStack: [],
 
           selectedSpotIds: [],
+
+          splitModeSpotId: null,
 
           activeTool: 'select',
           editingSpotId: null,
@@ -623,6 +637,9 @@ export const useAppStore = create<AppState>()(
           },
 
           clearSpotSelection: () => set({ selectedSpotIds: [] }),
+
+          // ========== SPLIT MODE ACTIONS ==========
+          setSplitModeSpotId: (spotId) => set({ splitModeSpotId: spotId }),
 
           // ========== CRUD: DATASET ==========
 
@@ -1050,6 +1067,313 @@ export const useAppStore = create<AppState>()(
               spotIndex: buildSpotIndex(newProject),
             };
           }),
+
+          mergeSpots: (spotIds) => {
+            const state = get();
+            if (!state.project || spotIds.length < 2) return null;
+
+            // Get all spots to merge
+            const spots: Spot[] = [];
+            let micrographId: string | null = null;
+
+            for (const spotId of spotIds) {
+              const spot = state.spotIndex.get(spotId);
+              if (!spot) {
+                console.warn(`[Store] Spot ${spotId} not found for merge`);
+                return null;
+              }
+              spots.push(spot);
+
+              // Find which micrograph this spot belongs to
+              if (!micrographId) {
+                for (const [mId, micrograph] of state.micrographIndex) {
+                  if (micrograph.spots?.some(s => s.id === spotId)) {
+                    micrographId = mId;
+                    break;
+                  }
+                }
+              }
+            }
+
+            if (!micrographId) {
+              console.warn('[Store] Could not find micrograph for spots');
+              return null;
+            }
+
+            // Filter to only polygon spots
+            const polygonSpots = spots.filter(s => {
+              const points = s.points || [];
+              return points.length >= 3; // Polygons need at least 3 points
+            });
+
+            if (polygonSpots.length < 2) {
+              console.warn('[Store] Need at least 2 polygon spots to merge');
+              return null;
+            }
+
+            try {
+              // Convert spots to Turf polygons
+              const turfPolygons = polygonSpots.map(spot => {
+                const points = spot.points || [];
+                const coords = points.map(p => [p.X ?? p.x ?? 0, p.Y ?? p.y ?? 0] as [number, number]);
+                // Close the ring if not already closed
+                if (coords.length > 0) {
+                  const first = coords[0];
+                  const last = coords[coords.length - 1];
+                  if (first[0] !== last[0] || first[1] !== last[1]) {
+                    coords.push([first[0], first[1]]);
+                  }
+                }
+                return turf.polygon([coords]);
+              });
+
+              // Union all polygons
+              let merged = turfPolygons[0];
+              for (let i = 1; i < turfPolygons.length; i++) {
+                const result = turf.union(turf.featureCollection([merged, turfPolygons[i]]));
+                if (result && result.geometry.type === 'Polygon') {
+                  merged = result as ReturnType<typeof turf.polygon>;
+                } else if (result && result.geometry.type === 'MultiPolygon') {
+                  // If result is MultiPolygon, take the largest part
+                  const parts = result.geometry.coordinates;
+                  let largestArea = 0;
+                  let largestPart: number[][] = [];
+                  for (const part of parts) {
+                    const poly = turf.polygon(part as number[][][]);
+                    const area = turf.area(poly);
+                    if (area > largestArea) {
+                      largestArea = area;
+                      largestPart = part[0] as number[][]; // Outer ring
+                    }
+                  }
+                  merged = turf.polygon([largestPart]);
+                }
+              }
+
+              // Extract coordinates from merged polygon
+              const mergedCoords = merged.geometry.coordinates[0];
+              // Remove closing point (last == first)
+              const newPoints: SimpleCoord[] = mergedCoords.slice(0, -1).map(coord => ({
+                X: coord[0],
+                Y: coord[1],
+              }));
+
+              // Create merged spot with properties from first spot
+              const firstSpot = polygonSpots[0];
+              const newSpotId = crypto.randomUUID();
+              const newSpot: Spot = {
+                id: newSpotId,
+                name: `Merged (${polygonSpots.length} spots)`,
+                color: firstSpot.color,
+                opacity: firstSpot.opacity,
+                points: newPoints,
+                geometryType: 'Polygon',
+                modifiedTimestamp: Date.now(),
+                mergedFrom: spotIds,
+                generationMethod: 'manual' as const,
+                // Copy mineralogy from first spot if present
+                mineralogy: firstSpot.mineralogy,
+              };
+
+              // Update project: remove old spots, add merged spot
+              const newProject = structuredClone(state.project);
+
+              for (const dataset of newProject.datasets || []) {
+                for (const sample of dataset.samples || []) {
+                  for (const micrograph of sample.micrographs || []) {
+                    if (micrograph.id === micrographId && micrograph.spots) {
+                      // Remove merged spots
+                      micrograph.spots = micrograph.spots.filter(s => !spotIds.includes(s.id));
+                      // Add new merged spot
+                      micrograph.spots.push(newSpot);
+                    }
+                  }
+                }
+              }
+
+              set({
+                project: newProject,
+                isDirty: true,
+                selectedSpotIds: [newSpotId],
+                activeSpotId: newSpotId,
+                spotIndex: buildSpotIndex(newProject),
+              });
+
+              console.log(`[Store] Merged ${polygonSpots.length} spots into ${newSpotId}`);
+              return newSpotId;
+            } catch (error) {
+              console.error('[Store] Error merging spots:', error);
+              return null;
+            }
+          },
+
+          splitSpot: (spotId, splitLine) => {
+            const state = get();
+            if (!state.project || splitLine.length < 2) return null;
+
+            // Find the spot
+            const spot = state.spotIndex.get(spotId);
+            if (!spot) {
+              console.warn(`[Store] Spot ${spotId} not found for split`);
+              return null;
+            }
+
+            // Must be a polygon
+            const points = spot.points || [];
+            if (points.length < 3) {
+              console.warn('[Store] Can only split polygon spots');
+              return null;
+            }
+
+            // Find which micrograph this spot belongs to
+            let micrographId: string | null = null;
+            for (const [mId, micrograph] of state.micrographIndex) {
+              if (micrograph.spots?.some(s => s.id === spotId)) {
+                micrographId = mId;
+                break;
+              }
+            }
+
+            if (!micrographId) {
+              console.warn('[Store] Could not find micrograph for spot');
+              return null;
+            }
+
+            try {
+              // Convert spot to Turf polygon
+              const coords = points.map(p => [p.X ?? p.x ?? 0, p.Y ?? p.y ?? 0] as [number, number]);
+              // Close the ring
+              if (coords.length > 0) {
+                const first = coords[0];
+                const last = coords[coords.length - 1];
+                if (first[0] !== last[0] || first[1] !== last[1]) {
+                  coords.push([first[0], first[1]]);
+                }
+              }
+              const polygon = turf.polygon([coords]);
+
+              // Convert split line coordinates
+              const lineCoords = splitLine.map(p => [p.X ?? p.x ?? 0, p.Y ?? p.y ?? 0] as [number, number]);
+
+              // Split the polygon using the line
+              // We'll create a buffer around the line and use difference to cut the polygon
+
+              // Extend the line to ensure it crosses the polygon completely
+              const bbox = turf.bbox(polygon);
+              const diagonal = Math.sqrt(
+                Math.pow(bbox[2] - bbox[0], 2) + Math.pow(bbox[3] - bbox[1], 2)
+              );
+
+              // Get line bearing and extend in both directions
+              const start = lineCoords[0];
+              const end = lineCoords[lineCoords.length - 1];
+              const dx = end[0] - start[0];
+              const dy = end[1] - start[1];
+              const len = Math.sqrt(dx * dx + dy * dy);
+              const unitX = dx / len;
+              const unitY = dy / len;
+
+              // Extended line coordinates
+              const extendedStart: [number, number] = [
+                start[0] - unitX * diagonal,
+                start[1] - unitY * diagonal,
+              ];
+              const extendedEnd: [number, number] = [
+                end[0] + unitX * diagonal,
+                end[1] + unitY * diagonal,
+              ];
+
+              // Create a thin buffer around the extended line to use as a cutting tool
+              const extendedLine = turf.lineString([extendedStart, extendedEnd]);
+              const buffer = turf.buffer(extendedLine, 0.5, { units: 'meters' });
+
+              if (!buffer) {
+                console.warn('[Store] Could not create buffer for split line');
+                return null;
+              }
+
+              // Use difference to cut the polygon
+              const diff = turf.difference(turf.featureCollection([polygon, buffer]));
+
+              if (!diff) {
+                console.warn('[Store] Split did not produce any result');
+                return null;
+              }
+
+              // Extract resulting polygons
+              const newSpots: Spot[] = [];
+              const newSpotIds: string[] = [];
+
+              const processPolygon = (coordinates: number[][][]) => {
+                const ring = coordinates[0];
+                // Remove closing point
+                const newPoints: SimpleCoord[] = ring.slice(0, -1).map(coord => ({
+                  X: coord[0],
+                  Y: coord[1],
+                }));
+
+                if (newPoints.length >= 3) {
+                  const newId = crypto.randomUUID();
+                  newSpotIds.push(newId);
+                  newSpots.push({
+                    id: newId,
+                    name: `${spot.name} (split)`,
+                    color: spot.color,
+                    opacity: spot.opacity,
+                    points: newPoints,
+                    geometryType: 'Polygon',
+                    modifiedTimestamp: Date.now(),
+                    splitFrom: spotId,
+                    generationMethod: 'manual' as const,
+                    mineralogy: spot.mineralogy,
+                  });
+                }
+              };
+
+              if (diff.geometry.type === 'Polygon') {
+                processPolygon(diff.geometry.coordinates as number[][][]);
+              } else if (diff.geometry.type === 'MultiPolygon') {
+                for (const part of diff.geometry.coordinates) {
+                  processPolygon(part as number[][][]);
+                }
+              }
+
+              if (newSpots.length < 2) {
+                console.warn('[Store] Split did not create multiple polygons');
+                return null;
+              }
+
+              // Update project: remove old spot, add new spots
+              const newProject = structuredClone(state.project);
+
+              for (const dataset of newProject.datasets || []) {
+                for (const sample of dataset.samples || []) {
+                  for (const micrograph of sample.micrographs || []) {
+                    if (micrograph.id === micrographId && micrograph.spots) {
+                      // Remove original spot
+                      micrograph.spots = micrograph.spots.filter(s => s.id !== spotId);
+                      // Add new split spots
+                      micrograph.spots.push(...newSpots);
+                    }
+                  }
+                }
+              }
+
+              set({
+                project: newProject,
+                isDirty: true,
+                selectedSpotIds: newSpotIds,
+                activeSpotId: newSpotIds[0],
+                spotIndex: buildSpotIndex(newProject),
+              });
+
+              console.log(`[Store] Split spot ${spotId} into ${newSpots.length} spots`);
+              return newSpotIds;
+            } catch (error) {
+              console.error('[Store] Error splitting spot:', error);
+              return null;
+            }
+          },
 
           // ========== CRUD: GROUP ==========
 

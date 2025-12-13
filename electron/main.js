@@ -627,6 +627,25 @@ function createWindow() {
           }
         },
         {
+          label: 'Merge Selected Spots',
+          accelerator: 'CmdOrCtrl+M',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('menu:merge-spots');
+            }
+          }
+        },
+        {
+          label: 'Split Spot with Line...',
+          accelerator: 'CmdOrCtrl+/',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('menu:split-spot');
+            }
+          }
+        },
+        { type: 'separator' },
+        {
           label: 'Clear All Spots...',
           click: () => {
             if (mainWindow) {

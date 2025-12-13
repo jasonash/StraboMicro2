@@ -37,6 +37,14 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('menu:batch-edit-spots', callback);
     return () => ipcRenderer.removeListener('menu:batch-edit-spots', callback);
   },
+  onMergeSpots: (callback) => {
+    ipcRenderer.on('menu:merge-spots', callback);
+    return () => ipcRenderer.removeListener('menu:merge-spots', callback);
+  },
+  onSplitSpot: (callback) => {
+    ipcRenderer.on('menu:split-spot', callback);
+    return () => ipcRenderer.removeListener('menu:split-spot', callback);
+  },
   onShowProjectDebug: (callback) => {
     ipcRenderer.on('menu:show-project-debug', callback);
     return () => ipcRenderer.removeListener('menu:show-project-debug', callback);

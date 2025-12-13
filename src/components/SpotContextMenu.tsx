@@ -10,6 +10,8 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import EditIcon from '@mui/icons-material/Edit';
 import EditNoteIcon from '@mui/icons-material/EditNote';
 import ShapeLineIcon from '@mui/icons-material/Timeline';
+import MergeIcon from '@mui/icons-material/CallMerge';
+import ContentCutIcon from '@mui/icons-material/ContentCut';
 import { Spot } from '@/types/project-types';
 
 interface SpotContextMenuProps {
@@ -25,6 +27,12 @@ interface SpotContextMenuProps {
   selectedCount?: number;
   /** Callback for batch edit action */
   onBatchEdit?: () => void;
+  /** Callback for merge selected spots action */
+  onMergeSpots?: () => void;
+  /** Callback for split spot with line action */
+  onSplitSpot?: (spot: Spot) => void;
+  /** Whether the selected spots can be merged (all polygons) */
+  canMerge?: boolean;
 }
 
 export const SpotContextMenu: React.FC<SpotContextMenuProps> = ({
@@ -37,6 +45,9 @@ export const SpotContextMenu: React.FC<SpotContextMenuProps> = ({
   isRecursiveSpot = false,
   selectedCount = 0,
   onBatchEdit,
+  onMergeSpots,
+  onSplitSpot,
+  canMerge = false,
 }) => {
   const handleEditGeometry = () => {
     if (!spot) return;
@@ -61,7 +72,22 @@ export const SpotContextMenu: React.FC<SpotContextMenuProps> = ({
     onClose();
   };
 
+  const handleMergeSpots = () => {
+    onMergeSpots?.();
+    onClose();
+  };
+
+  const handleSplitSpot = () => {
+    if (!spot) return;
+    onSplitSpot?.(spot);
+    onClose();
+  };
+
   const showBatchEdit = selectedCount > 1 && onBatchEdit;
+  const showMerge = selectedCount > 1 && onMergeSpots && canMerge;
+  // Can only split polygon spots
+  const isPolygon = spot && (spot.points?.length ?? 0) >= 3;
+  const showSplit = selectedCount <= 1 && onSplitSpot && isPolygon && !isRecursiveSpot;
 
   return (
     <Menu
@@ -74,15 +100,34 @@ export const SpotContextMenu: React.FC<SpotContextMenuProps> = ({
     >
       {/* Batch edit option when multiple spots selected */}
       {showBatchEdit && (
-        <>
-          <MenuItem onClick={handleBatchEdit}>
-            <ListItemIcon>
-              <EditNoteIcon fontSize="small" />
-            </ListItemIcon>
-            <ListItemText>Edit {selectedCount} Selected Spots...</ListItemText>
-          </MenuItem>
-          <Divider />
-        </>
+        <MenuItem onClick={handleBatchEdit}>
+          <ListItemIcon>
+            <EditNoteIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>Edit {selectedCount} Selected Spots...</ListItemText>
+        </MenuItem>
+      )}
+
+      {/* Merge selected spots option */}
+      {showMerge && (
+        <MenuItem onClick={handleMergeSpots}>
+          <ListItemIcon>
+            <MergeIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>Merge {selectedCount} Selected Spots</ListItemText>
+        </MenuItem>
+      )}
+
+      {(showBatchEdit || showMerge) && <Divider />}
+
+      {/* Split spot option (single polygon spot only) */}
+      {showSplit && (
+        <MenuItem onClick={handleSplitSpot}>
+          <ListItemIcon>
+            <ContentCutIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>Split Spot with Line...</ListItemText>
+        </MenuItem>
       )}
 
       {!isRecursiveSpot && (
