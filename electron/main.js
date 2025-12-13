@@ -618,19 +618,33 @@ function createWindow() {
         { role: 'selectAll' },
         { type: 'separator' },
         {
-          label: 'Generate Spots...',
-          accelerator: 'CmdOrCtrl+Shift+G',
-          click: () => {
-            if (mainWindow) {
-              mainWindow.webContents.send('menu:generate-spots');
-            }
-          }
-        },
-        {
           label: 'Clear All Spots...',
           click: () => {
             if (mainWindow) {
               mainWindow.webContents.send('menu:clear-all-spots');
+            }
+          }
+        },
+      ],
+    },
+    {
+      label: 'Tools',
+      submenu: [
+        {
+          label: 'Point Count...',
+          accelerator: 'CmdOrCtrl+Shift+P',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('menu:point-count');
+            }
+          }
+        },
+        {
+          label: 'Grain Detection...',
+          accelerator: 'CmdOrCtrl+Shift+G',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('menu:grain-detection');
             }
           }
         },

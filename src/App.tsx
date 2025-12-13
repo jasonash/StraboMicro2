@@ -24,6 +24,7 @@ import { SharedProjectDialog } from './components/dialogs/SharedProjectDialog';
 import { CloseProjectDialog } from './components/dialogs/CloseProjectDialog';
 import { ProjectPrepDialog } from './components/dialogs/ProjectPrepDialog';
 import { GenerateSpotsDialog } from './components/dialogs/GenerateSpotsDialog';
+import { PointCountDialog } from './components/dialogs/PointCountDialog';
 import {
   IncompleteMicrographsDialog,
   findIncompleteMicrographs,
@@ -180,6 +181,7 @@ function App() {
   const [isSendErrorReportOpen, setIsSendErrorReportOpen] = useState(false);
   const [isManualUpdateCheck, setIsManualUpdateCheck] = useState(false);
   const [isConfigureShortcutsOpen, setIsConfigureShortcutsOpen] = useState(false);
+  const [isPointCountDialogOpen, setIsPointCountDialogOpen] = useState(false);
   const generateSpotsDialogOpen = useAppStore(state => state.generateSpotsDialogOpen);
   const generateSpotsTargetMicrographId = useAppStore(state => state.generateSpotsTargetMicrographId);
   const openGenerateSpotsDialog = useAppStore(state => state.openGenerateSpotsDialog);
@@ -399,6 +401,25 @@ function App() {
         openGenerateSpotsDialog(activeMicrographId);
       } else {
         console.warn('[App] Generate Spots: No micrograph selected');
+      }
+    }));
+
+    // Point Count menu item (Tools menu with Cmd+Shift+P)
+    unsubscribers.push(window.api.onPointCount(() => {
+      if (activeMicrographId) {
+        setIsPointCountDialogOpen(true);
+      } else {
+        console.warn('[App] Point Count: No micrograph selected');
+      }
+    }));
+
+    // Grain Detection menu item (Tools menu with Cmd+Shift+G)
+    // Note: This will be implemented in future - for now just open Generate Spots
+    unsubscribers.push(window.api.onGrainDetection(() => {
+      if (activeMicrographId) {
+        openGenerateSpotsDialog(activeMicrographId);
+      } else {
+        console.warn('[App] Grain Detection: No micrograph selected');
       }
     }));
 
@@ -1152,6 +1173,11 @@ function App() {
         isOpen={generateSpotsDialogOpen}
         onClose={closeGenerateSpotsDialog}
         micrographId={generateSpotsTargetMicrographId}
+      />
+      <PointCountDialog
+        isOpen={isPointCountDialogOpen}
+        onClose={() => setIsPointCountDialogOpen(false)}
+        micrographId={activeMicrographId}
       />
       <StatisticsPanel />
       <QuickClassifyToolbar
