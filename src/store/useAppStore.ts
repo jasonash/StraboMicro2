@@ -1435,6 +1435,24 @@ export const useAppStore = create<AppState>()(
             const firstUnclassifiedIndex = session.points.findIndex(p => !p.mineral);
             const initialIndex = firstUnclassifiedIndex >= 0 ? firstUnclassifiedIndex : 0;
 
+            // Set navigation guard to prevent accidental navigation during point counting
+            const pointCountNavigationGuard = async (): Promise<boolean> => {
+              // Show confirmation dialog
+              const shouldExit = window.confirm(
+                'You are in Point Count mode. Navigating away will exit Point Count mode.\n\n' +
+                'Your progress will be saved automatically.\n\n' +
+                'Do you want to exit Point Count mode?'
+              );
+
+              if (shouldExit) {
+                // Exit point count mode (this will save the session)
+                await get().exitPointCountMode();
+                return true; // Allow navigation
+              }
+
+              return false; // Block navigation
+            };
+
             set({
               pointCountMode: true,
               activePointCountSession: session,
@@ -1442,6 +1460,8 @@ export const useAppStore = create<AppState>()(
               // Show Quick Classify toolbar and Statistics Panel
               quickClassifyVisible: true,
               statisticsPanelVisible: true,
+              // Set navigation guard
+              navigationGuard: pointCountNavigationGuard,
             });
           },
 
@@ -1470,6 +1490,8 @@ export const useAppStore = create<AppState>()(
               quickClassifyVisible: false,
               lassoToolActive: false,
               selectedPointIndices: [],
+              // Clear navigation guard
+              navigationGuard: null,
             });
           },
 

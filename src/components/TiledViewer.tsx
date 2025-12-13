@@ -1488,7 +1488,9 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
 
                   {/* Render associated micrographs (overlays) - only rectangle-located ones */}
                   {/* Filter out: batch-imported without scale, and point-located micrographs */}
-                  {activeMicrograph &&
+                  {/* Hide overlays in point count mode */}
+                  {!pointCountMode &&
+                    activeMicrograph &&
                     project &&
                     childMicrographs
                       .filter((childMicro) => {
@@ -1548,7 +1550,9 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                 {/* Spots Layer - render all saved spots and point-located micrographs */}
                 <Layer key="spots-layer" x={position.x} y={position.y} scaleX={zoom} scaleY={zoom}>
                   {/* Render point-located associated micrographs as clickable markers */}
-                  {activeMicrograph &&
+                  {/* Hide in point count mode */}
+                  {!pointCountMode &&
+                    activeMicrograph &&
                     project &&
                     childMicrographs
                       .filter((childMicro) => {
@@ -1591,7 +1595,9 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                       })}
 
                   {/* Recursive Spots: Render spots from child micrographs (overlays) */}
-                  {showRecursiveSpots &&
+                  {/* Hide in point count mode */}
+                  {!pointCountMode &&
+                    showRecursiveSpots &&
                     activeMicrograph &&
                     childMicrographs
                       .filter((childMicro) => {
@@ -1642,7 +1648,8 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                       ))}
 
                   {/* First pass: Render visible spot shapes (viewport culled for performance) */}
-                  {visibleSpots.map((spot) => (
+                  {/* Hide in point count mode */}
+                  {!pointCountMode && visibleSpots.map((spot) => (
                     <SpotRenderer
                       key={spot.id}
                       spot={spot}
@@ -1664,7 +1671,8 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                   ))}
 
                   {/* Second pass: Render visible spot labels (ensures labels are on top) */}
-                  {showSpotLabels && visibleSpots.map((spot) => (
+                  {/* Hide in point count mode */}
+                  {!pointCountMode && showSpotLabels && visibleSpots.map((spot) => (
                     <SpotRenderer
                       key={`${spot.id}-label`}
                       spot={spot}
@@ -1751,7 +1759,9 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
 
                   {/* Render associated micrographs (overlays) */}
                   {/* Only render children that have scale set (not batch-imported without setup) */}
-                  {activeMicrograph &&
+                  {/* Hide overlays in point count mode */}
+                  {!pointCountMode &&
+                    activeMicrograph &&
                     project &&
                     childMicrographs
                       .filter(
@@ -1801,7 +1811,9 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                 {/* Spots Layer - render all saved spots */}
                 <Layer key="spots-layer" x={position.x} y={position.y} scaleX={zoom} scaleY={zoom}>
                   {/* Recursive Spots: Render spots from child micrographs (overlays) */}
-                  {showRecursiveSpots &&
+                  {/* Hide in point count mode */}
+                  {!pointCountMode &&
+                    showRecursiveSpots &&
                     activeMicrograph &&
                     childMicrographs
                       .filter((childMicro) => {
@@ -1852,7 +1864,8 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                       ))}
 
                   {/* First pass: Render visible spot shapes (viewport culled for performance) */}
-                  {visibleSpots.map((spot) => (
+                  {/* Hide in point count mode */}
+                  {!pointCountMode && visibleSpots.map((spot) => (
                     <SpotRenderer
                       key={spot.id}
                       spot={spot}
@@ -1874,7 +1887,8 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                   ))}
 
                   {/* Second pass: Render visible spot labels */}
-                  {showSpotLabels && visibleSpots.map((spot) => (
+                  {/* Hide in point count mode */}
+                  {!pointCountMode && showSpotLabels && visibleSpots.map((spot) => (
                     <SpotRenderer
                       key={`${spot.id}-label`}
                       spot={spot}
