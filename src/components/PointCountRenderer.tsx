@@ -212,18 +212,19 @@ export function PointCountRenderer({ scale, onPointClick }: PointCountRendererPr
   const currentPointIndex = useAppStore((s) => s.currentPointIndex);
   const setCurrentPointIndex = useAppStore((s) => s.setCurrentPointIndex);
 
+  // Handle point click - select the point and call callback
+  // NOTE: All hooks must be called before any early returns
+  const handlePointClick = useCallback((index: number) => {
+    setCurrentPointIndex(index);
+    onPointClick?.(index);
+  }, [setCurrentPointIndex, onPointClick]);
+
   // Don't render if not in point count mode or no session
   if (!pointCountMode || !activeSession) {
     return null;
   }
 
   const points = activeSession.points;
-
-  // Handle point click - select the point and call callback
-  const handlePointClick = useCallback((index: number) => {
-    setCurrentPointIndex(index);
-    onPointClick?.(index);
-  }, [setCurrentPointIndex, onPointClick]);
 
   return (
     <Group name="point-count-layer">
@@ -289,16 +290,17 @@ export function ViewportCulledPointCountRenderer({
       );
   }, [activeSession, viewportBounds, padding]);
 
-  // Don't render if not in point count mode or no session
-  if (!pointCountMode || !activeSession) {
-    return null;
-  }
-
   // Handle point click
+  // NOTE: All hooks must be called before any early returns
   const handlePointClick = useCallback((index: number) => {
     setCurrentPointIndex(index);
     onPointClick?.(index);
   }, [setCurrentPointIndex, onPointClick]);
+
+  // Don't render if not in point count mode or no session
+  if (!pointCountMode || !activeSession) {
+    return null;
+  }
 
   return (
     <Group name="point-count-layer">
