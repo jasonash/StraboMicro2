@@ -17,76 +17,92 @@ let loadPromise: Promise<OpenCVInstance> | null = null;
 let loadError: Error | null = null;
 
 /**
- * Wait for cv to be ready by polling
+ * Check if cv is ready (has Mat function)
  */
-function waitForCv(timeoutMs: number): Promise<OpenCVInstance> {
-  return new Promise((resolve, reject) => {
-    const startTime = Date.now();
+function isCvReady(): boolean {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const cv = (window as any).cv;
+  return cv && typeof cv.Mat === 'function';
+}
 
-    const checkReady = () => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const cv = (window as any).cv;
+/**
+ * Get the cv instance from window
+ */
+function getCv(): OpenCVInstance {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (window as any).cv;
+}
 
-      // Check if cv exists and has Mat (means it's fully initialized)
-      if (cv && typeof cv.Mat === 'function') {
-        console.log('[GrainDetection] cv.Mat found, OpenCV ready!');
-        resolve(cv);
-        return;
-      }
+/**
+ * Load OpenCV.js with a callback (bypasses Promise issues).
+ */
+export function loadOpenCVWithCallback(
+  onSuccess: (cv: OpenCVInstance) => void,
+  onError: (error: Error) => void
+): void {
+  console.log('[GrainDetection] loadOpenCVWithCallback() called');
 
-      // Check if cv is a function that needs to be called (factory pattern)
-      if (cv && typeof cv === 'function') {
-        console.log('[GrainDetection] cv is a factory function, calling it...');
-        try {
-          const cvResult = cv();
-          if (cvResult && typeof cvResult.then === 'function') {
-            // It's a Promise
-            cvResult.then(
-              (resolvedCv: OpenCVInstance) => {
-                console.log('[GrainDetection] Factory Promise resolved');
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                (window as any).cv = resolvedCv;
-                resolve(resolvedCv);
-              },
-              (err: Error) => {
-                reject(err);
-              }
-            );
-            return;
-          } else if (cvResult && typeof cvResult.Mat === 'function') {
-            console.log('[GrainDetection] Factory returned cv directly');
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            (window as any).cv = cvResult;
-            resolve(cvResult);
-            return;
-          }
-        } catch (e) {
-          console.log('[GrainDetection] Factory call failed, will retry:', e);
-        }
-      }
+  // Return cached instance if available
+  if (cvInstance) {
+    console.log('[GrainDetection] Returning cached cvInstance via callback');
+    setTimeout(() => onSuccess(cvInstance!), 0);
+    return;
+  }
 
-      // Check if cv has onRuntimeInitialized (WASM not ready yet)
-      if (cv && 'onRuntimeInitialized' in cv && typeof cv.Mat !== 'function') {
-        console.log('[GrainDetection] Waiting for WASM runtime...');
-        cv.onRuntimeInitialized = () => {
-          console.log('[GrainDetection] WASM runtime initialized');
-          resolve(cv);
-        };
-        return;
-      }
+  // Check if already loaded globally
+  if (isCvReady()) {
+    console.log('[GrainDetection] OpenCV.js already available globally');
+    cvInstance = getCv();
+    setTimeout(() => onSuccess(cvInstance!), 0);
+    return;
+  }
 
-      // Check timeout
-      if (Date.now() - startTime > timeoutMs) {
-        reject(new Error('OpenCV.js initialization timed out'));
-        return;
-      }
+  const existingScript = document.querySelector('script[src="/opencv.js"]');
+  const startTime = Date.now();
+  const timeoutMs = 30000;
 
-      // Not ready yet, retry
-      setTimeout(checkReady, 100);
+  const pollForCv = () => {
+    if (isCvReady()) {
+      const cv = getCv();
+      console.log('[GrainDetection] cv is ready! Calling success callback...');
+      cvInstance = cv;
+      loadError = null;
+      onSuccess(cv);
+      return;
+    }
+
+    if (Date.now() - startTime > timeoutMs) {
+      const error = new Error('OpenCV.js initialization timed out');
+      loadError = error;
+      onError(error);
+      return;
+    }
+
+    setTimeout(pollForCv, 100);
+  };
+
+  if (!existingScript) {
+    console.log('[GrainDetection] Loading OpenCV.js from bundled file...');
+    const script = document.createElement('script');
+    script.src = '/opencv.js';
+    script.async = true;
+
+    script.onerror = () => {
+      const error = new Error('Failed to load OpenCV.js from /opencv.js');
+      loadError = error;
+      onError(error);
     };
 
-    checkReady();
-  });
+    script.onload = () => {
+      console.log('[GrainDetection] Script loaded, starting to poll...');
+      setTimeout(pollForCv, 50);
+    };
+
+    document.head.appendChild(script);
+  } else {
+    console.log('[GrainDetection] Script exists, polling...');
+    setTimeout(pollForCv, 50);
+  }
 }
 
 /**
@@ -102,15 +118,14 @@ export async function loadOpenCV(): Promise<OpenCVInstance> {
   // Return cached instance if available
   if (cvInstance) {
     console.log('[GrainDetection] Returning cached cvInstance');
-    return cvInstance;
+    // Explicitly return via Promise.resolve to ensure proper async behavior
+    return Promise.resolve(cvInstance);
   }
 
   // Check if already loaded globally (handles HMR case where module reloads but cv persists)
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const globalCv = (window as any).cv;
-  if (globalCv && typeof globalCv.Mat === 'function') {
+  if (isCvReady()) {
     console.log('[GrainDetection] OpenCV.js already available globally');
-    cvInstance = globalCv;
+    cvInstance = getCv();
     return cvInstance;
   }
 
@@ -124,67 +139,118 @@ export async function loadOpenCV(): Promise<OpenCVInstance> {
   const existingScript = document.querySelector('script[src="/opencv.js"]');
 
   if (existingScript) {
-    console.log('[GrainDetection] Script tag already exists, waiting for cv...');
-    // Script exists, just wait for cv to be ready
-    loadPromise = waitForCv(30000)
-      .then((cv) => {
-        cvInstance = cv;
-        loadError = null;
-        console.log('[GrainDetection] cv ready from existing script');
-        return cv;
-      })
-      .catch((err) => {
-        loadError = err;
-        loadPromise = null;
-        throw err;
-      });
-    return loadPromise;
+    console.log('[GrainDetection] Script tag already exists, polling for cv...');
+  } else {
+    console.log('[GrainDetection] Loading OpenCV.js from bundled file...');
   }
 
-  // Load via new script tag
-  console.log('[GrainDetection] Loading OpenCV.js from bundled file...');
-
+  // Create the load promise
   loadPromise = new Promise<OpenCVInstance>((resolve, reject) => {
-    const script = document.createElement('script');
-    script.src = '/opencv.js';
-    script.async = true;
+    const startTime = Date.now();
+    const timeoutMs = 30000;
 
-    const timeout = setTimeout(() => {
-      const error = new Error('OpenCV.js load timed out after 30 seconds');
-      loadError = error;
-      loadPromise = null;
-      reject(error);
-    }, 30000);
+    // Polling function to check if cv is ready
+    const pollForCv = () => {
+      // Check if ready
+      if (isCvReady()) {
+        const cv = getCv();
+        console.log('[GrainDetection] cv is ready! Scheduling resolve...');
+        cvInstance = cv;
+        loadError = null;
+        // Use requestAnimationFrame to ensure we're out of any blocking context
+        requestAnimationFrame(() => {
+          console.log('[GrainDetection] Resolving promise now');
+          resolve(cv);
+        });
+        return;
+      }
 
-    script.onerror = () => {
-      clearTimeout(timeout);
-      const error = new Error('Failed to load OpenCV.js from /opencv.js');
-      loadError = error;
-      loadPromise = null;
-      console.error('[GrainDetection]', error.message);
-      reject(error);
-    };
+      // Check for factory pattern
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const cv = (window as any).cv;
+      if (cv && typeof cv === 'function') {
+        console.log('[GrainDetection] cv is a factory function, attempting to call...');
+        try {
+          const result = cv();
+          if (result && typeof result.then === 'function') {
+            result.then(
+              (resolvedCv: OpenCVInstance) => {
+                console.log('[GrainDetection] Factory promise resolved');
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                (window as any).cv = resolvedCv;
+                cvInstance = resolvedCv;
+                loadError = null;
+                resolve(resolvedCv);
+              },
+              (err: Error) => {
+                loadError = err;
+                loadPromise = null;
+                reject(err);
+              }
+            );
+            return;
+          }
+        } catch (e) {
+          // Factory call failed, continue polling
+        }
+      }
 
-    script.onload = () => {
-      console.log('[GrainDetection] Script loaded, waiting for cv initialization...');
-      clearTimeout(timeout);
-
-      // Wait for cv to be ready
-      waitForCv(10000)
-        .then((cv) => {
+      // Check for onRuntimeInitialized
+      if (cv && 'onRuntimeInitialized' in cv && typeof cv.Mat !== 'function') {
+        console.log('[GrainDetection] Setting up onRuntimeInitialized callback...');
+        cv.onRuntimeInitialized = () => {
+          console.log('[GrainDetection] WASM runtime initialized');
           cvInstance = cv;
           loadError = null;
-          console.log('[GrainDetection] OpenCV fully initialized');
           resolve(cv);
-        })
-        .catch((err) => {
-          loadError = err;
-          loadPromise = null;
-          reject(err);
-        });
+        };
+        return;
+      }
+
+      // Check timeout
+      if (Date.now() - startTime > timeoutMs) {
+        const error = new Error('OpenCV.js initialization timed out');
+        loadError = error;
+        loadPromise = null;
+        reject(error);
+        return;
+      }
+
+      // Not ready yet, poll again
+      setTimeout(pollForCv, 100);
     };
 
-    document.head.appendChild(script);
+    // If script doesn't exist, create and load it
+    if (!existingScript) {
+      const script = document.createElement('script');
+      script.src = '/opencv.js';
+      script.async = true;
+
+      script.onerror = () => {
+        const error = new Error('Failed to load OpenCV.js from /opencv.js');
+        loadError = error;
+        loadPromise = null;
+        console.error('[GrainDetection]', error.message);
+        reject(error);
+      };
+
+      script.onload = () => {
+        console.log('[GrainDetection] Script element loaded, will start polling shortly...');
+        // Give the browser a moment to breathe before polling
+        setTimeout(() => {
+          console.log('[GrainDetection] Starting to poll for cv...');
+          pollForCv();
+        }, 50);
+      };
+
+      document.head.appendChild(script);
+    } else {
+      // Script exists, just start polling after a brief delay
+      setTimeout(() => {
+        console.log('[GrainDetection] Starting to poll for cv (existing script)...');
+        pollForCv();
+      }, 50);
+    }
   });
 
   return loadPromise;
@@ -195,11 +261,8 @@ export async function loadOpenCV(): Promise<OpenCVInstance> {
  */
 export function isOpenCVLoaded(): boolean {
   if (cvInstance) return true;
-  // Also check global in case module was reloaded
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const globalCv = (window as any).cv;
-  if (globalCv && typeof globalCv.Mat === 'function') {
-    cvInstance = globalCv;
+  if (isCvReady()) {
+    cvInstance = getCv();
     return true;
   }
   return false;
@@ -210,9 +273,7 @@ export function isOpenCVLoaded(): boolean {
  */
 export function getOpenCVLoadState(): OpenCVLoadState {
   if (cvInstance) return 'ready';
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const globalCv = (window as any).cv;
-  if (globalCv && typeof globalCv.Mat === 'function') return 'ready';
+  if (isCvReady()) return 'ready';
   if (loadError) return 'error';
   if (loadPromise) return 'loading';
   return 'not-started';
@@ -223,11 +284,8 @@ export function getOpenCVLoadState(): OpenCVLoadState {
  */
 export function getOpenCVInstance(): OpenCVInstance | null {
   if (cvInstance) return cvInstance;
-  // Also check global
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const globalCv = (window as any).cv;
-  if (globalCv && typeof globalCv.Mat === 'function') {
-    cvInstance = globalCv;
+  if (isCvReady()) {
+    cvInstance = getCv();
     return cvInstance;
   }
   return null;

@@ -41,9 +41,6 @@ import {
 import { Stage, Layer, Image as KonvaImage, Line, Rect } from 'react-konva';
 import { useAppStore } from '@/store';
 import {
-  detectGrainBoundaries,
-  loadOpenCV,
-  isOpenCVLoaded,
   type DetectionSettings,
   type DetectionResult,
   BUILT_IN_PRESETS,
@@ -91,6 +88,7 @@ export function GrainDetectionDialog({
   const stageRef = useRef<any>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const detectionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const workerRef = useRef<Worker | null>(null);
 
   // Container width (responsive)
   const [containerWidth, setContainerWidth] = useState(600);
@@ -115,6 +113,7 @@ export function GrainDetectionDialog({
   // Detection results
   const [detectionResult, setDetectionResult] = useState<DetectionResult | null>(null);
   const [isDetecting, setIsDetecting] = useState(false);
+  const [detectionProgress, setDetectionProgress] = useState({ step: '', percent: 0 });
 
   // Spot generation options
   const [namingPattern, setNamingPattern] = useState(DEFAULT_SPOT_GENERATION_OPTIONS.namingPattern);
@@ -127,9 +126,10 @@ export function GrainDetectionDialog({
   const addSpot = useAppStore((s) => s.addSpot);
   const micrograph = micrographId ? micrographIndex.get(micrographId) : null;
 
-  // Image dimensions
-  const imageWidth = micrograph?.imageWidth || micrograph?.width || 1000;
-  const imageHeight = micrograph?.imageHeight || micrograph?.height || 1000;
+  // Image dimensions - use actual loaded image size, not original micrograph size
+  // This ensures polygon coordinates align with the displayed image
+  const imageWidth = image?.width || micrograph?.imageWidth || micrograph?.width || 1000;
+  const imageHeight = image?.height || micrograph?.imageHeight || micrograph?.height || 1000;
 
   // Canvas dimensions
   const width = containerWidth;
@@ -162,27 +162,10 @@ export function GrainDetectionDialog({
 
     let mounted = true;
 
-    const initialize = async () => {
+    const loadImage = async () => {
       try {
-        // Step 1: Load OpenCV if needed
-        if (!isOpenCVLoaded()) {
-          setLoadingState('loading-opencv');
-          setError(null);
-          console.log('[GrainDetection] Loading OpenCV.js...');
-          const cv = await loadOpenCV();
-          console.log('[GrainDetection] loadOpenCV() returned:', cv ? 'cv object' : 'null/undefined');
-          console.log('[GrainDetection] cv.Mat exists:', cv?.Mat ? 'yes' : 'no');
-          if (!mounted) {
-            console.log('[GrainDetection] Component unmounted during load, aborting');
-            return;
-          }
-          console.log('[GrainDetection] OpenCV.js loaded successfully');
-        } else {
-          console.log('[GrainDetection] OpenCV already loaded, skipping');
-        }
-
-        // Step 2: Load image
         setLoadingState('loading-image');
+        setError(null);
         console.log('[GrainDetection] Loading image...');
 
         const folderPaths = await window.api?.getProjectFolderPaths(project.id);
@@ -200,7 +183,7 @@ export function GrainDetectionDialog({
           throw new Error('Failed to load tile data');
         }
 
-        // Load medium resolution for detection (balance between quality and speed)
+        // Load medium resolution for detection
         let dataUrl = await window.api?.loadMedium(tileData.hash);
         if (!dataUrl) {
           console.log('[GrainDetection] No medium, trying thumbnail');
@@ -233,20 +216,9 @@ export function GrainDetectionDialog({
         const imgData = ctx.getImageData(0, 0, img.width, img.height);
         setImageData(imgData);
 
-        // Fit to canvas
-        const scaleX = width / imageWidth;
-        const scaleY = height / imageHeight;
-        const initialZoom = Math.min(scaleX, scaleY) * 0.9;
-        setZoom(initialZoom);
-        setFitZoom(initialZoom);
-
-        const x = (width - imageWidth * initialZoom) / 2;
-        const y = (height - imageHeight * initialZoom) / 2;
-        setPosition({ x, y });
-
         setLoadingState('ready');
 
-        // Run initial detection
+        // Run initial detection (Web Worker handles OpenCV loading)
         runDetection(imgData, settings);
       } catch (err) {
         console.error('[GrainDetection] Initialization error:', err);
@@ -257,15 +229,35 @@ export function GrainDetectionDialog({
       }
     };
 
-    initialize();
+    loadImage();
 
     return () => {
       mounted = false;
       if (detectionTimeoutRef.current) {
         clearTimeout(detectionTimeoutRef.current);
       }
+      // Terminate worker on cleanup
+      if (workerRef.current) {
+        workerRef.current.terminate();
+        workerRef.current = null;
+      }
     };
   }, [isOpen, micrograph, project]);
+
+  // Fit image to canvas when it first loads
+  useEffect(() => {
+    if (!image || loadingState !== 'ready') return;
+
+    const scaleX = width / image.width;
+    const scaleY = height / image.height;
+    const initialZoom = Math.min(scaleX, scaleY) * 0.9;
+    setZoom(initialZoom);
+    setFitZoom(initialZoom);
+
+    const x = (width - image.width * initialZoom) / 2;
+    const y = (height - image.height * initialZoom) / 2;
+    setPosition({ x, y });
+  }, [image, loadingState, width, height]);
 
   // Debounced detection when settings change
   useEffect(() => {
@@ -292,21 +284,70 @@ export function GrainDetectionDialog({
   // DETECTION
   // ============================================================================
 
-  const runDetection = useCallback(async (imgData: ImageData, detectionSettings: DetectionSettings) => {
+  const runDetection = useCallback((imgData: ImageData, detectionSettings: DetectionSettings) => {
     console.log('[GrainDetection] Running detection with settings:', detectionSettings);
     setIsDetecting(true);
     setError(null);
+    setDetectionProgress({ step: 'Starting...', percent: 0 });
 
-    try {
-      const result = await detectGrainBoundaries(imgData, detectionSettings);
-      console.log('[GrainDetection] Detection complete:', result.grains.length, 'grains in', result.processingTimeMs.toFixed(0), 'ms');
-      setDetectionResult(result);
-    } catch (err) {
-      console.error('[GrainDetection] Detection error:', err);
-      setError(err instanceof Error ? err.message : 'Detection failed');
-    } finally {
-      setIsDetecting(false);
+    // Terminate existing worker if any
+    if (workerRef.current) {
+      workerRef.current.terminate();
     }
+
+    // Create new worker
+    const worker = new Worker(
+      new URL('@/services/grainDetection/worker.ts', import.meta.url),
+      { type: 'module' }
+    );
+    workerRef.current = worker;
+
+    worker.onmessage = (event) => {
+      const message = event.data;
+
+      if (message.type === 'progress') {
+        setDetectionProgress({ step: message.step, percent: message.percent });
+      } else if (message.type === 'result') {
+        console.log('[GrainDetection] Detection complete:', message.grains.length, 'grains in', message.processingTimeMs.toFixed(0), 'ms');
+        setDetectionResult({
+          grains: message.grains,
+          processingTimeMs: message.processingTimeMs,
+          settings: detectionSettings,
+          imageDimensions: message.imageDimensions,
+          scaleFactor: message.scaleFactor,
+        });
+        setIsDetecting(false);
+        worker.terminate();
+        workerRef.current = null;
+      } else if (message.type === 'error') {
+        console.error('[GrainDetection] Detection error:', message.message);
+        setError(message.message);
+        setIsDetecting(false);
+        worker.terminate();
+        workerRef.current = null;
+      }
+    };
+
+    worker.onerror = (error) => {
+      console.error('[GrainDetection] Worker error:', error);
+      setError('Detection worker failed');
+      setIsDetecting(false);
+      worker.terminate();
+      workerRef.current = null;
+    };
+
+    // Send detection request to worker
+    worker.postMessage({
+      type: 'detect',
+      imageData: imgData,
+      settings: {
+        sensitivity: detectionSettings.sensitivity,
+        minGrainSize: detectionSettings.minGrainSize,
+        edgeContrast: detectionSettings.edgeContrast,
+        simplifyOutlines: detectionSettings.simplifyOutlines,
+        simplifyTolerance: detectionSettings.simplifyTolerance,
+      },
+    });
   }, []);
 
   // ============================================================================
@@ -512,27 +553,49 @@ export function GrainDetectionDialog({
                 </Box>
               )}
 
-              {/* Detecting overlay */}
+              {/* Detecting overlay - covers entire image */}
               {isDetecting && (
                 <Box
                   sx={{
                     position: 'absolute',
-                    top: 8,
-                    left: 8,
+                    inset: 0,
                     zIndex: 15,
-                    bgcolor: 'rgba(0,0,0,0.7)',
-                    px: 1.5,
-                    py: 0.5,
-                    borderRadius: 1,
+                    bgcolor: 'rgba(0,0,0,0.6)',
                     display: 'flex',
+                    flexDirection: 'column',
                     alignItems: 'center',
-                    gap: 1,
+                    justifyContent: 'center',
+                    gap: 2,
                   }}
                 >
-                  <CircularProgress size={16} sx={{ color: 'white' }} />
-                  <Typography variant="caption" color="white">
-                    Detecting...
+                  <CircularProgress size={48} sx={{ color: 'white' }} />
+                  <Typography variant="body1" color="white" fontWeight="medium">
+                    Detecting grains...
                   </Typography>
+                  <Typography variant="body2" color="rgba(255,255,255,0.8)">
+                    {detectionProgress.step || 'Starting...'}
+                  </Typography>
+                  {detectionProgress.percent > 0 && (
+                    <Box sx={{ width: 200, mt: 1 }}>
+                      <Box
+                        sx={{
+                          height: 4,
+                          bgcolor: 'rgba(255,255,255,0.2)',
+                          borderRadius: 2,
+                          overflow: 'hidden',
+                        }}
+                      >
+                        <Box
+                          sx={{
+                            height: '100%',
+                            width: `${detectionProgress.percent}%`,
+                            bgcolor: 'primary.main',
+                            transition: 'width 0.3s ease',
+                          }}
+                        />
+                      </Box>
+                    </Box>
+                  )}
                 </Box>
               )}
 

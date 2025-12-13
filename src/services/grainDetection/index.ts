@@ -12,7 +12,7 @@
  * @module grainDetection
  */
 
-import { loadOpenCV } from './opencvLoader';
+import { getOpenCVInstance, isOpenCVLoaded } from './opencvLoader';
 import type {
   DetectionSettings,
   DetectionResult,
@@ -26,9 +26,10 @@ export * from './opencvLoader';
 
 /**
  * Maximum image dimension for processing.
- * Larger images are downscaled to prevent memory issues.
+ * Larger images are downscaled to prevent memory issues and speed up detection.
+ * 1024 provides good balance of speed (~5s) and accuracy.
  */
-const MAX_PROCESSING_SIZE = 2048;
+const MAX_PROCESSING_SIZE = 1024;
 
 /**
  * Detect grain boundaries in an image.
@@ -38,25 +39,37 @@ const MAX_PROCESSING_SIZE = 2048;
  * @param regionMask - Optional region to limit detection
  * @returns Detection result with array of detected grains
  */
-export async function detectGrainBoundaries(
+export function detectGrainBoundaries(
   imageData: ImageData,
   settings: DetectionSettings,
   regionMask?: RegionMask
-): Promise<DetectionResult> {
+): DetectionResult {
+  console.log('[GrainDetection] detectGrainBoundaries() called');
   const startTime = performance.now();
 
-  // Load OpenCV if not already loaded
-  const cv = await loadOpenCV();
+  // Get OpenCV instance (must be loaded before calling this function)
+  if (!isOpenCVLoaded()) {
+    throw new Error('OpenCV must be loaded before calling detectGrainBoundaries');
+  }
+  const cv = getOpenCVInstance();
+  if (!cv) {
+    throw new Error('Failed to get OpenCV instance');
+  }
+  console.log('[GrainDetection] Got OpenCV instance');
 
   // Track all Mats for cleanup
   const mats: unknown[] = [];
 
   try {
     // Prepare image (downscale if needed)
+    console.log('[GrainDetection] Preparing image, input size:', imageData.width, 'x', imageData.height);
     const { processedImageData, scaleFactor } = prepareImageForProcessing(imageData);
+    console.log('[GrainDetection] Image prepared, processed size:', processedImageData.width, 'x', processedImageData.height, 'scale:', scaleFactor);
 
     // Convert ImageData to OpenCV Mat
+    console.log('[GrainDetection] Converting to OpenCV Mat...');
     const src = cv.matFromImageData(processedImageData);
+    console.log('[GrainDetection] Mat created, size:', src.rows, 'x', src.cols);
     mats.push(src);
 
     // Apply region mask if provided
@@ -66,16 +79,21 @@ export async function detectGrainBoundaries(
     }
 
     // Step 1: Preprocessing
+    console.log('[GrainDetection] Step 1: Preprocessing...');
     const preprocessed = preprocess(cv, masked, mats);
 
     // Step 2: Edge detection
+    console.log('[GrainDetection] Step 2: Edge detection...');
     const edges = detectEdges(cv, preprocessed, settings, mats);
 
     // Step 3: Watershed segmentation
+    console.log('[GrainDetection] Step 3: Watershed segmentation...');
     const markers = watershedSegment(cv, preprocessed, edges, mats);
 
     // Step 4: Extract contours from markers
+    console.log('[GrainDetection] Step 4: Extracting grain contours...');
     const grains = extractGrains(cv, markers, settings, scaleFactor, mats);
+    console.log('[GrainDetection] Step 5: Done!');
 
     const processingTimeMs = performance.now() - startTime;
 
@@ -307,6 +325,7 @@ function watershedSegment(
 
   // Add 1 to all markers so background is 1, not 0
   // Mark unknown region as 0
+  console.log('[GrainDetection] Watershed: Adjusting markers...');
   for (let i = 0; i < markers.rows; i++) {
     for (let j = 0; j < markers.cols; j++) {
       const val = markers.intAt(i, j);
@@ -317,6 +336,7 @@ function watershedSegment(
       }
     }
   }
+  console.log('[GrainDetection] Watershed: Markers adjusted');
 
   // Convert preprocessed to 3-channel for watershed
   const src3 = new cv.Mat();
@@ -345,6 +365,7 @@ function extractGrains(
   const grains: DetectedGrain[] = [];
 
   // Find unique marker values (each represents a grain)
+  console.log('[GrainDetection] ExtractGrains: Finding unique markers...');
   const markerValues = new Set<number>();
   for (let i = 0; i < markers.rows; i++) {
     for (let j = 0; j < markers.cols; j++) {
@@ -355,6 +376,7 @@ function extractGrains(
       }
     }
   }
+  console.log('[GrainDetection] ExtractGrains: Found', markerValues.size, 'potential grains');
 
   let grainIndex = 0;
 
