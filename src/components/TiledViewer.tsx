@@ -1370,6 +1370,29 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
     );
 
     /**
+     * Handle deletion of multiple selected spots
+     */
+    const handleDeleteSelectedSpots = useCallback(() => {
+      // Get all selected spot IDs (include activeSpotId if not already in selection)
+      const allIds = activeSpotId && !selectedSpotIds.includes(activeSpotId)
+        ? [...selectedSpotIds, activeSpotId]
+        : [...selectedSpotIds];
+
+      if (allIds.length === 0) return;
+
+      const count = allIds.length;
+      if (window.confirm(`Delete ${count} selected spots?\n\nThis action cannot be undone.`)) {
+        // Delete each spot
+        for (const spotId of allIds) {
+          deleteSpot(spotId);
+        }
+        // Clear selection
+        clearSpotSelection();
+        console.log(`Deleted ${count} spots`);
+      }
+    }, [activeSpotId, selectedSpotIds, deleteSpot, clearSpotSelection]);
+
+    /**
      * Handle overlay click for drill-down navigation
      * Uses async/await to respect navigation guard
      */
@@ -2224,6 +2247,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
           onEditGeometry={handleEditGeometry}
           onEditMetadata={handleEditMetadata}
           onDelete={handleDeleteSpot}
+          onDeleteSelected={handleDeleteSelectedSpots}
           isRecursiveSpot={isContextMenuRecursiveSpot}
           selectedCount={selectedSpotIds.length}
           onBatchEdit={() => setBatchEditDialogOpen(true)}

@@ -21,6 +21,8 @@ interface SpotContextMenuProps {
   onEditGeometry: (spot: Spot) => void;
   onEditMetadata: (spot: Spot) => void;
   onDelete: (spot: Spot) => void;
+  /** Callback for deleting multiple selected spots */
+  onDeleteSelected?: () => void;
   /** If true, spot belongs to a child micrograph (recursive spot) - hide geometry editing */
   isRecursiveSpot?: boolean;
   /** Number of spots currently selected (for batch edit option) */
@@ -42,6 +44,7 @@ export const SpotContextMenu: React.FC<SpotContextMenuProps> = ({
   onEditGeometry,
   onEditMetadata,
   onDelete,
+  onDeleteSelected,
   isRecursiveSpot = false,
   selectedCount = 0,
   onBatchEdit,
@@ -64,6 +67,11 @@ export const SpotContextMenu: React.FC<SpotContextMenuProps> = ({
   const handleDelete = () => {
     if (!spot) return;
     onDelete(spot);
+    onClose();
+  };
+
+  const handleDeleteSelected = () => {
+    onDeleteSelected?.();
     onClose();
   };
 
@@ -148,12 +156,21 @@ export const SpotContextMenu: React.FC<SpotContextMenuProps> = ({
         </MenuItem>
       )}
       <Divider />
-      <MenuItem onClick={handleDelete}>
-        <ListItemIcon>
-          <DeleteIcon fontSize="small" color="error" />
-        </ListItemIcon>
-        <ListItemText>Delete Spot</ListItemText>
-      </MenuItem>
+      {selectedCount > 1 ? (
+        <MenuItem onClick={handleDeleteSelected}>
+          <ListItemIcon>
+            <DeleteIcon fontSize="small" color="error" />
+          </ListItemIcon>
+          <ListItemText>Delete {selectedCount} Selected Spots</ListItemText>
+        </MenuItem>
+      ) : (
+        <MenuItem onClick={handleDelete}>
+          <ListItemIcon>
+            <DeleteIcon fontSize="small" color="error" />
+          </ListItemIcon>
+          <ListItemText>Delete Spot</ListItemText>
+        </MenuItem>
+      )}
     </Menu>
   );
 };
