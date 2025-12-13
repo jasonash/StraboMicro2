@@ -38,6 +38,9 @@ const UNCLASSIFIED_FILL = '#CCCCCC';
 /** Color for current point highlight */
 const CURRENT_POINT_HIGHLIGHT = '#FFD700'; // Gold
 
+/** Color for lasso-selected points */
+const SELECTED_POINT_HIGHLIGHT = '#2196F3'; // Blue (matches lasso line)
+
 // ============================================================================
 // TYPES
 // ============================================================================
@@ -58,16 +61,17 @@ interface PointProps {
   index: number;
   scale: number;
   isCurrent: boolean;
+  isSelected: boolean;
   onClick?: (index: number) => void;
 }
 
-const Point = memo(function Point({ point, index, scale, isCurrent, onClick }: PointProps) {
+const Point = memo(function Point({ point, index, scale, isCurrent, isSelected, onClick }: PointProps) {
   const isClassified = !!point.mineral;
   const mineralColor = point.mineral ? getMineralColor(point.mineral) : UNCLASSIFIED_FILL;
 
   // Scale-adjusted sizes
   const radius = (isCurrent ? CURRENT_POINT_RADIUS : POINT_RADIUS) / scale;
-  const strokeWidth = STROKE_WIDTH / scale; // Used for crosshair
+  const strokeWidth = STROKE_WIDTH / scale; // Used for crosshair and selection ring
   const crosshairLength = CROSSHAIR_LENGTH / scale;
 
   return (
@@ -135,6 +139,19 @@ const Point = memo(function Point({ point, index, scale, isCurrent, onClick }: P
         onTap={() => onClick?.(index)}
       />
 
+      {/* Selected point ring highlight (lasso selection) */}
+      {isSelected && !isCurrent && (
+        <Ring
+          x={point.x}
+          y={point.y}
+          innerRadius={radius + strokeWidth}
+          outerRadius={radius + strokeWidth * 2}
+          fill={SELECTED_POINT_HIGHLIGHT}
+          opacity={0.7}
+          listening={false}
+        />
+      )}
+
       {/* Current point outer ring highlight */}
       {isCurrent && (
         <Ring
@@ -161,6 +178,10 @@ export function PointCountRenderer({ scale, onPointClick }: PointCountRendererPr
   const activeSession = useAppStore((s) => s.activePointCountSession);
   const currentPointIndex = useAppStore((s) => s.currentPointIndex);
   const setCurrentPointIndex = useAppStore((s) => s.setCurrentPointIndex);
+  const selectedPointIndices = useAppStore((s) => s.selectedPointIndices);
+
+  // Create a Set for O(1) lookup of selected indices
+  const selectedIndicesSet = useMemo(() => new Set(selectedPointIndices), [selectedPointIndices]);
 
   // Handle point click - select the point and call callback
   // NOTE: All hooks must be called before any early returns
@@ -186,6 +207,7 @@ export function PointCountRenderer({ scale, onPointClick }: PointCountRendererPr
           index={index}
           scale={scale}
           isCurrent={index === currentPointIndex}
+          isSelected={selectedIndicesSet.has(index)}
           onClick={handlePointClick}
         />
       ))}
@@ -220,6 +242,10 @@ export function ViewportCulledPointCountRenderer({
   const activeSession = useAppStore((s) => s.activePointCountSession);
   const currentPointIndex = useAppStore((s) => s.currentPointIndex);
   const setCurrentPointIndex = useAppStore((s) => s.setCurrentPointIndex);
+  const selectedPointIndices = useAppStore((s) => s.selectedPointIndices);
+
+  // Create a Set for O(1) lookup of selected indices
+  const selectedIndicesSet = useMemo(() => new Set(selectedPointIndices), [selectedPointIndices]);
 
   // Filter points to only those visible in viewport (with padding)
   const visiblePoints = useMemo(() => {
@@ -262,6 +288,7 @@ export function ViewportCulledPointCountRenderer({
           index={index}
           scale={scale}
           isCurrent={index === currentPointIndex}
+          isSelected={selectedIndicesSet.has(index)}
           onClick={handlePointClick}
         />
       ))}

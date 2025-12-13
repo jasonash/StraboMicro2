@@ -177,6 +177,10 @@ interface AppState {
   pointCountSessionList: PointCountSessionSummary[];
   /** Index of the currently selected point in the session (-1 = none) */
   currentPointIndex: number;
+  /** Whether lasso selection tool is active */
+  lassoToolActive: boolean;
+  /** Indices of points selected via lasso (for batch operations) */
+  selectedPointIndices: number[];
 
   // ========== GENERATION SETTINGS (persisted) ==========
   /** Last used point counting settings */
@@ -285,6 +289,14 @@ interface AppState {
   goToPreviousPoint: () => void;
   /** Update session name */
   updatePointCountSessionName: (name: string) => void;
+  /** Toggle lasso tool mode */
+  setLassoToolActive: (active: boolean) => void;
+  /** Set selected point indices (from lasso selection) */
+  setSelectedPointIndices: (indices: number[]) => void;
+  /** Clear all selected points */
+  clearSelectedPoints: () => void;
+  /** Classify all selected points with a mineral (batch operation) */
+  classifySelectedPoints: (mineral: string) => void;
 
   // ========== GENERATION SETTINGS ACTIONS ==========
   /** Update last used point counting settings */
@@ -420,6 +432,8 @@ export const useAppStore = create<AppState>()(
           activePointCountSession: null,
           pointCountSessionList: [],
           currentPointIndex: -1,
+          lassoToolActive: false,
+          selectedPointIndices: [],
 
           // Generation settings (persisted defaults)
           lastPointCountSettings: null,
@@ -1454,6 +1468,8 @@ export const useAppStore = create<AppState>()(
               activePointCountSession: null,
               currentPointIndex: -1,
               quickClassifyVisible: false,
+              lassoToolActive: false,
+              selectedPointIndices: [],
             });
           },
 
@@ -1605,6 +1621,49 @@ export const useAppStore = create<AppState>()(
                 updatedAt: new Date().toISOString(),
               },
             });
+          },
+
+          setLassoToolActive: (active) => {
+            set({
+              lassoToolActive: active,
+              // Clear selection when deactivating lasso tool
+              selectedPointIndices: active ? get().selectedPointIndices : [],
+            });
+          },
+
+          setSelectedPointIndices: (indices) => set({ selectedPointIndices: indices }),
+
+          clearSelectedPoints: () => set({ selectedPointIndices: [] }),
+
+          classifySelectedPoints: (mineral) => {
+            const { activePointCountSession, selectedPointIndices, goToNextUnclassifiedPoint } = get();
+            if (!activePointCountSession || selectedPointIndices.length === 0) return;
+
+            const now = new Date().toISOString();
+            const updatedPoints = activePointCountSession.points.map((p, index) =>
+              selectedPointIndices.includes(index)
+                ? { ...p, mineral, classifiedAt: now }
+                : p
+            );
+
+            const updatedSession = {
+              ...activePointCountSession,
+              points: updatedPoints,
+              updatedAt: now,
+              summary: calculateSessionSummary(updatedPoints),
+            };
+
+            set({
+              activePointCountSession: updatedSession,
+              selectedPointIndices: [], // Clear selection after classification
+              lassoToolActive: false, // Deactivate lasso tool
+            });
+
+            // Navigate to next unclassified point
+            // Use setTimeout to ensure state is updated first
+            setTimeout(() => {
+              goToNextUnclassifiedPoint();
+            }, 10);
           },
 
           // ========== GENERATION SETTINGS ACTIONS ==========

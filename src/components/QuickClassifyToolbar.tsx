@@ -27,6 +27,7 @@ import {
   ChevronRight as ChevronRightIcon,
   DragIndicator as DragIcon,
   Save as SaveIcon,
+  Gesture as LassoIcon,
 } from '@mui/icons-material';
 import { useAppStore } from '../store';
 import { findMicrographById, findSpotById } from '../store/helpers';
@@ -78,6 +79,13 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
   const goToPreviousPoint = useAppStore((state) => state.goToPreviousPoint);
   const exitPointCountMode = useAppStore((state) => state.exitPointCountMode);
   const savePointCountSession = useAppStore((state) => state.savePointCountSession);
+
+  // Store - lasso selection (point count mode only)
+  const lassoToolActive = useAppStore((state) => state.lassoToolActive);
+  const setLassoToolActive = useAppStore((state) => state.setLassoToolActive);
+  const selectedPointIndices = useAppStore((state) => state.selectedPointIndices);
+  const classifySelectedPoints = useAppStore((state) => state.classifySelectedPoints);
+  const clearSelectedPoints = useAppStore((state) => state.clearSelectedPoints);
 
   // Flash state for visual feedback
   const [flashId, setFlashId] = useState<string | null>(null);
@@ -338,7 +346,15 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
   const classifyCurrentItem = useCallback(
     (mineralName: string) => {
       if (pointCountMode) {
-        // Point Count mode
+        // Point Count mode - check for batch selection first
+        if (selectedPointIndices.length > 0) {
+          // Batch classify all selected points
+          classifySelectedPoints(mineralName);
+          // classifySelectedPoints handles clearing selection and advancing
+          return;
+        }
+
+        // Single point classification
         if (!currentPoint) return;
 
         classifyPoint(currentPoint.id, mineralName);
@@ -373,7 +389,9 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
       pointCountMode,
       currentPoint,
       activeSpotId,
+      selectedPointIndices,
       classifyPoint,
+      classifySelectedPoints,
       updateSpotData,
       goToNextUnclassifiedPoint,
       selectNextUnclassifiedSpot,
@@ -477,7 +495,13 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
             goToPrevious();
             break;
           case 'exit':
-            handleClose();
+            // If points are selected, clear selection first; otherwise close
+            if (selectedPointIndices.length > 0) {
+              clearSelectedPoints();
+              setLassoToolActive(false);
+            } else {
+              handleClose();
+            }
             break;
           case 'nextUnclassified':
             selectNextUnclassified();
@@ -506,6 +530,9 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
       selectNextUnclassified,
       clearCurrentItem,
       classifyCurrentItem,
+      selectedPointIndices,
+      clearSelectedPoints,
+      setLassoToolActive,
     ]
   );
 
@@ -695,6 +722,25 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
               </IconButton>
             </Tooltip>
           )}
+          {pointCountMode && (
+            <Tooltip title={lassoToolActive ? "Exit Lasso Selection" : "Lasso Select Multiple Points"}>
+              <IconButton
+                size="small"
+                onClick={(e) => { e.stopPropagation(); setLassoToolActive(!lassoToolActive); }}
+                onMouseDown={(e) => e.stopPropagation()}
+                sx={{
+                  color: lassoToolActive ? 'primary.main' : 'grey.400',
+                  bgcolor: lassoToolActive ? 'action.selected' : 'transparent',
+                  p: 0.5,
+                  '&:hover': {
+                    bgcolor: lassoToolActive ? 'action.selected' : 'action.hover',
+                  },
+                }}
+              >
+                <LassoIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          )}
           <Tooltip title="Statistics">
             <IconButton
               size="small"
@@ -819,16 +865,22 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
             sx={{
               fontWeight: 500,
               transition: 'background-color 0.3s ease',
-              bgcolor: flashId ? 'success.light' : 'transparent',
+              bgcolor: flashId ? 'success.light' : (selectedPointIndices.length > 0 ? 'info.dark' : 'transparent'),
               px: 1,
               borderRadius: 1,
             }}
           >
-            {currentName}
-            {currentMineral && (
-              <Typography component="span" variant="body2" color="text.secondary" sx={{ ml: 1 }}>
-                ({formatMineralName(currentMineral)})
-              </Typography>
+            {selectedPointIndices.length > 0 ? (
+              `${selectedPointIndices.length} points selected`
+            ) : (
+              <>
+                {currentName}
+                {currentMineral && (
+                  <Typography component="span" variant="body2" color="text.secondary" sx={{ ml: 1 }}>
+                    ({formatMineralName(currentMineral)})
+                  </Typography>
+                )}
+              </>
             )}
           </Typography>
 

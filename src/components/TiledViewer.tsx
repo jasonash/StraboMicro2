@@ -22,6 +22,7 @@ import { AssociatedImageRenderer } from './AssociatedImageRenderer';
 import { ChildSpotsRenderer } from './ChildSpotsRenderer';
 import { SpotRenderer } from './SpotRenderer';
 import { PointCountRenderer } from './PointCountRenderer';
+import { LassoRenderer } from './LassoRenderer';
 import { SpotContextMenu } from './SpotContextMenu';
 import { EditingToolbar } from './EditingToolbar';
 import { NewSpotDialog } from './dialogs/NewSpotDialog';
@@ -31,6 +32,7 @@ import { Geometry, Spot } from '@/types/project-types';
 import { usePolygonDrawing } from '@/hooks/usePolygonDrawing';
 import { useLineDrawing } from '@/hooks/useLineDrawing';
 import { useRulerTool } from '@/hooks/useRulerTool';
+import { useLasso, getIndicesInPolygon } from '@/hooks/useLasso';
 import { useImperativeGeometryEditing } from '@/hooks/useImperativeGeometryEditing';
 import { getEffectiveTheme } from '@/hooks/useTheme';
 import './TiledViewer.css';
@@ -137,6 +139,15 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
     const navigateBack = useAppStore((state) => state.navigateBack);
     const micrographNavigationStack = useAppStore((state) => state.micrographNavigationStack);
     const micrographIndex = useAppStore((state) => state.micrographIndex);
+
+    // Lasso selection state (for point count mode)
+    const pointCountMode = useAppStore((state) => state.pointCountMode);
+    const lassoToolActive = useAppStore((state) => state.lassoToolActive);
+    const activePointCountSession = useAppStore((state) => state.activePointCountSession);
+    const setSelectedPointIndices = useAppStore((state) => state.setSelectedPointIndices);
+
+    // Initialize lasso hook
+    const lasso = useLasso();
 
     /**
      * Aggressively clean up tile memory to prevent OOM crashes.
@@ -849,8 +860,24 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
           return;
         }
 
+        // Handle lasso tool (point count mode only)
+        if (lassoToolActive && pointCountMode) {
+          const stage = stageRef.current;
+          if (!stage) return;
+          const pos = stage.getPointerPosition();
+          if (!pos) return;
+          // Convert to image coordinates
+          const imageX = (pos.x - position.x) / zoom;
+          const imageY = (pos.y - position.y) / zoom;
+          lasso.startLasso(imageX, imageY);
+          return;
+        }
+
         // Only enable panning if no drawing tool is active
         if (!activeTool || activeTool === 'select') {
+          // Don't pan if lasso is active
+          if (lassoToolActive) return;
+
           setIsPanning(true);
           const stage = stageRef.current;
           if (!stage) return;
@@ -858,7 +885,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
           setLastPointerPos(pos);
         }
       },
-      [activeTool, position, zoom, rulerTool]
+      [activeTool, position, zoom, rulerTool, lassoToolActive, pointCountMode, lasso]
     );
 
     const handleMouseMove = useCallback(() => {
@@ -885,6 +912,13 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
 
         setLastPointerPos(pos);
         return; // Don't update drawing preview while panning
+      }
+
+      // Handle lasso drawing (point count mode only)
+      if (lasso.isDrawing && lassoToolActive && pointCountMode) {
+        const imageX = (pos.x - position.x) / zoom;
+        const imageY = (pos.y - position.y) / zoom;
+        lasso.updateLasso(imageX, imageY);
       }
 
       // Handle drawing tool preview (polygon/line/measure)
@@ -958,6 +992,9 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
       lineDrawing,
       onCursorMove,
       activeMicrograph,
+      lasso,
+      lassoToolActive,
+      pointCountMode,
     ]);
 
     const handleMouseUp = useCallback(() => {
@@ -968,13 +1005,32 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
       if (activeTool === 'measure') {
         rulerTool.handleMouseUp();
       }
-    }, [activeTool, rulerTool]);
+
+      // Finish lasso selection and select points inside
+      if (lasso.isDrawing && lassoToolActive && pointCountMode && activePointCountSession) {
+        const polygon = lasso.completeLasso();
+        if (polygon.length >= 3) {
+          // Get points from the active session
+          const points = activePointCountSession.points;
+          // Find indices of points inside the lasso polygon
+          const selectedIndices = getIndicesInPolygon(points, polygon);
+          if (selectedIndices.length > 0) {
+            setSelectedPointIndices(selectedIndices);
+          }
+        }
+      }
+    }, [activeTool, rulerTool, lasso, lassoToolActive, pointCountMode, activePointCountSession, setSelectedPointIndices]);
 
     const handleMouseLeave = useCallback(() => {
       setIsPanning(false);
       setLastPointerPos(null);
       onCursorMove?.(null); // Clear coordinates in status bar
-    }, [onCursorMove]);
+
+      // Cancel lasso if mouse leaves while drawing
+      if (lasso.isDrawing) {
+        lasso.cancelLasso();
+      }
+    }, [onCursorMove, lasso]);
 
     /**
      * Handle stage click for drawing tools
@@ -1392,7 +1448,8 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                     activeTool === 'point' ||
                     activeTool === 'line' ||
                     activeTool === 'polygon' ||
-                    activeTool === 'measure'
+                    activeTool === 'measure' ||
+                    lassoToolActive
                       ? 'crosshair'
                       : isPanning
                       ? 'grabbing'
@@ -1619,6 +1676,11 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
 
                   {/* Point Count points (rendered on top of spots when in point count mode) */}
                   <PointCountRenderer scale={zoom} />
+
+                  {/* Lasso selection (point count mode only) */}
+                  {lasso.isDrawing && lasso.lassoPoints.length > 0 && (
+                    <LassoRenderer points={lasso.lassoPoints} scale={zoom} />
+                  )}
                 </Layer>
 
                 {/* Drawing Layer - for temporary drawing in progress */}
@@ -1652,7 +1714,8 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                     activeTool === 'point' ||
                     activeTool === 'line' ||
                     activeTool === 'polygon' ||
-                    activeTool === 'measure'
+                    activeTool === 'measure' ||
+                    lassoToolActive
                       ? 'crosshair'
                       : isPanning
                       ? 'grabbing'
@@ -1823,6 +1886,11 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
 
                   {/* Point Count points (rendered on top of spots when in point count mode) */}
                   <PointCountRenderer scale={zoom} />
+
+                  {/* Lasso selection (point count mode only) */}
+                  {lasso.isDrawing && lasso.lassoPoints.length > 0 && (
+                    <LassoRenderer points={lasso.lassoPoints} scale={zoom} />
+                  )}
                 </Layer>
 
                 {/* Drawing Layer */}
