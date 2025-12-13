@@ -94,6 +94,11 @@ import {
   Tag,
 } from '@/types/project-types';
 import {
+  PointCountSession,
+  PointCountSessionSummary,
+  calculateSessionSummary,
+} from '@/types/point-count-types';
+import {
   updateMicrograph,
   updateSpot,
   buildMicrographIndex,
@@ -135,6 +140,7 @@ interface AppState {
   showSpotLabels: boolean;
   showMicrographOutlines: boolean;
   showRecursiveSpots: boolean;
+  showArchivedSpots: boolean;
   showRulers: boolean;
   spotOverlayOpacity: number;
   viewerRef: React.RefObject<TiledViewerRef> | null;
@@ -153,6 +159,52 @@ interface AppState {
   // Callback that returns true if navigation should proceed, false to block
   // Used by DetailedNotesPanel to intercept navigation when there are unsaved notes
   navigationGuard: (() => Promise<boolean>) | null;
+
+  // ========== QUICK CLASSIFY STATE ==========
+  /** Whether Quick Classify toolbar is visible */
+  quickClassifyVisible: boolean;
+  /** User-configured keyboard shortcuts for classification (key -> mineral name) */
+  quickClassifyShortcuts: Record<string, string>;
+  /** Whether Statistics Panel is visible */
+  statisticsPanelVisible: boolean;
+
+  // ========== POINT COUNT MODE STATE ==========
+  /** Whether Point Count mode is active (separate from spots) */
+  pointCountMode: boolean;
+  /** Currently active Point Count session */
+  activePointCountSession: PointCountSession | null;
+  /** List of sessions for the current micrograph (summaries only, not full data) */
+  pointCountSessionList: PointCountSessionSummary[];
+  /** Index of the currently selected point in the session (-1 = none) */
+  currentPointIndex: number;
+  /** Whether lasso selection tool is active */
+  lassoToolActive: boolean;
+  /** Indices of points selected via lasso (for batch operations) */
+  selectedPointIndices: number[];
+
+  // ========== GENERATION SETTINGS (persisted) ==========
+  /** Last used point counting settings */
+  lastPointCountSettings: {
+    gridType: 'regular' | 'random' | 'stratified';
+    pointCount: number;
+    offsetByHalfSpacing: boolean;
+    pointSize: number;
+    color: string;
+    opacity: number;
+    namingPattern: string;
+  } | null;
+  /** Last used grain detection settings */
+  lastGrainDetectionSettings: {
+    sensitivity: number;
+    minGrainSize: number;
+    edgeContrast: number;
+    simplifyOutlines: boolean;
+    outputType: 'polygons' | 'points';
+    presetName: string;
+    color: string;
+    opacity: number;
+    namingPattern: string;
+  } | null;
 
   // ========== COMPUTED INDEXES (for performance) ==========
   micrographIndex: Map<string, MicrographMetadata>;
@@ -199,8 +251,58 @@ interface AppState {
 
   // ========== CRUD: SPOT ==========
   addSpot: (micrographId: string, spot: Spot) => void;
+  /** Add multiple spots at once (for generation results) - more efficient than calling addSpot N times */
+  addSpots: (micrographId: string, spots: Spot[]) => void;
   updateSpotData: (id: string, updates: Partial<Spot>) => void;
+  /** Update multiple spots with the same changes (batch edit) */
+  batchUpdateSpots: (spotIds: string[], updates: Partial<Spot>) => void;
   deleteSpot: (id: string) => void;
+  /** Clear all spots from a specific micrograph */
+  clearAllSpots: (micrographId: string) => void;
+
+  // ========== QUICK CLASSIFY ACTIONS ==========
+  /** Toggle Quick Classify toolbar visibility */
+  setQuickClassifyVisible: (visible: boolean) => void;
+  /** Update keyboard shortcut configuration */
+  setQuickClassifyShortcuts: (shortcuts: Record<string, string>) => void;
+  /** Toggle Statistics Panel visibility */
+  setStatisticsPanelVisible: (visible: boolean) => void;
+
+  // ========== POINT COUNT MODE ACTIONS ==========
+  /** Enter Point Count mode with a session */
+  enterPointCountMode: (session: PointCountSession) => void;
+  /** Exit Point Count mode (auto-saves) */
+  exitPointCountMode: () => Promise<void>;
+  /** Classify a point with a mineral */
+  classifyPoint: (pointId: string, mineral: string) => void;
+  /** Clear classification from a point */
+  clearPointClassification: (pointId: string) => void;
+  /** Save the current point count session to disk */
+  savePointCountSession: () => Promise<void>;
+  /** Load session list for a micrograph */
+  loadPointCountSessions: (micrographId: string) => Promise<void>;
+  /** Set the current point index */
+  setCurrentPointIndex: (index: number) => void;
+  /** Navigate to next unclassified point */
+  goToNextUnclassifiedPoint: () => void;
+  /** Navigate to previous point */
+  goToPreviousPoint: () => void;
+  /** Update session name */
+  updatePointCountSessionName: (name: string) => void;
+  /** Toggle lasso tool mode */
+  setLassoToolActive: (active: boolean) => void;
+  /** Set selected point indices (from lasso selection) */
+  setSelectedPointIndices: (indices: number[]) => void;
+  /** Clear all selected points */
+  clearSelectedPoints: () => void;
+  /** Classify all selected points with a mineral (batch operation) */
+  classifySelectedPoints: (mineral: string) => void;
+
+  // ========== GENERATION SETTINGS ACTIONS ==========
+  /** Update last used point counting settings */
+  setLastPointCountSettings: (settings: AppState['lastPointCountSettings']) => void;
+  /** Update last used grain detection settings */
+  setLastGrainDetectionSettings: (settings: AppState['lastGrainDetectionSettings']) => void;
 
   // ========== CRUD: GROUP ==========
   createGroup: (group: GroupMetadata) => void;
@@ -225,6 +327,7 @@ interface AppState {
   setShowSpotLabels: (show: boolean) => void;
   setShowMicrographOutlines: (show: boolean) => void;
   setShowRecursiveSpots: (show: boolean) => void;
+  setShowArchivedSpots: (show: boolean) => void;
   setShowRulers: (show: boolean) => void;
   setSpotOverlayOpacity: (opacity: number) => void;
   setViewerRef: (ref: React.RefObject<TiledViewerRef> | null) => void;
@@ -283,6 +386,7 @@ export const useAppStore = create<AppState>()(
           showSpotLabels: true,
           showMicrographOutlines: true,
           showRecursiveSpots: false,
+          showArchivedSpots: false,
           showRulers: true,
           spotOverlayOpacity: 0.7,
           viewerRef: null,
@@ -296,6 +400,44 @@ export const useAppStore = create<AppState>()(
           expandedMicrographs: [],
 
           navigationGuard: null,
+
+          // Quick Classify state
+          quickClassifyVisible: false,
+          // Default mineral shortcuts for Quick Classify - common rock-forming minerals
+          // Note: Non-mineral categories (matrix, void, lithic, opaque) are intentionally
+          // excluded - the mineralogy schema only supports actual mineral names.
+          // See PROJECT_STATUS.md for future schema expansion plans.
+          quickClassifyShortcuts: {
+            'q': 'quartz',
+            'p': 'plagioclase',
+            'k': 'k-feldspar',
+            'o': 'olivine',
+            'x': 'pyroxene',
+            'a': 'amphibole',
+            'h': 'hornblende',
+            'b': 'biotite',
+            'm': 'muscovite',
+            'g': 'garnet',
+            'c': 'calcite',
+            'd': 'dolomite',
+            'e': 'epidote',
+            's': 'serpentine',
+            'z': 'zircon',
+            'u': 'unknown',
+          },
+          statisticsPanelVisible: false,
+
+          // Point Count mode state
+          pointCountMode: false,
+          activePointCountSession: null,
+          pointCountSessionList: [],
+          currentPointIndex: -1,
+          lassoToolActive: false,
+          selectedPointIndices: [],
+
+          // Generation settings (persisted defaults)
+          lastPointCountSettings: null,
+          lastGrainDetectionSettings: null,
 
           micrographIndex: new Map(),
           spotIndex: new Map(),
@@ -799,6 +941,22 @@ export const useAppStore = create<AppState>()(
             return {
               project: newProject,
               isDirty: true,
+              micrographIndex: buildMicrographIndex(newProject),
+              spotIndex: buildSpotIndex(newProject),
+            };
+          }),
+
+          addSpots: (micrographId, spots) => set((state) => {
+            if (!state.project || spots.length === 0) return state;
+
+            const newProject = updateMicrograph(state.project, micrographId, (micrograph) => {
+              micrograph.spots = [...(micrograph.spots || []), ...spots];
+            });
+
+            return {
+              project: newProject,
+              isDirty: true,
+              micrographIndex: buildMicrographIndex(newProject),
               spotIndex: buildSpotIndex(newProject),
             };
           }),
@@ -809,6 +967,34 @@ export const useAppStore = create<AppState>()(
             const newProject = updateSpot(state.project, id, (spot) => {
               Object.assign(spot, updates);
             });
+
+            return {
+              project: newProject,
+              isDirty: true,
+              spotIndex: buildSpotIndex(newProject),
+            };
+          }),
+
+          batchUpdateSpots: (spotIds, updates) => set((state) => {
+            if (!state.project || spotIds.length === 0) return state;
+
+            const spotIdSet = new Set(spotIds);
+            const newProject = structuredClone(state.project);
+
+            // Update all matching spots in all micrographs
+            for (const dataset of newProject.datasets || []) {
+              for (const sample of dataset.samples || []) {
+                for (const micrograph of sample.micrographs || []) {
+                  if (micrograph.spots) {
+                    for (const spot of micrograph.spots) {
+                      if (spotIdSet.has(spot.id)) {
+                        Object.assign(spot, updates);
+                      }
+                    }
+                  }
+                }
+              }
+            }
 
             return {
               project: newProject,
@@ -834,6 +1020,28 @@ export const useAppStore = create<AppState>()(
               project: newProject,
               isDirty: true,
               selectedSpotIds: state.selectedSpotIds.filter(sid => sid !== id),
+              spotIndex: buildSpotIndex(newProject),
+            };
+          }),
+
+          clearAllSpots: (micrographId) => set((state) => {
+            if (!state.project) return state;
+
+            const newProject = updateMicrograph(state.project, micrographId, (micrograph) => {
+              // Get spot IDs being deleted to clean up selection
+              const deletedSpotIds = new Set((micrograph.spots || []).map(s => s.id));
+              micrograph.spots = [];
+              return deletedSpotIds;
+            });
+
+            // Get the deleted spot IDs from the old project
+            const oldMicrograph = state.micrographIndex.get(micrographId);
+            const deletedSpotIds = new Set((oldMicrograph?.spots || []).map(s => s.id));
+
+            return {
+              project: newProject,
+              isDirty: true,
+              selectedSpotIds: state.selectedSpotIds.filter(sid => !deletedSpotIds.has(sid)),
               spotIndex: buildSpotIndex(newProject),
             };
           }),
@@ -1075,6 +1283,8 @@ export const useAppStore = create<AppState>()(
 
           setShowRecursiveSpots: (show) => set({ showRecursiveSpots: show }),
 
+          setShowArchivedSpots: (show) => set({ showArchivedSpots: show }),
+
           setShowRulers: (show) => set({ showRulers: show }),
 
           setSpotOverlayOpacity: (opacity) => set({ spotOverlayOpacity: opacity }),
@@ -1202,6 +1412,288 @@ export const useAppStore = create<AppState>()(
           // ========== NAVIGATION GUARD ACTIONS ==========
 
           setNavigationGuard: (guard) => set({ navigationGuard: guard }),
+
+          // ========== QUICK CLASSIFY ACTIONS ==========
+
+          setQuickClassifyVisible: (visible) => {
+            // When showing Quick Classify, also show the Statistics Panel
+            if (visible) {
+              set({ quickClassifyVisible: true, statisticsPanelVisible: true });
+            } else {
+              set({ quickClassifyVisible: false });
+            }
+          },
+
+          setQuickClassifyShortcuts: (shortcuts) => set({ quickClassifyShortcuts: shortcuts }),
+
+          setStatisticsPanelVisible: (visible) => set({ statisticsPanelVisible: visible }),
+
+          // ========== POINT COUNT MODE ACTIONS ==========
+
+          enterPointCountMode: (session) => {
+            // Find first unclassified point index
+            const firstUnclassifiedIndex = session.points.findIndex(p => !p.mineral);
+            const initialIndex = firstUnclassifiedIndex >= 0 ? firstUnclassifiedIndex : 0;
+
+            // Set navigation guard to prevent accidental navigation during point counting
+            const pointCountNavigationGuard = async (): Promise<boolean> => {
+              // Show confirmation dialog
+              const shouldExit = window.confirm(
+                'You are in Point Count mode. Navigating away will exit Point Count mode.\n\n' +
+                'Your progress will be saved automatically.\n\n' +
+                'Do you want to exit Point Count mode?'
+              );
+
+              if (shouldExit) {
+                // Exit point count mode (this will save the session)
+                await get().exitPointCountMode();
+                return true; // Allow navigation
+              }
+
+              return false; // Block navigation
+            };
+
+            set({
+              pointCountMode: true,
+              activePointCountSession: session,
+              currentPointIndex: session.points.length > 0 ? initialIndex : -1,
+              // Show Quick Classify toolbar and Statistics Panel
+              quickClassifyVisible: true,
+              statisticsPanelVisible: true,
+              // Set navigation guard
+              navigationGuard: pointCountNavigationGuard,
+            });
+          },
+
+          exitPointCountMode: async () => {
+            const { activePointCountSession, project } = get();
+
+            // Auto-save session before exiting
+            if (activePointCountSession && project && window.api?.pointCount) {
+              try {
+                // Update summary before saving
+                const updatedSession = {
+                  ...activePointCountSession,
+                  summary: calculateSessionSummary(activePointCountSession.points),
+                };
+                await window.api.pointCount.saveSession(project.id, updatedSession);
+                console.log('[Store] Point count session saved on exit');
+              } catch (error) {
+                console.error('[Store] Error saving point count session:', error);
+              }
+            }
+
+            set({
+              pointCountMode: false,
+              activePointCountSession: null,
+              currentPointIndex: -1,
+              quickClassifyVisible: false,
+              statisticsPanelVisible: false,
+              lassoToolActive: false,
+              selectedPointIndices: [],
+              // Clear navigation guard
+              navigationGuard: null,
+            });
+          },
+
+          classifyPoint: (pointId, mineral) => {
+            const { activePointCountSession } = get();
+            if (!activePointCountSession) return;
+
+            const now = new Date().toISOString();
+            const updatedPoints = activePointCountSession.points.map(p =>
+              p.id === pointId
+                ? { ...p, mineral, classifiedAt: now }
+                : p
+            );
+
+            const updatedSession = {
+              ...activePointCountSession,
+              points: updatedPoints,
+              updatedAt: now,
+              summary: calculateSessionSummary(updatedPoints),
+            };
+
+            set({ activePointCountSession: updatedSession });
+          },
+
+          clearPointClassification: (pointId) => {
+            const { activePointCountSession } = get();
+            if (!activePointCountSession) return;
+
+            const updatedPoints = activePointCountSession.points.map(p =>
+              p.id === pointId
+                ? { ...p, mineral: undefined, classifiedAt: undefined }
+                : p
+            );
+
+            const updatedSession = {
+              ...activePointCountSession,
+              points: updatedPoints,
+              updatedAt: new Date().toISOString(),
+              summary: calculateSessionSummary(updatedPoints),
+            };
+
+            set({ activePointCountSession: updatedSession });
+          },
+
+          savePointCountSession: async () => {
+            const { activePointCountSession, project } = get();
+            if (!activePointCountSession || !project) {
+              console.warn('[Store] No active point count session to save');
+              return;
+            }
+
+            if (!window.api?.pointCount) {
+              console.warn('[Store] Point count API not available');
+              return;
+            }
+
+            try {
+              const result = await window.api.pointCount.saveSession(
+                project.id,
+                activePointCountSession
+              );
+              if (result.success && result.session) {
+                set({ activePointCountSession: result.session });
+                console.log('[Store] Point count session saved');
+              } else {
+                console.error('[Store] Error saving point count session:', result.error);
+              }
+            } catch (error) {
+              console.error('[Store] Error saving point count session:', error);
+            }
+          },
+
+          loadPointCountSessions: async (micrographId) => {
+            const { project } = get();
+            if (!project) {
+              console.warn('[Store] No project loaded');
+              return;
+            }
+
+            if (!window.api?.pointCount) {
+              console.warn('[Store] Point count API not available');
+              return;
+            }
+
+            try {
+              const result = await window.api.pointCount.listSessions(
+                project.id,
+                micrographId
+              );
+              if (result.success) {
+                set({ pointCountSessionList: result.sessions });
+                console.log(`[Store] Loaded ${result.sessions.length} point count sessions`);
+              } else {
+                console.error('[Store] Error loading point count sessions:', result.error);
+                set({ pointCountSessionList: [] });
+              }
+            } catch (error) {
+              console.error('[Store] Error loading point count sessions:', error);
+              set({ pointCountSessionList: [] });
+            }
+          },
+
+          setCurrentPointIndex: (index) => set({ currentPointIndex: index }),
+
+          goToNextUnclassifiedPoint: () => {
+            const { activePointCountSession, currentPointIndex } = get();
+            if (!activePointCountSession) return;
+
+            const points = activePointCountSession.points;
+            const startIndex = currentPointIndex + 1;
+
+            // Search from current position to end
+            for (let i = startIndex; i < points.length; i++) {
+              if (!points[i].mineral) {
+                set({ currentPointIndex: i });
+                return;
+              }
+            }
+
+            // Wrap around and search from start
+            for (let i = 0; i < startIndex && i < points.length; i++) {
+              if (!points[i].mineral) {
+                set({ currentPointIndex: i });
+                return;
+              }
+            }
+
+            // No unclassified points found, stay at current or go to first
+            if (currentPointIndex < 0 && points.length > 0) {
+              set({ currentPointIndex: 0 });
+            }
+          },
+
+          goToPreviousPoint: () => {
+            const { activePointCountSession, currentPointIndex } = get();
+            if (!activePointCountSession || currentPointIndex <= 0) return;
+
+            set({ currentPointIndex: currentPointIndex - 1 });
+          },
+
+          updatePointCountSessionName: (name) => {
+            const { activePointCountSession } = get();
+            if (!activePointCountSession) return;
+
+            set({
+              activePointCountSession: {
+                ...activePointCountSession,
+                name,
+                updatedAt: new Date().toISOString(),
+              },
+            });
+          },
+
+          setLassoToolActive: (active) => {
+            set({
+              lassoToolActive: active,
+              // Clear selection when deactivating lasso tool
+              selectedPointIndices: active ? get().selectedPointIndices : [],
+            });
+          },
+
+          setSelectedPointIndices: (indices) => set({ selectedPointIndices: indices }),
+
+          clearSelectedPoints: () => set({ selectedPointIndices: [] }),
+
+          classifySelectedPoints: (mineral) => {
+            const { activePointCountSession, selectedPointIndices, goToNextUnclassifiedPoint } = get();
+            if (!activePointCountSession || selectedPointIndices.length === 0) return;
+
+            const now = new Date().toISOString();
+            const updatedPoints = activePointCountSession.points.map((p, index) =>
+              selectedPointIndices.includes(index)
+                ? { ...p, mineral, classifiedAt: now }
+                : p
+            );
+
+            const updatedSession = {
+              ...activePointCountSession,
+              points: updatedPoints,
+              updatedAt: now,
+              summary: calculateSessionSummary(updatedPoints),
+            };
+
+            set({
+              activePointCountSession: updatedSession,
+              selectedPointIndices: [], // Clear selection after classification
+              lassoToolActive: false, // Deactivate lasso tool
+            });
+
+            // Navigate to next unclassified point
+            // Use setTimeout to ensure state is updated first
+            setTimeout(() => {
+              goToNextUnclassifiedPoint();
+            }, 10);
+          },
+
+          // ========== GENERATION SETTINGS ACTIONS ==========
+
+          setLastPointCountSettings: (settings) => set({ lastPointCountSettings: settings }),
+
+          setLastGrainDetectionSettings: (settings) => set({ lastGrainDetectionSettings: settings }),
         }),
         {
           // Temporal (undo/redo) configuration
@@ -1231,6 +1723,7 @@ export const useAppStore = create<AppState>()(
           showSpotLabels: state.showSpotLabels,
           showMicrographOutlines: state.showMicrographOutlines,
           showRecursiveSpots: state.showRecursiveSpots,
+          showArchivedSpots: state.showArchivedSpots,
           spotOverlayOpacity: state.spotOverlayOpacity,
           theme: state.theme,
 
@@ -1238,6 +1731,13 @@ export const useAppStore = create<AppState>()(
           expandedDatasets: state.expandedDatasets,
           expandedSamples: state.expandedSamples,
           expandedMicrographs: state.expandedMicrographs,
+
+          // Quick Classify settings
+          quickClassifyShortcuts: state.quickClassifyShortcuts,
+
+          // Generation settings
+          lastPointCountSettings: state.lastPointCountSettings,
+          lastGrainDetectionSettings: state.lastGrainDetectionSettings,
         }),
         // Rebuild indexes after rehydrating from file storage
         onRehydrateStorage: () => (state) => {

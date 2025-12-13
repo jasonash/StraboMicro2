@@ -72,6 +72,9 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
   const showLabel = spot.showLabel ?? true;
   const opacity = (spot.opacity ?? 50) / 100; // Convert 0-100 to 0-1
 
+  // Check if spot has mineralogy classification
+  const isClassified = !!(spot.mineralogy?.minerals?.[0]?.name);
+
   // Don't show hover effect when spot is selected
   const strokeColor = (isHovered && !isSelected) ? '#ffff00' : color;
   const strokeWidth = (isHovered && !isSelected) ? 4 / scale : 3 / scale;
@@ -172,14 +175,15 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
           />
         )}
 
-        {/* Solid circle with white outline */}
+        {/* Circle: filled if classified, hollow if unclassified */}
         <Circle
           key="point"
           x={x}
           y={y}
           radius={6 / scale}
-          fill={color}
-          stroke="#ffffff"
+          fill={isClassified ? color : 'transparent'}
+          opacity={isClassified ? opacity : 1}
+          stroke={isClassified ? '#ffffff' : color}
           strokeWidth={2 / scale}
         />
       </Group>
@@ -250,12 +254,14 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
           />
         )}
 
-        {/* Line */}
+        {/* Line: solid if classified, dashed if unclassified */}
         <Line
           key="line"
           points={points}
           stroke={isSelected ? 'transparent' : strokeColor}
           strokeWidth={isSelected ? 0 : strokeWidth}
+          dash={isClassified ? undefined : [8 / scale, 4 / scale]}
+          opacity={isClassified ? 1 : 0.6}
           listening={true}
           lineCap="round"
           lineJoin="round"
@@ -328,14 +334,15 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
           />
         )}
 
-        {/* Polygon */}
+        {/* Polygon: solid fill if classified, faded with dashed stroke if unclassified */}
         <Line
           key="polygon"
           points={points}
           stroke={isSelected ? 'transparent' : strokeColor}
           strokeWidth={isSelected ? 0 : strokeWidth}
+          dash={isClassified ? undefined : [8 / scale, 4 / scale]}
           fill={color}
-          opacity={opacity}
+          opacity={isClassified ? opacity : opacity * 0.4}
           closed={true}
           listening={true}
         />

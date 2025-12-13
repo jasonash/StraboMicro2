@@ -8,10 +8,17 @@ import './DrawingToolbar.css';
  *
  * Positioned absolutely on the right side of the viewer canvas.
  * Contains three drawing tools: Point, Line, and Polygon.
+ * Hidden when in point count mode.
  */
 const DrawingToolbar: React.FC = () => {
   const activeTool = useAppStore((state) => state.activeTool);
   const setActiveTool = useAppStore((state) => state.setActiveTool);
+  const pointCountMode = useAppStore((state) => state.pointCountMode);
+
+  // Hide toolbar when in point count mode
+  if (pointCountMode) {
+    return null;
+  }
 
   const handlePointClick = () => {
     setActiveTool(activeTool === 'point' ? null : 'point');

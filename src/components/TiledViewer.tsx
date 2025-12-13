@@ -12,7 +12,7 @@
  * - Support for 100MB+ TIFF files
  */
 
-import { useEffect, useRef, useState, useCallback, useImperativeHandle, forwardRef } from 'react';
+import { useEffect, useRef, useState, useCallback, useImperativeHandle, forwardRef, useMemo } from 'react';
 import { Stage, Layer, Image as KonvaImage, Circle } from 'react-konva';
 import { Box, CircularProgress, Typography, IconButton, Tooltip } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
@@ -21,6 +21,8 @@ import { getChildMicrographs } from '@/store/helpers';
 import { AssociatedImageRenderer } from './AssociatedImageRenderer';
 import { ChildSpotsRenderer } from './ChildSpotsRenderer';
 import { SpotRenderer } from './SpotRenderer';
+import { PointCountRenderer } from './PointCountRenderer';
+import { LassoRenderer } from './LassoRenderer';
 import { SpotContextMenu } from './SpotContextMenu';
 import { EditingToolbar } from './EditingToolbar';
 import { NewSpotDialog } from './dialogs/NewSpotDialog';
@@ -30,6 +32,7 @@ import { Geometry, Spot } from '@/types/project-types';
 import { usePolygonDrawing } from '@/hooks/usePolygonDrawing';
 import { useLineDrawing } from '@/hooks/useLineDrawing';
 import { useRulerTool } from '@/hooks/useRulerTool';
+import { useLasso, getIndicesInPolygon } from '@/hooks/useLasso';
 import { useImperativeGeometryEditing } from '@/hooks/useImperativeGeometryEditing';
 import { getEffectiveTheme } from '@/hooks/useTheme';
 import './TiledViewer.css';
@@ -48,6 +51,8 @@ export interface TiledViewerRef {
   fitToScreen: () => void;
   zoomIn: () => void;
   zoomOut: () => void;
+  /** Ensure a point is visible on screen, panning only if necessary (lazy/soft pan) */
+  panToPoint: (x: number, y: number) => void;
 }
 
 interface TileInfo {
@@ -124,6 +129,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
     const showSpotLabels = useAppStore((state) => state.showSpotLabels);
     const showMicrographOutlines = useAppStore((state) => state.showMicrographOutlines);
     const showRecursiveSpots = useAppStore((state) => state.showRecursiveSpots);
+    const showArchivedSpots = useAppStore((state) => state.showArchivedSpots);
     const theme = useAppStore((state) => state.theme);
     const selectActiveSpot = useAppStore((state) => state.selectActiveSpot);
     const setActiveTool = useAppStore((state) => state.setActiveTool);
@@ -133,6 +139,15 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
     const navigateBack = useAppStore((state) => state.navigateBack);
     const micrographNavigationStack = useAppStore((state) => state.micrographNavigationStack);
     const micrographIndex = useAppStore((state) => state.micrographIndex);
+
+    // Lasso selection state (for point count mode)
+    const pointCountMode = useAppStore((state) => state.pointCountMode);
+    const lassoToolActive = useAppStore((state) => state.lassoToolActive);
+    const activePointCountSession = useAppStore((state) => state.activePointCountSession);
+    const setSelectedPointIndices = useAppStore((state) => state.setSelectedPointIndices);
+
+    // Initialize lasso hook
+    const lasso = useLasso();
 
     /**
      * Aggressively clean up tile memory to prevent OOM crashes.
@@ -608,6 +623,77 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
     }, [imageMetadata, position, zoom, stageSize]);
 
     /**
+     * Calculate which spots are visible in the current viewport
+     * Uses bounding box intersection - if any part of spot overlaps viewport, render it
+     */
+    const visibleSpots = useMemo(() => {
+      const spots = activeMicrograph?.spots;
+      if (!spots || spots.length === 0) return [];
+
+      // Get viewport bounds in image space
+      const viewportX = -position.x / zoom;
+      const viewportY = -position.y / zoom;
+      const viewportWidth = stageSize.width / zoom;
+      const viewportHeight = stageSize.height / zoom;
+
+      // Add padding to viewport (render spots slightly outside viewport for smoother panning)
+      const padding = 50; // pixels in image space
+      const vLeft = viewportX - padding;
+      const vRight = viewportX + viewportWidth + padding;
+      const vTop = viewportY - padding;
+      const vBottom = viewportY + viewportHeight + padding;
+
+      return spots.filter((spot) => {
+        // Filter out archived spots unless showArchivedSpots is enabled
+        if (spot.archived && !showArchivedSpots) return false;
+
+        // Get spot coordinates
+        const geometryType = spot.geometryType || spot.geometry?.type;
+        let coords: Array<{ x: number; y: number }> = [];
+
+        if (geometryType === 'point' || geometryType === 'Point') {
+          const x = Array.isArray(spot.geometry?.coordinates)
+            ? (spot.geometry.coordinates as number[])[0]
+            : spot.points?.[0]?.X ?? 0;
+          const y = Array.isArray(spot.geometry?.coordinates)
+            ? (spot.geometry.coordinates as number[])[1]
+            : spot.points?.[0]?.Y ?? 0;
+          coords = [{ x, y }];
+        } else if (geometryType === 'line' || geometryType === 'LineString') {
+          coords = Array.isArray(spot.geometry?.coordinates)
+            ? (spot.geometry.coordinates as number[][]).map(c => ({ x: c[0], y: c[1] }))
+            : spot.points?.map(p => ({ x: p.X ?? 0, y: p.Y ?? 0 })) || [];
+        } else if (geometryType === 'polygon' || geometryType === 'Polygon') {
+          const ring = Array.isArray(spot.geometry?.coordinates)
+            ? (spot.geometry.coordinates as number[][][])[0] || []
+            : [];
+          coords = ring.length > 0
+            ? ring.map(c => ({ x: c[0], y: c[1] }))
+            : spot.points?.map(p => ({ x: p.X ?? 0, y: p.Y ?? 0 })) || [];
+        }
+
+        if (coords.length === 0) return false;
+
+        // Calculate bounding box
+        let minX = Infinity, maxX = -Infinity;
+        let minY = Infinity, maxY = -Infinity;
+        for (const c of coords) {
+          if (c.x < minX) minX = c.x;
+          if (c.x > maxX) maxX = c.x;
+          if (c.y < minY) minY = c.y;
+          if (c.y > maxY) maxY = c.y;
+        }
+
+        // Check if bounding box intersects viewport
+        // Two rectangles intersect if they overlap on both axes
+        const intersectsX = maxX >= vLeft && minX <= vRight;
+        const intersectsY = maxY >= vTop && minY <= vBottom;
+
+        return intersectsX && intersectsY;
+      });
+    }, [activeMicrograph?.spots, position, zoom, stageSize, showArchivedSpots]);
+
+    /**
      * Load tiles that are visible but not yet loaded (only in tiled mode)
      * In thumbnail mode, all tiles are loaded upfront by loadAllTiles()
      */
@@ -774,8 +860,24 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
           return;
         }
 
+        // Handle lasso tool (point count mode only)
+        if (lassoToolActive && pointCountMode) {
+          const stage = stageRef.current;
+          if (!stage) return;
+          const pos = stage.getPointerPosition();
+          if (!pos) return;
+          // Convert to image coordinates
+          const imageX = (pos.x - position.x) / zoom;
+          const imageY = (pos.y - position.y) / zoom;
+          lasso.startLasso(imageX, imageY);
+          return;
+        }
+
         // Only enable panning if no drawing tool is active
         if (!activeTool || activeTool === 'select') {
+          // Don't pan if lasso is active
+          if (lassoToolActive) return;
+
           setIsPanning(true);
           const stage = stageRef.current;
           if (!stage) return;
@@ -783,7 +885,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
           setLastPointerPos(pos);
         }
       },
-      [activeTool, position, zoom, rulerTool]
+      [activeTool, position, zoom, rulerTool, lassoToolActive, pointCountMode, lasso]
     );
 
     const handleMouseMove = useCallback(() => {
@@ -810,6 +912,13 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
 
         setLastPointerPos(pos);
         return; // Don't update drawing preview while panning
+      }
+
+      // Handle lasso drawing (point count mode only)
+      if (lasso.isDrawing && lassoToolActive && pointCountMode) {
+        const imageX = (pos.x - position.x) / zoom;
+        const imageY = (pos.y - position.y) / zoom;
+        lasso.updateLasso(imageX, imageY);
       }
 
       // Handle drawing tool preview (polygon/line/measure)
@@ -883,6 +992,9 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
       lineDrawing,
       onCursorMove,
       activeMicrograph,
+      lasso,
+      lassoToolActive,
+      pointCountMode,
     ]);
 
     const handleMouseUp = useCallback(() => {
@@ -893,13 +1005,32 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
       if (activeTool === 'measure') {
         rulerTool.handleMouseUp();
       }
-    }, [activeTool, rulerTool]);
+
+      // Finish lasso selection and select points inside
+      if (lasso.isDrawing && lassoToolActive && pointCountMode && activePointCountSession) {
+        const polygon = lasso.completeLasso();
+        if (polygon.length >= 3) {
+          // Get points from the active session
+          const points = activePointCountSession.points;
+          // Find indices of points inside the lasso polygon
+          const selectedIndices = getIndicesInPolygon(points, polygon);
+          if (selectedIndices.length > 0) {
+            setSelectedPointIndices(selectedIndices);
+          }
+        }
+      }
+    }, [activeTool, rulerTool, lasso, lassoToolActive, pointCountMode, activePointCountSession, setSelectedPointIndices]);
 
     const handleMouseLeave = useCallback(() => {
       setIsPanning(false);
       setLastPointerPos(null);
       onCursorMove?.(null); // Clear coordinates in status bar
-    }, [onCursorMove]);
+
+      // Cancel lasso if mouse leaves while drawing
+      if (lasso.isDrawing) {
+        lasso.cancelLasso();
+      }
+    }, [onCursorMove, lasso]);
 
     /**
      * Handle stage click for drawing tools
@@ -1116,6 +1247,48 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
       geometryEditing.updateHandleSizes(newZoom);
     }, [zoom, position, stageSize, polygonDrawing, lineDrawing, rulerTool, geometryEditing]);
 
+    // Ensure a point is visible on screen, panning only if necessary (lazy/soft pan)
+    const panToPoint = useCallback((x: number, y: number) => {
+      // Calculate where the point currently is in screen coordinates
+      const screenX = position.x + x * zoom;
+      const screenY = position.y + y * zoom;
+
+      // Define a margin/inset from the viewport edges (15% of viewport or at least 50px)
+      const marginX = Math.max(50, stageSize.width * 0.15);
+      const marginY = Math.max(50, stageSize.height * 0.15);
+
+      // Calculate the "safe zone" - if the point is within this zone, no panning needed
+      const safeLeft = marginX;
+      const safeRight = stageSize.width - marginX;
+      const safeTop = marginY;
+      const safeBottom = stageSize.height - marginY;
+
+      let newX = position.x;
+      let newY = position.y;
+
+      // Check if point is outside the safe zone and calculate minimum pan
+      if (screenX < safeLeft) {
+        // Point is off the left - pan so it's at the left margin
+        newX = safeLeft - x * zoom;
+      } else if (screenX > safeRight) {
+        // Point is off the right - pan so it's at the right margin
+        newX = safeRight - x * zoom;
+      }
+
+      if (screenY < safeTop) {
+        // Point is off the top - pan so it's at the top margin
+        newY = safeTop - y * zoom;
+      } else if (screenY > safeBottom) {
+        // Point is off the bottom - pan so it's at the bottom margin
+        newY = safeBottom - y * zoom;
+      }
+
+      // Only update position if we actually need to pan
+      if (newX !== position.x || newY !== position.y) {
+        setPosition({ x: newX, y: newY });
+      }
+    }, [stageSize, zoom, position]);
+
     // Expose methods to parent components via ref
     useImperativeHandle(
       ref,
@@ -1123,8 +1296,9 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
         fitToScreen: handleResetZoom,
         zoomIn: handleZoomIn,
         zoomOut: handleZoomOut,
+        panToPoint,
       }),
-      [handleResetZoom, handleZoomIn, handleZoomOut]
+      [handleResetZoom, handleZoomIn, handleZoomOut, panToPoint]
     );
 
     const RULER_SIZE = 30; // Width/height of ruler bars
@@ -1274,7 +1448,8 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                     activeTool === 'point' ||
                     activeTool === 'line' ||
                     activeTool === 'polygon' ||
-                    activeTool === 'measure'
+                    activeTool === 'measure' ||
+                    lassoToolActive
                       ? 'crosshair'
                       : isPanning
                       ? 'grabbing'
@@ -1313,7 +1488,9 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
 
                   {/* Render associated micrographs (overlays) - only rectangle-located ones */}
                   {/* Filter out: batch-imported without scale, and point-located micrographs */}
-                  {activeMicrograph &&
+                  {/* Hide overlays in point count mode */}
+                  {!pointCountMode &&
+                    activeMicrograph &&
                     project &&
                     childMicrographs
                       .filter((childMicro) => {
@@ -1373,7 +1550,9 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                 {/* Spots Layer - render all saved spots and point-located micrographs */}
                 <Layer key="spots-layer" x={position.x} y={position.y} scaleX={zoom} scaleY={zoom}>
                   {/* Render point-located associated micrographs as clickable markers */}
-                  {activeMicrograph &&
+                  {/* Hide in point count mode */}
+                  {!pointCountMode &&
+                    activeMicrograph &&
                     project &&
                     childMicrographs
                       .filter((childMicro) => {
@@ -1416,7 +1595,9 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                       })}
 
                   {/* Recursive Spots: Render spots from child micrographs (overlays) */}
-                  {showRecursiveSpots &&
+                  {/* Hide in point count mode */}
+                  {!pointCountMode &&
+                    showRecursiveSpots &&
                     activeMicrograph &&
                     childMicrographs
                       .filter((childMicro) => {
@@ -1466,8 +1647,9 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                         />
                       ))}
 
-                  {/* First pass: Render all spot shapes */}
-                  {activeMicrograph?.spots?.map((spot) => (
+                  {/* First pass: Render visible spot shapes (viewport culled for performance) */}
+                  {/* Hide in point count mode */}
+                  {!pointCountMode && visibleSpots.map((spot) => (
                     <SpotRenderer
                       key={spot.id}
                       spot={spot}
@@ -1488,8 +1670,9 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                     />
                   ))}
 
-                  {/* Second pass: Render all spot labels (ensures labels are on top) */}
-                  {showSpotLabels && activeMicrograph?.spots?.map((spot) => (
+                  {/* Second pass: Render visible spot labels (ensures labels are on top) */}
+                  {/* Hide in point count mode */}
+                  {!pointCountMode && showSpotLabels && visibleSpots.map((spot) => (
                     <SpotRenderer
                       key={`${spot.id}-label`}
                       spot={spot}
@@ -1498,6 +1681,14 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                       renderLabelsOnly={true}
                     />
                   ))}
+
+                  {/* Point Count points (rendered on top of spots when in point count mode) */}
+                  <PointCountRenderer scale={zoom} />
+
+                  {/* Lasso selection (point count mode only) */}
+                  {lasso.isDrawing && lasso.lassoPoints.length > 0 && (
+                    <LassoRenderer points={lasso.lassoPoints} scale={zoom} />
+                  )}
                 </Layer>
 
                 {/* Drawing Layer - for temporary drawing in progress */}
@@ -1531,7 +1722,8 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                     activeTool === 'point' ||
                     activeTool === 'line' ||
                     activeTool === 'polygon' ||
-                    activeTool === 'measure'
+                    activeTool === 'measure' ||
+                    lassoToolActive
                       ? 'crosshair'
                       : isPanning
                       ? 'grabbing'
@@ -1567,7 +1759,9 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
 
                   {/* Render associated micrographs (overlays) */}
                   {/* Only render children that have scale set (not batch-imported without setup) */}
-                  {activeMicrograph &&
+                  {/* Hide overlays in point count mode */}
+                  {!pointCountMode &&
+                    activeMicrograph &&
                     project &&
                     childMicrographs
                       .filter(
@@ -1617,7 +1811,9 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                 {/* Spots Layer - render all saved spots */}
                 <Layer key="spots-layer" x={position.x} y={position.y} scaleX={zoom} scaleY={zoom}>
                   {/* Recursive Spots: Render spots from child micrographs (overlays) */}
-                  {showRecursiveSpots &&
+                  {/* Hide in point count mode */}
+                  {!pointCountMode &&
+                    showRecursiveSpots &&
                     activeMicrograph &&
                     childMicrographs
                       .filter((childMicro) => {
@@ -1667,8 +1863,9 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                         />
                       ))}
 
-                  {/* First pass: Render all spot shapes */}
-                  {activeMicrograph?.spots?.map((spot) => (
+                  {/* First pass: Render visible spot shapes (viewport culled for performance) */}
+                  {/* Hide in point count mode */}
+                  {!pointCountMode && visibleSpots.map((spot) => (
                     <SpotRenderer
                       key={spot.id}
                       spot={spot}
@@ -1689,8 +1886,9 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                     />
                   ))}
 
-                  {/* Second pass: Render all spot labels */}
-                  {showSpotLabels && activeMicrograph?.spots?.map((spot) => (
+                  {/* Second pass: Render visible spot labels */}
+                  {/* Hide in point count mode */}
+                  {!pointCountMode && showSpotLabels && visibleSpots.map((spot) => (
                     <SpotRenderer
                       key={`${spot.id}-label`}
                       spot={spot}
@@ -1699,6 +1897,14 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                       renderLabelsOnly={true}
                     />
                   ))}
+
+                  {/* Point Count points (rendered on top of spots when in point count mode) */}
+                  <PointCountRenderer scale={zoom} />
+
+                  {/* Lasso selection (point count mode only) */}
+                  {lasso.isDrawing && lasso.lassoPoints.length > 0 && (
+                    <LassoRenderer points={lasso.lassoPoints} scale={zoom} />
+                  )}
                 </Layer>
 
                 {/* Drawing Layer */}

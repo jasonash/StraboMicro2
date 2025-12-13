@@ -29,6 +29,10 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('menu:edit-project', callback);
     return () => ipcRenderer.removeListener('menu:edit-project', callback);
   },
+  onClearAllSpots: (callback) => {
+    ipcRenderer.on('menu:clear-all-spots', callback);
+    return () => ipcRenderer.removeListener('menu:clear-all-spots', callback);
+  },
   onShowProjectDebug: (callback) => {
     ipcRenderer.on('menu:show-project-debug', callback);
     return () => ipcRenderer.removeListener('menu:show-project-debug', callback);
@@ -135,6 +139,21 @@ contextBridge.exposeInMainWorld('api', {
     const handler = (event, checked) => callback(checked);
     ipcRenderer.on('view:toggle-recursive-spots', handler);
     return () => ipcRenderer.removeListener('view:toggle-recursive-spots', handler);
+  },
+  onToggleArchivedSpots: (callback) => {
+    const handler = (event, checked) => callback(checked);
+    ipcRenderer.on('view:toggle-archived-spots', handler);
+    return () => ipcRenderer.removeListener('view:toggle-archived-spots', handler);
+  },
+  onShowPointCountStatistics: (callback) => {
+    const handler = () => callback();
+    ipcRenderer.on('view:show-point-count-statistics', handler);
+    return () => ipcRenderer.removeListener('view:show-point-count-statistics', handler);
+  },
+  onToggleQuickClassify: (callback) => {
+    const handler = () => callback();
+    ipcRenderer.on('view:toggle-quick-classify', handler);
+    return () => ipcRenderer.removeListener('view:toggle-quick-classify', handler);
   },
 
   // Tile-based image loading
@@ -511,5 +530,39 @@ contextBridge.exposeInMainWorld('api', {
     const handler = () => callback();
     ipcRenderer.on('debug:toggle-memory-monitor', handler);
     return () => ipcRenderer.removeListener('debug:toggle-memory-monitor', handler);
+  },
+
+  // Point Count storage (separate from Spot system)
+  pointCount: {
+    // Save a point count session to disk
+    saveSession: (projectId, session) =>
+      ipcRenderer.invoke('point-count:save-session', projectId, session),
+    // Load a point count session from disk
+    loadSession: (projectId, sessionId) =>
+      ipcRenderer.invoke('point-count:load-session', projectId, sessionId),
+    // Delete a point count session
+    deleteSession: (projectId, sessionId) =>
+      ipcRenderer.invoke('point-count:delete-session', projectId, sessionId),
+    // List all sessions for a micrograph
+    listSessions: (projectId, micrographId) =>
+      ipcRenderer.invoke('point-count:list-sessions', projectId, micrographId),
+    // List all sessions in a project
+    listAllSessions: (projectId) =>
+      ipcRenderer.invoke('point-count:list-all-sessions', projectId),
+    // Rename a session
+    renameSession: (projectId, sessionId, newName) =>
+      ipcRenderer.invoke('point-count:rename-session', projectId, sessionId, newName),
+  },
+
+  // Tools menu events
+  onPointCount: (callback) => {
+    const handler = () => callback();
+    ipcRenderer.on('menu:point-count', handler);
+    return () => ipcRenderer.removeListener('menu:point-count', handler);
+  },
+  onGrainDetection: (callback) => {
+    const handler = () => callback();
+    ipcRenderer.on('menu:grain-detection', handler);
+    return () => ipcRenderer.removeListener('menu:grain-detection', handler);
   },
 });
