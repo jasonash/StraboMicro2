@@ -11,7 +11,7 @@
  * - Current point: Gold crosshair highlight, larger size
  */
 
-import { useMemo, useCallback } from 'react';
+import { useMemo, useCallback, memo } from 'react';
 import { Circle, Line, Group, Ring } from 'react-konva';
 import { useAppStore } from '@/store';
 import { PointCountPoint, getMineralColor } from '@/types/point-count-types';
@@ -64,7 +64,7 @@ interface PointProps {
   onClick?: (index: number) => void;
 }
 
-function Point({ point, index, scale, isCurrent, onClick }: PointProps) {
+const Point = memo(function Point({ point, index, scale, isCurrent, onClick }: PointProps) {
   const isClassified = !!point.mineral;
   const mineralColor = point.mineral ? getMineralColor(point.mineral) : UNCLASSIFIED_FILL;
 
@@ -72,10 +72,6 @@ function Point({ point, index, scale, isCurrent, onClick }: PointProps) {
   const radius = (isCurrent ? CURRENT_POINT_RADIUS : POINT_RADIUS) / scale;
   const strokeWidth = STROKE_WIDTH / scale;
   const crosshairLength = CROSSHAIR_LENGTH / scale;
-
-  const handleClick = useCallback(() => {
-    onClick?.(index);
-  }, [onClick, index]);
 
   // Stroke color: gold for current point, mineral color otherwise
   const strokeColor = isCurrent ? CURRENT_POINT_HIGHLIGHT : mineralColor;
@@ -145,8 +141,8 @@ function Point({ point, index, scale, isCurrent, onClick }: PointProps) {
           stroke={strokeColor}
           strokeWidth={strokeWidth}
           opacity={0.9}
-          onClick={handleClick}
-          onTap={handleClick}
+          onClick={() => onClick?.(index)}
+          onTap={() => onClick?.(index)}
         />
       ) : (
         // Unclassified: White filled circle with dark outline (visible on any background)
@@ -158,8 +154,8 @@ function Point({ point, index, scale, isCurrent, onClick }: PointProps) {
           stroke={isCurrent ? CURRENT_POINT_HIGHLIGHT : UNCLASSIFIED_OUTLINE}
           strokeWidth={strokeWidth * 1.5}
           opacity={0.9}
-          onClick={handleClick}
-          onTap={handleClick}
+          onClick={() => onClick?.(index)}
+          onTap={() => onClick?.(index)}
         />
       )}
 
@@ -177,7 +173,7 @@ function Point({ point, index, scale, isCurrent, onClick }: PointProps) {
       )}
     </Group>
   );
-}
+});
 
 // ============================================================================
 // MAIN RENDERER COMPONENT
