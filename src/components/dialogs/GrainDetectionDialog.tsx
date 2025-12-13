@@ -169,9 +169,16 @@ export function GrainDetectionDialog({
           setLoadingState('loading-opencv');
           setError(null);
           console.log('[GrainDetection] Loading OpenCV.js...');
-          await loadOpenCV();
-          if (!mounted) return;
-          console.log('[GrainDetection] OpenCV.js loaded');
+          const cv = await loadOpenCV();
+          console.log('[GrainDetection] loadOpenCV() returned:', cv ? 'cv object' : 'null/undefined');
+          console.log('[GrainDetection] cv.Mat exists:', cv?.Mat ? 'yes' : 'no');
+          if (!mounted) {
+            console.log('[GrainDetection] Component unmounted during load, aborting');
+            return;
+          }
+          console.log('[GrainDetection] OpenCV.js loaded successfully');
+        } else {
+          console.log('[GrainDetection] OpenCV already loaded, skipping');
         }
 
         // Step 2: Load image

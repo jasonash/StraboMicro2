@@ -18,4 +18,8 @@ export default defineConfig({
     port: 5173,
   },
   assetsInclude: ['**/*.csv'],
+  // OpenCV.js needs these Node.js built-ins stubbed for browser
+  optimizeDeps: {
+    exclude: ['@techstark/opencv-js'],
+  },
 });

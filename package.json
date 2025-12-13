@@ -4,6 +4,7 @@
   "description": "StraboMicro - Geological Microanalysis Application",
   "main": "electron/main.js",
   "scripts": {
+    "postinstall": "node scripts/download-opencv.js",
     "dev": "concurrently --kill-others \"npm run dev:vite\" \"npm run dev:electron\"",
     "dev:vite": "vite",
     "dev:electron": "wait-on http://localhost:5173 && electron .",
@@ -55,7 +56,6 @@
     "@mui/material": "^7.3.5",
     "@react-pdf/renderer": "^4.3.1",
     "@sentry/electron": "^7.4.0",
-    "@techstark/opencv-js": "^4.12.0-release.1",
     "archiver": "^7.0.1",
     "bmp-js": "^0.1.0",
     "canvas": "^3.2.0",
