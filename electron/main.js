@@ -54,6 +54,7 @@ const smzImport = require('./smzImport');
 const serverDownload = require('./serverDownload');
 const autoUpdaterModule = require('./autoUpdater');
 const logService = require('./logService');
+const pointCountStorage = require('./pointCountStorage');
 
 // Handle EPIPE errors at process level (prevents crash on broken stdout pipe)
 process.stdout.on('error', (err) => {
@@ -4878,6 +4879,58 @@ ipcMain.handle('version:stats', async (event, projectId) => {
 ipcMain.handle('version:prune', async (event, projectId) => {
   log.info('[VersionHistory] Manual prune requested for project:', projectId);
   return versionHistory.pruneVersions(projectId);
+});
+
+// =============================================================================
+// POINT COUNT STORAGE HANDLERS
+// =============================================================================
+
+/**
+ * Save a point count session to disk
+ */
+ipcMain.handle('point-count:save-session', async (event, projectId, session) => {
+  log.info('[PointCount] Saving session:', session.id, 'for project:', projectId);
+  return pointCountStorage.saveSession(projectId, session);
+});
+
+/**
+ * Load a point count session from disk
+ */
+ipcMain.handle('point-count:load-session', async (event, projectId, sessionId) => {
+  log.info('[PointCount] Loading session:', sessionId, 'for project:', projectId);
+  return pointCountStorage.loadSession(projectId, sessionId);
+});
+
+/**
+ * Delete a point count session
+ */
+ipcMain.handle('point-count:delete-session', async (event, projectId, sessionId) => {
+  log.info('[PointCount] Deleting session:', sessionId, 'for project:', projectId);
+  return pointCountStorage.deleteSession(projectId, sessionId);
+});
+
+/**
+ * List all sessions for a micrograph
+ */
+ipcMain.handle('point-count:list-sessions', async (event, projectId, micrographId) => {
+  log.info('[PointCount] Listing sessions for micrograph:', micrographId, 'in project:', projectId);
+  return pointCountStorage.listSessions(projectId, micrographId);
+});
+
+/**
+ * List all sessions in a project
+ */
+ipcMain.handle('point-count:list-all-sessions', async (event, projectId) => {
+  log.info('[PointCount] Listing all sessions for project:', projectId);
+  return pointCountStorage.listAllSessions(projectId);
+});
+
+/**
+ * Rename a point count session
+ */
+ipcMain.handle('point-count:rename-session', async (event, projectId, sessionId, newName) => {
+  log.info('[PointCount] Renaming session:', sessionId, 'to:', newName);
+  return pointCountStorage.renameSession(projectId, sessionId, newName);
 });
 
 // =============================================================================

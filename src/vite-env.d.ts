@@ -649,6 +649,50 @@ interface Window {
     onDebugClearAllSpots: (callback: () => void) => Unsubscribe;
     onDebugToggleMemoryMonitor: (callback: () => void) => Unsubscribe;
 
+    // Point Count storage (separate from Spot system)
+    pointCount: {
+      // Save a point count session to disk
+      saveSession: (projectId: string, session: PointCountSessionData) => Promise<{
+        success: boolean;
+        session?: PointCountSessionData;
+        error?: string;
+      }>;
+      // Load a point count session from disk
+      loadSession: (projectId: string, sessionId: string) => Promise<{
+        success: boolean;
+        session?: PointCountSessionData;
+        error?: string;
+      }>;
+      // Delete a point count session
+      deleteSession: (projectId: string, sessionId: string) => Promise<{
+        success: boolean;
+        message?: string;
+        error?: string;
+      }>;
+      // List all sessions for a micrograph
+      listSessions: (projectId: string, micrographId: string) => Promise<{
+        success: boolean;
+        sessions: PointCountSessionSummaryData[];
+        error?: string;
+      }>;
+      // List all sessions in a project
+      listAllSessions: (projectId: string) => Promise<{
+        success: boolean;
+        sessions: PointCountSessionSummaryData[];
+        error?: string;
+      }>;
+      // Rename a session
+      renameSession: (projectId: string, sessionId: string, newName: string) => Promise<{
+        success: boolean;
+        session?: PointCountSessionData;
+        error?: string;
+      }>;
+    };
+
+    // Tools menu events
+    onPointCount: (callback: () => void) => Unsubscribe;
+    onGrainDetection: (callback: () => void) => Unsubscribe;
+
     versionHistory: {
       // Create a new version (auto-save)
       create: (
@@ -778,4 +822,51 @@ interface RemoteProject {
   modifiedTimestamp: number;
   bytes: number;
   bytesFormatted: string;
+}
+
+// Point Count Types
+interface PointCountPointData {
+  id: string;
+  x: number;
+  y: number;
+  row: number;
+  col: number;
+  mineral?: string;
+  classifiedAt?: string;
+}
+
+interface PointCountGridSettingsData {
+  rows: number;
+  cols: number;
+  totalPoints: number;
+  offset?: { x: number; y: number };
+}
+
+interface PointCountSummaryData {
+  totalPoints: number;
+  classifiedCount: number;
+  modalComposition: Record<string, number>;
+}
+
+interface PointCountSessionData {
+  id: string;
+  micrographId: string;
+  name: string;
+  createdAt: string;
+  updatedAt: string;
+  gridType: 'regular' | 'random' | 'stratified';
+  gridSettings: PointCountGridSettingsData;
+  points: PointCountPointData[];
+  summary: PointCountSummaryData;
+}
+
+interface PointCountSessionSummaryData {
+  id: string;
+  micrographId: string;
+  name: string;
+  createdAt: string;
+  updatedAt: string;
+  gridType: 'regular' | 'random' | 'stratified';
+  totalPoints: number;
+  classifiedCount: number;
 }

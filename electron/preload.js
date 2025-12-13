@@ -535,4 +535,38 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('debug:toggle-memory-monitor', handler);
     return () => ipcRenderer.removeListener('debug:toggle-memory-monitor', handler);
   },
+
+  // Point Count storage (separate from Spot system)
+  pointCount: {
+    // Save a point count session to disk
+    saveSession: (projectId, session) =>
+      ipcRenderer.invoke('point-count:save-session', projectId, session),
+    // Load a point count session from disk
+    loadSession: (projectId, sessionId) =>
+      ipcRenderer.invoke('point-count:load-session', projectId, sessionId),
+    // Delete a point count session
+    deleteSession: (projectId, sessionId) =>
+      ipcRenderer.invoke('point-count:delete-session', projectId, sessionId),
+    // List all sessions for a micrograph
+    listSessions: (projectId, micrographId) =>
+      ipcRenderer.invoke('point-count:list-sessions', projectId, micrographId),
+    // List all sessions in a project
+    listAllSessions: (projectId) =>
+      ipcRenderer.invoke('point-count:list-all-sessions', projectId),
+    // Rename a session
+    renameSession: (projectId, sessionId, newName) =>
+      ipcRenderer.invoke('point-count:rename-session', projectId, sessionId, newName),
+  },
+
+  // Tools menu events
+  onPointCount: (callback) => {
+    const handler = () => callback();
+    ipcRenderer.on('menu:point-count', handler);
+    return () => ipcRenderer.removeListener('menu:point-count', handler);
+  },
+  onGrainDetection: (callback) => {
+    const handler = () => callback();
+    ipcRenderer.on('menu:grain-detection', handler);
+    return () => ipcRenderer.removeListener('menu:grain-detection', handler);
+  },
 });
