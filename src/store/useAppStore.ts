@@ -178,12 +178,6 @@ interface AppState {
   /** Index of the currently selected point in the session (-1 = none) */
   currentPointIndex: number;
 
-  // ========== GENERATE SPOTS DIALOG STATE ==========
-  /** Whether Generate Spots dialog is open */
-  generateSpotsDialogOpen: boolean;
-  /** Target micrograph ID for Generate Spots dialog */
-  generateSpotsTargetMicrographId: string | null;
-
   // ========== GENERATION SETTINGS (persisted) ==========
   /** Last used point counting settings */
   lastPointCountSettings: {
@@ -291,12 +285,6 @@ interface AppState {
   goToPreviousPoint: () => void;
   /** Update session name */
   updatePointCountSessionName: (name: string) => void;
-
-  // ========== GENERATE SPOTS DIALOG ACTIONS ==========
-  /** Open the Generate Spots dialog for a specific micrograph */
-  openGenerateSpotsDialog: (micrographId: string) => void;
-  /** Close the Generate Spots dialog */
-  closeGenerateSpotsDialog: () => void;
 
   // ========== GENERATION SETTINGS ACTIONS ==========
   /** Update last used point counting settings */
@@ -432,10 +420,6 @@ export const useAppStore = create<AppState>()(
           activePointCountSession: null,
           pointCountSessionList: [],
           currentPointIndex: -1,
-
-          // Generate Spots dialog state
-          generateSpotsDialogOpen: false,
-          generateSpotsTargetMicrographId: null,
 
           // Generation settings (persisted defaults)
           lastPointCountSettings: null,
@@ -1622,18 +1606,6 @@ export const useAppStore = create<AppState>()(
               },
             });
           },
-
-          // ========== GENERATE SPOTS DIALOG ACTIONS ==========
-
-          openGenerateSpotsDialog: (micrographId) => set({
-            generateSpotsDialogOpen: true,
-            generateSpotsTargetMicrographId: micrographId,
-          }),
-
-          closeGenerateSpotsDialog: () => set({
-            generateSpotsDialogOpen: false,
-            generateSpotsTargetMicrographId: null,
-          }),
 
           // ========== GENERATION SETTINGS ACTIONS ==========
 

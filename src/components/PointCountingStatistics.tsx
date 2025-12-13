@@ -168,7 +168,7 @@ export function PointCountingStatistics({
               <>
                 No point count data available.
                 <br />
-                Generate points using Edit &rarr; Generate Spots...
+                Start a session using Tools &rarr; Point Count...
               </>
             )}
         </Typography>

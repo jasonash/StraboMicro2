@@ -23,7 +23,6 @@ import { RemoteProjectsDialog } from './components/dialogs/RemoteProjectsDialog'
 import { SharedProjectDialog } from './components/dialogs/SharedProjectDialog';
 import { CloseProjectDialog } from './components/dialogs/CloseProjectDialog';
 import { ProjectPrepDialog } from './components/dialogs/ProjectPrepDialog';
-import { GenerateSpotsDialog } from './components/dialogs/GenerateSpotsDialog';
 import { PointCountDialog } from './components/dialogs/PointCountDialog';
 import {
   IncompleteMicrographsDialog,
@@ -182,10 +181,6 @@ function App() {
   const [isManualUpdateCheck, setIsManualUpdateCheck] = useState(false);
   const [isConfigureShortcutsOpen, setIsConfigureShortcutsOpen] = useState(false);
   const [isPointCountDialogOpen, setIsPointCountDialogOpen] = useState(false);
-  const generateSpotsDialogOpen = useAppStore(state => state.generateSpotsDialogOpen);
-  const generateSpotsTargetMicrographId = useAppStore(state => state.generateSpotsTargetMicrographId);
-  const openGenerateSpotsDialog = useAppStore(state => state.openGenerateSpotsDialog);
-  const closeGenerateSpotsDialog = useAppStore(state => state.closeGenerateSpotsDialog);
   const closeProject = useAppStore(state => state.closeProject);
   const project = useAppStore(state => state.project);
   const setTheme = useAppStore(state => state.setTheme);
@@ -395,15 +390,6 @@ function App() {
       setIsEditProjectDialogOpen(true);
     }));
 
-    // Generate Spots menu item (Edit menu with Cmd+Shift+G)
-    unsubscribers.push(window.api.onGenerateSpots(() => {
-      if (activeMicrographId) {
-        openGenerateSpotsDialog(activeMicrographId);
-      } else {
-        console.warn('[App] Generate Spots: No micrograph selected');
-      }
-    }));
-
     // Point Count menu item (Tools menu with Cmd+Shift+P)
     unsubscribers.push(window.api.onPointCount(() => {
       if (activeMicrographId) {
@@ -414,10 +400,10 @@ function App() {
     }));
 
     // Grain Detection menu item (Tools menu with Cmd+Shift+G)
-    // Note: This will be implemented in future - for now just open Generate Spots
+    // Note: Grain detection not yet implemented - coming in future version
     unsubscribers.push(window.api.onGrainDetection(() => {
       if (activeMicrographId) {
-        openGenerateSpotsDialog(activeMicrographId);
+        alert('Grain Detection is not yet implemented.\n\nThis feature will use computer vision to automatically detect grain boundaries.');
       } else {
         console.warn('[App] Grain Detection: No micrograph selected');
       }
@@ -1041,7 +1027,7 @@ function App() {
     return () => {
       unsubscribers.forEach(unsub => unsub?.());
     };
-  }, [closeProject, setTheme, setShowRulers, setShowSpotLabels, setShowMicrographOutlines, logout, project, manualSave, saveBeforeSwitch, loadProjectWithPreparation, activeMicrographId, micrographIndex, addSpot, updateMicrographMetadata, openGenerateSpotsDialog]);
+  }, [closeProject, setTheme, setShowRulers, setShowSpotLabels, setShowMicrographOutlines, logout, project, manualSave, saveBeforeSwitch, loadProjectWithPreparation, activeMicrographId, micrographIndex, addSpot, updateMicrographMetadata]);
 
   return (
     <>
@@ -1168,11 +1154,6 @@ function App() {
       <UpdateNotification
         manualCheck={isManualUpdateCheck}
         onManualCheckComplete={() => setIsManualUpdateCheck(false)}
-      />
-      <GenerateSpotsDialog
-        isOpen={generateSpotsDialogOpen}
-        onClose={closeGenerateSpotsDialog}
-        micrographId={generateSpotsTargetMicrographId}
       />
       <PointCountDialog
         isOpen={isPointCountDialogOpen}
