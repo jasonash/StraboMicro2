@@ -251,22 +251,20 @@ export function PointCountDialog({
     }
   }, [isOpen, micrographId, loadPointCountSessions]);
 
-  // Determine initial view based on sessions
+  // Determine initial view based on sessions - runs when dialog opens and loading completes
   useEffect(() => {
-    if (!isLoading) {
+    if (isOpen && !isLoading) {
       if (pointCountSessionList.length === 0) {
         setView('new-session');
       } else {
         setView('return-entry');
       }
     }
-  }, [isLoading, pointCountSessionList.length]);
+  }, [isOpen, isLoading, pointCountSessionList.length]);
 
-  // Reset state when dialog opens
+  // Reset form state when dialog opens
   useEffect(() => {
     if (isOpen) {
-      setView('loading'); // Reset to loading so the view determination runs fresh
-      setIsLoading(true); // Ensure loading state triggers the flow
       setSessionName(generateDefaultSessionName());
       setGridType('regular');
       setPointCount(DEFAULT_POINTS);
