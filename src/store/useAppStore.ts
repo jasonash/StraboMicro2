@@ -95,6 +95,7 @@ import {
   SimpleCoord,
 } from '@/types/project-types';
 import * as turf from '@turf/turf';
+import polygonClipping from 'polygon-clipping';
 import {
   PointCountSession,
   PointCountSessionSummary,
@@ -1255,30 +1256,13 @@ export const useAppStore = create<AppState>()(
               // Convert split line coordinates
               const lineCoords = splitLine.map(p => [p.X ?? p.x ?? 0, p.Y ?? p.y ?? 0] as [number, number]);
 
-              // Create line for validation
-              const splitLineFeature = turf.lineString(lineCoords);
-
-              // Check if the line actually crosses the polygon
-              // booleanCrosses checks if line enters and exits the polygon
-              const lineIntersectsPolygon = turf.booleanIntersects(polygon, splitLineFeature);
-              console.log('[Store] Line intersects polygon:', lineIntersectsPolygon);
               console.log('[Store] Split line coords:', lineCoords);
               console.log('[Store] Polygon coords:', coords);
 
-              if (!lineIntersectsPolygon) {
-                console.warn('[Store] Split line does not intersect the polygon');
-                return null;
-              }
+              // Strategy: Use polygon-clipping library to cut the polygon with a thin buffer
+              // This works with pixel coordinates (no geographic assumptions)
 
-              // Strategy: Create a large cutting rectangle from the line
-              // We'll create two half-planes and use intersection to get each half
-
-              const bbox = turf.bbox(polygon);
-              const diagonal = Math.sqrt(
-                Math.pow(bbox[2] - bbox[0], 2) + Math.pow(bbox[3] - bbox[1], 2)
-              ) * 2; // Make it extra large
-
-              // Get line direction
+              // Get line start and end
               const start = lineCoords[0];
               const end = lineCoords[lineCoords.length - 1];
               const dx = end[0] - start[0];
@@ -1290,14 +1274,21 @@ export const useAppStore = create<AppState>()(
                 return null;
               }
 
+              // Unit vectors along and perpendicular to the line
               const unitX = dx / len;
               const unitY = dy / len;
-
-              // Perpendicular direction (for creating the half-plane rectangles)
               const perpX = -unitY;
               const perpY = unitX;
 
-              // Extend the line well beyond the polygon
+              // Buffer width in pixels - make it thin but not zero
+              const bufferWidth = 1;
+
+              // Extend the line well beyond the polygon to ensure complete cut
+              const bbox = turf.bbox(polygon);
+              const diagonal = Math.sqrt(
+                Math.pow(bbox[2] - bbox[0], 2) + Math.pow(bbox[3] - bbox[1], 2)
+              ) * 2;
+
               const extendedStart: [number, number] = [
                 start[0] - unitX * diagonal,
                 start[1] - unitY * diagonal,
@@ -1307,51 +1298,33 @@ export const useAppStore = create<AppState>()(
                 end[1] + unitY * diagonal,
               ];
 
-              // Create a large rectangle on one side of the line (half-plane 1)
-              const halfPlane1: [number, number][] = [
-                extendedStart,
-                extendedEnd,
-                [extendedEnd[0] + perpX * diagonal, extendedEnd[1] + perpY * diagonal],
-                [extendedStart[0] + perpX * diagonal, extendedStart[1] + perpY * diagonal],
-                extendedStart, // Close the ring
+              // Create a thin cutting rectangle (buffer around the extended line)
+              const cuttingRect: [number, number][] = [
+                [extendedStart[0] + perpX * bufferWidth, extendedStart[1] + perpY * bufferWidth],
+                [extendedEnd[0] + perpX * bufferWidth, extendedEnd[1] + perpY * bufferWidth],
+                [extendedEnd[0] - perpX * bufferWidth, extendedEnd[1] - perpY * bufferWidth],
+                [extendedStart[0] - perpX * bufferWidth, extendedStart[1] - perpY * bufferWidth],
+                [extendedStart[0] + perpX * bufferWidth, extendedStart[1] + perpY * bufferWidth], // Close
               ];
 
-              // Create a large rectangle on the other side of the line (half-plane 2)
-              const halfPlane2: [number, number][] = [
-                extendedStart,
-                extendedEnd,
-                [extendedEnd[0] - perpX * diagonal, extendedEnd[1] - perpY * diagonal],
-                [extendedStart[0] - perpX * diagonal, extendedStart[1] - perpY * diagonal],
-                extendedStart, // Close the ring
-              ];
+              console.log('[Store] Cutting rect:', cuttingRect);
 
-              // Create and rewind half-plane polygons to ensure correct winding (counter-clockwise)
-              const halfPlanePoly1Raw = turf.polygon([halfPlane1]);
-              const halfPlanePoly2Raw = turf.polygon([halfPlane2]);
+              // Use polygon-clipping to subtract the cutting rectangle from the polygon
+              // This works with raw pixel coordinates (no geographic assumptions)
+              // polygon-clipping expects: Polygon = Ring[], Ring = [number, number][]
+              const result = polygonClipping.difference(
+                [coords],       // subject polygon (array of rings, first is exterior)
+                [cuttingRect]   // clip polygon (the cutting line buffer)
+              );
 
-              // Rewind to ensure GeoJSON-compliant counter-clockwise exterior rings
-              // Cast back to polygon feature type since turf.rewind has broad return type
-              type PolygonFeature = ReturnType<typeof turf.polygon>;
-              const halfPlanePoly1 = turf.rewind(halfPlanePoly1Raw) as PolygonFeature;
-              const halfPlanePoly2 = turf.rewind(halfPlanePoly2Raw) as PolygonFeature;
+              console.log('[Store] polygon-clipping result:', result);
+              console.log('[Store] Result polygon count:', result.length);
 
-              console.log('[Store] Half-plane 1 valid:', turf.booleanValid(halfPlanePoly1));
-              console.log('[Store] Half-plane 2 valid:', turf.booleanValid(halfPlanePoly2));
-              console.log('[Store] Original polygon valid:', turf.booleanValid(polygon));
-
-              // Intersect the original polygon with each half-plane
-              const part1 = turf.intersect(turf.featureCollection([polygon, halfPlanePoly1]));
-              const part2 = turf.intersect(turf.featureCollection([polygon, halfPlanePoly2]));
-
-              console.log('[Store] Split results:', {
-                part1: !!part1,
-                part2: !!part2,
-                part1Type: part1?.geometry?.type,
-                part2Type: part2?.geometry?.type
-              });
-
-              if (!part1 && !part2) {
-                console.warn('[Store] Split did not produce any result - line may not cross polygon');
+              // polygon-clipping returns MultiPolygon format: Array of polygons
+              // Each polygon is an array of rings (first is exterior, rest are holes)
+              if (result.length < 2) {
+                console.warn('[Store] Split did not create multiple polygons - line may not fully cross the polygon');
+                console.warn('[Store] Result length:', result.length);
                 return null;
               }
 
@@ -1359,10 +1332,13 @@ export const useAppStore = create<AppState>()(
               const newSpots: Spot[] = [];
               const newSpotIds: string[] = [];
 
-              const processPolygon = (coordinates: number[][][]) => {
-                const ring = coordinates[0];
-                // Remove closing point
-                const newPoints: SimpleCoord[] = ring.slice(0, -1).map(coord => ({
+              for (const poly of result) {
+                // poly is an array of rings, first ring is the exterior
+                const exteriorRing = poly[0];
+                if (!exteriorRing || exteriorRing.length < 4) continue; // Need at least 3 points + closing
+
+                // Remove closing point and convert to SimpleCoord
+                const newPoints: SimpleCoord[] = exteriorRing.slice(0, -1).map(coord => ({
                   X: coord[0],
                   Y: coord[1],
                 }));
@@ -1383,32 +1359,10 @@ export const useAppStore = create<AppState>()(
                     mineralogy: spot.mineralogy,
                   });
                 }
-              };
-
-              // Process part1
-              if (part1) {
-                if (part1.geometry.type === 'Polygon') {
-                  processPolygon(part1.geometry.coordinates as number[][][]);
-                } else if (part1.geometry.type === 'MultiPolygon') {
-                  for (const part of part1.geometry.coordinates) {
-                    processPolygon(part as number[][][]);
-                  }
-                }
-              }
-
-              // Process part2
-              if (part2) {
-                if (part2.geometry.type === 'Polygon') {
-                  processPolygon(part2.geometry.coordinates as number[][][]);
-                } else if (part2.geometry.type === 'MultiPolygon') {
-                  for (const part of part2.geometry.coordinates) {
-                    processPolygon(part as number[][][]);
-                  }
-                }
               }
 
               if (newSpots.length < 2) {
-                console.warn('[Store] Split did not create multiple polygons - line may not fully cross the polygon');
+                console.warn('[Store] Split produced less than 2 valid polygons');
                 return null;
               }
 
