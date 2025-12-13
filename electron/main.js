@@ -618,6 +618,15 @@ function createWindow() {
         { role: 'selectAll' },
         { type: 'separator' },
         {
+          label: 'Edit Selected Spots...',
+          accelerator: 'CmdOrCtrl+Shift+E',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('menu:batch-edit-spots');
+            }
+          }
+        },
+        {
           label: 'Clear All Spots...',
           click: () => {
             if (mainWindow) {

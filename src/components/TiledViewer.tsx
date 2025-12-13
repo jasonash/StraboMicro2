@@ -27,12 +27,13 @@ import { SpotContextMenu } from './SpotContextMenu';
 import { EditingToolbar } from './EditingToolbar';
 import { NewSpotDialog } from './dialogs/NewSpotDialog';
 import { EditSpotDialog } from './dialogs/metadata/EditSpotDialog';
+import { BatchEditSpotsDialog } from './dialogs/BatchEditSpotsDialog';
 import RulerCanvas from './RulerCanvas';
 import { Geometry, Spot } from '@/types/project-types';
 import { usePolygonDrawing } from '@/hooks/usePolygonDrawing';
 import { useLineDrawing } from '@/hooks/useLineDrawing';
 import { useRulerTool } from '@/hooks/useRulerTool';
-import { useLasso, getIndicesInPolygon } from '@/hooks/useLasso';
+import { useLasso, getIndicesInPolygon, isPointInPolygon } from '@/hooks/useLasso';
 import { useImperativeGeometryEditing } from '@/hooks/useImperativeGeometryEditing';
 import { getEffectiveTheme } from '@/hooks/useTheme';
 import './TiledViewer.css';
@@ -113,6 +114,10 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
     const [editSpotDialogOpen, setEditSpotDialogOpen] = useState(false);
     const [editingSpot, setEditingSpot] = useState<Spot | null>(null);
 
+    // Batch Edit Dialog state (from store for global access)
+    const batchEditDialogOpen = useAppStore((state) => state.batchEditDialogOpen);
+    const setBatchEditDialogOpen = useAppStore((state) => state.setBatchEditDialogOpen);
+
     // Context Menu state
     const [contextMenuSpot, setContextMenuSpot] = useState<Spot | null>(null);
     const [contextMenuPosition, setContextMenuPosition] = useState<{ x: number; y: number } | null>(
@@ -132,6 +137,9 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
     const showArchivedSpots = useAppStore((state) => state.showArchivedSpots);
     const theme = useAppStore((state) => state.theme);
     const selectActiveSpot = useAppStore((state) => state.selectActiveSpot);
+    const selectSpot = useAppStore((state) => state.selectSpot);
+    const selectedSpotIds = useAppStore((state) => state.selectedSpotIds);
+    const clearSpotSelection = useAppStore((state) => state.clearSpotSelection);
     const setActiveTool = useAppStore((state) => state.setActiveTool);
     const addSpot = useAppStore((state) => state.addSpot);
     const deleteSpot = useAppStore((state) => state.deleteSpot);
@@ -148,6 +156,9 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
 
     // Initialize lasso hook
     const lasso = useLasso();
+
+    // Spot lasso selection state (Shift+Drag to select multiple spots)
+    const [spotLassoActive, setSpotLassoActive] = useState(false);
 
     /**
      * Aggressively clean up tile memory to prevent OOM crashes.
@@ -833,6 +844,65 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
     );
 
     /**
+     * Get the centroid of a spot for lasso selection
+     */
+    const getSpotCentroid = useCallback((spot: Spot): { x: number; y: number } | null => {
+      const geometryType = spot.geometryType || spot.geometry?.type;
+
+      if (geometryType === 'point' || geometryType === 'Point') {
+        const x = Array.isArray(spot.geometry?.coordinates)
+          ? (spot.geometry.coordinates as number[])[0]
+          : spot.points?.[0]?.X ?? 0;
+        const y = Array.isArray(spot.geometry?.coordinates)
+          ? (spot.geometry.coordinates as number[])[1]
+          : spot.points?.[0]?.Y ?? 0;
+        return { x, y };
+      }
+
+      if (geometryType === 'line' || geometryType === 'LineString' ||
+          geometryType === 'polygon' || geometryType === 'Polygon') {
+        // Get points from geometry or legacy format
+        const coords: Array<{ X: number; Y: number }> = [];
+
+        if (Array.isArray(spot.geometry?.coordinates)) {
+          const geomCoords = spot.geometry.coordinates as unknown[];
+          if (geometryType === 'polygon' || geometryType === 'Polygon') {
+            // Polygon coordinates are nested [[[x,y], [x,y], ...]]
+            const ring = (Array.isArray(geomCoords[0]) && Array.isArray((geomCoords[0] as unknown[])[0])
+              ? geomCoords[0]
+              : geomCoords) as number[][];
+            for (const c of ring) {
+              if (Array.isArray(c) && c.length >= 2) {
+                coords.push({ X: c[0], Y: c[1] });
+              }
+            }
+          } else {
+            // Line coordinates are [[x,y], [x,y], ...]
+            for (const c of geomCoords) {
+              if (Array.isArray(c) && (c as number[]).length >= 2) {
+                coords.push({ X: (c as number[])[0], Y: (c as number[])[1] });
+              }
+            }
+          }
+        } else if (spot.points) {
+          for (const p of spot.points) {
+            if (p.X != null && p.Y != null) {
+              coords.push({ X: p.X, Y: p.Y });
+            }
+          }
+        }
+
+        if (coords.length === 0) return null;
+
+        // Calculate centroid as average of all points
+        const sum = coords.reduce((acc, p) => ({ x: acc.x + p.X, y: acc.y + p.Y }), { x: 0, y: 0 });
+        return { x: sum.x / coords.length, y: sum.y / coords.length };
+      }
+
+      return null;
+    }, []);
+
+    /**
      * Handle pan (drag to move)
      */
     const handleMouseDown = useCallback(
@@ -869,6 +939,19 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
           // Convert to image coordinates
           const imageX = (pos.x - position.x) / zoom;
           const imageY = (pos.y - position.y) / zoom;
+          lasso.startLasso(imageX, imageY);
+          return;
+        }
+
+        // Handle Shift+Drag for spot lasso selection (not in point count mode)
+        if (e.evt.shiftKey && !pointCountMode && (!activeTool || activeTool === 'select')) {
+          const stage = stageRef.current;
+          if (!stage) return;
+          const pos = stage.getPointerPosition();
+          if (!pos) return;
+          const imageX = (pos.x - position.x) / zoom;
+          const imageY = (pos.y - position.y) / zoom;
+          setSpotLassoActive(true);
           lasso.startLasso(imageX, imageY);
           return;
         }
@@ -916,6 +999,13 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
 
       // Handle lasso drawing (point count mode only)
       if (lasso.isDrawing && lassoToolActive && pointCountMode) {
+        const imageX = (pos.x - position.x) / zoom;
+        const imageY = (pos.y - position.y) / zoom;
+        lasso.updateLasso(imageX, imageY);
+      }
+
+      // Handle spot lasso drawing (Shift+Drag mode)
+      if (lasso.isDrawing && spotLassoActive) {
         const imageX = (pos.x - position.x) / zoom;
         const imageY = (pos.y - position.y) / zoom;
         lasso.updateLasso(imageX, imageY);
@@ -1006,7 +1096,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
         rulerTool.handleMouseUp();
       }
 
-      // Finish lasso selection and select points inside
+      // Finish lasso selection and select points inside (point count mode)
       if (lasso.isDrawing && lassoToolActive && pointCountMode && activePointCountSession) {
         const polygon = lasso.completeLasso();
         if (polygon.length >= 3) {
@@ -1019,7 +1109,31 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
           }
         }
       }
-    }, [activeTool, rulerTool, lasso, lassoToolActive, pointCountMode, activePointCountSession, setSelectedPointIndices]);
+
+      // Finish spot lasso selection (Shift+Drag mode)
+      if (lasso.isDrawing && spotLassoActive) {
+        const polygon = lasso.completeLasso();
+        setSpotLassoActive(false);
+        if (polygon.length >= 3) {
+          // Get all visible spots and find those with centroids inside the lasso
+          const spots = activeMicrograph?.spots || [];
+          const spotsInLasso = spots.filter((spot) => {
+            // Skip archived spots unless showing them
+            if (spot.archived && !showArchivedSpots) return false;
+            const centroid = getSpotCentroid(spot);
+            if (!centroid) return false;
+            return isPointInPolygon(centroid, polygon);
+          });
+
+          if (spotsInLasso.length > 0) {
+            // Set the selected spots (replace current selection)
+            spotsInLasso.forEach((spot, index) => {
+              selectSpot(spot.id, index > 0); // First spot replaces, rest are additive
+            });
+          }
+        }
+      }
+    }, [activeTool, rulerTool, lasso, lassoToolActive, pointCountMode, activePointCountSession, setSelectedPointIndices, spotLassoActive, activeMicrograph, showArchivedSpots, getSpotCentroid, selectSpot]);
 
     const handleMouseLeave = useCallback(() => {
       setIsPanning(false);
@@ -1029,6 +1143,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
       // Cancel lasso if mouse leaves while drawing
       if (lasso.isDrawing) {
         lasso.cancelLasso();
+        setSpotLassoActive(false);
       }
     }, [onCursorMove, lasso]);
 
@@ -1449,7 +1564,8 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                     activeTool === 'line' ||
                     activeTool === 'polygon' ||
                     activeTool === 'measure' ||
-                    lassoToolActive
+                    lassoToolActive ||
+                    spotLassoActive
                       ? 'crosshair'
                       : isPanning
                       ? 'grabbing'
@@ -1633,10 +1749,17 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                           }}
                           stageScale={zoom}
                           activeSpotId={activeSpotId}
-                          onSpotClick={async (spot) => {
-                            const didNavigate = await selectActiveSpot(spot.id);
-                            if (didNavigate) {
-                              setActiveTool(null);
+                          selectedSpotIds={selectedSpotIds}
+                          onSpotClick={async (spot, e) => {
+                            const isMultiSelect = e?.evt?.metaKey || e?.evt?.ctrlKey;
+                            if (isMultiSelect) {
+                              selectSpot(spot.id, true);
+                            } else {
+                              clearSpotSelection();
+                              const didNavigate = await selectActiveSpot(spot.id);
+                              if (didNavigate) {
+                                setActiveTool(null);
+                              }
                             }
                           }}
                           onSpotContextMenu={(spot, x, y) => {
@@ -1654,11 +1777,19 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                       key={spot.id}
                       spot={spot}
                       scale={zoom}
-                      isSelected={spot.id === activeSpotId}
-                      onClick={async (spot) => {
-                        const didNavigate = await selectActiveSpot(spot.id);
-                        if (didNavigate) {
-                          setActiveTool(null); // Deactivate drawing tool when selecting spot
+                      isSelected={spot.id === activeSpotId || selectedSpotIds.includes(spot.id)}
+                      onClick={async (spot, e) => {
+                        const isMultiSelect = e?.evt?.metaKey || e?.evt?.ctrlKey;
+                        if (isMultiSelect) {
+                          // Multi-select: toggle selection
+                          selectSpot(spot.id, true);
+                        } else {
+                          // Single select: clear multi-selection and select this spot
+                          clearSpotSelection();
+                          const didNavigate = await selectActiveSpot(spot.id);
+                          if (didNavigate) {
+                            setActiveTool(null); // Deactivate drawing tool when selecting spot
+                          }
                         }
                       }}
                       onContextMenu={(spot, x, y) => {
@@ -1677,7 +1808,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                       key={`${spot.id}-label`}
                       spot={spot}
                       scale={zoom}
-                      isSelected={spot.id === activeSpotId}
+                      isSelected={spot.id === activeSpotId || selectedSpotIds.includes(spot.id)}
                       renderLabelsOnly={true}
                     />
                   ))}
@@ -1685,7 +1816,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                   {/* Point Count points (rendered on top of spots when in point count mode) */}
                   <PointCountRenderer scale={zoom} />
 
-                  {/* Lasso selection (point count mode only) */}
+                  {/* Lasso selection (point count mode or Shift+Drag spot selection) */}
                   {lasso.isDrawing && lasso.lassoPoints.length > 0 && (
                     <LassoRenderer points={lasso.lassoPoints} scale={zoom} />
                   )}
@@ -1723,7 +1854,8 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                     activeTool === 'line' ||
                     activeTool === 'polygon' ||
                     activeTool === 'measure' ||
-                    lassoToolActive
+                    lassoToolActive ||
+                    spotLassoActive
                       ? 'crosshair'
                       : isPanning
                       ? 'grabbing'
@@ -1849,10 +1981,17 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                           }}
                           stageScale={zoom}
                           activeSpotId={activeSpotId}
-                          onSpotClick={async (spot) => {
-                            const didNavigate = await selectActiveSpot(spot.id);
-                            if (didNavigate) {
-                              setActiveTool(null);
+                          selectedSpotIds={selectedSpotIds}
+                          onSpotClick={async (spot, e) => {
+                            const isMultiSelect = e?.evt?.metaKey || e?.evt?.ctrlKey;
+                            if (isMultiSelect) {
+                              selectSpot(spot.id, true);
+                            } else {
+                              clearSpotSelection();
+                              const didNavigate = await selectActiveSpot(spot.id);
+                              if (didNavigate) {
+                                setActiveTool(null);
+                              }
                             }
                           }}
                           onSpotContextMenu={(spot, x, y) => {
@@ -1870,11 +2009,19 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                       key={spot.id}
                       spot={spot}
                       scale={zoom}
-                      isSelected={spot.id === activeSpotId}
-                      onClick={async (spot) => {
-                        const didNavigate = await selectActiveSpot(spot.id);
-                        if (didNavigate) {
-                          setActiveTool(null);
+                      isSelected={spot.id === activeSpotId || selectedSpotIds.includes(spot.id)}
+                      onClick={async (spot, e) => {
+                        const isMultiSelect = e?.evt?.metaKey || e?.evt?.ctrlKey;
+                        if (isMultiSelect) {
+                          // Multi-select: toggle selection
+                          selectSpot(spot.id, true);
+                        } else {
+                          // Single select: clear multi-selection and select this spot
+                          clearSpotSelection();
+                          const didNavigate = await selectActiveSpot(spot.id);
+                          if (didNavigate) {
+                            setActiveTool(null);
+                          }
                         }
                       }}
                       onContextMenu={(spot, x, y) => {
@@ -1893,7 +2040,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                       key={`${spot.id}-label`}
                       spot={spot}
                       scale={zoom}
-                      isSelected={spot.id === activeSpotId}
+                      isSelected={spot.id === activeSpotId || selectedSpotIds.includes(spot.id)}
                       renderLabelsOnly={true}
                     />
                   ))}
@@ -1901,7 +2048,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                   {/* Point Count points (rendered on top of spots when in point count mode) */}
                   <PointCountRenderer scale={zoom} />
 
-                  {/* Lasso selection (point count mode only) */}
+                  {/* Lasso selection (point count mode or Shift+Drag spot selection) */}
                   {lasso.isDrawing && lasso.lassoPoints.length > 0 && (
                     <LassoRenderer points={lasso.lassoPoints} scale={zoom} />
                   )}
@@ -1989,6 +2136,14 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
           onEditMetadata={handleEditMetadata}
           onDelete={handleDeleteSpot}
           isRecursiveSpot={isContextMenuRecursiveSpot}
+          selectedCount={selectedSpotIds.length}
+          onBatchEdit={() => setBatchEditDialogOpen(true)}
+        />
+
+        {/* Batch Edit Spots Dialog */}
+        <BatchEditSpotsDialog
+          isOpen={batchEditDialogOpen}
+          onClose={() => setBatchEditDialogOpen(false)}
         />
       </div>
     );

@@ -434,6 +434,16 @@ function App() {
       console.log(`[App] Cleared ${spotCount} spots from micrograph ${currentMicrographId}`);
     }));
 
+    // Batch Edit Spots menu item (Edit menu, Cmd+Shift+E)
+    unsubscribers.push(window.api.onBatchEditSpots(() => {
+      const selectedCount = useAppStore.getState().selectedSpotIds.length;
+      if (selectedCount < 2) {
+        alert('Please select 2 or more spots first.\n\nTip: Use Cmd+Click to select multiple spots, or Shift+Drag to lasso select.');
+        return;
+      }
+      useAppStore.getState().setBatchEditDialogOpen(true);
+    }));
+
     // Debug: Show Project Structure
     unsubscribers.push(window.api.onShowProjectDebug(() => {
       setIsDebugModalOpen(true);

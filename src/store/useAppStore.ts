@@ -167,6 +167,8 @@ interface AppState {
   quickClassifyShortcuts: Record<string, string>;
   /** Whether Statistics Panel is visible */
   statisticsPanelVisible: boolean;
+  /** Whether Batch Edit Spots dialog is visible */
+  batchEditDialogOpen: boolean;
 
   // ========== POINT COUNT MODE STATE ==========
   /** Whether Point Count mode is active (separate from spots) */
@@ -267,6 +269,8 @@ interface AppState {
   setQuickClassifyShortcuts: (shortcuts: Record<string, string>) => void;
   /** Toggle Statistics Panel visibility */
   setStatisticsPanelVisible: (visible: boolean) => void;
+  /** Toggle Batch Edit dialog visibility */
+  setBatchEditDialogOpen: (open: boolean) => void;
 
   // ========== POINT COUNT MODE ACTIONS ==========
   /** Enter Point Count mode with a session */
@@ -426,6 +430,7 @@ export const useAppStore = create<AppState>()(
             'u': 'unknown',
           },
           statisticsPanelVisible: false,
+          batchEditDialogOpen: false,
 
           // Point Count mode state
           pointCountMode: false,
@@ -1427,6 +1432,8 @@ export const useAppStore = create<AppState>()(
           setQuickClassifyShortcuts: (shortcuts) => set({ quickClassifyShortcuts: shortcuts }),
 
           setStatisticsPanelVisible: (visible) => set({ statisticsPanelVisible: visible }),
+
+          setBatchEditDialogOpen: (open) => set({ batchEditDialogOpen: open }),
 
           // ========== POINT COUNT MODE ACTIONS ==========
 
