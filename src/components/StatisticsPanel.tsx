@@ -24,7 +24,7 @@ import {
 import { useAppStore } from '../store';
 import { PointCountingStatistics } from './PointCountingStatistics';
 
-const PANEL_WIDTH = 300;
+const PANEL_WIDTH = 340;
 const PANEL_DEFAULT_X_OFFSET = 20; // From right edge
 const PANEL_DEFAULT_Y_OFFSET = 180; // From bottom (room for Quick Classify toolbar)
 
