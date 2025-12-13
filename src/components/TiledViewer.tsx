@@ -1233,6 +1233,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
             const editingSpotId = useAppStore.getState().editingSpotId;
             if (!editingSpotId) {
               selectActiveSpot(null);
+              clearSpotSelection(); // Also clear multi-selection
             }
           }
           return;
@@ -1260,7 +1261,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
           lineDrawing.handleClick(imageX, imageY);
         }
       },
-      [activeTool, position, zoom, polygonDrawing, lineDrawing, selectActiveSpot, hasDragged, splitModeSpotId, splitLineDrawing]
+      [activeTool, position, zoom, polygonDrawing, lineDrawing, selectActiveSpot, clearSpotSelection, hasDragged, splitModeSpotId, splitLineDrawing]
     );
 
     /**
