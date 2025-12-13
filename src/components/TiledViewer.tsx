@@ -1197,6 +1197,25 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
           return;
         }
 
+        const stage = stageRef.current;
+        if (!stage) return;
+
+        // Get click position in stage coordinates
+        const pos = stage.getPointerPosition();
+        if (!pos) return;
+
+        // Convert to image coordinates (account for zoom/pan)
+        const imageX = (pos.x - position.x) / zoom;
+        const imageY = (pos.y - position.y) / zoom;
+
+        // Handle split mode FIRST (special line drawing for splitting spots)
+        // This takes priority over normal selection behavior
+        if (splitModeSpotId) {
+          console.log('Split mode click at:', imageX, imageY);
+          splitLineDrawing.handleClick(imageX, imageY);
+          return;
+        }
+
         // If clicking directly on the stage (not on a spot), clear spot selection
         if (!activeTool || activeTool === 'select') {
           // Check if click target or its parent is a spot (spots have names like "spot-{id}")
@@ -1219,17 +1238,6 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
           return;
         }
 
-        const stage = stageRef.current;
-        if (!stage) return;
-
-        // Get click position in stage coordinates
-        const pos = stage.getPointerPosition();
-        if (!pos) return;
-
-        // Convert to image coordinates (account for zoom/pan)
-        const imageX = (pos.x - position.x) / zoom;
-        const imageY = (pos.y - position.y) / zoom;
-
         console.log('Click at image coordinates:', imageX, imageY, 'Tool:', activeTool);
 
         // Handle point tool
@@ -1250,11 +1258,6 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
         // Handle line tool
         if (activeTool === 'line') {
           lineDrawing.handleClick(imageX, imageY);
-        }
-
-        // Handle split mode (special line drawing for splitting spots)
-        if (splitModeSpotId) {
-          splitLineDrawing.handleClick(imageX, imageY);
         }
       },
       [activeTool, position, zoom, polygonDrawing, lineDrawing, selectActiveSpot, hasDragged, splitModeSpotId, splitLineDrawing]
