@@ -88,6 +88,7 @@ export function GridPreviewCanvas({
   // Load micrograph image (medium resolution for good zoom quality)
   useEffect(() => {
     if (!micrograph || !project) {
+      console.error('[GridPreviewCanvas] No micrograph or project');
       setError('Micrograph not found');
       setIsLoading(false);
       return;
@@ -101,35 +102,59 @@ export function GridPreviewCanvas({
 
         // Get project folder paths
         const folderPaths = await window.api?.getProjectFolderPaths(project.id);
-        if (!folderPaths || !mounted) return;
+        if (!folderPaths) {
+          console.error('[GridPreviewCanvas] Could not get folder paths');
+          if (mounted) {
+            setError('Failed to get project paths');
+            setIsLoading(false);
+          }
+          return;
+        }
+        if (!mounted) return;
 
         // Build full path to image
-        const fullPath = `${folderPaths.images}/${micrograph.imagePath}`;
+        const imagePath = micrograph.imagePath || '';
+        const fullPath = `${folderPaths.images}/${imagePath}`;
+        console.log('[GridPreviewCanvas] Loading image from:', fullPath);
 
         // Load tile data to get hash
         const tileData = await window.api?.loadImageWithTiles(fullPath);
-        if (!tileData || !mounted) {
-          setError('Failed to load image');
-          setIsLoading(false);
+        if (!tileData) {
+          console.error('[GridPreviewCanvas] Failed to load tile data');
+          if (mounted) {
+            setError('Failed to load image');
+            setIsLoading(false);
+          }
           return;
         }
+        if (!mounted) return;
+
+        console.log('[GridPreviewCanvas] Got tile data, hash:', tileData.hash);
 
         // Try to load medium resolution first, fall back to thumbnail
         let dataUrl = await window.api?.loadMedium(tileData.hash);
         if (!dataUrl) {
+          console.log('[GridPreviewCanvas] No medium, trying thumbnail');
           dataUrl = await window.api?.loadThumbnail(tileData.hash);
         }
 
-        if (!dataUrl || !mounted) {
-          setError('Failed to load preview');
-          setIsLoading(false);
+        if (!dataUrl) {
+          console.error('[GridPreviewCanvas] Failed to load any resolution');
+          if (mounted) {
+            setError('Failed to load preview');
+            setIsLoading(false);
+          }
           return;
         }
+        if (!mounted) return;
+
+        console.log('[GridPreviewCanvas] Got dataUrl, length:', dataUrl.length);
 
         // Create image element
-        const img = new window.Image();
+        const img = new Image();
         img.onload = () => {
           if (mounted) {
+            console.log('[GridPreviewCanvas] Image loaded:', img.width, 'x', img.height);
             setImage(img);
             setImageSize({ width: img.width, height: img.height });
             setIsLoading(false);
@@ -146,7 +171,8 @@ export function GridPreviewCanvas({
             setPosition({ x, y });
           }
         };
-        img.onerror = () => {
+        img.onerror = (err) => {
+          console.error('[GridPreviewCanvas] Image decode error:', err);
           if (mounted) {
             setError('Failed to decode image');
             setIsLoading(false);
@@ -154,6 +180,7 @@ export function GridPreviewCanvas({
         };
         img.src = dataUrl;
       } catch (err) {
+        console.error('[GridPreviewCanvas] Error:', err);
         if (mounted) {
           setError('Error loading image');
           setIsLoading(false);
@@ -295,7 +322,7 @@ export function GridPreviewCanvas({
   }
 
   return (
-    <Box sx={{ position: 'relative' }}>
+    <Box sx={{ position: 'relative', width, height }}>
       {/* Zoom controls */}
       <Stack
         direction="row"
