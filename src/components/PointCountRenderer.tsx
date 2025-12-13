@@ -33,14 +33,17 @@ const CROSSHAIR_LENGTH = 20;
 /** Stroke width for point outlines */
 const STROKE_WIDTH = 2;
 
-/** Color for unclassified points */
-const UNCLASSIFIED_COLOR = '#888888';
+/** Fill color for unclassified points (white for visibility) */
+const UNCLASSIFIED_FILL = '#FFFFFF';
+
+/** Outline color for unclassified points (dark for contrast) */
+const UNCLASSIFIED_OUTLINE = '#222222';
 
 /** Color for current point highlight */
 const CURRENT_POINT_HIGHLIGHT = '#FFD700'; // Gold
 
 /** Hover highlight color */
-const HOVER_COLOR = '#FFFFFF';
+const HOVER_COLOR = '#00FFFF'; // Cyan for better visibility
 
 // ============================================================================
 // TYPES
@@ -69,7 +72,7 @@ function Point({ point, index, scale, isCurrent, onClick }: PointProps) {
   const [isHovered, setIsHovered] = useState(false);
 
   const isClassified = !!point.mineral;
-  const mineralColor = point.mineral ? getMineralColor(point.mineral) : UNCLASSIFIED_COLOR;
+  const mineralColor = point.mineral ? getMineralColor(point.mineral) : UNCLASSIFIED_FILL;
 
   // Scale-adjusted sizes
   const radius = (isCurrent ? CURRENT_POINT_RADIUS : POINT_RADIUS) / scale;
@@ -170,14 +173,15 @@ function Point({ point, index, scale, isCurrent, onClick }: PointProps) {
           onMouseLeave={handleMouseLeave}
         />
       ) : (
-        // Unclassified: Ring (hollow circle)
-        <Ring
+        // Unclassified: White filled circle with dark outline (visible on any background)
+        <Circle
           x={point.x}
           y={point.y}
-          innerRadius={radius - strokeWidth}
-          outerRadius={radius}
-          fill={strokeColor}
-          opacity={0.7}
+          radius={radius}
+          fill={isHovered ? HOVER_COLOR : UNCLASSIFIED_FILL}
+          stroke={isCurrent ? CURRENT_POINT_HIGHLIGHT : UNCLASSIFIED_OUTLINE}
+          strokeWidth={strokeWidth * 1.5}
+          opacity={0.9}
           onClick={handleClick}
           onTap={handleClick}
           onMouseEnter={handleMouseEnter}
