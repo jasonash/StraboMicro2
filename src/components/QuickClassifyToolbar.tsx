@@ -441,6 +441,66 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
   }, [pointCountMode, goToNextUnclassifiedPoint, selectNextUnclassifiedSpot]);
 
   // ============================================================================
+  // SPATIAL NAVIGATION (Point Count mode only - arrow keys)
+  // ============================================================================
+
+  /**
+   * Navigate spatially in the point grid using arrow keys.
+   * For regular/stratified grids, uses row/col structure.
+   * For random grids, falls back to sequential navigation.
+   */
+  const navigateSpatially = useCallback((direction: 'up' | 'down' | 'left' | 'right') => {
+    if (!pointCountMode || !activePointCountSession) return;
+
+    const { points, gridSettings, gridType } = activePointCountSession;
+    const { rows, cols } = gridSettings;
+
+    if (currentPointIndex < 0 || currentPointIndex >= points.length) return;
+
+    // For random grids without spatial structure, use sequential navigation
+    if (gridType === 'random') {
+      if (direction === 'right' || direction === 'down') {
+        if (currentPointIndex < points.length - 1) {
+          setCurrentPointIndex(currentPointIndex + 1);
+        }
+      } else {
+        if (currentPointIndex > 0) {
+          setCurrentPointIndex(currentPointIndex - 1);
+        }
+      }
+      return;
+    }
+
+    // For regular/stratified grids, calculate spatial neighbor
+    // Points are stored in row-major order: index = row * cols + col
+    const currentRow = Math.floor(currentPointIndex / cols);
+    const currentCol = currentPointIndex % cols;
+
+    let newRow = currentRow;
+    let newCol = currentCol;
+
+    switch (direction) {
+      case 'up':
+        newRow = Math.max(0, currentRow - 1);
+        break;
+      case 'down':
+        newRow = Math.min(rows - 1, currentRow + 1);
+        break;
+      case 'left':
+        newCol = Math.max(0, currentCol - 1);
+        break;
+      case 'right':
+        newCol = Math.min(cols - 1, currentCol + 1);
+        break;
+    }
+
+    const newIndex = newRow * cols + newCol;
+    if (newIndex !== currentPointIndex && newIndex >= 0 && newIndex < points.length) {
+      setCurrentPointIndex(newIndex);
+    }
+  }, [pointCountMode, activePointCountSession, currentPointIndex, setCurrentPointIndex]);
+
+  // ============================================================================
   // EXIT HANDLING
   // ============================================================================
 
@@ -513,6 +573,28 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
         return;
       }
 
+      // Arrow keys for spatial navigation (point count mode only)
+      if (pointCountMode) {
+        switch (e.key) {
+          case 'ArrowUp':
+            e.preventDefault();
+            navigateSpatially('up');
+            return;
+          case 'ArrowDown':
+            e.preventDefault();
+            navigateSpatially('down');
+            return;
+          case 'ArrowLeft':
+            e.preventDefault();
+            navigateSpatially('left');
+            return;
+          case 'ArrowRight':
+            e.preventDefault();
+            navigateSpatially('right');
+            return;
+        }
+      }
+
       // Check mineral shortcuts
       if (shortcuts[key]) {
         e.preventDefault();
@@ -533,6 +615,8 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
       selectedPointIndices,
       clearSelectedPoints,
       setLassoToolActive,
+      pointCountMode,
+      navigateSpatially,
     ]
   );
 
