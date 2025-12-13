@@ -265,6 +265,8 @@ export function PointCountDialog({
   // Reset state when dialog opens
   useEffect(() => {
     if (isOpen) {
+      setView('loading'); // Reset to loading so the view determination runs fresh
+      setIsLoading(true); // Ensure loading state triggers the flow
       setSessionName(generateDefaultSessionName());
       setGridType('regular');
       setPointCount(DEFAULT_POINTS);
