@@ -15,6 +15,7 @@ import { ExportPDFDialog } from './components/dialogs/ExportPDFDialog';
 import { ExportSmzDialog } from './components/dialogs/ExportSmzDialog';
 import { PushToServerDialog } from './components/dialogs/PushToServerDialog';
 import { VersionHistoryDialog } from './components/dialogs/VersionHistoryDialog';
+import { StatisticsPanel } from './components/StatisticsPanel';
 import { ImportSmzDialog } from './components/dialogs/ImportSmzDialog';
 import { RemoteProjectsDialog } from './components/dialogs/RemoteProjectsDialog';
 import { SharedProjectDialog } from './components/dialogs/SharedProjectDialog';
@@ -1149,6 +1150,7 @@ function App() {
         onClose={closeGenerateSpotsDialog}
         micrographId={generateSpotsTargetMicrographId}
       />
+      <StatisticsPanel />
     </>
   );
 }

@@ -5,7 +5,6 @@ import DrawingToolbar from './DrawingToolbar';
 import BottomPanel from './BottomPanel';
 import { TiledViewer, TiledViewerRef } from './TiledViewer';
 import { QuickClassifyToolbar } from './QuickClassifyToolbar';
-import { StatisticsPanel } from './StatisticsPanel';
 import { ConfigureShortcutsDialog } from './dialogs/ConfigureShortcutsDialog';
 import { useAppStore } from '../store';
 import { findMicrographById, findSpotById } from '../store/helpers';
@@ -169,7 +168,6 @@ const Viewer: React.FC = () => {
           onOpenStatistics={() => setStatisticsPanelVisible(!statisticsPanelVisible)}
           onOpenSettings={() => setIsConfigureShortcutsOpen(true)}
         />
-        <StatisticsPanel />
         <ConfigureShortcutsDialog
           open={isConfigureShortcutsOpen}
           onClose={() => setIsConfigureShortcutsOpen(false)}

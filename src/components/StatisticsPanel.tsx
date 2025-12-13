@@ -25,8 +25,8 @@ import { useAppStore } from '../store';
 import { PointCountingStatistics } from './PointCountingStatistics';
 
 const PANEL_WIDTH = 300;
-const PANEL_DEFAULT_X = 20; // From right edge
-const PANEL_DEFAULT_Y = 60; // From top edge
+const PANEL_DEFAULT_X = 80; // From right edge (room for drawing tools)
+const PANEL_DEFAULT_Y = 100; // From top edge (room for header)
 
 export const StatisticsPanel: React.FC = () => {
   const statisticsPanelVisible = useAppStore((s) => s.statisticsPanelVisible);
@@ -42,18 +42,14 @@ export const StatisticsPanel: React.FC = () => {
   const dragStartRef = useRef<{ mouseX: number; mouseY: number; panelX: number; panelY: number } | null>(null);
   const panelRef = useRef<HTMLDivElement>(null);
 
-  // Initialize position on first render
+  // Initialize position on first render (use window dimensions)
   useEffect(() => {
-    if (statisticsPanelVisible && position === null && panelRef.current) {
-      const parent = panelRef.current.parentElement;
-      if (parent) {
-        const parentRect = parent.getBoundingClientRect();
-        // Position in top-right corner, away from drawing tools
-        setPosition({
-          x: parentRect.width - PANEL_WIDTH - PANEL_DEFAULT_X,
-          y: PANEL_DEFAULT_Y,
-        });
-      }
+    if (statisticsPanelVisible && position === null) {
+      // Position in top-right area, away from drawing tools
+      setPosition({
+        x: window.innerWidth - PANEL_WIDTH - PANEL_DEFAULT_X,
+        y: PANEL_DEFAULT_Y,
+      });
     }
   }, [statisticsPanelVisible, position]);
 
@@ -88,21 +84,17 @@ export const StatisticsPanel: React.FC = () => {
     if (!isDragging) return;
 
     const handleMouseMove = (e: MouseEvent) => {
-      if (!dragStartRef.current || !panelRef.current) return;
+      if (!dragStartRef.current) return;
 
-      const parent = panelRef.current.parentElement;
-      if (!parent) return;
-
-      const parentRect = parent.getBoundingClientRect();
       const deltaX = e.clientX - dragStartRef.current.mouseX;
       const deltaY = e.clientY - dragStartRef.current.mouseY;
 
       let newX = dragStartRef.current.panelX + deltaX;
       let newY = dragStartRef.current.panelY + deltaY;
 
-      // Constrain to parent bounds
-      newX = Math.max(0, Math.min(newX, parentRect.width - PANEL_WIDTH));
-      newY = Math.max(0, Math.min(newY, parentRect.height - 100)); // Leave room for header
+      // Constrain to window bounds
+      newX = Math.max(0, Math.min(newX, window.innerWidth - PANEL_WIDTH));
+      newY = Math.max(0, Math.min(newY, window.innerHeight - 100)); // Leave room for panel
 
       setPosition({ x: newX, y: newY });
     };
@@ -133,13 +125,12 @@ export const StatisticsPanel: React.FC = () => {
       ref={panelRef}
       elevation={8}
       sx={{
-        position: 'absolute',
-        left: position?.x ?? 'auto',
+        position: 'fixed',
+        left: position?.x ?? window.innerWidth - PANEL_WIDTH - PANEL_DEFAULT_X,
         top: position?.y ?? PANEL_DEFAULT_Y,
-        right: position === null ? PANEL_DEFAULT_X : 'auto',
         width: PANEL_WIDTH,
-        maxHeight: 'calc(100% - 180px)',
-        zIndex: 150, // Above drawing tools
+        maxHeight: 'calc(100vh - 150px)',
+        zIndex: 1500, // Above everything (MUI dialogs are 1300)
         bgcolor: 'background.paper',
         borderRadius: 1,
         overflow: 'hidden',
