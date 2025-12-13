@@ -1488,6 +1488,7 @@ export const useAppStore = create<AppState>()(
               activePointCountSession: null,
               currentPointIndex: -1,
               quickClassifyVisible: false,
+              statisticsPanelVisible: false,
               lassoToolActive: false,
               selectedPointIndices: [],
               // Clear navigation guard
