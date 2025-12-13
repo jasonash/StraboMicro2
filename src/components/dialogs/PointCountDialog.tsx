@@ -177,6 +177,14 @@ function SessionCard({ session, onContinue, onRename, onDelete, showActions = fa
             </Button>
           ) : (
             <>
+              <Button
+                variant="contained"
+                size="small"
+                onClick={onContinue}
+                sx={{ minWidth: 80 }}
+              >
+                Continue
+              </Button>
               {showActions && (
                 <Box sx={{ display: 'flex', gap: 0.5 }}>
                   <Tooltip title="Rename">
@@ -191,14 +199,6 @@ function SessionCard({ session, onContinue, onRename, onDelete, showActions = fa
                   </Tooltip>
                 </Box>
               )}
-              <Button
-                variant="contained"
-                size="small"
-                onClick={onContinue}
-                sx={{ minWidth: 80 }}
-              >
-                Continue
-              </Button>
             </>
           )}
         </Box>
