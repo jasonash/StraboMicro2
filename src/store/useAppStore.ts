@@ -1705,7 +1705,9 @@ export const useAppStore = create<AppState>()(
                 return state;
               }
 
-              const newProject = { ...state.project };
+              // Use structuredClone to create deep copy - ensures all nested arrays
+              // get new references so React's useMemo detects changes
+              const newProject = structuredClone(state.project);
               const spotId = state.editingSpotId;
               const points = state.editingGeometry;
 

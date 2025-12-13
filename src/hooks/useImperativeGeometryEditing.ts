@@ -403,16 +403,7 @@ export const useImperativeGeometryEditing = (refs: GeometryEditingRefs) => {
 
     // Clean up imperative elements
     cleanupEditMode();
-
-    // Force a full stage redraw after a microtask to ensure React has re-rendered
-    // This fixes the visual "bounce back" issue where the old position briefly shows
-    const stage = refs.stageRef.current?.getStage?.();
-    if (stage) {
-      requestAnimationFrame(() => {
-        stage.batchDraw();
-      });
-    }
-  }, [updateEditingGeometry, saveEditingGeometry, cleanupEditMode, refs]);
+  }, [updateEditingGeometry, saveEditingGeometry, cleanupEditMode]);
 
   /**
    * Cancel editing changes
