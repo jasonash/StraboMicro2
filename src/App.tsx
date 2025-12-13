@@ -24,6 +24,7 @@ import { SharedProjectDialog } from './components/dialogs/SharedProjectDialog';
 import { CloseProjectDialog } from './components/dialogs/CloseProjectDialog';
 import { ProjectPrepDialog } from './components/dialogs/ProjectPrepDialog';
 import { PointCountDialog } from './components/dialogs/PointCountDialog';
+import { GrainDetectionDialog } from './components/dialogs/GrainDetectionDialog';
 import {
   IncompleteMicrographsDialog,
   findIncompleteMicrographs,
@@ -181,6 +182,7 @@ function App() {
   const [isManualUpdateCheck, setIsManualUpdateCheck] = useState(false);
   const [isConfigureShortcutsOpen, setIsConfigureShortcutsOpen] = useState(false);
   const [isPointCountDialogOpen, setIsPointCountDialogOpen] = useState(false);
+  const [isGrainDetectionDialogOpen, setIsGrainDetectionDialogOpen] = useState(false);
   const closeProject = useAppStore(state => state.closeProject);
   const project = useAppStore(state => state.project);
   const setTheme = useAppStore(state => state.setTheme);
@@ -400,10 +402,9 @@ function App() {
     }));
 
     // Grain Detection menu item (Tools menu with Cmd+Shift+G)
-    // Note: Grain detection not yet implemented - coming in future version
     unsubscribers.push(window.api.onGrainDetection(() => {
       if (activeMicrographId) {
-        alert('Grain Detection is not yet implemented.\n\nThis feature will use computer vision to automatically detect grain boundaries.');
+        setIsGrainDetectionDialogOpen(true);
       } else {
         console.warn('[App] Grain Detection: No micrograph selected');
       }
@@ -1158,6 +1159,11 @@ function App() {
       <PointCountDialog
         isOpen={isPointCountDialogOpen}
         onClose={() => setIsPointCountDialogOpen(false)}
+        micrographId={activeMicrographId}
+      />
+      <GrainDetectionDialog
+        isOpen={isGrainDetectionDialogOpen}
+        onClose={() => setIsGrainDetectionDialogOpen(false)}
         micrographId={activeMicrographId}
       />
       <StatisticsPanel />
