@@ -665,14 +665,14 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
           py: 0.5,
           borderBottom: 1,
           borderColor: 'divider',
-          bgcolor: pointCountMode ? 'primary.dark' : 'grey.800',
+          bgcolor: 'grey.800',
           cursor: isDragging ? 'grabbing' : 'grab',
           userSelect: 'none',
         }}
       >
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
           <DragIcon fontSize="small" sx={{ color: 'grey.500', fontSize: 16 }} />
-          <Typography variant="body2" sx={{ fontWeight: 600, color: pointCountMode ? 'grey.100' : 'primary.main' }}>
+          <Typography variant="body2" sx={{ fontWeight: 600, color: 'grey.100' }}>
             {pointCountMode ? 'Point Count' : 'Quick Classify'}
           </Typography>
           {pointCountMode && activePointCountSession && (
