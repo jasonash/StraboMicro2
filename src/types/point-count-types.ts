@@ -121,16 +121,51 @@ export const MINERAL_COLORS: Record<string, string> = {
   'dolomite': '#9E9E9E',      // Gray
   'epidote': '#CDDC39',       // Lime
   'serpentine': '#009688',    // Teal
+  'tourmaline': '#3F51B5',    // Indigo
   'zircon': '#FF5722',        // Deep orange
   'unknown': '#757575',       // Dark gray
 };
 
 /**
+ * Generate a deterministic color from a string (for custom minerals)
+ * Uses a simple hash to ensure the same mineral always gets the same color
+ */
+function stringToColor(str: string): string {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = str.charCodeAt(i) + ((hash << 5) - hash);
+    hash = hash & hash; // Convert to 32-bit integer
+  }
+
+  // Generate HSL color with good saturation and lightness for visibility
+  // Use the hash to determine hue (0-360), keep saturation and lightness fixed
+  const hue = Math.abs(hash) % 360;
+  const saturation = 65; // Good saturation for visibility
+  const lightness = 50;  // Medium lightness
+
+  return `hsl(${hue}, ${saturation}%, ${lightness}%)`;
+}
+
+/**
  * Get color for a mineral, with fallback for unknown minerals
+ * - Known minerals get their predefined color
+ * - Custom/unknown minerals get a deterministic color based on their name
  */
 export function getMineralColor(mineral: string): string {
   const lowerMineral = mineral.toLowerCase();
-  return MINERAL_COLORS[lowerMineral] || MINERAL_COLORS['unknown'];
+
+  // Check predefined colors first
+  if (MINERAL_COLORS[lowerMineral]) {
+    return MINERAL_COLORS[lowerMineral];
+  }
+
+  // Generate a deterministic color for custom minerals
+  // (except 'unknown' which keeps its gray color)
+  if (lowerMineral === 'unknown') {
+    return MINERAL_COLORS['unknown'];
+  }
+
+  return stringToColor(lowerMineral);
 }
 
 /**

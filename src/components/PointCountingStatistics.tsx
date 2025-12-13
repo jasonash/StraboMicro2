@@ -33,6 +33,7 @@ import {
   exportStatisticsToCSV,
   type PointCountStatistics as Stats,
 } from '@/services/pointCounting';
+import { getMineralColor } from '@/types/point-count-types';
 
 // ============================================================================
 // SIMPLE BAR CHART COMPONENT
@@ -227,6 +228,7 @@ export function PointCountingStatistics({
           data={stats.mineralStats.map((m) => ({
             name: m.name,
             percentage: m.percentage,
+            color: getMineralColor(m.name),
           }))}
         />
       </Box>
