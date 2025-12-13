@@ -1661,7 +1661,8 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                     activeTool === 'polygon' ||
                     activeTool === 'measure' ||
                     lassoToolActive ||
-                    spotLassoActive
+                    spotLassoActive ||
+                    splitModeSpotId
                       ? 'crosshair'
                       : isPanning
                       ? 'grabbing'
@@ -1959,7 +1960,8 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                     activeTool === 'polygon' ||
                     activeTool === 'measure' ||
                     lassoToolActive ||
-                    spotLassoActive
+                    spotLassoActive ||
+                    splitModeSpotId
                       ? 'crosshair'
                       : isPanning
                       ? 'grabbing'
