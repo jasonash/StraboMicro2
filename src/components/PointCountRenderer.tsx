@@ -39,7 +39,7 @@ const UNCLASSIFIED_FILL = '#CCCCCC';
 const CURRENT_POINT_HIGHLIGHT = '#FFD700'; // Gold
 
 /** Color for lasso-selected points */
-const SELECTED_POINT_HIGHLIGHT = '#2196F3'; // Blue (matches lasso line)
+const SELECTED_POINT_HIGHLIGHT = '#FFEB3B'; // Bright yellow for visibility
 
 // ============================================================================
 // TYPES
