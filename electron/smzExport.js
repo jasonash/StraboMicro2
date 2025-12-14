@@ -211,6 +211,10 @@ function generateReadme(projectData, allMicrographs) {
     '  📁 associatedFiles/',
     '     Any external files attached to the project (PDFs, documents, etc.).',
     '',
+    '  📁 point-counts/',
+    '     Point count session data (JSON files). Each file represents a',
+    '     point counting session with grid configuration and classifications.',
+    '',
     '───────────────────────────────────────────────────────────────────────────────',
     '                                 NOTES',
     '───────────────────────────────────────────────────────────────────────────────',
@@ -644,6 +648,31 @@ async function exportSmz(
       log.error('[SmzExport] Failed to copy associated files:', err);
       // Create empty folder on error
       archive.append('', { name: `${projectId}/associatedFiles/.gitkeep` });
+    }
+
+    // --- Step 3b: Copy point-counts folder and all session files ---
+    sendProgress('Copying point count sessions', 'point-counts');
+    try {
+      const pointCountsPath = path.join(folderPaths.projectPath, 'point-counts');
+      if (fs.existsSync(pointCountsPath)) {
+        const files = await fs.promises.readdir(pointCountsPath);
+        const jsonFiles = files.filter(f => f.endsWith('.json'));
+        for (const file of jsonFiles) {
+          const filePath = path.join(pointCountsPath, file);
+          const stat = await fs.promises.stat(filePath);
+          if (stat.isFile()) {
+            const fileBuffer = await fs.promises.readFile(filePath);
+            archive.append(fileBuffer, { name: `${projectId}/point-counts/${file}` });
+            log.info(`[SmzExport] Added point count session: ${file}`);
+          }
+        }
+        if (jsonFiles.length > 0) {
+          log.info(`[SmzExport] Added ${jsonFiles.length} point count session(s)`);
+        }
+      }
+    } catch (err) {
+      log.error('[SmzExport] Failed to copy point count sessions:', err);
+      // Non-critical - continue without point counts
     }
 
     // --- Step 4: Generate project.pdf ---

@@ -263,6 +263,19 @@ async function importSmz(smzPath, progressCallback) {
         await fs.promises.mkdir(thumbnailImagesPath, { recursive: true });
         const filename = path.basename(pathWithinProject);
         destPath = path.join(thumbnailImagesPath, filename);
+      } else if (pathWithinProject.startsWith('point-counts/')) {
+        // Point count session files
+        const pointCountsPath = path.join(folderPaths.projectPath, 'point-counts');
+        await fs.promises.mkdir(pointCountsPath, { recursive: true });
+        const filename = path.basename(pathWithinProject);
+        // Only restore .json session files
+        if (filename.endsWith('.json')) {
+          destPath = path.join(pointCountsPath, filename);
+          log.info(`[SmzImport] Restoring point count session: ${filename}`);
+        } else {
+          processedFiles++;
+          continue;
+        }
       } else if (pathWithinProject === 'project.pdf' || pathWithinProject === 'README.txt') {
         // Skip PDF and README - they're generated artifacts
         processedFiles++;
