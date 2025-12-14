@@ -23,6 +23,7 @@ import {
 } from '@mui/icons-material';
 import { useAppStore } from '../store';
 import { PointCountingStatistics } from './PointCountingStatistics';
+import { QuickEditStatistics } from './QuickEditStatistics';
 
 const PANEL_DEFAULT_WIDTH = 340;
 const PANEL_MIN_WIDTH = 280;
@@ -36,6 +37,8 @@ export const StatisticsPanel: React.FC = () => {
   const activeMicrographId = useAppStore((s) => s.activeMicrographId);
   const pointCountMode = useAppStore((s) => s.pointCountMode);
   const activeSession = useAppStore((s) => s.activePointCountSession);
+  const quickEditMode = useAppStore((s) => s.quickEditMode);
+  const quickEditSpotIds = useAppStore((s) => s.quickEditSpotIds);
 
   // Expanded/collapsed state for the panel content
   const [isExpanded, setIsExpanded] = useState(true);
@@ -194,11 +197,23 @@ export const StatisticsPanel: React.FC = () => {
 
   // Don't render if not visible
   // In point count mode, we can show stats without a micrograph (session is independent)
+  // In quick edit mode, we need spots in the session
   // In regular mode, we need a micrograph
-  const hasValidContext = pointCountMode ? !!activeSession : !!activeMicrographId;
+  const hasValidContext = pointCountMode
+    ? !!activeSession
+    : quickEditMode
+      ? quickEditSpotIds.length > 0
+      : !!activeMicrographId;
   if (!statisticsPanelVisible || !hasValidContext) {
     return null;
   }
+
+  // Determine panel title based on mode
+  const panelTitle = pointCountMode && activeSession
+    ? `Statistics: ${activeSession.name}`
+    : quickEditMode
+      ? 'Quick Edit Statistics'
+      : 'Point Count Statistics';
 
   return (
     <Paper
@@ -266,9 +281,7 @@ export const StatisticsPanel: React.FC = () => {
               textOverflow: 'ellipsis',
             }}
           >
-            {pointCountMode && activeSession
-              ? `Statistics: ${activeSession.name}`
-              : 'Point Count Statistics'}
+            {panelTitle}
           </Typography>
         </Box>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25 }}>
@@ -305,11 +318,15 @@ export const StatisticsPanel: React.FC = () => {
             bgcolor: 'grey.900',
           }}
         >
-          <PointCountingStatistics
-            micrographId={activeMicrographId}
-            showExport={true}
-            compact={false}
-          />
+          {quickEditMode ? (
+            <QuickEditStatistics />
+          ) : (
+            <PointCountingStatistics
+              micrographId={activeMicrographId}
+              showExport={true}
+              compact={false}
+            />
+          )}
         </Box>
       </Collapse>
     </Paper>

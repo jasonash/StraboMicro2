@@ -25,6 +25,7 @@ import { CloseProjectDialog } from './components/dialogs/CloseProjectDialog';
 import { ProjectPrepDialog } from './components/dialogs/ProjectPrepDialog';
 import { PointCountDialog } from './components/dialogs/PointCountDialog';
 import { GrainDetectionDialog } from './components/dialogs/GrainDetectionDialog';
+import { QuickEditEntryDialog } from './components/dialogs/QuickEditEntryDialog';
 import {
   IncompleteMicrographsDialog,
   findIncompleteMicrographs,
@@ -183,6 +184,7 @@ function App() {
   const [isConfigureShortcutsOpen, setIsConfigureShortcutsOpen] = useState(false);
   const [isPointCountDialogOpen, setIsPointCountDialogOpen] = useState(false);
   const [isGrainDetectionDialogOpen, setIsGrainDetectionDialogOpen] = useState(false);
+  const [isQuickEditEntryDialogOpen, setIsQuickEditEntryDialogOpen] = useState(false);
   const setSplitModeSpotId = useAppStore(state => state.setSplitModeSpotId);
   const closeProject = useAppStore(state => state.closeProject);
   const project = useAppStore(state => state.project);
@@ -448,9 +450,8 @@ function App() {
         alert('No spots on this micrograph.\n\nDraw some spots or use "Detect Grains" first.');
         return;
       }
-      // Enter Quick Edit mode with default options (all spots, spatial sort)
-      // TODO: Show dialog to configure filter/sort options
-      state.enterQuickEditMode('all', 'spatial');
+      // Show entry dialog to configure filter/sort options
+      setIsQuickEditEntryDialogOpen(true);
     }));
 
     // Batch Edit Spots menu item (Edit menu, Cmd+Shift+E)
@@ -1249,6 +1250,10 @@ function App() {
         isOpen={isGrainDetectionDialogOpen}
         onClose={() => setIsGrainDetectionDialogOpen(false)}
         micrographId={activeMicrographId}
+      />
+      <QuickEditEntryDialog
+        isOpen={isQuickEditEntryDialogOpen}
+        onClose={() => setIsQuickEditEntryDialogOpen(false)}
       />
       <StatisticsPanel />
       <QuickClassifyToolbar
