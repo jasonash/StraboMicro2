@@ -2261,11 +2261,19 @@ export const useAppStore = create<AppState>()(
 
             const spotIds = spots.map((s) => s.id);
 
+            // Pre-mark already-classified spots as "reviewed" so they don't count as remaining
+            const alreadyClassifiedIds = spots
+              .filter((s) => {
+                const minerals = s.mineralogy?.minerals;
+                return minerals && minerals.length > 0 && minerals[0]?.name;
+              })
+              .map((s) => s.id);
+
             set({
               quickEditMode: true,
               quickEditSpotIds: spotIds,
               quickEditCurrentIndex: 0,
-              quickEditReviewedIds: [],
+              quickEditReviewedIds: alreadyClassifiedIds,
               quickEditDeletedCount: 0,
               quickEditSortOrder: sortOrder,
               quickEditFilter: filter,
