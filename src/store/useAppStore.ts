@@ -106,6 +106,7 @@ import {
   updateSpot,
   buildMicrographIndex,
   buildSpotIndex,
+  findSpotParentMicrograph,
 } from './helpers';
 import type { TiledViewerRef } from '@/components/TiledViewer';
 
@@ -1086,12 +1087,11 @@ export const useAppStore = create<AppState>()(
               spots.push(spot);
 
               // Find which micrograph this spot belongs to
+              // Use the project data directly (not the index) to avoid stale references
               if (!micrographId) {
-                for (const [mId, micrograph] of state.micrographIndex) {
-                  if (micrograph.spots?.some(s => s.id === spotId)) {
-                    micrographId = mId;
-                    break;
-                  }
+                const parentMicrograph = findSpotParentMicrograph(state.project, spotId);
+                if (parentMicrograph) {
+                  micrographId = parentMicrograph.id;
                 }
               }
             }
@@ -1244,18 +1244,13 @@ export const useAppStore = create<AppState>()(
             }
 
             // Find which micrograph this spot belongs to
-            let micrographId: string | null = null;
-            for (const [mId, micrograph] of state.micrographIndex) {
-              if (micrograph.spots?.some(s => s.id === spotId)) {
-                micrographId = mId;
-                break;
-              }
-            }
-
-            if (!micrographId) {
+            // Use the project data directly (not the index) to avoid stale references
+            const parentMicrograph = findSpotParentMicrograph(state.project, spotId);
+            if (!parentMicrograph) {
               console.warn('[Store] Could not find micrograph for spot');
               return null;
             }
+            const micrographId = parentMicrograph.id;
 
             try {
               // Convert spot to Turf polygon
