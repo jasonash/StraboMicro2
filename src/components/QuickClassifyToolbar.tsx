@@ -87,6 +87,18 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
   const classifySelectedPoints = useAppStore((state) => state.classifySelectedPoints);
   const clearSelectedPoints = useAppStore((state) => state.clearSelectedPoints);
 
+  // Store - quick edit mode
+  const quickEditMode = useAppStore((state) => state.quickEditMode);
+  const quickEditSpotIds = useAppStore((state) => state.quickEditSpotIds);
+  const quickEditCurrentIndex = useAppStore((state) => state.quickEditCurrentIndex);
+  const quickEditReviewedIds = useAppStore((state) => state.quickEditReviewedIds);
+  const quickEditDeletedCount = useAppStore((state) => state.quickEditDeletedCount);
+  const quickEditNext = useAppStore((state) => state.quickEditNext);
+  const quickEditPrev = useAppStore((state) => state.quickEditPrev);
+  const quickEditMarkReviewed = useAppStore((state) => state.quickEditMarkReviewed);
+  const quickEditDeleteCurrent = useAppStore((state) => state.quickEditDeleteCurrent);
+  const exitQuickEditMode = useAppStore((state) => state.exitQuickEditMode);
+
   // Flash state for visual feedback
   const [flashId, setFlashId] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -249,13 +261,44 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
   }, [activePointCountSession, currentPointIndex]);
 
   // ============================================================================
+  // QUICK EDIT MODE DATA
+  // ============================================================================
+
+  const quickEditStats = useMemo(() => {
+    if (!quickEditMode) {
+      return { total: 0, classified: 0, unclassified: 0, percentage: 0, reviewed: 0, deleted: 0 };
+    }
+    const total = quickEditSpotIds.length + quickEditDeletedCount;
+    const reviewed = quickEditReviewedIds.length;
+    const deleted = quickEditDeletedCount;
+
+    // Count classified spots in the Quick Edit list
+    let classified = 0;
+    for (const spotId of quickEditSpotIds) {
+      const spot = spots.find((s) => s.id === spotId);
+      if (spot) {
+        const minerals = spot.mineralogy?.minerals;
+        if (minerals && minerals.length > 0 && minerals[0]?.name) {
+          classified++;
+        }
+      }
+    }
+
+    const unclassified = quickEditSpotIds.length - classified;
+    const percentage = total > 0 ? Math.round(((reviewed + deleted) / total) * 100) : 0;
+    return { total, classified, unclassified, percentage, reviewed, deleted };
+  }, [quickEditMode, quickEditSpotIds, quickEditReviewedIds, quickEditDeletedCount, spots]);
+
+  // ============================================================================
   // UNIFIED STATISTICS (switch based on mode)
   // ============================================================================
 
-  const stats = pointCountMode ? pointCountStats : spotStats;
+  const stats = pointCountMode ? pointCountStats : (quickEditMode ? quickEditStats : spotStats);
   const currentName = pointCountMode
     ? (currentPoint ? `Point ${currentPointIndex + 1}` : 'No point selected')
-    : (activeSpot?.name || `Spot ${currentSpotIndex + 1}`);
+    : quickEditMode
+      ? `Spot ${quickEditCurrentIndex + 1} of ${quickEditSpotIds.length}`
+      : (activeSpot?.name || `Spot ${currentSpotIndex + 1}`);
   const currentMineral = pointCountMode
     ? currentPoint?.mineral
     : activeSpot?.mineralogy?.minerals?.[0]?.name;
@@ -368,7 +411,7 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
           goToNextUnclassifiedPoint();
         }, 50);
       } else {
-        // Spot mode
+        // Spot mode (includes Quick Edit mode)
         if (!activeSpotId) return;
 
         const mineralogy: MineralogyType = {
@@ -380,13 +423,21 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
         setFlashId(activeSpotId);
         setTimeout(() => setFlashId(null), 300);
 
+        // Auto-advance: In Quick Edit mode, mark as reviewed and advance
+        // In regular spot mode, jump to next unclassified
         setTimeout(() => {
-          selectNextUnclassifiedSpot('forward');
+          if (quickEditMode) {
+            // Mark as reviewed (which also advances to next)
+            quickEditMarkReviewed();
+          } else {
+            selectNextUnclassifiedSpot('forward');
+          }
         }, 50);
       }
     },
     [
       pointCountMode,
+      quickEditMode,
       currentPoint,
       activeSpotId,
       selectedPointIndices,
@@ -395,6 +446,7 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
       updateSpotData,
       goToNextUnclassifiedPoint,
       selectNextUnclassifiedSpot,
+      quickEditMarkReviewed,
     ]
   );
 
@@ -419,26 +471,38 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
   const advanceToNext = useCallback(() => {
     if (pointCountMode) {
       advanceToNextPoint();
+    } else if (quickEditMode) {
+      quickEditNext();
     } else {
       advanceToNextSpot();
     }
-  }, [pointCountMode, advanceToNextPoint, advanceToNextSpot]);
+  }, [pointCountMode, quickEditMode, advanceToNextPoint, quickEditNext, advanceToNextSpot]);
 
   const goToPrevious = useCallback(() => {
     if (pointCountMode) {
       goToPreviousPoint();
+    } else if (quickEditMode) {
+      quickEditPrev();
     } else {
       goToPreviousSpot();
     }
-  }, [pointCountMode, goToPreviousPoint, goToPreviousSpot]);
+  }, [pointCountMode, quickEditMode, goToPreviousPoint, quickEditPrev, goToPreviousSpot]);
 
   const selectNextUnclassified = useCallback(() => {
     if (pointCountMode) {
       goToNextUnclassifiedPoint();
     } else {
+      // For both Quick Edit and normal spot mode, use the same logic
       selectNextUnclassifiedSpot('forward');
     }
   }, [pointCountMode, goToNextUnclassifiedPoint, selectNextUnclassifiedSpot]);
+
+  // Delete current spot (Quick Edit mode only)
+  const handleDeleteCurrent = useCallback(() => {
+    if (quickEditMode) {
+      quickEditDeleteCurrent();
+    }
+  }, [quickEditMode, quickEditDeleteCurrent]);
 
   // ============================================================================
   // SPATIAL NAVIGATION (Point Count mode only - arrow keys)
@@ -508,10 +572,13 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
     if (pointCountMode) {
       // Exit point count mode (auto-saves session)
       await exitPointCountMode();
+    } else if (quickEditMode) {
+      // Exit quick edit mode
+      exitQuickEditMode();
     } else {
       setQuickClassifyVisible(false);
     }
-  }, [pointCountMode, exitPointCountMode, setQuickClassifyVisible]);
+  }, [pointCountMode, quickEditMode, exitPointCountMode, exitQuickEditMode, setQuickClassifyVisible]);
 
   const handleManualSave = useCallback(async () => {
     if (pointCountMode) {
@@ -549,7 +616,12 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
         switch (action) {
           case 'skip':
           case 'confirm':
-            advanceToNext();
+            // In Quick Edit mode, skip marks the spot as reviewed
+            if (quickEditMode) {
+              quickEditMarkReviewed();
+            } else {
+              advanceToNext();
+            }
             break;
           case 'back':
             goToPrevious();
@@ -567,14 +639,21 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
             selectNextUnclassified();
             break;
           case 'clear':
-            clearCurrentItem();
+            // In Quick Edit mode, Delete key deletes the spot
+            // In other modes, it clears the classification
+            if (quickEditMode) {
+              handleDeleteCurrent();
+            } else {
+              clearCurrentItem();
+            }
             break;
         }
         return;
       }
 
-      // Arrow keys for spatial navigation (point count mode only)
+      // Arrow keys for navigation
       if (pointCountMode) {
+        // Point Count mode: spatial navigation in grid
         switch (e.key) {
           case 'ArrowUp':
             e.preventDefault();
@@ -591,6 +670,22 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
           case 'ArrowRight':
             e.preventDefault();
             navigateSpatially('right');
+            return;
+        }
+      } else if (quickEditMode) {
+        // Quick Edit mode: sequential navigation
+        switch (e.key) {
+          case 'ArrowLeft':
+          case 'ArrowUp':
+          case '[':
+            e.preventDefault();
+            goToPrevious();
+            return;
+          case 'ArrowRight':
+          case 'ArrowDown':
+          case ']':
+            e.preventDefault();
+            advanceToNext();
             return;
         }
       }
@@ -616,7 +711,10 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
       clearSelectedPoints,
       setLassoToolActive,
       pointCountMode,
+      quickEditMode,
       navigateSpatially,
+      handleDeleteCurrent,
+      quickEditMarkReviewed,
     ]
   );
 
@@ -699,7 +797,7 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
     if (x !== 0 || y !== 0) {
       viewerRef.current.panToPoint(x, y);
     }
-  }, [quickClassifyVisible, pointCountMode, currentPoint, currentPointIndex, activeSpotId, spots, viewerRef]);
+  }, [quickClassifyVisible, pointCountMode, quickEditMode, quickEditCurrentIndex, currentPoint, currentPointIndex, activeSpotId, spots, viewerRef]);
 
   // ============================================================================
   // INITIALIZE SCROLL STATE
@@ -734,8 +832,13 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
     return null;
   }
 
-  // In spot mode, check for micrograph and spots
-  if (!pointCountMode && (!activeMicrographId || spots.length === 0)) {
+  // In Quick Edit mode, check for spots in session
+  if (quickEditMode && quickEditSpotIds.length === 0) {
+    return null;
+  }
+
+  // In regular spot mode, check for micrograph and spots
+  if (!pointCountMode && !quickEditMode && (!activeMicrographId || spots.length === 0)) {
     return null;
   }
 
@@ -784,11 +887,16 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
           <DragIcon fontSize="small" sx={{ color: 'grey.500', fontSize: 16 }} />
           <Typography variant="body2" sx={{ fontWeight: 600, color: 'grey.100' }}>
-            {pointCountMode ? 'Point Count' : 'Quick Classify'}
+            {pointCountMode ? 'Point Count' : quickEditMode ? 'Quick Edit' : 'Quick Classify'}
           </Typography>
           {pointCountMode && activePointCountSession && (
             <Typography variant="caption" sx={{ color: 'grey.400', ml: 1 }}>
               {activePointCountSession.name}
+            </Typography>
+          )}
+          {quickEditMode && (
+            <Typography variant="caption" sx={{ color: 'grey.400', ml: 1 }}>
+              {quickEditCurrentIndex + 1} of {quickEditSpotIds.length}
             </Typography>
           )}
         </Box>

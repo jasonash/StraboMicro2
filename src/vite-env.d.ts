@@ -97,6 +97,7 @@ interface Window {
     onOpenProject: (callback: () => void) => Unsubscribe;
     onEditProject: (callback: () => void) => Unsubscribe;
     onClearAllSpots: (callback: () => void) => Unsubscribe;
+    onQuickEditSpots: (callback: () => void) => Unsubscribe;
     onBatchEditSpots: (callback: () => void) => Unsubscribe;
     onMergeSpots: (callback: () => void) => Unsubscribe;
     onSplitSpot: (callback: () => void) => Unsubscribe;

@@ -107,6 +107,7 @@ import {
   buildMicrographIndex,
   buildSpotIndex,
   findSpotParentMicrograph,
+  findMicrographById,
 } from './helpers';
 import type { TiledViewerRef } from '@/components/TiledViewer';
 
@@ -190,6 +191,22 @@ interface AppState {
   lassoToolActive: boolean;
   /** Indices of points selected via lasso (for batch operations) */
   selectedPointIndices: number[];
+
+  // ========== QUICK EDIT MODE STATE ==========
+  /** Whether Quick Edit mode is active */
+  quickEditMode: boolean;
+  /** IDs of spots included in this Quick Edit session (in sorted order) */
+  quickEditSpotIds: string[];
+  /** Current index in quickEditSpotIds array */
+  quickEditCurrentIndex: number;
+  /** Set of spot IDs that have been reviewed (classified, skipped, or deleted) */
+  quickEditReviewedIds: string[];
+  /** Number of spots deleted during this session (for stats) */
+  quickEditDeletedCount: number;
+  /** Sort order for Quick Edit navigation */
+  quickEditSortOrder: 'spatial' | 'size' | 'creation' | 'random';
+  /** Filter applied when entering Quick Edit */
+  quickEditFilter: 'all' | 'unclassified';
 
   // ========== GENERATION SETTINGS (persisted) ==========
   /** Last used point counting settings */
@@ -315,6 +332,25 @@ interface AppState {
   clearSelectedPoints: () => void;
   /** Classify all selected points with a mineral (batch operation) */
   classifySelectedPoints: (mineral: string) => void;
+
+  // ========== QUICK EDIT MODE ACTIONS ==========
+  /** Enter Quick Edit mode with spots from current micrograph */
+  enterQuickEditMode: (
+    filter: 'all' | 'unclassified',
+    sortOrder: 'spatial' | 'size' | 'creation' | 'random'
+  ) => void;
+  /** Exit Quick Edit mode */
+  exitQuickEditMode: () => void;
+  /** Navigate to next spot in Quick Edit */
+  quickEditNext: () => void;
+  /** Navigate to previous spot in Quick Edit */
+  quickEditPrev: () => void;
+  /** Navigate to specific index in Quick Edit */
+  quickEditGoToIndex: (index: number) => void;
+  /** Mark current spot as reviewed (for skip action) */
+  quickEditMarkReviewed: () => void;
+  /** Delete current spot and advance to next */
+  quickEditDeleteCurrent: () => void;
 
   // ========== GENERATION SETTINGS ACTIONS ==========
   /** Update last used point counting settings */
@@ -455,6 +491,15 @@ export const useAppStore = create<AppState>()(
           currentPointIndex: -1,
           lassoToolActive: false,
           selectedPointIndices: [],
+
+          // Quick Edit mode state
+          quickEditMode: false,
+          quickEditSpotIds: [],
+          quickEditCurrentIndex: -1,
+          quickEditReviewedIds: [],
+          quickEditDeletedCount: 0,
+          quickEditSortOrder: 'spatial' as const,
+          quickEditFilter: 'all' as const,
 
           // Generation settings (persisted defaults)
           lastPointCountSettings: null,
@@ -2097,6 +2142,254 @@ export const useAppStore = create<AppState>()(
             setTimeout(() => {
               goToNextUnclassifiedPoint();
             }, 10);
+          },
+
+          // ========== QUICK EDIT MODE ACTIONS ==========
+
+          enterQuickEditMode: (filter, sortOrder) => {
+            const { project, activeMicrographId } = get();
+            if (!project || !activeMicrographId) return;
+
+            const micrograph = findMicrographById(project, activeMicrographId);
+            if (!micrograph?.spots || micrograph.spots.length === 0) return;
+
+            // Filter spots based on filter option
+            let spots = [...micrograph.spots];
+            if (filter === 'unclassified') {
+              spots = spots.filter((s) => {
+                const minerals = s.mineralogy?.minerals;
+                return !minerals || minerals.length === 0 || !minerals[0]?.name;
+              });
+            }
+
+            if (spots.length === 0) return;
+
+            // Sort spots based on sort order
+            switch (sortOrder) {
+              case 'spatial': {
+                // Sort by position: left-to-right, then top-to-bottom
+                const getSpotCentroid = (spot: Spot): { x: number; y: number } => {
+                  const geoType = spot.geometryType || spot.geometry?.type;
+                  if (geoType === 'point' || geoType === 'Point') {
+                    if (Array.isArray(spot.geometry?.coordinates)) {
+                      const coords = spot.geometry.coordinates as number[];
+                      return { x: coords[0], y: coords[1] };
+                    }
+                    return { x: spot.points?.[0]?.X ?? 0, y: spot.points?.[0]?.Y ?? 0 };
+                  }
+                  // For lines and polygons, calculate centroid from points
+                  const coords: number[][] = Array.isArray(spot.geometry?.coordinates)
+                    ? (geoType === 'polygon' || geoType === 'Polygon'
+                        ? (spot.geometry.coordinates as number[][][])[0] || []
+                        : (spot.geometry.coordinates as number[][]))
+                    : spot.points?.map((p) => [p.X ?? 0, p.Y ?? 0]) || [];
+                  if (coords.length === 0) return { x: 0, y: 0 };
+                  const xs = coords.map((c) => c[0]);
+                  const ys = coords.map((c) => c[1]);
+                  return {
+                    x: (Math.min(...xs) + Math.max(...xs)) / 2,
+                    y: (Math.min(...ys) + Math.max(...ys)) / 2,
+                  };
+                };
+
+                // Calculate centroids for all spots first
+                const centroids = spots.map((spot) => ({
+                  spot,
+                  centroid: getSpotCentroid(spot),
+                }));
+
+                // Find the vertical extent of all spots
+                const ys = centroids.map((c) => c.centroid.y);
+                const minY = Math.min(...ys);
+                const maxY = Math.max(...ys);
+                const verticalExtent = maxY - minY;
+
+                // Create ~8 rows for natural reading order
+                // Minimum row height of 50px to avoid too many rows for small images
+                const numRows = 8;
+                const rowHeight = Math.max(50, verticalExtent / numRows);
+
+                spots.sort((a, b) => {
+                  const centroidA = getSpotCentroid(a);
+                  const centroidB = getSpotCentroid(b);
+                  const rowA = Math.floor((centroidA.y - minY) / rowHeight);
+                  const rowB = Math.floor((centroidB.y - minY) / rowHeight);
+                  if (rowA !== rowB) return rowA - rowB;
+                  return centroidA.x - centroidB.x;
+                });
+                break;
+              }
+              case 'size': {
+                // Sort by polygon area (largest first)
+                const getSpotArea = (spot: Spot): number => {
+                  const geoType = spot.geometryType || spot.geometry?.type;
+                  if (geoType !== 'polygon' && geoType !== 'Polygon') return 0;
+                  const coords: number[][] = Array.isArray(spot.geometry?.coordinates)
+                    ? (spot.geometry.coordinates as number[][][])[0] || []
+                    : spot.points?.map((p) => [p.X ?? 0, p.Y ?? 0]) || [];
+                  if (coords.length < 3) return 0;
+                  // Shoelace formula for polygon area
+                  let area = 0;
+                  for (let i = 0; i < coords.length; i++) {
+                    const j = (i + 1) % coords.length;
+                    area += coords[i][0] * coords[j][1];
+                    area -= coords[j][0] * coords[i][1];
+                  }
+                  return Math.abs(area / 2);
+                };
+                spots.sort((a, b) => getSpotArea(b) - getSpotArea(a));
+                break;
+              }
+              case 'creation': {
+                // Sort by creation timestamp (oldest first)
+                spots.sort((a, b) => {
+                  const timeA = a.date ? new Date(a.date).getTime() : 0;
+                  const timeB = b.date ? new Date(b.date).getTime() : 0;
+                  return timeA - timeB;
+                });
+                break;
+              }
+              case 'random': {
+                // Fisher-Yates shuffle
+                for (let i = spots.length - 1; i > 0; i--) {
+                  const j = Math.floor(Math.random() * (i + 1));
+                  [spots[i], spots[j]] = [spots[j], spots[i]];
+                }
+                break;
+              }
+            }
+
+            const spotIds = spots.map((s) => s.id);
+
+            // Pre-mark already-classified spots as "reviewed" so they don't count as remaining
+            const alreadyClassifiedIds = spots
+              .filter((s) => {
+                const minerals = s.mineralogy?.minerals;
+                return minerals && minerals.length > 0 && minerals[0]?.name;
+              })
+              .map((s) => s.id);
+
+            set({
+              quickEditMode: true,
+              quickEditSpotIds: spotIds,
+              quickEditCurrentIndex: 0,
+              quickEditReviewedIds: alreadyClassifiedIds,
+              quickEditDeletedCount: 0,
+              quickEditSortOrder: sortOrder,
+              quickEditFilter: filter,
+              activeSpotId: spotIds[0],
+              selectedSpotIds: [], // Clear multi-selection
+              quickClassifyVisible: true, // Show the toolbar
+              statisticsPanelVisible: true, // Show statistics
+            });
+          },
+
+          exitQuickEditMode: () => {
+            set({
+              quickEditMode: false,
+              quickEditSpotIds: [],
+              quickEditCurrentIndex: -1,
+              quickEditReviewedIds: [],
+              quickEditDeletedCount: 0,
+              quickClassifyVisible: false,
+              statisticsPanelVisible: false,
+            });
+          },
+
+          quickEditNext: () => {
+            const { quickEditSpotIds, quickEditCurrentIndex } = get();
+            if (quickEditSpotIds.length === 0) return;
+
+            const nextIndex = quickEditCurrentIndex >= quickEditSpotIds.length - 1
+              ? 0  // Wrap around
+              : quickEditCurrentIndex + 1;
+
+            set({
+              quickEditCurrentIndex: nextIndex,
+              activeSpotId: quickEditSpotIds[nextIndex],
+            });
+          },
+
+          quickEditPrev: () => {
+            const { quickEditSpotIds, quickEditCurrentIndex } = get();
+            if (quickEditSpotIds.length === 0) return;
+
+            const prevIndex = quickEditCurrentIndex <= 0
+              ? quickEditSpotIds.length - 1  // Wrap around
+              : quickEditCurrentIndex - 1;
+
+            set({
+              quickEditCurrentIndex: prevIndex,
+              activeSpotId: quickEditSpotIds[prevIndex],
+            });
+          },
+
+          quickEditGoToIndex: (index) => {
+            const { quickEditSpotIds } = get();
+            if (index < 0 || index >= quickEditSpotIds.length) return;
+
+            set({
+              quickEditCurrentIndex: index,
+              activeSpotId: quickEditSpotIds[index],
+            });
+          },
+
+          quickEditMarkReviewed: () => {
+            const { quickEditSpotIds, quickEditCurrentIndex, quickEditReviewedIds, quickEditNext } = get();
+            if (quickEditCurrentIndex < 0 || quickEditCurrentIndex >= quickEditSpotIds.length) return;
+
+            const currentSpotId = quickEditSpotIds[quickEditCurrentIndex];
+            if (!quickEditReviewedIds.includes(currentSpotId)) {
+              set({
+                quickEditReviewedIds: [...quickEditReviewedIds, currentSpotId],
+              });
+            }
+
+            // Advance to next spot
+            quickEditNext();
+          },
+
+          quickEditDeleteCurrent: () => {
+            const {
+              quickEditSpotIds,
+              quickEditCurrentIndex,
+              quickEditDeletedCount,
+              quickEditReviewedIds,
+              deleteSpot,
+            } = get();
+
+            if (quickEditCurrentIndex < 0 || quickEditCurrentIndex >= quickEditSpotIds.length) return;
+
+            const currentSpotId = quickEditSpotIds[quickEditCurrentIndex];
+
+            // Remove from quick edit list
+            const newSpotIds = quickEditSpotIds.filter((id) => id !== currentSpotId);
+            const newReviewedIds = quickEditReviewedIds.filter((id) => id !== currentSpotId);
+
+            // Calculate new index
+            let newIndex = quickEditCurrentIndex;
+            if (newSpotIds.length === 0) {
+              newIndex = -1;
+            } else if (newIndex >= newSpotIds.length) {
+              newIndex = newSpotIds.length - 1;
+            }
+
+            // Delete the actual spot
+            deleteSpot(currentSpotId);
+
+            // Update quick edit state
+            set({
+              quickEditSpotIds: newSpotIds,
+              quickEditCurrentIndex: newIndex,
+              quickEditDeletedCount: quickEditDeletedCount + 1,
+              quickEditReviewedIds: newReviewedIds,
+              activeSpotId: newIndex >= 0 ? newSpotIds[newIndex] : null,
+            });
+
+            // Exit if no spots remaining
+            if (newSpotIds.length === 0) {
+              get().exitQuickEditMode();
+            }
           },
 
           // ========== GENERATION SETTINGS ACTIONS ==========

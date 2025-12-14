@@ -50,6 +50,11 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
   const editingSpotId = useAppStore((state) => state.editingSpotId);
   const activeTool = useAppStore((state) => state.activeTool);
 
+  // Quick Edit mode state
+  const quickEditMode = useAppStore((state) => state.quickEditMode);
+  const quickEditSpotIds = useAppStore((state) => state.quickEditSpotIds);
+  const quickEditCurrentIndex = useAppStore((state) => state.quickEditCurrentIndex);
+
   // Clear hover state when spot becomes selected
   // IMPORTANT: This must be BEFORE any conditional returns (React hooks rules)
   useEffect(() => {
@@ -67,17 +72,52 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
   if (!spot.geometryType && !spot.geometry) return null;
 
   const geometryType = spot.geometryType || spot.geometry?.type;
-  const color = convertLegacyColor(spot.color || '#00ff00');
+  const baseColor = convertLegacyColor(spot.color || '#00ff00');
   const labelColor = convertLegacyColor(spot.labelColor || '#ffffff');
   const showLabel = spot.showLabel ?? true;
-  const opacity = (spot.opacity ?? 50) / 100; // Convert 0-100 to 0-1
+  const baseOpacity = (spot.opacity ?? 50) / 100; // Convert 0-100 to 0-1
 
   // Check if spot has mineralogy classification
   const isClassified = !!(spot.mineralogy?.minerals?.[0]?.name);
 
+  // Quick Edit mode visual states
+  const isInQuickEditSession = quickEditMode && quickEditSpotIds.includes(spot.id);
+  const isCurrentQuickEditSpot = quickEditMode && quickEditSpotIds[quickEditCurrentIndex] === spot.id;
+
+  // Determine colors based on mode
+  let color = baseColor;
+  let opacity = baseOpacity;
+  let fillOpacity = baseOpacity;
+
+  if (quickEditMode) {
+    if (isInQuickEditSession) {
+      // In Quick Edit session - use outline style
+      fillOpacity = 0; // No fill
+
+      if (isClassified) {
+        // Classified spots get bright green outline
+        color = '#00ff00'; // Lime green (bright)
+      } else {
+        // Unclassified spots get cyan outline (visible on both light and dark backgrounds)
+        color = '#00ffff'; // Cyan
+      }
+
+      if (isCurrentQuickEditSpot) {
+        // Current spot gets gold highlight
+        color = '#ffd700'; // Gold
+      }
+    } else {
+      // Spots not in Quick Edit session - dim them
+      opacity = 0.2;
+      fillOpacity = 0.1;
+    }
+  }
+
   // Don't show hover effect when spot is selected
   const strokeColor = (isHovered && !isSelected) ? '#ffff00' : color;
-  const strokeWidth = (isHovered && !isSelected) ? 4 / scale : 3 / scale;
+  const strokeWidth = isCurrentQuickEditSpot
+    ? 5 / scale  // Thicker for current Quick Edit spot
+    : (isHovered && !isSelected) ? 4 / scale : 3 / scale;
 
   const handleClick = (e: any) => {
     onClick?.(spot, e);
@@ -176,15 +216,16 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
         )}
 
         {/* Circle: filled if classified, hollow if unclassified */}
+        {/* In Quick Edit mode: different colors based on state */}
         <Circle
           key="point"
           x={x}
           y={y}
-          radius={6 / scale}
-          fill={isClassified ? color : 'transparent'}
-          opacity={isClassified ? opacity : 1}
-          stroke={isClassified ? '#ffffff' : color}
-          strokeWidth={2 / scale}
+          radius={(isCurrentQuickEditSpot ? 8 : 6) / scale}
+          fill={quickEditMode ? (fillOpacity === 0 ? 'transparent' : color) : (isClassified ? color : 'transparent')}
+          opacity={quickEditMode ? opacity : (isClassified ? opacity : 1)}
+          stroke={quickEditMode ? strokeColor : (isClassified ? '#ffffff' : color)}
+          strokeWidth={(isCurrentQuickEditSpot ? 3 : 2) / scale}
         />
       </Group>
     );
@@ -335,13 +376,14 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
         )}
 
         {/* Polygon: solid fill if classified, faded with dashed stroke if unclassified */}
+        {/* In Quick Edit mode: no fill, outline only */}
         <Line
           key="polygon"
           points={points}
           stroke={isSelected ? 'transparent' : strokeColor}
           strokeWidth={isSelected ? 0 : strokeWidth}
-          dash={isClassified ? undefined : [8 / scale, 4 / scale]}
-          fill={color}
+          dash={quickEditMode ? undefined : (isClassified ? undefined : [8 / scale, 4 / scale])}
+          fill={fillOpacity === 0 ? 'transparent' : color}
           opacity={opacity}
           closed={true}
           listening={true}
