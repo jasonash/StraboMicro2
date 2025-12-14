@@ -423,11 +423,12 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
         setFlashId(activeSpotId);
         setTimeout(() => setFlashId(null), 300);
 
-        // Auto-advance: In Quick Edit mode, advance to next in session
+        // Auto-advance: In Quick Edit mode, mark as reviewed and advance
         // In regular spot mode, jump to next unclassified
         setTimeout(() => {
           if (quickEditMode) {
-            quickEditNext();
+            // Mark as reviewed (which also advances to next)
+            quickEditMarkReviewed();
           } else {
             selectNextUnclassifiedSpot('forward');
           }
@@ -445,7 +446,7 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
       updateSpotData,
       goToNextUnclassifiedPoint,
       selectNextUnclassifiedSpot,
-      quickEditNext,
+      quickEditMarkReviewed,
     ]
   );
 
