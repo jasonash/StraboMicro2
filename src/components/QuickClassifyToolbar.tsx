@@ -411,7 +411,7 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
           goToNextUnclassifiedPoint();
         }, 50);
       } else {
-        // Spot mode
+        // Spot mode (includes Quick Edit mode)
         if (!activeSpotId) return;
 
         const mineralogy: MineralogyType = {
@@ -423,13 +423,20 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
         setFlashId(activeSpotId);
         setTimeout(() => setFlashId(null), 300);
 
+        // Auto-advance: In Quick Edit mode, advance to next in session
+        // In regular spot mode, jump to next unclassified
         setTimeout(() => {
-          selectNextUnclassifiedSpot('forward');
+          if (quickEditMode) {
+            quickEditNext();
+          } else {
+            selectNextUnclassifiedSpot('forward');
+          }
         }, 50);
       }
     },
     [
       pointCountMode,
+      quickEditMode,
       currentPoint,
       activeSpotId,
       selectedPointIndices,
@@ -438,6 +445,7 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
       updateSpotData,
       goToNextUnclassifiedPoint,
       selectNextUnclassifiedSpot,
+      quickEditNext,
     ]
   );
 
