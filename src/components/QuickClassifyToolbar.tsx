@@ -675,11 +675,13 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
         // Quick Edit mode: sequential navigation
         switch (e.key) {
           case 'ArrowLeft':
+          case 'ArrowUp':
           case '[':
             e.preventDefault();
             goToPrevious();
             return;
           case 'ArrowRight':
+          case 'ArrowDown':
           case ']':
             e.preventDefault();
             advanceToNext();

@@ -2192,12 +2192,28 @@ export const useAppStore = create<AppState>()(
                   };
                 };
 
-                const rowHeight = 100; // Group spots within 100px vertically
+                // Calculate centroids for all spots first
+                const centroids = spots.map((spot) => ({
+                  spot,
+                  centroid: getSpotCentroid(spot),
+                }));
+
+                // Find the vertical extent of all spots
+                const ys = centroids.map((c) => c.centroid.y);
+                const minY = Math.min(...ys);
+                const maxY = Math.max(...ys);
+                const verticalExtent = maxY - minY;
+
+                // Create ~8 rows for natural reading order
+                // Minimum row height of 50px to avoid too many rows for small images
+                const numRows = 8;
+                const rowHeight = Math.max(50, verticalExtent / numRows);
+
                 spots.sort((a, b) => {
                   const centroidA = getSpotCentroid(a);
                   const centroidB = getSpotCentroid(b);
-                  const rowA = Math.floor(centroidA.y / rowHeight);
-                  const rowB = Math.floor(centroidB.y / rowHeight);
+                  const rowA = Math.floor((centroidA.y - minY) / rowHeight);
+                  const rowB = Math.floor((centroidB.y - minY) / rowHeight);
                   if (rowA !== rowB) return rowA - rowB;
                   return centroidA.x - centroidB.x;
                 });
