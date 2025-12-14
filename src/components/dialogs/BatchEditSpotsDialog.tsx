@@ -8,7 +8,6 @@
  * - Primary Mineral (mineralogy)
  * - Color
  * - Opacity
- * - Tags
  */
 
 import { useState, useEffect } from 'react';
@@ -24,8 +23,6 @@ import {
   TextField,
   Typography,
   Slider,
-  Chip,
-  Autocomplete,
 } from '@mui/material';
 import { useAppStore } from '@/store';
 import { AutocompleteMineralSearch } from './metadata/reusable/AutocompleteMineralSearch';
@@ -44,7 +41,6 @@ export function BatchEditSpotsDialog({ isOpen, onClose }: BatchEditSpotsDialogPr
   const selectedSpotIds = useAppStore((state) => state.selectedSpotIds);
   const spotIndex = useAppStore((state) => state.spotIndex);
   const updateSpotData = useAppStore((state) => state.updateSpotData);
-  const project = useAppStore((state) => state.project);
 
   // Field states with checkbox enable/disable
   const [mineral, setMineral] = useState<FieldState<string>>({
@@ -59,13 +55,6 @@ export function BatchEditSpotsDialog({ isOpen, onClose }: BatchEditSpotsDialogPr
     enabled: false,
     value: 50,
   });
-  const [tags, setTags] = useState<FieldState<string[]>>({
-    enabled: false,
-    value: [],
-  });
-
-  // Get available tags from project
-  const availableTags = project?.tags?.map((t) => t.name) || [];
 
   // Reset form when dialog opens
   useEffect(() => {
@@ -73,7 +62,6 @@ export function BatchEditSpotsDialog({ isOpen, onClose }: BatchEditSpotsDialogPr
       setMineral({ enabled: false, value: '' });
       setColor({ enabled: false, value: '#00ff00' });
       setOpacity({ enabled: false, value: 50 });
-      setTags({ enabled: false, value: [] });
     }
   }, [isOpen]);
 
@@ -101,10 +89,6 @@ export function BatchEditSpotsDialog({ isOpen, onClose }: BatchEditSpotsDialogPr
       updates.opacity = opacity.value;
     }
 
-    if (tags.enabled) {
-      updates.tags = tags.value;
-    }
-
     // Apply updates to all selected spots
     for (const spotId of selectedSpotIds) {
       const spot = spotIndex.get(spotId);
@@ -121,9 +105,6 @@ export function BatchEditSpotsDialog({ isOpen, onClose }: BatchEditSpotsDialogPr
         if (updates.opacity !== undefined) {
           updatedSpot.opacity = updates.opacity as number;
         }
-        if (updates.tags !== undefined) {
-          updatedSpot.tags = updates.tags as string[];
-        }
 
         updateSpotData(spotId, updatedSpot);
       }
@@ -132,7 +113,7 @@ export function BatchEditSpotsDialog({ isOpen, onClose }: BatchEditSpotsDialogPr
     onClose();
   };
 
-  const hasEnabledFields = mineral.enabled || color.enabled || opacity.enabled || tags.enabled;
+  const hasEnabledFields = mineral.enabled || color.enabled || opacity.enabled;
 
   return (
     <Dialog open={isOpen} onClose={onClose} maxWidth="sm" fullWidth>
@@ -230,51 +211,6 @@ export function BatchEditSpotsDialog({ isOpen, onClose }: BatchEditSpotsDialogPr
                   {opacity.value}%
                 </Typography>
               </Box>
-            </Box>
-          )}
-        </Box>
-
-        {/* Tags */}
-        <Box sx={{ mb: 2 }}>
-          <FormControlLabel
-            control={
-              <Checkbox
-                checked={tags.enabled}
-                onChange={(e) => setTags((prev) => ({ ...prev, enabled: e.target.checked }))}
-              />
-            }
-            label="Tags"
-          />
-          {tags.enabled && (
-            <Box sx={{ ml: 4, mt: 1 }}>
-              <Autocomplete
-                multiple
-                freeSolo
-                options={availableTags}
-                value={tags.value}
-                onChange={(_, newValue) => setTags((prev) => ({ ...prev, value: newValue }))}
-                renderTags={(value, getTagProps) =>
-                  value.map((option, index) => (
-                    <Chip
-                      variant="outlined"
-                      label={option}
-                      size="small"
-                      {...getTagProps({ index })}
-                      key={option}
-                    />
-                  ))
-                }
-                renderInput={(params) => (
-                  <TextField
-                    {...params}
-                    size="small"
-                    placeholder="Add tags..."
-                  />
-                )}
-              />
-              <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
-                Note: This will replace existing tags on the selected spots.
-              </Typography>
             </Box>
           )}
         </Box>
