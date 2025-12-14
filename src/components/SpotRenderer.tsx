@@ -55,6 +55,9 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
   const quickEditSpotIds = useAppStore((state) => state.quickEditSpotIds);
   const quickEditCurrentIndex = useAppStore((state) => state.quickEditCurrentIndex);
 
+  // Split mode state
+  const splitModeSpotId = useAppStore((state) => state.splitModeSpotId);
+
   // Clear hover state when spot becomes selected
   // IMPORTANT: This must be BEFORE any conditional returns (React hooks rules)
   useEffect(() => {
@@ -134,8 +137,8 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
     if (!isSelected) {
       setIsHovered(true);
     }
-    // Don't change cursor if a drawing/measure tool is active
-    if (activeTool) return;
+    // Don't change cursor if a drawing/measure tool or split mode is active
+    if (activeTool || splitModeSpotId) return;
     const container = e.target.getStage()?.container();
     if (container) {
       container.style.cursor = 'pointer';
@@ -144,8 +147,8 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
 
   const handleMouseLeave = (e: any) => {
     setIsHovered(false);
-    // Don't change cursor if a drawing/measure tool is active
-    if (activeTool) return;
+    // Don't change cursor if a drawing/measure tool or split mode is active
+    if (activeTool || splitModeSpotId) return;
     const container = e.target.getStage()?.container();
     if (container) {
       container.style.cursor = 'default';
