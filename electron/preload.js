@@ -33,6 +33,10 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('menu:clear-all-spots', callback);
     return () => ipcRenderer.removeListener('menu:clear-all-spots', callback);
   },
+  onQuickEditSpots: (callback) => {
+    ipcRenderer.on('menu:quick-edit-spots', callback);
+    return () => ipcRenderer.removeListener('menu:quick-edit-spots', callback);
+  },
   onBatchEditSpots: (callback) => {
     ipcRenderer.on('menu:batch-edit-spots', callback);
     return () => ipcRenderer.removeListener('menu:batch-edit-spots', callback);

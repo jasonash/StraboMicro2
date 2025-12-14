@@ -618,6 +618,15 @@ function createWindow() {
         { role: 'selectAll' },
         { type: 'separator' },
         {
+          label: 'Quick Edit Spots...',
+          accelerator: 'CmdOrCtrl+Shift+Q',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('menu:quick-edit-spots');
+            }
+          }
+        },
+        {
           label: 'Edit Selected Spots...',
           accelerator: 'CmdOrCtrl+Shift+E',
           click: () => {

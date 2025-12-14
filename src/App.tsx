@@ -435,6 +435,24 @@ function App() {
       console.log(`[App] Cleared ${spotCount} spots from micrograph ${currentMicrographId}`);
     }));
 
+    // Quick Edit Spots menu item (Edit menu, Cmd+Shift+Q)
+    unsubscribers.push(window.api.onQuickEditSpots(() => {
+      const state = useAppStore.getState();
+      if (!state.activeMicrographId) {
+        alert('Please select a micrograph first.');
+        return;
+      }
+      // Check if there are spots on the micrograph
+      const micrograph = state.micrographIndex.get(state.activeMicrographId);
+      if (!micrograph?.spots || micrograph.spots.length === 0) {
+        alert('No spots on this micrograph.\n\nDraw some spots or use "Detect Grains" first.');
+        return;
+      }
+      // Enter Quick Edit mode with default options (all spots, spatial sort)
+      // TODO: Show dialog to configure filter/sort options
+      state.enterQuickEditMode('all', 'spatial');
+    }));
+
     // Batch Edit Spots menu item (Edit menu, Cmd+Shift+E)
     unsubscribers.push(window.api.onBatchEditSpots(() => {
       const selectedCount = useAppStore.getState().selectedSpotIds.length;
