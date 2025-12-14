@@ -786,7 +786,7 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
     if (x !== 0 || y !== 0) {
       viewerRef.current.panToPoint(x, y);
     }
-  }, [quickClassifyVisible, pointCountMode, currentPoint, currentPointIndex, activeSpotId, spots, viewerRef]);
+  }, [quickClassifyVisible, pointCountMode, quickEditMode, quickEditCurrentIndex, currentPoint, currentPointIndex, activeSpotId, spots, viewerRef]);
 
   // ============================================================================
   // INITIALIZE SCROLL STATE
