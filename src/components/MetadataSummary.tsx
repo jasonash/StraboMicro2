@@ -104,6 +104,24 @@ const implode = (arr: (string | null | undefined)[] | null | undefined): string 
 };
 
 /**
+ * Safely convert a value to an array.
+ * Handles corrupted data where arrays were saved as objects with numeric keys.
+ * Example: { "0": {...}, "1": {...} } becomes [{...}, {...}]
+ */
+const toArray = <T,>(value: T[] | Record<string, T> | null | undefined): T[] => {
+  if (!value) return [];
+  if (Array.isArray(value)) return value;
+  if (typeof value === 'object') {
+    // Check if it's an object with numeric keys (corrupted array)
+    const keys = Object.keys(value);
+    if (keys.length > 0 && keys.every(k => /^\d+$/.test(k))) {
+      return keys.sort((a, b) => parseInt(a) - parseInt(b)).map(k => (value as Record<string, T>)[k]);
+    }
+  }
+  return [];
+};
+
+/**
  * Format a fracture item for display
  * Matches legacy format from showMicrographDetails.java lines 3363-3389
  */
@@ -1120,7 +1138,7 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
                   <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
                     Grain Size:
                   </Typography>
-                  {data.grainInfo.grainSizeInfo.map((size: GrainSizeType, index: number) => {
+                  {toArray(data.grainInfo.grainSizeInfo).map((size: GrainSizeType, index: number) => {
                     const sizeValue = size.mean ?? size.median ?? size.mode;
                     const sizeStr = sizeValue !== null
                       ? `${sizeValue}${size.sizeUnit}${size.standardDeviation !== null ? ` ± ${size.standardDeviation}` : ''}`
@@ -1140,7 +1158,7 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
                   <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
                     Grain Shape:
                   </Typography>
-                  {data.grainInfo.grainShapeInfo.map((shape: GrainShapeType, index: number) => (
+                  {toArray(data.grainInfo.grainShapeInfo).map((shape: GrainShapeType, index: number) => (
                     <Typography key={index} variant="body2">
                       • {shape.phases} - {shape.shape}
                     </Typography>
@@ -1154,7 +1172,7 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
                   <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
                     Grain Orientation:
                   </Typography>
-                  {data.grainInfo.grainOrientationInfo.map((orient: GrainOrientationType, index: number) => (
+                  {toArray(data.grainInfo.grainOrientationInfo).map((orient: GrainOrientationType, index: number) => (
                     <Typography key={index} variant="body2">
                       • {orient.phases} - {orient.meanOrientation}° from {orient.relativeTo}
                     </Typography>
@@ -1197,7 +1215,7 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
           </StyledAccordionSummary>
           <AccordionDetails sx={{ py: 1 }}>
             <Stack spacing={1.5}>
-              {data.fabricInfo?.fabrics?.map((fabric: FabricType, index: number) => {
+              {toArray(data.fabricInfo?.fabrics).map((fabric: FabricType, index: number) => {
                 const formatted = formatFabric(fabric);
                 return (
                   <Box key={index}>
@@ -1246,7 +1264,7 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
           </StyledAccordionSummary>
           <AccordionDetails sx={{ py: 1 }}>
             <Stack spacing={0.5}>
-              {data.clasticDeformationBandInfo?.bands?.map((band: ClasticDeformationBandType, index: number) => (
+              {toArray(data.clasticDeformationBandInfo?.bands).map((band: ClasticDeformationBandType, index: number) => (
                 <Typography key={index} variant="body2">
                   • {formatClasticBand(band)}
                 </Typography>
@@ -1287,7 +1305,7 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
           </StyledAccordionSummary>
           <AccordionDetails sx={{ py: 1 }}>
             <Stack spacing={0.5}>
-              {data.faultsShearZonesInfo?.faultsShearZones?.map((fault: FaultsShearZonesType, index: number) => (
+              {toArray(data.faultsShearZonesInfo?.faultsShearZones).map((fault: FaultsShearZonesType, index: number) => (
                 <Typography key={index} variant="body2">
                   • {formatFaultShearZone(fault)}
                 </Typography>
@@ -1328,7 +1346,7 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
           </StyledAccordionSummary>
           <AccordionDetails sx={{ py: 1 }}>
             <Stack spacing={0.5}>
-              {data.extinctionMicrostructureInfo?.extinctionMicrostructures?.map((ext: ExtinctionMicrostructureType, index: number) => (
+              {toArray(data.extinctionMicrostructureInfo?.extinctionMicrostructures).map((ext: ExtinctionMicrostructureType, index: number) => (
                 <Typography key={index} variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>
                   • {formatExtinctionMicrostructure(ext)}
                 </Typography>
@@ -1369,7 +1387,7 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
           </StyledAccordionSummary>
           <AccordionDetails sx={{ py: 1 }}>
             <Stack spacing={0.5}>
-              {data.grainBoundaryInfo?.boundaries?.map((boundary: GrainBoundaryType, index: number) => (
+              {toArray(data.grainBoundaryInfo?.boundaries).map((boundary: GrainBoundaryType, index: number) => (
                 <Typography key={index} variant="body2">
                   • {formatGrainBoundary(boundary)}
                 </Typography>
@@ -1410,7 +1428,7 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
           </StyledAccordionSummary>
           <AccordionDetails sx={{ py: 1 }}>
             <Stack spacing={0.5}>
-              {data.intraGrainInfo?.grains?.map((grain: IntraGrainType, index: number) => (
+              {toArray(data.intraGrainInfo?.grains).map((grain: IntraGrainType, index: number) => (
                 <Typography key={index} variant="body2">
                   • {formatIntraGrain(grain)}
                 </Typography>
@@ -1451,7 +1469,7 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
           </StyledAccordionSummary>
           <AccordionDetails sx={{ py: 1 }}>
             <Stack spacing={0.5}>
-              {data.veinInfo?.veins?.map((vein: VeinType, index: number) => (
+              {toArray(data.veinInfo?.veins).map((vein: VeinType, index: number) => (
                 <Typography key={index} variant="body2">
                   • {formatVein(vein)}
                 </Typography>
@@ -1492,7 +1510,7 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
           </StyledAccordionSummary>
           <AccordionDetails sx={{ py: 1 }}>
             <Stack spacing={1.5}>
-              {data.pseudotachylyteInfo?.pseudotachylytes?.map((pseudo: PseudotachylyteType, index: number) => {
+              {toArray(data.pseudotachylyteInfo?.pseudotachylytes).map((pseudo: PseudotachylyteType, index: number) => {
                 const formatted = formatPseudotachylyte(pseudo);
                 return (
                   <Box key={index}>
@@ -1548,7 +1566,7 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
           </StyledAccordionSummary>
           <AccordionDetails sx={{ py: 1 }}>
             <Stack spacing={1.5}>
-              {data.foldInfo?.folds?.map((fold: FoldType, index: number) => {
+              {toArray(data.foldInfo?.folds).map((fold: FoldType, index: number) => {
                 const formatted = formatFold(fold);
                 return (
                   <Box key={index}>
@@ -1597,7 +1615,7 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
           </StyledAccordionSummary>
           <AccordionDetails sx={{ py: 1 }}>
             <Stack spacing={0.5}>
-              {data.fractureInfo?.fractures?.map((fracture: FractureType, index: number) => (
+              {toArray(data.fractureInfo?.fractures).map((fracture: FractureType, index: number) => (
                 <Typography key={index} variant="body2">
                   • {formatFracture(fracture)}
                 </Typography>

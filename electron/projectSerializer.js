@@ -54,6 +54,57 @@ function roundObjectNumbers(obj) {
 }
 
 /**
+ * Recursively fix corrupted array data throughout entire data structure.
+ * Arrays that were incorrectly saved as objects with numeric keys are converted back.
+ * Example: { "0": {...}, "1": {...} } becomes [{...}, {...}]
+ *
+ * This function recursively traverses ALL nested objects and arrays to fix corruption
+ * at any depth in the data structure.
+ *
+ * @param {any} value - Any value that might contain corrupted arrays
+ * @returns {any} Fixed value with all corrupted arrays restored
+ */
+function fixCorruptedArraysDeep(value) {
+  if (value === undefined || value === null) return value;
+  if (typeof value !== 'object') return value;
+
+  // If it's already an array, recursively fix its contents
+  if (Array.isArray(value)) {
+    return value.map(item => fixCorruptedArraysDeep(item));
+  }
+
+  // Check if this object has only numeric keys (corrupted array)
+  const keys = Object.keys(value);
+  if (keys.length > 0) {
+    const allNumericKeys = keys.every(key => /^\d+$/.test(key));
+    if (allNumericKeys) {
+      // Convert object with numeric keys back to array
+      const maxIndex = Math.max(...keys.map(k => parseInt(k, 10)));
+      const result = [];
+      for (let i = 0; i <= maxIndex; i++) {
+        const item = value[String(i)];
+        if (item !== undefined) {
+          // Recursively fix the item too
+          result.push(fixCorruptedArraysDeep(item));
+        }
+      }
+      log.warn('[ProjectSerializer] Fixed corrupted array:', { keys: keys.slice(0, 5), length: result.length });
+      return result;
+    }
+  }
+
+  // It's a regular object - recursively fix all its properties
+  const result = {};
+  for (const [key, val] of Object.entries(value)) {
+    result[key] = fixCorruptedArraysDeep(val);
+  }
+  return result;
+}
+
+// Alias for backwards compatibility
+const fixInfoObjectArrays = fixCorruptedArraysDeep;
+
+/**
  * Serialize a coordinate object (SimpleCoordType) to legacy format.
  * Legacy schema uses uppercase X and Y, but internal code may use lowercase.
  * This function normalizes to uppercase and rounds values.
@@ -101,15 +152,24 @@ function deserializeCoordinate(coord) {
  * Clean an object for database compatibility:
  * - Converts null values to undefined (omitted from JSON)
  * - Rounds numeric values
- * - Recursively processes nested objects
+ * - Recursively processes nested objects and arrays
  * Used for instrument objects and other nested data.
- * @param {Object|undefined} obj - Object to clean
- * @returns {Object|undefined} Cleaned object or undefined if empty/null
+ * @param {Object|Array|undefined} obj - Object or array to clean
+ * @returns {Object|Array|undefined} Cleaned object/array or undefined if empty/null
  */
 function cleanObjectForDb(obj) {
   if (obj === undefined || obj === null) return undefined;
   if (typeof obj !== 'object') return obj;
 
+  // Handle arrays - preserve array structure
+  if (Array.isArray(obj)) {
+    const result = obj
+      .map(item => cleanObjectForDb(item))
+      .filter(item => item !== undefined);
+    return result.length > 0 ? result : undefined;
+  }
+
+  // Handle objects
   const result = {};
   let hasValues = false;
 
@@ -199,8 +259,12 @@ async function loadProjectJson(projectId) {
     const jsonContent = await fs.promises.readFile(projectJsonPath, 'utf8');
     const legacyJson = JSON.parse(jsonContent);
 
+    // Fix any corrupted arrays in the entire JSON structure before deserializing
+    // This repairs data that was incorrectly saved as objects with numeric keys
+    const fixedJson = fixCorruptedArraysDeep(legacyJson);
+
     // Deserialize from legacy format
-    const project = deserializeFromLegacyFormat(legacyJson);
+    const project = deserializeFromLegacyFormat(fixedJson);
 
     // Reconstruct imagePath for each micrograph (runtime field not stored in JSON)
     // Images are stored as: images/<micrograph-id> (no extension)
@@ -522,7 +586,7 @@ function deserializeSpot(spot) {
     labelColor: spot.labelColor,
     showLabel: spot.showLabel,
     color: spot.color,
-    opacity: spot.opacity, // Was missing - needed for polygon/spot opacity
+    opacity: spot.opacity,
     date: spot.date,
     time: spot.time,
     notes: spot.notes,
