@@ -98,8 +98,8 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
         // Classified spots get green outline
         color = '#22c55e'; // Green
       } else {
-        // Unclassified spots get white outline
-        color = '#ffffff'; // White
+        // Unclassified spots get cyan outline (visible on both light and dark backgrounds)
+        color = '#00ffff'; // Cyan
       }
 
       if (isCurrentQuickEditSpot) {
