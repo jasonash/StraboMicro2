@@ -9,6 +9,7 @@
 interface DetectionRequest {
   type: 'detect';
   imageData: ImageData;
+  opencvScript?: string; // OpenCV script content passed from main thread (for production)
   settings: {
     sensitivity: number;
     minGrainSize: number;
@@ -55,44 +56,51 @@ let cv: any = null;
 const MAX_PROCESSING_SIZE = 1024;
 
 /**
- * Load OpenCV.js in the worker context using fetch + eval
- * (importScripts doesn't work in module workers)
+ * Load OpenCV.js in the worker context
+ * Prefers script passed from main thread (works in production),
+ * falls back to fetch (works in dev mode)
  */
-async function loadOpenCVInWorker(): Promise<void> {
+async function loadOpenCVInWorker(scriptContent?: string): Promise<void> {
   if (cv) return;
 
   self.postMessage({ type: 'progress', step: 'Loading OpenCV...', percent: 5 } as ProgressMessage);
 
+  let scriptText: string;
+
   try {
-    // Construct the URL for opencv.js
-    // In dev mode, self.location.origin might be blob: or different from the page origin
-    // Try multiple approaches to find the file
-    const possibleUrls = [
-      '/opencv.js',
-      'http://localhost:5173/opencv.js', // Vite dev server
-      `${self.location.origin}/opencv.js`,
-    ];
+    // If script content was passed from main thread, use it directly
+    if (scriptContent) {
+      console.log('[Worker] Using OpenCV script passed from main thread');
+      scriptText = scriptContent;
+    } else {
+      // Fall back to fetch (works in dev mode)
+      console.log('[Worker] Fetching OpenCV script...');
+      const possibleUrls = [
+        '/opencv.js', // Works in dev mode with Vite
+        'http://localhost:5173/opencv.js', // Vite dev server explicit
+      ];
 
-    let response: Response | null = null;
-    let lastError: Error | null = null;
+      let response: Response | null = null;
+      let lastError: Error | null = null;
 
-    for (const url of possibleUrls) {
-      try {
-        response = await fetch(url);
-        if (response.ok) {
-          break;
+      for (const url of possibleUrls) {
+        try {
+          response = await fetch(url);
+          if (response.ok) {
+            break;
+          }
+          response = null;
+        } catch (e) {
+          lastError = e instanceof Error ? e : new Error(String(e));
+          response = null;
         }
-        response = null;
-      } catch (e) {
-        lastError = e instanceof Error ? e : new Error(String(e));
-        response = null;
       }
-    }
 
-    if (!response || !response.ok) {
-      throw lastError || new Error('Failed to fetch OpenCV.js from any location');
+      if (!response || !response.ok) {
+        throw lastError || new Error('Failed to fetch OpenCV.js from any location');
+      }
+      scriptText = await response.text();
     }
-    const scriptText = await response.text();
 
     // Execute the script in worker context
     // eslint-disable-next-line no-eval
@@ -398,12 +406,12 @@ function runDetection(imageData: ImageData, settings: DetectionRequest['settings
 
 // Message handler
 self.onmessage = async (event: MessageEvent<DetectionRequest>) => {
-  const { type, imageData, settings } = event.data;
+  const { type, imageData, opencvScript, settings } = event.data;
 
   if (type === 'detect') {
     try {
-      // Load OpenCV if needed
-      await loadOpenCVInWorker();
+      // Load OpenCV if needed (pass script content if provided)
+      await loadOpenCVInWorker(opencvScript);
 
       // Run detection
       const result = runDetection(imageData, settings);

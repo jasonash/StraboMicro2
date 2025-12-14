@@ -176,6 +176,7 @@ contextBridge.exposeInMainWorld('api', {
   loadImageWithTiles: (imagePath) => ipcRenderer.invoke('image:load-with-tiles', imagePath),
   loadThumbnail: (imageHash) => ipcRenderer.invoke('image:load-thumbnail', imageHash),
   loadMedium: (imageHash) => ipcRenderer.invoke('image:load-medium', imageHash),
+  loadOpencvScript: () => ipcRenderer.invoke('load-opencv-script'),
   loadTile: (imageHash, tileX, tileY) => ipcRenderer.invoke('image:load-tile', imageHash, tileX, tileY),
   loadTilesBatch: (imageHash, tiles) => ipcRenderer.invoke('image:load-tiles-batch', imageHash, tiles),
   getCacheStats: () => ipcRenderer.invoke('image:cache-stats'),

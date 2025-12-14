@@ -286,15 +286,27 @@ export function GrainDetectionDialog({
   // DETECTION
   // ============================================================================
 
-  const runDetection = useCallback((imgData: ImageData, detectionSettings: DetectionSettings) => {
+  const runDetection = useCallback(async (imgData: ImageData, detectionSettings: DetectionSettings) => {
     console.log('[GrainDetection] Running detection with settings:', detectionSettings);
     setIsDetecting(true);
     setError(null);
-    setDetectionProgress({ step: 'Starting...', percent: 0 });
+    setDetectionProgress({ step: 'Loading OpenCV...', percent: 0 });
 
     // Terminate existing worker if any
     if (workerRef.current) {
       workerRef.current.terminate();
+    }
+
+    // Load OpenCV script via IPC (works in both dev and production)
+    let opencvScript: string | null = null;
+    try {
+      if (window.api?.loadOpencvScript) {
+        console.log('[GrainDetection] Loading OpenCV via IPC...');
+        opencvScript = await window.api.loadOpencvScript();
+        console.log('[GrainDetection] OpenCV script loaded, size:', opencvScript?.length);
+      }
+    } catch (err) {
+      console.warn('[GrainDetection] Failed to load OpenCV via IPC, worker will try fetch:', err);
     }
 
     // Create new worker
@@ -338,10 +350,11 @@ export function GrainDetectionDialog({
       workerRef.current = null;
     };
 
-    // Send detection request to worker
+    // Send detection request to worker (include OpenCV script if loaded via IPC)
     worker.postMessage({
       type: 'detect',
       imageData: imgData,
+      opencvScript, // Pass the script content if available
       settings: {
         sensitivity: detectionSettings.sensitivity,
         minGrainSize: detectionSettings.minGrainSize,

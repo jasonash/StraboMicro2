@@ -6,7 +6,7 @@ process.env.VIPS_DISC_THRESHOLD = '0';
 // Remove libvips memory limits entirely
 process.env.VIPS_NOVECTOR = '1';
 
-const { app, BrowserWindow, Menu, ipcMain, dialog, screen, nativeTheme, shell } = require('electron');
+const { app, BrowserWindow, Menu, ipcMain, dialog, screen, nativeTheme, shell, protocol, net } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const log = require('electron-log');
@@ -1182,6 +1182,17 @@ let buildMenuFn = null;
 
 app.whenReady().then(async () => {
   const isDev = !app.isPackaged;
+
+  // Register custom protocol to serve static files in production
+  // This allows web workers to fetch files like opencv.js
+  if (!isDev) {
+    protocol.handle('static', (request) => {
+      const url = new URL(request.url);
+      const filePath = path.join(__dirname, '..', 'dist', url.pathname);
+      log.info(`[Protocol] Serving static file: ${filePath}`);
+      return net.fetch(`file://${filePath}`);
+    });
+  }
 
   // Initialize log service (persistent logging to file)
   logService.init();
@@ -5386,5 +5397,38 @@ ipcMain.handle('logs:send-report', async (event, notes) => {
   } catch (error) {
     log.error('[ErrorReport] Failed to send error report:', error);
     return { success: false, error: error.message };
+  }
+});
+
+
+/**
+ * Load OpenCV.js script content for grain detection
+ * Returns the script as a string to be executed in a worker
+ */
+ipcMain.handle("load-opencv-script", async () => {
+  try {
+    const isDev = !app.isPackaged;
+    let opencvPath;
+    
+    if (isDev) {
+      // In development, load from public folder
+      opencvPath = path.join(__dirname, "..", "public", "opencv.js");
+    } else {
+      // In production, load from dist folder (which becomes resources/app/dist)
+      opencvPath = path.join(__dirname, "..", "dist", "opencv.js");
+    }
+    
+    log.info("[OpenCV] Loading from:", opencvPath);
+    
+    if (!fs.existsSync(opencvPath)) {
+      throw new Error("OpenCV.js not found at " + opencvPath);
+    }
+    
+    const scriptContent = fs.readFileSync(opencvPath, "utf-8");
+    log.info("[OpenCV] Loaded script, size:", scriptContent.length);
+    return scriptContent;
+  } catch (error) {
+    log.error("[OpenCV] Failed to load:", error);
+    throw error;
   }
 });

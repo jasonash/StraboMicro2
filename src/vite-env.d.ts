@@ -148,6 +148,7 @@ interface Window {
     }>;
     loadThumbnail: (imageHash: string) => Promise<string>;
     loadMedium: (imageHash: string) => Promise<string>;
+    loadOpencvScript: () => Promise<string>;
     loadTile: (imageHash: string, tileX: number, tileY: number) => Promise<string>;
     loadTilesBatch: (imageHash: string, tiles: TileCoordinate[]) => Promise<TileData[]>;
     getCacheStats: () => Promise<CacheStats>;
