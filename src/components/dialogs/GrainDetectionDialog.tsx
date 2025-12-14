@@ -119,6 +119,7 @@ export function GrainDetectionDialog({
   const [namingPattern, setNamingPattern] = useState(DEFAULT_SPOT_GENERATION_OPTIONS.namingPattern);
   const [spotColor, setSpotColor] = useState(DEFAULT_SPOT_GENERATION_OPTIONS.color);
   const [spotOpacity, setSpotOpacity] = useState(DEFAULT_SPOT_GENERATION_OPTIONS.opacity);
+  const [openQuickEdit, setOpenQuickEdit] = useState(true);
 
   // Store
   const project = useAppStore((s) => s.project);
@@ -516,10 +517,12 @@ export function GrainDetectionDialog({
     console.log('[GrainDetection] Generated', grains.length, 'spots');
     onClose();
 
-    // Automatically enter Quick Edit mode for immediate classification
-    // Use 'all' filter (all spots are unclassified) and 'spatial' sorting for natural flow
-    enterQuickEditMode('all', 'spatial');
-  }, [detectionResult, micrographId, micrograph, namingPattern, spotColor, spotOpacity, addSpot, onClose, enterQuickEditMode]);
+    // Optionally enter Quick Edit mode for immediate classification
+    if (openQuickEdit) {
+      // Use 'all' filter (all spots are unclassified) and 'spatial' sorting for natural flow
+      enterQuickEditMode('all', 'spatial');
+    }
+  }, [detectionResult, micrographId, micrograph, namingPattern, spotColor, spotOpacity, addSpot, onClose, openQuickEdit, enterQuickEditMode]);
 
   // ============================================================================
   // RENDER
@@ -914,6 +917,22 @@ export function GrainDetectionDialog({
                   size="small"
                 />
               </Box>
+
+              {/* Quick Edit option */}
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={openQuickEdit}
+                    onChange={(e) => setOpenQuickEdit(e.target.checked)}
+                    size="small"
+                  />
+                }
+                label={
+                  <Typography variant="body2">
+                    Open Quick Edit for classification
+                  </Typography>
+                }
+              />
             </Stack>
           </Box>
         </Stack>
