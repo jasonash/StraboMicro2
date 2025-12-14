@@ -382,7 +382,7 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
           points={points}
           stroke={isSelected ? 'transparent' : strokeColor}
           strokeWidth={isSelected ? 0 : strokeWidth}
-          dash={isClassified && !quickEditMode ? undefined : [8 / scale, 4 / scale]}
+          dash={quickEditMode ? undefined : (isClassified ? undefined : [8 / scale, 4 / scale])}
           fill={fillOpacity === 0 ? 'transparent' : color}
           opacity={opacity}
           closed={true}
