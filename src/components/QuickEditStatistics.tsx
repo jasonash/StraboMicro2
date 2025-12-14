@@ -139,9 +139,10 @@ export function QuickEditStatistics() {
     }
 
     const totalOriginal = quickEditSpotIds.length + quickEditDeletedCount;
-    const remaining = quickEditSpotIds.length;
     const reviewed = quickEditReviewedIds.length;
     const deleted = quickEditDeletedCount;
+    // Remaining = spots in session that haven't been reviewed yet
+    const remaining = quickEditSpotIds.length - reviewed;
 
     // Count minerals in the session
     const mineralCounts: Record<string, number> = {};
@@ -159,18 +160,20 @@ export function QuickEditStatistics() {
       }
     }
 
-    const classifiedCount = remaining - unclassifiedCount;
+    // classifiedCount = spots in session with a mineral assigned
+    const classifiedCount = quickEditSpotIds.length - unclassifiedCount;
     const progressPercent = totalOriginal > 0
       ? Math.round(((reviewed + deleted) / totalOriginal) * 100)
       : 0;
 
     // Sort minerals by count (descending)
+    const spotsInSession = quickEditSpotIds.length;
     const sortedMinerals = Object.entries(mineralCounts)
       .sort(([, a], [, b]) => b - a)
       .map(([name, count], index) => ({
         name,
         count,
-        percentage: remaining > 0 ? (count / remaining) * 100 : 0,
+        percentage: spotsInSession > 0 ? (count / spotsInSession) * 100 : 0,
         color: MINERAL_COLORS[index % MINERAL_COLORS.length],
       }));
 
@@ -182,6 +185,7 @@ export function QuickEditStatistics() {
       classifiedCount,
       unclassifiedCount,
       progressPercent,
+      spotsInSession,
       minerals: sortedMinerals,
     };
   }, [quickEditMode, quickEditSpotIds, quickEditReviewedIds, quickEditDeletedCount, spots]);
@@ -258,7 +262,7 @@ export function QuickEditStatistics() {
               <MineralBar
                 name="(unclassified)"
                 count={stats.unclassifiedCount}
-                percentage={stats.remaining > 0 ? (stats.unclassifiedCount / stats.remaining) * 100 : 0}
+                percentage={stats.spotsInSession > 0 ? (stats.unclassifiedCount / stats.spotsInSession) * 100 : 0}
                 color="#666666"
               />
             )}
