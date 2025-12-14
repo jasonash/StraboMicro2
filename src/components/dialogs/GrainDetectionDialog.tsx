@@ -124,6 +124,7 @@ export function GrainDetectionDialog({
   const project = useAppStore((s) => s.project);
   const micrographIndex = useAppStore((s) => s.micrographIndex);
   const addSpot = useAppStore((s) => s.addSpot);
+  const enterQuickEditMode = useAppStore((s) => s.enterQuickEditMode);
   const micrograph = micrographId ? micrographIndex.get(micrographId) : null;
 
   // Image dimensions - use actual loaded image size, not original micrograph size
@@ -514,7 +515,11 @@ export function GrainDetectionDialog({
 
     console.log('[GrainDetection] Generated', grains.length, 'spots');
     onClose();
-  }, [detectionResult, micrographId, micrograph, namingPattern, spotColor, spotOpacity, addSpot, onClose]);
+
+    // Automatically enter Quick Edit mode for immediate classification
+    // Use 'all' filter (all spots are unclassified) and 'spatial' sorting for natural flow
+    enterQuickEditMode('all', 'spatial');
+  }, [detectionResult, micrographId, micrograph, namingPattern, spotColor, spotOpacity, addSpot, onClose, enterQuickEditMode]);
 
   // ============================================================================
   // RENDER
