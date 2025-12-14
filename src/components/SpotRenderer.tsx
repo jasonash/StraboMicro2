@@ -95,8 +95,8 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
       fillOpacity = 0; // No fill
 
       if (isClassified) {
-        // Classified spots get green outline
-        color = '#22c55e'; // Green
+        // Classified spots get bright green outline
+        color = '#00ff00'; // Lime green (bright)
       } else {
         // Unclassified spots get cyan outline (visible on both light and dark backgrounds)
         color = '#00ffff'; // Cyan
