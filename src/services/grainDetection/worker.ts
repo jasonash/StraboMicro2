@@ -64,10 +64,33 @@ async function loadOpenCVInWorker(): Promise<void> {
   self.postMessage({ type: 'progress', step: 'Loading OpenCV...', percent: 5 } as ProgressMessage);
 
   try {
-    // Fetch the OpenCV.js file
-    const response = await fetch('/opencv.js');
-    if (!response.ok) {
-      throw new Error(`Failed to fetch OpenCV.js: ${response.status}`);
+    // Construct the URL for opencv.js
+    // In dev mode, self.location.origin might be blob: or different from the page origin
+    // Try multiple approaches to find the file
+    const possibleUrls = [
+      '/opencv.js',
+      'http://localhost:5173/opencv.js', // Vite dev server
+      `${self.location.origin}/opencv.js`,
+    ];
+
+    let response: Response | null = null;
+    let lastError: Error | null = null;
+
+    for (const url of possibleUrls) {
+      try {
+        response = await fetch(url);
+        if (response.ok) {
+          break;
+        }
+        response = null;
+      } catch (e) {
+        lastError = e instanceof Error ? e : new Error(String(e));
+        response = null;
+      }
+    }
+
+    if (!response || !response.ok) {
+      throw lastError || new Error('Failed to fetch OpenCV.js from any location');
     }
     const scriptText = await response.text();
 
