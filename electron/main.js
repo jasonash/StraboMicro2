@@ -377,6 +377,9 @@ function createWindow() {
   // Track current project ID for menu
   let currentProjectId = null;
 
+  // Track current theme for menu (synced from renderer)
+  let currentTheme = 'dark';
+
   // Cache for recent projects (to avoid disk reads on every menu build)
   let recentProjectsCache = [];
 
@@ -408,9 +411,8 @@ function createWindow() {
   }
 
   // Function to build menu with current auth state
-  // Options: { currentTheme?: 'dark' | 'light' | 'system' }
-  async function buildMenu(options = {}) {
-    const currentTheme = options.currentTheme || 'dark';
+  async function buildMenu() {
+    // Uses the currentTheme variable from outer scope
     // Fetch recent projects for submenu
     try {
       recentProjectsCache = await projectsIndex.getRecentProjects(10);
@@ -1060,6 +1062,13 @@ function createWindow() {
   // IPC handler to update current project and rebuild menu
   ipcMain.on('project:current-changed', (event, projectId) => {
     currentProjectId = projectId;
+    buildMenu();
+  });
+
+  // IPC handler to update theme and rebuild menu
+  ipcMain.on('theme:changed', (event, theme) => {
+    log.info(`App theme changed to: ${theme}`);
+    currentTheme = theme;
     buildMenu();
   });
 
@@ -2108,16 +2117,6 @@ ipcMain.on('set-window-title', (event, title) => {
   }
 });
 
-// Theme change handler - sync menu checked state with renderer theme
-ipcMain.on('theme:changed', (event, theme) => {
-  log.info(`App theme changed to: ${theme}`);
-
-  // Rebuild menu with correct theme checked state
-  // Simply modifying menu item checked state doesn't always update the UI in Electron
-  if (buildMenuFn) {
-    buildMenuFn({ currentTheme: theme });
-  }
-});
 
 // ========== Tile-Based Image Loading System ==========
 // Import tile cache, generator, and queue
