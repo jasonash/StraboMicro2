@@ -2101,10 +2101,25 @@ ipcMain.on('set-window-title', (event, title) => {
   }
 });
 
-// Theme change handler - log theme changes (no nativeTheme sync)
+// Theme change handler - sync menu checked state with renderer theme
 ipcMain.on('theme:changed', (event, theme) => {
-  // Note: We don't sync nativeTheme to keep the native window chrome unchanged
   log.info(`App theme changed to: ${theme}`);
+
+  // Update the View → Theme menu's checked state
+  const menu = Menu.getApplicationMenu();
+  if (menu) {
+    const viewMenu = menu.items.find(item => item.label === 'View');
+    if (viewMenu && viewMenu.submenu) {
+      const themeMenu = viewMenu.submenu.items.find(item => item.label === 'Theme');
+      if (themeMenu && themeMenu.submenu) {
+        themeMenu.submenu.items.forEach(item => {
+          if (item.type === 'radio') {
+            item.checked = item.label.toLowerCase() === theme;
+          }
+        });
+      }
+    }
+  }
 });
 
 // ========== Tile-Based Image Loading System ==========
