@@ -37,6 +37,26 @@ interface FieldState<T> {
   value: T;
 }
 
+// Default color and localStorage key for remembering last used color
+const DEFAULT_COLOR = '#e53935'; // Nice red
+const LAST_COLOR_KEY = 'strabomicro2-batch-edit-last-color';
+
+function getLastUsedColor(): string {
+  try {
+    return localStorage.getItem(LAST_COLOR_KEY) || DEFAULT_COLOR;
+  } catch {
+    return DEFAULT_COLOR;
+  }
+}
+
+function saveLastUsedColor(color: string): void {
+  try {
+    localStorage.setItem(LAST_COLOR_KEY, color);
+  } catch {
+    // Ignore localStorage errors
+  }
+}
+
 export function BatchEditSpotsDialog({ isOpen, onClose }: BatchEditSpotsDialogProps) {
   const selectedSpotIds = useAppStore((state) => state.selectedSpotIds);
   const spotIndex = useAppStore((state) => state.spotIndex);
@@ -49,18 +69,18 @@ export function BatchEditSpotsDialog({ isOpen, onClose }: BatchEditSpotsDialogPr
   });
   const [color, setColor] = useState<FieldState<string>>({
     enabled: false,
-    value: '#00ff00',
+    value: DEFAULT_COLOR,
   });
   const [opacity, setOpacity] = useState<FieldState<number>>({
     enabled: false,
     value: 50,
   });
 
-  // Reset form when dialog opens
+  // Reset form when dialog opens, using last used color
   useEffect(() => {
     if (isOpen) {
       setMineral({ enabled: false, value: '' });
-      setColor({ enabled: false, value: '#00ff00' });
+      setColor({ enabled: false, value: getLastUsedColor() });
       setOpacity({ enabled: false, value: 50 });
     }
   }, [isOpen]);
@@ -83,6 +103,7 @@ export function BatchEditSpotsDialog({ isOpen, onClose }: BatchEditSpotsDialogPr
 
     if (color.enabled) {
       updates.color = color.value;
+      saveLastUsedColor(color.value);
     }
 
     if (opacity.enabled) {
