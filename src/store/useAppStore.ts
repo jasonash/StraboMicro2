@@ -2452,7 +2452,6 @@ export const useAppStore = create<AppState>()(
           }
           // Sync theme with main process menu after rehydration
           if (state?.theme && window.api?.notifyThemeChanged) {
-            console.log('[Store] Syncing rehydrated theme to main:', state.theme);
             window.api.notifyThemeChanged(state.theme);
           }
         },

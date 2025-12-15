@@ -408,7 +408,9 @@ function createWindow() {
   }
 
   // Function to build menu with current auth state
-  async function buildMenu() {
+  // Options: { currentTheme?: 'dark' | 'light' | 'system' }
+  async function buildMenu(options = {}) {
+    const currentTheme = options.currentTheme || 'dark';
     // Fetch recent projects for submenu
     try {
       recentProjectsCache = await projectsIndex.getRecentProjects(10);
@@ -790,7 +792,7 @@ function createWindow() {
               id: 'theme-dark',
               label: 'Dark',
               type: 'radio',
-              checked: true,
+              checked: currentTheme === 'dark',
               click: () => {
                 if (mainWindow) {
                   mainWindow.webContents.send('theme:set', 'dark');
@@ -801,6 +803,7 @@ function createWindow() {
               id: 'theme-light',
               label: 'Light',
               type: 'radio',
+              checked: currentTheme === 'light',
               click: () => {
                 if (mainWindow) {
                   mainWindow.webContents.send('theme:set', 'light');
@@ -811,6 +814,7 @@ function createWindow() {
               id: 'theme-system',
               label: 'System',
               type: 'radio',
+              checked: currentTheme === 'system',
               click: () => {
                 if (mainWindow) {
                   mainWindow.webContents.send('theme:set', 'system');
@@ -2108,16 +2112,10 @@ ipcMain.on('set-window-title', (event, title) => {
 ipcMain.on('theme:changed', (event, theme) => {
   log.info(`App theme changed to: ${theme}`);
 
-  // Update the View → Theme menu's checked state using menu item IDs
-  const menu = Menu.getApplicationMenu();
-  if (menu) {
-    const darkItem = menu.getMenuItemById('theme-dark');
-    const lightItem = menu.getMenuItemById('theme-light');
-    const systemItem = menu.getMenuItemById('theme-system');
-
-    if (darkItem) darkItem.checked = theme === 'dark';
-    if (lightItem) lightItem.checked = theme === 'light';
-    if (systemItem) systemItem.checked = theme === 'system';
+  // Rebuild menu with correct theme checked state
+  // Simply modifying menu item checked state doesn't always update the UI in Electron
+  if (buildMenu) {
+    buildMenu({ currentTheme: theme });
   }
 });
 
