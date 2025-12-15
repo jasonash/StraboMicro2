@@ -390,3 +390,64 @@ jobs:
             **Linux (Debian/Ubuntu)**: Install the .deb package: `sudo dpkg -i strabomicro2_*.deb`
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Update dev-releases.json for website consumption
+  update-dev-releases-json:
+    needs: release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.branch }}
+          fetch-depth: 0
+
+      - name: Pull latest changes
+        run: git pull origin ${{ inputs.branch }}
+
+      - name: Generate dev-releases.json
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Fetch the dev-latest release info
+          gh api repos/${{ github.repository }}/releases/tags/dev-latest \
+            --jq '{
+              version: .tag_name,
+              name: .name,
+              date: .published_at,
+              build_number: ${{ github.run_number }},
+              branch: "${{ inputs.branch }}",
+              notes: .body,
+              assets: [.assets[] | select(.name | test("\\.(dmg|exe|AppImage|deb)$")) | {
+                name: .name,
+                url: .browser_download_url,
+                size: .size,
+                platform: (
+                  if (.name | test("-arm64\\.dmg$")) then "macOS (Apple Silicon)"
+                  elif (.name | test("\\.dmg$")) then "macOS (Intel)"
+                  elif (.name | test("\\.exe$")) then "Windows"
+                  elif (.name | test("\\.AppImage$")) then "Linux (AppImage)"
+                  elif (.name | test("\\.deb$")) then "Linux (Debian)"
+                  else "Other"
+                  end
+                )
+              }]
+            }' > dev-releases.json
+
+          echo "Generated dev-releases.json:"
+          cat dev-releases.json
+
+      - name: Commit and push dev-releases.json
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git add dev-releases.json
+          if git diff --cached --quiet; then
+            echo "No changes to dev-releases.json"
+          else
+            git commit -m "[CI] Update dev-releases.json (build #${{ github.run_number }})"
+            git push origin ${{ inputs.branch }}
+          fi
