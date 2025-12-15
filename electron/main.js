@@ -7,6 +7,13 @@ process.env.VIPS_DISC_THRESHOLD = '0';
 process.env.VIPS_NOVECTOR = '1';
 
 const { app, BrowserWindow, Menu, ipcMain, dialog, screen, nativeTheme, shell, protocol, net } = require('electron');
+
+// Disable sandbox on Linux to avoid SUID permission issues with AppImage
+// This is a common requirement for Electron apps distributed as AppImage
+if (process.platform === 'linux') {
+  app.commandLine.appendSwitch('no-sandbox');
+}
+
 const path = require('path');
 const fs = require('fs');
 const log = require('electron-log');
