@@ -429,7 +429,17 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Fetch last 10 production releases (exclude dev-latest and prereleases optionally)
+          # Wait for the new release to appear in the list (retry up to 30 seconds)
+          for i in {1..6}; do
+            if gh api repos/${{ github.repository }}/releases/tags/v${{ inputs.version }} --silent 2>/dev/null; then
+              echo "Release v${{ inputs.version }} found on attempt $i"
+              break
+            fi
+            echo "Waiting for release to be available (attempt $i/6)..."
+            sleep 5
+          done
+
+          # Fetch last 10 production releases (exclude dev-latest)
           gh api repos/${{ github.repository }}/releases \
             --jq '[.[] | select(.tag_name != "dev-latest") | {
               version: .tag_name,
