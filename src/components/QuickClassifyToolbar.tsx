@@ -879,23 +879,23 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
           py: 0.5,
           borderBottom: 1,
           borderColor: 'divider',
-          bgcolor: 'grey.800',
+          bgcolor: 'action.hover',
           cursor: isDragging ? 'grabbing' : 'grab',
           userSelect: 'none',
         }}
       >
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-          <DragIcon fontSize="small" sx={{ color: 'grey.500', fontSize: 16 }} />
-          <Typography variant="body2" sx={{ fontWeight: 600, color: 'grey.100' }}>
+          <DragIcon fontSize="small" sx={{ color: 'text.secondary', fontSize: 16 }} />
+          <Typography variant="body2" sx={{ fontWeight: 600, color: 'text.primary' }}>
             {pointCountMode ? 'Point Count' : quickEditMode ? 'Quick Edit' : 'Quick Classify'}
           </Typography>
           {pointCountMode && activePointCountSession && (
-            <Typography variant="caption" sx={{ color: 'grey.400', ml: 1 }}>
+            <Typography variant="caption" sx={{ color: 'text.secondary', ml: 1 }}>
               {activePointCountSession.name}
             </Typography>
           )}
           {quickEditMode && (
-            <Typography variant="caption" sx={{ color: 'grey.400', ml: 1 }}>
+            <Typography variant="caption" sx={{ color: 'text.secondary', ml: 1 }}>
               {quickEditCurrentIndex + 1} of {quickEditSpotIds.length}
             </Typography>
           )}
@@ -908,7 +908,7 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
                 onClick={(e) => { e.stopPropagation(); handleManualSave(); }}
                 onMouseDown={(e) => e.stopPropagation()}
                 disabled={isSaving}
-                sx={{ color: 'grey.400', p: 0.5 }}
+                sx={{ color: 'text.secondary', p: 0.5 }}
               >
                 <SaveIcon fontSize="small" />
               </IconButton>
@@ -921,7 +921,7 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
                 onClick={(e) => { e.stopPropagation(); setLassoToolActive(!lassoToolActive); }}
                 onMouseDown={(e) => e.stopPropagation()}
                 sx={{
-                  color: lassoToolActive ? 'primary.main' : 'grey.400',
+                  color: lassoToolActive ? 'primary.main' : 'text.secondary',
                   bgcolor: lassoToolActive ? 'action.selected' : 'transparent',
                   p: 0.5,
                   '&:hover': {
@@ -938,7 +938,7 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
               size="small"
               onClick={(e) => { e.stopPropagation(); toggleStatistics(); }}
               onMouseDown={(e) => e.stopPropagation()}
-              sx={{ color: 'grey.400', p: 0.5 }}
+              sx={{ color: 'text.secondary', p: 0.5 }}
             >
               <StatsIcon fontSize="small" />
             </IconButton>
@@ -949,7 +949,7 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
                 size="small"
                 onClick={(e) => { e.stopPropagation(); onOpenSettings(); }}
                 onMouseDown={(e) => e.stopPropagation()}
-                sx={{ color: 'grey.400', p: 0.5 }}
+                sx={{ color: 'text.secondary', p: 0.5 }}
               >
                 <SettingsIcon fontSize="small" />
               </IconButton>
@@ -960,7 +960,7 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
               size="small"
               onClick={(e) => { e.stopPropagation(); handleClose(); }}
               onMouseDown={(e) => e.stopPropagation()}
-              sx={{ color: 'grey.400', p: 0.5 }}
+              sx={{ color: 'text.secondary', p: 0.5 }}
             >
               <CloseIcon fontSize="small" />
             </IconButton>
@@ -969,7 +969,7 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
       </Box>
 
       {/* Content */}
-      <Box sx={{ p: 1.5, bgcolor: 'grey.900' }}>
+      <Box sx={{ p: 1.5, bgcolor: 'background.default' }}>
         {/* Shortcut chips row */}
         <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
           {canScrollLeft && (
@@ -1029,7 +1029,7 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
             sx={{
               height: 8,
               borderRadius: 1,
-              bgcolor: 'grey.700',
+              bgcolor: 'action.disabledBackground',
               '& .MuiLinearProgress-bar': {
                 bgcolor: stats.percentage === 100 ? 'success.main' : 'primary.main',
               },

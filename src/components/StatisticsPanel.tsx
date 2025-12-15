@@ -264,18 +264,18 @@ export const StatisticsPanel: React.FC = () => {
           py: 0.75,
           borderBottom: 1,
           borderColor: 'divider',
-          bgcolor: 'grey.800',
+          bgcolor: 'action.hover',
           cursor: isDragging ? 'grabbing' : 'grab',
           userSelect: 'none',
         }}
       >
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, overflow: 'hidden' }}>
-          <DragIcon fontSize="small" sx={{ color: 'grey.500', fontSize: 16, flexShrink: 0 }} />
+          <DragIcon fontSize="small" sx={{ color: 'text.secondary', fontSize: 16, flexShrink: 0 }} />
           <Typography
             variant="body2"
             sx={{
               fontWeight: 600,
-              color: 'grey.100',
+              color: 'text.primary',
               whiteSpace: 'nowrap',
               overflow: 'hidden',
               textOverflow: 'ellipsis',
@@ -290,7 +290,7 @@ export const StatisticsPanel: React.FC = () => {
               size="small"
               onClick={(e) => { e.stopPropagation(); toggleExpanded(); }}
               onMouseDown={(e) => e.stopPropagation()}
-              sx={{ color: 'grey.400', p: 0.5 }}
+              sx={{ color: 'text.secondary', p: 0.5 }}
             >
               {isExpanded ? <ExpandLessIcon fontSize="small" /> : <ExpandMoreIcon fontSize="small" />}
             </IconButton>
@@ -300,7 +300,7 @@ export const StatisticsPanel: React.FC = () => {
               size="small"
               onClick={(e) => { e.stopPropagation(); handleClose(); }}
               onMouseDown={(e) => e.stopPropagation()}
-              sx={{ color: 'grey.400', p: 0.5 }}
+              sx={{ color: 'text.secondary', p: 0.5 }}
             >
               <CloseIcon fontSize="small" />
             </IconButton>
@@ -315,7 +315,7 @@ export const StatisticsPanel: React.FC = () => {
             p: 1.5,
             maxHeight: 450,
             overflowY: 'auto',
-            bgcolor: 'grey.900',
+            bgcolor: 'background.default',
           }}
         >
           {quickEditMode ? (

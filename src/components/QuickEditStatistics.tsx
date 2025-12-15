@@ -213,7 +213,7 @@ export function QuickEditStatistics() {
           sx={{
             height: 10,
             borderRadius: 1,
-            bgcolor: 'grey.700',
+            bgcolor: 'action.disabledBackground',
             '& .MuiLinearProgress-bar': {
               bgcolor: stats.progressPercent === 100 ? 'success.main' : 'primary.main',
               borderRadius: 1,
