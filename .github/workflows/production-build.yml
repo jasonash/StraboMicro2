@@ -402,6 +402,8 @@ jobs:
 
             **Windows**: Download and run the installer. If you see a SmartScreen warning, click "More info" then "Run anyway".
 
-            **Linux**: Download the AppImage, make it executable (`chmod +x`), and run it. Or install the .deb package.
+            **Linux (AppImage)**: Download the AppImage, make it executable (`chmod +x`), and run with: `./StraboMicro2-*.AppImage --no-sandbox`
+
+            **Linux (Debian/Ubuntu)**: Install the .deb package: `sudo dpkg -i strabomicro2_*.deb`
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
