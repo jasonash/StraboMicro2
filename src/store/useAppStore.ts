@@ -134,6 +134,7 @@ interface AppState {
 
   // ========== SELECTION STATE ==========
   selectedSpotIds: string[]; // Multi-selection for batch operations
+  spotLassoToolActive: boolean; // Whether toolbar lasso tool is active for spot selection
 
   // ========== SPLIT MODE STATE ==========
   splitModeSpotId: string | null; // When set, user is drawing a split line on this spot
@@ -256,6 +257,7 @@ interface AppState {
   selectSpot: (id: string, multiSelect?: boolean) => void;
   deselectSpot: (id: string) => void;
   clearSpotSelection: () => void;
+  setSpotLassoToolActive: (active: boolean) => void;
 
   // ========== SPLIT MODE ACTIONS ==========
   setSplitModeSpotId: (spotId: string | null) => void;
@@ -430,6 +432,7 @@ export const useAppStore = create<AppState>()(
           micrographNavigationStack: [],
 
           selectedSpotIds: [],
+          spotLassoToolActive: false,
 
           splitModeSpotId: null,
 
@@ -524,6 +527,7 @@ export const useAppStore = create<AppState>()(
               activeSpotId: null,
               micrographNavigationStack: [],
               selectedSpotIds: [],
+              spotLassoToolActive: false,
               micrographIndex,
               spotIndex,
             });
@@ -539,6 +543,7 @@ export const useAppStore = create<AppState>()(
             activeSpotId: null,
             micrographNavigationStack: [],
             selectedSpotIds: [],
+            spotLassoToolActive: false,
             micrographIndex: new Map(),
             spotIndex: new Map(),
           }),
@@ -684,6 +689,12 @@ export const useAppStore = create<AppState>()(
           },
 
           clearSpotSelection: () => set({ selectedSpotIds: [] }),
+
+          setSpotLassoToolActive: (active) => set({
+            spotLassoToolActive: active,
+            // When activating lasso tool, ensure we're in select mode
+            activeTool: active ? 'select' : get().activeTool,
+          }),
 
           // ========== SPLIT MODE ACTIONS ==========
           setSplitModeSpotId: (spotId) => set({ splitModeSpotId: spotId }),

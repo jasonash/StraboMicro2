@@ -218,16 +218,16 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
           />
         )}
 
-        {/* Circle: filled if classified, hollow if unclassified */}
+        {/* Circle: always filled with spot color */}
         {/* In Quick Edit mode: different colors based on state */}
         <Circle
           key="point"
           x={x}
           y={y}
           radius={(isCurrentQuickEditSpot ? 8 : 6) / scale}
-          fill={quickEditMode ? (fillOpacity === 0 ? 'transparent' : color) : (isClassified ? color : 'transparent')}
-          opacity={quickEditMode ? opacity : (isClassified ? opacity : 1)}
-          stroke={quickEditMode ? strokeColor : (isClassified ? '#ffffff' : color)}
+          fill={quickEditMode ? (fillOpacity === 0 ? 'transparent' : color) : color}
+          opacity={quickEditMode ? opacity : baseOpacity}
+          stroke={quickEditMode ? strokeColor : '#ffffff'}
           strokeWidth={(isCurrentQuickEditSpot ? 3 : 2) / scale}
         />
       </Group>

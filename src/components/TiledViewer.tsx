@@ -140,6 +140,8 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
     const selectSpot = useAppStore((state) => state.selectSpot);
     const selectedSpotIds = useAppStore((state) => state.selectedSpotIds);
     const clearSpotSelection = useAppStore((state) => state.clearSpotSelection);
+    const spotLassoToolActive = useAppStore((state) => state.spotLassoToolActive);
+    const setSpotLassoToolActive = useAppStore((state) => state.setSpotLassoToolActive);
     const setActiveTool = useAppStore((state) => state.setActiveTool);
     const addSpot = useAppStore((state) => state.addSpot);
     const deleteSpot = useAppStore((state) => state.deleteSpot);
@@ -974,8 +976,8 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
           return;
         }
 
-        // Handle Shift+Drag for spot lasso selection (not in point count mode)
-        if (e.evt.shiftKey && !pointCountMode && (!activeTool || activeTool === 'select')) {
+        // Handle Shift+Drag or toolbar lasso for spot selection (not in point count mode)
+        if ((e.evt.shiftKey || spotLassoToolActive) && !pointCountMode && (!activeTool || activeTool === 'select')) {
           const stage = stageRef.current;
           if (!stage) return;
           const pos = stage.getPointerPosition();
@@ -989,8 +991,8 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
 
         // Only enable panning if no drawing tool is active
         if (!activeTool || activeTool === 'select') {
-          // Don't pan if lasso is active
-          if (lassoToolActive) return;
+          // Don't pan if lasso is active (point count or spot toolbar)
+          if (lassoToolActive || spotLassoToolActive) return;
 
           setIsPanning(true);
           const stage = stageRef.current;
@@ -999,7 +1001,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
           setLastPointerPos(pos);
         }
       },
-      [activeTool, position, zoom, rulerTool, lassoToolActive, pointCountMode, lasso]
+      [activeTool, position, zoom, rulerTool, lassoToolActive, spotLassoToolActive, pointCountMode, lasso]
     );
 
     const handleMouseMove = useCallback(() => {
@@ -1150,10 +1152,14 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
         }
       }
 
-      // Finish spot lasso selection (Shift+Drag mode)
+      // Finish spot lasso selection (Shift+Drag or toolbar mode)
       if (lasso.isDrawing && spotLassoActive) {
         const polygon = lasso.completeLasso();
         setSpotLassoActive(false);
+        // Deactivate toolbar lasso after completing selection
+        if (spotLassoToolActive) {
+          setSpotLassoToolActive(false);
+        }
         if (polygon.length >= 3) {
           // Get all visible spots and find those with centroids inside the lasso
           const spots = activeMicrograph?.spots || [];
@@ -1173,7 +1179,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
           }
         }
       }
-    }, [activeTool, rulerTool, lasso, lassoToolActive, pointCountMode, activePointCountSession, setSelectedPointIndices, spotLassoActive, activeMicrograph, showArchivedSpots, getSpotCentroid, selectSpot]);
+    }, [activeTool, rulerTool, lasso, lassoToolActive, pointCountMode, activePointCountSession, setSelectedPointIndices, spotLassoActive, spotLassoToolActive, setSpotLassoToolActive, activeMicrograph, showArchivedSpots, getSpotCentroid, selectSpot]);
 
     const handleMouseLeave = useCallback(() => {
       setIsPanning(false);
@@ -1661,6 +1667,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                     activeTool === 'polygon' ||
                     activeTool === 'measure' ||
                     lassoToolActive ||
+                    spotLassoToolActive ||
                     spotLassoActive ||
                     splitModeSpotId
                       ? 'crosshair'
@@ -1960,6 +1967,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                     activeTool === 'polygon' ||
                     activeTool === 'measure' ||
                     lassoToolActive ||
+                    spotLassoToolActive ||
                     spotLassoActive ||
                     splitModeSpotId
                       ? 'crosshair'
