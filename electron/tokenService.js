@@ -54,12 +54,21 @@ async function getStore() {
 
 /**
  * Check if we should use safeStorage encryption.
- * On Linux, safeStorage can hang if the keyring is locked, so we test it first.
- * Returns false if encryption is unavailable or potentially problematic.
+ * On Linux, safeStorage can hang indefinitely if the keyring is locked or
+ * requires authentication, so we skip it entirely and use plaintext storage.
+ * This is a known limitation of Electron on Linux.
  */
 function shouldUseEncryption() {
   if (useEncryption !== null) {
     return useEncryption;
+  }
+
+  // On Linux, skip safeStorage entirely - it can hang waiting for keyring unlock
+  // This is a common issue with gnome-keyring, kwallet, etc.
+  if (process.platform === 'linux') {
+    log.warn('[TokenService] Linux detected - using plaintext storage (keyring can cause hangs)');
+    useEncryption = false;
+    return false;
   }
 
   // Check if encryption is available at all
@@ -74,36 +83,16 @@ function shouldUseEncryption() {
     ? safeStorage.getSelectedStorageBackend()
     : 'unknown';
 
-  // On Linux with 'basic_text' backend, encryption is essentially unavailable
+  // With 'basic_text' backend, encryption is essentially unavailable
   if (backend === 'basic_text') {
     log.warn('[TokenService] basic_text backend detected - using plaintext storage');
     useEncryption = false;
     return false;
   }
 
-  // On Linux, test that encryption actually works without hanging
-  // This catches cases where keyring is locked or misconfigured
-  if (process.platform === 'linux') {
-    try {
-      // Quick test - encrypt a small string to see if it blocks
-      const testData = 'test';
-      const encrypted = safeStorage.encryptString(testData);
-      const decrypted = safeStorage.decryptString(encrypted);
-      if (decrypted !== testData) {
-        throw new Error('Encryption round-trip failed');
-      }
-      log.info('[TokenService] Linux encryption test passed, backend:', backend);
-      useEncryption = true;
-    } catch (error) {
-      log.warn('[TokenService] Linux encryption test failed:', error.message);
-      log.warn('[TokenService] Falling back to plaintext storage');
-      useEncryption = false;
-    }
-  } else {
-    // macOS and Windows generally work reliably
-    useEncryption = true;
-  }
-
+  // macOS and Windows generally work reliably
+  log.info('[TokenService] Using encrypted storage, backend:', backend);
+  useEncryption = true;
   return useEncryption;
 }
 
