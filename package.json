@@ -167,6 +167,9 @@
         "deb"
       ]
     },
+    "appImage": {
+      "executableArgs": ["--no-sandbox"]
+    },
     "publish": {
       "provider": "github",
       "owner": "jasonash",
