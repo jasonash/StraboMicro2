@@ -787,6 +787,7 @@ function createWindow() {
           label: 'Theme',
           submenu: [
             {
+              id: 'theme-dark',
               label: 'Dark',
               type: 'radio',
               checked: true,
@@ -797,6 +798,7 @@ function createWindow() {
               }
             },
             {
+              id: 'theme-light',
               label: 'Light',
               type: 'radio',
               click: () => {
@@ -806,6 +808,7 @@ function createWindow() {
               }
             },
             {
+              id: 'theme-system',
               label: 'System',
               type: 'radio',
               click: () => {
@@ -2105,20 +2108,16 @@ ipcMain.on('set-window-title', (event, title) => {
 ipcMain.on('theme:changed', (event, theme) => {
   log.info(`App theme changed to: ${theme}`);
 
-  // Update the View → Theme menu's checked state
+  // Update the View → Theme menu's checked state using menu item IDs
   const menu = Menu.getApplicationMenu();
   if (menu) {
-    const viewMenu = menu.items.find(item => item.label === 'View');
-    if (viewMenu && viewMenu.submenu) {
-      const themeMenu = viewMenu.submenu.items.find(item => item.label === 'Theme');
-      if (themeMenu && themeMenu.submenu) {
-        themeMenu.submenu.items.forEach(item => {
-          if (item.type === 'radio') {
-            item.checked = item.label.toLowerCase() === theme;
-          }
-        });
-      }
-    }
+    const darkItem = menu.getMenuItemById('theme-dark');
+    const lightItem = menu.getMenuItemById('theme-light');
+    const systemItem = menu.getMenuItemById('theme-system');
+
+    if (darkItem) darkItem.checked = theme === 'dark';
+    if (lightItem) lightItem.checked = theme === 'light';
+    if (systemItem) systemItem.checked = theme === 'system';
   }
 });
 
