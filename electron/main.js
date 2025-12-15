@@ -1,3 +1,9 @@
+// Disable sandbox on Linux BEFORE requiring Electron
+// This is required for AppImage to work without SUID sandbox permissions
+if (process.platform === 'linux') {
+  process.env.ELECTRON_DISABLE_SANDBOX = '1';
+}
+
 // Configure libvips memory limits BEFORE loading Sharp
 // VIPS_DISC_THRESHOLD controls when libvips switches to disc caching
 // Setting to 0 forces disc caching immediately, avoiding memory limits
@@ -8,8 +14,7 @@ process.env.VIPS_NOVECTOR = '1';
 
 const { app, BrowserWindow, Menu, ipcMain, dialog, screen, nativeTheme, shell, protocol, net } = require('electron');
 
-// Disable sandbox on Linux to avoid SUID permission issues with AppImage
-// This is a common requirement for Electron apps distributed as AppImage
+// Also set via command line for extra reliability
 if (process.platform === 'linux') {
   app.commandLine.appendSwitch('no-sandbox');
 }
