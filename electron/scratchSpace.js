@@ -98,8 +98,10 @@ class ScratchSpace {
       // Ensure destination directory exists
       await fs.promises.mkdir(path.dirname(destination), { recursive: true });
 
-      // Move file
-      await fs.promises.rename(scratchPath, destination);
+      // Use copy+unlink instead of rename to support cross-filesystem moves
+      // (On Linux, /tmp is often a separate tmpfs filesystem from /home)
+      await fs.promises.copyFile(scratchPath, destination);
+      await fs.promises.unlink(scratchPath);
       log.info(`[ScratchSpace] Moved ${identifier} to ${destination}`);
     } catch (error) {
       log.error('[ScratchSpace] Error moving file to final destination:', error);
