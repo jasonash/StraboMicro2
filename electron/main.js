@@ -2114,8 +2114,8 @@ ipcMain.on('theme:changed', (event, theme) => {
 
   // Rebuild menu with correct theme checked state
   // Simply modifying menu item checked state doesn't always update the UI in Electron
-  if (buildMenu) {
-    buildMenu({ currentTheme: theme });
+  if (buildMenuFn) {
+    buildMenuFn({ currentTheme: theme });
   }
 });
 
