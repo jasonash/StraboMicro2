@@ -1602,11 +1602,11 @@ ipcMain.handle('micrograph:export-composite', async (event, projectId, micrograp
         }
 
         // Handle affine-transformed overlays specially - load pre-transformed image from cache
-        if (child.placementType === 'affine' && child.imageHash) {
+        if (child.placementType === 'affine' && child.affineTileHash) {
           log.info(`[IPC] Loading affine overlay ${child.id} from cache`);
           const tileCache = require('./tileCache');
-          const affineMetadata = await tileCache.loadAffineMetadata(child.imageHash);
-          const affineBuffer = await tileCache.loadAffineMedium(child.imageHash);
+          const affineMetadata = await tileCache.loadAffineMetadata(child.affineTileHash);
+          const affineBuffer = await tileCache.loadAffineMedium(child.affineTileHash);
 
           if (affineMetadata && affineBuffer) {
             const boundsOffset = affineMetadata.boundsOffset || { x: 0, y: 0 };
@@ -3154,11 +3154,11 @@ ipcMain.handle('composite:generate-thumbnail', async (event, projectId, microgra
         }
 
         // Handle affine-transformed overlays specially - load pre-transformed image from cache
-        if (child.placementType === 'affine' && child.imageHash) {
+        if (child.placementType === 'affine' && child.affineTileHash) {
           log.info(`[IPC] Loading affine overlay ${child.id} for thumbnail from cache`);
           const tileCache = require('./tileCache');
-          const affineMetadata = await tileCache.loadAffineMetadata(child.imageHash);
-          const affineBuffer = await tileCache.loadAffineMedium(child.imageHash);
+          const affineMetadata = await tileCache.loadAffineMetadata(child.affineTileHash);
+          const affineBuffer = await tileCache.loadAffineMedium(child.affineTileHash);
 
           if (affineMetadata && affineBuffer) {
             const boundsOffset = affineMetadata.boundsOffset || { x: 0, y: 0 };
