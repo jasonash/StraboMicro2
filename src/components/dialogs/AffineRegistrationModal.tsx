@@ -159,6 +159,10 @@ export function AffineRegistrationModal({
   const [isLoading, setIsLoading] = useState(false);
   const [isGeneratingTiles, setIsGeneratingTiles] = useState(false);
 
+  // Track if images have been initially centered
+  const [parentCentered, setParentCentered] = useState(false);
+  const [overlayCentered, setOverlayCentered] = useState(false);
+
   // Validation warnings
   const [warning, setWarning] = useState<string | null>(null);
 
@@ -236,30 +240,48 @@ export function AffineRegistrationModal({
       setWarning(null);
       setIsLoading(true);
       setToolMode('point');
+      // Reset images so they reload and re-center
+      setParentImage(null);
+      setOverlayImage(null);
+      setParentImageData(null);
+      setOverlayImageData(null);
+      setParentCentered(false);
+      setOverlayCentered(false);
     }
   }, [open, existingControlPoints]);
 
-  // Handle container resize
+  // Handle container resize with ResizeObserver
   useEffect(() => {
     if (!open) return;
 
-    const updateSize = () => {
-      if (parentContainerRef.current) {
-        const rect = parentContainerRef.current.getBoundingClientRect();
-        setPanelSize({ width: rect.width, height: rect.height });
+    const parentObserver = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const { width, height } = entry.contentRect;
+        if (width > 0 && height > 0) {
+          setPanelSize({ width, height });
+        }
       }
-      if (previewContainerRef.current) {
-        const rect = previewContainerRef.current.getBoundingClientRect();
-        setPreviewSize({ width: rect.width, height: rect.height });
-      }
-    };
+    });
 
-    const timer = setTimeout(updateSize, 50);
-    window.addEventListener('resize', updateSize);
+    const previewObserver = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const { width, height } = entry.contentRect;
+        if (width > 0 && height > 0) {
+          setPreviewSize({ width, height });
+        }
+      }
+    });
+
+    if (parentContainerRef.current) {
+      parentObserver.observe(parentContainerRef.current);
+    }
+    if (previewContainerRef.current) {
+      previewObserver.observe(previewContainerRef.current);
+    }
 
     return () => {
-      clearTimeout(timer);
-      window.removeEventListener('resize', updateSize);
+      parentObserver.disconnect();
+      previewObserver.disconnect();
     };
   }, [open]);
 
@@ -306,21 +328,7 @@ export function AffineRegistrationModal({
           const img = new Image();
           img.onload = () => {
             setParentImage(img);
-            // Center image in panel
-            if (parentContainerRef.current) {
-              const rect = parentContainerRef.current.getBoundingClientRect();
-              const scale = Math.min(
-                rect.width / tileData.metadata.width,
-                rect.height / tileData.metadata.height
-              ) * 0.9;
-              setParentPanel({
-                zoom: scale,
-                position: {
-                  x: (rect.width - tileData.metadata.width * scale) / 2,
-                  y: (rect.height - tileData.metadata.height * scale) / 2,
-                },
-              });
-            }
+            setParentCentered(false); // Will be centered by the centering effect
           };
           img.src = mediumDataUrl;
         }
@@ -331,6 +339,26 @@ export function AffineRegistrationModal({
 
     loadParentImage();
   }, [open, project, parentMicrographId]);
+
+  // Center parent image when panel size and image are available
+  useEffect(() => {
+    if (!parentImageData || !parentImage || parentCentered) return;
+    if (panelSize.width < 100 || panelSize.height < 100) return; // Wait for valid size
+
+    const scale = Math.min(
+      panelSize.width / parentImageData.width,
+      panelSize.height / parentImageData.height
+    ) * 0.9;
+
+    setParentPanel({
+      zoom: scale,
+      position: {
+        x: (panelSize.width - parentImageData.width * scale) / 2,
+        y: (panelSize.height - parentImageData.height * scale) / 2,
+      },
+    });
+    setParentCentered(true);
+  }, [parentImageData, parentImage, panelSize, parentCentered]);
 
   // Load overlay image
   useEffect(() => {
@@ -354,21 +382,7 @@ export function AffineRegistrationModal({
           img.onload = () => {
             setOverlayImage(img);
             setIsLoading(false);
-            // Center image in panel
-            if (overlayContainerRef.current) {
-              const rect = overlayContainerRef.current.getBoundingClientRect();
-              const scale = Math.min(
-                rect.width / tileData.metadata.width,
-                rect.height / tileData.metadata.height
-              ) * 0.9;
-              setOverlayPanel({
-                zoom: scale,
-                position: {
-                  x: (rect.width - tileData.metadata.width * scale) / 2,
-                  y: (rect.height - tileData.metadata.height * scale) / 2,
-                },
-              });
-            }
+            setOverlayCentered(false); // Will be centered by the centering effect
           };
           img.src = mediumDataUrl;
         }
@@ -380,6 +394,26 @@ export function AffineRegistrationModal({
 
     loadOverlayImage();
   }, [open, overlayImagePath]);
+
+  // Center overlay image when panel size and image are available
+  useEffect(() => {
+    if (!overlayImageData || !overlayImage || overlayCentered) return;
+    if (panelSize.width < 100 || panelSize.height < 100) return; // Wait for valid size
+
+    const scale = Math.min(
+      panelSize.width / overlayImageData.width,
+      panelSize.height / overlayImageData.height
+    ) * 0.9;
+
+    setOverlayPanel({
+      zoom: scale,
+      position: {
+        x: (panelSize.width - overlayImageData.width * scale) / 2,
+        y: (panelSize.height - overlayImageData.height * scale) / 2,
+      },
+    });
+    setOverlayCentered(true);
+  }, [overlayImageData, overlayImage, panelSize, overlayCentered]);
 
   // Draw preview canvas
   useEffect(() => {
