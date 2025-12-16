@@ -154,6 +154,60 @@ export interface MicrographMetadata {
   scaleX?: number | null;  // Scale factor in X direction
   scaleY?: number | null;  // Scale factor in Y direction
   pointInParent?: SimpleCoord | null;  // For point-based placement
+
+  // Affine transform placement (3-point registration)
+  /**
+   * Placement type discriminator for associated micrographs.
+   * - undefined: infer from other fields (legacy compatibility)
+   * - "point": Single point marker (uses pointInParent)
+   * - "rectangle": Scaled/rotated rectangle (uses offsetInParent)
+   * - "affine": 3-point affine transform (uses affineMatrix + controlPoints)
+   */
+  placementType?: 'point' | 'rectangle' | 'affine' | null;
+
+  /**
+   * 2x3 affine transformation matrix stored as flat array: [a, b, tx, c, d, ty]
+   * Transforms overlay pixel (x,y) to parent pixel (x',y'):
+   *   x' = a*x + b*y + tx
+   *   y' = c*x + d*y + ty
+   * Only present when placementType is "affine".
+   */
+  affineMatrix?: [number, number, number, number, number, number] | null;
+
+  /**
+   * Control points used to compute the affine matrix.
+   * Stored for potential future re-editing of registration.
+   * Only present when placementType is "affine".
+   */
+  controlPoints?: Array<{
+    /** Coordinates in overlay image space (pixels from top-left) */
+    source: [number, number];
+    /** Coordinates in parent image space (pixels from top-left) */
+    target: [number, number];
+  }> | null;
+
+  /**
+   * Bounding box offset for affine-transformed overlay in parent coordinates.
+   * Stored after tile generation to position the overlay correctly.
+   * Only present when placementType is "affine".
+   */
+  affineBoundsOffset?: { x: number; y: number } | null;
+
+  /**
+   * Dimensions of the affine-transformed image (after transform applied).
+   * Used for viewport culling. Only present when placementType is "affine".
+   */
+  affineTransformedWidth?: number | null;
+  affineTransformedHeight?: number | null;
+
+  /**
+   * Hash key used to locate affine tiles in the tile cache.
+   * This is stored because the hash is computed from the scratch path during registration,
+   * but the image is later moved to the project folder with a different path.
+   * Only present when placementType is "affine".
+   */
+  affineTileHash?: string | null;
+
   flipped?: boolean | null;
   isFlipped?: boolean | null;
   opacity?: number | null;

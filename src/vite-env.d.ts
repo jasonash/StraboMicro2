@@ -59,6 +59,35 @@ interface TileData extends TileCoordinate {
   dataUrl: string;
 }
 
+// Affine tile metadata interface
+interface AffineTileMetadata {
+  originalWidth: number;
+  originalHeight: number;
+  transformedWidth: number;
+  transformedHeight: number;
+  affineMatrix: [number, number, number, number, number, number];
+  boundsOffset: { x: number; y: number };
+  tileSize: number;
+  tilesX: number;
+  tilesY: number;
+  totalTiles: number;
+  createdAt: string;
+}
+
+// Affine tile generation result
+interface AffineTileGenerationResult {
+  success: boolean;
+  metadata?: AffineTileMetadata;
+  progressChannel?: string;
+  error?: string;
+}
+
+// Affine progress subscription result
+interface AffineProgressSubscription {
+  channel: string;
+  unsubscribe: () => void;
+}
+
 // Cache statistics interface
 interface CacheStats {
   imageCount: number;
@@ -197,6 +226,21 @@ interface Window {
       currentTile: number;
       totalTiles: number;
     }) => void) => Unsubscribe;
+
+    // Affine tile operations (3-point registration placement)
+    generateAffineTiles: (
+      imagePath: string,
+      imageHash: string,
+      affineMatrix: [number, number, number, number, number, number]
+    ) => Promise<AffineTileGenerationResult>;
+    loadAffineTile: (imageHash: string, tileX: number, tileY: number) => Promise<string | null>;
+    loadAffineTilesBatch: (imageHash: string, tiles: TileCoordinate[]) => Promise<TileData[]>;
+    loadAffineThumbnail: (imageHash: string) => Promise<string>;
+    loadAffineMedium: (imageHash: string) => Promise<string>;
+    loadAffineMetadata: (imageHash: string) => Promise<AffineTileMetadata | null>;
+    hasAffineTiles: (imageHash: string) => Promise<boolean>;
+    deleteAffineTiles: (imageHash: string) => Promise<{ success: boolean; error?: string }>;
+    onAffineProgress: (callback: (progress: number) => void) => AffineProgressSubscription;
 
     // Project folder structure
     getProjectDataPath: () => Promise<string>;

@@ -213,6 +213,34 @@ contextBridge.exposeInMainWorld('api', {
     return () => ipcRenderer.removeListener('tile-queue:tile-progress', handler);
   },
 
+  // Affine tile operations (3-point registration placement)
+  generateAffineTiles: (imagePath, imageHash, affineMatrix) =>
+    ipcRenderer.invoke('tiles:generate-affine', imagePath, imageHash, affineMatrix),
+  loadAffineTile: (imageHash, tileX, tileY) =>
+    ipcRenderer.invoke('tiles:load-affine-tile', imageHash, tileX, tileY),
+  loadAffineTilesBatch: (imageHash, tiles) =>
+    ipcRenderer.invoke('tiles:load-affine-tiles-batch', imageHash, tiles),
+  loadAffineThumbnail: (imageHash) =>
+    ipcRenderer.invoke('tiles:load-affine-thumbnail', imageHash),
+  loadAffineMedium: (imageHash) =>
+    ipcRenderer.invoke('tiles:load-affine-medium', imageHash),
+  loadAffineMetadata: (imageHash) =>
+    ipcRenderer.invoke('tiles:load-affine-metadata', imageHash),
+  hasAffineTiles: (imageHash) =>
+    ipcRenderer.invoke('tiles:has-affine-tiles', imageHash),
+  deleteAffineTiles: (imageHash) =>
+    ipcRenderer.invoke('tiles:delete-affine-tiles', imageHash),
+  onAffineProgress: (callback) => {
+    // Create unique channel for this callback
+    const channel = `affine-progress-${Date.now()}`;
+    const handler = (event, progress) => callback(progress);
+    ipcRenderer.on(channel, handler);
+    return {
+      channel,
+      unsubscribe: () => ipcRenderer.removeListener(channel, handler)
+    };
+  },
+
   // Project folder structure
   getProjectDataPath: () => ipcRenderer.invoke('project:get-data-path'),
   ensureProjectDataDir: () => ipcRenderer.invoke('project:ensure-data-dir'),

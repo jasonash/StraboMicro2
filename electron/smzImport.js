@@ -17,6 +17,7 @@ const unzipper = require('unzipper');
 const projectFolders = require('./projectFolders');
 const projectSerializer = require('./projectSerializer');
 const versionHistory = require('./versionHistory');
+const affineTileGenerator = require('./affineTileGenerator');
 
 /**
  * Ensure the images folder has files.
@@ -308,9 +309,55 @@ async function importSmz(smzPath, progressCallback) {
 
     // Load the project data
     log.info(`[SmzImport] Loading project data...`);
-    sendProgress('Loading project', 95, 'Reading project data...');
+    sendProgress('Loading project', 92, 'Reading project data...');
 
     const projectData = await projectSerializer.loadProjectJson(projectId);
+
+    // Regenerate affine tiles for any affine-placed micrographs
+    const affineMicrographs = [];
+    for (const dataset of projectData.datasets || []) {
+      for (const sample of dataset.samples || []) {
+        for (const micrograph of sample.micrographs || []) {
+          if (micrograph.placementType === 'affine' && micrograph.affineMatrix) {
+            affineMicrographs.push(micrograph);
+          }
+        }
+      }
+    }
+
+    if (affineMicrographs.length > 0) {
+      log.info(`[SmzImport] Regenerating affine tiles for ${affineMicrographs.length} micrograph(s)...`);
+      sendProgress('Regenerating affine tiles', 94, `Processing ${affineMicrographs.length} affine overlay(s)...`);
+
+      for (let i = 0; i < affineMicrographs.length; i++) {
+        const micro = affineMicrographs[i];
+        try {
+          // Get the original image path
+          const imagePath = path.join(folderPaths.images, micro.id);
+
+          // Check if image file exists
+          if (!fs.existsSync(imagePath)) {
+            log.warn(`[SmzImport] Image not found for affine micrograph ${micro.id}, skipping tile generation`);
+            continue;
+          }
+
+          log.info(`[SmzImport] Generating affine tiles for: ${micro.name || micro.id}`);
+          sendProgress('Regenerating affine tiles', 94 + Math.round((i / affineMicrographs.length) * 4), `Processing: ${micro.name || micro.id}`);
+
+          // Generate affine tiles using the stored matrix
+          await affineTileGenerator.generateAffineTiles(
+            imagePath,
+            micro.affineTileHash,
+            micro.affineMatrix
+          );
+
+          log.info(`[SmzImport] Affine tiles regenerated for: ${micro.name || micro.id}`);
+        } catch (err) {
+          log.error(`[SmzImport] Error generating affine tiles for ${micro.id}:`, err);
+          // Continue with other micrographs
+        }
+      }
+    }
 
     log.info(`[SmzImport] Import complete: ${projectName} (${projectId})`);
     sendProgress('Complete', 100, 'Import complete!');

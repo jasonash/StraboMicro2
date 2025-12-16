@@ -815,8 +815,8 @@ export function ProjectTree() {
 
     // Check if micrograph needs setup (missing scale or location)
     const needsScale = !micrograph.scalePixelsPerCentimeter;
-    // Location can be set via offsetInParent (scaled rectangle) or pointInParent (approximate point)
-    const hasLocation = micrograph.offsetInParent || micrograph.pointInParent || micrograph.xOffset !== undefined;
+    // Location can be set via offsetInParent (scaled rectangle), pointInParent (approximate point), or affine placement
+    const hasLocation = micrograph.offsetInParent || micrograph.pointInParent || micrograph.xOffset !== undefined || micrograph.placementType === 'affine';
     const needsLocation = !isReference && !hasLocation;
     const needsSetup = needsScale || needsLocation;
 
