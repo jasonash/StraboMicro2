@@ -104,8 +104,9 @@ export function AffineRegistrationModal({
   const overlayStageRef = useRef<Konva.Stage>(null);
   const previewCanvasRef = useRef<HTMLCanvasElement>(null);
 
-  // Panel sizes
-  const [panelSize, setPanelSize] = useState({ width: 400, height: 300 });
+  // Panel sizes - each panel needs its own size
+  const [parentPanelSize, setParentPanelSize] = useState({ width: 400, height: 300 });
+  const [overlayPanelSize, setOverlayPanelSize] = useState({ width: 400, height: 300 });
   const [previewSize, setPreviewSize] = useState({ width: 800, height: 300 });
 
   // Image data
@@ -254,34 +255,34 @@ export function AffineRegistrationModal({
   useEffect(() => {
     if (!open) return;
 
-    const parentObserver = new ResizeObserver((entries) => {
+    const resizeObserver = new ResizeObserver((entries) => {
       for (const entry of entries) {
         const { width, height } = entry.contentRect;
         if (width > 0 && height > 0) {
-          setPanelSize({ width, height });
+          if (entry.target === parentContainerRef.current) {
+            setParentPanelSize({ width, height });
+          } else if (entry.target === overlayContainerRef.current) {
+            setOverlayPanelSize({ width, height });
+          } else if (entry.target === previewContainerRef.current) {
+            setPreviewSize({ width, height });
+          }
         }
       }
     });
 
-    const previewObserver = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        const { width, height } = entry.contentRect;
-        if (width > 0 && height > 0) {
-          setPreviewSize({ width, height });
-        }
-      }
-    });
-
+    // Observe all three containers
     if (parentContainerRef.current) {
-      parentObserver.observe(parentContainerRef.current);
+      resizeObserver.observe(parentContainerRef.current);
+    }
+    if (overlayContainerRef.current) {
+      resizeObserver.observe(overlayContainerRef.current);
     }
     if (previewContainerRef.current) {
-      previewObserver.observe(previewContainerRef.current);
+      resizeObserver.observe(previewContainerRef.current);
     }
 
     return () => {
-      parentObserver.disconnect();
-      previewObserver.disconnect();
+      resizeObserver.disconnect();
     };
   }, [open]);
 
@@ -343,22 +344,22 @@ export function AffineRegistrationModal({
   // Center parent image when panel size and image are available
   useEffect(() => {
     if (!parentImageData || !parentImage || parentCentered) return;
-    if (panelSize.width < 100 || panelSize.height < 100) return; // Wait for valid size
+    if (parentPanelSize.width < 100 || parentPanelSize.height < 100) return; // Wait for valid size
 
     const scale = Math.min(
-      panelSize.width / parentImageData.width,
-      panelSize.height / parentImageData.height
+      parentPanelSize.width / parentImageData.width,
+      parentPanelSize.height / parentImageData.height
     ) * 0.9;
 
     setParentPanel({
       zoom: scale,
       position: {
-        x: (panelSize.width - parentImageData.width * scale) / 2,
-        y: (panelSize.height - parentImageData.height * scale) / 2,
+        x: (parentPanelSize.width - parentImageData.width * scale) / 2,
+        y: (parentPanelSize.height - parentImageData.height * scale) / 2,
       },
     });
     setParentCentered(true);
-  }, [parentImageData, parentImage, panelSize, parentCentered]);
+  }, [parentImageData, parentImage, parentPanelSize, parentCentered]);
 
   // Load overlay image
   useEffect(() => {
@@ -398,22 +399,22 @@ export function AffineRegistrationModal({
   // Center overlay image when panel size and image are available
   useEffect(() => {
     if (!overlayImageData || !overlayImage || overlayCentered) return;
-    if (panelSize.width < 100 || panelSize.height < 100) return; // Wait for valid size
+    if (overlayPanelSize.width < 100 || overlayPanelSize.height < 100) return; // Wait for valid size
 
     const scale = Math.min(
-      panelSize.width / overlayImageData.width,
-      panelSize.height / overlayImageData.height
+      overlayPanelSize.width / overlayImageData.width,
+      overlayPanelSize.height / overlayImageData.height
     ) * 0.9;
 
     setOverlayPanel({
       zoom: scale,
       position: {
-        x: (panelSize.width - overlayImageData.width * scale) / 2,
-        y: (panelSize.height - overlayImageData.height * scale) / 2,
+        x: (overlayPanelSize.width - overlayImageData.width * scale) / 2,
+        y: (overlayPanelSize.height - overlayImageData.height * scale) / 2,
       },
     });
     setOverlayCentered(true);
-  }, [overlayImageData, overlayImage, panelSize, overlayCentered]);
+  }, [overlayImageData, overlayImage, overlayPanelSize, overlayCentered]);
 
   // Draw preview canvas
   useEffect(() => {
@@ -881,6 +882,7 @@ export function AffineRegistrationModal({
     containerRef: React.RefObject<HTMLDivElement>,
     stageRef: React.RefObject<Konva.Stage>,
     panelState: ImagePanelState,
+    panelSizeState: { width: number; height: number },
     imageData: { width: number; height: number } | null,
     image: HTMLImageElement | null
   ) => {
@@ -922,12 +924,14 @@ export function AffineRegistrationModal({
             bgcolor: '#1e1e1e',
             cursor: toolMode === 'pan' ? 'grab' : (isActive ? 'crosshair' : 'default'),
             minHeight: 0,
+            position: 'relative',
           }}
         >
           <Stage
             ref={stageRef}
-            width={panelSize.width}
-            height={panelSize.height}
+            width={panelSizeState.width}
+            height={panelSizeState.height}
+            style={{ position: 'absolute', top: 0, left: 0 }}
             onWheel={(e) => handleWheel(e, panel)}
             onMouseDown={(e) => handleMouseDown(e, panel)}
             onMouseMove={(e) => handleMouseMove(e, panel)}
@@ -1070,6 +1074,7 @@ export function AffineRegistrationModal({
                 parentContainerRef,
                 parentStageRef,
                 parentPanel,
+                parentPanelSize,
                 parentImageData,
                 parentImage
               )}
@@ -1078,6 +1083,7 @@ export function AffineRegistrationModal({
                 overlayContainerRef,
                 overlayStageRef,
                 overlayPanel,
+                overlayPanelSize,
                 overlayImageData,
                 overlayImage
               )}
