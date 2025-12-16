@@ -260,11 +260,11 @@ export function AffineRegistrationModal({
         const { width, height } = entry.contentRect;
         if (width > 0 && height > 0) {
           if (entry.target === parentContainerRef.current) {
-            setParentPanelSize({ width, height });
+            setParentPanelSize({ width: Math.floor(width), height: Math.floor(height) });
           } else if (entry.target === overlayContainerRef.current) {
-            setOverlayPanelSize({ width, height });
+            setOverlayPanelSize({ width: Math.floor(width), height: Math.floor(height) });
           } else if (entry.target === previewContainerRef.current) {
-            setPreviewSize({ width, height });
+            setPreviewSize({ width: Math.floor(width), height: Math.floor(height) });
           }
         }
       }
@@ -896,6 +896,7 @@ export function AffineRegistrationModal({
           display: 'flex',
           flexDirection: 'column',
           minWidth: 0,
+          minHeight: 0,
           border: 2,
           borderColor: isActive ? 'primary.main' : 'divider',
           borderRadius: 1,
@@ -904,6 +905,7 @@ export function AffineRegistrationModal({
       >
         <Box
           sx={{
+            flexShrink: 0,
             px: 1,
             py: 0.5,
             bgcolor: isActive ? 'primary.main' : 'background.paper',
@@ -921,17 +923,19 @@ export function AffineRegistrationModal({
           ref={containerRef}
           sx={{
             flex: 1,
+            width: '100%',
             bgcolor: '#1e1e1e',
             cursor: toolMode === 'pan' ? 'grab' : (isActive ? 'crosshair' : 'default'),
             minHeight: 0,
             position: 'relative',
+            overflow: 'hidden',
           }}
         >
           <Stage
             ref={stageRef}
             width={panelSizeState.width}
             height={panelSizeState.height}
-            style={{ position: 'absolute', top: 0, left: 0 }}
+            style={{ display: 'block' }}
             onWheel={(e) => handleWheel(e, panel)}
             onMouseDown={(e) => handleMouseDown(e, panel)}
             onMouseMove={(e) => handleMouseMove(e, panel)}
@@ -1067,8 +1071,8 @@ export function AffineRegistrationModal({
           </Box>
         ) : (
           <>
-            {/* Top row: Base and Overlay */}
-            <Box sx={{ flex: 1, display: 'flex', gap: 1, minHeight: 0 }}>
+            {/* Top row: Base and Overlay - takes 65% of space */}
+            <Box sx={{ flex: 2, display: 'flex', gap: 1, minHeight: 0, overflow: 'hidden' }}>
               {renderPanel(
                 'parent',
                 parentContainerRef,
@@ -1089,22 +1093,30 @@ export function AffineRegistrationModal({
               )}
             </Box>
 
-            {/* Bottom row: Preview */}
+            {/* Bottom row: Preview - takes 35% of space */}
             <Box
               ref={previewContainerRef}
               sx={{
-                height: '35%',
-                minHeight: 200,
+                flex: 1,
+                minHeight: 150,
+                maxHeight: 350,
                 border: 1,
                 borderColor: 'divider',
                 borderRadius: 1,
                 overflow: 'hidden',
                 bgcolor: '#1e1e1e',
+                position: 'relative',
               }}
             >
               <canvas
                 ref={previewCanvasRef}
-                style={{ width: '100%', height: '100%' }}
+                width={previewSize.width}
+                height={previewSize.height}
+                style={{
+                  display: 'block',
+                  width: '100%',
+                  height: '100%',
+                }}
               />
             </Box>
           </>
