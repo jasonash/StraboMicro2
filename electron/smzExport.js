@@ -299,17 +299,16 @@ async function generateCompositeBufferNoSpots(projectId, micrograph, projectData
             continue;
           }
 
-          // Get bounds offset for positioning
+          // Get bounds offset for positioning from micrograph data
           const boundsOffset = child.affineBoundsOffset || { x: 0, y: 0 };
           const transformedWidth = child.affineTransformedWidth || 0;
           const transformedHeight = child.affineTransformedHeight || 0;
 
-          // Resize to full resolution (medium is 2048 max, we need actual size)
-          const affineMetadata = await tileCache.loadAffineMetadata(affineTileHash);
-          let childImage = sharp(mediumBuffer);
+          log.info(`[SmzExport] Affine overlay ${child.id}: bounds=(${boundsOffset.x}, ${boundsOffset.y}), size=${transformedWidth}x${transformedHeight}`);
 
-          if (affineMetadata && (affineMetadata.transformedWidth !== transformedWidth || affineMetadata.transformedHeight !== transformedHeight)) {
-            // Resize from medium to actual transformed dimensions
+          // Always resize medium image to full transformed dimensions
+          let childImage = sharp(mediumBuffer);
+          if (transformedWidth > 0 && transformedHeight > 0) {
             childImage = childImage.resize(transformedWidth, transformedHeight, {
               fit: 'fill',
               kernel: sharp.kernel.lanczos3
