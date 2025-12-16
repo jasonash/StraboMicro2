@@ -11,7 +11,7 @@
  * - Preview pane at bottom showing live composite
  */
 
-import React, { useEffect, useState, useRef, useCallback, useMemo } from 'react';
+import React, { useEffect, useLayoutEffect, useState, useRef, useCallback, useMemo } from 'react';
 import {
   Dialog,
   Box,
@@ -252,37 +252,80 @@ export function AffineRegistrationModal({
   }, [open, existingControlPoints]);
 
   // Handle container resize with ResizeObserver
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!open) return;
 
-    const resizeObserver = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        const { width, height } = entry.contentRect;
-        if (width > 0 && height > 0) {
-          if (entry.target === parentContainerRef.current) {
-            setParentPanelSize({ width: Math.floor(width), height: Math.floor(height) });
-          } else if (entry.target === overlayContainerRef.current) {
-            setOverlayPanelSize({ width: Math.floor(width), height: Math.floor(height) });
-          } else if (entry.target === previewContainerRef.current) {
-            setPreviewSize({ width: Math.floor(width), height: Math.floor(height) });
-          }
+    let resizeObserver: ResizeObserver | null = null;
+    let frameId: number | null = null;
+
+    // Measure containers using offsetWidth/offsetHeight
+    const measureContainers = () => {
+      if (parentContainerRef.current) {
+        const w = parentContainerRef.current.offsetWidth;
+        const h = parentContainerRef.current.offsetHeight;
+        if (w > 50 && h > 50) {
+          setParentPanelSize((prev) => {
+            if (prev.width !== w || prev.height !== h) {
+              return { width: w, height: h };
+            }
+            return prev;
+          });
         }
+      }
+      if (overlayContainerRef.current) {
+        const w = overlayContainerRef.current.offsetWidth;
+        const h = overlayContainerRef.current.offsetHeight;
+        if (w > 50 && h > 50) {
+          setOverlayPanelSize((prev) => {
+            if (prev.width !== w || prev.height !== h) {
+              return { width: w, height: h };
+            }
+            return prev;
+          });
+        }
+      }
+      if (previewContainerRef.current) {
+        const w = previewContainerRef.current.offsetWidth;
+        const h = previewContainerRef.current.offsetHeight;
+        if (w > 50 && h > 50) {
+          setPreviewSize((prev) => {
+            if (prev.width !== w || prev.height !== h) {
+              return { width: w, height: h };
+            }
+            return prev;
+          });
+        }
+      }
+    };
+
+    // Measure after a frame to ensure layout is complete
+    frameId = requestAnimationFrame(() => {
+      measureContainers();
+
+      // Set up ResizeObserver for subsequent changes
+      resizeObserver = new ResizeObserver(() => {
+        measureContainers();
+      });
+
+      if (parentContainerRef.current) {
+        resizeObserver.observe(parentContainerRef.current);
+      }
+      if (overlayContainerRef.current) {
+        resizeObserver.observe(overlayContainerRef.current);
+      }
+      if (previewContainerRef.current) {
+        resizeObserver.observe(previewContainerRef.current);
       }
     });
 
-    // Observe all three containers
-    if (parentContainerRef.current) {
-      resizeObserver.observe(parentContainerRef.current);
-    }
-    if (overlayContainerRef.current) {
-      resizeObserver.observe(overlayContainerRef.current);
-    }
-    if (previewContainerRef.current) {
-      resizeObserver.observe(previewContainerRef.current);
-    }
+    // Also listen for window resize
+    const handleResize = () => measureContainers();
+    window.addEventListener('resize', handleResize);
 
     return () => {
-      resizeObserver.disconnect();
+      if (frameId) cancelAnimationFrame(frameId);
+      if (resizeObserver) resizeObserver.disconnect();
+      window.removeEventListener('resize', handleResize);
     };
   }, [open]);
 
@@ -892,11 +935,12 @@ export function AffineRegistrationModal({
     return (
       <Box
         sx={{
-          flex: 1,
+          flex: '1 1 0',
           display: 'flex',
           flexDirection: 'column',
           minWidth: 0,
           minHeight: 0,
+          height: '100%',
           border: 2,
           borderColor: isActive ? 'primary.main' : 'divider',
           borderRadius: 1,
@@ -922,8 +966,9 @@ export function AffineRegistrationModal({
         <Box
           ref={containerRef}
           sx={{
-            flex: 1,
+            flex: '1 1 0',
             width: '100%',
+            height: '100%',
             bgcolor: '#1e1e1e',
             cursor: toolMode === 'pan' ? 'grab' : (isActive ? 'crosshair' : 'default'),
             minHeight: 0,
@@ -1072,7 +1117,7 @@ export function AffineRegistrationModal({
         ) : (
           <>
             {/* Top row: Base and Overlay - takes 65% of space */}
-            <Box sx={{ flex: 2, display: 'flex', gap: 1, minHeight: 0, overflow: 'hidden' }}>
+            <Box sx={{ flex: '2 1 0', display: 'flex', gap: 1, minHeight: 0, minWidth: 0, overflow: 'hidden' }}>
               {renderPanel(
                 'parent',
                 parentContainerRef,
@@ -1097,7 +1142,7 @@ export function AffineRegistrationModal({
             <Box
               ref={previewContainerRef}
               sx={{
-                flex: 1,
+                flex: '1 1 0',
                 minHeight: 150,
                 maxHeight: 350,
                 border: 1,
@@ -1114,8 +1159,6 @@ export function AffineRegistrationModal({
                 height={previewSize.height}
                 style={{
                   display: 'block',
-                  width: '100%',
-                  height: '100%',
                 }}
               />
             </Box>
