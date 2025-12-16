@@ -412,19 +412,20 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Wait for release to be available (retry up to 30 seconds)
-          for i in {1..6}; do
-            if gh api repos/${{ github.repository }}/releases/tags/dev-latest --silent 2>/dev/null; then
-              echo "Release found on attempt $i"
+          # Wait for the dev-latest release to appear in the releases list (retry up to 60 seconds)
+          for i in {1..12}; do
+            RELEASE_COUNT=$(gh api repos/${{ github.repository }}/releases --jq '[.[] | select(.tag_name == "dev-latest")] | length')
+            if [ "$RELEASE_COUNT" -gt 0 ]; then
+              echo "dev-latest release found on attempt $i"
               break
             fi
-            echo "Waiting for release to be available (attempt $i/6)..."
+            echo "Waiting for dev-latest release to appear (attempt $i/12)..."
             sleep 5
           done
 
-          # Fetch the dev-latest release info
-          gh api repos/${{ github.repository }}/releases/tags/dev-latest \
-            --jq '{
+          # Fetch the dev-latest release info from the releases list
+          gh api repos/${{ github.repository }}/releases \
+            --jq '[.[] | select(.tag_name == "dev-latest")][0] | {
               version: .tag_name,
               name: .name,
               date: .published_at,
