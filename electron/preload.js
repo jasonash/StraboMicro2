@@ -610,4 +610,9 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('menu:grain-detection', handler);
     return () => ipcRenderer.removeListener('menu:grain-detection', handler);
   },
+  onImageComparator: (callback) => {
+    const handler = () => callback();
+    ipcRenderer.on('menu:image-comparator', handler);
+    return () => ipcRenderer.removeListener('menu:image-comparator', handler);
+  },
 });

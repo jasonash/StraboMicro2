@@ -690,6 +690,15 @@ function createWindow() {
             }
           }
         },
+        { type: 'separator' },
+        {
+          label: 'Image Comparator...',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('menu:image-comparator');
+            }
+          }
+        },
       ],
     },
     {

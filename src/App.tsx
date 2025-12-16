@@ -25,6 +25,7 @@ import { CloseProjectDialog } from './components/dialogs/CloseProjectDialog';
 import { ProjectPrepDialog } from './components/dialogs/ProjectPrepDialog';
 import { PointCountDialog } from './components/dialogs/PointCountDialog';
 import { GrainDetectionDialog } from './components/dialogs/GrainDetectionDialog';
+import { ImageComparatorDialog } from './components/dialogs/ImageComparatorDialog';
 import { QuickEditEntryDialog } from './components/dialogs/QuickEditEntryDialog';
 import {
   IncompleteMicrographsDialog,
@@ -184,6 +185,7 @@ function App() {
   const [isConfigureShortcutsOpen, setIsConfigureShortcutsOpen] = useState(false);
   const [isPointCountDialogOpen, setIsPointCountDialogOpen] = useState(false);
   const [isGrainDetectionDialogOpen, setIsGrainDetectionDialogOpen] = useState(false);
+  const [isImageComparatorDialogOpen, setIsImageComparatorDialogOpen] = useState(false);
   const [isQuickEditEntryDialogOpen, setIsQuickEditEntryDialogOpen] = useState(false);
   const setSplitModeSpotId = useAppStore(state => state.setSplitModeSpotId);
   const closeProject = useAppStore(state => state.closeProject);
@@ -411,6 +413,11 @@ function App() {
       } else {
         console.warn('[App] Grain Detection: No micrograph selected');
       }
+    }));
+
+    // Image Comparator menu item (Tools menu)
+    unsubscribers.push(window.api.onImageComparator(() => {
+      setIsImageComparatorDialogOpen(true);
     }));
 
     // Clear All Spots menu item (Edit menu)
@@ -1250,6 +1257,10 @@ function App() {
         isOpen={isGrainDetectionDialogOpen}
         onClose={() => setIsGrainDetectionDialogOpen(false)}
         micrographId={activeMicrographId}
+      />
+      <ImageComparatorDialog
+        open={isImageComparatorDialogOpen}
+        onClose={() => setIsImageComparatorDialogOpen(false)}
       />
       <QuickEditEntryDialog
         isOpen={isQuickEditEntryDialogOpen}
