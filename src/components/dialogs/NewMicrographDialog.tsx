@@ -129,6 +129,7 @@ interface MicrographFormData {
   affineBoundsOffset: { x: number; y: number } | null;
   affineTransformedWidth: number | null;
   affineTransformedHeight: number | null;
+  affineTileHash: string | null; // Hash used to store/load affine tiles
   instrumentType: string;
   otherInstrumentType: string;
   dataType: string;
@@ -259,6 +260,7 @@ const initialFormData: MicrographFormData = {
   affineBoundsOffset: null,
   affineTransformedWidth: null,
   affineTransformedHeight: null,
+  affineTileHash: null,
   // Scale method will be set based on location method (defaults to 'Trace Scale Bar' initially)
   instrumentType: '',
   otherInstrumentType: '',
@@ -1318,6 +1320,7 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
             affineBoundsOffset: formData.affineBoundsOffset,
             affineTransformedWidth: formData.affineTransformedWidth,
             affineTransformedHeight: formData.affineTransformedHeight,
+            affineTileHash: formData.affineTileHash, // Hash to locate affine tiles in cache
           }),
         instrument: {
           instrumentType: formData.instrumentType || undefined,
@@ -4842,7 +4845,7 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
           overlayWidth={formData.micrographWidth}
           overlayHeight={formData.micrographHeight}
           existingControlPoints={formData.affineControlPoints ?? undefined}
-          onApply={(matrix, controlPoints, boundsOffset, transformedWidth, transformedHeight) => {
+          onApply={(matrix, controlPoints, boundsOffset, transformedWidth, transformedHeight, tileHash) => {
             setFormData((prev) => ({
               ...prev,
               affineMatrix: matrix,
@@ -4850,6 +4853,7 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
               affineBoundsOffset: boundsOffset,
               affineTransformedWidth: transformedWidth,
               affineTransformedHeight: transformedHeight,
+              affineTileHash: tileHash,
             }));
             setShowAffineRegistration(false);
           }}

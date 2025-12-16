@@ -200,6 +200,14 @@ export interface MicrographMetadata {
   affineTransformedWidth?: number | null;
   affineTransformedHeight?: number | null;
 
+  /**
+   * Hash key used to locate affine tiles in the tile cache.
+   * This is stored because the hash is computed from the scratch path during registration,
+   * but the image is later moved to the project folder with a different path.
+   * Only present when placementType is "affine".
+   */
+  affineTileHash?: string | null;
+
   flipped?: boolean | null;
   isFlipped?: boolean | null;
   opacity?: number | null;

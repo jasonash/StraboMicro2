@@ -369,7 +369,21 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
 
         // First get the image hash (needed for both regular and affine loading)
         const result = await window.api!.loadImageWithTiles(fullPath);
-        const imageHash = result.hash;
+
+        // For affine overlays, use the stored tile hash (computed from scratch path during registration)
+        // Otherwise the hash would be different (computed from project folder path)
+        const imageHash = isAffine && micrograph.affineTileHash
+          ? micrograph.affineTileHash
+          : result.hash;
+
+        if (isAffine) {
+          console.log(`[AssociatedImageRenderer] Loading affine overlay: ${micrograph.name}`);
+          console.log(`[AssociatedImageRenderer] Image path: ${fullPath}`);
+          console.log(`[AssociatedImageRenderer] Using tile hash: ${imageHash}`);
+          console.log(`[AssociatedImageRenderer] Stored tile hash: ${micrograph.affineTileHash}`);
+          console.log(`[AssociatedImageRenderer] Computed hash: ${result.hash}`);
+          console.log(`[AssociatedImageRenderer] Target mode: ${targetMode}`);
+        }
 
         if (targetMode === 'THUMBNAIL') {
           // Load 512x512 thumbnail
