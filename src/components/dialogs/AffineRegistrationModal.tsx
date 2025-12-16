@@ -32,6 +32,7 @@ import RestartAltIcon from '@mui/icons-material/RestartAlt';
 import { Stage, Layer, Image as KonvaImage, Circle, Line, Group, Text } from 'react-konva';
 import Konva from 'konva';
 import { useAppStore } from '@/store';
+import { getEffectiveTheme } from '@/hooks/useTheme';
 import {
   computeAffineMatrix,
   arePointsCollinear,
@@ -92,6 +93,12 @@ export function AffineRegistrationModal({
   onApply,
 }: AffineRegistrationModalProps) {
   const project = useAppStore((state) => state.project);
+  const theme = useAppStore((state) => state.theme);
+
+  // Theme-aware colors
+  const effectiveTheme = getEffectiveTheme(theme);
+  const isDark = effectiveTheme === 'dark';
+  const canvasBgColor = isDark ? '#1e1e1e' : '#d0d0d0';
 
   // Tool mode
   const [toolMode, setToolMode] = useState<ToolMode>('point');
@@ -1036,7 +1043,7 @@ export function AffineRegistrationModal({
             flex: '1 1 0',
             width: '100%',
             height: '100%',
-            bgcolor: '#1e1e1e',
+            bgcolor: canvasBgColor,
             cursor: toolMode === 'pan' ? 'grab' : (isActive ? 'crosshair' : 'default'),
             minHeight: 0,
             position: 'relative',
@@ -1248,7 +1255,7 @@ export function AffineRegistrationModal({
                   flex: '1 1 0',
                   width: '100%',
                   height: '100%',
-                  bgcolor: '#1e1e1e',
+                  bgcolor: canvasBgColor,
                   cursor: 'grab',
                   minHeight: 0,
                   position: 'relative',
