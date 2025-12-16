@@ -1605,52 +1605,67 @@ ipcMain.handle('micrograph:export-composite', async (event, projectId, micrograp
         if (child.placementType === 'affine' && child.affineTileHash) {
           log.info(`[IPC] Loading affine overlay ${child.id} from cache`);
           const tileCache = require('./tileCache');
-          const affineMetadata = await tileCache.loadAffineMetadata(child.affineTileHash);
           const affineBuffer = await tileCache.loadAffineMedium(child.affineTileHash);
 
-          if (affineMetadata && affineBuffer) {
-            const boundsOffset = affineMetadata.boundsOffset || { x: 0, y: 0 };
-            let compositeX = Math.round(boundsOffset.x);
-            let compositeY = Math.round(boundsOffset.y);
+          if (affineBuffer) {
+            // Use bounds and dimensions from micrograph data (not cache metadata)
+            const boundsOffset = child.affineBoundsOffset || { x: 0, y: 0 };
+            const transformedWidth = child.affineTransformedWidth || 0;
+            const transformedHeight = child.affineTransformedHeight || 0;
 
-            // Apply opacity if needed
-            let finalBuffer = affineBuffer;
+            log.info(`[IPC] Affine overlay ${child.id}: bounds=(${boundsOffset.x}, ${boundsOffset.y}), size=${transformedWidth}x${transformedHeight}`);
+
+            // Resize medium image to full transformed dimensions
+            let childImage = sharp(affineBuffer);
+            if (transformedWidth > 0 && transformedHeight > 0) {
+              childImage = childImage.resize(transformedWidth, transformedHeight, {
+                fit: 'fill',
+                kernel: sharp.kernel.lanczos3
+              });
+            }
+
+            // Apply opacity
             const childOpacity = child.opacity ?? 1.0;
+            childImage = childImage.ensureAlpha();
+
             if (childOpacity < 1.0) {
-              const affineImage = sharp(affineBuffer).ensureAlpha();
-              const { data, info } = await affineImage.raw().toBuffer({ resolveWithObject: true });
+              const { data, info } = await childImage.raw().toBuffer({ resolveWithObject: true });
               for (let i = 3; i < data.length; i += 4) {
                 data[i] = Math.round(data[i] * childOpacity);
               }
-              finalBuffer = await sharp(data, {
+              childImage = sharp(data, {
                 raw: { width: info.width, height: info.height, channels: info.channels }
-              }).png().toBuffer();
+              });
             }
 
+            const finalBuffer = await childImage.png().toBuffer();
+            let finalX = Math.round(boundsOffset.x);
+            let finalY = Math.round(boundsOffset.y);
+
             // Bounds checking
-            const affineMeta = await sharp(finalBuffer).metadata();
-            const affineW = affineMeta.width;
-            const affineH = affineMeta.height;
+            const childBufferMeta = await sharp(finalBuffer).metadata();
+            const childW = childBufferMeta.width;
+            const childH = childBufferMeta.height;
 
-            if (compositeX + affineW > 0 && compositeY + affineH > 0 && compositeX < baseWidth && compositeY < baseHeight) {
+            if (finalX + childW > 0 && finalY + childH > 0 && finalX < baseWidth && finalY < baseHeight) {
               // Crop if needed
-              let cropX = 0, cropY = 0, cropW = affineW, cropH = affineH;
-              let finalX = compositeX, finalY = compositeY;
+              let cropX = 0, cropY = 0, cropW = childW, cropH = childH;
+              let compositeX = finalX, compositeY = finalY;
 
-              if (compositeX < 0) { cropX = -compositeX; cropW -= cropX; finalX = 0; }
-              if (compositeY < 0) { cropY = -compositeY; cropH -= cropY; finalY = 0; }
-              if (finalX + cropW > baseWidth) { cropW = baseWidth - finalX; }
-              if (finalY + cropH > baseHeight) { cropH = baseHeight - finalY; }
+              if (finalX < 0) { cropX = -finalX; cropW -= cropX; compositeX = 0; }
+              if (finalY < 0) { cropY = -finalY; cropH -= cropY; compositeY = 0; }
+              if (compositeX + cropW > baseWidth) { cropW = baseWidth - compositeX; }
+              if (compositeY + cropH > baseHeight) { cropH = baseHeight - compositeY; }
 
               if (cropW > 0 && cropH > 0) {
                 let compositeBuffer = finalBuffer;
-                if (cropX > 0 || cropY > 0 || cropW !== affineW || cropH !== affineH) {
+                if (cropX > 0 || cropY > 0 || cropW !== childW || cropH !== childH) {
                   compositeBuffer = await sharp(finalBuffer)
                     .extract({ left: Math.round(cropX), top: Math.round(cropY), width: Math.round(cropW), height: Math.round(cropH) })
                     .toBuffer();
                 }
-                compositeInputs.push({ input: compositeBuffer, left: Math.round(finalX), top: Math.round(finalY) });
-                log.info(`[IPC] Added affine overlay at (${finalX}, ${finalY})`);
+                compositeInputs.push({ input: compositeBuffer, left: Math.round(compositeX), top: Math.round(compositeY) });
+                log.info(`[IPC] Added affine overlay at (${compositeX}, ${compositeY}), size ${cropW}x${cropH}`);
               }
             }
           } else {
@@ -3157,19 +3172,21 @@ ipcMain.handle('composite:generate-thumbnail', async (event, projectId, microgra
         if (child.placementType === 'affine' && child.affineTileHash) {
           log.info(`[IPC] Loading affine overlay ${child.id} for thumbnail from cache`);
           const tileCache = require('./tileCache');
-          const affineMetadata = await tileCache.loadAffineMetadata(child.affineTileHash);
           const affineBuffer = await tileCache.loadAffineMedium(child.affineTileHash);
 
-          if (affineMetadata && affineBuffer) {
-            const boundsOffset = affineMetadata.boundsOffset || { x: 0, y: 0 };
-            // Scale position to thumbnail coordinates
+          if (affineBuffer) {
+            // Use bounds and dimensions from micrograph data (not cache metadata)
+            const boundsOffset = child.affineBoundsOffset || { x: 0, y: 0 };
+            const transformedWidth = child.affineTransformedWidth || 0;
+            const transformedHeight = child.affineTransformedHeight || 0;
+
+            // Scale position and size to thumbnail coordinates
             const thumbX = Math.round(boundsOffset.x * thumbnailScale);
             const thumbY = Math.round(boundsOffset.y * thumbnailScale);
+            const thumbAffineWidth = Math.round(transformedWidth * thumbnailScale);
+            const thumbAffineHeight = Math.round(transformedHeight * thumbnailScale);
 
-            // Get affine image dimensions and scale to thumbnail
-            const affineMeta = await sharp(affineBuffer).metadata();
-            const thumbAffineWidth = Math.round(affineMeta.width * thumbnailScale);
-            const thumbAffineHeight = Math.round(affineMeta.height * thumbnailScale);
+            log.info(`[IPC] Affine thumbnail ${child.id}: bounds=(${thumbX}, ${thumbY}), size=${thumbAffineWidth}x${thumbAffineHeight}`);
 
             // Resize and apply opacity
             let affineImage = sharp(affineBuffer)
