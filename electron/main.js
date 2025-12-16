@@ -1601,6 +1601,64 @@ ipcMain.handle('micrograph:export-composite', async (event, projectId, micrograp
           continue;
         }
 
+        // Handle affine-transformed overlays specially - load pre-transformed image from cache
+        if (child.placementType === 'affine' && child.imageHash) {
+          log.info(`[IPC] Loading affine overlay ${child.id} from cache`);
+          const tileCache = require('./tileCache');
+          const affineMetadata = await tileCache.loadAffineMetadata(child.imageHash);
+          const affineBuffer = await tileCache.loadAffineMedium(child.imageHash);
+
+          if (affineMetadata && affineBuffer) {
+            const boundsOffset = affineMetadata.boundsOffset || { x: 0, y: 0 };
+            let compositeX = Math.round(boundsOffset.x);
+            let compositeY = Math.round(boundsOffset.y);
+
+            // Apply opacity if needed
+            let finalBuffer = affineBuffer;
+            const childOpacity = child.opacity ?? 1.0;
+            if (childOpacity < 1.0) {
+              const affineImage = sharp(affineBuffer).ensureAlpha();
+              const { data, info } = await affineImage.raw().toBuffer({ resolveWithObject: true });
+              for (let i = 3; i < data.length; i += 4) {
+                data[i] = Math.round(data[i] * childOpacity);
+              }
+              finalBuffer = await sharp(data, {
+                raw: { width: info.width, height: info.height, channels: info.channels }
+              }).png().toBuffer();
+            }
+
+            // Bounds checking
+            const affineMeta = await sharp(finalBuffer).metadata();
+            const affineW = affineMeta.width;
+            const affineH = affineMeta.height;
+
+            if (compositeX + affineW > 0 && compositeY + affineH > 0 && compositeX < baseWidth && compositeY < baseHeight) {
+              // Crop if needed
+              let cropX = 0, cropY = 0, cropW = affineW, cropH = affineH;
+              let finalX = compositeX, finalY = compositeY;
+
+              if (compositeX < 0) { cropX = -compositeX; cropW -= cropX; finalX = 0; }
+              if (compositeY < 0) { cropY = -compositeY; cropH -= cropY; finalY = 0; }
+              if (finalX + cropW > baseWidth) { cropW = baseWidth - finalX; }
+              if (finalY + cropH > baseHeight) { cropH = baseHeight - finalY; }
+
+              if (cropW > 0 && cropH > 0) {
+                let compositeBuffer = finalBuffer;
+                if (cropX > 0 || cropY > 0 || cropW !== affineW || cropH !== affineH) {
+                  compositeBuffer = await sharp(finalBuffer)
+                    .extract({ left: Math.round(cropX), top: Math.round(cropY), width: Math.round(cropW), height: Math.round(cropH) })
+                    .toBuffer();
+                }
+                compositeInputs.push({ input: compositeBuffer, left: Math.round(finalX), top: Math.round(finalY) });
+                log.info(`[IPC] Added affine overlay at (${finalX}, ${finalY})`);
+              }
+            }
+          } else {
+            log.warn(`[IPC] No cached affine data for ${child.id}, skipping`);
+          }
+          continue;
+        }
+
         // Skip children that haven't been located yet (no position data)
         // This prevents loading ALL child images when only some have position data
         if (!child.offsetInParent && child.xOffset === undefined) {
