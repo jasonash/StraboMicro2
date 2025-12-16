@@ -3153,6 +3153,70 @@ ipcMain.handle('composite:generate-thumbnail', async (event, projectId, microgra
           continue;
         }
 
+        // Handle affine-transformed overlays specially - load pre-transformed image from cache
+        if (child.placementType === 'affine' && child.imageHash) {
+          log.info(`[IPC] Loading affine overlay ${child.id} for thumbnail from cache`);
+          const tileCache = require('./tileCache');
+          const affineMetadata = await tileCache.loadAffineMetadata(child.imageHash);
+          const affineBuffer = await tileCache.loadAffineMedium(child.imageHash);
+
+          if (affineMetadata && affineBuffer) {
+            const boundsOffset = affineMetadata.boundsOffset || { x: 0, y: 0 };
+            // Scale position to thumbnail coordinates
+            const thumbX = Math.round(boundsOffset.x * thumbnailScale);
+            const thumbY = Math.round(boundsOffset.y * thumbnailScale);
+
+            // Get affine image dimensions and scale to thumbnail
+            const affineMeta = await sharp(affineBuffer).metadata();
+            const thumbAffineWidth = Math.round(affineMeta.width * thumbnailScale);
+            const thumbAffineHeight = Math.round(affineMeta.height * thumbnailScale);
+
+            // Resize and apply opacity
+            let affineImage = sharp(affineBuffer)
+              .resize(thumbAffineWidth, thumbAffineHeight, { fit: 'fill', kernel: sharp.kernel.lanczos3 })
+              .ensureAlpha();
+
+            const childOpacity = child.opacity ?? 1.0;
+            let finalBuffer;
+            if (childOpacity < 1.0) {
+              const { data, info } = await affineImage.raw().toBuffer({ resolveWithObject: true });
+              for (let i = 3; i < data.length; i += 4) {
+                data[i] = Math.round(data[i] * childOpacity);
+              }
+              finalBuffer = await sharp(data, {
+                raw: { width: info.width, height: info.height, channels: info.channels }
+              }).png().toBuffer();
+            } else {
+              finalBuffer = await affineImage.png().toBuffer();
+            }
+
+            // Bounds checking and cropping
+            if (thumbX + thumbAffineWidth > 0 && thumbY + thumbAffineHeight > 0 && thumbX < thumbWidth && thumbY < thumbHeight) {
+              let cropX = 0, cropY = 0, cropW = thumbAffineWidth, cropH = thumbAffineHeight;
+              let finalX = thumbX, finalY = thumbY;
+
+              if (thumbX < 0) { cropX = -thumbX; cropW -= cropX; finalX = 0; }
+              if (thumbY < 0) { cropY = -thumbY; cropH -= cropY; finalY = 0; }
+              if (finalX + cropW > thumbWidth) { cropW = thumbWidth - finalX; }
+              if (finalY + cropH > thumbHeight) { cropH = thumbHeight - finalY; }
+
+              if (cropW > 0 && cropH > 0) {
+                let compositeBuffer = finalBuffer;
+                if (cropX > 0 || cropY > 0 || cropW !== thumbAffineWidth || cropH !== thumbAffineHeight) {
+                  compositeBuffer = await sharp(finalBuffer)
+                    .extract({ left: Math.round(cropX), top: Math.round(cropY), width: Math.round(cropW), height: Math.round(cropH) })
+                    .toBuffer();
+                }
+                compositeInputs.push({ input: compositeBuffer, left: Math.round(finalX), top: Math.round(finalY) });
+                log.info(`[IPC] Added affine overlay to thumbnail at (${finalX}, ${finalY})`);
+              }
+            }
+          } else {
+            log.warn(`[IPC] No cached affine data for ${child.id}, skipping in thumbnail`);
+          }
+          continue;
+        }
+
         // Skip children that haven't been located yet (no position data)
         // This is critical for batch-imported micrographs which don't have position until user sets it
         // Without this check, ALL children would be loaded from disk causing massive memory spike
