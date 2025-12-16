@@ -23,6 +23,7 @@ const path = require('path');
 const log = require('electron-log');
 const sharp = require('sharp');
 const archiver = require('archiver');
+const tileCache = require('./tileCache');
 
 /**
  * Image size configurations for export
@@ -279,6 +280,103 @@ async function generateCompositeBufferNoSpots(projectId, micrograph, projectData
 
       // Skip hidden micrographs
       if (child.isMicroVisible === false) {
+        continue;
+      }
+
+      // Handle affine-placed overlays specially
+      if (child.placementType === 'affine') {
+        try {
+          const affineTileHash = child.affineTileHash;
+          if (!affineTileHash) {
+            log.warn(`[SmzExport] Affine overlay ${child.id} missing affineTileHash`);
+            continue;
+          }
+
+          // Load pre-transformed image from affine tile cache
+          const mediumBuffer = await tileCache.loadAffineMedium(affineTileHash);
+          if (!mediumBuffer) {
+            log.warn(`[SmzExport] Affine medium image not found for ${child.id}`);
+            continue;
+          }
+
+          // Get bounds offset for positioning
+          const boundsOffset = child.affineBoundsOffset || { x: 0, y: 0 };
+          const transformedWidth = child.affineTransformedWidth || 0;
+          const transformedHeight = child.affineTransformedHeight || 0;
+
+          // Resize to full resolution (medium is 2048 max, we need actual size)
+          const affineMetadata = await tileCache.loadAffineMetadata(affineTileHash);
+          let childImage = sharp(mediumBuffer);
+
+          if (affineMetadata && (affineMetadata.transformedWidth !== transformedWidth || affineMetadata.transformedHeight !== transformedHeight)) {
+            // Resize from medium to actual transformed dimensions
+            childImage = childImage.resize(transformedWidth, transformedHeight, {
+              fit: 'fill',
+              kernel: sharp.kernel.lanczos3
+            });
+          }
+
+          // Apply opacity
+          const childOpacity = child.opacity ?? 1.0;
+          childImage = childImage.ensureAlpha();
+
+          if (childOpacity < 1.0) {
+            const { data, info } = await childImage.raw().toBuffer({ resolveWithObject: true });
+            for (let i = 3; i < data.length; i += 4) {
+              data[i] = Math.round(data[i] * childOpacity);
+            }
+            childImage = sharp(data, {
+              raw: { width: info.width, height: info.height, channels: info.channels }
+            });
+          }
+
+          const finalBuffer = await childImage.png().toBuffer();
+          let finalX = Math.round(boundsOffset.x);
+          let finalY = Math.round(boundsOffset.y);
+
+          // Bounds checking and cropping (same as regular overlays)
+          const childBufferMeta = await sharp(finalBuffer).metadata();
+          const childW = childBufferMeta.width;
+          const childH = childBufferMeta.height;
+
+          if (finalX + childW <= 0 || finalY + childH <= 0 || finalX >= baseWidth || finalY >= baseHeight) {
+            continue;
+          }
+
+          let cropX = 0, cropY = 0, cropW = childW, cropH = childH;
+          let compositeX = finalX, compositeY = finalY;
+
+          if (finalX < 0) { cropX = -finalX; cropW -= cropX; compositeX = 0; }
+          if (finalY < 0) { cropY = -finalY; cropH -= cropY; compositeY = 0; }
+          if (compositeX + cropW > baseWidth) { cropW = baseWidth - compositeX; }
+          if (compositeY + cropH > baseHeight) { cropH = baseHeight - compositeY; }
+
+          if (cropW <= 0 || cropH <= 0) continue;
+
+          cropX = Math.round(cropX);
+          cropY = Math.round(cropY);
+          cropW = Math.round(cropW);
+          cropH = Math.round(cropH);
+          compositeX = Math.round(compositeX);
+          compositeY = Math.round(compositeY);
+
+          let compositeBuffer = finalBuffer;
+          if (cropX > 0 || cropY > 0 || cropW !== childW || cropH !== childH) {
+            compositeBuffer = await sharp(finalBuffer)
+              .extract({ left: cropX, top: cropY, width: cropW, height: cropH })
+              .toBuffer();
+          }
+
+          compositeInputs.push({
+            input: compositeBuffer,
+            left: compositeX,
+            top: compositeY
+          });
+
+          log.info(`[SmzExport] Added affine overlay ${child.id} at (${compositeX}, ${compositeY})`);
+        } catch (err) {
+          log.error(`[SmzExport] Error processing affine overlay ${child.id}:`, err);
+        }
         continue;
       }
 
