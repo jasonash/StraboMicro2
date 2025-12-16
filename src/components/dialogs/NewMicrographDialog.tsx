@@ -361,6 +361,7 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
   const [showAffineRegistration, setShowAffineRegistration] = useState(false);
   const [detectors, setDetectors] = useState<Detector[]>([{ type: '', make: '', model: '' }]);
   const [micrographPreviewUrl, setMicrographPreviewUrl] = useState<string>('');
+  const [thumbnailUrl, setThumbnailUrl] = useState<string>('');
   const [isLoadingPreview, setIsLoadingPreview] = useState(false);
   const [canvasTool, setCanvasTool] = useState<Tool>('pointer');
   const [isFlipped, setIsFlipped] = useState(false);
@@ -689,6 +690,10 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
             const mediumDataUrl = await window.api.loadMedium(result.hash);
             setMicrographPreviewUrl(mediumDataUrl);
 
+            // Load thumbnail (512px) for header preview display
+            const thumbDataUrl = await window.api.loadThumbnail(result.hash);
+            setThumbnailUrl(thumbDataUrl);
+
             // Update form data with image dimensions and file info
             setFormData((prev) => ({
               ...prev,
@@ -864,6 +869,8 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
     setScratchIdentifier(null);
     setConversionProgress(null);
     setIsFlipped(false);
+    setMicrographPreviewUrl('');
+    setThumbnailUrl('');
     // Reset XPL state
     setXplFilePath(null);
     setXplFileName(null);
@@ -4791,7 +4798,45 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
         transitionDuration={300}
       >
         <DialogTitle>
-          {parentMicrographId ? 'New Associated Micrograph' : 'New Reference Micrograph'}
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span>{parentMicrographId ? 'New Associated Micrograph' : 'New Reference Micrograph'}</span>
+            {thumbnailUrl && formData.micrographFileName && (
+              <Box
+                sx={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 1,
+                  ml: 2,
+                }}
+              >
+                <Typography
+                  variant="body2"
+                  sx={{
+                    color: 'text.secondary',
+                    maxWidth: 200,
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {formData.micrographFileName}
+                </Typography>
+                <Box
+                  component="img"
+                  src={thumbnailUrl}
+                  alt="Micrograph preview"
+                  sx={{
+                    width: 48,
+                    height: 48,
+                    objectFit: 'cover',
+                    borderRadius: 1,
+                    border: '1px solid',
+                    borderColor: 'divider',
+                  }}
+                />
+              </Box>
+            )}
+          </Box>
         </DialogTitle>
         <DialogContent>
           <WizardProgress
