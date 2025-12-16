@@ -30,6 +30,7 @@ import PlaceIcon from '@mui/icons-material/Place';
 import LayersIcon from '@mui/icons-material/Layers';
 import { Stage, Layer, Image as KonvaImage, Group, Circle, Line, Rect } from 'react-konva';
 import { useAppStore } from '@/store';
+import { getEffectiveTheme } from '@/hooks/useTheme';
 import type { MicrographMetadata, Spot } from '@/types/project-types';
 
 const TILE_SIZE = 256;
@@ -123,6 +124,12 @@ function ComparatorCanvas({
   const [canvasSize, setCanvasSize] = useState({ width: 400, height: 300 });
   const [isPanning, setIsPanning] = useState(false);
   const [lastPointerPos, setLastPointerPos] = useState<{ x: number; y: number } | null>(null);
+
+  // Get theme for canvas background color
+  const themeMode = useAppStore((state) => state.theme);
+  const effectiveTheme = getEffectiveTheme(themeMode);
+  const isDark = effectiveTheme === 'dark';
+  const canvasBgColor = isDark ? '#1e1e1e' : '#d0d0d0';
 
   // Measure actual canvas area
   useEffect(() => {
@@ -762,7 +769,7 @@ function ComparatorCanvas({
         sx={{
           flex: 1,
           position: 'relative',
-          bgcolor: 'grey.900',
+          bgcolor: canvasBgColor,
           cursor: isPanning ? 'grabbing' : 'grab',
         }}
       >
