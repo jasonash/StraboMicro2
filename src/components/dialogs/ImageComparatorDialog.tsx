@@ -179,6 +179,22 @@ function ComparatorCanvas({
     return children;
   }, [state.micrographId, project]);
 
+  // Get the selected micrograph metadata
+  const selectedMicrograph = useMemo(() => {
+    if (!state.micrographId || !project) return null;
+
+    for (const dataset of project.datasets || []) {
+      for (const sample of dataset.samples || []) {
+        for (const micro of sample.micrographs || []) {
+          if (micro.id === state.micrographId) {
+            return micro;
+          }
+        }
+      }
+    }
+    return null;
+  }, [state.micrographId, project]);
+
   // Load image when micrograph changes
   useEffect(() => {
     if (!state.micrographId || !project) return;
@@ -237,9 +253,16 @@ function ComparatorCanvas({
               img.src = overlayThumbUrl;
             });
 
-            // Calculate overlay dimensions
-            const overlayWidth = (overlay.imageWidth || overlayResult.metadata.width) * (overlay.scaleX || 1);
-            const overlayHeight = (overlay.imageHeight || overlayResult.metadata.height) * (overlay.scaleY || 1);
+            // Calculate overlay dimensions using scalePixelsPerCentimeter ratio
+            // This matches how AssociatedImageRenderer calculates the scale factor
+            const childPxPerCm = overlay.scalePixelsPerCentimeter || 100;
+            const parentPxPerCm = selectedMicrograph?.scalePixelsPerCentimeter || 100;
+            const scaleFactor = parentPxPerCm / childPxPerCm;
+
+            const overlayNativeWidth = overlay.imageWidth || overlayResult.metadata.width;
+            const overlayNativeHeight = overlay.imageHeight || overlayResult.metadata.height;
+            const overlayWidth = overlayNativeWidth * scaleFactor;
+            const overlayHeight = overlayNativeHeight * scaleFactor;
 
             loadedOverlays.push({
               id: overlay.id,
@@ -278,7 +301,7 @@ function ComparatorCanvas({
     };
 
     loadImage();
-  }, [state.micrographId, project, canvasSize.width, canvasSize.height, overlays]);
+  }, [state.micrographId, project, canvasSize.width, canvasSize.height, overlays, selectedMicrograph]);
 
   // Load visible tiles
   const loadVisibleTiles = useCallback(async () => {
