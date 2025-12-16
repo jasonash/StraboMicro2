@@ -5,17 +5,13 @@
  * Users click corresponding points on parent and overlay images to compute
  * an affine transformation matrix that maps the overlay onto the parent.
  *
- * Features:
- * - Split-view layout with parent (left) and overlay (right) image panels
- * - Independent pan/zoom controls for each panel
- * - Alternating click workflow (parent → overlay → parent...)
- * - Numbered point markers with visual feedback
- * - Point dragging for adjustment
- * - Point deletion via right-click or keyboard
- * - Tile generation on Apply
+ * Layout:
+ * - Toolbar at top with Pan/Point/Reset tools
+ * - Base and Overlay panels side-by-side
+ * - Preview pane at bottom showing live composite
  */
 
-import React, { useEffect, useState, useRef, useCallback } from 'react';
+import React, { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import {
   Dialog,
   Box,
@@ -25,9 +21,13 @@ import {
   Tooltip,
   CircularProgress,
   LinearProgress,
+  ToggleButtonGroup,
+  ToggleButton,
   Menu,
   MenuItem,
 } from '@mui/material';
+import PanToolIcon from '@mui/icons-material/PanTool';
+import AdjustIcon from '@mui/icons-material/Adjust';
 import RestartAltIcon from '@mui/icons-material/RestartAlt';
 import { Stage, Layer, Image as KonvaImage, Circle, Line, Group, Text } from 'react-konva';
 import Konva from 'konva';
@@ -44,33 +44,31 @@ import {
 const MIN_ZOOM = 0.1;
 const MAX_ZOOM = 10;
 const ZOOM_STEP = 1.1;
-const MARKER_RADIUS = 12;
-const CROSSHAIR_SIZE = 20;
+const MARKER_RADIUS = 10;
+const CROSSHAIR_SIZE = 16;
 
 interface AffineRegistrationModalProps {
   open: boolean;
   onClose: () => void;
   parentMicrographId: string;
-  overlayImagePath: string; // Full path to overlay image (in scratch or project images)
+  overlayImagePath: string;
   overlayWidth: number;
   overlayHeight: number;
-  overlayImageHash?: string; // If known, for cache operations
-  existingControlPoints?: ControlPoint[]; // For editing existing registration
+  overlayImageHash?: string;
+  existingControlPoints?: ControlPoint[];
   onApply: (
     affineMatrix: AffineMatrix,
     controlPoints: ControlPoint[],
     boundsOffset: { x: number; y: number },
     transformedWidth: number,
     transformedHeight: number,
-    tileHash: string // Hash used to store/load the affine tiles
+    tileHash: string
   ) => void;
 }
 
 interface ImagePanelState {
   zoom: number;
   position: { x: number; y: number };
-  isPanning: boolean;
-  lastPointerPos: { x: number; y: number } | null;
 }
 
 interface PointMarker {
@@ -79,6 +77,7 @@ interface PointMarker {
   overlayPoint: { x: number; y: number } | null;
 }
 
+type ToolMode = 'pan' | 'point';
 type ClickTarget = 'parent' | 'overlay';
 
 export function AffineRegistrationModal({
@@ -86,56 +85,59 @@ export function AffineRegistrationModal({
   onClose,
   parentMicrographId,
   overlayImagePath,
-  overlayWidth,
-  overlayHeight,
+  overlayWidth: _overlayWidth,
+  overlayHeight: _overlayHeight,
   overlayImageHash,
   existingControlPoints,
   onApply,
 }: AffineRegistrationModalProps) {
   const project = useAppStore((state) => state.project);
 
+  // Tool mode
+  const [toolMode, setToolMode] = useState<ToolMode>('point');
+
   // Container refs
   const parentContainerRef = useRef<HTMLDivElement>(null);
   const overlayContainerRef = useRef<HTMLDivElement>(null);
+  const previewContainerRef = useRef<HTMLDivElement>(null);
   const parentStageRef = useRef<Konva.Stage>(null);
   const overlayStageRef = useRef<Konva.Stage>(null);
+  const previewCanvasRef = useRef<HTMLCanvasElement>(null);
 
   // Panel sizes
-  const [panelSize, setPanelSize] = useState({ width: 400, height: 400 });
+  const [panelSize, setPanelSize] = useState({ width: 400, height: 300 });
+  const [previewSize, setPreviewSize] = useState({ width: 800, height: 300 });
 
   // Image data
   const [parentImageData, setParentImageData] = useState<{
     hash: string;
     width: number;
     height: number;
-    tilesX: number;
-    tilesY: number;
   } | null>(null);
   const [overlayImageData, setOverlayImageData] = useState<{
     hash: string;
     width: number;
     height: number;
-    tilesX: number;
-    tilesY: number;
   } | null>(null);
 
-  // Thumbnail/medium images for display
-  const [parentThumbnail, setParentThumbnail] = useState<HTMLImageElement | null>(null);
-  const [overlayThumbnail, setOverlayThumbnail] = useState<HTMLImageElement | null>(null);
+  // Images for display
+  const [parentImage, setParentImage] = useState<HTMLImageElement | null>(null);
+  const [overlayImage, setOverlayImage] = useState<HTMLImageElement | null>(null);
 
   // Panel states (independent pan/zoom)
   const [parentPanel, setParentPanel] = useState<ImagePanelState>({
     zoom: 1,
     position: { x: 0, y: 0 },
-    isPanning: false,
-    lastPointerPos: null,
   });
   const [overlayPanel, setOverlayPanel] = useState<ImagePanelState>({
     zoom: 1,
     position: { x: 0, y: 0 },
-    isPanning: false,
-    lastPointerPos: null,
   });
+
+  // Panning state
+  const [isPanning, setIsPanning] = useState(false);
+  const [panningPanel, setPanningPanel] = useState<'parent' | 'overlay' | null>(null);
+  const [lastPointerPos, setLastPointerPos] = useState<{ x: number; y: number } | null>(null);
 
   // Control points
   const [markers, setMarkers] = useState<PointMarker[]>([]);
@@ -146,7 +148,7 @@ export function AffineRegistrationModal({
     panel: 'parent' | 'overlay';
   } | null>(null);
 
-  // Context menu for point deletion
+  // Context menu
   const [contextMenu, setContextMenu] = useState<{
     mouseX: number;
     mouseY: number;
@@ -165,7 +167,7 @@ export function AffineRegistrationModal({
     (m) => m.parentPoint !== null && m.overlayPoint !== null
   ).length;
 
-  // Get current incomplete marker (one that has parent but not overlay, or vice versa)
+  // Get current incomplete marker
   const incompleteMarker = markers.find(
     (m) =>
       (m.parentPoint !== null && m.overlayPoint === null) ||
@@ -175,19 +177,38 @@ export function AffineRegistrationModal({
   // Determine which panel is active for the next click
   const activePanel: 'parent' | 'overlay' = nextClickTarget;
 
-  // Check if we can apply (need at least 3 complete pairs)
+  // Check if we can apply
   const canApply = completePairs >= 3;
 
-  // Get instruction text based on state
+  // Compute affine matrix when we have 3+ points
+  const computedMatrix = useMemo((): AffineMatrix | null => {
+    if (completePairs < 3) return null;
+
+    const controlPoints = markers
+      .filter((m) => m.parentPoint && m.overlayPoint)
+      .slice(0, 3)
+      .map((m) => ({
+        source: [m.overlayPoint!.x, m.overlayPoint!.y] as [number, number],
+        target: [m.parentPoint!.x, m.parentPoint!.y] as [number, number],
+      }));
+
+    try {
+      return computeAffineMatrix(controlPoints);
+    } catch {
+      return null;
+    }
+  }, [markers, completePairs]);
+
+  // Get instruction text
   const getInstructionText = (): string => {
     if (markers.length === 0) {
-      return 'Click a feature on the parent image to begin.';
+      return 'Click a feature on the BASE image to begin.';
     }
     if (incompleteMarker) {
       if (incompleteMarker.parentPoint !== null) {
-        return 'Now click the same feature on the overlay image.';
+        return 'Now click the same feature on the OVERLAY image.';
       } else {
-        return 'Now click the same feature on the parent image.';
+        return 'Now click the same feature on the BASE image.';
       }
     }
     if (completePairs < 3) {
@@ -199,7 +220,6 @@ export function AffineRegistrationModal({
   // Reset state when dialog opens
   useEffect(() => {
     if (open) {
-      // Initialize from existing control points if provided
       if (existingControlPoints && existingControlPoints.length > 0) {
         const initialMarkers = existingControlPoints.map((cp, index) => ({
           id: index + 1,
@@ -215,6 +235,7 @@ export function AffineRegistrationModal({
       setSelectedMarkerId(null);
       setWarning(null);
       setIsLoading(true);
+      setToolMode('point');
     }
   }, [open, existingControlPoints]);
 
@@ -227,9 +248,12 @@ export function AffineRegistrationModal({
         const rect = parentContainerRef.current.getBoundingClientRect();
         setPanelSize({ width: rect.width, height: rect.height });
       }
+      if (previewContainerRef.current) {
+        const rect = previewContainerRef.current.getBoundingClientRect();
+        setPreviewSize({ width: rect.width, height: rect.height });
+      }
     };
 
-    // Initial size after a short delay to ensure layout is complete
     const timer = setTimeout(updateSize, 50);
     window.addEventListener('resize', updateSize);
 
@@ -274,8 +298,6 @@ export function AffineRegistrationModal({
           hash: tileData.hash,
           width: tileData.metadata.width,
           height: tileData.metadata.height,
-          tilesX: tileData.metadata.tilesX,
-          tilesY: tileData.metadata.tilesY,
         });
 
         // Load medium resolution for display
@@ -283,20 +305,21 @@ export function AffineRegistrationModal({
         if (mediumDataUrl) {
           const img = new Image();
           img.onload = () => {
-            setParentThumbnail(img);
-            // Fit to panel
-            if (panelSize.width > 0 && panelSize.height > 0) {
-              const scaleX = panelSize.width / tileData.metadata.width;
-              const scaleY = panelSize.height / tileData.metadata.height;
-              const zoom = Math.min(scaleX, scaleY) * 0.9;
-              setParentPanel((prev) => ({
-                ...prev,
-                zoom,
+            setParentImage(img);
+            // Center image in panel
+            if (parentContainerRef.current) {
+              const rect = parentContainerRef.current.getBoundingClientRect();
+              const scale = Math.min(
+                rect.width / tileData.metadata.width,
+                rect.height / tileData.metadata.height
+              ) * 0.9;
+              setParentPanel({
+                zoom: scale,
                 position: {
-                  x: (panelSize.width - tileData.metadata.width * zoom) / 2,
-                  y: (panelSize.height - tileData.metadata.height * zoom) / 2,
+                  x: (rect.width - tileData.metadata.width * scale) / 2,
+                  y: (rect.height - tileData.metadata.height * scale) / 2,
                 },
-              }));
+              });
             }
           };
           img.src = mediumDataUrl;
@@ -307,7 +330,7 @@ export function AffineRegistrationModal({
     };
 
     loadParentImage();
-  }, [open, project, parentMicrographId, panelSize]);
+  }, [open, project, parentMicrographId]);
 
   // Load overlay image
   useEffect(() => {
@@ -322,8 +345,6 @@ export function AffineRegistrationModal({
           hash: tileData.hash,
           width: tileData.metadata.width,
           height: tileData.metadata.height,
-          tilesX: tileData.metadata.tilesX,
-          tilesY: tileData.metadata.tilesY,
         });
 
         // Load medium resolution for display
@@ -331,26 +352,25 @@ export function AffineRegistrationModal({
         if (mediumDataUrl) {
           const img = new Image();
           img.onload = () => {
-            setOverlayThumbnail(img);
-            // Fit to panel
-            if (panelSize.width > 0 && panelSize.height > 0) {
-              const scaleX = panelSize.width / tileData.metadata.width;
-              const scaleY = panelSize.height / tileData.metadata.height;
-              const zoom = Math.min(scaleX, scaleY) * 0.9;
-              setOverlayPanel((prev) => ({
-                ...prev,
-                zoom,
-                position: {
-                  x: (panelSize.width - tileData.metadata.width * zoom) / 2,
-                  y: (panelSize.height - tileData.metadata.height * zoom) / 2,
-                },
-              }));
-            }
+            setOverlayImage(img);
             setIsLoading(false);
+            // Center image in panel
+            if (overlayContainerRef.current) {
+              const rect = overlayContainerRef.current.getBoundingClientRect();
+              const scale = Math.min(
+                rect.width / tileData.metadata.width,
+                rect.height / tileData.metadata.height
+              ) * 0.9;
+              setOverlayPanel({
+                zoom: scale,
+                position: {
+                  x: (rect.width - tileData.metadata.width * scale) / 2,
+                  y: (rect.height - tileData.metadata.height * scale) / 2,
+                },
+              });
+            }
           };
           img.src = mediumDataUrl;
-        } else {
-          setIsLoading(false);
         }
       } catch (err) {
         console.error('[AffineRegistration] Error loading overlay image:', err);
@@ -359,7 +379,92 @@ export function AffineRegistrationModal({
     };
 
     loadOverlayImage();
-  }, [open, overlayImagePath, panelSize]);
+  }, [open, overlayImagePath]);
+
+  // Draw preview canvas
+  useEffect(() => {
+    const canvas = previewCanvasRef.current;
+    if (!canvas || !parentImage || !overlayImage || !parentImageData) return;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    // Set canvas size
+    canvas.width = previewSize.width;
+    canvas.height = previewSize.height;
+
+    // Clear canvas
+    ctx.fillStyle = '#1e1e1e';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Calculate scale to fit parent image in preview
+    const scale = Math.min(
+      (previewSize.width - 40) / parentImageData.width,
+      (previewSize.height - 40) / parentImageData.height
+    ) * 0.95;
+
+    const offsetX = (previewSize.width - parentImageData.width * scale) / 2;
+    const offsetY = (previewSize.height - parentImageData.height * scale) / 2;
+
+    // Draw parent image
+    ctx.save();
+    ctx.translate(offsetX, offsetY);
+    ctx.scale(scale, scale);
+    ctx.drawImage(parentImage, 0, 0, parentImageData.width, parentImageData.height);
+    ctx.restore();
+
+    // Draw transformed overlay if we have a valid matrix
+    if (computedMatrix && overlayImageData) {
+      const [a, b, tx, c, d, ty] = computedMatrix;
+
+      ctx.save();
+      ctx.translate(offsetX, offsetY);
+      ctx.scale(scale, scale);
+
+      // Apply affine transform: x' = a*x + b*y + tx, y' = c*x + d*y + ty
+      // Canvas setTransform uses: x' = a*x + c*y + e, y' = b*x + d*y + f
+      // So we need to map: canvas(a,b,c,d,e,f) = our(a, c, b, d, tx, ty)
+      ctx.transform(a, c, b, d, tx, ty);
+
+      // Draw overlay with transparency
+      ctx.globalAlpha = 0.6;
+      ctx.drawImage(overlayImage, 0, 0, overlayImageData.width, overlayImageData.height);
+      ctx.restore();
+
+      // Draw label
+      ctx.fillStyle = '#4caf50';
+      ctx.font = '14px sans-serif';
+      ctx.fillText('✓ Preview (3+ points)', 10, 24);
+    } else {
+      // Draw "needs more points" message
+      ctx.fillStyle = '#ff9800';
+      ctx.font = '14px sans-serif';
+      ctx.fillText(`Need ${3 - completePairs} more point${3 - completePairs !== 1 ? 's' : ''} for preview`, 10, 24);
+    }
+
+    // Draw control point markers on preview
+    markers.forEach((marker) => {
+      if (marker.parentPoint) {
+        const px = offsetX + marker.parentPoint.x * scale;
+        const py = offsetY + marker.parentPoint.y * scale;
+
+        ctx.beginPath();
+        ctx.arc(px, py, 6, 0, Math.PI * 2);
+        ctx.fillStyle = '#f44336';
+        ctx.fill();
+        ctx.strokeStyle = 'white';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        ctx.fillStyle = 'white';
+        ctx.font = 'bold 10px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(String(marker.id), px, py);
+      }
+    });
+
+  }, [parentImage, overlayImage, parentImageData, overlayImageData, computedMatrix, markers, previewSize, completePairs]);
 
   // Validate points when markers change
   useEffect(() => {
@@ -368,35 +473,73 @@ export function AffineRegistrationModal({
       return;
     }
 
-    // Build control points array
-    const controlPoints: ControlPoint[] = markers
+    const controlPoints = markers
       .filter((m) => m.parentPoint && m.overlayPoint)
       .map((m) => ({
         source: [m.overlayPoint!.x, m.overlayPoint!.y] as [number, number],
         target: [m.parentPoint!.x, m.parentPoint!.y] as [number, number],
       }));
 
-    // Check for collinearity
     if (arePointsCollinear(controlPoints)) {
-      setWarning('Points are nearly in a line. Add a point away from the line for better results.');
+      setWarning('Warning: Points are nearly collinear. Add points that form a triangle.');
       return;
     }
 
-    // Check for point distribution
-    const distributionWarning = checkPointDistribution(
-      controlPoints,
-      overlayWidth,
-      overlayHeight
-    );
-    if (distributionWarning) {
-      setWarning(distributionWarning);
-      return;
+    if (overlayImageData) {
+      const distWarning = checkPointDistribution(
+        controlPoints,
+        overlayImageData.width,
+        overlayImageData.height
+      );
+      if (distWarning) {
+        setWarning(distWarning);
+        return;
+      }
     }
 
     setWarning(null);
-  }, [markers, completePairs, overlayWidth, overlayHeight]);
+  }, [markers, completePairs, overlayImageData]);
 
-  // Handle wheel zoom for a panel
+  // Handle point click
+  const handlePointClick = useCallback(
+    (panel: 'parent' | 'overlay', x: number, y: number) => {
+      if (toolMode !== 'point') return;
+
+      if (panel !== activePanel) {
+        // Wrong panel - show hint
+        return;
+      }
+
+      if (incompleteMarker) {
+        // Complete the current marker
+        setMarkers((prev) =>
+          prev.map((m) => {
+            if (m.id !== incompleteMarker.id) return m;
+            if (panel === 'parent') {
+              return { ...m, parentPoint: { x, y } };
+            } else {
+              return { ...m, overlayPoint: { x, y } };
+            }
+          })
+        );
+        setNextClickTarget(panel === 'parent' ? 'overlay' : 'parent');
+      } else {
+        // Start a new marker
+        const newId = markers.length > 0 ? Math.max(...markers.map((m) => m.id)) + 1 : 1;
+        const newMarker: PointMarker = {
+          id: newId,
+          parentPoint: panel === 'parent' ? { x, y } : null,
+          overlayPoint: panel === 'overlay' ? { x, y } : null,
+        };
+        setMarkers((prev) => [...prev, newMarker]);
+        setNextClickTarget(panel === 'parent' ? 'overlay' : 'parent');
+        setSelectedMarkerId(newId);
+      }
+    },
+    [toolMode, activePanel, incompleteMarker, markers]
+  );
+
+  // Handle wheel zoom
   const handleWheel = useCallback(
     (e: Konva.KonvaEventObject<WheelEvent>, panel: 'parent' | 'overlay') => {
       e.evt.preventDefault();
@@ -417,25 +560,23 @@ export function AffineRegistrationModal({
           ? Math.min(currentPanel.zoom * ZOOM_STEP, MAX_ZOOM)
           : Math.max(currentPanel.zoom / ZOOM_STEP, MIN_ZOOM);
 
-      // Zoom toward pointer position
       const mousePointTo = {
         x: (pointer.x - currentPanel.position.x) / currentPanel.zoom,
         y: (pointer.y - currentPanel.position.y) / currentPanel.zoom,
       };
 
-      setPanel((prev) => ({
-        ...prev,
+      setPanel({
         zoom: newZoom,
         position: {
           x: pointer.x - mousePointTo.x * newZoom,
           y: pointer.y - mousePointTo.y * newZoom,
         },
-      }));
+      });
     },
     [parentPanel, overlayPanel]
   );
 
-  // Handle mouse down on a panel
+  // Handle mouse down
   const handleMouseDown = useCallback(
     (e: Konva.KonvaEventObject<MouseEvent>, panel: 'parent' | 'overlay') => {
       const stageRef = panel === 'parent' ? parentStageRef : overlayStageRef;
@@ -445,7 +586,12 @@ export function AffineRegistrationModal({
       const pointer = stageNode.getPointerPosition();
       if (!pointer) return;
 
-      // Check if clicking on a marker (for dragging)
+      // Right-click for context menu
+      if (e.evt.button === 2) {
+        return;
+      }
+
+      // Check if clicking on a marker
       const clickedOnMarker = e.target.name()?.startsWith('marker-');
       if (clickedOnMarker) {
         const markerId = parseInt(e.target.name().replace('marker-', '').split('-')[0], 10);
@@ -454,39 +600,30 @@ export function AffineRegistrationModal({
         return;
       }
 
-      // Check for right-click (context menu)
-      if (e.evt.button === 2) {
-        return; // Handled by context menu
-      }
+      if (toolMode === 'pan') {
+        // Start panning
+        setIsPanning(true);
+        setPanningPanel(panel);
+        setLastPointerPos(pointer);
+      } else if (toolMode === 'point') {
+        // Place a point
+        const currentPanel = panel === 'parent' ? parentPanel : overlayPanel;
+        const imageData = panel === 'parent' ? parentImageData : overlayImageData;
 
-      // Check if this is a click to place a point (not panning)
-      const currentPanel = panel === 'parent' ? parentPanel : overlayPanel;
-      const imageData = panel === 'parent' ? parentImageData : overlayImageData;
+        if (imageData) {
+          const imageX = (pointer.x - currentPanel.position.x) / currentPanel.zoom;
+          const imageY = (pointer.y - currentPanel.position.y) / currentPanel.zoom;
 
-      if (imageData && activePanel === panel) {
-        // Convert to image coordinates
-        const imageX = (pointer.x - currentPanel.position.x) / currentPanel.zoom;
-        const imageY = (pointer.y - currentPanel.position.y) / currentPanel.zoom;
-
-        // Check if within image bounds
-        if (imageX >= 0 && imageX <= imageData.width && imageY >= 0 && imageY <= imageData.height) {
-          handlePointClick(panel, imageX, imageY);
-          return;
+          if (imageX >= 0 && imageX <= imageData.width && imageY >= 0 && imageY <= imageData.height) {
+            handlePointClick(panel, imageX, imageY);
+          }
         }
       }
-
-      // Start panning
-      const setPanel = panel === 'parent' ? setParentPanel : setOverlayPanel;
-      setPanel((prev) => ({
-        ...prev,
-        isPanning: true,
-        lastPointerPos: pointer,
-      }));
     },
-    [parentPanel, overlayPanel, parentImageData, overlayImageData, activePanel]
+    [toolMode, parentPanel, overlayPanel, parentImageData, overlayImageData, handlePointClick]
   );
 
-  // Handle mouse move on a panel
+  // Handle mouse move
   const handleMouseMove = useCallback(
     (_e: Konva.KonvaEventObject<MouseEvent>, panel: 'parent' | 'overlay') => {
       const stageRef = panel === 'parent' ? parentStageRef : overlayStageRef;
@@ -516,113 +653,60 @@ export function AffineRegistrationModal({
       }
 
       // Handle panning
-      const currentPanel = panel === 'parent' ? parentPanel : overlayPanel;
-      if (!currentPanel.isPanning || !currentPanel.lastPointerPos) return;
+      if (isPanning && panningPanel === panel && lastPointerPos) {
+        const dx = pointer.x - lastPointerPos.x;
+        const dy = pointer.y - lastPointerPos.y;
 
-      const dx = pointer.x - currentPanel.lastPointerPos.x;
-      const dy = pointer.y - currentPanel.lastPointerPos.y;
-
-      const setPanel = panel === 'parent' ? setParentPanel : setOverlayPanel;
-      setPanel((prev) => ({
-        ...prev,
-        position: {
-          x: prev.position.x + dx,
-          y: prev.position.y + dy,
-        },
-        lastPointerPos: pointer,
-      }));
-    },
-    [parentPanel, overlayPanel, draggingMarker]
-  );
-
-  // Handle mouse up on a panel
-  const handleMouseUp = useCallback(
-    (_panel: 'parent' | 'overlay') => {
-      // We don't actually use the panel param, but we need it for the handler signature
-      // Both panels need to reset their panning state
-      setParentPanel((prev) => ({
-        ...prev,
-        isPanning: false,
-        lastPointerPos: null,
-      }));
-      setOverlayPanel((prev) => ({
-        ...prev,
-        isPanning: false,
-        lastPointerPos: null,
-      }));
-      setDraggingMarker(null);
-    },
-    []
-  );
-
-  // Handle point click (place new point)
-  const handlePointClick = useCallback(
-    (panel: 'parent' | 'overlay', x: number, y: number) => {
-      if (panel !== activePanel) {
-        // Wrong panel clicked - show feedback
-        return;
+        const setPanel = panel === 'parent' ? setParentPanel : setOverlayPanel;
+        setPanel((prev) => ({
+          ...prev,
+          position: {
+            x: prev.position.x + dx,
+            y: prev.position.y + dy,
+          },
+        }));
+        setLastPointerPos(pointer);
       }
-
-      setMarkers((prev) => {
-        // If there's an incomplete marker waiting for this panel's point
-        if (incompleteMarker) {
-          return prev.map((m) => {
-            if (m.id !== incompleteMarker.id) return m;
-            if (panel === 'parent') {
-              return { ...m, parentPoint: { x, y } };
-            } else {
-              return { ...m, overlayPoint: { x, y } };
-            }
-          });
-        }
-
-        // Otherwise, create a new marker
-        const newId = prev.length > 0 ? Math.max(...prev.map((m) => m.id)) + 1 : 1;
-        const newMarker: PointMarker = {
-          id: newId,
-          parentPoint: panel === 'parent' ? { x, y } : null,
-          overlayPoint: panel === 'overlay' ? { x, y } : null,
-        };
-        return [...prev, newMarker];
-      });
-
-      // Switch to other panel
-      setNextClickTarget(panel === 'parent' ? 'overlay' : 'parent');
     },
-    [activePanel, incompleteMarker]
+    [draggingMarker, isPanning, panningPanel, lastPointerPos, parentPanel, overlayPanel]
   );
 
-  // Handle right-click context menu
+  // Handle mouse up
+  const handleMouseUp = useCallback(() => {
+    setIsPanning(false);
+    setPanningPanel(null);
+    setLastPointerPos(null);
+    setDraggingMarker(null);
+  }, []);
+
+  // Handle context menu
   const handleContextMenu = useCallback(
-    (e: Konva.KonvaEventObject<PointerEvent>, markerId: number) => {
+    (e: Konva.KonvaEventObject<PointerEvent>, _panel: 'parent' | 'overlay') => {
       e.evt.preventDefault();
-      const stageNode = e.target.getStage();
-      if (!stageNode) return;
 
-      const container = stageNode.container();
-      const rect = container.getBoundingClientRect();
-
-      setContextMenu({
-        mouseX: e.evt.clientX - rect.left + rect.left,
-        mouseY: e.evt.clientY - rect.top + rect.top,
-        markerId,
-      });
+      const clickedOnMarker = e.target.name()?.startsWith('marker-');
+      if (clickedOnMarker) {
+        const markerId = parseInt(e.target.name().replace('marker-', '').split('-')[0], 10);
+        setContextMenu({
+          mouseX: e.evt.clientX,
+          mouseY: e.evt.clientY,
+          markerId,
+        });
+      }
     },
     []
   );
 
   // Delete a marker
   const handleDeleteMarker = useCallback((markerId: number) => {
-    setMarkers((prev) => {
-      const filtered = prev.filter((m) => m.id !== markerId);
-      // Renumber markers
-      return filtered.map((m, index) => ({ ...m, id: index + 1 }));
-    });
-    setSelectedMarkerId(null);
+    setMarkers((prev) => prev.filter((m) => m.id !== markerId));
     setContextMenu(null);
-  }, []);
+    if (selectedMarkerId === markerId) {
+      setSelectedMarkerId(null);
+    }
+  }, [selectedMarkerId]);
 
-  // Reset all points
+  // Reset all markers
   const handleResetAll = useCallback(() => {
     setMarkers([]);
     setNextClickTarget('parent');
@@ -630,194 +714,131 @@ export function AffineRegistrationModal({
     setWarning(null);
   }, []);
 
-  // Handle Apply button
+  // Handle Apply
   const handleApply = useCallback(async () => {
-    console.log('[AffineRegistration] handleApply called');
-    console.log('[AffineRegistration] canApply:', canApply);
-    console.log('[AffineRegistration] overlayImageData:', overlayImageData);
-    console.log('[AffineRegistration] completePairs:', markers.filter((m) => m.parentPoint && m.overlayPoint).length);
-    console.log('[AffineRegistration] markers:', markers);
+    if (!canApply || !overlayImageData || !computedMatrix) return;
 
-    if (!canApply) {
-      console.warn('[AffineRegistration] Cannot apply - not enough points');
-      alert('Please place at least 3 point pairs (click parent, then overlay, for each point)');
-      return;
-    }
-    if (!overlayImageData) {
-      console.warn('[AffineRegistration] Cannot apply - overlay image not loaded');
-      setWarning('Please wait for images to load');
-      alert('Please wait for images to load');
-      return;
-    }
-
-    // Build control points array
-    const controlPoints: ControlPoint[] = markers
-      .filter((m) => m.parentPoint && m.overlayPoint)
-      .map((m) => ({
-        source: [m.overlayPoint!.x, m.overlayPoint!.y] as [number, number],
-        target: [m.parentPoint!.x, m.parentPoint!.y] as [number, number],
-      }));
-
-    console.log('[AffineRegistration] Built control points:', controlPoints);
+    setIsGeneratingTiles(true);
+    setWarning(null);
 
     try {
-      // Compute affine matrix
-      const matrix = computeAffineMatrix(controlPoints.slice(0, 3));
-      console.log('[AffineRegistration] Computed matrix:', matrix);
-
-      // Compute transformed bounds
-      const bounds = computeTransformedBounds(overlayWidth, overlayHeight, matrix);
-      console.log('[AffineRegistration] Computed bounds:', bounds);
-
-      console.log('[AffineRegistration] Setting isGeneratingTiles to true');
-      setIsGeneratingTiles(true);
-      setWarning(null);
-
-      // Determine which hash to use
+      const bounds = computeTransformedBounds(overlayImageData.width, overlayImageData.height, computedMatrix);
       const hashToUse = overlayImageHash || overlayImageData.hash;
-      console.log('[AffineRegistration] Generating tiles for hash:', hashToUse);
-      console.log('[AffineRegistration] Image path:', overlayImagePath);
-      console.log('[AffineRegistration] window.api exists:', !!window.api);
 
-      // Generate affine tiles
-      console.log('[AffineRegistration] Calling generateAffineTiles...');
+      console.log('[AffineRegistration] Generating tiles...');
+      console.log('[AffineRegistration] Matrix:', computedMatrix);
+      console.log('[AffineRegistration] Bounds:', bounds);
+
       const result = await window.api?.generateAffineTiles(
         overlayImagePath,
         hashToUse,
-        matrix
+        computedMatrix
       );
 
-      console.log('[AffineRegistration] Tile generation result:', result);
-
-      if (!result?.success) {
-        const errorMsg = result?.error || 'Unknown error during tile generation';
-        console.error('[AffineRegistration] Failed to generate tiles:', errorMsg);
-        setWarning(`Tile generation failed: ${errorMsg}`);
-        alert(`Tile generation failed: ${errorMsg}`);
-        setIsGeneratingTiles(false);
-        return;
+      if (!result || !result.success) {
+        throw new Error(result?.error || 'Tile generation failed');
       }
 
-      console.log('[AffineRegistration] Tiles generated successfully, calling onApply');
-      console.log('[AffineRegistration] Tile hash:', hashToUse);
+      const controlPoints = markers
+        .filter((m) => m.parentPoint && m.overlayPoint)
+        .map((m) => ({
+          source: [m.overlayPoint!.x, m.overlayPoint!.y] as [number, number],
+          target: [m.parentPoint!.x, m.parentPoint!.y] as [number, number],
+        }));
 
-      // Call onApply with the computed data including the tile hash
       onApply(
-        matrix,
+        computedMatrix,
         controlPoints,
         { x: bounds.minX, y: bounds.minY },
-        bounds.width,
-        bounds.height,
+        Math.ceil(bounds.width),
+        Math.ceil(bounds.height),
         hashToUse
       );
-
-      setIsGeneratingTiles(false);
       onClose();
-    } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : String(err);
-      console.error('[AffineRegistration] Error applying transform:', err);
-      setWarning(`Transform failed: ${errorMsg}`);
-      alert(`Transform failed: ${errorMsg}`);
+    } catch (error) {
+      console.error('[AffineRegistration] Error:', error);
+      setWarning(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
       setIsGeneratingTiles(false);
     }
-  }, [
-    canApply,
-    markers,
-    overlayWidth,
-    overlayHeight,
-    overlayImagePath,
-    overlayImageHash,
-    overlayImageData,
-    onApply,
-    onClose,
-  ]);
+  }, [canApply, overlayImageData, computedMatrix, overlayImagePath, overlayImageHash, markers, onApply, onClose]);
 
-  // Handle keyboard shortcuts
+  // Keyboard shortcuts
   useEffect(() => {
     if (!open) return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         onClose();
-      } else if (e.key === 'Enter' && canApply) {
-        handleApply();
-      } else if ((e.key === 'Delete' || e.key === 'Backspace') && selectedMarkerId !== null) {
-        handleDeleteMarker(selectedMarkerId);
       } else if (e.key === 'r' || e.key === 'R') {
         handleResetAll();
-      } else if (e.key >= '1' && e.key <= '9') {
-        const num = parseInt(e.key, 10);
-        if (num <= markers.length) {
-          setSelectedMarkerId(num);
+      } else if (e.key === 'Delete' || e.key === 'Backspace') {
+        if (selectedMarkerId !== null) {
+          handleDeleteMarker(selectedMarkerId);
         }
+      } else if (e.key === 'Enter' && canApply && !isGeneratingTiles) {
+        handleApply();
+      } else if (e.key === 'p' || e.key === 'P') {
+        setToolMode('pan');
+      } else if (e.key === 'v' || e.key === 'V') {
+        setToolMode('point');
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [open, canApply, selectedMarkerId, markers.length, handleApply, handleDeleteMarker, handleResetAll, onClose]);
+  }, [open, onClose, handleResetAll, selectedMarkerId, handleDeleteMarker, canApply, isGeneratingTiles, handleApply]);
 
-  // Render point markers for a panel
+  // Render markers for a panel
   const renderMarkers = (panel: 'parent' | 'overlay', zoom: number) => {
-    const elements: React.ReactNode[] = [];
-
-    markers.forEach((marker) => {
+    return markers.map((marker) => {
       const point = panel === 'parent' ? marker.parentPoint : marker.overlayPoint;
-      if (!point) return;
+      if (!point) return null;
 
+      const isComplete = marker.parentPoint !== null && marker.overlayPoint !== null;
       const isSelected = marker.id === selectedMarkerId;
-      const isPaired =
-        marker.parentPoint !== null && marker.overlayPoint !== null;
-      const isIncomplete = !isPaired;
 
-      // Marker circle
-      elements.push(
-        <Group
-          key={`marker-${marker.id}`}
-          x={point.x}
-          y={point.y}
-          name={`marker-${marker.id}-${panel}`}
-          draggable={false} // We handle dragging manually
-          onContextMenu={(e) => handleContextMenu(e, marker.id)}
-        >
-          {/* Crosshair lines */}
+      // Scale marker size inversely with zoom
+      const markerScale = 1 / zoom;
+      const radius = MARKER_RADIUS * markerScale;
+      const crosshairSize = CROSSHAIR_SIZE * markerScale;
+      const strokeWidth = 2 * markerScale;
+
+      return (
+        <Group key={`${panel}-${marker.id}`} x={point.x} y={point.y}>
+          {/* Crosshair */}
           <Line
-            points={[-CROSSHAIR_SIZE / zoom, 0, CROSSHAIR_SIZE / zoom, 0]}
-            stroke={isSelected ? '#ffeb3b' : '#f44336'}
-            strokeWidth={2 / zoom}
+            points={[-crosshairSize, 0, crosshairSize, 0]}
+            stroke={isSelected ? '#ffeb3b' : isComplete ? '#4caf50' : '#ff9800'}
+            strokeWidth={strokeWidth}
           />
           <Line
-            points={[0, -CROSSHAIR_SIZE / zoom, 0, CROSSHAIR_SIZE / zoom]}
-            stroke={isSelected ? '#ffeb3b' : '#f44336'}
-            strokeWidth={2 / zoom}
+            points={[0, -crosshairSize, 0, crosshairSize]}
+            stroke={isSelected ? '#ffeb3b' : isComplete ? '#4caf50' : '#ff9800'}
+            strokeWidth={strokeWidth}
           />
-
           {/* Circle */}
           <Circle
-            radius={MARKER_RADIUS / zoom}
-            fill={isPaired ? '#f44336' : 'transparent'}
-            stroke={isSelected ? '#ffeb3b' : '#f44336'}
-            strokeWidth={2 / zoom}
-            dash={isIncomplete ? [4 / zoom, 4 / zoom] : undefined}
-            name={`marker-${marker.id}-circle`}
+            name={`marker-${marker.id}-${panel}`}
+            radius={radius}
+            fill={isSelected ? '#ffeb3b' : isComplete ? '#4caf50' : '#ff9800'}
+            stroke="white"
+            strokeWidth={strokeWidth}
+            opacity={0.9}
           />
-
-          {/* Number label */}
+          {/* Number */}
           <Text
             text={String(marker.id)}
-            fontSize={12 / zoom}
-            fill="white"
+            x={-radius * 0.5}
+            y={-radius * 0.6}
+            fontSize={radius * 1.2}
             fontStyle="bold"
+            fill="white"
             align="center"
-            verticalAlign="middle"
-            offsetX={3 / zoom}
-            offsetY={5 / zoom}
           />
         </Group>
       );
     });
-
-    return elements;
   };
 
   // Render an image panel
@@ -827,10 +848,10 @@ export function AffineRegistrationModal({
     stageRef: React.RefObject<Konva.Stage>,
     panelState: ImagePanelState,
     imageData: { width: number; height: number } | null,
-    thumbnail: HTMLImageElement | null
+    image: HTMLImageElement | null
   ) => {
-    const isActive = activePanel === panel;
-    const label = panel === 'parent' ? 'Parent Image' : 'Overlay Image';
+    const isActive = toolMode === 'point' && activePanel === panel;
+    const label = panel === 'parent' ? 'BASE' : 'OVERLAY';
 
     return (
       <Box
@@ -838,45 +859,35 @@ export function AffineRegistrationModal({
           flex: 1,
           display: 'flex',
           flexDirection: 'column',
-          border: isActive ? '2px solid' : '1px solid',
+          minWidth: 0,
+          border: 2,
           borderColor: isActive ? 'primary.main' : 'divider',
           borderRadius: 1,
           overflow: 'hidden',
-          bgcolor: 'background.default',
         }}
       >
-        {/* Panel header */}
         <Box
           sx={{
-            px: 2,
-            py: 1,
+            px: 1,
+            py: 0.5,
+            bgcolor: isActive ? 'primary.main' : 'background.paper',
+            color: isActive ? 'primary.contrastText' : 'text.primary',
             borderBottom: 1,
             borderColor: 'divider',
-            bgcolor: isActive ? 'action.selected' : 'background.paper',
           }}
         >
-          <Typography variant="subtitle2" color={isActive ? 'primary' : 'text.secondary'}>
+          <Typography variant="caption" fontWeight="bold">
             {label}
-            {isActive && (
-              <Typography component="span" variant="caption" sx={{ ml: 1 }}>
-                (Click here)
-              </Typography>
-            )}
+            {isActive && ' ← Click here'}
           </Typography>
         </Box>
-
-        {/* Canvas container */}
         <Box
           ref={containerRef}
           sx={{
             flex: 1,
-            position: 'relative',
-            cursor: panelState.isPanning
-              ? 'grabbing'
-              : isActive
-                ? 'crosshair'
-                : 'grab',
-            bgcolor: '#1a1a1a',
+            bgcolor: '#1e1e1e',
+            cursor: toolMode === 'pan' ? 'grab' : (isActive ? 'crosshair' : 'default'),
+            minHeight: 0,
           }}
         >
           <Stage
@@ -886,23 +897,24 @@ export function AffineRegistrationModal({
             onWheel={(e) => handleWheel(e, panel)}
             onMouseDown={(e) => handleMouseDown(e, panel)}
             onMouseMove={(e) => handleMouseMove(e, panel)}
-            onMouseUp={() => handleMouseUp(panel)}
-            onMouseLeave={() => handleMouseUp(panel)}
+            onMouseUp={handleMouseUp}
+            onMouseLeave={handleMouseUp}
+            onContextMenu={(e) => handleContextMenu(e, panel)}
           >
-            <Layer>
-              {/* Image */}
-              {thumbnail && imageData && (
+            <Layer
+              x={panelState.position.x}
+              y={panelState.position.y}
+              scaleX={panelState.zoom}
+              scaleY={panelState.zoom}
+            >
+              {image && imageData && (
                 <KonvaImage
-                  image={thumbnail}
-                  x={panelState.position.x}
-                  y={panelState.position.y}
-                  width={imageData.width * panelState.zoom}
-                  height={imageData.height * panelState.zoom}
+                  image={image}
+                  width={imageData.width}
+                  height={imageData.height}
                 />
               )}
             </Layer>
-
-            {/* Markers layer */}
             <Layer
               x={panelState.position.x}
               y={panelState.position.y}
@@ -926,7 +938,7 @@ export function AffineRegistrationModal({
         sx: { bgcolor: 'background.default' },
       }}
     >
-      {/* Header */}
+      {/* Toolbar */}
       <Box
         sx={{
           display: 'flex',
@@ -943,15 +955,42 @@ export function AffineRegistrationModal({
           <Button onClick={onClose} color="inherit">
             Cancel
           </Button>
-          <Typography variant="h6">3-Point Registration</Typography>
-        </Box>
 
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <Box sx={{ borderLeft: 1, borderColor: 'divider', pl: 2, ml: 1 }}>
+            <ToggleButtonGroup
+              value={toolMode}
+              exclusive
+              onChange={(_, value) => value && setToolMode(value)}
+              size="small"
+            >
+              <ToggleButton value="pan">
+                <Tooltip title="Pan Tool (P)">
+                  <PanToolIcon fontSize="small" />
+                </Tooltip>
+              </ToggleButton>
+              <ToggleButton value="point">
+                <Tooltip title="Point Tool (V)">
+                  <AdjustIcon fontSize="small" />
+                </Tooltip>
+              </ToggleButton>
+            </ToggleButtonGroup>
+          </Box>
+
           <Tooltip title="Reset All Points (R)">
-            <IconButton onClick={handleResetAll} disabled={markers.length === 0}>
+            <IconButton onClick={handleResetAll} disabled={markers.length === 0} size="small">
               <RestartAltIcon />
             </IconButton>
           </Tooltip>
+
+          <Typography variant="subtitle2" color="text.secondary">
+            3-Point Registration
+          </Typography>
+        </Box>
+
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <Typography variant="body2" color={warning ? 'warning.main' : 'text.secondary'}>
+            {warning || getInstructionText()}
+          </Typography>
 
           <Button
             variant="contained"
@@ -963,13 +1002,14 @@ export function AffineRegistrationModal({
         </Box>
       </Box>
 
-      {/* Main content - split view */}
+      {/* Main content */}
       <Box
         sx={{
           flex: 1,
           display: 'flex',
-          gap: 2,
-          p: 2,
+          flexDirection: 'column',
+          p: 1,
+          gap: 1,
           minHeight: 0,
         }}
       >
@@ -989,65 +1029,73 @@ export function AffineRegistrationModal({
           </Box>
         ) : (
           <>
-            {renderPanel(
-              'parent',
-              parentContainerRef,
-              parentStageRef,
-              parentPanel,
-              parentImageData,
-              parentThumbnail
-            )}
-            {renderPanel(
-              'overlay',
-              overlayContainerRef,
-              overlayStageRef,
-              overlayPanel,
-              overlayImageData,
-              overlayThumbnail
-            )}
+            {/* Top row: Base and Overlay */}
+            <Box sx={{ flex: 1, display: 'flex', gap: 1, minHeight: 0 }}>
+              {renderPanel(
+                'parent',
+                parentContainerRef,
+                parentStageRef,
+                parentPanel,
+                parentImageData,
+                parentImage
+              )}
+              {renderPanel(
+                'overlay',
+                overlayContainerRef,
+                overlayStageRef,
+                overlayPanel,
+                overlayImageData,
+                overlayImage
+              )}
+            </Box>
+
+            {/* Bottom row: Preview */}
+            <Box
+              ref={previewContainerRef}
+              sx={{
+                height: '35%',
+                minHeight: 200,
+                border: 1,
+                borderColor: 'divider',
+                borderRadius: 1,
+                overflow: 'hidden',
+                bgcolor: '#1e1e1e',
+              }}
+            >
+              <canvas
+                ref={previewCanvasRef}
+                style={{ width: '100%', height: '100%' }}
+              />
+            </Box>
           </>
         )}
       </Box>
 
       {/* Status bar */}
-      <Box
-        sx={{
-          px: 2,
-          py: 1.5,
-          borderTop: 1,
-          borderColor: 'divider',
-          bgcolor: 'background.paper',
-        }}
-      >
-        {isGeneratingTiles ? (
+      {isGeneratingTiles && (
+        <Box
+          sx={{
+            px: 2,
+            py: 1,
+            borderTop: 1,
+            borderColor: 'divider',
+            bgcolor: 'background.paper',
+          }}
+        >
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
             <Typography variant="body2">Generating transformed tiles...</Typography>
             <LinearProgress sx={{ flex: 1 }} />
           </Box>
-        ) : (
-          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <Typography variant="body2">
-              <strong>Points:</strong> {completePairs} of 3 minimum
-              {completePairs >= 3 && ` (${completePairs} total)`}
-            </Typography>
+        </Box>
+      )}
 
-            <Typography
-              variant="body2"
-              color={warning ? 'warning.main' : 'text.secondary'}
-            >
-              {warning || getInstructionText()}
-            </Typography>
-          </Box>
-        )}
-      </Box>
-
-      {/* Context menu for point deletion */}
+      {/* Context menu */}
       <Menu
         open={contextMenu !== null}
         onClose={() => setContextMenu(null)}
         anchorReference="anchorPosition"
         anchorPosition={
-          contextMenu !== null
+          contextMenu
             ? { top: contextMenu.mouseY, left: contextMenu.mouseX }
             : undefined
         }
@@ -1059,5 +1107,3 @@ export function AffineRegistrationModal({
     </Dialog>
   );
 }
-
-export default AffineRegistrationModal;
