@@ -2124,6 +2124,7 @@ ipcMain.on('set-window-title', (event, title) => {
 const tileCache = require('./tileCache');
 const tileGenerator = require('./tileGenerator');
 const tileQueue = require('./tileQueue');
+const affineTileGenerator = require('./affineTileGenerator');
 
 /**
  * Load and process an image with tiling support
@@ -2341,6 +2342,148 @@ ipcMain.handle('image:clear-all-caches', async () => {
   } catch (error) {
     log.error('Error clearing all caches:', error);
     throw error;
+  }
+});
+
+// ========== Affine Tile Handlers ==========
+// These handlers support pre-transformed tiles for 3-point registration placement
+
+/**
+ * Generate affine-transformed tiles for an overlay image
+ * Used when placing overlays using 3-point registration
+ */
+ipcMain.handle('tiles:generate-affine', async (event, imagePath, imageHash, affineMatrix) => {
+  try {
+    log.info(`[Affine] Generating tiles for: ${imagePath}`);
+    log.info(`[Affine] Matrix: [${affineMatrix.join(', ')}]`);
+
+    // Generate progress channel for this request
+    const progressChannel = `affine-progress-${Date.now()}`;
+
+    // Generate tiles with progress callback
+    const metadata = await affineTileGenerator.generateAffineTiles(
+      imagePath,
+      imageHash,
+      affineMatrix,
+      (progress) => {
+        event.sender.send(progressChannel, progress);
+      }
+    );
+
+    log.info(`[Affine] Tile generation complete: ${metadata.totalTiles} tiles`);
+    return { success: true, metadata, progressChannel };
+  } catch (error) {
+    log.error('[Affine] Failed to generate tiles:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+/**
+ * Load a single affine-transformed tile
+ */
+ipcMain.handle('tiles:load-affine-tile', async (event, imageHash, tileX, tileY) => {
+  try {
+    const buffer = await tileCache.loadAffineTile(imageHash, tileX, tileY);
+    if (!buffer) {
+      throw new Error(`Affine tile not found: ${tileX},${tileY}`);
+    }
+    return `data:image/webp;base64,${buffer.toString('base64')}`;
+  } catch (error) {
+    log.error(`[Affine] Failed to load tile ${tileX},${tileY}:`, error);
+    return null;
+  }
+});
+
+/**
+ * Load multiple affine tiles in batch
+ */
+ipcMain.handle('tiles:load-affine-tiles-batch', async (event, imageHash, tiles) => {
+  try {
+    const results = [];
+    for (const { x, y } of tiles) {
+      const buffer = await tileCache.loadAffineTile(imageHash, x, y);
+      if (buffer) {
+        results.push({
+          x,
+          y,
+          dataUrl: `data:image/webp;base64,${buffer.toString('base64')}`,
+        });
+      }
+    }
+    return results;
+  } catch (error) {
+    log.error('[Affine] Failed to load tiles batch:', error);
+    throw error;
+  }
+});
+
+/**
+ * Load affine thumbnail
+ */
+ipcMain.handle('tiles:load-affine-thumbnail', async (event, imageHash) => {
+  try {
+    const buffer = await tileCache.loadAffineThumbnail(imageHash);
+    if (!buffer) {
+      throw new Error('Affine thumbnail not found');
+    }
+    return `data:image/jpeg;base64,${buffer.toString('base64')}`;
+  } catch (error) {
+    log.error('[Affine] Failed to load thumbnail:', error);
+    throw error;
+  }
+});
+
+/**
+ * Load affine medium resolution image
+ */
+ipcMain.handle('tiles:load-affine-medium', async (event, imageHash) => {
+  try {
+    const buffer = await tileCache.loadAffineMedium(imageHash);
+    if (!buffer) {
+      throw new Error('Affine medium not found');
+    }
+    return `data:image/jpeg;base64,${buffer.toString('base64')}`;
+  } catch (error) {
+    log.error('[Affine] Failed to load medium:', error);
+    throw error;
+  }
+});
+
+/**
+ * Load affine tile metadata
+ */
+ipcMain.handle('tiles:load-affine-metadata', async (event, imageHash) => {
+  try {
+    return await tileCache.loadAffineMetadata(imageHash);
+  } catch (error) {
+    log.error('[Affine] Failed to load metadata:', error);
+    return null;
+  }
+});
+
+/**
+ * Check if affine tiles exist for an image
+ */
+ipcMain.handle('tiles:has-affine-tiles', async (event, imageHash) => {
+  try {
+    return await tileCache.hasAffineTiles(imageHash);
+  } catch (error) {
+    log.error('[Affine] Failed to check for tiles:', error);
+    return false;
+  }
+});
+
+/**
+ * Delete affine tiles (when switching away from affine placement)
+ */
+ipcMain.handle('tiles:delete-affine-tiles', async (event, imageHash) => {
+  try {
+    await tileCache.deleteAffineTiles(imageHash);
+    log.info(`[Affine] Deleted tiles for: ${imageHash}`);
+    return { success: true };
+  } catch (error) {
+    log.error('[Affine] Failed to delete tiles:', error);
+    return { success: false, error: error.message };
   }
 });
 
