@@ -740,6 +740,7 @@ interface Window {
     // Tools menu events
     onPointCount: (callback: () => void) => Unsubscribe;
     onGrainDetection: (callback: () => void) => Unsubscribe;
+    onImageComparator: (callback: () => void) => Unsubscribe;
 
     versionHistory: {
       // Create a new version (auto-save)

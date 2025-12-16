@@ -65,7 +65,6 @@ import { EditMicrographDialog } from './dialogs/metadata/EditMicrographDialog';
 import { EditMicrographLocationDialog } from './dialogs/EditMicrographLocationDialog';
 import { BatchImportDialog } from './dialogs/BatchImportDialog';
 import { SetScaleDialog } from './dialogs/SetScaleDialog';
-import { ImageComparatorDialog } from './dialogs/ImageComparatorDialog';
 import { findMicrographById } from '@/store/helpers';
 import type { DatasetMetadata, SampleMetadata, MicrographMetadata } from '@/types/project-types';
 
@@ -366,10 +365,6 @@ export function ProjectTree() {
   } | null>(null);
   const [batchOpacityParentId, setBatchOpacityParentId] = useState<string | null>(null);
   const [batchOpacityValue, setBatchOpacityValue] = useState<number>(1.0);
-
-  // Image comparator dialog state
-  const [showImageComparator, setShowImageComparator] = useState(false);
-  const [comparatorMicrographId, setComparatorMicrographId] = useState<string | null>(null);
 
   // Expansion states - from zustand store (persisted via session state)
   const expandedDatasetsArray = useAppStore((state) => state.expandedDatasets);
@@ -1062,15 +1057,6 @@ export function ProjectTree() {
           >
             Delete Micrograph
           </MenuItem>
-          <MenuItem
-            onClick={() => {
-              setComparatorMicrographId(micrograph.id);
-              setShowImageComparator(true);
-              setMicrographOptionsAnchor({ ...micrographOptionsAnchor, [micrograph.id]: null });
-            }}
-          >
-            Compare Image
-          </MenuItem>
           {/* Show/Hide All Associated Micrographs - only if has children */}
           {hasChildren && (
             <>
@@ -1570,16 +1556,6 @@ export function ProjectTree() {
           micrographId={editLocationMicrographId}
         />
       )}
-
-      {/* Image Comparator Dialog */}
-      <ImageComparatorDialog
-        open={showImageComparator}
-        onClose={() => {
-          setShowImageComparator(false);
-          setComparatorMicrographId(null);
-        }}
-        sourceMicrographId={comparatorMicrographId}
-      />
 
       {/* Delete Sample Confirmation */}
       <ConfirmDialog

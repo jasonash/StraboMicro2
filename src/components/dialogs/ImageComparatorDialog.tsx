@@ -1,46 +1,45 @@
 /**
  * Image Comparator Dialog
  *
- * A two-stage dialog for comparing micrographs:
- * 1. First stage: Select a micrograph to compare with (matching aspect ratio)
- * 2. Second stage: Full-screen comparison view with draggable scrubber
- *
- * The comparison view shows two tiled images overlaid with a vertical
- * divider that can be dragged to reveal more of either image.
+ * A full-screen modal for comparing multiple micrographs side-by-side.
+ * Supports 2 (side-by-side) or 4 (2x2 grid) independent canvases.
+ * Each canvas has its own pan/zoom and can display any micrograph.
  */
 
-import { useEffect, useState, useRef, useCallback } from 'react';
+import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import {
   Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Button,
   Box,
   Typography,
-  List,
-  ListItemButton,
-  ListItemText,
-  ListItemAvatar,
-  Avatar,
   IconButton,
   Tooltip,
+  Select,
+  MenuItem,
+  FormControl,
+  ToggleButton,
+  ToggleButtonGroup,
   CircularProgress,
+  ListItemIcon,
+  ListItemText,
+  Avatar,
 } from '@mui/material';
-import CompareIcon from '@mui/icons-material/Compare';
 import CloseIcon from '@mui/icons-material/Close';
-import { Stage, Layer, Image as KonvaImage, Rect, Group } from 'react-konva';
+import ViewStreamIcon from '@mui/icons-material/ViewStream';
+import GridViewIcon from '@mui/icons-material/GridView';
+import PlaceIcon from '@mui/icons-material/Place';
+import LayersIcon from '@mui/icons-material/Layers';
+import { Stage, Layer, Image as KonvaImage, Group, Circle, Line, Rect } from 'react-konva';
 import { useAppStore } from '@/store';
+import type { MicrographMetadata, Spot } from '@/types/project-types';
 
 const TILE_SIZE = 256;
-const MIN_ZOOM = 0.1;
+const MIN_ZOOM = 0.05;
 const MAX_ZOOM = 10;
 const ZOOM_STEP = 1.1;
 
 interface ImageComparatorDialogProps {
   open: boolean;
   onClose: () => void;
-  sourceMicrographId: string | null;
 }
 
 interface TileInfo {
@@ -59,349 +58,203 @@ interface ImageData {
   imagePath: string;
 }
 
-interface MatchingMicrograph {
+interface MicrographOption {
   id: string;
   name: string;
-  width: number;
-  height: number;
   sampleName?: string;
+  datasetName?: string;
+  thumbnail?: string;
 }
 
-export function ImageComparatorDialog({
-  open,
-  onClose,
-  sourceMicrographId,
-}: ImageComparatorDialogProps) {
-  const project = useAppStore((state) => state.project);
+interface CanvasState {
+  micrographId: string | null;
+  imageData: ImageData | null;
+  tiles: Map<string, TileInfo>;
+  thumbnail: HTMLImageElement | null;
+  zoom: number;
+  position: { x: number; y: number };
+  showSpots: boolean;
+  showOverlays: boolean;
+  isLoading: boolean;
+}
 
-  // Stage management
-  const [stage, setStage] = useState<'select' | 'compare'>('select');
-  const [selectedMicrographId, setSelectedMicrographId] = useState<string | null>(null);
+const initialCanvasState: CanvasState = {
+  micrographId: null,
+  imageData: null,
+  tiles: new Map(),
+  thumbnail: null,
+  zoom: 1,
+  position: { x: 0, y: 0 },
+  showSpots: true,
+  showOverlays: true,
+  isLoading: false,
+};
 
-  // Matching micrographs for selection
-  const [matchingMicrographs, setMatchingMicrographs] = useState<MatchingMicrograph[]>([]);
-  const [thumbnails, setThumbnails] = useState<Record<string, string>>({});
-
-  // Comparison state
-  const containerRef = useRef<HTMLDivElement>(null);
+/**
+ * Individual comparator canvas with independent pan/zoom
+ */
+function ComparatorCanvas({
+  state,
+  onStateChange,
+  micrographOptions,
+  containerSize,
+  project,
+}: {
+  state: CanvasState;
+  onStateChange: (updates: Partial<CanvasState>) => void;
+  micrographOptions: MicrographOption[];
+  containerSize: { width: number; height: number };
+  project: any;
+}) {
   const stageRef = useRef<any>(null);
-  const [stageSize, setStageSize] = useState({ width: 800, height: 600 });
-  const [zoom, setZoom] = useState(1);
-  const [position, setPosition] = useState({ x: 0, y: 0 });
-  const [scrubberPosition, setScrubberPosition] = useState(0.5); // 0-1, percentage from left
-  const [isDraggingScrubber, setIsDraggingScrubber] = useState(false);
   const [isPanning, setIsPanning] = useState(false);
   const [lastPointerPos, setLastPointerPos] = useState<{ x: number; y: number } | null>(null);
 
-  // Image data
-  const [leftImageData, setLeftImageData] = useState<ImageData | null>(null);
-  const [rightImageData, setRightImageData] = useState<ImageData | null>(null);
-  const [leftTiles, setLeftTiles] = useState<Map<string, TileInfo>>(new Map());
-  const [rightTiles, setRightTiles] = useState<Map<string, TileInfo>>(new Map());
-  const [leftThumbnail, setLeftThumbnail] = useState<HTMLImageElement | null>(null);
-  const [rightThumbnail, setRightThumbnail] = useState<HTMLImageElement | null>(null);
+  // Get spots for the selected micrograph
+  const spots = useMemo(() => {
+    if (!state.micrographId || !project) return [];
 
-
-  // Loading state
-  const [isLoading, setIsLoading] = useState(false);
-
-  // Get source micrograph info
-  const sourceMicrograph = useCallback(() => {
-    if (!project || !sourceMicrographId) return null;
+    const allSpots: Spot[] = [];
     for (const dataset of project.datasets || []) {
       for (const sample of dataset.samples || []) {
         for (const micro of sample.micrographs || []) {
-          if (micro.id === sourceMicrographId) return micro;
-        }
-      }
-    }
-    return null;
-  }, [project, sourceMicrographId]);
-
-  // Find micrographs with matching aspect ratio
-  useEffect(() => {
-    if (!open || !project || !sourceMicrographId) return;
-
-    const source = sourceMicrograph();
-    if (!source) return;
-
-    const sourceWidth = source.imageWidth || source.width || 0;
-    const sourceHeight = source.imageHeight || source.height || 0;
-    if (!sourceWidth || !sourceHeight) return;
-
-    const sourceAspect = sourceWidth / sourceHeight;
-    const tolerance = 0.01; // 1% tolerance for aspect ratio matching
-
-    const matches: MatchingMicrograph[] = [];
-
-    for (const dataset of project.datasets || []) {
-      for (const sample of dataset.samples || []) {
-        for (const micro of sample.micrographs || []) {
-          if (micro.id === sourceMicrographId) continue; // Skip source
-
-          const width = micro.imageWidth || micro.width || 0;
-          const height = micro.imageHeight || micro.height || 0;
-          if (!width || !height) continue;
-
-          const aspect = width / height;
-          const aspectDiff = Math.abs(aspect - sourceAspect) / sourceAspect;
-
-          if (aspectDiff <= tolerance) {
-            matches.push({
-              id: micro.id,
-              name: micro.name || 'Unnamed',
-              width,
-              height,
-              sampleName: sample.label || sample.sampleID || undefined,
-            });
+          if (micro.id === state.micrographId) {
+            allSpots.push(...(micro.spots || []));
           }
         }
       }
     }
+    return allSpots;
+  }, [state.micrographId, project]);
 
-    setMatchingMicrographs(matches);
-  }, [open, project, sourceMicrographId, sourceMicrograph]);
+  // Get child micrographs (overlays) for the selected micrograph
+  const overlays = useMemo(() => {
+    if (!state.micrographId || !project) return [];
 
-  // Load thumbnails for matching micrographs (use medium resolution for speed)
-  useEffect(() => {
-    if (!open || !project || matchingMicrographs.length === 0) return;
-
-    const loadThumbnails = async () => {
-      const folderPaths = await window.api?.getProjectFolderPaths(project.id);
-      if (!folderPaths) return;
-
-      // Load thumbnails in parallel for speed
-      const thumbnailPromises = matchingMicrographs.map(async (micro) => {
-        try {
-          const imagePath = `${folderPaths.images}/${micro.id}`;
-          const cacheInfo = await window.api?.checkImageCache(imagePath);
-          if (cacheInfo?.cached && cacheInfo.hash) {
-            // Use medium resolution (faster than thumbnail which may need generation)
-            const dataUrl = await window.api?.loadThumbnail(cacheInfo.hash);
-            return { id: micro.id, dataUrl };
+    const children: MicrographMetadata[] = [];
+    for (const dataset of project.datasets || []) {
+      for (const sample of dataset.samples || []) {
+        for (const micro of sample.micrographs || []) {
+          if (micro.parentID === state.micrographId) {
+            children.push(micro);
           }
-        } catch (err) {
-          console.error(`Failed to load thumbnail for ${micro.id}:`, err);
-        }
-        return null;
-      });
-
-      const results = await Promise.all(thumbnailPromises);
-      const newThumbnails: Record<string, string> = {};
-      for (const result of results) {
-        if (result?.dataUrl) {
-          newThumbnails[result.id] = result.dataUrl;
         }
       }
-      setThumbnails(newThumbnails);
-    };
-
-    loadThumbnails();
-  }, [open, project, matchingMicrographs]);
-
-  // Reset state when dialog opens
-  useEffect(() => {
-    if (open) {
-      setStage('select');
-      setSelectedMicrographId(null);
-      setScrubberPosition(0.5);
-      setLeftTiles(new Map());
-      setRightTiles(new Map());
-      setLeftThumbnail(null);
-      setRightThumbnail(null);
-      setLeftImageData(null);
-      setRightImageData(null);
     }
-  }, [open]);
+    return children;
+  }, [state.micrographId, project]);
 
-  // Handle container resize
+  // Load image when micrograph changes
   useEffect(() => {
-    if (!containerRef.current || stage !== 'compare') return;
+    if (!state.micrographId || !project) return;
 
-    const updateSize = () => {
-      if (containerRef.current) {
-        const rect = containerRef.current.getBoundingClientRect();
-        setStageSize({ width: rect.width, height: rect.height });
-      }
-    };
+    const loadImage = async () => {
+      onStateChange({ isLoading: true, tiles: new Map(), thumbnail: null, imageData: null });
 
-    updateSize();
-    window.addEventListener('resize', updateSize);
-    return () => window.removeEventListener('resize', updateSize);
-  }, [stage]);
+      try {
+        const folderPaths = await window.api?.getProjectFolderPaths(project.id);
+        if (!folderPaths) throw new Error('Could not get project folder paths');
 
-  // Load image data and thumbnails for comparison (progressive loading like TiledViewer)
-  const loadComparisonImages = useCallback(async () => {
-    if (!project || !sourceMicrographId || !selectedMicrographId) return;
+        const imagePath = `${folderPaths.images}/${state.micrographId}`;
+        const result = await window.api?.loadImageWithTiles(imagePath);
 
-    setIsLoading(true);
+        if (!result) throw new Error('Failed to load image metadata');
 
-    try {
-      // Get image paths (no extension - images stored as micrograph ID)
-      const folderPaths = await window.api?.getProjectFolderPaths(project.id);
-      if (!folderPaths) throw new Error('Could not get project folder paths');
+        const imageData: ImageData = {
+          hash: result.hash,
+          width: result.metadata.width,
+          height: result.metadata.height,
+          tilesX: result.metadata.tilesX,
+          tilesY: result.metadata.tilesY,
+          imagePath,
+        };
 
-      const leftPath = `${folderPaths.images}/${sourceMicrographId}`;
-      const rightPath = `${folderPaths.images}/${selectedMicrographId}`;
+        // Load medium resolution thumbnail
+        const thumbDataUrl = await window.api?.loadMedium(result.hash);
+        let thumbnailImg: HTMLImageElement | null = null;
 
-      // Step 1: Load metadata for both images (fast)
-      const [leftResult, rightResult] = await Promise.all([
-        window.api?.loadImageWithTiles(leftPath),
-        window.api?.loadImageWithTiles(rightPath),
-      ]);
-
-      if (!leftResult || !rightResult) {
-        throw new Error('Failed to load image metadata');
-      }
-
-      // Set image data immediately
-      setLeftImageData({
-        hash: leftResult.hash,
-        width: leftResult.metadata.width,
-        height: leftResult.metadata.height,
-        tilesX: leftResult.metadata.tilesX,
-        tilesY: leftResult.metadata.tilesY,
-        imagePath: leftPath,
-      });
-
-      setRightImageData({
-        hash: rightResult.hash,
-        width: rightResult.metadata.width,
-        height: rightResult.metadata.height,
-        tilesX: rightResult.metadata.tilesX,
-        tilesY: rightResult.metadata.tilesY,
-        imagePath: rightPath,
-      });
-
-      // Step 2: Load medium resolution images in parallel (2048px - much better than 512px thumbnail)
-      const [leftThumbDataUrl, rightThumbDataUrl] = await Promise.all([
-        window.api?.loadMedium(leftResult.hash),
-        window.api?.loadMedium(rightResult.hash),
-      ]);
-
-      // Create Image objects and wait for them to load
-      const loadImage = (dataUrl: string): Promise<HTMLImageElement> => {
-        return new Promise((resolve, reject) => {
-          const img = new Image();
-          img.onload = () => resolve(img);
-          img.onerror = reject;
-          img.src = dataUrl;
-        });
-      };
-
-      const [leftImg, rightImg] = await Promise.all([
-        leftThumbDataUrl ? loadImage(leftThumbDataUrl) : Promise.resolve(null),
-        rightThumbDataUrl ? loadImage(rightThumbDataUrl) : Promise.resolve(null),
-      ]);
-
-      if (leftImg) setLeftThumbnail(leftImg);
-      if (rightImg) setRightThumbnail(rightImg);
-
-      // Step 3: Fit to screen and clear loading state
-      // Container should be sized by now since we're in compare stage
-      // Use a small delay to ensure container is rendered
-      setTimeout(() => {
-        if (containerRef.current) {
-          const containerWidth = containerRef.current.clientWidth;
-          const containerHeight = containerRef.current.clientHeight;
-          const scaleX = containerWidth / leftResult.metadata.width;
-          const scaleY = containerHeight / leftResult.metadata.height;
-          const newZoom = Math.min(scaleX, scaleY) * 0.9;
-
-          setZoom(newZoom);
-          setPosition({
-            x: (containerWidth - leftResult.metadata.width * newZoom) / 2,
-            y: (containerHeight - leftResult.metadata.height * newZoom) / 2,
+        if (thumbDataUrl) {
+          thumbnailImg = await new Promise<HTMLImageElement>((resolve, reject) => {
+            const img = new Image();
+            img.onload = () => resolve(img);
+            img.onerror = reject;
+            img.src = thumbDataUrl;
           });
         }
-        // Clear loading AFTER thumbnails are ready - tiles will load progressively
-        setIsLoading(false);
-      }, 50);
 
-    } catch (err) {
-      console.error('Failed to load comparison images:', err);
-      setIsLoading(false);
-    }
-  }, [project, sourceMicrographId, selectedMicrographId]);
+        // Calculate fit-to-canvas zoom
+        const scaleX = containerSize.width / imageData.width;
+        const scaleY = containerSize.height / imageData.height;
+        const fitZoom = Math.min(scaleX, scaleY) * 0.95;
 
-  // Start comparison when micrograph is selected
-  const handleStartComparison = useCallback(() => {
-    if (!selectedMicrographId) return;
-    setStage('compare');
-    loadComparisonImages();
-  }, [selectedMicrographId, loadComparisonImages]);
+        onStateChange({
+          imageData,
+          thumbnail: thumbnailImg,
+          zoom: fitZoom,
+          position: {
+            x: (containerSize.width - imageData.width * fitZoom) / 2,
+            y: (containerSize.height - imageData.height * fitZoom) / 2,
+          },
+          isLoading: false,
+        });
+      } catch (err) {
+        console.error('Failed to load image:', err);
+        onStateChange({ isLoading: false });
+      }
+    };
 
-  // Load visible tiles for both images
+    loadImage();
+  }, [state.micrographId, project, containerSize.width, containerSize.height]);
+
+  // Load visible tiles
   const loadVisibleTiles = useCallback(async () => {
-    if (!leftImageData || !rightImageData) return;
+    if (!state.imageData) return;
 
-    // Calculate visible tile range based on viewport
+    const { zoom, position, imageData, tiles } = state;
+
+    // Calculate visible tile range
     const viewportLeft = -position.x / zoom;
     const viewportTop = -position.y / zoom;
-    const viewportRight = viewportLeft + stageSize.width / zoom;
-    const viewportBottom = viewportTop + stageSize.height / zoom;
+    const viewportRight = viewportLeft + containerSize.width / zoom;
+    const viewportBottom = viewportTop + containerSize.height / zoom;
 
     const startTileX = Math.max(0, Math.floor(viewportLeft / TILE_SIZE));
     const startTileY = Math.max(0, Math.floor(viewportTop / TILE_SIZE));
-    const endTileX = Math.min(leftImageData.tilesX - 1, Math.ceil(viewportRight / TILE_SIZE));
-    const endTileY = Math.min(leftImageData.tilesY - 1, Math.ceil(viewportBottom / TILE_SIZE));
+    const endTileX = Math.min(imageData.tilesX - 1, Math.ceil(viewportRight / TILE_SIZE));
+    const endTileY = Math.min(imageData.tilesY - 1, Math.ceil(viewportBottom / TILE_SIZE));
 
-    // Collect tiles to load
-    const leftTilesToLoad: Array<{ x: number; y: number }> = [];
-    const rightTilesToLoad: Array<{ x: number; y: number }> = [];
+    const tilesToLoad: Array<{ x: number; y: number }> = [];
 
     for (let ty = startTileY; ty <= endTileY; ty++) {
       for (let tx = startTileX; tx <= endTileX; tx++) {
         const tileKey = `${tx}_${ty}`;
-        if (!leftTiles.has(tileKey)) {
-          leftTilesToLoad.push({ x: tx, y: ty });
-        }
-        if (!rightTiles.has(tileKey)) {
-          rightTilesToLoad.push({ x: tx, y: ty });
+        if (!tiles.has(tileKey)) {
+          tilesToLoad.push({ x: tx, y: ty });
         }
       }
     }
 
-    // Load tiles in batches
-    if (leftTilesToLoad.length > 0) {
-      const results = await window.api?.loadTilesBatch(leftImageData.hash, leftTilesToLoad);
+    if (tilesToLoad.length > 0) {
+      const results = await window.api?.loadTilesBatch(imageData.hash, tilesToLoad);
       if (results) {
-        setLeftTiles((prev) => {
-          const newMap = new Map(prev);
-          for (const tile of results) {
-            const tileKey = `${tile.x}_${tile.y}`;
-            const img = new Image();
-            img.src = tile.dataUrl;
-            newMap.set(tileKey, { x: tile.x, y: tile.y, dataUrl: tile.dataUrl, imageObj: img });
-          }
-          return newMap;
-        });
+        const newTiles = new Map(tiles);
+        for (const tile of results) {
+          const tileKey = `${tile.x}_${tile.y}`;
+          const img = new Image();
+          img.src = tile.dataUrl;
+          newTiles.set(tileKey, { x: tile.x, y: tile.y, dataUrl: tile.dataUrl, imageObj: img });
+        }
+        onStateChange({ tiles: newTiles });
       }
     }
-
-    if (rightTilesToLoad.length > 0) {
-      const results = await window.api?.loadTilesBatch(rightImageData.hash, rightTilesToLoad);
-      if (results) {
-        setRightTiles((prev) => {
-          const newMap = new Map(prev);
-          for (const tile of results) {
-            const tileKey = `${tile.x}_${tile.y}`;
-            const img = new Image();
-            img.src = tile.dataUrl;
-            newMap.set(tileKey, { x: tile.x, y: tile.y, dataUrl: tile.dataUrl, imageObj: img });
-          }
-          return newMap;
-        });
-      }
-    }
-  }, [leftImageData, rightImageData, position, zoom, stageSize, leftTiles, rightTiles]);
+  }, [state.imageData, state.zoom, state.position, state.tiles, containerSize]);
 
   // Load tiles when viewport changes
   useEffect(() => {
-    if (stage === 'compare' && leftImageData && rightImageData) {
+    if (state.imageData && !state.isLoading) {
       loadVisibleTiles();
     }
-  }, [stage, leftImageData, rightImageData, position, zoom, loadVisibleTiles]);
+  }, [state.imageData, state.zoom, state.position, state.isLoading]);
 
   // Handle wheel zoom
   const handleWheel = useCallback((e: any) => {
@@ -415,193 +268,530 @@ export function ImageComparatorDialog({
 
     const direction = e.evt.deltaY > 0 ? -1 : 1;
     const newZoom = direction > 0
-      ? Math.min(zoom * ZOOM_STEP, MAX_ZOOM)
-      : Math.max(zoom / ZOOM_STEP, MIN_ZOOM);
+      ? Math.min(state.zoom * ZOOM_STEP, MAX_ZOOM)
+      : Math.max(state.zoom / ZOOM_STEP, MIN_ZOOM);
 
-    // Zoom toward pointer position
     const mousePointTo = {
-      x: (pointer.x - position.x) / zoom,
-      y: (pointer.y - position.y) / zoom,
+      x: (pointer.x - state.position.x) / state.zoom,
+      y: (pointer.y - state.position.y) / state.zoom,
     };
 
-    setZoom(newZoom);
-    setPosition({
-      x: pointer.x - mousePointTo.x * newZoom,
-      y: pointer.y - mousePointTo.y * newZoom,
+    onStateChange({
+      zoom: newZoom,
+      position: {
+        x: pointer.x - mousePointTo.x * newZoom,
+        y: pointer.y - mousePointTo.y * newZoom,
+      },
     });
-  }, [zoom, position]);
+  }, [state.zoom, state.position, onStateChange]);
 
   // Handle panning
   const handleMouseDown = useCallback(() => {
-    // Check if clicking on scrubber area (within 20px of scrubber line)
     const stageNode = stageRef.current;
     if (!stageNode) return;
 
     const pointer = stageNode.getPointerPosition();
     if (!pointer) return;
-
-    const scrubberX = stageSize.width * scrubberPosition;
-    if (Math.abs(pointer.x - scrubberX) < 20) {
-      setIsDraggingScrubber(true);
-      return;
-    }
 
     setIsPanning(true);
     setLastPointerPos(pointer);
-  }, [scrubberPosition, stageSize.width]);
+  }, []);
 
   const handleMouseMove = useCallback(() => {
+    if (!isPanning || !lastPointerPos) return;
+
     const stageNode = stageRef.current;
     if (!stageNode) return;
 
     const pointer = stageNode.getPointerPosition();
     if (!pointer) return;
 
-    if (isDraggingScrubber) {
-      const newPosition = Math.max(0, Math.min(1, pointer.x / stageSize.width));
-      setScrubberPosition(newPosition);
-      return;
-    }
+    const dx = pointer.x - lastPointerPos.x;
+    const dy = pointer.y - lastPointerPos.y;
 
-    if (isPanning && lastPointerPos) {
-      const dx = pointer.x - lastPointerPos.x;
-      const dy = pointer.y - lastPointerPos.y;
-      setPosition((prev) => ({ x: prev.x + dx, y: prev.y + dy }));
-      setLastPointerPos(pointer);
-    }
-  }, [isDraggingScrubber, isPanning, lastPointerPos, stageSize.width]);
+    onStateChange({
+      position: {
+        x: state.position.x + dx,
+        y: state.position.y + dy,
+      },
+    });
+    setLastPointerPos(pointer);
+  }, [isPanning, lastPointerPos, state.position, onStateChange]);
 
   const handleMouseUp = useCallback(() => {
-    setIsDraggingScrubber(false);
     setIsPanning(false);
     setLastPointerPos(null);
   }, []);
 
-  // Render tile images for one side
-  // Shows medium-res thumbnail as base, with tiles rendered on top as they load
-  const renderTiles = (
-    tiles: Map<string, TileInfo>,
-    thumbnail: HTMLImageElement | null,
-    imageData: ImageData | null
-  ) => {
-    if (!imageData) return null;
+  // Render tiles
+  const renderTiles = () => {
+    if (!state.imageData) return null;
 
     const elements: React.ReactNode[] = [];
 
-    // Always render thumbnail first as base layer (medium res - 2048px)
-    if (thumbnail) {
+    // Thumbnail as base layer
+    if (state.thumbnail) {
       elements.push(
         <KonvaImage
           key="thumbnail"
-          image={thumbnail}
+          image={state.thumbnail}
           x={0}
           y={0}
-          width={imageData.width}
-          height={imageData.height}
+          width={state.imageData.width}
+          height={state.imageData.height}
         />
       );
     }
 
-    // Render tiles on top as they load (full resolution)
-    if (tiles.size > 0) {
-      for (const tile of tiles.values()) {
-        if (tile.imageObj) {
-          elements.push(
-            <KonvaImage
-              key={`tile_${tile.x}_${tile.y}`}
-              image={tile.imageObj}
-              x={tile.x * TILE_SIZE}
-              y={tile.y * TILE_SIZE}
-            />
-          );
-        }
+    // Tiles on top
+    for (const tile of state.tiles.values()) {
+      if (tile.imageObj) {
+        elements.push(
+          <KonvaImage
+            key={`tile_${tile.x}_${tile.y}`}
+            image={tile.imageObj}
+            x={tile.x * TILE_SIZE}
+            y={tile.y * TILE_SIZE}
+          />
+        );
       }
     }
 
     return elements;
   };
 
-  // Selection stage UI
-  if (stage === 'select') {
-    const source = sourceMicrograph();
+  // Render spots
+  const renderSpots = () => {
+    if (!state.showSpots || spots.length === 0) return null;
 
-    return (
-      <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
-        <DialogTitle>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <CompareIcon />
-            <Typography variant="h6">Compare Image</Typography>
-          </Box>
-        </DialogTitle>
-        <DialogContent>
-          {source && (
-            <Box sx={{ mb: 2 }}>
-              <Typography variant="body2" color="text.secondary">
-                Comparing: <strong>{source.name || 'Unnamed'}</strong>
-              </Typography>
-              <Typography variant="caption" color="text.secondary">
-                {source.imageWidth || source.width} × {source.imageHeight || source.height} pixels
-              </Typography>
-            </Box>
-          )}
+    return spots.map((spot) => {
+      const color = spot.color || '#FF0000';
+      const geometry = spot.geometry;
+      const geometryType = spot.geometryType || geometry?.type;
 
-          {matchingMicrographs.length === 0 ? (
-            <Typography color="text.secondary" sx={{ py: 4, textAlign: 'center' }}>
-              No micrographs with matching aspect ratio found.
-            </Typography>
-          ) : (
-            <>
-              <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                Select a micrograph to compare with ({matchingMicrographs.length} available):
-              </Typography>
-              <List sx={{ maxHeight: 400, overflow: 'auto' }}>
-                {matchingMicrographs.map((micro) => (
-                  <ListItemButton
-                    key={micro.id}
-                    selected={selectedMicrographId === micro.id}
-                    onClick={() => setSelectedMicrographId(micro.id)}
-                    sx={{ borderRadius: 1, mb: 0.5 }}
-                  >
-                    <ListItemAvatar>
-                      <Avatar
-                        variant="rounded"
-                        src={thumbnails[micro.id]}
-                        sx={{ width: 56, height: 56, mr: 1 }}
-                      >
-                        <CompareIcon />
-                      </Avatar>
-                    </ListItemAvatar>
-                    <ListItemText
-                      primary={micro.name}
-                      secondary={
-                        <>
-                          {micro.sampleName && <span>{micro.sampleName} • </span>}
-                          {micro.width} × {micro.height}
-                        </>
-                      }
-                    />
-                  </ListItemButton>
-                ))}
-              </List>
-            </>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={onClose}>Cancel</Button>
-          <Button
-            variant="contained"
-            disabled={!selectedMicrographId}
-            onClick={handleStartComparison}
+      // Handle GeoJSON geometry
+      if (geometry && geometry.type) {
+        if (geometry.type === 'Point') {
+          const coords = geometry.coordinates as [number, number];
+          return (
+            <Circle
+              key={spot.id}
+              x={coords[0]}
+              y={coords[1]}
+              radius={8 / state.zoom}
+              fill={color}
+              stroke="#000"
+              strokeWidth={1 / state.zoom}
+            />
+          );
+        }
+
+        if (geometry.type === 'LineString') {
+          const coords = geometry.coordinates as number[][];
+          const points = coords.flatMap((p) => [p[0], p[1]]);
+          return (
+            <Line
+              key={spot.id}
+              points={points}
+              stroke={color}
+              strokeWidth={3 / state.zoom}
+            />
+          );
+        }
+
+        if (geometry.type === 'Polygon') {
+          const coords = geometry.coordinates as number[][][];
+          const outerRing = coords[0] || [];
+          const points = outerRing.flatMap((p) => [p[0], p[1]]);
+          return (
+            <Line
+              key={spot.id}
+              points={points}
+              stroke={color}
+              strokeWidth={2 / state.zoom}
+              fill={`${color}40`}
+              closed
+            />
+          );
+        }
+      }
+
+      // Handle legacy points array
+      if (spot.points && spot.points.length > 0) {
+        const firstPoint = spot.points[0];
+        if (geometryType === 'Point' || spot.points.length === 1) {
+          return (
+            <Circle
+              key={spot.id}
+              x={firstPoint.X ?? 0}
+              y={firstPoint.Y ?? 0}
+              radius={8 / state.zoom}
+              fill={color}
+              stroke="#000"
+              strokeWidth={1 / state.zoom}
+            />
+          );
+        }
+
+        const points = spot.points.flatMap((p) => [p.X ?? 0, p.Y ?? 0]);
+        if (geometryType === 'LineString' || spot.points.length === 2) {
+          return (
+            <Line
+              key={spot.id}
+              points={points}
+              stroke={color}
+              strokeWidth={3 / state.zoom}
+            />
+          );
+        }
+
+        // Polygon
+        return (
+          <Line
+            key={spot.id}
+            points={points}
+            stroke={color}
+            strokeWidth={2 / state.zoom}
+            fill={`${color}40`}
+            closed
+          />
+        );
+      }
+
+      return null;
+    });
+  };
+
+  // Render overlay outlines
+  const renderOverlays = () => {
+    if (!state.showOverlays || overlays.length === 0) return null;
+
+    return overlays.map((overlay) => {
+      if (!overlay.offsetInParent) return null;
+
+      const x = overlay.offsetInParent.X || 0;
+      const y = overlay.offsetInParent.Y || 0;
+      const width = (overlay.imageWidth || overlay.width || 100) * (overlay.scaleX || 1);
+      const height = (overlay.imageHeight || overlay.height || 100) * (overlay.scaleY || 1);
+
+      return (
+        <Rect
+          key={overlay.id}
+          x={x}
+          y={y}
+          width={width}
+          height={height}
+          stroke="#00BFFF"
+          strokeWidth={2 / state.zoom}
+          dash={[10 / state.zoom, 5 / state.zoom]}
+          rotation={overlay.rotation || 0}
+        />
+      );
+    });
+  };
+
+  return (
+    <Box
+      sx={{
+        display: 'flex',
+        flexDirection: 'column',
+        height: '100%',
+        border: 1,
+        borderColor: 'divider',
+        borderRadius: 1,
+        overflow: 'hidden',
+        bgcolor: 'background.paper',
+      }}
+    >
+      {/* Canvas header */}
+      <Box
+        sx={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 1,
+          p: 1,
+          borderBottom: 1,
+          borderColor: 'divider',
+          bgcolor: 'background.default',
+        }}
+      >
+        {/* Micrograph selector */}
+        <FormControl size="small" sx={{ minWidth: 200, flex: 1 }}>
+          <Select
+            value={state.micrographId || ''}
+            onChange={(e) => {
+              const newId = e.target.value || null;
+              onStateChange({ micrographId: newId, tiles: new Map(), thumbnail: null, imageData: null });
+            }}
+            displayEmpty
+            renderValue={(selected) => {
+              if (!selected) return <em>Select micrograph...</em>;
+              const option = micrographOptions.find((o) => o.id === selected);
+              return option?.name || 'Unknown';
+            }}
           >
-            Compare
-          </Button>
-        </DialogActions>
-      </Dialog>
-    );
-  }
+            <MenuItem value="">
+              <em>None</em>
+            </MenuItem>
+            {micrographOptions.map((option) => (
+              <MenuItem key={option.id} value={option.id}>
+                <ListItemIcon sx={{ minWidth: 40 }}>
+                  <Avatar
+                    src={option.thumbnail}
+                    variant="rounded"
+                    sx={{ width: 32, height: 32 }}
+                  >
+                    <LayersIcon fontSize="small" />
+                  </Avatar>
+                </ListItemIcon>
+                <ListItemText
+                  primary={option.name}
+                  secondary={option.sampleName}
+                  primaryTypographyProps={{ noWrap: true }}
+                  secondaryTypographyProps={{ noWrap: true }}
+                />
+              </MenuItem>
+            ))}
+          </Select>
+        </FormControl>
 
-  // Comparison stage UI
-  const scrubberX = stageSize.width * scrubberPosition;
+        {/* Toggle buttons */}
+        <Tooltip title={state.showSpots ? 'Hide Spots' : 'Show Spots'}>
+          <ToggleButton
+            value="spots"
+            selected={state.showSpots}
+            onChange={() => onStateChange({ showSpots: !state.showSpots })}
+            size="small"
+            sx={{ p: 0.5 }}
+          >
+            <PlaceIcon fontSize="small" />
+          </ToggleButton>
+        </Tooltip>
+
+        <Tooltip title={state.showOverlays ? 'Hide Overlays' : 'Show Overlays'}>
+          <ToggleButton
+            value="overlays"
+            selected={state.showOverlays}
+            onChange={() => onStateChange({ showOverlays: !state.showOverlays })}
+            size="small"
+            sx={{ p: 0.5 }}
+          >
+            <LayersIcon fontSize="small" />
+          </ToggleButton>
+        </Tooltip>
+      </Box>
+
+      {/* Canvas area */}
+      <Box
+        sx={{
+          flex: 1,
+          position: 'relative',
+          bgcolor: 'grey.900',
+          cursor: isPanning ? 'grabbing' : 'grab',
+        }}
+      >
+        {state.isLoading ? (
+          <Box
+            sx={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              height: '100%',
+            }}
+          >
+            <CircularProgress size={40} />
+          </Box>
+        ) : !state.micrographId ? (
+          <Box
+            sx={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              height: '100%',
+              color: 'grey.500',
+            }}
+          >
+            <Typography>Select a micrograph</Typography>
+          </Box>
+        ) : (
+          <Stage
+            ref={stageRef}
+            width={containerSize.width}
+            height={containerSize.height}
+            onWheel={handleWheel}
+            onMouseDown={handleMouseDown}
+            onMouseMove={handleMouseMove}
+            onMouseUp={handleMouseUp}
+            onMouseLeave={handleMouseUp}
+          >
+            <Layer>
+              <Group x={state.position.x} y={state.position.y} scaleX={state.zoom} scaleY={state.zoom}>
+                {renderTiles()}
+                {renderSpots()}
+                {renderOverlays()}
+              </Group>
+            </Layer>
+          </Stage>
+        )}
+      </Box>
+    </Box>
+  );
+}
+
+/**
+ * Main Image Comparator Dialog
+ */
+export function ImageComparatorDialog({ open, onClose }: ImageComparatorDialogProps) {
+  const project = useAppStore((state) => state.project);
+
+  // Grid mode: 2 or 4 canvases
+  const [gridMode, setGridMode] = useState<2 | 4>(2);
+
+  // Canvas states
+  const [canvasStates, setCanvasStates] = useState<CanvasState[]>([
+    { ...initialCanvasState },
+    { ...initialCanvasState },
+    { ...initialCanvasState },
+    { ...initialCanvasState },
+  ]);
+
+  // Container size
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [containerSize, setContainerSize] = useState({ width: 400, height: 300 });
+
+  // Build micrograph options with thumbnails
+  const [micrographOptions, setMicrographOptions] = useState<MicrographOption[]>([]);
+
+  // Reset state when dialog opens
+  useEffect(() => {
+    if (open) {
+      setGridMode(2);
+      setCanvasStates([
+        { ...initialCanvasState },
+        { ...initialCanvasState },
+        { ...initialCanvasState },
+        { ...initialCanvasState },
+      ]);
+    }
+  }, [open]);
+
+  // Build micrograph options
+  useEffect(() => {
+    if (!open || !project) {
+      setMicrographOptions([]);
+      return;
+    }
+
+    const buildOptions = async () => {
+      const options: MicrographOption[] = [];
+      const folderPaths = await window.api?.getProjectFolderPaths(project.id);
+
+      for (const dataset of project.datasets || []) {
+        for (const sample of dataset.samples || []) {
+          for (const micro of sample.micrographs || []) {
+            options.push({
+              id: micro.id,
+              name: micro.name || 'Unnamed',
+              sampleName: sample.label || sample.sampleID || undefined,
+              datasetName: dataset.name || undefined,
+            });
+          }
+        }
+      }
+
+      // Load thumbnails in parallel
+      if (folderPaths) {
+        const thumbnailPromises = options.map(async (option) => {
+          try {
+            const imagePath = `${folderPaths.images}/${option.id}`;
+            const cacheInfo = await window.api?.checkImageCache(imagePath);
+            if (cacheInfo?.cached && cacheInfo.hash) {
+              const dataUrl = await window.api?.loadThumbnail(cacheInfo.hash);
+              return { id: option.id, dataUrl };
+            }
+          } catch (err) {
+            // Ignore thumbnail load errors
+          }
+          return null;
+        });
+
+        const results = await Promise.all(thumbnailPromises);
+        for (const result of results) {
+          if (result?.dataUrl) {
+            const option = options.find((o) => o.id === result.id);
+            if (option) {
+              option.thumbnail = result.dataUrl;
+            }
+          }
+        }
+      }
+
+      setMicrographOptions(options);
+    };
+
+    buildOptions();
+  }, [open, project]);
+
+  // Update container size
+  useEffect(() => {
+    if (!containerRef.current || !open) return;
+
+    const updateSize = () => {
+      if (containerRef.current) {
+        const rect = containerRef.current.getBoundingClientRect();
+        // Calculate individual canvas size based on grid mode
+        const cols = gridMode === 2 ? 2 : 2;
+        const rows = gridMode === 2 ? 1 : 2;
+        const gap = 8; // Gap between canvases
+
+        setContainerSize({
+          width: (rect.width - gap * (cols - 1)) / cols,
+          height: (rect.height - gap * (rows - 1)) / rows,
+        });
+      }
+    };
+
+    // Small delay to ensure dialog is rendered
+    const timer = setTimeout(updateSize, 50);
+    window.addEventListener('resize', updateSize);
+
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener('resize', updateSize);
+    };
+  }, [open, gridMode]);
+
+  // Update canvas state helper
+  const updateCanvasState = useCallback((index: number, updates: Partial<CanvasState>) => {
+    setCanvasStates((prev) => {
+      const newStates = [...prev];
+      newStates[index] = { ...newStates[index], ...updates };
+      return newStates;
+    });
+  }, []);
+
+  // Handle grid mode change
+  const handleGridModeChange = (_: any, newMode: 2 | 4 | null) => {
+    if (newMode !== null) {
+      setGridMode(newMode);
+    }
+  };
+
+  // Handle escape key
+  useEffect(() => {
+    if (!open) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [open, onClose]);
+
+  const activeCanvasCount = gridMode;
 
   return (
     <Dialog
@@ -609,131 +799,73 @@ export function ImageComparatorDialog({
       onClose={onClose}
       fullScreen
       PaperProps={{
-        sx: { bgcolor: 'background.default' }
+        sx: { bgcolor: 'background.default' },
       }}
     >
       {/* Header */}
-      <Box sx={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        p: 1,
-        borderBottom: 1,
-        borderColor: 'divider',
-      }}>
+      <Box
+        sx={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          p: 1,
+          borderBottom: 1,
+          borderColor: 'divider',
+        }}
+      >
         <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <CompareIcon /> Image Comparator
+          Image Comparator
         </Typography>
 
-        <Tooltip title="Close">
+        {/* Grid mode toggle */}
+        <ToggleButtonGroup
+          value={gridMode}
+          exclusive
+          onChange={handleGridModeChange}
+          size="small"
+        >
+          <ToggleButton value={2}>
+            <Tooltip title="2 Images (Side by Side)">
+              <ViewStreamIcon sx={{ transform: 'rotate(90deg)' }} />
+            </Tooltip>
+          </ToggleButton>
+          <ToggleButton value={4}>
+            <Tooltip title="4 Images (Grid)">
+              <GridViewIcon />
+            </Tooltip>
+          </ToggleButton>
+        </ToggleButtonGroup>
+
+        <Tooltip title="Close (Escape)">
           <IconButton onClick={onClose}>
             <CloseIcon />
           </IconButton>
         </Tooltip>
       </Box>
 
-      {/* Comparison canvas */}
+      {/* Canvas grid */}
       <Box
         ref={containerRef}
         sx={{
           flex: 1,
-          position: 'relative',
+          display: 'grid',
+          gridTemplateColumns: 'repeat(2, 1fr)',
+          gridTemplateRows: gridMode === 4 ? 'repeat(2, 1fr)' : '1fr',
+          gap: 1,
+          p: 1,
           overflow: 'hidden',
-          cursor: isDraggingScrubber ? 'ew-resize' : isPanning ? 'grabbing' : 'grab',
         }}
       >
-        {isLoading ? (
-          <Box sx={{
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            height: '100%',
-            gap: 2,
-          }}>
-            <CircularProgress />
-            <Typography>Loading images...</Typography>
-          </Box>
-        ) : (
-          <Stage
-            ref={stageRef}
-            width={stageSize.width}
-            height={stageSize.height}
-            onWheel={handleWheel}
-            onMouseDown={handleMouseDown}
-            onMouseMove={handleMouseMove}
-            onMouseUp={handleMouseUp}
-            onMouseLeave={handleMouseUp}
-          >
-            {/* Left image layer (clipped to left of scrubber) */}
-            <Layer
-              clipFunc={(ctx) => {
-                ctx.rect(0, 0, scrubberX, stageSize.height);
-              }}
-            >
-              <Group x={position.x} y={position.y} scaleX={zoom} scaleY={zoom}>
-                {renderTiles(leftTiles, leftThumbnail, leftImageData)}
-              </Group>
-            </Layer>
-
-            {/* Right image layer (clipped to right of scrubber) */}
-            <Layer
-              clipFunc={(ctx) => {
-                ctx.rect(scrubberX, 0, stageSize.width - scrubberX, stageSize.height);
-              }}
-            >
-              <Group x={position.x} y={position.y} scaleX={zoom} scaleY={zoom}>
-                {renderTiles(rightTiles, rightThumbnail, rightImageData)}
-              </Group>
-            </Layer>
-
-            {/* Scrubber line */}
-            <Layer>
-              <Rect
-                x={scrubberX - 2}
-                y={0}
-                width={4}
-                height={stageSize.height}
-                fill="white"
-                shadowColor="black"
-                shadowBlur={4}
-                shadowOpacity={0.5}
-              />
-              {/* Scrubber handle */}
-              <Rect
-                x={scrubberX - 15}
-                y={stageSize.height / 2 - 30}
-                width={30}
-                height={60}
-                fill="white"
-                cornerRadius={4}
-                shadowColor="black"
-                shadowBlur={4}
-                shadowOpacity={0.3}
-              />
-              {/* Handle grip lines */}
-              <Rect x={scrubberX - 6} y={stageSize.height / 2 - 15} width={2} height={30} fill="#999" />
-              <Rect x={scrubberX - 1} y={stageSize.height / 2 - 15} width={2} height={30} fill="#999" />
-              <Rect x={scrubberX + 4} y={stageSize.height / 2 - 15} width={2} height={30} fill="#999" />
-            </Layer>
-          </Stage>
-        )}
-      </Box>
-
-      {/* Footer with image names */}
-      <Box sx={{
-        display: 'flex',
-        justifyContent: 'space-between',
-        p: 1,
-        borderTop: 1,
-        borderColor: 'divider',
-      }}>
-        <Typography variant="caption" color="text.secondary">
-          Left: {sourceMicrograph()?.name || 'Unknown'}
-        </Typography>
-        <Typography variant="caption" color="text.secondary">
-          Right: {matchingMicrographs.find(m => m.id === selectedMicrographId)?.name || 'Unknown'}
-        </Typography>
+        {Array.from({ length: activeCanvasCount }).map((_, index) => (
+          <ComparatorCanvas
+            key={index}
+            state={canvasStates[index]}
+            onStateChange={(updates) => updateCanvasState(index, updates)}
+            micrographOptions={micrographOptions}
+            containerSize={containerSize}
+            project={project}
+          />
+        ))}
       </Box>
     </Dialog>
   );
