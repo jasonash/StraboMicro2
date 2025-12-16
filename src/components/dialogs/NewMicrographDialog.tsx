@@ -2864,10 +2864,10 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
 
           <Box sx={{
             p: 3,
-            border: '1px dashed',
+            border: '2px solid',
             borderColor: hasRegistration ? 'success.main' : 'divider',
             borderRadius: 1,
-            bgcolor: hasRegistration ? 'success.main' : 'action.hover',
+            bgcolor: hasRegistration ? 'success.light' : 'action.hover',
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
@@ -2877,11 +2877,11 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
               <>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                   <CheckCircle color="success" />
-                  <Typography variant="subtitle1" color="success.main">
+                  <Typography variant="subtitle1" color="success.dark" fontWeight="bold">
                     Registration Complete
                   </Typography>
                 </Box>
-                <Typography variant="body2" color="text.secondary">
+                <Typography variant="body2" color="text.primary">
                   {formData.affineControlPoints?.length || 0} control points defined
                 </Typography>
                 <Button

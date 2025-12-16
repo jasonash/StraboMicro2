@@ -14,6 +14,35 @@ const tileCache = require('./tileCache');
 
 // Configuration (matches tileGenerator.js)
 const TILE_SIZE = 256;
+
+/**
+ * Compute the inverse of an affine matrix.
+ * @param {number[]} matrix - Affine matrix [a, b, tx, c, d, ty]
+ * @returns {number[]} Inverse matrix [a', b', tx', c', d', ty']
+ */
+function invertAffineMatrix(matrix) {
+  const [a, b, tx, c, d, ty] = matrix;
+
+  // Determinant of the 2x2 linear part
+  const det = a * d - b * c;
+  if (Math.abs(det) < 1e-10) {
+    throw new Error('Matrix is not invertible (determinant ≈ 0)');
+  }
+
+  const invDet = 1 / det;
+
+  // Inverse of 2x2 matrix: [d, -b; -c, a] / det
+  const aInv = d * invDet;
+  const bInv = -b * invDet;
+  const cInv = -c * invDet;
+  const dInv = a * invDet;
+
+  // Inverse translation: -[aInv, bInv; cInv, dInv] * [tx; ty]
+  const txInv = -(aInv * tx + bInv * ty);
+  const tyInv = -(cInv * tx + dInv * ty);
+
+  return [aInv, bInv, txInv, cInv, dInv, tyInv];
+}
 const THUMBNAIL_SIZE = 512;
 const MEDIUM_SIZE = 2048;
 const JPEG_QUALITY = 85;
@@ -78,10 +107,8 @@ function computeTransformedBounds(width, height, matrix) {
  * @returns {Promise<Object>} Metadata including transformed dimensions
  */
 async function generateAffineTiles(imagePath, imageHash, affineMatrix, onProgress = null) {
-  const [a, b, tx, c, d, ty] = affineMatrix;
-
   console.log(`[AffineTileGenerator] Starting for image: ${imagePath}`);
-  console.log(`[AffineTileGenerator] Matrix: [${affineMatrix.join(', ')}]`);
+  console.log(`[AffineTileGenerator] Forward matrix (overlay→parent): [${affineMatrix.join(', ')}]`);
 
   // 1. Get source image dimensions
   const sourceMetadata = await sharp(imagePath, { limitInputPixels: false }).metadata();
@@ -90,7 +117,8 @@ async function generateAffineTiles(imagePath, imageHash, affineMatrix, onProgres
 
   console.log(`[AffineTileGenerator] Source: ${srcWidth}x${srcHeight}`);
 
-  // 2. Compute output bounding box
+  // 2. Compute output bounding box using the FORWARD matrix
+  // This tells us where the overlay will appear in parent space
   const bounds = computeTransformedBounds(srcWidth, srcHeight, affineMatrix);
   console.log(`[AffineTileGenerator] Transformed bounds:`, bounds);
 
@@ -98,34 +126,52 @@ async function generateAffineTiles(imagePath, imageHash, affineMatrix, onProgres
   const outputWidth = Math.max(1, Math.ceil(bounds.width));
   const outputHeight = Math.max(1, Math.ceil(bounds.height));
 
-  // 3. Adjust translation to account for negative bounds
-  // The transformed image origin needs to be at (0,0) in the output
-  const adjustedTx = tx - bounds.minX;
-  const adjustedTy = ty - bounds.minY;
+  console.log(`[AffineTileGenerator] Output dimensions: ${outputWidth}x${outputHeight}`);
+
+  // 3. Compute the INVERSE matrix for Sharp
+  // Sharp's affine() maps output coordinates → input coordinates (inverse mapping)
+  // Our forward matrix maps overlay → parent, so inverse maps parent → overlay
+  const invMatrix = invertAffineMatrix(affineMatrix);
+  const [aInv, bInv, txInv, cInv, dInv, tyInv] = invMatrix;
+
+  console.log(`[AffineTileGenerator] Inverse matrix (parent→overlay): [${invMatrix.join(', ')}]`);
+
+  // 4. Compute input offset for Sharp
+  // Output pixel (ox, oy) corresponds to parent position (bounds.minX + ox, bounds.minY + oy)
+  // We need to sample from overlay at M^(-1)(bounds.minX + ox, bounds.minY + oy)
+  // = M^(-1) * [bounds.minX + ox, bounds.minY + oy]
+  // = [aInv, bInv] * [bounds.minX + ox] + txInv
+  //   [cInv, dInv]   [bounds.minY + oy]   tyInv
+  // = aInv*ox + bInv*oy + (aInv*bounds.minX + bInv*bounds.minY + txInv)
+  // = cInv*ox + dInv*oy + (cInv*bounds.minX + dInv*bounds.minY + tyInv)
+  // So idx/idy are the constant offset terms
+  const idx = aInv * bounds.minX + bInv * bounds.minY + txInv;
+  const idy = cInv * bounds.minX + dInv * bounds.minY + tyInv;
+
+  console.log(`[AffineTileGenerator] Input offset: idx=${idx.toFixed(2)}, idy=${idy.toFixed(2)}`);
 
   if (onProgress) onProgress(5);
 
-  // 4. Create output directory
+  // 5. Create output directory
   const affineDir = tileCache.getAffineTilesDir(imageHash);
 
-  // 5. Apply affine transform with Sharp
+  // 6. Apply affine transform with Sharp using INVERSE matrix
   console.log(`[AffineTileGenerator] Applying transform...`);
 
-  // Sharp's affine uses 2x2 matrix + offset
-  // We need to handle the full transform including translation
   let transformedBuffer;
   try {
-    // First apply the affine transform
-    // Sharp's affine() applies: output[x,y] = matrix * input[x,y] + offset
-    // We want to map source coords to output coords
+    // Sharp's affine() samples input at: matrix * (output_pos) + input_offset
+    // We use the inverse matrix so Sharp correctly maps output → input
     transformedBuffer = await sharp(imagePath, { limitInputPixels: false })
       .ensureAlpha()
       .affine(
-        [[a, b], [c, d]],
+        [[aInv, bInv], [cInv, dInv]],
         {
           background: { r: 0, g: 0, b: 0, alpha: 0 },
-          odx: adjustedTx,
-          ody: adjustedTy
+          idx: idx,
+          idy: idy,
+          odx: 0,
+          ody: 0
         }
       )
       .toBuffer();
