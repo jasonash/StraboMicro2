@@ -102,7 +102,7 @@ export function AffineRegistrationModal({
   const previewContainerRef = useRef<HTMLDivElement>(null);
   const parentStageRef = useRef<Konva.Stage>(null);
   const overlayStageRef = useRef<Konva.Stage>(null);
-  const previewCanvasRef = useRef<HTMLCanvasElement>(null);
+  const previewStageRef = useRef<Konva.Stage>(null);
 
   // Panel sizes - each panel needs its own size
   const [parentPanelSize, setParentPanelSize] = useState({ width: 400, height: 300 });
@@ -134,10 +134,18 @@ export function AffineRegistrationModal({
     zoom: 1,
     position: { x: 0, y: 0 },
   });
+  const [previewPanel, setPreviewPanel] = useState<ImagePanelState>({
+    zoom: 1,
+    position: { x: 0, y: 0 },
+  });
+
+  // Preview composite image
+  const [previewCompositeImage, setPreviewCompositeImage] = useState<HTMLImageElement | null>(null);
+  const [previewCentered, setPreviewCentered] = useState(false);
 
   // Panning state
   const [isPanning, setIsPanning] = useState(false);
-  const [panningPanel, setPanningPanel] = useState<'parent' | 'overlay' | null>(null);
+  const [panningPanel, setPanningPanel] = useState<'parent' | 'overlay' | 'preview' | null>(null);
   const [lastPointerPos, setLastPointerPos] = useState<{ x: number; y: number } | null>(null);
 
   // Control points
@@ -248,6 +256,8 @@ export function AffineRegistrationModal({
       setOverlayImageData(null);
       setParentCentered(false);
       setOverlayCentered(false);
+      setPreviewCompositeImage(null);
+      setPreviewCentered(false);
     }
   }, [open, existingControlPoints]);
 
@@ -459,46 +469,29 @@ export function AffineRegistrationModal({
     setOverlayCentered(true);
   }, [overlayImageData, overlayImage, overlayPanelSize, overlayCentered]);
 
-  // Draw preview canvas
+  // Generate preview composite image (offscreen)
   useEffect(() => {
-    const canvas = previewCanvasRef.current;
-    if (!canvas || !parentImage || !overlayImage || !parentImageData) return;
+    if (!parentImage || !overlayImage || !parentImageData) {
+      setPreviewCompositeImage(null);
+      return;
+    }
+
+    // Create offscreen canvas at full resolution
+    const canvas = document.createElement('canvas');
+    canvas.width = parentImageData.width;
+    canvas.height = parentImageData.height;
 
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // Set canvas size
-    canvas.width = previewSize.width;
-    canvas.height = previewSize.height;
-
-    // Clear canvas
-    ctx.fillStyle = '#1e1e1e';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-    // Calculate scale to fit parent image in preview
-    const scale = Math.min(
-      (previewSize.width - 40) / parentImageData.width,
-      (previewSize.height - 40) / parentImageData.height
-    ) * 0.95;
-
-    const offsetX = (previewSize.width - parentImageData.width * scale) / 2;
-    const offsetY = (previewSize.height - parentImageData.height * scale) / 2;
-
-    // Draw parent image
-    ctx.save();
-    ctx.translate(offsetX, offsetY);
-    ctx.scale(scale, scale);
+    // Draw parent image at full size
     ctx.drawImage(parentImage, 0, 0, parentImageData.width, parentImageData.height);
-    ctx.restore();
 
     // Draw transformed overlay if we have a valid matrix
     if (computedMatrix && overlayImageData) {
       const [a, b, tx, c, d, ty] = computedMatrix;
 
       ctx.save();
-      ctx.translate(offsetX, offsetY);
-      ctx.scale(scale, scale);
-
       // Apply affine transform: x' = a*x + b*y + tx, y' = c*x + d*y + ty
       // Canvas setTransform uses: x' = a*x + c*y + e, y' = b*x + d*y + f
       // So we need to map: canvas(a,b,c,d,e,f) = our(a, c, b, d, tx, ty)
@@ -508,41 +501,38 @@ export function AffineRegistrationModal({
       ctx.globalAlpha = 0.6;
       ctx.drawImage(overlayImage, 0, 0, overlayImageData.width, overlayImageData.height);
       ctx.restore();
-
-      // Draw label
-      ctx.fillStyle = '#4caf50';
-      ctx.font = '14px sans-serif';
-      ctx.fillText('✓ Preview (3+ points)', 10, 24);
-    } else {
-      // Draw "needs more points" message
-      ctx.fillStyle = '#ff9800';
-      ctx.font = '14px sans-serif';
-      ctx.fillText(`Need ${3 - completePairs} more point${3 - completePairs !== 1 ? 's' : ''} for preview`, 10, 24);
     }
 
-    // Draw control point markers on preview
-    markers.forEach((marker) => {
-      if (marker.parentPoint) {
-        const px = offsetX + marker.parentPoint.x * scale;
-        const py = offsetY + marker.parentPoint.y * scale;
+    // Convert canvas to image
+    const dataUrl = canvas.toDataURL('image/png');
+    const img = new Image();
+    img.onload = () => {
+      setPreviewCompositeImage(img);
+      setPreviewCentered(false); // Trigger re-centering
+    };
+    img.src = dataUrl;
 
-        ctx.beginPath();
-        ctx.arc(px, py, 6, 0, Math.PI * 2);
-        ctx.fillStyle = '#f44336';
-        ctx.fill();
-        ctx.strokeStyle = 'white';
-        ctx.lineWidth = 2;
-        ctx.stroke();
+  }, [parentImage, overlayImage, parentImageData, overlayImageData, computedMatrix]);
 
-        ctx.fillStyle = 'white';
-        ctx.font = 'bold 10px sans-serif';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(String(marker.id), px, py);
-      }
+  // Center preview when size and image are available
+  useEffect(() => {
+    if (!previewCompositeImage || !parentImageData || previewCentered) return;
+    if (previewSize.width < 100 || previewSize.height < 100) return;
+
+    const scale = Math.min(
+      previewSize.width / parentImageData.width,
+      previewSize.height / parentImageData.height
+    ) * 0.9;
+
+    setPreviewPanel({
+      zoom: scale,
+      position: {
+        x: (previewSize.width - parentImageData.width * scale) / 2,
+        y: (previewSize.height - parentImageData.height * scale) / 2,
+      },
     });
-
-  }, [parentImage, overlayImage, parentImageData, overlayImageData, computedMatrix, markers, previewSize, completePairs]);
+    setPreviewCentered(true);
+  }, [previewCompositeImage, parentImageData, previewSize, previewCentered]);
 
   // Validate points when markers change
   useEffect(() => {
@@ -756,6 +746,83 @@ export function AffineRegistrationModal({
     setLastPointerPos(null);
     setDraggingMarker(null);
   }, []);
+
+  // Preview panel wheel zoom
+  const handlePreviewWheel = useCallback(
+    (e: Konva.KonvaEventObject<WheelEvent>) => {
+      e.evt.preventDefault();
+
+      const stageNode = previewStageRef.current;
+      if (!stageNode) return;
+
+      const pointer = stageNode.getPointerPosition();
+      if (!pointer) return;
+
+      const direction = e.evt.deltaY > 0 ? -1 : 1;
+      const newZoom =
+        direction > 0
+          ? Math.min(previewPanel.zoom * ZOOM_STEP, MAX_ZOOM)
+          : Math.max(previewPanel.zoom / ZOOM_STEP, MIN_ZOOM);
+
+      const mousePointTo = {
+        x: (pointer.x - previewPanel.position.x) / previewPanel.zoom,
+        y: (pointer.y - previewPanel.position.y) / previewPanel.zoom,
+      };
+
+      setPreviewPanel({
+        zoom: newZoom,
+        position: {
+          x: pointer.x - mousePointTo.x * newZoom,
+          y: pointer.y - mousePointTo.y * newZoom,
+        },
+      });
+    },
+    [previewPanel]
+  );
+
+  // Preview panel mouse down
+  const handlePreviewMouseDown = useCallback(
+    (_e: Konva.KonvaEventObject<MouseEvent>) => {
+      const stageNode = previewStageRef.current;
+      if (!stageNode) return;
+
+      const pointer = stageNode.getPointerPosition();
+      if (!pointer) return;
+
+      // Start panning
+      setIsPanning(true);
+      setPanningPanel('preview');
+      setLastPointerPos(pointer);
+    },
+    []
+  );
+
+  // Preview panel mouse move
+  const handlePreviewMouseMove = useCallback(
+    (_e: Konva.KonvaEventObject<MouseEvent>) => {
+      const stageNode = previewStageRef.current;
+      if (!stageNode) return;
+
+      const pointer = stageNode.getPointerPosition();
+      if (!pointer) return;
+
+      // Handle panning
+      if (isPanning && panningPanel === 'preview' && lastPointerPos) {
+        const dx = pointer.x - lastPointerPos.x;
+        const dy = pointer.y - lastPointerPos.y;
+
+        setPreviewPanel((prev) => ({
+          ...prev,
+          position: {
+            x: prev.position.x + dx,
+            y: prev.position.y + dy,
+          },
+        }));
+        setLastPointerPos(pointer);
+      }
+    },
+    [isPanning, panningPanel, lastPointerPos]
+  );
 
   // Handle context menu
   const handleContextMenu = useCallback(
@@ -1138,29 +1205,134 @@ export function AffineRegistrationModal({
               )}
             </Box>
 
-            {/* Bottom row: Preview - takes 35% of space */}
+            {/* Bottom row: Preview - takes more vertical space for better visibility */}
             <Box
-              ref={previewContainerRef}
               sx={{
-                flex: '1 1 0',
-                minHeight: 150,
-                maxHeight: 350,
+                flex: '1.2 1 0',
+                minHeight: 250,
+                display: 'flex',
+                flexDirection: 'column',
                 border: 1,
-                borderColor: 'divider',
+                borderColor: canApply ? 'success.main' : 'divider',
                 borderRadius: 1,
                 overflow: 'hidden',
-                bgcolor: '#1e1e1e',
-                position: 'relative',
               }}
             >
-              <canvas
-                ref={previewCanvasRef}
-                width={previewSize.width}
-                height={previewSize.height}
-                style={{
-                  display: 'block',
+              {/* Preview header */}
+              <Box
+                sx={{
+                  flexShrink: 0,
+                  px: 1,
+                  py: 0.5,
+                  bgcolor: canApply ? 'success.dark' : 'background.paper',
+                  color: canApply ? 'success.contrastText' : 'text.primary',
+                  borderBottom: 1,
+                  borderColor: 'divider',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 1,
                 }}
-              />
+              >
+                <Typography variant="caption" fontWeight="bold">
+                  PREVIEW
+                  {canApply ? ' (3+ points)' : ` (need ${3 - completePairs} more point${3 - completePairs !== 1 ? 's' : ''})`}
+                </Typography>
+                <Typography variant="caption" color="text.secondary" sx={{ ml: 'auto' }}>
+                  Scroll to zoom, drag to pan
+                </Typography>
+              </Box>
+              {/* Preview canvas */}
+              <Box
+                ref={previewContainerRef}
+                sx={{
+                  flex: '1 1 0',
+                  width: '100%',
+                  height: '100%',
+                  bgcolor: '#1e1e1e',
+                  cursor: 'grab',
+                  minHeight: 0,
+                  position: 'relative',
+                  overflow: 'hidden',
+                }}
+              >
+                <Stage
+                  ref={previewStageRef}
+                  width={previewSize.width}
+                  height={previewSize.height}
+                  style={{ display: 'block' }}
+                  onWheel={handlePreviewWheel}
+                  onMouseDown={handlePreviewMouseDown}
+                  onMouseMove={handlePreviewMouseMove}
+                  onMouseUp={handleMouseUp}
+                  onMouseLeave={handleMouseUp}
+                >
+                  <Layer
+                    x={previewPanel.position.x}
+                    y={previewPanel.position.y}
+                    scaleX={previewPanel.zoom}
+                    scaleY={previewPanel.zoom}
+                  >
+                    {previewCompositeImage && parentImageData && (
+                      <KonvaImage
+                        image={previewCompositeImage}
+                        width={parentImageData.width}
+                        height={parentImageData.height}
+                      />
+                    )}
+                  </Layer>
+                  {/* Markers layer for preview */}
+                  <Layer
+                    x={previewPanel.position.x}
+                    y={previewPanel.position.y}
+                    scaleX={previewPanel.zoom}
+                    scaleY={previewPanel.zoom}
+                  >
+                    {markers.map((marker) => {
+                      if (!marker.parentPoint) return null;
+                      const markerScale = 1 / previewPanel.zoom;
+                      const radius = MARKER_RADIUS * markerScale;
+                      return (
+                        <Group key={`preview-${marker.id}`} x={marker.parentPoint.x} y={marker.parentPoint.y}>
+                          <Circle
+                            radius={radius}
+                            fill="#f44336"
+                            stroke="white"
+                            strokeWidth={2 * markerScale}
+                          />
+                          <Text
+                            text={String(marker.id)}
+                            x={-radius * 0.5}
+                            y={-radius * 0.6}
+                            fontSize={radius * 1.2}
+                            fontStyle="bold"
+                            fill="white"
+                            align="center"
+                          />
+                        </Group>
+                      );
+                    })}
+                  </Layer>
+                </Stage>
+                {/* Show message when no preview available */}
+                {!previewCompositeImage && (
+                  <Box
+                    sx={{
+                      position: 'absolute',
+                      top: 0,
+                      left: 0,
+                      right: 0,
+                      bottom: 0,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <Typography color="text.secondary">
+                      {isLoading ? 'Loading images...' : 'Add control points to see preview'}
+                    </Typography>
+                  </Box>
+                )}
+              </Box>
             </Box>
           </>
         )}
