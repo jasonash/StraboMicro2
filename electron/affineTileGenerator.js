@@ -14,6 +14,10 @@ const tileCache = require('./tileCache');
 
 // Configuration (matches tileGenerator.js)
 const TILE_SIZE = 256;
+const THUMBNAIL_SIZE = 512;
+const MEDIUM_SIZE = 2048;
+const PNG_COMPRESSION = 6;
+const WEBP_QUALITY = 90;
 
 /**
  * Compute the inverse of an affine matrix.
@@ -43,10 +47,6 @@ function invertAffineMatrix(matrix) {
 
   return [aInv, bInv, txInv, cInv, dInv, tyInv];
 }
-const THUMBNAIL_SIZE = 512;
-const MEDIUM_SIZE = 2048;
-const JPEG_QUALITY = 85;
-const WEBP_QUALITY = 90;
 
 /**
  * Compute the bounding box of a transformed image.
@@ -92,13 +92,72 @@ function computeTransformedBounds(width, height, matrix) {
 }
 
 /**
+ * Bilinear interpolation for sampling a pixel from raw RGBA data.
+ * Returns [r, g, b, a] for the interpolated pixel, or [0,0,0,0] if out of bounds.
+ *
+ * @param {Buffer} data - Raw RGBA pixel data
+ * @param {number} width - Image width
+ * @param {number} height - Image height
+ * @param {number} x - X coordinate (can be fractional)
+ * @param {number} y - Y coordinate (can be fractional)
+ * @returns {number[]} [r, g, b, a]
+ */
+function sampleBilinear(data, width, height, x, y) {
+  // Check bounds - return transparent if outside
+  if (x < 0 || x >= width - 1 || y < 0 || y >= height - 1) {
+    // Handle edge cases with nearest neighbor for pixels partially in bounds
+    if (x >= -0.5 && x < width - 0.5 && y >= -0.5 && y < height - 0.5) {
+      const nx = Math.round(x);
+      const ny = Math.round(y);
+      if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+        const idx = (ny * width + nx) * 4;
+        return [data[idx], data[idx + 1], data[idx + 2], data[idx + 3]];
+      }
+    }
+    return [0, 0, 0, 0];
+  }
+
+  const x0 = Math.floor(x);
+  const y0 = Math.floor(y);
+  const x1 = x0 + 1;
+  const y1 = y0 + 1;
+
+  const xFrac = x - x0;
+  const yFrac = y - y0;
+
+  // Get the four surrounding pixels
+  const idx00 = (y0 * width + x0) * 4;
+  const idx10 = (y0 * width + x1) * 4;
+  const idx01 = (y1 * width + x0) * 4;
+  const idx11 = (y1 * width + x1) * 4;
+
+  const result = [];
+  for (let c = 0; c < 4; c++) {
+    const v00 = data[idx00 + c];
+    const v10 = data[idx10 + c];
+    const v01 = data[idx01 + c];
+    const v11 = data[idx11 + c];
+
+    // Bilinear interpolation
+    const v0 = v00 + (v10 - v00) * xFrac;
+    const v1 = v01 + (v11 - v01) * xFrac;
+    const v = v0 + (v1 - v0) * yFrac;
+
+    result.push(Math.round(v));
+  }
+
+  return result;
+}
+
+/**
  * Generate affine-transformed tiles for an overlay image.
  *
  * The process:
- * 1. Apply affine transform to the source image using Sharp
- * 2. Generate thumbnail and medium resolution from transformed image
- * 3. Generate tile pyramid from transformed image
- * 4. Save all to tiles-affine/ subdirectory
+ * 1. Load source image as raw RGBA
+ * 2. Compute output bounds and inverse matrix
+ * 3. Create output buffer with correct dimensions
+ * 4. For each output pixel, sample from source using inverse transform
+ * 5. Generate thumbnail, medium, and tiles from the transformed image
  *
  * @param {string} imagePath - Path to source image
  * @param {string} imageHash - Hash for cache directory
@@ -110,126 +169,116 @@ async function generateAffineTiles(imagePath, imageHash, affineMatrix, onProgres
   console.log(`[AffineTileGenerator] Starting for image: ${imagePath}`);
   console.log(`[AffineTileGenerator] Forward matrix (overlay→parent): [${affineMatrix.join(', ')}]`);
 
-  // 1. Get source image dimensions
-  const sourceMetadata = await sharp(imagePath, { limitInputPixels: false }).metadata();
-  const srcWidth = sourceMetadata.width;
-  const srcHeight = sourceMetadata.height;
+  // 1. Load source image as raw RGBA
+  const sourceRaw = await sharp(imagePath, { limitInputPixels: false })
+    .ensureAlpha()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+
+  const srcData = sourceRaw.data;
+  const srcWidth = sourceRaw.info.width;
+  const srcHeight = sourceRaw.info.height;
 
   console.log(`[AffineTileGenerator] Source: ${srcWidth}x${srcHeight}`);
 
+  if (onProgress) onProgress(5);
+
   // 2. Compute output bounding box using the FORWARD matrix
-  // This tells us where the overlay will appear in parent space
   const bounds = computeTransformedBounds(srcWidth, srcHeight, affineMatrix);
   console.log(`[AffineTileGenerator] Transformed bounds:`, bounds);
 
-  // Ensure output dimensions are positive integers
+  // Output dimensions (in parent coordinate space)
   const outputWidth = Math.max(1, Math.ceil(bounds.width));
   const outputHeight = Math.max(1, Math.ceil(bounds.height));
 
   console.log(`[AffineTileGenerator] Output dimensions: ${outputWidth}x${outputHeight}`);
 
-  // 3. Compute the INVERSE matrix for Sharp
-  // Sharp's affine() maps output coordinates → input coordinates (inverse mapping)
-  // Our forward matrix maps overlay → parent, so inverse maps parent → overlay
+  // 3. Compute the INVERSE matrix
+  // For each output pixel, we need to find where it samples from in the source
   const invMatrix = invertAffineMatrix(affineMatrix);
   const [aInv, bInv, txInv, cInv, dInv, tyInv] = invMatrix;
 
   console.log(`[AffineTileGenerator] Inverse matrix (parent→overlay): [${invMatrix.join(', ')}]`);
 
-  // 4. Compute input offset for Sharp
-  // Output pixel (ox, oy) corresponds to parent position (bounds.minX + ox, bounds.minY + oy)
-  // We need to sample from overlay at M^(-1)(bounds.minX + ox, bounds.minY + oy)
-  // = M^(-1) * [bounds.minX + ox, bounds.minY + oy]
-  // = [aInv, bInv] * [bounds.minX + ox] + txInv
-  //   [cInv, dInv]   [bounds.minY + oy]   tyInv
-  // = aInv*ox + bInv*oy + (aInv*bounds.minX + bInv*bounds.minY + txInv)
-  // = cInv*ox + dInv*oy + (cInv*bounds.minX + dInv*bounds.minY + tyInv)
-  // So idx/idy are the constant offset terms
-  const idx = aInv * bounds.minX + bInv * bounds.minY + txInv;
-  const idy = cInv * bounds.minX + dInv * bounds.minY + tyInv;
+  if (onProgress) onProgress(10);
 
-  console.log(`[AffineTileGenerator] Input offset: idx=${idx.toFixed(2)}, idy=${idy.toFixed(2)}`);
+  // 4. Create output buffer and perform inverse transform sampling
+  console.log(`[AffineTileGenerator] Applying transform (inverse sampling)...`);
 
-  if (onProgress) onProgress(5);
+  const outputData = Buffer.alloc(outputWidth * outputHeight * 4, 0);
 
-  // 5. Create output directory
-  const affineDir = tileCache.getAffineTilesDir(imageHash);
+  // For each output pixel (ox, oy), compute source position and sample
+  for (let oy = 0; oy < outputHeight; oy++) {
+    // Parent-space position for this row
+    const parentY = bounds.minY + oy;
 
-  // 6. Apply affine transform with Sharp using INVERSE matrix
-  console.log(`[AffineTileGenerator] Applying transform...`);
+    for (let ox = 0; ox < outputWidth; ox++) {
+      // Parent-space position
+      const parentX = bounds.minX + ox;
 
-  let transformedBuffer;
-  try {
-    // Sharp's affine() samples input at: matrix * (output_pos) + input_offset
-    // We use the inverse matrix so Sharp correctly maps output → input
-    transformedBuffer = await sharp(imagePath, { limitInputPixels: false })
-      .ensureAlpha()
-      .affine(
-        [[aInv, bInv], [cInv, dInv]],
-        {
-          background: { r: 0, g: 0, b: 0, alpha: 0 },
-          idx: idx,
-          idy: idy,
-          odx: 0,
-          ody: 0
-        }
-      )
-      .toBuffer();
-  } catch (error) {
-    console.error('[AffineTileGenerator] Affine transform failed:', error);
-    throw new Error(`Failed to apply affine transform: ${error.message}`);
+      // Apply inverse transform to get source (overlay) position
+      // source = M^(-1) * parent
+      const srcX = aInv * parentX + bInv * parentY + txInv;
+      const srcY = cInv * parentX + dInv * parentY + tyInv;
+
+      // Sample from source with bilinear interpolation
+      const [r, g, b, a] = sampleBilinear(srcData, srcWidth, srcHeight, srcX, srcY);
+
+      // Write to output
+      const outIdx = (oy * outputWidth + ox) * 4;
+      outputData[outIdx] = r;
+      outputData[outIdx + 1] = g;
+      outputData[outIdx + 2] = b;
+      outputData[outIdx + 3] = a;
+    }
+
+    // Progress updates during transform (10-30%)
+    if (onProgress && oy % 100 === 0) {
+      const progress = 10 + Math.floor((oy / outputHeight) * 20);
+      onProgress(progress);
+    }
   }
 
-  if (onProgress) onProgress(15);
+  if (onProgress) onProgress(30);
 
-  // Get actual dimensions of transformed image
-  const transformedMetadata = await sharp(transformedBuffer).metadata();
-  const actualWidth = transformedMetadata.width;
-  const actualHeight = transformedMetadata.height;
+  // 5. Create Sharp instance from transformed data
+  const transformedSharp = sharp(outputData, {
+    raw: {
+      width: outputWidth,
+      height: outputHeight,
+      channels: 4
+    }
+  });
 
-  console.log(`[AffineTileGenerator] Transformed: ${actualWidth}x${actualHeight}`);
-
-  // 6. Generate thumbnail
+  // 6. Generate thumbnail (PNG for transparency)
   console.log(`[AffineTileGenerator] Generating thumbnail...`);
-  const thumbnailBuffer = await sharp(transformedBuffer)
+  const thumbnailBuffer = await transformedSharp
+    .clone()
     .resize(THUMBNAIL_SIZE, THUMBNAIL_SIZE, { fit: 'inside' })
-    .jpeg({ quality: JPEG_QUALITY })
+    .png({ compressionLevel: PNG_COMPRESSION })
     .toBuffer();
 
   await tileCache.saveAffineThumbnail(imageHash, thumbnailBuffer);
 
-  if (onProgress) onProgress(25);
+  if (onProgress) onProgress(40);
 
-  // 7. Generate medium resolution
+  // 7. Generate medium resolution (PNG for transparency)
   console.log(`[AffineTileGenerator] Generating medium resolution...`);
-  const mediumBuffer = await sharp(transformedBuffer)
+  const mediumBuffer = await transformedSharp
+    .clone()
     .resize(MEDIUM_SIZE, MEDIUM_SIZE, { fit: 'inside' })
-    .jpeg({ quality: JPEG_QUALITY })
+    .png({ compressionLevel: PNG_COMPRESSION })
     .toBuffer();
 
   await tileCache.saveAffineMedium(imageHash, mediumBuffer);
 
-  if (onProgress) onProgress(35);
+  if (onProgress) onProgress(50);
 
   // 8. Generate full-resolution tiles
   console.log(`[AffineTileGenerator] Generating tiles...`);
 
-  // Get raw pixel data for tile extraction
-  const rawData = await sharp(transformedBuffer)
-    .ensureAlpha()
-    .raw()
-    .toBuffer({ resolveWithObject: true });
-
-  // Release transformed buffer - we have the raw data now
-  transformedBuffer = null;
-
-  const { data, info } = rawData;
-  const dataWidth = info.width;
-  const dataHeight = info.height;
-  const channels = info.channels;
-
-  const tilesX = Math.ceil(dataWidth / TILE_SIZE);
-  const tilesY = Math.ceil(dataHeight / TILE_SIZE);
+  const tilesX = Math.ceil(outputWidth / TILE_SIZE);
+  const tilesY = Math.ceil(outputHeight / TILE_SIZE);
   const totalTiles = tilesX * tilesY;
 
   console.log(`[AffineTileGenerator] Generating ${totalTiles} tiles (${tilesX}x${tilesY})...`);
@@ -239,10 +288,10 @@ async function generateAffineTiles(imagePath, imageHash, affineMatrix, onProgres
   for (let tileY = 0; tileY < tilesY; tileY++) {
     for (let tileX = 0; tileX < tilesX; tileX++) {
       await generateSingleTile(
-        data,
-        dataWidth,
-        dataHeight,
-        channels,
+        outputData,
+        outputWidth,
+        outputHeight,
+        4, // channels
         tileX,
         tileY,
         imageHash
@@ -250,7 +299,7 @@ async function generateAffineTiles(imagePath, imageHash, affineMatrix, onProgres
 
       tilesGenerated++;
       if (onProgress) {
-        const progress = 35 + Math.floor((tilesGenerated / totalTiles) * 60);
+        const progress = 50 + Math.floor((tilesGenerated / totalTiles) * 45);
         onProgress(progress);
       }
     }
@@ -260,8 +309,8 @@ async function generateAffineTiles(imagePath, imageHash, affineMatrix, onProgres
   const metadata = {
     originalWidth: srcWidth,
     originalHeight: srcHeight,
-    transformedWidth: dataWidth,
-    transformedHeight: dataHeight,
+    transformedWidth: outputWidth,
+    transformedHeight: outputHeight,
     affineMatrix,
     boundsOffset: { x: bounds.minX, y: bounds.minY },
     tileSize: TILE_SIZE,
@@ -310,7 +359,7 @@ async function generateSingleTile(data, imageWidth, imageHeight, channels, tileX
     rowData.copy(tileBuffer, tileOffset);
   }
 
-  // Encode as WebP
+  // Encode as WebP with alpha
   const webpBuffer = await sharp(tileBuffer, {
     raw: {
       width: TILE_SIZE,
@@ -318,7 +367,7 @@ async function generateSingleTile(data, imageWidth, imageHeight, channels, tileX
       channels
     }
   })
-    .webp({ quality: WEBP_QUALITY })
+    .webp({ quality: WEBP_QUALITY, alphaQuality: 100 })
     .toBuffer();
 
   // Save tile
