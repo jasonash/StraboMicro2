@@ -97,18 +97,41 @@ function ComparatorCanvas({
   state,
   onStateChange,
   micrographOptions,
-  containerSize,
   project,
 }: {
   state: CanvasState;
   onStateChange: (updates: Partial<CanvasState>) => void;
   micrographOptions: MicrographOption[];
-  containerSize: { width: number; height: number };
   project: any;
 }) {
   const stageRef = useRef<any>(null);
+  const canvasAreaRef = useRef<HTMLDivElement>(null);
+  const [canvasSize, setCanvasSize] = useState({ width: 400, height: 300 });
   const [isPanning, setIsPanning] = useState(false);
   const [lastPointerPos, setLastPointerPos] = useState<{ x: number; y: number } | null>(null);
+
+  // Measure actual canvas area
+  useEffect(() => {
+    if (!canvasAreaRef.current) return;
+
+    const updateSize = () => {
+      if (canvasAreaRef.current) {
+        const rect = canvasAreaRef.current.getBoundingClientRect();
+        if (rect.width > 0 && rect.height > 0) {
+          setCanvasSize({ width: rect.width, height: rect.height });
+        }
+      }
+    };
+
+    // Initial measurement
+    updateSize();
+
+    // Use ResizeObserver for dynamic updates
+    const observer = new ResizeObserver(updateSize);
+    observer.observe(canvasAreaRef.current);
+
+    return () => observer.disconnect();
+  }, []);
 
   // Get spots for the selected micrograph
   const spots = useMemo(() => {
@@ -183,8 +206,8 @@ function ComparatorCanvas({
         }
 
         // Calculate fit-to-canvas zoom
-        const scaleX = containerSize.width / imageData.width;
-        const scaleY = containerSize.height / imageData.height;
+        const scaleX = canvasSize.width / imageData.width;
+        const scaleY = canvasSize.height / imageData.height;
         const fitZoom = Math.min(scaleX, scaleY) * 0.95;
 
         onStateChange({
@@ -192,8 +215,8 @@ function ComparatorCanvas({
           thumbnail: thumbnailImg,
           zoom: fitZoom,
           position: {
-            x: (containerSize.width - imageData.width * fitZoom) / 2,
-            y: (containerSize.height - imageData.height * fitZoom) / 2,
+            x: (canvasSize.width - imageData.width * fitZoom) / 2,
+            y: (canvasSize.height - imageData.height * fitZoom) / 2,
           },
           isLoading: false,
         });
@@ -204,7 +227,7 @@ function ComparatorCanvas({
     };
 
     loadImage();
-  }, [state.micrographId, project, containerSize.width, containerSize.height]);
+  }, [state.micrographId, project, canvasSize.width, canvasSize.height]);
 
   // Load visible tiles
   const loadVisibleTiles = useCallback(async () => {
@@ -215,8 +238,8 @@ function ComparatorCanvas({
     // Calculate visible tile range
     const viewportLeft = -position.x / zoom;
     const viewportTop = -position.y / zoom;
-    const viewportRight = viewportLeft + containerSize.width / zoom;
-    const viewportBottom = viewportTop + containerSize.height / zoom;
+    const viewportRight = viewportLeft + canvasSize.width / zoom;
+    const viewportBottom = viewportTop + canvasSize.height / zoom;
 
     const startTileX = Math.max(0, Math.floor(viewportLeft / TILE_SIZE));
     const startTileY = Math.max(0, Math.floor(viewportTop / TILE_SIZE));
@@ -247,7 +270,7 @@ function ComparatorCanvas({
         onStateChange({ tiles: newTiles });
       }
     }
-  }, [state.imageData, state.zoom, state.position, state.tiles, containerSize]);
+  }, [state.imageData, state.zoom, state.position, state.tiles, canvasSize]);
 
   // Load tiles when viewport changes
   useEffect(() => {
@@ -583,6 +606,7 @@ function ComparatorCanvas({
 
       {/* Canvas area */}
       <Box
+        ref={canvasAreaRef}
         sx={{
           flex: 1,
           position: 'relative',
@@ -616,8 +640,8 @@ function ComparatorCanvas({
         ) : (
           <Stage
             ref={stageRef}
-            width={containerSize.width}
-            height={containerSize.height}
+            width={canvasSize.width}
+            height={canvasSize.height}
             onWheel={handleWheel}
             onMouseDown={handleMouseDown}
             onMouseMove={handleMouseMove}
@@ -654,10 +678,6 @@ export function ImageComparatorDialog({ open, onClose }: ImageComparatorDialogPr
     { ...initialCanvasState },
     { ...initialCanvasState },
   ]);
-
-  // Container size
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [containerSize, setContainerSize] = useState({ width: 400, height: 300 });
 
   // Build micrograph options with thumbnails
   const [micrographOptions, setMicrographOptions] = useState<MicrographOption[]>([]);
@@ -731,35 +751,6 @@ export function ImageComparatorDialog({ open, onClose }: ImageComparatorDialogPr
 
     buildOptions();
   }, [open, project]);
-
-  // Update container size
-  useEffect(() => {
-    if (!containerRef.current || !open) return;
-
-    const updateSize = () => {
-      if (containerRef.current) {
-        const rect = containerRef.current.getBoundingClientRect();
-        // Calculate individual canvas size based on grid mode
-        const cols = gridMode === 2 ? 2 : 2;
-        const rows = gridMode === 2 ? 1 : 2;
-        const gap = 8; // Gap between canvases
-
-        setContainerSize({
-          width: (rect.width - gap * (cols - 1)) / cols,
-          height: (rect.height - gap * (rows - 1)) / rows,
-        });
-      }
-    };
-
-    // Small delay to ensure dialog is rendered
-    const timer = setTimeout(updateSize, 50);
-    window.addEventListener('resize', updateSize);
-
-    return () => {
-      clearTimeout(timer);
-      window.removeEventListener('resize', updateSize);
-    };
-  }, [open, gridMode]);
 
   // Update canvas state helper
   const updateCanvasState = useCallback((index: number, updates: Partial<CanvasState>) => {
@@ -845,7 +836,6 @@ export function ImageComparatorDialog({ open, onClose }: ImageComparatorDialogPr
 
       {/* Canvas grid */}
       <Box
-        ref={containerRef}
         sx={{
           flex: 1,
           display: 'grid',
@@ -862,7 +852,6 @@ export function ImageComparatorDialog({ open, onClose }: ImageComparatorDialogPr
             state={canvasStates[index]}
             onStateChange={(updates) => updateCanvasState(index, updates)}
             micrographOptions={micrographOptions}
-            containerSize={containerSize}
             project={project}
           />
         ))}
