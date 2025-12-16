@@ -66,11 +66,22 @@ interface MicrographOption {
   thumbnail?: string;
 }
 
+interface OverlayImage {
+  id: string;
+  imageObj: HTMLImageElement;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  rotation: number;
+}
+
 interface CanvasState {
   micrographId: string | null;
   imageData: ImageData | null;
   tiles: Map<string, TileInfo>;
   thumbnail: HTMLImageElement | null;
+  overlayImages: OverlayImage[];
   zoom: number;
   position: { x: number; y: number };
   showSpots: boolean;
@@ -83,6 +94,7 @@ const initialCanvasState: CanvasState = {
   imageData: null,
   tiles: new Map(),
   thumbnail: null,
+  overlayImages: [],
   zoom: 1,
   position: { x: 0, y: 0 },
   showSpots: true,
@@ -172,7 +184,7 @@ function ComparatorCanvas({
     if (!state.micrographId || !project) return;
 
     const loadImage = async () => {
-      onStateChange({ isLoading: true, tiles: new Map(), thumbnail: null, imageData: null });
+      onStateChange({ isLoading: true, tiles: new Map(), thumbnail: null, imageData: null, overlayImages: [] });
 
       try {
         const folderPaths = await window.api?.getProjectFolderPaths(project.id);
@@ -205,6 +217,44 @@ function ComparatorCanvas({
           });
         }
 
+        // Load overlay images
+        const loadedOverlays: OverlayImage[] = [];
+        for (const overlay of overlays) {
+          if (!overlay.offsetInParent) continue;
+
+          try {
+            const overlayPath = `${folderPaths.images}/${overlay.id}`;
+            const overlayResult = await window.api?.loadImageWithTiles(overlayPath);
+            if (!overlayResult) continue;
+
+            const overlayThumbUrl = await window.api?.loadMedium(overlayResult.hash);
+            if (!overlayThumbUrl) continue;
+
+            const overlayImg = await new Promise<HTMLImageElement>((resolve, reject) => {
+              const img = new Image();
+              img.onload = () => resolve(img);
+              img.onerror = reject;
+              img.src = overlayThumbUrl;
+            });
+
+            // Calculate overlay dimensions
+            const overlayWidth = (overlay.imageWidth || overlayResult.metadata.width) * (overlay.scaleX || 1);
+            const overlayHeight = (overlay.imageHeight || overlayResult.metadata.height) * (overlay.scaleY || 1);
+
+            loadedOverlays.push({
+              id: overlay.id,
+              imageObj: overlayImg,
+              x: overlay.offsetInParent.X || 0,
+              y: overlay.offsetInParent.Y || 0,
+              width: overlayWidth,
+              height: overlayHeight,
+              rotation: overlay.rotation || 0,
+            });
+          } catch (overlayErr) {
+            console.error(`Failed to load overlay ${overlay.id}:`, overlayErr);
+          }
+        }
+
         // Calculate fit-to-canvas zoom
         const scaleX = canvasSize.width / imageData.width;
         const scaleY = canvasSize.height / imageData.height;
@@ -213,6 +263,7 @@ function ComparatorCanvas({
         onStateChange({
           imageData,
           thumbnail: thumbnailImg,
+          overlayImages: loadedOverlays,
           zoom: fitZoom,
           position: {
             x: (canvasSize.width - imageData.width * fitZoom) / 2,
@@ -227,7 +278,7 @@ function ComparatorCanvas({
     };
 
     loadImage();
-  }, [state.micrographId, project, canvasSize.width, canvasSize.height]);
+  }, [state.micrographId, project, canvasSize.width, canvasSize.height, overlays]);
 
   // Load visible tiles
   const loadVisibleTiles = useCallback(async () => {
@@ -485,30 +536,34 @@ function ComparatorCanvas({
     });
   };
 
-  // Render overlay outlines
+  // Render overlay images with red outlines
   const renderOverlays = () => {
-    if (!state.showOverlays || overlays.length === 0) return null;
+    if (!state.showOverlays || state.overlayImages.length === 0) return null;
 
-    return overlays.map((overlay) => {
-      if (!overlay.offsetInParent) return null;
-
-      const x = overlay.offsetInParent.X || 0;
-      const y = overlay.offsetInParent.Y || 0;
-      const width = (overlay.imageWidth || overlay.width || 100) * (overlay.scaleX || 1);
-      const height = (overlay.imageHeight || overlay.height || 100) * (overlay.scaleY || 1);
-
+    return state.overlayImages.map((overlay) => {
+      // For rotated images, we need to position the group at the overlay position
+      // and rotate around the top-left corner (which matches how the main viewer does it)
       return (
-        <Rect
+        <Group
           key={overlay.id}
-          x={x}
-          y={y}
-          width={width}
-          height={height}
-          stroke="#00BFFF"
-          strokeWidth={2 / state.zoom}
-          dash={[10 / state.zoom, 5 / state.zoom]}
-          rotation={overlay.rotation || 0}
-        />
+          x={overlay.x}
+          y={overlay.y}
+          rotation={overlay.rotation}
+        >
+          {/* Overlay image */}
+          <KonvaImage
+            image={overlay.imageObj}
+            width={overlay.width}
+            height={overlay.height}
+          />
+          {/* Red outline */}
+          <Rect
+            width={overlay.width}
+            height={overlay.height}
+            stroke="#FF0000"
+            strokeWidth={2 / state.zoom}
+          />
+        </Group>
       );
     });
   };
