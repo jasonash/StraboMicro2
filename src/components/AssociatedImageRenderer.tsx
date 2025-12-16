@@ -13,7 +13,7 @@
  */
 
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
-import { Group, Image as KonvaImage, Rect } from 'react-konva';
+import { Group, Image as KonvaImage, Rect, Line } from 'react-konva';
 import { MicrographMetadata } from '@/types/project-types';
 import { useAppStore } from '@/store';
 
@@ -261,6 +261,27 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
       const transformedWidth = micrograph.affineTransformedWidth || micrograph.imageWidth || 0;
       const transformedHeight = micrograph.affineTransformedHeight || micrograph.imageHeight || 0;
       const boundsOffset = micrograph.affineBoundsOffset || { x: 0, y: 0 };
+      const matrix = micrograph.affineMatrix;
+      const srcWidth = micrograph.imageWidth || 0;
+      const srcHeight = micrograph.imageHeight || 0;
+
+      // Compute the outline points for the affine parallelogram
+      // Transform the four corners of the original image, then offset relative to boundsOffset
+      let affineOutlinePoints: number[] | null = null;
+      if (matrix && matrix.length === 6) {
+        const [a, b, tx, c, d, ty] = matrix;
+        const corners = [
+          [0, 0],
+          [srcWidth, 0],
+          [srcWidth, srcHeight],
+          [0, srcHeight],
+        ];
+        // Transform corners and subtract boundsOffset to get positions relative to tile grid
+        affineOutlinePoints = corners.flatMap(([x, y]) => [
+          a * x + b * y + tx - boundsOffset.x,
+          c * x + d * y + ty - boundsOffset.y,
+        ]);
+      }
 
       // Position at the top-left of the transformed bounds, convert to center
       return {
@@ -274,6 +295,7 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
         isAffine: true,
         transformedWidth,
         transformedHeight,
+        affineOutlinePoints,
       };
     }
 
@@ -319,6 +341,7 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
       isAffine: false,
       transformedWidth: imageWidth,
       transformedHeight: imageHeight,
+      affineOutlinePoints: null,
     };
   }, [micrograph, parentMetadata]);
 
@@ -611,8 +634,16 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
           height={renderHeight}
           opacity={micrograph.opacity ?? 1.0}
         />
-        {/* Red outline around overlay */}
-        {showOutline && (
+        {/* Red outline around overlay - use Line for affine (parallelogram), Rect otherwise */}
+        {showOutline && overlayTransform.affineOutlinePoints ? (
+          <Line
+            points={overlayTransform.affineOutlinePoints}
+            closed
+            stroke="#cc3333"
+            strokeWidth={3 / stageScale} // Constant screen size regardless of zoom
+            listening={false}
+          />
+        ) : showOutline ? (
           <Rect
             x={0}
             y={0}
@@ -622,7 +653,7 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
             strokeWidth={3 / (stageScale * overlayTransform.scaleX)} // Constant screen size regardless of zoom/scale
             listening={false}
           />
-        )}
+        ) : null}
         {/* Transparent hit area for reliable click detection */}
         {onClick && (
           <Rect
@@ -669,8 +700,16 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
             />
           );
         })}
-        {/* Red outline around overlay */}
-        {showOutline && (
+        {/* Red outline around overlay - use Line for affine (parallelogram), Rect otherwise */}
+        {showOutline && overlayTransform.affineOutlinePoints ? (
+          <Line
+            points={overlayTransform.affineOutlinePoints}
+            closed
+            stroke="#cc3333"
+            strokeWidth={3 / stageScale} // Constant screen size regardless of zoom
+            listening={false}
+          />
+        ) : showOutline ? (
           <Rect
             x={0}
             y={0}
@@ -680,7 +719,7 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
             strokeWidth={3 / (stageScale * overlayTransform.scaleX)} // Constant screen size regardless of zoom/scale
             listening={false}
           />
-        )}
+        ) : null}
         {/* Transparent hit area for reliable click detection */}
         {onClick && (
           <Rect
