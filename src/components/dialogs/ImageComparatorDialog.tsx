@@ -74,6 +74,8 @@ interface OverlayImage {
   width: number;
   height: number;
   rotation: number;
+  isAffine: boolean;
+  affineOutlinePoints?: number[]; // For parallelogram outline on affine overlays
 }
 
 interface CanvasState {
@@ -236,6 +238,68 @@ function ComparatorCanvas({
         // Load overlay images
         const loadedOverlays: OverlayImage[] = [];
         for (const overlay of overlays) {
+          // Handle affine overlays
+          if (overlay.placementType === 'affine') {
+            try {
+              const overlayPath = `${folderPaths.images}/${overlay.id}`;
+              const overlayResult = await window.api?.loadImageWithTiles(overlayPath);
+              if (!overlayResult) continue;
+
+              // Use stored affine tile hash for loading pre-transformed tiles
+              const tileHash = overlay.affineTileHash || overlayResult.hash;
+              const overlayThumbUrl = await window.api?.loadAffineMedium(tileHash);
+              if (!overlayThumbUrl) continue;
+
+              const overlayImg = await new Promise<HTMLImageElement>((resolve, reject) => {
+                const img = new Image();
+                img.onload = () => resolve(img);
+                img.onerror = reject;
+                img.src = overlayThumbUrl;
+              });
+
+              // For affine overlays, use the transformed dimensions and bounds offset
+              const transformedWidth = overlay.affineTransformedWidth || overlay.imageWidth || 0;
+              const transformedHeight = overlay.affineTransformedHeight || overlay.imageHeight || 0;
+              const boundsOffset = overlay.affineBoundsOffset || { x: 0, y: 0 };
+              const matrix = overlay.affineMatrix;
+              const srcWidth = overlay.imageWidth || 0;
+              const srcHeight = overlay.imageHeight || 0;
+
+              // Calculate parallelogram outline points from affine matrix
+              let affineOutlinePoints: number[] | undefined;
+              if (matrix && matrix.length === 6) {
+                const [a, b, tx, c, d, ty] = matrix;
+                const corners = [
+                  [0, 0],
+                  [srcWidth, 0],
+                  [srcWidth, srcHeight],
+                  [0, srcHeight],
+                ];
+                // Transform corners and subtract boundsOffset to get positions relative to tile grid
+                affineOutlinePoints = corners.flatMap(([x, y]) => [
+                  a * x + b * y + tx - boundsOffset.x,
+                  c * x + d * y + ty - boundsOffset.y,
+                ]);
+              }
+
+              loadedOverlays.push({
+                id: overlay.id,
+                imageObj: overlayImg,
+                x: boundsOffset.x,
+                y: boundsOffset.y,
+                width: transformedWidth,
+                height: transformedHeight,
+                rotation: 0, // No rotation - transform is baked into tiles
+                isAffine: true,
+                affineOutlinePoints,
+              });
+            } catch (overlayErr) {
+              console.error(`Failed to load affine overlay ${overlay.id}:`, overlayErr);
+            }
+            continue;
+          }
+
+          // Handle standard overlays (need offsetInParent)
           if (!overlay.offsetInParent) continue;
 
           try {
@@ -272,6 +336,7 @@ function ComparatorCanvas({
               width: overlayWidth,
               height: overlayHeight,
               rotation: overlay.rotation || 0,
+              isAffine: false,
             });
           } catch (overlayErr) {
             console.error(`Failed to load overlay ${overlay.id}:`, overlayErr);
@@ -579,13 +644,22 @@ function ComparatorCanvas({
             width={overlay.width}
             height={overlay.height}
           />
-          {/* Red outline */}
-          <Rect
-            width={overlay.width}
-            height={overlay.height}
-            stroke="#FF0000"
-            strokeWidth={2 / state.zoom}
-          />
+          {/* Red outline - use Line for affine (parallelogram), Rect otherwise */}
+          {overlay.isAffine && overlay.affineOutlinePoints ? (
+            <Line
+              points={overlay.affineOutlinePoints}
+              closed
+              stroke="#cc3333"
+              strokeWidth={3 / state.zoom}
+            />
+          ) : (
+            <Rect
+              width={overlay.width}
+              height={overlay.height}
+              stroke="#cc3333"
+              strokeWidth={2 / state.zoom}
+            />
+          )}
         </Group>
       );
     });
