@@ -632,13 +632,21 @@ export function AffineRegistrationModal({
 
   // Handle Apply button
   const handleApply = useCallback(async () => {
+    console.log('[AffineRegistration] handleApply called');
+    console.log('[AffineRegistration] canApply:', canApply);
+    console.log('[AffineRegistration] overlayImageData:', overlayImageData);
+    console.log('[AffineRegistration] completePairs:', markers.filter((m) => m.parentPoint && m.overlayPoint).length);
+    console.log('[AffineRegistration] markers:', markers);
+
     if (!canApply) {
       console.warn('[AffineRegistration] Cannot apply - not enough points');
+      alert('Please place at least 3 point pairs (click parent, then overlay, for each point)');
       return;
     }
     if (!overlayImageData) {
       console.warn('[AffineRegistration] Cannot apply - overlay image not loaded');
       setWarning('Please wait for images to load');
+      alert('Please wait for images to load');
       return;
     }
 
@@ -650,6 +658,8 @@ export function AffineRegistrationModal({
         target: [m.parentPoint!.x, m.parentPoint!.y] as [number, number],
       }));
 
+    console.log('[AffineRegistration] Built control points:', controlPoints);
+
     try {
       // Compute affine matrix
       const matrix = computeAffineMatrix(controlPoints.slice(0, 3));
@@ -659,6 +669,7 @@ export function AffineRegistrationModal({
       const bounds = computeTransformedBounds(overlayWidth, overlayHeight, matrix);
       console.log('[AffineRegistration] Computed bounds:', bounds);
 
+      console.log('[AffineRegistration] Setting isGeneratingTiles to true');
       setIsGeneratingTiles(true);
       setWarning(null);
 
@@ -666,8 +677,10 @@ export function AffineRegistrationModal({
       const hashToUse = overlayImageHash || overlayImageData.hash;
       console.log('[AffineRegistration] Generating tiles for hash:', hashToUse);
       console.log('[AffineRegistration] Image path:', overlayImagePath);
+      console.log('[AffineRegistration] window.api exists:', !!window.api);
 
       // Generate affine tiles
+      console.log('[AffineRegistration] Calling generateAffineTiles...');
       const result = await window.api?.generateAffineTiles(
         overlayImagePath,
         hashToUse,
@@ -680,6 +693,7 @@ export function AffineRegistrationModal({
         const errorMsg = result?.error || 'Unknown error during tile generation';
         console.error('[AffineRegistration] Failed to generate tiles:', errorMsg);
         setWarning(`Tile generation failed: ${errorMsg}`);
+        alert(`Tile generation failed: ${errorMsg}`);
         setIsGeneratingTiles(false);
         return;
       }
@@ -703,6 +717,7 @@ export function AffineRegistrationModal({
       const errorMsg = err instanceof Error ? err.message : String(err);
       console.error('[AffineRegistration] Error applying transform:', err);
       setWarning(`Transform failed: ${errorMsg}`);
+      alert(`Transform failed: ${errorMsg}`);
       setIsGeneratingTiles(false);
     }
   }, [
