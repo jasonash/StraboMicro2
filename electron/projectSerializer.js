@@ -408,6 +408,14 @@ function serializeMicrograph(micrograph) {
     isSpotExpanded: micrograph.isSpotExpanded || false,
     isFlipped: micrograph.isFlipped || false,
     tags: micrograph.tags || [],
+    // Affine transform placement data
+    placementType: micrograph.placementType || undefined,
+    affineMatrix: micrograph.affineMatrix || undefined,
+    affineControlPoints: micrograph.affineControlPoints || undefined,
+    affineBoundsOffset: micrograph.affineBoundsOffset || undefined,
+    affineTransformedWidth: micrograph.affineTransformedWidth || undefined,
+    affineTransformedHeight: micrograph.affineTransformedHeight || undefined,
+    affineTileHash: micrograph.affineTileHash || undefined,
   };
 }
 
@@ -573,6 +581,14 @@ function deserializeMicrograph(micrograph) {
     isSpotExpanded: micrograph.isSpotExpanded,
     isFlipped: micrograph.isFlipped,
     tags: micrograph.tags,
+    // Affine transform placement data
+    placementType: micrograph.placementType,
+    affineMatrix: micrograph.affineMatrix,
+    affineControlPoints: micrograph.affineControlPoints,
+    affineBoundsOffset: micrograph.affineBoundsOffset,
+    affineTransformedWidth: micrograph.affineTransformedWidth,
+    affineTransformedHeight: micrograph.affineTransformedHeight,
+    affineTileHash: micrograph.affineTileHash,
   };
 }
 
