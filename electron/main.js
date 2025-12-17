@@ -6,7 +6,8 @@ process.env.VIPS_DISC_THRESHOLD = '0';
 // Remove libvips memory limits entirely
 process.env.VIPS_NOVECTOR = '1';
 
-const { app, BrowserWindow, Menu, ipcMain, dialog, screen, nativeTheme, shell } = require('electron');
+const { app, BrowserWindow, Menu, ipcMain, dialog, screen, nativeTheme, shell, protocol, net } = require('electron');
+
 const path = require('path');
 const fs = require('fs');
 const log = require('electron-log');
@@ -54,6 +55,7 @@ const smzImport = require('./smzImport');
 const serverDownload = require('./serverDownload');
 const autoUpdaterModule = require('./autoUpdater');
 const logService = require('./logService');
+const pointCountStorage = require('./pointCountStorage');
 
 // Handle EPIPE errors at process level (prevents crash on broken stdout pipe)
 process.stdout.on('error', (err) => {
@@ -376,6 +378,9 @@ function createWindow() {
   // Track current project ID for menu
   let currentProjectId = null;
 
+  // Track current theme for menu (synced from renderer)
+  let currentTheme = 'dark';
+
   // Cache for recent projects (to avoid disk reads on every menu build)
   let recentProjectsCache = [];
 
@@ -408,6 +413,7 @@ function createWindow() {
 
   // Function to build menu with current auth state
   async function buildMenu() {
+    // Uses the currentTheme variable from outer scope
     // Fetch recent projects for submenu
     try {
       recentProjectsCache = await projectsIndex.getRecentProjects(10);
@@ -615,6 +621,84 @@ function createWindow() {
         { role: 'copy' },
         { role: 'paste' },
         { role: 'selectAll' },
+        { type: 'separator' },
+        {
+          label: 'Quick Edit Spots...',
+          accelerator: 'CmdOrCtrl+Shift+Q',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('menu:quick-edit-spots');
+            }
+          }
+        },
+        {
+          label: 'Edit Selected Spots...',
+          accelerator: 'CmdOrCtrl+Shift+E',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('menu:batch-edit-spots');
+            }
+          }
+        },
+        {
+          label: 'Merge Selected Spots',
+          accelerator: 'CmdOrCtrl+M',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('menu:merge-spots');
+            }
+          }
+        },
+        {
+          label: 'Split Spot with Line...',
+          accelerator: 'CmdOrCtrl+/',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('menu:split-spot');
+            }
+          }
+        },
+        { type: 'separator' },
+        {
+          label: 'Clear All Spots...',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('menu:clear-all-spots');
+            }
+          }
+        },
+      ],
+    },
+    {
+      label: 'Tools',
+      submenu: [
+        {
+          label: 'Point Count...',
+          accelerator: 'CmdOrCtrl+Shift+P',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('menu:point-count');
+            }
+          }
+        },
+        {
+          label: 'Grain Detection...',
+          accelerator: 'CmdOrCtrl+Shift+G',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('menu:grain-detection');
+            }
+          }
+        },
+        { type: 'separator' },
+        {
+          label: 'Image Comparator...',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('menu:image-comparator');
+            }
+          }
+        },
       ],
     },
     {
@@ -683,14 +767,44 @@ function createWindow() {
             }
           }
         },
+        {
+          label: 'Show Archived Spots',
+          type: 'checkbox',
+          checked: false,
+          click: (menuItem) => {
+            if (mainWindow) {
+              mainWindow.webContents.send('view:toggle-archived-spots', menuItem.checked);
+            }
+          }
+        },
+        { type: 'separator' },
+        {
+          label: 'Show Quick Classify Toolbar',
+          accelerator: 'CmdOrCtrl+K',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('view:toggle-quick-classify');
+            }
+          }
+        },
+        {
+          label: 'Point Count Statistics',
+          accelerator: 'CmdOrCtrl+Shift+S',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('view:show-point-count-statistics');
+            }
+          }
+        },
         { type: 'separator' },
         {
           label: 'Theme',
           submenu: [
             {
+              id: 'theme-dark',
               label: 'Dark',
               type: 'radio',
-              checked: true,
+              checked: currentTheme === 'dark',
               click: () => {
                 if (mainWindow) {
                   mainWindow.webContents.send('theme:set', 'dark');
@@ -698,8 +812,10 @@ function createWindow() {
               }
             },
             {
+              id: 'theme-light',
               label: 'Light',
               type: 'radio',
+              checked: currentTheme === 'light',
               click: () => {
                 if (mainWindow) {
                   mainWindow.webContents.send('theme:set', 'light');
@@ -707,8 +823,10 @@ function createWindow() {
               }
             },
             {
+              id: 'theme-system',
               label: 'System',
               type: 'radio',
+              checked: currentTheme === 'system',
               click: () => {
                 if (mainWindow) {
                   mainWindow.webContents.send('theme:set', 'system');
@@ -776,10 +894,18 @@ function createWindow() {
         },
         { type: 'separator' },
         {
-          label: 'Report Error...',
+          label: 'View Error Logs...',
           click: () => {
             if (mainWindow) {
               mainWindow.webContents.send('help:show-logs');
+            }
+          }
+        },
+        {
+          label: 'Send Error Report...',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('help:send-error-report');
             }
           }
         },
@@ -949,6 +1075,13 @@ function createWindow() {
     buildMenu();
   });
 
+  // IPC handler to update theme and rebuild menu
+  ipcMain.on('theme:changed', (event, theme) => {
+    log.info(`App theme changed to: ${theme}`);
+    currentTheme = theme;
+    buildMenu();
+  });
+
   // Show main window and close splash when ready
   mainWindow.once('ready-to-show', () => {
     log.info('[Main] Main window ready to show');
@@ -1075,6 +1208,17 @@ let buildMenuFn = null;
 
 app.whenReady().then(async () => {
   const isDev = !app.isPackaged;
+
+  // Register custom protocol to serve static files in production
+  // This allows web workers to fetch files like opencv.js
+  if (!isDev) {
+    protocol.handle('static', (request) => {
+      const url = new URL(request.url);
+      const filePath = path.join(__dirname, '..', 'dist', url.pathname);
+      log.info(`[Protocol] Serving static file: ${filePath}`);
+      return net.fetch(`file://${filePath}`);
+    });
+  }
 
   // Initialize log service (persistent logging to file)
   logService.init();
@@ -1463,6 +1607,79 @@ ipcMain.handle('micrograph:export-composite', async (event, projectId, micrograp
         // Skip point-located micrographs
         if (child.pointInParent) {
           log.info(`[IPC] Skipping point-located child ${child.id}`);
+          continue;
+        }
+
+        // Handle affine-transformed overlays specially - load pre-transformed image from cache
+        if (child.placementType === 'affine' && child.affineTileHash) {
+          log.info(`[IPC] Loading affine overlay ${child.id} from cache`);
+          const tileCache = require('./tileCache');
+          const affineBuffer = await tileCache.loadAffineMedium(child.affineTileHash);
+
+          if (affineBuffer) {
+            // Use bounds and dimensions from micrograph data (not cache metadata)
+            const boundsOffset = child.affineBoundsOffset || { x: 0, y: 0 };
+            const transformedWidth = child.affineTransformedWidth || 0;
+            const transformedHeight = child.affineTransformedHeight || 0;
+
+            log.info(`[IPC] Affine overlay ${child.id}: bounds=(${boundsOffset.x}, ${boundsOffset.y}), size=${transformedWidth}x${transformedHeight}`);
+
+            // Resize medium image to full transformed dimensions
+            let childImage = sharp(affineBuffer);
+            if (transformedWidth > 0 && transformedHeight > 0) {
+              childImage = childImage.resize(transformedWidth, transformedHeight, {
+                fit: 'fill',
+                kernel: sharp.kernel.lanczos3
+              });
+            }
+
+            // Apply opacity
+            const childOpacity = child.opacity ?? 1.0;
+            childImage = childImage.ensureAlpha();
+
+            if (childOpacity < 1.0) {
+              const { data, info } = await childImage.raw().toBuffer({ resolveWithObject: true });
+              for (let i = 3; i < data.length; i += 4) {
+                data[i] = Math.round(data[i] * childOpacity);
+              }
+              childImage = sharp(data, {
+                raw: { width: info.width, height: info.height, channels: info.channels }
+              });
+            }
+
+            const finalBuffer = await childImage.png().toBuffer();
+            let finalX = Math.round(boundsOffset.x);
+            let finalY = Math.round(boundsOffset.y);
+
+            // Bounds checking
+            const childBufferMeta = await sharp(finalBuffer).metadata();
+            const childW = childBufferMeta.width;
+            const childH = childBufferMeta.height;
+
+            if (finalX + childW > 0 && finalY + childH > 0 && finalX < baseWidth && finalY < baseHeight) {
+              // Crop if needed
+              let cropX = 0, cropY = 0, cropW = childW, cropH = childH;
+              let compositeX = finalX, compositeY = finalY;
+
+              if (finalX < 0) { cropX = -finalX; cropW -= cropX; compositeX = 0; }
+              if (finalY < 0) { cropY = -finalY; cropH -= cropY; compositeY = 0; }
+              if (compositeX + cropW > baseWidth) { cropW = baseWidth - compositeX; }
+              if (compositeY + cropH > baseHeight) { cropH = baseHeight - compositeY; }
+
+              if (cropW > 0 && cropH > 0) {
+                let compositeBuffer = finalBuffer;
+                if (cropX > 0 || cropY > 0 || cropW !== childW || cropH !== childH) {
+                  compositeBuffer = await sharp(finalBuffer)
+                    .extract({ left: Math.round(cropX), top: Math.round(cropY), width: Math.round(cropW), height: Math.round(cropH) })
+                    .toBuffer();
+                }
+                compositeInputs.push({ input: compositeBuffer, left: Math.round(compositeX), top: Math.round(compositeY) });
+                log.info(`[IPC] Added affine overlay at (${compositeX}, ${compositeY}), size ${cropW}x${cropH}`);
+              }
+            }
+          } else {
+            log.warn(`[IPC] No cached affine data for ${child.id}, skipping`);
+          }
           continue;
         }
 
@@ -1983,17 +2200,13 @@ ipcMain.on('set-window-title', (event, title) => {
   }
 });
 
-// Theme change handler - log theme changes (no nativeTheme sync)
-ipcMain.on('theme:changed', (event, theme) => {
-  // Note: We don't sync nativeTheme to keep the native window chrome unchanged
-  log.info(`App theme changed to: ${theme}`);
-});
 
 // ========== Tile-Based Image Loading System ==========
 // Import tile cache, generator, and queue
 const tileCache = require('./tileCache');
 const tileGenerator = require('./tileGenerator');
 const tileQueue = require('./tileQueue');
+const affineTileGenerator = require('./affineTileGenerator');
 
 /**
  * Load and process an image with tiling support
@@ -2211,6 +2424,148 @@ ipcMain.handle('image:clear-all-caches', async () => {
   } catch (error) {
     log.error('Error clearing all caches:', error);
     throw error;
+  }
+});
+
+// ========== Affine Tile Handlers ==========
+// These handlers support pre-transformed tiles for 3-point registration placement
+
+/**
+ * Generate affine-transformed tiles for an overlay image
+ * Used when placing overlays using 3-point registration
+ */
+ipcMain.handle('tiles:generate-affine', async (event, imagePath, imageHash, affineMatrix) => {
+  try {
+    log.info(`[Affine] Generating tiles for: ${imagePath}`);
+    log.info(`[Affine] Matrix: [${affineMatrix.join(', ')}]`);
+
+    // Generate progress channel for this request
+    const progressChannel = `affine-progress-${Date.now()}`;
+
+    // Generate tiles with progress callback
+    const metadata = await affineTileGenerator.generateAffineTiles(
+      imagePath,
+      imageHash,
+      affineMatrix,
+      (progress) => {
+        event.sender.send(progressChannel, progress);
+      }
+    );
+
+    log.info(`[Affine] Tile generation complete: ${metadata.totalTiles} tiles`);
+    return { success: true, metadata, progressChannel };
+  } catch (error) {
+    log.error('[Affine] Failed to generate tiles:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+/**
+ * Load a single affine-transformed tile
+ */
+ipcMain.handle('tiles:load-affine-tile', async (event, imageHash, tileX, tileY) => {
+  try {
+    const buffer = await tileCache.loadAffineTile(imageHash, tileX, tileY);
+    if (!buffer) {
+      throw new Error(`Affine tile not found: ${tileX},${tileY}`);
+    }
+    return `data:image/webp;base64,${buffer.toString('base64')}`;
+  } catch (error) {
+    log.error(`[Affine] Failed to load tile ${tileX},${tileY}:`, error);
+    return null;
+  }
+});
+
+/**
+ * Load multiple affine tiles in batch
+ */
+ipcMain.handle('tiles:load-affine-tiles-batch', async (event, imageHash, tiles) => {
+  try {
+    const results = [];
+    for (const { x, y } of tiles) {
+      const buffer = await tileCache.loadAffineTile(imageHash, x, y);
+      if (buffer) {
+        results.push({
+          x,
+          y,
+          dataUrl: `data:image/webp;base64,${buffer.toString('base64')}`,
+        });
+      }
+    }
+    return results;
+  } catch (error) {
+    log.error('[Affine] Failed to load tiles batch:', error);
+    throw error;
+  }
+});
+
+/**
+ * Load affine thumbnail
+ */
+ipcMain.handle('tiles:load-affine-thumbnail', async (event, imageHash) => {
+  try {
+    const buffer = await tileCache.loadAffineThumbnail(imageHash);
+    if (!buffer) {
+      throw new Error('Affine thumbnail not found');
+    }
+    return `data:image/jpeg;base64,${buffer.toString('base64')}`;
+  } catch (error) {
+    log.error('[Affine] Failed to load thumbnail:', error);
+    throw error;
+  }
+});
+
+/**
+ * Load affine medium resolution image
+ */
+ipcMain.handle('tiles:load-affine-medium', async (event, imageHash) => {
+  try {
+    const buffer = await tileCache.loadAffineMedium(imageHash);
+    if (!buffer) {
+      throw new Error('Affine medium not found');
+    }
+    return `data:image/jpeg;base64,${buffer.toString('base64')}`;
+  } catch (error) {
+    log.error('[Affine] Failed to load medium:', error);
+    throw error;
+  }
+});
+
+/**
+ * Load affine tile metadata
+ */
+ipcMain.handle('tiles:load-affine-metadata', async (event, imageHash) => {
+  try {
+    return await tileCache.loadAffineMetadata(imageHash);
+  } catch (error) {
+    log.error('[Affine] Failed to load metadata:', error);
+    return null;
+  }
+});
+
+/**
+ * Check if affine tiles exist for an image
+ */
+ipcMain.handle('tiles:has-affine-tiles', async (event, imageHash) => {
+  try {
+    return await tileCache.hasAffineTiles(imageHash);
+  } catch (error) {
+    log.error('[Affine] Failed to check for tiles:', error);
+    return false;
+  }
+});
+
+/**
+ * Delete affine tiles (when switching away from affine placement)
+ */
+ipcMain.handle('tiles:delete-affine-tiles', async (event, imageHash) => {
+  try {
+    await tileCache.deleteAffineTiles(imageHash);
+    log.info(`[Affine] Deleted tiles for: ${imageHash}`);
+    return { success: true };
+  } catch (error) {
+    log.error('[Affine] Failed to delete tiles:', error);
+    return { success: false, error: error.message };
   }
 });
 
@@ -2819,6 +3174,72 @@ ipcMain.handle('composite:generate-thumbnail', async (event, projectId, microgra
         // Skip point-located micrographs - they should be rendered as point markers, not overlays
         if (child.pointInParent) {
           log.info(`[IPC] Skipping point-located child ${child.id} (${child.name}) - not rendered as overlay`);
+          continue;
+        }
+
+        // Handle affine-transformed overlays specially - load pre-transformed image from cache
+        if (child.placementType === 'affine' && child.affineTileHash) {
+          log.info(`[IPC] Loading affine overlay ${child.id} for thumbnail from cache`);
+          const tileCache = require('./tileCache');
+          const affineBuffer = await tileCache.loadAffineMedium(child.affineTileHash);
+
+          if (affineBuffer) {
+            // Use bounds and dimensions from micrograph data (not cache metadata)
+            const boundsOffset = child.affineBoundsOffset || { x: 0, y: 0 };
+            const transformedWidth = child.affineTransformedWidth || 0;
+            const transformedHeight = child.affineTransformedHeight || 0;
+
+            // Scale position and size to thumbnail coordinates
+            const thumbX = Math.round(boundsOffset.x * thumbnailScale);
+            const thumbY = Math.round(boundsOffset.y * thumbnailScale);
+            const thumbAffineWidth = Math.round(transformedWidth * thumbnailScale);
+            const thumbAffineHeight = Math.round(transformedHeight * thumbnailScale);
+
+            log.info(`[IPC] Affine thumbnail ${child.id}: bounds=(${thumbX}, ${thumbY}), size=${thumbAffineWidth}x${thumbAffineHeight}`);
+
+            // Resize and apply opacity
+            let affineImage = sharp(affineBuffer)
+              .resize(thumbAffineWidth, thumbAffineHeight, { fit: 'fill', kernel: sharp.kernel.lanczos3 })
+              .ensureAlpha();
+
+            const childOpacity = child.opacity ?? 1.0;
+            let finalBuffer;
+            if (childOpacity < 1.0) {
+              const { data, info } = await affineImage.raw().toBuffer({ resolveWithObject: true });
+              for (let i = 3; i < data.length; i += 4) {
+                data[i] = Math.round(data[i] * childOpacity);
+              }
+              finalBuffer = await sharp(data, {
+                raw: { width: info.width, height: info.height, channels: info.channels }
+              }).png().toBuffer();
+            } else {
+              finalBuffer = await affineImage.png().toBuffer();
+            }
+
+            // Bounds checking and cropping
+            if (thumbX + thumbAffineWidth > 0 && thumbY + thumbAffineHeight > 0 && thumbX < thumbWidth && thumbY < thumbHeight) {
+              let cropX = 0, cropY = 0, cropW = thumbAffineWidth, cropH = thumbAffineHeight;
+              let finalX = thumbX, finalY = thumbY;
+
+              if (thumbX < 0) { cropX = -thumbX; cropW -= cropX; finalX = 0; }
+              if (thumbY < 0) { cropY = -thumbY; cropH -= cropY; finalY = 0; }
+              if (finalX + cropW > thumbWidth) { cropW = thumbWidth - finalX; }
+              if (finalY + cropH > thumbHeight) { cropH = thumbHeight - finalY; }
+
+              if (cropW > 0 && cropH > 0) {
+                let compositeBuffer = finalBuffer;
+                if (cropX > 0 || cropY > 0 || cropW !== thumbAffineWidth || cropH !== thumbAffineHeight) {
+                  compositeBuffer = await sharp(finalBuffer)
+                    .extract({ left: Math.round(cropX), top: Math.round(cropY), width: Math.round(cropW), height: Math.round(cropH) })
+                    .toBuffer();
+                }
+                compositeInputs.push({ input: compositeBuffer, left: Math.round(finalX), top: Math.round(finalY) });
+                log.info(`[IPC] Added affine overlay to thumbnail at (${finalX}, ${finalY})`);
+              }
+            }
+          } else {
+            log.warn(`[IPC] No cached affine data for ${child.id}, skipping in thumbnail`);
+          }
           continue;
         }
 
@@ -3768,6 +4189,102 @@ async function generateCompositeBuffer(projectId, micrograph, projectData, folde
     try {
       // Skip point-located micrographs
       if (child.pointInParent) {
+        continue;
+      }
+
+      // Handle affine-placed overlays specially
+      if (child.placementType === 'affine') {
+        try {
+          const affineTileHash = child.affineTileHash;
+          if (!affineTileHash) {
+            log.warn(`[generateCompositeBuffer] Affine overlay ${child.id} missing affineTileHash`);
+            continue;
+          }
+
+          // Load pre-transformed image from affine tile cache
+          const mediumBuffer = await tileCache.loadAffineMedium(affineTileHash);
+          if (!mediumBuffer) {
+            log.warn(`[generateCompositeBuffer] Affine medium image not found for ${child.id}`);
+            continue;
+          }
+
+          // Get bounds offset for positioning from micrograph data
+          const boundsOffset = child.affineBoundsOffset || { x: 0, y: 0 };
+          const transformedWidth = child.affineTransformedWidth || 0;
+          const transformedHeight = child.affineTransformedHeight || 0;
+
+          log.info(`[generateCompositeBuffer] Affine overlay ${child.id}: bounds=(${boundsOffset.x}, ${boundsOffset.y}), size=${transformedWidth}x${transformedHeight}`);
+
+          // Always resize medium image to full transformed dimensions
+          let childImage = sharp(mediumBuffer);
+          if (transformedWidth > 0 && transformedHeight > 0) {
+            childImage = childImage.resize(transformedWidth, transformedHeight, {
+              fit: 'fill',
+              kernel: sharp.kernel.lanczos3
+            });
+          }
+
+          // Apply opacity
+          const childOpacity = child.opacity ?? 1.0;
+          childImage = childImage.ensureAlpha();
+
+          if (childOpacity < 1.0) {
+            const { data, info } = await childImage.raw().toBuffer({ resolveWithObject: true });
+            for (let i = 3; i < data.length; i += 4) {
+              data[i] = Math.round(data[i] * childOpacity);
+            }
+            childImage = sharp(data, {
+              raw: { width: info.width, height: info.height, channels: info.channels }
+            });
+          }
+
+          const finalBuffer = await childImage.png().toBuffer();
+          let finalX = Math.round(boundsOffset.x);
+          let finalY = Math.round(boundsOffset.y);
+
+          // Bounds checking and cropping
+          const childBufferMeta = await sharp(finalBuffer).metadata();
+          const childW = childBufferMeta.width;
+          const childH = childBufferMeta.height;
+
+          if (finalX + childW <= 0 || finalY + childH <= 0 || finalX >= baseWidth || finalY >= baseHeight) {
+            continue;
+          }
+
+          let cropX = 0, cropY = 0, cropW = childW, cropH = childH;
+          let compositeX = finalX, compositeY = finalY;
+
+          if (finalX < 0) { cropX = -finalX; cropW -= cropX; compositeX = 0; }
+          if (finalY < 0) { cropY = -finalY; cropH -= cropY; compositeY = 0; }
+          if (compositeX + cropW > baseWidth) { cropW = baseWidth - compositeX; }
+          if (compositeY + cropH > baseHeight) { cropH = baseHeight - compositeY; }
+
+          if (cropW <= 0 || cropH <= 0) continue;
+
+          cropX = Math.round(cropX);
+          cropY = Math.round(cropY);
+          cropW = Math.round(cropW);
+          cropH = Math.round(cropH);
+          compositeX = Math.round(compositeX);
+          compositeY = Math.round(compositeY);
+
+          let compositeBuffer = finalBuffer;
+          if (cropX > 0 || cropY > 0 || cropW !== childW || cropH !== childH) {
+            compositeBuffer = await sharp(finalBuffer)
+              .extract({ left: cropX, top: cropY, width: cropW, height: cropH })
+              .toBuffer();
+          }
+
+          compositeInputs.push({
+            input: compositeBuffer,
+            left: compositeX,
+            top: compositeY
+          });
+
+          log.info(`[generateCompositeBuffer] Added affine overlay ${child.id} at (${compositeX}, ${compositeY})`);
+        } catch (err) {
+          log.error(`[generateCompositeBuffer] Error processing affine overlay ${child.id}:`, err);
+        }
         continue;
       }
 
@@ -4826,6 +5343,58 @@ ipcMain.handle('version:prune', async (event, projectId) => {
 });
 
 // =============================================================================
+// POINT COUNT STORAGE HANDLERS
+// =============================================================================
+
+/**
+ * Save a point count session to disk
+ */
+ipcMain.handle('point-count:save-session', async (event, projectId, session) => {
+  log.info('[PointCount] Saving session:', session.id, 'for project:', projectId);
+  return pointCountStorage.saveSession(projectId, session);
+});
+
+/**
+ * Load a point count session from disk
+ */
+ipcMain.handle('point-count:load-session', async (event, projectId, sessionId) => {
+  log.info('[PointCount] Loading session:', sessionId, 'for project:', projectId);
+  return pointCountStorage.loadSession(projectId, sessionId);
+});
+
+/**
+ * Delete a point count session
+ */
+ipcMain.handle('point-count:delete-session', async (event, projectId, sessionId) => {
+  log.info('[PointCount] Deleting session:', sessionId, 'for project:', projectId);
+  return pointCountStorage.deleteSession(projectId, sessionId);
+});
+
+/**
+ * List all sessions for a micrograph
+ */
+ipcMain.handle('point-count:list-sessions', async (event, projectId, micrographId) => {
+  log.info('[PointCount] Listing sessions for micrograph:', micrographId, 'in project:', projectId);
+  return pointCountStorage.listSessions(projectId, micrographId);
+});
+
+/**
+ * List all sessions in a project
+ */
+ipcMain.handle('point-count:list-all-sessions', async (event, projectId) => {
+  log.info('[PointCount] Listing all sessions for project:', projectId);
+  return pointCountStorage.listAllSessions(projectId);
+});
+
+/**
+ * Rename a point count session
+ */
+ipcMain.handle('point-count:rename-session', async (event, projectId, sessionId, newName) => {
+  log.info('[PointCount] Renaming session:', sessionId, 'to:', newName);
+  return pointCountStorage.renameSession(projectId, sessionId, newName);
+});
+
+// =============================================================================
 // PROJECTS INDEX HANDLERS (Recent Projects)
 // =============================================================================
 
@@ -5115,4 +5684,150 @@ ipcMain.handle('logs:get-path', async () => {
 ipcMain.handle('logs:write', async (event, level, message, source) => {
   logService.fromRenderer(level, message, source);
   return { success: true };
+});
+
+/**
+ * Send error report to StraboSpot server
+ * Sends: notes (user description), appversion, log_file
+ */
+ipcMain.handle('logs:send-report', async (event, notes) => {
+  const FormData = require('form-data');
+  const https = require('https');
+  const fs = require('fs');
+
+  try {
+    log.info('[ErrorReport] Sending error report to server...');
+
+    // Get valid token with auto-refresh
+    const tokenResult = await tokenService.getValidAccessToken();
+    if (!tokenResult.success) {
+      log.warn('[ErrorReport] Not authenticated or session expired');
+      return { success: false, error: tokenResult.error, sessionExpired: tokenResult.sessionExpired };
+    }
+
+    // Get app version
+    const appVersion = app.getVersion();
+
+    // Get log file path and read contents
+    const logPath = logService.getLogPath();
+    if (!fs.existsSync(logPath)) {
+      log.warn('[ErrorReport] Log file not found:', logPath);
+      return { success: false, error: 'Log file not found' };
+    }
+
+    // Create form data
+    const form = new FormData();
+    form.append('notes', notes);
+    form.append('appversion', `v${appVersion}`);
+    form.append('log_file', fs.createReadStream(logPath), {
+      filename: 'app.log',
+      contentType: 'text/plain',
+    });
+
+    // Parse the upload URL
+    const uploadUrl = new URL('https://strabospot.org/jwtmicrodb/logs');
+
+    return new Promise((resolve) => {
+      const options = {
+        hostname: uploadUrl.hostname,
+        port: 443,
+        path: uploadUrl.pathname,
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${tokenResult.accessToken}`,
+          ...form.getHeaders(),
+        },
+      };
+
+      const req = https.request(options, (res) => {
+        let responseData = '';
+
+        res.on('data', (chunk) => {
+          responseData += chunk;
+        });
+
+        res.on('end', () => {
+          log.info('[ErrorReport] Server response (status ' + res.statusCode + '):', responseData);
+
+          if (res.statusCode === 401) {
+            resolve({ success: false, error: 'Session expired. Please log in again.', sessionExpired: true });
+            return;
+          }
+
+          if (res.statusCode < 200 || res.statusCode >= 300) {
+            let errorMessage = `Server error: ${res.statusCode}`;
+            try {
+              const errorJson = JSON.parse(responseData);
+              if (errorJson.Error) {
+                errorMessage = errorJson.Error;
+              }
+            } catch {
+              // Use default error message
+            }
+            resolve({ success: false, error: errorMessage });
+            return;
+          }
+
+          try {
+            const result = JSON.parse(responseData);
+            if (result.Status === 'Success') {
+              log.info('[ErrorReport] Error report sent successfully');
+              resolve({ success: true });
+            } else if (result.Error) {
+              resolve({ success: false, error: result.Error });
+            } else {
+              resolve({ success: true });
+            }
+          } catch (parseError) {
+            log.error('[ErrorReport] Failed to parse response:', parseError);
+            resolve({ success: false, error: 'Invalid server response' });
+          }
+        });
+      });
+
+      req.on('error', (error) => {
+        log.error('[ErrorReport] Request error:', error);
+        resolve({ success: false, error: error.message });
+      });
+
+      // Pipe the form data to the request
+      form.pipe(req);
+    });
+  } catch (error) {
+    log.error('[ErrorReport] Failed to send error report:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+
+/**
+ * Load OpenCV.js script content for grain detection
+ * Returns the script as a string to be executed in a worker
+ */
+ipcMain.handle("load-opencv-script", async () => {
+  try {
+    const isDev = !app.isPackaged;
+    let opencvPath;
+    
+    if (isDev) {
+      // In development, load from public folder
+      opencvPath = path.join(__dirname, "..", "public", "opencv.js");
+    } else {
+      // In production, load from dist folder (which becomes resources/app/dist)
+      opencvPath = path.join(__dirname, "..", "dist", "opencv.js");
+    }
+    
+    log.info("[OpenCV] Loading from:", opencvPath);
+    
+    if (!fs.existsSync(opencvPath)) {
+      throw new Error("OpenCV.js not found at " + opencvPath);
+    }
+    
+    const scriptContent = fs.readFileSync(opencvPath, "utf-8");
+    log.info("[OpenCV] Loaded script, size:", scriptContent.length);
+    return scriptContent;
+  } catch (error) {
+    log.error("[OpenCV] Failed to load:", error);
+    throw error;
+  }
 });

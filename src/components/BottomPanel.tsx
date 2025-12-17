@@ -61,7 +61,7 @@ const BottomPanel: React.FC = () => {
       {/* Panel content */}
       <Box sx={{ flex: 1, overflow: 'auto' }}>
         <DetailedNotesPanel
-          micrographId={activeSpotId ? undefined : (activeMicrographId || undefined)}
+          micrographId={activeMicrographId || undefined}
           spotId={activeSpotId || undefined}
           onEditSection={(sectionId) => setOpenDialog(sectionId)}
           onViewAllNotes={() => setOpenDialog('detailedNotes')}
@@ -101,7 +101,7 @@ const BottomPanel: React.FC = () => {
         />
       )}
 
-      {openDialog === 'micrograph' && activeMicrographId && (
+      {(openDialog === 'micrograph' || openDialog === 'polish-description' || openDialog === 'instrument-notes' || openDialog === 'post-processing-notes') && activeMicrographId && (
         <EditMicrographDialog
           isOpen={true}
           onClose={() => setOpenDialog(null)}
@@ -109,7 +109,7 @@ const BottomPanel: React.FC = () => {
         />
       )}
 
-      {openDialog === 'mineralogy' && (
+      {(openDialog === 'mineralogy' || openDialog === 'mineralogy-notes' || openDialog === 'lithology-notes') && (
         <MineralogyDialog
           isOpen={true}
           onClose={() => setOpenDialog(null)}
@@ -118,7 +118,7 @@ const BottomPanel: React.FC = () => {
         />
       )}
 
-      {openDialog === 'grain' && (
+      {(openDialog === 'grain' || openDialog === 'grain-size-notes' || openDialog === 'grain-shape-notes' || openDialog === 'grain-orientation-notes') && (
         <GrainInfoDialog
           isOpen={true}
           onClose={() => setOpenDialog(null)}
@@ -127,7 +127,7 @@ const BottomPanel: React.FC = () => {
         />
       )}
 
-      {openDialog === 'fabric' && (
+      {(openDialog === 'fabric' || openDialog === 'fabric-notes') && (
         <FabricsDialog
           isOpen={true}
           onClose={() => setOpenDialog(null)}
@@ -136,7 +136,7 @@ const BottomPanel: React.FC = () => {
         />
       )}
 
-      {openDialog === 'fracture' && (
+      {(openDialog === 'fracture' || openDialog === 'fracture-notes') && (
         <FracturesDialog
           isOpen={true}
           onClose={() => setOpenDialog(null)}
@@ -145,7 +145,7 @@ const BottomPanel: React.FC = () => {
         />
       )}
 
-      {openDialog === 'vein' && (
+      {(openDialog === 'vein' || openDialog === 'vein-notes') && (
         <VeinsDialog
           isOpen={true}
           onClose={() => setOpenDialog(null)}
@@ -154,7 +154,7 @@ const BottomPanel: React.FC = () => {
         />
       )}
 
-      {openDialog === 'fold' && (
+      {(openDialog === 'fold' || openDialog === 'fold-notes') && (
         <FoldsDialog
           isOpen={true}
           onClose={() => setOpenDialog(null)}
@@ -163,7 +163,7 @@ const BottomPanel: React.FC = () => {
         />
       )}
 
-      {openDialog === 'grainBoundary' && (
+      {(openDialog === 'grainBoundary' || openDialog === 'grain-boundary-notes') && (
         <GrainBoundaryInfoDialog
           isOpen={true}
           onClose={() => setOpenDialog(null)}
@@ -172,7 +172,7 @@ const BottomPanel: React.FC = () => {
         />
       )}
 
-      {openDialog === 'intraGrain' && (
+      {(openDialog === 'intraGrain' || openDialog === 'intragrain-notes') && (
         <IntraGrainInfoDialog
           isOpen={true}
           onClose={() => setOpenDialog(null)}
@@ -181,7 +181,7 @@ const BottomPanel: React.FC = () => {
         />
       )}
 
-      {openDialog === 'clastic' && (
+      {(openDialog === 'clastic' || openDialog === 'clastic-notes') && (
         <ClasticDeformationBandInfoDialog
           isOpen={true}
           onClose={() => setOpenDialog(null)}
@@ -190,7 +190,7 @@ const BottomPanel: React.FC = () => {
         />
       )}
 
-      {openDialog === 'pseudotachylyte' && (
+      {(openDialog === 'pseudotachylyte' || openDialog === 'pseudotachylyte-notes') && (
         <PseudotachylyteInfoDialog
           isOpen={true}
           onClose={() => setOpenDialog(null)}
@@ -199,7 +199,7 @@ const BottomPanel: React.FC = () => {
         />
       )}
 
-      {openDialog === 'faultsShearZones' && (
+      {(openDialog === 'faultsShearZones' || openDialog === 'faults-shear-zones-notes') && (
         <FaultsShearZonesInfoDialog
           isOpen={true}
           onClose={() => setOpenDialog(null)}
@@ -208,7 +208,7 @@ const BottomPanel: React.FC = () => {
         />
       )}
 
-      {openDialog === 'extinctionMicrostructures' && (
+      {(openDialog === 'extinctionMicrostructures' || openDialog === 'extinction-microstructures-notes') && (
         <ExtinctionMicrostructureInfoDialog
           isOpen={true}
           onClose={() => setOpenDialog(null)}

@@ -385,6 +385,80 @@ jobs:
 
             **Windows**: Download and run the installer. You may see a SmartScreen warning since the Windows build is not code-signed. Click "More info" then "Run anyway".
 
-            **Linux**: Download the AppImage, make it executable (`chmod +x`), and run it. Or install the .deb package.
+            **Linux (AppImage)**: Download the AppImage, make it executable (`chmod +x`), and run with: `./StraboMicro2-*.AppImage --no-sandbox`
+
+            **Linux (Debian/Ubuntu)**: Install the .deb package: `sudo dpkg -i strabomicro2_*.deb`
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Update dev-releases.json for website consumption
+  update-dev-releases-json:
+    needs: release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.branch }}
+          fetch-depth: 0
+
+      - name: Pull latest changes
+        run: git pull origin ${{ inputs.branch }}
+
+      - name: Generate dev-releases.json
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Wait for the dev-latest release to appear in the releases list (retry up to 60 seconds)
+          for i in {1..12}; do
+            RELEASE_COUNT=$(gh api repos/${{ github.repository }}/releases --jq '[.[] | select(.tag_name == "dev-latest")] | length')
+            if [ "$RELEASE_COUNT" -gt 0 ]; then
+              echo "dev-latest release found on attempt $i"
+              break
+            fi
+            echo "Waiting for dev-latest release to appear (attempt $i/12)..."
+            sleep 5
+          done
+
+          # Fetch the dev-latest release info from the releases list
+          gh api repos/${{ github.repository }}/releases \
+            --jq '[.[] | select(.tag_name == "dev-latest")][0] | {
+              version: .tag_name,
+              name: .name,
+              date: .published_at,
+              build_number: ${{ github.run_number }},
+              branch: "${{ inputs.branch }}",
+              notes: .body,
+              assets: [.assets[] | select(.name | test("\\.(dmg|exe|AppImage|deb)$")) | {
+                name: .name,
+                url: .browser_download_url,
+                size: .size,
+                platform: (
+                  if (.name | test("-arm64\\.dmg$")) then "macOS (Apple Silicon)"
+                  elif (.name | test("\\.dmg$")) then "macOS (Intel)"
+                  elif (.name | test("\\.exe$")) then "Windows"
+                  elif (.name | test("\\.AppImage$")) then "Linux (AppImage)"
+                  elif (.name | test("\\.deb$")) then "Linux (Debian)"
+                  else "Other"
+                  end
+                )
+              }]
+            }' > dev-releases.json
+
+          echo "Generated dev-releases.json:"
+          cat dev-releases.json
+
+      - name: Commit and push dev-releases.json
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git add dev-releases.json
+          if git diff --cached --quiet; then
+            echo "No changes to dev-releases.json"
+          else
+            git commit -m "[CI] Update dev-releases.json (build #${{ github.run_number }})"
+            git push origin ${{ inputs.branch }}
+          fi

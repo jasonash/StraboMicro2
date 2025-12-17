@@ -29,6 +29,26 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('menu:edit-project', callback);
     return () => ipcRenderer.removeListener('menu:edit-project', callback);
   },
+  onClearAllSpots: (callback) => {
+    ipcRenderer.on('menu:clear-all-spots', callback);
+    return () => ipcRenderer.removeListener('menu:clear-all-spots', callback);
+  },
+  onQuickEditSpots: (callback) => {
+    ipcRenderer.on('menu:quick-edit-spots', callback);
+    return () => ipcRenderer.removeListener('menu:quick-edit-spots', callback);
+  },
+  onBatchEditSpots: (callback) => {
+    ipcRenderer.on('menu:batch-edit-spots', callback);
+    return () => ipcRenderer.removeListener('menu:batch-edit-spots', callback);
+  },
+  onMergeSpots: (callback) => {
+    ipcRenderer.on('menu:merge-spots', callback);
+    return () => ipcRenderer.removeListener('menu:merge-spots', callback);
+  },
+  onSplitSpot: (callback) => {
+    ipcRenderer.on('menu:split-spot', callback);
+    return () => ipcRenderer.removeListener('menu:split-spot', callback);
+  },
   onShowProjectDebug: (callback) => {
     ipcRenderer.on('menu:show-project-debug', callback);
     return () => ipcRenderer.removeListener('menu:show-project-debug', callback);
@@ -136,11 +156,27 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('view:toggle-recursive-spots', handler);
     return () => ipcRenderer.removeListener('view:toggle-recursive-spots', handler);
   },
+  onToggleArchivedSpots: (callback) => {
+    const handler = (event, checked) => callback(checked);
+    ipcRenderer.on('view:toggle-archived-spots', handler);
+    return () => ipcRenderer.removeListener('view:toggle-archived-spots', handler);
+  },
+  onShowPointCountStatistics: (callback) => {
+    const handler = () => callback();
+    ipcRenderer.on('view:show-point-count-statistics', handler);
+    return () => ipcRenderer.removeListener('view:show-point-count-statistics', handler);
+  },
+  onToggleQuickClassify: (callback) => {
+    const handler = () => callback();
+    ipcRenderer.on('view:toggle-quick-classify', handler);
+    return () => ipcRenderer.removeListener('view:toggle-quick-classify', handler);
+  },
 
   // Tile-based image loading
   loadImageWithTiles: (imagePath) => ipcRenderer.invoke('image:load-with-tiles', imagePath),
   loadThumbnail: (imageHash) => ipcRenderer.invoke('image:load-thumbnail', imageHash),
   loadMedium: (imageHash) => ipcRenderer.invoke('image:load-medium', imageHash),
+  loadOpencvScript: () => ipcRenderer.invoke('load-opencv-script'),
   loadTile: (imageHash, tileX, tileY) => ipcRenderer.invoke('image:load-tile', imageHash, tileX, tileY),
   loadTilesBatch: (imageHash, tiles) => ipcRenderer.invoke('image:load-tiles-batch', imageHash, tiles),
   getCacheStats: () => ipcRenderer.invoke('image:cache-stats'),
@@ -175,6 +211,34 @@ contextBridge.exposeInMainWorld('api', {
     const handler = (event, data) => callback(data);
     ipcRenderer.on('tile-queue:tile-progress', handler);
     return () => ipcRenderer.removeListener('tile-queue:tile-progress', handler);
+  },
+
+  // Affine tile operations (3-point registration placement)
+  generateAffineTiles: (imagePath, imageHash, affineMatrix) =>
+    ipcRenderer.invoke('tiles:generate-affine', imagePath, imageHash, affineMatrix),
+  loadAffineTile: (imageHash, tileX, tileY) =>
+    ipcRenderer.invoke('tiles:load-affine-tile', imageHash, tileX, tileY),
+  loadAffineTilesBatch: (imageHash, tiles) =>
+    ipcRenderer.invoke('tiles:load-affine-tiles-batch', imageHash, tiles),
+  loadAffineThumbnail: (imageHash) =>
+    ipcRenderer.invoke('tiles:load-affine-thumbnail', imageHash),
+  loadAffineMedium: (imageHash) =>
+    ipcRenderer.invoke('tiles:load-affine-medium', imageHash),
+  loadAffineMetadata: (imageHash) =>
+    ipcRenderer.invoke('tiles:load-affine-metadata', imageHash),
+  hasAffineTiles: (imageHash) =>
+    ipcRenderer.invoke('tiles:has-affine-tiles', imageHash),
+  deleteAffineTiles: (imageHash) =>
+    ipcRenderer.invoke('tiles:delete-affine-tiles', imageHash),
+  onAffineProgress: (callback) => {
+    // Create unique channel for this callback
+    const channel = `affine-progress-${Date.now()}`;
+    const handler = (event, progress) => callback(progress);
+    ipcRenderer.on(channel, handler);
+    return {
+      channel,
+      unsubscribe: () => ipcRenderer.removeListener(channel, handler)
+    };
   },
 
   // Project folder structure
@@ -303,6 +367,11 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('help:show-logs', handler);
     return () => ipcRenderer.removeListener('help:show-logs', handler);
   },
+  onSendErrorReport: (callback) => {
+    const handler = () => callback();
+    ipcRenderer.on('help:send-error-report', handler);
+    return () => ipcRenderer.removeListener('help:send-error-report', handler);
+  },
 
   // Log service (persistent logging to file)
   logs: {
@@ -310,6 +379,9 @@ contextBridge.exposeInMainWorld('api', {
     getPath: () => ipcRenderer.invoke('logs:get-path'),
     write: (level, message, source) => ipcRenderer.invoke('logs:write', level, message, source),
   },
+
+  // Send error report to server
+  sendErrorReport: (notes) => ipcRenderer.invoke('logs:send-report', notes),
 
   // Auto-updater
   autoUpdater: {
@@ -503,5 +575,44 @@ contextBridge.exposeInMainWorld('api', {
     const handler = () => callback();
     ipcRenderer.on('debug:toggle-memory-monitor', handler);
     return () => ipcRenderer.removeListener('debug:toggle-memory-monitor', handler);
+  },
+
+  // Point Count storage (separate from Spot system)
+  pointCount: {
+    // Save a point count session to disk
+    saveSession: (projectId, session) =>
+      ipcRenderer.invoke('point-count:save-session', projectId, session),
+    // Load a point count session from disk
+    loadSession: (projectId, sessionId) =>
+      ipcRenderer.invoke('point-count:load-session', projectId, sessionId),
+    // Delete a point count session
+    deleteSession: (projectId, sessionId) =>
+      ipcRenderer.invoke('point-count:delete-session', projectId, sessionId),
+    // List all sessions for a micrograph
+    listSessions: (projectId, micrographId) =>
+      ipcRenderer.invoke('point-count:list-sessions', projectId, micrographId),
+    // List all sessions in a project
+    listAllSessions: (projectId) =>
+      ipcRenderer.invoke('point-count:list-all-sessions', projectId),
+    // Rename a session
+    renameSession: (projectId, sessionId, newName) =>
+      ipcRenderer.invoke('point-count:rename-session', projectId, sessionId, newName),
+  },
+
+  // Tools menu events
+  onPointCount: (callback) => {
+    const handler = () => callback();
+    ipcRenderer.on('menu:point-count', handler);
+    return () => ipcRenderer.removeListener('menu:point-count', handler);
+  },
+  onGrainDetection: (callback) => {
+    const handler = () => callback();
+    ipcRenderer.on('menu:grain-detection', handler);
+    return () => ipcRenderer.removeListener('menu:grain-detection', handler);
+  },
+  onImageComparator: (callback) => {
+    const handler = () => callback();
+    ipcRenderer.on('menu:image-comparator', handler);
+    return () => ipcRenderer.removeListener('menu:image-comparator', handler);
   },
 });

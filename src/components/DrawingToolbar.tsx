@@ -7,11 +7,20 @@ import './DrawingToolbar.css';
  * DrawingToolbar - Floating vertical toolbar for drawing tools
  *
  * Positioned absolutely on the right side of the viewer canvas.
- * Contains three drawing tools: Point, Line, and Polygon.
+ * Contains drawing tools: Lasso, Point, Line, and Polygon.
+ * Hidden when in point count mode.
  */
 const DrawingToolbar: React.FC = () => {
   const activeTool = useAppStore((state) => state.activeTool);
   const setActiveTool = useAppStore((state) => state.setActiveTool);
+  const pointCountMode = useAppStore((state) => state.pointCountMode);
+  const spotLassoToolActive = useAppStore((state) => state.spotLassoToolActive);
+  const setSpotLassoToolActive = useAppStore((state) => state.setSpotLassoToolActive);
+
+  // Hide toolbar when in point count mode
+  if (pointCountMode) {
+    return null;
+  }
 
   const handlePointClick = () => {
     setActiveTool(activeTool === 'point' ? null : 'point');
@@ -25,8 +34,39 @@ const DrawingToolbar: React.FC = () => {
     setActiveTool(activeTool === 'polygon' ? null : 'polygon');
   };
 
+  const handleLassoClick = () => {
+    // Toggle lasso tool - deactivate any drawing tool first
+    if (spotLassoToolActive) {
+      setSpotLassoToolActive(false);
+    } else {
+      setActiveTool(null); // Deactivate drawing tools
+      setSpotLassoToolActive(true);
+    }
+  };
+
   return (
     <Box className="drawing-toolbar">
+      <Tooltip title="Lasso Select (Shift+Drag)" placement="left">
+        <IconButton
+          className={`toolbar-button ${spotLassoToolActive ? 'active' : ''}`}
+          onClick={handleLassoClick}
+          aria-label="Lasso select tool"
+        >
+          {/* Lasso icon - freeform loop */}
+          <svg width="20" height="20" viewBox="0 0 20 20">
+            <path
+              d="M4 10 C4 5, 10 3, 14 6 C18 9, 17 14, 12 15 C8 16, 5 14, 4 10"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeDasharray="3 2"
+            />
+            <circle cx="4" cy="10" r="2" fill="currentColor" />
+          </svg>
+        </IconButton>
+      </Tooltip>
+
       <Tooltip title="Point Tool" placement="left">
         <IconButton
           className={`toolbar-button ${activeTool === 'point' ? 'active' : ''}`}

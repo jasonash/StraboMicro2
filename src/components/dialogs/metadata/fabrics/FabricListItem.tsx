@@ -13,7 +13,7 @@ interface FabricListItemProps {
 
 export function FabricListItem({ fabric }: FabricListItemProps) {
   // Build a readable summary of what defines the fabric
-  const definedByText = fabric.fabricDefinedBy.length > 0
+  const definedByText = fabric.fabricDefinedBy && fabric.fabricDefinedBy.length > 0
     ? fabric.fabricDefinedBy.join(', ')
     : 'Not specified';
 

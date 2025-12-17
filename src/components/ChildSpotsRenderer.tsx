@@ -28,8 +28,10 @@ interface ChildSpotsRendererProps {
   stageScale: number;
   /** Currently selected spot ID (for selection highlighting) */
   activeSpotId: string | null;
+  /** Multi-selected spot IDs */
+  selectedSpotIds?: string[];
   /** Callback when a spot is clicked */
-  onSpotClick?: (spot: Spot) => void;
+  onSpotClick?: (spot: Spot, event: any) => void;
   /** Callback when a spot is right-clicked */
   onSpotContextMenu?: (spot: Spot, x: number, y: number) => void;
 }
@@ -39,6 +41,7 @@ export const ChildSpotsRenderer: React.FC<ChildSpotsRendererProps> = ({
   parentMetadata,
   stageScale,
   activeSpotId,
+  selectedSpotIds = [],
   onSpotClick,
   onSpotContextMenu,
 }) => {
@@ -113,7 +116,7 @@ export const ChildSpotsRenderer: React.FC<ChildSpotsRendererProps> = ({
           key={spot.id}
           spot={spot}
           scale={effectiveScale}
-          isSelected={spot.id === activeSpotId}
+          isSelected={spot.id === activeSpotId || selectedSpotIds.includes(spot.id)}
           onClick={onSpotClick}
           onContextMenu={onSpotContextMenu}
           renderLabelsOnly={false}

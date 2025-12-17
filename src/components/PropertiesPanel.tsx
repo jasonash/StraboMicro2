@@ -3,22 +3,24 @@
  *
  * Displays metadata for the currently selected micrograph or spot.
  * Provides a dropdown menu to add/edit various types of geological data.
+ *
+ * Two-tab layout:
+ * - Micrograph/Spot tab: Shows metadata for the selected micrograph or spot
+ * - Project tab: Shows project-level metadata
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Box,
   Typography,
-  Select,
-  MenuItem,
-  FormControl,
   Snackbar,
   Alert,
+  Tabs,
+  Tab,
 } from '@mui/material';
-import { SelectChangeEvent } from '@mui/material/Select';
 import { useAppStore } from '@/store';
 import { BreadcrumbsBar } from './BreadcrumbsBar';
-import { DataTypeAutocomplete } from './DataTypeAutocomplete';
+import { CombinedDataTypeSelector } from './CombinedDataTypeSelector';
 import { ConfirmDialog } from './dialogs/ConfirmDialog';
 import { NotesDialog } from './dialogs/metadata/NotesDialog';
 import { SampleInfoDialog } from './dialogs/metadata/SampleInfoDialog';
@@ -41,54 +43,30 @@ import { ExtinctionMicrostructureInfoDialog } from './dialogs/metadata/extinctio
 import { AssociatedFilesInfoDialog } from './dialogs/metadata/associatedfiles/AssociatedFilesInfoDialog';
 import { LinksInfoDialog } from './dialogs/metadata/links/LinksInfoDialog';
 import { MetadataSummary } from './MetadataSummary';
+import { ProjectMetadataSection } from './ProjectMetadataSection';
 
-/**
- * Data type options for micrographs
- */
-const MICROGRAPH_DATA_TYPES = [
-  { id: '', label: 'Select Data Type...' },
-  { id: 'sample', label: 'Sample Info' },
-  { id: 'micrograph', label: 'Micrograph Info' },
-  { id: 'mineralogy', label: 'Mineralogy/Lithology' },
-  { id: 'grain', label: 'Grain Size/Shape/SPO' },
-  { id: 'fabric', label: 'Fabrics' },
-  { id: 'clastic', label: 'Clastic Deformation Bands' },
-  { id: 'grainBoundary', label: 'Grain Boundaries / Contacts' },
-  { id: 'intraGrain', label: 'Intragranular Structures' },
-  { id: 'vein', label: 'Veins' },
-  { id: 'pseudotachylyte', label: 'Pseudotachylyte' },
-  { id: 'fold', label: 'Folds' },
-  { id: 'faultsShearZones', label: 'Faults and Shear Zones' },
-  { id: 'extinctionMicrostructures', label: 'Extinction Microstructures' },
-  { id: 'fracture', label: 'Fractures' },
-  { id: 'notes', label: 'Notes' },
-  { id: 'files', label: 'Associated Files' },
-  { id: 'links', label: 'Links' },
-] as const;
+interface TabPanelProps {
+  children?: React.ReactNode;
+  index: number;
+  value: number;
+}
 
-/**
- * Data type options for spots
- */
-const SPOT_DATA_TYPES = [
-  { id: '', label: 'Select Data Type...' },
-  { id: 'sample', label: 'Sample Info' },
-  { id: 'spot', label: 'Spot Data' },
-  { id: 'mineralogy', label: 'Mineralogy/Lithology' },
-  { id: 'grain', label: 'Grain Size/Shape/SPO' },
-  { id: 'fabric', label: 'Fabrics' },
-  { id: 'clastic', label: 'Clastic Deformation Bands' },
-  { id: 'grainBoundary', label: 'Grain Boundaries / Contacts' },
-  { id: 'intraGrain', label: 'Intragranular Structures' },
-  { id: 'vein', label: 'Veins' },
-  { id: 'pseudotachylyte', label: 'Pseudotachylyte' },
-  { id: 'fold', label: 'Folds' },
-  { id: 'faultsShearZones', label: 'Faults and Shear Zones' },
-  { id: 'extinctionMicrostructures', label: 'Extinction Microstructures' },
-  { id: 'fracture', label: 'Fractures' },
-  { id: 'notes', label: 'Notes' },
-  { id: 'files', label: 'Associated Files' },
-  { id: 'links', label: 'Links' },
-] as const;
+function TabPanel(props: TabPanelProps) {
+  const { children, value, index, ...other } = props;
+
+  return (
+    <div
+      role="tabpanel"
+      hidden={value !== index}
+      id={`properties-tabpanel-${index}`}
+      aria-labelledby={`properties-tab-${index}`}
+      style={{ height: '100%', overflow: 'auto' }}
+      {...other}
+    >
+      {value === index && <Box sx={{ height: '100%' }}>{children}</Box>}
+    </div>
+  );
+}
 
 export function PropertiesPanel() {
   const project = useAppStore((state) => state.project);
@@ -99,9 +77,20 @@ export function PropertiesPanel() {
   const selectMicrograph = useAppStore((state) => state.selectMicrograph);
   const selectActiveSpot = useAppStore((state) => state.selectActiveSpot);
 
-  const [selectedDataType, setSelectedDataType] = useState('');
   const [openDialog, setOpenDialog] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<'micrograph' | 'spot' | null>(null);
+  const [activeTab, setActiveTab] = useState(0);
+
+  // Auto-switch to Micrograph/Spot tab when selection changes
+  useEffect(() => {
+    if (activeMicrographId || activeSpotId) {
+      setActiveTab(0);
+    }
+  }, [activeMicrographId, activeSpotId]);
+
+  const handleTabChange = (_event: React.SyntheticEvent, newValue: number) => {
+    setActiveTab(newValue);
+  };
 
   // Export feedback state
   const [isExporting, setIsExporting] = useState(false);
@@ -142,28 +131,6 @@ export function PropertiesPanel() {
 
   // Determine what type of entity is selected (check spot first since it's more specific)
   const selectionType = activeSpotId ? 'spot' : activeMicrographId ? 'micrograph' : null;
-
-  // Get appropriate data types based on selection
-  const dataTypes = selectionType === 'micrograph'
-    ? MICROGRAPH_DATA_TYPES
-    : selectionType === 'spot'
-      ? SPOT_DATA_TYPES
-      : [];
-
-  const handleDataTypeChange = (event: SelectChangeEvent<string>) => {
-    const dataType = event.target.value;
-
-    if (dataType) {
-      // Open the corresponding dialog
-      setOpenDialog(dataType);
-    }
-
-    // Always reset dropdown to "Select Data Type..." after any selection
-    // Use setTimeout to ensure the menu closes first
-    setTimeout(() => {
-      setSelectedDataType('');
-    }, 0);
-  };
 
   // Handle download micrograph as JPEG
   const handleDownloadJpeg = async () => {
@@ -243,84 +210,101 @@ export function PropertiesPanel() {
     setConfirmDelete(null);
   };
 
-  // If nothing is selected, show placeholder
-  if (!selectionType) {
-    return (
-      <Box sx={{ p: 2, height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center' }}>
-          Select a micrograph or spot to view and edit metadata
-        </Typography>
-      </Box>
-    );
-  }
+  // Determine the first tab label based on selection
+  const firstTabLabel = activeSpotId ? 'Spot' : 'Micrograph';
 
   return (
-    <Box sx={{ p: 2, height: '100%', display: 'flex', flexDirection: 'column' }}>
-      {/* Panel Title */}
-      <Typography variant="h6" sx={{ mb: 1, fontWeight: 600 }}>
-        {selectionType === 'spot' ? 'Spot Details' : 'Micrograph Details'}
-      </Typography>
+    <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+      {/* Tab Bar */}
+      <Tabs
+        value={activeTab}
+        onChange={handleTabChange}
+        variant="fullWidth"
+        sx={{
+          borderBottom: 1,
+          borderColor: 'divider',
+          '& .MuiTab-root': {
+            color: 'text.primary',
+            '&.Mui-selected': {
+              color: 'text.primary',
+            },
+          },
+          '& .MuiTabs-indicator': {
+            backgroundColor: 'primary.main',
+          },
+        }}
+      >
+        <Tab label={firstTabLabel} disableRipple />
+        <Tab label="Project" disableRipple />
+      </Tabs>
 
-      {/* Breadcrumbs Navigation Bar */}
-      <BreadcrumbsBar
-        onDownloadJpeg={handleDownloadJpeg}
-        onDownloadSvg={handleDownloadSvg}
-        onDeleteMicrograph={() => setConfirmDelete('micrograph')}
-        onDeleteSpot={() => setConfirmDelete('spot')}
-        isDownloading={isExporting}
-      />
+      {/* Micrograph/Spot Tab */}
+      <TabPanel value={activeTab} index={0}>
+        {!selectionType ? (
+          <Box sx={{ p: 2, height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center' }}>
+              Select a micrograph or spot to view and edit metadata
+            </Typography>
+          </Box>
+        ) : (
+          <Box sx={{ p: 2, display: 'flex', flexDirection: 'column', height: '100%' }}>
+            {/* Panel Title */}
+            <Typography variant="h6" sx={{ mb: 1, fontWeight: 600 }}>
+              {selectionType === 'spot' ? 'Spot Details' : 'Micrograph Details'}
+            </Typography>
 
-      {/* Header */}
-      <Typography variant="subtitle1" sx={{ mb: 1, fontWeight: 600 }}>
-        Add Data:
-      </Typography>
+            {/* Breadcrumbs Navigation Bar */}
+            <BreadcrumbsBar
+              onDownloadJpeg={handleDownloadJpeg}
+              onDownloadSvg={handleDownloadSvg}
+              onDeleteMicrograph={() => setConfirmDelete('micrograph')}
+              onDeleteSpot={() => setConfirmDelete('spot')}
+              isDownloading={isExporting}
+            />
 
-      {/* Autocomplete Search */}
-      <Box sx={{ mb: 2 }}>
-        <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5, display: 'block' }}>
-          Search by Data Type:
-        </Typography>
-        <DataTypeAutocomplete
-          context={selectionType}
-          onSelectModal={(modal) => setOpenDialog(modal)}
-        />
-      </Box>
+            {/* Combined Data Type Selector */}
+            <Typography variant="subtitle1" sx={{ mb: 1, fontWeight: 600 }}>
+              Add Data:
+            </Typography>
+            <Box sx={{ mb: 3 }}>
+              <CombinedDataTypeSelector
+                context={selectionType}
+                onSelectModal={(modal) => setOpenDialog(modal)}
+              />
+            </Box>
 
-      {/* Data Type Selector Dropdown */}
-      <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5, display: 'block' }}>
-        or Select Data Type:
-      </Typography>
-      <FormControl fullWidth sx={{ mb: 3 }}>
-        <Select
-          value={selectedDataType}
-          onChange={handleDataTypeChange}
-          displayEmpty
-          sx={{
-            '& .MuiSelect-select': {
-              py: 1.5,
-            }
-          }}
-        >
-          {dataTypes.map((type) => (
-            <MenuItem key={type.id} value={type.id} disabled={type.id === ''}>
-              {type.label}
-            </MenuItem>
-          ))}
-        </Select>
-      </FormControl>
+            {/* Metadata Summary Section */}
+            <Box sx={{ flex: 1, overflow: 'auto' }}>
+              <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>
+                Collected Data
+              </Typography>
 
-      {/* Metadata Summary Section */}
-      <Box sx={{ flex: 1, overflow: 'auto' }}>
-        <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>
-          Collected Data
-        </Typography>
+              <MetadataSummary
+                micrographId={activeSpotId ? undefined : (activeMicrographId || undefined)}
+                spotId={activeSpotId || undefined}
+                onEditSection={(sectionId) => setOpenDialog(sectionId)}
+              />
+            </Box>
+          </Box>
+        )}
+      </TabPanel>
 
-        <MetadataSummary
-          micrographId={activeSpotId ? undefined : (activeMicrographId || undefined)}
-          spotId={activeSpotId || undefined}
-          onEditSection={(sectionId) => setOpenDialog(sectionId)}
-        />
-      </Box>
+      {/* Project Tab */}
+      <TabPanel value={activeTab} index={1}>
+        {!project ? (
+          <Box sx={{ p: 2, height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center' }}>
+              No project open
+            </Typography>
+          </Box>
+        ) : (
+          <Box sx={{ p: 2 }}>
+            <ProjectMetadataSection
+              onEditProject={() => setOpenDialog('project')}
+            />
+          </Box>
+        )}
+      </TabPanel>
 
       {/* Dialogs */}
       {openDialog === 'notes' && (

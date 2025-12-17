@@ -350,6 +350,207 @@ class TileCache {
     }
   }
 
+  // ============================================================================
+  // AFFINE TRANSFORM TILE METHODS
+  // ============================================================================
+  // These methods support pre-transformed tiles for affine-placed overlays.
+  // The affine transform is "baked in" during tile generation so the tiles
+  // can be rendered as a standard axis-aligned grid.
+
+  /**
+   * Get path to affine tiles directory
+   *
+   * @param {string} imageHash - Image hash
+   * @returns {string} - Path to tiles-affine directory
+   */
+  getAffineTilesDir(imageHash) {
+    return path.join(this.getCacheDir(imageHash), 'tiles-affine');
+  }
+
+  /**
+   * Get path to affine tile metadata
+   *
+   * @param {string} imageHash - Image hash
+   * @returns {string} - Path to metadata.json in tiles-affine
+   */
+  getAffineMetadataPath(imageHash) {
+    return path.join(this.getAffineTilesDir(imageHash), 'metadata.json');
+  }
+
+  /**
+   * Get path to a specific affine tile
+   *
+   * @param {string} imageHash - Image hash
+   * @param {number} x - Tile X coordinate
+   * @param {number} y - Tile Y coordinate
+   * @returns {string} - Path to tile
+   */
+  getAffineTilePath(imageHash, x, y) {
+    return path.join(this.getAffineTilesDir(imageHash), `tile_${x}_${y}.webp`);
+  }
+
+  /**
+   * Get path to affine thumbnail image
+   *
+   * @param {string} imageHash - Image hash
+   * @returns {string} - Path to affine thumbnail
+   */
+  getAffineThumbnailPath(imageHash) {
+    return path.join(this.getAffineTilesDir(imageHash), 'thumbnail.jpg');
+  }
+
+  /**
+   * Get path to affine medium resolution image
+   *
+   * @param {string} imageHash - Image hash
+   * @returns {string} - Path to affine medium image
+   */
+  getAffineMediumPath(imageHash) {
+    return path.join(this.getAffineTilesDir(imageHash), 'medium.jpg');
+  }
+
+  /**
+   * Check if affine tiles exist for an image
+   *
+   * @param {string} imageHash - Image hash
+   * @returns {Promise<boolean>}
+   */
+  async hasAffineTiles(imageHash) {
+    try {
+      await fs.access(this.getAffineMetadataPath(imageHash));
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Load affine metadata from cache
+   *
+   * @param {string} imageHash - Image hash
+   * @returns {Promise<Object|null>} - Metadata object or null if not found
+   */
+  async loadAffineMetadata(imageHash) {
+    try {
+      const metadataPath = this.getAffineMetadataPath(imageHash);
+      const data = await fs.readFile(metadataPath, 'utf-8');
+      return JSON.parse(data);
+    } catch (error) {
+      return null;
+    }
+  }
+
+  /**
+   * Save affine metadata to cache
+   *
+   * @param {string} imageHash - Image hash
+   * @param {Object} metadata - Metadata object
+   */
+  async saveAffineMetadata(imageHash, metadata) {
+    const affineDir = this.getAffineTilesDir(imageHash);
+    await fs.mkdir(affineDir, { recursive: true });
+
+    const metadataPath = this.getAffineMetadataPath(imageHash);
+    await fs.writeFile(metadataPath, JSON.stringify(metadata, null, 2));
+  }
+
+  /**
+   * Load affine tile from cache
+   *
+   * @param {string} imageHash - Image hash
+   * @param {number} x - Tile X coordinate
+   * @param {number} y - Tile Y coordinate
+   * @returns {Promise<Buffer|null>}
+   */
+  async loadAffineTile(imageHash, x, y) {
+    try {
+      return await fs.readFile(this.getAffineTilePath(imageHash, x, y));
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Save affine tile to cache
+   *
+   * @param {string} imageHash - Image hash
+   * @param {number} x - Tile X coordinate
+   * @param {number} y - Tile Y coordinate
+   * @param {Buffer} buffer - Tile image buffer
+   */
+  async saveAffineTile(imageHash, x, y, buffer) {
+    const tilePath = this.getAffineTilePath(imageHash, x, y);
+    await fs.mkdir(path.dirname(tilePath), { recursive: true });
+    await fs.writeFile(tilePath, buffer);
+  }
+
+  /**
+   * Load affine thumbnail from cache
+   *
+   * @param {string} imageHash - Image hash
+   * @returns {Promise<Buffer|null>}
+   */
+  async loadAffineThumbnail(imageHash) {
+    try {
+      return await fs.readFile(this.getAffineThumbnailPath(imageHash));
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Save affine thumbnail to cache
+   *
+   * @param {string} imageHash - Image hash
+   * @param {Buffer} buffer - Image buffer (JPEG)
+   */
+  async saveAffineThumbnail(imageHash, buffer) {
+    const thumbnailPath = this.getAffineThumbnailPath(imageHash);
+    await fs.mkdir(path.dirname(thumbnailPath), { recursive: true });
+    await fs.writeFile(thumbnailPath, buffer);
+  }
+
+  /**
+   * Load affine medium resolution image from cache
+   *
+   * @param {string} imageHash - Image hash
+   * @returns {Promise<Buffer|null>}
+   */
+  async loadAffineMedium(imageHash) {
+    try {
+      return await fs.readFile(this.getAffineMediumPath(imageHash));
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Save affine medium resolution image to cache
+   *
+   * @param {string} imageHash - Image hash
+   * @param {Buffer} buffer - Image buffer (JPEG)
+   */
+  async saveAffineMedium(imageHash, buffer) {
+    const mediumPath = this.getAffineMediumPath(imageHash);
+    await fs.mkdir(path.dirname(mediumPath), { recursive: true });
+    await fs.writeFile(mediumPath, buffer);
+  }
+
+  /**
+   * Delete affine tiles (called when switching away from affine placement)
+   *
+   * @param {string} imageHash - Image hash
+   */
+  async deleteAffineTiles(imageHash) {
+    const affineDir = this.getAffineTilesDir(imageHash);
+    try {
+      await fs.rm(affineDir, { recursive: true, force: true });
+      console.log(`Deleted affine tiles for ${imageHash}`);
+    } catch (error) {
+      console.warn('Failed to delete affine tiles:', error);
+    }
+  }
+
   /**
    * Clear all caches (useful for debugging/maintenance)
    */

@@ -92,12 +92,22 @@ import {
   Spot,
   GroupMetadata,
   Tag,
+  SimpleCoord,
 } from '@/types/project-types';
+import * as turf from '@turf/turf';
+import polygonClipping from 'polygon-clipping';
+import {
+  PointCountSession,
+  PointCountSessionSummary,
+  calculateSessionSummary,
+} from '@/types/point-count-types';
 import {
   updateMicrograph,
   updateSpot,
   buildMicrographIndex,
   buildSpotIndex,
+  findSpotParentMicrograph,
+  findMicrographById,
 } from './helpers';
 import type { TiledViewerRef } from '@/components/TiledViewer';
 
@@ -124,6 +134,10 @@ interface AppState {
 
   // ========== SELECTION STATE ==========
   selectedSpotIds: string[]; // Multi-selection for batch operations
+  spotLassoToolActive: boolean; // Whether toolbar lasso tool is active for spot selection
+
+  // ========== SPLIT MODE STATE ==========
+  splitModeSpotId: string | null; // When set, user is drawing a split line on this spot
 
   // ========== VIEWER STATE ==========
   activeTool: DrawingTool;
@@ -135,6 +149,7 @@ interface AppState {
   showSpotLabels: boolean;
   showMicrographOutlines: boolean;
   showRecursiveSpots: boolean;
+  showArchivedSpots: boolean;
   showRulers: boolean;
   spotOverlayOpacity: number;
   viewerRef: React.RefObject<TiledViewerRef> | null;
@@ -148,6 +163,75 @@ interface AppState {
   expandedDatasets: string[];
   expandedSamples: string[];
   expandedMicrographs: string[];
+
+  // ========== NAVIGATION GUARD (for unsaved changes warnings) ==========
+  // Callback that returns true if navigation should proceed, false to block
+  // Used by DetailedNotesPanel to intercept navigation when there are unsaved notes
+  navigationGuard: (() => Promise<boolean>) | null;
+
+  // ========== QUICK CLASSIFY STATE ==========
+  /** Whether Quick Classify toolbar is visible */
+  quickClassifyVisible: boolean;
+  /** User-configured keyboard shortcuts for classification (key -> mineral name) */
+  quickClassifyShortcuts: Record<string, string>;
+  /** Whether Statistics Panel is visible */
+  statisticsPanelVisible: boolean;
+  /** Whether Batch Edit Spots dialog is visible */
+  batchEditDialogOpen: boolean;
+
+  // ========== POINT COUNT MODE STATE ==========
+  /** Whether Point Count mode is active (separate from spots) */
+  pointCountMode: boolean;
+  /** Currently active Point Count session */
+  activePointCountSession: PointCountSession | null;
+  /** List of sessions for the current micrograph (summaries only, not full data) */
+  pointCountSessionList: PointCountSessionSummary[];
+  /** Index of the currently selected point in the session (-1 = none) */
+  currentPointIndex: number;
+  /** Whether lasso selection tool is active */
+  lassoToolActive: boolean;
+  /** Indices of points selected via lasso (for batch operations) */
+  selectedPointIndices: number[];
+
+  // ========== QUICK EDIT MODE STATE ==========
+  /** Whether Quick Edit mode is active */
+  quickEditMode: boolean;
+  /** IDs of spots included in this Quick Edit session (in sorted order) */
+  quickEditSpotIds: string[];
+  /** Current index in quickEditSpotIds array */
+  quickEditCurrentIndex: number;
+  /** Set of spot IDs that have been reviewed (classified, skipped, or deleted) */
+  quickEditReviewedIds: string[];
+  /** Number of spots deleted during this session (for stats) */
+  quickEditDeletedCount: number;
+  /** Sort order for Quick Edit navigation */
+  quickEditSortOrder: 'spatial' | 'size' | 'creation' | 'random';
+  /** Filter applied when entering Quick Edit */
+  quickEditFilter: 'all' | 'unclassified';
+
+  // ========== GENERATION SETTINGS (persisted) ==========
+  /** Last used point counting settings */
+  lastPointCountSettings: {
+    gridType: 'regular' | 'random' | 'stratified';
+    pointCount: number;
+    offsetByHalfSpacing: boolean;
+    pointSize: number;
+    color: string;
+    opacity: number;
+    namingPattern: string;
+  } | null;
+  /** Last used grain detection settings */
+  lastGrainDetectionSettings: {
+    sensitivity: number;
+    minGrainSize: number;
+    edgeContrast: number;
+    simplifyOutlines: boolean;
+    outputType: 'polygons' | 'points';
+    presetName: string;
+    color: string;
+    opacity: number;
+    namingPattern: string;
+  } | null;
 
   // ========== COMPUTED INDEXES (for performance) ==========
   micrographIndex: Map<string, MicrographMetadata>;
@@ -163,16 +247,20 @@ interface AppState {
   // ========== NAVIGATION ACTIONS ==========
   selectDataset: (id: string | null) => void;
   selectSample: (id: string | null) => void;
-  selectMicrograph: (id: string | null) => void;
-  selectActiveSpot: (id: string | null) => void;
-  drillDownToMicrograph: (id: string) => void; // Navigate to child micrograph (pushes current to stack)
-  navigateBack: () => void; // Go back to previous micrograph in stack
+  selectMicrograph: (id: string | null) => Promise<boolean>; // Returns true if navigation succeeded
+  selectActiveSpot: (id: string | null) => Promise<boolean>; // Returns true if navigation succeeded
+  drillDownToMicrograph: (id: string) => Promise<boolean>; // Navigate to child micrograph (pushes current to stack)
+  navigateBack: () => Promise<boolean>; // Go back to previous micrograph in stack
   clearNavigationStack: () => void; // Clear the navigation stack
 
   // ========== SELECTION ACTIONS ==========
   selectSpot: (id: string, multiSelect?: boolean) => void;
   deselectSpot: (id: string) => void;
   clearSpotSelection: () => void;
+  setSpotLassoToolActive: (active: boolean) => void;
+
+  // ========== SPLIT MODE ACTIONS ==========
+  setSplitModeSpotId: (spotId: string | null) => void;
 
   // ========== CRUD: DATASET ==========
   addDataset: (dataset: DatasetMetadata) => void;
@@ -194,8 +282,83 @@ interface AppState {
 
   // ========== CRUD: SPOT ==========
   addSpot: (micrographId: string, spot: Spot) => void;
+  /** Add multiple spots at once (for generation results) - more efficient than calling addSpot N times */
+  addSpots: (micrographId: string, spots: Spot[]) => void;
   updateSpotData: (id: string, updates: Partial<Spot>) => void;
+  /** Update multiple spots with the same changes (batch edit) */
+  batchUpdateSpots: (spotIds: string[], updates: Partial<Spot>) => void;
   deleteSpot: (id: string) => void;
+  /** Clear all spots from a specific micrograph */
+  clearAllSpots: (micrographId: string) => void;
+  /** Merge multiple polygon spots into a single spot */
+  mergeSpots: (spotIds: string[]) => string | null;
+  /** Split a polygon spot with a line, creating multiple spots */
+  splitSpot: (spotId: string, splitLine: SimpleCoord[]) => string[] | null;
+
+  // ========== QUICK CLASSIFY ACTIONS ==========
+  /** Toggle Quick Classify toolbar visibility */
+  setQuickClassifyVisible: (visible: boolean) => void;
+  /** Update keyboard shortcut configuration */
+  setQuickClassifyShortcuts: (shortcuts: Record<string, string>) => void;
+  /** Toggle Statistics Panel visibility */
+  setStatisticsPanelVisible: (visible: boolean) => void;
+  /** Toggle Batch Edit dialog visibility */
+  setBatchEditDialogOpen: (open: boolean) => void;
+
+  // ========== POINT COUNT MODE ACTIONS ==========
+  /** Enter Point Count mode with a session */
+  enterPointCountMode: (session: PointCountSession) => void;
+  /** Exit Point Count mode (auto-saves) */
+  exitPointCountMode: () => Promise<void>;
+  /** Classify a point with a mineral */
+  classifyPoint: (pointId: string, mineral: string) => void;
+  /** Clear classification from a point */
+  clearPointClassification: (pointId: string) => void;
+  /** Save the current point count session to disk */
+  savePointCountSession: () => Promise<void>;
+  /** Load session list for a micrograph */
+  loadPointCountSessions: (micrographId: string) => Promise<void>;
+  /** Set the current point index */
+  setCurrentPointIndex: (index: number) => void;
+  /** Navigate to next unclassified point */
+  goToNextUnclassifiedPoint: () => void;
+  /** Navigate to previous point */
+  goToPreviousPoint: () => void;
+  /** Update session name */
+  updatePointCountSessionName: (name: string) => void;
+  /** Toggle lasso tool mode */
+  setLassoToolActive: (active: boolean) => void;
+  /** Set selected point indices (from lasso selection) */
+  setSelectedPointIndices: (indices: number[]) => void;
+  /** Clear all selected points */
+  clearSelectedPoints: () => void;
+  /** Classify all selected points with a mineral (batch operation) */
+  classifySelectedPoints: (mineral: string) => void;
+
+  // ========== QUICK EDIT MODE ACTIONS ==========
+  /** Enter Quick Edit mode with spots from current micrograph */
+  enterQuickEditMode: (
+    filter: 'all' | 'unclassified',
+    sortOrder: 'spatial' | 'size' | 'creation' | 'random'
+  ) => void;
+  /** Exit Quick Edit mode */
+  exitQuickEditMode: () => void;
+  /** Navigate to next spot in Quick Edit */
+  quickEditNext: () => void;
+  /** Navigate to previous spot in Quick Edit */
+  quickEditPrev: () => void;
+  /** Navigate to specific index in Quick Edit */
+  quickEditGoToIndex: (index: number) => void;
+  /** Mark current spot as reviewed (for skip action) */
+  quickEditMarkReviewed: () => void;
+  /** Delete current spot and advance to next */
+  quickEditDeleteCurrent: () => void;
+
+  // ========== GENERATION SETTINGS ACTIONS ==========
+  /** Update last used point counting settings */
+  setLastPointCountSettings: (settings: AppState['lastPointCountSettings']) => void;
+  /** Update last used grain detection settings */
+  setLastGrainDetectionSettings: (settings: AppState['lastGrainDetectionSettings']) => void;
 
   // ========== CRUD: GROUP ==========
   createGroup: (group: GroupMetadata) => void;
@@ -220,6 +383,7 @@ interface AppState {
   setShowSpotLabels: (show: boolean) => void;
   setShowMicrographOutlines: (show: boolean) => void;
   setShowRecursiveSpots: (show: boolean) => void;
+  setShowArchivedSpots: (show: boolean) => void;
   setShowRulers: (show: boolean) => void;
   setSpotOverlayOpacity: (opacity: number) => void;
   setViewerRef: (ref: React.RefObject<TiledViewerRef> | null) => void;
@@ -242,6 +406,9 @@ interface AppState {
   toggleDatasetExpanded: (id: string) => void;
   toggleSampleExpanded: (id: string) => void;
   toggleMicrographExpanded: (id: string) => void;
+
+  // ========== NAVIGATION GUARD ACTIONS ==========
+  setNavigationGuard: (guard: (() => Promise<boolean>) | null) => void;
 }
 
 // ============================================================================
@@ -265,6 +432,9 @@ export const useAppStore = create<AppState>()(
           micrographNavigationStack: [],
 
           selectedSpotIds: [],
+          spotLassoToolActive: false,
+
+          splitModeSpotId: null,
 
           activeTool: 'select',
           editingSpotId: null,
@@ -275,6 +445,7 @@ export const useAppStore = create<AppState>()(
           showSpotLabels: true,
           showMicrographOutlines: true,
           showRecursiveSpots: false,
+          showArchivedSpots: false,
           showRulers: true,
           spotOverlayOpacity: 0.7,
           viewerRef: null,
@@ -286,6 +457,56 @@ export const useAppStore = create<AppState>()(
           expandedDatasets: [],
           expandedSamples: [],
           expandedMicrographs: [],
+
+          navigationGuard: null,
+
+          // Quick Classify state
+          quickClassifyVisible: false,
+          // Default mineral shortcuts for Quick Classify - common rock-forming minerals
+          // Note: Non-mineral categories (matrix, void, lithic, opaque) are intentionally
+          // excluded - the mineralogy schema only supports actual mineral names.
+          // See PROJECT_STATUS.md for future schema expansion plans.
+          quickClassifyShortcuts: {
+            'q': 'quartz',
+            'p': 'plagioclase',
+            'k': 'k-feldspar',
+            'o': 'olivine',
+            'x': 'pyroxene',
+            'a': 'amphibole',
+            'h': 'hornblende',
+            'b': 'biotite',
+            'm': 'muscovite',
+            'g': 'garnet',
+            'c': 'calcite',
+            'd': 'dolomite',
+            'e': 'epidote',
+            's': 'serpentine',
+            'z': 'zircon',
+            'u': 'unknown',
+          },
+          statisticsPanelVisible: false,
+          batchEditDialogOpen: false,
+
+          // Point Count mode state
+          pointCountMode: false,
+          activePointCountSession: null,
+          pointCountSessionList: [],
+          currentPointIndex: -1,
+          lassoToolActive: false,
+          selectedPointIndices: [],
+
+          // Quick Edit mode state
+          quickEditMode: false,
+          quickEditSpotIds: [],
+          quickEditCurrentIndex: -1,
+          quickEditReviewedIds: [],
+          quickEditDeletedCount: 0,
+          quickEditSortOrder: 'spatial' as const,
+          quickEditFilter: 'all' as const,
+
+          // Generation settings (persisted defaults)
+          lastPointCountSettings: null,
+          lastGrainDetectionSettings: null,
 
           micrographIndex: new Map(),
           spotIndex: new Map(),
@@ -306,6 +527,7 @@ export const useAppStore = create<AppState>()(
               activeSpotId: null,
               micrographNavigationStack: [],
               selectedSpotIds: [],
+              spotLassoToolActive: false,
               micrographIndex,
               spotIndex,
             });
@@ -321,6 +543,7 @@ export const useAppStore = create<AppState>()(
             activeSpotId: null,
             micrographNavigationStack: [],
             selectedSpotIds: [],
+            spotLassoToolActive: false,
             micrographIndex: new Map(),
             spotIndex: new Map(),
           }),
@@ -364,17 +587,51 @@ export const useAppStore = create<AppState>()(
 
           selectSample: (id) => set({ activeSampleId: id }),
 
-          selectMicrograph: (id) => set({
-            activeMicrographId: id,
-            activeSpotId: null,
-            micrographNavigationStack: [], // Clear stack when selecting from sidebar
-          }),
+          selectMicrograph: async (id) => {
+            const { navigationGuard, activeMicrographId } = get();
 
-          selectActiveSpot: (id) => set({ activeSpotId: id }),
+            // Skip guard if selecting the same micrograph
+            if (id === activeMicrographId) return true;
 
-          drillDownToMicrograph: (id) => {
-            const { activeMicrographId, micrographNavigationStack } = get();
-            if (!activeMicrographId || activeMicrographId === id) return;
+            // Check navigation guard if one is set
+            if (navigationGuard) {
+              const canProceed = await navigationGuard();
+              if (!canProceed) return false;
+            }
+
+            set({
+              activeMicrographId: id,
+              activeSpotId: null,
+              micrographNavigationStack: [], // Clear stack when selecting from sidebar
+            });
+            return true;
+          },
+
+          selectActiveSpot: async (id) => {
+            const { navigationGuard, activeSpotId } = get();
+
+            // Skip guard if selecting the same spot
+            if (id === activeSpotId) return true;
+
+            // Check navigation guard if one is set
+            if (navigationGuard) {
+              const canProceed = await navigationGuard();
+              if (!canProceed) return false;
+            }
+
+            set({ activeSpotId: id });
+            return true;
+          },
+
+          drillDownToMicrograph: async (id) => {
+            const { activeMicrographId, micrographNavigationStack, navigationGuard } = get();
+            if (!activeMicrographId || activeMicrographId === id) return true;
+
+            // Check navigation guard if one is set
+            if (navigationGuard) {
+              const canProceed = await navigationGuard();
+              if (!canProceed) return false;
+            }
 
             // Push current micrograph onto stack and navigate to child
             set({
@@ -382,11 +639,18 @@ export const useAppStore = create<AppState>()(
               activeSpotId: null,
               micrographNavigationStack: [...micrographNavigationStack, activeMicrographId],
             });
+            return true;
           },
 
-          navigateBack: () => {
-            const { micrographNavigationStack } = get();
-            if (micrographNavigationStack.length === 0) return;
+          navigateBack: async () => {
+            const { micrographNavigationStack, navigationGuard } = get();
+            if (micrographNavigationStack.length === 0) return true;
+
+            // Check navigation guard if one is set
+            if (navigationGuard) {
+              const canProceed = await navigationGuard();
+              if (!canProceed) return false;
+            }
 
             // Pop the last micrograph from stack and navigate to it
             const newStack = [...micrographNavigationStack];
@@ -397,6 +661,7 @@ export const useAppStore = create<AppState>()(
               activeSpotId: null,
               micrographNavigationStack: newStack,
             });
+            return true;
           },
 
           clearNavigationStack: () => set({ micrographNavigationStack: [] }),
@@ -424,6 +689,15 @@ export const useAppStore = create<AppState>()(
           },
 
           clearSpotSelection: () => set({ selectedSpotIds: [] }),
+
+          setSpotLassoToolActive: (active) => set({
+            spotLassoToolActive: active,
+            // When activating lasso tool, ensure we're in select mode
+            activeTool: active ? 'select' : get().activeTool,
+          }),
+
+          // ========== SPLIT MODE ACTIONS ==========
+          setSplitModeSpotId: (spotId) => set({ splitModeSpotId: spotId }),
 
           // ========== CRUD: DATASET ==========
 
@@ -747,6 +1021,22 @@ export const useAppStore = create<AppState>()(
             return {
               project: newProject,
               isDirty: true,
+              micrographIndex: buildMicrographIndex(newProject),
+              spotIndex: buildSpotIndex(newProject),
+            };
+          }),
+
+          addSpots: (micrographId, spots) => set((state) => {
+            if (!state.project || spots.length === 0) return state;
+
+            const newProject = updateMicrograph(state.project, micrographId, (micrograph) => {
+              micrograph.spots = [...(micrograph.spots || []), ...spots];
+            });
+
+            return {
+              project: newProject,
+              isDirty: true,
+              micrographIndex: buildMicrographIndex(newProject),
               spotIndex: buildSpotIndex(newProject),
             };
           }),
@@ -757,6 +1047,34 @@ export const useAppStore = create<AppState>()(
             const newProject = updateSpot(state.project, id, (spot) => {
               Object.assign(spot, updates);
             });
+
+            return {
+              project: newProject,
+              isDirty: true,
+              spotIndex: buildSpotIndex(newProject),
+            };
+          }),
+
+          batchUpdateSpots: (spotIds, updates) => set((state) => {
+            if (!state.project || spotIds.length === 0) return state;
+
+            const spotIdSet = new Set(spotIds);
+            const newProject = structuredClone(state.project);
+
+            // Update all matching spots in all micrographs
+            for (const dataset of newProject.datasets || []) {
+              for (const sample of dataset.samples || []) {
+                for (const micrograph of sample.micrographs || []) {
+                  if (micrograph.spots) {
+                    for (const spot of micrograph.spots) {
+                      if (spotIdSet.has(spot.id)) {
+                        Object.assign(spot, updates);
+                      }
+                    }
+                  }
+                }
+              }
+            }
 
             return {
               project: newProject,
@@ -785,6 +1103,410 @@ export const useAppStore = create<AppState>()(
               spotIndex: buildSpotIndex(newProject),
             };
           }),
+
+          clearAllSpots: (micrographId) => set((state) => {
+            if (!state.project) return state;
+
+            const newProject = updateMicrograph(state.project, micrographId, (micrograph) => {
+              // Get spot IDs being deleted to clean up selection
+              const deletedSpotIds = new Set((micrograph.spots || []).map(s => s.id));
+              micrograph.spots = [];
+              return deletedSpotIds;
+            });
+
+            // Get the deleted spot IDs from the old project
+            const oldMicrograph = state.micrographIndex.get(micrographId);
+            const deletedSpotIds = new Set((oldMicrograph?.spots || []).map(s => s.id));
+
+            return {
+              project: newProject,
+              isDirty: true,
+              selectedSpotIds: state.selectedSpotIds.filter(sid => !deletedSpotIds.has(sid)),
+              spotIndex: buildSpotIndex(newProject),
+            };
+          }),
+
+          mergeSpots: (spotIds) => {
+            const state = get();
+            if (!state.project || spotIds.length < 2) return null;
+
+            // Get all spots to merge
+            const spots: Spot[] = [];
+            let micrographId: string | null = null;
+
+            for (const spotId of spotIds) {
+              const spot = state.spotIndex.get(spotId);
+              if (!spot) {
+                console.warn(`[Store] Spot ${spotId} not found for merge`);
+                return null;
+              }
+              spots.push(spot);
+
+              // Find which micrograph this spot belongs to
+              // Use the project data directly (not the index) to avoid stale references
+              if (!micrographId) {
+                const parentMicrograph = findSpotParentMicrograph(state.project, spotId);
+                if (parentMicrograph) {
+                  micrographId = parentMicrograph.id;
+                }
+              }
+            }
+
+            if (!micrographId) {
+              console.warn('[Store] Could not find micrograph for spots');
+              return null;
+            }
+
+            // Filter to only polygon spots
+            const polygonSpots = spots.filter(s => {
+              const points = s.points || [];
+              return points.length >= 3; // Polygons need at least 3 points
+            });
+
+            if (polygonSpots.length < 2) {
+              console.warn('[Store] Need at least 2 polygon spots to merge');
+              return null;
+            }
+
+            try {
+              // Convert spots to Turf polygons
+              const turfPolygons = polygonSpots.map(spot => {
+                const points = spot.points || [];
+                const coords = points.map(p => [p.X ?? p.x ?? 0, p.Y ?? p.y ?? 0] as [number, number]);
+                // Close the ring if not already closed
+                if (coords.length > 0) {
+                  const first = coords[0];
+                  const last = coords[coords.length - 1];
+                  if (first[0] !== last[0] || first[1] !== last[1]) {
+                    coords.push([first[0], first[1]]);
+                  }
+                }
+                return turf.polygon([coords]);
+              });
+
+              // Try union first - works well for overlapping polygons
+              let merged = turfPolygons[0];
+              let useConvexHull = false;
+
+              for (let i = 1; i < turfPolygons.length; i++) {
+                const result = turf.union(turf.featureCollection([merged, turfPolygons[i]]));
+                if (result && result.geometry.type === 'Polygon') {
+                  merged = result as ReturnType<typeof turf.polygon>;
+                } else if (result && result.geometry.type === 'MultiPolygon') {
+                  // Non-overlapping polygons produce MultiPolygon - use convex hull instead
+                  useConvexHull = true;
+                  break;
+                }
+              }
+
+              // If polygons don't overlap, use convex hull to create enclosing polygon
+              if (useConvexHull) {
+                // Collect all points from all polygons
+                const allPoints: [number, number][] = [];
+                for (const poly of turfPolygons) {
+                  const coords = poly.geometry.coordinates[0];
+                  for (const coord of coords) {
+                    allPoints.push([coord[0], coord[1]]);
+                  }
+                }
+
+                // Create convex hull from all points
+                const points = turf.featureCollection(
+                  allPoints.map(p => turf.point(p))
+                );
+                const hull = turf.convex(points);
+
+                if (hull && hull.geometry.type === 'Polygon') {
+                  merged = hull as ReturnType<typeof turf.polygon>;
+                } else {
+                  console.warn('[Store] Could not create convex hull');
+                  return null;
+                }
+              }
+
+              // Extract coordinates from merged polygon
+              const mergedCoords = merged.geometry.coordinates[0];
+              // Remove closing point (last == first)
+              const newPoints: SimpleCoord[] = mergedCoords.slice(0, -1).map(coord => ({
+                X: coord[0],
+                Y: coord[1],
+              }));
+
+              // Create merged spot with properties from first spot
+              const firstSpot = polygonSpots[0];
+              const newSpotId = crypto.randomUUID();
+              const newSpot: Spot = {
+                id: newSpotId,
+                name: `Merged (${polygonSpots.length} spots)`,
+                color: firstSpot.color,
+                opacity: firstSpot.opacity,
+                points: newPoints,
+                geometryType: 'Polygon',
+                modifiedTimestamp: Date.now(),
+                mergedFrom: spotIds,
+                generationMethod: 'manual' as const,
+                // Copy mineralogy from first spot if present
+                mineralogy: firstSpot.mineralogy,
+              };
+
+              // Update project: remove old spots, add merged spot
+              const newProject = structuredClone(state.project);
+
+              for (const dataset of newProject.datasets || []) {
+                for (const sample of dataset.samples || []) {
+                  for (const micrograph of sample.micrographs || []) {
+                    if (micrograph.id === micrographId && micrograph.spots) {
+                      // Remove merged spots
+                      micrograph.spots = micrograph.spots.filter(s => !spotIds.includes(s.id));
+                      // Add new merged spot
+                      micrograph.spots.push(newSpot);
+                    }
+                  }
+                }
+              }
+
+              set({
+                project: newProject,
+                isDirty: true,
+                selectedSpotIds: [newSpotId],
+                activeSpotId: newSpotId,
+                spotIndex: buildSpotIndex(newProject),
+              });
+
+              console.log(`[Store] Merged ${polygonSpots.length} spots into ${newSpotId}`);
+              return newSpotId;
+            } catch (error) {
+              console.error('[Store] Error merging spots:', error);
+              return null;
+            }
+          },
+
+          splitSpot: (spotId, splitLine) => {
+            const state = get();
+            if (!state.project || splitLine.length < 2) return null;
+
+            // Find the spot
+            const spot = state.spotIndex.get(spotId);
+            if (!spot) {
+              console.warn(`[Store] Spot ${spotId} not found for split`);
+              return null;
+            }
+
+            // Must be a polygon
+            const points = spot.points || [];
+            if (points.length < 3) {
+              console.warn('[Store] Can only split polygon spots');
+              return null;
+            }
+
+            // Find which micrograph this spot belongs to
+            // Use the project data directly (not the index) to avoid stale references
+            const parentMicrograph = findSpotParentMicrograph(state.project, spotId);
+            if (!parentMicrograph) {
+              console.warn('[Store] Could not find micrograph for spot');
+              return null;
+            }
+            const micrographId = parentMicrograph.id;
+
+            try {
+              // Convert spot to Turf polygon
+              const coords = points.map(p => [p.X ?? p.x ?? 0, p.Y ?? p.y ?? 0] as [number, number]);
+              // Close the ring
+              if (coords.length > 0) {
+                const first = coords[0];
+                const last = coords[coords.length - 1];
+                if (first[0] !== last[0] || first[1] !== last[1]) {
+                  coords.push([first[0], first[1]]);
+                }
+              }
+              const polygon = turf.polygon([coords]);
+
+              // Convert split line coordinates
+              const lineCoords = splitLine.map(p => [p.X ?? p.x ?? 0, p.Y ?? p.y ?? 0] as [number, number]);
+
+              console.log('[Store] Split line coords:', lineCoords);
+              console.log('[Store] Polygon coords:', coords);
+
+              // Strategy: Use polygon-clipping library to cut the polygon with a buffer
+              // around the ENTIRE polyline (not just start-to-end)
+              // This works with pixel coordinates (no geographic assumptions)
+
+              // Buffer width in pixels
+              const bufferWidth = 2;
+
+              // Extend the line beyond the polygon bounds
+              const bbox = turf.bbox(polygon);
+              const diagonal = Math.sqrt(
+                Math.pow(bbox[2] - bbox[0], 2) + Math.pow(bbox[3] - bbox[1], 2)
+              ) * 2;
+
+              // Helper to get perpendicular unit vector for a segment
+              const getPerp = (p1: [number, number], p2: [number, number]): [number, number] => {
+                const dx = p2[0] - p1[0];
+                const dy = p2[1] - p1[1];
+                const len = Math.sqrt(dx * dx + dy * dy);
+                if (len === 0) return [0, 1];
+                return [-dy / len, dx / len]; // perpendicular
+              };
+
+              // Helper to get unit direction vector
+              const getDir = (p1: [number, number], p2: [number, number]): [number, number] => {
+                const dx = p2[0] - p1[0];
+                const dy = p2[1] - p1[1];
+                const len = Math.sqrt(dx * dx + dy * dy);
+                if (len === 0) return [1, 0];
+                return [dx / len, dy / len];
+              };
+
+              // Extend the first and last points of the line beyond the polygon
+              const extendedLineCoords = [...lineCoords];
+
+              // Extend start
+              if (extendedLineCoords.length >= 2) {
+                const dir = getDir(extendedLineCoords[1], extendedLineCoords[0]);
+                extendedLineCoords[0] = [
+                  extendedLineCoords[0][0] + dir[0] * diagonal,
+                  extendedLineCoords[0][1] + dir[1] * diagonal,
+                ];
+              }
+
+              // Extend end
+              if (extendedLineCoords.length >= 2) {
+                const lastIdx = extendedLineCoords.length - 1;
+                const dir = getDir(extendedLineCoords[lastIdx - 1], extendedLineCoords[lastIdx]);
+                extendedLineCoords[lastIdx] = [
+                  extendedLineCoords[lastIdx][0] + dir[0] * diagonal,
+                  extendedLineCoords[lastIdx][1] + dir[1] * diagonal,
+                ];
+              }
+
+              // Build cutting polygon by walking along both sides of the polyline
+              // Left side (positive perpendicular offset)
+              const leftSide: [number, number][] = [];
+              // Right side (negative perpendicular offset) - will be reversed
+              const rightSide: [number, number][] = [];
+
+              for (let i = 0; i < extendedLineCoords.length; i++) {
+                const curr = extendedLineCoords[i];
+                let perp: [number, number];
+
+                if (i === 0) {
+                  // First point: use direction to next point
+                  perp = getPerp(curr, extendedLineCoords[i + 1]);
+                } else if (i === extendedLineCoords.length - 1) {
+                  // Last point: use direction from previous point
+                  perp = getPerp(extendedLineCoords[i - 1], curr);
+                } else {
+                  // Middle point: average of adjacent segment perpendiculars
+                  const perp1 = getPerp(extendedLineCoords[i - 1], curr);
+                  const perp2 = getPerp(curr, extendedLineCoords[i + 1]);
+                  const avgX = (perp1[0] + perp2[0]) / 2;
+                  const avgY = (perp1[1] + perp2[1]) / 2;
+                  const avgLen = Math.sqrt(avgX * avgX + avgY * avgY);
+                  perp = avgLen > 0 ? [avgX / avgLen, avgY / avgLen] : perp1;
+                }
+
+                leftSide.push([curr[0] + perp[0] * bufferWidth, curr[1] + perp[1] * bufferWidth]);
+                rightSide.push([curr[0] - perp[0] * bufferWidth, curr[1] - perp[1] * bufferWidth]);
+              }
+
+              // Combine into cutting polygon: left side forward, then right side backward
+              const cuttingPolygon: [number, number][] = [
+                ...leftSide,
+                ...rightSide.reverse(),
+                leftSide[0], // Close the ring
+              ];
+
+              console.log('[Store] Cutting polygon points:', cuttingPolygon.length);
+
+              // Use polygon-clipping to subtract the cutting polygon from the original
+              // This works with raw pixel coordinates (no geographic assumptions)
+              // polygon-clipping expects: Polygon = Ring[], Ring = [number, number][]
+              const result = polygonClipping.difference(
+                [coords],          // subject polygon (array of rings, first is exterior)
+                [cuttingPolygon]   // clip polygon (the cutting line buffer)
+              );
+
+              console.log('[Store] polygon-clipping result:', result);
+              console.log('[Store] Result polygon count:', result.length);
+
+              // polygon-clipping returns MultiPolygon format: Array of polygons
+              // Each polygon is an array of rings (first is exterior, rest are holes)
+              if (result.length < 2) {
+                console.warn('[Store] Split did not create multiple polygons - line may not fully cross the polygon');
+                console.warn('[Store] Result length:', result.length);
+                return null;
+              }
+
+              // Extract resulting polygons
+              const newSpots: Spot[] = [];
+              const newSpotIds: string[] = [];
+
+              for (const poly of result) {
+                // poly is an array of rings, first ring is the exterior
+                const exteriorRing = poly[0];
+                if (!exteriorRing || exteriorRing.length < 4) continue; // Need at least 3 points + closing
+
+                // Remove closing point and convert to SimpleCoord
+                const newPoints: SimpleCoord[] = exteriorRing.slice(0, -1).map(coord => ({
+                  X: coord[0],
+                  Y: coord[1],
+                }));
+
+                if (newPoints.length >= 3) {
+                  const newId = crypto.randomUUID();
+                  newSpotIds.push(newId);
+                  newSpots.push({
+                    id: newId,
+                    name: `${spot.name} (split)`,
+                    color: spot.color,
+                    opacity: spot.opacity,
+                    points: newPoints,
+                    geometryType: 'Polygon',
+                    modifiedTimestamp: Date.now(),
+                    splitFrom: spotId,
+                    generationMethod: 'manual' as const,
+                    mineralogy: spot.mineralogy,
+                  });
+                }
+              }
+
+              if (newSpots.length < 2) {
+                console.warn('[Store] Split produced less than 2 valid polygons');
+                return null;
+              }
+
+              // Update project: remove old spot, add new spots
+              const newProject = structuredClone(state.project);
+
+              for (const dataset of newProject.datasets || []) {
+                for (const sample of dataset.samples || []) {
+                  for (const micrograph of sample.micrographs || []) {
+                    if (micrograph.id === micrographId && micrograph.spots) {
+                      // Remove original spot
+                      micrograph.spots = micrograph.spots.filter(s => s.id !== spotId);
+                      // Add new split spots
+                      micrograph.spots.push(...newSpots);
+                    }
+                  }
+                }
+              }
+
+              set({
+                project: newProject,
+                isDirty: true,
+                selectedSpotIds: newSpotIds,
+                activeSpotId: newSpotIds[0],
+                spotIndex: buildSpotIndex(newProject),
+              });
+
+              console.log(`[Store] Split spot ${spotId} into ${newSpots.length} spots`);
+              return newSpotIds;
+            } catch (error) {
+              console.error('[Store] Error splitting spot:', error);
+              return null;
+            }
+          },
 
           // ========== CRUD: GROUP ==========
 
@@ -1023,6 +1745,8 @@ export const useAppStore = create<AppState>()(
 
           setShowRecursiveSpots: (show) => set({ showRecursiveSpots: show }),
 
+          setShowArchivedSpots: (show) => set({ showArchivedSpots: show }),
+
           setShowRulers: (show) => set({ showRulers: show }),
 
           setSpotOverlayOpacity: (opacity) => set({ spotOverlayOpacity: opacity }),
@@ -1049,7 +1773,9 @@ export const useAppStore = create<AppState>()(
                 return state;
               }
 
-              const newProject = { ...state.project };
+              // Use structuredClone to create deep copy - ensures all nested arrays
+              // get new references so React's useMemo detects changes
+              const newProject = structuredClone(state.project);
               const spotId = state.editingSpotId;
               const points = state.editingGeometry;
 
@@ -1146,6 +1872,542 @@ export const useAppStore = create<AppState>()(
             }
             return { expandedMicrographs: Array.from(expanded) };
           }),
+
+          // ========== NAVIGATION GUARD ACTIONS ==========
+
+          setNavigationGuard: (guard) => set({ navigationGuard: guard }),
+
+          // ========== QUICK CLASSIFY ACTIONS ==========
+
+          setQuickClassifyVisible: (visible) => {
+            // When showing Quick Classify, also show the Statistics Panel
+            if (visible) {
+              set({ quickClassifyVisible: true, statisticsPanelVisible: true });
+            } else {
+              set({ quickClassifyVisible: false });
+            }
+          },
+
+          setQuickClassifyShortcuts: (shortcuts) => set({ quickClassifyShortcuts: shortcuts }),
+
+          setStatisticsPanelVisible: (visible) => set({ statisticsPanelVisible: visible }),
+
+          setBatchEditDialogOpen: (open) => set({ batchEditDialogOpen: open }),
+
+          // ========== POINT COUNT MODE ACTIONS ==========
+
+          enterPointCountMode: (session) => {
+            // Find first unclassified point index
+            const firstUnclassifiedIndex = session.points.findIndex(p => !p.mineral);
+            const initialIndex = firstUnclassifiedIndex >= 0 ? firstUnclassifiedIndex : 0;
+
+            // Set navigation guard to prevent accidental navigation during point counting
+            const pointCountNavigationGuard = async (): Promise<boolean> => {
+              // Show confirmation dialog
+              const shouldExit = window.confirm(
+                'You are in Point Count mode. Navigating away will exit Point Count mode.\n\n' +
+                'Your progress will be saved automatically.\n\n' +
+                'Do you want to exit Point Count mode?'
+              );
+
+              if (shouldExit) {
+                // Exit point count mode (this will save the session)
+                await get().exitPointCountMode();
+                return true; // Allow navigation
+              }
+
+              return false; // Block navigation
+            };
+
+            set({
+              pointCountMode: true,
+              activePointCountSession: session,
+              currentPointIndex: session.points.length > 0 ? initialIndex : -1,
+              // Show Quick Classify toolbar and Statistics Panel
+              quickClassifyVisible: true,
+              statisticsPanelVisible: true,
+              // Set navigation guard
+              navigationGuard: pointCountNavigationGuard,
+            });
+          },
+
+          exitPointCountMode: async () => {
+            const { activePointCountSession, project } = get();
+
+            // Auto-save session before exiting
+            if (activePointCountSession && project && window.api?.pointCount) {
+              try {
+                // Update summary before saving
+                const updatedSession = {
+                  ...activePointCountSession,
+                  summary: calculateSessionSummary(activePointCountSession.points),
+                };
+                await window.api.pointCount.saveSession(project.id, updatedSession);
+                console.log('[Store] Point count session saved on exit');
+              } catch (error) {
+                console.error('[Store] Error saving point count session:', error);
+              }
+            }
+
+            set({
+              pointCountMode: false,
+              activePointCountSession: null,
+              currentPointIndex: -1,
+              quickClassifyVisible: false,
+              statisticsPanelVisible: false,
+              lassoToolActive: false,
+              selectedPointIndices: [],
+              // Clear navigation guard
+              navigationGuard: null,
+            });
+          },
+
+          classifyPoint: (pointId, mineral) => {
+            const { activePointCountSession } = get();
+            if (!activePointCountSession) return;
+
+            const now = new Date().toISOString();
+            const updatedPoints = activePointCountSession.points.map(p =>
+              p.id === pointId
+                ? { ...p, mineral, classifiedAt: now }
+                : p
+            );
+
+            const updatedSession = {
+              ...activePointCountSession,
+              points: updatedPoints,
+              updatedAt: now,
+              summary: calculateSessionSummary(updatedPoints),
+            };
+
+            set({ activePointCountSession: updatedSession });
+          },
+
+          clearPointClassification: (pointId) => {
+            const { activePointCountSession } = get();
+            if (!activePointCountSession) return;
+
+            const updatedPoints = activePointCountSession.points.map(p =>
+              p.id === pointId
+                ? { ...p, mineral: undefined, classifiedAt: undefined }
+                : p
+            );
+
+            const updatedSession = {
+              ...activePointCountSession,
+              points: updatedPoints,
+              updatedAt: new Date().toISOString(),
+              summary: calculateSessionSummary(updatedPoints),
+            };
+
+            set({ activePointCountSession: updatedSession });
+          },
+
+          savePointCountSession: async () => {
+            const { activePointCountSession, project } = get();
+            if (!activePointCountSession || !project) {
+              console.warn('[Store] No active point count session to save');
+              return;
+            }
+
+            if (!window.api?.pointCount) {
+              console.warn('[Store] Point count API not available');
+              return;
+            }
+
+            try {
+              const result = await window.api.pointCount.saveSession(
+                project.id,
+                activePointCountSession
+              );
+              if (result.success && result.session) {
+                set({ activePointCountSession: result.session });
+                console.log('[Store] Point count session saved');
+              } else {
+                console.error('[Store] Error saving point count session:', result.error);
+              }
+            } catch (error) {
+              console.error('[Store] Error saving point count session:', error);
+            }
+          },
+
+          loadPointCountSessions: async (micrographId) => {
+            const { project } = get();
+            if (!project) {
+              console.warn('[Store] No project loaded');
+              return;
+            }
+
+            if (!window.api?.pointCount) {
+              console.warn('[Store] Point count API not available');
+              return;
+            }
+
+            try {
+              const result = await window.api.pointCount.listSessions(
+                project.id,
+                micrographId
+              );
+              if (result.success) {
+                set({ pointCountSessionList: result.sessions });
+                console.log(`[Store] Loaded ${result.sessions.length} point count sessions`);
+              } else {
+                console.error('[Store] Error loading point count sessions:', result.error);
+                set({ pointCountSessionList: [] });
+              }
+            } catch (error) {
+              console.error('[Store] Error loading point count sessions:', error);
+              set({ pointCountSessionList: [] });
+            }
+          },
+
+          setCurrentPointIndex: (index) => set({ currentPointIndex: index }),
+
+          goToNextUnclassifiedPoint: () => {
+            const { activePointCountSession, currentPointIndex } = get();
+            if (!activePointCountSession) return;
+
+            const points = activePointCountSession.points;
+            const startIndex = currentPointIndex + 1;
+
+            // Search from current position to end
+            for (let i = startIndex; i < points.length; i++) {
+              if (!points[i].mineral) {
+                set({ currentPointIndex: i });
+                return;
+              }
+            }
+
+            // Wrap around and search from start
+            for (let i = 0; i < startIndex && i < points.length; i++) {
+              if (!points[i].mineral) {
+                set({ currentPointIndex: i });
+                return;
+              }
+            }
+
+            // No unclassified points found, stay at current or go to first
+            if (currentPointIndex < 0 && points.length > 0) {
+              set({ currentPointIndex: 0 });
+            }
+          },
+
+          goToPreviousPoint: () => {
+            const { activePointCountSession, currentPointIndex } = get();
+            if (!activePointCountSession || currentPointIndex <= 0) return;
+
+            set({ currentPointIndex: currentPointIndex - 1 });
+          },
+
+          updatePointCountSessionName: (name) => {
+            const { activePointCountSession } = get();
+            if (!activePointCountSession) return;
+
+            set({
+              activePointCountSession: {
+                ...activePointCountSession,
+                name,
+                updatedAt: new Date().toISOString(),
+              },
+            });
+          },
+
+          setLassoToolActive: (active) => {
+            set({
+              lassoToolActive: active,
+              // Clear selection when deactivating lasso tool
+              selectedPointIndices: active ? get().selectedPointIndices : [],
+            });
+          },
+
+          setSelectedPointIndices: (indices) => set({ selectedPointIndices: indices }),
+
+          clearSelectedPoints: () => set({ selectedPointIndices: [] }),
+
+          classifySelectedPoints: (mineral) => {
+            const { activePointCountSession, selectedPointIndices, goToNextUnclassifiedPoint } = get();
+            if (!activePointCountSession || selectedPointIndices.length === 0) return;
+
+            const now = new Date().toISOString();
+            const updatedPoints = activePointCountSession.points.map((p, index) =>
+              selectedPointIndices.includes(index)
+                ? { ...p, mineral, classifiedAt: now }
+                : p
+            );
+
+            const updatedSession = {
+              ...activePointCountSession,
+              points: updatedPoints,
+              updatedAt: now,
+              summary: calculateSessionSummary(updatedPoints),
+            };
+
+            set({
+              activePointCountSession: updatedSession,
+              selectedPointIndices: [], // Clear selection after classification
+              lassoToolActive: false, // Deactivate lasso tool
+            });
+
+            // Navigate to next unclassified point
+            // Use setTimeout to ensure state is updated first
+            setTimeout(() => {
+              goToNextUnclassifiedPoint();
+            }, 10);
+          },
+
+          // ========== QUICK EDIT MODE ACTIONS ==========
+
+          enterQuickEditMode: (filter, sortOrder) => {
+            const { project, activeMicrographId } = get();
+            if (!project || !activeMicrographId) return;
+
+            const micrograph = findMicrographById(project, activeMicrographId);
+            if (!micrograph?.spots || micrograph.spots.length === 0) return;
+
+            // Filter spots based on filter option
+            let spots = [...micrograph.spots];
+            if (filter === 'unclassified') {
+              spots = spots.filter((s) => {
+                const minerals = s.mineralogy?.minerals;
+                return !minerals || minerals.length === 0 || !minerals[0]?.name;
+              });
+            }
+
+            if (spots.length === 0) return;
+
+            // Sort spots based on sort order
+            switch (sortOrder) {
+              case 'spatial': {
+                // Sort by position: left-to-right, then top-to-bottom
+                const getSpotCentroid = (spot: Spot): { x: number; y: number } => {
+                  const geoType = spot.geometryType || spot.geometry?.type;
+                  if (geoType === 'point' || geoType === 'Point') {
+                    if (Array.isArray(spot.geometry?.coordinates)) {
+                      const coords = spot.geometry.coordinates as number[];
+                      return { x: coords[0], y: coords[1] };
+                    }
+                    return { x: spot.points?.[0]?.X ?? 0, y: spot.points?.[0]?.Y ?? 0 };
+                  }
+                  // For lines and polygons, calculate centroid from points
+                  const coords: number[][] = Array.isArray(spot.geometry?.coordinates)
+                    ? (geoType === 'polygon' || geoType === 'Polygon'
+                        ? (spot.geometry.coordinates as number[][][])[0] || []
+                        : (spot.geometry.coordinates as number[][]))
+                    : spot.points?.map((p) => [p.X ?? 0, p.Y ?? 0]) || [];
+                  if (coords.length === 0) return { x: 0, y: 0 };
+                  const xs = coords.map((c) => c[0]);
+                  const ys = coords.map((c) => c[1]);
+                  return {
+                    x: (Math.min(...xs) + Math.max(...xs)) / 2,
+                    y: (Math.min(...ys) + Math.max(...ys)) / 2,
+                  };
+                };
+
+                // Calculate centroids for all spots first
+                const centroids = spots.map((spot) => ({
+                  spot,
+                  centroid: getSpotCentroid(spot),
+                }));
+
+                // Find the vertical extent of all spots
+                const ys = centroids.map((c) => c.centroid.y);
+                const minY = Math.min(...ys);
+                const maxY = Math.max(...ys);
+                const verticalExtent = maxY - minY;
+
+                // Create ~8 rows for natural reading order
+                // Minimum row height of 50px to avoid too many rows for small images
+                const numRows = 8;
+                const rowHeight = Math.max(50, verticalExtent / numRows);
+
+                spots.sort((a, b) => {
+                  const centroidA = getSpotCentroid(a);
+                  const centroidB = getSpotCentroid(b);
+                  const rowA = Math.floor((centroidA.y - minY) / rowHeight);
+                  const rowB = Math.floor((centroidB.y - minY) / rowHeight);
+                  if (rowA !== rowB) return rowA - rowB;
+                  return centroidA.x - centroidB.x;
+                });
+                break;
+              }
+              case 'size': {
+                // Sort by polygon area (largest first)
+                const getSpotArea = (spot: Spot): number => {
+                  const geoType = spot.geometryType || spot.geometry?.type;
+                  if (geoType !== 'polygon' && geoType !== 'Polygon') return 0;
+                  const coords: number[][] = Array.isArray(spot.geometry?.coordinates)
+                    ? (spot.geometry.coordinates as number[][][])[0] || []
+                    : spot.points?.map((p) => [p.X ?? 0, p.Y ?? 0]) || [];
+                  if (coords.length < 3) return 0;
+                  // Shoelace formula for polygon area
+                  let area = 0;
+                  for (let i = 0; i < coords.length; i++) {
+                    const j = (i + 1) % coords.length;
+                    area += coords[i][0] * coords[j][1];
+                    area -= coords[j][0] * coords[i][1];
+                  }
+                  return Math.abs(area / 2);
+                };
+                spots.sort((a, b) => getSpotArea(b) - getSpotArea(a));
+                break;
+              }
+              case 'creation': {
+                // Sort by creation timestamp (oldest first)
+                spots.sort((a, b) => {
+                  const timeA = a.date ? new Date(a.date).getTime() : 0;
+                  const timeB = b.date ? new Date(b.date).getTime() : 0;
+                  return timeA - timeB;
+                });
+                break;
+              }
+              case 'random': {
+                // Fisher-Yates shuffle
+                for (let i = spots.length - 1; i > 0; i--) {
+                  const j = Math.floor(Math.random() * (i + 1));
+                  [spots[i], spots[j]] = [spots[j], spots[i]];
+                }
+                break;
+              }
+            }
+
+            const spotIds = spots.map((s) => s.id);
+
+            // Pre-mark already-classified spots as "reviewed" so they don't count as remaining
+            const alreadyClassifiedIds = spots
+              .filter((s) => {
+                const minerals = s.mineralogy?.minerals;
+                return minerals && minerals.length > 0 && minerals[0]?.name;
+              })
+              .map((s) => s.id);
+
+            set({
+              quickEditMode: true,
+              quickEditSpotIds: spotIds,
+              quickEditCurrentIndex: 0,
+              quickEditReviewedIds: alreadyClassifiedIds,
+              quickEditDeletedCount: 0,
+              quickEditSortOrder: sortOrder,
+              quickEditFilter: filter,
+              activeSpotId: spotIds[0],
+              selectedSpotIds: [], // Clear multi-selection
+              quickClassifyVisible: true, // Show the toolbar
+              statisticsPanelVisible: true, // Show statistics
+            });
+          },
+
+          exitQuickEditMode: () => {
+            set({
+              quickEditMode: false,
+              quickEditSpotIds: [],
+              quickEditCurrentIndex: -1,
+              quickEditReviewedIds: [],
+              quickEditDeletedCount: 0,
+              quickClassifyVisible: false,
+              statisticsPanelVisible: false,
+            });
+          },
+
+          quickEditNext: () => {
+            const { quickEditSpotIds, quickEditCurrentIndex } = get();
+            if (quickEditSpotIds.length === 0) return;
+
+            const nextIndex = quickEditCurrentIndex >= quickEditSpotIds.length - 1
+              ? 0  // Wrap around
+              : quickEditCurrentIndex + 1;
+
+            set({
+              quickEditCurrentIndex: nextIndex,
+              activeSpotId: quickEditSpotIds[nextIndex],
+            });
+          },
+
+          quickEditPrev: () => {
+            const { quickEditSpotIds, quickEditCurrentIndex } = get();
+            if (quickEditSpotIds.length === 0) return;
+
+            const prevIndex = quickEditCurrentIndex <= 0
+              ? quickEditSpotIds.length - 1  // Wrap around
+              : quickEditCurrentIndex - 1;
+
+            set({
+              quickEditCurrentIndex: prevIndex,
+              activeSpotId: quickEditSpotIds[prevIndex],
+            });
+          },
+
+          quickEditGoToIndex: (index) => {
+            const { quickEditSpotIds } = get();
+            if (index < 0 || index >= quickEditSpotIds.length) return;
+
+            set({
+              quickEditCurrentIndex: index,
+              activeSpotId: quickEditSpotIds[index],
+            });
+          },
+
+          quickEditMarkReviewed: () => {
+            const { quickEditSpotIds, quickEditCurrentIndex, quickEditReviewedIds, quickEditNext } = get();
+            if (quickEditCurrentIndex < 0 || quickEditCurrentIndex >= quickEditSpotIds.length) return;
+
+            const currentSpotId = quickEditSpotIds[quickEditCurrentIndex];
+            if (!quickEditReviewedIds.includes(currentSpotId)) {
+              set({
+                quickEditReviewedIds: [...quickEditReviewedIds, currentSpotId],
+              });
+            }
+
+            // Advance to next spot
+            quickEditNext();
+          },
+
+          quickEditDeleteCurrent: () => {
+            const {
+              quickEditSpotIds,
+              quickEditCurrentIndex,
+              quickEditDeletedCount,
+              quickEditReviewedIds,
+              deleteSpot,
+            } = get();
+
+            if (quickEditCurrentIndex < 0 || quickEditCurrentIndex >= quickEditSpotIds.length) return;
+
+            const currentSpotId = quickEditSpotIds[quickEditCurrentIndex];
+
+            // Remove from quick edit list
+            const newSpotIds = quickEditSpotIds.filter((id) => id !== currentSpotId);
+            const newReviewedIds = quickEditReviewedIds.filter((id) => id !== currentSpotId);
+
+            // Calculate new index
+            let newIndex = quickEditCurrentIndex;
+            if (newSpotIds.length === 0) {
+              newIndex = -1;
+            } else if (newIndex >= newSpotIds.length) {
+              newIndex = newSpotIds.length - 1;
+            }
+
+            // Delete the actual spot
+            deleteSpot(currentSpotId);
+
+            // Update quick edit state
+            set({
+              quickEditSpotIds: newSpotIds,
+              quickEditCurrentIndex: newIndex,
+              quickEditDeletedCount: quickEditDeletedCount + 1,
+              quickEditReviewedIds: newReviewedIds,
+              activeSpotId: newIndex >= 0 ? newSpotIds[newIndex] : null,
+            });
+
+            // Exit if no spots remaining
+            if (newSpotIds.length === 0) {
+              get().exitQuickEditMode();
+            }
+          },
+
+          // ========== GENERATION SETTINGS ACTIONS ==========
+
+          setLastPointCountSettings: (settings) => set({ lastPointCountSettings: settings }),
+
+          setLastGrainDetectionSettings: (settings) => set({ lastGrainDetectionSettings: settings }),
         }),
         {
           // Temporal (undo/redo) configuration
@@ -1175,6 +2437,7 @@ export const useAppStore = create<AppState>()(
           showSpotLabels: state.showSpotLabels,
           showMicrographOutlines: state.showMicrographOutlines,
           showRecursiveSpots: state.showRecursiveSpots,
+          showArchivedSpots: state.showArchivedSpots,
           spotOverlayOpacity: state.spotOverlayOpacity,
           theme: state.theme,
 
@@ -1182,6 +2445,13 @@ export const useAppStore = create<AppState>()(
           expandedDatasets: state.expandedDatasets,
           expandedSamples: state.expandedSamples,
           expandedMicrographs: state.expandedMicrographs,
+
+          // Quick Classify settings
+          quickClassifyShortcuts: state.quickClassifyShortcuts,
+
+          // Generation settings
+          lastPointCountSettings: state.lastPointCountSettings,
+          lastGrainDetectionSettings: state.lastGrainDetectionSettings,
         }),
         // Rebuild indexes after rehydrating from file storage
         onRehydrateStorage: () => (state) => {
@@ -1190,6 +2460,10 @@ export const useAppStore = create<AppState>()(
             state.micrographIndex = buildMicrographIndex(state.project);
             state.spotIndex = buildSpotIndex(state.project);
             console.log('[Store] Rehydrated indexes - micrographs:', state.micrographIndex.size, 'spots:', state.spotIndex.size);
+          }
+          // Sync theme with main process menu after rehydration
+          if (state?.theme && window.api?.notifyThemeChanged) {
+            window.api.notifyThemeChanged(state.theme);
           }
         },
       }

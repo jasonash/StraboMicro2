@@ -23,6 +23,7 @@ const path = require('path');
 const log = require('electron-log');
 const sharp = require('sharp');
 const archiver = require('archiver');
+const tileCache = require('./tileCache');
 
 /**
  * Image size configurations for export
@@ -211,6 +212,10 @@ function generateReadme(projectData, allMicrographs) {
     '  📁 associatedFiles/',
     '     Any external files attached to the project (PDFs, documents, etc.).',
     '',
+    '  📁 point-counts/',
+    '     Point count session data (JSON files). Each file represents a',
+    '     point counting session with grid configuration and classifications.',
+    '',
     '───────────────────────────────────────────────────────────────────────────────',
     '                                 NOTES',
     '───────────────────────────────────────────────────────────────────────────────',
@@ -275,6 +280,102 @@ async function generateCompositeBufferNoSpots(projectId, micrograph, projectData
 
       // Skip hidden micrographs
       if (child.isMicroVisible === false) {
+        continue;
+      }
+
+      // Handle affine-placed overlays specially
+      if (child.placementType === 'affine') {
+        try {
+          const affineTileHash = child.affineTileHash;
+          if (!affineTileHash) {
+            log.warn(`[SmzExport] Affine overlay ${child.id} missing affineTileHash`);
+            continue;
+          }
+
+          // Load pre-transformed image from affine tile cache
+          const mediumBuffer = await tileCache.loadAffineMedium(affineTileHash);
+          if (!mediumBuffer) {
+            log.warn(`[SmzExport] Affine medium image not found for ${child.id}`);
+            continue;
+          }
+
+          // Get bounds offset for positioning from micrograph data
+          const boundsOffset = child.affineBoundsOffset || { x: 0, y: 0 };
+          const transformedWidth = child.affineTransformedWidth || 0;
+          const transformedHeight = child.affineTransformedHeight || 0;
+
+          log.info(`[SmzExport] Affine overlay ${child.id}: bounds=(${boundsOffset.x}, ${boundsOffset.y}), size=${transformedWidth}x${transformedHeight}`);
+
+          // Always resize medium image to full transformed dimensions
+          let childImage = sharp(mediumBuffer);
+          if (transformedWidth > 0 && transformedHeight > 0) {
+            childImage = childImage.resize(transformedWidth, transformedHeight, {
+              fit: 'fill',
+              kernel: sharp.kernel.lanczos3
+            });
+          }
+
+          // Apply opacity
+          const childOpacity = child.opacity ?? 1.0;
+          childImage = childImage.ensureAlpha();
+
+          if (childOpacity < 1.0) {
+            const { data, info } = await childImage.raw().toBuffer({ resolveWithObject: true });
+            for (let i = 3; i < data.length; i += 4) {
+              data[i] = Math.round(data[i] * childOpacity);
+            }
+            childImage = sharp(data, {
+              raw: { width: info.width, height: info.height, channels: info.channels }
+            });
+          }
+
+          const finalBuffer = await childImage.png().toBuffer();
+          let finalX = Math.round(boundsOffset.x);
+          let finalY = Math.round(boundsOffset.y);
+
+          // Bounds checking and cropping (same as regular overlays)
+          const childBufferMeta = await sharp(finalBuffer).metadata();
+          const childW = childBufferMeta.width;
+          const childH = childBufferMeta.height;
+
+          if (finalX + childW <= 0 || finalY + childH <= 0 || finalX >= baseWidth || finalY >= baseHeight) {
+            continue;
+          }
+
+          let cropX = 0, cropY = 0, cropW = childW, cropH = childH;
+          let compositeX = finalX, compositeY = finalY;
+
+          if (finalX < 0) { cropX = -finalX; cropW -= cropX; compositeX = 0; }
+          if (finalY < 0) { cropY = -finalY; cropH -= cropY; compositeY = 0; }
+          if (compositeX + cropW > baseWidth) { cropW = baseWidth - compositeX; }
+          if (compositeY + cropH > baseHeight) { cropH = baseHeight - compositeY; }
+
+          if (cropW <= 0 || cropH <= 0) continue;
+
+          cropX = Math.round(cropX);
+          cropY = Math.round(cropY);
+          cropW = Math.round(cropW);
+          cropH = Math.round(cropH);
+          compositeX = Math.round(compositeX);
+          compositeY = Math.round(compositeY);
+
+          let compositeBuffer = finalBuffer;
+          if (cropX > 0 || cropY > 0 || cropW !== childW || cropH !== childH) {
+            compositeBuffer = await sharp(finalBuffer)
+              .extract({ left: cropX, top: cropY, width: cropW, height: cropH })
+              .toBuffer();
+          }
+
+          compositeInputs.push({
+            input: compositeBuffer,
+            left: compositeX,
+            top: compositeY
+          });
+
+          log.info(`[SmzExport] Added affine overlay ${child.id} at (${compositeX}, ${compositeY})`);
+        } catch (err) {
+          log.error(`[SmzExport] Error processing affine overlay ${child.id}:`, err);
+        }
         continue;
       }
 
@@ -644,6 +745,31 @@ async function exportSmz(
       log.error('[SmzExport] Failed to copy associated files:', err);
       // Create empty folder on error
       archive.append('', { name: `${projectId}/associatedFiles/.gitkeep` });
+    }
+
+    // --- Step 3b: Copy point-counts folder and all session files ---
+    sendProgress('Copying point count sessions', 'point-counts');
+    try {
+      const pointCountsPath = path.join(folderPaths.projectPath, 'point-counts');
+      if (fs.existsSync(pointCountsPath)) {
+        const files = await fs.promises.readdir(pointCountsPath);
+        const jsonFiles = files.filter(f => f.endsWith('.json'));
+        for (const file of jsonFiles) {
+          const filePath = path.join(pointCountsPath, file);
+          const stat = await fs.promises.stat(filePath);
+          if (stat.isFile()) {
+            const fileBuffer = await fs.promises.readFile(filePath);
+            archive.append(fileBuffer, { name: `${projectId}/point-counts/${file}` });
+            log.info(`[SmzExport] Added point count session: ${file}`);
+          }
+        }
+        if (jsonFiles.length > 0) {
+          log.info(`[SmzExport] Added ${jsonFiles.length} point count session(s)`);
+        }
+      }
+    } catch (err) {
+      log.error('[SmzExport] Failed to copy point count sessions:', err);
+      // Non-critical - continue without point counts
     }
 
     // --- Step 4: Generate project.pdf ---

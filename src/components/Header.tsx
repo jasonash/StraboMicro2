@@ -63,24 +63,8 @@ const Header: React.FC = () => {
           </Typography>
         </Box>
 
-        {/* Center: User info */}
-        <Box sx={{ flex: 1, display: 'flex', justifyContent: 'center' }}>
-          {isAuthenticated && user ? (
-            <Typography variant="body2" color="text.secondary">
-              Logged in as{' '}
-              <Box component="span" sx={{ color: 'text.primary', fontWeight: 500 }}>
-                {user.name ? `${user.name} (${user.email})` : user.email}
-              </Box>
-            </Typography>
-          ) : (
-            <Typography variant="body2" color="text.secondary">
-              Not logged in. Log in above.
-            </Typography>
-          )}
-        </Box>
-
-        {/* Right: Toolbar buttons */}
-        <Box sx={{ display: 'flex', gap: 0.5 }}>
+        {/* Center: Toolbar buttons */}
+        <Box sx={{ flex: 1, display: 'flex', justifyContent: 'center', gap: 0.5 }}>
           <Tooltip title="Pan and Select" placement="bottom">
             <IconButton
               color="inherit"
@@ -122,6 +106,22 @@ const Header: React.FC = () => {
               <CrosshairIcon />
             </IconButton>
           </Tooltip>
+        </Box>
+
+        {/* Right: User info */}
+        <Box sx={{ display: 'flex', alignItems: 'center' }}>
+          {isAuthenticated && user ? (
+            <Typography variant="body2" color="text.secondary">
+              Logged in as{' '}
+              <Box component="span" sx={{ color: 'text.primary', fontWeight: 500 }}>
+                {user.name ? `${user.name} (${user.email})` : user.email}
+              </Box>
+            </Typography>
+          ) : (
+            <Typography variant="body2" color="text.secondary">
+              Not logged in
+            </Typography>
+          )}
         </Box>
       </Toolbar>
     </AppBar>

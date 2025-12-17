@@ -13,8 +13,9 @@
  */
 
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
-import { Group, Image as KonvaImage, Rect } from 'react-konva';
+import { Group, Image as KonvaImage, Rect, Line } from 'react-konva';
 import { MicrographMetadata } from '@/types/project-types';
+import { useAppStore } from '@/store';
 
 // Render modes based on screen coverage and zoom
 export type RenderMode = 'THUMBNAIL' | 'MEDIUM' | 'TILED';
@@ -77,6 +78,9 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
     isLoading: false,
     retryCount: 0,
   });
+
+  // Get active tool to avoid changing cursor when drawing/measuring
+  const activeTool = useAppStore((state) => state.activeTool);
 
   // Cleanup on unmount to prevent memory leaks
   useEffect(() => {
@@ -239,13 +243,63 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
   /**
    * Calculate position and scale for rendering overlay on parent
    *
-   * IMPORTANT: offsetInParent is the top-left corner position BEFORE rotation.
-   * For Konva rotation to work correctly, we need to:
-   * 1. Convert top-left to center position
-   * 2. Set offsetX/offsetY to half the image dimensions
-   * 3. This makes the Group rotate around its center
+   * For affine placement:
+   * - The affine transform is already baked into the tiles
+   * - Position using affineBoundsOffset (top-left corner in parent space)
+   * - No additional scale/rotation needed
+   *
+   * For other placement types:
+   * - IMPORTANT: offsetInParent is the top-left corner position BEFORE rotation.
+   * - For Konva rotation to work correctly, we need to:
+   *   1. Convert top-left to center position
+   *   2. Set offsetX/offsetY to half the image dimensions
+   *   3. This makes the Group rotate around its center
    */
   const overlayTransform = useMemo(() => {
+    // Handle affine placement type
+    if (micrograph.placementType === 'affine') {
+      const transformedWidth = micrograph.affineTransformedWidth || micrograph.imageWidth || 0;
+      const transformedHeight = micrograph.affineTransformedHeight || micrograph.imageHeight || 0;
+      const boundsOffset = micrograph.affineBoundsOffset || { x: 0, y: 0 };
+      const matrix = micrograph.affineMatrix;
+      const srcWidth = micrograph.imageWidth || 0;
+      const srcHeight = micrograph.imageHeight || 0;
+
+      // Compute the outline points for the affine parallelogram
+      // Transform the four corners of the original image, then offset relative to boundsOffset
+      let affineOutlinePoints: number[] | null = null;
+      if (matrix && matrix.length === 6) {
+        const [a, b, tx, c, d, ty] = matrix;
+        const corners = [
+          [0, 0],
+          [srcWidth, 0],
+          [srcWidth, srcHeight],
+          [0, srcHeight],
+        ];
+        // Transform corners and subtract boundsOffset to get positions relative to tile grid
+        affineOutlinePoints = corners.flatMap(([x, y]) => [
+          a * x + b * y + tx - boundsOffset.x,
+          c * x + d * y + ty - boundsOffset.y,
+        ]);
+      }
+
+      // Position at the top-left of the transformed bounds, convert to center
+      return {
+        x: boundsOffset.x + transformedWidth / 2,
+        y: boundsOffset.y + transformedHeight / 2,
+        scaleX: 1, // No additional scale - transform is baked into tiles
+        scaleY: 1,
+        rotation: 0, // No additional rotation - transform is baked into tiles
+        offsetX: transformedWidth / 2,
+        offsetY: transformedHeight / 2,
+        isAffine: true,
+        transformedWidth,
+        transformedHeight,
+        affineOutlinePoints,
+      };
+    }
+
+    // Standard placement types (rectangle, point, legacy)
     const childPxPerCm = micrograph.scalePixelsPerCentimeter || 100;
     const parentPxPerCm = parentMetadata.scalePixelsPerCentimeter || 100;
     const scaleFactor = parentPxPerCm / childPxPerCm;
@@ -284,18 +338,25 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
       rotation: micrograph.rotation || 0,
       offsetX: imageWidth / 2,  // Rotate around center
       offsetY: imageHeight / 2, // Rotate around center
+      isAffine: false,
+      transformedWidth: imageWidth,
+      transformedHeight: imageHeight,
+      affineOutlinePoints: null,
     };
   }, [micrograph, parentMetadata]);
 
   /**
    * Load image for the determined render mode
    * Includes retry logic to handle race conditions during initial project load
+   *
+   * For affine-placed overlays, we use the pre-transformed affine tiles.
    */
   useEffect(() => {
     if (!window.api || !micrograph.imagePath) return;
 
     // Capture imagePath in a non-null variable for TypeScript
     const imagePath = micrograph.imagePath;
+    const isAffine = micrograph.placementType === 'affine';
 
     // Max retries to avoid infinite loops
     const MAX_RETRIES = 3;
@@ -329,11 +390,29 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
         const folderPaths = await window.api!.getProjectFolderPaths(projectId);
         const fullPath = `${folderPaths.images}/${imagePath}`;
 
+        // First get the image hash (needed for both regular and affine loading)
+        const result = await window.api!.loadImageWithTiles(fullPath);
+
+        // For affine overlays, use the stored tile hash (computed from scratch path during registration)
+        // Otherwise the hash would be different (computed from project folder path)
+        const imageHash = isAffine && micrograph.affineTileHash
+          ? micrograph.affineTileHash
+          : result.hash;
+
+        if (isAffine) {
+          console.log(`[AssociatedImageRenderer] Loading affine overlay: ${micrograph.name}`);
+          console.log(`[AssociatedImageRenderer] Image path: ${fullPath}`);
+          console.log(`[AssociatedImageRenderer] Using tile hash: ${imageHash}`);
+          console.log(`[AssociatedImageRenderer] Stored tile hash: ${micrograph.affineTileHash}`);
+          console.log(`[AssociatedImageRenderer] Computed hash: ${result.hash}`);
+          console.log(`[AssociatedImageRenderer] Target mode: ${targetMode}`);
+        }
 
         if (targetMode === 'THUMBNAIL') {
           // Load 512x512 thumbnail
-          const result = await window.api!.loadImageWithTiles(fullPath);
-          const thumbnailDataUrl = await window.api!.loadThumbnail(result.hash);
+          const thumbnailDataUrl = isAffine
+            ? await window.api!.loadAffineThumbnail(imageHash)
+            : await window.api!.loadThumbnail(imageHash);
 
           const img = new Image();
           img.src = thumbnailDataUrl;
@@ -352,8 +431,9 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
 
         } else if (targetMode === 'MEDIUM') {
           // Load 2048x2048 medium resolution
-          const result = await window.api!.loadImageWithTiles(fullPath);
-          const mediumDataUrl = await window.api!.loadMedium(result.hash);
+          const mediumDataUrl = isAffine
+            ? await window.api!.loadAffineMedium(imageHash)
+            : await window.api!.loadMedium(imageHash);
 
           const img = new Image();
           img.src = mediumDataUrl;
@@ -372,9 +452,22 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
 
         } else {
           // TILED mode - load all tiles
-          const result = await window.api!.loadImageWithTiles(fullPath);
-          const tilesX = result.metadata.tilesX;
-          const tilesY = result.metadata.tilesY;
+          let tilesX: number;
+          let tilesY: number;
+
+          if (isAffine) {
+            // Load affine metadata to get tile counts
+            const affineMetadata = await window.api!.loadAffineMetadata(imageHash);
+            if (!affineMetadata) {
+              console.error('[AssociatedImageRenderer] Affine metadata not found for', imageHash);
+              throw new Error('Affine metadata not found');
+            }
+            tilesX = affineMetadata.tilesX;
+            tilesY = affineMetadata.tilesY;
+          } else {
+            tilesX = result.metadata.tilesX;
+            tilesY = result.metadata.tilesY;
+          }
 
           // Notify parent that we're loading tiles
           const message = result.fromCache
@@ -391,7 +484,9 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
           }
 
           // Load tiles
-          const tileResults = await window.api!.loadTilesBatch(result.hash, tileCoords);
+          const tileResults = isAffine
+            ? await window.api!.loadAffineTilesBatch(imageHash, tileCoords)
+            : await window.api!.loadTilesBatch(imageHash, tileCoords);
           const newTiles = new Map<string, TileInfo>();
 
           // Decode tile images
@@ -476,22 +571,26 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
   }, [onClick, micrograph.id]);
 
   const handleMouseEnter = useCallback((e: any) => {
+    // Don't change cursor if a drawing/measure tool is active
+    if (activeTool) return;
     if (onClick) {
       const container = e.target.getStage()?.container();
       if (container) {
         container.style.cursor = 'pointer';
       }
     }
-  }, [onClick]);
+  }, [onClick, activeTool]);
 
   const handleMouseLeave = useCallback((e: any) => {
+    // Don't change cursor if a drawing/measure tool is active
+    if (activeTool) return;
     if (onClick) {
       const container = e.target.getStage()?.container();
       if (container) {
         container.style.cursor = 'grab';
       }
     }
-  }, [onClick]);
+  }, [onClick, activeTool]);
 
   /**
    * Render based on current mode
@@ -506,8 +605,9 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
     return null;
   }
 
-  const imageWidth = micrograph.imageWidth || 0;
-  const imageHeight = micrograph.imageHeight || 0;
+  // Use transformed dimensions for affine overlays, original dimensions otherwise
+  const renderWidth = overlayTransform.transformedWidth;
+  const renderHeight = overlayTransform.transformedHeight;
 
   if (imageState.mode === 'THUMBNAIL' || imageState.mode === 'MEDIUM') {
     // Render as single image
@@ -530,29 +630,37 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
       >
         <KonvaImage
           image={imageState.imageObj}
-          width={imageWidth}
-          height={imageHeight}
+          width={renderWidth}
+          height={renderHeight}
           opacity={micrograph.opacity ?? 1.0}
         />
-        {/* Red outline around overlay */}
-        {showOutline && (
+        {/* Red outline around overlay - use Line for affine (parallelogram), Rect otherwise */}
+        {showOutline && overlayTransform.affineOutlinePoints ? (
+          <Line
+            points={overlayTransform.affineOutlinePoints}
+            closed
+            stroke="#cc3333"
+            strokeWidth={3 / stageScale} // Constant screen size regardless of zoom
+            listening={false}
+          />
+        ) : showOutline ? (
           <Rect
             x={0}
             y={0}
-            width={imageWidth}
-            height={imageHeight}
+            width={renderWidth}
+            height={renderHeight}
             stroke="#cc3333"
             strokeWidth={3 / (stageScale * overlayTransform.scaleX)} // Constant screen size regardless of zoom/scale
             listening={false}
           />
-        )}
+        ) : null}
         {/* Transparent hit area for reliable click detection */}
         {onClick && (
           <Rect
             x={0}
             y={0}
-            width={imageWidth}
-            height={imageHeight}
+            width={renderWidth}
+            height={renderHeight}
             fill="transparent"
           />
         )}
@@ -592,25 +700,33 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
             />
           );
         })}
-        {/* Red outline around overlay */}
-        {showOutline && (
+        {/* Red outline around overlay - use Line for affine (parallelogram), Rect otherwise */}
+        {showOutline && overlayTransform.affineOutlinePoints ? (
+          <Line
+            points={overlayTransform.affineOutlinePoints}
+            closed
+            stroke="#cc3333"
+            strokeWidth={3 / stageScale} // Constant screen size regardless of zoom
+            listening={false}
+          />
+        ) : showOutline ? (
           <Rect
             x={0}
             y={0}
-            width={imageWidth}
-            height={imageHeight}
+            width={renderWidth}
+            height={renderHeight}
             stroke="#cc3333"
             strokeWidth={3 / (stageScale * overlayTransform.scaleX)} // Constant screen size regardless of zoom/scale
             listening={false}
           />
-        )}
+        ) : null}
         {/* Transparent hit area for reliable click detection */}
         {onClick && (
           <Rect
             x={0}
             y={0}
-            width={imageWidth}
-            height={imageHeight}
+            width={renderWidth}
+            height={renderHeight}
             fill="transparent"
           />
         )}

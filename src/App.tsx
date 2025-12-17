@@ -9,16 +9,24 @@ import { PreferencesDialog } from './components/dialogs/PreferencesDialog';
 import { LoginDialog } from './components/dialogs/LoginDialog';
 import { AboutDialog } from './components/dialogs/AboutDialog';
 import { LogViewerModal } from './components/dialogs/LogViewerModal';
+import { SendErrorReportModal } from './components/dialogs/SendErrorReportModal';
 import { ExportAllImagesDialog } from './components/dialogs/ExportAllImagesDialog';
 import { ExportPDFDialog } from './components/dialogs/ExportPDFDialog';
 import { ExportSmzDialog } from './components/dialogs/ExportSmzDialog';
 import { PushToServerDialog } from './components/dialogs/PushToServerDialog';
 import { VersionHistoryDialog } from './components/dialogs/VersionHistoryDialog';
+import { StatisticsPanel } from './components/StatisticsPanel';
+import { QuickClassifyToolbar } from './components/QuickClassifyToolbar';
+import { ConfigureShortcutsDialog } from './components/dialogs/ConfigureShortcutsDialog';
 import { ImportSmzDialog } from './components/dialogs/ImportSmzDialog';
 import { RemoteProjectsDialog } from './components/dialogs/RemoteProjectsDialog';
 import { SharedProjectDialog } from './components/dialogs/SharedProjectDialog';
 import { CloseProjectDialog } from './components/dialogs/CloseProjectDialog';
 import { ProjectPrepDialog } from './components/dialogs/ProjectPrepDialog';
+import { PointCountDialog } from './components/dialogs/PointCountDialog';
+import { GrainDetectionDialog } from './components/dialogs/GrainDetectionDialog';
+import { ImageComparatorDialog } from './components/dialogs/ImageComparatorDialog';
+import { QuickEditEntryDialog } from './components/dialogs/QuickEditEntryDialog';
 import {
   IncompleteMicrographsDialog,
   findIncompleteMicrographs,
@@ -172,7 +180,14 @@ function App() {
   const [isCloseProjectOpen, setIsCloseProjectOpen] = useState(false);
   const [isAboutOpen, setIsAboutOpen] = useState(false);
   const [isLogViewerOpen, setIsLogViewerOpen] = useState(false);
+  const [isSendErrorReportOpen, setIsSendErrorReportOpen] = useState(false);
   const [isManualUpdateCheck, setIsManualUpdateCheck] = useState(false);
+  const [isConfigureShortcutsOpen, setIsConfigureShortcutsOpen] = useState(false);
+  const [isPointCountDialogOpen, setIsPointCountDialogOpen] = useState(false);
+  const [isGrainDetectionDialogOpen, setIsGrainDetectionDialogOpen] = useState(false);
+  const [isImageComparatorDialogOpen, setIsImageComparatorDialogOpen] = useState(false);
+  const [isQuickEditEntryDialogOpen, setIsQuickEditEntryDialogOpen] = useState(false);
+  const setSplitModeSpotId = useAppStore(state => state.setSplitModeSpotId);
   const closeProject = useAppStore(state => state.closeProject);
   const project = useAppStore(state => state.project);
   const setTheme = useAppStore(state => state.setTheme);
@@ -180,11 +195,14 @@ function App() {
   const setShowSpotLabels = useAppStore(state => state.setShowSpotLabels);
   const setShowMicrographOutlines = useAppStore(state => state.setShowMicrographOutlines);
   const setShowRecursiveSpots = useAppStore(state => state.setShowRecursiveSpots);
+  const setShowArchivedSpots = useAppStore(state => state.setShowArchivedSpots);
+  const setQuickClassifyVisible = useAppStore(state => state.setQuickClassifyVisible);
+  const setStatisticsPanelVisible = useAppStore(state => state.setStatisticsPanelVisible);
   const activeMicrographId = useAppStore(state => state.activeMicrographId);
   const micrographIndex = useAppStore(state => state.micrographIndex);
   const addSpot = useAppStore(state => state.addSpot);
   const updateMicrographMetadata = useAppStore(state => state.updateMicrographMetadata);
-  const { checkAuthStatus, logout } = useAuthStore();
+  const { checkAuthStatus, logout, isAuthenticated } = useAuthStore();
 
   // Initialize theme system
   useTheme();
@@ -377,6 +395,135 @@ function App() {
     // Edit Project menu item
     unsubscribers.push(window.api.onEditProject(() => {
       setIsEditProjectDialogOpen(true);
+    }));
+
+    // Point Count menu item (Tools menu with Cmd+Shift+P)
+    unsubscribers.push(window.api.onPointCount(() => {
+      if (activeMicrographId) {
+        setIsPointCountDialogOpen(true);
+      } else {
+        console.warn('[App] Point Count: No micrograph selected');
+      }
+    }));
+
+    // Grain Detection menu item (Tools menu with Cmd+Shift+G)
+    unsubscribers.push(window.api.onGrainDetection(() => {
+      if (activeMicrographId) {
+        setIsGrainDetectionDialogOpen(true);
+      } else {
+        console.warn('[App] Grain Detection: No micrograph selected');
+      }
+    }));
+
+    // Image Comparator menu item (Tools menu)
+    unsubscribers.push(window.api.onImageComparator(() => {
+      setIsImageComparatorDialogOpen(true);
+    }));
+
+    // Clear All Spots menu item (Edit menu)
+    unsubscribers.push(window.api.onClearAllSpots(() => {
+      const currentMicrographId = useAppStore.getState().activeMicrographId;
+      if (!currentMicrographId) {
+        alert('No micrograph selected. Please select a micrograph first.');
+        return;
+      }
+
+      const micrograph = useAppStore.getState().micrographIndex.get(currentMicrographId);
+      const spotCount = micrograph?.spots?.length || 0;
+
+      if (spotCount === 0) {
+        alert('No spots to clear on this micrograph.');
+        return;
+      }
+
+      if (!confirm(`Are you sure you want to delete all ${spotCount} spots on this micrograph?\n\nThis action cannot be undone.`)) {
+        return;
+      }
+
+      useAppStore.getState().clearAllSpots(currentMicrographId);
+      console.log(`[App] Cleared ${spotCount} spots from micrograph ${currentMicrographId}`);
+    }));
+
+    // Quick Edit Spots menu item (Edit menu, Cmd+Shift+Q)
+    unsubscribers.push(window.api.onQuickEditSpots(() => {
+      const state = useAppStore.getState();
+      if (!state.activeMicrographId) {
+        alert('Please select a micrograph first.');
+        return;
+      }
+      // Check if there are spots on the micrograph
+      const micrograph = state.micrographIndex.get(state.activeMicrographId);
+      if (!micrograph?.spots || micrograph.spots.length === 0) {
+        alert('No spots on this micrograph.\n\nDraw some spots or use "Detect Grains" first.');
+        return;
+      }
+      // Show entry dialog to configure filter/sort options
+      setIsQuickEditEntryDialogOpen(true);
+    }));
+
+    // Batch Edit Spots menu item (Edit menu, Cmd+Shift+E)
+    unsubscribers.push(window.api.onBatchEditSpots(() => {
+      const selectedCount = useAppStore.getState().selectedSpotIds.length;
+      if (selectedCount < 2) {
+        alert('Please select 2 or more spots first.\n\nTip: Use Cmd+Click to select multiple spots, or Shift+Drag to lasso select.');
+        return;
+      }
+      useAppStore.getState().setBatchEditDialogOpen(true);
+    }));
+
+    // Merge Selected Spots menu item (Edit menu, Cmd+M)
+    unsubscribers.push(window.api.onMergeSpots(() => {
+      const state = useAppStore.getState();
+      const selectedIds = state.selectedSpotIds;
+      const activeSpotId = state.activeSpotId;
+
+      // Include activeSpotId in selection if not already
+      const allSelectedIds = activeSpotId && !selectedIds.includes(activeSpotId)
+        ? [...selectedIds, activeSpotId]
+        : selectedIds;
+
+      if (allSelectedIds.length < 2) {
+        alert('Please select 2 or more polygon spots to merge.\n\nTip: Use Cmd+Click to select multiple spots.');
+        return;
+      }
+
+      // Check if all selected spots are polygons
+      const polygonCount = allSelectedIds.filter(id => {
+        const spot = state.spotIndex.get(id);
+        return spot && (spot.points?.length ?? 0) >= 3;
+      }).length;
+
+      if (polygonCount < 2) {
+        alert('Merge requires at least 2 polygon spots.\n\nPoints and lines cannot be merged.');
+        return;
+      }
+
+      const result = state.mergeSpots(allSelectedIds);
+      if (result) {
+        console.log(`[App] Merged ${allSelectedIds.length} spots into ${result}`);
+      } else {
+        alert('Failed to merge spots. Make sure the selected spots are valid polygons.');
+      }
+    }));
+
+    // Split Spot with Line menu item (Edit menu, Cmd+/)
+    unsubscribers.push(window.api.onSplitSpot(() => {
+      const state = useAppStore.getState();
+      const activeSpotId = state.activeSpotId;
+
+      if (!activeSpotId) {
+        alert('Please select a polygon spot to split.');
+        return;
+      }
+
+      const spot = state.spotIndex.get(activeSpotId);
+      if (!spot || (spot.points?.length ?? 0) < 3) {
+        alert('Only polygon spots can be split.\n\nSelect a polygon spot first.');
+        return;
+      }
+
+      // Activate split line drawing mode
+      setSplitModeSpotId(activeSpotId);
     }));
 
     // Debug: Show Project Structure
@@ -670,6 +817,24 @@ function App() {
       setShowRecursiveSpots(checked);
     }));
 
+    // View: Toggle Archived Spots menu item
+    unsubscribers.push(window.api.onToggleArchivedSpots((checked) => {
+      setShowArchivedSpots(checked);
+    }));
+
+    // View: Point Count Statistics menu item - toggle the panel
+    unsubscribers.push(window.api.onShowPointCountStatistics(() => {
+      const currentVisible = useAppStore.getState().statisticsPanelVisible;
+      setStatisticsPanelVisible(!currentVisible);
+    }));
+
+    // View: Toggle Quick Classify Toolbar menu item
+    unsubscribers.push(window.api.onToggleQuickClassify(() => {
+      // Get current state at time of callback to avoid stale closure
+      const currentVisible = useAppStore.getState().quickClassifyVisible;
+      setQuickClassifyVisible(!currentVisible);
+    }));
+
     // Account: Login menu item
     unsubscribers.push(window.api.onLoginRequest(() => {
       setIsLoginDialogOpen(true);
@@ -685,9 +850,14 @@ function App() {
       setIsAboutOpen(true);
     }));
 
-    // Help: Report Error menu item
+    // Help: View Error Logs menu item
     unsubscribers.push(window.api.onShowLogs(() => {
       setIsLogViewerOpen(true);
+    }));
+
+    // Help: Send Error Report menu item
+    unsubscribers.push(window.api.onSendErrorReport(() => {
+      setIsSendErrorReportOpen(true);
     }));
 
     // Help: Check for Updates menu item
@@ -987,6 +1157,12 @@ function App() {
         open={isLogViewerOpen}
         onClose={() => setIsLogViewerOpen(false)}
       />
+      <SendErrorReportModal
+        open={isSendErrorReportOpen}
+        onClose={() => setIsSendErrorReportOpen(false)}
+        isLoggedIn={isAuthenticated}
+        onLoginRequest={() => setIsLoginDialogOpen(true)}
+      />
       <ExportAllImagesDialog
         open={isExportAllImagesOpen}
         onClose={() => setIsExportAllImagesOpen(false)}
@@ -1071,6 +1247,32 @@ function App() {
       <UpdateNotification
         manualCheck={isManualUpdateCheck}
         onManualCheckComplete={() => setIsManualUpdateCheck(false)}
+      />
+      <PointCountDialog
+        isOpen={isPointCountDialogOpen}
+        onClose={() => setIsPointCountDialogOpen(false)}
+        micrographId={activeMicrographId}
+      />
+      <GrainDetectionDialog
+        isOpen={isGrainDetectionDialogOpen}
+        onClose={() => setIsGrainDetectionDialogOpen(false)}
+        micrographId={activeMicrographId}
+      />
+      <ImageComparatorDialog
+        open={isImageComparatorDialogOpen}
+        onClose={() => setIsImageComparatorDialogOpen(false)}
+      />
+      <QuickEditEntryDialog
+        isOpen={isQuickEditEntryDialogOpen}
+        onClose={() => setIsQuickEditEntryDialogOpen(false)}
+      />
+      <StatisticsPanel />
+      <QuickClassifyToolbar
+        onOpenSettings={() => setIsConfigureShortcutsOpen(true)}
+      />
+      <ConfigureShortcutsDialog
+        open={isConfigureShortcutsOpen}
+        onClose={() => setIsConfigureShortcutsOpen(false)}
       />
     </>
   );

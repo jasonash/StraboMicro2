@@ -402,6 +402,78 @@ jobs:
 
             **Windows**: Download and run the installer. If you see a SmartScreen warning, click "More info" then "Run anyway".
 
-            **Linux**: Download the AppImage, make it executable (`chmod +x`), and run it. Or install the .deb package.
+            **Linux (AppImage)**: Download the AppImage, make it executable (`chmod +x`), and run with: `./StraboMicro2-*.AppImage --no-sandbox`
+
+            **Linux (Debian/Ubuntu)**: Install the .deb package: `sudo dpkg -i strabomicro2_*.deb`
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Update releases.json for website consumption
+  update-releases-json:
+    needs: release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Pull latest changes
+        run: git pull origin main
+
+      - name: Generate releases.json
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Wait for the new release to appear in the list (retry up to 30 seconds)
+          for i in {1..6}; do
+            if gh api repos/${{ github.repository }}/releases/tags/v${{ inputs.version }} --silent 2>/dev/null; then
+              echo "Release v${{ inputs.version }} found on attempt $i"
+              break
+            fi
+            echo "Waiting for release to be available (attempt $i/6)..."
+            sleep 5
+          done
+
+          # Fetch last 10 production releases (exclude dev-latest)
+          gh api repos/${{ github.repository }}/releases \
+            --jq '[.[] | select(.tag_name != "dev-latest") | {
+              version: .tag_name,
+              name: .name,
+              date: .published_at,
+              prerelease: .prerelease,
+              notes: .body,
+              assets: [.assets[] | select(.name | test("\\.(dmg|exe|AppImage|deb)$")) | {
+                name: .name,
+                url: .browser_download_url,
+                size: .size,
+                platform: (
+                  if (.name | test("-arm64\\.dmg$")) then "macOS (Apple Silicon)"
+                  elif (.name | test("\\.dmg$")) then "macOS (Intel)"
+                  elif (.name | test("\\.exe$")) then "Windows"
+                  elif (.name | test("\\.AppImage$")) then "Linux (AppImage)"
+                  elif (.name | test("\\.deb$")) then "Linux (Debian)"
+                  else "Other"
+                  end
+                )
+              }]
+            }][:10]' > releases.json
+
+          echo "Generated releases.json:"
+          cat releases.json
+
+      - name: Commit and push releases.json
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git add releases.json
+          if git diff --cached --quiet; then
+            echo "No changes to releases.json"
+          else
+            git commit -m "[CI] Update releases.json"
+            git push origin main
+          fi

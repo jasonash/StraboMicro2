@@ -59,6 +59,35 @@ interface TileData extends TileCoordinate {
   dataUrl: string;
 }
 
+// Affine tile metadata interface
+interface AffineTileMetadata {
+  originalWidth: number;
+  originalHeight: number;
+  transformedWidth: number;
+  transformedHeight: number;
+  affineMatrix: [number, number, number, number, number, number];
+  boundsOffset: { x: number; y: number };
+  tileSize: number;
+  tilesX: number;
+  tilesY: number;
+  totalTiles: number;
+  createdAt: string;
+}
+
+// Affine tile generation result
+interface AffineTileGenerationResult {
+  success: boolean;
+  metadata?: AffineTileMetadata;
+  progressChannel?: string;
+  error?: string;
+}
+
+// Affine progress subscription result
+interface AffineProgressSubscription {
+  channel: string;
+  unsubscribe: () => void;
+}
+
 // Cache statistics interface
 interface CacheStats {
   imageCount: number;
@@ -96,6 +125,11 @@ interface Window {
     onNewProject: (callback: () => void) => Unsubscribe;
     onOpenProject: (callback: () => void) => Unsubscribe;
     onEditProject: (callback: () => void) => Unsubscribe;
+    onClearAllSpots: (callback: () => void) => Unsubscribe;
+    onQuickEditSpots: (callback: () => void) => Unsubscribe;
+    onBatchEditSpots: (callback: () => void) => Unsubscribe;
+    onMergeSpots: (callback: () => void) => Unsubscribe;
+    onSplitSpot: (callback: () => void) => Unsubscribe;
     onShowProjectDebug: (callback: () => void) => Unsubscribe;
     onShowSerializedJson: (callback: () => void) => Unsubscribe;
     getSerializedProjectJson: (projectData: unknown) => Promise<string>;
@@ -131,6 +165,9 @@ interface Window {
     onToggleSpotLabels: (callback: (checked: boolean) => void) => Unsubscribe;
     onToggleOverlayOutlines: (callback: (checked: boolean) => void) => Unsubscribe;
     onToggleRecursiveSpots: (callback: (checked: boolean) => void) => Unsubscribe;
+    onToggleArchivedSpots: (callback: (checked: boolean) => void) => Unsubscribe;
+    onShowPointCountStatistics: (callback: () => void) => Unsubscribe;
+    onToggleQuickClassify: (callback: () => void) => Unsubscribe;
 
     // Tile-based image loading
     loadImageWithTiles: (imagePath: string) => Promise<{
@@ -140,6 +177,7 @@ interface Window {
     }>;
     loadThumbnail: (imageHash: string) => Promise<string>;
     loadMedium: (imageHash: string) => Promise<string>;
+    loadOpencvScript: () => Promise<string>;
     loadTile: (imageHash: string, tileX: number, tileY: number) => Promise<string>;
     loadTilesBatch: (imageHash: string, tiles: TileCoordinate[]) => Promise<TileData[]>;
     getCacheStats: () => Promise<CacheStats>;
@@ -188,6 +226,21 @@ interface Window {
       currentTile: number;
       totalTiles: number;
     }) => void) => Unsubscribe;
+
+    // Affine tile operations (3-point registration placement)
+    generateAffineTiles: (
+      imagePath: string,
+      imageHash: string,
+      affineMatrix: [number, number, number, number, number, number]
+    ) => Promise<AffineTileGenerationResult>;
+    loadAffineTile: (imageHash: string, tileX: number, tileY: number) => Promise<string | null>;
+    loadAffineTilesBatch: (imageHash: string, tiles: TileCoordinate[]) => Promise<TileData[]>;
+    loadAffineThumbnail: (imageHash: string) => Promise<string>;
+    loadAffineMedium: (imageHash: string) => Promise<string>;
+    loadAffineMetadata: (imageHash: string) => Promise<AffineTileMetadata | null>;
+    hasAffineTiles: (imageHash: string) => Promise<boolean>;
+    deleteAffineTiles: (imageHash: string) => Promise<{ success: boolean; error?: string }>;
+    onAffineProgress: (callback: (progress: number) => void) => AffineProgressSubscription;
 
     // Project folder structure
     getProjectDataPath: () => Promise<string>;
@@ -435,6 +488,7 @@ interface Window {
     // Help menu events
     onShowAbout: (callback: () => void) => Unsubscribe;
     onShowLogs: (callback: () => void) => Unsubscribe;
+    onSendErrorReport: (callback: () => void) => Unsubscribe;
     onCheckForUpdates: (callback: () => void) => Unsubscribe;
 
     // Log service (persistent logging to file)
@@ -443,6 +497,9 @@ interface Window {
       getPath: () => Promise<string>;
       write: (level: string, message: string, source?: string) => Promise<{ success: boolean }>;
     };
+
+    // Send error report to server
+    sendErrorReport: (notes: string) => Promise<{ success: boolean; error?: string; sessionExpired?: boolean }>;
 
     // Auto-updater
     autoUpdater: {
@@ -640,6 +697,51 @@ interface Window {
     onDebugClearAllSpots: (callback: () => void) => Unsubscribe;
     onDebugToggleMemoryMonitor: (callback: () => void) => Unsubscribe;
 
+    // Point Count storage (separate from Spot system)
+    pointCount: {
+      // Save a point count session to disk
+      saveSession: (projectId: string, session: PointCountSessionData) => Promise<{
+        success: boolean;
+        session?: PointCountSessionData;
+        error?: string;
+      }>;
+      // Load a point count session from disk
+      loadSession: (projectId: string, sessionId: string) => Promise<{
+        success: boolean;
+        session?: PointCountSessionData;
+        error?: string;
+      }>;
+      // Delete a point count session
+      deleteSession: (projectId: string, sessionId: string) => Promise<{
+        success: boolean;
+        message?: string;
+        error?: string;
+      }>;
+      // List all sessions for a micrograph
+      listSessions: (projectId: string, micrographId: string) => Promise<{
+        success: boolean;
+        sessions: PointCountSessionSummaryData[];
+        error?: string;
+      }>;
+      // List all sessions in a project
+      listAllSessions: (projectId: string) => Promise<{
+        success: boolean;
+        sessions: PointCountSessionSummaryData[];
+        error?: string;
+      }>;
+      // Rename a session
+      renameSession: (projectId: string, sessionId: string, newName: string) => Promise<{
+        success: boolean;
+        session?: PointCountSessionData;
+        error?: string;
+      }>;
+    };
+
+    // Tools menu events
+    onPointCount: (callback: () => void) => Unsubscribe;
+    onGrainDetection: (callback: () => void) => Unsubscribe;
+    onImageComparator: (callback: () => void) => Unsubscribe;
+
     versionHistory: {
       // Create a new version (auto-save)
       create: (
@@ -769,4 +871,51 @@ interface RemoteProject {
   modifiedTimestamp: number;
   bytes: number;
   bytesFormatted: string;
+}
+
+// Point Count Types
+interface PointCountPointData {
+  id: string;
+  x: number;
+  y: number;
+  row: number;
+  col: number;
+  mineral?: string;
+  classifiedAt?: string;
+}
+
+interface PointCountGridSettingsData {
+  rows: number;
+  cols: number;
+  totalPoints: number;
+  offset?: { x: number; y: number };
+}
+
+interface PointCountSummaryData {
+  totalPoints: number;
+  classifiedCount: number;
+  modalComposition: Record<string, number>;
+}
+
+interface PointCountSessionData {
+  id: string;
+  micrographId: string;
+  name: string;
+  createdAt: string;
+  updatedAt: string;
+  gridType: 'regular' | 'random' | 'stratified';
+  gridSettings: PointCountGridSettingsData;
+  points: PointCountPointData[];
+  summary: PointCountSummaryData;
+}
+
+interface PointCountSessionSummaryData {
+  id: string;
+  micrographId: string;
+  name: string;
+  createdAt: string;
+  updatedAt: string;
+  gridType: 'regular' | 'random' | 'stratified';
+  totalPoints: number;
+  classifiedCount: number;
 }

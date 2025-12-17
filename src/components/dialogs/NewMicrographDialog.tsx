@@ -48,7 +48,9 @@ import { InstrumentDatabaseDialog, type InstrumentData } from './InstrumentDatab
 import { ScaleBarCanvas, type Tool, type ScaleBarCanvasRef } from '../ScaleBarCanvas';
 import PlacementCanvas from './PlacementCanvas';
 import { PointPlacementCanvas } from './PointPlacementCanvas';
+import { AffineRegistrationModal } from './AffineRegistrationModal';
 import { PanTool, Timeline, RestartAlt, CheckCircle, Cancel } from '@mui/icons-material';
+import type { AffineMatrix, ControlPoint } from '@/utils/affineTransform';
 
 interface NewMicrographDialogProps {
   isOpen: boolean;
@@ -110,6 +112,7 @@ interface MicrographFormData {
     | 'Locate by an approximate point'
     | 'Locate by known grid coordinates'
     | 'Locate as a scaled rectangle'
+    | '3-Point Registration'
     | '';
   offsetInParent: {
     X: number;
@@ -120,6 +123,13 @@ interface MicrographFormData {
   scaleY: number;
   opacity: number; // Opacity for associated micrograph overlay (0-1)
   copySizeFromMicrographId: string; // For "Copy Size from Existing Micrograph" method
+  // Affine transform fields (for 3-Point Registration)
+  affineMatrix: AffineMatrix | null;
+  affineControlPoints: ControlPoint[] | null;
+  affineBoundsOffset: { x: number; y: number } | null;
+  affineTransformedWidth: number | null;
+  affineTransformedHeight: number | null;
+  affineTileHash: string | null; // Hash used to store/load affine tiles
   instrumentType: string;
   otherInstrumentType: string;
   dataType: string;
@@ -244,6 +254,13 @@ const initialFormData: MicrographFormData = {
   scaleY: 1,
   opacity: 1,
   copySizeFromMicrographId: '',
+  // Affine transform fields (for 3-Point Registration)
+  affineMatrix: null,
+  affineControlPoints: null,
+  affineBoundsOffset: null,
+  affineTransformedWidth: null,
+  affineTransformedHeight: null,
+  affineTileHash: null,
   // Scale method will be set based on location method (defaults to 'Trace Scale Bar' initially)
   instrumentType: '',
   otherInstrumentType: '',
@@ -341,8 +358,10 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
   const [formData, setFormData] = useState<MicrographFormData>(initialFormData);
   const [showPeriodicTable, setShowPeriodicTable] = useState(false);
   const [showInstrumentDatabase, setShowInstrumentDatabase] = useState(false);
+  const [showAffineRegistration, setShowAffineRegistration] = useState(false);
   const [detectors, setDetectors] = useState<Detector[]>([{ type: '', make: '', model: '' }]);
   const [micrographPreviewUrl, setMicrographPreviewUrl] = useState<string>('');
+  const [thumbnailUrl, setThumbnailUrl] = useState<string>('');
   const [isLoadingPreview, setIsLoadingPreview] = useState(false);
   const [canvasTool, setCanvasTool] = useState<Tool>('pointer');
   const [isFlipped, setIsFlipped] = useState(false);
@@ -671,6 +690,10 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
             const mediumDataUrl = await window.api.loadMedium(result.hash);
             setMicrographPreviewUrl(mediumDataUrl);
 
+            // Load thumbnail (512px) for header preview display
+            const thumbDataUrl = await window.api.loadThumbnail(result.hash);
+            setThumbnailUrl(thumbDataUrl);
+
             // Update form data with image dimensions and file info
             setFormData((prev) => ({
               ...prev,
@@ -768,10 +791,27 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
   };
 
   const handleNext = () => {
+    // Skip the scale method step for 3-Point Registration since affine transform handles scale
+    if (currentStepId === 'location-method' && formData.locationMethod === '3-Point Registration') {
+      // Find the index of 'location-placement' step and jump directly to it
+      const placementStepIndex = steps.findIndex((s) => s.id === 'location-placement');
+      if (placementStepIndex > 0) {
+        setActiveStep(placementStepIndex);
+        return;
+      }
+    }
     setActiveStep((prevActiveStep) => prevActiveStep + 1);
   };
 
   const handleBack = () => {
+    // When on location-placement with 3-Point Registration, go back to location-method (skip scale method)
+    if (currentStepId === 'location-placement' && formData.locationMethod === '3-Point Registration') {
+      const locationMethodIndex = steps.findIndex((s) => s.id === 'location-method');
+      if (locationMethodIndex >= 0) {
+        setActiveStep(locationMethodIndex);
+        return;
+      }
+    }
     setActiveStep((prevActiveStep) => prevActiveStep - 1);
   };
 
@@ -829,6 +869,8 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
     setScratchIdentifier(null);
     setConversionProgress(null);
     setIsFlipped(false);
+    setMicrographPreviewUrl('');
+    setThumbnailUrl('');
     // Reset XPL state
     setXplFilePath(null);
     setXplFileName(null);
@@ -1277,6 +1319,16 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
               Y: formData.offsetInParent.Y,
             },
           }),
+        ...(isAssociated &&
+          formData.locationMethod === '3-Point Registration' && {
+            placementType: 'affine' as const,
+            affineMatrix: formData.affineMatrix,
+            controlPoints: formData.affineControlPoints,
+            affineBoundsOffset: formData.affineBoundsOffset,
+            affineTransformedWidth: formData.affineTransformedWidth,
+            affineTransformedHeight: formData.affineTransformedHeight,
+            affineTileHash: formData.affineTileHash, // Hash to locate affine tiles in cache
+          }),
         instrument: {
           instrumentType: formData.instrumentType || undefined,
           otherInstrumentType: formData.otherInstrumentType || undefined,
@@ -1598,6 +1650,9 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
             return true; // These methods don't need additional inputs
           }
           return false;
+        } else if (formData.locationMethod === '3-Point Registration') {
+          // 3-Point Registration requires affine matrix to be computed
+          return formData.affineMatrix !== null;
         } else if (formData.locationMethod === 'Not Located') {
           // Not Located doesn't need position validation
           return true;
@@ -2412,8 +2467,17 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
             control={<Radio />}
             label="Locate by an approximate point"
           />
-          <Typography variant="caption" color="text.secondary" sx={{ ml: 4, mt: -1 }}>
+          <Typography variant="caption" color="text.secondary" sx={{ ml: 4, mt: -1, mb: 2 }}>
             Mark a single point showing approximate location
+          </Typography>
+
+          <FormControlLabel
+            value="3-Point Registration"
+            control={<Radio />}
+            label="3-Point Registration"
+          />
+          <Typography variant="caption" color="text.secondary" sx={{ ml: 4, mt: -1 }}>
+            Match 3+ corresponding features to compute precise alignment (handles rotation, scale, and skew)
           </Typography>
 
           {/* TODO: Implement these location methods later
@@ -2791,6 +2855,72 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
             }}
             onScaleDataChange={handleScaleDataChange}
           />
+        </Stack>
+      );
+    }
+
+    if (formData.locationMethod === '3-Point Registration') {
+      const hasRegistration = formData.affineMatrix !== null;
+
+      return (
+        <Stack spacing={2}>
+          <Typography variant="body2" color="text.secondary">
+            Use 3-point registration to precisely align this micrograph on its parent by matching
+            corresponding features between both images.
+          </Typography>
+
+          <Box sx={{
+            p: 3,
+            border: '2px solid',
+            borderColor: hasRegistration ? 'success.main' : 'divider',
+            borderRadius: 1,
+            bgcolor: hasRegistration ? 'success.light' : 'action.hover',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: 2,
+          }}>
+            {hasRegistration ? (
+              <>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <CheckCircle color="success" />
+                  <Typography variant="subtitle1" color="success.dark" fontWeight="bold">
+                    Registration Complete
+                  </Typography>
+                </Box>
+                <Typography variant="body2" color="text.primary">
+                  {formData.affineControlPoints?.length || 0} control points defined
+                </Typography>
+                <Button
+                  variant="outlined"
+                  onClick={() => setShowAffineRegistration(true)}
+                >
+                  Edit Registration
+                </Button>
+              </>
+            ) : (
+              <>
+                <Typography variant="body2" color="text.secondary" textAlign="center">
+                  Click the button below to open the registration interface where you can
+                  click corresponding features on both images.
+                </Typography>
+                <Button
+                  variant="contained"
+                  onClick={() => setShowAffineRegistration(true)}
+                  size="large"
+                >
+                  Start 3-Point Registration
+                </Button>
+              </>
+            )}
+          </Box>
+
+          {hasRegistration && (
+            <Typography variant="caption" color="text.secondary">
+              The overlay will be transformed using an affine matrix computed from your control points.
+              This handles translation, rotation, scale, and skew corrections.
+            </Typography>
+          )}
         </Stack>
       );
     }
@@ -4668,7 +4798,45 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
         transitionDuration={300}
       >
         <DialogTitle>
-          {parentMicrographId ? 'New Associated Micrograph' : 'New Reference Micrograph'}
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span>{parentMicrographId ? 'New Associated Micrograph' : 'New Reference Micrograph'}</span>
+            {thumbnailUrl && formData.micrographFileName && (
+              <Box
+                sx={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 1,
+                  ml: 2,
+                }}
+              >
+                <Typography
+                  variant="body2"
+                  sx={{
+                    color: 'text.secondary',
+                    maxWidth: 200,
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {formData.micrographFileName}
+                </Typography>
+                <Box
+                  component="img"
+                  src={thumbnailUrl}
+                  alt="Micrograph preview"
+                  sx={{
+                    width: 48,
+                    height: 48,
+                    objectFit: 'cover',
+                    borderRadius: 1,
+                    border: '1px solid',
+                    borderColor: 'divider',
+                  }}
+                />
+              </Box>
+            )}
+          </Box>
         </DialogTitle>
         <DialogContent>
           <WizardProgress
@@ -4711,6 +4879,31 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
         onClose={() => setShowInstrumentDatabase(false)}
         onSelect={handleInstrumentFromDatabase}
       />
+
+      {/* Affine Registration Modal for 3-Point Registration */}
+      {parentMicrographId && formData.micrographFilePath && (
+        <AffineRegistrationModal
+          open={showAffineRegistration}
+          onClose={() => setShowAffineRegistration(false)}
+          parentMicrographId={parentMicrographId}
+          overlayImagePath={formData.micrographFilePath}
+          overlayWidth={formData.micrographWidth}
+          overlayHeight={formData.micrographHeight}
+          existingControlPoints={formData.affineControlPoints ?? undefined}
+          onApply={(matrix, controlPoints, boundsOffset, transformedWidth, transformedHeight, tileHash) => {
+            setFormData((prev) => ({
+              ...prev,
+              affineMatrix: matrix,
+              affineControlPoints: controlPoints,
+              affineBoundsOffset: boundsOffset,
+              affineTransformedWidth: transformedWidth,
+              affineTransformedHeight: transformedHeight,
+              affineTileHash: tileHash,
+            }));
+            setShowAffineRegistration(false);
+          }}
+        />
+      )}
 
       {/* Loading Overlay for Image Conversion */}
       {isLoadingPreview && conversionProgress && (

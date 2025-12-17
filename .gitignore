@@ -12,6 +12,9 @@ node_modules/
 dist/
 dist-electron/
 
+# Downloaded dependencies (large files)
+public/opencv.js
+
 # Development
 .vite/
 *.log
