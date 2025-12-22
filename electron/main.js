@@ -5862,6 +5862,39 @@ ipcMain.handle('fastsam:get-download-path', async () => {
 });
 
 /**
+ * Get model status (available, path, download info)
+ */
+ipcMain.handle('fastsam:get-model-status', async () => {
+  try {
+    return fastsamService.getModelStatus();
+  } catch (error) {
+    log.error('[FastSAM] Error getting model status:', error);
+    return { available: false, error: error.message };
+  }
+});
+
+/**
+ * Download the FastSAM model from Hugging Face
+ */
+ipcMain.handle('fastsam:download-model', async (event) => {
+  try {
+    log.info('[FastSAM] Starting model download...');
+
+    const progressCallback = (progress) => {
+      event.sender.send('fastsam:download-progress', progress);
+    };
+
+    const modelPath = await fastsamService.downloadModel(progressCallback);
+
+    log.info('[FastSAM] Model downloaded to:', modelPath);
+    return { success: true, modelPath };
+  } catch (error) {
+    log.error('[FastSAM] Download failed:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+/**
  * Preload the FastSAM model (optional optimization)
  */
 ipcMain.handle('fastsam:preload-model', async () => {

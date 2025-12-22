@@ -622,6 +622,16 @@ contextBridge.exposeInMainWorld('api', {
     isAvailable: () => ipcRenderer.invoke('fastsam:is-available'),
     // Get path where model should be downloaded
     getDownloadPath: () => ipcRenderer.invoke('fastsam:get-download-path'),
+    // Get model status (available, path, download info)
+    getModelStatus: () => ipcRenderer.invoke('fastsam:get-model-status'),
+    // Download model from Hugging Face
+    downloadModel: () => ipcRenderer.invoke('fastsam:download-model'),
+    // Listen for download progress updates
+    onDownloadProgress: (callback) => {
+      const handler = (event, progress) => callback(progress);
+      ipcRenderer.on('fastsam:download-progress', handler);
+      return () => ipcRenderer.removeListener('fastsam:download-progress', handler);
+    },
     // Preload model (optional optimization)
     preloadModel: () => ipcRenderer.invoke('fastsam:preload-model'),
     // Unload model to free memory

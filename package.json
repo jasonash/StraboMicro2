@@ -70,6 +70,7 @@
     "immer": "^10.2.0",
     "konva": "^9.3.22",
     "mui-color-input": "^7.0.0",
+    "node-fetch": "^3.3.2",
     "onnxruntime-node": "^1.23.2",
     "pdfkit": "^0.17.2",
     "polygon-clipping": "^0.15.7",

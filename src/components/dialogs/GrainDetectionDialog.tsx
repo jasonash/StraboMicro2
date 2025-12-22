@@ -136,7 +136,10 @@ export function GrainDetectionDialog({
   // Detection method selection
   const [detectionMethod, setDetectionMethod] = useState<DetectionMethod>('fastsam');
   const [fastsamAvailable, setFastsamAvailable] = useState<boolean | null>(null);
+  const [isDownloadingModel, setIsDownloadingModel] = useState(false);
+  const [downloadProgress, setDownloadProgress] = useState({ percent: 0, status: '' });
   const fastsamProgressUnsubRef = useRef<(() => void) | null>(null);
+  const downloadProgressUnsubRef = useRef<(() => void) | null>(null);
 
   // OpenCV detection settings
   const [settings, setSettings] = useState<DetectionSettings>(DEFAULT_DETECTION_SETTINGS);
@@ -221,12 +224,16 @@ export function GrainDetectionDialog({
     checkFastSAM();
   }, [isOpen]);
 
-  // Cleanup FastSAM progress listener on unmount
+  // Cleanup progress listeners on unmount
   useEffect(() => {
     return () => {
       if (fastsamProgressUnsubRef.current) {
         fastsamProgressUnsubRef.current();
         fastsamProgressUnsubRef.current = null;
+      }
+      if (downloadProgressUnsubRef.current) {
+        downloadProgressUnsubRef.current();
+        downloadProgressUnsubRef.current = null;
       }
     };
   }, []);
@@ -357,6 +364,47 @@ export function GrainDetectionDialog({
       }
     };
   }, [settings, fastsamSettings, imageData, loadingState, detectionMethod]);
+
+  // ============================================================================
+  // MODEL DOWNLOAD
+  // ============================================================================
+
+  // Download FastSAM model from Hugging Face
+  const handleDownloadModel = useCallback(async () => {
+    console.log('[GrainDetection] Starting FastSAM model download...');
+    setIsDownloadingModel(true);
+    setDownloadProgress({ percent: 0, status: 'Starting download...' });
+    setError(null);
+
+    // Set up progress listener
+    if (downloadProgressUnsubRef.current) {
+      downloadProgressUnsubRef.current();
+    }
+    downloadProgressUnsubRef.current = window.api?.fastsam?.onDownloadProgress((progress) => {
+      setDownloadProgress({ percent: progress.percent, status: progress.status });
+    }) || null;
+
+    try {
+      const result = await window.api?.fastsam?.downloadModel();
+
+      if (result?.success) {
+        console.log('[GrainDetection] Model downloaded successfully:', result.modelPath);
+        setFastsamAvailable(true);
+        setDetectionMethod('fastsam');
+      } else {
+        throw new Error(result?.error || 'Download failed');
+      }
+    } catch (err) {
+      console.error('[GrainDetection] Model download failed:', err);
+      setError(err instanceof Error ? err.message : 'Failed to download FastSAM model');
+    } finally {
+      setIsDownloadingModel(false);
+      if (downloadProgressUnsubRef.current) {
+        downloadProgressUnsubRef.current();
+        downloadProgressUnsubRef.current = null;
+      }
+    }
+  }, []);
 
   // ============================================================================
   // DETECTION
@@ -1082,13 +1130,24 @@ export function GrainDetectionDialog({
                   {fastsamAvailable === null && (
                     <CircularProgress size={16} />
                   )}
-                  {fastsamAvailable === false && (
-                    <Chip
-                      label="Model not found"
+                  {fastsamAvailable === false && !isDownloadingModel && (
+                    <Button
                       size="small"
-                      color="warning"
                       variant="outlined"
-                    />
+                      color="primary"
+                      onClick={handleDownloadModel}
+                      sx={{ textTransform: 'none', fontSize: '0.75rem' }}
+                    >
+                      Download Model (276MB)
+                    </Button>
+                  )}
+                  {isDownloadingModel && (
+                    <Stack direction="row" spacing={1} alignItems="center">
+                      <CircularProgress size={16} />
+                      <Typography variant="caption" color="text.secondary">
+                        {downloadProgress.status || `${downloadProgress.percent}%`}
+                      </Typography>
+                    </Stack>
                   )}
                   {fastsamAvailable && detectionMethod === 'fastsam' && (
                     <Chip
