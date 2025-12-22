@@ -615,4 +615,28 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('menu:image-comparator', handler);
     return () => ipcRenderer.removeListener('menu:image-comparator', handler);
   },
+
+  // FastSAM Grain Detection
+  fastsam: {
+    // Check if FastSAM model is available
+    isAvailable: () => ipcRenderer.invoke('fastsam:is-available'),
+    // Get path where model should be downloaded
+    getDownloadPath: () => ipcRenderer.invoke('fastsam:get-download-path'),
+    // Preload model (optional optimization)
+    preloadModel: () => ipcRenderer.invoke('fastsam:preload-model'),
+    // Unload model to free memory
+    unloadModel: () => ipcRenderer.invoke('fastsam:unload-model'),
+    // Run detection on image file path
+    detectGrains: (imagePath, params, options) =>
+      ipcRenderer.invoke('fastsam:detect-grains', imagePath, params, options),
+    // Run detection from image buffer (base64 or Buffer)
+    detectGrainsFromBuffer: (imageBuffer, params, options) =>
+      ipcRenderer.invoke('fastsam:detect-grains-from-buffer', imageBuffer, params, options),
+    // Listen for detection progress updates
+    onProgress: (callback) => {
+      const handler = (event, progress) => callback(progress);
+      ipcRenderer.on('fastsam:progress', handler);
+      return () => ipcRenderer.removeListener('fastsam:progress', handler);
+    },
+  },
 });

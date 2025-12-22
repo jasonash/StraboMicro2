@@ -1,11 +1,15 @@
 /**
  * Grain Detection Dialog
  *
- * Allows users to detect grain boundaries using computer vision (OpenCV.js).
+ * Allows users to detect grain boundaries using computer vision.
+ * Supports two detection methods:
+ * - FastSAM (AI-based, recommended): Uses FastSAM neural network for superior accuracy
+ * - OpenCV (traditional): Uses edge detection + watershed segmentation
+ *
  * Features:
  * - Interactive preview with detected boundaries overlaid
- * - Adjustable detection parameters (sensitivity, min size, edge contrast)
- * - Preset selection for common rock types
+ * - Adjustable detection parameters
+ * - Preset selection for common rock types (OpenCV only)
  * - Spot generation from detected grains
  */
 
@@ -32,17 +36,23 @@ import {
   FormControlLabel,
   Checkbox,
   TextField,
+  ToggleButton,
+  ToggleButtonGroup,
+  Chip,
 } from '@mui/material';
 import {
   ZoomIn,
   ZoomOut,
   FitScreen,
+  AutoAwesome,
+  Visibility,
 } from '@mui/icons-material';
 import { Stage, Layer, Image as KonvaImage, Line, Rect } from 'react-konva';
 import { useAppStore } from '@/store';
 import {
   type DetectionSettings,
   type DetectionResult,
+  type DetectedGrain,
   BUILT_IN_PRESETS,
   DEFAULT_DETECTION_SETTINGS,
   DEFAULT_SPOT_GENERATION_OPTIONS,
@@ -60,6 +70,22 @@ interface GrainDetectionDialogProps {
 }
 
 type LoadingState = 'idle' | 'loading-opencv' | 'loading-image' | 'detecting' | 'ready' | 'error';
+type DetectionMethod = 'fastsam' | 'opencv';
+
+// FastSAM-specific settings
+interface FastSAMSettings {
+  confidenceThreshold: number; // 0.0-1.0, default 0.5
+  iouThreshold: number; // 0.0-1.0, default 0.7
+  minAreaPercent: number; // Minimum area as % of image, default 0.01
+  betterQuality: boolean; // Apply morphological cleanup
+}
+
+const DEFAULT_FASTSAM_SETTINGS: FastSAMSettings = {
+  confidenceThreshold: 0.5,
+  iouThreshold: 0.7,
+  minAreaPercent: 0.03,
+  betterQuality: true,
+};
 
 // ============================================================================
 // CONSTANTS
@@ -106,9 +132,17 @@ export function GrainDetectionDialog({
   const [isPanning, setIsPanning] = useState(false);
   const [lastPointerPos, setLastPointerPos] = useState<{ x: number; y: number } | null>(null);
 
-  // Detection settings
+  // Detection method selection
+  const [detectionMethod, setDetectionMethod] = useState<DetectionMethod>('fastsam');
+  const [fastsamAvailable, setFastsamAvailable] = useState<boolean | null>(null);
+  const fastsamProgressUnsubRef = useRef<(() => void) | null>(null);
+
+  // OpenCV detection settings
   const [settings, setSettings] = useState<DetectionSettings>(DEFAULT_DETECTION_SETTINGS);
   const [selectedPreset, setSelectedPreset] = useState<string>('custom');
+
+  // FastSAM detection settings
+  const [fastsamSettings, setFastsamSettings] = useState<FastSAMSettings>(DEFAULT_FASTSAM_SETTINGS);
 
   // Detection results
   const [detectionResult, setDetectionResult] = useState<DetectionResult | null>(null);
@@ -158,7 +192,45 @@ export function GrainDetectionDialog({
     return () => observer.disconnect();
   }, []);
 
-  // Load OpenCV and image when dialog opens
+  // Check FastSAM availability when dialog opens
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const checkFastSAM = async () => {
+      try {
+        const result = await window.api?.fastsam?.isAvailable();
+        if (result) {
+          setFastsamAvailable(result.available);
+          console.log('[GrainDetection] FastSAM available:', result.available, result.modelPath);
+          // If FastSAM not available, fall back to OpenCV
+          if (!result.available) {
+            setDetectionMethod('opencv');
+          }
+        } else {
+          setFastsamAvailable(false);
+          setDetectionMethod('opencv');
+        }
+      } catch (err) {
+        console.error('[GrainDetection] Error checking FastSAM:', err);
+        setFastsamAvailable(false);
+        setDetectionMethod('opencv');
+      }
+    };
+
+    checkFastSAM();
+  }, [isOpen]);
+
+  // Cleanup FastSAM progress listener on unmount
+  useEffect(() => {
+    return () => {
+      if (fastsamProgressUnsubRef.current) {
+        fastsamProgressUnsubRef.current();
+        fastsamProgressUnsubRef.current = null;
+      }
+    };
+  }, []);
+
+  // Load image when dialog opens
   useEffect(() => {
     if (!isOpen || !micrograph || !project) return;
 
@@ -220,8 +292,7 @@ export function GrainDetectionDialog({
 
         setLoadingState('ready');
 
-        // Run initial detection (Web Worker handles OpenCV loading)
-        runDetection(imgData, settings);
+        // Initial detection will be triggered by the useEffect that watches for loadingState === 'ready'
       } catch (err) {
         console.error('[GrainDetection] Initialization error:', err);
         if (mounted) {
@@ -272,7 +343,7 @@ export function GrainDetectionDialog({
 
     // Debounce detection
     detectionTimeoutRef.current = setTimeout(() => {
-      runDetection(imageData, settings);
+      runDetection();
     }, DETECTION_DEBOUNCE_MS);
 
     return () => {
@@ -280,14 +351,106 @@ export function GrainDetectionDialog({
         clearTimeout(detectionTimeoutRef.current);
       }
     };
-  }, [settings, imageData, loadingState]);
+  }, [settings, fastsamSettings, imageData, loadingState, detectionMethod]);
 
   // ============================================================================
   // DETECTION
   // ============================================================================
 
-  const runDetection = useCallback(async (imgData: ImageData, detectionSettings: DetectionSettings) => {
-    console.log('[GrainDetection] Running detection with settings:', detectionSettings);
+  // Main detection dispatcher - routes to FastSAM or OpenCV based on selected method
+  const runDetection = useCallback(async () => {
+    if (!imageData) return;
+
+    if (detectionMethod === 'fastsam') {
+      await runFastSAMDetection();
+    } else {
+      await runOpenCVDetection(imageData, settings);
+    }
+  }, [detectionMethod, imageData, settings, fastsamSettings]);
+
+  // FastSAM-based detection (AI model)
+  const runFastSAMDetection = useCallback(async () => {
+    if (!micrograph || !project) return;
+
+    console.log('[GrainDetection] Running FastSAM detection with settings:', fastsamSettings);
+    setIsDetecting(true);
+    setError(null);
+    setDetectionProgress({ step: 'Starting FastSAM...', percent: 0 });
+
+    // Set up progress listener
+    if (fastsamProgressUnsubRef.current) {
+      fastsamProgressUnsubRef.current();
+    }
+    fastsamProgressUnsubRef.current = window.api?.fastsam?.onProgress((progress) => {
+      setDetectionProgress({ step: progress.step, percent: progress.percent });
+    }) || null;
+
+    try {
+      // Get image path
+      const folderPaths = await window.api?.getProjectFolderPaths(project.id);
+      if (!folderPaths) {
+        throw new Error('Failed to get project paths');
+      }
+
+      const imagePath = micrograph.imagePath || '';
+      const fullPath = `${folderPaths.images}/${imagePath}`;
+
+      // Run FastSAM detection
+      const result = await window.api?.fastsam?.detectGrains(
+        fullPath,
+        {
+          confidenceThreshold: fastsamSettings.confidenceThreshold,
+          iouThreshold: fastsamSettings.iouThreshold,
+          minAreaPercent: fastsamSettings.minAreaPercent,
+        },
+        {
+          simplifyTolerance: settings.simplifyTolerance,
+          simplifyOutlines: settings.simplifyOutlines,
+          betterQuality: fastsamSettings.betterQuality,
+        }
+      );
+
+      if (!result?.success || !result.grains) {
+        throw new Error(result?.error || 'FastSAM detection failed');
+      }
+
+      console.log('[GrainDetection] FastSAM complete:', result.grains.length, 'grains in', result.processingTimeMs?.toFixed(0), 'ms');
+
+      // Convert FastSAM result to DetectionResult format
+      const detectionResult: DetectionResult = {
+        grains: result.grains.map((grain): DetectedGrain => ({
+          tempId: grain.tempId,
+          contour: grain.contour,
+          area: grain.area,
+          centroid: grain.centroid,
+          boundingBox: grain.boundingBox,
+          perimeter: grain.perimeter,
+          circularity: grain.circularity,
+        })),
+        processingTimeMs: result.processingTimeMs || 0,
+        settings: settings,
+        imageDimensions: result.imageDimensions || { width: imageWidth, height: imageHeight },
+        scaleFactor: 1, // FastSAM handles scaling internally
+      };
+
+      setDetectionResult(detectionResult);
+      setIsDetecting(false);
+    } catch (err) {
+      console.error('[GrainDetection] FastSAM error:', err);
+      setError(err instanceof Error ? err.message : 'FastSAM detection failed');
+      setIsDetecting(false);
+    } finally {
+      // Cleanup progress listener
+      if (fastsamProgressUnsubRef.current) {
+        fastsamProgressUnsubRef.current();
+        fastsamProgressUnsubRef.current = null;
+      }
+    }
+  }, [micrograph, project, fastsamSettings, settings, imageWidth, imageHeight]);
+
+  // OpenCV-based detection (traditional edge detection + watershed)
+  const runOpenCVDetection = useCallback(async (imgData: ImageData, detectionSettings: DetectionSettings) => {
+    console.log('[GrainDetection] Running OpenCV detection with settings:', detectionSettings);
     setIsDetecting(true);
     setError(null);
     setDetectionProgress({ step: 'Loading OpenCV...', percent: 0 });
@@ -322,7 +485,7 @@ export function GrainDetectionDialog({
       if (message.type === 'progress') {
         setDetectionProgress({ step: message.step, percent: message.percent });
       } else if (message.type === 'result') {
-        console.log('[GrainDetection] Detection complete:', message.grains.length, 'grains in', message.processingTimeMs.toFixed(0), 'ms');
+        console.log('[GrainDetection] OpenCV complete:', message.grains.length, 'grains in', message.processingTimeMs.toFixed(0), 'ms');
         setDetectionResult({
           grains: message.grains,
           processingTimeMs: message.processingTimeMs,
@@ -334,7 +497,7 @@ export function GrainDetectionDialog({
         worker.terminate();
         workerRef.current = null;
       } else if (message.type === 'error') {
-        console.error('[GrainDetection] Detection error:', message.message);
+        console.error('[GrainDetection] OpenCV error:', message.message);
         setError(message.message);
         setIsDetecting(false);
         worker.terminate();
@@ -773,107 +936,250 @@ export function GrainDetectionDialog({
             </Typography>
 
             <Stack spacing={2}>
-              {/* Preset selector */}
-              <FormControl size="small" fullWidth>
-                <FormLabel sx={{ mb: 0.5, fontSize: '0.875rem' }}>Preset</FormLabel>
-                <Select
-                  value={selectedPreset}
-                  onChange={(e) => handlePresetChange(e.target.value)}
-                >
-                  <MenuItem value="custom">Custom</MenuItem>
-                  <Divider />
-                  {BUILT_IN_PRESETS.map((preset) => (
-                    <MenuItem key={preset.id} value={preset.id}>
-                      {preset.name}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-
-              {/* Sensitivity slider */}
+              {/* Detection method selector */}
               <Box>
-                <Stack direction="row" justifyContent="space-between" alignItems="center">
-                  <FormLabel sx={{ fontSize: '0.875rem' }}>
-                    Sensitivity
-                  </FormLabel>
-                  <Typography variant="caption" color="text.secondary">
-                    {settings.sensitivity}%
-                  </Typography>
-                </Stack>
+                <FormLabel sx={{ mb: 0.5, fontSize: '0.875rem', display: 'block' }}>Method</FormLabel>
                 <Stack direction="row" spacing={1} alignItems="center">
-                  <Typography variant="caption" color="text.secondary">Fewer</Typography>
-                  <Slider
-                    value={settings.sensitivity}
-                    onChange={(_, v) => handleSettingChange('sensitivity', v as number)}
-                    min={0}
-                    max={100}
+                  <ToggleButtonGroup
+                    value={detectionMethod}
+                    exclusive
+                    onChange={(_, value) => value && setDetectionMethod(value)}
                     size="small"
-                  />
-                  <Typography variant="caption" color="text.secondary">More</Typography>
+                  >
+                    <ToggleButton
+                      value="fastsam"
+                      disabled={!fastsamAvailable}
+                      sx={{ textTransform: 'none' }}
+                    >
+                      <AutoAwesome sx={{ mr: 0.5, fontSize: 16 }} />
+                      FastSAM (AI)
+                    </ToggleButton>
+                    <ToggleButton value="opencv" sx={{ textTransform: 'none' }}>
+                      <Visibility sx={{ mr: 0.5, fontSize: 16 }} />
+                      OpenCV
+                    </ToggleButton>
+                  </ToggleButtonGroup>
+                  {fastsamAvailable === null && (
+                    <CircularProgress size={16} />
+                  )}
+                  {fastsamAvailable === false && (
+                    <Chip
+                      label="Model not found"
+                      size="small"
+                      color="warning"
+                      variant="outlined"
+                    />
+                  )}
+                  {fastsamAvailable && detectionMethod === 'fastsam' && (
+                    <Chip
+                      label="Recommended"
+                      size="small"
+                      color="success"
+                      variant="outlined"
+                    />
+                  )}
                 </Stack>
               </Box>
 
-              {/* Min grain size slider */}
-              <Box>
-                <Stack direction="row" justifyContent="space-between" alignItems="center">
-                  <FormLabel sx={{ fontSize: '0.875rem' }}>
-                    Minimum Grain Size
-                  </FormLabel>
-                  <Typography variant="caption" color="text.secondary">
-                    {settings.minGrainSize} px²
-                  </Typography>
-                </Stack>
-                <Stack direction="row" spacing={1} alignItems="center">
-                  <Typography variant="caption" color="text.secondary">Small</Typography>
-                  <Slider
-                    value={settings.minGrainSize}
-                    onChange={(_, v) => handleSettingChange('minGrainSize', v as number)}
-                    min={10}
-                    max={500}
-                    size="small"
-                  />
-                  <Typography variant="caption" color="text.secondary">Large</Typography>
-                </Stack>
-              </Box>
+              {/* FastSAM-specific settings */}
+              {detectionMethod === 'fastsam' && (
+                <>
+                  {/* Confidence threshold slider */}
+                  <Box>
+                    <Stack direction="row" justifyContent="space-between" alignItems="center">
+                      <FormLabel sx={{ fontSize: '0.875rem' }}>
+                        Confidence Threshold
+                      </FormLabel>
+                      <Typography variant="caption" color="text.secondary">
+                        {Math.round(fastsamSettings.confidenceThreshold * 100)}%
+                      </Typography>
+                    </Stack>
+                    <Stack direction="row" spacing={1} alignItems="center">
+                      <Typography variant="caption" color="text.secondary">Lower</Typography>
+                      <Slider
+                        value={fastsamSettings.confidenceThreshold}
+                        onChange={(_, v) => setFastsamSettings(s => ({ ...s, confidenceThreshold: v as number }))}
+                        min={0.1}
+                        max={0.9}
+                        step={0.05}
+                        size="small"
+                      />
+                      <Typography variant="caption" color="text.secondary">Higher</Typography>
+                    </Stack>
+                  </Box>
 
-              {/* Edge contrast slider */}
-              <Box>
-                <Stack direction="row" justifyContent="space-between" alignItems="center">
-                  <FormLabel sx={{ fontSize: '0.875rem' }}>
-                    Edge Contrast
-                  </FormLabel>
-                  <Typography variant="caption" color="text.secondary">
-                    {settings.edgeContrast}%
-                  </Typography>
-                </Stack>
-                <Stack direction="row" spacing={1} alignItems="center">
-                  <Typography variant="caption" color="text.secondary">Soft</Typography>
-                  <Slider
-                    value={settings.edgeContrast}
-                    onChange={(_, v) => handleSettingChange('edgeContrast', v as number)}
-                    min={0}
-                    max={100}
-                    size="small"
-                  />
-                  <Typography variant="caption" color="text.secondary">Sharp</Typography>
-                </Stack>
-              </Box>
+                  {/* Min area slider */}
+                  <Box>
+                    <Stack direction="row" justifyContent="space-between" alignItems="center">
+                      <FormLabel sx={{ fontSize: '0.875rem' }}>
+                        Minimum Grain Size
+                      </FormLabel>
+                      <Typography variant="caption" color="text.secondary">
+                        {fastsamSettings.minAreaPercent.toFixed(2)}% of image
+                      </Typography>
+                    </Stack>
+                    <Stack direction="row" spacing={1} alignItems="center">
+                      <Typography variant="caption" color="text.secondary">Smaller</Typography>
+                      <Slider
+                        value={fastsamSettings.minAreaPercent}
+                        onChange={(_, v) => setFastsamSettings(s => ({ ...s, minAreaPercent: v as number }))}
+                        min={0.01}
+                        max={0.5}
+                        step={0.01}
+                        size="small"
+                      />
+                      <Typography variant="caption" color="text.secondary">Larger</Typography>
+                    </Stack>
+                  </Box>
 
-              {/* Simplify outlines checkbox */}
-              <FormControlLabel
-                control={
-                  <Checkbox
-                    checked={settings.simplifyOutlines}
-                    onChange={(e) => handleSettingChange('simplifyOutlines', e.target.checked)}
-                    size="small"
+                  {/* IOU threshold slider */}
+                  <Box>
+                    <Stack direction="row" justifyContent="space-between" alignItems="center">
+                      <FormLabel sx={{ fontSize: '0.875rem' }}>
+                        Overlap Threshold (IOU)
+                      </FormLabel>
+                      <Typography variant="caption" color="text.secondary">
+                        {Math.round(fastsamSettings.iouThreshold * 100)}%
+                      </Typography>
+                    </Stack>
+                    <Stack direction="row" spacing={1} alignItems="center">
+                      <Typography variant="caption" color="text.secondary">More overlap</Typography>
+                      <Slider
+                        value={fastsamSettings.iouThreshold}
+                        onChange={(_, v) => setFastsamSettings(s => ({ ...s, iouThreshold: v as number }))}
+                        min={0.3}
+                        max={0.9}
+                        step={0.05}
+                        size="small"
+                      />
+                      <Typography variant="caption" color="text.secondary">Less overlap</Typography>
+                    </Stack>
+                  </Box>
+
+                  {/* Better quality checkbox */}
+                  <FormControlLabel
+                    control={
+                      <Checkbox
+                        checked={fastsamSettings.betterQuality}
+                        onChange={(e) => setFastsamSettings(s => ({ ...s, betterQuality: e.target.checked }))}
+                        size="small"
+                      />
+                    }
+                    label={
+                      <Typography variant="body2">
+                        Morphological cleanup (cleaner boundaries)
+                      </Typography>
+                    }
                   />
-                }
-                label={
-                  <Typography variant="body2">
-                    Simplify outlines (fewer vertices)
-                  </Typography>
-                }
-              />
+                </>
+              )}
+
+              {/* OpenCV-specific settings */}
+              {detectionMethod === 'opencv' && (
+                <>
+                  {/* Preset selector */}
+                  <FormControl size="small" fullWidth>
+                    <FormLabel sx={{ mb: 0.5, fontSize: '0.875rem' }}>Preset</FormLabel>
+                    <Select
+                      value={selectedPreset}
+                      onChange={(e) => handlePresetChange(e.target.value)}
+                    >
+                      <MenuItem value="custom">Custom</MenuItem>
+                      <Divider />
+                      {BUILT_IN_PRESETS.map((preset) => (
+                        <MenuItem key={preset.id} value={preset.id}>
+                          {preset.name}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+
+                  {/* Sensitivity slider */}
+                  <Box>
+                    <Stack direction="row" justifyContent="space-between" alignItems="center">
+                      <FormLabel sx={{ fontSize: '0.875rem' }}>
+                        Sensitivity
+                      </FormLabel>
+                      <Typography variant="caption" color="text.secondary">
+                        {settings.sensitivity}%
+                      </Typography>
+                    </Stack>
+                    <Stack direction="row" spacing={1} alignItems="center">
+                      <Typography variant="caption" color="text.secondary">Fewer</Typography>
+                      <Slider
+                        value={settings.sensitivity}
+                        onChange={(_, v) => handleSettingChange('sensitivity', v as number)}
+                        min={0}
+                        max={100}
+                        size="small"
+                      />
+                      <Typography variant="caption" color="text.secondary">More</Typography>
+                    </Stack>
+                  </Box>
+
+                  {/* Min grain size slider */}
+                  <Box>
+                    <Stack direction="row" justifyContent="space-between" alignItems="center">
+                      <FormLabel sx={{ fontSize: '0.875rem' }}>
+                        Minimum Grain Size
+                      </FormLabel>
+                      <Typography variant="caption" color="text.secondary">
+                        {settings.minGrainSize} px²
+                      </Typography>
+                    </Stack>
+                    <Stack direction="row" spacing={1} alignItems="center">
+                      <Typography variant="caption" color="text.secondary">Small</Typography>
+                      <Slider
+                        value={settings.minGrainSize}
+                        onChange={(_, v) => handleSettingChange('minGrainSize', v as number)}
+                        min={10}
+                        max={500}
+                        size="small"
+                      />
+                      <Typography variant="caption" color="text.secondary">Large</Typography>
+                    </Stack>
+                  </Box>
+
+                  {/* Edge contrast slider */}
+                  <Box>
+                    <Stack direction="row" justifyContent="space-between" alignItems="center">
+                      <FormLabel sx={{ fontSize: '0.875rem' }}>
+                        Edge Contrast
+                      </FormLabel>
+                      <Typography variant="caption" color="text.secondary">
+                        {settings.edgeContrast}%
+                      </Typography>
+                    </Stack>
+                    <Stack direction="row" spacing={1} alignItems="center">
+                      <Typography variant="caption" color="text.secondary">Soft</Typography>
+                      <Slider
+                        value={settings.edgeContrast}
+                        onChange={(_, v) => handleSettingChange('edgeContrast', v as number)}
+                        min={0}
+                        max={100}
+                        size="small"
+                      />
+                      <Typography variant="caption" color="text.secondary">Sharp</Typography>
+                    </Stack>
+                  </Box>
+
+                  {/* Simplify outlines checkbox */}
+                  <FormControlLabel
+                    control={
+                      <Checkbox
+                        checked={settings.simplifyOutlines}
+                        onChange={(e) => handleSettingChange('simplifyOutlines', e.target.checked)}
+                        size="small"
+                      />
+                    }
+                    label={
+                      <Typography variant="body2">
+                        Simplify outlines (fewer vertices)
+                      </Typography>
+                    }
+                  />
+                </>
+              )}
             </Stack>
           </Box>
 

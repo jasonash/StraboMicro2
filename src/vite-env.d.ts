@@ -742,6 +742,42 @@ interface Window {
     onGrainDetection: (callback: () => void) => Unsubscribe;
     onImageComparator: (callback: () => void) => Unsubscribe;
 
+    // FastSAM Grain Detection
+    fastsam: {
+      // Check if FastSAM model is available
+      isAvailable: () => Promise<{
+        available: boolean;
+        modelPath?: string;
+        error?: string;
+      }>;
+      // Get path where model should be downloaded
+      getDownloadPath: () => Promise<string>;
+      // Preload model (optional optimization)
+      preloadModel: () => Promise<{
+        success: boolean;
+        error?: string;
+      }>;
+      // Unload model to free memory
+      unloadModel: () => Promise<{
+        success: boolean;
+        error?: string;
+      }>;
+      // Run detection on image file path
+      detectGrains: (
+        imagePath: string,
+        params?: FastSAMDetectionParams,
+        options?: FastSAMDetectionOptions
+      ) => Promise<FastSAMDetectionResult>;
+      // Run detection from image buffer (base64 or Buffer)
+      detectGrainsFromBuffer: (
+        imageBuffer: string | ArrayBuffer,
+        params?: FastSAMDetectionParams,
+        options?: FastSAMDetectionOptions
+      ) => Promise<FastSAMDetectionResult>;
+      // Listen for detection progress updates
+      onProgress: (callback: (progress: { step: string; percent: number }) => void) => Unsubscribe;
+    };
+
     versionHistory: {
       // Create a new version (auto-save)
       create: (
@@ -918,4 +954,38 @@ interface PointCountSessionSummaryData {
   gridType: 'regular' | 'random' | 'stratified';
   totalPoints: number;
   classifiedCount: number;
+}
+
+// FastSAM Detection Types
+interface FastSAMDetectionParams {
+  confidenceThreshold?: number; // 0.0-1.0, default 0.5
+  iouThreshold?: number; // 0.0-1.0, default 0.7
+  minAreaPercent?: number; // Minimum area as % of image, default 0.01
+  maxDetections?: number; // Maximum detections, default 500
+}
+
+interface FastSAMDetectionOptions {
+  simplifyTolerance?: number; // Douglas-Peucker epsilon, default 2.0
+  simplifyOutlines?: boolean; // Whether to simplify polygons, default true
+  betterQuality?: boolean; // Apply morphological cleanup, default true
+}
+
+interface FastSAMDetectedGrain {
+  tempId: string;
+  contour: Array<{ x: number; y: number }>;
+  area: number;
+  centroid: { x: number; y: number };
+  boundingBox: { x: number; y: number; width: number; height: number };
+  perimeter: number;
+  circularity: number;
+  confidence: number;
+}
+
+interface FastSAMDetectionResult {
+  success: boolean;
+  grains?: FastSAMDetectedGrain[];
+  processingTimeMs?: number;
+  inferenceTimeMs?: number;
+  imageDimensions?: { width: number; height: number };
+  error?: string;
 }
