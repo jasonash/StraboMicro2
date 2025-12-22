@@ -56,6 +56,8 @@ const serverDownload = require('./serverDownload');
 const autoUpdaterModule = require('./autoUpdater');
 const logService = require('./logService');
 const pointCountStorage = require('./pointCountStorage');
+const fastsamService = require('./fastsamService');
+const fastsamPostprocess = require('./fastsamPostprocess');
 
 // Handle EPIPE errors at process level (prevents crash on broken stdout pipe)
 process.stdout.on('error', (err) => {
@@ -5808,7 +5810,7 @@ ipcMain.handle("load-opencv-script", async () => {
   try {
     const isDev = !app.isPackaged;
     let opencvPath;
-    
+
     if (isDev) {
       // In development, load from public folder
       opencvPath = path.join(__dirname, "..", "public", "opencv.js");
@@ -5816,18 +5818,246 @@ ipcMain.handle("load-opencv-script", async () => {
       // In production, load from dist folder (which becomes resources/app/dist)
       opencvPath = path.join(__dirname, "..", "dist", "opencv.js");
     }
-    
+
     log.info("[OpenCV] Loading from:", opencvPath);
-    
+
     if (!fs.existsSync(opencvPath)) {
       throw new Error("OpenCV.js not found at " + opencvPath);
     }
-    
+
     const scriptContent = fs.readFileSync(opencvPath, "utf-8");
     log.info("[OpenCV] Loaded script, size:", scriptContent.length);
     return scriptContent;
   } catch (error) {
     log.error("[OpenCV] Failed to load:", error);
     throw error;
+  }
+});
+
+
+// ============================================================================
+// FastSAM Grain Detection
+// ============================================================================
+
+/**
+ * Check if FastSAM model is available
+ */
+ipcMain.handle('fastsam:is-available', async () => {
+  try {
+    return {
+      available: fastsamService.isModelAvailable(),
+      modelPath: fastsamService.getModelPath(),
+    };
+  } catch (error) {
+    log.error('[FastSAM] Error checking availability:', error);
+    return { available: false, error: error.message };
+  }
+});
+
+/**
+ * Get model download path (where to save if downloading)
+ */
+ipcMain.handle('fastsam:get-download-path', async () => {
+  return fastsamService.getModelDownloadPath();
+});
+
+/**
+ * Preload the FastSAM model (optional optimization)
+ */
+ipcMain.handle('fastsam:preload-model', async () => {
+  try {
+    log.info('[FastSAM] Preloading model...');
+    await fastsamService.loadModel();
+    log.info('[FastSAM] Model preloaded successfully');
+    return { success: true };
+  } catch (error) {
+    log.error('[FastSAM] Error preloading model:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+/**
+ * Unload the FastSAM model to free memory
+ */
+ipcMain.handle('fastsam:unload-model', async () => {
+  try {
+    await fastsamService.unloadModel();
+    return { success: true };
+  } catch (error) {
+    log.error('[FastSAM] Error unloading model:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+/**
+ * Run FastSAM grain detection on an image file
+ * Returns detected grains in the same format as OpenCV detector
+ */
+ipcMain.handle('fastsam:detect-grains', async (event, imagePath, params = {}, options = {}) => {
+  try {
+    log.info('[FastSAM] Starting detection on:', imagePath);
+
+    // Progress callback that sends to renderer
+    const progressCallback = (progress) => {
+      event.sender.send('fastsam:progress', progress);
+    };
+
+    // Run detection
+    const result = await fastsamService.detectGrains(imagePath, params, progressCallback);
+
+    // Convert masks to grains
+    progressCallback({ step: 'Extracting contours...', percent: 90 });
+    const grains = fastsamPostprocess.masksToGrains(result.masks, result.preprocessInfo, {
+      simplifyTolerance: options.simplifyTolerance ?? 2.0,
+      simplifyOutlines: options.simplifyOutlines ?? true,
+      betterQuality: options.betterQuality ?? true,
+    });
+
+    log.info('[FastSAM] Detection complete:', grains.length, 'grains in', result.processingTimeMs, 'ms');
+
+    return {
+      success: true,
+      grains,
+      processingTimeMs: result.processingTimeMs,
+      inferenceTimeMs: result.inferenceTimeMs,
+      imageDimensions: {
+        width: result.preprocessInfo.origW,
+        height: result.preprocessInfo.origH,
+      },
+    };
+  } catch (error) {
+    log.error('[FastSAM] Detection error:', error);
+    return {
+      success: false,
+      error: error.message,
+    };
+  }
+});
+
+/**
+ * Run FastSAM grain detection from image buffer
+ * Used when image is already loaded in renderer (e.g., from tile cache)
+ */
+ipcMain.handle('fastsam:detect-grains-from-buffer', async (event, imageBuffer, params = {}, options = {}) => {
+  try {
+    log.info('[FastSAM] Starting detection from buffer');
+
+    const progressCallback = (progress) => {
+      event.sender.send('fastsam:progress', progress);
+    };
+
+    // Convert base64 to buffer if needed
+    let buffer = imageBuffer;
+    if (typeof imageBuffer === 'string') {
+      // Remove data URL prefix if present
+      const base64Data = imageBuffer.replace(/^data:image\/\w+;base64,/, '');
+      buffer = Buffer.from(base64Data, 'base64');
+    }
+
+    // Run detection
+    const result = await fastsamService.detectGrainsFromBuffer(buffer, params, progressCallback);
+
+    // Convert masks to grains
+    progressCallback({ step: 'Extracting contours...', percent: 90 });
+    const grains = fastsamPostprocess.masksToGrains(result.masks, result.preprocessInfo, {
+      simplifyTolerance: options.simplifyTolerance ?? 2.0,
+      simplifyOutlines: options.simplifyOutlines ?? true,
+      betterQuality: options.betterQuality ?? true,
+    });
+
+    log.info('[FastSAM] Detection complete:', grains.length, 'grains in', result.processingTimeMs, 'ms');
+
+    return {
+      success: true,
+      grains,
+      processingTimeMs: result.processingTimeMs,
+      inferenceTimeMs: result.inferenceTimeMs,
+      imageDimensions: {
+        width: result.preprocessInfo.origW,
+        height: result.preprocessInfo.origH,
+      },
+    };
+  } catch (error) {
+    log.error('[FastSAM] Detection error:', error);
+    return {
+      success: false,
+      error: error.message,
+    };
+  }
+});
+
+/**
+ * Run FastSAM detection and return RAW MASKS for OpenCV.js processing.
+ * This is the GrainSight-compatible approach where contour extraction
+ * happens in the renderer using OpenCV.js with the exact GrainSight algorithm:
+ * - morphologyEx MORPH_OPEN with 5x5 kernel
+ * - GaussianBlur (5,5)
+ * - findContours with RETR_TREE, CHAIN_APPROX_SIMPLE
+ * - approxPolyDP with epsilon = 0.005 * perimeter
+ */
+ipcMain.handle('fastsam:detect-raw-masks', async (event, imagePath, params = {}) => {
+  try {
+    log.info('[FastSAM] Starting raw mask detection on:', imagePath);
+
+    const progressCallback = (progress) => {
+      event.sender.send('fastsam:progress', progress);
+    };
+
+    // Run detection and get raw upsampled masks
+    const result = await fastsamService.detectGrainsRawMasks(imagePath, params, progressCallback);
+
+    log.info('[FastSAM] Raw mask detection complete:', result.masks.length, 'masks in', result.processingTimeMs, 'ms');
+
+    return {
+      success: true,
+      masks: result.masks,
+      preprocessInfo: result.preprocessInfo,
+      processingTimeMs: result.processingTimeMs,
+      inferenceTimeMs: result.inferenceTimeMs,
+    };
+  } catch (error) {
+    log.error('[FastSAM] Raw mask detection error:', error);
+    return {
+      success: false,
+      error: error.message,
+    };
+  }
+});
+
+/**
+ * Run FastSAM raw mask detection from image buffer.
+ */
+ipcMain.handle('fastsam:detect-raw-masks-from-buffer', async (event, imageBuffer, params = {}) => {
+  try {
+    log.info('[FastSAM] Starting raw mask detection from buffer');
+
+    const progressCallback = (progress) => {
+      event.sender.send('fastsam:progress', progress);
+    };
+
+    // Convert base64 to buffer if needed
+    let buffer = imageBuffer;
+    if (typeof imageBuffer === 'string') {
+      const base64Data = imageBuffer.replace(/^data:image\/\w+;base64,/, '');
+      buffer = Buffer.from(base64Data, 'base64');
+    }
+
+    const result = await fastsamService.detectGrainsRawMasksFromBuffer(buffer, params, progressCallback);
+
+    log.info('[FastSAM] Raw mask detection complete:', result.masks.length, 'masks in', result.processingTimeMs, 'ms');
+
+    return {
+      success: true,
+      masks: result.masks,
+      preprocessInfo: result.preprocessInfo,
+      processingTimeMs: result.processingTimeMs,
+      inferenceTimeMs: result.inferenceTimeMs,
+    };
+  } catch (error) {
+    log.error('[FastSAM] Raw mask detection error:', error);
+    return {
+      success: false,
+      error: error.message,
+    };
   }
 });
