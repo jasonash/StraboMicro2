@@ -2,30 +2,36 @@
  * FastSAM Post-Processing Module
  *
  * Converts FastSAM mask output to polygon contours suitable for Spot creation.
- * Uses Moore-Neighbor contour tracing and Douglas-Peucker simplification.
+ * Uses marching squares for contour extraction and Douglas-Peucker simplification.
  *
  * @module fastsamPostprocess
  */
 
 // ============================================================================
-// Contour Extraction
+// Contour Extraction - Marching Squares Algorithm
 // ============================================================================
 
 /**
- * Moore-Neighbor contour tracing algorithm.
- * Extracts the boundary of a binary mask.
+ * Marching squares contour extraction.
+ * More robust than Moore-neighbor tracing for binary masks.
  *
  * @param {Uint8Array} mask - Binary mask (1 = foreground, 0 = background)
  * @param {number} width - Mask width
  * @param {number} height - Mask height
  * @returns {Array<{x: number, y: number}>} Contour points
  */
-function traceContour(mask, width, height) {
-  // Find starting point (first foreground pixel, scanning top-left to bottom-right)
+function marchingSquaresContour(mask, width, height) {
+  // Helper to get pixel value with bounds check (treat out-of-bounds as 0)
+  const getPixel = (x, y) => {
+    if (x < 0 || x >= width || y < 0 || y >= height) return 0;
+    return mask[y * width + x];
+  };
+
+  // Find starting point on the boundary (first transition from 0 to 1 scanning left-to-right)
   let startX = -1, startY = -1;
   outer: for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
-      if (mask[y * width + x] === 1) {
+      if (getPixel(x, y) === 1 && (x === 0 || getPixel(x - 1, y) === 0)) {
         startX = x;
         startY = y;
         break outer;
@@ -37,30 +43,99 @@ function traceContour(mask, width, height) {
     return []; // No foreground pixels
   }
 
-  // Moore neighborhood directions (8-connected, clockwise starting from left)
-  // 0=left, 1=top-left, 2=top, 3=top-right, 4=right, 5=bottom-right, 6=bottom, 7=bottom-left
-  const dx = [-1, -1, 0, 1, 1, 1, 0, -1];
-  const dy = [0, -1, -1, -1, 0, 1, 1, 1];
-
   const contour = [];
   let x = startX, y = startY;
-  let dir = 0; // Start by checking left
+  let prevDir = 0; // 0=right, 1=down, 2=left, 3=up
 
-  // Helper to get pixel value with bounds check
-  const getPixel = (px, py) => {
-    if (px < 0 || px >= width || py < 0 || py >= height) return 0;
-    return mask[py * width + px];
-  };
+  // Direction vectors
+  const dx = [1, 0, -1, 0];
+  const dy = [0, 1, 0, -1];
 
-  // Maximum iterations to prevent infinite loops
-  const maxIterations = width * height * 2;
+  const maxIterations = width * height * 4;
   let iterations = 0;
 
   do {
     contour.push({ x, y });
 
-    // Search for next boundary pixel in Moore neighborhood
-    // Start from (dir + 5) mod 8 to backtrack
+    // Get the 2x2 cell configuration at current position
+    // Cell corners: top-left (x-1,y-1), top-right (x,y-1), bottom-left (x-1,y), bottom-right (x,y)
+    const tl = getPixel(x - 1, y - 1);
+    const tr = getPixel(x, y - 1);
+    const bl = getPixel(x - 1, y);
+    const br = getPixel(x, y);
+
+    // Determine next direction based on cell configuration
+    // Using a lookup approach for marching squares
+    const cellType = (tl << 3) | (tr << 2) | (br << 1) | bl;
+
+    let nextDir;
+    switch (cellType) {
+      case 1: case 5: case 13: nextDir = 0; break;  // right
+      case 2: case 3: case 7: nextDir = 1; break;   // down
+      case 4: case 12: case 14: nextDir = 2; break; // left
+      case 8: case 10: case 11: nextDir = 3; break; // up
+      case 6: nextDir = (prevDir === 3) ? 2 : 0; break; // saddle: prefer previous direction
+      case 9: nextDir = (prevDir === 0) ? 3 : 1; break; // saddle: prefer previous direction
+      default: nextDir = prevDir; break;
+    }
+
+    x += dx[nextDir];
+    y += dy[nextDir];
+    prevDir = nextDir;
+
+    iterations++;
+    if (iterations > maxIterations) {
+      console.warn('[FastSAM] Marching squares exceeded max iterations');
+      break;
+    }
+  } while ((x !== startX || y !== startY) && iterations < maxIterations);
+
+  return contour;
+}
+
+/**
+ * Moore-Neighbor contour tracing algorithm (backup method).
+ * Traces the boundary of a binary mask.
+ *
+ * @param {Uint8Array} mask - Binary mask (1 = foreground, 0 = background)
+ * @param {number} width - Mask width
+ * @param {number} height - Mask height
+ * @returns {Array<{x: number, y: number}>} Contour points
+ */
+function mooreNeighborContour(mask, width, height) {
+  // Find starting point
+  let startX = -1, startY = -1;
+  outer: for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      if (mask[y * width + x] === 1) {
+        startX = x;
+        startY = y;
+        break outer;
+      }
+    }
+  }
+
+  if (startX === -1) return [];
+
+  // 8-connected neighborhood (clockwise from left)
+  const dx = [-1, -1, 0, 1, 1, 1, 0, -1];
+  const dy = [0, -1, -1, -1, 0, 1, 1, 1];
+
+  const getPixel = (px, py) => {
+    if (px < 0 || px >= width || py < 0 || py >= height) return 0;
+    return mask[py * width + px];
+  };
+
+  const contour = [];
+  let x = startX, y = startY;
+  let dir = 0;
+  const maxIter = width * height * 2;
+  let iter = 0;
+
+  do {
+    contour.push({ x, y });
+
+    // Search for next boundary pixel
     let startDir = (dir + 5) % 8;
     let found = false;
 
@@ -78,88 +153,42 @@ function traceContour(mask, width, height) {
       }
     }
 
-    if (!found) {
-      break; // Isolated pixel
-    }
-
-    iterations++;
-    if (iterations > maxIterations) {
-      console.warn('[FastSAM] Contour tracing exceeded max iterations');
-      break;
-    }
-  } while (x !== startX || y !== startY || contour.length < 3);
+    if (!found) break;
+    iter++;
+  } while ((x !== startX || y !== startY || contour.length < 3) && iter < maxIter);
 
   return contour;
 }
 
 /**
- * Alternative: Simple boundary extraction using edge detection.
- * Faster but may produce more points.
+ * Extract contour from binary mask using the best available method.
+ * Tries marching squares first, falls back to Moore-neighbor if needed.
  */
-function extractBoundary(mask, width, height) {
-  const boundary = [];
+function extractContour(mask, width, height) {
+  // Try marching squares first
+  let contour = marchingSquaresContour(mask, width, height);
 
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      if (mask[y * width + x] !== 1) continue;
-
-      // Check if this is a boundary pixel (has at least one background neighbor)
-      let isBoundary = false;
-      for (let dy = -1; dy <= 1 && !isBoundary; dy++) {
-        for (let dx = -1; dx <= 1 && !isBoundary; dx++) {
-          if (dx === 0 && dy === 0) continue;
-          const nx = x + dx, ny = y + dy;
-          if (nx < 0 || nx >= width || ny < 0 || ny >= height) {
-            isBoundary = true;
-          } else if (mask[ny * width + nx] === 0) {
-            isBoundary = true;
-          }
-        }
-      }
-
-      if (isBoundary) {
-        boundary.push({ x, y });
-      }
-    }
+  // If marching squares produced too few points, try Moore-neighbor
+  if (contour.length < 8) {
+    contour = mooreNeighborContour(mask, width, height);
   }
 
-  return boundary;
+  return contour;
 }
 
 /**
- * Order boundary points to form a proper contour.
- * Uses nearest-neighbor linking.
+ * Subsample a contour to reduce point count while preserving shape.
+ * Keeps every nth point.
  */
-function orderBoundaryPoints(points) {
-  if (points.length < 3) return points;
+function subsampleContour(contour, maxPoints = 500) {
+  if (contour.length <= maxPoints) return contour;
 
-  const ordered = [points[0]];
-  const used = new Set([0]);
-
-  while (ordered.length < points.length) {
-    const last = ordered[ordered.length - 1];
-    let bestIdx = -1;
-    let bestDist = Infinity;
-
-    for (let i = 0; i < points.length; i++) {
-      if (used.has(i)) continue;
-      const dist = (points[i].x - last.x) ** 2 + (points[i].y - last.y) ** 2;
-      if (dist < bestDist) {
-        bestDist = dist;
-        bestIdx = i;
-      }
-    }
-
-    if (bestIdx === -1 || bestDist > 9) {
-      // Gap too large, stop
-      break;
-    }
-
-    ordered.push(points[bestIdx]);
-    used.add(bestIdx);
+  const step = Math.ceil(contour.length / maxPoints);
+  const result = [];
+  for (let i = 0; i < contour.length; i += step) {
+    result.push(contour[i]);
   }
-
-  return ordered;
+  return result;
 }
 
 // ============================================================================
@@ -444,23 +473,16 @@ function masksToGrains(detections, preprocessInfo, options = {}) {
       processedMask = morphologicalOpenSync(mask, maskW, maskH, 3);
     }
 
-    // Extract contour using boundary extraction + ordering
-    // (More reliable than Moore tracing for noisy masks)
-    const boundary = extractBoundary(processedMask, maskW, maskH);
-    if (boundary.length < minVertices) {
+    // Extract contour using marching squares algorithm
+    let rawContour = extractContour(processedMask, maskW, maskH);
+    if (rawContour.length < minVertices) {
       continue;
     }
 
-    // Order points to form a proper contour
-    const orderedContour = orderBoundaryPoints(boundary);
-    if (orderedContour.length < minVertices) {
-      continue;
-    }
-
-    // Simplify polygon
-    let contour = orderedContour;
+    // Subsample if contour has too many points (for performance)
+    let contour = subsampleContour(rawContour, 1000);
     if (simplifyOutlines) {
-      contour = simplifyPolygon(orderedContour, simplifyTolerance);
+      contour = simplifyPolygon(contour, simplifyTolerance);
     }
 
     if (contour.length < minVertices) {
@@ -543,9 +565,10 @@ function morphologicalOpenSync(mask, width, height, kernelSize = 3) {
 
 module.exports = {
   // Contour extraction
-  traceContour,
-  extractBoundary,
-  orderBoundaryPoints,
+  marchingSquaresContour,
+  mooreNeighborContour,
+  extractContour,
+  subsampleContour,
 
   // Simplification
   douglasPeucker,
