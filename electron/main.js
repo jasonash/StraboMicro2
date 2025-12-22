@@ -5985,3 +5985,79 @@ ipcMain.handle('fastsam:detect-grains-from-buffer', async (event, imageBuffer, p
     };
   }
 });
+
+/**
+ * Run FastSAM detection and return RAW MASKS for OpenCV.js processing.
+ * This is the GrainSight-compatible approach where contour extraction
+ * happens in the renderer using OpenCV.js with the exact GrainSight algorithm:
+ * - morphologyEx MORPH_OPEN with 5x5 kernel
+ * - GaussianBlur (5,5)
+ * - findContours with RETR_TREE, CHAIN_APPROX_SIMPLE
+ * - approxPolyDP with epsilon = 0.005 * perimeter
+ */
+ipcMain.handle('fastsam:detect-raw-masks', async (event, imagePath, params = {}) => {
+  try {
+    log.info('[FastSAM] Starting raw mask detection on:', imagePath);
+
+    const progressCallback = (progress) => {
+      event.sender.send('fastsam:progress', progress);
+    };
+
+    // Run detection and get raw upsampled masks
+    const result = await fastsamService.detectGrainsRawMasks(imagePath, params, progressCallback);
+
+    log.info('[FastSAM] Raw mask detection complete:', result.masks.length, 'masks in', result.processingTimeMs, 'ms');
+
+    return {
+      success: true,
+      masks: result.masks,
+      preprocessInfo: result.preprocessInfo,
+      processingTimeMs: result.processingTimeMs,
+      inferenceTimeMs: result.inferenceTimeMs,
+    };
+  } catch (error) {
+    log.error('[FastSAM] Raw mask detection error:', error);
+    return {
+      success: false,
+      error: error.message,
+    };
+  }
+});
+
+/**
+ * Run FastSAM raw mask detection from image buffer.
+ */
+ipcMain.handle('fastsam:detect-raw-masks-from-buffer', async (event, imageBuffer, params = {}) => {
+  try {
+    log.info('[FastSAM] Starting raw mask detection from buffer');
+
+    const progressCallback = (progress) => {
+      event.sender.send('fastsam:progress', progress);
+    };
+
+    // Convert base64 to buffer if needed
+    let buffer = imageBuffer;
+    if (typeof imageBuffer === 'string') {
+      const base64Data = imageBuffer.replace(/^data:image\/\w+;base64,/, '');
+      buffer = Buffer.from(base64Data, 'base64');
+    }
+
+    const result = await fastsamService.detectGrainsRawMasksFromBuffer(buffer, params, progressCallback);
+
+    log.info('[FastSAM] Raw mask detection complete:', result.masks.length, 'masks in', result.processingTimeMs, 'ms');
+
+    return {
+      success: true,
+      masks: result.masks,
+      preprocessInfo: result.preprocessInfo,
+      processingTimeMs: result.processingTimeMs,
+      inferenceTimeMs: result.inferenceTimeMs,
+    };
+  } catch (error) {
+    log.error('[FastSAM] Raw mask detection error:', error);
+    return {
+      success: false,
+      error: error.message,
+    };
+  }
+});

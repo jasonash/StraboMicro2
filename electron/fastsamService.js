@@ -591,6 +591,199 @@ async function detectGrainsFromBuffer(imageBuffer, params = {}, progressCallback
 }
 
 // ============================================================================
+// Mask Upsampling for OpenCV.js Processing
+// ============================================================================
+
+/**
+ * Upsample a binary mask to a target size using Sharp.
+ * Returns base64-encoded PNG for efficient transfer to renderer.
+ *
+ * @param {Uint8Array} mask - Binary mask (0/1 values)
+ * @param {number} maskW - Mask width
+ * @param {number} maskH - Mask height
+ * @param {number} targetW - Target width
+ * @param {number} targetH - Target height
+ * @returns {Promise<string>} Base64-encoded PNG image
+ */
+async function upsampleMask(mask, maskW, maskH, targetW, targetH) {
+  // Convert binary mask to grayscale image (0 or 255)
+  const grayMask = Buffer.alloc(maskW * maskH);
+  for (let i = 0; i < mask.length; i++) {
+    grayMask[i] = mask[i] ? 255 : 0;
+  }
+
+  // Use Sharp to resize with nearest-neighbor interpolation (preserves binary values)
+  const resized = await sharp(grayMask, {
+    raw: { width: maskW, height: maskH, channels: 1 },
+  })
+    .resize(targetW, targetH, { kernel: 'nearest' })
+    .png()
+    .toBuffer();
+
+  return resized.toString('base64');
+}
+
+/**
+ * Run FastSAM detection and return raw masks for OpenCV.js processing.
+ * This is the GrainSight-compatible approach where contour extraction
+ * happens in the renderer using OpenCV.js.
+ *
+ * @param {string} imagePath - Path to the image file
+ * @param {object} params - Detection parameters
+ * @param {function} progressCallback - Optional progress callback
+ * @returns {Promise<{masks: Array, preprocessInfo: object, processingTimeMs: number}>}
+ */
+async function detectGrainsRawMasks(imagePath, params = {}, progressCallback = null) {
+  const startTime = Date.now();
+  const mergedParams = { ...DEFAULT_PARAMS, ...params };
+
+  console.log('[FastSAM] Starting raw mask detection with params:', mergedParams);
+
+  // Load model
+  const modelSession = await loadModel(progressCallback);
+
+  // Preprocess image
+  const preprocessInfo = await preprocessImage(imagePath, progressCallback);
+
+  // Run inference
+  if (progressCallback) {
+    progressCallback({ step: 'Running inference...', percent: 40 });
+  }
+
+  const inferenceStart = Date.now();
+  const feeds = {};
+  feeds[modelSession.inputNames[0]] = preprocessInfo.tensor;
+
+  const results = await modelSession.run(feeds);
+  const inferenceTime = Date.now() - inferenceStart;
+  console.log('[FastSAM] Inference time:', inferenceTime, 'ms');
+
+  // Post-process to get masks
+  const output0 = results[modelSession.outputNames[0]];
+  const output1 = results[modelSession.outputNames[1]];
+
+  const rawMasks = postprocessOutput(output0, output1, mergedParams, preprocessInfo, progressCallback);
+
+  // Upsample masks to original image size
+  if (progressCallback) {
+    progressCallback({ step: 'Preparing masks for processing...', percent: 85 });
+  }
+
+  const { origW, origH } = preprocessInfo;
+  const upsampledMasks = [];
+
+  for (let i = 0; i < rawMasks.length; i++) {
+    const m = rawMasks[i];
+    try {
+      const base64Mask = await upsampleMask(m.mask, m.maskW, m.maskH, origW, origH);
+      upsampledMasks.push({
+        maskBase64: base64Mask,
+        confidence: m.confidence,
+        area: m.area,
+        box: m.box,
+      });
+    } catch (err) {
+      console.error('[FastSAM] Error upsampling mask', i, ':', err);
+    }
+  }
+
+  if (progressCallback) {
+    progressCallback({ step: 'Masks ready', percent: 95 });
+  }
+
+  const totalTime = Date.now() - startTime;
+  console.log('[FastSAM] Total processing time:', totalTime, 'ms');
+  console.log('[FastSAM] Returning', upsampledMasks.length, 'upsampled masks');
+
+  return {
+    masks: upsampledMasks,
+    preprocessInfo: {
+      origW,
+      origH,
+      scale: preprocessInfo.scale,
+      padX: preprocessInfo.padX,
+      padY: preprocessInfo.padY,
+    },
+    processingTimeMs: totalTime,
+    inferenceTimeMs: inferenceTime,
+    inputSize: INPUT_SIZE,
+  };
+}
+
+/**
+ * Run FastSAM detection from buffer and return raw masks.
+ */
+async function detectGrainsRawMasksFromBuffer(imageBuffer, params = {}, progressCallback = null) {
+  const startTime = Date.now();
+  const mergedParams = { ...DEFAULT_PARAMS, ...params };
+
+  console.log('[FastSAM] Starting raw mask detection from buffer');
+
+  const modelSession = await loadModel(progressCallback);
+  const preprocessInfo = await preprocessFromBuffer(imageBuffer, progressCallback);
+
+  if (progressCallback) {
+    progressCallback({ step: 'Running inference...', percent: 40 });
+  }
+
+  const inferenceStart = Date.now();
+  const feeds = {};
+  feeds[modelSession.inputNames[0]] = preprocessInfo.tensor;
+
+  const results = await modelSession.run(feeds);
+  const inferenceTime = Date.now() - inferenceStart;
+  console.log('[FastSAM] Inference time:', inferenceTime, 'ms');
+
+  const output0 = results[modelSession.outputNames[0]];
+  const output1 = results[modelSession.outputNames[1]];
+
+  const rawMasks = postprocessOutput(output0, output1, mergedParams, preprocessInfo, progressCallback);
+
+  if (progressCallback) {
+    progressCallback({ step: 'Preparing masks for processing...', percent: 85 });
+  }
+
+  const { origW, origH } = preprocessInfo;
+  const upsampledMasks = [];
+
+  for (let i = 0; i < rawMasks.length; i++) {
+    const m = rawMasks[i];
+    try {
+      const base64Mask = await upsampleMask(m.mask, m.maskW, m.maskH, origW, origH);
+      upsampledMasks.push({
+        maskBase64: base64Mask,
+        confidence: m.confidence,
+        area: m.area,
+        box: m.box,
+      });
+    } catch (err) {
+      console.error('[FastSAM] Error upsampling mask', i, ':', err);
+    }
+  }
+
+  if (progressCallback) {
+    progressCallback({ step: 'Masks ready', percent: 95 });
+  }
+
+  const totalTime = Date.now() - startTime;
+  console.log('[FastSAM] Total processing time:', totalTime, 'ms');
+
+  return {
+    masks: upsampledMasks,
+    preprocessInfo: {
+      origW,
+      origH,
+      scale: preprocessInfo.scale,
+      padX: preprocessInfo.padX,
+      padY: preprocessInfo.padY,
+    },
+    processingTimeMs: totalTime,
+    inferenceTimeMs: inferenceTime,
+    inputSize: INPUT_SIZE,
+  };
+}
+
+// ============================================================================
 // Exports
 // ============================================================================
 
@@ -602,9 +795,13 @@ module.exports = {
   loadModel,
   unloadModel,
 
-  // Detection
+  // Detection (original - with broken contour extraction)
   detectGrains,
   detectGrainsFromBuffer,
+
+  // Detection (new - returns raw masks for OpenCV.js processing)
+  detectGrainsRawMasks,
+  detectGrainsRawMasksFromBuffer,
 
   // Constants
   INPUT_SIZE,

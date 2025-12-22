@@ -762,18 +762,28 @@ interface Window {
         success: boolean;
         error?: string;
       }>;
-      // Run detection on image file path
+      // Run detection on image file path (legacy - uses broken contour extraction)
       detectGrains: (
         imagePath: string,
         params?: FastSAMDetectionParams,
         options?: FastSAMDetectionOptions
       ) => Promise<FastSAMDetectionResult>;
-      // Run detection from image buffer (base64 or Buffer)
+      // Run detection from image buffer (legacy - uses broken contour extraction)
       detectGrainsFromBuffer: (
         imageBuffer: string | ArrayBuffer,
         params?: FastSAMDetectionParams,
         options?: FastSAMDetectionOptions
       ) => Promise<FastSAMDetectionResult>;
+      // NEW: Run detection and return raw masks for OpenCV.js processing (GrainSight-compatible)
+      detectRawMasks: (
+        imagePath: string,
+        params?: FastSAMDetectionParams
+      ) => Promise<FastSAMRawMaskResult>;
+      // NEW: Run detection from buffer and return raw masks
+      detectRawMasksFromBuffer: (
+        imageBuffer: string | ArrayBuffer,
+        params?: FastSAMDetectionParams
+      ) => Promise<FastSAMRawMaskResult>;
       // Listen for detection progress updates
       onProgress: (callback: (progress: { step: string; percent: number }) => void) => Unsubscribe;
     };
@@ -987,5 +997,28 @@ interface FastSAMDetectionResult {
   processingTimeMs?: number;
   inferenceTimeMs?: number;
   imageDimensions?: { width: number; height: number };
+  error?: string;
+}
+
+// Raw mask result for OpenCV.js processing (GrainSight-compatible)
+interface FastSAMRawMask {
+  maskBase64: string; // Base64-encoded PNG of upsampled binary mask
+  confidence: number;
+  area: number;
+  box: [number, number, number, number]; // [x1, y1, x2, y2] in INPUT_SIZE coords
+}
+
+interface FastSAMRawMaskResult {
+  success: boolean;
+  masks?: FastSAMRawMask[];
+  preprocessInfo?: {
+    origW: number;
+    origH: number;
+    scale: number;
+    padX: number;
+    padY: number;
+  };
+  processingTimeMs?: number;
+  inferenceTimeMs?: number;
   error?: string;
 }

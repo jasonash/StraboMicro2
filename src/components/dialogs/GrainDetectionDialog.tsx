@@ -115,6 +115,7 @@ export function GrainDetectionDialog({
   const containerRef = useRef<HTMLDivElement>(null);
   const detectionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const workerRef = useRef<Worker | null>(null);
+  const contourWorkerRef = useRef<Worker | null>(null); // Worker for FastSAM contour extraction
 
   // Container width (responsive)
   const [containerWidth, setContainerWidth] = useState(600);
@@ -309,10 +310,14 @@ export function GrainDetectionDialog({
       if (detectionTimeoutRef.current) {
         clearTimeout(detectionTimeoutRef.current);
       }
-      // Terminate worker on cleanup
+      // Terminate workers on cleanup
       if (workerRef.current) {
         workerRef.current.terminate();
         workerRef.current = null;
+      }
+      if (contourWorkerRef.current) {
+        contourWorkerRef.current.terminate();
+        contourWorkerRef.current = null;
       }
     };
   }, [isOpen, micrograph, project]);
@@ -368,7 +373,9 @@ export function GrainDetectionDialog({
     }
   }, [detectionMethod, imageData, settings, fastsamSettings]);
 
-  // FastSAM-based detection (AI model)
+
+  // FastSAM-based detection (AI model) with GrainSight-compatible contour extraction
+  // Uses a Web Worker to avoid blocking the main thread
   const runFastSAMDetection = useCallback(async () => {
     if (!micrograph || !project) return;
 
@@ -377,16 +384,19 @@ export function GrainDetectionDialog({
     setError(null);
     setDetectionProgress({ step: 'Starting FastSAM...', percent: 0 });
 
-    // Set up progress listener
+    // Set up progress listener for FastSAM inference
     if (fastsamProgressUnsubRef.current) {
       fastsamProgressUnsubRef.current();
     }
     fastsamProgressUnsubRef.current = window.api?.fastsam?.onProgress((progress) => {
-      setDetectionProgress({ step: progress.step, percent: progress.percent });
+      // Scale FastSAM progress to 0-50% range
+      setDetectionProgress({ step: progress.step, percent: Math.min(progress.percent * 0.5, 50) });
     }) || null;
 
     try {
-      // Get image path
+      // Step 1: Get image path
+      console.log('[GrainDetection] Step 1: Getting image path...');
+      setDetectionProgress({ step: 'Preparing image...', percent: 5 });
       const folderPaths = await window.api?.getProjectFolderPaths(project.id);
       if (!folderPaths) {
         throw new Error('Failed to get project paths');
@@ -394,79 +404,144 @@ export function GrainDetectionDialog({
 
       const imagePath = micrograph.imagePath || '';
       const fullPath = `${folderPaths.images}/${imagePath}`;
+      console.log('[GrainDetection] Image path:', fullPath);
 
-      // Run FastSAM detection
-      const result = await window.api?.fastsam?.detectGrains(
+      // Step 2: Run FastSAM to get raw masks
+      console.log('[GrainDetection] Step 2: Running FastSAM inference...');
+      setDetectionProgress({ step: 'Running FastSAM inference...', percent: 10 });
+      const result = await window.api?.fastsam?.detectRawMasks(
         fullPath,
         {
           confidenceThreshold: fastsamSettings.confidenceThreshold,
           iouThreshold: fastsamSettings.iouThreshold,
           minAreaPercent: fastsamSettings.minAreaPercent,
-        },
-        {
-          simplifyTolerance: settings.simplifyTolerance,
-          simplifyOutlines: settings.simplifyOutlines,
-          betterQuality: fastsamSettings.betterQuality,
         }
       );
 
-      if (!result?.success || !result.grains) {
+      if (!result?.success || !result.masks) {
         throw new Error(result?.error || 'FastSAM detection failed');
       }
 
-      console.log('[GrainDetection] FastSAM complete:', result.grains.length, 'grains in', result.processingTimeMs?.toFixed(0), 'ms');
+      console.log('[GrainDetection] FastSAM returned', result.masks.length, 'raw masks in', result.processingTimeMs?.toFixed(0), 'ms');
 
-      // FastSAM runs on the original full-resolution image, but the preview shows
-      // a medium-resolution version. We need to scale coordinates to match the preview.
-      const originalWidth = result.imageDimensions?.width || imageWidth;
-      const originalHeight = result.imageDimensions?.height || imageHeight;
+      // Dimensions for scaling
+      const originalWidth = result.preprocessInfo?.origW || imageWidth;
+      const originalHeight = result.preprocessInfo?.origH || imageHeight;
       const previewWidth = imageWidth;
       const previewHeight = imageHeight;
-      const scaleX = previewWidth / originalWidth;
-      const scaleY = previewHeight / originalHeight;
 
       console.log('[GrainDetection] Coordinate scaling:', {
         original: `${originalWidth}x${originalHeight}`,
         preview: `${previewWidth}x${previewHeight}`,
-        scale: `${scaleX.toFixed(3)}x${scaleY.toFixed(3)}`,
       });
 
-      // Convert FastSAM result to DetectionResult format with scaled coordinates
-      const detectionResult: DetectionResult = {
-        grains: result.grains.map((grain): DetectedGrain => ({
-          tempId: grain.tempId,
-          // Scale contour coordinates from original to preview space
-          contour: grain.contour.map(p => ({
-            x: Math.round(p.x * scaleX),
-            y: Math.round(p.y * scaleY),
-          })),
-          area: grain.area * scaleX * scaleY,
-          centroid: {
-            x: Math.round(grain.centroid.x * scaleX),
-            y: Math.round(grain.centroid.y * scaleY),
-          },
-          boundingBox: {
-            x: Math.round(grain.boundingBox.x * scaleX),
-            y: Math.round(grain.boundingBox.y * scaleY),
-            width: Math.round(grain.boundingBox.width * scaleX),
-            height: Math.round(grain.boundingBox.height * scaleY),
-          },
-          perimeter: grain.perimeter * Math.sqrt(scaleX * scaleY),
-          circularity: grain.circularity,
-        })),
+      // Step 3: Extract contours using Web Worker (avoids blocking main thread)
+      console.log('[GrainDetection] Step 3: Starting contour extraction worker...');
+      setDetectionProgress({ step: 'Loading OpenCV worker...', percent: 50 });
+
+      // Load OpenCV script for the worker
+      let opencvScript: string | undefined;
+      try {
+        opencvScript = await window.api?.loadOpencvScript() || undefined;
+        console.log('[GrainDetection] OpenCV script loaded for worker, size:', opencvScript?.length);
+      } catch (err) {
+        console.warn('[GrainDetection] Could not load OpenCV script, worker will fetch it:', err);
+      }
+
+      // Create contour extraction worker
+      if (contourWorkerRef.current) {
+        contourWorkerRef.current.terminate();
+      }
+      const contourWorker = new Worker(
+        new URL('@/services/grainDetection/contourWorker.ts', import.meta.url),
+        { type: 'module' }
+      );
+      contourWorkerRef.current = contourWorker;
+
+      // Two-step process: init OpenCV once, then process all masks
+      const totalMasks = result.masks.length;
+      const allGrains: DetectedGrain[] = await new Promise<DetectedGrain[]>((resolve, reject) => {
+        contourWorker.onmessage = (event) => {
+          const message = event.data;
+
+          if (message.type === 'init-complete') {
+            console.log('[GrainDetection] OpenCV initialized in worker');
+            setDetectionProgress({ step: 'Processing masks...', percent: 55 });
+
+            // Now send all masks for processing at once
+            contourWorker.postMessage({
+              type: 'process-masks',
+              masks: result.masks,
+              originalWidth,
+              originalHeight,
+              previewWidth,
+              previewHeight,
+            });
+          } else if (message.type === 'progress') {
+            // Map progress (1-N) to our range (55-95)
+            const progressPercent = 55 + (message.current / message.total) * 40;
+            setDetectionProgress({
+              step: `Processing mask ${message.current}/${message.total}...`,
+              percent: Math.round(progressPercent),
+            });
+          } else if (message.type === 'complete') {
+            console.log('[GrainDetection] Worker complete:', message.grains.length, 'grains');
+            resolve(message.grains);
+          } else if (message.type === 'error') {
+            console.error('[GrainDetection] Worker error:', message.message);
+            reject(new Error(message.message));
+          }
+        };
+
+        contourWorker.onerror = (error) => {
+          console.error('[GrainDetection] Worker error:', error);
+          reject(new Error('Contour extraction worker failed'));
+        };
+
+        // Handle empty masks case
+        if (totalMasks === 0) {
+          resolve([]);
+          return;
+        }
+
+        // Step 1: Initialize OpenCV in the worker (only once!)
+        contourWorker.postMessage({
+          type: 'init',
+          opencvScript,
+        });
+      });
+
+      // Cleanup worker
+      contourWorker.terminate();
+      contourWorkerRef.current = null;
+
+      // Step 4: Create detection result
+      console.log('[GrainDetection] Step 4: Finalizing results...');
+      setDetectionProgress({ step: 'Finalizing...', percent: 98 });
+
+      const detectionResultData: DetectionResult = {
+        grains: allGrains,
         processingTimeMs: result.processingTimeMs || 0,
         settings: settings,
-        // Store preview dimensions since coordinates are now in preview space
         imageDimensions: { width: previewWidth, height: previewHeight },
         scaleFactor: 1,
       };
 
-      setDetectionResult(detectionResult);
+      setDetectionResult(detectionResultData);
       setIsDetecting(false);
+      setDetectionProgress({ step: 'Complete', percent: 100 });
+      console.log('[GrainDetection] Detection complete:', allGrains.length, 'grains');
+
     } catch (err) {
       console.error('[GrainDetection] FastSAM error:', err);
       setError(err instanceof Error ? err.message : 'FastSAM detection failed');
       setIsDetecting(false);
+
+      // Cleanup worker on error
+      if (contourWorkerRef.current) {
+        contourWorkerRef.current.terminate();
+        contourWorkerRef.current = null;
+      }
     } finally {
       // Cleanup progress listener
       if (fastsamProgressUnsubRef.current) {
@@ -640,24 +715,41 @@ export function GrainDetectionDialog({
     setIsPanning(true);
     const stage = stageRef.current;
     if (stage) {
-      setLastPointerPos(stage.getPointerPosition());
+      // Get position relative to the canvas element to avoid CSS transform issues
+      const container = stage.container();
+      const rect = container.getBoundingClientRect();
+      const pos = {
+        x: e.evt.clientX - rect.left,
+        y: e.evt.clientY - rect.top,
+      };
+      setLastPointerPos(pos);
     }
   }, []);
 
-  const handleMouseMove = useCallback(() => {
+  const handleMouseMove = useCallback((e: any) => {
     if (!isPanning || !lastPointerPos) return;
+
     const stage = stageRef.current;
     if (!stage) return;
 
-    const pos = stage.getPointerPosition();
-    if (!pos) return;
+    // Get position relative to the canvas element to avoid CSS transform issues
+    const container = stage.container();
+    const rect = container.getBoundingClientRect();
+    const pos = {
+      x: e.evt.clientX - rect.left,
+      y: e.evt.clientY - rect.top,
+    };
 
     const dx = pos.x - lastPointerPos.x;
     const dy = pos.y - lastPointerPos.y;
 
-    setPosition((p) => ({ x: p.x + dx, y: p.y + dy }));
+    setPosition({
+      x: position.x + dx,
+      y: position.y + dy,
+    });
+
     setLastPointerPos(pos);
-  }, [isPanning, lastPointerPos]);
+  }, [isPanning, lastPointerPos, position]);
 
   const handleMouseUp = useCallback(() => {
     setIsPanning(false);

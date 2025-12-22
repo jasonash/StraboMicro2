@@ -626,12 +626,18 @@ contextBridge.exposeInMainWorld('api', {
     preloadModel: () => ipcRenderer.invoke('fastsam:preload-model'),
     // Unload model to free memory
     unloadModel: () => ipcRenderer.invoke('fastsam:unload-model'),
-    // Run detection on image file path
+    // Run detection on image file path (legacy - uses broken contour extraction)
     detectGrains: (imagePath, params, options) =>
       ipcRenderer.invoke('fastsam:detect-grains', imagePath, params, options),
-    // Run detection from image buffer (base64 or Buffer)
+    // Run detection from image buffer (legacy - uses broken contour extraction)
     detectGrainsFromBuffer: (imageBuffer, params, options) =>
       ipcRenderer.invoke('fastsam:detect-grains-from-buffer', imageBuffer, params, options),
+    // NEW: Run detection and return raw masks for OpenCV.js processing (GrainSight-compatible)
+    detectRawMasks: (imagePath, params) =>
+      ipcRenderer.invoke('fastsam:detect-raw-masks', imagePath, params),
+    // NEW: Run detection from buffer and return raw masks
+    detectRawMasksFromBuffer: (imageBuffer, params) =>
+      ipcRenderer.invoke('fastsam:detect-raw-masks-from-buffer', imageBuffer, params),
     // Listen for detection progress updates
     onProgress: (callback) => {
       const handler = (event, progress) => callback(progress);
