@@ -43,3 +43,6 @@ release/
 *.pfx
 *.cer
 *.pem
+
+# Prototype test artifacts
+prototypes/
