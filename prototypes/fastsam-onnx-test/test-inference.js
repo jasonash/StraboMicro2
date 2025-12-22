@@ -22,7 +22,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const MODEL_PATH = path.join(__dirname, 'models', 'FastSAM-x.onnx');
 const TEST_IMAGE = process.argv[2] || path.join(__dirname, 'test-image.tif');
 const INPUT_SIZE = 1024; // Match GrainSight
-const CONF_THRESHOLD = 0.25; // GrainSight uses 0.25-0.50
+const CONF_THRESHOLD = 0.50; // GrainSight default
 const IOU_THRESHOLD = 0.7;
 
 /**
