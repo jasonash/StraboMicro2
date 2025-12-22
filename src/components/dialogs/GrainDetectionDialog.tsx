@@ -416,21 +416,49 @@ export function GrainDetectionDialog({
 
       console.log('[GrainDetection] FastSAM complete:', result.grains.length, 'grains in', result.processingTimeMs?.toFixed(0), 'ms');
 
-      // Convert FastSAM result to DetectionResult format
+      // FastSAM runs on the original full-resolution image, but the preview shows
+      // a medium-resolution version. We need to scale coordinates to match the preview.
+      const originalWidth = result.imageDimensions?.width || imageWidth;
+      const originalHeight = result.imageDimensions?.height || imageHeight;
+      const previewWidth = imageWidth;
+      const previewHeight = imageHeight;
+      const scaleX = previewWidth / originalWidth;
+      const scaleY = previewHeight / originalHeight;
+
+      console.log('[GrainDetection] Coordinate scaling:', {
+        original: `${originalWidth}x${originalHeight}`,
+        preview: `${previewWidth}x${previewHeight}`,
+        scale: `${scaleX.toFixed(3)}x${scaleY.toFixed(3)}`,
+      });
+
+      // Convert FastSAM result to DetectionResult format with scaled coordinates
       const detectionResult: DetectionResult = {
         grains: result.grains.map((grain): DetectedGrain => ({
           tempId: grain.tempId,
-          contour: grain.contour,
-          area: grain.area,
-          centroid: grain.centroid,
-          boundingBox: grain.boundingBox,
-          perimeter: grain.perimeter,
+          // Scale contour coordinates from original to preview space
+          contour: grain.contour.map(p => ({
+            x: Math.round(p.x * scaleX),
+            y: Math.round(p.y * scaleY),
+          })),
+          area: grain.area * scaleX * scaleY,
+          centroid: {
+            x: Math.round(grain.centroid.x * scaleX),
+            y: Math.round(grain.centroid.y * scaleY),
+          },
+          boundingBox: {
+            x: Math.round(grain.boundingBox.x * scaleX),
+            y: Math.round(grain.boundingBox.y * scaleY),
+            width: Math.round(grain.boundingBox.width * scaleX),
+            height: Math.round(grain.boundingBox.height * scaleY),
+          },
+          perimeter: grain.perimeter * Math.sqrt(scaleX * scaleY),
           circularity: grain.circularity,
         })),
         processingTimeMs: result.processingTimeMs || 0,
         settings: settings,
-        imageDimensions: result.imageDimensions || { width: imageWidth, height: imageHeight },
-        scaleFactor: 1, // FastSAM handles scaling internally
+        // Store preview dimensions since coordinates are now in preview space
+        imageDimensions: { width: previewWidth, height: previewHeight },
+        scaleFactor: 1,
       };
 
       setDetectionResult(detectionResult);
