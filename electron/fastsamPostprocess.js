@@ -94,8 +94,8 @@ function marchingSquaresContour(mask, width, height) {
 }
 
 /**
- * Moore-Neighbor contour tracing algorithm (backup method).
- * Traces the boundary of a binary mask.
+ * Extract boundary pixels and order them into a contour.
+ * Works by collecting all boundary pixels, then ordering them by nearest-neighbor.
  *
  * @param {Uint8Array} mask - Binary mask (1 = foreground, 0 = background)
  * @param {number} width - Mask width
@@ -103,76 +103,72 @@ function marchingSquaresContour(mask, width, height) {
  * @returns {Array<{x: number, y: number}>} Contour points
  */
 function mooreNeighborContour(mask, width, height) {
-  // Find starting point
-  let startX = -1, startY = -1;
-  outer: for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      if (mask[y * width + x] === 1) {
-        startX = x;
-        startY = y;
-        break outer;
-      }
-    }
-  }
-
-  if (startX === -1) return [];
-
-  // 8-connected neighborhood (clockwise from left)
-  const dx = [-1, -1, 0, 1, 1, 1, 0, -1];
-  const dy = [0, -1, -1, -1, 0, 1, 1, 1];
-
   const getPixel = (px, py) => {
     if (px < 0 || px >= width || py < 0 || py >= height) return 0;
     return mask[py * width + px];
   };
 
-  const contour = [];
-  let x = startX, y = startY;
-  let dir = 0;
-  const maxIter = width * height * 2;
-  let iter = 0;
-
-  do {
-    contour.push({ x, y });
-
-    // Search for next boundary pixel
-    let startDir = (dir + 5) % 8;
-    let found = false;
-
-    for (let i = 0; i < 8; i++) {
-      const checkDir = (startDir + i) % 8;
-      const nx = x + dx[checkDir];
-      const ny = y + dy[checkDir];
-
-      if (getPixel(nx, ny) === 1) {
-        x = nx;
-        y = ny;
-        dir = checkDir;
-        found = true;
-        break;
+  // Collect all boundary pixels (foreground pixels with at least one 4-connected background neighbor)
+  const boundaryPixels = [];
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      if (getPixel(x, y) === 1) {
+        // Check if this is a boundary pixel
+        if (getPixel(x - 1, y) === 0 || getPixel(x + 1, y) === 0 ||
+            getPixel(x, y - 1) === 0 || getPixel(x, y + 1) === 0) {
+          boundaryPixels.push({ x, y });
+        }
       }
     }
+  }
 
-    if (!found) break;
-    iter++;
-  } while ((x !== startX || y !== startY || contour.length < 3) && iter < maxIter);
+  if (boundaryPixels.length === 0) return [];
+  if (boundaryPixels.length < 4) return boundaryPixels;
+
+  // Order boundary pixels by nearest-neighbor to form a contour
+  const contour = [boundaryPixels[0]];
+  const used = new Set([0]);
+
+  while (contour.length < boundaryPixels.length) {
+    const current = contour[contour.length - 1];
+    let nearestIdx = -1;
+    let nearestDist = Infinity;
+
+    // Find nearest unused boundary pixel
+    for (let i = 0; i < boundaryPixels.length; i++) {
+      if (used.has(i)) continue;
+
+      const p = boundaryPixels[i];
+      const dist = Math.abs(p.x - current.x) + Math.abs(p.y - current.y); // Manhattan distance
+
+      if (dist < nearestDist) {
+        nearestDist = dist;
+        nearestIdx = i;
+      }
+
+      // Early exit if we found an adjacent pixel
+      if (dist <= 2) break;
+    }
+
+    if (nearestIdx === -1 || nearestDist > 10) {
+      // No nearby pixels found, might be disconnected - stop here
+      break;
+    }
+
+    contour.push(boundaryPixels[nearestIdx]);
+    used.add(nearestIdx);
+  }
 
   return contour;
 }
 
 /**
- * Extract contour from binary mask using the best available method.
- * Tries marching squares first, falls back to Moore-neighbor if needed.
+ * Extract contour from binary mask using Moore-neighbor tracing.
+ * This is more reliable than marching squares for binary masks.
  */
 function extractContour(mask, width, height) {
-  // Try marching squares first
-  let contour = marchingSquaresContour(mask, width, height);
-
-  // If marching squares produced too few points, try Moore-neighbor
-  if (contour.length < 8) {
-    contour = mooreNeighborContour(mask, width, height);
-  }
-
+  // Use Moore-neighbor tracing - more reliable for our masks
+  const contour = mooreNeighborContour(mask, width, height);
   return contour;
 }
 
