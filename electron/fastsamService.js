@@ -11,104 +11,46 @@ const sharp = require('sharp');
 const path = require('path');
 const fs = require('fs');
 const { app } = require('electron');
-const Module = require('module');
 
 // Lazy-loaded onnxruntime-node
 let ort = null;
 let ortLoadError = null;
-let nativeBindingPreloaded = false;
-
-/**
- * Preload the native onnxruntime binding directly using process.dlopen()
- * and inject it into the module cache.
- *
- * This is necessary because onnxruntime-node uses a dynamic template string
- * require path that Electron's automatic asar→asar.unpacked redirection
- * doesn't handle properly.
- *
- * By preloading the module into the cache with the expected key, we ensure
- * that when onnxruntime-node's binding.js does its require(), it finds our
- * pre-loaded module in the cache instead of trying to resolve the path.
- */
-function preloadNativeBinding() {
-  if (nativeBindingPreloaded) return true;
-  if (!process.resourcesPath) return true; // Not in packaged app, skip
-
-  // The path that binding.js would resolve to (inside asar)
-  const asarBindingPath = path.join(
-    process.resourcesPath,
-    'app.asar',
-    'node_modules',
-    'onnxruntime-node',
-    'bin',
-    'napi-v3',
-    process.platform,
-    process.arch,
-    'onnxruntime_binding.node'
-  );
-
-  // The actual unpacked path where the native module exists
-  const unpackedPath = path.join(
-    process.resourcesPath,
-    'app.asar.unpacked',
-    'node_modules',
-    'onnxruntime-node',
-    'bin',
-    'napi-v3',
-    process.platform,
-    process.arch,
-    'onnxruntime_binding.node'
-  );
-
-  console.log('[FastSAM] Checking for native binding at:', unpackedPath);
-
-  if (!fs.existsSync(unpackedPath)) {
-    console.error('[FastSAM] Native binding not found at:', unpackedPath);
-    return false;
-  }
-
-  try {
-    // Load the native module directly using process.dlopen()
-    // This bypasses Node's module resolution and loads from the absolute path
-    const nativeModule = { exports: {} };
-    process.dlopen(nativeModule, unpackedPath);
-
-    // Create a module entry to cache with the expected key
-    const cachedModule = {
-      id: asarBindingPath,
-      filename: asarBindingPath,
-      loaded: true,
-      exports: nativeModule.exports,
-      paths: [],
-      children: [],
-    };
-
-    // Insert into Module._cache so future require() calls find it
-    Module._cache[asarBindingPath] = cachedModule;
-
-    nativeBindingPreloaded = true;
-    console.log('[FastSAM] Pre-loaded native binding from:', unpackedPath);
-    console.log('[FastSAM] Cached with key:', asarBindingPath);
-    return true;
-  } catch (err) {
-    console.error('[FastSAM] Failed to preload native binding:', err.message);
-    console.error('[FastSAM] Error details:', err);
-    return false;
-  }
-}
 
 /**
  * Lazily load onnxruntime-node.
  * Returns the ort module if available, null if loading failed.
+ *
+ * In packaged apps, we require onnxruntime-node from the unpacked location
+ * (app.asar.unpacked) instead of the asar archive. This ensures the entire
+ * require chain stays in the unpacked directory, allowing the native .node
+ * module to be loaded correctly via relative paths.
  */
 function getOrt() {
   if (ort !== null) return ort;
   if (ortLoadError !== null) return null;
 
   try {
-    // Preload native binding into module cache before requiring onnxruntime-node
-    preloadNativeBinding();
+    // In packaged app, require from unpacked location
+    if (process.resourcesPath) {
+      const unpackedOrtPath = path.join(
+        process.resourcesPath,
+        'app.asar.unpacked',
+        'node_modules',
+        'onnxruntime-node'
+      );
 
+      console.log('[FastSAM] Loading onnxruntime-node from unpacked path:', unpackedOrtPath);
+
+      if (fs.existsSync(unpackedOrtPath)) {
+        ort = require(unpackedOrtPath);
+        console.log('[FastSAM] onnxruntime-node loaded successfully from unpacked location');
+        return ort;
+      } else {
+        console.error('[FastSAM] Unpacked onnxruntime-node not found at:', unpackedOrtPath);
+      }
+    }
+
+    // Development mode or fallback: use normal require
     ort = require('onnxruntime-node');
     console.log('[FastSAM] onnxruntime-node loaded successfully');
     return ort;
