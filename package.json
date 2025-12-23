@@ -112,7 +112,8 @@
     "asarUnpack": [
       "node_modules/sharp/**/*",
       "node_modules/@img/**/*",
-      "node_modules/canvas/**/*"
+      "node_modules/canvas/**/*",
+      "node_modules/onnxruntime-node/**/*"
     ],
     "mac": {
       "category": "public.app-category.education",
