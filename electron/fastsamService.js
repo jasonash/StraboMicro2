@@ -4,14 +4,41 @@
  * Uses FastSAM (Fast Segment Anything Model) via ONNX Runtime for grain detection.
  * Based on GrainSight's approach but runs natively in Node.js.
  *
+ * NOTE: onnxruntime-node is loaded lazily to handle platforms where the native
+ * module fails to load (e.g., Windows packaged builds). If loading fails,
+ * FastSAM detection is unavailable but OpenCV detection still works.
+ *
  * @module fastsamService
  */
 
-const ort = require('onnxruntime-node');
 const sharp = require('sharp');
 const path = require('path');
 const fs = require('fs');
 const { app } = require('electron');
+
+// Lazy-loaded onnxruntime-node (may fail on some platforms)
+let ort = null;
+let ortLoadError = null;
+
+/**
+ * Lazily load onnxruntime-node.
+ * Returns the ort module if available, null if loading failed.
+ */
+function getOrt() {
+  if (ort !== null) return ort;
+  if (ortLoadError !== null) return null;
+
+  try {
+    ort = require('onnxruntime-node');
+    console.log('[FastSAM] onnxruntime-node loaded successfully');
+    return ort;
+  } catch (err) {
+    ortLoadError = err;
+    console.warn('[FastSAM] Failed to load onnxruntime-node:', err.message);
+    console.warn('[FastSAM] FastSAM detection will be unavailable. OpenCV detection still works.');
+    return null;
+  }
+}
 
 // ============================================================================
 // Configuration
@@ -77,9 +104,13 @@ function getModelPath() {
 }
 
 /**
- * Check if the FastSAM model is available.
+ * Check if FastSAM is available (both onnxruntime-node and model file).
  */
 function isModelAvailable() {
+  // First check if onnxruntime-node can be loaded
+  if (getOrt() === null) {
+    return false;
+  }
   return getModelPath() !== null;
 }
 
@@ -223,6 +254,11 @@ async function loadModel(progressCallback) {
   loadError = null;
 
   try {
+    const ortModule = getOrt();
+    if (!ortModule) {
+      throw new Error('ONNX Runtime is not available on this platform. FastSAM detection is disabled.');
+    }
+
     const modelFilePath = getModelPath();
     if (!modelFilePath) {
       throw new Error('FastSAM model not found. Please download the model first.');
@@ -235,7 +271,7 @@ async function loadModel(progressCallback) {
     console.log('[FastSAM] Loading model from:', modelFilePath);
     const startTime = Date.now();
 
-    session = await ort.InferenceSession.create(modelFilePath, {
+    session = await ortModule.InferenceSession.create(modelFilePath, {
       executionProviders: ['cpu'],
       // Optimize for single-threaded inference
       graphOptimizationLevel: 'all',
@@ -324,7 +360,7 @@ async function preprocessImage(imagePath, progressCallback) {
   }
 
   return {
-    tensor: new ort.Tensor('float32', float32Data, [1, 3, INPUT_SIZE, INPUT_SIZE]),
+    tensor: new (getOrt().Tensor)('float32', float32Data, [1, 3, INPUT_SIZE, INPUT_SIZE]),
     scale,
     padX,
     padY,
@@ -378,7 +414,7 @@ async function preprocessFromBuffer(imageBuffer, progressCallback) {
   }
 
   return {
-    tensor: new ort.Tensor('float32', float32Data, [1, 3, INPUT_SIZE, INPUT_SIZE]),
+    tensor: new (getOrt().Tensor)('float32', float32Data, [1, 3, INPUT_SIZE, INPUT_SIZE]),
     scale,
     padX,
     padY,
