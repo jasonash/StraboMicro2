@@ -29,9 +29,14 @@ let ortLoadError = null;
  * onnxruntime.dll can be found when loading the .node file.
  */
 function getOrt() {
+  console.log('[FastSAM] getOrt() called, ort:', ort !== null, 'ortLoadError:', ortLoadError !== null);
   if (ort !== null) return ort;
-  if (ortLoadError !== null) return null;
+  if (ortLoadError !== null) {
+    console.log('[FastSAM] Returning null due to previous error:', ortLoadError.message);
+    return null;
+  }
 
+  console.log('[FastSAM] process.resourcesPath:', process.resourcesPath);
   try {
     // In packaged app, require from unpacked location
     if (process.resourcesPath) {
