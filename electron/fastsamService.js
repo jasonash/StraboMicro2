@@ -16,45 +16,85 @@ const Module = require('module');
 // Lazy-loaded onnxruntime-node
 let ort = null;
 let ortLoadError = null;
-let moduleResolutionPatched = false;
+let nativeBindingPreloaded = false;
 
 /**
- * Patch Node's module resolution to find native modules in app.asar.unpacked.
- * This is needed because onnxruntime-node uses dynamic require paths that
- * Electron's asar system doesn't automatically redirect.
+ * Preload the native onnxruntime binding directly using process.dlopen()
+ * and inject it into the module cache.
+ *
+ * This is necessary because onnxruntime-node uses a dynamic template string
+ * require path that Electron's automatic asar→asar.unpacked redirection
+ * doesn't handle properly.
+ *
+ * By preloading the module into the cache with the expected key, we ensure
+ * that when onnxruntime-node's binding.js does its require(), it finds our
+ * pre-loaded module in the cache instead of trying to resolve the path.
  */
-function patchModuleResolution() {
-  if (moduleResolutionPatched) return;
-  if (!process.resourcesPath) return; // Not in packaged app
+function preloadNativeBinding() {
+  if (nativeBindingPreloaded) return true;
+  if (!process.resourcesPath) return true; // Not in packaged app, skip
 
-  const originalResolveFilename = Module._resolveFilename;
+  // The path that binding.js would resolve to (inside asar)
+  const asarBindingPath = path.join(
+    process.resourcesPath,
+    'app.asar',
+    'node_modules',
+    'onnxruntime-node',
+    'bin',
+    'napi-v3',
+    process.platform,
+    process.arch,
+    'onnxruntime_binding.node'
+  );
 
-  Module._resolveFilename = function(request, parent, isMain, options) {
-    // Intercept requires for onnxruntime native binding
-    if (request.includes('onnxruntime_binding.node')) {
-      const unpackedPath = path.join(
-        process.resourcesPath,
-        'app.asar.unpacked',
-        'node_modules',
-        'onnxruntime-node',
-        'bin',
-        'napi-v3',
-        process.platform,
-        process.arch,
-        'onnxruntime_binding.node'
-      );
+  // The actual unpacked path where the native module exists
+  const unpackedPath = path.join(
+    process.resourcesPath,
+    'app.asar.unpacked',
+    'node_modules',
+    'onnxruntime-node',
+    'bin',
+    'napi-v3',
+    process.platform,
+    process.arch,
+    'onnxruntime_binding.node'
+  );
 
-      if (fs.existsSync(unpackedPath)) {
-        console.log('[FastSAM] Redirecting native module to:', unpackedPath);
-        return unpackedPath;
-      }
-    }
+  console.log('[FastSAM] Checking for native binding at:', unpackedPath);
 
-    return originalResolveFilename.call(this, request, parent, isMain, options);
-  };
+  if (!fs.existsSync(unpackedPath)) {
+    console.error('[FastSAM] Native binding not found at:', unpackedPath);
+    return false;
+  }
 
-  moduleResolutionPatched = true;
-  console.log('[FastSAM] Module resolution patched for packaged app');
+  try {
+    // Load the native module directly using process.dlopen()
+    // This bypasses Node's module resolution and loads from the absolute path
+    const nativeModule = { exports: {} };
+    process.dlopen(nativeModule, unpackedPath);
+
+    // Create a module entry to cache with the expected key
+    const cachedModule = {
+      id: asarBindingPath,
+      filename: asarBindingPath,
+      loaded: true,
+      exports: nativeModule.exports,
+      paths: [],
+      children: [],
+    };
+
+    // Insert into Module._cache so future require() calls find it
+    Module._cache[asarBindingPath] = cachedModule;
+
+    nativeBindingPreloaded = true;
+    console.log('[FastSAM] Pre-loaded native binding from:', unpackedPath);
+    console.log('[FastSAM] Cached with key:', asarBindingPath);
+    return true;
+  } catch (err) {
+    console.error('[FastSAM] Failed to preload native binding:', err.message);
+    console.error('[FastSAM] Error details:', err);
+    return false;
+  }
 }
 
 /**
@@ -66,8 +106,8 @@ function getOrt() {
   if (ortLoadError !== null) return null;
 
   try {
-    // Patch module resolution before requiring onnxruntime-node
-    patchModuleResolution();
+    // Preload native binding into module cache before requiring onnxruntime-node
+    preloadNativeBinding();
 
     ort = require('onnxruntime-node');
     console.log('[FastSAM] onnxruntime-node loaded successfully');
