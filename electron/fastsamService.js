@@ -24,6 +24,9 @@ let ortLoadError = null;
  * (app.asar.unpacked) instead of the asar archive. This ensures the entire
  * require chain stays in the unpacked directory, allowing the native .node
  * module to be loaded correctly via relative paths.
+ *
+ * On Windows, we also add the native binary directory to PATH so that
+ * onnxruntime.dll can be found when loading the .node file.
  */
 function getOrt() {
   if (ort !== null) return ort;
@@ -42,6 +45,21 @@ function getOrt() {
       console.log('[FastSAM] Loading onnxruntime-node from unpacked path:', unpackedOrtPath);
 
       if (fs.existsSync(unpackedOrtPath)) {
+        // On Windows, add the DLL directory to PATH so onnxruntime.dll can be found
+        if (process.platform === 'win32') {
+          const dllPath = path.join(
+            unpackedOrtPath,
+            'bin',
+            'napi-v3',
+            'win32',
+            process.arch
+          );
+          if (fs.existsSync(dllPath)) {
+            process.env.PATH = dllPath + path.delimiter + process.env.PATH;
+            console.log('[FastSAM] Added DLL path to PATH:', dllPath);
+          }
+        }
+
         ort = require(unpackedOrtPath);
         console.log('[FastSAM] onnxruntime-node loaded successfully from unpacked location');
         return ort;
