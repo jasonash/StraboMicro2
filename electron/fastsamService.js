@@ -4,10 +4,6 @@
  * Uses FastSAM (Fast Segment Anything Model) via ONNX Runtime for grain detection.
  * Based on GrainSight's approach but runs natively in Node.js.
  *
- * NOTE: onnxruntime-node is loaded lazily to handle platforms where the native
- * module fails to load (e.g., Windows packaged builds). If loading fails,
- * FastSAM detection is unavailable but OpenCV detection still works.
- *
  * @module fastsamService
  */
 
@@ -15,10 +11,51 @@ const sharp = require('sharp');
 const path = require('path');
 const fs = require('fs');
 const { app } = require('electron');
+const Module = require('module');
 
-// Lazy-loaded onnxruntime-node (may fail on some platforms)
+// Lazy-loaded onnxruntime-node
 let ort = null;
 let ortLoadError = null;
+let moduleResolutionPatched = false;
+
+/**
+ * Patch Node's module resolution to find native modules in app.asar.unpacked.
+ * This is needed because onnxruntime-node uses dynamic require paths that
+ * Electron's asar system doesn't automatically redirect.
+ */
+function patchModuleResolution() {
+  if (moduleResolutionPatched) return;
+  if (!process.resourcesPath) return; // Not in packaged app
+
+  const originalResolveFilename = Module._resolveFilename;
+
+  Module._resolveFilename = function(request, parent, isMain, options) {
+    // Intercept requires for onnxruntime native binding
+    if (request.includes('onnxruntime_binding.node')) {
+      const unpackedPath = path.join(
+        process.resourcesPath,
+        'app.asar.unpacked',
+        'node_modules',
+        'onnxruntime-node',
+        'bin',
+        'napi-v3',
+        process.platform,
+        process.arch,
+        'onnxruntime_binding.node'
+      );
+
+      if (fs.existsSync(unpackedPath)) {
+        console.log('[FastSAM] Redirecting native module to:', unpackedPath);
+        return unpackedPath;
+      }
+    }
+
+    return originalResolveFilename.call(this, request, parent, isMain, options);
+  };
+
+  moduleResolutionPatched = true;
+  console.log('[FastSAM] Module resolution patched for packaged app');
+}
 
 /**
  * Lazily load onnxruntime-node.
@@ -29,13 +66,16 @@ function getOrt() {
   if (ortLoadError !== null) return null;
 
   try {
+    // Patch module resolution before requiring onnxruntime-node
+    patchModuleResolution();
+
     ort = require('onnxruntime-node');
     console.log('[FastSAM] onnxruntime-node loaded successfully');
     return ort;
   } catch (err) {
     ortLoadError = err;
-    console.warn('[FastSAM] Failed to load onnxruntime-node:', err.message);
-    console.warn('[FastSAM] FastSAM detection will be unavailable. OpenCV detection still works.');
+    console.error('[FastSAM] Failed to load onnxruntime-node:', err.message);
+    console.error('[FastSAM] Stack:', err.stack);
     return null;
   }
 }
