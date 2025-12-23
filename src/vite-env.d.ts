@@ -752,6 +752,31 @@ interface Window {
       }>;
       // Get path where model should be downloaded
       getDownloadPath: () => Promise<string>;
+      // Get model status (available, path, download info)
+      getModelStatus: () => Promise<{
+        available: boolean;
+        path?: string;
+        sizeBytes?: number;
+        downloadPath?: string;
+        downloadUrl?: string;
+        expectedSizeBytes?: number;
+        error?: string;
+      }>;
+      // Download model from Hugging Face
+      downloadModel: () => Promise<{
+        success: boolean;
+        modelPath?: string;
+        error?: string;
+      }>;
+      // Listen for download progress updates
+      onDownloadProgress: (
+        callback: (progress: {
+          percent: number;
+          downloadedBytes: number;
+          totalBytes: number;
+          status: string;
+        }) => void
+      ) => Unsubscribe;
       // Preload model (optional optimization)
       preloadModel: () => Promise<{
         success: boolean;
