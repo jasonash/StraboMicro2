@@ -225,16 +225,22 @@ export function GrainSizeAnalysisDialog({ open, onClose }: GrainSizeAnalysisDial
   const analysisResults = useMemo((): GrainAnalysisResults | null => {
     if (grainMetrics.length === 0) return null;
 
-    // Use scale from first micrograph (or average)
+    // Use scale from first micrograph (for size conversions)
     const firstMicrograph = micrographsToAnalyze[0];
     if (!firstMicrograph) return null;
 
     const scale = firstMicrograph.scalePixelsPerCentimeter || 100;
-    const µmPerPixel = 10000 / scale;
-    const micrographAreaMicrons2 =
-      (firstMicrograph.width || 1000) *
-      (firstMicrograph.height || 1000) *
-      µmPerPixel * µmPerPixel;
+
+    // Calculate total micrograph area - sum all micrographs when scope is "all"
+    let totalMicrographAreaMicrons2 = 0;
+    for (const micrograph of micrographsToAnalyze) {
+      const microScale = micrograph.scalePixelsPerCentimeter || 100;
+      const microµmPerPixel = 10000 / microScale;
+      totalMicrographAreaMicrons2 +=
+        (micrograph.width || 1000) *
+        (micrograph.height || 1000) *
+        microµmPerPixel * microµmPerPixel;
+    }
 
     // Get sample name
     let sampleName = '';
@@ -255,7 +261,7 @@ export function GrainSizeAnalysisDialog({ open, onClose }: GrainSizeAnalysisDial
       firstMicrograph.name || 'Unknown',
       sampleName,
       scale,
-      micrographAreaMicrons2,
+      totalMicrographAreaMicrons2,
       rockType
     );
   }, [grainMetrics, micrographsToAnalyze, rockType, project]);
