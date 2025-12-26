@@ -6,7 +6,7 @@
  */
 
 import { useEffect, useRef, useMemo } from 'react';
-import { Box } from '@mui/material';
+import { Box, useTheme } from '@mui/material';
 import type { RockType } from '@/services/grainAnalysis/types';
 import { getClassificationScheme, generateHistogramBins } from '@/services/grainAnalysis/statistics';
 
@@ -29,12 +29,9 @@ interface SizeHistogramProps {
   title?: string;
 }
 
-// Colors for the histogram bars
+// Colors for the histogram bars (same in both themes)
 const BAR_COLOR = 'rgba(66, 133, 244, 0.8)';
 const BAR_STROKE_COLOR = 'rgba(25, 118, 210, 1)';
-const GRID_COLOR = 'rgba(255, 255, 255, 0.2)';
-const AXIS_COLOR = 'rgba(255, 255, 255, 0.7)';
-const TEXT_COLOR = '#fff';
 
 export function SizeHistogram({
   values,
@@ -47,6 +44,13 @@ export function SizeHistogram({
   title,
 }: SizeHistogramProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const theme = useTheme();
+  const isDarkMode = theme.palette.mode === 'dark';
+
+  // Theme-aware colors
+  const textColor = isDarkMode ? '#fff' : '#333';
+  const axisColor = isDarkMode ? 'rgba(255, 255, 255, 0.7)' : 'rgba(0, 0, 0, 0.7)';
+  const gridColor = isDarkMode ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.15)';
 
   // Generate histogram bins
   const bins = useMemo(() => {
@@ -82,7 +86,7 @@ export function SizeHistogram({
     const plotHeight = height - margin.top - margin.bottom;
 
     if (bins.length === 0) {
-      ctx.fillStyle = TEXT_COLOR;
+      ctx.fillStyle = textColor;
       ctx.font = '14px system-ui, sans-serif';
       ctx.textAlign = 'center';
       ctx.fillText('No data to display', width / 2, height / 2);
@@ -124,7 +128,7 @@ export function SizeHistogram({
 
       // Draw label at top
       if (x2 - x1 > 30) {
-        ctx.fillStyle = '#fff';
+        ctx.fillStyle = textColor;
         ctx.font = 'bold 13px system-ui, sans-serif';
         ctx.textAlign = 'center';
         ctx.save();
@@ -137,7 +141,7 @@ export function SizeHistogram({
 
     // Draw grid
     if (showGrid) {
-      ctx.strokeStyle = GRID_COLOR;
+      ctx.strokeStyle = gridColor;
       ctx.lineWidth = 1;
 
       // Horizontal grid lines
@@ -170,7 +174,7 @@ export function SizeHistogram({
     }
 
     // Draw axes
-    ctx.strokeStyle = AXIS_COLOR;
+    ctx.strokeStyle = axisColor;
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.moveTo(margin.left, margin.top);
@@ -179,7 +183,7 @@ export function SizeHistogram({
     ctx.stroke();
 
     // X-axis labels
-    ctx.fillStyle = TEXT_COLOR;
+    ctx.fillStyle = textColor;
     ctx.font = '14px system-ui, sans-serif';
     ctx.textAlign = 'center';
 
@@ -250,7 +254,7 @@ export function SizeHistogram({
       ctx.fillText(title, width / 2, 15);
     }
 
-  }, [bins, classification, width, height, useLogScale, showGrid, title]);
+  }, [bins, classification, width, height, useLogScale, showGrid, title, textColor, axisColor, gridColor]);
 
   return (
     <Box sx={{ position: 'relative' }}>
