@@ -6,7 +6,7 @@
  */
 
 import { useEffect, useRef, useMemo } from 'react';
-import { Box } from '@mui/material';
+import { Box, useTheme } from '@mui/material';
 import { generateRoseSectors, calculateCircularMean, calculateCircularStdDev } from '@/services/grainAnalysis/statistics';
 
 interface RoseDiagramProps {
@@ -22,12 +22,10 @@ interface RoseDiagramProps {
   title?: string;
 }
 
-// Colors
+// Colors (same in both themes)
 const SECTOR_COLOR = 'rgba(76, 175, 80, 0.7)';
 const SECTOR_STROKE_COLOR = 'rgba(56, 142, 60, 1)';
 const MEAN_COLOR = '#D32F2F';
-const GRID_COLOR = 'rgba(128, 128, 128, 0.3)';
-const TEXT_COLOR = '#333';
 
 export function RoseDiagram({
   orientations,
@@ -37,6 +35,12 @@ export function RoseDiagram({
   title,
 }: RoseDiagramProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const theme = useTheme();
+  const isDarkMode = theme.palette.mode === 'dark';
+
+  // Theme-aware colors
+  const textColor = isDarkMode ? '#fff' : '#333';
+  const gridColor = isDarkMode ? 'rgba(255, 255, 255, 0.3)' : 'rgba(128, 128, 128, 0.3)';
 
   // Generate sectors
   const sectors = useMemo(() => {
@@ -78,7 +82,7 @@ export function RoseDiagram({
     const maxRadius = (size / 2) - 30;
 
     if (orientations.length === 0) {
-      ctx.fillStyle = TEXT_COLOR;
+      ctx.fillStyle = textColor;
       ctx.font = '14px system-ui, sans-serif';
       ctx.textAlign = 'center';
       ctx.fillText('No orientation data', centerX, centerY);
@@ -90,7 +94,7 @@ export function RoseDiagram({
     if (maxCount === 0) return;
 
     // Draw grid circles
-    ctx.strokeStyle = GRID_COLOR;
+    ctx.strokeStyle = gridColor;
     ctx.lineWidth = 1;
     const gridCircles = 4;
     for (let i = 1; i <= gridCircles; i++) {
@@ -194,7 +198,7 @@ export function RoseDiagram({
     }
 
     // Draw axis labels
-    ctx.fillStyle = TEXT_COLOR;
+    ctx.fillStyle = textColor;
     ctx.font = '11px system-ui, sans-serif';
     ctx.textAlign = 'center';
 
@@ -237,7 +241,7 @@ export function RoseDiagram({
       );
     }
 
-  }, [sectors, orientations.length, circularStats, size, showMean, title]);
+  }, [sectors, orientations.length, circularStats, size, showMean, title, textColor, gridColor]);
 
   return (
     <Box sx={{ position: 'relative' }}>
