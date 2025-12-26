@@ -701,6 +701,15 @@ function createWindow() {
             }
           }
         },
+        {
+          label: 'Grain Size Analysis...',
+          accelerator: 'CmdOrCtrl+Shift+A',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('menu:grain-size-analysis');
+            }
+          }
+        },
       ],
     },
     {
@@ -1416,6 +1425,38 @@ ipcMain.handle('dialog:open-files', async () => {
   }
 
   return result.filePaths;
+});
+
+// Save text file with save dialog
+ipcMain.handle('dialog:save-text-file', async (event, content, defaultName, extension) => {
+  try {
+    const filters = [];
+    if (extension === 'csv') {
+      filters.push({ name: 'CSV Files', extensions: ['csv'] });
+    } else if (extension === 'txt') {
+      filters.push({ name: 'Text Files', extensions: ['txt'] });
+    } else if (extension === 'json') {
+      filters.push({ name: 'JSON Files', extensions: ['json'] });
+    }
+    filters.push({ name: 'All Files', extensions: ['*'] });
+
+    const result = await dialog.showSaveDialog(mainWindow, {
+      title: 'Save File',
+      defaultPath: defaultName,
+      filters: filters
+    });
+
+    if (result.canceled || !result.filePath) {
+      return { success: false, canceled: true };
+    }
+
+    await fs.promises.writeFile(result.filePath, content, 'utf8');
+    log.info(`[IPC] Saved text file: ${result.filePath}`);
+    return { success: true, filePath: result.filePath };
+  } catch (error) {
+    log.error('[IPC] Error saving text file:', error);
+    throw error;
+  }
 });
 
 // Open external link in default browser

@@ -26,6 +26,7 @@ import { ProjectPrepDialog } from './components/dialogs/ProjectPrepDialog';
 import { PointCountDialog } from './components/dialogs/PointCountDialog';
 import { GrainDetectionDialog } from './components/dialogs/GrainDetectionDialog';
 import { ImageComparatorDialog } from './components/dialogs/ImageComparatorDialog';
+import { GrainSizeAnalysisDialog } from './components/dialogs/GrainSizeAnalysisDialog';
 import { QuickEditEntryDialog } from './components/dialogs/QuickEditEntryDialog';
 import {
   IncompleteMicrographsDialog,
@@ -186,6 +187,7 @@ function App() {
   const [isPointCountDialogOpen, setIsPointCountDialogOpen] = useState(false);
   const [isGrainDetectionDialogOpen, setIsGrainDetectionDialogOpen] = useState(false);
   const [isImageComparatorDialogOpen, setIsImageComparatorDialogOpen] = useState(false);
+  const [isGrainSizeAnalysisDialogOpen, setIsGrainSizeAnalysisDialogOpen] = useState(false);
   const [isQuickEditEntryDialogOpen, setIsQuickEditEntryDialogOpen] = useState(false);
   const setSplitModeSpotId = useAppStore(state => state.setSplitModeSpotId);
   const closeProject = useAppStore(state => state.closeProject);
@@ -418,6 +420,11 @@ function App() {
     // Image Comparator menu item (Tools menu)
     unsubscribers.push(window.api.onImageComparator(() => {
       setIsImageComparatorDialogOpen(true);
+    }));
+
+    // Grain Size Analysis menu item (Tools menu)
+    unsubscribers.push(window.api.onGrainSizeAnalysis(() => {
+      setIsGrainSizeAnalysisDialogOpen(true);
     }));
 
     // Clear All Spots menu item (Edit menu)
@@ -1261,6 +1268,10 @@ function App() {
       <ImageComparatorDialog
         open={isImageComparatorDialogOpen}
         onClose={() => setIsImageComparatorDialogOpen(false)}
+      />
+      <GrainSizeAnalysisDialog
+        open={isGrainSizeAnalysisDialogOpen}
+        onClose={() => setIsGrainSizeAnalysisDialogOpen(false)}
       />
       <QuickEditEntryDialog
         isOpen={isQuickEditEntryDialogOpen}
