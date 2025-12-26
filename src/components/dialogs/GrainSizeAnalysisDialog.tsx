@@ -467,7 +467,7 @@ export function GrainSizeAnalysisDialog({ open, onClose }: GrainSizeAnalysisDial
         ) : analysisResults ? (
           <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
             {/* Left Column: Charts */}
-            <Box sx={{ flex: '1 1 400px', minWidth: 350 }}>
+            <Box sx={{ flex: '2 1 550px', minWidth: 450 }}>
               {/* Histogram */}
               <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
@@ -500,8 +500,8 @@ export function GrainSizeAnalysisDialog({ open, onClose }: GrainSizeAnalysisDial
                 <SizeHistogram
                   values={chartData.sizes}
                   rockType={rockType}
-                  width={400}
-                  height={250}
+                  width={520}
+                  height={300}
                   useLogScale={useLogScale}
                   showGrid={showGrid}
                 />
@@ -514,7 +514,7 @@ export function GrainSizeAnalysisDialog({ open, onClose }: GrainSizeAnalysisDial
                   <Box sx={{ display: 'flex', justifyContent: 'center' }}>
                     <RoseDiagram
                       orientations={chartData.orientations}
-                      size={220}
+                      size={280}
                       showMean={true}
                     />
                   </Box>
