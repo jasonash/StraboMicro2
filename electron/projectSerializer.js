@@ -462,6 +462,15 @@ function serializeSpot(spot) {
     lithologyInfo: cleanObjectForDb(spot.lithologyInfo),
     fractureInfo: cleanObjectForDb(spot.fractureInfo),
     tags: spot.tags || [],
+    // Grain detection metadata
+    generationMethod: spot.generationMethod || undefined,
+    areaPixels: roundForDb(spot.areaPixels),
+    centroid: serializeCoordinate(spot.centroid),
+    // Merge/split provenance
+    mergedFrom: spot.mergedFrom || undefined,
+    splitFrom: spot.splitFrom || undefined,
+    // Archive status
+    archived: spot.archived || undefined,
   };
 }
 
@@ -625,6 +634,15 @@ function deserializeSpot(spot) {
     lithologyInfo: spot.lithologyInfo,
     fractureInfo: spot.fractureInfo,
     tags: spot.tags,
+    // Grain detection metadata
+    generationMethod: spot.generationMethod,
+    areaPixels: spot.areaPixels,
+    centroid: deserializeCoordinate(spot.centroid),
+    // Merge/split provenance
+    mergedFrom: spot.mergedFrom,
+    splitFrom: spot.splitFrom,
+    // Archive status
+    archived: spot.archived,
   };
 }
 
