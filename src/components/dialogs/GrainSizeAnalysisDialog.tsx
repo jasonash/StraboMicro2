@@ -94,6 +94,28 @@ function formatSize(microns: number): string {
 }
 
 /**
+ * Format area value with appropriate units
+ * Input is in µm², output switches to mm² for large values
+ */
+function formatArea(microns2: number): string {
+  const mm2 = microns2 / 1e6;
+  if (mm2 >= 1) {
+    return mm2.toFixed(2) + ' mm²';
+  }
+  if (mm2 >= 0.01) {
+    return mm2.toFixed(3) + ' mm²';
+  }
+  if (mm2 >= 0.001) {
+    return mm2.toFixed(4) + ' mm²';
+  }
+  // For very small areas, show in µm²
+  if (microns2 >= 1000) {
+    return formatNumber(microns2, 0) + ' µm²';
+  }
+  return microns2.toFixed(1) + ' µm²';
+}
+
+/**
  * Get mineral color from spot mineralogy
  */
 function getMineralColor(mineral: string): string {
@@ -313,7 +335,7 @@ export function GrainSizeAnalysisDialog({ open, onClose }: GrainSizeAnalysisDial
       `Date: ${new Date().toLocaleDateString()}`,
       ``,
       `Grains: ${stats.count}`,
-      `Total Area: ${formatNumber(analysisResults.totalAreaMicrons2 / 1e6, 2)} mm²`,
+      `Total Area: ${formatArea(analysisResults.totalAreaMicrons2)}`,
       `Coverage: ${analysisResults.totalAreaPercent.toFixed(1)}%`,
       ``,
       `SIZE (Equiv. Diameter)`,
@@ -507,7 +529,7 @@ export function GrainSizeAnalysisDialog({ open, onClose }: GrainSizeAnalysisDial
                       Grains: <strong>{analysisResults.sizeStats.count}</strong>
                     </Typography>
                     <Typography variant="body2">
-                      Total Area: <strong>{formatNumber(analysisResults.totalAreaMicrons2 / 1e6, 2)} mm²</strong>
+                      Total Area: <strong>{formatArea(analysisResults.totalAreaMicrons2)}</strong>
                     </Typography>
                     <Typography variant="body2">
                       Coverage: <strong>{analysisResults.totalAreaPercent.toFixed(1)}%</strong>
