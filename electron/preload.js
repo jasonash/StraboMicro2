@@ -107,6 +107,8 @@ contextBridge.exposeInMainWorld('api', {
   openMultipleTiffDialog: () => ipcRenderer.invoke('dialog:open-multiple-tiff'),
   openFileDialog: () => ipcRenderer.invoke('dialog:open-file'),
   openFilesDialog: () => ipcRenderer.invoke('dialog:open-files'),
+  saveTextFile: (content, defaultName, extension) =>
+    ipcRenderer.invoke('dialog:save-text-file', content, defaultName, extension),
 
   // External links
   openExternalLink: (url) => ipcRenderer.invoke('open-external-link', url),
@@ -614,6 +616,11 @@ contextBridge.exposeInMainWorld('api', {
     const handler = () => callback();
     ipcRenderer.on('menu:image-comparator', handler);
     return () => ipcRenderer.removeListener('menu:image-comparator', handler);
+  },
+  onGrainSizeAnalysis: (callback) => {
+    const handler = () => callback();
+    ipcRenderer.on('menu:grain-size-analysis', handler);
+    return () => ipcRenderer.removeListener('menu:grain-size-analysis', handler);
   },
 
   // FastSAM Grain Detection

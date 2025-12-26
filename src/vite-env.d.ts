@@ -147,6 +147,7 @@ interface Window {
     openMultipleTiffDialog: () => Promise<string[]>;
     openFileDialog: () => Promise<string | null>;
     openFilesDialog: () => Promise<string[]>;
+    saveTextFile: (content: string, defaultName: string, extension: string) => Promise<{ success: boolean; canceled?: boolean; filePath?: string }>;
     openExternalLink: (url: string) => Promise<{ success: boolean }>;
     openFilePath: (filePath: string) => Promise<{ success: boolean; error?: string }>;
     loadTiffImage: (filePath: string) => Promise<{
@@ -741,6 +742,7 @@ interface Window {
     onPointCount: (callback: () => void) => Unsubscribe;
     onGrainDetection: (callback: () => void) => Unsubscribe;
     onImageComparator: (callback: () => void) => Unsubscribe;
+    onGrainSizeAnalysis: (callback: () => void) => Unsubscribe;
 
     // FastSAM Grain Detection
     fastsam: {
