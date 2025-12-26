@@ -125,7 +125,7 @@ export function SizeHistogram({
       // Draw label at top
       if (x2 - x1 > 30) {
         ctx.fillStyle = '#666';
-        ctx.font = '9px system-ui, sans-serif';
+        ctx.font = '11px system-ui, sans-serif';
         ctx.textAlign = 'center';
         ctx.save();
         ctx.translate((x1 + x2) / 2, margin.top + 10);
@@ -180,7 +180,7 @@ export function SizeHistogram({
 
     // X-axis labels
     ctx.fillStyle = TEXT_COLOR;
-    ctx.font = '11px system-ui, sans-serif';
+    ctx.font = '13px system-ui, sans-serif';
     ctx.textAlign = 'center';
 
     // Create tick values
@@ -214,7 +214,7 @@ export function SizeHistogram({
     }
 
     // X-axis title
-    ctx.font = '12px system-ui, sans-serif';
+    ctx.font = '14px system-ui, sans-serif';
     ctx.fillText('Equivalent Diameter', width / 2, height - 5);
 
     // Y-axis labels
@@ -239,13 +239,13 @@ export function SizeHistogram({
     ctx.translate(15, height / 2);
     ctx.rotate(-Math.PI / 2);
     ctx.textAlign = 'center';
-    ctx.font = '12px system-ui, sans-serif';
+    ctx.font = '14px system-ui, sans-serif';
     ctx.fillText('Count', 0, 0);
     ctx.restore();
 
     // Title
     if (title) {
-      ctx.font = 'bold 13px system-ui, sans-serif';
+      ctx.font = 'bold 15px system-ui, sans-serif';
       ctx.textAlign = 'center';
       ctx.fillText(title, width / 2, 15);
     }
