@@ -51,12 +51,25 @@ StraboMicro2 is a complete rewrite of the original [StraboMicro](https://www.str
 - **Session Management** - Save, load, rename, and delete counting sessions
 
 ### Grain Detection (AI-Assisted)
-- **Automated Detection** - OpenCV.js computer vision for grain boundary identification
+- **Dual Detection Methods** - Choose between FastSAM (AI) or OpenCV.js (edge detection)
+- **FastSAM Integration** - Deep learning model for intelligent grain segmentation (~2.5s inference)
+- **OpenCV.js Fallback** - Traditional computer vision with Canny edge detection + watershed
 - **Detection Presets** - Built-in settings for common rock types (granite, basalt, sandstone, etc.)
-- **Adjustable Parameters** - Sensitivity, minimum grain size, edge contrast sliders
+- **Adjustable Parameters** - Confidence, IOU threshold, minimum grain size, edge contrast
 - **Interactive Preview** - Live visualization with zoom/pan before committing
 - **Polygon Simplification** - Douglas-Peucker algorithm to reduce vertex count
 - **Quick Edit Integration** - Automatically opens Quick Edit to classify detected grains
+- **Auto-download Model** - FastSAM model downloaded on first use from Hugging Face
+
+### Grain Size Analysis
+- **Statistical Analysis** - Mean, median, standard deviation, skewness, sorting coefficient
+- **Rock Type Classification** - Wentworth scale (sedimentary), igneous, and metamorphic schemes
+- **Scope Selection** - Analyze current micrograph, selected spot, or all micrographs
+- **Size Histogram** - Visual distribution with classification overlay (clay/silt/sand or fine/medium/coarse)
+- **Rose Diagram** - Orientation distribution for fabric analysis
+- **Grain Metrics** - Area, perimeter, circularity, aspect ratio, major/minor axes
+- **Best-fit Ellipse** - Automatic ellipse fitting using image moments
+- **CSV Export** - Export all grain measurements for external analysis
 
 ### Quick Edit Mode
 - **Keyboard-driven Workflow** - Rapidly classify spots using letter key shortcuts
@@ -159,6 +172,8 @@ npm run package:linux  # Linux
 | Cmd/Ctrl+S | Save Project |
 | Cmd/Ctrl+Z | Undo |
 | Cmd/Ctrl+Shift+Z | Redo |
+| Cmd/Ctrl+Shift+A | Grain Size Analysis |
+| Cmd/Ctrl+Shift+E | Edit Selected Spots |
 
 ### Drawing Tools
 | Shortcut | Action |
@@ -197,6 +212,7 @@ npm run package:linux  # Linux
 | Components | [Material UI](https://mui.com/) |
 | Image Processing | [Sharp](https://sharp.pixelplumbing.com/) |
 | Computer Vision | [OpenCV.js](https://docs.opencv.org/4.x/d5/d10/tutorial_js_root.html) |
+| AI Inference | [ONNX Runtime](https://onnxruntime.ai/) (FastSAM grain detection) |
 | Build | [Vite](https://vitejs.dev/) + [electron-builder](https://www.electron.build/) |
 | Error Tracking | [Sentry](https://sentry.io/) |
 
