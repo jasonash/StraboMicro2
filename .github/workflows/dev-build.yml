@@ -432,7 +432,7 @@ jobs:
               build_number: ${{ github.run_number }},
               branch: "${{ inputs.branch }}",
               notes: .body,
-              assets: [.assets[] | select(.name | test("\\.(dmg|exe|AppImage|deb)$")) | {
+              assets: ([.assets[] | select(.name | test("\\.(dmg|exe|AppImage|deb)$")) | {
                 name: .name,
                 url: .browser_download_url,
                 size: .size,
@@ -445,7 +445,15 @@ jobs:
                   else "Other"
                   end
                 )
-              }]
+              }] | sort_by(
+                if .platform == "Windows" then 0
+                elif .platform == "macOS (Apple Silicon)" then 1
+                elif .platform == "macOS (Intel)" then 2
+                elif .platform == "Linux (AppImage)" then 3
+                elif .platform == "Linux (Debian)" then 4
+                else 5
+                end
+              ))
             }' > dev-releases.json
 
           echo "Generated dev-releases.json:"
