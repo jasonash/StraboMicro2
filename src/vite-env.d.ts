@@ -147,6 +147,7 @@ interface Window {
     openMultipleTiffDialog: () => Promise<string[]>;
     openFileDialog: () => Promise<string | null>;
     openFilesDialog: () => Promise<string[]>;
+    saveTextFile: (content: string, defaultName: string, extension: string) => Promise<{ success: boolean; canceled?: boolean; filePath?: string }>;
     openExternalLink: (url: string) => Promise<{ success: boolean }>;
     openFilePath: (filePath: string) => Promise<{ success: boolean; error?: string }>;
     loadTiffImage: (filePath: string) => Promise<{
@@ -741,6 +742,78 @@ interface Window {
     onPointCount: (callback: () => void) => Unsubscribe;
     onGrainDetection: (callback: () => void) => Unsubscribe;
     onImageComparator: (callback: () => void) => Unsubscribe;
+    onGrainSizeAnalysis: (callback: () => void) => Unsubscribe;
+
+    // FastSAM Grain Detection
+    fastsam: {
+      // Check if FastSAM model is available
+      isAvailable: () => Promise<{
+        available: boolean;
+        modelPath?: string;
+        error?: string;
+      }>;
+      // Get path where model should be downloaded
+      getDownloadPath: () => Promise<string>;
+      // Get model status (available, path, download info)
+      getModelStatus: () => Promise<{
+        available: boolean;
+        path?: string;
+        sizeBytes?: number;
+        downloadPath?: string;
+        downloadUrl?: string;
+        expectedSizeBytes?: number;
+        error?: string;
+      }>;
+      // Download model from Hugging Face
+      downloadModel: () => Promise<{
+        success: boolean;
+        modelPath?: string;
+        error?: string;
+      }>;
+      // Listen for download progress updates
+      onDownloadProgress: (
+        callback: (progress: {
+          percent: number;
+          downloadedBytes: number;
+          totalBytes: number;
+          status: string;
+        }) => void
+      ) => Unsubscribe;
+      // Preload model (optional optimization)
+      preloadModel: () => Promise<{
+        success: boolean;
+        error?: string;
+      }>;
+      // Unload model to free memory
+      unloadModel: () => Promise<{
+        success: boolean;
+        error?: string;
+      }>;
+      // Run detection on image file path (legacy - uses broken contour extraction)
+      detectGrains: (
+        imagePath: string,
+        params?: FastSAMDetectionParams,
+        options?: FastSAMDetectionOptions
+      ) => Promise<FastSAMDetectionResult>;
+      // Run detection from image buffer (legacy - uses broken contour extraction)
+      detectGrainsFromBuffer: (
+        imageBuffer: string | ArrayBuffer,
+        params?: FastSAMDetectionParams,
+        options?: FastSAMDetectionOptions
+      ) => Promise<FastSAMDetectionResult>;
+      // NEW: Run detection and return raw masks for OpenCV.js processing (GrainSight-compatible)
+      detectRawMasks: (
+        imagePath: string,
+        params?: FastSAMDetectionParams
+      ) => Promise<FastSAMRawMaskResult>;
+      // NEW: Run detection from buffer and return raw masks
+      detectRawMasksFromBuffer: (
+        imageBuffer: string | ArrayBuffer,
+        params?: FastSAMDetectionParams
+      ) => Promise<FastSAMRawMaskResult>;
+      // Listen for detection progress updates
+      onProgress: (callback: (progress: { step: string; percent: number }) => void) => Unsubscribe;
+    };
 
     versionHistory: {
       // Create a new version (auto-save)
@@ -918,4 +991,61 @@ interface PointCountSessionSummaryData {
   gridType: 'regular' | 'random' | 'stratified';
   totalPoints: number;
   classifiedCount: number;
+}
+
+// FastSAM Detection Types
+interface FastSAMDetectionParams {
+  confidenceThreshold?: number; // 0.0-1.0, default 0.5
+  iouThreshold?: number; // 0.0-1.0, default 0.7
+  minAreaPercent?: number; // Minimum area as % of image, default 0.01
+  maxDetections?: number; // Maximum detections, default 500
+}
+
+interface FastSAMDetectionOptions {
+  simplifyTolerance?: number; // Douglas-Peucker epsilon, default 2.0
+  simplifyOutlines?: boolean; // Whether to simplify polygons, default true
+  betterQuality?: boolean; // Apply morphological cleanup, default true
+}
+
+interface FastSAMDetectedGrain {
+  tempId: string;
+  contour: Array<{ x: number; y: number }>;
+  area: number;
+  centroid: { x: number; y: number };
+  boundingBox: { x: number; y: number; width: number; height: number };
+  perimeter: number;
+  circularity: number;
+  confidence: number;
+}
+
+interface FastSAMDetectionResult {
+  success: boolean;
+  grains?: FastSAMDetectedGrain[];
+  processingTimeMs?: number;
+  inferenceTimeMs?: number;
+  imageDimensions?: { width: number; height: number };
+  error?: string;
+}
+
+// Raw mask result for OpenCV.js processing (GrainSight-compatible)
+interface FastSAMRawMask {
+  maskBase64: string; // Base64-encoded PNG of upsampled binary mask
+  confidence: number;
+  area: number;
+  box: [number, number, number, number]; // [x1, y1, x2, y2] in INPUT_SIZE coords
+}
+
+interface FastSAMRawMaskResult {
+  success: boolean;
+  masks?: FastSAMRawMask[];
+  preprocessInfo?: {
+    origW: number;
+    origH: number;
+    scale: number;
+    padX: number;
+    padY: number;
+  };
+  processingTimeMs?: number;
+  inferenceTimeMs?: number;
+  error?: string;
 }

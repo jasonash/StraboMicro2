@@ -107,6 +107,8 @@ contextBridge.exposeInMainWorld('api', {
   openMultipleTiffDialog: () => ipcRenderer.invoke('dialog:open-multiple-tiff'),
   openFileDialog: () => ipcRenderer.invoke('dialog:open-file'),
   openFilesDialog: () => ipcRenderer.invoke('dialog:open-files'),
+  saveTextFile: (content, defaultName, extension) =>
+    ipcRenderer.invoke('dialog:save-text-file', content, defaultName, extension),
 
   // External links
   openExternalLink: (url) => ipcRenderer.invoke('open-external-link', url),
@@ -614,5 +616,50 @@ contextBridge.exposeInMainWorld('api', {
     const handler = () => callback();
     ipcRenderer.on('menu:image-comparator', handler);
     return () => ipcRenderer.removeListener('menu:image-comparator', handler);
+  },
+  onGrainSizeAnalysis: (callback) => {
+    const handler = () => callback();
+    ipcRenderer.on('menu:grain-size-analysis', handler);
+    return () => ipcRenderer.removeListener('menu:grain-size-analysis', handler);
+  },
+
+  // FastSAM Grain Detection
+  fastsam: {
+    // Check if FastSAM model is available
+    isAvailable: () => ipcRenderer.invoke('fastsam:is-available'),
+    // Get path where model should be downloaded
+    getDownloadPath: () => ipcRenderer.invoke('fastsam:get-download-path'),
+    // Get model status (available, path, download info)
+    getModelStatus: () => ipcRenderer.invoke('fastsam:get-model-status'),
+    // Download model from Hugging Face
+    downloadModel: () => ipcRenderer.invoke('fastsam:download-model'),
+    // Listen for download progress updates
+    onDownloadProgress: (callback) => {
+      const handler = (event, progress) => callback(progress);
+      ipcRenderer.on('fastsam:download-progress', handler);
+      return () => ipcRenderer.removeListener('fastsam:download-progress', handler);
+    },
+    // Preload model (optional optimization)
+    preloadModel: () => ipcRenderer.invoke('fastsam:preload-model'),
+    // Unload model to free memory
+    unloadModel: () => ipcRenderer.invoke('fastsam:unload-model'),
+    // Run detection on image file path (legacy - uses broken contour extraction)
+    detectGrains: (imagePath, params, options) =>
+      ipcRenderer.invoke('fastsam:detect-grains', imagePath, params, options),
+    // Run detection from image buffer (legacy - uses broken contour extraction)
+    detectGrainsFromBuffer: (imageBuffer, params, options) =>
+      ipcRenderer.invoke('fastsam:detect-grains-from-buffer', imageBuffer, params, options),
+    // NEW: Run detection and return raw masks for OpenCV.js processing (GrainSight-compatible)
+    detectRawMasks: (imagePath, params) =>
+      ipcRenderer.invoke('fastsam:detect-raw-masks', imagePath, params),
+    // NEW: Run detection from buffer and return raw masks
+    detectRawMasksFromBuffer: (imageBuffer, params) =>
+      ipcRenderer.invoke('fastsam:detect-raw-masks-from-buffer', imageBuffer, params),
+    // Listen for detection progress updates
+    onProgress: (callback) => {
+      const handler = (event, progress) => callback(progress);
+      ipcRenderer.on('fastsam:progress', handler);
+      return () => ipcRenderer.removeListener('fastsam:progress', handler);
+    },
   },
 });
