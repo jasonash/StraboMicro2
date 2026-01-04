@@ -315,6 +315,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for release notes generation
 
       - name: Download all artifacts
         uses: actions/download-artifact@v4
@@ -346,6 +348,65 @@ jobs:
           else
             echo "is_prerelease=false" >> $GITHUB_OUTPUT
           fi
+
+      - name: Generate release notes from commits
+        id: release_notes
+        run: |
+          # Find the previous production tag (exclude dev-latest, sort by version)
+          PREV_TAG=$(git tag -l 'v*' | grep -v 'dev' | sort -V | tail -2 | head -1)
+
+          if [ -z "$PREV_TAG" ]; then
+            echo "No previous tag found, using all commits"
+            COMMIT_RANGE="HEAD"
+          else
+            echo "Previous tag: $PREV_TAG"
+            COMMIT_RANGE="${PREV_TAG}..HEAD"
+          fi
+
+          # Get commits and parse by category
+          echo "Commits since $PREV_TAG:"
+          git log $COMMIT_RANGE --oneline
+
+          # Generate categorized release notes
+          {
+            echo "RELEASE_NOTES<<EOF"
+
+            # Features (exclude merge commits to avoid duplicates)
+            FEATURES=$(git log $COMMIT_RANGE --oneline --no-merges --grep='\[Feature\]' | sed 's/^[a-f0-9]* \[Feature\] /- /' | grep -v '^$' || true)
+            if [ -n "$FEATURES" ]; then
+              echo "### New Features"
+              echo "$FEATURES"
+              echo ""
+            fi
+
+            # Fixes
+            FIXES=$(git log $COMMIT_RANGE --oneline --no-merges --grep='\[Fix\]' | sed 's/^[a-f0-9]* \[Fix\] /- /' | grep -v '^$' || true)
+            if [ -n "$FIXES" ]; then
+              echo "### Bug Fixes"
+              echo "$FIXES"
+              echo ""
+            fi
+
+            # UI/UX improvements
+            UI=$(git log $COMMIT_RANGE --oneline --no-merges --grep='\[UI\]' | sed 's/^[a-f0-9]* \[UI\] /- /' | grep -v '^$' || true)
+            UX=$(git log $COMMIT_RANGE --oneline --no-merges --grep='\[UX\]' | sed 's/^[a-f0-9]* \[UX\] /- /' | grep -v '^$' || true)
+            if [ -n "$UI" ] || [ -n "$UX" ]; then
+              echo "### UI/UX Improvements"
+              [ -n "$UI" ] && echo "$UI"
+              [ -n "$UX" ] && echo "$UX"
+              echo ""
+            fi
+
+            # Performance
+            PERF=$(git log $COMMIT_RANGE --oneline --no-merges --grep='\[Perf\]' | sed 's/^[a-f0-9]* \[Perf\] /- /' | grep -v '^$' || true)
+            if [ -n "$PERF" ]; then
+              echo "### Performance"
+              echo "$PERF"
+              echo ""
+            fi
+
+            echo "EOF"
+          } >> $GITHUB_OUTPUT
 
       - name: Clean up duplicate and debug files
         run: |
@@ -385,6 +446,10 @@ jobs:
             artifacts/**/*.blockmap
           body: |
             ## StraboMicro2 v${{ inputs.version }}
+
+            ${{ steps.release_notes.outputs.RELEASE_NOTES }}
+
+            ---
 
             ### Downloads
 
