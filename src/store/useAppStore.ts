@@ -288,6 +288,8 @@ interface AppState {
   /** Update multiple spots with the same changes (batch edit) */
   batchUpdateSpots: (spotIds: string[], updates: Partial<Spot>) => void;
   deleteSpot: (id: string) => void;
+  /** Delete multiple spots at once (for batch delete) - single undo step */
+  batchDeleteSpots: (spotIds: string[]) => void;
   /** Clear all spots from a specific micrograph */
   clearAllSpots: (micrographId: string) => void;
   /** Merge multiple polygon spots into a single spot */
@@ -608,7 +610,7 @@ export const useAppStore = create<AppState>()(
           },
 
           selectActiveSpot: async (id) => {
-            const { navigationGuard, activeSpotId } = get();
+            const { navigationGuard, activeSpotId, quickEditMode, quickEditSpotIds } = get();
 
             // Skip guard if selecting the same spot
             if (id === activeSpotId) return true;
@@ -617,6 +619,15 @@ export const useAppStore = create<AppState>()(
             if (navigationGuard) {
               const canProceed = await navigationGuard();
               if (!canProceed) return false;
+            }
+
+            // If in Quick Edit mode, sync the index to match the clicked spot
+            if (quickEditMode && id) {
+              const newIndex = quickEditSpotIds.indexOf(id);
+              if (newIndex !== -1) {
+                set({ activeSpotId: id, quickEditCurrentIndex: newIndex });
+                return true;
+              }
             }
 
             set({ activeSpotId: id });
@@ -1100,6 +1111,28 @@ export const useAppStore = create<AppState>()(
               project: newProject,
               isDirty: true,
               selectedSpotIds: state.selectedSpotIds.filter(sid => sid !== id),
+              spotIndex: buildSpotIndex(newProject),
+            };
+          }),
+
+          batchDeleteSpots: (spotIds) => set((state) => {
+            if (!state.project || spotIds.length === 0) return state;
+
+            const spotIdSet = new Set(spotIds);
+            const newProject = structuredClone(state.project);
+
+            for (const dataset of newProject.datasets || []) {
+              for (const sample of dataset.samples || []) {
+                for (const micrograph of sample.micrographs || []) {
+                  micrograph.spots = micrograph.spots?.filter(s => !spotIdSet.has(s.id)) || [];
+                }
+              }
+            }
+
+            return {
+              project: newProject,
+              isDirty: true,
+              selectedSpotIds: state.selectedSpotIds.filter(sid => !spotIdSet.has(sid)),
               spotIndex: buildSpotIndex(newProject),
             };
           }),

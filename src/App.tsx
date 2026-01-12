@@ -789,7 +789,6 @@ function App() {
     unsubscribers.push(window.api.onUndo(() => {
       const temporalState = useTemporalStore.getState();
       temporalState.undo();
-      console.log('Undo performed');
     }));
 
     // Redo menu item
