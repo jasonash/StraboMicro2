@@ -347,6 +347,8 @@ interface AppState {
   exitQuickEditMode: () => void;
   /** Navigate to next spot in Quick Edit */
   quickEditNext: () => void;
+  /** Navigate to next unclassified spot in Quick Edit (skips already-classified spots) */
+  quickEditNextUnclassified: () => void;
   /** Navigate to previous spot in Quick Edit */
   quickEditPrev: () => void;
   /** Navigate to specific index in Quick Edit */
@@ -2414,6 +2416,43 @@ export const useAppStore = create<AppState>()(
             });
           },
 
+          quickEditNextUnclassified: () => {
+            const { quickEditSpotIds, quickEditCurrentIndex, spotIndex } = get();
+            if (quickEditSpotIds.length === 0) return;
+
+            // Helper to check if a spot is unclassified (no mineralogy)
+            const isUnclassified = (spotId: string): boolean => {
+              const spot = spotIndex.get(spotId);
+              if (!spot) return false;
+              const minerals = spot.mineralogy?.minerals;
+              return !minerals || minerals.length === 0;
+            };
+
+            // Search forward from current position (wrapping around)
+            const totalSpots = quickEditSpotIds.length;
+            for (let i = 1; i <= totalSpots; i++) {
+              const checkIndex = (quickEditCurrentIndex + i) % totalSpots;
+              const spotId = quickEditSpotIds[checkIndex];
+              if (isUnclassified(spotId)) {
+                set({
+                  quickEditCurrentIndex: checkIndex,
+                  activeSpotId: spotId,
+                });
+                return;
+              }
+            }
+
+            // All spots are classified - just advance to next (wrap behavior)
+            const nextIndex = quickEditCurrentIndex >= totalSpots - 1
+              ? 0
+              : quickEditCurrentIndex + 1;
+
+            set({
+              quickEditCurrentIndex: nextIndex,
+              activeSpotId: quickEditSpotIds[nextIndex],
+            });
+          },
+
           quickEditPrev: () => {
             const { quickEditSpotIds, quickEditCurrentIndex } = get();
             if (quickEditSpotIds.length === 0) return;
@@ -2439,7 +2478,7 @@ export const useAppStore = create<AppState>()(
           },
 
           quickEditMarkReviewed: () => {
-            const { quickEditSpotIds, quickEditCurrentIndex, quickEditReviewedIds, quickEditNext } = get();
+            const { quickEditSpotIds, quickEditCurrentIndex, quickEditReviewedIds, quickEditNextUnclassified } = get();
             if (quickEditCurrentIndex < 0 || quickEditCurrentIndex >= quickEditSpotIds.length) return;
 
             const currentSpotId = quickEditSpotIds[quickEditCurrentIndex];
@@ -2449,8 +2488,8 @@ export const useAppStore = create<AppState>()(
               });
             }
 
-            // Advance to next spot
-            quickEditNext();
+            // Advance to next unclassified spot (skips already-classified spots)
+            quickEditNextUnclassified();
           },
 
           quickEditDeleteCurrent: () => {
