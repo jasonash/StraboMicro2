@@ -99,6 +99,12 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
   const quickEditDeleteCurrent = useAppStore((state) => state.quickEditDeleteCurrent);
   const exitQuickEditMode = useAppStore((state) => state.exitQuickEditMode);
 
+  // Store - spot lasso selection (for batch operations on spots)
+  const selectedSpotIds = useAppStore((state) => state.selectedSpotIds);
+  const clearSpotSelection = useAppStore((state) => state.clearSpotSelection);
+  const batchUpdateSpots = useAppStore((state) => state.batchUpdateSpots);
+  const batchDeleteSpots = useAppStore((state) => state.batchDeleteSpots);
+
   // Flash state for visual feedback
   const [flashId, setFlashId] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -412,6 +418,26 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
         }, 50);
       } else {
         // Spot mode (includes Quick Edit mode)
+
+        // Check for batch selection first (lassoed spots)
+        if (selectedSpotIds.length > 0) {
+          const mineralogy: MineralogyType = {
+            minerals: [{ name: mineralName } as MineralType],
+          };
+
+          // Batch classify all selected spots
+          batchUpdateSpots(selectedSpotIds, { mineralogy });
+
+          // Flash visual feedback
+          setFlashId('batch');
+          setTimeout(() => setFlashId(null), 300);
+
+          // Clear selection after batch operation
+          clearSpotSelection();
+          return;
+        }
+
+        // Single spot classification
         if (!activeSpotId) return;
 
         const mineralogy: MineralogyType = {
@@ -441,9 +467,12 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
       currentPoint,
       activeSpotId,
       selectedPointIndices,
+      selectedSpotIds,
       classifyPoint,
       classifySelectedPoints,
       updateSpotData,
+      batchUpdateSpots,
+      clearSpotSelection,
       goToNextUnclassifiedPoint,
       selectNextUnclassifiedSpot,
       quickEditMarkReviewed,
@@ -497,12 +526,22 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
     }
   }, [pointCountMode, goToNextUnclassifiedPoint, selectNextUnclassifiedSpot]);
 
-  // Delete current spot (Quick Edit mode only)
+  // Delete spots - handles both batch selection and single spot deletion
   const handleDeleteCurrent = useCallback(() => {
+    // Check for batch selection first (lassoed spots)
+    if (selectedSpotIds.length > 0) {
+      // Delete all selected spots in one operation (single undo step)
+      batchDeleteSpots(selectedSpotIds);
+      // Clear selection after batch delete
+      clearSpotSelection();
+      return;
+    }
+
+    // Single spot deletion (Quick Edit mode only)
     if (quickEditMode) {
       quickEditDeleteCurrent();
     }
-  }, [quickEditMode, quickEditDeleteCurrent]);
+  }, [quickEditMode, quickEditDeleteCurrent, selectedSpotIds, batchDeleteSpots, clearSpotSelection]);
 
   // ============================================================================
   // SPATIAL NAVIGATION (Point Count mode only - arrow keys)
@@ -603,6 +642,12 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
         return;
       }
 
+      // Don't intercept keyboard shortcuts with modifier keys (Cmd+Z, Ctrl+S, etc.)
+      // Let them pass through to the system/menu handlers
+      if (e.metaKey || e.ctrlKey || e.altKey) {
+        return;
+      }
+
       if (activeTool && activeTool !== 'select') {
         return;
       }
@@ -627,10 +672,12 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
             goToPrevious();
             break;
           case 'exit':
-            // If points are selected, clear selection first; otherwise close
+            // If points or spots are selected, clear selection first; otherwise close
             if (selectedPointIndices.length > 0) {
               clearSelectedPoints();
               setLassoToolActive(false);
+            } else if (selectedSpotIds.length > 0) {
+              clearSpotSelection();
             } else {
               handleClose();
             }
@@ -639,9 +686,11 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
             selectNextUnclassified();
             break;
           case 'clear':
-            // In Quick Edit mode, Delete key deletes the spot
-            // In other modes, it clears the classification
-            if (quickEditMode) {
+            // Delete key behavior:
+            // 1. If spots are lassoed (selected), delete all selected spots
+            // 2. In Quick Edit mode, delete the current spot
+            // 3. Otherwise, clear the classification
+            if (selectedSpotIds.length > 0 || quickEditMode) {
               handleDeleteCurrent();
             } else {
               clearCurrentItem();
@@ -708,7 +757,9 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
       clearCurrentItem,
       classifyCurrentItem,
       selectedPointIndices,
+      selectedSpotIds,
       clearSelectedPoints,
+      clearSpotSelection,
       setLassoToolActive,
       pointCountMode,
       quickEditMode,
@@ -730,7 +781,9 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
   // ============================================================================
 
   useEffect(() => {
-    if (quickClassifyVisible && !pointCountMode && spots.length > 0 && !activeSpotId) {
+    // Auto-select first spot when entering Quick Classify mode
+    // BUT don't auto-select if spots are already selected via lasso
+    if (quickClassifyVisible && !pointCountMode && spots.length > 0 && !activeSpotId && selectedSpotIds.length === 0) {
       const firstUnclassified = spots.find((s) => {
         const minerals = s.mineralogy?.minerals;
         return !minerals || minerals.length === 0 || !minerals[0].name;
@@ -741,7 +794,7 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
         selectActiveSpot(spots[0].id);
       }
     }
-  }, [quickClassifyVisible, pointCountMode, spots, activeSpotId, selectActiveSpot]);
+  }, [quickClassifyVisible, pointCountMode, spots, activeSpotId, selectedSpotIds, selectActiveSpot]);
 
   // ============================================================================
   // PAN TO CURRENT ITEM
@@ -1057,13 +1110,15 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
             sx={{
               fontWeight: 500,
               transition: 'background-color 0.3s ease',
-              bgcolor: flashId ? 'success.light' : (selectedPointIndices.length > 0 ? 'info.dark' : 'transparent'),
+              bgcolor: flashId ? 'success.light' : (selectedPointIndices.length > 0 || selectedSpotIds.length > 0 ? 'info.dark' : 'transparent'),
               px: 1,
               borderRadius: 1,
             }}
           >
             {selectedPointIndices.length > 0 ? (
               `${selectedPointIndices.length} points selected`
+            ) : selectedSpotIds.length > 0 ? (
+              `${selectedSpotIds.length} spots selected`
             ) : (
               <>
                 {currentName}

@@ -105,21 +105,32 @@ const MIN_LASSO_POINTS = 3;
 
 /**
  * useLasso hook - provides lasso drawing functionality
+ *
+ * Uses refs for critical values to avoid stale closure issues.
+ * State is still used for rendering the lasso polygon.
  */
 export function useLasso(): UseLassoReturn {
+  // State for rendering (triggers re-renders for visual updates)
   const [isDrawing, setIsDrawing] = useState(false);
   const [lassoPoints, setLassoPoints] = useState<Point2D[]>([]);
+
+  // Refs for values that need to be current at read time (avoids stale closures)
+  const isDrawingRef = useRef(false);
+  const lassoPointsRef = useRef<Point2D[]>([]);
   const lastPointRef = useRef<Point2D | null>(null);
 
   const startLasso = useCallback((x: number, y: number) => {
     const point = { x, y };
+    // Update both ref and state
+    isDrawingRef.current = true;
+    lassoPointsRef.current = [point];
+    lastPointRef.current = point;
     setIsDrawing(true);
     setLassoPoints([point]);
-    lastPointRef.current = point;
   }, []);
 
   const updateLasso = useCallback((x: number, y: number) => {
-    if (!lastPointRef.current) return;
+    if (!lastPointRef.current || !isDrawingRef.current) return;
 
     // Only add point if it's far enough from the last point
     const dx = x - lastPointRef.current.x;
@@ -128,30 +139,40 @@ export function useLasso(): UseLassoReturn {
 
     if (distance >= MIN_POINT_DISTANCE) {
       const point = { x, y };
-      setLassoPoints((prev) => [...prev, point]);
+      // Update ref immediately (always current)
+      lassoPointsRef.current = [...lassoPointsRef.current, point];
       lastPointRef.current = point;
+      // Update state for rendering
+      setLassoPoints(lassoPointsRef.current);
     }
   }, []);
 
   const completeLasso = useCallback((): Point2D[] => {
-    setIsDrawing(false);
-    const finalPoints = [...lassoPoints];
+    // Read from ref to get the most current points (avoids stale closure)
+    const finalPoints = [...lassoPointsRef.current];
+
+    // Clear refs
+    isDrawingRef.current = false;
+    lassoPointsRef.current = [];
+    lastPointRef.current = null;
 
     // Clear state
+    setIsDrawing(false);
     setLassoPoints([]);
-    lastPointRef.current = null;
 
     // Return the polygon (only if it has enough points)
     if (finalPoints.length >= MIN_LASSO_POINTS) {
       return finalPoints;
     }
     return [];
-  }, [lassoPoints]);
+  }, []); // No dependencies - reads from refs
 
   const cancelLasso = useCallback(() => {
+    isDrawingRef.current = false;
+    lassoPointsRef.current = [];
+    lastPointRef.current = null;
     setIsDrawing(false);
     setLassoPoints([]);
-    lastPointRef.current = null;
   }, []);
 
   return {

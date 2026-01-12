@@ -165,7 +165,15 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
     const lasso = useLasso();
 
     // Spot lasso selection state (Shift+Drag to select multiple spots)
+    // Use both state (for dependency arrays) and ref (for reading current value in callbacks)
     const [spotLassoActive, setSpotLassoActive] = useState(false);
+    const spotLassoActiveRef = useRef(false);
+
+    // Keep ref in sync with state
+    const setSpotLassoActiveWithRef = useCallback((active: boolean) => {
+      spotLassoActiveRef.current = active;
+      setSpotLassoActive(active);
+    }, []);
 
     /**
      * Aggressively clean up tile memory to prevent OOM crashes.
@@ -945,6 +953,20 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
         // Reset drag tracking
         setHasDragged(false);
 
+        // Handle Shift+Drag for spot lasso FIRST (before other checks)
+        // This ensures shift+drag always starts lasso, even if clicking on a spot
+        if ((e.evt.shiftKey || spotLassoToolActive) && !pointCountMode && (!activeTool || activeTool === 'select')) {
+          const stage = stageRef.current;
+          if (!stage) return;
+          const pos = stage.getPointerPosition();
+          if (!pos) return;
+          const imageX = (pos.x - position.x) / zoom;
+          const imageY = (pos.y - position.y) / zoom;
+          setSpotLassoActiveWithRef(true);
+          lasso.startLasso(imageX, imageY);
+          return;
+        }
+
         // Don't enable panning if we clicked on a draggable shape (editing handles)
         const target = e.target;
         if (target && target.draggable && target.draggable()) {
@@ -976,19 +998,6 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
           return;
         }
 
-        // Handle Shift+Drag or toolbar lasso for spot selection (not in point count mode)
-        if ((e.evt.shiftKey || spotLassoToolActive) && !pointCountMode && (!activeTool || activeTool === 'select')) {
-          const stage = stageRef.current;
-          if (!stage) return;
-          const pos = stage.getPointerPosition();
-          if (!pos) return;
-          const imageX = (pos.x - position.x) / zoom;
-          const imageY = (pos.y - position.y) / zoom;
-          setSpotLassoActive(true);
-          lasso.startLasso(imageX, imageY);
-          return;
-        }
-
         // Only enable panning if no drawing tool is active
         if (!activeTool || activeTool === 'select') {
           // Don't pan if lasso is active (point count or spot toolbar)
@@ -1001,7 +1010,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
           setLastPointerPos(pos);
         }
       },
-      [activeTool, position, zoom, rulerTool, lassoToolActive, spotLassoToolActive, pointCountMode, lasso]
+      [activeTool, position, zoom, rulerTool, lassoToolActive, spotLassoToolActive, pointCountMode, lasso, setSpotLassoActiveWithRef]
     );
 
     const handleMouseMove = useCallback(() => {
@@ -1038,10 +1047,13 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
       }
 
       // Handle spot lasso drawing (Shift+Drag mode)
-      if (lasso.isDrawing && spotLassoActive) {
+      // Use ref to avoid stale closure issues
+      if (spotLassoActiveRef.current) {
         const imageX = (pos.x - position.x) / zoom;
         const imageY = (pos.y - position.y) / zoom;
         lasso.updateLasso(imageX, imageY);
+        // Mark as dragged so click handler doesn't clear the selection
+        setHasDragged(true);
       }
 
       // Handle drawing tool preview (polygon/line/measure)
@@ -1153,9 +1165,10 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
       }
 
       // Finish spot lasso selection (Shift+Drag or toolbar mode)
-      if (lasso.isDrawing && spotLassoActive) {
+      // Use ref to avoid stale closure issues
+      if (spotLassoActiveRef.current) {
         const polygon = lasso.completeLasso();
-        setSpotLassoActive(false);
+        setSpotLassoActiveWithRef(false);
         // Deactivate toolbar lasso after completing selection
         if (spotLassoToolActive) {
           setSpotLassoToolActive(false);
@@ -1172,26 +1185,29 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
           });
 
           if (spotsInLasso.length > 0) {
-            // Set the selected spots (replace current selection)
-            spotsInLasso.forEach((spot, index) => {
-              selectSpot(spot.id, index > 0); // First spot replaces, rest are additive
+            // Clear active spot and set selected spots in a SINGLE state update
+            // This avoids race conditions and ensures atomic update
+            const selectedIds = spotsInLasso.map(spot => spot.id);
+            useAppStore.setState({
+              activeSpotId: null,
+              selectedSpotIds: selectedIds
             });
           }
         }
       }
-    }, [activeTool, rulerTool, lasso, lassoToolActive, pointCountMode, activePointCountSession, setSelectedPointIndices, spotLassoActive, spotLassoToolActive, setSpotLassoToolActive, activeMicrograph, showArchivedSpots, getSpotCentroid, selectSpot]);
+    }, [activeTool, rulerTool, lasso, lassoToolActive, pointCountMode, activePointCountSession, setSelectedPointIndices, spotLassoToolActive, setSpotLassoToolActive, activeMicrograph, showArchivedSpots, getSpotCentroid, selectSpot, selectActiveSpot, setSpotLassoActiveWithRef]);
 
     const handleMouseLeave = useCallback(() => {
       setIsPanning(false);
       setLastPointerPos(null);
       onCursorMove?.(null); // Clear coordinates in status bar
 
-      // Cancel lasso if mouse leaves while drawing
-      if (lasso.isDrawing) {
+      // Cancel lasso if mouse leaves while drawing (use ref to avoid stale closure)
+      if (spotLassoActiveRef.current) {
         lasso.cancelLasso();
-        setSpotLassoActive(false);
+        setSpotLassoActiveWithRef(false);
       }
-    }, [onCursorMove, lasso]);
+    }, [onCursorMove, lasso, setSpotLassoActiveWithRef]);
 
     /**
      * Handle stage click for drawing tools
@@ -1474,9 +1490,12 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
       const marginX = Math.max(50, stageSize.width * 0.15);
       const marginY = Math.max(50, stageSize.height * 0.15);
 
+      // Add extra margin on the right for the drawing toolbar (toolbar is ~54px + 16px offset + padding)
+      const toolbarMargin = 100;
+
       // Calculate the "safe zone" - if the point is within this zone, no panning needed
       const safeLeft = marginX;
-      const safeRight = stageSize.width - marginX;
+      const safeRight = stageSize.width - marginX - toolbarMargin;
       const safeTop = marginY;
       const safeBottom = stageSize.height - marginY;
 
