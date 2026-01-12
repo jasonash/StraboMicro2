@@ -1129,11 +1129,51 @@ export const useAppStore = create<AppState>()(
               }
             }
 
+            // Handle Quick Edit mode state updates
+            let quickEditUpdates: Partial<AppState> = {};
+            if (state.quickEditMode) {
+              // Filter out deleted spots from the quick edit list
+              const newQuickEditSpotIds = state.quickEditSpotIds.filter(id => !spotIdSet.has(id));
+              const newQuickEditReviewedIds = state.quickEditReviewedIds.filter(id => !spotIdSet.has(id));
+
+              // Count how many deleted spots were in the quick edit list
+              const deletedFromQuickEdit = state.quickEditSpotIds.filter(id => spotIdSet.has(id)).length;
+
+              // Calculate new index - need to account for spots removed before current position
+              let newIndex = state.quickEditCurrentIndex;
+              if (newQuickEditSpotIds.length === 0) {
+                newIndex = -1;
+              } else {
+                // Count how many spots before the current index were deleted
+                const spotsDeletedBeforeIndex = state.quickEditSpotIds
+                  .slice(0, state.quickEditCurrentIndex)
+                  .filter(id => spotIdSet.has(id)).length;
+                newIndex = Math.max(0, state.quickEditCurrentIndex - spotsDeletedBeforeIndex);
+
+                // Clamp to valid range
+                if (newIndex >= newQuickEditSpotIds.length) {
+                  newIndex = newQuickEditSpotIds.length - 1;
+                }
+              }
+
+              quickEditUpdates = {
+                quickEditSpotIds: newQuickEditSpotIds,
+                quickEditReviewedIds: newQuickEditReviewedIds,
+                quickEditDeletedCount: state.quickEditDeletedCount + deletedFromQuickEdit,
+                quickEditCurrentIndex: newIndex,
+                // Update activeSpotId if it was deleted or if we need to select the new current spot
+                activeSpotId: spotIdSet.has(state.activeSpotId || '')
+                  ? (newIndex >= 0 ? newQuickEditSpotIds[newIndex] : null)
+                  : state.activeSpotId,
+              };
+            }
+
             return {
               project: newProject,
               isDirty: true,
               selectedSpotIds: state.selectedSpotIds.filter(sid => !spotIdSet.has(sid)),
               spotIndex: buildSpotIndex(newProject),
+              ...quickEditUpdates,
             };
           }),
 
