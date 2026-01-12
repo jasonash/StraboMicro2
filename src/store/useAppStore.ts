@@ -1087,10 +1087,30 @@ export const useAppStore = create<AppState>()(
               }
             }
 
+            // Handle Quick Edit mode - mark updated spots as reviewed
+            let quickEditUpdates: Partial<AppState> = {};
+            if (state.quickEditMode) {
+              // Add all batch-updated spots to reviewed list (if not already there)
+              const currentReviewed = new Set(state.quickEditReviewedIds);
+              const spotsInSession = new Set(state.quickEditSpotIds);
+
+              // Only mark spots that are part of the current Quick Edit session
+              const newlyReviewed = spotIds.filter(
+                id => spotsInSession.has(id) && !currentReviewed.has(id)
+              );
+
+              if (newlyReviewed.length > 0) {
+                quickEditUpdates = {
+                  quickEditReviewedIds: [...state.quickEditReviewedIds, ...newlyReviewed],
+                };
+              }
+            }
+
             return {
               project: newProject,
               isDirty: true,
               spotIndex: buildSpotIndex(newProject),
+              ...quickEditUpdates,
             };
           }),
 
