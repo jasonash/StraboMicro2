@@ -1631,8 +1631,10 @@ ipcMain.handle('micrograph:export-composite', async (event, projectId, micrograp
       throw new Error(`Micrograph ${micrographId} not found in project`);
     }
 
-    // Load base micrograph image
-    const basePath = path.join(folderPaths.images, micrograph.imagePath);
+    // Load base micrograph image (with fallback to uiImages for legacy projects)
+    const basePath = await resolveImagePathWithLegacyFallback(
+      path.join(folderPaths.images, micrograph.imagePath)
+    );
     log.info(`[IPC] Loading base image: ${basePath}`);
 
     let baseImage = sharp(basePath);
@@ -1733,7 +1735,10 @@ ipcMain.handle('micrograph:export-composite', async (event, projectId, micrograp
           continue;
         }
 
-        const childPath = path.join(folderPaths.images, child.imagePath);
+        // Load child image (with fallback to uiImages for legacy projects)
+        const childPath = await resolveImagePathWithLegacyFallback(
+          path.join(folderPaths.images, child.imagePath)
+        );
         let childImage = sharp(childPath);
         const childMetadata = await childImage.metadata();
 
@@ -2252,6 +2257,45 @@ const tileQueue = require('./tileQueue');
 const affineTileGenerator = require('./affineTileGenerator');
 
 /**
+ * Resolve image path with fallback to uiImages for legacy projects.
+ *
+ * Legacy projects (created with older versions of the JavaFX app) stored
+ * original images in uiImages/ instead of images/. This function checks
+ * if the image exists at the given path, and if not, tries the uiImages/
+ * folder as a fallback.
+ *
+ * @param {string} imagePath - Full path to image in images/ folder
+ * @returns {Promise<string>} - Resolved path (original or uiImages fallback)
+ */
+async function resolveImagePathWithLegacyFallback(imagePath) {
+  // Check if file exists at the given path
+  try {
+    await fs.promises.access(imagePath, fs.constants.F_OK);
+    return imagePath; // File exists, use original path
+  } catch {
+    // File doesn't exist, try uiImages fallback
+  }
+
+  // Check if this is an images/ path that we can convert to uiImages/
+  if (imagePath.includes('/images/') || imagePath.includes('\\images\\')) {
+    const uiImagesPath = imagePath
+      .replace('/images/', '/uiImages/')
+      .replace('\\images\\', '\\uiImages\\');
+
+    try {
+      await fs.promises.access(uiImagesPath, fs.constants.F_OK);
+      log.info(`[Legacy Fallback] Image not found in images/, using uiImages/: ${uiImagesPath}`);
+      return uiImagesPath; // Fallback exists, use it
+    } catch {
+      // Fallback doesn't exist either, return original path
+      // (will fail with appropriate error downstream)
+    }
+  }
+
+  return imagePath; // Return original path (may not exist)
+}
+
+/**
  * Load and process an image with tiling support
  * Returns image hash and metadata for tile requests
  */
@@ -2259,10 +2303,13 @@ ipcMain.handle('image:load-with-tiles', async (event, imagePath) => {
   try {
     log.info(`Loading image with tiles: ${imagePath}`);
 
+    // Resolve path with fallback to uiImages for legacy projects
+    const resolvedPath = await resolveImagePathWithLegacyFallback(imagePath);
+
     // Process the image (checks cache, generates thumbnails if needed)
     // This is memory-efficient and won't crash on large images
     log.info('Processing image (cache check and thumbnail generation)...');
-    const result = await tileGenerator.processImage(imagePath);
+    const result = await tileGenerator.processImage(resolvedPath);
 
     log.info(`Image loaded successfully: ${result.metadata.width}x${result.metadata.height}`);
     return result;
@@ -3154,8 +3201,10 @@ ipcMain.handle('composite:generate-thumbnail', async (event, projectId, microgra
       throw new Error(`Micrograph ${micrographId} not found in project`);
     }
 
-    // Load base micrograph image
-    const basePath = path.join(folderPaths.images, micrograph.imagePath);
+    // Load base micrograph image (with fallback to uiImages for legacy projects)
+    const basePath = await resolveImagePathWithLegacyFallback(
+      path.join(folderPaths.images, micrograph.imagePath)
+    );
     log.info(`[IPC] Loading base image: ${basePath}`);
 
     let baseImage = sharp(basePath);
@@ -3296,9 +3345,10 @@ ipcMain.handle('composite:generate-thumbnail', async (event, projectId, microgra
 
         log.info(`[IPC] Processing child ${child.id} (${child.name})`);
 
-        const childPath = path.join(folderPaths.images, child.imagePath);
-
-        // Load child image
+        // Load child image (with fallback to uiImages for legacy projects)
+        const childPath = await resolveImagePathWithLegacyFallback(
+          path.join(folderPaths.images, child.imagePath)
+        );
         let childImage = sharp(childPath);
         const childMetadata = await childImage.metadata();
 
@@ -3620,8 +3670,10 @@ ipcMain.handle('composite:rebuild-all-thumbnails', async (event, projectId, proj
         // Get project folder paths
         const folderPaths = await projectFolders.getProjectFolderPaths(projectId);
 
-        // Load base micrograph image
-        const basePath = path.join(folderPaths.images, micrograph.imagePath);
+        // Load base micrograph image (with fallback to uiImages for legacy projects)
+        const basePath = await resolveImagePathWithLegacyFallback(
+          path.join(folderPaths.images, micrograph.imagePath)
+        );
 
         // Check if image file exists
         const fs = require('fs').promises;
@@ -3684,7 +3736,10 @@ ipcMain.handle('composite:rebuild-all-thumbnails', async (event, projectId, proj
               continue;
             }
 
-            const childPath = path.join(folderPaths.images, child.imagePath);
+            // Load child image (with fallback to uiImages for legacy projects)
+            const childPath = await resolveImagePathWithLegacyFallback(
+              path.join(folderPaths.images, child.imagePath)
+            );
 
             // Check if child image exists
             try {
@@ -4218,8 +4273,10 @@ async function generateCompositeBuffer(projectId, micrograph, projectData, folde
     }
   }
 
-  // Load base micrograph image
-  const basePath = path.join(folderPaths.images, micrograph.imagePath);
+  // Load base micrograph image (with fallback to uiImages for legacy projects)
+  const basePath = await resolveImagePathWithLegacyFallback(
+    path.join(folderPaths.images, micrograph.imagePath)
+  );
   let baseImage = sharp(basePath);
   const baseMetadata = await baseImage.metadata();
   const baseWidth = baseMetadata.width;
@@ -4337,7 +4394,10 @@ async function generateCompositeBuffer(projectId, micrograph, projectData, folde
         continue;
       }
 
-      const childPath = path.join(folderPaths.images, child.imagePath);
+      // Load child image (with fallback to uiImages for legacy projects)
+      const childPath = await resolveImagePathWithLegacyFallback(
+        path.join(folderPaths.images, child.imagePath)
+      );
       let childImage = sharp(childPath);
       const childMetadata = await childImage.metadata();
 

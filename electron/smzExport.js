@@ -26,6 +26,44 @@ const archiver = require('archiver');
 const tileCache = require('./tileCache');
 
 /**
+ * Resolve image path with fallback to uiImages for legacy projects.
+ *
+ * Legacy projects (created with older versions of the JavaFX app) stored
+ * original images in uiImages/ instead of images/. This function checks
+ * if the image exists at the given path, and if not, tries the uiImages/
+ * folder as a fallback.
+ *
+ * @param {string} imagePath - Full path to image in images/ folder
+ * @returns {Promise<string>} - Resolved path (original or uiImages fallback)
+ */
+async function resolveImagePathWithLegacyFallback(imagePath) {
+  // Check if file exists at the given path
+  try {
+    await fs.promises.access(imagePath, fs.constants.F_OK);
+    return imagePath; // File exists, use original path
+  } catch {
+    // File doesn't exist, try uiImages fallback
+  }
+
+  // Check if this is an images/ path that we can convert to uiImages/
+  if (imagePath.includes('/images/') || imagePath.includes('\\images\\')) {
+    const uiImagesPath = imagePath
+      .replace('/images/', '/uiImages/')
+      .replace('\\images\\', '\\uiImages\\');
+
+    try {
+      await fs.promises.access(uiImagesPath, fs.constants.F_OK);
+      log.info(`[Legacy Fallback] Image not found in images/, using uiImages/: ${uiImagesPath}`);
+      return uiImagesPath; // Fallback exists, use it
+    } catch {
+      // Fallback doesn't exist either, return original path
+    }
+  }
+
+  return imagePath; // Return original path (may not exist)
+}
+
+/**
  * Image size configurations for export
  */
 const IMAGE_SIZES = {
@@ -261,8 +299,10 @@ async function generateCompositeBufferNoSpots(projectId, micrograph, projectData
     }
   }
 
-  // Load base micrograph image
-  const basePath = path.join(folderPaths.images, micrograph.id);
+  // Load base micrograph image (with fallback to uiImages for legacy projects)
+  const basePath = await resolveImagePathWithLegacyFallback(
+    path.join(folderPaths.images, micrograph.id)
+  );
   let baseImage = sharp(basePath);
   const baseMetadata = await baseImage.metadata();
   const baseWidth = baseMetadata.width;
@@ -386,7 +426,10 @@ async function generateCompositeBufferNoSpots(projectId, micrograph, projectData
         continue;
       }
 
-      const childPath = path.join(folderPaths.images, child.id);
+      // Load child image (with fallback to uiImages for legacy projects)
+      const childPath = await resolveImagePathWithLegacyFallback(
+        path.join(folderPaths.images, child.id)
+      );
 
       // Check if child image exists
       if (!fs.existsSync(childPath)) {
@@ -645,8 +688,10 @@ async function exportSmz(
       const micrographName = micrograph.name || micrograph.id;
       const micrographId = micrograph.id;
 
-      // Check if source image exists
-      const sourceImagePath = path.join(folderPaths.images, micrographId);
+      // Check if source image exists (with fallback to uiImages for legacy projects)
+      const sourceImagePath = await resolveImagePathWithLegacyFallback(
+        path.join(folderPaths.images, micrographId)
+      );
       if (!fs.existsSync(sourceImagePath)) {
         log.warn(`[SmzExport] Source image not found: ${sourceImagePath}`);
         // Skip steps for this micrograph but still count them
