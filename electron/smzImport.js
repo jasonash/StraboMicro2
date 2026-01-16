@@ -14,6 +14,7 @@ const fs = require('fs');
 const path = require('path');
 const log = require('electron-log');
 const unzipper = require('unzipper');
+const sharp = require('sharp');
 const projectFolders = require('./projectFolders');
 const projectSerializer = require('./projectSerializer');
 const versionHistory = require('./versionHistory');
@@ -83,6 +84,86 @@ async function ensureImagesFolder(folderPaths) {
   } catch (error) {
     log.error('[SmzImport] Error in ensureImagesFolder:', error);
     // Don't throw - this is a best-effort fallback
+  }
+}
+
+/**
+ * Convert any non-JPEG images in the images folder to JPEG format.
+ * Legacy projects may have TIFF or other format images that need conversion.
+ * Uses Sharp to detect actual format (files have no extensions).
+ *
+ * @param {Object} folderPaths - Project folder paths
+ * @param {Function} sendProgress - Progress callback
+ * @returns {Promise<{converted: number, skipped: number, failed: number}>}
+ */
+async function convertNonJpegImages(folderPaths, sendProgress) {
+  const stats = { converted: 0, skipped: 0, failed: 0 };
+
+  try {
+    // Get list of files in images folder
+    let imageFiles = [];
+    try {
+      imageFiles = await fs.promises.readdir(folderPaths.images);
+    } catch (err) {
+      log.warn('[SmzImport] Could not read images folder:', err.message);
+      return stats;
+    }
+
+    // Filter out hidden files and .gitkeep
+    imageFiles = imageFiles.filter(f => !f.startsWith('.') && f !== '.gitkeep');
+
+    if (imageFiles.length === 0) {
+      log.info('[SmzImport] No images to check for conversion');
+      return stats;
+    }
+
+    log.info(`[SmzImport] Checking ${imageFiles.length} images for format conversion...`);
+
+    for (let i = 0; i < imageFiles.length; i++) {
+      const filename = imageFiles[i];
+      const imagePath = path.join(folderPaths.images, filename);
+
+      try {
+        // Use Sharp to detect the actual format
+        const metadata = await sharp(imagePath, { limitInputPixels: false }).metadata();
+        const format = metadata.format;
+
+        if (format === 'jpeg') {
+          // Already JPEG, skip
+          stats.skipped++;
+          continue;
+        }
+
+        // Non-JPEG format - convert it
+        log.info(`[SmzImport] Converting ${filename} from ${format} to JPEG...`);
+
+        if (sendProgress) {
+          sendProgress('Converting images', 92, `Converting ${filename} (${format} → JPEG)...`);
+        }
+
+        // Read the image and convert to JPEG
+        const jpegBuffer = await sharp(imagePath, { limitInputPixels: false })
+          .jpeg({ quality: 95, mozjpeg: true })
+          .toBuffer();
+
+        // Write back to the same path (overwrite)
+        await fs.promises.writeFile(imagePath, jpegBuffer);
+
+        log.info(`[SmzImport] Successfully converted ${filename} from ${format} to JPEG`);
+        stats.converted++;
+
+      } catch (err) {
+        log.error(`[SmzImport] Failed to process image ${filename}:`, err.message);
+        stats.failed++;
+      }
+    }
+
+    log.info(`[SmzImport] Image conversion complete: ${stats.converted} converted, ${stats.skipped} already JPEG, ${stats.failed} failed`);
+    return stats;
+
+  } catch (error) {
+    log.error('[SmzImport] Error in convertNonJpegImages:', error);
+    return stats;
   }
 }
 
@@ -304,12 +385,19 @@ async function importSmz(smzPath, progressCallback) {
 
     // Check if images folder is empty (legacy .smz files may not have it)
     // If so, copy files from uiImages to images
-    sendProgress('Checking images', 92, 'Verifying image files...');
+    sendProgress('Checking images', 91, 'Verifying image files...');
     await ensureImagesFolder(folderPaths);
+
+    // Convert any non-JPEG images to JPEG (legacy projects may have TIFF images)
+    sendProgress('Converting images', 92, 'Checking image formats...');
+    const conversionStats = await convertNonJpegImages(folderPaths, sendProgress);
+    if (conversionStats.converted > 0) {
+      log.info(`[SmzImport] Converted ${conversionStats.converted} legacy images to JPEG format`);
+    }
 
     // Load the project data
     log.info(`[SmzImport] Loading project data...`);
-    sendProgress('Loading project', 92, 'Reading project data...');
+    sendProgress('Loading project', 93, 'Reading project data...');
 
     const projectData = await projectSerializer.loadProjectJson(projectId);
 
