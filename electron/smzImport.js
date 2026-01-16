@@ -138,7 +138,7 @@ async function convertNonJpegImages(folderPaths, sendProgress) {
         log.info(`[SmzImport] Converting ${filename} from ${format} to JPEG...`);
 
         if (sendProgress) {
-          sendProgress('Converting images', 92, `Converting ${filename} (${format} → JPEG)...`);
+          sendProgress('Converting images', 92, `Converting ${filename}...`);
         }
 
         // Read the image and convert to JPEG
@@ -230,7 +230,7 @@ async function downscaleLargeImages(folderPaths, sendProgress) {
         log.info(`[SmzImport] Downscaling ${filename}: ${width}x${height} → ${newWidth}x${newHeight}`);
 
         if (sendProgress) {
-          sendProgress('Optimizing images', 92, `Downscaling ${filename}...`);
+          sendProgress('Optimizing images', 92, `Optimizing ${filename}...`);
         }
 
         // Downscale the image
