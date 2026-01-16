@@ -32,6 +32,34 @@ async function getTiffDecoder() {
 // Do not configure sharp.cache() or sharp.concurrency() here
 
 /**
+ * Maximum image dimension (long edge) for performance.
+ * Images larger than this will be downscaled during import.
+ * 10K pixels provides excellent detail while keeping tile counts manageable.
+ */
+const MAX_IMAGE_DIMENSION = 10000;
+
+/**
+ * Calculate downscaled dimensions if image exceeds MAX_IMAGE_DIMENSION.
+ * Maintains aspect ratio, scaling based on the longer edge.
+ * @param {number} width - Original width
+ * @param {number} height - Original height
+ * @returns {{width: number, height: number, downscaled: boolean}}
+ */
+function calculateDownscaledDimensions(width, height) {
+  const longEdge = Math.max(width, height);
+  if (longEdge <= MAX_IMAGE_DIMENSION) {
+    return { width, height, downscaled: false };
+  }
+
+  const scale = MAX_IMAGE_DIMENSION / longEdge;
+  return {
+    width: Math.round(width * scale),
+    height: Math.round(height * scale),
+    downscaled: true,
+  };
+}
+
+/**
  * Convert TIFF (or other format) to JPEG in scratch space
  * This should be called IMMEDIATELY when user selects an image
  * Returns the scratch path where the JPEG is stored temporarily
@@ -110,16 +138,28 @@ async function convertToScratchJPEG(inputPath, progressCallback = null) {
       // Release tiffData - we've extracted what we need into rawBuffer
       tiffData = null;
 
+      // Check if downscaling is needed
+      const targetDims = calculateDownscaledDimensions(width, height);
+      if (targetDims.downscaled) {
+        log.info(`[ImageConverter] Image exceeds ${MAX_IMAGE_DIMENSION}px limit, will downscale to ${targetDims.width}x${targetDims.height}`);
+      }
+
       log.info(`[ImageConverter] Converting raw pixel data to JPEG with Sharp...`);
 
-      // Use Sharp to convert raw pixel data to JPEG
-      const info = await sharp(rawBuffer, {
+      // Use Sharp to convert raw pixel data to JPEG (with optional downscale)
+      let sharpPipeline = sharp(rawBuffer, {
         raw: {
           width,
           height,
           channels,
         },
-      })
+      });
+
+      if (targetDims.downscaled) {
+        sharpPipeline = sharpPipeline.resize(targetDims.width, targetDims.height);
+      }
+
+      const info = await sharpPipeline
         .jpeg({
           quality: 95,
           mozjpeg: true,
@@ -188,16 +228,28 @@ async function convertToScratchJPEG(inputPath, progressCallback = null) {
       // Release bmpData - we've extracted what we need
       bmpData = null;
 
+      // Check if downscaling is needed
+      const targetDims = calculateDownscaledDimensions(width, height);
+      if (targetDims.downscaled) {
+        log.info(`[ImageConverter] Image exceeds ${MAX_IMAGE_DIMENSION}px limit, will downscale to ${targetDims.width}x${targetDims.height}`);
+      }
+
       log.info(`[ImageConverter] Converting BMP raw pixel data to JPEG with Sharp...`);
 
-      // Use Sharp to convert raw pixel data to JPEG
-      const info = await sharp(rgbBuffer, {
+      // Use Sharp to convert raw pixel data to JPEG (with optional downscale)
+      let sharpPipeline = sharp(rgbBuffer, {
         raw: {
           width,
           height,
           channels: 3,
         },
-      })
+      });
+
+      if (targetDims.downscaled) {
+        sharpPipeline = sharpPipeline.resize(targetDims.width, targetDims.height);
+      }
+
+      const info = await sharpPipeline
         .jpeg({
           quality: 95,
           mozjpeg: true,
@@ -235,14 +287,27 @@ async function convertToScratchJPEG(inputPath, progressCallback = null) {
 
       log.info(`[ImageConverter] Source image: ${metadata.width}x${metadata.height}, format: ${metadata.format}`);
 
+      // Check if downscaling is needed
+      const targetDims = calculateDownscaledDimensions(metadata.width, metadata.height);
+      if (targetDims.downscaled) {
+        log.info(`[ImageConverter] Image exceeds ${MAX_IMAGE_DIMENSION}px limit, will downscale to ${targetDims.width}x${targetDims.height}`);
+      }
+
       if (progressCallback) {
         progressCallback({ stage: 'converting', percent: 30 });
       }
 
-      const info = await sharp(inputPath, {
+      // Use Sharp to convert to JPEG (with optional downscale)
+      let sharpPipeline = sharp(inputPath, {
         limitInputPixels: false,
         sequentialRead: true,
-      })
+      });
+
+      if (targetDims.downscaled) {
+        sharpPipeline = sharpPipeline.resize(targetDims.width, targetDims.height);
+      }
+
+      const info = await sharpPipeline
         .jpeg({
           quality: 95,
           mozjpeg: true,
