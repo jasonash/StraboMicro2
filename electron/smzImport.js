@@ -168,6 +168,92 @@ async function convertNonJpegImages(folderPaths, sendProgress) {
 }
 
 /**
+ * Update micrograph dimensions in project data to match actual image file dimensions.
+ * Legacy projects may have stored uiImages dimensions (downscaled) instead of actual image dimensions.
+ * This causes rendering issues when the viewer uses project.json dimensions but tiles use actual dimensions.
+ *
+ * @param {Object} projectData - The project data object
+ * @param {Object} folderPaths - Project folder paths
+ * @param {Function} sendProgress - Progress callback
+ * @returns {Promise<{updated: number, skipped: number, failed: number}>}
+ */
+async function syncMicrographDimensions(projectData, folderPaths, sendProgress) {
+  const stats = { updated: 0, skipped: 0, failed: 0 };
+
+  try {
+    // Collect all micrographs from the project
+    const micrographs = [];
+    for (const dataset of projectData.datasets || []) {
+      for (const sample of dataset.samples || []) {
+        for (const micrograph of sample.micrographs || []) {
+          micrographs.push(micrograph);
+        }
+      }
+    }
+
+    if (micrographs.length === 0) {
+      log.info('[SmzImport] No micrographs to sync dimensions');
+      return stats;
+    }
+
+    log.info(`[SmzImport] Syncing dimensions for ${micrographs.length} micrograph(s)...`);
+
+    for (let i = 0; i < micrographs.length; i++) {
+      const micrograph = micrographs[i];
+      const imagePath = path.join(folderPaths.images, micrograph.id);
+
+      try {
+        // Check if image file exists
+        if (!fs.existsSync(imagePath)) {
+          log.warn(`[SmzImport] Image not found for micrograph ${micrograph.id}, skipping dimension sync`);
+          stats.skipped++;
+          continue;
+        }
+
+        // Get actual image dimensions using Sharp
+        const metadata = await sharp(imagePath, { limitInputPixels: false }).metadata();
+        const actualWidth = metadata.width;
+        const actualHeight = metadata.height;
+
+        // Check if dimensions need updating
+        // Use imageWidth/imageHeight if available, otherwise width/height
+        const storedWidth = micrograph.imageWidth || micrograph.width;
+        const storedHeight = micrograph.imageHeight || micrograph.height;
+
+        if (storedWidth !== actualWidth || storedHeight !== actualHeight) {
+          log.info(`[SmzImport] Updating dimensions for ${micrograph.name || micrograph.id}: ${storedWidth}x${storedHeight} → ${actualWidth}x${actualHeight}`);
+
+          // Update both imageWidth/imageHeight (preferred) and width/height (legacy)
+          micrograph.imageWidth = actualWidth;
+          micrograph.imageHeight = actualHeight;
+          micrograph.width = actualWidth;
+          micrograph.height = actualHeight;
+
+          stats.updated++;
+
+          if (sendProgress) {
+            sendProgress('Syncing dimensions', 93, `Updated: ${micrograph.name || micrograph.id}`);
+          }
+        } else {
+          stats.skipped++;
+        }
+
+      } catch (err) {
+        log.error(`[SmzImport] Failed to sync dimensions for ${micrograph.id}:`, err.message);
+        stats.failed++;
+      }
+    }
+
+    log.info(`[SmzImport] Dimension sync complete: ${stats.updated} updated, ${stats.skipped} unchanged, ${stats.failed} failed`);
+    return stats;
+
+  } catch (error) {
+    log.error('[SmzImport] Error in syncMicrographDimensions:', error);
+    return stats;
+  }
+}
+
+/**
  * Extract and inspect an .smz file to get project info without importing
  * Used to check if project exists and show user confirmation dialog
  *
@@ -400,6 +486,15 @@ async function importSmz(smzPath, progressCallback) {
     sendProgress('Loading project', 93, 'Reading project data...');
 
     const projectData = await projectSerializer.loadProjectJson(projectId);
+
+    // Sync micrograph dimensions with actual image files
+    // Legacy projects may have stored uiImages dimensions (downscaled) instead of actual dimensions
+    sendProgress('Syncing dimensions', 93, 'Verifying image dimensions...');
+    const dimensionStats = await syncMicrographDimensions(projectData, folderPaths, sendProgress);
+    if (dimensionStats.updated > 0) {
+      log.info(`[SmzImport] Updated dimensions for ${dimensionStats.updated} micrograph(s), saving project...`);
+      await projectSerializer.saveProjectJson(projectData, projectId);
+    }
 
     // Regenerate affine tiles for any affine-placed micrographs
     const affineMicrographs = [];
