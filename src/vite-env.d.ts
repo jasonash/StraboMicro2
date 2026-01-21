@@ -128,6 +128,7 @@ interface Window {
     onClearAllSpots: (callback: () => void) => Unsubscribe;
     onQuickEditSpots: (callback: () => void) => Unsubscribe;
     onBatchEditSpots: (callback: () => void) => Unsubscribe;
+    onQuickApplyPresets: (callback: () => void) => Unsubscribe;
     onMergeSpots: (callback: () => void) => Unsubscribe;
     onSplitSpot: (callback: () => void) => Unsubscribe;
     onShowProjectDebug: (callback: () => void) => Unsubscribe;

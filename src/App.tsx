@@ -28,6 +28,7 @@ import { GrainDetectionDialog } from './components/dialogs/GrainDetectionDialog'
 import { ImageComparatorDialog } from './components/dialogs/ImageComparatorDialog';
 import { GrainSizeAnalysisDialog } from './components/dialogs/GrainSizeAnalysisDialog';
 import { QuickEditEntryDialog } from './components/dialogs/QuickEditEntryDialog';
+import { QuickApplyPresetsDialog } from './components/dialogs/QuickApplyPresetsDialog';
 import {
   IncompleteMicrographsDialog,
   findIncompleteMicrographs,
@@ -189,6 +190,7 @@ function App() {
   const [isImageComparatorDialogOpen, setIsImageComparatorDialogOpen] = useState(false);
   const [isGrainSizeAnalysisDialogOpen, setIsGrainSizeAnalysisDialogOpen] = useState(false);
   const [isQuickEditEntryDialogOpen, setIsQuickEditEntryDialogOpen] = useState(false);
+  const [isQuickApplyPresetsDialogOpen, setIsQuickApplyPresetsDialogOpen] = useState(false);
   const setSplitModeSpotId = useAppStore(state => state.setSplitModeSpotId);
   const closeProject = useAppStore(state => state.closeProject);
   const project = useAppStore(state => state.project);
@@ -476,6 +478,11 @@ function App() {
         return;
       }
       useAppStore.getState().setBatchEditDialogOpen(true);
+    }));
+
+    // Quick Apply Presets menu item (Edit menu, Cmd+Shift+P)
+    unsubscribers.push(window.api.onQuickApplyPresets(() => {
+      setIsQuickApplyPresetsDialogOpen(true);
     }));
 
     // Merge Selected Spots menu item (Edit menu, Cmd+M)
@@ -1275,6 +1282,10 @@ function App() {
       <QuickEditEntryDialog
         isOpen={isQuickEditEntryDialogOpen}
         onClose={() => setIsQuickEditEntryDialogOpen(false)}
+      />
+      <QuickApplyPresetsDialog
+        open={isQuickApplyPresetsDialogOpen}
+        onClose={() => setIsQuickApplyPresetsDialogOpen(false)}
       />
       <StatisticsPanel />
       <QuickClassifyToolbar

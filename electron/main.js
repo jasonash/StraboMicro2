@@ -643,6 +643,15 @@ function createWindow() {
           }
         },
         {
+          label: 'Quick Apply Presets...',
+          accelerator: 'CmdOrCtrl+Shift+P',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('menu:quick-apply-presets');
+            }
+          }
+        },
+        {
           label: 'Merge Selected Spots',
           accelerator: 'CmdOrCtrl+M',
           click: () => {
