@@ -5,10 +5,11 @@
  * Handles visual representation including colors, labels, opacity, and selection states.
  */
 
-import { useState, useEffect } from 'react';
-import { Circle, Line, Group, Text, Rect } from 'react-konva';
+import { useState, useEffect, useMemo } from 'react';
+import { Circle, Line, Group, Text, Rect, Arc } from 'react-konva';
 import { Spot } from '@/types/project-types';
 import { useAppStore } from '@/store';
+import type { QuickApplyPreset } from '@/types/preset-types';
 
 /**
  * Convert legacy color format (0xRRGGBBAA) to web format (#RRGGBB)
@@ -57,6 +58,36 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
 
   // Split mode state
   const splitModeSpotId = useAppStore((state) => state.splitModeSpotId);
+
+  // Quick Apply Presets - get applied preset data for pie chart indicator
+  const globalPresets = useAppStore((state) => state.globalPresets);
+  const projectPresets = useAppStore((state) => state.project?.presets);
+
+  // Get the colors of applied presets for pie chart indicator
+  const appliedPresetColors = useMemo(() => {
+    if (!spot.appliedPresetIds || spot.appliedPresetIds.length === 0) {
+      return [];
+    }
+
+    // Build a map of all presets (global + project)
+    const presetMap = new Map<string, QuickApplyPreset>();
+    for (const preset of globalPresets) {
+      presetMap.set(preset.id, preset);
+    }
+    for (const preset of projectPresets || []) {
+      presetMap.set(preset.id, preset);
+    }
+
+    // Get colors for each applied preset ID
+    const colors: string[] = [];
+    for (const presetId of spot.appliedPresetIds) {
+      const preset = presetMap.get(presetId);
+      if (preset) {
+        colors.push(preset.color);
+      }
+    }
+    return colors;
+  }, [spot.appliedPresetIds, globalPresets, projectPresets]);
 
   // Clear hover state when spot becomes selected
   // IMPORTANT: This must be BEFORE any conditional returns (React hooks rules)
@@ -155,6 +186,74 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
     }
   };
 
+  /**
+   * Render a small pie chart indicator showing applied preset colors.
+   * @param centerX - X coordinate for the pie chart center
+   * @param centerY - Y coordinate for the pie chart center
+   * @param offset - Offset from the spot position (optional)
+   */
+  const renderPresetIndicator = (centerX: number, centerY: number, offset: { x: number; y: number } = { x: 0, y: 0 }) => {
+    if (appliedPresetColors.length === 0) return null;
+
+    const indicatorRadius = 8 / scale;
+    const x = centerX + offset.x / scale;
+    const y = centerY + offset.y / scale;
+
+    // If only one preset, render a solid circle
+    if (appliedPresetColors.length === 1) {
+      return (
+        <Circle
+          key="preset-indicator"
+          x={x}
+          y={y}
+          radius={indicatorRadius}
+          fill={appliedPresetColors[0]}
+          stroke="#ffffff"
+          strokeWidth={1.5 / scale}
+          listening={false}
+        />
+      );
+    }
+
+    // Multiple presets - render pie chart
+    const anglePerPreset = 360 / appliedPresetColors.length;
+    return (
+      <Group key="preset-indicator">
+        {/* White background circle */}
+        <Circle
+          x={x}
+          y={y}
+          radius={indicatorRadius}
+          fill="#ffffff"
+          listening={false}
+        />
+        {/* Pie slices */}
+        {appliedPresetColors.map((color, index) => (
+          <Arc
+            key={`slice-${index}`}
+            x={x}
+            y={y}
+            innerRadius={0}
+            outerRadius={indicatorRadius}
+            angle={anglePerPreset}
+            rotation={index * anglePerPreset - 90} // Start from top
+            fill={color}
+            listening={false}
+          />
+        ))}
+        {/* White border */}
+        <Circle
+          x={x}
+          y={y}
+          radius={indicatorRadius}
+          stroke="#ffffff"
+          strokeWidth={1.5 / scale}
+          listening={false}
+        />
+      </Group>
+    );
+  };
+
   // Point rendering
   if (geometryType === 'point' || geometryType === 'Point') {
     // Handle both modern geometry format and legacy points format
@@ -230,6 +329,9 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
           stroke={quickEditMode ? strokeColor : '#ffffff'}
           strokeWidth={(isCurrentQuickEditSpot ? 3 : 2) / scale}
         />
+
+        {/* Applied preset indicator (pie chart) */}
+        {renderPresetIndicator(x, y, { x: 12, y: -12 })}
       </Group>
     );
   }
@@ -311,6 +413,9 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
           lineJoin="round"
           hitStrokeWidth={10 / scale} // Wider hit area for easier clicking
         />
+
+        {/* Applied preset indicator (pie chart) at line start */}
+        {coords[0] && renderPresetIndicator(coords[0][0], coords[0][1], { x: 12, y: -12 })}
       </Group>
     );
   }
@@ -391,6 +496,16 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
           closed={true}
           listening={true}
         />
+
+        {/* Applied preset indicator (pie chart) - position at polygon centroid */}
+        {coords.length > 0 && (() => {
+          // Calculate centroid of polygon
+          const xs = coords.map(c => c[0]);
+          const ys = coords.map(c => c[1]);
+          const centroidX = xs.reduce((a, b) => a + b, 0) / xs.length;
+          const centroidY = ys.reduce((a, b) => a + b, 0) / ys.length;
+          return renderPresetIndicator(centroidX, centroidY, { x: 0, y: 0 });
+        })()}
       </Group>
     );
   }
