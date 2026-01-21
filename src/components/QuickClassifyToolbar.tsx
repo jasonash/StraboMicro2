@@ -1255,7 +1255,9 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
 
           {/* Navigation hints */}
           <Typography variant="caption" color="text.secondary">
-            Space=Skip ⌫=Back Del=Clear Esc=Exit
+            {quickEditMode && boundPresets.length > 0
+              ? `1-${Math.min(9, boundPresets.length)}=Presets Space=Skip ⌫=Back`
+              : 'Space=Skip ⌫=Back Del=Clear Esc=Exit'}
           </Typography>
 
           {/* Done button */}
