@@ -811,7 +811,11 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
               {sample.materialType && (
                 <Box>
                   <Typography variant="caption" color="text.secondary">Material Type: </Typography>
-                  <Typography variant="body2" component="span">{sample.materialType}</Typography>
+                  <Typography variant="body2" component="span">
+                    {sample.materialType === 'other' && sample.otherMaterialType
+                      ? sample.otherMaterialType
+                      : sample.materialType}
+                  </Typography>
                 </Box>
               )}
               {sample.sampleType && (

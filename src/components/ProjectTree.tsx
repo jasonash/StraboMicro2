@@ -291,6 +291,7 @@ export function ProjectTree() {
   const project = useAppStore((state) => state.project);
   const selectMicrograph = useAppStore((state) => state.selectMicrograph);
   const activeMicrographId = useAppStore((state) => state.activeMicrographId);
+  const deleteDataset = useAppStore((state) => state.deleteDataset);
   const deleteSample = useAppStore((state) => state.deleteSample);
   const deleteMicrograph = useAppStore((state) => state.deleteMicrograph);
   const updateMicrographMetadata = useAppStore((state) => state.updateMicrographMetadata);
@@ -334,6 +335,8 @@ export function ProjectTree() {
   );
 
   // Confirm dialog states
+  const [showDeleteDatasetConfirm, setShowDeleteDatasetConfirm] = useState(false);
+  const [deletingDataset, setDeletingDataset] = useState<DatasetMetadata | null>(null);
   const [showDeleteSampleConfirm, setShowDeleteSampleConfirm] = useState(false);
   const [deletingSample, setDeletingSample] = useState<SampleMetadata | null>(null);
   const [showDeleteMicrographConfirm, setShowDeleteMicrographConfirm] = useState(false);
@@ -1356,6 +1359,15 @@ export function ProjectTree() {
           >
             Edit Dataset Metadata
           </MenuItem>
+          <MenuItem
+            onClick={() => {
+              setDeletingDataset(dataset);
+              setShowDeleteDatasetConfirm(true);
+              setDatasetMenuAnchor({ ...datasetMenuAnchor, [dataset.id]: null });
+            }}
+          >
+            Delete Dataset
+          </MenuItem>
         </Menu>
 
         {/* Dataset Add Menu */}
@@ -1556,6 +1568,41 @@ export function ProjectTree() {
           micrographId={editLocationMicrographId}
         />
       )}
+
+      {/* Delete Dataset Confirmation */}
+      <ConfirmDialog
+        open={showDeleteDatasetConfirm}
+        title="Delete Dataset"
+        message={
+          deletingDataset ? (
+            <>
+              Are you sure you want to delete the dataset "{deletingDataset.name}"?
+              <br />
+              <br />
+              This will remove all samples, micrographs, and spots within this dataset from the project.
+              <br />
+              <br />
+              <strong>Note:</strong> Image files will remain on disk and can be re-added later. They
+              will be excluded when exporting to .smz format.
+            </>
+          ) : (
+            ''
+          )
+        }
+        confirmLabel="Delete"
+        confirmColor="error"
+        onConfirm={() => {
+          if (deletingDataset) {
+            deleteDataset(deletingDataset.id);
+          }
+          setShowDeleteDatasetConfirm(false);
+          setDeletingDataset(null);
+        }}
+        onCancel={() => {
+          setShowDeleteDatasetConfirm(false);
+          setDeletingDataset(null);
+        }}
+      />
 
       {/* Delete Sample Confirmation */}
       <ConfirmDialog
