@@ -24,6 +24,10 @@ interface ExtinctionMicrostructureInfoDialogProps {
   onClose: () => void;
   micrographId?: string;
   spotId?: string;
+  // Preset mode props
+  presetMode?: boolean;
+  initialData?: ExtinctionMicrostructureInfoType | null;
+  onSavePresetData?: (data: ExtinctionMicrostructureInfoType | null) => void;
 }
 
 export function ExtinctionMicrostructureInfoDialog({
@@ -31,6 +35,9 @@ export function ExtinctionMicrostructureInfoDialog({
   onClose,
   micrographId,
   spotId,
+  presetMode,
+  initialData,
+  onSavePresetData,
 }: ExtinctionMicrostructureInfoDialogProps) {
   const project = useAppStore((state) => state.project);
   const updateMicrographMetadata = useAppStore((state) => state.updateMicrographMetadata);
@@ -40,7 +47,17 @@ export function ExtinctionMicrostructureInfoDialog({
   const [notes, setNotes] = useState<string>('');
 
   useEffect(() => {
-    if (!isOpen || !project) return;
+    if (!isOpen) return;
+
+    // Preset mode: load from props instead of store
+    if (presetMode) {
+      setExtinctionMicrostructures((initialData?.extinctionMicrostructures || []) as ExtinctionMicrostructureData[]);
+      setNotes(initialData?.notes || '');
+      return;
+    }
+
+    // Normal mode: load from store
+    if (!project) return;
 
     let existingData: ExtinctionMicrostructureInfoType | null | undefined = null;
 
@@ -54,14 +71,23 @@ export function ExtinctionMicrostructureInfoDialog({
 
     setExtinctionMicrostructures((existingData?.extinctionMicrostructures || []) as ExtinctionMicrostructureData[]);
     setNotes(existingData?.notes || '');
-  }, [isOpen, micrographId, spotId, project]);
+  }, [isOpen, micrographId, spotId, project, presetMode, initialData]);
 
   const handleSave = () => {
+    const hasData = extinctionMicrostructures.length > 0 || notes;
     const extinctionMicrostructureInfo: ExtinctionMicrostructureInfoType = {
       extinctionMicrostructures: extinctionMicrostructures as ExtinctionMicrostructureType[],
       notes: notes,
     };
 
+    // Preset mode: return data via callback
+    if (presetMode && onSavePresetData) {
+      onSavePresetData(hasData ? extinctionMicrostructureInfo : null);
+      onClose();
+      return;
+    }
+
+    // Normal mode: save to store
     if (micrographId) {
       updateMicrographMetadata(micrographId, { extinctionMicrostructureInfo });
     } else if (spotId) {
@@ -82,11 +108,13 @@ export function ExtinctionMicrostructureInfoDialog({
       ? getAvailablePhasesFromSpot(findSpotById(project, spotId))
       : [];
 
-  const title = micrographId
-    ? 'Micrograph Extinction Microstructures'
-    : spotId
-      ? 'Spot Extinction Microstructures'
-      : 'Extinction Microstructures';
+  const title = presetMode
+    ? 'Preset Extinction Microstructures'
+    : micrographId
+      ? 'Micrograph Extinction Microstructures'
+      : spotId
+        ? 'Spot Extinction Microstructures'
+        : 'Extinction Microstructures';
 
   return (
     <Dialog

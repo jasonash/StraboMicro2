@@ -31,6 +31,10 @@ interface FracturesDialogProps {
   onClose: () => void;
   micrographId?: string;
   spotId?: string;
+  // Preset mode props
+  presetMode?: boolean;
+  initialData?: FractureInfoType | null;
+  onSavePresetData?: (data: FractureInfoType | null) => void;
 }
 
 export function FracturesDialog({
@@ -38,6 +42,9 @@ export function FracturesDialog({
   onClose,
   micrographId,
   spotId,
+  presetMode,
+  initialData,
+  onSavePresetData,
 }: FracturesDialogProps) {
   const project = useAppStore((state) => state.project);
   const updateMicrographMetadata = useAppStore((state) => state.updateMicrographMetadata);
@@ -49,7 +56,17 @@ export function FracturesDialog({
 
   // Load existing data when dialog opens
   useEffect(() => {
-    if (!isOpen || !project) return;
+    if (!isOpen) return;
+
+    // Preset mode: load from props instead of store
+    if (presetMode) {
+      setFractures((initialData?.fractures || []) as FractureData[]);
+      setNotes(initialData?.notes || '');
+      return;
+    }
+
+    // Normal mode: load from store
+    if (!project) return;
 
     let existingData: FractureInfoType | null | undefined = null;
 
@@ -63,14 +80,23 @@ export function FracturesDialog({
 
     setFractures((existingData?.fractures || []) as FractureData[]);
     setNotes(existingData?.notes || '');
-  }, [isOpen, micrographId, spotId, project]);
+  }, [isOpen, micrographId, spotId, project, presetMode, initialData]);
 
   const handleSave = () => {
+    const hasData = fractures.length > 0 || notes;
     const fractureInfo: FractureInfoType = {
       fractures: fractures as FractureType[],
       notes: notes,
     };
 
+    // Preset mode: return data via callback
+    if (presetMode && onSavePresetData) {
+      onSavePresetData(hasData ? fractureInfo : null);
+      onClose();
+      return;
+    }
+
+    // Normal mode: save to store
     if (micrographId) {
       updateMicrographMetadata(micrographId, { fractureInfo });
     } else if (spotId) {
@@ -84,11 +110,13 @@ export function FracturesDialog({
     onClose();
   };
 
-  const title = micrographId
-    ? 'Micrograph Fracture Info'
-    : spotId
-      ? 'Spot Fracture Info'
-      : 'Fracture Info';
+  const title = presetMode
+    ? 'Preset Fracture Info'
+    : micrographId
+      ? 'Micrograph Fracture Info'
+      : spotId
+        ? 'Spot Fracture Info'
+        : 'Fracture Info';
 
   return (
     <Dialog

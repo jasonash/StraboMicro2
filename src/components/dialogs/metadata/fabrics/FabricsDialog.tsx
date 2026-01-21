@@ -31,6 +31,10 @@ interface FabricsDialogProps {
   onClose: () => void;
   micrographId?: string;
   spotId?: string;
+  // Preset mode props
+  presetMode?: boolean;
+  initialData?: FabricInfoType | null;
+  onSavePresetData?: (data: FabricInfoType | null) => void;
 }
 
 export function FabricsDialog({
@@ -38,6 +42,9 @@ export function FabricsDialog({
   onClose,
   micrographId,
   spotId,
+  presetMode,
+  initialData,
+  onSavePresetData,
 }: FabricsDialogProps) {
   const project = useAppStore((state) => state.project);
   const updateMicrographMetadata = useAppStore((state) => state.updateMicrographMetadata);
@@ -49,7 +56,17 @@ export function FabricsDialog({
 
   // Load existing data when dialog opens
   useEffect(() => {
-    if (!isOpen || !project) return;
+    if (!isOpen) return;
+
+    // Preset mode: load from props instead of store
+    if (presetMode) {
+      setFabrics((initialData?.fabrics || []) as FabricData[]);
+      setNotes(initialData?.notes || '');
+      return;
+    }
+
+    // Normal mode: load from store
+    if (!project) return;
 
     let existingData: FabricInfoType | null | undefined = null;
 
@@ -63,14 +80,23 @@ export function FabricsDialog({
 
     setFabrics((existingData?.fabrics || []) as FabricData[]);
     setNotes(existingData?.notes || '');
-  }, [isOpen, micrographId, spotId, project]);
+  }, [isOpen, micrographId, spotId, project, presetMode, initialData]);
 
   const handleSave = () => {
+    const hasData = fabrics.length > 0 || notes;
     const fabricInfo: FabricInfoType = {
       fabrics: fabrics as FabricType[],
       notes: notes,
     };
 
+    // Preset mode: return data via callback
+    if (presetMode && onSavePresetData) {
+      onSavePresetData(hasData ? fabricInfo : null);
+      onClose();
+      return;
+    }
+
+    // Normal mode: save to store
     if (micrographId) {
       updateMicrographMetadata(micrographId, { fabricInfo });
     } else if (spotId) {
@@ -84,11 +110,13 @@ export function FabricsDialog({
     onClose();
   };
 
-  const title = micrographId
-    ? 'Micrograph Fabric Info'
-    : spotId
-      ? 'Spot Fabric Info'
-      : 'Fabric Info';
+  const title = presetMode
+    ? 'Preset Fabric Info'
+    : micrographId
+      ? 'Micrograph Fabric Info'
+      : spotId
+        ? 'Spot Fabric Info'
+        : 'Fabric Info';
 
   return (
     <Dialog

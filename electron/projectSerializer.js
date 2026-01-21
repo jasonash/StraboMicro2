@@ -310,7 +310,7 @@ function serializeToLegacyFormat(project) {
     datasets: (project.datasets || []).map(serializeDataset),
     groups: project.groups || [], // Not implemented yet
     tags: project.tags || [], // Not implemented yet
-    // Quick Apply Presets (project-level)
+    // Quick Spot Presets (project-level)
     presets: project.presets || undefined,
     presetKeyBindings: project.presetKeyBindings || undefined,
   };
@@ -474,7 +474,7 @@ function serializeSpot(spot) {
     splitFrom: spot.splitFrom || undefined,
     // Archive status
     archived: spot.archived || undefined,
-    // Quick Apply Presets tracking
+    // Quick Spot Presets tracking
     appliedPresetIds: spot.appliedPresetIds || undefined,
   };
 }
@@ -500,7 +500,7 @@ function deserializeFromLegacyFormat(legacyJson) {
     datasets: (legacyJson.datasets || []).map(deserializeDataset),
     groups: legacyJson.groups || [],
     tags: legacyJson.tags || [],
-    // Quick Apply Presets (project-level)
+    // Quick Spot Presets (project-level)
     presets: legacyJson.presets || undefined,
     presetKeyBindings: legacyJson.presetKeyBindings || undefined,
   };
@@ -651,7 +651,7 @@ function deserializeSpot(spot) {
     splitFrom: spot.splitFrom,
     // Archive status
     archived: spot.archived,
-    // Quick Apply Presets tracking
+    // Quick Spot Presets tracking
     appliedPresetIds: spot.appliedPresetIds,
   };
 }

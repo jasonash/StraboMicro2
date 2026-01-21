@@ -106,7 +106,7 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
   const batchUpdateSpots = useAppStore((state) => state.batchUpdateSpots);
   const batchDeleteSpots = useAppStore((state) => state.batchDeleteSpots);
 
-  // Store - Quick Apply Presets
+  // Store - Quick Spot Presets
   const presetKeyBindings = useAppStore((state) => state.presetKeyBindings);
   const applyPresetToSpot = useAppStore((state) => state.applyPresetToSpot);
   const applyPresetToSpots = useAppStore((state) => state.applyPresetToSpots);
@@ -507,6 +507,10 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
   /**
    * Apply a preset to the current spot(s) in Quick Edit mode.
    * Supports both single spot and batch selection (lassoed spots).
+   *
+   * IMPORTANT: When presets are defined, we do NOT auto-advance after applying.
+   * This allows users to apply multiple presets to the same spot.
+   * User must press Enter or Space to manually advance to the next spot.
    */
   const applyPresetToCurrent = useCallback((presetId: string) => {
     // Only works in Quick Edit mode (not point count mode)
@@ -535,24 +539,16 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
     setFlashId(activeSpotId);
     setTimeout(() => setFlashId(null), 300);
 
-    // Auto-advance: In Quick Edit mode, mark as reviewed and advance
-    setTimeout(() => {
-      if (quickEditMode) {
-        quickEditMarkReviewed();
-      } else {
-        selectNextUnclassifiedSpot('forward');
-      }
-    }, 50);
+    // Do NOT auto-advance when applying presets.
+    // This allows users to apply multiple presets to the same spot.
+    // User must press Enter or Space to manually advance.
   }, [
     pointCountMode,
-    quickEditMode,
     activeSpotId,
     selectedSpotIds,
     applyPresetToSpot,
     applyPresetToSpots,
     clearSpotSelection,
-    quickEditMarkReviewed,
-    selectNextUnclassifiedSpot,
   ]);
 
   /**
@@ -1256,7 +1252,7 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
           {/* Navigation hints */}
           <Typography variant="caption" color="text.secondary">
             {quickEditMode && boundPresets.length > 0
-              ? `1-${Math.min(9, boundPresets.length)}=Presets Space=Skip ⌫=Back`
+              ? `1-${Math.min(9, boundPresets.length)}=Presets Enter=Next ⌫=Back`
               : 'Space=Skip ⌫=Back Del=Clear Esc=Exit'}
           </Typography>
 

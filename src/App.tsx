@@ -480,7 +480,7 @@ function App() {
       useAppStore.getState().setBatchEditDialogOpen(true);
     }));
 
-    // Quick Apply Presets menu item (Edit menu, Cmd+Shift+P)
+    // Quick Spot Presets menu item (Tools menu)
     unsubscribers.push(window.api.onQuickApplyPresets(() => {
       setIsQuickApplyPresetsDialogOpen(true);
     }));

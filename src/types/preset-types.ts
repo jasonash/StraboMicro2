@@ -1,5 +1,5 @@
 /**
- * Quick Apply Preset Types
+ * Quick Spot Preset Types
  *
  * Type definitions for reusable metadata templates that can be quickly
  * applied to spots via keyboard shortcuts (1-9) in Quick Edit mode.
@@ -48,7 +48,7 @@ export interface PresetData {
 }
 
 /**
- * Quick Apply Preset
+ * Quick Spot Preset
  * A reusable metadata template that can be applied to spots.
  */
 export interface QuickApplyPreset {

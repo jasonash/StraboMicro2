@@ -24,6 +24,10 @@ interface IntraGrainInfoDialogProps {
   onClose: () => void;
   micrographId?: string;
   spotId?: string;
+  // Preset mode props
+  presetMode?: boolean;
+  initialData?: IntraGrainInfoType | null;
+  onSavePresetData?: (data: IntraGrainInfoType | null) => void;
 }
 
 export function IntraGrainInfoDialog({
@@ -31,6 +35,9 @@ export function IntraGrainInfoDialog({
   onClose,
   micrographId,
   spotId,
+  presetMode,
+  initialData,
+  onSavePresetData,
 }: IntraGrainInfoDialogProps) {
   const project = useAppStore((state) => state.project);
   const updateMicrographMetadata = useAppStore((state) => state.updateMicrographMetadata);
@@ -40,7 +47,17 @@ export function IntraGrainInfoDialog({
   const [notes, setNotes] = useState<string>('');
 
   useEffect(() => {
-    if (!isOpen || !project) return;
+    if (!isOpen) return;
+
+    // Preset mode: load from props instead of store
+    if (presetMode) {
+      setGrains((initialData?.grains || []) as IntraGrainData[]);
+      setNotes(initialData?.notes || '');
+      return;
+    }
+
+    // Normal mode: load from store
+    if (!project) return;
 
     let existingData: IntraGrainInfoType | null | undefined = null;
 
@@ -54,14 +71,23 @@ export function IntraGrainInfoDialog({
 
     setGrains((existingData?.grains || []) as IntraGrainData[]);
     setNotes(existingData?.notes || '');
-  }, [isOpen, micrographId, spotId, project]);
+  }, [isOpen, micrographId, spotId, project, presetMode, initialData]);
 
   const handleSave = () => {
+    const hasData = grains.length > 0 || notes;
     const intraGrainInfo: IntraGrainInfoType = {
       grains: grains as IntraGrainType[],
       notes: notes,
     };
 
+    // Preset mode: return data via callback
+    if (presetMode && onSavePresetData) {
+      onSavePresetData(hasData ? intraGrainInfo : null);
+      onClose();
+      return;
+    }
+
+    // Normal mode: save to store
     if (micrographId) {
       updateMicrographMetadata(micrographId, { intraGrainInfo });
     } else if (spotId) {
@@ -82,11 +108,13 @@ export function IntraGrainInfoDialog({
       ? getAvailablePhasesFromSpot(findSpotById(project, spotId))
       : [];
 
-  const title = micrographId
-    ? 'Micrograph Intragranular Structures'
-    : spotId
-      ? 'Spot Intragranular Structures'
-      : 'Intragranular Structures';
+  const title = presetMode
+    ? 'Preset Intragranular Structures'
+    : micrographId
+      ? 'Micrograph Intragranular Structures'
+      : spotId
+        ? 'Spot Intragranular Structures'
+        : 'Intragranular Structures';
 
   return (
     <Dialog

@@ -24,6 +24,10 @@ interface GrainBoundaryInfoDialogProps {
   onClose: () => void;
   micrographId?: string;
   spotId?: string;
+  // Preset mode props
+  presetMode?: boolean;
+  initialData?: GrainBoundaryInfoType | null;
+  onSavePresetData?: (data: GrainBoundaryInfoType | null) => void;
 }
 
 export function GrainBoundaryInfoDialog({
@@ -31,6 +35,9 @@ export function GrainBoundaryInfoDialog({
   onClose,
   micrographId,
   spotId,
+  presetMode,
+  initialData,
+  onSavePresetData,
 }: GrainBoundaryInfoDialogProps) {
   const project = useAppStore((state) => state.project);
   const updateMicrographMetadata = useAppStore((state) => state.updateMicrographMetadata);
@@ -40,7 +47,17 @@ export function GrainBoundaryInfoDialog({
   const [notes, setNotes] = useState<string>('');
 
   useEffect(() => {
-    if (!isOpen || !project) return;
+    if (!isOpen) return;
+
+    // Preset mode: load from props instead of store
+    if (presetMode) {
+      setBoundaries((initialData?.boundaries || []) as GrainBoundaryData[]);
+      setNotes(initialData?.notes || '');
+      return;
+    }
+
+    // Normal mode: load from store
+    if (!project) return;
 
     let existingData: GrainBoundaryInfoType | null | undefined = null;
 
@@ -54,14 +71,23 @@ export function GrainBoundaryInfoDialog({
 
     setBoundaries((existingData?.boundaries || []) as GrainBoundaryData[]);
     setNotes(existingData?.notes || '');
-  }, [isOpen, micrographId, spotId, project]);
+  }, [isOpen, micrographId, spotId, project, presetMode, initialData]);
 
   const handleSave = () => {
+    const hasData = boundaries.length > 0 || notes;
     const grainBoundaryInfo: GrainBoundaryInfoType = {
       boundaries: boundaries as GrainBoundaryType[],
       notes: notes,
     };
 
+    // Preset mode: return data via callback
+    if (presetMode && onSavePresetData) {
+      onSavePresetData(hasData ? grainBoundaryInfo : null);
+      onClose();
+      return;
+    }
+
+    // Normal mode: save to store
     if (micrographId) {
       updateMicrographMetadata(micrographId, { grainBoundaryInfo });
     } else if (spotId) {
@@ -75,11 +101,13 @@ export function GrainBoundaryInfoDialog({
     onClose();
   };
 
-  const title = micrographId
-    ? 'Micrograph Grain Boundary Info'
-    : spotId
-      ? 'Spot Grain Boundary Info'
-      : 'Grain Boundary Info';
+  const title = presetMode
+    ? 'Preset Grain Boundary Info'
+    : micrographId
+      ? 'Micrograph Grain Boundary Info'
+      : spotId
+        ? 'Spot Grain Boundary Info'
+        : 'Grain Boundary Info';
 
   return (
     <Dialog

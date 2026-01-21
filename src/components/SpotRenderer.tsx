@@ -59,7 +59,7 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
   // Split mode state
   const splitModeSpotId = useAppStore((state) => state.splitModeSpotId);
 
-  // Quick Apply Presets - get applied preset data for pie chart indicator
+  // Quick Spot Presets - get applied preset data for pie chart indicator
   const globalPresets = useAppStore((state) => state.globalPresets);
   const projectPresets = useAppStore((state) => state.project?.presets);
 
@@ -330,8 +330,8 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
           strokeWidth={(isCurrentQuickEditSpot ? 3 : 2) / scale}
         />
 
-        {/* Applied preset indicator (pie chart) */}
-        {renderPresetIndicator(x, y, { x: 12, y: -12 })}
+        {/* Applied preset indicator (pie chart) - only show in Quick Edit mode */}
+        {quickEditMode && renderPresetIndicator(x, y, { x: 12, y: -12 })}
       </Group>
     );
   }
@@ -414,8 +414,8 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
           hitStrokeWidth={10 / scale} // Wider hit area for easier clicking
         />
 
-        {/* Applied preset indicator (pie chart) at line start */}
-        {coords[0] && renderPresetIndicator(coords[0][0], coords[0][1], { x: 12, y: -12 })}
+        {/* Applied preset indicator (pie chart) at line start - only show in Quick Edit mode */}
+        {quickEditMode && coords[0] && renderPresetIndicator(coords[0][0], coords[0][1], { x: 12, y: -12 })}
       </Group>
     );
   }
@@ -497,8 +497,8 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
           listening={true}
         />
 
-        {/* Applied preset indicator (pie chart) - position at polygon centroid */}
-        {coords.length > 0 && (() => {
+        {/* Applied preset indicator (pie chart) - position at polygon centroid - only show in Quick Edit mode */}
+        {quickEditMode && coords.length > 0 && (() => {
           // Calculate centroid of polygon
           const xs = coords.map(c => c[0]);
           const ys = coords.map(c => c[1]);

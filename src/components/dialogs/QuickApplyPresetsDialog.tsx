@@ -1,7 +1,7 @@
 /**
- * Quick Apply Presets Dialog
+ * Quick Spot Presets Dialog
  *
- * Main dialog for managing all Quick Apply Presets.
+ * Main dialog for managing all Quick Spot Presets.
  * Features:
  * - Tab view for Global vs Project presets
  * - List with drag-to-reorder
@@ -398,7 +398,7 @@ export function QuickApplyPresetsDialog({ open, onClose }: QuickApplyPresetsDial
   return (
     <>
       <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
-        <DialogTitle>Quick Apply Presets</DialogTitle>
+        <DialogTitle>Quick Spot Presets</DialogTitle>
 
         <DialogContent sx={{ minHeight: 400 }}>
           {/* Info alert */}

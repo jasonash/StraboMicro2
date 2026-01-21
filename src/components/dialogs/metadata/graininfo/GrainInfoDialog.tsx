@@ -50,6 +50,10 @@ interface GrainInfoDialogProps {
   onClose: () => void;
   micrographId?: string;
   spotId?: string;
+  // Preset mode props
+  presetMode?: boolean;
+  initialData?: GrainInfoType | null;
+  onSavePresetData?: (data: GrainInfoType | null) => void;
 }
 
 interface TabPanelProps {
@@ -71,6 +75,9 @@ export function GrainInfoDialog({
   onClose,
   micrographId,
   spotId,
+  presetMode,
+  initialData,
+  onSavePresetData,
 }: GrainInfoDialogProps) {
   const project = useAppStore((state) => state.project);
   const updateMicrographMetadata = useAppStore((state) => state.updateMicrographMetadata);
@@ -107,6 +114,26 @@ export function GrainInfoDialog({
   useEffect(() => {
     if (!isOpen) return;
 
+    // Preset mode: load from props instead of store
+    if (presetMode) {
+      setGrainSizeInfo(initialData?.grainSizeInfo || []);
+      setGrainShapeInfo(initialData?.grainShapeInfo || []);
+      setGrainOrientationInfo(initialData?.grainOrientationInfo || []);
+      setGrainSizeNotes(initialData?.grainSizeNotes || '');
+      setGrainShapeNotes(initialData?.grainShapeNotes || '');
+      setGrainOrientationNotes(initialData?.grainOrientationNotes || '');
+
+      // Reset add/edit modes
+      setSizeAddMode(false);
+      setSizeEditIndex(null);
+      setShapeAddMode(false);
+      setShapeEditIndex(null);
+      setOrientationAddMode(false);
+      setOrientationEditIndex(null);
+      return;
+    }
+
+    // Normal mode: load from store
     const existingData: GrainInfoType | undefined | null = micrographId
       ? findMicrographById(project, micrographId)?.grainInfo
       : spotId
@@ -127,13 +154,21 @@ export function GrainInfoDialog({
     setShapeEditIndex(null);
     setOrientationAddMode(false);
     setOrientationEditIndex(null);
-  }, [isOpen, micrographId, spotId, project]);
+  }, [isOpen, micrographId, spotId, project, presetMode, initialData]);
 
   const handleTabChange = (_event: React.SyntheticEvent, newValue: number) => {
     setCurrentTab(newValue);
   };
 
   const handleSave = () => {
+    const hasData =
+      grainSizeInfo.length > 0 ||
+      grainShapeInfo.length > 0 ||
+      grainOrientationInfo.length > 0 ||
+      grainSizeNotes ||
+      grainShapeNotes ||
+      grainOrientationNotes;
+
     const grainInfo: GrainInfoType = {
       grainSizeInfo: grainSizeInfo.length > 0 ? grainSizeInfo : null,
       grainShapeInfo: grainShapeInfo.length > 0 ? grainShapeInfo : null,
@@ -143,6 +178,14 @@ export function GrainInfoDialog({
       grainOrientationNotes: grainOrientationNotes || null,
     };
 
+    // Preset mode: return data via callback
+    if (presetMode && onSavePresetData) {
+      onSavePresetData(hasData ? grainInfo : null);
+      onClose();
+      return;
+    }
+
+    // Normal mode: save to store
     if (micrographId) {
       updateMicrographMetadata(micrographId, { grainInfo });
     } else if (spotId) {
@@ -240,13 +283,16 @@ export function GrainInfoDialog({
     setOrientationEditIndex(null);
   };
 
-  const title = micrographId
-    ? 'Micrograph Grain Information'
-    : spotId
-      ? 'Spot Grain Information'
-      : 'Grain Information';
+  const title = presetMode
+    ? 'Preset Grain Information'
+    : micrographId
+      ? 'Micrograph Grain Information'
+      : spotId
+        ? 'Spot Grain Information'
+        : 'Grain Information';
 
-  const hasNoMineralogy = availablePhases.length === 0;
+  // In preset mode, don't block on mineralogy since presets are standalone
+  const hasNoMineralogy = !presetMode && availablePhases.length === 0;
 
   return (
     <Dialog open={isOpen} onClose={handleCancel} maxWidth="md" fullWidth>

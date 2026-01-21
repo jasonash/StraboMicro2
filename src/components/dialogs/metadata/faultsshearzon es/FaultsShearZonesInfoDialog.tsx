@@ -24,6 +24,10 @@ interface FaultsShearZonesInfoDialogProps {
   onClose: () => void;
   micrographId?: string;
   spotId?: string;
+  // Preset mode props
+  presetMode?: boolean;
+  initialData?: FaultsShearZonesInfoType | null;
+  onSavePresetData?: (data: FaultsShearZonesInfoType | null) => void;
 }
 
 export function FaultsShearZonesInfoDialog({
@@ -31,6 +35,9 @@ export function FaultsShearZonesInfoDialog({
   onClose,
   micrographId,
   spotId,
+  presetMode,
+  initialData,
+  onSavePresetData,
 }: FaultsShearZonesInfoDialogProps) {
   const project = useAppStore((state) => state.project);
   const updateMicrographMetadata = useAppStore((state) => state.updateMicrographMetadata);
@@ -40,7 +47,17 @@ export function FaultsShearZonesInfoDialog({
   const [notes, setNotes] = useState<string>('');
 
   useEffect(() => {
-    if (!isOpen || !project) return;
+    if (!isOpen) return;
+
+    // Preset mode: load from props instead of store
+    if (presetMode) {
+      setFaultsShearZones((initialData?.faultsShearZones || []) as FaultsShearZonesData[]);
+      setNotes(initialData?.notes || '');
+      return;
+    }
+
+    // Normal mode: load from store
+    if (!project) return;
 
     let existingData: FaultsShearZonesInfoType | null | undefined = null;
 
@@ -54,14 +71,23 @@ export function FaultsShearZonesInfoDialog({
 
     setFaultsShearZones((existingData?.faultsShearZones || []) as FaultsShearZonesData[]);
     setNotes(existingData?.notes || '');
-  }, [isOpen, micrographId, spotId, project]);
+  }, [isOpen, micrographId, spotId, project, presetMode, initialData]);
 
   const handleSave = () => {
+    const hasData = faultsShearZones.length > 0 || notes;
     const faultsShearZonesInfo: FaultsShearZonesInfoType = {
       faultsShearZones: faultsShearZones as FaultsShearZonesType[],
       notes: notes,
     };
 
+    // Preset mode: return data via callback
+    if (presetMode && onSavePresetData) {
+      onSavePresetData(hasData ? faultsShearZonesInfo : null);
+      onClose();
+      return;
+    }
+
+    // Normal mode: save to store
     if (micrographId) {
       updateMicrographMetadata(micrographId, { faultsShearZonesInfo });
     } else if (spotId) {
@@ -75,11 +101,13 @@ export function FaultsShearZonesInfoDialog({
     onClose();
   };
 
-  const title = micrographId
-    ? 'Micrograph Faults and Shear Zones'
-    : spotId
-      ? 'Spot Faults and Shear Zones'
-      : 'Faults and Shear Zones';
+  const title = presetMode
+    ? 'Preset Faults and Shear Zones'
+    : micrographId
+      ? 'Micrograph Faults and Shear Zones'
+      : spotId
+        ? 'Spot Faults and Shear Zones'
+        : 'Faults and Shear Zones';
 
   return (
     <Dialog

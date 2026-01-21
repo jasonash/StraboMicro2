@@ -47,7 +47,7 @@ export interface ProjectMetadata {
   groups?: GroupMetadata[] | null;
   tags?: Tag[] | null;
 
-  // Quick Apply Presets (project-level)
+  // Quick Spot Presets (project-level)
   presets?: QuickApplyPreset[] | null;
   presetKeyBindings?: Record<string, string> | null; // Optional project override for key bindings
 }

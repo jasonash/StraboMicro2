@@ -17,7 +17,15 @@ import {
   Alert,
   Tabs,
   Tab,
+  Button,
+  Menu,
+  MenuItem,
+  ListItemIcon,
+  ListItemText,
+  Divider,
 } from '@mui/material';
+import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh';
+import CircleIcon from '@mui/icons-material/Circle';
 import { useAppStore } from '@/store';
 import { BreadcrumbsBar } from './BreadcrumbsBar';
 import { CombinedDataTypeSelector } from './CombinedDataTypeSelector';
@@ -44,6 +52,8 @@ import { AssociatedFilesInfoDialog } from './dialogs/metadata/associatedfiles/As
 import { LinksInfoDialog } from './dialogs/metadata/links/LinksInfoDialog';
 import { MetadataSummary } from './MetadataSummary';
 import { ProjectMetadataSection } from './ProjectMetadataSection';
+import { getPresetSummary } from '@/types/preset-types';
+import type { PresetWithScope } from '@/types/preset-types';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -77,9 +87,16 @@ export function PropertiesPanel() {
   const selectMicrograph = useAppStore((state) => state.selectMicrograph);
   const selectActiveSpot = useAppStore((state) => state.selectActiveSpot);
 
+  // Quick Spot Presets
+  const getAllPresetsWithScope = useAppStore((state) => state.getAllPresetsWithScope);
+  const applyPresetToSpot = useAppStore((state) => state.applyPresetToSpot);
+
   const [openDialog, setOpenDialog] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<'micrograph' | 'spot' | null>(null);
   const [activeTab, setActiveTab] = useState(0);
+
+  // Apply Preset menu state
+  const [presetMenuAnchor, setPresetMenuAnchor] = useState<HTMLElement | null>(null);
 
   // Auto-switch to Micrograph/Spot tab when selection changes
   useEffect(() => {
@@ -210,6 +227,32 @@ export function PropertiesPanel() {
     setConfirmDelete(null);
   };
 
+  // Handle Apply Preset menu
+  const handleOpenPresetMenu = (event: React.MouseEvent<HTMLButtonElement>) => {
+    setPresetMenuAnchor(event.currentTarget);
+  };
+
+  const handleClosePresetMenu = () => {
+    setPresetMenuAnchor(null);
+  };
+
+  const handleApplyPreset = (preset: PresetWithScope) => {
+    if (activeSpotId) {
+      applyPresetToSpot(preset.id, activeSpotId);
+      setSnackbar({
+        open: true,
+        message: `Applied preset "${preset.name}"`,
+        severity: 'success',
+      });
+    }
+    handleClosePresetMenu();
+  };
+
+  // Get available presets for the menu
+  const availablePresets = getAllPresetsWithScope();
+  const globalPresets = availablePresets.filter((p) => p.scope === 'global');
+  const projectPresets = availablePresets.filter((p) => p.scope === 'project');
+
   // Determine the first tab label based on selection
   const firstTabLabel = activeSpotId ? 'Spot' : 'Micrograph';
 
@@ -272,6 +315,72 @@ export function PropertiesPanel() {
                 onSelectModal={(modal) => setOpenDialog(modal)}
               />
             </Box>
+
+            {/* Apply Preset Button (spots only) */}
+            {selectionType === 'spot' && availablePresets.length > 0 && (
+              <Box sx={{ mb: 2 }}>
+                <Button
+                  variant="outlined"
+                  size="small"
+                  startIcon={<AutoFixHighIcon />}
+                  onClick={handleOpenPresetMenu}
+                  sx={{ textTransform: 'none' }}
+                >
+                  Apply Preset
+                </Button>
+                <Menu
+                  anchorEl={presetMenuAnchor}
+                  open={Boolean(presetMenuAnchor)}
+                  onClose={handleClosePresetMenu}
+                  anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+                  transformOrigin={{ vertical: 'top', horizontal: 'left' }}
+                >
+                  {globalPresets.length > 0 && (
+                    <MenuItem disabled sx={{ opacity: 0.7, fontSize: '0.75rem' }}>
+                      Global Presets
+                    </MenuItem>
+                  )}
+                  {globalPresets.map((preset) => (
+                    <MenuItem
+                      key={preset.id}
+                      onClick={() => handleApplyPreset(preset)}
+                    >
+                      <ListItemIcon>
+                        <CircleIcon sx={{ color: preset.color, fontSize: 16 }} />
+                      </ListItemIcon>
+                      <ListItemText
+                        primary={preset.name}
+                        secondary={getPresetSummary(preset).slice(0, 2).join(', ') || 'No data'}
+                        primaryTypographyProps={{ variant: 'body2' }}
+                        secondaryTypographyProps={{ variant: 'caption' }}
+                      />
+                    </MenuItem>
+                  ))}
+                  {globalPresets.length > 0 && projectPresets.length > 0 && <Divider />}
+                  {projectPresets.length > 0 && (
+                    <MenuItem disabled sx={{ opacity: 0.7, fontSize: '0.75rem' }}>
+                      Project Presets
+                    </MenuItem>
+                  )}
+                  {projectPresets.map((preset) => (
+                    <MenuItem
+                      key={preset.id}
+                      onClick={() => handleApplyPreset(preset)}
+                    >
+                      <ListItemIcon>
+                        <CircleIcon sx={{ color: preset.color, fontSize: 16 }} />
+                      </ListItemIcon>
+                      <ListItemText
+                        primary={preset.name}
+                        secondary={getPresetSummary(preset).slice(0, 2).join(', ') || 'No data'}
+                        primaryTypographyProps={{ variant: 'body2' }}
+                        secondaryTypographyProps={{ variant: 'caption' }}
+                      />
+                    </MenuItem>
+                  ))}
+                </Menu>
+              </Box>
+            )}
 
             {/* Metadata Summary Section */}
             <Box sx={{ flex: 1, overflow: 'auto' }}>

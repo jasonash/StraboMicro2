@@ -808,7 +808,7 @@ export const useAppStore = create<AppState>()(
           statisticsPanelVisible: false,
           batchEditDialogOpen: false,
 
-          // Quick Apply Presets state (global - persisted)
+          // Quick Spot Presets state (global - persisted)
           globalPresets: [],
           presetKeyBindings: {},
 
@@ -2429,17 +2429,22 @@ export const useAppStore = create<AppState>()(
               return state;
             }
 
+            // Check if preset was already applied to this spot
+            const existingSpot = state.spotIndex.get(spotId);
+            if (existingSpot?.appliedPresetIds?.includes(presetId)) {
+              // Preset already applied - do nothing
+              return state;
+            }
+
             // Apply preset to spot using additive merge
             const newProject = updateSpot(state.project, spotId, (spot) => {
               mergePresetIntoSpot(spot, preset!.data);
 
-              // Track applied preset ID (if not already applied)
+              // Track applied preset ID
               if (!spot.appliedPresetIds) {
                 spot.appliedPresetIds = [];
               }
-              if (!spot.appliedPresetIds.includes(presetId)) {
-                spot.appliedPresetIds.push(presetId);
-              }
+              spot.appliedPresetIds.push(presetId);
 
               spot.modifiedTimestamp = Date.now();
             });
@@ -2467,29 +2472,39 @@ export const useAppStore = create<AppState>()(
             const spotIdSet = new Set(spotIds);
             const newProject = structuredClone(state.project);
             const now = Date.now();
+            let anyApplied = false;
 
-            // Apply preset to all matching spots
+            // Apply preset to all matching spots (skip if already applied)
             for (const dataset of newProject.datasets || []) {
               for (const sample of dataset.samples || []) {
                 for (const micrograph of sample.micrographs || []) {
                   if (micrograph.spots) {
                     for (const spot of micrograph.spots) {
                       if (spotIdSet.has(spot.id)) {
+                        // Skip if preset already applied to this spot
+                        if (spot.appliedPresetIds?.includes(presetId)) {
+                          continue;
+                        }
+
                         mergePresetIntoSpot(spot, preset!.data);
 
                         if (!spot.appliedPresetIds) {
                           spot.appliedPresetIds = [];
                         }
-                        if (!spot.appliedPresetIds.includes(presetId)) {
-                          spot.appliedPresetIds.push(presetId);
-                        }
+                        spot.appliedPresetIds.push(presetId);
 
                         spot.modifiedTimestamp = now;
+                        anyApplied = true;
                       }
                     }
                   }
                 }
               }
+            }
+
+            // If no spots were modified, return unchanged state
+            if (!anyApplied) {
+              return state;
             }
 
             // Handle Quick Edit mode - mark updated spots as reviewed
@@ -3218,7 +3233,7 @@ export const useAppStore = create<AppState>()(
           // Quick Classify settings
           quickClassifyShortcuts: state.quickClassifyShortcuts,
 
-          // Quick Apply Presets settings (global presets and key bindings)
+          // Quick Spot Presets settings (global presets and key bindings)
           globalPresets: state.globalPresets,
           presetKeyBindings: state.presetKeyBindings,
 
