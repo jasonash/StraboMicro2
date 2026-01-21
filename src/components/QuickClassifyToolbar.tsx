@@ -32,6 +32,7 @@ import {
 import { useAppStore } from '../store';
 import { findMicrographById, findSpotById } from '../store/helpers';
 import type { MineralogyType, MineralType } from '../types/project-types';
+import type { PresetWithScope } from '../types/preset-types';
 
 // Navigation keys that are not configurable
 const NAVIGATION_KEYS: Record<string, string> = {
@@ -104,6 +105,12 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
   const clearSpotSelection = useAppStore((state) => state.clearSpotSelection);
   const batchUpdateSpots = useAppStore((state) => state.batchUpdateSpots);
   const batchDeleteSpots = useAppStore((state) => state.batchDeleteSpots);
+
+  // Store - Quick Apply Presets
+  const presetKeyBindings = useAppStore((state) => state.presetKeyBindings);
+  const applyPresetToSpot = useAppStore((state) => state.applyPresetToSpot);
+  const applyPresetToSpots = useAppStore((state) => state.applyPresetToSpots);
+  const getPresetById = useAppStore((state) => state.getPresetById);
 
   // Flash state for visual feedback
   const [flashId, setFlashId] = useState<string | null>(null);
@@ -494,6 +501,77 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
   }, [pointCountMode, currentPoint, activeSpotId, clearPointClassification, updateSpotData]);
 
   // ============================================================================
+  // QUICK APPLY PRESET
+  // ============================================================================
+
+  /**
+   * Apply a preset to the current spot(s) in Quick Edit mode.
+   * Supports both single spot and batch selection (lassoed spots).
+   */
+  const applyPresetToCurrent = useCallback((presetId: string) => {
+    // Only works in Quick Edit mode (not point count mode)
+    if (pointCountMode) return;
+
+    // Check for batch selection first (lassoed spots)
+    if (selectedSpotIds.length > 0) {
+      // Apply preset to all selected spots
+      applyPresetToSpots(presetId, selectedSpotIds);
+
+      // Flash visual feedback
+      setFlashId('batch');
+      setTimeout(() => setFlashId(null), 300);
+
+      // Clear selection after batch operation
+      clearSpotSelection();
+      return;
+    }
+
+    // Single spot application
+    if (!activeSpotId) return;
+
+    applyPresetToSpot(presetId, activeSpotId);
+
+    // Flash visual feedback
+    setFlashId(activeSpotId);
+    setTimeout(() => setFlashId(null), 300);
+
+    // Auto-advance: In Quick Edit mode, mark as reviewed and advance
+    setTimeout(() => {
+      if (quickEditMode) {
+        quickEditMarkReviewed();
+      } else {
+        selectNextUnclassifiedSpot('forward');
+      }
+    }, 50);
+  }, [
+    pointCountMode,
+    quickEditMode,
+    activeSpotId,
+    selectedSpotIds,
+    applyPresetToSpot,
+    applyPresetToSpots,
+    clearSpotSelection,
+    quickEditMarkReviewed,
+    selectNextUnclassifiedSpot,
+  ]);
+
+  /**
+   * Get presets bound to keys 1-9 for display in the toolbar.
+   */
+  const boundPresets = useMemo((): Array<{ key: string; preset: PresetWithScope }> => {
+    const result: Array<{ key: string; preset: PresetWithScope }> = [];
+    for (const [key, presetId] of Object.entries(presetKeyBindings)) {
+      const preset = getPresetById(presetId);
+      if (preset) {
+        result.push({ key, preset });
+      }
+    }
+    // Sort by key number
+    result.sort((a, b) => parseInt(a.key) - parseInt(b.key));
+    return result;
+  }, [presetKeyBindings, getPresetById]);
+
+  // ============================================================================
   // UNIFIED NAVIGATION
   // ============================================================================
 
@@ -739,6 +817,17 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
         }
       }
 
+      // Check for preset keys (1-9) - only in Quick Edit mode (not point count)
+      // Presets take priority over mineral shortcuts for numeric keys
+      if (!pointCountMode && /^[1-9]$/.test(e.key)) {
+        const presetId = presetKeyBindings[e.key];
+        if (presetId) {
+          e.preventDefault();
+          applyPresetToCurrent(presetId);
+          return;
+        }
+      }
+
       // Check mineral shortcuts
       if (shortcuts[key]) {
         e.preventDefault();
@@ -766,6 +855,8 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
       navigateSpatially,
       handleDeleteCurrent,
       quickEditMarkReviewed,
+      presetKeyBindings,
+      applyPresetToCurrent,
     ]
   );
 
@@ -1023,6 +1114,37 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
 
       {/* Content */}
       <Box sx={{ p: 1.5, bgcolor: 'background.default' }}>
+        {/* Preset chips row (Quick Edit mode only, when presets are configured) */}
+        {quickEditMode && boundPresets.length > 0 && (
+          <Box sx={{ display: 'flex', alignItems: 'center', mb: 1, gap: 0.5 }}>
+            <Typography variant="caption" color="text.secondary" sx={{ mr: 0.5 }}>
+              Presets:
+            </Typography>
+            {boundPresets.map(({ key, preset }) => (
+              <Tooltip key={key} title={`${key} = ${preset.name}`} arrow>
+                <Chip
+                  label={`${key}`}
+                  size="small"
+                  onClick={() => applyPresetToCurrent(preset.id)}
+                  sx={{
+                    cursor: 'pointer',
+                    flexShrink: 0,
+                    bgcolor: preset.color,
+                    color: 'white',
+                    fontWeight: 'bold',
+                    minWidth: 28,
+                    '& .MuiChip-label': { px: 1 },
+                    '&:hover': {
+                      bgcolor: preset.color,
+                      filter: 'brightness(1.1)',
+                    },
+                  }}
+                />
+              </Tooltip>
+            ))}
+          </Box>
+        )}
+
         {/* Shortcut chips row */}
         <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
           {canScrollLeft && (
