@@ -17,12 +17,16 @@ import {
   Stack,
   Chip,
   Link,
+  IconButton,
+  Tooltip,
   styled,
 } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import EditIcon from '@mui/icons-material/Edit';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
+import ClearIcon from '@mui/icons-material/Clear';
 import { useAppStore } from '@/store';
+import type { QuickApplyPreset } from '@/types/preset-types';
 import { findMicrographById, findSpotById, findSpotParentMicrograph, getMicrographParentSample } from '@/store/helpers';
 import type {
   FractureType,
@@ -654,6 +658,8 @@ function SpotMeasurements({ spot, scale }: { spot: Spot; scale: number }) {
 
 export function MetadataSummary({ micrographId, spotId, onEditSection }: MetadataSummaryProps) {
   const project = useAppStore((state) => state.project);
+  const globalPresets = useAppStore((state) => state.globalPresets);
+  const updateSpotData = useAppStore((state) => state.updateSpotData);
 
   // Load expansion state from localStorage
   const [expanded, setExpanded] = useState<AccordionState>(() => {
@@ -714,6 +720,41 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
   // Count items in array-based data
   const getItemCount = (items: any[] | undefined | null): number => {
     return items?.length || 0;
+  };
+
+  // Get applied presets for spots
+  const appliedPresets: QuickApplyPreset[] = [];
+  if (spot && spot.appliedPresetIds && spot.appliedPresetIds.length > 0) {
+    // Build a map of all presets (global + project)
+    const presetMap = new Map<string, QuickApplyPreset>();
+    for (const preset of globalPresets) {
+      presetMap.set(preset.id, preset);
+    }
+    for (const preset of project?.presets || []) {
+      presetMap.set(preset.id, preset);
+    }
+    // Get presets for each applied ID
+    for (const presetId of spot.appliedPresetIds) {
+      const preset = presetMap.get(presetId);
+      if (preset) {
+        appliedPresets.push(preset);
+      }
+    }
+  }
+
+  // Clear a specific preset from the spot
+  const clearPreset = (presetId: string) => {
+    if (!spot || !spotId) return;
+    const newAppliedIds = spot.appliedPresetIds?.filter((id) => id !== presetId) || [];
+    updateSpotData(spotId, {
+      appliedPresetIds: newAppliedIds.length > 0 ? newAppliedIds : undefined,
+    });
+  };
+
+  // Clear all presets from the spot
+  const clearAllPresets = () => {
+    if (!spot || !spotId) return;
+    updateSpotData(spotId, { appliedPresetIds: undefined });
   };
 
   return (
@@ -905,6 +946,85 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
           </Stack>
         </AccordionDetails>
       </StyledAccordion>
+
+      {/* Applied Presets (spots only) */}
+      {spot && appliedPresets.length > 0 && (
+        <StyledAccordion
+          expanded={expanded['appliedPresets'] || false}
+          onChange={handleExpand('appliedPresets')}
+          disableGutters
+          sx={{ '&:before': { display: 'none' } }}
+        >
+          <StyledAccordionSummary expandIcon={<ExpandMoreIcon />}>
+            <Typography variant="subtitle2">Applied Presets</Typography>
+            <Chip label={`${appliedPresets.length}`} size="small" />
+            <Box sx={{ flexGrow: 1 }} />
+            <Tooltip title="Clear all presets">
+              <Box
+                onClick={(e) => {
+                  e.stopPropagation();
+                  clearAllPresets();
+                }}
+                sx={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  width: 32,
+                  height: 32,
+                  mr: 1,
+                  cursor: 'pointer',
+                  borderRadius: '50%',
+                  '&:hover': { bgcolor: 'action.hover' },
+                }}
+              >
+                <ClearIcon fontSize="small" />
+              </Box>
+            </Tooltip>
+          </StyledAccordionSummary>
+          <AccordionDetails sx={{ py: 1 }}>
+            <Stack spacing={1}>
+              {appliedPresets.map((preset) => (
+                <Box
+                  key={preset.id}
+                  sx={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 1,
+                    p: 0.5,
+                    borderRadius: 1,
+                    '&:hover': { bgcolor: 'action.hover' },
+                  }}
+                >
+                  {/* Color indicator */}
+                  <Box
+                    sx={{
+                      width: 12,
+                      height: 12,
+                      borderRadius: '50%',
+                      bgcolor: preset.color,
+                      flexShrink: 0,
+                    }}
+                  />
+                  {/* Preset name */}
+                  <Typography variant="body2" sx={{ flex: 1 }}>
+                    {preset.name}
+                  </Typography>
+                  {/* Clear button */}
+                  <Tooltip title="Remove preset">
+                    <IconButton
+                      size="small"
+                      onClick={() => clearPreset(preset.id)}
+                      sx={{ p: 0.25 }}
+                    >
+                      <ClearIcon fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
+                </Box>
+              ))}
+            </Stack>
+          </AccordionDetails>
+        </StyledAccordion>
+      )}
 
       {/* Mineralogy/Lithology */}
       {(hasData(data.mineralogy) || hasData(data.lithologyInfo)) && (
