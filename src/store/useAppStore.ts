@@ -101,6 +101,14 @@ import {
   PointCountSessionSummary,
   calculateSessionSummary,
 } from '@/types/point-count-types';
+import type {
+  QuickApplyPreset,
+  PresetWithScope,
+  PresetScope,
+  PresetData,
+  PresetKeyBindings,
+} from '@/types/preset-types';
+import { PRESET_FEATURE_FIELDS } from '@/types/preset-types';
 import {
   updateMicrograph,
   updateSpot,
@@ -178,6 +186,12 @@ interface AppState {
   statisticsPanelVisible: boolean;
   /** Whether Batch Edit Spots dialog is visible */
   batchEditDialogOpen: boolean;
+
+  // ========== QUICK APPLY PRESETS STATE (global - persisted) ==========
+  /** Global presets stored app-wide (not project-specific) */
+  globalPresets: QuickApplyPreset[];
+  /** Key bindings for presets (keys "1"-"9" -> preset ID) */
+  presetKeyBindings: PresetKeyBindings;
 
   // ========== POINT COUNT MODE STATE ==========
   /** Whether Point Count mode is active (separate from spots) */
@@ -307,6 +321,30 @@ interface AppState {
   /** Toggle Batch Edit dialog visibility */
   setBatchEditDialogOpen: (open: boolean) => void;
 
+  // ========== QUICK APPLY PRESETS ACTIONS ==========
+  /** Create a new preset */
+  createPreset: (preset: QuickApplyPreset, scope: PresetScope) => void;
+  /** Update an existing preset */
+  updatePreset: (id: string, updates: Partial<QuickApplyPreset>, scope: PresetScope) => void;
+  /** Delete a preset */
+  deletePreset: (id: string, scope: PresetScope) => void;
+  /** Reorder presets within a scope */
+  reorderPresets: (orderedIds: string[], scope: PresetScope) => void;
+  /** Apply a preset to a single spot (additive merge) */
+  applyPresetToSpot: (presetId: string, spotId: string) => void;
+  /** Apply a preset to multiple spots (batch) */
+  applyPresetToSpots: (presetId: string, spotIds: string[]) => void;
+  /** Set or clear a key binding for a preset */
+  setPresetKeyBinding: (key: string, presetId: string | null) => void;
+  /** Get all presets with their scope information */
+  getAllPresetsWithScope: () => PresetWithScope[];
+  /** Get a preset by ID (searches both global and project) */
+  getPresetById: (id: string) => PresetWithScope | null;
+  /** Check if any presets are bound to keys 1-9 */
+  hasPresetsConfigured: () => boolean;
+  /** Create a preset from an existing spot's data */
+  createPresetFromSpot: (spotId: string, name: string, color: string, scope: PresetScope) => QuickApplyPreset | null;
+
   // ========== POINT COUNT MODE ACTIONS ==========
   /** Enter Point Count mode with a session */
   enterPointCountMode: (session: PointCountSession) => void;
@@ -416,6 +454,285 @@ interface AppState {
 }
 
 // ============================================================================
+// PRESET MERGE HELPER
+// ============================================================================
+
+/**
+ * Merge preset data into a spot using additive rules:
+ * - Scalars (color, opacity): preset replaces spot value
+ * - mineralogy.minerals[]: append preset minerals to existing
+ * - Other *Info arrays: append preset entries to existing
+ * - Notes fields: concatenate with newline
+ */
+function mergePresetIntoSpot(spot: Spot, presetData: PresetData): void {
+  // Merge scalar appearance properties (replace)
+  if (presetData.color !== undefined) {
+    spot.color = presetData.color;
+  }
+  if (presetData.labelColor !== undefined) {
+    spot.labelColor = presetData.labelColor;
+  }
+  if (presetData.opacity !== undefined) {
+    spot.opacity = presetData.opacity;
+  }
+
+  // Merge mineralogy (append minerals)
+  if (presetData.mineralogy) {
+    if (!spot.mineralogy) {
+      spot.mineralogy = structuredClone(presetData.mineralogy);
+    } else {
+      // Append minerals
+      if (presetData.mineralogy.minerals?.length) {
+        if (!spot.mineralogy.minerals) {
+          spot.mineralogy.minerals = [];
+        }
+        spot.mineralogy.minerals.push(...structuredClone(presetData.mineralogy.minerals));
+      }
+      // Concatenate notes
+      if (presetData.mineralogy.notes) {
+        spot.mineralogy.notes = spot.mineralogy.notes
+          ? `${spot.mineralogy.notes}\n${presetData.mineralogy.notes}`
+          : presetData.mineralogy.notes;
+      }
+      // Replace other fields if set
+      if (presetData.mineralogy.percentageCalculationMethod) {
+        spot.mineralogy.percentageCalculationMethod = presetData.mineralogy.percentageCalculationMethod;
+      }
+      if (presetData.mineralogy.mineralogyMethod) {
+        spot.mineralogy.mineralogyMethod = presetData.mineralogy.mineralogyMethod;
+      }
+    }
+  }
+
+  // Merge grainInfo (append arrays, concatenate notes)
+  if (presetData.grainInfo) {
+    if (!spot.grainInfo) {
+      spot.grainInfo = structuredClone(presetData.grainInfo);
+    } else {
+      if (presetData.grainInfo.grainSizeInfo?.length) {
+        if (!spot.grainInfo.grainSizeInfo) spot.grainInfo.grainSizeInfo = [];
+        spot.grainInfo.grainSizeInfo.push(...structuredClone(presetData.grainInfo.grainSizeInfo));
+      }
+      if (presetData.grainInfo.grainShapeInfo?.length) {
+        if (!spot.grainInfo.grainShapeInfo) spot.grainInfo.grainShapeInfo = [];
+        spot.grainInfo.grainShapeInfo.push(...structuredClone(presetData.grainInfo.grainShapeInfo));
+      }
+      if (presetData.grainInfo.grainOrientationInfo?.length) {
+        if (!spot.grainInfo.grainOrientationInfo) spot.grainInfo.grainOrientationInfo = [];
+        spot.grainInfo.grainOrientationInfo.push(...structuredClone(presetData.grainInfo.grainOrientationInfo));
+      }
+      if (presetData.grainInfo.grainSizeNotes) {
+        spot.grainInfo.grainSizeNotes = spot.grainInfo.grainSizeNotes
+          ? `${spot.grainInfo.grainSizeNotes}\n${presetData.grainInfo.grainSizeNotes}`
+          : presetData.grainInfo.grainSizeNotes;
+      }
+      if (presetData.grainInfo.grainShapeNotes) {
+        spot.grainInfo.grainShapeNotes = spot.grainInfo.grainShapeNotes
+          ? `${spot.grainInfo.grainShapeNotes}\n${presetData.grainInfo.grainShapeNotes}`
+          : presetData.grainInfo.grainShapeNotes;
+      }
+      if (presetData.grainInfo.grainOrientationNotes) {
+        spot.grainInfo.grainOrientationNotes = spot.grainInfo.grainOrientationNotes
+          ? `${spot.grainInfo.grainOrientationNotes}\n${presetData.grainInfo.grainOrientationNotes}`
+          : presetData.grainInfo.grainOrientationNotes;
+      }
+    }
+  }
+
+  // Merge fabricInfo (append fabrics array, concatenate notes)
+  if (presetData.fabricInfo) {
+    if (!spot.fabricInfo) {
+      spot.fabricInfo = structuredClone(presetData.fabricInfo);
+    } else {
+      if (presetData.fabricInfo.fabrics?.length) {
+        if (!spot.fabricInfo.fabrics) spot.fabricInfo.fabrics = [];
+        spot.fabricInfo.fabrics.push(...structuredClone(presetData.fabricInfo.fabrics));
+      }
+      if (presetData.fabricInfo.notes) {
+        spot.fabricInfo.notes = spot.fabricInfo.notes
+          ? `${spot.fabricInfo.notes}\n${presetData.fabricInfo.notes}`
+          : presetData.fabricInfo.notes;
+      }
+    }
+  }
+
+  // Merge fractureInfo (append fractures array, concatenate notes)
+  if (presetData.fractureInfo) {
+    if (!spot.fractureInfo) {
+      spot.fractureInfo = structuredClone(presetData.fractureInfo);
+    } else {
+      if (presetData.fractureInfo.fractures?.length) {
+        if (!spot.fractureInfo.fractures) spot.fractureInfo.fractures = [];
+        spot.fractureInfo.fractures.push(...structuredClone(presetData.fractureInfo.fractures));
+      }
+      if (presetData.fractureInfo.notes) {
+        spot.fractureInfo.notes = spot.fractureInfo.notes
+          ? `${spot.fractureInfo.notes}\n${presetData.fractureInfo.notes}`
+          : presetData.fractureInfo.notes;
+      }
+    }
+  }
+
+  // Merge foldInfo (append folds array, concatenate notes)
+  if (presetData.foldInfo) {
+    if (!spot.foldInfo) {
+      spot.foldInfo = structuredClone(presetData.foldInfo);
+    } else {
+      if (presetData.foldInfo.folds?.length) {
+        if (!spot.foldInfo.folds) spot.foldInfo.folds = [];
+        spot.foldInfo.folds.push(...structuredClone(presetData.foldInfo.folds));
+      }
+      if (presetData.foldInfo.notes) {
+        spot.foldInfo.notes = spot.foldInfo.notes
+          ? `${spot.foldInfo.notes}\n${presetData.foldInfo.notes}`
+          : presetData.foldInfo.notes;
+      }
+    }
+  }
+
+  // Merge veinInfo (append veins array, concatenate notes)
+  if (presetData.veinInfo) {
+    if (!spot.veinInfo) {
+      spot.veinInfo = structuredClone(presetData.veinInfo);
+    } else {
+      if (presetData.veinInfo.veins?.length) {
+        if (!spot.veinInfo.veins) spot.veinInfo.veins = [];
+        spot.veinInfo.veins.push(...structuredClone(presetData.veinInfo.veins));
+      }
+      if (presetData.veinInfo.notes) {
+        spot.veinInfo.notes = spot.veinInfo.notes
+          ? `${spot.veinInfo.notes}\n${presetData.veinInfo.notes}`
+          : presetData.veinInfo.notes;
+      }
+    }
+  }
+
+  // Merge clasticDeformationBandInfo
+  if (presetData.clasticDeformationBandInfo) {
+    if (!spot.clasticDeformationBandInfo) {
+      spot.clasticDeformationBandInfo = structuredClone(presetData.clasticDeformationBandInfo);
+    } else {
+      if (presetData.clasticDeformationBandInfo.bands?.length) {
+        if (!spot.clasticDeformationBandInfo.bands) spot.clasticDeformationBandInfo.bands = [];
+        spot.clasticDeformationBandInfo.bands.push(...structuredClone(presetData.clasticDeformationBandInfo.bands));
+      }
+      if (presetData.clasticDeformationBandInfo.notes) {
+        spot.clasticDeformationBandInfo.notes = spot.clasticDeformationBandInfo.notes
+          ? `${spot.clasticDeformationBandInfo.notes}\n${presetData.clasticDeformationBandInfo.notes}`
+          : presetData.clasticDeformationBandInfo.notes;
+      }
+    }
+  }
+
+  // Merge grainBoundaryInfo
+  if (presetData.grainBoundaryInfo) {
+    if (!spot.grainBoundaryInfo) {
+      spot.grainBoundaryInfo = structuredClone(presetData.grainBoundaryInfo);
+    } else {
+      if (presetData.grainBoundaryInfo.boundaries?.length) {
+        if (!spot.grainBoundaryInfo.boundaries) spot.grainBoundaryInfo.boundaries = [];
+        spot.grainBoundaryInfo.boundaries.push(...structuredClone(presetData.grainBoundaryInfo.boundaries));
+      }
+      if (presetData.grainBoundaryInfo.notes) {
+        spot.grainBoundaryInfo.notes = spot.grainBoundaryInfo.notes
+          ? `${spot.grainBoundaryInfo.notes}\n${presetData.grainBoundaryInfo.notes}`
+          : presetData.grainBoundaryInfo.notes;
+      }
+    }
+  }
+
+  // Merge intraGrainInfo
+  if (presetData.intraGrainInfo) {
+    if (!spot.intraGrainInfo) {
+      spot.intraGrainInfo = structuredClone(presetData.intraGrainInfo);
+    } else {
+      if (presetData.intraGrainInfo.grains?.length) {
+        if (!spot.intraGrainInfo.grains) spot.intraGrainInfo.grains = [];
+        spot.intraGrainInfo.grains.push(...structuredClone(presetData.intraGrainInfo.grains));
+      }
+      if (presetData.intraGrainInfo.notes) {
+        spot.intraGrainInfo.notes = spot.intraGrainInfo.notes
+          ? `${spot.intraGrainInfo.notes}\n${presetData.intraGrainInfo.notes}`
+          : presetData.intraGrainInfo.notes;
+      }
+    }
+  }
+
+  // Merge pseudotachylyteInfo
+  if (presetData.pseudotachylyteInfo) {
+    if (!spot.pseudotachylyteInfo) {
+      spot.pseudotachylyteInfo = structuredClone(presetData.pseudotachylyteInfo);
+    } else {
+      if (presetData.pseudotachylyteInfo.pseudotachylytes?.length) {
+        if (!spot.pseudotachylyteInfo.pseudotachylytes) spot.pseudotachylyteInfo.pseudotachylytes = [];
+        spot.pseudotachylyteInfo.pseudotachylytes.push(...structuredClone(presetData.pseudotachylyteInfo.pseudotachylytes));
+      }
+      if (presetData.pseudotachylyteInfo.notes) {
+        spot.pseudotachylyteInfo.notes = spot.pseudotachylyteInfo.notes
+          ? `${spot.pseudotachylyteInfo.notes}\n${presetData.pseudotachylyteInfo.notes}`
+          : presetData.pseudotachylyteInfo.notes;
+      }
+      if (presetData.pseudotachylyteInfo.reasoning) {
+        spot.pseudotachylyteInfo.reasoning = spot.pseudotachylyteInfo.reasoning
+          ? `${spot.pseudotachylyteInfo.reasoning}\n${presetData.pseudotachylyteInfo.reasoning}`
+          : presetData.pseudotachylyteInfo.reasoning;
+      }
+    }
+  }
+
+  // Merge faultsShearZonesInfo
+  if (presetData.faultsShearZonesInfo) {
+    if (!spot.faultsShearZonesInfo) {
+      spot.faultsShearZonesInfo = structuredClone(presetData.faultsShearZonesInfo);
+    } else {
+      if (presetData.faultsShearZonesInfo.faultsShearZones?.length) {
+        if (!spot.faultsShearZonesInfo.faultsShearZones) spot.faultsShearZonesInfo.faultsShearZones = [];
+        spot.faultsShearZonesInfo.faultsShearZones.push(...structuredClone(presetData.faultsShearZonesInfo.faultsShearZones));
+      }
+      if (presetData.faultsShearZonesInfo.notes) {
+        spot.faultsShearZonesInfo.notes = spot.faultsShearZonesInfo.notes
+          ? `${spot.faultsShearZonesInfo.notes}\n${presetData.faultsShearZonesInfo.notes}`
+          : presetData.faultsShearZonesInfo.notes;
+      }
+    }
+  }
+
+  // Merge extinctionMicrostructureInfo
+  if (presetData.extinctionMicrostructureInfo) {
+    if (!spot.extinctionMicrostructureInfo) {
+      spot.extinctionMicrostructureInfo = structuredClone(presetData.extinctionMicrostructureInfo);
+    } else {
+      if (presetData.extinctionMicrostructureInfo.extinctionMicrostructures?.length) {
+        if (!spot.extinctionMicrostructureInfo.extinctionMicrostructures) spot.extinctionMicrostructureInfo.extinctionMicrostructures = [];
+        spot.extinctionMicrostructureInfo.extinctionMicrostructures.push(...structuredClone(presetData.extinctionMicrostructureInfo.extinctionMicrostructures));
+      }
+      if (presetData.extinctionMicrostructureInfo.notes) {
+        spot.extinctionMicrostructureInfo.notes = spot.extinctionMicrostructureInfo.notes
+          ? `${spot.extinctionMicrostructureInfo.notes}\n${presetData.extinctionMicrostructureInfo.notes}`
+          : presetData.extinctionMicrostructureInfo.notes;
+      }
+    }
+  }
+
+  // Merge lithologyInfo
+  if (presetData.lithologyInfo) {
+    if (!spot.lithologyInfo) {
+      spot.lithologyInfo = structuredClone(presetData.lithologyInfo);
+    } else {
+      if (presetData.lithologyInfo.lithologies?.length) {
+        if (!spot.lithologyInfo.lithologies) spot.lithologyInfo.lithologies = [];
+        spot.lithologyInfo.lithologies.push(...structuredClone(presetData.lithologyInfo.lithologies));
+      }
+      if (presetData.lithologyInfo.notes) {
+        spot.lithologyInfo.notes = spot.lithologyInfo.notes
+          ? `${spot.lithologyInfo.notes}\n${presetData.lithologyInfo.notes}`
+          : presetData.lithologyInfo.notes;
+      }
+    }
+  }
+}
+
+// ============================================================================
 // STORE IMPLEMENTATION
 // ============================================================================
 
@@ -490,6 +807,10 @@ export const useAppStore = create<AppState>()(
           },
           statisticsPanelVisible: false,
           batchEditDialogOpen: false,
+
+          // Quick Apply Presets state (global - persisted)
+          globalPresets: [],
+          presetKeyBindings: {},
 
           // Point Count mode state
           pointCountMode: false,
@@ -1989,6 +2310,322 @@ export const useAppStore = create<AppState>()(
 
           setBatchEditDialogOpen: (open) => set({ batchEditDialogOpen: open }),
 
+          // ========== QUICK APPLY PRESETS ACTIONS ==========
+
+          createPreset: (preset, scope) => set((state) => {
+            if (scope === 'global') {
+              return {
+                globalPresets: [...state.globalPresets, preset],
+              };
+            } else {
+              // Project scope
+              if (!state.project) return state;
+              const existingPresets = state.project.presets || [];
+              return {
+                project: {
+                  ...state.project,
+                  presets: [...existingPresets, preset],
+                },
+                isDirty: true,
+              };
+            }
+          }),
+
+          updatePreset: (id, updates, scope) => set((state) => {
+            const now = new Date().toISOString();
+            if (scope === 'global') {
+              return {
+                globalPresets: state.globalPresets.map((p) =>
+                  p.id === id ? { ...p, ...updates, modifiedAt: now } : p
+                ),
+              };
+            } else {
+              if (!state.project) return state;
+              const existingPresets = state.project.presets || [];
+              return {
+                project: {
+                  ...state.project,
+                  presets: existingPresets.map((p) =>
+                    p.id === id ? { ...p, ...updates, modifiedAt: now } : p
+                  ),
+                },
+                isDirty: true,
+              };
+            }
+          }),
+
+          deletePreset: (id, scope) => set((state) => {
+            // Also unbind the key if this preset was bound
+            const newKeyBindings = { ...state.presetKeyBindings };
+            for (const [key, presetId] of Object.entries(newKeyBindings)) {
+              if (presetId === id) {
+                delete newKeyBindings[key];
+              }
+            }
+
+            if (scope === 'global') {
+              return {
+                globalPresets: state.globalPresets.filter((p) => p.id !== id),
+                presetKeyBindings: newKeyBindings,
+              };
+            } else {
+              if (!state.project) return state;
+              const existingPresets = state.project.presets || [];
+              // Also remove from project key bindings if present
+              const projectKeyBindings = { ...state.project.presetKeyBindings };
+              if (projectKeyBindings) {
+                for (const [key, presetId] of Object.entries(projectKeyBindings)) {
+                  if (presetId === id) {
+                    delete projectKeyBindings[key];
+                  }
+                }
+              }
+              return {
+                project: {
+                  ...state.project,
+                  presets: existingPresets.filter((p) => p.id !== id),
+                  presetKeyBindings: Object.keys(projectKeyBindings || {}).length > 0 ? projectKeyBindings : null,
+                },
+                presetKeyBindings: newKeyBindings,
+                isDirty: true,
+              };
+            }
+          }),
+
+          reorderPresets: (orderedIds, scope) => set((state) => {
+            if (scope === 'global') {
+              const presetMap = new Map(state.globalPresets.map((p) => [p.id, p]));
+              const reordered = orderedIds
+                .map((id) => presetMap.get(id))
+                .filter((p): p is QuickApplyPreset => p !== undefined);
+              return { globalPresets: reordered };
+            } else {
+              if (!state.project) return state;
+              const existingPresets = state.project.presets || [];
+              const presetMap = new Map(existingPresets.map((p) => [p.id, p]));
+              const reordered = orderedIds
+                .map((id) => presetMap.get(id))
+                .filter((p): p is QuickApplyPreset => p !== undefined);
+              return {
+                project: {
+                  ...state.project,
+                  presets: reordered,
+                },
+                isDirty: true,
+              };
+            }
+          }),
+
+          applyPresetToSpot: (presetId, spotId) => set((state) => {
+            if (!state.project) return state;
+
+            // Find the preset (check global first, then project)
+            let preset: QuickApplyPreset | undefined = state.globalPresets.find((p) => p.id === presetId);
+            if (!preset) {
+              preset = state.project.presets?.find((p) => p.id === presetId);
+            }
+            if (!preset) {
+              console.warn(`[Store] Preset ${presetId} not found`);
+              return state;
+            }
+
+            // Apply preset to spot using additive merge
+            const newProject = updateSpot(state.project, spotId, (spot) => {
+              mergePresetIntoSpot(spot, preset!.data);
+
+              // Track applied preset ID (if not already applied)
+              if (!spot.appliedPresetIds) {
+                spot.appliedPresetIds = [];
+              }
+              if (!spot.appliedPresetIds.includes(presetId)) {
+                spot.appliedPresetIds.push(presetId);
+              }
+
+              spot.modifiedTimestamp = Date.now();
+            });
+
+            return {
+              project: newProject,
+              isDirty: true,
+              spotIndex: buildSpotIndex(newProject),
+            };
+          }),
+
+          applyPresetToSpots: (presetId, spotIds) => set((state) => {
+            if (!state.project || spotIds.length === 0) return state;
+
+            // Find the preset
+            let preset: QuickApplyPreset | undefined = state.globalPresets.find((p) => p.id === presetId);
+            if (!preset) {
+              preset = state.project.presets?.find((p) => p.id === presetId);
+            }
+            if (!preset) {
+              console.warn(`[Store] Preset ${presetId} not found`);
+              return state;
+            }
+
+            const spotIdSet = new Set(spotIds);
+            const newProject = structuredClone(state.project);
+            const now = Date.now();
+
+            // Apply preset to all matching spots
+            for (const dataset of newProject.datasets || []) {
+              for (const sample of dataset.samples || []) {
+                for (const micrograph of sample.micrographs || []) {
+                  if (micrograph.spots) {
+                    for (const spot of micrograph.spots) {
+                      if (spotIdSet.has(spot.id)) {
+                        mergePresetIntoSpot(spot, preset!.data);
+
+                        if (!spot.appliedPresetIds) {
+                          spot.appliedPresetIds = [];
+                        }
+                        if (!spot.appliedPresetIds.includes(presetId)) {
+                          spot.appliedPresetIds.push(presetId);
+                        }
+
+                        spot.modifiedTimestamp = now;
+                      }
+                    }
+                  }
+                }
+              }
+            }
+
+            // Handle Quick Edit mode - mark updated spots as reviewed
+            let quickEditUpdates: Partial<AppState> = {};
+            if (state.quickEditMode) {
+              const currentReviewed = new Set(state.quickEditReviewedIds);
+              const spotsInSession = new Set(state.quickEditSpotIds);
+              const newlyReviewed = spotIds.filter(
+                (id) => spotsInSession.has(id) && !currentReviewed.has(id)
+              );
+              if (newlyReviewed.length > 0) {
+                quickEditUpdates = {
+                  quickEditReviewedIds: [...state.quickEditReviewedIds, ...newlyReviewed],
+                };
+              }
+            }
+
+            return {
+              ...quickEditUpdates,
+              project: newProject,
+              isDirty: true,
+              spotIndex: buildSpotIndex(newProject),
+            };
+          }),
+
+          setPresetKeyBinding: (key, presetId) => set((state) => {
+            // Validate key is 1-9
+            if (!/^[1-9]$/.test(key)) {
+              console.warn(`[Store] Invalid preset key binding: ${key}`);
+              return state;
+            }
+
+            const newKeyBindings = { ...state.presetKeyBindings };
+
+            if (presetId === null) {
+              // Clear binding
+              delete newKeyBindings[key];
+            } else {
+              // Clear any existing binding for this preset
+              for (const [existingKey, existingId] of Object.entries(newKeyBindings)) {
+                if (existingId === presetId) {
+                  delete newKeyBindings[existingKey];
+                }
+              }
+              // Set new binding
+              newKeyBindings[key] = presetId;
+            }
+
+            return { presetKeyBindings: newKeyBindings };
+          }),
+
+          getAllPresetsWithScope: () => {
+            const state = get();
+            const result: PresetWithScope[] = [];
+
+            // Add global presets
+            for (const preset of state.globalPresets) {
+              result.push({ ...preset, scope: 'global' });
+            }
+
+            // Add project presets
+            if (state.project?.presets) {
+              for (const preset of state.project.presets) {
+                result.push({ ...preset, scope: 'project' });
+              }
+            }
+
+            return result;
+          },
+
+          getPresetById: (id) => {
+            const state = get();
+
+            // Check global presets first
+            const globalPreset = state.globalPresets.find((p) => p.id === id);
+            if (globalPreset) {
+              return { ...globalPreset, scope: 'global' as const };
+            }
+
+            // Check project presets
+            const projectPreset = state.project?.presets?.find((p) => p.id === id);
+            if (projectPreset) {
+              return { ...projectPreset, scope: 'project' as const };
+            }
+
+            return null;
+          },
+
+          hasPresetsConfigured: () => {
+            const state = get();
+            return Object.keys(state.presetKeyBindings).length > 0;
+          },
+
+          createPresetFromSpot: (spotId, name, color, scope) => {
+            const state = get();
+            if (!state.project) return null;
+
+            // Find the spot
+            const spot = state.spotIndex.get(spotId);
+            if (!spot) {
+              console.warn(`[Store] Spot ${spotId} not found`);
+              return null;
+            }
+
+            // Extract preset data from spot
+            const data: PresetData = {};
+
+            // Copy appearance properties
+            if (spot.color) data.color = spot.color;
+            if (spot.labelColor) data.labelColor = spot.labelColor;
+            if (spot.opacity != null) data.opacity = spot.opacity;
+
+            // Copy feature info fields
+            for (const field of PRESET_FEATURE_FIELDS) {
+              const value = spot[field];
+              if (value != null) {
+                (data as Record<string, unknown>)[field] = structuredClone(value);
+              }
+            }
+
+            const now = new Date().toISOString();
+            const preset: QuickApplyPreset = {
+              id: crypto.randomUUID(),
+              name,
+              color,
+              createdAt: now,
+              modifiedAt: now,
+              data,
+            };
+
+            // Create the preset
+            get().createPreset(preset, scope);
+
+            return preset;
+          },
+
           // ========== POINT COUNT MODE ACTIONS ==========
 
           enterPointCountMode: (session) => {
@@ -2580,6 +3217,10 @@ export const useAppStore = create<AppState>()(
 
           // Quick Classify settings
           quickClassifyShortcuts: state.quickClassifyShortcuts,
+
+          // Quick Apply Presets settings (global presets and key bindings)
+          globalPresets: state.globalPresets,
+          presetKeyBindings: state.presetKeyBindings,
 
           // Generation settings
           lastPointCountSettings: state.lastPointCountSettings,

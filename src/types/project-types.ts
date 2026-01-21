@@ -11,6 +11,8 @@
  * Last updated: 2025-11-22
  */
 
+import type { QuickApplyPreset } from './preset-types';
+
 // ============================================================================
 // ROOT PROJECT STRUCTURE
 // ============================================================================
@@ -44,6 +46,10 @@ export interface ProjectMetadata {
   datasets?: DatasetMetadata[] | null;
   groups?: GroupMetadata[] | null;
   tags?: Tag[] | null;
+
+  // Quick Apply Presets (project-level)
+  presets?: QuickApplyPreset[] | null;
+  presetKeyBindings?: Record<string, string> | null; // Optional project override for key bindings
 }
 
 export interface DatasetMetadata {
@@ -355,6 +361,14 @@ export interface Spot {
    * Archived spots are preserved but not displayed unless "Show Archived Spots" is enabled
    */
   archived?: boolean;
+
+  // ========== QUICK APPLY PRESETS ==========
+
+  /**
+   * IDs of presets that have been applied to this spot (in order of application).
+   * Used for visual feedback (pie chart indicator) and tracking.
+   */
+  appliedPresetIds?: string[] | null;
 }
 
 // ============================================================================
