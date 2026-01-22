@@ -1283,9 +1283,8 @@ export const useAppStore = create<AppState>()(
                 return state;
               }
 
-              const newProject = structuredClone(state.project);
-              console.log('[Store] Cloned project, calling updateMicrograph...');
-              const micro = updateMicrograph(newProject, micrographId, (m) => {
+              console.log('[Store] Calling updateMicrograph (which will clone)...');
+              const updatedProject = updateMicrograph(state.project, micrographId, (m) => {
                 console.log('[Store] Inside updateMicrograph callback, current sketchLayers:', m.sketchLayers);
                 if (!m.sketchLayers) {
                   m.sketchLayers = [];
@@ -1294,17 +1293,17 @@ export const useAppStore = create<AppState>()(
                 console.log('[Store] After push, sketchLayers:', m.sketchLayers);
               });
 
-              console.log('[Store] updateMicrograph returned:', !!micro);
-              if (!micro) {
+              console.log('[Store] updateMicrograph returned:', !!updatedProject);
+              if (!updatedProject) {
                 console.log('[Store] updateMicrograph returned falsy, returning unchanged state');
                 return state;
               }
 
-              console.log('[Store] Returning new state with layer');
+              console.log('[Store] Returning new state with updated project');
               return {
-                project: newProject,
+                project: updatedProject,
                 isDirty: true,
-                micrographIndex: buildMicrographIndex(newProject),
+                micrographIndex: buildMicrographIndex(updatedProject),
                 activeSketchLayerId: layerId,
               };
             });
@@ -1316,22 +1315,21 @@ export const useAppStore = create<AppState>()(
           removeSketchLayer: (micrographId, layerId) => set((state) => {
             if (!state.project) return state;
 
-            const newProject = structuredClone(state.project);
-            const micro = updateMicrograph(newProject, micrographId, (m) => {
+            const updatedProject = updateMicrograph(state.project, micrographId, (m) => {
               if (m.sketchLayers) {
                 m.sketchLayers = m.sketchLayers.filter((l) => l.id !== layerId);
               }
             });
 
-            if (!micro) return state;
+            if (!updatedProject) return state;
 
             // If the deleted layer was active, clear the active layer
             const newActiveLayerId = state.activeSketchLayerId === layerId ? null : state.activeSketchLayerId;
 
             return {
-              project: newProject,
+              project: updatedProject,
               isDirty: true,
-              micrographIndex: buildMicrographIndex(newProject),
+              micrographIndex: buildMicrographIndex(updatedProject),
               activeSketchLayerId: newActiveLayerId,
             };
           }),
@@ -1339,128 +1337,121 @@ export const useAppStore = create<AppState>()(
           renameSketchLayer: (micrographId, layerId, name) => set((state) => {
             if (!state.project) return state;
 
-            const newProject = structuredClone(state.project);
-            const micro = updateMicrograph(newProject, micrographId, (m) => {
+            const updatedProject = updateMicrograph(state.project, micrographId, (m) => {
               const layer = m.sketchLayers?.find((l) => l.id === layerId);
               if (layer) {
                 layer.name = name;
               }
             });
 
-            if (!micro) return state;
+            if (!updatedProject) return state;
 
             return {
-              project: newProject,
+              project: updatedProject,
               isDirty: true,
-              micrographIndex: buildMicrographIndex(newProject),
+              micrographIndex: buildMicrographIndex(updatedProject),
             };
           }),
 
           setSketchLayerVisible: (micrographId, layerId, visible) => set((state) => {
             if (!state.project) return state;
 
-            const newProject = structuredClone(state.project);
-            const micro = updateMicrograph(newProject, micrographId, (m) => {
+            const updatedProject = updateMicrograph(state.project, micrographId, (m) => {
               const layer = m.sketchLayers?.find((l) => l.id === layerId);
               if (layer) {
                 layer.visible = visible;
               }
             });
 
-            if (!micro) return state;
+            if (!updatedProject) return state;
 
             return {
-              project: newProject,
+              project: updatedProject,
               isDirty: true,
-              micrographIndex: buildMicrographIndex(newProject),
+              micrographIndex: buildMicrographIndex(updatedProject),
             };
           }),
 
           addSketchStroke: (micrographId, layerId, stroke) => set((state) => {
             if (!state.project) return state;
 
-            const newProject = structuredClone(state.project);
-            const micro = updateMicrograph(newProject, micrographId, (m) => {
+            const updatedProject = updateMicrograph(state.project, micrographId, (m) => {
               const layer = m.sketchLayers?.find((l) => l.id === layerId);
               if (layer) {
                 layer.strokes.push(stroke);
               }
             });
 
-            if (!micro) return state;
+            if (!updatedProject) return state;
 
             return {
-              project: newProject,
+              project: updatedProject,
               isDirty: true,
-              micrographIndex: buildMicrographIndex(newProject),
+              micrographIndex: buildMicrographIndex(updatedProject),
             };
           }),
 
           removeSketchStroke: (micrographId, layerId, strokeId) => set((state) => {
             if (!state.project) return state;
 
-            const newProject = structuredClone(state.project);
-            const micro = updateMicrograph(newProject, micrographId, (m) => {
+            const updatedProject = updateMicrograph(state.project, micrographId, (m) => {
               const layer = m.sketchLayers?.find((l) => l.id === layerId);
               if (layer) {
                 layer.strokes = layer.strokes.filter((s) => s.id !== strokeId);
               }
             });
 
-            if (!micro) return state;
+            if (!updatedProject) return state;
 
             return {
-              project: newProject,
+              project: updatedProject,
               isDirty: true,
-              micrographIndex: buildMicrographIndex(newProject),
+              micrographIndex: buildMicrographIndex(updatedProject),
             };
           }),
 
           addSketchText: (micrographId, layerId, text) => set((state) => {
             if (!state.project) return state;
 
-            const newProject = structuredClone(state.project);
-            const micro = updateMicrograph(newProject, micrographId, (m) => {
+            const updatedProject = updateMicrograph(state.project, micrographId, (m) => {
               const layer = m.sketchLayers?.find((l) => l.id === layerId);
               if (layer) {
                 layer.textItems.push(text);
               }
             });
 
-            if (!micro) return state;
+            if (!updatedProject) return state;
 
             return {
-              project: newProject,
+              project: updatedProject,
               isDirty: true,
-              micrographIndex: buildMicrographIndex(newProject),
+              micrographIndex: buildMicrographIndex(updatedProject),
             };
           }),
 
           removeSketchText: (micrographId, layerId, textId) => set((state) => {
             if (!state.project) return state;
 
-            const newProject = structuredClone(state.project);
-            const micro = updateMicrograph(newProject, micrographId, (m) => {
+            const updatedProject = updateMicrograph(state.project, micrographId, (m) => {
               const layer = m.sketchLayers?.find((l) => l.id === layerId);
               if (layer) {
                 layer.textItems = layer.textItems.filter((t) => t.id !== textId);
               }
             });
 
-            if (!micro) return state;
+            if (!updatedProject) return state;
 
             return {
-              project: newProject,
+              project: updatedProject,
               isDirty: true,
-              micrographIndex: buildMicrographIndex(newProject),
+              micrographIndex: buildMicrographIndex(updatedProject),
             };
           }),
 
           updateSketchText: (micrographId, layerId, textId, updates) => set((state) => {
             if (!state.project) return state;
 
-            const newProject = structuredClone(state.project);
-            const micro = updateMicrograph(newProject, micrographId, (m) => {
+            const updatedProject = updateMicrograph(state.project, micrographId, (m) => {
               const layer = m.sketchLayers?.find((l) => l.id === layerId);
               if (layer) {
                 const textItem = layer.textItems.find((t) => t.id === textId);
@@ -1470,12 +1461,12 @@ export const useAppStore = create<AppState>()(
               }
             });
 
-            if (!micro) return state;
+            if (!updatedProject) return state;
 
             return {
-              project: newProject,
+              project: updatedProject,
               isDirty: true,
-              micrographIndex: buildMicrographIndex(newProject),
+              micrographIndex: buildMicrographIndex(updatedProject),
             };
           }),
 
