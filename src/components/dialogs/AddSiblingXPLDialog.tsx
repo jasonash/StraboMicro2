@@ -182,35 +182,42 @@ export function AddSiblingXPLDialog({
 
       const xplMicrographId = crypto.randomUUID();
 
+      // Get PPL dimensions
+      const pplWidth = pplMicrograph.width || pplMicrograph.imageWidth || 0;
+      const pplHeight = pplMicrograph.height || pplMicrograph.imageHeight || 0;
+
+      // If XPL has different dimensions than PPL, resize it to match
+      let finalWidth = imageWidth;
+      let finalHeight = imageHeight;
+
+      if (pplWidth > 0 && pplHeight > 0 && (pplWidth !== imageWidth || pplHeight !== imageHeight)) {
+        console.log(`[AddSiblingXPLDialog] Resizing XPL from ${imageWidth}x${imageHeight} to ${pplWidth}x${pplHeight}`);
+        setConversionProgress({ stage: 'Resizing to match PPL...', percent: 50 });
+
+        await window.api.resizeScratchImage(scratchIdentifier, pplWidth, pplHeight);
+        finalWidth = pplWidth;
+        finalHeight = pplHeight;
+
+        console.log(`[AddSiblingXPLDialog] XPL resized to ${pplWidth}x${pplHeight}`);
+      }
+
+      setConversionProgress({ stage: 'Saving image...', percent: 75 });
+
       // Move image from scratch to project folder
       console.log(`[AddSiblingXPLDialog] Moving XPL image to project folder: ${xplMicrographId}`);
       await window.api.moveFromScratch(scratchIdentifier, project.id, xplMicrographId);
 
-      // Calculate adjusted scalePixelsPerCentimeter if XPL has different dimensions than PPL
-      // This ensures both images represent the same physical area when viewed
-      // Formula: If PPL covers X cm with W1 pixels, XPL with W2 pixels should have
-      // scalePixelsPerCentimeter adjusted so it also covers X cm
-      const pplWidth = pplMicrograph.width || pplMicrograph.imageWidth || 0;
-      const pplScalePixelsPerCm = pplMicrograph.scalePixelsPerCentimeter;
-      let xplScalePixelsPerCentimeter = pplScalePixelsPerCm;
-
-      if (pplWidth > 0 && imageWidth > 0 && pplWidth !== imageWidth && pplScalePixelsPerCm) {
-        // Adjust scalePixelsPerCentimeter so XPL covers same physical area as PPL
-        // If PPL is 2000px at 1000px/cm = 2cm, XPL at 1000px should be 500px/cm = 2cm
-        xplScalePixelsPerCentimeter = pplScalePixelsPerCm * (imageWidth / pplWidth);
-        console.log(`[AddSiblingXPLDialog] Adjusted XPL scalePixelsPerCentimeter: ${pplScalePixelsPerCm} -> ${xplScalePixelsPerCentimeter}`);
-      }
-
       // Create XPL micrograph - inherits position and instrument from PPL
+      // Dimensions now match PPL, so no scale adjustments needed
       const xplMicrograph: MicrographMetadata = {
         id: xplMicrographId,
         name: xplName || xplFileName || 'XPL Image',
         imageFilename: xplFileName,
         imagePath: xplMicrographId,
-        imageWidth: imageWidth,
-        imageHeight: imageHeight,
-        width: imageWidth,
-        height: imageHeight,
+        imageWidth: finalWidth,
+        imageHeight: finalHeight,
+        width: finalWidth,
+        height: finalHeight,
         opacity: pplMicrograph.opacity ?? 1.0,
         imageType: 'Cross Polarized Light',
         // Inherit parent and position from PPL
@@ -229,8 +236,8 @@ export function AddSiblingXPLDialog({
         instrument: pplMicrograph.instrument
           ? { ...pplMicrograph.instrument }
           : undefined,
-        // Adjusted scale so XPL covers same physical area as PPL
-        scalePixelsPerCentimeter: xplScalePixelsPerCentimeter,
+        // Same scale as PPL since dimensions now match
+        scalePixelsPerCentimeter: pplMicrograph.scalePixelsPerCentimeter,
         // Default visibility
         isMicroVisible: true,
         isFlipped: false,

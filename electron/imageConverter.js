@@ -533,6 +533,47 @@ async function isValidImage(filePath) {
   }
 }
 
+/**
+ * Resize a scratch image to target dimensions
+ * Used when adding XPL sibling that has different dimensions than PPL
+ * @param {string} identifier - Scratch identifier
+ * @param {number} targetWidth - Target width in pixels
+ * @param {number} targetHeight - Target height in pixels
+ * @returns {Promise<Object>} Result with new dimensions
+ */
+async function resizeScratchImage(identifier, targetWidth, targetHeight) {
+  try {
+    const scratchPath = scratchSpace.getScratchPath(identifier);
+    log.info(`[ImageConverter] Resizing scratch image ${identifier} to ${targetWidth}x${targetHeight}`);
+
+    // Read the current image
+    const imageBuffer = await fs.readFile(scratchPath);
+
+    // Resize to target dimensions
+    const resizedBuffer = await sharp(imageBuffer)
+      .resize(targetWidth, targetHeight, {
+        fit: 'fill', // Exact dimensions (aspect ratios should already match)
+        kernel: sharp.kernel.lanczos3,
+      })
+      .jpeg({ quality: 95 })
+      .toBuffer();
+
+    // Write back to the same scratch path
+    await fs.writeFile(scratchPath, resizedBuffer);
+
+    log.info(`[ImageConverter] Successfully resized scratch image to ${targetWidth}x${targetHeight}`);
+
+    return {
+      success: true,
+      width: targetWidth,
+      height: targetHeight,
+    };
+  } catch (error) {
+    log.error(`[ImageConverter] Error resizing scratch image: ${error.message}`);
+    throw error;
+  }
+}
+
 module.exports = {
   convertToScratchJPEG,
   convertToJPEG,
@@ -540,4 +581,5 @@ module.exports = {
   generateImageVariants,
   getImageDimensions,
   isValidImage,
+  resizeScratchImage,
 };

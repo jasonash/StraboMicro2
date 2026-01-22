@@ -3042,6 +3042,22 @@ ipcMain.handle('image:delete-scratch', async (event, identifier) => {
 });
 
 /**
+ * Resize a scratch image to target dimensions
+ * Used when XPL has different dimensions than PPL - resize to match
+ */
+ipcMain.handle('image:resize-scratch', async (event, identifier, targetWidth, targetHeight) => {
+  try {
+    log.info(`[IPC] Resizing scratch image ${identifier} to ${targetWidth}x${targetHeight}`);
+    const result = await imageConverter.resizeScratchImage(identifier, targetWidth, targetHeight);
+    log.info('[IPC] Successfully resized scratch image');
+    return result;
+  } catch (error) {
+    log.error('[IPC] Error resizing scratch image:', error);
+    throw error;
+  }
+});
+
+/**
  * Convert and save a micrograph image to the project images folder
  */
 ipcMain.handle('image:convert-and-save-micrograph', async (event, sourcePath, projectId, micrographId) => {

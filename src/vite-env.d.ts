@@ -298,6 +298,11 @@ interface Window {
       destination: string;
     }>;
     deleteScratchImage: (identifier: string) => Promise<{ success: boolean }>;
+    resizeScratchImage: (identifier: string, targetWidth: number, targetHeight: number) => Promise<{
+      success: boolean;
+      width: number;
+      height: number;
+    }>;
     onConversionProgress: (callback: (progress: { stage: string; percent: number }) => void) => void;
     convertAndSaveMicrographImage: (sourcePath: string, projectId: string, micrographId: string) => Promise<{
       success: boolean;
