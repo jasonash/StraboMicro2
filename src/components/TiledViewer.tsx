@@ -23,6 +23,7 @@ import { AssociatedImageRenderer } from './AssociatedImageRenderer';
 import { ChildSpotsRenderer } from './ChildSpotsRenderer';
 import { SpotRenderer } from './SpotRenderer';
 import { SketchLayerRenderer } from './SketchLayerRenderer';
+import { SketchTextInput } from './SketchTextInput';
 import { PointCountRenderer } from './PointCountRenderer';
 import { LassoRenderer } from './LassoRenderer';
 import { SpotContextMenu } from './SpotContextMenu';
@@ -146,8 +147,12 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
     const activeSketchLayerId = useAppStore((state) => state.activeSketchLayerId);
     const sketchStrokeColor = useAppStore((state) => state.sketchStrokeColor);
     const sketchStrokeWidth = useAppStore((state) => state.sketchStrokeWidth);
+    const sketchFontSize = useAppStore((state) => state.sketchFontSize);
     const addSketchStroke = useAppStore((state) => state.addSketchStroke);
     const removeSketchStroke = useAppStore((state) => state.removeSketchStroke);
+    const addSketchText = useAppStore((state) => state.addSketchText);
+    const updateSketchText = useAppStore((state) => state.updateSketchText);
+    const sketchModeActive = useAppStore((state) => state.sketchModeActive);
     const theme = useAppStore((state) => state.theme);
     const selectActiveSpot = useAppStore((state) => state.selectActiveSpot);
     const selectSpot = useAppStore((state) => state.selectSpot);
@@ -199,6 +204,12 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
     // Track which strokes have been erased during this drag to avoid re-deleting
     const erasedStrokeIdsRef = useRef<Set<string>>(new Set());
 
+    // Text tool state - for the text input overlay
+    const [textInputVisible, setTextInputVisible] = useState(false);
+    const [textInputPosition, setTextInputPosition] = useState({ screenX: 0, screenY: 0, imageX: 0, imageY: 0 });
+    const [editingTextId, setEditingTextId] = useState<string | null>(null);
+    const [editingTextInitial, setEditingTextInitial] = useState('');
+
     /**
      * Handle stroke click for eraser tool
      */
@@ -214,6 +225,87 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
       // Remove the stroke from the store
       removeSketchStroke(activeMicrographId, layerId, strokeId);
     }, [activeMicrographId, removeSketchStroke]);
+
+    /**
+     * Handle text input confirmation - create new text or update existing
+     */
+    const handleTextConfirm = useCallback((text: string) => {
+      if (!activeMicrographId || !activeSketchLayerId) return;
+
+      if (editingTextId) {
+        // Update existing text
+        updateSketchText(activeMicrographId, activeSketchLayerId, editingTextId, { text });
+      } else {
+        // Create new text annotation
+        const textItem = {
+          id: `text-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          x: textInputPosition.imageX,
+          y: textInputPosition.imageY,
+          text: text,
+          fontSize: sketchFontSize,
+          fontFamily: 'Arial',
+          color: sketchStrokeColor,
+        };
+
+        addSketchText(activeMicrographId, activeSketchLayerId, textItem);
+      }
+
+      // Reset state
+      setTextInputVisible(false);
+      setEditingTextId(null);
+      setEditingTextInitial('');
+    }, [activeMicrographId, activeSketchLayerId, textInputPosition, sketchFontSize, sketchStrokeColor, addSketchText, editingTextId, updateSketchText]);
+
+    /**
+     * Handle text input cancellation
+     */
+    const handleTextCancel = useCallback(() => {
+      setTextInputVisible(false);
+      setEditingTextId(null);
+      setEditingTextInitial('');
+    }, []);
+
+    /**
+     * Handle text drag end - update text position in store
+     */
+    const handleTextDragEnd = useCallback((layerId: string, textId: string, x: number, y: number) => {
+      if (!activeMicrographId) return;
+      updateSketchText(activeMicrographId, layerId, textId, { x, y });
+    }, [activeMicrographId, updateSketchText]);
+
+    /**
+     * Handle text double-click - open editor with existing text
+     */
+    const handleTextDoubleClick = useCallback((layerId: string, textId: string) => {
+      if (!activeMicrographId) return;
+
+      // Find the text item in the sketch layers
+      const layers = getSketchLayers(activeMicrographId);
+      const layer = layers.find(l => l.id === layerId);
+      if (!layer) return;
+
+      const textItem = layer.textItems.find(t => t.id === textId);
+      if (!textItem) return;
+
+      // Get the stage to calculate screen position
+      const stage = stageRef.current;
+      if (!stage) return;
+
+      // Convert image coordinates to screen coordinates
+      const screenX = textItem.x * zoom + position.x;
+      const screenY = textItem.y * zoom + position.y;
+
+      // Set up editor state
+      setTextInputPosition({
+        screenX,
+        screenY,
+        imageX: textItem.x,
+        imageY: textItem.y,
+      });
+      setEditingTextId(textId);
+      setEditingTextInitial(textItem.text);
+      setTextInputVisible(true);
+    }, [activeMicrographId, getSketchLayers, zoom, position]);
 
     /**
      * Aggressively clean up tile memory to prevent OOM crashes.
@@ -1494,8 +1586,21 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
         if (activeTool === 'line') {
           lineDrawing.handleClick(imageX, imageY);
         }
+
+        // Handle text tool - show input overlay at click position
+        if (activeTool === 'sketch-text' && activeSketchLayerId) {
+          setTextInputPosition({
+            screenX: pos.x,
+            screenY: pos.y,
+            imageX: imageX,
+            imageY: imageY,
+          });
+          setEditingTextId(null);
+          setEditingTextInitial('');
+          setTextInputVisible(true);
+        }
       },
-      [activeTool, position, zoom, polygonDrawing, lineDrawing, selectActiveSpot, clearSpotSelection, hasDragged, splitModeSpotId, splitLineDrawing]
+      [activeTool, position, zoom, polygonDrawing, lineDrawing, selectActiveSpot, clearSpotSelection, hasDragged, splitModeSpotId, splitLineDrawing, activeSketchLayerId]
     );
 
     /**
@@ -1927,6 +2032,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                     activeTool === 'sketch-pen' ||
                     activeTool === 'sketch-marker' ||
                     activeTool === 'sketch-eraser' ||
+                    activeTool === 'sketch-text' ||
                     lassoToolActive ||
                     spotLassoToolActive ||
                     spotLassoActive ||
@@ -2203,6 +2309,9 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                     activeLayerId={activeSketchLayerId}
                     eraserActive={activeTool === 'sketch-eraser'}
                     onStrokeClick={handleEraseStroke}
+                    textDraggable={sketchModeActive && activeTool === 'sketch-text'}
+                    onTextDragEnd={handleTextDragEnd}
+                    onTextClick={handleTextDoubleClick}
                   />
                 </Layer>
 
@@ -2255,6 +2364,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                     activeTool === 'sketch-pen' ||
                     activeTool === 'sketch-marker' ||
                     activeTool === 'sketch-eraser' ||
+                    activeTool === 'sketch-text' ||
                     lassoToolActive ||
                     spotLassoToolActive ||
                     spotLassoActive ||
@@ -2473,6 +2583,9 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                     activeLayerId={activeSketchLayerId}
                     eraserActive={activeTool === 'sketch-eraser'}
                     onStrokeClick={handleEraseStroke}
+                    textDraggable={sketchModeActive && activeTool === 'sketch-text'}
+                    onTextDragEnd={handleTextDragEnd}
+                    onTextClick={handleTextDoubleClick}
                   />
                 </Layer>
 
@@ -2614,6 +2727,18 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
         <BatchEditSpotsDialog
           isOpen={batchEditDialogOpen}
           onClose={() => setBatchEditDialogOpen(false)}
+        />
+
+        {/* Sketch Text Input Overlay */}
+        <SketchTextInput
+          visible={textInputVisible}
+          x={textInputPosition.screenX}
+          y={textInputPosition.screenY}
+          initialText={editingTextInitial}
+          fontSize={sketchFontSize}
+          color={sketchStrokeColor}
+          onConfirm={handleTextConfirm}
+          onCancel={handleTextCancel}
         />
       </div>
     );

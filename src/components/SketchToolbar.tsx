@@ -20,6 +20,8 @@ const SketchToolbar: React.FC = () => {
   const setSketchStrokeColor = useAppStore((state) => state.setSketchStrokeColor);
   const sketchStrokeWidth = useAppStore((state) => state.sketchStrokeWidth);
   const setSketchStrokeWidth = useAppStore((state) => state.setSketchStrokeWidth);
+  const sketchFontSize = useAppStore((state) => state.sketchFontSize);
+  const setSketchFontSize = useAppStore((state) => state.setSketchFontSize);
   const activeSketchLayerId = useAppStore((state) => state.activeSketchLayerId);
 
   // Color picker popover state
@@ -51,8 +53,15 @@ const SketchToolbar: React.FC = () => {
     setSketchStrokeWidth(newValue as number);
   };
 
+  const handleFontSizeChange = (_event: Event, newValue: number | number[]) => {
+    setSketchFontSize(newValue as number);
+  };
+
   // Determine if we can draw (need an active layer)
   const canDraw = !!activeSketchLayerId;
+
+  // Check if text tool is active (to show font size slider instead of stroke width)
+  const isTextTool = activeTool === 'sketch-text';
 
   return (
     <Box className="sketch-toolbar">
@@ -164,6 +173,33 @@ const SketchToolbar: React.FC = () => {
         </span>
       </Tooltip>
 
+      {/* Text Tool */}
+      <Tooltip title={canDraw ? "Text Tool (4 or T)" : "Create a sketch layer first"} placement="left">
+        <span>
+          <IconButton
+            className={`toolbar-button ${activeTool === 'sketch-text' ? 'active' : ''}`}
+            onClick={() => handleToolClick('sketch-text')}
+            disabled={!canDraw}
+            aria-label="Text tool"
+          >
+            {/* Text/T icon */}
+            <svg width="20" height="20" viewBox="0 0 20 20">
+              <text
+                x="10"
+                y="15"
+                textAnchor="middle"
+                fill="currentColor"
+                fontSize="14"
+                fontWeight="bold"
+                fontFamily="Arial, sans-serif"
+              >
+                T
+              </text>
+            </svg>
+          </IconButton>
+        </span>
+      </Tooltip>
+
       <Box className="toolbar-divider" />
 
       {/* Color Picker */}
@@ -203,15 +239,18 @@ const SketchToolbar: React.FC = () => {
         </Box>
       </Popover>
 
-      {/* Stroke Width Slider */}
+      {/* Stroke Width / Font Size Slider */}
       <Box className="width-slider-container">
-        <Tooltip title={`Stroke Width: ${sketchStrokeWidth}px`} placement="left">
+        <Tooltip
+          title={isTextTool ? `Font Size: ${sketchFontSize}px` : `Stroke Width: ${sketchStrokeWidth}px`}
+          placement="left"
+        >
           <Box sx={{ width: '100%', px: 0.5 }}>
             <Slider
-              value={sketchStrokeWidth}
-              onChange={handleWidthChange}
-              min={1}
-              max={50}
+              value={isTextTool ? sketchFontSize : sketchStrokeWidth}
+              onChange={isTextTool ? handleFontSizeChange : handleWidthChange}
+              min={isTextTool ? 8 : 1}
+              max={isTextTool ? 72 : 50}
               size="small"
               disabled={!canDraw}
               sx={{
@@ -224,16 +263,29 @@ const SketchToolbar: React.FC = () => {
             />
           </Box>
         </Tooltip>
-        {/* Width preview */}
+        {/* Width/Size preview */}
         <Box className="width-preview">
-          <Box
-            className="width-preview-circle"
-            sx={{
-              width: Math.min(sketchStrokeWidth, 20),
-              height: Math.min(sketchStrokeWidth, 20),
-              backgroundColor: sketchStrokeColor,
-            }}
-          />
+          {isTextTool ? (
+            <Typography
+              sx={{
+                color: sketchStrokeColor,
+                fontSize: Math.min(sketchFontSize, 18),
+                fontWeight: 'bold',
+                lineHeight: 1,
+              }}
+            >
+              A
+            </Typography>
+          ) : (
+            <Box
+              className="width-preview-circle"
+              sx={{
+                width: Math.min(sketchStrokeWidth, 20),
+                height: Math.min(sketchStrokeWidth, 20),
+                backgroundColor: sketchStrokeColor,
+              }}
+            />
+          )}
         </Box>
       </Box>
 

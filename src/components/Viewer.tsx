@@ -218,6 +218,9 @@ const Viewer: React.FC = () => {
         } else if (e.key === '3') {
           e.preventDefault();
           setActiveTool('sketch-eraser');
+        } else if (e.key === '4' || e.key.toLowerCase() === 't') {
+          e.preventDefault();
+          setActiveTool('sketch-text');
         }
       }
     };

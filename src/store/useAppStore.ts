@@ -126,7 +126,7 @@ import type { TiledViewerRef } from '@/components/TiledViewer';
 // TYPE DEFINITIONS
 // ============================================================================
 
-export type DrawingTool = 'select' | 'point' | 'line' | 'polygon' | 'measure' | 'sketch-pen' | 'sketch-marker' | 'sketch-eraser' | null;
+export type DrawingTool = 'select' | 'point' | 'line' | 'polygon' | 'measure' | 'sketch-pen' | 'sketch-marker' | 'sketch-eraser' | 'sketch-text' | null;
 export type SidebarTab = 'samples' | 'groups' | 'spots' | 'tags';
 export type ThemeMode = 'dark' | 'light' | 'system';
 
@@ -243,6 +243,8 @@ interface AppState {
   sketchStrokeColor: string;
   /** Current stroke width for sketch tools (in image pixels) */
   sketchStrokeWidth: number;
+  /** Current font size for sketch text tool (in image pixels) */
+  sketchFontSize: number;
 
   // ========== GENERATION SETTINGS (persisted) ==========
   /** Last used point counting settings */
@@ -336,6 +338,8 @@ interface AppState {
   setSketchStrokeColor: (color: string) => void;
   /** Set the stroke width for sketch tools */
   setSketchStrokeWidth: (width: number) => void;
+  /** Set the font size for sketch text tool */
+  setSketchFontSize: (size: number) => void;
 
   // ========== CRUD: DATASET ==========
   addDataset: (dataset: DatasetMetadata) => void;
@@ -900,6 +904,7 @@ export const useAppStore = create<AppState>()(
           sketchModeActive: false,
           sketchStrokeColor: '#ff0000', // Default: red
           sketchStrokeWidth: 3, // Default: 3px
+          sketchFontSize: 24, // Default: 24px
 
           // Generation settings (persisted defaults)
           lastPointCountSettings: null,
@@ -1498,6 +1503,8 @@ export const useAppStore = create<AppState>()(
           setSketchStrokeColor: (color) => set({ sketchStrokeColor: color }),
 
           setSketchStrokeWidth: (width) => set({ sketchStrokeWidth: width }),
+
+          setSketchFontSize: (size) => set({ sketchFontSize: size }),
 
           // ========== CRUD: DATASET ==========
 
