@@ -1624,8 +1624,9 @@ ipcMain.handle('micrograph:export-composite', async (event, projectId, micrograp
         for (const micro of sample.micrographs || []) {
           if (micro.id === micrographId) {
             micrograph = micro;
+            // Exclude secondary siblings (XPL) - they share same view area as primary (PPL)
             childMicrographs = (sample.micrographs || []).filter(
-              m => m.parentID === micrographId
+              m => m.parentID === micrographId && m.isPrimarySibling !== false
             );
             break;
           }
@@ -3188,8 +3189,9 @@ ipcMain.handle('composite:generate-thumbnail', async (event, projectId, microgra
             micrograph = micro;
 
             // Find immediate children (associated micrographs)
+            // Exclude secondary siblings (XPL) - they share same view area as primary (PPL)
             childMicrographs = (sample.micrographs || []).filter(
-              m => m.parentID === micrographId
+              m => m.parentID === micrographId && m.isPrimarySibling !== false
             );
 
             log.info(`[IPC] Found parent micrograph ${micrographId} with ${childMicrographs.length} children`);
@@ -3659,8 +3661,9 @@ ipcMain.handle('composite:rebuild-all-thumbnails', async (event, projectId, proj
             for (const micro of sample.micrographs || []) {
               if (micro.id === micrographId) {
                 micrograph = micro;
+                // Exclude secondary siblings (XPL) - they share same view area as primary (PPL)
                 childMicrographs = (sample.micrographs || []).filter(
-                  m => m.parentID === micrographId
+                  m => m.parentID === micrographId && m.isPrimarySibling !== false
                 );
                 break;
               }
@@ -4271,11 +4274,12 @@ async function generateCompositeBuffer(projectId, micrograph, projectData, folde
   const includeLabels = true;
 
   // Find child micrographs for this micrograph
+  // Exclude secondary siblings (XPL) - they share same view area as primary (PPL)
   let childMicrographs = [];
   for (const dataset of projectData.datasets || []) {
     for (const sample of dataset.samples || []) {
       const children = (sample.micrographs || []).filter(
-        m => m.parentID === micrograph.id
+        m => m.parentID === micrograph.id && m.isPrimarySibling !== false
       );
       childMicrographs.push(...children);
     }
