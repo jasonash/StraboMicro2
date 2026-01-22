@@ -547,7 +547,7 @@ async function resizeScratchImage(identifier, targetWidth, targetHeight) {
     log.info(`[ImageConverter] Resizing scratch image ${identifier} to ${targetWidth}x${targetHeight}`);
 
     // Read the current image
-    const imageBuffer = await fs.readFile(scratchPath);
+    const imageBuffer = await fs.promises.readFile(scratchPath);
 
     // Resize to target dimensions
     const resizedBuffer = await sharp(imageBuffer)
@@ -559,7 +559,7 @@ async function resizeScratchImage(identifier, targetWidth, targetHeight) {
       .toBuffer();
 
     // Write back to the same scratch path
-    await fs.writeFile(scratchPath, resizedBuffer);
+    await fs.promises.writeFile(scratchPath, resizedBuffer);
 
     log.info(`[ImageConverter] Successfully resized scratch image to ${targetWidth}x${targetHeight}`);
 

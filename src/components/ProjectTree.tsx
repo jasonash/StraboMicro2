@@ -1095,18 +1095,9 @@ export function ProjectTree() {
           >
             Delete Micrograph
           </MenuItem>
-          {/* PPL/XPL Sibling Pairing */}
-          {!micrograph.siblingImageId ? (
-            <>
-              <MenuItem
-                onClick={() => {
-                  setAddSiblingXPLMicrographId(micrograph.id);
-                  setShowAddSiblingXPL(true);
-                  setMicrographOptionsAnchor({ ...micrographOptionsAnchor, [micrograph.id]: null });
-                }}
-              >
-                Add Corresponding XPL Image
-              </MenuItem>
+          {/* PPL/XPL Sibling Pairing - only for PPL/XPL image types */}
+          {(micrograph.imageType === 'Plane Polarized Light' || micrograph.imageType === 'Cross Polarized Light') && (
+            !micrograph.siblingImageId ? (
               <MenuItem
                 onClick={() => {
                   setLinkSiblingMicrographId(micrograph.id);
@@ -1116,16 +1107,16 @@ export function ProjectTree() {
               >
                 Link Sibling PPL/XPL Image
               </MenuItem>
-            </>
-          ) : (
-            <MenuItem
-              onClick={() => {
-                unlinkSiblingImages(micrograph.id);
-                setMicrographOptionsAnchor({ ...micrographOptionsAnchor, [micrograph.id]: null });
-              }}
-            >
-              Unlink Sibling Image
-            </MenuItem>
+            ) : (
+              <MenuItem
+                onClick={() => {
+                  unlinkSiblingImages(micrograph.id);
+                  setMicrographOptionsAnchor({ ...micrographOptionsAnchor, [micrograph.id]: null });
+                }}
+              >
+                Unlink Sibling Image
+              </MenuItem>
+            )
           )}
           {/* Show/Hide All Associated Micrographs - only if has children */}
           {hasChildren && (
@@ -1199,6 +1190,18 @@ export function ProjectTree() {
           >
             Batch Import Associated Micrographs
           </MenuItem>
+          {/* Add Corresponding XPL Image - only show if no sibling and is PPL */}
+          {!micrograph.siblingImageId && micrograph.imageType === 'Plane Polarized Light' && (
+            <MenuItem
+              onClick={() => {
+                setAddSiblingXPLMicrographId(micrograph.id);
+                setShowAddSiblingXPL(true);
+                setMicrographAddAnchor({ ...micrographAddAnchor, [micrograph.id]: null });
+              }}
+            >
+              Add Corresponding XPL Image
+            </MenuItem>
+          )}
         </Menu>
       </Box>
     );
