@@ -6,7 +6,7 @@
  * interpolation for smooth lines.
  */
 
-import React from 'react';
+import React, { useState } from 'react';
 import { Group, Line, Text } from 'react-konva';
 import { SketchLayer } from '@/types/project-types';
 
@@ -43,41 +43,60 @@ export const SketchLayerRenderer: React.FC<SketchLayerRendererProps> = ({
   eraserActive = false,
   textDraggable = false,
 }) => {
+  // Track which stroke is being hovered for visual feedback
+  const [hoveredStrokeId, setHoveredStrokeId] = useState<string | null>(null);
+
   return (
     <>
       {layers.map((layer) => {
         // Skip hidden layers
         if (!layer.visible) return null;
 
+        const isActiveLayer = layer.id === activeLayerId;
+
         return (
           <Group key={layer.id} name={`sketch-layer-${layer.id}`}>
             {/* Render strokes */}
-            {layer.strokes.map((stroke) => (
-              <Line
-                key={stroke.id}
-                name="sketch-stroke"
-                id={stroke.id}
-                points={stroke.points}
-                stroke={stroke.color}
-                strokeWidth={stroke.strokeWidth}
-                opacity={stroke.opacity}
-                lineCap="round"
-                lineJoin="round"
-                tension={0.3} // Catmull-Rom smoothing for natural feel
-                listening={eraserActive && layer.id === activeLayerId}
-                hitStrokeWidth={eraserActive ? Math.max(stroke.strokeWidth, 20) : 0}
-                onClick={
-                  eraserActive && onStrokeClick
-                    ? () => onStrokeClick(layer.id, stroke.id)
-                    : undefined
-                }
-                onTap={
-                  eraserActive && onStrokeClick
-                    ? () => onStrokeClick(layer.id, stroke.id)
-                    : undefined
-                }
-              />
-            ))}
+            {layer.strokes.map((stroke) => {
+              const isHovered = eraserActive && isActiveLayer && hoveredStrokeId === stroke.id;
+
+              return (
+                <Line
+                  key={stroke.id}
+                  name="sketch-stroke"
+                  id={stroke.id}
+                  points={stroke.points}
+                  stroke={isHovered ? '#ff4444' : stroke.color}
+                  strokeWidth={isHovered ? stroke.strokeWidth + 2 : stroke.strokeWidth}
+                  opacity={isHovered ? 0.8 : stroke.opacity}
+                  lineCap="round"
+                  lineJoin="round"
+                  tension={0.3} // Catmull-Rom smoothing for natural feel
+                  listening={eraserActive && isActiveLayer}
+                  hitStrokeWidth={eraserActive ? Math.max(stroke.strokeWidth, 20) : 0}
+                  onClick={
+                    eraserActive && onStrokeClick
+                      ? () => onStrokeClick(layer.id, stroke.id)
+                      : undefined
+                  }
+                  onTap={
+                    eraserActive && onStrokeClick
+                      ? () => onStrokeClick(layer.id, stroke.id)
+                      : undefined
+                  }
+                  onMouseEnter={
+                    eraserActive && isActiveLayer
+                      ? () => setHoveredStrokeId(stroke.id)
+                      : undefined
+                  }
+                  onMouseLeave={
+                    eraserActive && isActiveLayer
+                      ? () => setHoveredStrokeId(null)
+                      : undefined
+                  }
+                />
+              );
+            })}
 
             {/* Render text items */}
             {layer.textItems.map((textItem) => (

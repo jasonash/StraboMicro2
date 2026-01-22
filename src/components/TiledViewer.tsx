@@ -147,6 +147,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
     const sketchStrokeColor = useAppStore((state) => state.sketchStrokeColor);
     const sketchStrokeWidth = useAppStore((state) => state.sketchStrokeWidth);
     const addSketchStroke = useAppStore((state) => state.addSketchStroke);
+    const removeSketchStroke = useAppStore((state) => state.removeSketchStroke);
     const theme = useAppStore((state) => state.theme);
     const selectActiveSpot = useAppStore((state) => state.selectActiveSpot);
     const selectSpot = useAppStore((state) => state.selectSpot);
@@ -192,6 +193,27 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
     const isSketchDrawingRef = useRef(false);
     const currentSketchPointsRef = useRef<number[]>([]);
     const [sketchPreviewPoints, setSketchPreviewPoints] = useState<number[]>([]);
+
+    // Eraser drag state - track if we're in the middle of drag-to-erase
+    const isEraserDraggingRef = useRef(false);
+    // Track which strokes have been erased during this drag to avoid re-deleting
+    const erasedStrokeIdsRef = useRef<Set<string>>(new Set());
+
+    /**
+     * Handle stroke click for eraser tool
+     */
+    const handleEraseStroke = useCallback((layerId: string, strokeId: string) => {
+      if (!activeMicrographId) return;
+
+      // Don't erase the same stroke twice during a drag
+      if (erasedStrokeIdsRef.current.has(strokeId)) return;
+
+      // Mark as erased during this drag session
+      erasedStrokeIdsRef.current.add(strokeId);
+
+      // Remove the stroke from the store
+      removeSketchStroke(activeMicrographId, layerId, strokeId);
+    }, [activeMicrographId, removeSketchStroke]);
 
     /**
      * Aggressively clean up tile memory to prevent OOM crashes.
@@ -1099,6 +1121,22 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
           return;
         }
 
+        // Handle eraser tool - start drag-to-erase
+        if (activeTool === 'sketch-eraser' && activeSketchLayerId) {
+          isEraserDraggingRef.current = true;
+          erasedStrokeIdsRef.current.clear(); // Clear previously erased strokes
+
+          // Check if we clicked directly on a stroke
+          const target = e.target;
+          if (target && target.name() === 'sketch-stroke') {
+            const strokeId = target.id();
+            if (strokeId && activeMicrographId) {
+              handleEraseStroke(activeSketchLayerId, strokeId);
+            }
+          }
+          return;
+        }
+
         // Only enable panning if no drawing tool is active
         if (!activeTool || activeTool === 'select') {
           // Don't pan if lasso is active (point count or spot toolbar)
@@ -1111,7 +1149,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
           setLastPointerPos(pos);
         }
       },
-      [activeTool, position, zoom, rulerTool, lassoToolActive, spotLassoToolActive, pointCountMode, lasso, setSpotLassoActiveWithRef, activeSketchLayerId]
+      [activeTool, position, zoom, rulerTool, lassoToolActive, spotLassoToolActive, pointCountMode, lasso, setSpotLassoActiveWithRef, activeSketchLayerId, activeMicrographId, handleEraseStroke]
     );
 
     const handleMouseMove = useCallback(() => {
@@ -1169,6 +1207,19 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
         setSketchPreviewPoints([...currentSketchPointsRef.current]);
 
         // Mark as dragged so click handler doesn't trigger other actions
+        setHasDragged(true);
+      }
+
+      // Handle eraser drag-to-erase
+      if (isEraserDraggingRef.current && activeTool === 'sketch-eraser' && activeSketchLayerId) {
+        // Use Konva's getIntersection to find shapes under the cursor
+        const shape = stage.getIntersection(pos);
+        if (shape && shape.name() === 'sketch-stroke') {
+          const strokeId = shape.id();
+          if (strokeId && activeMicrographId) {
+            handleEraseStroke(activeSketchLayerId, strokeId);
+          }
+        }
         setHasDragged(true);
       }
 
@@ -1337,6 +1388,12 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
         currentSketchPointsRef.current = [];
         setSketchPreviewPoints([]);
       }
+
+      // Finish eraser dragging
+      if (isEraserDraggingRef.current) {
+        isEraserDraggingRef.current = false;
+        erasedStrokeIdsRef.current.clear();
+      }
     }, [activeTool, rulerTool, lasso, lassoToolActive, pointCountMode, activePointCountSession, setSelectedPointIndices, spotLassoToolActive, setSpotLassoToolActive, activeMicrograph, showArchivedSpots, getSpotCentroid, selectSpot, selectActiveSpot, setSpotLassoActiveWithRef, activeMicrographId, activeSketchLayerId, sketchStrokeColor, sketchStrokeWidth, addSketchStroke]);
 
     const handleMouseLeave = useCallback(() => {
@@ -1355,6 +1412,12 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
         isSketchDrawingRef.current = false;
         currentSketchPointsRef.current = [];
         setSketchPreviewPoints([]);
+      }
+
+      // Cancel eraser dragging if mouse leaves
+      if (isEraserDraggingRef.current) {
+        isEraserDraggingRef.current = false;
+        erasedStrokeIdsRef.current.clear();
       }
     }, [onCursorMove, lasso, setSpotLassoActiveWithRef]);
 
@@ -2138,6 +2201,8 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                     layers={sketchLayers}
                     scale={zoom}
                     activeLayerId={activeSketchLayerId}
+                    eraserActive={activeTool === 'sketch-eraser'}
+                    onStrokeClick={handleEraseStroke}
                   />
                 </Layer>
 
@@ -2406,6 +2471,8 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                     layers={sketchLayers}
                     scale={zoom}
                     activeLayerId={activeSketchLayerId}
+                    eraserActive={activeTool === 'sketch-eraser'}
+                    onStrokeClick={handleEraseStroke}
                   />
                 </Layer>
 
