@@ -86,7 +86,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
     const drawingLayerRef = useRef<any>(null);
     const loadingSessionRef = useRef<number>(0); // Track current loading session to abort stale loads
     const pendingTileImagesRef = useRef<Set<HTMLImageElement>>(new Set()); // Track Image objects for cleanup
-    const prevSiblingViewActiveRef = useRef<boolean>(false); // Track previous siblingViewActive for toggle detection
+    const pendingSiblingToggleRef = useRef<boolean>(false); // Flag indicating a sibling toggle is pending (waiting for imagePath change)
     const preservedViewStateRef = useRef<{ zoom: number; position: { x: number; y: number } } | null>(null); // Preserved zoom/pan during sibling toggle
 
     // State
@@ -332,6 +332,31 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
     cleanupTileMemoryRef.current = cleanupTileMemory;
 
     /**
+     * Watch for sibling view toggle and cache zoom/position BEFORE imagePath changes
+     * This is needed because siblingViewActive updates synchronously but imagePath
+     * is computed asynchronously in Viewer.tsx
+     */
+    useEffect(() => {
+      // When siblingViewActive changes, cache the current zoom/position
+      // and set a flag so the image loading effect knows to preserve the view
+      if (siblingViewActive) {
+        // Just toggled to sibling view - cache current state
+        if (!pendingSiblingToggleRef.current) {
+          preservedViewStateRef.current = { zoom, position };
+          pendingSiblingToggleRef.current = true;
+          console.log('[TiledViewer] Sibling toggle detected, caching view state:', { zoom, position });
+        }
+      } else {
+        // Just toggled back to primary view - cache current state
+        if (pendingSiblingToggleRef.current) {
+          preservedViewStateRef.current = { zoom, position };
+          // Keep pendingSiblingToggleRef true - next image load should restore
+          console.log('[TiledViewer] Sibling toggle back, caching view state:', { zoom, position });
+        }
+      }
+    }, [siblingViewActive, zoom, position]);
+
+    /**
      * Load image metadata and initialize viewer
      */
     useEffect(() => {
@@ -342,15 +367,10 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
         return;
       }
 
-      // Detect sibling toggle: siblingViewActive changed since last image load
-      const isSiblingToggle = siblingViewActive !== prevSiblingViewActiveRef.current;
-      prevSiblingViewActiveRef.current = siblingViewActive;
-
-      // If sibling toggle, preserve current zoom/position for restoration after load
-      if (isSiblingToggle) {
-        preservedViewStateRef.current = { zoom, position };
-        console.log('[TiledViewer] Sibling toggle detected, preserving view state:', { zoom, position });
-      }
+      // Check if this is a sibling toggle (flag was set by siblingViewActive effect)
+      const isSiblingToggle = pendingSiblingToggleRef.current;
+      // Clear the flag - we're now processing the toggle
+      pendingSiblingToggleRef.current = false;
 
       // Increment session ID to invalidate any in-progress loads
       const currentSession = ++loadingSessionRef.current;
@@ -469,7 +489,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
         // Aggressive cleanup
         cleanupTileMemoryRef.current();
       };
-    }, [imagePath, siblingViewActive]);
+    }, [imagePath]);
 
     /**
      * Handle keyboard events (e.g., Escape to cancel editing mode)
