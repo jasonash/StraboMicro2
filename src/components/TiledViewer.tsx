@@ -226,10 +226,12 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
       return null;
     }, [project, activeMicrographId])();
 
-    // Get child micrographs (overlays)
+    // Get child micrographs (overlays) - exclude secondary siblings (XPL) since they share position with primary (PPL)
     const childMicrographs = useCallback(() => {
       if (!activeMicrographId) return [];
-      return getChildMicrographs(project, activeMicrographId);
+      const children = getChildMicrographs(project, activeMicrographId);
+      // Filter out secondary siblings (isPrimarySibling === false) - they share position with their primary
+      return children.filter(child => child.isPrimarySibling !== false);
     }, [project, activeMicrographId])();
 
     // Get effective spots - if viewing a secondary sibling (XPL), show spots from primary (PPL)
