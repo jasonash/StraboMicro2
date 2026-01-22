@@ -4,6 +4,7 @@ import { ProjectTree } from './ProjectTree';
 import { GroupsPanel } from './GroupsPanel';
 import { SpotsPanel } from './SpotsPanel';
 import { TagsPanel } from './TagsPanel';
+import { SketchLayersPanel } from './SketchLayersPanel';
 import { useAppStore } from '@/store';
 
 interface TabPanelProps {
@@ -85,6 +86,7 @@ const Sidebar: React.FC = () => {
         <Tab label="Groups" disableRipple />
         <Tab label="Spots" disableRipple />
         <Tab label="Tags" disableRipple />
+        <Tab label="Sketches" disableRipple />
       </Tabs>
 
       <Box sx={{ flex: 1, overflow: 'auto' }}>
@@ -99,6 +101,9 @@ const Sidebar: React.FC = () => {
         </TabPanel>
         <TabPanel value={activeTab} index={3}>
           <TagsPanel />
+        </TabPanel>
+        <TabPanel value={activeTab} index={4}>
+          <SketchLayersPanel />
         </TabPanel>
       </Box>
 
