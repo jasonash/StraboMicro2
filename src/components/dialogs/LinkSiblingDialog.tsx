@@ -198,6 +198,10 @@ export function LinkSiblingDialog({
             console.log('[LinkSiblingDialog] Regenerating parent thumbnail for:', parentId);
             await window.api?.generateCompositeThumbnail(freshProject.id, parentId, freshProject);
             console.log('[LinkSiblingDialog] Parent thumbnail regenerated');
+            // Dispatch event to notify thumbnail components to reload
+            window.dispatchEvent(
+              new CustomEvent('thumbnail-generated', { detail: { micrographId: parentId } })
+            );
           }
         } catch (error) {
           console.error('[LinkSiblingDialog] Error regenerating parent thumbnail:', error);
