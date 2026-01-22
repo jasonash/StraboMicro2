@@ -1860,10 +1860,10 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                         // Must have pointInParent (point-located micrograph)
                         const pointData = (
                           childMicro as {
-                            pointInParent?: { x?: number; y?: number; X?: number; Y?: number };
+                            pointInParent?: { x?: number; y?: number; X?: number; Y?: number } | null;
                           }
                         ).pointInParent;
-                        return pointData !== undefined;
+                        return pointData != null; // Check for both null and undefined
                       })
                       .map((childMicro) => {
                         const pointData = (
