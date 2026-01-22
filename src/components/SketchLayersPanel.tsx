@@ -47,18 +47,25 @@ export const SketchLayersPanel: React.FC = () => {
 
   // Subscribe directly to the project to ensure we re-render when sketch layers change
   const layers = useAppStore((state) => {
-    if (!activeMicrographId || !state.project) return EMPTY_LAYERS;
+    if (!activeMicrographId || !state.project) {
+      console.log('[SketchLayersPanel] No active micrograph or project');
+      return EMPTY_LAYERS;
+    }
     // Find the micrograph in the project hierarchy
     for (const dataset of state.project.datasets || []) {
       for (const sample of dataset.samples || []) {
         const micro = sample.micrographs?.find(m => m.id === activeMicrographId);
         if (micro) {
+          console.log('[SketchLayersPanel] Found micrograph, sketchLayers:', micro.sketchLayers);
           return micro.sketchLayers ?? EMPTY_LAYERS;
         }
       }
     }
+    console.log('[SketchLayersPanel] Micrograph not found in hierarchy');
     return EMPTY_LAYERS;
   });
+
+  console.log('[SketchLayersPanel] Render - layers.length:', layers.length);
 
   // Context menu state
   const [contextMenuAnchor, setContextMenuAnchor] = useState<HTMLElement | null>(null);
@@ -79,13 +86,21 @@ export const SketchLayersPanel: React.FC = () => {
 
   // Handle creating a new layer
   const handleCreateLayer = () => {
-    if (!activeMicrographId) return;
+    console.log('[SketchLayersPanel] handleCreateLayer called, activeMicrographId:', activeMicrographId);
+    if (!activeMicrographId) {
+      console.log('[SketchLayersPanel] No active micrograph ID, returning');
+      return;
+    }
 
+    console.log('[SketchLayersPanel] Calling addSketchLayer...');
     const layerId = addSketchLayer(activeMicrographId);
+    console.log('[SketchLayersPanel] Layer created with ID:', layerId);
     setActiveSketchLayerId(layerId);
+    console.log('[SketchLayersPanel] Active layer ID set to:', layerId);
 
     // Automatically enter sketch mode when creating a layer
     if (!sketchModeActive) {
+      console.log('[SketchLayersPanel] Entering sketch mode');
       setSketchModeActive(true);
     }
   };

@@ -1264,6 +1264,7 @@ export const useAppStore = create<AppState>()(
           // ========== SKETCH OVERLAY ACTIONS ==========
 
           addSketchLayer: (micrographId, layerOptions = {}) => {
+            console.log('[Store] addSketchLayer called for micrographId:', micrographId);
             const layerId = `sketch-layer-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
             const newLayer: SketchLayer = {
               id: layerId,
@@ -1273,20 +1274,33 @@ export const useAppStore = create<AppState>()(
               strokes: layerOptions.strokes || [],
               textItems: layerOptions.textItems || [],
             };
+            console.log('[Store] Created new layer:', newLayer);
 
             set((state) => {
-              if (!state.project) return state;
+              console.log('[Store] Inside set callback, state.project:', !!state.project);
+              if (!state.project) {
+                console.log('[Store] No project, returning unchanged state');
+                return state;
+              }
 
               const newProject = structuredClone(state.project);
+              console.log('[Store] Cloned project, calling updateMicrograph...');
               const micro = updateMicrograph(newProject, micrographId, (m) => {
+                console.log('[Store] Inside updateMicrograph callback, current sketchLayers:', m.sketchLayers);
                 if (!m.sketchLayers) {
                   m.sketchLayers = [];
                 }
                 m.sketchLayers.push(newLayer);
+                console.log('[Store] After push, sketchLayers:', m.sketchLayers);
               });
 
-              if (!micro) return state;
+              console.log('[Store] updateMicrograph returned:', !!micro);
+              if (!micro) {
+                console.log('[Store] updateMicrograph returned falsy, returning unchanged state');
+                return state;
+              }
 
+              console.log('[Store] Returning new state with layer');
               return {
                 project: newProject,
                 isDirty: true,
@@ -1295,6 +1309,7 @@ export const useAppStore = create<AppState>()(
               };
             });
 
+            console.log('[Store] Returning layerId:', layerId);
             return layerId;
           },
 
