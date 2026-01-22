@@ -948,10 +948,13 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
     /**
      * Get sketch layers for the active micrograph
      */
+    // Stable empty array to prevent unnecessary re-renders
+    const EMPTY_SKETCH_LAYERS: SketchLayer[] = [];
+
     const sketchLayers = useMemo(() => {
-      if (!activeMicrographId) return [];
+      if (!activeMicrographId) return EMPTY_SKETCH_LAYERS;
       const micro = micrographIndex.get(activeMicrographId);
-      return micro?.sketchLayers || [];
+      return micro?.sketchLayers ?? EMPTY_SKETCH_LAYERS;
     }, [micrographIndex, activeMicrographId]);
 
     /**

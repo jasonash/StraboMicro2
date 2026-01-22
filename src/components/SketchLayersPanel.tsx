@@ -5,7 +5,7 @@
  * of sketch layers on the active micrograph.
  */
 
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   Box,
   List,
@@ -29,14 +29,14 @@ import MoreVertIcon from '@mui/icons-material/MoreVert';
 import DeleteIcon from '@mui/icons-material/Delete';
 import EditIcon from '@mui/icons-material/Edit';
 import { useAppStore } from '@/store';
+import type { SketchLayer } from '@/types/project-types';
 
-// Stable empty array to avoid creating new references
-const EMPTY_LAYERS: never[] = [];
+// Stable empty array to prevent unnecessary re-renders
+const EMPTY_LAYERS: SketchLayer[] = [];
 
 export const SketchLayersPanel: React.FC = () => {
   const activeMicrographId = useAppStore((state) => state.activeMicrographId);
   const activeSketchLayerId = useAppStore((state) => state.activeSketchLayerId);
-  const micrographIndex = useAppStore((state) => state.micrographIndex);
   const addSketchLayer = useAppStore((state) => state.addSketchLayer);
   const removeSketchLayer = useAppStore((state) => state.removeSketchLayer);
   const renameSketchLayer = useAppStore((state) => state.renameSketchLayer);
@@ -45,12 +45,20 @@ export const SketchLayersPanel: React.FC = () => {
   const sketchModeActive = useAppStore((state) => state.sketchModeActive);
   const setSketchModeActive = useAppStore((state) => state.setSketchModeActive);
 
-  // Get layers for the active micrograph (using useMemo to avoid creating new array refs)
-  const layers = useMemo(() => {
-    if (!activeMicrographId) return EMPTY_LAYERS;
-    const micro = micrographIndex.get(activeMicrographId);
-    return micro?.sketchLayers || EMPTY_LAYERS;
-  }, [activeMicrographId, micrographIndex]);
+  // Subscribe directly to the project to ensure we re-render when sketch layers change
+  const layers = useAppStore((state) => {
+    if (!activeMicrographId || !state.project) return EMPTY_LAYERS;
+    // Find the micrograph in the project hierarchy
+    for (const dataset of state.project.datasets || []) {
+      for (const sample of dataset.samples || []) {
+        const micro = sample.micrographs?.find(m => m.id === activeMicrographId);
+        if (micro) {
+          return micro.sketchLayers ?? EMPTY_LAYERS;
+        }
+      }
+    }
+    return EMPTY_LAYERS;
+  });
 
   // Context menu state
   const [contextMenuAnchor, setContextMenuAnchor] = useState<HTMLElement | null>(null);
