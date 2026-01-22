@@ -1077,21 +1077,14 @@ export const useAppStore = create<AppState>()(
             const siblingMicro = micrographIndex.get(currentMicro.siblingImageId);
             if (!siblingMicro) return;
 
-            // Calculate zoom scale factor based on image dimensions
-            // If switching to a smaller image, we need higher zoom to show same area
-            const currentWidth = currentMicro.width || currentMicro.imageWidth || 1;
-            const siblingWidth = siblingMicro.width || siblingMicro.imageWidth || 1;
-            const zoomScaleFactor = currentWidth / siblingWidth;
-
-            // Toggle the view and adjust zoom for different image sizes
+            // Toggle the view and cache/restore zoom/pan
             if (!siblingViewActive) {
-              // Switching to sibling view - cache current state and adjust zoom
+              // Switching to sibling view - cache current state
               set({
                 siblingViewActive: true,
                 siblingCachedZoom: zoom,
                 siblingCachedPosition: pan,
                 activeMicrographId: currentMicro.siblingImageId,
-                zoom: zoom * zoomScaleFactor, // Adjust zoom to show same physical area
               });
             } else {
               // Switching back to primary - restore cached state
