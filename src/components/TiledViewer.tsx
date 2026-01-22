@@ -16,6 +16,7 @@ import { useEffect, useRef, useState, useCallback, useImperativeHandle, forwardR
 import { Stage, Layer, Image as KonvaImage, Circle } from 'react-konva';
 import { Box, CircularProgress, Typography, IconButton, Tooltip } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
 import { useAppStore } from '@/store';
 import { getChildMicrographs } from '@/store/helpers';
 import { AssociatedImageRenderer } from './AssociatedImageRenderer';
@@ -139,6 +140,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
     const showRecursiveSpots = useAppStore((state) => state.showRecursiveSpots);
     const showArchivedSpots = useAppStore((state) => state.showArchivedSpots);
     const siblingViewActive = useAppStore((state) => state.siblingViewActive);
+    const toggleSiblingView = useAppStore((state) => state.toggleSiblingView);
     const theme = useAppStore((state) => state.theme);
     const selectActiveSpot = useAppStore((state) => state.selectActiveSpot);
     const selectSpot = useAppStore((state) => state.selectSpot);
@@ -1659,6 +1661,33 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
               size="medium"
             >
               <ArrowBackIcon />
+            </IconButton>
+          </Tooltip>
+        )}
+
+        {/* PPL/XPL Toggle button - shows when viewing a micrograph with a sibling */}
+        {activeMicrograph?.siblingImageId && (
+          <Tooltip
+            title={`Toggle to ${siblingViewActive ? 'PPL' : 'XPL'} view (X)`}
+            placement="left"
+          >
+            <IconButton
+              onClick={toggleSiblingView}
+              sx={{
+                position: 'absolute',
+                top: showRulers ? 40 : 10,
+                right: 10,
+                zIndex: 1001,
+                bgcolor: 'rgba(0, 0, 0, 0.7)',
+                color: 'white',
+                '&:hover': {
+                  bgcolor: 'rgba(0, 0, 0, 0.85)',
+                },
+                boxShadow: '0 2px 8px rgba(0, 0, 0, 0.3)',
+              }}
+              size="medium"
+            >
+              <SwapHorizIcon />
             </IconButton>
           </Tooltip>
         )}
