@@ -4,8 +4,9 @@
  * Displays metadata for the currently selected micrograph or spot.
  * Provides a dropdown menu to add/edit various types of geological data.
  *
- * Two-tab layout:
+ * Tab layout:
  * - Micrograph/Spot tab: Shows metadata for the selected micrograph or spot
+ * - Sketches tab: Sketch layer management (only shown when micrograph is selected)
  * - Project tab: Shows project-level metadata
  */
 
@@ -257,6 +258,12 @@ export function PropertiesPanel() {
   // Determine the first tab label based on selection
   const firstTabLabel = activeSpotId ? 'Spot' : 'Micrograph';
 
+  // Determine if we should show the Sketches tab (only for micrographs, not spots)
+  const showSketchesTab = !activeSpotId && activeMicrographId;
+
+  // Calculate tab indices based on whether Sketches tab is shown
+  const projectTabIndex = showSketchesTab ? 2 : 1;
+
   return (
     <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
       {/* Tab Bar */}
@@ -279,6 +286,7 @@ export function PropertiesPanel() {
         }}
       >
         <Tab label={firstTabLabel} disableRipple />
+        {showSketchesTab && <Tab label="Sketches" disableRipple />}
         <Tab label="Project" disableRipple />
       </Tabs>
 
@@ -305,27 +313,6 @@ export function PropertiesPanel() {
               onDeleteSpot={() => setConfirmDelete('spot')}
               isDownloading={isExporting}
             />
-
-            {/* Sketch Layers Panel (only for micrographs) */}
-            {selectionType === 'micrograph' && activeMicrographId && (
-              <Box sx={{ mb: 3 }}>
-                <Typography variant="subtitle1" sx={{ mb: 1, fontWeight: 600 }}>
-                  Sketch Layers:
-                </Typography>
-                <Box
-                  sx={{
-                    border: 1,
-                    borderColor: 'divider',
-                    borderRadius: 1,
-                    maxHeight: '300px',
-                    display: 'flex',
-                    flexDirection: 'column'
-                  }}
-                >
-                  <SketchLayersPanel />
-                </Box>
-              </Box>
-            )}
 
             {/* Combined Data Type Selector */}
             <Typography variant="subtitle1" sx={{ mb: 1, fontWeight: 600 }}>
@@ -420,8 +407,22 @@ export function PropertiesPanel() {
         )}
       </TabPanel>
 
+      {/* Sketches Tab (only shown for micrographs) */}
+      {showSketchesTab && (
+        <TabPanel value={activeTab} index={1}>
+          <Box sx={{ p: 2, height: '100%', display: 'flex', flexDirection: 'column' }}>
+            <Typography variant="h6" sx={{ mb: 2, fontWeight: 600 }}>
+              Sketch Layers
+            </Typography>
+            <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+              <SketchLayersPanel />
+            </Box>
+          </Box>
+        </TabPanel>
+      )}
+
       {/* Project Tab */}
-      <TabPanel value={activeTab} index={1}>
+      <TabPanel value={activeTab} index={projectTabIndex}>
         {!project ? (
           <Box sx={{ p: 2, height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center' }}>
