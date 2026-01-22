@@ -257,15 +257,6 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
       return activeMicrograph.spots || [];
     }, [activeMicrograph, project]);
 
-    // Calculate effective image dimensions (accounting for siblingScaleFactor when viewing XPL)
-    // When viewing a secondary sibling with different dimensions, scale it to match the primary's size
-    const siblingScaleFactor = useMemo(() => {
-      if (siblingViewActive && activeMicrograph?.siblingScaleFactor) {
-        return activeMicrograph.siblingScaleFactor;
-      }
-      return 1;
-    }, [siblingViewActive, activeMicrograph?.siblingScaleFactor]);
-
     // Drawing hooks for polygon and line tools
     const polygonDrawing = usePolygonDrawing({
       layer: drawingLayerRef.current,
@@ -1505,9 +1496,8 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
      */
     const handleResetZoom = useCallback(() => {
       if (!imageMetadata) return;
-      // Apply siblingScaleFactor when fitting to screen (so XPL fits same as PPL would)
-      fitToScreen(imageMetadata.width * siblingScaleFactor, imageMetadata.height * siblingScaleFactor);
-    }, [imageMetadata, fitToScreen, siblingScaleFactor]);
+      fitToScreen(imageMetadata.width, imageMetadata.height);
+    }, [imageMetadata, fitToScreen]);
 
     /**
      * Zoom in/out by a factor, centered on viewport
@@ -1798,7 +1788,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                       : 'grab',
                 }}
               >
-                <Layer key="image-layer" x={position.x} y={position.y} scaleX={zoom * siblingScaleFactor} scaleY={zoom * siblingScaleFactor}>
+                <Layer key="image-layer" x={position.x} y={position.y} scaleX={zoom} scaleY={zoom}>
                   {/* Progressive loading: Show thumbnail first, then switch to tiles */}
                   {renderMode === 'thumbnail' && thumbnail && (
                     <KonvaImage
@@ -2098,7 +2088,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                       : 'grab',
                 }}
               >
-                <Layer key="image-layer" x={position.x} y={position.y} scaleX={zoom * siblingScaleFactor} scaleY={zoom * siblingScaleFactor}>
+                <Layer key="image-layer" x={position.x} y={position.y} scaleX={zoom} scaleY={zoom}>
                   {/* Progressive loading: Show thumbnail first, then switch to tiles */}
                   {renderMode === 'thumbnail' && thumbnail && (
                     <KonvaImage
