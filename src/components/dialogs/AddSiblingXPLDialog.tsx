@@ -46,10 +46,14 @@ export function AddSiblingXPLDialog({
     percent: number;
   } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [dimensionError, setDimensionError] = useState<string | null>(null);
 
   const project = useAppStore((state) => state.project);
   const addMicrograph = useAppStore((state) => state.addMicrograph);
   const linkSiblingImages = useAppStore((state) => state.linkSiblingImages);
+
+  // Aspect ratio tolerance for sibling matching (1%)
+  const ASPECT_RATIO_TOLERANCE = 0.01;
 
   // Find the PPL micrograph and its sample
   const { pplMicrograph, sampleId } = (() => {
@@ -78,15 +82,17 @@ export function AddSiblingXPLDialog({
       setLoading(false);
       setConversionProgress(null);
       setError(null);
+      setDimensionError(null);
     }
   }, [open]);
 
   // Handle file selection
   const handleBrowseImage = useCallback(async () => {
-    if (!window.api?.openTiffDialog) return;
+    if (!window.api?.openTiffDialog || !pplMicrograph) return;
 
     try {
       setError(null);
+      setDimensionError(null);
       const filePath = await window.api.openTiffDialog();
       if (!filePath) return;
 
@@ -114,9 +120,39 @@ export function AddSiblingXPLDialog({
         throw new Error('Image conversion failed');
       }
 
+      // Get PPL dimensions for validation
+      const pplWidth = pplMicrograph?.width || pplMicrograph?.imageWidth || 0;
+      const pplHeight = pplMicrograph?.height || pplMicrograph?.imageHeight || 0;
+      const xplWidth = conversionResult.jpegWidth;
+      const xplHeight = conversionResult.jpegHeight;
+
+      // Validate aspect ratios match
+      if (pplWidth > 0 && pplHeight > 0 && xplWidth > 0 && xplHeight > 0) {
+        const pplAspectRatio = pplWidth / pplHeight;
+        const xplAspectRatio = xplWidth / xplHeight;
+        const aspectDiff = Math.abs(pplAspectRatio - xplAspectRatio);
+        const tolerance = ASPECT_RATIO_TOLERANCE * Math.max(pplAspectRatio, xplAspectRatio);
+
+        if (aspectDiff > tolerance) {
+          // Aspect ratios don't match - clean up and show error
+          if (window.api.deleteScratchImage) {
+            await window.api.deleteScratchImage(conversionResult.identifier);
+          }
+          setDimensionError(
+            `The XPL image dimensions (${xplWidth} × ${xplHeight}) are not compatible with ` +
+            `the PPL image (${pplWidth} × ${pplHeight}). Both images must have the same aspect ratio.`
+          );
+          setConversionProgress(null);
+          setLoading(false);
+          return;
+        }
+      }
+
+      // Dimensions are compatible
+      setDimensionError(null);
       setScratchIdentifier(conversionResult.identifier);
-      setImageWidth(conversionResult.jpegWidth);
-      setImageHeight(conversionResult.jpegHeight);
+      setImageWidth(xplWidth);
+      setImageHeight(xplHeight);
 
       // Load preview thumbnail
       const tileData = await window.api.loadImageWithTiles(conversionResult.scratchPath);
@@ -132,7 +168,7 @@ export function AddSiblingXPLDialog({
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [pplMicrograph, ASPECT_RATIO_TOLERANCE]);
 
   // Handle adding the XPL image
   const handleAdd = useCallback(async () => {
@@ -232,7 +268,7 @@ export function AddSiblingXPLDialog({
     }
   }, [pplMicrograph, sampleId, scratchIdentifier, project, xplName, xplFileName, imageWidth, imageHeight, addMicrograph, linkSiblingImages, onClose]);
 
-  const canAdd = scratchIdentifier && xplName && !loading;
+  const canAdd = scratchIdentifier && xplName && !loading && !dimensionError;
 
   return (
     <Dialog
@@ -258,6 +294,12 @@ export function AddSiblingXPLDialog({
             {error && (
               <Alert severity="error" onClose={() => setError(null)}>
                 {error}
+              </Alert>
+            )}
+
+            {dimensionError && (
+              <Alert severity="error" onClose={() => setDimensionError(null)}>
+                {dimensionError}
               </Alert>
             )}
 
