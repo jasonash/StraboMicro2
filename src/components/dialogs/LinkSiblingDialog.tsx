@@ -167,8 +167,8 @@ export function LinkSiblingDialog({
     }
   }, [open]);
 
-  const handleLink = useCallback(() => {
-    if (!sourceMicrograph || !selectedCandidateId) return;
+  const handleLink = useCallback(async () => {
+    if (!sourceMicrograph || !selectedCandidateId || !project) return;
 
     // Determine which is primary (PPL) and which is secondary (XPL)
     // PPL is typically considered the primary view
@@ -183,8 +183,22 @@ export function LinkSiblingDialog({
       linkSiblingImages(selectedCandidateId, sourceMicrograph.id);
     }
 
+    // Regenerate parent's composite thumbnail since XPL position changed
+    const parentId = sourceMicrograph.parentID;
+    if (parentId) {
+      try {
+        // Get fresh project state after linking
+        const freshProject = useAppStore.getState().project;
+        if (freshProject) {
+          await window.api?.generateCompositeThumbnail(freshProject.id, parentId, freshProject);
+        }
+      } catch (error) {
+        console.error('[LinkSiblingDialog] Error regenerating parent thumbnail:', error);
+      }
+    }
+
     onClose();
-  }, [sourceMicrograph, selectedCandidateId, linkSiblingImages, onClose]);
+  }, [sourceMicrograph, selectedCandidateId, project, linkSiblingImages, onClose]);
 
   const selectedCandidate = candidates.find(c => c.id === selectedCandidateId);
 

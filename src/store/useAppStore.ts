@@ -1105,7 +1105,23 @@ export const useAppStore = create<AppState>()(
 
             const newProject = structuredClone(state.project);
 
-            // Update both micrographs with bidirectional link
+            // First pass: find the primary micrograph and its position data
+            let primaryMicro: MicrographMetadata | null = null;
+            for (const dataset of newProject.datasets || []) {
+              for (const sample of dataset.samples || []) {
+                for (const micro of sample.micrographs || []) {
+                  if (micro.id === primaryId) {
+                    primaryMicro = micro;
+                    break;
+                  }
+                }
+                if (primaryMicro) break;
+              }
+              if (primaryMicro) break;
+            }
+
+            // Second pass: update both micrographs with bidirectional link
+            // and copy position from primary to secondary
             for (const dataset of newProject.datasets || []) {
               for (const sample of dataset.samples || []) {
                 for (const micro of sample.micrographs || []) {
@@ -1115,6 +1131,18 @@ export const useAppStore = create<AppState>()(
                   } else if (micro.id === secondaryId) {
                     micro.siblingImageId = primaryId;
                     micro.isPrimarySibling = false;
+                    // Copy position from primary to secondary (XPL inherits PPL's position)
+                    if (primaryMicro) {
+                      micro.offsetInParent = primaryMicro.offsetInParent
+                        ? { ...primaryMicro.offsetInParent }
+                        : null;
+                      micro.rotation = primaryMicro.rotation;
+                      micro.scaleX = primaryMicro.scaleX;
+                      micro.scaleY = primaryMicro.scaleY;
+                      micro.pointInParent = primaryMicro.pointInParent
+                        ? { ...primaryMicro.pointInParent }
+                        : null;
+                    }
                   }
                 }
               }
