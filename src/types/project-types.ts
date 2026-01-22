@@ -254,6 +254,10 @@ export interface MicrographMetadata {
   /** Scale factor to match sibling dimensions at render-time (if aspect ratios match but sizes differ) */
   siblingScaleFactor?: number | null;
 
+  // ========== SKETCH OVERLAY LAYERS ==========
+  /** Sketch overlay layers for freeform annotations on this micrograph */
+  sketchLayers?: SketchLayer[] | null;
+
   // UI state (not serialized, runtime only)
   isExpanded?: boolean | null;
   isSpotExpanded?: boolean | null;
@@ -403,6 +407,86 @@ export interface LineStringGeometry extends Geometry {
 export interface PolygonGeometry extends Geometry {
   type: 'Polygon';
   coordinates: Array<Array<[number, number]>>;
+}
+
+// ============================================================================
+// SKETCH OVERLAY TYPES
+// ============================================================================
+
+/**
+ * A single freeform stroke in a sketch layer
+ */
+export interface SketchStroke {
+  /** Unique identifier */
+  id: string;
+
+  /** Flat array of coordinates [x1,y1,x2,y2,...] in image space */
+  points: number[];
+
+  /** Stroke color (hex string, e.g., "#ff0000") */
+  color: string;
+
+  /** Stroke width in image pixels */
+  strokeWidth: number;
+
+  /** Opacity 0-1 (pen=1.0, marker=0.4) */
+  opacity: number;
+
+  /** Tool used to create this stroke */
+  tool: 'pen' | 'marker';
+}
+
+/**
+ * A text annotation in a sketch layer
+ */
+export interface SketchText {
+  /** Unique identifier */
+  id: string;
+
+  /** X position in image coordinates */
+  x: number;
+
+  /** Y position in image coordinates */
+  y: number;
+
+  /** The text content */
+  text: string;
+
+  /** Font size in image pixels */
+  fontSize: number;
+
+  /** Font family name */
+  fontFamily: string;
+
+  /** Text color (hex string) */
+  color: string;
+
+  /** Rotation in degrees (optional) */
+  rotation?: number;
+}
+
+/**
+ * A sketch layer containing freeform annotations
+ * Think of it as an "acetate overlay" on top of the micrograph
+ */
+export interface SketchLayer {
+  /** Unique identifier */
+  id: string;
+
+  /** User-editable layer name */
+  name: string;
+
+  /** Whether layer is currently visible */
+  visible: boolean;
+
+  /** ISO timestamp of creation */
+  createdAt: string;
+
+  /** Freeform strokes in this layer */
+  strokes: SketchStroke[];
+
+  /** Text annotations in this layer */
+  textItems: SketchText[];
 }
 
 // ============================================================================
