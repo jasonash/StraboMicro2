@@ -186,6 +186,26 @@ export function AddSiblingXPLDialog({
       console.log(`[AddSiblingXPLDialog] Moving XPL image to project folder: ${xplMicrographId}`);
       await window.api.moveFromScratch(scratchIdentifier, project.id, xplMicrographId);
 
+      // Calculate scale factor if XPL has different dimensions than PPL
+      // This ensures the XPL renders at the same size as the PPL
+      const pplWidth = pplMicrograph.width || pplMicrograph.imageWidth || 0;
+      let siblingScaleFactor: number | undefined;
+      let adjustedScaleX = pplMicrograph.scaleX;
+      let adjustedScaleY = pplMicrograph.scaleY;
+
+      if (pplWidth > 0 && imageWidth > 0 && pplWidth !== imageWidth) {
+        // XPL needs to be scaled to match PPL's rendered size
+        siblingScaleFactor = pplWidth / imageWidth;
+        console.log(`[AddSiblingXPLDialog] XPL needs scaling: factor = ${siblingScaleFactor}`);
+
+        // Adjust scaleX/scaleY to render at same size as PPL
+        // If PPL has scaleX=1 and XPL is half the size, XPL needs scaleX=2
+        const baseScaleX = pplMicrograph.scaleX ?? 1;
+        const baseScaleY = pplMicrograph.scaleY ?? 1;
+        adjustedScaleX = baseScaleX * siblingScaleFactor;
+        adjustedScaleY = baseScaleY * siblingScaleFactor;
+      }
+
       // Create XPL micrograph - inherits position and instrument from PPL
       const xplMicrograph: MicrographMetadata = {
         id: xplMicrographId,
@@ -204,8 +224,11 @@ export function AddSiblingXPLDialog({
           ? { ...pplMicrograph.offsetInParent }
           : undefined,
         rotation: pplMicrograph.rotation,
-        scaleX: pplMicrograph.scaleX,
-        scaleY: pplMicrograph.scaleY,
+        // Use adjusted scale to match PPL's rendered size
+        scaleX: adjustedScaleX,
+        scaleY: adjustedScaleY,
+        // Store scale factor for sibling toggle rendering
+        siblingScaleFactor: siblingScaleFactor,
         pointInParent: pplMicrograph.pointInParent
           ? { ...pplMicrograph.pointInParent }
           : undefined,
