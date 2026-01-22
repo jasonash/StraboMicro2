@@ -419,6 +419,10 @@ function serializeMicrograph(micrograph) {
     affineTransformedWidth: micrograph.affineTransformedWidth || undefined,
     affineTransformedHeight: micrograph.affineTransformedHeight || undefined,
     affineTileHash: micrograph.affineTileHash || undefined,
+    // XPL/PPL sibling pairing
+    siblingImageId: micrograph.siblingImageId || undefined,
+    isPrimarySibling: micrograph.isPrimarySibling !== undefined ? micrograph.isPrimarySibling : undefined,
+    siblingScaleFactor: roundForDb(micrograph.siblingScaleFactor) || undefined,
   };
 }
 
@@ -606,6 +610,10 @@ function deserializeMicrograph(micrograph) {
     affineTransformedWidth: micrograph.affineTransformedWidth,
     affineTransformedHeight: micrograph.affineTransformedHeight,
     affineTileHash: micrograph.affineTileHash,
+    // XPL/PPL sibling pairing
+    siblingImageId: micrograph.siblingImageId,
+    isPrimarySibling: micrograph.isPrimarySibling,
+    siblingScaleFactor: micrograph.siblingScaleFactor,
   };
 }
 

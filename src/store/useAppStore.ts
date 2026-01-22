@@ -223,6 +223,14 @@ interface AppState {
   /** Filter applied when entering Quick Edit */
   quickEditFilter: 'all' | 'unclassified';
 
+  // ========== XPL/PPL SIBLING VIEW STATE ==========
+  /** Whether currently viewing the sibling (XPL) instead of primary (PPL) */
+  siblingViewActive: boolean;
+  /** Cached zoom level before toggling to sibling */
+  siblingCachedZoom: number | null;
+  /** Cached pan position before toggling to sibling */
+  siblingCachedPosition: { x: number; y: number } | null;
+
   // ========== GENERATION SETTINGS (persisted) ==========
   /** Last used point counting settings */
   lastPointCountSettings: {
@@ -275,6 +283,16 @@ interface AppState {
 
   // ========== SPLIT MODE ACTIONS ==========
   setSplitModeSpotId: (spotId: string | null) => void;
+
+  // ========== XPL/PPL SIBLING ACTIONS ==========
+  /** Toggle between PPL (primary) and XPL (sibling) view */
+  toggleSiblingView: () => void;
+  /** Link two micrographs as PPL/XPL siblings (bidirectional) */
+  linkSiblingImages: (primaryId: string, secondaryId: string) => void;
+  /** Remove sibling link from both micrographs */
+  unlinkSiblingImages: (micrographId: string) => void;
+  /** Get the sibling ID for a micrograph (if any) */
+  getSiblingId: (micrographId: string | null) => string | null;
 
   // ========== CRUD: DATASET ==========
   addDataset: (dataset: DatasetMetadata) => void;
@@ -829,6 +847,11 @@ export const useAppStore = create<AppState>()(
           quickEditSortOrder: 'spatial' as const,
           quickEditFilter: 'all' as const,
 
+          // XPL/PPL sibling view state
+          siblingViewActive: false,
+          siblingCachedZoom: null,
+          siblingCachedPosition: null,
+
           // Generation settings (persisted defaults)
           lastPointCountSettings: null,
           lastGrainDetectionSettings: null,
@@ -853,6 +876,9 @@ export const useAppStore = create<AppState>()(
               micrographNavigationStack: [],
               selectedSpotIds: [],
               spotLassoToolActive: false,
+              siblingViewActive: false,
+              siblingCachedZoom: null,
+              siblingCachedPosition: null,
               micrographIndex,
               spotIndex,
             });
@@ -869,6 +895,9 @@ export const useAppStore = create<AppState>()(
             micrographNavigationStack: [],
             selectedSpotIds: [],
             spotLassoToolActive: false,
+            siblingViewActive: false,
+            siblingCachedZoom: null,
+            siblingCachedPosition: null,
             micrographIndex: new Map(),
             spotIndex: new Map(),
           }),
@@ -928,6 +957,9 @@ export const useAppStore = create<AppState>()(
               activeMicrographId: id,
               activeSpotId: null,
               micrographNavigationStack: [], // Clear stack when selecting from sidebar
+              siblingViewActive: false, // Reset sibling view when changing micrograph
+              siblingCachedZoom: null,
+              siblingCachedPosition: null,
             });
             return true;
           },
@@ -1032,6 +1064,120 @@ export const useAppStore = create<AppState>()(
 
           // ========== SPLIT MODE ACTIONS ==========
           setSplitModeSpotId: (spotId) => set({ splitModeSpotId: spotId }),
+
+          // ========== XPL/PPL SIBLING ACTIONS ==========
+
+          toggleSiblingView: () => {
+            const { activeMicrographId, siblingViewActive, zoom, pan, micrographIndex } = get();
+            if (!activeMicrographId) return;
+
+            const currentMicro = micrographIndex.get(activeMicrographId);
+            if (!currentMicro?.siblingImageId) return;
+
+            const siblingMicro = micrographIndex.get(currentMicro.siblingImageId);
+            if (!siblingMicro) return;
+
+            // Toggle the view and cache/restore zoom/pan
+            if (!siblingViewActive) {
+              // Switching to sibling view - cache current state
+              set({
+                siblingViewActive: true,
+                siblingCachedZoom: zoom,
+                siblingCachedPosition: pan,
+                activeMicrographId: currentMicro.siblingImageId,
+              });
+            } else {
+              // Switching back to primary - restore cached state
+              const { siblingCachedZoom, siblingCachedPosition } = get();
+              set({
+                siblingViewActive: false,
+                activeMicrographId: currentMicro.siblingImageId,
+                zoom: siblingCachedZoom ?? zoom,
+                pan: siblingCachedPosition ?? pan,
+                siblingCachedZoom: null,
+                siblingCachedPosition: null,
+              });
+            }
+          },
+
+          linkSiblingImages: (primaryId, secondaryId) => set((state) => {
+            if (!state.project) return state;
+
+            const newProject = structuredClone(state.project);
+
+            // Update both micrographs with bidirectional link
+            for (const dataset of newProject.datasets || []) {
+              for (const sample of dataset.samples || []) {
+                for (const micro of sample.micrographs || []) {
+                  if (micro.id === primaryId) {
+                    micro.siblingImageId = secondaryId;
+                    micro.isPrimarySibling = true;
+                  } else if (micro.id === secondaryId) {
+                    micro.siblingImageId = primaryId;
+                    micro.isPrimarySibling = false;
+                  }
+                }
+              }
+            }
+
+            return {
+              project: newProject,
+              isDirty: true,
+              micrographIndex: buildMicrographIndex(newProject),
+            };
+          }),
+
+          unlinkSiblingImages: (micrographId) => set((state) => {
+            if (!state.project) return state;
+
+            const newProject = structuredClone(state.project);
+
+            // Find the micrograph and its sibling
+            let siblingId: string | null = null;
+            for (const dataset of newProject.datasets || []) {
+              for (const sample of dataset.samples || []) {
+                for (const micro of sample.micrographs || []) {
+                  if (micro.id === micrographId && micro.siblingImageId) {
+                    siblingId = micro.siblingImageId;
+                    micro.siblingImageId = null;
+                    micro.isPrimarySibling = null;
+                    micro.siblingScaleFactor = null;
+                  }
+                }
+              }
+            }
+
+            // Also clear the sibling's link
+            if (siblingId) {
+              for (const dataset of newProject.datasets || []) {
+                for (const sample of dataset.samples || []) {
+                  for (const micro of sample.micrographs || []) {
+                    if (micro.id === siblingId) {
+                      micro.siblingImageId = null;
+                      micro.isPrimarySibling = null;
+                      micro.siblingScaleFactor = null;
+                    }
+                  }
+                }
+              }
+            }
+
+            return {
+              project: newProject,
+              isDirty: true,
+              micrographIndex: buildMicrographIndex(newProject),
+              siblingViewActive: false,
+              siblingCachedZoom: null,
+              siblingCachedPosition: null,
+            };
+          }),
+
+          getSiblingId: (micrographId) => {
+            if (!micrographId) return null;
+            const { micrographIndex } = get();
+            const micro = micrographIndex.get(micrographId);
+            return micro?.siblingImageId ?? null;
+          },
 
           // ========== CRUD: DATASET ==========
 

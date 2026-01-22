@@ -246,6 +246,14 @@ export interface MicrographMetadata {
   extinctionMicrostructureInfo?: ExtinctionMicrostructureInfoType | null;
   lithologyInfo?: LithologyInfoType | null;
 
+  // ========== XPL/PPL SIBLING PAIRING ==========
+  /** ID of the paired sibling micrograph (bidirectional link for PPL/XPL pairs) */
+  siblingImageId?: string | null;
+  /** Whether this is the primary image shown in tree (PPL=true, XPL=false) */
+  isPrimarySibling?: boolean | null;
+  /** Scale factor to match sibling dimensions at render-time (if aspect ratios match but sizes differ) */
+  siblingScaleFactor?: number | null;
+
   // UI state (not serialized, runtime only)
   isExpanded?: boolean | null;
   isSpotExpanded?: boolean | null;

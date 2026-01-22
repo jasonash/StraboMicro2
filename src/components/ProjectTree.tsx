@@ -19,6 +19,7 @@ import {
   Popover,
   Slider,
   Tooltip,
+  Chip,
 } from '@mui/material';
 import {
   ExpandMore,
@@ -65,6 +66,7 @@ import { EditMicrographDialog } from './dialogs/metadata/EditMicrographDialog';
 import { EditMicrographLocationDialog } from './dialogs/EditMicrographLocationDialog';
 import { BatchImportDialog } from './dialogs/BatchImportDialog';
 import { SetScaleDialog } from './dialogs/SetScaleDialog';
+import { LinkSiblingDialog } from './dialogs/LinkSiblingDialog';
 import { findMicrographById } from '@/store/helpers';
 import type { DatasetMetadata, SampleMetadata, MicrographMetadata } from '@/types/project-types';
 
@@ -298,6 +300,7 @@ export function ProjectTree() {
   const reorderMicrographs = useAppStore((state) => state.reorderMicrographs);
   const reorderSamples = useAppStore((state) => state.reorderSamples);
   const reorderDatasets = useAppStore((state) => state.reorderDatasets);
+  const unlinkSiblingImages = useAppStore((state) => state.unlinkSiblingImages);
 
   // Drag and drop sensors with activation constraint to distinguish from clicks
   const sensors = useSensors(
@@ -352,6 +355,10 @@ export function ProjectTree() {
   // Set scale dialog state (for batch-imported reference micrographs)
   const [showSetScale, setShowSetScale] = useState(false);
   const [setScaleMicrographId, setSetScaleMicrographId] = useState<string | null>(null);
+
+  // Link Sibling dialog state (for PPL/XPL pairing)
+  const [showLinkSibling, setShowLinkSibling] = useState(false);
+  const [linkSiblingMicrographId, setLinkSiblingMicrographId] = useState<string | null>(null);
 
   // Opacity popover state (use position instead of element to avoid anchor disappearing)
   const [opacityAnchorPosition, setOpacityAnchorPosition] = useState<{
@@ -605,7 +612,14 @@ export function ProjectTree() {
     micrographs: MicrographMetadata[],
     parentId: string | null = null
   ): MicrographMetadata[] => {
-    return micrographs.filter((m) => (m.parentID || null) === parentId);
+    return micrographs.filter((m) => {
+      // Filter by parent ID
+      if ((m.parentID || null) !== parentId) return false;
+      // Filter out secondary siblings (XPL images) - only show primary (PPL)
+      // isPrimarySibling is true for primary (show), false for secondary (hide), null/undefined for no sibling
+      if (m.isPrimarySibling === false) return false;
+      return true;
+    });
   };
 
   // Handle drag end for micrograph reordering
@@ -884,6 +898,22 @@ export function ProjectTree() {
               {micrograph.name || micrograph.imageFilename || 'Unnamed Micrograph'}
               {isReference && ' (Reference)'}
             </Typography>
+            {/* PPL/XPL indicator for micrographs with siblings */}
+            {micrograph.siblingImageId && (
+              <Tooltip title="Has PPL/XPL pair - Press X to toggle" placement="top">
+                <Chip
+                  label="PPL/XPL"
+                  size="small"
+                  sx={{
+                    ml: 0.5,
+                    height: 18,
+                    fontSize: '0.65rem',
+                    bgcolor: 'info.main',
+                    color: 'info.contrastText',
+                  }}
+                />
+              </Tooltip>
+            )}
           </Stack>
 
           {/* Thumbnail + Button Column */}
@@ -1060,6 +1090,27 @@ export function ProjectTree() {
           >
             Delete Micrograph
           </MenuItem>
+          {/* PPL/XPL Sibling Pairing */}
+          {!micrograph.siblingImageId ? (
+            <MenuItem
+              onClick={() => {
+                setLinkSiblingMicrographId(micrograph.id);
+                setShowLinkSibling(true);
+                setMicrographOptionsAnchor({ ...micrographOptionsAnchor, [micrograph.id]: null });
+              }}
+            >
+              Link Sibling PPL/XPL Image
+            </MenuItem>
+          ) : (
+            <MenuItem
+              onClick={() => {
+                unlinkSiblingImages(micrograph.id);
+                setMicrographOptionsAnchor({ ...micrographOptionsAnchor, [micrograph.id]: null });
+              }}
+            >
+              Unlink Sibling Image
+            </MenuItem>
+          )}
           {/* Show/Hide All Associated Micrographs - only if has children */}
           {hasChildren && (
             <>
@@ -1733,6 +1784,16 @@ export function ProjectTree() {
           micrographId={setScaleMicrographId}
         />
       )}
+
+      {/* Link Sibling PPL/XPL Dialog */}
+      <LinkSiblingDialog
+        open={showLinkSibling}
+        onClose={() => {
+          setShowLinkSibling(false);
+          setLinkSiblingMicrographId(null);
+        }}
+        micrographId={linkSiblingMicrographId}
+      />
 
       {/* Opacity Slider Popover */}
       <Popover

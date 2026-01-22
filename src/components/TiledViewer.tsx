@@ -86,6 +86,8 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
     const drawingLayerRef = useRef<any>(null);
     const loadingSessionRef = useRef<number>(0); // Track current loading session to abort stale loads
     const pendingTileImagesRef = useRef<Set<HTMLImageElement>>(new Set()); // Track Image objects for cleanup
+    const prevSiblingViewActiveRef = useRef<boolean>(false); // Track previous siblingViewActive for toggle detection
+    const preservedViewStateRef = useRef<{ zoom: number; position: { x: number; y: number } } | null>(null); // Preserved zoom/pan during sibling toggle
 
     // State
     const [stageSize, setStageSize] = useState({ width: 800, height: 600 });
@@ -135,6 +137,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
     const showMicrographOutlines = useAppStore((state) => state.showMicrographOutlines);
     const showRecursiveSpots = useAppStore((state) => state.showRecursiveSpots);
     const showArchivedSpots = useAppStore((state) => state.showArchivedSpots);
+    const siblingViewActive = useAppStore((state) => state.siblingViewActive);
     const theme = useAppStore((state) => state.theme);
     const selectActiveSpot = useAppStore((state) => state.selectActiveSpot);
     const selectSpot = useAppStore((state) => state.selectSpot);
@@ -339,6 +342,16 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
         return;
       }
 
+      // Detect sibling toggle: siblingViewActive changed since last image load
+      const isSiblingToggle = siblingViewActive !== prevSiblingViewActiveRef.current;
+      prevSiblingViewActiveRef.current = siblingViewActive;
+
+      // If sibling toggle, preserve current zoom/position for restoration after load
+      if (isSiblingToggle) {
+        preservedViewStateRef.current = { zoom, position };
+        console.log('[TiledViewer] Sibling toggle detected, preserving view state:', { zoom, position });
+      }
+
       // Increment session ID to invalidate any in-progress loads
       const currentSession = ++loadingSessionRef.current;
 
@@ -356,8 +369,12 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
         // Clear previous image state immediately
         setImageMetadata(null);
         setRenderMode('thumbnail');
-        setZoom(1);
-        setPosition({ x: 0, y: 0 });
+
+        // Only reset zoom/position if NOT a sibling toggle
+        if (!isSiblingToggle) {
+          setZoom(1);
+          setPosition({ x: 0, y: 0 });
+        }
 
         try {
           console.log('=== Progressive Loading: Step 1 - Load metadata ===');
@@ -414,8 +431,16 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
             dataUrl: thumbnailDataUrl,
           });
 
-          // Fit thumbnail to screen
-          fitToScreen(result.metadata.width, result.metadata.height);
+          // Restore preserved zoom/position for sibling toggle, otherwise fit to screen
+          if (isSiblingToggle && preservedViewStateRef.current) {
+            console.log('[TiledViewer] Restoring preserved view state:', preservedViewStateRef.current);
+            setZoom(preservedViewStateRef.current.zoom);
+            setPosition(preservedViewStateRef.current.position);
+            preservedViewStateRef.current = null;
+          } else {
+            // Fit thumbnail to screen
+            fitToScreen(result.metadata.width, result.metadata.height);
+          }
 
           setIsLoading(false);
           console.log('=== Thumbnail displayed, user can now interact ===');
@@ -444,7 +469,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
         // Aggressive cleanup
         cleanupTileMemoryRef.current();
       };
-    }, [imagePath]);
+    }, [imagePath, siblingViewActive]);
 
     /**
      * Handle keyboard events (e.g., Escape to cancel editing mode)

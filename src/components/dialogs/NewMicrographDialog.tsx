@@ -1398,6 +1398,10 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
         useAppStore.getState().addMicrograph(targetSampleId, xplMicrograph);
         console.log('XPL micrograph created successfully:', xplMicrograph.id);
 
+        // Link PPL and XPL as siblings (PPL is primary, XPL is secondary)
+        useAppStore.getState().linkSiblingImages(micrograph.id, xplMicrograph.id);
+        console.log('PPL/XPL sibling link created:', micrograph.id, '<->', xplMicrograph.id);
+
         // Clear XPL scratch identifier since it's been moved
         setXplScratchIdentifier(null);
       }

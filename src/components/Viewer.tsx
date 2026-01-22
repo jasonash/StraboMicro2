@@ -18,6 +18,9 @@ const Viewer: React.FC = () => {
   const activeSpotId = useAppStore((state) => state.activeSpotId);
   const selectedSpotIds = useAppStore((state) => state.selectedSpotIds);
   const setViewerRef = useAppStore((state) => state.setViewerRef);
+  const quickClassifyVisible = useAppStore((state) => state.quickClassifyVisible);
+  const toggleSiblingView = useAppStore((state) => state.toggleSiblingView);
+  const getSiblingId = useAppStore((state) => state.getSiblingId);
 
   // Get names for status bar title
   const activeMicrograph = activeMicrographId ? findMicrographById(project, activeMicrographId) : null;
@@ -151,6 +154,32 @@ const Viewer: React.FC = () => {
       document.removeEventListener('mouseup', handleMouseUp);
     };
   }, []);
+
+  // Keyboard shortcut for XPL/PPL toggle (X key)
+  // Only active when Quick Classify toolbar is NOT visible (X is used for pyroxene there)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Only trigger if:
+      // 1. Key is X
+      // 2. Quick Classify toolbar is NOT visible
+      // 3. Not in an input field
+      // 4. Active micrograph has a sibling
+      if (
+        e.key.toLowerCase() === 'x' &&
+        !quickClassifyVisible &&
+        !['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement).tagName)
+      ) {
+        const siblingId = getSiblingId(activeMicrographId);
+        if (siblingId) {
+          e.preventDefault();
+          toggleSiblingView();
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [activeMicrographId, quickClassifyVisible, getSiblingId, toggleSiblingView]);
 
   return (
     <Box
