@@ -3,6 +3,9 @@
  *
  * Displays progress while exporting the project as a .smz archive.
  * Shows current phase, item being processed, and overall progress.
+ *
+ * Before export, this dialog merges any referenced global presets into the
+ * project data to ensure the .smz file is self-contained and shareable.
  */
 
 import { useEffect, useState, useCallback } from 'react';
@@ -20,6 +23,8 @@ import {
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import ErrorIcon from '@mui/icons-material/Error';
 import FolderZipIcon from '@mui/icons-material/FolderZip';
+import { useAppStore } from '../../store/useAppStore';
+import type { QuickApplyPreset } from '../../types/preset-types';
 
 interface ExportProgress {
   phase: string;
@@ -37,12 +42,85 @@ interface ExportSmzDialogProps {
   projectData: any;
 }
 
+/**
+ * Collect all appliedPresetIds from all spots in a project.
+ * Traverses datasets → samples → micrographs → spots.
+ */
+function collectAllAppliedPresetIds(project: any): Set<string> {
+  const ids = new Set<string>();
+  if (!project?.datasets) return ids;
+
+  for (const dataset of project.datasets) {
+    for (const sample of dataset.samples || []) {
+      for (const micrograph of sample.micrographs || []) {
+        for (const spot of micrograph.spots || []) {
+          if (spot.appliedPresetIds && Array.isArray(spot.appliedPresetIds)) {
+            for (const presetId of spot.appliedPresetIds) {
+              ids.add(presetId);
+            }
+          }
+        }
+      }
+    }
+  }
+  return ids;
+}
+
+/**
+ * Merge referenced global presets into project data for export.
+ * This ensures the exported .smz file is self-contained and shareable.
+ */
+function mergeGlobalPresetsForExport(
+  projectData: any,
+  globalPresets: QuickApplyPreset[]
+): any {
+  // Collect all preset IDs referenced by spots
+  const referencedIds = collectAllAppliedPresetIds(projectData);
+  if (referencedIds.size === 0 && globalPresets.length === 0) {
+    return projectData;
+  }
+
+  // Build a set of preset IDs already in the project
+  const existingProjectPresetIds = new Set<string>(
+    (projectData.presets || []).map((p: QuickApplyPreset) => p.id)
+  );
+
+  // Find global presets that are referenced but not already in project.presets
+  const presetsToAdd: QuickApplyPreset[] = [];
+  for (const preset of globalPresets) {
+    if (referencedIds.has(preset.id) && !existingProjectPresetIds.has(preset.id)) {
+      presetsToAdd.push(preset);
+    }
+  }
+
+  // If no presets need to be added, return original data
+  if (presetsToAdd.length === 0) {
+    return projectData;
+  }
+
+  // Create a copy with merged presets
+  const mergedPresets = [...(projectData.presets || []), ...presetsToAdd];
+
+  console.log(
+    `[ExportSmzDialog] Merged ${presetsToAdd.length} global preset(s) into export:`,
+    presetsToAdd.map((p) => p.name)
+  );
+
+  return {
+    ...projectData,
+    presets: mergedPresets,
+  };
+}
+
 export function ExportSmzDialog({
   open,
   projectId,
   projectData,
   onClose,
 }: ExportSmzDialogProps) {
+  // Get global presets from store for merging into export
+  const globalPresets = useAppStore((state) => state.globalPresets);
+
   const [progress, setProgress] = useState<ExportProgress | null>(null);
   const [isExporting, setIsExporting] = useState(false);
   const [result, setResult] = useState<{
@@ -89,7 +167,10 @@ export function ExportSmzDialog({
     setResult(null);
 
     try {
-      const exportResult = await window.api.exportSmz(projectId, projectData);
+      // Merge referenced global presets into project data for self-contained export
+      const exportData = mergeGlobalPresetsForExport(projectData, globalPresets);
+
+      const exportResult = await window.api.exportSmz(projectId, exportData);
 
       if (exportResult.canceled) {
         // User canceled the save dialog
@@ -106,7 +187,7 @@ export function ExportSmzDialog({
     } finally {
       setIsExporting(false);
     }
-  }, [projectId, projectData]);
+  }, [projectId, projectData, globalPresets]);
 
   const handleClose = () => {
     // Reset state when closing

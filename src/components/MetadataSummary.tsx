@@ -959,7 +959,7 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
             <Typography variant="subtitle2">Applied Presets</Typography>
             <Chip label={`${appliedPresets.length}`} size="small" />
             <Box sx={{ flexGrow: 1 }} />
-            <Tooltip title="Clear all presets">
+            <Tooltip title="Untrack all presets (metadata is preserved)">
               <Box
                 onClick={(e) => {
                   e.stopPropagation();
@@ -1010,7 +1010,7 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
                     {preset.name}
                   </Typography>
                   {/* Clear button */}
-                  <Tooltip title="Remove preset">
+                  <Tooltip title="Untrack preset (metadata is preserved)">
                     <IconButton
                       size="small"
                       onClick={() => clearPreset(preset.id)}
