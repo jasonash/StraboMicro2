@@ -67,6 +67,7 @@ import { EditMicrographLocationDialog } from './dialogs/EditMicrographLocationDi
 import { BatchImportDialog } from './dialogs/BatchImportDialog';
 import { SetScaleDialog } from './dialogs/SetScaleDialog';
 import { LinkSiblingDialog } from './dialogs/LinkSiblingDialog';
+import { AddSiblingXPLDialog } from './dialogs/AddSiblingXPLDialog';
 import { findMicrographById } from '@/store/helpers';
 import type { DatasetMetadata, SampleMetadata, MicrographMetadata } from '@/types/project-types';
 
@@ -359,6 +360,10 @@ export function ProjectTree() {
   // Link Sibling dialog state (for PPL/XPL pairing)
   const [showLinkSibling, setShowLinkSibling] = useState(false);
   const [linkSiblingMicrographId, setLinkSiblingMicrographId] = useState<string | null>(null);
+
+  // Add Sibling XPL dialog state (for adding XPL after-the-fact)
+  const [showAddSiblingXPL, setShowAddSiblingXPL] = useState(false);
+  const [addSiblingXPLMicrographId, setAddSiblingXPLMicrographId] = useState<string | null>(null);
 
   // Opacity popover state (use position instead of element to avoid anchor disappearing)
   const [opacityAnchorPosition, setOpacityAnchorPosition] = useState<{
@@ -1092,15 +1097,26 @@ export function ProjectTree() {
           </MenuItem>
           {/* PPL/XPL Sibling Pairing */}
           {!micrograph.siblingImageId ? (
-            <MenuItem
-              onClick={() => {
-                setLinkSiblingMicrographId(micrograph.id);
-                setShowLinkSibling(true);
-                setMicrographOptionsAnchor({ ...micrographOptionsAnchor, [micrograph.id]: null });
-              }}
-            >
-              Link Sibling PPL/XPL Image
-            </MenuItem>
+            <>
+              <MenuItem
+                onClick={() => {
+                  setAddSiblingXPLMicrographId(micrograph.id);
+                  setShowAddSiblingXPL(true);
+                  setMicrographOptionsAnchor({ ...micrographOptionsAnchor, [micrograph.id]: null });
+                }}
+              >
+                Add Corresponding XPL Image
+              </MenuItem>
+              <MenuItem
+                onClick={() => {
+                  setLinkSiblingMicrographId(micrograph.id);
+                  setShowLinkSibling(true);
+                  setMicrographOptionsAnchor({ ...micrographOptionsAnchor, [micrograph.id]: null });
+                }}
+              >
+                Link Sibling PPL/XPL Image
+              </MenuItem>
+            </>
           ) : (
             <MenuItem
               onClick={() => {
@@ -1793,6 +1809,16 @@ export function ProjectTree() {
           setLinkSiblingMicrographId(null);
         }}
         micrographId={linkSiblingMicrographId}
+      />
+
+      {/* Add Sibling XPL Dialog */}
+      <AddSiblingXPLDialog
+        open={showAddSiblingXPL}
+        onClose={() => {
+          setShowAddSiblingXPL(false);
+          setAddSiblingXPLMicrographId(null);
+        }}
+        pplMicrographId={addSiblingXPLMicrographId}
       />
 
       {/* Opacity Slider Popover */}
