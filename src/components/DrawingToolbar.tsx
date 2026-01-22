@@ -16,9 +16,12 @@ const DrawingToolbar: React.FC = () => {
   const pointCountMode = useAppStore((state) => state.pointCountMode);
   const spotLassoToolActive = useAppStore((state) => state.spotLassoToolActive);
   const setSpotLassoToolActive = useAppStore((state) => state.setSpotLassoToolActive);
+  const sketchModeActive = useAppStore((state) => state.sketchModeActive);
+  const setSketchModeActive = useAppStore((state) => state.setSketchModeActive);
+  const activeMicrographId = useAppStore((state) => state.activeMicrographId);
 
-  // Hide toolbar when in point count mode
-  if (pointCountMode) {
+  // Hide toolbar when in point count mode or sketch mode
+  if (pointCountMode || sketchModeActive) {
     return null;
   }
 
@@ -42,6 +45,11 @@ const DrawingToolbar: React.FC = () => {
       setActiveTool(null); // Deactivate drawing tools
       setSpotLassoToolActive(true);
     }
+  };
+
+  const handleSketchClick = () => {
+    // Enter sketch mode
+    setSketchModeActive(true);
   };
 
   return (
@@ -118,6 +126,33 @@ const DrawingToolbar: React.FC = () => {
             <circle cx="3" cy="7" r="1.5" fill="currentColor" />
           </svg>
         </IconButton>
+      </Tooltip>
+
+      {/* Divider */}
+      <Box sx={{ height: 1, bgcolor: 'divider', my: 0.5 }} />
+
+      {/* Sketch Mode */}
+      <Tooltip title={activeMicrographId ? "Sketch Mode (S)" : "Select a micrograph first"} placement="left">
+        <span>
+          <IconButton
+            className="toolbar-button"
+            onClick={handleSketchClick}
+            disabled={!activeMicrographId}
+            aria-label="Sketch mode"
+          >
+            {/* Sketch/brush icon */}
+            <svg width="20" height="20" viewBox="0 0 20 20">
+              <path
+                d="M3 17c2-2 4-3 6-3s3.5 1.5 4.5 2.5c1-1 2-3 2-5 0-4-3-8-7-9"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+              />
+              <circle cx="8" cy="4" r="2" fill="none" stroke="currentColor" strokeWidth="1.5" />
+            </svg>
+          </IconButton>
+        </span>
       </Tooltip>
     </Box>
   );

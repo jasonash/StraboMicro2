@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Box, Typography, IconButton, Tooltip } from '@mui/material';
 import { KeyboardArrowDown, KeyboardArrowUp } from '@mui/icons-material';
 import DrawingToolbar from './DrawingToolbar';
+import SketchToolbar from './SketchToolbar';
 import BottomPanel from './BottomPanel';
 import { TiledViewer, TiledViewerRef } from './TiledViewer';
 import { useAppStore } from '../store';
@@ -181,6 +182,50 @@ const Viewer: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [activeMicrographId, quickClassifyVisible, getSiblingId, toggleSiblingView]);
 
+  // Sketch mode state for keyboard shortcuts
+  const sketchModeActive = useAppStore((state) => state.sketchModeActive);
+  const setSketchModeActive = useAppStore((state) => state.setSketchModeActive);
+  const setActiveTool = useAppStore((state) => state.setActiveTool);
+
+  // Keyboard shortcuts for sketch mode
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't trigger in input fields
+      if (['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement).tagName)) return;
+
+      // S key to enter sketch mode (when a micrograph is active)
+      if (e.key.toLowerCase() === 's' && !sketchModeActive && activeMicrographId) {
+        e.preventDefault();
+        setSketchModeActive(true);
+        return;
+      }
+
+      // Escape to exit sketch mode
+      if (e.key === 'Escape' && sketchModeActive) {
+        e.preventDefault();
+        setSketchModeActive(false);
+        return;
+      }
+
+      // Sketch tool shortcuts (only when in sketch mode)
+      if (sketchModeActive) {
+        if (e.key === '1') {
+          e.preventDefault();
+          setActiveTool('sketch-pen');
+        } else if (e.key === '2') {
+          e.preventDefault();
+          setActiveTool('sketch-marker');
+        } else if (e.key === '3') {
+          e.preventDefault();
+          setActiveTool('sketch-eraser');
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [activeMicrographId, sketchModeActive, setSketchModeActive, setActiveTool]);
+
   return (
     <Box
       className="viewer-container"
@@ -190,6 +235,7 @@ const Viewer: React.FC = () => {
       <Box sx={{ flex: 1, bgcolor: 'background.default', position: 'relative' }}>
         <TiledViewer ref={tiledViewerRef} imagePath={activeMicrographPath} onCursorMove={setCursorCoords} />
         <DrawingToolbar />
+        <SketchToolbar />
 
         {/* Floating toggle button when bottom panel is collapsed */}
         {isBottomPanelCollapsed && (

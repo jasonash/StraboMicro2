@@ -13,7 +13,7 @@
  */
 
 import { useEffect, useRef, useState, useCallback, useImperativeHandle, forwardRef, useMemo } from 'react';
-import { Stage, Layer, Image as KonvaImage, Circle } from 'react-konva';
+import { Stage, Layer, Image as KonvaImage, Circle, Line } from 'react-konva';
 import { Box, CircularProgress, Typography, IconButton, Tooltip } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
@@ -144,6 +144,9 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
     const toggleSiblingView = useAppStore((state) => state.toggleSiblingView);
     const getSketchLayers = useAppStore((state) => state.getSketchLayers);
     const activeSketchLayerId = useAppStore((state) => state.activeSketchLayerId);
+    const sketchStrokeColor = useAppStore((state) => state.sketchStrokeColor);
+    const sketchStrokeWidth = useAppStore((state) => state.sketchStrokeWidth);
+    const addSketchStroke = useAppStore((state) => state.addSketchStroke);
     const theme = useAppStore((state) => state.theme);
     const selectActiveSpot = useAppStore((state) => state.selectActiveSpot);
     const selectSpot = useAppStore((state) => state.selectSpot);
@@ -183,6 +186,12 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
       spotLassoActiveRef.current = active;
       setSpotLassoActive(active);
     }, []);
+
+    // Sketch drawing state
+    // Using ref for isDrawing to avoid stale closure issues in event handlers
+    const isSketchDrawingRef = useRef(false);
+    const currentSketchPointsRef = useRef<number[]>([]);
+    const [sketchPreviewPoints, setSketchPreviewPoints] = useState<number[]>([]);
 
     /**
      * Aggressively clean up tile memory to prevent OOM crashes.
@@ -1074,6 +1083,22 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
           return;
         }
 
+        // Handle sketch drawing tools (pen, marker)
+        if ((activeTool === 'sketch-pen' || activeTool === 'sketch-marker') && activeSketchLayerId) {
+          const stage = stageRef.current;
+          if (!stage) return;
+          const pos = stage.getPointerPosition();
+          if (!pos) return;
+          const imageX = (pos.x - position.x) / zoom;
+          const imageY = (pos.y - position.y) / zoom;
+
+          // Start drawing
+          isSketchDrawingRef.current = true;
+          currentSketchPointsRef.current = [imageX, imageY];
+          setSketchPreviewPoints([imageX, imageY]);
+          return;
+        }
+
         // Only enable panning if no drawing tool is active
         if (!activeTool || activeTool === 'select') {
           // Don't pan if lasso is active (point count or spot toolbar)
@@ -1086,7 +1111,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
           setLastPointerPos(pos);
         }
       },
-      [activeTool, position, zoom, rulerTool, lassoToolActive, spotLassoToolActive, pointCountMode, lasso, setSpotLassoActiveWithRef]
+      [activeTool, position, zoom, rulerTool, lassoToolActive, spotLassoToolActive, pointCountMode, lasso, setSpotLassoActiveWithRef, activeSketchLayerId]
     );
 
     const handleMouseMove = useCallback(() => {
@@ -1129,6 +1154,21 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
         const imageY = (pos.y - position.y) / zoom;
         lasso.updateLasso(imageX, imageY);
         // Mark as dragged so click handler doesn't clear the selection
+        setHasDragged(true);
+      }
+
+      // Handle sketch drawing (pen/marker)
+      if (isSketchDrawingRef.current) {
+        const imageX = (pos.x - position.x) / zoom;
+        const imageY = (pos.y - position.y) / zoom;
+
+        // Add point to current stroke
+        currentSketchPointsRef.current.push(imageX, imageY);
+
+        // Update preview line - copy the array to trigger re-render
+        setSketchPreviewPoints([...currentSketchPointsRef.current]);
+
+        // Mark as dragged so click handler doesn't trigger other actions
         setHasDragged(true);
       }
 
@@ -1271,7 +1311,33 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
           }
         }
       }
-    }, [activeTool, rulerTool, lasso, lassoToolActive, pointCountMode, activePointCountSession, setSelectedPointIndices, spotLassoToolActive, setSpotLassoToolActive, activeMicrograph, showArchivedSpots, getSpotCentroid, selectSpot, selectActiveSpot, setSpotLassoActiveWithRef]);
+
+      // Finish sketch drawing (pen/marker)
+      if (isSketchDrawingRef.current && activeMicrographId && activeSketchLayerId) {
+        isSketchDrawingRef.current = false;
+
+        // Only create stroke if we have enough points (at least 2 for a dot/short line)
+        const points = currentSketchPointsRef.current;
+        if (points.length >= 2) {
+          // Create the stroke object
+          const stroke = {
+            id: `stroke-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+            points: [...points],
+            color: sketchStrokeColor,
+            strokeWidth: activeTool === 'sketch-marker' ? sketchStrokeWidth * 3 : sketchStrokeWidth,
+            opacity: activeTool === 'sketch-marker' ? 0.4 : 1.0,
+            tool: activeTool === 'sketch-marker' ? 'marker' as const : 'pen' as const,
+          };
+
+          // Add to store
+          addSketchStroke(activeMicrographId, activeSketchLayerId, stroke);
+        }
+
+        // Clear preview
+        currentSketchPointsRef.current = [];
+        setSketchPreviewPoints([]);
+      }
+    }, [activeTool, rulerTool, lasso, lassoToolActive, pointCountMode, activePointCountSession, setSelectedPointIndices, spotLassoToolActive, setSpotLassoToolActive, activeMicrograph, showArchivedSpots, getSpotCentroid, selectSpot, selectActiveSpot, setSpotLassoActiveWithRef, activeMicrographId, activeSketchLayerId, sketchStrokeColor, sketchStrokeWidth, addSketchStroke]);
 
     const handleMouseLeave = useCallback(() => {
       setIsPanning(false);
@@ -1282,6 +1348,13 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
       if (spotLassoActiveRef.current) {
         lasso.cancelLasso();
         setSpotLassoActiveWithRef(false);
+      }
+
+      // Cancel sketch drawing if mouse leaves while drawing
+      if (isSketchDrawingRef.current) {
+        isSketchDrawingRef.current = false;
+        currentSketchPointsRef.current = [];
+        setSketchPreviewPoints([]);
       }
     }, [onCursorMove, lasso, setSpotLassoActiveWithRef]);
 
@@ -1788,6 +1861,9 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                     activeTool === 'line' ||
                     activeTool === 'polygon' ||
                     activeTool === 'measure' ||
+                    activeTool === 'sketch-pen' ||
+                    activeTool === 'sketch-marker' ||
+                    activeTool === 'sketch-eraser' ||
                     lassoToolActive ||
                     spotLassoToolActive ||
                     spotLassoActive ||
@@ -2075,6 +2151,20 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                   scaleY={zoom}
                 >
                   {/* Drawing shapes (polygon/line in progress) are added by the drawing hooks */}
+
+                  {/* Sketch preview line during drawing */}
+                  {sketchPreviewPoints.length >= 2 && (
+                    <Line
+                      points={sketchPreviewPoints}
+                      stroke={sketchStrokeColor}
+                      strokeWidth={activeTool === 'sketch-marker' ? sketchStrokeWidth * 3 : sketchStrokeWidth}
+                      opacity={activeTool === 'sketch-marker' ? 0.4 : 1.0}
+                      lineCap="round"
+                      lineJoin="round"
+                      tension={0.3}
+                      listening={false}
+                    />
+                  )}
                 </Layer>
               </Stage>
             </div>
@@ -2097,6 +2187,9 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                     activeTool === 'line' ||
                     activeTool === 'polygon' ||
                     activeTool === 'measure' ||
+                    activeTool === 'sketch-pen' ||
+                    activeTool === 'sketch-marker' ||
+                    activeTool === 'sketch-eraser' ||
                     lassoToolActive ||
                     spotLassoToolActive ||
                     spotLassoActive ||
@@ -2326,6 +2419,20 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                   scaleY={zoom}
                 >
                   {/* Drawing shapes added by hooks */}
+
+                  {/* Sketch preview line during drawing */}
+                  {sketchPreviewPoints.length >= 2 && (
+                    <Line
+                      points={sketchPreviewPoints}
+                      stroke={sketchStrokeColor}
+                      strokeWidth={activeTool === 'sketch-marker' ? sketchStrokeWidth * 3 : sketchStrokeWidth}
+                      opacity={activeTool === 'sketch-marker' ? 0.4 : 1.0}
+                      lineCap="round"
+                      lineJoin="round"
+                      tension={0.3}
+                      listening={false}
+                    />
+                  )}
                 </Layer>
               </Stage>
             )}

@@ -126,7 +126,7 @@ import type { TiledViewerRef } from '@/components/TiledViewer';
 // TYPE DEFINITIONS
 // ============================================================================
 
-export type DrawingTool = 'select' | 'point' | 'line' | 'polygon' | 'measure' | null;
+export type DrawingTool = 'select' | 'point' | 'line' | 'polygon' | 'measure' | 'sketch-pen' | 'sketch-marker' | 'sketch-eraser' | null;
 export type SidebarTab = 'samples' | 'groups' | 'spots' | 'tags';
 export type ThemeMode = 'dark' | 'light' | 'system';
 
@@ -237,6 +237,12 @@ interface AppState {
   // ========== SKETCH OVERLAY STATE ==========
   /** ID of the currently active sketch layer (for drawing/editing) */
   activeSketchLayerId: string | null;
+  /** Whether sketch mode is active (shows sketch toolbar, enables sketch tools) */
+  sketchModeActive: boolean;
+  /** Current stroke color for sketch tools (hex string) */
+  sketchStrokeColor: string;
+  /** Current stroke width for sketch tools (in image pixels) */
+  sketchStrokeWidth: number;
 
   // ========== GENERATION SETTINGS (persisted) ==========
   /** Last used point counting settings */
@@ -324,6 +330,12 @@ interface AppState {
   setActiveSketchLayerId: (layerId: string | null) => void;
   /** Get sketch layers for a micrograph */
   getSketchLayers: (micrographId: string | null) => SketchLayer[];
+  /** Enable/disable sketch mode (shows sketch toolbar) */
+  setSketchModeActive: (active: boolean) => void;
+  /** Set the stroke color for sketch tools */
+  setSketchStrokeColor: (color: string) => void;
+  /** Set the stroke width for sketch tools */
+  setSketchStrokeWidth: (width: number) => void;
 
   // ========== CRUD: DATASET ==========
   addDataset: (dataset: DatasetMetadata) => void;
@@ -885,6 +897,9 @@ export const useAppStore = create<AppState>()(
 
           // Sketch overlay state
           activeSketchLayerId: null,
+          sketchModeActive: false,
+          sketchStrokeColor: '#ff0000', // Default: red
+          sketchStrokeWidth: 3, // Default: 3px
 
           // Generation settings (persisted defaults)
           lastPointCountSettings: null,
@@ -1452,6 +1467,37 @@ export const useAppStore = create<AppState>()(
             const micro = micrographIndex.get(micrographId);
             return micro?.sketchLayers || [];
           },
+
+          setSketchModeActive: (active) => set((state) => {
+            // When entering sketch mode, ensure we have an active layer
+            // or create one if needed
+            if (active && !state.activeSketchLayerId && state.activeMicrographId) {
+              // Check if micrograph has layers
+              const micro = state.micrographIndex.get(state.activeMicrographId);
+              if (micro?.sketchLayers && micro.sketchLayers.length > 0) {
+                return {
+                  sketchModeActive: true,
+                  activeSketchLayerId: micro.sketchLayers[0].id,
+                  activeTool: 'sketch-pen' as const,
+                };
+              }
+            }
+            // When exiting sketch mode, clear the sketch tool
+            if (!active) {
+              return {
+                sketchModeActive: false,
+                activeTool: null,
+              };
+            }
+            return {
+              sketchModeActive: active,
+              activeTool: active ? 'sketch-pen' as const : null,
+            };
+          }),
+
+          setSketchStrokeColor: (color) => set({ sketchStrokeColor: color }),
+
+          setSketchStrokeWidth: (width) => set({ sketchStrokeWidth: width }),
 
           // ========== CRUD: DATASET ==========
 
