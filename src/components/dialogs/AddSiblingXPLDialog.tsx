@@ -186,24 +186,19 @@ export function AddSiblingXPLDialog({
       console.log(`[AddSiblingXPLDialog] Moving XPL image to project folder: ${xplMicrographId}`);
       await window.api.moveFromScratch(scratchIdentifier, project.id, xplMicrographId);
 
-      // Calculate scale factor if XPL has different dimensions than PPL
-      // This ensures the XPL renders at the same size as the PPL
+      // Calculate adjusted scalePixelsPerCentimeter if XPL has different dimensions than PPL
+      // This ensures both images represent the same physical area when viewed
+      // Formula: If PPL covers X cm with W1 pixels, XPL with W2 pixels should have
+      // scalePixelsPerCentimeter adjusted so it also covers X cm
       const pplWidth = pplMicrograph.width || pplMicrograph.imageWidth || 0;
-      let siblingScaleFactor: number | undefined;
-      let adjustedScaleX = pplMicrograph.scaleX;
-      let adjustedScaleY = pplMicrograph.scaleY;
+      const pplScalePixelsPerCm = pplMicrograph.scalePixelsPerCentimeter;
+      let xplScalePixelsPerCentimeter = pplScalePixelsPerCm;
 
-      if (pplWidth > 0 && imageWidth > 0 && pplWidth !== imageWidth) {
-        // XPL needs to be scaled to match PPL's rendered size
-        siblingScaleFactor = pplWidth / imageWidth;
-        console.log(`[AddSiblingXPLDialog] XPL needs scaling: factor = ${siblingScaleFactor}`);
-
-        // Adjust scaleX/scaleY to render at same size as PPL
-        // If PPL has scaleX=1 and XPL is half the size, XPL needs scaleX=2
-        const baseScaleX = pplMicrograph.scaleX ?? 1;
-        const baseScaleY = pplMicrograph.scaleY ?? 1;
-        adjustedScaleX = baseScaleX * siblingScaleFactor;
-        adjustedScaleY = baseScaleY * siblingScaleFactor;
+      if (pplWidth > 0 && imageWidth > 0 && pplWidth !== imageWidth && pplScalePixelsPerCm) {
+        // Adjust scalePixelsPerCentimeter so XPL covers same physical area as PPL
+        // If PPL is 2000px at 1000px/cm = 2cm, XPL at 1000px should be 500px/cm = 2cm
+        xplScalePixelsPerCentimeter = pplScalePixelsPerCm * (imageWidth / pplWidth);
+        console.log(`[AddSiblingXPLDialog] Adjusted XPL scalePixelsPerCentimeter: ${pplScalePixelsPerCm} -> ${xplScalePixelsPerCentimeter}`);
       }
 
       // Create XPL micrograph - inherits position and instrument from PPL
@@ -224,11 +219,9 @@ export function AddSiblingXPLDialog({
           ? { ...pplMicrograph.offsetInParent }
           : undefined,
         rotation: pplMicrograph.rotation,
-        // Use adjusted scale to match PPL's rendered size
-        scaleX: adjustedScaleX,
-        scaleY: adjustedScaleY,
-        // Store scale factor for sibling toggle rendering
-        siblingScaleFactor: siblingScaleFactor,
+        // Inherit scaleX/scaleY for overlay placement
+        scaleX: pplMicrograph.scaleX,
+        scaleY: pplMicrograph.scaleY,
         pointInParent: pplMicrograph.pointInParent
           ? { ...pplMicrograph.pointInParent }
           : undefined,
@@ -236,8 +229,8 @@ export function AddSiblingXPLDialog({
         instrument: pplMicrograph.instrument
           ? { ...pplMicrograph.instrument }
           : undefined,
-        // Inherit scale from PPL
-        scalePixelsPerCentimeter: pplMicrograph.scalePixelsPerCentimeter,
+        // Adjusted scale so XPL covers same physical area as PPL
+        scalePixelsPerCentimeter: xplScalePixelsPerCentimeter,
         // Default visibility
         isMicroVisible: true,
         isFlipped: false,
