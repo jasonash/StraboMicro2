@@ -232,6 +232,27 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
       return getChildMicrographs(project, activeMicrographId);
     }, [project, activeMicrographId])();
 
+    // Get effective spots - if viewing a secondary sibling (XPL), show spots from primary (PPL)
+    const effectiveSpots = useMemo(() => {
+      if (!activeMicrograph) return [];
+
+      // If this is a secondary sibling, get spots from the primary
+      if (activeMicrograph.isPrimarySibling === false && activeMicrograph.siblingImageId) {
+        // Find the primary sibling and return its spots
+        if (!project?.datasets) return activeMicrograph.spots || [];
+        for (const dataset of project.datasets) {
+          for (const sample of dataset.samples || []) {
+            const primaryMicro = sample.micrographs?.find(m => m.id === activeMicrograph.siblingImageId);
+            if (primaryMicro) {
+              return primaryMicro.spots || [];
+            }
+          }
+        }
+      }
+
+      return activeMicrograph.spots || [];
+    }, [activeMicrograph, project]);
+
     // Drawing hooks for polygon and line tools
     const polygonDrawing = usePolygonDrawing({
       layer: drawingLayerRef.current,
@@ -720,7 +741,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
      * Uses bounding box intersection - if any part of spot overlaps viewport, render it
      */
     const visibleSpots = useMemo(() => {
-      const spots = activeMicrograph?.spots;
+      const spots = effectiveSpots;
       if (!spots || spots.length === 0) return [];
 
       // Get viewport bounds in image space
@@ -784,7 +805,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
 
         return intersectsX && intersectsY;
       });
-    }, [activeMicrograph?.spots, position, zoom, stageSize, showArchivedSpots]);
+    }, [effectiveSpots, position, zoom, stageSize, showArchivedSpots]);
 
     /**
      * Load tiles that are visible but not yet loaded (only in tiled mode)
@@ -1216,7 +1237,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
         }
         if (polygon.length >= 3) {
           // Get all visible spots and find those with centroids inside the lasso
-          const spots = activeMicrograph?.spots || [];
+          const spots = effectiveSpots;
           const spotsInLasso = spots.filter((spot) => {
             // Skip archived spots unless showing them
             if (spot.archived && !showArchivedSpots) return false;
@@ -2289,7 +2310,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
             onSave={handleSaveSpot}
             geometry={pendingSpotGeometry}
             micrographId={activeMicrographId}
-            existingSpots={activeMicrograph?.spots || []}
+            existingSpots={effectiveSpots}
           />
         )}
 

@@ -1494,8 +1494,14 @@ export const useAppStore = create<AppState>()(
           addSpot: (micrographId, spot) => set((state) => {
             if (!state.project) return state;
 
-            const newProject = updateMicrograph(state.project, micrographId, (micrograph) => {
-              micrograph.spots = [...(micrograph.spots || []), spot];
+            // If this is a secondary sibling (XPL), redirect spots to the primary (PPL)
+            const micrograph = state.micrographIndex.get(micrographId);
+            const targetId = micrograph?.isPrimarySibling === false && micrograph?.siblingImageId
+              ? micrograph.siblingImageId
+              : micrographId;
+
+            const newProject = updateMicrograph(state.project, targetId, (micro) => {
+              micro.spots = [...(micro.spots || []), spot];
             });
 
             return {
@@ -1509,8 +1515,14 @@ export const useAppStore = create<AppState>()(
           addSpots: (micrographId, spots) => set((state) => {
             if (!state.project || spots.length === 0) return state;
 
-            const newProject = updateMicrograph(state.project, micrographId, (micrograph) => {
-              micrograph.spots = [...(micrograph.spots || []), ...spots];
+            // If this is a secondary sibling (XPL), redirect spots to the primary (PPL)
+            const micrograph = state.micrographIndex.get(micrographId);
+            const targetId = micrograph?.isPrimarySibling === false && micrograph?.siblingImageId
+              ? micrograph.siblingImageId
+              : micrographId;
+
+            const newProject = updateMicrograph(state.project, targetId, (micro) => {
+              micro.spots = [...(micro.spots || []), ...spots];
             });
 
             return {
