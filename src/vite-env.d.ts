@@ -434,6 +434,9 @@ interface Window {
     // Menu event for export all images
     onExportAllImages: (callback: () => void) => Unsubscribe;
 
+    // Menu event for export with sketches
+    onExportWithSketches: (callback: () => void) => Unsubscribe;
+
     // Export project as JSON
     exportProjectJson: (projectData: any) => Promise<{
       success: boolean;

@@ -568,6 +568,14 @@ function createWindow() {
           }
         },
         {
+          label: 'Export View with Sketches...',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('menu:export-with-sketches');
+            }
+          }
+        },
+        {
           label: 'Export Project as JSON...',
           click: () => {
             if (mainWindow) {

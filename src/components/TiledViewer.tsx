@@ -57,6 +57,14 @@ export interface TiledViewerRef {
   zoomOut: () => void;
   /** Ensure a point is visible on screen, panning only if necessary (lazy/soft pan) */
   panToPoint: (x: number, y: number) => void;
+  /** Export the current view as an image with optional sketch layers */
+  exportImage: (options: {
+    includeImage: boolean;
+    includeSpots: boolean;
+    includedLayerIds: string[];
+    format: 'png' | 'jpeg';
+    scale: number;
+  }) => Promise<string>;
 }
 
 interface TileInfo {
@@ -1842,6 +1850,72 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
       }
     }, [stageSize, zoom, position]);
 
+    // Export image function for use via ref
+    const exportImage = useCallback(async (options: {
+      includeImage: boolean;
+      includeSpots: boolean;
+      includedLayerIds: string[];
+      format: 'png' | 'jpeg';
+      scale: number;
+    }): Promise<string> => {
+      const stage = stageRef.current;
+      if (!stage) {
+        throw new Error('Stage not available');
+      }
+
+      // Get all layers from the stage
+      const layers = stage.getLayers();
+
+      // Store original visibility states
+      const originalVisibility = new Map<string, boolean>();
+
+      // Find and control layer visibility based on options
+      layers.forEach((layer: any) => {
+        const layerName = layer.name();
+        originalVisibility.set(layerName, layer.visible());
+
+        if (layerName === 'image-layer') {
+          layer.visible(options.includeImage);
+        } else if (layerName === 'spots-layer') {
+          layer.visible(options.includeSpots);
+        } else if (layerName === 'sketch-layer') {
+          // Sketch layer visibility is controlled by which strokes/text to render
+          // We'll handle this by temporarily modifying the sketch layers
+          layer.visible(options.includedLayerIds.length > 0);
+        } else if (layerName === 'drawing-layer') {
+          // Hide drawing layer during export (temporary drawings)
+          layer.visible(false);
+        }
+      });
+
+      // Force a synchronous redraw
+      stage.batchDraw();
+
+      // Determine mime type
+      const mimeType = options.format === 'jpeg' ? 'image/jpeg' : 'image/png';
+
+      // Export with specified scale
+      const dataUrl = stage.toDataURL({
+        pixelRatio: options.scale,
+        mimeType,
+        quality: options.format === 'jpeg' ? 0.92 : undefined,
+      });
+
+      // Restore original visibility
+      layers.forEach((layer: any) => {
+        const layerName = layer.name();
+        const wasVisible = originalVisibility.get(layerName);
+        if (wasVisible !== undefined) {
+          layer.visible(wasVisible);
+        }
+      });
+
+      // Redraw to restore state
+      stage.batchDraw();
+
+      return dataUrl;
+    }, []);
+
     // Expose methods to parent components via ref
     useImperativeHandle(
       ref,
@@ -1850,8 +1924,9 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
         zoomIn: handleZoomIn,
         zoomOut: handleZoomOut,
         panToPoint,
+        exportImage,
       }),
-      [handleResetZoom, handleZoomIn, handleZoomOut, panToPoint]
+      [handleResetZoom, handleZoomIn, handleZoomOut, panToPoint, exportImage]
     );
 
     const RULER_SIZE = 30; // Width/height of ruler bars
@@ -2043,7 +2118,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                       : 'grab',
                 }}
               >
-                <Layer key="image-layer" x={position.x} y={position.y} scaleX={zoom} scaleY={zoom}>
+                <Layer key="image-layer" name="image-layer" x={position.x} y={position.y} scaleX={zoom} scaleY={zoom}>
                   {/* Progressive loading: Show thumbnail first, then switch to tiles */}
                   {renderMode === 'thumbnail' && thumbnail && (
                     <KonvaImage
@@ -2135,7 +2210,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                 </Layer>
 
                 {/* Spots Layer - render all saved spots and point-located micrographs */}
-                <Layer key="spots-layer" x={position.x} y={position.y} scaleX={zoom} scaleY={zoom}>
+                <Layer key="spots-layer" name="spots-layer" x={position.x} y={position.y} scaleX={zoom} scaleY={zoom}>
                   {/* Render point-located associated micrographs as clickable markers */}
                   {/* Hide in point count mode */}
                   {!pointCountMode &&
@@ -2302,7 +2377,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                 </Layer>
 
                 {/* Sketch Layers - freeform annotations (above spots, below drawing) */}
-                <Layer key="sketch-layer" x={position.x} y={position.y} scaleX={zoom} scaleY={zoom}>
+                <Layer key="sketch-layer" name="sketch-layer" x={position.x} y={position.y} scaleX={zoom} scaleY={zoom}>
                   <SketchLayerRenderer
                     layers={sketchLayers}
                     scale={zoom}
@@ -2318,6 +2393,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                 {/* Drawing Layer - for temporary drawing in progress */}
                 <Layer
                   key="drawing-layer"
+                  name="drawing-layer"
                   ref={drawingLayerRef}
                   x={position.x}
                   y={position.y}
@@ -2375,7 +2451,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                       : 'grab',
                 }}
               >
-                <Layer key="image-layer" x={position.x} y={position.y} scaleX={zoom} scaleY={zoom}>
+                <Layer key="image-layer" name="image-layer" x={position.x} y={position.y} scaleX={zoom} scaleY={zoom}>
                   {/* Progressive loading: Show thumbnail first, then switch to tiles */}
                   {renderMode === 'thumbnail' && thumbnail && (
                     <KonvaImage
@@ -2454,7 +2530,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                 </Layer>
 
                 {/* Spots Layer - render all saved spots */}
-                <Layer key="spots-layer" x={position.x} y={position.y} scaleX={zoom} scaleY={zoom}>
+                <Layer key="spots-layer" name="spots-layer" x={position.x} y={position.y} scaleX={zoom} scaleY={zoom}>
                   {/* Recursive Spots: Render spots from child micrographs (overlays) */}
                   {/* Hide in point count mode */}
                   {!pointCountMode &&
@@ -2576,7 +2652,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                 </Layer>
 
                 {/* Sketch Layers - freeform annotations (above spots, below drawing) */}
-                <Layer key="sketch-layer" x={position.x} y={position.y} scaleX={zoom} scaleY={zoom}>
+                <Layer key="sketch-layer" name="sketch-layer" x={position.x} y={position.y} scaleX={zoom} scaleY={zoom}>
                   <SketchLayerRenderer
                     layers={sketchLayers}
                     scale={zoom}
@@ -2592,6 +2668,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                 {/* Drawing Layer */}
                 <Layer
                   key="drawing-layer"
+                  name="drawing-layer"
                   ref={drawingLayerRef}
                   x={position.x}
                   y={position.y}
