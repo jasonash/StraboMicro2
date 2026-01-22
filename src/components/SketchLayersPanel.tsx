@@ -33,7 +33,6 @@ import { useAppStore } from '@/store';
 export const SketchLayersPanel: React.FC = () => {
   const activeMicrographId = useAppStore((state) => state.activeMicrographId);
   const activeSketchLayerId = useAppStore((state) => state.activeSketchLayerId);
-  const getSketchLayers = useAppStore((state) => state.getSketchLayers);
   const addSketchLayer = useAppStore((state) => state.addSketchLayer);
   const removeSketchLayer = useAppStore((state) => state.removeSketchLayer);
   const renameSketchLayer = useAppStore((state) => state.renameSketchLayer);
@@ -42,8 +41,12 @@ export const SketchLayersPanel: React.FC = () => {
   const sketchModeActive = useAppStore((state) => state.sketchModeActive);
   const setSketchModeActive = useAppStore((state) => state.setSketchModeActive);
 
-  // Get layers for the active micrograph
-  const layers = activeMicrographId ? getSketchLayers(activeMicrographId) : [];
+  // Get layers for the active micrograph (using a selector to subscribe to the actual data)
+  const layers = useAppStore((state) => {
+    if (!activeMicrographId) return [];
+    const micro = state.micrographIndex.get(activeMicrographId);
+    return micro?.sketchLayers || [];
+  });
 
   // Context menu state
   const [contextMenuAnchor, setContextMenuAnchor] = useState<HTMLElement | null>(null);

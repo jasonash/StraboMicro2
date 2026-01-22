@@ -32,7 +32,7 @@ import { NewSpotDialog } from './dialogs/NewSpotDialog';
 import { EditSpotDialog } from './dialogs/metadata/EditSpotDialog';
 import { BatchEditSpotsDialog } from './dialogs/BatchEditSpotsDialog';
 import RulerCanvas from './RulerCanvas';
-import { Geometry, Spot } from '@/types/project-types';
+import { Geometry, Spot, SketchLayer, SketchText } from '@/types/project-types';
 import { usePolygonDrawing } from '@/hooks/usePolygonDrawing';
 import { useLineDrawing } from '@/hooks/useLineDrawing';
 import { useRulerTool } from '@/hooks/useRulerTool';
@@ -151,7 +151,6 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
     const showArchivedSpots = useAppStore((state) => state.showArchivedSpots);
     const siblingViewActive = useAppStore((state) => state.siblingViewActive);
     const toggleSiblingView = useAppStore((state) => state.toggleSiblingView);
-    const getSketchLayers = useAppStore((state) => state.getSketchLayers);
     const activeSketchLayerId = useAppStore((state) => state.activeSketchLayerId);
     const sketchStrokeColor = useAppStore((state) => state.sketchStrokeColor);
     const sketchStrokeWidth = useAppStore((state) => state.sketchStrokeWidth);
@@ -288,11 +287,12 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
       if (!activeMicrographId) return;
 
       // Find the text item in the sketch layers
-      const layers = getSketchLayers(activeMicrographId);
-      const layer = layers.find(l => l.id === layerId);
+      const micro = micrographIndex.get(activeMicrographId);
+      const layers = micro?.sketchLayers || [];
+      const layer = layers.find((l: SketchLayer) => l.id === layerId);
       if (!layer) return;
 
-      const textItem = layer.textItems.find(t => t.id === textId);
+      const textItem = layer.textItems.find((t: SketchText) => t.id === textId);
       if (!textItem) return;
 
       // Get the stage to calculate screen position
@@ -313,7 +313,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
       setEditingTextId(textId);
       setEditingTextInitial(textItem.text);
       setTextInputVisible(true);
-    }, [activeMicrographId, getSketchLayers, zoom, position]);
+    }, [activeMicrographId, micrographIndex, zoom, position]);
 
     /**
      * Aggressively clean up tile memory to prevent OOM crashes.
@@ -949,8 +949,10 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
      * Get sketch layers for the active micrograph
      */
     const sketchLayers = useMemo(() => {
-      return getSketchLayers(activeMicrographId);
-    }, [getSketchLayers, activeMicrographId]);
+      if (!activeMicrographId) return [];
+      const micro = micrographIndex.get(activeMicrographId);
+      return micro?.sketchLayers || [];
+    }, [micrographIndex, activeMicrographId]);
 
     /**
      * Load tiles that are visible but not yet loaded (only in tiled mode)
