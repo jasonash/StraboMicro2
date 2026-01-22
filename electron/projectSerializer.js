@@ -423,6 +423,8 @@ function serializeMicrograph(micrograph) {
     siblingImageId: micrograph.siblingImageId || undefined,
     isPrimarySibling: micrograph.isPrimarySibling !== undefined ? micrograph.isPrimarySibling : undefined,
     siblingScaleFactor: roundForDb(micrograph.siblingScaleFactor) || undefined,
+    // Sketch overlay layers (new feature - not in legacy schema)
+    sketchLayers: micrograph.sketchLayers || undefined,
   };
 }
 
@@ -614,6 +616,8 @@ function deserializeMicrograph(micrograph) {
     siblingImageId: micrograph.siblingImageId,
     isPrimarySibling: micrograph.isPrimarySibling,
     siblingScaleFactor: micrograph.siblingScaleFactor,
+    // Sketch overlay layers (new feature - not in legacy schema)
+    sketchLayers: micrograph.sketchLayers,
   };
 }
 

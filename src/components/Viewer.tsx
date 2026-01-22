@@ -1,9 +1,11 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Box, Typography, IconButton, Tooltip } from '@mui/material';
 import { KeyboardArrowDown, KeyboardArrowUp } from '@mui/icons-material';
 import DrawingToolbar from './DrawingToolbar';
+import SketchToolbar from './SketchToolbar';
 import BottomPanel from './BottomPanel';
 import { TiledViewer, TiledViewerRef } from './TiledViewer';
+import { ExportWithSketchesDialog, ExportOptions } from './dialogs/ExportWithSketchesDialog';
 import { useAppStore } from '../store';
 import { findMicrographById, findSpotById } from '../store/helpers';
 
@@ -181,6 +183,92 @@ const Viewer: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [activeMicrographId, quickClassifyVisible, getSiblingId, toggleSiblingView]);
 
+  // Sketch mode state for keyboard shortcuts
+  const sketchModeActive = useAppStore((state) => state.sketchModeActive);
+  const setSketchModeActive = useAppStore((state) => state.setSketchModeActive);
+  const setActiveTool = useAppStore((state) => state.setActiveTool);
+
+  // Keyboard shortcuts for sketch mode
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't trigger in input fields
+      if (['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement).tagName)) return;
+
+      // S key to enter sketch mode (when a micrograph is active)
+      if (e.key.toLowerCase() === 's' && !sketchModeActive && activeMicrographId) {
+        e.preventDefault();
+        setSketchModeActive(true);
+        return;
+      }
+
+      // Escape to exit sketch mode
+      if (e.key === 'Escape' && sketchModeActive) {
+        e.preventDefault();
+        setSketchModeActive(false);
+        return;
+      }
+
+      // Sketch tool shortcuts (only when in sketch mode)
+      if (sketchModeActive) {
+        if (e.key === '1') {
+          e.preventDefault();
+          setActiveTool('sketch-pen');
+        } else if (e.key === '2') {
+          e.preventDefault();
+          setActiveTool('sketch-marker');
+        } else if (e.key === '3') {
+          e.preventDefault();
+          setActiveTool('sketch-eraser');
+        } else if (e.key === '4' || e.key.toLowerCase() === 't') {
+          e.preventDefault();
+          setActiveTool('sketch-text');
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [activeMicrographId, sketchModeActive, setSketchModeActive, setActiveTool]);
+
+  // Export with sketches dialog state
+  const [exportDialogOpen, setExportDialogOpen] = useState(false);
+
+  // Handle export with sketches
+  const handleExportWithSketches = useCallback(async (options: ExportOptions) => {
+    if (!tiledViewerRef.current) {
+      throw new Error('Viewer not available');
+    }
+
+    // Get the data URL from the viewer
+    const dataUrl = await tiledViewerRef.current.exportImage(options);
+
+    // Trigger download
+    const link = document.createElement('a');
+    link.href = dataUrl;
+
+    // Generate filename
+    const micrographName = activeMicrograph?.name || 'micrograph';
+    const timestamp = new Date().toISOString().slice(0, 19).replace(/[:-]/g, '');
+    link.download = `${micrographName}_with_sketches_${timestamp}.${options.format}`;
+
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  }, [activeMicrograph]);
+
+  // Listen for menu export command
+  useEffect(() => {
+    if (!window.api?.onExportWithSketches) return;
+
+    const unsubscribe = window.api.onExportWithSketches(() => {
+      if (activeMicrographId) {
+        setExportDialogOpen(true);
+      }
+    });
+
+    return unsubscribe;
+  }, [activeMicrographId]);
+
   return (
     <Box
       className="viewer-container"
@@ -190,6 +278,7 @@ const Viewer: React.FC = () => {
       <Box sx={{ flex: 1, bgcolor: 'background.default', position: 'relative' }}>
         <TiledViewer ref={tiledViewerRef} imagePath={activeMicrographPath} onCursorMove={setCursorCoords} />
         <DrawingToolbar />
+        <SketchToolbar />
 
         {/* Floating toggle button when bottom panel is collapsed */}
         {isBottomPanelCollapsed && (
@@ -335,6 +424,13 @@ const Viewer: React.FC = () => {
 
         <BottomPanel />
       </Box>
+
+      {/* Export with Sketches Dialog */}
+      <ExportWithSketchesDialog
+        open={exportDialogOpen}
+        onClose={() => setExportDialogOpen(false)}
+        onExport={handleExportWithSketches}
+      />
     </Box>
   );
 };

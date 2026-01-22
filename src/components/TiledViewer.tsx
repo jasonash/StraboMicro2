@@ -13,7 +13,7 @@
  */
 
 import { useEffect, useRef, useState, useCallback, useImperativeHandle, forwardRef, useMemo } from 'react';
-import { Stage, Layer, Image as KonvaImage, Circle } from 'react-konva';
+import { Stage, Layer, Image as KonvaImage, Circle, Line } from 'react-konva';
 import { Box, CircularProgress, Typography, IconButton, Tooltip } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
@@ -22,6 +22,8 @@ import { getChildMicrographs } from '@/store/helpers';
 import { AssociatedImageRenderer } from './AssociatedImageRenderer';
 import { ChildSpotsRenderer } from './ChildSpotsRenderer';
 import { SpotRenderer } from './SpotRenderer';
+import { SketchLayerRenderer } from './SketchLayerRenderer';
+import { SketchTextInput } from './SketchTextInput';
 import { PointCountRenderer } from './PointCountRenderer';
 import { LassoRenderer } from './LassoRenderer';
 import { SpotContextMenu } from './SpotContextMenu';
@@ -30,7 +32,7 @@ import { NewSpotDialog } from './dialogs/NewSpotDialog';
 import { EditSpotDialog } from './dialogs/metadata/EditSpotDialog';
 import { BatchEditSpotsDialog } from './dialogs/BatchEditSpotsDialog';
 import RulerCanvas from './RulerCanvas';
-import { Geometry, Spot } from '@/types/project-types';
+import { Geometry, Spot, SketchLayer, SketchText } from '@/types/project-types';
 import { usePolygonDrawing } from '@/hooks/usePolygonDrawing';
 import { useLineDrawing } from '@/hooks/useLineDrawing';
 import { useRulerTool } from '@/hooks/useRulerTool';
@@ -55,6 +57,14 @@ export interface TiledViewerRef {
   zoomOut: () => void;
   /** Ensure a point is visible on screen, panning only if necessary (lazy/soft pan) */
   panToPoint: (x: number, y: number) => void;
+  /** Export the current view as an image with optional sketch layers */
+  exportImage: (options: {
+    includeImage: boolean;
+    includeSpots: boolean;
+    includedLayerIds: string[];
+    format: 'png' | 'jpeg';
+    scale: number;
+  }) => Promise<string>;
 }
 
 interface TileInfo {
@@ -141,6 +151,15 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
     const showArchivedSpots = useAppStore((state) => state.showArchivedSpots);
     const siblingViewActive = useAppStore((state) => state.siblingViewActive);
     const toggleSiblingView = useAppStore((state) => state.toggleSiblingView);
+    const activeSketchLayerId = useAppStore((state) => state.activeSketchLayerId);
+    const sketchStrokeColor = useAppStore((state) => state.sketchStrokeColor);
+    const sketchStrokeWidth = useAppStore((state) => state.sketchStrokeWidth);
+    const sketchFontSize = useAppStore((state) => state.sketchFontSize);
+    const addSketchStroke = useAppStore((state) => state.addSketchStroke);
+    const removeSketchStroke = useAppStore((state) => state.removeSketchStroke);
+    const addSketchText = useAppStore((state) => state.addSketchText);
+    const updateSketchText = useAppStore((state) => state.updateSketchText);
+    const sketchModeActive = useAppStore((state) => state.sketchModeActive);
     const theme = useAppStore((state) => state.theme);
     const selectActiveSpot = useAppStore((state) => state.selectActiveSpot);
     const selectSpot = useAppStore((state) => state.selectSpot);
@@ -180,6 +199,121 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
       spotLassoActiveRef.current = active;
       setSpotLassoActive(active);
     }, []);
+
+    // Sketch drawing state
+    // Using ref for isDrawing to avoid stale closure issues in event handlers
+    const isSketchDrawingRef = useRef(false);
+    const currentSketchPointsRef = useRef<number[]>([]);
+    const [sketchPreviewPoints, setSketchPreviewPoints] = useState<number[]>([]);
+
+    // Eraser drag state - track if we're in the middle of drag-to-erase
+    const isEraserDraggingRef = useRef(false);
+    // Track which strokes have been erased during this drag to avoid re-deleting
+    const erasedStrokeIdsRef = useRef<Set<string>>(new Set());
+
+    // Text tool state - for the text input overlay
+    const [textInputVisible, setTextInputVisible] = useState(false);
+    const [textInputPosition, setTextInputPosition] = useState({ screenX: 0, screenY: 0, imageX: 0, imageY: 0 });
+    const [editingTextId, setEditingTextId] = useState<string | null>(null);
+    const [editingTextInitial, setEditingTextInitial] = useState('');
+
+    /**
+     * Handle stroke click for eraser tool
+     */
+    const handleEraseStroke = useCallback((layerId: string, strokeId: string) => {
+      if (!activeMicrographId) return;
+
+      // Don't erase the same stroke twice during a drag
+      if (erasedStrokeIdsRef.current.has(strokeId)) return;
+
+      // Mark as erased during this drag session
+      erasedStrokeIdsRef.current.add(strokeId);
+
+      // Remove the stroke from the store
+      removeSketchStroke(activeMicrographId, layerId, strokeId);
+    }, [activeMicrographId, removeSketchStroke]);
+
+    /**
+     * Handle text input confirmation - create new text or update existing
+     */
+    const handleTextConfirm = useCallback((text: string) => {
+      if (!activeMicrographId || !activeSketchLayerId) return;
+
+      if (editingTextId) {
+        // Update existing text
+        updateSketchText(activeMicrographId, activeSketchLayerId, editingTextId, { text });
+      } else {
+        // Create new text annotation
+        const textItem = {
+          id: `text-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          x: textInputPosition.imageX,
+          y: textInputPosition.imageY,
+          text: text,
+          fontSize: sketchFontSize,
+          fontFamily: 'Arial',
+          color: sketchStrokeColor,
+        };
+
+        addSketchText(activeMicrographId, activeSketchLayerId, textItem);
+      }
+
+      // Reset state
+      setTextInputVisible(false);
+      setEditingTextId(null);
+      setEditingTextInitial('');
+    }, [activeMicrographId, activeSketchLayerId, textInputPosition, sketchFontSize, sketchStrokeColor, addSketchText, editingTextId, updateSketchText]);
+
+    /**
+     * Handle text input cancellation
+     */
+    const handleTextCancel = useCallback(() => {
+      setTextInputVisible(false);
+      setEditingTextId(null);
+      setEditingTextInitial('');
+    }, []);
+
+    /**
+     * Handle text drag end - update text position in store
+     */
+    const handleTextDragEnd = useCallback((layerId: string, textId: string, x: number, y: number) => {
+      if (!activeMicrographId) return;
+      updateSketchText(activeMicrographId, layerId, textId, { x, y });
+    }, [activeMicrographId, updateSketchText]);
+
+    /**
+     * Handle text double-click - open editor with existing text
+     */
+    const handleTextDoubleClick = useCallback((layerId: string, textId: string) => {
+      if (!activeMicrographId) return;
+
+      // Find the text item in the sketch layers
+      const micro = micrographIndex.get(activeMicrographId);
+      const layers = micro?.sketchLayers || [];
+      const layer = layers.find((l: SketchLayer) => l.id === layerId);
+      if (!layer) return;
+
+      const textItem = layer.textItems.find((t: SketchText) => t.id === textId);
+      if (!textItem) return;
+
+      // Get the stage to calculate screen position
+      const stage = stageRef.current;
+      if (!stage) return;
+
+      // Convert image coordinates to screen coordinates
+      const screenX = textItem.x * zoom + position.x;
+      const screenY = textItem.y * zoom + position.y;
+
+      // Set up editor state
+      setTextInputPosition({
+        screenX,
+        screenY,
+        imageX: textItem.x,
+        imageY: textItem.y,
+      });
+      setEditingTextId(textId);
+      setEditingTextInitial(textItem.text);
+      setTextInputVisible(true);
+    }, [activeMicrographId, micrographIndex, zoom, position]);
 
     /**
      * Aggressively clean up tile memory to prevent OOM crashes.
@@ -812,6 +946,18 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
     }, [effectiveSpots, position, zoom, stageSize, showArchivedSpots]);
 
     /**
+     * Get sketch layers for the active micrograph
+     */
+    // Stable empty array to prevent unnecessary re-renders
+    const EMPTY_SKETCH_LAYERS: SketchLayer[] = [];
+
+    const sketchLayers = useMemo(() => {
+      if (!activeMicrographId) return EMPTY_SKETCH_LAYERS;
+      const micro = micrographIndex.get(activeMicrographId);
+      return micro?.sketchLayers ?? EMPTY_SKETCH_LAYERS;
+    }, [micrographIndex, activeMicrographId]);
+
+    /**
      * Load tiles that are visible but not yet loaded (only in tiled mode)
      * In thumbnail mode, all tiles are loaded upfront by loadAllTiles()
      */
@@ -1064,6 +1210,38 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
           return;
         }
 
+        // Handle sketch drawing tools (pen, marker)
+        if ((activeTool === 'sketch-pen' || activeTool === 'sketch-marker') && activeSketchLayerId) {
+          const stage = stageRef.current;
+          if (!stage) return;
+          const pos = stage.getPointerPosition();
+          if (!pos) return;
+          const imageX = (pos.x - position.x) / zoom;
+          const imageY = (pos.y - position.y) / zoom;
+
+          // Start drawing
+          isSketchDrawingRef.current = true;
+          currentSketchPointsRef.current = [imageX, imageY];
+          setSketchPreviewPoints([imageX, imageY]);
+          return;
+        }
+
+        // Handle eraser tool - start drag-to-erase
+        if (activeTool === 'sketch-eraser' && activeSketchLayerId) {
+          isEraserDraggingRef.current = true;
+          erasedStrokeIdsRef.current.clear(); // Clear previously erased strokes
+
+          // Check if we clicked directly on a stroke
+          const target = e.target;
+          if (target && target.name() === 'sketch-stroke') {
+            const strokeId = target.id();
+            if (strokeId && activeMicrographId) {
+              handleEraseStroke(activeSketchLayerId, strokeId);
+            }
+          }
+          return;
+        }
+
         // Only enable panning if no drawing tool is active
         if (!activeTool || activeTool === 'select') {
           // Don't pan if lasso is active (point count or spot toolbar)
@@ -1076,7 +1254,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
           setLastPointerPos(pos);
         }
       },
-      [activeTool, position, zoom, rulerTool, lassoToolActive, spotLassoToolActive, pointCountMode, lasso, setSpotLassoActiveWithRef]
+      [activeTool, position, zoom, rulerTool, lassoToolActive, spotLassoToolActive, pointCountMode, lasso, setSpotLassoActiveWithRef, activeSketchLayerId, activeMicrographId, handleEraseStroke]
     );
 
     const handleMouseMove = useCallback(() => {
@@ -1119,6 +1297,34 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
         const imageY = (pos.y - position.y) / zoom;
         lasso.updateLasso(imageX, imageY);
         // Mark as dragged so click handler doesn't clear the selection
+        setHasDragged(true);
+      }
+
+      // Handle sketch drawing (pen/marker)
+      if (isSketchDrawingRef.current) {
+        const imageX = (pos.x - position.x) / zoom;
+        const imageY = (pos.y - position.y) / zoom;
+
+        // Add point to current stroke
+        currentSketchPointsRef.current.push(imageX, imageY);
+
+        // Update preview line - copy the array to trigger re-render
+        setSketchPreviewPoints([...currentSketchPointsRef.current]);
+
+        // Mark as dragged so click handler doesn't trigger other actions
+        setHasDragged(true);
+      }
+
+      // Handle eraser drag-to-erase
+      if (isEraserDraggingRef.current && activeTool === 'sketch-eraser' && activeSketchLayerId) {
+        // Use Konva's getIntersection to find shapes under the cursor
+        const shape = stage.getIntersection(pos);
+        if (shape && shape.name() === 'sketch-stroke') {
+          const strokeId = shape.id();
+          if (strokeId && activeMicrographId) {
+            handleEraseStroke(activeSketchLayerId, strokeId);
+          }
+        }
         setHasDragged(true);
       }
 
@@ -1261,7 +1467,39 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
           }
         }
       }
-    }, [activeTool, rulerTool, lasso, lassoToolActive, pointCountMode, activePointCountSession, setSelectedPointIndices, spotLassoToolActive, setSpotLassoToolActive, activeMicrograph, showArchivedSpots, getSpotCentroid, selectSpot, selectActiveSpot, setSpotLassoActiveWithRef]);
+
+      // Finish sketch drawing (pen/marker)
+      if (isSketchDrawingRef.current && activeMicrographId && activeSketchLayerId) {
+        isSketchDrawingRef.current = false;
+
+        // Only create stroke if we have enough points (at least 2 for a dot/short line)
+        const points = currentSketchPointsRef.current;
+        if (points.length >= 2) {
+          // Create the stroke object
+          const stroke = {
+            id: `stroke-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+            points: [...points],
+            color: sketchStrokeColor,
+            strokeWidth: activeTool === 'sketch-marker' ? sketchStrokeWidth * 3 : sketchStrokeWidth,
+            opacity: activeTool === 'sketch-marker' ? 0.4 : 1.0,
+            tool: activeTool === 'sketch-marker' ? 'marker' as const : 'pen' as const,
+          };
+
+          // Add to store
+          addSketchStroke(activeMicrographId, activeSketchLayerId, stroke);
+        }
+
+        // Clear preview
+        currentSketchPointsRef.current = [];
+        setSketchPreviewPoints([]);
+      }
+
+      // Finish eraser dragging
+      if (isEraserDraggingRef.current) {
+        isEraserDraggingRef.current = false;
+        erasedStrokeIdsRef.current.clear();
+      }
+    }, [activeTool, rulerTool, lasso, lassoToolActive, pointCountMode, activePointCountSession, setSelectedPointIndices, spotLassoToolActive, setSpotLassoToolActive, activeMicrograph, showArchivedSpots, getSpotCentroid, selectSpot, selectActiveSpot, setSpotLassoActiveWithRef, activeMicrographId, activeSketchLayerId, sketchStrokeColor, sketchStrokeWidth, addSketchStroke]);
 
     const handleMouseLeave = useCallback(() => {
       setIsPanning(false);
@@ -1272,6 +1510,19 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
       if (spotLassoActiveRef.current) {
         lasso.cancelLasso();
         setSpotLassoActiveWithRef(false);
+      }
+
+      // Cancel sketch drawing if mouse leaves while drawing
+      if (isSketchDrawingRef.current) {
+        isSketchDrawingRef.current = false;
+        currentSketchPointsRef.current = [];
+        setSketchPreviewPoints([]);
+      }
+
+      // Cancel eraser dragging if mouse leaves
+      if (isEraserDraggingRef.current) {
+        isEraserDraggingRef.current = false;
+        erasedStrokeIdsRef.current.clear();
       }
     }, [onCursorMove, lasso, setSpotLassoActiveWithRef]);
 
@@ -1348,8 +1599,21 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
         if (activeTool === 'line') {
           lineDrawing.handleClick(imageX, imageY);
         }
+
+        // Handle text tool - show input overlay at click position
+        if (activeTool === 'sketch-text' && activeSketchLayerId) {
+          setTextInputPosition({
+            screenX: pos.x,
+            screenY: pos.y,
+            imageX: imageX,
+            imageY: imageY,
+          });
+          setEditingTextId(null);
+          setEditingTextInitial('');
+          setTextInputVisible(true);
+        }
       },
-      [activeTool, position, zoom, polygonDrawing, lineDrawing, selectActiveSpot, clearSpotSelection, hasDragged, splitModeSpotId, splitLineDrawing]
+      [activeTool, position, zoom, polygonDrawing, lineDrawing, selectActiveSpot, clearSpotSelection, hasDragged, splitModeSpotId, splitLineDrawing, activeSketchLayerId]
     );
 
     /**
@@ -1591,6 +1855,72 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
       }
     }, [stageSize, zoom, position]);
 
+    // Export image function for use via ref
+    const exportImage = useCallback(async (options: {
+      includeImage: boolean;
+      includeSpots: boolean;
+      includedLayerIds: string[];
+      format: 'png' | 'jpeg';
+      scale: number;
+    }): Promise<string> => {
+      const stage = stageRef.current;
+      if (!stage) {
+        throw new Error('Stage not available');
+      }
+
+      // Get all layers from the stage
+      const layers = stage.getLayers();
+
+      // Store original visibility states
+      const originalVisibility = new Map<string, boolean>();
+
+      // Find and control layer visibility based on options
+      layers.forEach((layer: any) => {
+        const layerName = layer.name();
+        originalVisibility.set(layerName, layer.visible());
+
+        if (layerName === 'image-layer') {
+          layer.visible(options.includeImage);
+        } else if (layerName === 'spots-layer') {
+          layer.visible(options.includeSpots);
+        } else if (layerName === 'sketch-layer') {
+          // Sketch layer visibility is controlled by which strokes/text to render
+          // We'll handle this by temporarily modifying the sketch layers
+          layer.visible(options.includedLayerIds.length > 0);
+        } else if (layerName === 'drawing-layer') {
+          // Hide drawing layer during export (temporary drawings)
+          layer.visible(false);
+        }
+      });
+
+      // Force a synchronous redraw
+      stage.batchDraw();
+
+      // Determine mime type
+      const mimeType = options.format === 'jpeg' ? 'image/jpeg' : 'image/png';
+
+      // Export with specified scale
+      const dataUrl = stage.toDataURL({
+        pixelRatio: options.scale,
+        mimeType,
+        quality: options.format === 'jpeg' ? 0.92 : undefined,
+      });
+
+      // Restore original visibility
+      layers.forEach((layer: any) => {
+        const layerName = layer.name();
+        const wasVisible = originalVisibility.get(layerName);
+        if (wasVisible !== undefined) {
+          layer.visible(wasVisible);
+        }
+      });
+
+      // Redraw to restore state
+      stage.batchDraw();
+
+      return dataUrl;
+    }, []);
+
     // Expose methods to parent components via ref
     useImperativeHandle(
       ref,
@@ -1599,8 +1929,9 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
         zoomIn: handleZoomIn,
         zoomOut: handleZoomOut,
         panToPoint,
+        exportImage,
       }),
-      [handleResetZoom, handleZoomIn, handleZoomOut, panToPoint]
+      [handleResetZoom, handleZoomIn, handleZoomOut, panToPoint, exportImage]
     );
 
     const RULER_SIZE = 30; // Width/height of ruler bars
@@ -1778,6 +2109,10 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                     activeTool === 'line' ||
                     activeTool === 'polygon' ||
                     activeTool === 'measure' ||
+                    activeTool === 'sketch-pen' ||
+                    activeTool === 'sketch-marker' ||
+                    activeTool === 'sketch-eraser' ||
+                    activeTool === 'sketch-text' ||
                     lassoToolActive ||
                     spotLassoToolActive ||
                     spotLassoActive ||
@@ -1788,7 +2123,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                       : 'grab',
                 }}
               >
-                <Layer key="image-layer" x={position.x} y={position.y} scaleX={zoom} scaleY={zoom}>
+                <Layer key="image-layer" name="image-layer" x={position.x} y={position.y} scaleX={zoom} scaleY={zoom}>
                   {/* Progressive loading: Show thumbnail first, then switch to tiles */}
                   {renderMode === 'thumbnail' && thumbnail && (
                     <KonvaImage
@@ -1880,7 +2215,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                 </Layer>
 
                 {/* Spots Layer - render all saved spots and point-located micrographs */}
-                <Layer key="spots-layer" x={position.x} y={position.y} scaleX={zoom} scaleY={zoom}>
+                <Layer key="spots-layer" name="spots-layer" x={position.x} y={position.y} scaleX={zoom} scaleY={zoom}>
                   {/* Render point-located associated micrographs as clickable markers */}
                   {/* Hide in point count mode */}
                   {!pointCountMode &&
@@ -2046,9 +2381,24 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                   )}
                 </Layer>
 
+                {/* Sketch Layers - freeform annotations (above spots, below drawing) */}
+                <Layer key="sketch-layer" name="sketch-layer" x={position.x} y={position.y} scaleX={zoom} scaleY={zoom}>
+                  <SketchLayerRenderer
+                    layers={sketchLayers}
+                    scale={zoom}
+                    activeLayerId={activeSketchLayerId}
+                    eraserActive={activeTool === 'sketch-eraser'}
+                    onStrokeClick={handleEraseStroke}
+                    textDraggable={sketchModeActive && activeTool === 'sketch-text'}
+                    onTextDragEnd={handleTextDragEnd}
+                    onTextClick={handleTextDoubleClick}
+                  />
+                </Layer>
+
                 {/* Drawing Layer - for temporary drawing in progress */}
                 <Layer
                   key="drawing-layer"
+                  name="drawing-layer"
                   ref={drawingLayerRef}
                   x={position.x}
                   y={position.y}
@@ -2056,6 +2406,20 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                   scaleY={zoom}
                 >
                   {/* Drawing shapes (polygon/line in progress) are added by the drawing hooks */}
+
+                  {/* Sketch preview line during drawing */}
+                  {sketchPreviewPoints.length >= 2 && (
+                    <Line
+                      points={sketchPreviewPoints}
+                      stroke={sketchStrokeColor}
+                      strokeWidth={activeTool === 'sketch-marker' ? sketchStrokeWidth * 3 : sketchStrokeWidth}
+                      opacity={activeTool === 'sketch-marker' ? 0.4 : 1.0}
+                      lineCap="round"
+                      lineJoin="round"
+                      tension={0.3}
+                      listening={false}
+                    />
+                  )}
                 </Layer>
               </Stage>
             </div>
@@ -2078,6 +2442,10 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                     activeTool === 'line' ||
                     activeTool === 'polygon' ||
                     activeTool === 'measure' ||
+                    activeTool === 'sketch-pen' ||
+                    activeTool === 'sketch-marker' ||
+                    activeTool === 'sketch-eraser' ||
+                    activeTool === 'sketch-text' ||
                     lassoToolActive ||
                     spotLassoToolActive ||
                     spotLassoActive ||
@@ -2088,7 +2456,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                       : 'grab',
                 }}
               >
-                <Layer key="image-layer" x={position.x} y={position.y} scaleX={zoom} scaleY={zoom}>
+                <Layer key="image-layer" name="image-layer" x={position.x} y={position.y} scaleX={zoom} scaleY={zoom}>
                   {/* Progressive loading: Show thumbnail first, then switch to tiles */}
                   {renderMode === 'thumbnail' && thumbnail && (
                     <KonvaImage
@@ -2167,7 +2535,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                 </Layer>
 
                 {/* Spots Layer - render all saved spots */}
-                <Layer key="spots-layer" x={position.x} y={position.y} scaleX={zoom} scaleY={zoom}>
+                <Layer key="spots-layer" name="spots-layer" x={position.x} y={position.y} scaleX={zoom} scaleY={zoom}>
                   {/* Recursive Spots: Render spots from child micrographs (overlays) */}
                   {/* Hide in point count mode */}
                   {!pointCountMode &&
@@ -2288,9 +2656,24 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                   )}
                 </Layer>
 
+                {/* Sketch Layers - freeform annotations (above spots, below drawing) */}
+                <Layer key="sketch-layer" name="sketch-layer" x={position.x} y={position.y} scaleX={zoom} scaleY={zoom}>
+                  <SketchLayerRenderer
+                    layers={sketchLayers}
+                    scale={zoom}
+                    activeLayerId={activeSketchLayerId}
+                    eraserActive={activeTool === 'sketch-eraser'}
+                    onStrokeClick={handleEraseStroke}
+                    textDraggable={sketchModeActive && activeTool === 'sketch-text'}
+                    onTextDragEnd={handleTextDragEnd}
+                    onTextClick={handleTextDoubleClick}
+                  />
+                </Layer>
+
                 {/* Drawing Layer */}
                 <Layer
                   key="drawing-layer"
+                  name="drawing-layer"
                   ref={drawingLayerRef}
                   x={position.x}
                   y={position.y}
@@ -2298,6 +2681,20 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                   scaleY={zoom}
                 >
                   {/* Drawing shapes added by hooks */}
+
+                  {/* Sketch preview line during drawing */}
+                  {sketchPreviewPoints.length >= 2 && (
+                    <Line
+                      points={sketchPreviewPoints}
+                      stroke={sketchStrokeColor}
+                      strokeWidth={activeTool === 'sketch-marker' ? sketchStrokeWidth * 3 : sketchStrokeWidth}
+                      opacity={activeTool === 'sketch-marker' ? 0.4 : 1.0}
+                      lineCap="round"
+                      lineJoin="round"
+                      tension={0.3}
+                      listening={false}
+                    />
+                  )}
                 </Layer>
               </Stage>
             )}
@@ -2412,6 +2809,18 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
         <BatchEditSpotsDialog
           isOpen={batchEditDialogOpen}
           onClose={() => setBatchEditDialogOpen(false)}
+        />
+
+        {/* Sketch Text Input Overlay */}
+        <SketchTextInput
+          visible={textInputVisible}
+          x={textInputPosition.screenX}
+          y={textInputPosition.screenY}
+          initialText={editingTextInitial}
+          fontSize={sketchFontSize}
+          color={sketchStrokeColor}
+          onConfirm={handleTextConfirm}
+          onCancel={handleTextCancel}
         />
       </div>
     );

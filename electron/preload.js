@@ -322,6 +322,12 @@ contextBridge.exposeInMainWorld('api', {
     return () => ipcRenderer.removeListener('menu:export-all-images', callback);
   },
 
+  // Menu event for export with sketches
+  onExportWithSketches: (callback) => {
+    ipcRenderer.on('menu:export-with-sketches', callback);
+    return () => ipcRenderer.removeListener('menu:export-with-sketches', callback);
+  },
+
   // Export project as JSON
   exportProjectJson: (projectData) =>
     ipcRenderer.invoke('project:export-json', projectData),

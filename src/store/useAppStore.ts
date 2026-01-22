@@ -93,6 +93,9 @@ import {
   GroupMetadata,
   Tag,
   SimpleCoord,
+  SketchLayer,
+  SketchStroke,
+  SketchText,
 } from '@/types/project-types';
 import * as turf from '@turf/turf';
 import polygonClipping from 'polygon-clipping';
@@ -123,7 +126,7 @@ import type { TiledViewerRef } from '@/components/TiledViewer';
 // TYPE DEFINITIONS
 // ============================================================================
 
-export type DrawingTool = 'select' | 'point' | 'line' | 'polygon' | 'measure' | null;
+export type DrawingTool = 'select' | 'point' | 'line' | 'polygon' | 'measure' | 'sketch-pen' | 'sketch-marker' | 'sketch-eraser' | 'sketch-text' | null;
 export type SidebarTab = 'samples' | 'groups' | 'spots' | 'tags';
 export type ThemeMode = 'dark' | 'light' | 'system';
 
@@ -231,6 +234,18 @@ interface AppState {
   /** Cached pan position before toggling to sibling */
   siblingCachedPosition: { x: number; y: number } | null;
 
+  // ========== SKETCH OVERLAY STATE ==========
+  /** ID of the currently active sketch layer (for drawing/editing) */
+  activeSketchLayerId: string | null;
+  /** Whether sketch mode is active (shows sketch toolbar, enables sketch tools) */
+  sketchModeActive: boolean;
+  /** Current stroke color for sketch tools (hex string) */
+  sketchStrokeColor: string;
+  /** Current stroke width for sketch tools (in image pixels) */
+  sketchStrokeWidth: number;
+  /** Current font size for sketch text tool (in image pixels) */
+  sketchFontSize: number;
+
   // ========== GENERATION SETTINGS (persisted) ==========
   /** Last used point counting settings */
   lastPointCountSettings: {
@@ -293,6 +308,38 @@ interface AppState {
   unlinkSiblingImages: (micrographId: string) => void;
   /** Get the sibling ID for a micrograph (if any) */
   getSiblingId: (micrographId: string | null) => string | null;
+
+  // ========== SKETCH OVERLAY ACTIONS ==========
+  /** Add a new sketch layer to a micrograph */
+  addSketchLayer: (micrographId: string, layer?: Partial<SketchLayer>) => string;
+  /** Remove a sketch layer from a micrograph */
+  removeSketchLayer: (micrographId: string, layerId: string) => void;
+  /** Rename a sketch layer */
+  renameSketchLayer: (micrographId: string, layerId: string, name: string) => void;
+  /** Set visibility of a sketch layer */
+  setSketchLayerVisible: (micrographId: string, layerId: string, visible: boolean) => void;
+  /** Add a stroke to a sketch layer */
+  addSketchStroke: (micrographId: string, layerId: string, stroke: SketchStroke) => void;
+  /** Remove a stroke from a sketch layer */
+  removeSketchStroke: (micrographId: string, layerId: string, strokeId: string) => void;
+  /** Add a text annotation to a sketch layer */
+  addSketchText: (micrographId: string, layerId: string, text: SketchText) => void;
+  /** Remove a text annotation from a sketch layer */
+  removeSketchText: (micrographId: string, layerId: string, textId: string) => void;
+  /** Update a text annotation in a sketch layer */
+  updateSketchText: (micrographId: string, layerId: string, textId: string, updates: Partial<SketchText>) => void;
+  /** Set the active sketch layer for editing */
+  setActiveSketchLayerId: (layerId: string | null) => void;
+  /** Get sketch layers for a micrograph */
+  getSketchLayers: (micrographId: string | null) => SketchLayer[];
+  /** Enable/disable sketch mode (shows sketch toolbar) */
+  setSketchModeActive: (active: boolean) => void;
+  /** Set the stroke color for sketch tools */
+  setSketchStrokeColor: (color: string) => void;
+  /** Set the stroke width for sketch tools */
+  setSketchStrokeWidth: (width: number) => void;
+  /** Set the font size for sketch text tool */
+  setSketchFontSize: (size: number) => void;
 
   // ========== CRUD: DATASET ==========
   addDataset: (dataset: DatasetMetadata) => void;
@@ -852,6 +899,13 @@ export const useAppStore = create<AppState>()(
           siblingCachedZoom: null,
           siblingCachedPosition: null,
 
+          // Sketch overlay state
+          activeSketchLayerId: null,
+          sketchModeActive: false,
+          sketchStrokeColor: '#ff0000', // Default: red
+          sketchStrokeWidth: 3, // Default: 3px
+          sketchFontSize: 24, // Default: 24px
+
           // Generation settings (persisted defaults)
           lastPointCountSettings: null,
           lastGrainDetectionSettings: null,
@@ -1206,6 +1260,242 @@ export const useAppStore = create<AppState>()(
             const micro = micrographIndex.get(micrographId);
             return micro?.siblingImageId ?? null;
           },
+
+          // ========== SKETCH OVERLAY ACTIONS ==========
+
+          addSketchLayer: (micrographId, layerOptions = {}) => {
+            const layerId = `sketch-layer-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+            const newLayer: SketchLayer = {
+              id: layerId,
+              name: layerOptions.name || 'New Sketch Layer',
+              visible: layerOptions.visible ?? true,
+              createdAt: new Date().toISOString(),
+              strokes: layerOptions.strokes || [],
+              textItems: layerOptions.textItems || [],
+            };
+
+            set((state) => {
+              if (!state.project) return state;
+
+              const updatedProject = updateMicrograph(state.project, micrographId, (m) => {
+                if (!m.sketchLayers) {
+                  m.sketchLayers = [];
+                }
+                m.sketchLayers.push(newLayer);
+              });
+
+              if (!updatedProject) return state;
+
+              return {
+                project: updatedProject,
+                isDirty: true,
+                micrographIndex: buildMicrographIndex(updatedProject),
+                activeSketchLayerId: layerId,
+              };
+            });
+
+            return layerId;
+          },
+
+          removeSketchLayer: (micrographId, layerId) => set((state) => {
+            if (!state.project) return state;
+
+            const updatedProject = updateMicrograph(state.project, micrographId, (m) => {
+              if (m.sketchLayers) {
+                m.sketchLayers = m.sketchLayers.filter((l) => l.id !== layerId);
+              }
+            });
+
+            if (!updatedProject) return state;
+
+            // If the deleted layer was active, clear the active layer
+            const newActiveLayerId = state.activeSketchLayerId === layerId ? null : state.activeSketchLayerId;
+
+            return {
+              project: updatedProject,
+              isDirty: true,
+              micrographIndex: buildMicrographIndex(updatedProject),
+              activeSketchLayerId: newActiveLayerId,
+            };
+          }),
+
+          renameSketchLayer: (micrographId, layerId, name) => set((state) => {
+            if (!state.project) return state;
+
+            const updatedProject = updateMicrograph(state.project, micrographId, (m) => {
+              const layer = m.sketchLayers?.find((l) => l.id === layerId);
+              if (layer) {
+                layer.name = name;
+              }
+            });
+
+            if (!updatedProject) return state;
+
+            return {
+              project: updatedProject,
+              isDirty: true,
+              micrographIndex: buildMicrographIndex(updatedProject),
+            };
+          }),
+
+          setSketchLayerVisible: (micrographId, layerId, visible) => set((state) => {
+            if (!state.project) return state;
+
+            const updatedProject = updateMicrograph(state.project, micrographId, (m) => {
+              const layer = m.sketchLayers?.find((l) => l.id === layerId);
+              if (layer) {
+                layer.visible = visible;
+              }
+            });
+
+            if (!updatedProject) return state;
+
+            return {
+              project: updatedProject,
+              isDirty: true,
+              micrographIndex: buildMicrographIndex(updatedProject),
+            };
+          }),
+
+          addSketchStroke: (micrographId, layerId, stroke) => set((state) => {
+            if (!state.project) return state;
+
+            const updatedProject = updateMicrograph(state.project, micrographId, (m) => {
+              const layer = m.sketchLayers?.find((l) => l.id === layerId);
+              if (layer) {
+                layer.strokes.push(stroke);
+              }
+            });
+
+            if (!updatedProject) return state;
+
+            return {
+              project: updatedProject,
+              isDirty: true,
+              micrographIndex: buildMicrographIndex(updatedProject),
+            };
+          }),
+
+          removeSketchStroke: (micrographId, layerId, strokeId) => set((state) => {
+            if (!state.project) return state;
+
+            const updatedProject = updateMicrograph(state.project, micrographId, (m) => {
+              const layer = m.sketchLayers?.find((l) => l.id === layerId);
+              if (layer) {
+                layer.strokes = layer.strokes.filter((s) => s.id !== strokeId);
+              }
+            });
+
+            if (!updatedProject) return state;
+
+            return {
+              project: updatedProject,
+              isDirty: true,
+              micrographIndex: buildMicrographIndex(updatedProject),
+            };
+          }),
+
+          addSketchText: (micrographId, layerId, text) => set((state) => {
+            if (!state.project) return state;
+
+            const updatedProject = updateMicrograph(state.project, micrographId, (m) => {
+              const layer = m.sketchLayers?.find((l) => l.id === layerId);
+              if (layer) {
+                layer.textItems.push(text);
+              }
+            });
+
+            if (!updatedProject) return state;
+
+            return {
+              project: updatedProject,
+              isDirty: true,
+              micrographIndex: buildMicrographIndex(updatedProject),
+            };
+          }),
+
+          removeSketchText: (micrographId, layerId, textId) => set((state) => {
+            if (!state.project) return state;
+
+            const updatedProject = updateMicrograph(state.project, micrographId, (m) => {
+              const layer = m.sketchLayers?.find((l) => l.id === layerId);
+              if (layer) {
+                layer.textItems = layer.textItems.filter((t) => t.id !== textId);
+              }
+            });
+
+            if (!updatedProject) return state;
+
+            return {
+              project: updatedProject,
+              isDirty: true,
+              micrographIndex: buildMicrographIndex(updatedProject),
+            };
+          }),
+
+          updateSketchText: (micrographId, layerId, textId, updates) => set((state) => {
+            if (!state.project) return state;
+
+            const updatedProject = updateMicrograph(state.project, micrographId, (m) => {
+              const layer = m.sketchLayers?.find((l) => l.id === layerId);
+              if (layer) {
+                const textItem = layer.textItems.find((t) => t.id === textId);
+                if (textItem) {
+                  Object.assign(textItem, updates);
+                }
+              }
+            });
+
+            if (!updatedProject) return state;
+
+            return {
+              project: updatedProject,
+              isDirty: true,
+              micrographIndex: buildMicrographIndex(updatedProject),
+            };
+          }),
+
+          setActiveSketchLayerId: (layerId) => set({ activeSketchLayerId: layerId }),
+
+          getSketchLayers: (micrographId) => {
+            if (!micrographId) return [];
+            const { micrographIndex } = get();
+            const micro = micrographIndex.get(micrographId);
+            return micro?.sketchLayers || [];
+          },
+
+          setSketchModeActive: (active) => set((state) => {
+            // When entering sketch mode, ensure we have an active layer
+            // or create one if needed
+            if (active && !state.activeSketchLayerId && state.activeMicrographId) {
+              // Check if micrograph has layers
+              const micro = state.micrographIndex.get(state.activeMicrographId);
+              if (micro?.sketchLayers && micro.sketchLayers.length > 0) {
+                return {
+                  sketchModeActive: true,
+                  activeSketchLayerId: micro.sketchLayers[0].id,
+                  activeTool: 'sketch-pen' as const,
+                };
+              }
+            }
+            // When exiting sketch mode, clear the sketch tool
+            if (!active) {
+              return {
+                sketchModeActive: false,
+                activeTool: null,
+              };
+            }
+            return {
+              sketchModeActive: active,
+              activeTool: active ? 'sketch-pen' as const : null,
+            };
+          }),
+
+          setSketchStrokeColor: (color) => set({ sketchStrokeColor: color }),
+
+          setSketchStrokeWidth: (width) => set({ sketchStrokeWidth: width }),
+
+          setSketchFontSize: (size) => set({ sketchFontSize: size }),
 
           // ========== CRUD: DATASET ==========
 
