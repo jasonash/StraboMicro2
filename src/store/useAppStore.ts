@@ -1394,17 +1394,27 @@ export const useAppStore = create<AppState>()(
               for (const sample of dataset.samples || []) {
                 if (!sample.micrographs) continue;
 
-                // Build set of IDs to delete: the target + all descendants
+                // Build set of IDs to delete: the target + all descendants + siblings
                 const idsToDelete = new Set<string>();
                 idsToDelete.add(id);
 
-                // Recursively find all descendants
+                // Also delete sibling if this micrograph has one (PPL/XPL pair)
+                const targetMicro = sample.micrographs.find(m => m.id === id);
+                if (targetMicro?.siblingImageId) {
+                  idsToDelete.add(targetMicro.siblingImageId);
+                }
+
+                // Recursively find all descendants (of both target and sibling)
                 let foundMore = true;
                 while (foundMore) {
                   foundMore = false;
                   for (const m of sample.micrographs) {
                     if (m.parentID && idsToDelete.has(m.parentID) && !idsToDelete.has(m.id)) {
                       idsToDelete.add(m.id);
+                      // Also add sibling of any descendant
+                      if (m.siblingImageId && !idsToDelete.has(m.siblingImageId)) {
+                        idsToDelete.add(m.siblingImageId);
+                      }
                       foundMore = true;
                     }
                   }
