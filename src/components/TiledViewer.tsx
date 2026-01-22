@@ -22,6 +22,7 @@ import { getChildMicrographs } from '@/store/helpers';
 import { AssociatedImageRenderer } from './AssociatedImageRenderer';
 import { ChildSpotsRenderer } from './ChildSpotsRenderer';
 import { SpotRenderer } from './SpotRenderer';
+import { SketchLayerRenderer } from './SketchLayerRenderer';
 import { PointCountRenderer } from './PointCountRenderer';
 import { LassoRenderer } from './LassoRenderer';
 import { SpotContextMenu } from './SpotContextMenu';
@@ -141,6 +142,8 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
     const showArchivedSpots = useAppStore((state) => state.showArchivedSpots);
     const siblingViewActive = useAppStore((state) => state.siblingViewActive);
     const toggleSiblingView = useAppStore((state) => state.toggleSiblingView);
+    const getSketchLayers = useAppStore((state) => state.getSketchLayers);
+    const activeSketchLayerId = useAppStore((state) => state.activeSketchLayerId);
     const theme = useAppStore((state) => state.theme);
     const selectActiveSpot = useAppStore((state) => state.selectActiveSpot);
     const selectSpot = useAppStore((state) => state.selectSpot);
@@ -810,6 +813,13 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
         return intersectsX && intersectsY;
       });
     }, [effectiveSpots, position, zoom, stageSize, showArchivedSpots]);
+
+    /**
+     * Get sketch layers for the active micrograph
+     */
+    const sketchLayers = useMemo(() => {
+      return getSketchLayers(activeMicrographId);
+    }, [getSketchLayers, activeMicrographId]);
 
     /**
      * Load tiles that are visible but not yet loaded (only in tiled mode)
@@ -2046,6 +2056,15 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                   )}
                 </Layer>
 
+                {/* Sketch Layers - freeform annotations (above spots, below drawing) */}
+                <Layer key="sketch-layer" x={position.x} y={position.y} scaleX={zoom} scaleY={zoom}>
+                  <SketchLayerRenderer
+                    layers={sketchLayers}
+                    scale={zoom}
+                    activeLayerId={activeSketchLayerId}
+                  />
+                </Layer>
+
                 {/* Drawing Layer - for temporary drawing in progress */}
                 <Layer
                   key="drawing-layer"
@@ -2286,6 +2305,15 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                   {lasso.isDrawing && lasso.lassoPoints.length > 0 && (
                     <LassoRenderer points={lasso.lassoPoints} scale={zoom} />
                   )}
+                </Layer>
+
+                {/* Sketch Layers - freeform annotations (above spots, below drawing) */}
+                <Layer key="sketch-layer" x={position.x} y={position.y} scaleX={zoom} scaleY={zoom}>
+                  <SketchLayerRenderer
+                    layers={sketchLayers}
+                    scale={zoom}
+                    activeLayerId={activeSketchLayerId}
+                  />
                 </Layer>
 
                 {/* Drawing Layer */}
