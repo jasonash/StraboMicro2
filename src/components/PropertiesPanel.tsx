@@ -52,6 +52,7 @@ import { AssociatedFilesInfoDialog } from './dialogs/metadata/associatedfiles/As
 import { LinksInfoDialog } from './dialogs/metadata/links/LinksInfoDialog';
 import { MetadataSummary } from './MetadataSummary';
 import { ProjectMetadataSection } from './ProjectMetadataSection';
+import { SketchLayersPanel } from './SketchLayersPanel';
 import { getPresetSummary } from '@/types/preset-types';
 import type { PresetWithScope } from '@/types/preset-types';
 
@@ -304,6 +305,27 @@ export function PropertiesPanel() {
               onDeleteSpot={() => setConfirmDelete('spot')}
               isDownloading={isExporting}
             />
+
+            {/* Sketch Layers Panel (only for micrographs) */}
+            {selectionType === 'micrograph' && activeMicrographId && (
+              <Box sx={{ mb: 3 }}>
+                <Typography variant="subtitle1" sx={{ mb: 1, fontWeight: 600 }}>
+                  Sketch Layers:
+                </Typography>
+                <Box
+                  sx={{
+                    border: 1,
+                    borderColor: 'divider',
+                    borderRadius: 1,
+                    maxHeight: '300px',
+                    display: 'flex',
+                    flexDirection: 'column'
+                  }}
+                >
+                  <SketchLayersPanel />
+                </Box>
+              </Box>
+            )}
 
             {/* Combined Data Type Selector */}
             <Typography variant="subtitle1" sx={{ mb: 1, fontWeight: 600 }}>
