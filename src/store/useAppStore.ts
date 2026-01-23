@@ -1014,6 +1014,8 @@ export const useAppStore = create<AppState>()(
               siblingViewActive: false, // Reset sibling view when changing micrograph
               siblingCachedZoom: null,
               siblingCachedPosition: null,
+              sketchModeActive: false, // Exit sketch mode when switching micrographs
+              activeTool: null,
             });
             return true;
           },
@@ -1058,6 +1060,8 @@ export const useAppStore = create<AppState>()(
               activeMicrographId: id,
               activeSpotId: null,
               micrographNavigationStack: [...micrographNavigationStack, activeMicrographId],
+              sketchModeActive: false, // Exit sketch mode when drilling down
+              activeTool: null,
             });
             return true;
           },
@@ -1080,6 +1084,8 @@ export const useAppStore = create<AppState>()(
               activeMicrographId: previousMicrographId,
               activeSpotId: null,
               micrographNavigationStack: newStack,
+              sketchModeActive: false, // Exit sketch mode when navigating back
+              activeTool: null,
             });
             return true;
           },
