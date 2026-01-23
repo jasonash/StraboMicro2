@@ -97,7 +97,6 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
     const drawingLayerRef = useRef<any>(null);
     const loadingSessionRef = useRef<number>(0); // Track current loading session to abort stale loads
     const pendingTileImagesRef = useRef<Set<HTMLImageElement>>(new Set()); // Track Image objects for cleanup
-    const prevSiblingViewActiveRef = useRef<boolean | null>(null); // Track previous siblingViewActive to detect changes
     const pendingSiblingToggleRef = useRef<boolean>(false); // Flag indicating a sibling toggle is pending (waiting for imagePath change)
     const preservedViewStateRef = useRef<{ zoom: number; position: { x: number; y: number } } | null>(null); // Preserved zoom/pan during sibling toggle
 
@@ -150,6 +149,8 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
     const showRecursiveSpots = useAppStore((state) => state.showRecursiveSpots);
     const showArchivedSpots = useAppStore((state) => state.showArchivedSpots);
     const siblingViewActive = useAppStore((state) => state.siblingViewActive);
+    const siblingToggleInProgress = useAppStore((state) => state.siblingToggleInProgress);
+    const clearSiblingToggleInProgress = useAppStore((state) => state.clearSiblingToggleInProgress);
     const toggleSiblingView = useAppStore((state) => state.toggleSiblingView);
     const activeSketchLayerId = useAppStore((state) => state.activeSketchLayerId);
     const sketchStrokeColor = useAppStore((state) => state.sketchStrokeColor);
@@ -492,24 +493,19 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
     cleanupTileMemoryRef.current = cleanupTileMemory;
 
     /**
-     * Watch for sibling view toggle and cache zoom/position BEFORE imagePath changes
-     * This is needed because siblingViewActive updates synchronously but imagePath
-     * is computed asynchronously in Viewer.tsx
+     * Watch for sibling toggle in progress and cache zoom/position BEFORE imagePath changes.
+     * The store sets siblingToggleInProgress=true when toggleSiblingView is called.
+     * This is needed because the store update happens before the imagePath prop changes.
      */
     useEffect(() => {
-      // Detect if siblingViewActive actually changed (not just initial render)
-      const prevValue = prevSiblingViewActiveRef.current;
-      const changed = prevValue !== null && prevValue !== siblingViewActive;
-      prevSiblingViewActiveRef.current = siblingViewActive;
-
-      // When siblingViewActive changes, cache the current zoom/position
-      // and set a flag so the image loading effect knows to preserve the view
-      if (changed) {
+      // When siblingToggleInProgress becomes true, cache current view state
+      // This happens BEFORE imagePath changes, so we capture the current zoom/position
+      if (siblingToggleInProgress) {
         preservedViewStateRef.current = { zoom, position };
         pendingSiblingToggleRef.current = true;
-        console.log('[TiledViewer] Sibling toggle detected, caching view state:', { zoom, position });
+        console.log('[TiledViewer] Sibling toggle in progress, caching view state:', { zoom, position });
       }
-    }, [siblingViewActive, zoom, position]);
+    }, [siblingToggleInProgress, zoom, position]);
 
     /**
      * Load image metadata and initialize viewer
@@ -522,7 +518,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
         return;
       }
 
-      // Check if this is a sibling toggle (flag was set by siblingViewActive effect)
+      // Check if this is a sibling toggle (flag was set by siblingToggleInProgress effect)
       const isSiblingToggle = pendingSiblingToggleRef.current;
       // Clear the flag - we're now processing the toggle
       pendingSiblingToggleRef.current = false;
@@ -618,6 +614,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
           }
 
           setIsLoading(false);
+          clearSiblingToggleInProgress(); // Clear the flag after image loads
           console.log('=== Thumbnail displayed, user can now interact ===');
 
           // Step 3: Load ALL tiles in background (not viewport-based)
@@ -632,6 +629,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
         } catch (error) {
           console.error('Failed to load image:', error);
           setIsLoading(false);
+          clearSiblingToggleInProgress(); // Clear the flag even on error
         }
       };
 
@@ -644,7 +642,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
         // Aggressive cleanup
         cleanupTileMemoryRef.current();
       };
-    }, [imagePath]);
+    }, [imagePath, clearSiblingToggleInProgress]);
 
     /**
      * Handle keyboard events (e.g., Escape to cancel editing mode)
