@@ -229,6 +229,8 @@ interface AppState {
   // ========== XPL/PPL SIBLING VIEW STATE ==========
   /** Whether currently viewing the sibling (XPL) instead of primary (PPL) */
   siblingViewActive: boolean;
+  /** Flag indicating a sibling toggle is in progress (for TiledViewer to preserve view state) */
+  siblingToggleInProgress: boolean;
   /** Cached zoom level before toggling to sibling */
   siblingCachedZoom: number | null;
   /** Cached pan position before toggling to sibling */
@@ -302,6 +304,8 @@ interface AppState {
   // ========== XPL/PPL SIBLING ACTIONS ==========
   /** Toggle between PPL (primary) and XPL (sibling) view */
   toggleSiblingView: () => void;
+  /** Clear the sibling toggle in progress flag (called by TiledViewer after image loads) */
+  clearSiblingToggleInProgress: () => void;
   /** Link two micrographs as PPL/XPL siblings (bidirectional) */
   linkSiblingImages: (primaryId: string, secondaryId: string) => void;
   /** Remove sibling link from both micrographs */
@@ -896,6 +900,7 @@ export const useAppStore = create<AppState>()(
 
           // XPL/PPL sibling view state
           siblingViewActive: false,
+          siblingToggleInProgress: false,
           siblingCachedZoom: null,
           siblingCachedPosition: null,
 
@@ -1062,6 +1067,9 @@ export const useAppStore = create<AppState>()(
               micrographNavigationStack: [...micrographNavigationStack, activeMicrographId],
               sketchModeActive: false, // Exit sketch mode when drilling down
               activeTool: null,
+              siblingViewActive: false, // Reset sibling view when drilling down
+              siblingCachedZoom: null,
+              siblingCachedPosition: null,
             });
             return true;
           },
@@ -1086,6 +1094,9 @@ export const useAppStore = create<AppState>()(
               micrographNavigationStack: newStack,
               sketchModeActive: false, // Exit sketch mode when navigating back
               activeTool: null,
+              siblingViewActive: false, // Reset sibling view when navigating back
+              siblingCachedZoom: null,
+              siblingCachedPosition: null,
             });
             return true;
           },
@@ -1142,6 +1153,7 @@ export const useAppStore = create<AppState>()(
               // Switching to sibling view - cache current state
               set({
                 siblingViewActive: true,
+                siblingToggleInProgress: true, // Signal TiledViewer to preserve view state
                 siblingCachedZoom: zoom,
                 siblingCachedPosition: pan,
                 activeMicrographId: currentMicro.siblingImageId,
@@ -1151,6 +1163,7 @@ export const useAppStore = create<AppState>()(
               const { siblingCachedZoom, siblingCachedPosition } = get();
               set({
                 siblingViewActive: false,
+                siblingToggleInProgress: true, // Signal TiledViewer to preserve view state
                 activeMicrographId: currentMicro.siblingImageId,
                 zoom: siblingCachedZoom ?? zoom,
                 pan: siblingCachedPosition ?? pan,
@@ -1159,6 +1172,8 @@ export const useAppStore = create<AppState>()(
               });
             }
           },
+
+          clearSiblingToggleInProgress: () => set({ siblingToggleInProgress: false }),
 
           linkSiblingImages: (primaryId, secondaryId) => set((state) => {
             if (!state.project) return state;
