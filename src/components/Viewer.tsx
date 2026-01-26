@@ -188,15 +188,16 @@ const Viewer: React.FC = () => {
   const setSketchModeActive = useAppStore((state) => state.setSketchModeActive);
   const setActiveTool = useAppStore((state) => state.setActiveTool);
   const activeSketchLayerId = useAppStore((state) => state.activeSketchLayerId);
-  const getSketchLayers = useAppStore((state) => state.getSketchLayers);
+  const micrographIndex = useAppStore((state) => state.micrographIndex);
   const setSketchLayerVisible = useAppStore((state) => state.setSketchLayerVisible);
 
   // Check if active sketch layer is hidden (for warning modal)
-  const sketchLayers = useMemo(() => getSketchLayers(activeMicrographId), [getSketchLayers, activeMicrographId]);
-  const activeSketchLayer = useMemo(
-    () => sketchLayers.find(l => l.id === activeSketchLayerId),
-    [sketchLayers, activeSketchLayerId]
-  );
+  // Use micrographIndex directly to ensure reactivity when layers change
+  const activeSketchLayer = useMemo(() => {
+    if (!activeMicrographId || !activeSketchLayerId) return null;
+    const micro = micrographIndex.get(activeMicrographId);
+    return micro?.sketchLayers?.find(l => l.id === activeSketchLayerId) ?? null;
+  }, [micrographIndex, activeMicrographId, activeSketchLayerId]);
   const isSketchLayerHidden = sketchModeActive && activeSketchLayer && !activeSketchLayer.visible;
 
   const handleShowSketchLayer = useCallback(() => {
