@@ -1174,7 +1174,6 @@ function App() {
         open={isSendErrorReportOpen}
         onClose={() => setIsSendErrorReportOpen(false)}
         isLoggedIn={isAuthenticated}
-        onLoginRequest={() => setIsLoginDialogOpen(true)}
       />
       <ExportAllImagesDialog
         open={isExportAllImagesOpen}

@@ -508,8 +508,8 @@ interface Window {
       write: (level: string, message: string, source?: string) => Promise<{ success: boolean }>;
     };
 
-    // Send error report to server
-    sendErrorReport: (notes: string) => Promise<{ success: boolean; error?: string; sessionExpired?: boolean }>;
+    // Send error report to server (email is optional, used when not logged in)
+    sendErrorReport: (notes: string, email?: string) => Promise<{ success: boolean; error?: string; sessionExpired?: boolean }>;
 
     // Auto-updater
     autoUpdater: {
