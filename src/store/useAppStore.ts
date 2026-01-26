@@ -907,9 +907,9 @@ export const useAppStore = create<AppState>()(
           // Sketch overlay state
           activeSketchLayerId: null,
           sketchModeActive: false,
-          sketchStrokeColor: '#ff0000', // Default: red
-          sketchStrokeWidth: 3, // Default: 3px
-          sketchFontSize: 24, // Default: 24px
+          sketchStrokeColor: localStorage.getItem('sketchStrokeColor') || '#ff0000', // Default: red
+          sketchStrokeWidth: parseInt(localStorage.getItem('sketchStrokeWidth') || '3', 10), // Default: 3px
+          sketchFontSize: parseInt(localStorage.getItem('sketchFontSize') || '24', 10), // Default: 24px
 
           // Generation settings (persisted defaults)
           lastPointCountSettings: null,
@@ -1595,11 +1595,20 @@ export const useAppStore = create<AppState>()(
             };
           }),
 
-          setSketchStrokeColor: (color) => set({ sketchStrokeColor: color }),
+          setSketchStrokeColor: (color) => {
+            localStorage.setItem('sketchStrokeColor', color);
+            set({ sketchStrokeColor: color });
+          },
 
-          setSketchStrokeWidth: (width) => set({ sketchStrokeWidth: width }),
+          setSketchStrokeWidth: (width) => {
+            localStorage.setItem('sketchStrokeWidth', width.toString());
+            set({ sketchStrokeWidth: width });
+          },
 
-          setSketchFontSize: (size) => set({ sketchFontSize: size }),
+          setSketchFontSize: (size) => {
+            localStorage.setItem('sketchFontSize', size.toString());
+            set({ sketchFontSize: size });
+          },
 
           // ========== CRUD: DATASET ==========
 
