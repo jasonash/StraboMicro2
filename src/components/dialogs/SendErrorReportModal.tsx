@@ -8,7 +8,7 @@
  * - Success message shown before closing
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -28,7 +28,7 @@ import SendIcon from '@mui/icons-material/Send';
 interface SendErrorReportModalProps {
   open: boolean;
   onClose: () => void;
-  isLoggedIn: boolean;
+  userEmail?: string;
 }
 
 const MAX_DESCRIPTION_LENGTH = 5000;
@@ -36,18 +36,25 @@ const MAX_DESCRIPTION_LENGTH = 5000;
 export function SendErrorReportModal({
   open,
   onClose,
-  isLoggedIn,
+  userEmail,
 }: SendErrorReportModalProps) {
   const [description, setDescription] = useState('');
-  const [email, setEmail] = useState('');
+  const [email, setEmail] = useState(userEmail ?? '');
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
 
+  // Sync email when dialog opens or userEmail changes
+  useEffect(() => {
+    if (open) {
+      setEmail(userEmail ?? '');
+    }
+  }, [open, userEmail]);
+
   const handleClose = () => {
     // Reset state when closing
     setDescription('');
-    setEmail('');
+    setEmail(userEmail ?? '');
     setError(null);
     setSuccess(false);
     setSending(false);
@@ -72,8 +79,8 @@ export function SendErrorReportModal({
     setError(null);
 
     try {
-      // Pass email only if user is not logged in and provided one
-      const emailToSend = !isLoggedIn && email.trim() ? email.trim() : undefined;
+      // Always pass email if provided
+      const emailToSend = email.trim() || undefined;
       const result = await window.api?.sendErrorReport?.(description.trim(), emailToSend);
 
       if (result?.success) {
@@ -160,19 +167,17 @@ export function SendErrorReportModal({
           sx={{ mb: 2 }}
         />
 
-        {!isLoggedIn && (
-          <TextField
-            label="Email Address (Optional)"
-            placeholder="your@email.com"
-            type="email"
-            fullWidth
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            disabled={sending}
-            helperText="Provide your email if you'd like us to follow up with you"
-            sx={{ mb: 1 }}
-          />
-        )}
+        <TextField
+          label="Email Address (Optional)"
+          placeholder="your@email.com"
+          type="email"
+          fullWidth
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          disabled={sending}
+          helperText="Provide your email if you'd like us to follow up with you"
+          sx={{ mb: 1 }}
+        />
 
         {error && !description.trim() && (
           <Alert severity="error" sx={{ mt: 1 }}>

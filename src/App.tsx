@@ -206,7 +206,7 @@ function App() {
   const micrographIndex = useAppStore(state => state.micrographIndex);
   const addSpot = useAppStore(state => state.addSpot);
   const updateMicrographMetadata = useAppStore(state => state.updateMicrographMetadata);
-  const { checkAuthStatus, logout, isAuthenticated } = useAuthStore();
+  const { checkAuthStatus, logout, user } = useAuthStore();
 
   // Initialize theme system
   useTheme();
@@ -1173,7 +1173,7 @@ function App() {
       <SendErrorReportModal
         open={isSendErrorReportOpen}
         onClose={() => setIsSendErrorReportOpen(false)}
-        isLoggedIn={isAuthenticated}
+        userEmail={user?.email}
       />
       <ExportAllImagesDialog
         open={isExportAllImagesOpen}
