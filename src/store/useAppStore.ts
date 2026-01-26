@@ -1506,11 +1506,27 @@ export const useAppStore = create<AppState>()(
             const existingLayers = micro?.sketchLayers || [];
 
             // Check if current activeSketchLayerId is valid for this micrograph
-            const currentLayerValid = state.activeSketchLayerId &&
-              existingLayers.some(l => l.id === state.activeSketchLayerId);
+            const currentLayer = state.activeSketchLayerId
+              ? existingLayers.find(l => l.id === state.activeSketchLayerId)
+              : null;
 
-            if (currentLayerValid) {
-              // Current layer is valid, just enable sketch mode
+            if (currentLayer) {
+              // Current layer is valid - ensure it's visible
+              if (!currentLayer.visible) {
+                const updatedProject = updateMicrograph(state.project, state.activeMicrographId, (m) => {
+                  const layer = m.sketchLayers?.find(l => l.id === state.activeSketchLayerId);
+                  if (layer) layer.visible = true;
+                });
+                if (updatedProject) {
+                  return {
+                    project: updatedProject,
+                    isDirty: true,
+                    micrographIndex: buildMicrographIndex(updatedProject),
+                    sketchModeActive: true,
+                    activeTool: 'sketch-pen' as const,
+                  };
+                }
+              }
               return {
                 sketchModeActive: true,
                 activeTool: 'sketch-pen' as const,
@@ -1519,10 +1535,27 @@ export const useAppStore = create<AppState>()(
 
             // Need to select or create a layer
             if (existingLayers.length > 0) {
-              // Select the first existing layer
+              // Select the first existing layer and ensure it's visible
+              const firstLayer = existingLayers[0];
+              if (!firstLayer.visible) {
+                const updatedProject = updateMicrograph(state.project, state.activeMicrographId, (m) => {
+                  const layer = m.sketchLayers?.find(l => l.id === firstLayer.id);
+                  if (layer) layer.visible = true;
+                });
+                if (updatedProject) {
+                  return {
+                    project: updatedProject,
+                    isDirty: true,
+                    micrographIndex: buildMicrographIndex(updatedProject),
+                    sketchModeActive: true,
+                    activeSketchLayerId: firstLayer.id,
+                    activeTool: 'sketch-pen' as const,
+                  };
+                }
+              }
               return {
                 sketchModeActive: true,
-                activeSketchLayerId: existingLayers[0].id,
+                activeSketchLayerId: firstLayer.id,
                 activeTool: 'sketch-pen' as const,
               };
             }
