@@ -907,9 +907,9 @@ export const useAppStore = create<AppState>()(
           // Sketch overlay state
           activeSketchLayerId: null,
           sketchModeActive: false,
-          sketchStrokeColor: '#ff0000', // Default: red
-          sketchStrokeWidth: 3, // Default: 3px
-          sketchFontSize: 24, // Default: 24px
+          sketchStrokeColor: localStorage.getItem('sketchStrokeColor') || '#ff0000', // Default: red
+          sketchStrokeWidth: parseInt(localStorage.getItem('sketchStrokeWidth') || '3', 10), // Default: 3px
+          sketchFontSize: parseInt(localStorage.getItem('sketchFontSize') || '24', 10), // Default: 24px
 
           // Generation settings (persisted defaults)
           lastPointCountSettings: null,
@@ -1486,19 +1486,6 @@ export const useAppStore = create<AppState>()(
           },
 
           setSketchModeActive: (active) => set((state) => {
-            // When entering sketch mode, ensure we have an active layer
-            // or create one if needed
-            if (active && !state.activeSketchLayerId && state.activeMicrographId) {
-              // Check if micrograph has layers
-              const micro = state.micrographIndex.get(state.activeMicrographId);
-              if (micro?.sketchLayers && micro.sketchLayers.length > 0) {
-                return {
-                  sketchModeActive: true,
-                  activeSketchLayerId: micro.sketchLayers[0].id,
-                  activeTool: 'sketch-pen' as const,
-                };
-              }
-            }
             // When exiting sketch mode, clear the sketch tool
             if (!active) {
               return {
@@ -1506,17 +1493,122 @@ export const useAppStore = create<AppState>()(
                 activeTool: null,
               };
             }
+
+            // Entering sketch mode - ensure we have a valid active layer
+            if (!state.activeMicrographId || !state.project) {
+              return {
+                sketchModeActive: true,
+                activeTool: 'sketch-pen' as const,
+              };
+            }
+
+            const micro = state.micrographIndex.get(state.activeMicrographId);
+            const existingLayers = micro?.sketchLayers || [];
+
+            // Check if current activeSketchLayerId is valid for this micrograph
+            const currentLayer = state.activeSketchLayerId
+              ? existingLayers.find(l => l.id === state.activeSketchLayerId)
+              : null;
+
+            if (currentLayer) {
+              // Current layer is valid - ensure it's visible
+              if (!currentLayer.visible) {
+                const updatedProject = updateMicrograph(state.project, state.activeMicrographId, (m) => {
+                  const layer = m.sketchLayers?.find(l => l.id === state.activeSketchLayerId);
+                  if (layer) layer.visible = true;
+                });
+                if (updatedProject) {
+                  return {
+                    project: updatedProject,
+                    isDirty: true,
+                    micrographIndex: buildMicrographIndex(updatedProject),
+                    sketchModeActive: true,
+                    activeTool: 'sketch-pen' as const,
+                  };
+                }
+              }
+              return {
+                sketchModeActive: true,
+                activeTool: 'sketch-pen' as const,
+              };
+            }
+
+            // Need to select or create a layer
+            if (existingLayers.length > 0) {
+              // Select the first existing layer and ensure it's visible
+              const firstLayer = existingLayers[0];
+              if (!firstLayer.visible) {
+                const updatedProject = updateMicrograph(state.project, state.activeMicrographId, (m) => {
+                  const layer = m.sketchLayers?.find(l => l.id === firstLayer.id);
+                  if (layer) layer.visible = true;
+                });
+                if (updatedProject) {
+                  return {
+                    project: updatedProject,
+                    isDirty: true,
+                    micrographIndex: buildMicrographIndex(updatedProject),
+                    sketchModeActive: true,
+                    activeSketchLayerId: firstLayer.id,
+                    activeTool: 'sketch-pen' as const,
+                  };
+                }
+              }
+              return {
+                sketchModeActive: true,
+                activeSketchLayerId: firstLayer.id,
+                activeTool: 'sketch-pen' as const,
+              };
+            }
+
+            // No layers exist - create one automatically
+            const layerId = `sketch-layer-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+            const newLayer = {
+              id: layerId,
+              name: 'Sketch Layer 1',
+              visible: true,
+              createdAt: new Date().toISOString(),
+              strokes: [],
+              textItems: [],
+            };
+
+            const updatedProject = updateMicrograph(state.project, state.activeMicrographId, (m) => {
+              if (!m.sketchLayers) {
+                m.sketchLayers = [];
+              }
+              m.sketchLayers.push(newLayer);
+            });
+
+            if (!updatedProject) {
+              return {
+                sketchModeActive: true,
+                activeTool: 'sketch-pen' as const,
+              };
+            }
+
             return {
-              sketchModeActive: active,
-              activeTool: active ? 'sketch-pen' as const : null,
+              project: updatedProject,
+              isDirty: true,
+              micrographIndex: buildMicrographIndex(updatedProject),
+              sketchModeActive: true,
+              activeSketchLayerId: layerId,
+              activeTool: 'sketch-pen' as const,
             };
           }),
 
-          setSketchStrokeColor: (color) => set({ sketchStrokeColor: color }),
+          setSketchStrokeColor: (color) => {
+            localStorage.setItem('sketchStrokeColor', color);
+            set({ sketchStrokeColor: color });
+          },
 
-          setSketchStrokeWidth: (width) => set({ sketchStrokeWidth: width }),
+          setSketchStrokeWidth: (width) => {
+            localStorage.setItem('sketchStrokeWidth', width.toString());
+            set({ sketchStrokeWidth: width });
+          },
 
-          setSketchFontSize: (size) => set({ sketchFontSize: size }),
+          setSketchFontSize: (size) => {
+            localStorage.setItem('sketchFontSize', size.toString());
+            set({ sketchFontSize: size });
+          },
 
           // ========== CRUD: DATASET ==========
 

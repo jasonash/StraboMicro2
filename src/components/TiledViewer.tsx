@@ -955,6 +955,13 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
       return micro?.sketchLayers ?? EMPTY_SKETCH_LAYERS;
     }, [micrographIndex, activeMicrographId]);
 
+    // Check if the active sketch layer is visible (for enabling/disabling drawing)
+    const isActiveLayerVisible = useMemo(() => {
+      if (!activeSketchLayerId) return false;
+      const activeLayer = sketchLayers.find(l => l.id === activeSketchLayerId);
+      return activeLayer?.visible ?? false;
+    }, [sketchLayers, activeSketchLayerId]);
+
     /**
      * Load tiles that are visible but not yet loaded (only in tiled mode)
      * In thumbnail mode, all tiles are loaded upfront by loadAllTiles()
@@ -1208,8 +1215,8 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
           return;
         }
 
-        // Handle sketch drawing tools (pen, marker)
-        if ((activeTool === 'sketch-pen' || activeTool === 'sketch-marker') && activeSketchLayerId) {
+        // Handle sketch drawing tools (pen, marker) - only if layer is visible
+        if ((activeTool === 'sketch-pen' || activeTool === 'sketch-marker') && isActiveLayerVisible) {
           const stage = stageRef.current;
           if (!stage) return;
           const pos = stage.getPointerPosition();
@@ -1224,8 +1231,8 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
           return;
         }
 
-        // Handle eraser tool - start drag-to-erase
-        if (activeTool === 'sketch-eraser' && activeSketchLayerId) {
+        // Handle eraser tool - start drag-to-erase (only if layer is visible)
+        if (activeTool === 'sketch-eraser' && isActiveLayerVisible) {
           isEraserDraggingRef.current = true;
           erasedStrokeIdsRef.current.clear(); // Clear previously erased strokes
 
@@ -1233,7 +1240,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
           const target = e.target;
           if (target && target.name() === 'sketch-stroke') {
             const strokeId = target.id();
-            if (strokeId && activeMicrographId) {
+            if (strokeId && activeMicrographId && activeSketchLayerId) {
               handleEraseStroke(activeSketchLayerId, strokeId);
             }
           }
@@ -1598,8 +1605,8 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
           lineDrawing.handleClick(imageX, imageY);
         }
 
-        // Handle text tool - show input overlay at click position
-        if (activeTool === 'sketch-text' && activeSketchLayerId) {
+        // Handle text tool - show input overlay at click position (only if layer is visible)
+        if (activeTool === 'sketch-text' && isActiveLayerVisible) {
           setTextInputPosition({
             screenX: pos.x,
             screenY: pos.y,

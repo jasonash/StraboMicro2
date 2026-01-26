@@ -93,6 +93,9 @@ export function PropertiesPanel() {
   const getAllPresetsWithScope = useAppStore((state) => state.getAllPresetsWithScope);
   const applyPresetToSpot = useAppStore((state) => state.applyPresetToSpot);
 
+  // Sketch mode state
+  const sketchModeActive = useAppStore((state) => state.sketchModeActive);
+
   const [openDialog, setOpenDialog] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<'micrograph' | 'spot' | null>(null);
   const [activeTab, setActiveTab] = useState(0);
@@ -106,6 +109,13 @@ export function PropertiesPanel() {
       setActiveTab(0);
     }
   }, [activeMicrographId, activeSpotId]);
+
+  // Auto-switch to Sketches tab when entering sketch mode
+  useEffect(() => {
+    if (sketchModeActive && activeMicrographId && !activeSpotId) {
+      setActiveTab(1); // Sketches tab
+    }
+  }, [sketchModeActive, activeMicrographId, activeSpotId]);
 
   const handleTabChange = (_event: React.SyntheticEvent, newValue: number) => {
     setActiveTab(newValue);

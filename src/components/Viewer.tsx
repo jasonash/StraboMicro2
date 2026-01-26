@@ -1,6 +1,6 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Box, Typography, IconButton, Tooltip } from '@mui/material';
-import { KeyboardArrowDown, KeyboardArrowUp } from '@mui/icons-material';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import { Box, Typography, IconButton, Tooltip, Paper, Button } from '@mui/material';
+import { KeyboardArrowDown, KeyboardArrowUp, VisibilityOff } from '@mui/icons-material';
 import DrawingToolbar from './DrawingToolbar';
 import SketchToolbar from './SketchToolbar';
 import BottomPanel from './BottomPanel';
@@ -183,10 +183,28 @@ const Viewer: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [activeMicrographId, quickClassifyVisible, getSiblingId, toggleSiblingView]);
 
-  // Sketch mode state for keyboard shortcuts
+  // Sketch mode state for keyboard shortcuts and hidden layer warning
   const sketchModeActive = useAppStore((state) => state.sketchModeActive);
   const setSketchModeActive = useAppStore((state) => state.setSketchModeActive);
   const setActiveTool = useAppStore((state) => state.setActiveTool);
+  const activeSketchLayerId = useAppStore((state) => state.activeSketchLayerId);
+  const micrographIndex = useAppStore((state) => state.micrographIndex);
+  const setSketchLayerVisible = useAppStore((state) => state.setSketchLayerVisible);
+
+  // Check if active sketch layer is hidden (for warning modal)
+  // Use micrographIndex directly to ensure reactivity when layers change
+  const activeSketchLayer = useMemo(() => {
+    if (!activeMicrographId || !activeSketchLayerId) return null;
+    const micro = micrographIndex.get(activeMicrographId);
+    return micro?.sketchLayers?.find(l => l.id === activeSketchLayerId) ?? null;
+  }, [micrographIndex, activeMicrographId, activeSketchLayerId]);
+  const isSketchLayerHidden = sketchModeActive && activeSketchLayer && !activeSketchLayer.visible;
+
+  const handleShowSketchLayer = useCallback(() => {
+    if (activeMicrographId && activeSketchLayerId) {
+      setSketchLayerVisible(activeMicrographId, activeSketchLayerId, true);
+    }
+  }, [activeMicrographId, activeSketchLayerId, setSketchLayerVisible]);
 
   // Keyboard shortcuts for sketch mode
   useEffect(() => {
@@ -279,6 +297,43 @@ const Viewer: React.FC = () => {
         <TiledViewer ref={tiledViewerRef} imagePath={activeMicrographPath} onCursorMove={setCursorCoords} />
         <DrawingToolbar />
         <SketchToolbar />
+
+        {/* Warning modal when sketch layer is hidden */}
+        {isSketchLayerHidden && (
+          <Paper
+            elevation={8}
+            sx={{
+              position: 'absolute',
+              top: '50%',
+              left: '50%',
+              transform: 'translate(-50%, -50%)',
+              zIndex: 1000,
+              p: 3,
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: 2,
+              bgcolor: 'background.paper',
+              borderRadius: 2,
+              maxWidth: 300,
+            }}
+          >
+            <VisibilityOff sx={{ fontSize: 40, color: 'warning.main' }} />
+            <Typography variant="h6" sx={{ textAlign: 'center' }}>
+              Layer is Hidden
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center' }}>
+              The active sketch layer is hidden. Show it to continue drawing.
+            </Typography>
+            <Button
+              variant="contained"
+              onClick={handleShowSketchLayer}
+              sx={{ mt: 1 }}
+            >
+              Show Layer
+            </Button>
+          </Paper>
+        )}
 
         {/* Floating toggle button when bottom panel is collapsed */}
         {isBottomPanelCollapsed && (

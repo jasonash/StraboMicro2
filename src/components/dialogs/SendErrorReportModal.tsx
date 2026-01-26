@@ -8,7 +8,7 @@
  * - Success message shown before closing
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -28,8 +28,7 @@ import SendIcon from '@mui/icons-material/Send';
 interface SendErrorReportModalProps {
   open: boolean;
   onClose: () => void;
-  isLoggedIn: boolean;
-  onLoginRequest: () => void;
+  userEmail?: string;
 }
 
 const MAX_DESCRIPTION_LENGTH = 5000;
@@ -37,17 +36,25 @@ const MAX_DESCRIPTION_LENGTH = 5000;
 export function SendErrorReportModal({
   open,
   onClose,
-  isLoggedIn,
-  onLoginRequest,
+  userEmail,
 }: SendErrorReportModalProps) {
   const [description, setDescription] = useState('');
+  const [email, setEmail] = useState(userEmail ?? '');
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
 
+  // Sync email when dialog opens or userEmail changes
+  useEffect(() => {
+    if (open) {
+      setEmail(userEmail ?? '');
+    }
+  }, [open, userEmail]);
+
   const handleClose = () => {
     // Reset state when closing
     setDescription('');
+    setEmail(userEmail ?? '');
     setError(null);
     setSuccess(false);
     setSending(false);
@@ -72,7 +79,9 @@ export function SendErrorReportModal({
     setError(null);
 
     try {
-      const result = await window.api?.sendErrorReport?.(description.trim());
+      // Always pass email if provided
+      const emailToSend = email.trim() || undefined;
+      const result = await window.api?.sendErrorReport?.(description.trim(), emailToSend);
 
       if (result?.success) {
         setSuccess(true);
@@ -89,48 +98,8 @@ export function SendErrorReportModal({
     }
   };
 
-  const handleLogin = () => {
-    onLoginRequest();
-    handleClose();
-  };
-
   const charactersRemaining = MAX_DESCRIPTION_LENGTH - description.length;
   const isSubmitDisabled = !description.trim() || sending;
-
-  // Show login prompt if not logged in
-  if (!isLoggedIn) {
-    return (
-      <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
-        <DialogTitle sx={{ m: 0, p: 2, display: 'flex', alignItems: 'center' }}>
-          <Typography variant="h6" component="span" sx={{ flexGrow: 1 }}>
-            Send Error Report
-          </Typography>
-          <IconButton onClick={handleClose} size="small" title="Close">
-            <CloseIcon />
-          </IconButton>
-        </DialogTitle>
-
-        <DialogContent dividers>
-          <Alert severity="info" sx={{ mb: 2 }}>
-            You must be logged in to send error reports.
-          </Alert>
-          <Typography variant="body2" color="text.secondary">
-            Error reports are sent to the StraboSpot team and help us improve the application.
-            Please log in to your StraboSpot account to submit a report.
-          </Typography>
-        </DialogContent>
-
-        <DialogActions sx={{ px: 2, py: 1.5 }}>
-          <Button onClick={handleClose} color="inherit">
-            Cancel
-          </Button>
-          <Button onClick={handleLogin} variant="contained" color="primary">
-            Log In
-          </Button>
-        </DialogActions>
-      </Dialog>
-    );
-  }
 
   // Show success message
   if (success) {
@@ -195,6 +164,18 @@ export function SendErrorReportModal({
           helperText={
             error || `${charactersRemaining.toLocaleString()} characters remaining`
           }
+          sx={{ mb: 2 }}
+        />
+
+        <TextField
+          label="Email Address (Optional)"
+          placeholder="your@email.com"
+          type="email"
+          fullWidth
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          disabled={sending}
+          helperText="Provide your email if you'd like us to follow up with you"
           sx={{ mb: 1 }}
         />
 

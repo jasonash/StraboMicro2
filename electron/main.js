@@ -5827,9 +5827,10 @@ ipcMain.handle('logs:write', async (event, level, message, source) => {
 
 /**
  * Send error report to StraboSpot server
- * Sends: notes (user description), appversion, log_file
+ * Sends: notes (user description), appversion, log_file, and optionally email
+ * Can be sent with or without authentication (email used for anonymous reports)
  */
-ipcMain.handle('logs:send-report', async (event, notes) => {
+ipcMain.handle('logs:send-report', async (event, notes, email) => {
   const FormData = require('form-data');
   const https = require('https');
   const fs = require('fs');
@@ -5837,11 +5838,14 @@ ipcMain.handle('logs:send-report', async (event, notes) => {
   try {
     log.info('[ErrorReport] Sending error report to server...');
 
-    // Get valid token with auto-refresh
+    // Try to get auth token (but don't require it)
     const tokenResult = await tokenService.getValidAccessToken();
-    if (!tokenResult.success) {
-      log.warn('[ErrorReport] Not authenticated or session expired');
-      return { success: false, error: tokenResult.error, sessionExpired: tokenResult.sessionExpired };
+    const hasAuth = tokenResult.success && tokenResult.accessToken;
+
+    if (hasAuth) {
+      log.info('[ErrorReport] Sending authenticated report');
+    } else {
+      log.info('[ErrorReport] Sending anonymous report' + (email ? ' with email' : ''));
     }
 
     // Get app version
@@ -5863,19 +5867,28 @@ ipcMain.handle('logs:send-report', async (event, notes) => {
       contentType: 'text/plain',
     });
 
+    // Include email if provided (for anonymous reports)
+    if (email) {
+      form.append('email', email);
+    }
+
     // Parse the upload URL
     const uploadUrl = new URL('https://strabospot.org/jwtmicrodb/logs');
 
     return new Promise((resolve) => {
+      const headers = { ...form.getHeaders() };
+
+      // Add auth header only if we have a valid token
+      if (hasAuth) {
+        headers['Authorization'] = `Bearer ${tokenResult.accessToken}`;
+      }
+
       const options = {
         hostname: uploadUrl.hostname,
         port: 443,
         path: uploadUrl.pathname,
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${tokenResult.accessToken}`,
-          ...form.getHeaders(),
-        },
+        headers,
       };
 
       const req = https.request(options, (res) => {
