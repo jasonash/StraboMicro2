@@ -23,6 +23,8 @@ const SketchToolbar: React.FC = () => {
   const sketchFontSize = useAppStore((state) => state.sketchFontSize);
   const setSketchFontSize = useAppStore((state) => state.setSketchFontSize);
   const activeSketchLayerId = useAppStore((state) => state.activeSketchLayerId);
+  const activeMicrographId = useAppStore((state) => state.activeMicrographId);
+  const getSketchLayers = useAppStore((state) => state.getSketchLayers);
 
   // Color picker popover state
   const [colorAnchorEl, setColorAnchorEl] = useState<HTMLButtonElement | null>(null);
@@ -57,8 +59,10 @@ const SketchToolbar: React.FC = () => {
     setSketchFontSize(newValue as number);
   };
 
-  // Determine if we can draw (need an active layer)
-  const canDraw = !!activeSketchLayerId;
+  // Determine if we can draw (need an active, visible layer)
+  const sketchLayers = getSketchLayers(activeMicrographId);
+  const activeLayer = sketchLayers.find(l => l.id === activeSketchLayerId);
+  const canDraw = !!activeLayer && activeLayer.visible;
 
   // Check if text tool is active (to show font size slider instead of stroke width)
   const isTextTool = activeTool === 'sketch-text';
@@ -289,11 +293,13 @@ const SketchToolbar: React.FC = () => {
         </Box>
       </Box>
 
-      {/* No layer warning */}
+      {/* Warning when drawing is disabled */}
       {!canDraw && (
         <Box className="no-layer-warning">
           <Typography variant="caption" sx={{ color: 'warning.main', textAlign: 'center' }}>
-            Create a sketch layer to start drawing
+            {activeLayer && !activeLayer.visible
+              ? 'Layer is hidden. Show it to draw.'
+              : 'Create a sketch layer to start drawing'}
           </Typography>
         </Box>
       )}
