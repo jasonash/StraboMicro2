@@ -1486,19 +1486,6 @@ export const useAppStore = create<AppState>()(
           },
 
           setSketchModeActive: (active) => set((state) => {
-            // When entering sketch mode, ensure we have an active layer
-            // or create one if needed
-            if (active && !state.activeSketchLayerId && state.activeMicrographId) {
-              // Check if micrograph has layers
-              const micro = state.micrographIndex.get(state.activeMicrographId);
-              if (micro?.sketchLayers && micro.sketchLayers.length > 0) {
-                return {
-                  sketchModeActive: true,
-                  activeSketchLayerId: micro.sketchLayers[0].id,
-                  activeTool: 'sketch-pen' as const,
-                };
-              }
-            }
             // When exiting sketch mode, clear the sketch tool
             if (!active) {
               return {
@@ -1506,9 +1493,72 @@ export const useAppStore = create<AppState>()(
                 activeTool: null,
               };
             }
+
+            // Entering sketch mode - ensure we have a valid active layer
+            if (!state.activeMicrographId || !state.project) {
+              return {
+                sketchModeActive: true,
+                activeTool: 'sketch-pen' as const,
+              };
+            }
+
+            const micro = state.micrographIndex.get(state.activeMicrographId);
+            const existingLayers = micro?.sketchLayers || [];
+
+            // Check if current activeSketchLayerId is valid for this micrograph
+            const currentLayerValid = state.activeSketchLayerId &&
+              existingLayers.some(l => l.id === state.activeSketchLayerId);
+
+            if (currentLayerValid) {
+              // Current layer is valid, just enable sketch mode
+              return {
+                sketchModeActive: true,
+                activeTool: 'sketch-pen' as const,
+              };
+            }
+
+            // Need to select or create a layer
+            if (existingLayers.length > 0) {
+              // Select the first existing layer
+              return {
+                sketchModeActive: true,
+                activeSketchLayerId: existingLayers[0].id,
+                activeTool: 'sketch-pen' as const,
+              };
+            }
+
+            // No layers exist - create one automatically
+            const layerId = `sketch-layer-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+            const newLayer = {
+              id: layerId,
+              name: 'Sketch Layer 1',
+              visible: true,
+              createdAt: new Date().toISOString(),
+              strokes: [],
+              textItems: [],
+            };
+
+            const updatedProject = updateMicrograph(state.project, state.activeMicrographId, (m) => {
+              if (!m.sketchLayers) {
+                m.sketchLayers = [];
+              }
+              m.sketchLayers.push(newLayer);
+            });
+
+            if (!updatedProject) {
+              return {
+                sketchModeActive: true,
+                activeTool: 'sketch-pen' as const,
+              };
+            }
+
             return {
-              sketchModeActive: active,
-              activeTool: active ? 'sketch-pen' as const : null,
+              project: updatedProject,
+              isDirty: true,
+              micrographIndex: buildMicrographIndex(updatedProject),
+              sketchModeActive: true,
+              activeSketchLayerId: layerId,
+              activeTool: 'sketch-pen' as const,
             };
           }),
 
