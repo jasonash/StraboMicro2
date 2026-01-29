@@ -1,5 +1,6 @@
 import React from 'react';
 import { Box, IconButton, Tooltip } from '@mui/material';
+import { Straighten as RulerIcon } from '@mui/icons-material';
 import { useAppStore } from '@/store';
 import './DrawingToolbar.css';
 
@@ -7,8 +8,8 @@ import './DrawingToolbar.css';
  * DrawingToolbar - Floating vertical toolbar for drawing tools
  *
  * Positioned absolutely on the right side of the viewer canvas.
- * Contains drawing tools: Lasso, Point, Line, and Polygon.
- * Hidden when in point count mode.
+ * Contains drawing tools: Point, Line, Polygon, Lasso, Sketch, and Measure.
+ * Hidden when in point count mode or sketch mode.
  */
 const DrawingToolbar: React.FC = () => {
   const activeTool = useAppStore((state) => state.activeTool);
@@ -52,30 +53,13 @@ const DrawingToolbar: React.FC = () => {
     setSketchModeActive(true);
   };
 
+  const handleMeasureClick = () => {
+    setActiveTool(activeTool === 'measure' ? null : 'measure');
+  };
+
   return (
     <Box className="drawing-toolbar">
-      <Tooltip title="Lasso Select (Shift+Drag)" placement="left">
-        <IconButton
-          className={`toolbar-button ${spotLassoToolActive ? 'active' : ''}`}
-          onClick={handleLassoClick}
-          aria-label="Lasso select tool"
-        >
-          {/* Lasso icon - freeform loop */}
-          <svg width="20" height="20" viewBox="0 0 20 20">
-            <path
-              d="M4 10 C4 5, 10 3, 14 6 C18 9, 17 14, 12 15 C8 16, 5 14, 4 10"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-              strokeDasharray="3 2"
-            />
-            <circle cx="4" cy="10" r="2" fill="currentColor" />
-          </svg>
-        </IconButton>
-      </Tooltip>
-
-      <Tooltip title="Point Tool" placement="left">
+      <Tooltip title="Point Spot" placement="left">
         <IconButton
           className={`toolbar-button ${activeTool === 'point' ? 'active' : ''}`}
           onClick={handlePointClick}
@@ -89,7 +73,7 @@ const DrawingToolbar: React.FC = () => {
         </IconButton>
       </Tooltip>
 
-      <Tooltip title="Line Tool" placement="left">
+      <Tooltip title="Line Spot" placement="left">
         <IconButton
           className={`toolbar-button ${activeTool === 'line' ? 'active' : ''}`}
           onClick={handleLineClick}
@@ -104,7 +88,7 @@ const DrawingToolbar: React.FC = () => {
         </IconButton>
       </Tooltip>
 
-      <Tooltip title="Polygon Tool" placement="left">
+      <Tooltip title="Polygon Spot" placement="left">
         <IconButton
           className={`toolbar-button ${activeTool === 'polygon' ? 'active' : ''}`}
           onClick={handlePolygonClick}
@@ -129,7 +113,28 @@ const DrawingToolbar: React.FC = () => {
       </Tooltip>
 
       {/* Divider */}
-      <Box sx={{ height: 1, bgcolor: 'divider', my: 0.5 }} />
+      <Box sx={{ height: '2px', bgcolor: 'var(--text-muted)', mx: 1, my: 1 }} />
+
+      <Tooltip title="Lasso Select (Shift+Drag)" placement="left">
+        <IconButton
+          className={`toolbar-button ${spotLassoToolActive ? 'active' : ''}`}
+          onClick={handleLassoClick}
+          aria-label="Lasso select tool"
+        >
+          {/* Lasso icon - freeform loop */}
+          <svg width="20" height="20" viewBox="0 0 20 20">
+            <path
+              d="M4 10 C4 5, 10 3, 14 6 C18 9, 17 14, 12 15 C8 16, 5 14, 4 10"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeDasharray="3 2"
+            />
+            <circle cx="4" cy="10" r="2" fill="currentColor" />
+          </svg>
+        </IconButton>
+      </Tooltip>
 
       {/* Sketch Mode */}
       <Tooltip title={activeMicrographId ? "Sketch Mode (S)" : "Select a micrograph first"} placement="left">
@@ -153,6 +158,16 @@ const DrawingToolbar: React.FC = () => {
             </svg>
           </IconButton>
         </span>
+      </Tooltip>
+
+      <Tooltip title="Measure Distance" placement="left">
+        <IconButton
+          className={`toolbar-button ${activeTool === 'measure' ? 'active' : ''}`}
+          onClick={handleMeasureClick}
+          aria-label="Measure tool"
+        >
+          <RulerIcon sx={{ fontSize: 20 }} />
+        </IconButton>
       </Tooltip>
     </Box>
   );

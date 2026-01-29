@@ -4,7 +4,6 @@ import {
   Navigation as PointerIcon,
   ZoomIn as ZoomInIcon,
   ZoomOut as ZoomOutIcon,
-  Straighten as RulerIcon,
   MyLocation as CrosshairIcon,
 } from '@mui/icons-material';
 import appIcon from '../assets/app-icon.png';
@@ -39,9 +38,6 @@ const Header: React.FC = () => {
     setActiveTool(null); // Reset to pan/select mode
   };
 
-  const handleMeasureTool = () => {
-    setActiveTool('measure');
-  };
 
   return (
     <AppBar position="static" elevation={0}>
@@ -86,19 +82,6 @@ const Header: React.FC = () => {
           <Tooltip title="Zoom Out" placement="bottom">
             <IconButton color="inherit" size="small" onClick={handleZoomOut}>
               <ZoomOutIcon />
-            </IconButton>
-          </Tooltip>
-          <Tooltip title="Measure Distance" placement="bottom">
-            <IconButton
-              color="inherit"
-              size="small"
-              onClick={handleMeasureTool}
-              sx={{
-                bgcolor: activeTool === 'measure' ? 'action.selected' : 'transparent',
-                '&:hover': { bgcolor: 'action.hover' },
-              }}
-            >
-              <RulerIcon />
             </IconButton>
           </Tooltip>
           <Tooltip title="Re-Center Micrograph" placement="bottom">
