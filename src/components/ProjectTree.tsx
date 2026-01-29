@@ -1226,8 +1226,16 @@ export function ProjectTree() {
           <IconButton size="small" onClick={() => toggleSample(sample.id)} sx={{ p: 0 }}>
             {isExpanded ? <ExpandMore fontSize="small" /> : <ChevronRight fontSize="small" />}
           </IconButton>
-          <Science fontSize="small" sx={{ color: 'primary.main' }} />
-          <Typography variant="body2" sx={{ flex: 1, fontWeight: 500 }}>
+          <Science
+            fontSize="small"
+            sx={{ color: 'primary.main', cursor: 'pointer' }}
+            onClick={() => toggleSample(sample.id)}
+          />
+          <Typography
+            variant="body2"
+            sx={{ flex: 1, fontWeight: 500, cursor: 'pointer' }}
+            onClick={() => toggleSample(sample.id)}
+          >
             {sample.name || sample.sampleID || 'Unnamed Sample'}
           </Typography>
 
@@ -1360,11 +1368,23 @@ export function ProjectTree() {
             {isExpanded ? <ExpandMore fontSize="small" /> : <ChevronRight fontSize="small" />}
           </IconButton>
           {isExpanded ? (
-            <FolderOpen fontSize="small" sx={{ color: 'warning.main' }} />
+            <FolderOpen
+              fontSize="small"
+              sx={{ color: 'warning.main', cursor: 'pointer' }}
+              onClick={() => toggleDataset(dataset.id)}
+            />
           ) : (
-            <Folder fontSize="small" sx={{ color: 'warning.main' }} />
+            <Folder
+              fontSize="small"
+              sx={{ color: 'warning.main', cursor: 'pointer' }}
+              onClick={() => toggleDataset(dataset.id)}
+            />
           )}
-          <Typography variant="body2" sx={{ flex: 1, fontWeight: 600 }}>
+          <Typography
+            variant="body2"
+            sx={{ flex: 1, fontWeight: 600, cursor: 'pointer' }}
+            onClick={() => toggleDataset(dataset.id)}
+          >
             {dataset.name}
           </Typography>
 
