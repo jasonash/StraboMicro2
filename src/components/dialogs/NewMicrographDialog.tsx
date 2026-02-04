@@ -1604,14 +1604,36 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
         // Associated micrograph only - must select a location method
         return formData.locationMethod !== '';
 
-      case 'assoc-scale-method':
-        // Associated micrograph only - must select a scale method
+      case 'assoc-scale-method': {
+        // Associated micrograph only - must select a scale method that's valid for the location method
         if (formData.scaleMethod === '') return false;
+
+        // Validate that the selected scale method is valid for the current location method
+        const isScaledRectangle = formData.locationMethod === 'Locate as a scaled rectangle';
+        const validScaledRectangleMethods = [
+          'Trace Scale Bar and Drag',
+          'Stretch and Drag',
+          'Pixel Conversion Factor',
+          'Provide Width/Height of Image',
+          'Copy Size from Existing Micrograph',
+        ];
+        const validPointMethods = [
+          'Trace Scale Bar',
+          'Use Same Scale as Parent',
+          'Pixel Conversion Factor',
+          'Provide Width/Height of Image',
+          'Copy Size from Existing Micrograph',
+        ];
+
+        const validMethods = isScaledRectangle ? validScaledRectangleMethods : validPointMethods;
+        if (!validMethods.includes(formData.scaleMethod)) return false;
+
         // If "Copy Size from Existing", require a micrograph selection
         if (formData.scaleMethod === 'Copy Size from Existing Micrograph') {
           return formData.copySizeFromMicrographId !== '';
         }
         return true;
+      }
 
       case 'location-placement':
         // Associated micrograph only - validate placement and scale inputs
@@ -2455,7 +2477,15 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
         </Typography>
         <RadioGroup
           value={formData.locationMethod}
-          onChange={(e) => updateField('locationMethod', e.target.value)}
+          onChange={(e) => {
+            // Reset scaleMethod when location method changes since each method has different valid options
+            setFormData((prev) => ({
+              ...prev,
+              locationMethod: e.target.value as MicrographFormData['locationMethod'],
+              scaleMethod: '',
+              copySizeFromMicrographId: '',
+            }));
+          }}
         >
           <FormControlLabel
             value="Locate as a scaled rectangle"
