@@ -821,6 +821,12 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
                   <Typography variant="body2" component="span">{sample.sampleID}</Typography>
                 </Box>
               )}
+              {sample.igsn && (
+                <Box>
+                  <Typography variant="caption" color="text.secondary">IGSN: </Typography>
+                  <Typography variant="body2" component="span">{sample.igsn}</Typography>
+                </Box>
+              )}
               {(sample.latitude !== null || sample.longitude !== null) && (
                 <Box>
                   <Typography variant="caption" color="text.secondary">Location: </Typography>
