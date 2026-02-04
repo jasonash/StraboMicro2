@@ -51,10 +51,12 @@ interface ServerSample {
   label?: string;
   sample_description?: string;
   material_type?: string;
+  other_material_type?: string;
   sample_type?: string;
   longitude?: number;
   latitude?: number;
   main_sampling_purpose?: string;
+  other_sampling_purpose?: string;
   inplaceness_of_sample?: string;
   oriented_sample?: string;
   sample_orientation_notes?: string;
@@ -469,10 +471,12 @@ export function mapServerSampleToLocal(serverSample: ServerSample): {
   label?: string;
   sampleDescription?: string;
   materialType?: string;
+  otherMaterialType?: string;
   sampleType?: string;
   longitude?: number;
   latitude?: number;
   mainSamplingPurpose?: string;
+  otherSamplingPurpose?: string;
   inplacenessOfSample?: string;
   orientedSample?: string;
   sampleOrientationNotes?: string;
@@ -494,10 +498,12 @@ export function mapServerSampleToLocal(serverSample: ServerSample): {
     label: serverSample.label,
     sampleDescription: serverSample.sample_description,
     materialType: serverSample.material_type,
+    otherMaterialType: serverSample.other_material_type,
     sampleType: serverSample.sample_type,
     longitude: serverSample.longitude,
     latitude: serverSample.latitude,
     mainSamplingPurpose: serverSample.main_sampling_purpose,
+    otherSamplingPurpose: serverSample.other_sampling_purpose,
     inplacenessOfSample: serverSample.inplaceness_of_sample,
     orientedSample: serverSample.oriented_sample,
     sampleOrientationNotes: serverSample.sample_orientation_notes,

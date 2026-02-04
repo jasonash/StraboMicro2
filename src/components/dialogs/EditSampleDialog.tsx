@@ -103,32 +103,38 @@ export function EditSampleDialog({ isOpen, onClose, sample }: EditSampleDialogPr
     // Use fallback to "Sample {id}" to match LinkSampleDialog display behavior
 
     // Handle mainSamplingPurpose - check if it's a known dropdown value
-    const validSamplingPurposes = ['fabric___micro', 'petrology', 'geochronology', 'geochemistry', 'active_eruptio'];
+    const validSamplingPurposes = ['fabric___micro', 'petrology', 'geochronology', 'geochemistry', 'active_eruptio', 'other'];
     const serverPurpose = mappedData.mainSamplingPurpose || '';
     let mainSamplingPurpose = '';
     let otherSamplingPurpose = '';
     if (validSamplingPurposes.includes(serverPurpose)) {
       mainSamplingPurpose = serverPurpose;
-    } else if (serverPurpose && serverPurpose !== 'other') {
+      // If 'other', use the server's otherSamplingPurpose value
+      if (serverPurpose === 'other') {
+        otherSamplingPurpose = mappedData.otherSamplingPurpose || '';
+      }
+    } else if (serverPurpose) {
       // Server has a custom value not in dropdown - treat as "other"
       mainSamplingPurpose = 'other';
       otherSamplingPurpose = serverPurpose;
     }
-    // If serverPurpose is empty or exactly 'other', leave both empty (user must select)
 
     // Handle materialType - same logic
-    const validMaterialTypes = ['intact_rock', 'fragmented_roc', 'sediment', 'tephra', 'carbon_or_animal'];
+    const validMaterialTypes = ['intact_rock', 'fragmented_roc', 'sediment', 'tephra', 'carbon_or_animal', 'other'];
     const serverMaterial = mappedData.materialType || '';
     let materialType = '';
     let otherMaterialType = '';
     if (validMaterialTypes.includes(serverMaterial)) {
       materialType = serverMaterial;
-    } else if (serverMaterial && serverMaterial !== 'other') {
+      // If 'other', use the server's otherMaterialType value
+      if (serverMaterial === 'other') {
+        otherMaterialType = mappedData.otherMaterialType || '';
+      }
+    } else if (serverMaterial) {
       // Server has a custom value not in dropdown - treat as "other"
       materialType = 'other';
       otherMaterialType = serverMaterial;
     }
-    // If serverMaterial is empty or exactly 'other', leave both empty (user must select)
 
     setFormData({
       sampleID: mappedData.sampleID || mappedData.label || `Sample ${mappedData.id}`,
