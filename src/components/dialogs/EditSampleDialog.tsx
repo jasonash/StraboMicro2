@@ -101,16 +101,45 @@ export function EditSampleDialog({ isOpen, onClose, sample }: EditSampleDialogPr
 
     // Populate form fields with server data
     // Use fallback to "Sample {id}" to match LinkSampleDialog display behavior
+
+    // Handle mainSamplingPurpose - check if it's a known dropdown value
+    const validSamplingPurposes = ['fabric___micro', 'petrology', 'geochronology', 'geochemistry', 'active_eruptio'];
+    const serverPurpose = mappedData.mainSamplingPurpose || '';
+    let mainSamplingPurpose = '';
+    let otherSamplingPurpose = '';
+    if (validSamplingPurposes.includes(serverPurpose)) {
+      mainSamplingPurpose = serverPurpose;
+    } else if (serverPurpose && serverPurpose !== 'other') {
+      // Server has a custom value not in dropdown - treat as "other"
+      mainSamplingPurpose = 'other';
+      otherSamplingPurpose = serverPurpose;
+    }
+    // If serverPurpose is empty or exactly 'other', leave both empty (user must select)
+
+    // Handle materialType - same logic
+    const validMaterialTypes = ['intact_rock', 'fragmented_roc', 'sediment', 'tephra', 'carbon_or_animal'];
+    const serverMaterial = mappedData.materialType || '';
+    let materialType = '';
+    let otherMaterialType = '';
+    if (validMaterialTypes.includes(serverMaterial)) {
+      materialType = serverMaterial;
+    } else if (serverMaterial && serverMaterial !== 'other') {
+      // Server has a custom value not in dropdown - treat as "other"
+      materialType = 'other';
+      otherMaterialType = serverMaterial;
+    }
+    // If serverMaterial is empty or exactly 'other', leave both empty (user must select)
+
     setFormData({
       sampleID: mappedData.sampleID || mappedData.label || `Sample ${mappedData.id}`,
       igsn: mappedData.igsn || '',
       longitude: mappedData.longitude?.toString() || '',
       latitude: mappedData.latitude?.toString() || '',
-      mainSamplingPurpose: mappedData.mainSamplingPurpose || '',
-      otherSamplingPurpose: '',
+      mainSamplingPurpose,
+      otherSamplingPurpose,
       sampleDescription: mappedData.sampleDescription || '',
-      materialType: mappedData.materialType || '',
-      otherMaterialType: '',
+      materialType,
+      otherMaterialType,
       sampleNotes: mappedData.sampleNotes || '',
     });
   };
