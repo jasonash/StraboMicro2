@@ -209,7 +209,28 @@ export function LinkSampleDialog({ open, onClose, onSelectSample }: LinkSampleDi
         const spotSamples = feature?.properties?.samples;
         if (Array.isArray(spotSamples)) {
           console.log('[LinkSampleDialog] Found samples in spot:', feature?.properties?.name, spotSamples);
-          extractedSamples.push(...spotSamples);
+
+          // Extract point coordinates from spot geometry if available
+          // GeoJSON coordinates are [longitude, latitude]
+          let spotLongitude: number | undefined;
+          let spotLatitude: number | undefined;
+          if (feature?.geometry?.type === 'Point' && Array.isArray(feature.geometry.coordinates)) {
+            const [lng, lat] = feature.geometry.coordinates;
+            if (typeof lng === 'number' && typeof lat === 'number') {
+              spotLongitude = lng;
+              spotLatitude = lat;
+            }
+          }
+
+          // Add samples with spot coordinates injected (if sample doesn't have its own)
+          for (const sample of spotSamples) {
+            extractedSamples.push({
+              ...sample,
+              // Use sample's own coordinates if present, otherwise use spot's point coordinates
+              longitude: sample.longitude ?? spotLongitude,
+              latitude: sample.latitude ?? spotLatitude,
+            });
+          }
         }
       }
 
