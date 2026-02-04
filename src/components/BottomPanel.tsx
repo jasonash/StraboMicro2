@@ -3,7 +3,7 @@ import { Box } from '@mui/material';
 import { DetailedNotesPanel } from './DetailedNotesPanel';
 import { DetailedNotesDialog } from './dialogs/DetailedNotesDialog';
 import { NotesDialog } from './dialogs/metadata/NotesDialog';
-import { SampleInfoDialog } from './dialogs/metadata/SampleInfoDialog';
+import { EditSampleDialog } from './dialogs/EditSampleDialog';
 import { EditMicrographDialog } from './dialogs/metadata/EditMicrographDialog';
 import { EditDatasetDialog } from './dialogs/EditDatasetDialog';
 import { EditProjectDialog } from './dialogs/EditProjectDialog';
@@ -20,6 +20,7 @@ import { PseudotachylyteInfoDialog } from './dialogs/metadata/pseudotachylyte/Ps
 import { FaultsShearZonesInfoDialog } from './dialogs/metadata/faultsshearzon es/FaultsShearZonesInfoDialog';
 import { ExtinctionMicrostructureInfoDialog } from './dialogs/metadata/extinctionmicrostructure/ExtinctionMicrostructureInfoDialog';
 import { useAppStore } from '@/store';
+import type { SampleMetadata } from '@/types/project-types';
 
 /**
  * BottomPanel - Collapsible panel for detailed notes
@@ -33,20 +34,20 @@ const BottomPanel: React.FC = () => {
   const activeSpotId = useAppStore((state) => state.activeSpotId);
   const project = useAppStore((state) => state.project);
 
-  // Find the sample ID and dataset ID for the active micrograph
-  const findMicrographParentIds = (): { sampleId?: string; datasetId?: string } => {
+  // Find the sample and dataset ID for the active micrograph
+  const findMicrographParentInfo = (): { sample?: SampleMetadata; datasetId?: string } => {
     if (!activeMicrographId || !project) return {};
     for (const dataset of project.datasets || []) {
       for (const sample of dataset.samples || []) {
         if (sample.micrographs?.some((m) => m.id === activeMicrographId)) {
-          return { sampleId: sample.id, datasetId: dataset.id };
+          return { sample, datasetId: dataset.id };
         }
       }
     }
     return {};
   };
 
-  const { sampleId, datasetId } = findMicrographParentIds();
+  const { sample, datasetId } = findMicrographParentInfo();
 
   return (
     <Box
@@ -93,11 +94,11 @@ const BottomPanel: React.FC = () => {
         />
       )}
 
-      {openDialog === 'sample' && sampleId && (
-        <SampleInfoDialog
+      {openDialog === 'sample' && sample && (
+        <EditSampleDialog
           isOpen={true}
           onClose={() => setOpenDialog(null)}
-          sampleId={sampleId}
+          sample={sample}
         />
       )}
 

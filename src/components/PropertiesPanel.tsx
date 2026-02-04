@@ -32,7 +32,7 @@ import { BreadcrumbsBar } from './BreadcrumbsBar';
 import { CombinedDataTypeSelector } from './CombinedDataTypeSelector';
 import { ConfirmDialog } from './dialogs/ConfirmDialog';
 import { NotesDialog } from './dialogs/metadata/NotesDialog';
-import { SampleInfoDialog } from './dialogs/metadata/SampleInfoDialog';
+import { EditSampleDialog } from './dialogs/EditSampleDialog';
 import { EditMicrographDialog } from './dialogs/metadata/EditMicrographDialog';
 import { EditSpotDialog } from './dialogs/metadata/EditSpotDialog';
 import { EditDatasetDialog } from './dialogs/EditDatasetDialog';
@@ -129,13 +129,13 @@ export function PropertiesPanel() {
     severity: 'success' | 'error' | 'info';
   }>({ open: false, message: '', severity: 'info' });
 
-  // Find the sample ID for the active micrograph
-  const findSampleIdForMicrograph = (): string | undefined => {
+  // Find the sample for the active micrograph
+  const findSampleForMicrograph = () => {
     if (!activeMicrographId || !project) return undefined;
     for (const dataset of project.datasets || []) {
       for (const sample of dataset.samples || []) {
         if (sample.micrographs?.some((m) => m.id === activeMicrographId)) {
-          return sample.id;
+          return sample;
         }
       }
     }
@@ -155,7 +155,7 @@ export function PropertiesPanel() {
     return undefined;
   };
 
-  const sampleId = findSampleIdForMicrograph();
+  const sample = findSampleForMicrograph();
   const datasetId = findDatasetIdForMicrograph();
 
   // Determine what type of entity is selected (check spot first since it's more specific)
@@ -473,11 +473,11 @@ export function PropertiesPanel() {
         />
       )}
 
-      {openDialog === 'sample' && sampleId && (
-        <SampleInfoDialog
+      {openDialog === 'sample' && sample && (
+        <EditSampleDialog
           isOpen={true}
           onClose={() => setOpenDialog(null)}
-          sampleId={sampleId}
+          sample={sample}
         />
       )}
 
