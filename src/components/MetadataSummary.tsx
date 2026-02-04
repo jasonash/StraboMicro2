@@ -827,14 +827,16 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
                   <Typography variant="body2" component="span">{sample.igsn}</Typography>
                 </Box>
               )}
-              {(sample.latitude !== null || sample.longitude !== null) && (
+              {sample.longitude !== null && sample.longitude !== undefined && (
                 <Box>
-                  <Typography variant="caption" color="text.secondary">Location: </Typography>
-                  <Typography variant="body2" component="span">
-                    {sample.latitude !== null && `Lat: ${sample.latitude}`}
-                    {sample.latitude !== null && sample.longitude !== null && ', '}
-                    {sample.longitude !== null && `Lon: ${sample.longitude}`}
-                  </Typography>
+                  <Typography variant="caption" color="text.secondary">Longitude: </Typography>
+                  <Typography variant="body2" component="span">{sample.longitude}</Typography>
+                </Box>
+              )}
+              {sample.latitude !== null && sample.latitude !== undefined && (
+                <Box>
+                  <Typography variant="caption" color="text.secondary">Latitude: </Typography>
+                  <Typography variant="body2" component="span">{sample.latitude}</Typography>
                 </Box>
               )}
               {sample.sampleDescription && (
