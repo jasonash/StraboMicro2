@@ -100,8 +100,9 @@ export function EditSampleDialog({ isOpen, onClose, sample }: EditSampleDialogPr
     setShouldUnlink(false); // Clear unlink flag when linking to a new sample
 
     // Populate form fields with server data
+    // Use fallback to "Sample {id}" to match LinkSampleDialog display behavior
     setFormData({
-      sampleID: mappedData.sampleID || mappedData.label || '',
+      sampleID: mappedData.sampleID || mappedData.label || `Sample ${mappedData.id}`,
       igsn: mappedData.igsn || '',
       longitude: mappedData.longitude?.toString() || '',
       latitude: mappedData.latitude?.toString() || '',
