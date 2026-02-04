@@ -815,18 +815,6 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
                   Linked to StraboField (View on Server)
                 </Box>
               )}
-              {sample.name && (
-                <Box>
-                  <Typography variant="caption" color="text.secondary">Name: </Typography>
-                  <Typography variant="body2" component="span">{sample.name}</Typography>
-                </Box>
-              )}
-              {sample.label && (
-                <Box>
-                  <Typography variant="caption" color="text.secondary">Label: </Typography>
-                  <Typography variant="body2" component="span">{sample.label}</Typography>
-                </Box>
-              )}
               {sample.sampleID && (
                 <Box>
                   <Typography variant="caption" color="text.secondary">Sample ID: </Typography>
@@ -865,7 +853,7 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
                   <Typography variant="body2" component="span">{sample.sampleType}</Typography>
                 </Box>
               )}
-              {!sample.name && !sample.label && !sample.sampleID && (
+              {!sample.sampleID && (
                 <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
                   No sample metadata set
                 </Typography>
