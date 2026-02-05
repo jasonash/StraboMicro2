@@ -18,25 +18,26 @@ import {
 } from '@mui/material';
 import { Delete as DeleteIcon, Add as AddIcon } from '@mui/icons-material';
 import { useAppStore } from '../../store';
+import { AutocompleteMineralSearch } from './metadata/reusable/AutocompleteMineralSearch';
 
 // Default shortcuts that can be restored
 const DEFAULT_SHORTCUTS: Record<string, string> = {
-  'q': 'quartz',
-  'p': 'plagioclase',
-  'k': 'k-feldspar',
-  'b': 'biotite',
-  'm': 'muscovite',
-  'h': 'hornblende',
-  'o': 'olivine',
-  'x': 'pyroxene',
-  'g': 'garnet',
-  'c': 'calcite',
-  'd': 'dolomite',
-  'a': 'amphibole',
-  'e': 'epidote',
-  't': 'tourmaline',
-  'z': 'zircon',
-  'u': 'unknown',
+  'q': 'Quartz',
+  'p': 'Plagioclase',
+  'k': 'K-Feldspar',
+  'b': 'Biotite',
+  'm': 'Muscovite',
+  'h': 'Hornblende',
+  'o': 'Olivine',
+  'x': 'Clinopyroxene',
+  'g': 'Garnet',
+  'c': 'Calcite',
+  'd': 'Dolomite',
+  'a': 'Amphibole',
+  'e': 'Epidote',
+  's': 'Serpentine',
+  't': 'Tourmaline',
+  'z': 'Zircon',
 };
 
 // Reserved keys that cannot be used as shortcuts
@@ -86,10 +87,10 @@ export const ConfigureShortcutsDialog: React.FC<ConfigureShortcutsDialogProps> =
   // Handle adding a new shortcut
   const handleAddShortcut = () => {
     const key = newKey.toLowerCase().trim();
-    const mineral = newMineral.trim().toLowerCase();
+    const mineral = newMineral.trim();
 
     if (!key || !mineral) {
-      setError('Please enter both a key and mineral name');
+      setError('Please enter both a key and select a mineral');
       return;
     }
 
@@ -118,14 +119,6 @@ export const ConfigureShortcutsDialog: React.FC<ConfigureShortcutsDialogProps> =
     });
   };
 
-  // Handle editing a shortcut's mineral name
-  const handleEditMineral = (key: string, newMineral: string) => {
-    setLocalShortcuts((prev) => ({
-      ...prev,
-      [key]: newMineral.toLowerCase(),
-    }));
-  };
-
   // Handle resetting to defaults
   const handleResetToDefaults = () => {
     setLocalShortcuts({ ...DEFAULT_SHORTCUTS });
@@ -138,7 +131,7 @@ export const ConfigureShortcutsDialog: React.FC<ConfigureShortcutsDialogProps> =
     onClose();
   };
 
-  // Format mineral name for display
+  // Format mineral name for display (handles legacy lowercase names)
   const formatMineralName = (name: string) => {
     return name.charAt(0).toUpperCase() + name.slice(1);
   };
@@ -159,7 +152,7 @@ export const ConfigureShortcutsDialog: React.FC<ConfigureShortcutsDialogProps> =
         )}
 
         {/* Add new shortcut */}
-        <Box sx={{ display: 'flex', gap: 1, mb: 2, alignItems: 'flex-end' }}>
+        <Box sx={{ display: 'flex', gap: 1, mb: 2, alignItems: 'flex-start' }}>
           <TextField
             label="Key"
             value={newKey}
@@ -168,23 +161,21 @@ export const ConfigureShortcutsDialog: React.FC<ConfigureShortcutsDialogProps> =
             sx={{ width: 60 }}
             inputProps={{ maxLength: 1, style: { textTransform: 'uppercase' } }}
           />
-          <TextField
-            label="Mineral Name"
-            value={newMineral}
-            onChange={(e) => setNewMineral(e.target.value)}
-            size="small"
-            sx={{ flex: 1 }}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                handleAddShortcut();
-              }
-            }}
-          />
+          <Box sx={{ flex: 1 }}>
+            <AutocompleteMineralSearch
+              selectedMinerals={newMineral ? [newMineral] : []}
+              onChange={(minerals) => setNewMineral(minerals[0] || '')}
+              multiple={false}
+              label="Mineral"
+              placeholder="Search for a mineral..."
+            />
+          </Box>
           <Button
             variant="outlined"
             size="small"
             startIcon={<AddIcon />}
             onClick={handleAddShortcut}
+            sx={{ mt: '4px' }}
           >
             Add
           </Button>
@@ -212,15 +203,9 @@ export const ConfigureShortcutsDialog: React.FC<ConfigureShortcutsDialogProps> =
                 size="small"
                 sx={{ mr: 2, minWidth: 32, fontWeight: 'bold' }}
               />
-              <ListItemText>
-                <TextField
-                  value={formatMineralName(mineral)}
-                  onChange={(e) => handleEditMineral(key, e.target.value)}
-                  size="small"
-                  variant="standard"
-                  sx={{ width: '100%' }}
-                />
-              </ListItemText>
+              <ListItemText
+                primary={formatMineralName(mineral)}
+              />
             </ListItem>
           ))}
           {sortedShortcuts.length === 0 && (
