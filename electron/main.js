@@ -633,43 +633,6 @@ function createWindow() {
         { role: 'selectAll' },
         { type: 'separator' },
         {
-          label: 'Quick Edit Spots...',
-          accelerator: 'CmdOrCtrl+Shift+Q',
-          click: () => {
-            if (mainWindow) {
-              mainWindow.webContents.send('menu:quick-edit-spots');
-            }
-          }
-        },
-        {
-          label: 'Edit Selected Spots...',
-          accelerator: 'CmdOrCtrl+Shift+E',
-          click: () => {
-            if (mainWindow) {
-              mainWindow.webContents.send('menu:batch-edit-spots');
-            }
-          }
-        },
-        {
-          label: 'Merge Selected Spots',
-          accelerator: 'CmdOrCtrl+M',
-          click: () => {
-            if (mainWindow) {
-              mainWindow.webContents.send('menu:merge-spots');
-            }
-          }
-        },
-        {
-          label: 'Split Spot with Line...',
-          accelerator: 'CmdOrCtrl+/',
-          click: () => {
-            if (mainWindow) {
-              mainWindow.webContents.send('menu:split-spot');
-            }
-          }
-        },
-        { type: 'separator' },
-        {
           label: 'Clear All Spots...',
           click: () => {
             if (mainWindow) {
@@ -701,15 +664,6 @@ function createWindow() {
           }
         },
         {
-          label: 'Quick Spot Presets...',
-          click: () => {
-            if (mainWindow) {
-              mainWindow.webContents.send('menu:quick-apply-presets');
-            }
-          }
-        },
-        { type: 'separator' },
-        {
           label: 'Image Comparator...',
           click: () => {
             if (mainWindow) {
@@ -723,6 +677,56 @@ function createWindow() {
           click: () => {
             if (mainWindow) {
               mainWindow.webContents.send('menu:grain-size-analysis');
+            }
+          }
+        },
+      ],
+    },
+    {
+      label: 'Spot',
+      submenu: [
+        {
+          label: 'Quick Spot Presets...',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('menu:quick-apply-presets');
+            }
+          }
+        },
+        {
+          label: 'Quick Edit Spots...',
+          accelerator: 'CmdOrCtrl+Shift+Q',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('menu:quick-edit-spots');
+            }
+          }
+        },
+        { type: 'separator' },
+        {
+          label: 'Edit Selected Spots...',
+          accelerator: 'CmdOrCtrl+Shift+E',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('menu:batch-edit-spots');
+            }
+          }
+        },
+        {
+          label: 'Merge Selected Spots',
+          accelerator: 'CmdOrCtrl+M',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('menu:merge-spots');
+            }
+          }
+        },
+        {
+          label: 'Split Spot with Line...',
+          accelerator: 'CmdOrCtrl+/',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('menu:split-spot');
             }
           }
         },
@@ -794,26 +798,7 @@ function createWindow() {
             }
           }
         },
-        {
-          label: 'Show Archived Spots',
-          type: 'checkbox',
-          checked: false,
-          click: (menuItem) => {
-            if (mainWindow) {
-              mainWindow.webContents.send('view:toggle-archived-spots', menuItem.checked);
-            }
-          }
-        },
         { type: 'separator' },
-        {
-          label: 'Show Quick Classify Toolbar',
-          accelerator: 'CmdOrCtrl+K',
-          click: () => {
-            if (mainWindow) {
-              mainWindow.webContents.send('view:toggle-quick-classify');
-            }
-          }
-        },
         {
           label: 'Point Count Statistics',
           accelerator: 'CmdOrCtrl+Shift+S',
