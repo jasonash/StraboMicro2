@@ -3912,6 +3912,11 @@ export const useAppStore = create<AppState>()(
             state.spotIndex = buildSpotIndex(state.project);
             console.log('[Store] Rehydrated indexes - micrographs:', state.micrographIndex.size, 'spots:', state.spotIndex.size);
           }
+          // Ensure globalMineralColors has defaults after rehydration
+          // (covers upgrade from older stored state that didn't have this field)
+          if (state && (!state.globalMineralColors || state.globalMineralColors.length === 0)) {
+            state.globalMineralColors = [...DEFAULT_MINERAL_COLORS];
+          }
           // Sync theme with main process menu after rehydration
           if (state?.theme && window.api?.notifyThemeChanged) {
             window.api.notifyThemeChanged(state.theme);

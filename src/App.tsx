@@ -438,6 +438,7 @@ function App() {
 
     // Spot Color Mode toggle (View menu)
     unsubscribers.push(window.api.onSpotColorMode((mode) => {
+      console.log('[App] Spot color mode changed to:', mode);
       useAppStore.getState().setSpotColorMode(mode);
     }));
 

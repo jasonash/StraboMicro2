@@ -59,8 +59,8 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
   // Split mode state
   const splitModeSpotId = useAppStore((state) => state.splitModeSpotId);
 
-  // Mineral color mode state
-  const spotColorMode = useAppStore((state) => state.spotColorMode);
+  // Mineral color mode state (with fallbacks for rehydration from older stored state)
+  const spotColorMode = useAppStore((state) => state.spotColorMode ?? 'spot-color');
   const globalMineralColors = useAppStore((state) => state.globalMineralColors);
   const projectMineralColors = useAppStore((state) => state.project?.mineralColors);
 
@@ -89,8 +89,14 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
     if (mineralName) {
       // Project override > global default > gray fallback
       const projectEntry = projectMineralColors?.find((e) => e.mineral === mineralName);
-      const globalEntry = globalMineralColors.find((e) => e.mineral === mineralName);
+      const globalEntry = globalMineralColors?.find((e) => e.mineral === mineralName);
       baseColor = projectEntry?.color ?? globalEntry?.color ?? NO_MINERAL_COLOR;
+
+      // Debug: log mineral color resolution for first few spots
+      if (!globalEntry && !projectEntry) {
+        console.warn(`[SpotRenderer] No color found for mineral "${mineralName}" in spot "${spot.name}". Available minerals:`,
+          globalMineralColors?.map(e => e.mineral).join(', '));
+      }
     } else {
       baseColor = NO_MINERAL_COLOR;
     }
