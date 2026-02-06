@@ -9,7 +9,7 @@ import { useState, useEffect } from 'react';
 import { Circle, Line, Group, Text, Rect } from 'react-konva';
 import { Spot } from '@/types/project-types';
 import { useAppStore } from '@/store';
-import { NO_MINERAL_COLOR } from '@/constants/mineralColorDefaults';
+import { DEFAULT_MINERAL_COLORS, NO_MINERAL_COLOR } from '@/constants/mineralColorDefaults';
 
 /**
  * Convert legacy color format (0xRRGGBBAA) to web format (#RRGGBB)
@@ -87,13 +87,14 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
   if (spotColorMode === 'mineral-color') {
     const mineralName = spot.mineralogy?.minerals?.[0]?.name;
     if (mineralName) {
-      // Project override > global default > gray fallback
+      // Project override > global default > hardcoded default > gray fallback
       const projectEntry = projectMineralColors?.find((e) => e.mineral === mineralName);
       const globalEntry = globalMineralColors?.find((e) => e.mineral === mineralName);
-      baseColor = projectEntry?.color ?? globalEntry?.color ?? NO_MINERAL_COLOR;
+      const defaultEntry = DEFAULT_MINERAL_COLORS.find((e) => e.mineral === mineralName);
+      baseColor = projectEntry?.color ?? globalEntry?.color ?? defaultEntry?.color ?? NO_MINERAL_COLOR;
 
       // Debug: log mineral color resolution for first few spots
-      if (!globalEntry && !projectEntry) {
+      if (!globalEntry && !projectEntry && !defaultEntry) {
         console.warn(`[SpotRenderer] No color found for mineral "${mineralName}" in spot "${spot.name}". Available minerals:`,
           globalMineralColors?.map(e => e.mineral).join(', '));
       }
