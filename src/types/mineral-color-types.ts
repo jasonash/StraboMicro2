@@ -11,3 +11,5 @@ export interface MineralColorEntry {
 }
 
 export type SpotColorMode = 'spot-color' | 'mineral-color';
+
+export type SpotLabelMode = 'original' | 'mineralogy' | 'none';

@@ -165,13 +165,13 @@ interface Window {
     notifyThemeChanged: (theme: 'dark' | 'light' | 'system') => void;
     notifyViewPrefsChanged: (prefs: Partial<{
       showRulers: boolean;
-      showSpotLabels: boolean;
+      spotLabelMode: 'original' | 'mineralogy' | 'none';
       showOverlayOutlines: boolean;
       showRecursiveSpots: boolean;
       spotColorMode: 'spot-color' | 'mineral-color';
     }>) => void;
     onToggleRulers: (callback: (checked: boolean) => void) => Unsubscribe;
-    onToggleSpotLabels: (callback: (checked: boolean) => void) => Unsubscribe;
+    onSpotLabelMode: (callback: (mode: 'original' | 'mineralogy' | 'none') => void) => Unsubscribe;
     onToggleOverlayOutlines: (callback: (checked: boolean) => void) => Unsubscribe;
     onToggleRecursiveSpots: (callback: (checked: boolean) => void) => Unsubscribe;
     onToggleArchivedSpots: (callback: (checked: boolean) => void) => Unsubscribe;

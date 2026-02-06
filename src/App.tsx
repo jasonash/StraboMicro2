@@ -198,7 +198,7 @@ function App() {
   const project = useAppStore(state => state.project);
   const setTheme = useAppStore(state => state.setTheme);
   const setShowRulers = useAppStore(state => state.setShowRulers);
-  const setShowSpotLabels = useAppStore(state => state.setShowSpotLabels);
+  const setSpotLabelMode = useAppStore(state => state.setSpotLabelMode);
   const setShowMicrographOutlines = useAppStore(state => state.setShowMicrographOutlines);
   const setShowRecursiveSpots = useAppStore(state => state.setShowRecursiveSpots);
   const setShowArchivedSpots = useAppStore(state => state.setShowArchivedSpots);
@@ -834,10 +834,10 @@ function App() {
       window.api?.notifyViewPrefsChanged({ showRulers: checked });
     }));
 
-    // View: Toggle Spot Labels menu item
-    unsubscribers.push(window.api.onToggleSpotLabels((checked) => {
-      setShowSpotLabels(checked);
-      window.api?.notifyViewPrefsChanged({ showSpotLabels: checked });
+    // View: Spot Label Mode menu item
+    unsubscribers.push(window.api.onSpotLabelMode((mode) => {
+      setSpotLabelMode(mode);
+      window.api?.notifyViewPrefsChanged({ spotLabelMode: mode });
     }));
 
     // View: Toggle Overlay Outlines menu item
@@ -1155,7 +1155,7 @@ function App() {
     return () => {
       unsubscribers.forEach(unsub => unsub?.());
     };
-  }, [closeProject, setTheme, setShowRulers, setShowSpotLabels, setShowMicrographOutlines, logout, project, manualSave, saveBeforeSwitch, loadProjectWithPreparation, activeMicrographId, micrographIndex, addSpot, updateMicrographMetadata]);
+  }, [closeProject, setTheme, setShowRulers, setSpotLabelMode, setShowMicrographOutlines, logout, project, manualSave, saveBeforeSwitch, loadProjectWithPreparation, activeMicrographId, micrographIndex, addSpot, updateMicrographMetadata]);
 
   return (
     <>

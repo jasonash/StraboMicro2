@@ -386,7 +386,7 @@ function createWindow() {
   // Track view preferences for menu (synced from renderer on rehydration and toggle)
   let currentViewPrefs = {
     showRulers: true,
-    showSpotLabels: true,
+    spotLabelMode: 'original',
     showOverlayOutlines: true,
     showRecursiveSpots: false,
     spotColorMode: 'spot-color',
@@ -787,17 +787,41 @@ function createWindow() {
             }
           }
         },
+        { type: 'separator' },
         {
-          label: 'Show Spot Labels',
-          type: 'checkbox',
-          checked: currentViewPrefs.showSpotLabels,
-          click: (menuItem) => {
-            currentViewPrefs.showSpotLabels = menuItem.checked;
+          label: 'Show Original Spot Labels',
+          type: 'radio',
+          checked: currentViewPrefs.spotLabelMode === 'original',
+          click: () => {
+            currentViewPrefs.spotLabelMode = 'original';
             if (mainWindow) {
-              mainWindow.webContents.send('view:toggle-spot-labels', menuItem.checked);
+              mainWindow.webContents.send('view:spot-label-mode', 'original');
             }
           }
         },
+        {
+          label: 'Show Mineralogy Spot Labels',
+          type: 'radio',
+          checked: currentViewPrefs.spotLabelMode === 'mineralogy',
+          click: () => {
+            currentViewPrefs.spotLabelMode = 'mineralogy';
+            if (mainWindow) {
+              mainWindow.webContents.send('view:spot-label-mode', 'mineralogy');
+            }
+          }
+        },
+        {
+          label: 'Hide Spot Labels',
+          type: 'radio',
+          checked: currentViewPrefs.spotLabelMode === 'none',
+          click: () => {
+            currentViewPrefs.spotLabelMode = 'none';
+            if (mainWindow) {
+              mainWindow.webContents.send('view:spot-label-mode', 'none');
+            }
+          }
+        },
+        { type: 'separator' },
         {
           label: 'Show Overlay Outlines',
           type: 'checkbox',

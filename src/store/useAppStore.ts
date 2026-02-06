@@ -111,7 +111,7 @@ import type {
   PresetData,
   PresetKeyBindings,
 } from '@/types/preset-types';
-import type { MineralColorEntry, SpotColorMode } from '@/types/mineral-color-types';
+import type { MineralColorEntry, SpotColorMode, SpotLabelMode } from '@/types/mineral-color-types';
 import { DEFAULT_MINERAL_COLORS } from '@/constants/mineralColorDefaults';
 import { PRESET_FEATURE_FIELDS } from '@/types/preset-types';
 import {
@@ -159,7 +159,7 @@ interface AppState {
   originalGeometry: Array<{ X: number; Y: number }> | null; // Backup of original geometry for cancel
   zoom: number;
   pan: { x: number; y: number };
-  showSpotLabels: boolean;
+  spotLabelMode: SpotLabelMode;
   showMicrographOutlines: boolean;
   showRecursiveSpots: boolean;
   showArchivedSpots: boolean;
@@ -515,7 +515,7 @@ interface AppState {
   setActiveTool: (tool: DrawingTool) => void;
   setZoom: (zoom: number) => void;
   setPan: (pan: { x: number; y: number }) => void;
-  setShowSpotLabels: (show: boolean) => void;
+  setSpotLabelMode: (mode: SpotLabelMode) => void;
   setShowMicrographOutlines: (show: boolean) => void;
   setShowRecursiveSpots: (show: boolean) => void;
   setShowArchivedSpots: (show: boolean) => void;
@@ -856,7 +856,7 @@ export const useAppStore = create<AppState>()(
           originalGeometry: null,
           zoom: 1,
           pan: { x: 0, y: 0 },
-          showSpotLabels: true,
+          spotLabelMode: 'original' as SpotLabelMode,
           showMicrographOutlines: true,
           showRecursiveSpots: false,
           showArchivedSpots: false,
@@ -2781,7 +2781,7 @@ export const useAppStore = create<AppState>()(
 
           setPan: (pan) => set({ pan }),
 
-          setShowSpotLabels: (show) => set({ showSpotLabels: show }),
+          setSpotLabelMode: (mode) => set({ spotLabelMode: mode }),
 
           setShowMicrographOutlines: (show) => set({ showMicrographOutlines: show }),
 
@@ -3878,7 +3878,7 @@ export const useAppStore = create<AppState>()(
           sidebarTab: state.sidebarTab,
           detailsPanelOpen: state.detailsPanelOpen,
           showRulers: state.showRulers,
-          showSpotLabels: state.showSpotLabels,
+          spotLabelMode: state.spotLabelMode,
           showMicrographOutlines: state.showMicrographOutlines,
           showRecursiveSpots: state.showRecursiveSpots,
           showArchivedSpots: state.showArchivedSpots,
@@ -3913,6 +3913,11 @@ export const useAppStore = create<AppState>()(
             state.spotIndex = buildSpotIndex(state.project);
             console.log('[Store] Rehydrated indexes - micrographs:', state.micrographIndex.size, 'spots:', state.spotIndex.size);
           }
+          // Migrate legacy showSpotLabels boolean to spotLabelMode
+          if (state && !state.spotLabelMode) {
+            const legacy = (state as any).showSpotLabels;
+            state.spotLabelMode = legacy === false ? 'none' : 'original';
+          }
           // Ensure globalMineralColors has defaults after rehydration
           // (covers upgrade from older stored state that didn't have this field)
           if (state && (!state.globalMineralColors || state.globalMineralColors.length === 0)) {
@@ -3926,7 +3931,7 @@ export const useAppStore = create<AppState>()(
           if (state && window.api?.notifyViewPrefsChanged) {
             window.api.notifyViewPrefsChanged({
               showRulers: state.showRulers ?? true,
-              showSpotLabels: state.showSpotLabels ?? true,
+              spotLabelMode: state.spotLabelMode ?? 'original',
               showOverlayOutlines: state.showMicrographOutlines ?? true,
               showRecursiveSpots: state.showRecursiveSpots ?? false,
               spotColorMode: state.spotColorMode ?? 'spot-color',

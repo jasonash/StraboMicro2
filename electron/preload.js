@@ -148,10 +148,10 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('view:toggle-rulers', handler);
     return () => ipcRenderer.removeListener('view:toggle-rulers', handler);
   },
-  onToggleSpotLabels: (callback) => {
-    const handler = (event, checked) => callback(checked);
-    ipcRenderer.on('view:toggle-spot-labels', handler);
-    return () => ipcRenderer.removeListener('view:toggle-spot-labels', handler);
+  onSpotLabelMode: (callback) => {
+    const handler = (event, mode) => callback(mode);
+    ipcRenderer.on('view:spot-label-mode', handler);
+    return () => ipcRenderer.removeListener('view:spot-label-mode', handler);
   },
   onToggleOverlayOutlines: (callback) => {
     const handler = (event, checked) => callback(checked);

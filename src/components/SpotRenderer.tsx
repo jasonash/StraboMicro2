@@ -5,11 +5,12 @@
  * Handles visual representation including colors, labels, opacity, and selection states.
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Circle, Line, Group, Text, Rect } from 'react-konva';
 import { Spot } from '@/types/project-types';
 import { useAppStore } from '@/store';
 import { DEFAULT_MINERAL_COLORS, NO_MINERAL_COLOR } from '@/constants/mineralColorDefaults';
+import { loadMinerals } from '@/utils/mineralData';
 
 /**
  * Convert legacy color format (0xRRGGBBAA) to web format (#RRGGBB)
@@ -28,6 +29,20 @@ function convertLegacyColor(color: string): string {
   }
 
   return color; // Return as-is if unknown format
+}
+
+/**
+ * Build a Map of lowercase mineral name → abbreviation from mineralDB.
+ * Lazily initialized on first access.
+ */
+let mineralAbbrevMap: Map<string, string> | null = null;
+function getMineralAbbrevMap(): Map<string, string> {
+  if (mineralAbbrevMap) return mineralAbbrevMap;
+  mineralAbbrevMap = new Map();
+  for (const m of loadMinerals()) {
+    mineralAbbrevMap.set(m.mineralname.toLowerCase(), m.abbrev);
+  }
+  return mineralAbbrevMap;
 }
 
 interface SpotRendererProps {
@@ -58,6 +73,9 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
 
   // Split mode state
   const splitModeSpotId = useAppStore((state) => state.splitModeSpotId);
+
+  // Spot label mode state
+  const spotLabelMode = useAppStore((state) => state.spotLabelMode ?? 'original');
 
   // Mineral color mode state (with fallbacks for rehydration from older stored state)
   const spotColorMode = useAppStore((state) => state.spotColorMode ?? 'spot-color');
@@ -106,6 +124,18 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
 
   // Check if spot has mineralogy classification
   const isClassified = !!(spot.mineralogy?.minerals?.[0]?.name);
+
+  // Compute label text based on spotLabelMode
+  const labelText = useMemo(() => {
+    if (spotLabelMode === 'none') return null;
+    if (spotLabelMode === 'original') return spot.name;
+    // spotLabelMode === 'mineralogy'
+    const mineralName = spot.mineralogy?.minerals?.[0]?.name;
+    if (!mineralName) return null;
+    const abbrevMap = getMineralAbbrevMap();
+    const abbrev = abbrevMap.get(mineralName.toLowerCase());
+    return abbrev || mineralName.slice(0, 3);
+  }, [spotLabelMode, spot.name, spot.mineralogy?.minerals]);
 
   // Quick Edit mode visual states
   const isInQuickEditSession = quickEditMode && quickEditSpotIds.includes(spot.id);
@@ -181,14 +211,14 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
 
     // If rendering labels only, skip the shape
     if (renderLabelsOnly) {
-      return showLabel ? (
+      return (showLabel && labelText) ? (
         <Group name={`spot-${spot.id}-label`}>
           {/* Label background box */}
           <Rect
             key="label-bg"
             x={x + 8 / scale}
             y={y + 8 / scale}
-            width={(spot.name.length * 8.5 + 8) / scale}
+            width={(labelText.length * 8.5 + 8) / scale}
             height={22 / scale}
             fill="#000000"
             opacity={0.7}
@@ -200,7 +230,7 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
             key="label"
             x={x + 12 / scale}
             y={y + 11 / scale}
-            text={spot.name}
+            text={labelText}
             fontSize={16 / scale}
             fontStyle="bold"
             fill={labelColor}
@@ -260,14 +290,14 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
 
     // If rendering labels only, skip the shape
     if (renderLabelsOnly) {
-      return showLabel && coords[0] ? (
+      return (showLabel && labelText && coords[0]) ? (
         <Group name={`spot-${spot.id}-label`}>
           {/* Label background box */}
           <Rect
             key="label-bg"
             x={coords[0][0] + 8 / scale}
             y={coords[0][1] + 8 / scale}
-            width={(spot.name.length * 8.5 + 8) / scale}
+            width={(labelText.length * 8.5 + 8) / scale}
             height={22 / scale}
             fill="#000000"
             opacity={0.7}
@@ -279,7 +309,7 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
             key="label"
             x={coords[0][0] + 12 / scale}
             y={coords[0][1] + 11 / scale}
-            text={spot.name}
+            text={labelText}
             fontSize={16 / scale}
             fontStyle="bold"
             fill={labelColor}
@@ -341,14 +371,14 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
 
     // If rendering labels only, skip the shape
     if (renderLabelsOnly) {
-      return showLabel && coords[0] ? (
+      return (showLabel && labelText && coords[0]) ? (
         <Group name={`spot-${spot.id}-label`}>
           {/* Label background box */}
           <Rect
             key="label-bg"
             x={coords[0][0] + 8 / scale}
             y={coords[0][1] + 8 / scale}
-            width={(spot.name.length * 8.5 + 8) / scale}
+            width={(labelText.length * 8.5 + 8) / scale}
             height={22 / scale}
             fill="#000000"
             opacity={0.7}
@@ -360,7 +390,7 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
             key="label"
             x={coords[0][0] + 12 / scale}
             y={coords[0][1] + 11 / scale}
-            text={spot.name}
+            text={labelText}
             fontSize={16 / scale}
             fontStyle="bold"
             fill={labelColor}

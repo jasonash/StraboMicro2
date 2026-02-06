@@ -144,7 +144,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
     const activeTool = useAppStore((state) => state.activeTool);
     const activeSpotId = useAppStore((state) => state.activeSpotId);
     const showRulers = useAppStore((state) => state.showRulers);
-    const showSpotLabels = useAppStore((state) => state.showSpotLabels);
+    const spotLabelMode = useAppStore((state) => state.spotLabelMode);
     const showMicrographOutlines = useAppStore((state) => state.showMicrographOutlines);
     const showRecursiveSpots = useAppStore((state) => state.showRecursiveSpots);
     const showArchivedSpots = useAppStore((state) => state.showArchivedSpots);
@@ -2367,7 +2367,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
 
                   {/* Second pass: Render visible spot labels (ensures labels are on top) */}
                   {/* Hide in point count mode */}
-                  {!pointCountMode && showSpotLabels && visibleSpots.map((spot) => (
+                  {!pointCountMode && spotLabelMode !== 'none' && visibleSpots.map((spot) => (
                     <SpotRenderer
                       key={`${spot.id}-label`}
                       spot={spot}
@@ -2642,7 +2642,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
 
                   {/* Second pass: Render visible spot labels */}
                   {/* Hide in point count mode */}
-                  {!pointCountMode && showSpotLabels && visibleSpots.map((spot) => (
+                  {!pointCountMode && spotLabelMode !== 'none' && visibleSpots.map((spot) => (
                     <SpotRenderer
                       key={`${spot.id}-label`}
                       spot={spot}
