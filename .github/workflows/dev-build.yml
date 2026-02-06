@@ -343,6 +343,9 @@ jobs:
         run: |
           gh release delete dev-latest --yes || true
           git push origin :refs/tags/dev-latest || true
+          # Wait for GitHub to propagate the tag deletion before recreating,
+          # otherwise the new release gets "untagged-*" download URLs
+          sleep 10
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
