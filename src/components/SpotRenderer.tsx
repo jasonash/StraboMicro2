@@ -88,16 +88,12 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
     const mineralName = spot.mineralogy?.minerals?.[0]?.name;
     if (mineralName) {
       // Project override > global default > hardcoded default > gray fallback
-      const projectEntry = projectMineralColors?.find((e) => e.mineral === mineralName);
-      const globalEntry = globalMineralColors?.find((e) => e.mineral === mineralName);
-      const defaultEntry = DEFAULT_MINERAL_COLORS.find((e) => e.mineral === mineralName);
+      // Use case-insensitive matching since mineral names may differ in casing
+      const nameLower = mineralName.toLowerCase();
+      const projectEntry = projectMineralColors?.find((e) => e.mineral.toLowerCase() === nameLower);
+      const globalEntry = globalMineralColors?.find((e) => e.mineral.toLowerCase() === nameLower);
+      const defaultEntry = DEFAULT_MINERAL_COLORS.find((e) => e.mineral.toLowerCase() === nameLower);
       baseColor = projectEntry?.color ?? globalEntry?.color ?? defaultEntry?.color ?? NO_MINERAL_COLOR;
-
-      // Debug: log mineral color resolution for first few spots
-      if (!globalEntry && !projectEntry && !defaultEntry) {
-        console.warn(`[SpotRenderer] No color found for mineral "${mineralName}" in spot "${spot.name}". Available minerals:`,
-          globalMineralColors?.map(e => e.mineral).join(', '));
-      }
     } else {
       baseColor = NO_MINERAL_COLOR;
     }
