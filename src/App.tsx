@@ -27,6 +27,7 @@ import { PointCountDialog } from './components/dialogs/PointCountDialog';
 import { GrainDetectionDialog } from './components/dialogs/GrainDetectionDialog';
 import { ImageComparatorDialog } from './components/dialogs/ImageComparatorDialog';
 import { GrainSizeAnalysisDialog } from './components/dialogs/GrainSizeAnalysisDialog';
+import { MineralColorDialog } from './components/dialogs/MineralColorDialog';
 import { QuickEditEntryDialog } from './components/dialogs/QuickEditEntryDialog';
 import { QuickApplyPresetsDialog } from './components/dialogs/QuickApplyPresetsDialog';
 import {
@@ -191,6 +192,7 @@ function App() {
   const [isGrainSizeAnalysisDialogOpen, setIsGrainSizeAnalysisDialogOpen] = useState(false);
   const [isQuickEditEntryDialogOpen, setIsQuickEditEntryDialogOpen] = useState(false);
   const [isQuickApplyPresetsDialogOpen, setIsQuickApplyPresetsDialogOpen] = useState(false);
+  const [isMineralColorDialogOpen, setIsMineralColorDialogOpen] = useState(false);
   const setSplitModeSpotId = useAppStore(state => state.setSplitModeSpotId);
   const closeProject = useAppStore(state => state.closeProject);
   const project = useAppStore(state => state.project);
@@ -427,6 +429,16 @@ function App() {
     // Grain Size Analysis menu item (Tools menu)
     unsubscribers.push(window.api.onGrainSizeAnalysis(() => {
       setIsGrainSizeAnalysisDialogOpen(true);
+    }));
+
+    // Configure Mineral Colors menu item (Tools menu)
+    unsubscribers.push(window.api.onConfigureMineralColors(() => {
+      setIsMineralColorDialogOpen(true);
+    }));
+
+    // Spot Color Mode toggle (View menu)
+    unsubscribers.push(window.api.onSpotColorMode((mode) => {
+      useAppStore.getState().setSpotColorMode(mode);
     }));
 
     // Clear All Spots menu item (Edit menu)
@@ -1277,6 +1289,10 @@ function App() {
       <GrainSizeAnalysisDialog
         open={isGrainSizeAnalysisDialogOpen}
         onClose={() => setIsGrainSizeAnalysisDialogOpen(false)}
+      />
+      <MineralColorDialog
+        isOpen={isMineralColorDialogOpen}
+        onClose={() => setIsMineralColorDialogOpen(false)}
       />
       <QuickEditEntryDialog
         isOpen={isQuickEditEntryDialogOpen}

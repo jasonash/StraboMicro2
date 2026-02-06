@@ -633,6 +633,16 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('menu:grain-size-analysis', handler);
     return () => ipcRenderer.removeListener('menu:grain-size-analysis', handler);
   },
+  onConfigureMineralColors: (callback) => {
+    const handler = () => callback();
+    ipcRenderer.on('menu:configure-mineral-colors', handler);
+    return () => ipcRenderer.removeListener('menu:configure-mineral-colors', handler);
+  },
+  onSpotColorMode: (callback) => {
+    const handler = (event, mode) => callback(mode);
+    ipcRenderer.on('view:spot-color-mode', handler);
+    return () => ipcRenderer.removeListener('view:spot-color-mode', handler);
+  },
 
   // FastSAM Grain Detection
   fastsam: {

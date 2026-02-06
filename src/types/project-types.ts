@@ -12,6 +12,7 @@
  */
 
 import type { QuickApplyPreset } from './preset-types';
+import type { MineralColorEntry } from './mineral-color-types';
 
 // ============================================================================
 // ROOT PROJECT STRUCTURE
@@ -50,6 +51,9 @@ export interface ProjectMetadata {
   // Quick Spot Presets (project-level)
   presets?: QuickApplyPreset[] | null;
   presetKeyBindings?: Record<string, string> | null; // Optional project override for key bindings
+
+  // Mineral Color overrides (project-level)
+  mineralColors?: MineralColorEntry[] | null;
 }
 
 export interface DatasetMetadata {

@@ -9,6 +9,7 @@ import { useState, useEffect } from 'react';
 import { Circle, Line, Group, Text, Rect } from 'react-konva';
 import { Spot } from '@/types/project-types';
 import { useAppStore } from '@/store';
+import { NO_MINERAL_COLOR } from '@/constants/mineralColorDefaults';
 
 /**
  * Convert legacy color format (0xRRGGBBAA) to web format (#RRGGBB)
@@ -58,6 +59,11 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
   // Split mode state
   const splitModeSpotId = useAppStore((state) => state.splitModeSpotId);
 
+  // Mineral color mode state
+  const spotColorMode = useAppStore((state) => state.spotColorMode);
+  const globalMineralColors = useAppStore((state) => state.globalMineralColors);
+  const projectMineralColors = useAppStore((state) => state.project?.mineralColors);
+
   // Clear hover state when spot becomes selected
   // IMPORTANT: This must be BEFORE any conditional returns (React hooks rules)
   useEffect(() => {
@@ -75,7 +81,22 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
   if (!spot.geometryType && !spot.geometry) return null;
 
   const geometryType = spot.geometryType || spot.geometry?.type;
-  const baseColor = convertLegacyColor(spot.color || '#00ff00');
+
+  // Determine base color: mineral-based or spot-based
+  let baseColor: string;
+  if (spotColorMode === 'mineral-color') {
+    const mineralName = spot.mineralogy?.minerals?.[0]?.name;
+    if (mineralName) {
+      // Project override > global default > gray fallback
+      const projectEntry = projectMineralColors?.find((e) => e.mineral === mineralName);
+      const globalEntry = globalMineralColors.find((e) => e.mineral === mineralName);
+      baseColor = projectEntry?.color ?? globalEntry?.color ?? NO_MINERAL_COLOR;
+    } else {
+      baseColor = NO_MINERAL_COLOR;
+    }
+  } else {
+    baseColor = convertLegacyColor(spot.color || '#00ff00');
+  }
   const labelColor = convertLegacyColor(spot.labelColor || '#ffffff');
   const showLabel = spot.showLabel ?? true;
   const baseOpacity = (spot.opacity ?? 50) / 100; // Convert 0-100 to 0-1

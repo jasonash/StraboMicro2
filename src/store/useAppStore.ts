@@ -111,6 +111,8 @@ import type {
   PresetData,
   PresetKeyBindings,
 } from '@/types/preset-types';
+import type { MineralColorEntry, SpotColorMode } from '@/types/mineral-color-types';
+import { DEFAULT_MINERAL_COLORS } from '@/constants/mineralColorDefaults';
 import { PRESET_FEATURE_FIELDS } from '@/types/preset-types';
 import {
   updateMicrograph,
@@ -272,6 +274,12 @@ interface AppState {
     namingPattern: string;
   } | null;
 
+  // ========== MINERAL COLOR STATE ==========
+  /** Current spot color mode: 'spot-color' (default) or 'mineral-color' */
+  spotColorMode: SpotColorMode;
+  /** Global mineral color assignments (persisted to app prefs) */
+  globalMineralColors: MineralColorEntry[];
+
   // ========== COMPUTED INDEXES (for performance) ==========
   micrographIndex: Map<string, MicrographMetadata>;
   spotIndex: Map<string, Spot>;
@@ -389,6 +397,22 @@ interface AppState {
   setStatisticsPanelVisible: (visible: boolean) => void;
   /** Toggle Batch Edit dialog visibility */
   setBatchEditDialogOpen: (open: boolean) => void;
+
+  // ========== MINERAL COLOR ACTIONS ==========
+  /** Set the spot color mode */
+  setSpotColorMode: (mode: SpotColorMode) => void;
+  /** Replace all global mineral color entries */
+  setGlobalMineralColors: (entries: MineralColorEntry[]) => void;
+  /** Update a single global mineral color */
+  updateGlobalMineralColor: (mineral: string, color: string) => void;
+  /** Add a new global mineral color entry */
+  addGlobalMineralColor: (entry: MineralColorEntry) => void;
+  /** Remove a global mineral color entry by mineral name */
+  removeGlobalMineralColor: (mineral: string) => void;
+  /** Reset global mineral colors to defaults */
+  resetGlobalMineralColors: () => void;
+  /** Set or clear project-level mineral color overrides */
+  setProjectMineralColors: (entries: MineralColorEntry[] | null) => void;
 
   // ========== QUICK APPLY PRESETS ACTIONS ==========
   /** Create a new preset */
@@ -913,6 +937,10 @@ export const useAppStore = create<AppState>()(
           // Generation settings (persisted defaults)
           lastPointCountSettings: null,
           lastGrainDetectionSettings: null,
+
+          // Mineral color state
+          spotColorMode: 'spot-color' as const,
+          globalMineralColors: [...DEFAULT_MINERAL_COLORS],
 
           micrographIndex: new Map(),
           spotIndex: new Map(),
@@ -2908,6 +2936,39 @@ export const useAppStore = create<AppState>()(
 
           setBatchEditDialogOpen: (open) => set({ batchEditDialogOpen: open }),
 
+          // ========== MINERAL COLOR ACTIONS ==========
+
+          setSpotColorMode: (mode) => set({ spotColorMode: mode }),
+
+          setGlobalMineralColors: (entries) => set({ globalMineralColors: entries }),
+
+          updateGlobalMineralColor: (mineral, color) => set((state) => ({
+            globalMineralColors: state.globalMineralColors.map((e) =>
+              e.mineral === mineral ? { ...e, color } : e
+            ),
+          })),
+
+          addGlobalMineralColor: (entry) => set((state) => {
+            if (state.globalMineralColors.some((e) => e.mineral === entry.mineral)) {
+              return state; // Already exists, no-op
+            }
+            return { globalMineralColors: [...state.globalMineralColors, entry] };
+          }),
+
+          removeGlobalMineralColor: (mineral) => set((state) => ({
+            globalMineralColors: state.globalMineralColors.filter((e) => e.mineral !== mineral),
+          })),
+
+          resetGlobalMineralColors: () => set({ globalMineralColors: [...DEFAULT_MINERAL_COLORS] }),
+
+          setProjectMineralColors: (entries) => set((state) => {
+            if (!state.project) return state;
+            return {
+              project: { ...state.project, mineralColors: entries },
+              isDirty: true,
+            };
+          }),
+
           // ========== QUICK APPLY PRESETS ACTIONS ==========
 
           createPreset: (preset, scope) => set((state) => {
@@ -3838,6 +3899,10 @@ export const useAppStore = create<AppState>()(
           // Generation settings
           lastPointCountSettings: state.lastPointCountSettings,
           lastGrainDetectionSettings: state.lastGrainDetectionSettings,
+
+          // Mineral color settings
+          spotColorMode: state.spotColorMode,
+          globalMineralColors: state.globalMineralColors,
         }),
         // Rebuild indexes after rehydrating from file storage
         onRehydrateStorage: () => (state) => {

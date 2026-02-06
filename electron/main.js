@@ -680,6 +680,15 @@ function createWindow() {
             }
           }
         },
+        { type: 'separator' },
+        {
+          label: 'Configure Mineral Colors...',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('menu:configure-mineral-colors');
+            }
+          }
+        },
       ],
     },
     {
@@ -795,6 +804,27 @@ function createWindow() {
           click: (menuItem) => {
             if (mainWindow) {
               mainWindow.webContents.send('view:toggle-recursive-spots', menuItem.checked);
+            }
+          }
+        },
+        { type: 'separator' },
+        {
+          label: 'View Spots by Spot Color',
+          type: 'radio',
+          checked: true,
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('view:spot-color-mode', 'spot-color');
+            }
+          }
+        },
+        {
+          label: 'View Spots by Mineral Color',
+          type: 'radio',
+          checked: false,
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('view:spot-color-mode', 'mineral-color');
             }
           }
         },
