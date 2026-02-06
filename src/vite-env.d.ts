@@ -163,6 +163,13 @@ interface Window {
     notifyProjectChanged: (projectId: string | null) => void;
     onThemeChange: (callback: (theme: 'dark' | 'light' | 'system') => void) => Unsubscribe;
     notifyThemeChanged: (theme: 'dark' | 'light' | 'system') => void;
+    notifyViewPrefsChanged: (prefs: Partial<{
+      showRulers: boolean;
+      showSpotLabels: boolean;
+      showOverlayOutlines: boolean;
+      showRecursiveSpots: boolean;
+      spotColorMode: 'spot-color' | 'mineral-color';
+    }>) => void;
     onToggleRulers: (callback: (checked: boolean) => void) => Unsubscribe;
     onToggleSpotLabels: (callback: (checked: boolean) => void) => Unsubscribe;
     onToggleOverlayOutlines: (callback: (checked: boolean) => void) => Unsubscribe;

@@ -383,6 +383,15 @@ function createWindow() {
   // Track current theme for menu (synced from renderer)
   let currentTheme = 'dark';
 
+  // Track view preferences for menu (synced from renderer on rehydration and toggle)
+  let currentViewPrefs = {
+    showRulers: true,
+    showSpotLabels: true,
+    showOverlayOutlines: true,
+    showRecursiveSpots: false,
+    spotColorMode: 'spot-color',
+  };
+
   // Cache for recent projects (to avoid disk reads on every menu build)
   let recentProjectsCache = [];
 
@@ -770,8 +779,9 @@ function createWindow() {
         {
           label: 'Show Rulers',
           type: 'checkbox',
-          checked: true,
+          checked: currentViewPrefs.showRulers,
           click: (menuItem) => {
+            currentViewPrefs.showRulers = menuItem.checked;
             if (mainWindow) {
               mainWindow.webContents.send('view:toggle-rulers', menuItem.checked);
             }
@@ -780,8 +790,9 @@ function createWindow() {
         {
           label: 'Show Spot Labels',
           type: 'checkbox',
-          checked: true,
+          checked: currentViewPrefs.showSpotLabels,
           click: (menuItem) => {
+            currentViewPrefs.showSpotLabels = menuItem.checked;
             if (mainWindow) {
               mainWindow.webContents.send('view:toggle-spot-labels', menuItem.checked);
             }
@@ -790,8 +801,9 @@ function createWindow() {
         {
           label: 'Show Overlay Outlines',
           type: 'checkbox',
-          checked: true,
+          checked: currentViewPrefs.showOverlayOutlines,
           click: (menuItem) => {
+            currentViewPrefs.showOverlayOutlines = menuItem.checked;
             if (mainWindow) {
               mainWindow.webContents.send('view:toggle-overlay-outlines', menuItem.checked);
             }
@@ -800,8 +812,9 @@ function createWindow() {
         {
           label: 'Show Recursive Spots',
           type: 'checkbox',
-          checked: false,
+          checked: currentViewPrefs.showRecursiveSpots,
           click: (menuItem) => {
+            currentViewPrefs.showRecursiveSpots = menuItem.checked;
             if (mainWindow) {
               mainWindow.webContents.send('view:toggle-recursive-spots', menuItem.checked);
             }
@@ -811,8 +824,9 @@ function createWindow() {
         {
           label: 'View Spots by Spot Color',
           type: 'radio',
-          checked: true,
+          checked: currentViewPrefs.spotColorMode === 'spot-color',
           click: () => {
+            currentViewPrefs.spotColorMode = 'spot-color';
             if (mainWindow) {
               mainWindow.webContents.send('view:spot-color-mode', 'spot-color');
             }
@@ -821,8 +835,9 @@ function createWindow() {
         {
           label: 'View Spots by Mineral Color',
           type: 'radio',
-          checked: false,
+          checked: currentViewPrefs.spotColorMode === 'mineral-color',
           click: () => {
+            currentViewPrefs.spotColorMode = 'mineral-color';
             if (mainWindow) {
               mainWindow.webContents.send('view:spot-color-mode', 'mineral-color');
             }
@@ -1111,6 +1126,12 @@ function createWindow() {
   ipcMain.on('theme:changed', (event, theme) => {
     log.info(`App theme changed to: ${theme}`);
     currentTheme = theme;
+    buildMenu();
+  });
+
+  // IPC handler to update view preferences and rebuild menu
+  ipcMain.on('view-prefs:changed', (event, prefs) => {
+    Object.assign(currentViewPrefs, prefs);
     buildMenu();
   });
 

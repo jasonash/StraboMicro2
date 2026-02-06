@@ -3877,6 +3877,7 @@ export const useAppStore = create<AppState>()(
           // UI preferences
           sidebarTab: state.sidebarTab,
           detailsPanelOpen: state.detailsPanelOpen,
+          showRulers: state.showRulers,
           showSpotLabels: state.showSpotLabels,
           showMicrographOutlines: state.showMicrographOutlines,
           showRecursiveSpots: state.showRecursiveSpots,
@@ -3920,6 +3921,16 @@ export const useAppStore = create<AppState>()(
           // Sync theme with main process menu after rehydration
           if (state?.theme && window.api?.notifyThemeChanged) {
             window.api.notifyThemeChanged(state.theme);
+          }
+          // Sync view preferences with main process menu after rehydration
+          if (state && window.api?.notifyViewPrefsChanged) {
+            window.api.notifyViewPrefsChanged({
+              showRulers: state.showRulers ?? true,
+              showSpotLabels: state.showSpotLabels ?? true,
+              showOverlayOutlines: state.showMicrographOutlines ?? true,
+              showRecursiveSpots: state.showRecursiveSpots ?? false,
+              spotColorMode: state.spotColorMode ?? 'spot-color',
+            });
           }
         },
       }

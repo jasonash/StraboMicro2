@@ -443,6 +443,7 @@ function App() {
       unsubscribers.push(window.api.onSpotColorMode((mode) => {
         console.log('[App] Spot color mode changed to:', mode);
         useAppStore.getState().setSpotColorMode(mode);
+        window.api?.notifyViewPrefsChanged({ spotColorMode: mode });
       }));
     }
 
@@ -830,21 +831,25 @@ function App() {
     // View: Toggle Rulers menu item
     unsubscribers.push(window.api.onToggleRulers((checked) => {
       setShowRulers(checked);
+      window.api?.notifyViewPrefsChanged({ showRulers: checked });
     }));
 
     // View: Toggle Spot Labels menu item
     unsubscribers.push(window.api.onToggleSpotLabels((checked) => {
       setShowSpotLabels(checked);
+      window.api?.notifyViewPrefsChanged({ showSpotLabels: checked });
     }));
 
     // View: Toggle Overlay Outlines menu item
     unsubscribers.push(window.api.onToggleOverlayOutlines((checked) => {
       setShowMicrographOutlines(checked);
+      window.api?.notifyViewPrefsChanged({ showOverlayOutlines: checked });
     }));
 
     // View: Toggle Recursive Spots menu item
     unsubscribers.push(window.api.onToggleRecursiveSpots((checked) => {
       setShowRecursiveSpots(checked);
+      window.api?.notifyViewPrefsChanged({ showRecursiveSpots: checked });
     }));
 
     // View: Toggle Archived Spots menu item

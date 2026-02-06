@@ -140,6 +140,7 @@ contextBridge.exposeInMainWorld('api', {
     return () => ipcRenderer.removeListener('theme:set', handler);
   },
   notifyThemeChanged: (theme) => ipcRenderer.send('theme:changed', theme),
+  notifyViewPrefsChanged: (prefs) => ipcRenderer.send('view-prefs:changed', prefs),
 
   // View preferences
   onToggleRulers: (callback) => {
