@@ -432,15 +432,19 @@ function App() {
     }));
 
     // Configure Mineral Colors menu item (Tools menu)
-    unsubscribers.push(window.api.onConfigureMineralColors(() => {
-      setIsMineralColorDialogOpen(true);
-    }));
+    if (window.api.onConfigureMineralColors) {
+      unsubscribers.push(window.api.onConfigureMineralColors(() => {
+        setIsMineralColorDialogOpen(true);
+      }));
+    }
 
     // Spot Color Mode toggle (View menu)
-    unsubscribers.push(window.api.onSpotColorMode((mode) => {
-      console.log('[App] Spot color mode changed to:', mode);
-      useAppStore.getState().setSpotColorMode(mode);
-    }));
+    if (window.api.onSpotColorMode) {
+      unsubscribers.push(window.api.onSpotColorMode((mode) => {
+        console.log('[App] Spot color mode changed to:', mode);
+        useAppStore.getState().setSpotColorMode(mode);
+      }));
+    }
 
     // Clear All Spots menu item (Edit menu)
     unsubscribers.push(window.api.onClearAllSpots(() => {
