@@ -5,7 +5,7 @@
  * Presets store metadata templates that can be quickly applied to spots.
  *
  * Features:
- * - Basic preset info (name, description, color)
+ * - Basic preset info (name, description, scope)
  * - Spot appearance settings (color, opacity)
  * - All geological feature types via existing dialogs
  * - Scope selection (global vs project)
@@ -49,7 +49,7 @@ import { MuiColorInput } from 'mui-color-input';
 import { v4 as uuidv4 } from 'uuid';
 import { useAppStore } from '@/store';
 import type { QuickApplyPreset, PresetData, PresetScope } from '@/types/preset-types';
-import { DEFAULT_PRESET_COLORS, getPresetSummary, PRESET_FEATURE_FIELDS, PRESET_FEATURE_DISPLAY_NAMES } from '@/types/preset-types';
+import { getPresetSummary, PRESET_FEATURE_FIELDS, PRESET_FEATURE_DISPLAY_NAMES } from '@/types/preset-types';
 import type {
   MineralogyType,
   LithologyInfoType,
@@ -129,7 +129,6 @@ export function QuickApplyPresetEditorDialog({
   // Form state - basic info
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
-  const [presetColor, setPresetColor] = useState(DEFAULT_PRESET_COLORS[0]);
   const [scope, setScope] = useState<PresetScope>(defaultScope);
   const [error, setError] = useState('');
 
@@ -159,7 +158,6 @@ export function QuickApplyPresetEditorDialog({
         // Edit mode - load existing preset data
         setName(editPreset.name);
         setDescription(editPreset.description || '');
-        setPresetColor(editPreset.color);
         setScope(editScope || defaultScope);
 
         // Load spot appearance
@@ -189,7 +187,6 @@ export function QuickApplyPresetEditorDialog({
         // Create mode - reset to defaults
         setName('');
         setDescription('');
-        setPresetColor(DEFAULT_PRESET_COLORS[Math.floor(Math.random() * DEFAULT_PRESET_COLORS.length)]);
         setScope(defaultScope);
         setSpotColor(null);
         setSpotOpacity(null);
@@ -246,7 +243,6 @@ export function QuickApplyPresetEditorDialog({
         ...editPreset,
         name: trimmedName,
         description: description.trim() || undefined,
-        color: presetColor,
         modifiedAt: now,
         data: presetData,
       };
@@ -258,7 +254,6 @@ export function QuickApplyPresetEditorDialog({
         id: uuidv4(),
         name: trimmedName,
         description: description.trim() || undefined,
-        color: presetColor,
         createdAt: now,
         modifiedAt: now,
         data: presetData,
@@ -423,7 +418,7 @@ export function QuickApplyPresetEditorDialog({
 
   // Get summary of current preset data
   const summary = buildPresetData();
-  const summaryItems = getPresetSummary({ id: '', name: '', color: '', createdAt: '', modifiedAt: '', data: summary });
+  const summaryItems = getPresetSummary({ id: '', name: '', createdAt: '', modifiedAt: '', data: summary });
 
   return (
     <>
@@ -470,58 +465,21 @@ export function QuickApplyPresetEditorDialog({
               </Button>
             )}
 
-            {/* Preset Color and Scope */}
-            <Box sx={{ display: 'flex', gap: 2 }}>
-              <Box sx={{ flex: 1 }}>
-                <MuiColorInput
-                  label="Preset Color"
-                  value={presetColor}
-                  onChange={(newColor) => setPresetColor(newColor)}
-                  format="hex"
-                  fullWidth
-                  sx={{ '& input': { caretColor: 'transparent', cursor: 'pointer' } }}
-                  onKeyDown={(e) => e.preventDefault()}
-                />
-                <Typography variant="caption" color="text.secondary">
-                  Used for pie chart indicator on spots
-                </Typography>
-              </Box>
-
-              <FormControl sx={{ minWidth: 140 }}>
-                <InputLabel>Scope</InputLabel>
-                <Select
-                  value={scope}
-                  label="Scope"
-                  onChange={(e) => setScope(e.target.value as PresetScope)}
-                  disabled={isEditMode} // Can't change scope in edit mode
-                >
-                  <MenuItem value="global">Global</MenuItem>
-                  <MenuItem value="project" disabled={!project}>
-                    Project
-                  </MenuItem>
-                </Select>
-              </FormControl>
-            </Box>
-
-            {/* Quick color presets */}
-            <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
-              {DEFAULT_PRESET_COLORS.map((color) => (
-                <Box
-                  key={color}
-                  onClick={() => setPresetColor(color)}
-                  sx={{
-                    width: 28,
-                    height: 28,
-                    bgcolor: color,
-                    borderRadius: 1,
-                    cursor: 'pointer',
-                    border: presetColor === color ? '2px solid white' : '1px solid rgba(255,255,255,0.3)',
-                    '&:hover': { transform: 'scale(1.1)' },
-                    transition: 'transform 0.1s',
-                  }}
-                />
-              ))}
-            </Box>
+            {/* Scope */}
+            <FormControl sx={{ minWidth: 140 }}>
+              <InputLabel>Scope</InputLabel>
+              <Select
+                value={scope}
+                label="Scope"
+                onChange={(e) => setScope(e.target.value as PresetScope)}
+                disabled={isEditMode} // Can't change scope in edit mode
+              >
+                <MenuItem value="global">Global</MenuItem>
+                <MenuItem value="project" disabled={!project}>
+                  Project
+                </MenuItem>
+              </Select>
+            </FormControl>
 
             <Divider />
 

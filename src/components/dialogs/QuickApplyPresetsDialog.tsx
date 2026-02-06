@@ -138,18 +138,6 @@ function SortablePresetItem({
         <DragIndicatorIcon sx={{ cursor: 'grab', color: 'text.disabled' }} />
       </ListItemIcon>
 
-      {/* Color indicator */}
-      <Box
-        sx={{
-          width: 16,
-          height: 16,
-          borderRadius: '50%',
-          bgcolor: preset.color,
-          mr: 1.5,
-          flexShrink: 0,
-        }}
-      />
-
       {/* Content */}
       <ListItemText
         primary={

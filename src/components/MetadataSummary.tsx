@@ -991,16 +991,6 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
                     '&:hover': { bgcolor: 'action.hover' },
                   }}
                 >
-                  {/* Color indicator */}
-                  <Box
-                    sx={{
-                      width: 12,
-                      height: 12,
-                      borderRadius: '50%',
-                      bgcolor: preset.color,
-                      flexShrink: 0,
-                    }}
-                  />
                   {/* Preset name */}
                   <Typography variant="body2" sx={{ flex: 1 }}>
                     {preset.name}

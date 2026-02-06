@@ -1121,19 +1121,15 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
                 <Chip
                   label={`${key}`}
                   size="small"
+                  color="primary"
+                  variant="outlined"
                   onClick={() => applyPresetToCurrent(preset.id)}
                   sx={{
                     cursor: 'pointer',
                     flexShrink: 0,
-                    bgcolor: preset.color,
-                    color: 'white',
                     fontWeight: 'bold',
                     minWidth: 28,
                     '& .MuiChip-label': { px: 1 },
-                    '&:hover': {
-                      bgcolor: preset.color,
-                      filter: 'brightness(1.1)',
-                    },
                   }}
                 />
               </Tooltip>

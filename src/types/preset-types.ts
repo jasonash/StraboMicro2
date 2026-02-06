@@ -55,7 +55,7 @@ export interface QuickApplyPreset {
   id: string;
   name: string;
   description?: string | null;
-  color: string; // Required - used for pie chart indicator
+  color?: string | null; // Optional - legacy field, no longer used in UI
   createdAt: string; // ISO timestamp
   modifiedAt: string; // ISO timestamp
   data: PresetData;
@@ -134,20 +134,6 @@ export const PRESET_FEATURE_DISPLAY_NAMES: Record<PresetFeatureField, string> = 
   lithologyInfo: 'Lithology',
 };
 
-/**
- * Default preset colors for quick selection
- */
-export const DEFAULT_PRESET_COLORS = [
-  '#e74c3c', // Red
-  '#3498db', // Blue
-  '#2ecc71', // Green
-  '#f39c12', // Orange
-  '#9b59b6', // Purple
-  '#1abc9c', // Teal
-  '#e91e63', // Pink
-  '#00bcd4', // Cyan
-  '#ff9800', // Amber
-];
 
 /**
  * Check if a preset has any data defined
