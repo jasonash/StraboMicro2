@@ -118,19 +118,9 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
 
   if (quickEditMode) {
     if (isInQuickEditSession) {
-      // In Quick Edit session - use outline style
-      fillOpacity = 0; // No fill
-
-      if (isClassified) {
-        // Classified spots get bright green outline
-        color = '#00ff00'; // Lime green (bright)
-      } else {
-        // Unclassified spots get cyan outline (visible on both light and dark backgrounds)
-        color = '#00ffff'; // Cyan
-      }
-
+      // In Quick Edit session - use standard filled style (same as normal view)
+      // Current spot gets gold highlight to stand out
       if (isCurrentQuickEditSpot) {
-        // Current spot gets gold highlight
         color = '#ffd700'; // Gold
       }
     } else {
@@ -243,15 +233,14 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
         )}
 
         {/* Circle: always filled with spot color */}
-        {/* In Quick Edit mode: different colors based on state */}
         <Circle
           key="point"
           x={x}
           y={y}
           radius={(isCurrentQuickEditSpot ? 8 : 6) / scale}
-          fill={quickEditMode ? (fillOpacity === 0 ? 'transparent' : color) : color}
-          opacity={quickEditMode ? opacity : baseOpacity}
-          stroke={quickEditMode ? strokeColor : '#ffffff'}
+          fill={color}
+          opacity={opacity}
+          stroke={isCurrentQuickEditSpot ? strokeColor : '#ffffff'}
           strokeWidth={(isCurrentQuickEditSpot ? 3 : 2) / scale}
         />
       </Group>
@@ -403,13 +392,12 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
         )}
 
         {/* Polygon: solid fill if classified, faded with dashed stroke if unclassified */}
-        {/* In Quick Edit mode: no fill, outline only */}
         <Line
           key="polygon"
           points={points}
           stroke={isSelected ? 'transparent' : strokeColor}
           strokeWidth={isSelected ? 0 : strokeWidth}
-          dash={quickEditMode ? undefined : (isClassified ? undefined : [8 / scale, 4 / scale])}
+          dash={isClassified ? undefined : [8 / scale, 4 / scale]}
           fill={fillOpacity === 0 ? 'transparent' : color}
           opacity={opacity}
           closed={true}
