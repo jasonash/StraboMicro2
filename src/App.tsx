@@ -431,6 +431,11 @@ function App() {
       setIsGrainSizeAnalysisDialogOpen(true);
     }));
 
+    // Grain Size Analysis from PropertiesPanel summary
+    const handleOpenGrainAnalysis = () => setIsGrainSizeAnalysisDialogOpen(true);
+    window.addEventListener('open-grain-size-analysis', handleOpenGrainAnalysis);
+    unsubscribers.push(() => window.removeEventListener('open-grain-size-analysis', handleOpenGrainAnalysis));
+
     // Configure Mineral Colors menu item (Tools menu)
     if (window.api.onConfigureMineralColors) {
       unsubscribers.push(window.api.onConfigureMineralColors(() => {

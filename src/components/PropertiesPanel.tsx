@@ -52,6 +52,8 @@ import { ExtinctionMicrostructureInfoDialog } from './dialogs/metadata/extinctio
 import { AssociatedFilesInfoDialog } from './dialogs/metadata/associatedfiles/AssociatedFilesInfoDialog';
 import { LinksInfoDialog } from './dialogs/metadata/links/LinksInfoDialog';
 import { MetadataSummary } from './MetadataSummary';
+import { GrainSizeSummary } from './GrainSizeSummary';
+import { PointCountSummary } from './PointCountSummary';
 import { ProjectMetadataSection } from './ProjectMetadataSection';
 import { SketchLayersPanel } from './SketchLayersPanel';
 import { getPresetSummary } from '@/types/preset-types';
@@ -93,6 +95,9 @@ export function PropertiesPanel() {
   const getAllPresetsWithScope = useAppStore((state) => state.getAllPresetsWithScope);
   const applyPresetToSpot = useAppStore((state) => state.applyPresetToSpot);
 
+  // Point count sessions
+  const loadPointCountSessions = useAppStore((state) => state.loadPointCountSessions);
+
   // Sketch mode state
   const sketchModeActive = useAppStore((state) => state.sketchModeActive);
 
@@ -116,6 +121,13 @@ export function PropertiesPanel() {
       setActiveTab(1); // Sketches tab
     }
   }, [sketchModeActive, activeMicrographId, activeSpotId]);
+
+  // Load point count sessions when viewing a micrograph (not a spot)
+  useEffect(() => {
+    if (activeMicrographId && !activeSpotId) {
+      loadPointCountSessions(activeMicrographId);
+    }
+  }, [activeMicrographId, activeSpotId, loadPointCountSessions]);
 
   const handleTabChange = (_event: React.SyntheticEvent, newValue: number) => {
     setActiveTab(newValue);
@@ -412,6 +424,14 @@ export function PropertiesPanel() {
                 spotId={activeSpotId || undefined}
                 onEditSection={(sectionId) => setOpenDialog(sectionId)}
               />
+
+              {/* Inline analytical summaries (micrograph only) */}
+              {!activeSpotId && activeMicrographId && (
+                <>
+                  <GrainSizeSummary micrographId={activeMicrographId} />
+                  <PointCountSummary micrographId={activeMicrographId} />
+                </>
+              )}
             </Box>
           </Box>
         )}

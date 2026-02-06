@@ -100,6 +100,8 @@ export interface PointCountSessionSummary {
   totalPoints: number;
   /** Number of classified points */
   classifiedCount: number;
+  /** Modal composition: mineral name -> count (optional, loaded for summaries) */
+  modalComposition?: Record<string, number>;
 }
 
 /**
@@ -243,5 +245,6 @@ export function sessionToSummary(session: PointCountSession): PointCountSessionS
     gridType: session.gridType,
     totalPoints: session.summary.totalPoints,
     classifiedCount: session.summary.classifiedCount,
+    modalComposition: session.summary.modalComposition,
   };
 }
