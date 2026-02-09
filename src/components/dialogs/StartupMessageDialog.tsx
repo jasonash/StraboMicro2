@@ -59,7 +59,24 @@ export function StartupMessageDialog({ isOpen, onClose, message, onDismiss }: St
             '& img': { maxWidth: '100%' },
           }}
         >
-          <ReactMarkdown>{message}</ReactMarkdown>
+          <ReactMarkdown
+            components={{
+              a: ({ href, children }) => (
+                <a
+                  href={href}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    if (href) window.api?.openExternalLink(href);
+                  }}
+                  style={{ cursor: 'pointer' }}
+                >
+                  {children}
+                </a>
+              ),
+            }}
+          >
+            {message}
+          </ReactMarkdown>
         </Box>
       </DialogContent>
       <DialogActions sx={{ justifyContent: 'space-between', px: 3, pb: 2 }}>
