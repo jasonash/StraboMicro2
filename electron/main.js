@@ -689,15 +689,6 @@ function createWindow() {
             }
           }
         },
-        { type: 'separator' },
-        {
-          label: 'Configure Mineral Colors...',
-          click: () => {
-            if (mainWindow) {
-              mainWindow.webContents.send('menu:configure-mineral-colors');
-            }
-          }
-        },
       ],
     },
     {
@@ -745,6 +736,15 @@ function createWindow() {
           click: () => {
             if (mainWindow) {
               mainWindow.webContents.send('menu:split-spot');
+            }
+          }
+        },
+        { type: 'separator' },
+        {
+          label: 'Configure Mineral Colors...',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('menu:configure-mineral-colors');
             }
           }
         },
