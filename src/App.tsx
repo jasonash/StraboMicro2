@@ -268,7 +268,7 @@ function App() {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 5000);
 
-    fetch('https://strabospot.org/micromessage.json', { signal: controller.signal })
+    fetch(`https://strabospot.org/micromessage.json?_=${Date.now()}`, { signal: controller.signal })
       .then(res => res.json())
       .then((data: { uuid?: string; message?: string }) => {
         clearTimeout(timeout);
