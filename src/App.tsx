@@ -272,7 +272,7 @@ function App() {
       .then(res => res.json())
       .then((data: { uuid?: string; message?: string }) => {
         clearTimeout(timeout);
-        if (data.uuid && data.message) {
+        if (data.uuid && data.message && data.message.trim().length > 0) {
           const dismissedUuid = localStorage.getItem('startup-message:dismissed-uuid');
           if (dismissedUuid !== data.uuid) {
             setStartupMessage(data.message);
