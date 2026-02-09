@@ -30,6 +30,7 @@ import { GrainSizeAnalysisDialog } from './components/dialogs/GrainSizeAnalysisD
 import { MineralColorDialog } from './components/dialogs/MineralColorDialog';
 import { QuickEditEntryDialog } from './components/dialogs/QuickEditEntryDialog';
 import { QuickApplyPresetsDialog } from './components/dialogs/QuickApplyPresetsDialog';
+import { StartupMessageDialog } from './components/dialogs/StartupMessageDialog';
 import {
   IncompleteMicrographsDialog,
   findIncompleteMicrographs,
@@ -193,6 +194,9 @@ function App() {
   const [isQuickEditEntryDialogOpen, setIsQuickEditEntryDialogOpen] = useState(false);
   const [isQuickApplyPresetsDialogOpen, setIsQuickApplyPresetsDialogOpen] = useState(false);
   const [isMineralColorDialogOpen, setIsMineralColorDialogOpen] = useState(false);
+  const [isStartupMessageOpen, setIsStartupMessageOpen] = useState(false);
+  const [startupMessage, setStartupMessage] = useState('');
+  const [startupMessageUuid, setStartupMessageUuid] = useState('');
   const setSplitModeSpotId = useAppStore(state => state.setSplitModeSpotId);
   const closeProject = useAppStore(state => state.closeProject);
   const project = useAppStore(state => state.project);
@@ -258,6 +262,34 @@ function App() {
   useEffect(() => {
     checkAuthStatus();
   }, [checkAuthStatus]);
+
+  // Fetch startup message from StraboSpot on mount
+  useEffect(() => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
+
+    fetch('https://strabospot.org/micromessage.json', { signal: controller.signal })
+      .then(res => res.json())
+      .then((data: { uuid?: string; message?: string }) => {
+        clearTimeout(timeout);
+        if (data.uuid && data.message) {
+          const dismissedUuid = localStorage.getItem('startup-message:dismissed-uuid');
+          if (dismissedUuid !== data.uuid) {
+            setStartupMessage(data.message);
+            setStartupMessageUuid(data.uuid);
+            setIsStartupMessageOpen(true);
+          }
+        }
+      })
+      .catch(() => {
+        clearTimeout(timeout);
+      });
+
+    return () => {
+      clearTimeout(timeout);
+      controller.abort();
+    };
+  }, []);
 
   // Ref to track if project validation has already run (persists across StrictMode remounts)
   const hasValidatedProject = useRef(false);
@@ -1316,6 +1348,12 @@ function App() {
       <QuickApplyPresetsDialog
         open={isQuickApplyPresetsDialogOpen}
         onClose={() => setIsQuickApplyPresetsDialogOpen(false)}
+      />
+      <StartupMessageDialog
+        isOpen={isStartupMessageOpen}
+        onClose={() => setIsStartupMessageOpen(false)}
+        message={startupMessage}
+        onDismiss={() => localStorage.setItem('startup-message:dismissed-uuid', startupMessageUuid)}
       />
       <StatisticsPanel />
       <QuickClassifyToolbar
