@@ -90,6 +90,19 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
     }
   }, [isSelected]);
 
+  // Compute label text based on spotLabelMode
+  // IMPORTANT: This useMemo must be BEFORE any conditional returns (React hooks rules)
+  const labelText = useMemo(() => {
+    if (spotLabelMode === 'none') return null;
+    if (spotLabelMode === 'original') return spot.name;
+    // spotLabelMode === 'mineralogy'
+    const mineralName = spot.mineralogy?.minerals?.[0]?.name;
+    if (!mineralName) return null;
+    const abbrevMap = getMineralAbbrevMap();
+    const abbrev = abbrevMap.get(mineralName.toLowerCase());
+    return abbrev || mineralName.slice(0, 3);
+  }, [spotLabelMode, spot.name, spot.mineralogy?.minerals]);
+
   const isEditing = editingSpotId === spot.id;
 
   // Hide the React-rendered spot when in imperative edit mode
@@ -124,18 +137,6 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
 
   // Check if spot has mineralogy classification
   const isClassified = !!(spot.mineralogy?.minerals?.[0]?.name);
-
-  // Compute label text based on spotLabelMode
-  const labelText = useMemo(() => {
-    if (spotLabelMode === 'none') return null;
-    if (spotLabelMode === 'original') return spot.name;
-    // spotLabelMode === 'mineralogy'
-    const mineralName = spot.mineralogy?.minerals?.[0]?.name;
-    if (!mineralName) return null;
-    const abbrevMap = getMineralAbbrevMap();
-    const abbrev = abbrevMap.get(mineralName.toLowerCase());
-    return abbrev || mineralName.slice(0, 3);
-  }, [spotLabelMode, spot.name, spot.mineralogy?.minerals]);
 
   // Quick Edit mode visual states
   const isInQuickEditSession = quickEditMode && quickEditSpotIds.includes(spot.id);
