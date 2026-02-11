@@ -15,8 +15,8 @@ autoUpdater.logger.transports.file.level = 'info';
 // Don't automatically download updates - wait for user action
 autoUpdater.autoDownload = false;
 
-// Don't auto-install on quit - let user control when to restart
-autoUpdater.autoInstallOnAppQuit = false;
+// Auto-install downloaded updates when the user quits the app
+autoUpdater.autoInstallOnAppQuit = true;
 
 // Store reference to main window for sending IPC messages
 let mainWindow = null;
@@ -25,6 +25,10 @@ let mainWindow = null;
 let updateAvailable = null;
 let downloadProgress = null;
 let updateDownloaded = false;
+let checkInterval = null;
+
+// Check for updates every 4 hours
+const CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000;
 
 /**
  * Initialize the auto-updater with the main window reference
@@ -78,6 +82,21 @@ function initAutoUpdater(window) {
       releaseNotes: info.releaseNotes
     });
   });
+
+  // Periodic silent check for updates (every 4 hours)
+  checkInterval = setInterval(() => {
+    if (updateDownloaded) {
+      // Remind user about downloaded update waiting to be installed
+      log.info('[AutoUpdater] Reminding user about pending update...');
+      sendStatusToWindow('downloaded', {
+        version: updateAvailable?.version,
+        releaseNotes: updateAvailable?.releaseNotes
+      });
+    } else if (!updateAvailable) {
+      log.info('[AutoUpdater] Periodic update check...');
+      checkForUpdates(true);
+    }
+  }, CHECK_INTERVAL_MS);
 }
 
 /**
@@ -152,10 +171,21 @@ function getUpdateState() {
   };
 }
 
+/**
+ * Clean up the periodic check interval
+ */
+function cleanup() {
+  if (checkInterval) {
+    clearInterval(checkInterval);
+    checkInterval = null;
+  }
+}
+
 module.exports = {
   initAutoUpdater,
   checkForUpdates,
   downloadUpdate,
   quitAndInstall,
-  getUpdateState
+  getUpdateState,
+  cleanup
 };

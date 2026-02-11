@@ -1333,6 +1333,7 @@ app.whenReady().then(async () => {
 app.on('before-quit', () => {
   log.info('[App] before-quit event - setting isQuitting flag');
   isQuitting = true;
+  autoUpdaterModule.cleanup();
 });
 
 app.on('window-all-closed', () => {
