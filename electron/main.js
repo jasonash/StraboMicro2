@@ -6096,17 +6096,23 @@ ipcMain.handle('fastsam:download-model', async (event) => {
 });
 
 /**
- * Get a file:// URL for the model so the renderer can load it via onnxruntime-web
+ * Read the model file and return its bytes to the renderer.
+ * The renderer passes these bytes directly to onnxruntime-web's
+ * InferenceSession.create() as a Uint8Array, avoiding file:// URL
+ * security restrictions in Chromium.
  */
-ipcMain.handle('fastsam:get-model-url', async () => {
+ipcMain.handle('fastsam:load-model-bytes', async () => {
   try {
-    const url = fastsamService.getModelUrl();
-    if (!url) {
+    const modelPath = fastsamService.getModelPath();
+    if (!modelPath) {
       return { success: false, error: 'Model file not found' };
     }
-    return { success: true, url };
+    log.info('[FastSAM] Reading model file:', modelPath);
+    const buffer = await fs.promises.readFile(modelPath);
+    log.info('[FastSAM] Model file read:', (buffer.length / 1024 / 1024).toFixed(1), 'MB');
+    return { success: true, buffer };
   } catch (error) {
-    log.error('[FastSAM] Error getting model URL:', error);
+    log.error('[FastSAM] Error reading model file:', error);
     return { success: false, error: error.message };
   }
 });

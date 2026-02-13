@@ -105,19 +105,6 @@ function getModelStatus() {
 }
 
 /**
- * Get a file:// URL for the model, suitable for loading in the renderer.
- * The renderer uses onnxruntime-web to load the model directly.
- */
-function getModelUrl() {
-  const existingPath = getModelPath();
-  if (!existingPath) {
-    return null;
-  }
-  // Return file:// URL that the renderer can use to fetch the model
-  return `file://${existingPath.replace(/\\/g, '/')}`;
-}
-
-/**
  * Download the FastSAM model from Hugging Face.
  * @param {function} progressCallback - Called with { percent, downloadedBytes, totalBytes, status }
  * @returns {Promise<string>} Path to downloaded model
@@ -213,6 +200,5 @@ module.exports = {
   getModelPath,
   getModelDownloadPath,
   getModelStatus,
-  getModelUrl,
   downloadModel,
 };

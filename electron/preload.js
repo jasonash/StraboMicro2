@@ -661,7 +661,7 @@ contextBridge.exposeInMainWorld('api', {
       ipcRenderer.on('fastsam:download-progress', handler);
       return () => ipcRenderer.removeListener('fastsam:download-progress', handler);
     },
-    // Get file:// URL for the model (renderer loads it via onnxruntime-web)
-    getModelUrl: () => ipcRenderer.invoke('fastsam:get-model-url'),
+    // Read model file bytes (renderer passes to onnxruntime-web directly)
+    loadModelBytes: () => ipcRenderer.invoke('fastsam:load-model-bytes'),
   },
 });

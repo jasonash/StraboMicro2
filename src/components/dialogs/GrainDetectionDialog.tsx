@@ -429,21 +429,21 @@ export function GrainDetectionDialog({
     setDetectionProgress({ step: 'Starting FastSAM...', percent: 0 });
 
     try {
-      // Step 1: Get model URL from main process
-      console.log('[GrainDetection] Step 1: Getting model URL...');
-      setDetectionProgress({ step: 'Preparing model...', percent: 5 });
-      const modelUrlResult = await window.api?.fastsam?.getModelUrl();
-      if (!modelUrlResult?.success || !modelUrlResult.url) {
-        throw new Error(modelUrlResult?.error || 'FastSAM model not found');
+      // Step 1: Load model bytes from main process
+      console.log('[GrainDetection] Step 1: Loading model bytes...');
+      setDetectionProgress({ step: 'Loading model...', percent: 5 });
+      const modelResult = await window.api?.fastsam?.loadModelBytes();
+      if (!modelResult?.success || !modelResult.buffer) {
+        throw new Error(modelResult?.error || 'Failed to load FastSAM model');
       }
 
-      console.log('[GrainDetection] Model URL:', modelUrlResult.url);
+      console.log('[GrainDetection] Model loaded:', (modelResult.buffer.byteLength / 1024 / 1024).toFixed(1), 'MB');
 
       // Step 2: Run FastSAM inference in renderer via onnxruntime-web
       console.log('[GrainDetection] Step 2: Running FastSAM inference (onnxruntime-web)...');
       const result = await fastsamInference.detectGrains(
         imageData,
-        modelUrlResult.url,
+        modelResult.buffer,
         {
           confidenceThreshold: fastsamSettings.confidenceThreshold,
           iouThreshold: fastsamSettings.iouThreshold,

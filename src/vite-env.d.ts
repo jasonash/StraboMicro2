@@ -797,10 +797,10 @@ interface Window {
           status: string;
         }) => void
       ) => Unsubscribe;
-      // Get file:// URL for the model (renderer loads it via onnxruntime-web)
-      getModelUrl: () => Promise<{
+      // Read model file bytes (renderer passes to onnxruntime-web directly)
+      loadModelBytes: () => Promise<{
         success: boolean;
-        url?: string;
+        buffer?: Uint8Array;
         error?: string;
       }>;
     };

@@ -119,10 +119,12 @@ let isLoading = false;
 // ============================================================================
 
 /**
- * Load the FastSAM ONNX model from the given URL/path.
+ * Load the FastSAM ONNX model from raw bytes.
+ * Accepts a Uint8Array (from main process IPC) to avoid file:// URL
+ * security restrictions in Chromium/Electron.
  */
 export async function loadModel(
-  modelUrl: string,
+  modelData: Uint8Array,
   progressCallback?: (info: ProgressInfo) => void
 ): Promise<ort.InferenceSession> {
   if (session) {
@@ -148,10 +150,11 @@ export async function loadModel(
       progressCallback({ step: 'Loading FastSAM model...', percent: 5 });
     }
 
-    console.log('[FastSAM-Web] Loading model from:', modelUrl);
+    console.log('[FastSAM-Web] Loading model from buffer:', (modelData.byteLength / 1024 / 1024).toFixed(1), 'MB');
     const startTime = Date.now();
 
-    session = await ort.InferenceSession.create(modelUrl, {
+    // Pass raw bytes directly - avoids file:// URL security restrictions
+    session = await ort.InferenceSession.create(modelData.buffer, {
       executionProviders: ['wasm'],
       graphOptimizationLevel: 'all',
     });
@@ -544,14 +547,14 @@ function upsampleMask(
  * Run FastSAM grain detection on an image.
  *
  * @param imageData - ImageData from canvas
- * @param modelUrl - URL/path to the ONNX model (file:// URL from main process)
+ * @param modelData - Raw model bytes (Uint8Array from main process IPC)
  * @param params - Detection parameters
  * @param progressCallback - Optional progress callback
  * @returns Detection result with masks
  */
 export async function detectGrains(
   imageData: ImageData,
-  modelUrl: string,
+  modelData: Uint8Array,
   params: FastSAMParams = {},
   progressCallback?: (info: ProgressInfo) => void
 ): Promise<FastSAMDetectionResult> {
@@ -560,8 +563,8 @@ export async function detectGrains(
 
   console.log('[FastSAM-Web] Starting detection with params:', mergedParams);
 
-  // Load model if needed
-  const modelSession = await loadModel(modelUrl, progressCallback);
+  // Load model if needed (bytes are only used on first call, session is cached)
+  const modelSession = await loadModel(modelData, progressCallback);
 
   // Preprocess image
   const { tensor, preprocessInfo } = await preprocessImage(imageData, progressCallback);
