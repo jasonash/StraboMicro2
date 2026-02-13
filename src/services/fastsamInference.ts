@@ -504,6 +504,7 @@ function postprocessOutput(
 
 /**
  * Upsample a binary mask to target size using canvas.
+ * Strips letterbox padding before scaling so the mask aligns with the original image.
  * Returns base64-encoded PNG for efficient transfer.
  */
 function upsampleMask(
@@ -511,7 +512,8 @@ function upsampleMask(
   maskW: number,
   maskH: number,
   targetW: number,
-  targetH: number
+  targetH: number,
+  preprocessInfo: PreprocessInfo
 ): string {
   // Create canvas at mask size
   const canvas = document.createElement('canvas');
@@ -530,13 +532,30 @@ function upsampleMask(
   }
   ctx.putImageData(imgData, 0, 0);
 
-  // Create target canvas and scale with nearest-neighbor
+  // The mask represents the full INPUT_SIZE x INPUT_SIZE space which includes
+  // letterbox padding. We need to extract just the image region (excluding padding)
+  // and then scale that to the target (original image) dimensions.
+  const { padX, padY, scale } = preprocessInfo;
+  const newW = Math.round(targetW * scale); // image width in input space
+  const newH = Math.round(targetH * scale); // image height in input space
+
+  // Map from input space to mask space
+  const maskPadX = (padX / INPUT_SIZE) * maskW;
+  const maskPadY = (padY / INPUT_SIZE) * maskH;
+  const maskImageW = (newW / INPUT_SIZE) * maskW;
+  const maskImageH = (newH / INPUT_SIZE) * maskH;
+
+  // Create target canvas and draw only the image region (exclude padding)
   const targetCanvas = document.createElement('canvas');
   targetCanvas.width = targetW;
   targetCanvas.height = targetH;
   const targetCtx = targetCanvas.getContext('2d')!;
   targetCtx.imageSmoothingEnabled = false; // Nearest neighbor
-  targetCtx.drawImage(canvas, 0, 0, targetW, targetH);
+  targetCtx.drawImage(
+    canvas,
+    maskPadX, maskPadY, maskImageW, maskImageH, // source: image region only
+    0, 0, targetW, targetH                       // dest: full target
+  );
 
   // Return as base64 PNG (strip data URL prefix)
   return targetCanvas.toDataURL('image/png').replace(/^data:image\/png;base64,/, '');
@@ -604,7 +623,7 @@ export async function detectGrains(
   for (let i = 0; i < rawMasks.length; i++) {
     const m = rawMasks[i];
     try {
-      const maskBase64 = upsampleMask(m.mask, m.maskW, m.maskH, origW, origH);
+      const maskBase64 = upsampleMask(m.mask, m.maskW, m.maskH, origW, origH, preprocessInfo);
       upsampledMasks.push({
         maskBase64,
         confidence: m.confidence,
