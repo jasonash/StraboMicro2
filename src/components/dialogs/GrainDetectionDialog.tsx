@@ -408,7 +408,7 @@ export function GrainDetectionDialog({
 
   // Main detection dispatcher - routes to FastSAM or OpenCV based on selected method
   const runDetection = useCallback(async () => {
-    if (!imageData) return;
+    if (!imageData || isDetecting) return;
 
     if (detectionMethod === 'fastsam') {
       await runFastSAMDetection();

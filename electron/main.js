@@ -6,7 +6,7 @@ process.env.VIPS_DISC_THRESHOLD = '0';
 // Remove libvips memory limits entirely
 process.env.VIPS_NOVECTOR = '1';
 
-const { app, BrowserWindow, Menu, ipcMain, dialog, screen, nativeTheme, shell, protocol, net } = require('electron');
+const { app, BrowserWindow, Menu, ipcMain, dialog, screen, nativeTheme, shell, protocol, net, session } = require('electron');
 
 const path = require('path');
 const fs = require('fs');
@@ -1284,6 +1284,20 @@ let buildMenuFn = null;
 
 app.whenReady().then(async () => {
   const isDev = !app.isPackaged;
+
+  // Enable cross-origin isolation for WebAssembly multi-threading.
+  // onnxruntime-web requires crossOriginIsolated=true to use SharedArrayBuffer
+  // for multi-threaded WASM execution (massive speedup for FastSAM inference).
+  // This is safe because all external network requests go through the main process.
+  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+    callback({
+      responseHeaders: {
+        ...details.responseHeaders,
+        'Cross-Origin-Opener-Policy': ['same-origin'],
+        'Cross-Origin-Embedder-Policy': ['require-corp'],
+      },
+    });
+  });
 
   // Register custom protocol to serve static files in production
   // This allows web workers to fetch files like opencv.js

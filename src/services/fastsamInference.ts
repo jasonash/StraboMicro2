@@ -92,15 +92,18 @@ function configureWasm(): void {
 
   ort.env.wasm.wasmPaths = wasmBasePath;
 
-  // Use available hardware threads for better perf
-  ort.env.wasm.numThreads = navigator.hardwareConcurrency || 4;
+  // Multi-threading requires crossOriginIsolated=true (enabled via COOP/COEP
+  // headers in main.js). If not available, fall back to single-threaded.
+  const canMultiThread = typeof crossOriginIsolated !== 'undefined' && crossOriginIsolated;
+  ort.env.wasm.numThreads = canMultiThread ? (navigator.hardwareConcurrency || 4) : 1;
 
-  // Disable proxy worker since we're in Electron (same-origin)
-  ort.env.wasm.proxy = false;
+  // Suppress noisy ONNX runtime warnings (e.g. "Unknown CPU vendor")
+  ort.env.logLevel = 'error';
 
   console.log('[FastSAM-Web] WASM configured:', {
     wasmPaths: wasmBasePath,
     numThreads: ort.env.wasm.numThreads,
+    crossOriginIsolated: canMultiThread,
     isDev: import.meta.env.DEV,
   });
 
