@@ -645,9 +645,9 @@ contextBridge.exposeInMainWorld('api', {
     return () => ipcRenderer.removeListener('view:spot-color-mode', handler);
   },
 
-  // FastSAM Grain Detection
+  // FastSAM Grain Detection (model management only - inference runs in renderer via onnxruntime-web)
   fastsam: {
-    // Check if FastSAM model is available
+    // Check if FastSAM model file is available
     isAvailable: () => ipcRenderer.invoke('fastsam:is-available'),
     // Get path where model should be downloaded
     getDownloadPath: () => ipcRenderer.invoke('fastsam:get-download-path'),
@@ -661,27 +661,7 @@ contextBridge.exposeInMainWorld('api', {
       ipcRenderer.on('fastsam:download-progress', handler);
       return () => ipcRenderer.removeListener('fastsam:download-progress', handler);
     },
-    // Preload model (optional optimization)
-    preloadModel: () => ipcRenderer.invoke('fastsam:preload-model'),
-    // Unload model to free memory
-    unloadModel: () => ipcRenderer.invoke('fastsam:unload-model'),
-    // Run detection on image file path (legacy - uses broken contour extraction)
-    detectGrains: (imagePath, params, options) =>
-      ipcRenderer.invoke('fastsam:detect-grains', imagePath, params, options),
-    // Run detection from image buffer (legacy - uses broken contour extraction)
-    detectGrainsFromBuffer: (imageBuffer, params, options) =>
-      ipcRenderer.invoke('fastsam:detect-grains-from-buffer', imageBuffer, params, options),
-    // NEW: Run detection and return raw masks for OpenCV.js processing (GrainSight-compatible)
-    detectRawMasks: (imagePath, params) =>
-      ipcRenderer.invoke('fastsam:detect-raw-masks', imagePath, params),
-    // NEW: Run detection from buffer and return raw masks
-    detectRawMasksFromBuffer: (imageBuffer, params) =>
-      ipcRenderer.invoke('fastsam:detect-raw-masks-from-buffer', imageBuffer, params),
-    // Listen for detection progress updates
-    onProgress: (callback) => {
-      const handler = (event, progress) => callback(progress);
-      ipcRenderer.on('fastsam:progress', handler);
-      return () => ipcRenderer.removeListener('fastsam:progress', handler);
-    },
+    // Get file:// URL for the model (renderer loads it via onnxruntime-web)
+    getModelUrl: () => ipcRenderer.invoke('fastsam:get-model-url'),
   },
 });

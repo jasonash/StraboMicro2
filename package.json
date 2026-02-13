@@ -71,7 +71,7 @@
     "konva": "^9.3.22",
     "mui-color-input": "^7.0.0",
     "node-fetch": "^3.3.2",
-    "onnxruntime-node": "1.19.0",
+    "onnxruntime-web": "^1.21.0",
     "pdfkit": "^0.17.2",
     "polygon-clipping": "^0.15.7",
     "react": "^18.2.0",
@@ -114,9 +114,7 @@
     "asarUnpack": [
       "node_modules/sharp/**/*",
       "node_modules/@img/**/*",
-      "node_modules/canvas/**/*",
-      "node_modules/onnxruntime-node/**/*",
-      "node_modules/onnxruntime-common/**/*"
+      "node_modules/canvas/**/*"
     ],
     "mac": {
       "category": "public.app-category.education",

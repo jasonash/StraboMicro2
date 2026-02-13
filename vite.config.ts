@@ -1,10 +1,39 @@
-import { defineConfig } from 'vite';
+import { defineConfig, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
+import fs from 'fs';
 import pkg from './package.json';
 
+/**
+ * Vite plugin to copy onnxruntime-web WASM files to the dist output.
+ * In development, Vite serves them directly from node_modules.
+ * In production, they must be in dist/ alongside the bundled JS.
+ */
+function copyOrtWasmPlugin(): Plugin {
+  return {
+    name: 'copy-ort-wasm',
+    writeBundle() {
+      const ortDistDir = path.resolve(__dirname, 'node_modules/onnxruntime-web/dist');
+      const outputDir = path.resolve(__dirname, 'dist');
+
+      if (!fs.existsSync(ortDistDir)) {
+        console.warn('[copy-ort-wasm] onnxruntime-web dist dir not found');
+        return;
+      }
+
+      const wasmFiles = fs.readdirSync(ortDistDir).filter(f => f.endsWith('.wasm'));
+      for (const file of wasmFiles) {
+        const src = path.join(ortDistDir, file);
+        const dest = path.join(outputDir, file);
+        fs.copyFileSync(src, dest);
+        console.log(`[copy-ort-wasm] Copied ${file} to dist/`);
+      }
+    },
+  };
+}
+
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), copyOrtWasmPlugin()],
   base: './',
   resolve: {
     alias: {
@@ -18,8 +47,8 @@ export default defineConfig({
     port: 5173,
   },
   assetsInclude: ['**/*.csv'],
-  // OpenCV.js needs these Node.js built-ins stubbed for browser
+  // OpenCV.js and onnxruntime-web need to be excluded from dep optimization
   optimizeDeps: {
-    exclude: ['@techstark/opencv-js'],
+    exclude: ['@techstark/opencv-js', 'onnxruntime-web'],
   },
 });

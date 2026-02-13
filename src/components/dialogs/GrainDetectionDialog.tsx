@@ -57,6 +57,7 @@ import {
   DEFAULT_DETECTION_SETTINGS,
   DEFAULT_SPOT_GENERATION_OPTIONS,
 } from '@/services/grainDetection';
+import * as fastsamInference from '@/services/fastsamInference';
 import { v4 as uuidv4 } from 'uuid';
 
 // ============================================================================
@@ -138,7 +139,6 @@ export function GrainDetectionDialog({
   const [fastsamAvailable, setFastsamAvailable] = useState<boolean | null>(null);
   const [isDownloadingModel, setIsDownloadingModel] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState({ percent: 0, status: '' });
-  const fastsamProgressUnsubRef = useRef<(() => void) | null>(null);
   const downloadProgressUnsubRef = useRef<(() => void) | null>(null);
 
   // OpenCV detection settings
@@ -224,13 +224,9 @@ export function GrainDetectionDialog({
     checkFastSAM();
   }, [isOpen]);
 
-  // Cleanup progress listeners on unmount
+  // Cleanup download progress listener on unmount
   useEffect(() => {
     return () => {
-      if (fastsamProgressUnsubRef.current) {
-        fastsamProgressUnsubRef.current();
-        fastsamProgressUnsubRef.current = null;
-      }
       if (downloadProgressUnsubRef.current) {
         downloadProgressUnsubRef.current();
         downloadProgressUnsubRef.current = null;
@@ -423,52 +419,44 @@ export function GrainDetectionDialog({
 
 
   // FastSAM-based detection (AI model) with GrainSight-compatible contour extraction
-  // Uses a Web Worker to avoid blocking the main thread
+  // Inference runs in renderer via onnxruntime-web (WASM), contour extraction in Web Worker
   const runFastSAMDetection = useCallback(async () => {
-    if (!micrograph || !project) return;
+    if (!micrograph || !project || !imageData) return;
 
     console.log('[GrainDetection] Running FastSAM detection with settings:', fastsamSettings);
     setIsDetecting(true);
     setError(null);
     setDetectionProgress({ step: 'Starting FastSAM...', percent: 0 });
 
-    // Set up progress listener for FastSAM inference
-    if (fastsamProgressUnsubRef.current) {
-      fastsamProgressUnsubRef.current();
-    }
-    fastsamProgressUnsubRef.current = window.api?.fastsam?.onProgress((progress) => {
-      // Scale FastSAM progress to 0-50% range
-      setDetectionProgress({ step: progress.step, percent: Math.min(progress.percent * 0.5, 50) });
-    }) || null;
-
     try {
-      // Step 1: Get image path
-      console.log('[GrainDetection] Step 1: Getting image path...');
-      setDetectionProgress({ step: 'Preparing image...', percent: 5 });
-      const folderPaths = await window.api?.getProjectFolderPaths(project.id);
-      if (!folderPaths) {
-        throw new Error('Failed to get project paths');
+      // Step 1: Get model URL from main process
+      console.log('[GrainDetection] Step 1: Getting model URL...');
+      setDetectionProgress({ step: 'Preparing model...', percent: 5 });
+      const modelUrlResult = await window.api?.fastsam?.getModelUrl();
+      if (!modelUrlResult?.success || !modelUrlResult.url) {
+        throw new Error(modelUrlResult?.error || 'FastSAM model not found');
       }
 
-      const imagePath = micrograph.imagePath || '';
-      const fullPath = `${folderPaths.images}/${imagePath}`;
-      console.log('[GrainDetection] Image path:', fullPath);
+      console.log('[GrainDetection] Model URL:', modelUrlResult.url);
 
-      // Step 2: Run FastSAM to get raw masks
-      console.log('[GrainDetection] Step 2: Running FastSAM inference...');
-      setDetectionProgress({ step: 'Running FastSAM inference...', percent: 10 });
-      const result = await window.api?.fastsam?.detectRawMasks(
-        fullPath,
+      // Step 2: Run FastSAM inference in renderer via onnxruntime-web
+      console.log('[GrainDetection] Step 2: Running FastSAM inference (onnxruntime-web)...');
+      const result = await fastsamInference.detectGrains(
+        imageData,
+        modelUrlResult.url,
         {
           confidenceThreshold: fastsamSettings.confidenceThreshold,
           iouThreshold: fastsamSettings.iouThreshold,
           minAreaPercent: fastsamSettings.minAreaPercent,
+        },
+        (progress) => {
+          // Scale inference progress to 0-50% range
+          setDetectionProgress({
+            step: progress.step,
+            percent: Math.min(progress.percent * 0.5, 50),
+          });
         }
       );
-
-      if (!result?.success || !result.masks) {
-        throw new Error(result?.error || 'FastSAM detection failed');
-      }
 
       console.log('[GrainDetection] FastSAM returned', result.masks.length, 'raw masks in', result.processingTimeMs?.toFixed(0), 'ms');
 
@@ -590,14 +578,8 @@ export function GrainDetectionDialog({
         contourWorkerRef.current.terminate();
         contourWorkerRef.current = null;
       }
-    } finally {
-      // Cleanup progress listener
-      if (fastsamProgressUnsubRef.current) {
-        fastsamProgressUnsubRef.current();
-        fastsamProgressUnsubRef.current = null;
-      }
     }
-  }, [micrograph, project, fastsamSettings, settings, imageWidth, imageHeight]);
+  }, [micrograph, project, imageData, fastsamSettings, settings, imageWidth, imageHeight]);
 
   // OpenCV-based detection (traditional edge detection + watershed)
   const runOpenCVDetection = useCallback(async (imgData: ImageData, detectionSettings: DetectionSettings) => {
