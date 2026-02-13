@@ -92,11 +92,10 @@
     "directories": {
       "output": "release"
     },
+    "asar": false,
     "files": [
       "electron/**/*",
-      "dist/**/*",
-      "node_modules/sharp/**/*",
-      "node_modules/@img/**/*"
+      "dist/**/*"
     ],
     "fileAssociations": [
       {
@@ -112,12 +111,6 @@
         "from": "src/assets/app-icon.png",
         "to": "splash-logo.png"
       }
-    ],
-    "asarUnpack": [
-      "**/*.node",
-      "node_modules/sharp/**/*",
-      "node_modules/@img/**/*",
-      "node_modules/canvas/**/*"
     ],
     "mac": {
       "category": "public.app-category.education",
