@@ -494,6 +494,10 @@ export function GrainDetectionDialog({
     setError(null);
     setDetectionProgress({ step: 'Starting FastSAM...', percent: 0 });
 
+    // Yield to event loop so React can render the detecting overlay
+    // before WASM inference potentially blocks the main thread
+    await new Promise((r) => setTimeout(r, 0));
+
     try {
       // Step 1: Load model if not already cached
       if (!fastsamInference.isModelLoaded()) {
@@ -959,8 +963,8 @@ export function GrainDetectionDialog({
                 </Box>
               )}
 
-              {/* Detecting overlay - covers entire image */}
-              {isDetecting && (
+              {/* Detecting overlay - shows during detection AND while waiting to start detection */}
+              {(isDetecting || (loadingState === 'ready' && !detectionResult)) && (
                 <Box
                   sx={{
                     position: 'absolute',
@@ -979,7 +983,7 @@ export function GrainDetectionDialog({
                     Detecting grains...
                   </Typography>
                   <Typography variant="body2" color="rgba(255,255,255,0.8)">
-                    {detectionProgress.step || 'Starting...'}
+                    {detectionProgress.step || 'Preparing...'}
                   </Typography>
                   {detectionProgress.percent > 0 && (
                     <Box sx={{ width: 200, mt: 1 }}>
