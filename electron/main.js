@@ -11,6 +11,11 @@ const { app, BrowserWindow, Menu, ipcMain, dialog, screen, nativeTheme, shell, p
 const path = require('path');
 const fs = require('fs');
 const log = require('electron-log');
+
+// IMPORTANT: Load sharp BEFORE Sentry. Sentry's require-in-the-middle hooks
+// break asar path resolution for native modules like @img/sharp-win32-x64.
+const sharp = require('sharp');
+
 const Sentry = require('@sentry/electron/main');
 
 // Initialize Sentry for error tracking (production only)
@@ -31,7 +36,6 @@ Sentry.init({
     return JSON.parse(scrubbedStr);
   },
 });
-const sharp = require('sharp');
 
 // Centralized Sharp/libvips configuration to prevent OOM crashes
 // These settings apply to all modules that use sharp

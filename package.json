@@ -92,10 +92,15 @@
     "directories": {
       "output": "release"
     },
-    "asar": false,
     "files": [
       "electron/**/*",
       "dist/**/*"
+    ],
+    "asarUnpack": [
+      "**/*.node",
+      "node_modules/sharp/**/*",
+      "node_modules/@img/**/*",
+      "node_modules/canvas/**/*"
     ],
     "fileAssociations": [
       {
