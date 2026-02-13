@@ -197,6 +197,19 @@ export function GrainDetectionDialog({
     return () => observer.disconnect();
   }, []);
 
+  // Reset all detection state when dialog opens (clear stale results from previous run)
+  useEffect(() => {
+    if (!isOpen) return;
+
+    setDetectionResult(null);
+    setIsDetecting(false);
+    setDetectionProgress({ step: '', percent: 0 });
+    setError(null);
+    setImage(null);
+    setImageData(null);
+    setLoadingState('idle');
+  }, [isOpen, micrographId]);
+
   // Check FastSAM availability when dialog opens
   useEffect(() => {
     if (!isOpen) return;
@@ -926,7 +939,7 @@ export function GrainDetectionDialog({
           <Box ref={containerRef} sx={{ width: '100%' }}>
             <Box sx={{ position: 'relative', width, height, bgcolor: 'grey.900', borderRadius: 1 }}>
               {/* Loading overlay */}
-              {(loadingState === 'loading-opencv' || loadingState === 'loading-image') && (
+              {(loadingState === 'idle' || loadingState === 'loading-opencv' || loadingState === 'loading-image') && (
                 <Box
                   sx={{
                     position: 'absolute',
