@@ -548,26 +548,28 @@ function upsampleMask(
 
 /**
  * Run FastSAM grain detection on an image.
+ * Model must be loaded first via loadModel().
  *
  * @param imageData - ImageData from canvas
- * @param modelData - Raw model bytes (Uint8Array from main process IPC)
  * @param params - Detection parameters
  * @param progressCallback - Optional progress callback
  * @returns Detection result with masks
  */
 export async function detectGrains(
   imageData: ImageData,
-  modelData: Uint8Array,
   params: FastSAMParams = {},
   progressCallback?: (info: ProgressInfo) => void
 ): Promise<FastSAMDetectionResult> {
+  if (!session) {
+    throw new Error('Model not loaded. Call loadModel() first.');
+  }
+
   const startTime = Date.now();
   const mergedParams = { ...DEFAULT_PARAMS, ...params } as Required<FastSAMParams>;
 
   console.log('[FastSAM-Web] Starting detection with params:', mergedParams);
 
-  // Load model if needed (bytes are only used on first call, session is cached)
-  const modelSession = await loadModel(modelData, progressCallback);
+  const modelSession = session;
 
   // Preprocess image
   const { tensor, preprocessInfo } = await preprocessImage(imageData, progressCallback);

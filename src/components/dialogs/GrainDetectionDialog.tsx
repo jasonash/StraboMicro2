@@ -429,21 +429,26 @@ export function GrainDetectionDialog({
     setDetectionProgress({ step: 'Starting FastSAM...', percent: 0 });
 
     try {
-      // Step 1: Load model bytes from main process
-      console.log('[GrainDetection] Step 1: Loading model bytes...');
-      setDetectionProgress({ step: 'Loading model...', percent: 5 });
-      const modelResult = await window.api?.fastsam?.loadModelBytes();
-      if (!modelResult?.success || !modelResult.buffer) {
-        throw new Error(modelResult?.error || 'Failed to load FastSAM model');
+      // Step 1: Load model if not already cached
+      if (!fastsamInference.isModelLoaded()) {
+        console.log('[GrainDetection] Step 1: Loading model bytes (first run)...');
+        setDetectionProgress({ step: 'Loading model...', percent: 5 });
+        const modelResult = await window.api?.fastsam?.loadModelBytes();
+        if (!modelResult?.success || !modelResult.buffer) {
+          throw new Error(modelResult?.error || 'Failed to load FastSAM model');
+        }
+        console.log('[GrainDetection] Model bytes received:', (modelResult.buffer.byteLength / 1024 / 1024).toFixed(1), 'MB');
+        await fastsamInference.loadModel(modelResult.buffer, (progress) => {
+          setDetectionProgress({ step: progress.step, percent: Math.min(progress.percent * 0.1, 10) });
+        });
+      } else {
+        console.log('[GrainDetection] Step 1: Model already loaded, skipping');
       }
-
-      console.log('[GrainDetection] Model loaded:', (modelResult.buffer.byteLength / 1024 / 1024).toFixed(1), 'MB');
 
       // Step 2: Run FastSAM inference in renderer via onnxruntime-web
       console.log('[GrainDetection] Step 2: Running FastSAM inference (onnxruntime-web)...');
       const result = await fastsamInference.detectGrains(
         imageData,
-        modelResult.buffer,
         {
           confidenceThreshold: fastsamSettings.confidenceThreshold,
           iouThreshold: fastsamSettings.iouThreshold,
