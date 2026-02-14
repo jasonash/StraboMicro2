@@ -5,9 +5,14 @@ import fs from 'fs';
 import pkg from './package.json';
 
 /**
- * Vite plugin to copy onnxruntime-web WASM files to the dist output.
+ * Vite plugin to copy onnxruntime-web WASM and MJS files to the dist output.
  * In development, Vite serves them directly from node_modules.
- * In production, they must be in dist/ alongside the bundled JS.
+ * In production, they must be in dist/ so they can be unpacked from asar
+ * and loaded by Chromium's ES module loader.
+ *
+ * Both .wasm (binary) and .mjs (JS glue) files are needed because
+ * onnxruntime-web dynamically imports the .mjs backend at runtime,
+ * and Chromium cannot load ES modules from inside Electron's asar archive.
  */
 function copyOrtWasmPlugin(): Plugin {
   return {
@@ -21,8 +26,10 @@ function copyOrtWasmPlugin(): Plugin {
         return;
       }
 
-      const wasmFiles = fs.readdirSync(ortDistDir).filter(f => f.endsWith('.wasm'));
-      for (const file of wasmFiles) {
+      const filesToCopy = fs.readdirSync(ortDistDir).filter(f =>
+        f.startsWith('ort-wasm') && (f.endsWith('.wasm') || f.endsWith('.mjs'))
+      );
+      for (const file of filesToCopy) {
         const src = path.join(ortDistDir, file);
         const dest = path.join(outputDir, file);
         fs.copyFileSync(src, dest);

@@ -83,14 +83,24 @@ let wasmConfigured = false;
 function configureWasm(): void {
   if (wasmConfigured) return;
 
-  // Point to the WASM files location
-  // In packaged builds, these files are alongside the renderer JS in dist/
-  // In dev, Vite serves them from node_modules
-  const wasmBasePath = import.meta.env.DEV
-    ? '/node_modules/onnxruntime-web/dist/'
-    : './';
-
-  ort.env.wasm.wasmPaths = wasmBasePath;
+  if (import.meta.env.DEV) {
+    // Dev: Vite serves WASM files from node_modules
+    ort.env.wasm.wasmPaths = '/node_modules/onnxruntime-web/dist/';
+  } else if (window.location.href.includes('app.asar')) {
+    // Packaged Electron: Chromium's dynamic import() cannot load ES modules
+    // from inside asar archives. Use wasmPaths.mjs to point onnxruntime-web
+    // directly at the unpacked .mjs file. The .wasm binary is then resolved
+    // relative to the .mjs URL automatically (see ort.mjs locateFile logic).
+    const unpackedBase = window.location.href
+      .replace(/app\.asar(?!\.)/, 'app.asar.unpacked')
+      .replace(/[^/]*$/, ''); // strip filename, keep directory
+    const mjsUrl = `${unpackedBase}ort-wasm-simd-threaded.jsep.mjs`;
+    ort.env.wasm.wasmPaths = { mjs: mjsUrl };
+    console.log('[FastSAM-Web] Using unpacked WASM path:', mjsUrl);
+  } else {
+    // Non-asar production build (e.g. --dir build)
+    ort.env.wasm.wasmPaths = './';
+  }
 
   // Multi-threading requires crossOriginIsolated=true (enabled via COOP/COEP
   // headers in main.js). If not available, fall back to single-threaded.
@@ -101,7 +111,7 @@ function configureWasm(): void {
   ort.env.logLevel = 'error';
 
   console.log('[FastSAM-Web] WASM configured:', {
-    wasmPaths: wasmBasePath,
+    wasmPaths: ort.env.wasm.wasmPaths,
     numThreads: ort.env.wasm.numThreads,
     crossOriginIsolated: canMultiThread,
     isDev: import.meta.env.DEV,
