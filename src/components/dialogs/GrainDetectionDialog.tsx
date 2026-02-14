@@ -57,6 +57,7 @@ import {
   DEFAULT_DETECTION_SETTINGS,
   DEFAULT_SPOT_GENERATION_OPTIONS,
 } from '@/services/grainDetection';
+import * as fastsamInference from '@/services/fastsamInference';
 import { v4 as uuidv4 } from 'uuid';
 
 // ============================================================================
@@ -116,6 +117,7 @@ export function GrainDetectionDialog({
   const detectionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const workerRef = useRef<Worker | null>(null);
   const contourWorkerRef = useRef<Worker | null>(null); // Worker for FastSAM contour extraction
+  const contourWorkerReadyRef = useRef<boolean>(false); // Whether OpenCV is loaded in contour worker
 
   // Container width (responsive)
   const [containerWidth, setContainerWidth] = useState(600);
@@ -138,7 +140,6 @@ export function GrainDetectionDialog({
   const [fastsamAvailable, setFastsamAvailable] = useState<boolean | null>(null);
   const [isDownloadingModel, setIsDownloadingModel] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState({ percent: 0, status: '' });
-  const fastsamProgressUnsubRef = useRef<(() => void) | null>(null);
   const downloadProgressUnsubRef = useRef<(() => void) | null>(null);
 
   // OpenCV detection settings
@@ -196,6 +197,19 @@ export function GrainDetectionDialog({
     return () => observer.disconnect();
   }, []);
 
+  // Reset all detection state when dialog opens (clear stale results from previous run)
+  useEffect(() => {
+    if (!isOpen) return;
+
+    setDetectionResult(null);
+    setIsDetecting(false);
+    setDetectionProgress({ step: '', percent: 0 });
+    setError(null);
+    setImage(null);
+    setImageData(null);
+    setLoadingState('idle');
+  }, [isOpen, micrographId]);
+
   // Check FastSAM availability when dialog opens
   useEffect(() => {
     if (!isOpen) return;
@@ -224,19 +238,66 @@ export function GrainDetectionDialog({
     checkFastSAM();
   }, [isOpen]);
 
-  // Cleanup progress listeners on unmount
+  // Cleanup download progress listener on unmount
   useEffect(() => {
     return () => {
-      if (fastsamProgressUnsubRef.current) {
-        fastsamProgressUnsubRef.current();
-        fastsamProgressUnsubRef.current = null;
-      }
       if (downloadProgressUnsubRef.current) {
         downloadProgressUnsubRef.current();
         downloadProgressUnsubRef.current = null;
       }
     };
   }, []);
+
+  // Pre-initialize contour worker (OpenCV) when dialog opens so it's ready for detection
+  useEffect(() => {
+    if (!isOpen) return;
+
+    let cancelled = false;
+
+    const initContourWorker = async () => {
+      // Don't re-init if already ready
+      if (contourWorkerRef.current && contourWorkerReadyRef.current) return;
+
+      // Terminate stale worker
+      if (contourWorkerRef.current) {
+        contourWorkerRef.current.terminate();
+        contourWorkerRef.current = null;
+        contourWorkerReadyRef.current = false;
+      }
+
+      // Load OpenCV script
+      let opencvScript: string | undefined;
+      try {
+        opencvScript = await window.api?.loadOpencvScript() || undefined;
+      } catch (err) {
+        console.warn('[GrainDetection] Could not pre-load OpenCV script:', err);
+      }
+
+      if (cancelled) return;
+
+      // Create and init worker
+      const worker = new Worker(
+        new URL('@/services/grainDetection/contourWorker.ts', import.meta.url),
+        { type: 'module' }
+      );
+      contourWorkerRef.current = worker;
+
+      worker.onmessage = (event) => {
+        if (event.data.type === 'init-complete') {
+          console.log('[GrainDetection] Contour worker pre-initialized (OpenCV ready)');
+          contourWorkerReadyRef.current = true;
+        }
+      };
+
+      worker.postMessage({ type: 'init', opencvScript });
+    };
+
+    initContourWorker();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen]);
 
   // Load image when dialog opens
   useEffect(() => {
@@ -325,6 +386,7 @@ export function GrainDetectionDialog({
       if (contourWorkerRef.current) {
         contourWorkerRef.current.terminate();
         contourWorkerRef.current = null;
+        contourWorkerReadyRef.current = false;
       }
     };
   }, [isOpen, micrograph, project]);
@@ -412,7 +474,7 @@ export function GrainDetectionDialog({
 
   // Main detection dispatcher - routes to FastSAM or OpenCV based on selected method
   const runDetection = useCallback(async () => {
-    if (!imageData) return;
+    if (!imageData || isDetecting) return;
 
     if (detectionMethod === 'fastsam') {
       await runFastSAMDetection();
@@ -423,52 +485,53 @@ export function GrainDetectionDialog({
 
 
   // FastSAM-based detection (AI model) with GrainSight-compatible contour extraction
-  // Uses a Web Worker to avoid blocking the main thread
+  // Inference runs in renderer via onnxruntime-web (WASM), contour extraction in Web Worker
   const runFastSAMDetection = useCallback(async () => {
-    if (!micrograph || !project) return;
+    if (!micrograph || !project || !imageData) return;
 
     console.log('[GrainDetection] Running FastSAM detection with settings:', fastsamSettings);
     setIsDetecting(true);
     setError(null);
     setDetectionProgress({ step: 'Starting FastSAM...', percent: 0 });
 
-    // Set up progress listener for FastSAM inference
-    if (fastsamProgressUnsubRef.current) {
-      fastsamProgressUnsubRef.current();
-    }
-    fastsamProgressUnsubRef.current = window.api?.fastsam?.onProgress((progress) => {
-      // Scale FastSAM progress to 0-50% range
-      setDetectionProgress({ step: progress.step, percent: Math.min(progress.percent * 0.5, 50) });
-    }) || null;
+    // Yield to event loop so React can render the detecting overlay
+    // before WASM inference potentially blocks the main thread
+    await new Promise((r) => setTimeout(r, 0));
 
     try {
-      // Step 1: Get image path
-      console.log('[GrainDetection] Step 1: Getting image path...');
-      setDetectionProgress({ step: 'Preparing image...', percent: 5 });
-      const folderPaths = await window.api?.getProjectFolderPaths(project.id);
-      if (!folderPaths) {
-        throw new Error('Failed to get project paths');
+      // Step 1: Load model if not already cached
+      if (!fastsamInference.isModelLoaded()) {
+        console.log('[GrainDetection] Step 1: Loading model bytes (first run)...');
+        setDetectionProgress({ step: 'Loading model...', percent: 5 });
+        const modelResult = await window.api?.fastsam?.loadModelBytes();
+        if (!modelResult?.success || !modelResult.buffer) {
+          throw new Error(modelResult?.error || 'Failed to load FastSAM model');
+        }
+        console.log('[GrainDetection] Model bytes received:', (modelResult.buffer.byteLength / 1024 / 1024).toFixed(1), 'MB');
+        await fastsamInference.loadModel(modelResult.buffer, (progress) => {
+          setDetectionProgress({ step: progress.step, percent: Math.min(progress.percent * 0.1, 10) });
+        });
+      } else {
+        console.log('[GrainDetection] Step 1: Model already loaded, skipping');
       }
 
-      const imagePath = micrograph.imagePath || '';
-      const fullPath = `${folderPaths.images}/${imagePath}`;
-      console.log('[GrainDetection] Image path:', fullPath);
-
-      // Step 2: Run FastSAM to get raw masks
-      console.log('[GrainDetection] Step 2: Running FastSAM inference...');
-      setDetectionProgress({ step: 'Running FastSAM inference...', percent: 10 });
-      const result = await window.api?.fastsam?.detectRawMasks(
-        fullPath,
+      // Step 2: Run FastSAM inference in renderer via onnxruntime-web
+      console.log('[GrainDetection] Step 2: Running FastSAM inference (onnxruntime-web)...');
+      const result = await fastsamInference.detectGrains(
+        imageData,
         {
           confidenceThreshold: fastsamSettings.confidenceThreshold,
           iouThreshold: fastsamSettings.iouThreshold,
           minAreaPercent: fastsamSettings.minAreaPercent,
+        },
+        (progress) => {
+          // Scale inference progress to 0-50% range
+          setDetectionProgress({
+            step: progress.step,
+            percent: Math.min(progress.percent * 0.5, 50),
+          });
         }
       );
-
-      if (!result?.success || !result.masks) {
-        throw new Error(result?.error || 'FastSAM detection failed');
-      }
 
       console.log('[GrainDetection] FastSAM returned', result.masks.length, 'raw masks in', result.processingTimeMs?.toFixed(0), 'ms');
 
@@ -483,49 +546,31 @@ export function GrainDetectionDialog({
         preview: `${previewWidth}x${previewHeight}`,
       });
 
-      // Step 3: Extract contours using Web Worker (avoids blocking main thread)
-      console.log('[GrainDetection] Step 3: Starting contour extraction worker...');
-      setDetectionProgress({ step: 'Loading OpenCV worker...', percent: 50 });
+      // Step 3: Extract contours using pre-initialized Web Worker
+      console.log('[GrainDetection] Step 3: Extracting contours via worker...');
+      setDetectionProgress({ step: 'Processing masks...', percent: 50 });
 
-      // Load OpenCV script for the worker
-      let opencvScript: string | undefined;
-      try {
-        opencvScript = await window.api?.loadOpencvScript() || undefined;
-        console.log('[GrainDetection] OpenCV script loaded for worker, size:', opencvScript?.length);
-      } catch (err) {
-        console.warn('[GrainDetection] Could not load OpenCV script, worker will fetch it:', err);
-      }
-
-      // Create contour extraction worker
-      if (contourWorkerRef.current) {
-        contourWorkerRef.current.terminate();
-      }
-      const contourWorker = new Worker(
-        new URL('@/services/grainDetection/contourWorker.ts', import.meta.url),
-        { type: 'module' }
-      );
-      contourWorkerRef.current = contourWorker;
-
-      // Two-step process: init OpenCV once, then process all masks
       const totalMasks = result.masks.length;
+
+      // Wait for contour worker to be ready (pre-initialized on dialog open)
+      if (!contourWorkerRef.current || !contourWorkerReadyRef.current) {
+        console.log('[GrainDetection] Waiting for contour worker initialization...');
+        setDetectionProgress({ step: 'Waiting for OpenCV...', percent: 50 });
+        const waitStart = Date.now();
+        while ((!contourWorkerRef.current || !contourWorkerReadyRef.current) && Date.now() - waitStart < 15000) {
+          await new Promise((r) => setTimeout(r, 100));
+        }
+        if (!contourWorkerRef.current || !contourWorkerReadyRef.current) {
+          throw new Error('Contour worker failed to initialize (OpenCV not ready)');
+        }
+      }
+
+      const contourWorker = contourWorkerRef.current;
       const allGrains: DetectedGrain[] = await new Promise<DetectedGrain[]>((resolve, reject) => {
         contourWorker.onmessage = (event) => {
           const message = event.data;
 
-          if (message.type === 'init-complete') {
-            console.log('[GrainDetection] OpenCV initialized in worker');
-            setDetectionProgress({ step: 'Processing masks...', percent: 55 });
-
-            // Now send all masks for processing at once
-            contourWorker.postMessage({
-              type: 'process-masks',
-              masks: result.masks,
-              originalWidth,
-              originalHeight,
-              previewWidth,
-              previewHeight,
-            });
-          } else if (message.type === 'progress') {
+          if (message.type === 'progress') {
             // Map progress (1-N) to our range (55-95)
             const progressPercent = 55 + (message.current / message.total) * 40;
             setDetectionProgress({
@@ -552,16 +597,16 @@ export function GrainDetectionDialog({
           return;
         }
 
-        // Step 1: Initialize OpenCV in the worker (only once!)
+        // Send masks directly (worker already has OpenCV initialized)
         contourWorker.postMessage({
-          type: 'init',
-          opencvScript,
+          type: 'process-masks',
+          masks: result.masks,
+          originalWidth,
+          originalHeight,
+          previewWidth,
+          previewHeight,
         });
       });
-
-      // Cleanup worker
-      contourWorker.terminate();
-      contourWorkerRef.current = null;
 
       // Step 4: Create detection result
       console.log('[GrainDetection] Step 4: Finalizing results...');
@@ -585,19 +630,10 @@ export function GrainDetectionDialog({
       setError(err instanceof Error ? err.message : 'FastSAM detection failed');
       setIsDetecting(false);
 
-      // Cleanup worker on error
-      if (contourWorkerRef.current) {
-        contourWorkerRef.current.terminate();
-        contourWorkerRef.current = null;
-      }
-    } finally {
-      // Cleanup progress listener
-      if (fastsamProgressUnsubRef.current) {
-        fastsamProgressUnsubRef.current();
-        fastsamProgressUnsubRef.current = null;
-      }
+      // Don't terminate the contour worker on error - it's shared across detection runs
+      // and managed by the dialog lifecycle (cleanup on close)
     }
-  }, [micrograph, project, fastsamSettings, settings, imageWidth, imageHeight]);
+  }, [micrograph, project, imageData, fastsamSettings, settings, imageWidth, imageHeight]);
 
   // OpenCV-based detection (traditional edge detection + watershed)
   const runOpenCVDetection = useCallback(async (imgData: ImageData, detectionSettings: DetectionSettings) => {
@@ -907,7 +943,7 @@ export function GrainDetectionDialog({
           <Box ref={containerRef} sx={{ width: '100%' }}>
             <Box sx={{ position: 'relative', width, height, bgcolor: 'grey.900', borderRadius: 1 }}>
               {/* Loading overlay */}
-              {(loadingState === 'loading-opencv' || loadingState === 'loading-image') && (
+              {(loadingState === 'idle' || loadingState === 'loading-opencv' || loadingState === 'loading-image') && (
                 <Box
                   sx={{
                     position: 'absolute',
@@ -927,8 +963,8 @@ export function GrainDetectionDialog({
                 </Box>
               )}
 
-              {/* Detecting overlay - covers entire image */}
-              {isDetecting && (
+              {/* Detecting overlay - shows during detection AND while waiting to start detection */}
+              {(isDetecting || (loadingState === 'ready' && !detectionResult)) && (
                 <Box
                   sx={{
                     position: 'absolute',
@@ -947,7 +983,7 @@ export function GrainDetectionDialog({
                     Detecting grains...
                   </Typography>
                   <Typography variant="body2" color="rgba(255,255,255,0.8)">
-                    {detectionProgress.step || 'Starting...'}
+                    {detectionProgress.step || 'Preparing...'}
                   </Typography>
                   {detectionProgress.percent > 0 && (
                     <Box sx={{ width: 200, mt: 1 }}>

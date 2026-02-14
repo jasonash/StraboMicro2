@@ -6,11 +6,78 @@ process.env.VIPS_DISC_THRESHOLD = '0';
 // Remove libvips memory limits entirely
 process.env.VIPS_NOVECTOR = '1';
 
-const { app, BrowserWindow, Menu, ipcMain, dialog, screen, nativeTheme, shell, protocol, net } = require('electron');
+const { app, BrowserWindow, Menu, ipcMain, dialog, screen, nativeTheme, shell, protocol, net, session } = require('electron');
 
 const path = require('path');
 const fs = require('fs');
 const log = require('electron-log');
+
+// Fix sharp native module resolution in Windows packaged builds.
+// The @img/sharp-win32-x64 package uses a package.json exports map
+// ("./sharp.node" -> "./lib/sharp-win32-x64.node") which fails to resolve
+// inside Electron's asar archive. The fix: add the unpacked node_modules
+// directory to NODE_PATH so Node resolves sharp's native dependency from
+// the real filesystem instead of through the asar.
+const _sharpDebugLog = [];
+if (process.platform === 'win32' && app.isPackaged) {
+  const Module = require('module');
+  const unpackedModules = path.join(process.resourcesPath, 'app.asar.unpacked', 'node_modules');
+  const nativeBinaryPath = path.join(unpackedModules, '@img', 'sharp-win32-x64', 'lib', 'sharp-win32-x64.node');
+
+  _sharpDebugLog.push(`[${new Date().toISOString()}] Sharp fix starting`);
+  _sharpDebugLog.push(`Unpacked modules dir: ${unpackedModules}`);
+  _sharpDebugLog.push(`Unpacked dir exists: ${fs.existsSync(unpackedModules)}`);
+  _sharpDebugLog.push(`Native binary exists: ${fs.existsSync(nativeBinaryPath)}`);
+
+  // Fix 1: Add unpacked node_modules to NODE_PATH so module resolution
+  // finds @img/sharp-win32-x64 outside the asar (no exports map issues)
+  if (fs.existsSync(unpackedModules)) {
+    process.env.NODE_PATH = process.env.NODE_PATH
+      ? `${unpackedModules};${process.env.NODE_PATH}`
+      : unpackedModules;
+    Module._initPaths();
+    _sharpDebugLog.push(`NODE_PATH set to: ${process.env.NODE_PATH}`);
+    _sharpDebugLog.push(`Global paths: ${JSON.stringify(Module.globalPaths)}`);
+  }
+
+  // Fix 2: Patch Module._resolveFilename as a direct fallback
+  const originalResolveFilename = Module._resolveFilename;
+  Module._resolveFilename = function (request, parent, isMain, options) {
+    if (request === '@img/sharp-win32-x64/sharp.node' && fs.existsSync(nativeBinaryPath)) {
+      _sharpDebugLog.push(`_resolveFilename intercepted: ${request} -> ${nativeBinaryPath}`);
+      return nativeBinaryPath;
+    }
+    return originalResolveFilename.call(this, request, parent, isMain, options);
+  };
+
+  // Fix 3: Patch Module.prototype.require as highest-level fallback
+  const originalRequire = Module.prototype.require;
+  Module.prototype.require = function patchedSharpRequire(id) {
+    if (id === '@img/sharp-win32-x64/sharp.node' && fs.existsSync(nativeBinaryPath)) {
+      _sharpDebugLog.push(`Module.require intercepted: ${id}`);
+      return originalRequire.call(this, nativeBinaryPath);
+    }
+    return originalRequire.call(this, id);
+  };
+}
+
+// Load sharp BEFORE Sentry to minimize hook interference.
+let sharp;
+try {
+  sharp = require('sharp');
+  _sharpDebugLog.push('Sharp loaded successfully');
+} catch (err) {
+  _sharpDebugLog.push(`Sharp load FAILED: ${err.message}`);
+  _sharpDebugLog.push(`Stack: ${err.stack}`);
+  // Write diagnostics to temp dir (more reliable than userData early in startup)
+  try {
+    const tmpLog = path.join(process.env.TEMP || process.env.TMP || '.', 'sharp-debug.log');
+    fs.writeFileSync(tmpLog, _sharpDebugLog.join('\n'));
+    _sharpDebugLog.push(`Diagnostics written to: ${tmpLog}`);
+  } catch (_) { /* ignore */ }
+  throw err;
+}
+
 const Sentry = require('@sentry/electron/main');
 
 // Initialize Sentry for error tracking (production only)
@@ -31,12 +98,25 @@ Sentry.init({
     return JSON.parse(scrubbedStr);
   },
 });
-const sharp = require('sharp');
 
 // Centralized Sharp/libvips configuration to prevent OOM crashes
 // These settings apply to all modules that use sharp
 sharp.concurrency(1); // Single-threaded to reduce memory pressure
 sharp.cache({ memory: 256, files: 0, items: 50 }); // Conservative 256MB cache
+
+// Write sharp diagnostics log (on Windows packaged builds)
+if (process.platform === 'win32' && app.isPackaged && _sharpDebugLog.length > 0) {
+  try {
+    const logDir = app.getPath('userData');
+    if (!fs.existsSync(logDir)) fs.mkdirSync(logDir, { recursive: true });
+    fs.writeFileSync(path.join(logDir, 'sharp-debug.log'), _sharpDebugLog.join('\n'));
+  } catch (_) {
+    // Fallback to temp dir
+    try {
+      fs.writeFileSync(path.join(process.env.TEMP || '.', 'sharp-debug.log'), _sharpDebugLog.join('\n'));
+    } catch (__) { /* ignore */ }
+  }
+}
 
 const archiver = require('archiver');
 const projectFolders = require('./projectFolders');
@@ -57,7 +137,6 @@ const autoUpdaterModule = require('./autoUpdater');
 const logService = require('./logService');
 const pointCountStorage = require('./pointCountStorage');
 const fastsamService = require('./fastsamService');
-const fastsamPostprocess = require('./fastsamPostprocess');
 
 // Handle EPIPE errors at process level (prevents crash on broken stdout pipe)
 process.stdout.on('error', (err) => {
@@ -1285,6 +1364,20 @@ let buildMenuFn = null;
 
 app.whenReady().then(async () => {
   const isDev = !app.isPackaged;
+
+  // Enable cross-origin isolation for WebAssembly multi-threading.
+  // onnxruntime-web requires crossOriginIsolated=true to use SharedArrayBuffer
+  // for multi-threaded WASM execution (massive speedup for FastSAM inference).
+  // This is safe because all external network requests go through the main process.
+  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+    callback({
+      responseHeaders: {
+        ...details.responseHeaders,
+        'Cross-Origin-Opener-Policy': ['same-origin'],
+        'Cross-Origin-Embedder-Policy': ['require-corp'],
+      },
+    });
+  });
 
   // Register custom protocol to serve static files in production
   // This allows web workers to fetch files like opencv.js
@@ -6037,11 +6130,12 @@ ipcMain.handle("load-opencv-script", async () => {
 
 
 // ============================================================================
-// FastSAM Grain Detection
+// FastSAM Grain Detection (Model Management Only)
+// Inference is now handled in the renderer process via onnxruntime-web (WASM)
 // ============================================================================
 
 /**
- * Check if FastSAM model is available
+ * Check if FastSAM model file is available on disk
  */
 ipcMain.handle('fastsam:is-available', async () => {
   try {
@@ -6096,202 +6190,23 @@ ipcMain.handle('fastsam:download-model', async (event) => {
 });
 
 /**
- * Preload the FastSAM model (optional optimization)
+ * Read the model file and return its bytes to the renderer.
+ * The renderer passes these bytes directly to onnxruntime-web's
+ * InferenceSession.create() as a Uint8Array, avoiding file:// URL
+ * security restrictions in Chromium.
  */
-ipcMain.handle('fastsam:preload-model', async () => {
+ipcMain.handle('fastsam:load-model-bytes', async () => {
   try {
-    log.info('[FastSAM] Preloading model...');
-    await fastsamService.loadModel();
-    log.info('[FastSAM] Model preloaded successfully');
-    return { success: true };
-  } catch (error) {
-    log.error('[FastSAM] Error preloading model:', error);
-    return { success: false, error: error.message };
-  }
-});
-
-/**
- * Unload the FastSAM model to free memory
- */
-ipcMain.handle('fastsam:unload-model', async () => {
-  try {
-    await fastsamService.unloadModel();
-    return { success: true };
-  } catch (error) {
-    log.error('[FastSAM] Error unloading model:', error);
-    return { success: false, error: error.message };
-  }
-});
-
-/**
- * Run FastSAM grain detection on an image file
- * Returns detected grains in the same format as OpenCV detector
- */
-ipcMain.handle('fastsam:detect-grains', async (event, imagePath, params = {}, options = {}) => {
-  try {
-    log.info('[FastSAM] Starting detection on:', imagePath);
-
-    // Progress callback that sends to renderer
-    const progressCallback = (progress) => {
-      event.sender.send('fastsam:progress', progress);
-    };
-
-    // Run detection
-    const result = await fastsamService.detectGrains(imagePath, params, progressCallback);
-
-    // Convert masks to grains
-    progressCallback({ step: 'Extracting contours...', percent: 90 });
-    const grains = fastsamPostprocess.masksToGrains(result.masks, result.preprocessInfo, {
-      simplifyTolerance: options.simplifyTolerance ?? 2.0,
-      simplifyOutlines: options.simplifyOutlines ?? true,
-      betterQuality: options.betterQuality ?? true,
-    });
-
-    log.info('[FastSAM] Detection complete:', grains.length, 'grains in', result.processingTimeMs, 'ms');
-
-    return {
-      success: true,
-      grains,
-      processingTimeMs: result.processingTimeMs,
-      inferenceTimeMs: result.inferenceTimeMs,
-      imageDimensions: {
-        width: result.preprocessInfo.origW,
-        height: result.preprocessInfo.origH,
-      },
-    };
-  } catch (error) {
-    log.error('[FastSAM] Detection error:', error);
-    return {
-      success: false,
-      error: error.message,
-    };
-  }
-});
-
-/**
- * Run FastSAM grain detection from image buffer
- * Used when image is already loaded in renderer (e.g., from tile cache)
- */
-ipcMain.handle('fastsam:detect-grains-from-buffer', async (event, imageBuffer, params = {}, options = {}) => {
-  try {
-    log.info('[FastSAM] Starting detection from buffer');
-
-    const progressCallback = (progress) => {
-      event.sender.send('fastsam:progress', progress);
-    };
-
-    // Convert base64 to buffer if needed
-    let buffer = imageBuffer;
-    if (typeof imageBuffer === 'string') {
-      // Remove data URL prefix if present
-      const base64Data = imageBuffer.replace(/^data:image\/\w+;base64,/, '');
-      buffer = Buffer.from(base64Data, 'base64');
+    const modelPath = fastsamService.getModelPath();
+    if (!modelPath) {
+      return { success: false, error: 'Model file not found' };
     }
-
-    // Run detection
-    const result = await fastsamService.detectGrainsFromBuffer(buffer, params, progressCallback);
-
-    // Convert masks to grains
-    progressCallback({ step: 'Extracting contours...', percent: 90 });
-    const grains = fastsamPostprocess.masksToGrains(result.masks, result.preprocessInfo, {
-      simplifyTolerance: options.simplifyTolerance ?? 2.0,
-      simplifyOutlines: options.simplifyOutlines ?? true,
-      betterQuality: options.betterQuality ?? true,
-    });
-
-    log.info('[FastSAM] Detection complete:', grains.length, 'grains in', result.processingTimeMs, 'ms');
-
-    return {
-      success: true,
-      grains,
-      processingTimeMs: result.processingTimeMs,
-      inferenceTimeMs: result.inferenceTimeMs,
-      imageDimensions: {
-        width: result.preprocessInfo.origW,
-        height: result.preprocessInfo.origH,
-      },
-    };
+    log.info('[FastSAM] Reading model file:', modelPath);
+    const buffer = await fs.promises.readFile(modelPath);
+    log.info('[FastSAM] Model file read:', (buffer.length / 1024 / 1024).toFixed(1), 'MB');
+    return { success: true, buffer };
   } catch (error) {
-    log.error('[FastSAM] Detection error:', error);
-    return {
-      success: false,
-      error: error.message,
-    };
-  }
-});
-
-/**
- * Run FastSAM detection and return RAW MASKS for OpenCV.js processing.
- * This is the GrainSight-compatible approach where contour extraction
- * happens in the renderer using OpenCV.js with the exact GrainSight algorithm:
- * - morphologyEx MORPH_OPEN with 5x5 kernel
- * - GaussianBlur (5,5)
- * - findContours with RETR_TREE, CHAIN_APPROX_SIMPLE
- * - approxPolyDP with epsilon = 0.005 * perimeter
- */
-ipcMain.handle('fastsam:detect-raw-masks', async (event, imagePath, params = {}) => {
-  try {
-    log.info('[FastSAM] Starting raw mask detection on:', imagePath);
-
-    const progressCallback = (progress) => {
-      event.sender.send('fastsam:progress', progress);
-    };
-
-    // Run detection and get raw upsampled masks
-    const result = await fastsamService.detectGrainsRawMasks(imagePath, params, progressCallback);
-
-    log.info('[FastSAM] Raw mask detection complete:', result.masks.length, 'masks in', result.processingTimeMs, 'ms');
-
-    return {
-      success: true,
-      masks: result.masks,
-      preprocessInfo: result.preprocessInfo,
-      processingTimeMs: result.processingTimeMs,
-      inferenceTimeMs: result.inferenceTimeMs,
-    };
-  } catch (error) {
-    log.error('[FastSAM] Raw mask detection error:', error);
-    return {
-      success: false,
-      error: error.message,
-    };
-  }
-});
-
-/**
- * Run FastSAM raw mask detection from image buffer.
- */
-ipcMain.handle('fastsam:detect-raw-masks-from-buffer', async (event, imageBuffer, params = {}) => {
-  try {
-    log.info('[FastSAM] Starting raw mask detection from buffer');
-
-    const progressCallback = (progress) => {
-      event.sender.send('fastsam:progress', progress);
-    };
-
-    // Convert base64 to buffer if needed
-    let buffer = imageBuffer;
-    if (typeof imageBuffer === 'string') {
-      const base64Data = imageBuffer.replace(/^data:image\/\w+;base64,/, '');
-      buffer = Buffer.from(base64Data, 'base64');
-    }
-
-    const result = await fastsamService.detectGrainsRawMasksFromBuffer(buffer, params, progressCallback);
-
-    log.info('[FastSAM] Raw mask detection complete:', result.masks.length, 'masks in', result.processingTimeMs, 'ms');
-
-    return {
-      success: true,
-      masks: result.masks,
-      preprocessInfo: result.preprocessInfo,
-      processingTimeMs: result.processingTimeMs,
-      inferenceTimeMs: result.inferenceTimeMs,
-    };
-  } catch (error) {
-    log.error('[FastSAM] Raw mask detection error:', error);
-    return {
-      success: false,
-      error: error.message,
-    };
+    log.error('[FastSAM] Error reading model file:', error);
+    return { success: false, error: error.message };
   }
 });

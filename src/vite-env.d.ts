@@ -762,9 +762,9 @@ interface Window {
     onConfigureMineralColors: (callback: () => void) => Unsubscribe;
     onSpotColorMode: (callback: (mode: 'spot-color' | 'mineral-color') => void) => Unsubscribe;
 
-    // FastSAM Grain Detection
+    // FastSAM Grain Detection (model management only - inference runs in renderer via onnxruntime-web)
     fastsam: {
-      // Check if FastSAM model is available
+      // Check if FastSAM model file is available
       isAvailable: () => Promise<{
         available: boolean;
         modelPath?: string;
@@ -797,40 +797,12 @@ interface Window {
           status: string;
         }) => void
       ) => Unsubscribe;
-      // Preload model (optional optimization)
-      preloadModel: () => Promise<{
+      // Read model file bytes (renderer passes to onnxruntime-web directly)
+      loadModelBytes: () => Promise<{
         success: boolean;
+        buffer?: Uint8Array;
         error?: string;
       }>;
-      // Unload model to free memory
-      unloadModel: () => Promise<{
-        success: boolean;
-        error?: string;
-      }>;
-      // Run detection on image file path (legacy - uses broken contour extraction)
-      detectGrains: (
-        imagePath: string,
-        params?: FastSAMDetectionParams,
-        options?: FastSAMDetectionOptions
-      ) => Promise<FastSAMDetectionResult>;
-      // Run detection from image buffer (legacy - uses broken contour extraction)
-      detectGrainsFromBuffer: (
-        imageBuffer: string | ArrayBuffer,
-        params?: FastSAMDetectionParams,
-        options?: FastSAMDetectionOptions
-      ) => Promise<FastSAMDetectionResult>;
-      // NEW: Run detection and return raw masks for OpenCV.js processing (GrainSight-compatible)
-      detectRawMasks: (
-        imagePath: string,
-        params?: FastSAMDetectionParams
-      ) => Promise<FastSAMRawMaskResult>;
-      // NEW: Run detection from buffer and return raw masks
-      detectRawMasksFromBuffer: (
-        imageBuffer: string | ArrayBuffer,
-        params?: FastSAMDetectionParams
-      ) => Promise<FastSAMRawMaskResult>;
-      // Listen for detection progress updates
-      onProgress: (callback: (progress: { step: string; percent: number }) => void) => Unsubscribe;
     };
 
     versionHistory: {
@@ -1011,59 +983,5 @@ interface PointCountSessionSummaryData {
   classifiedCount: number;
 }
 
-// FastSAM Detection Types
-interface FastSAMDetectionParams {
-  confidenceThreshold?: number; // 0.0-1.0, default 0.5
-  iouThreshold?: number; // 0.0-1.0, default 0.7
-  minAreaPercent?: number; // Minimum area as % of image, default 0.01
-  maxDetections?: number; // Maximum detections, default 500
-}
-
-interface FastSAMDetectionOptions {
-  simplifyTolerance?: number; // Douglas-Peucker epsilon, default 2.0
-  simplifyOutlines?: boolean; // Whether to simplify polygons, default true
-  betterQuality?: boolean; // Apply morphological cleanup, default true
-}
-
-interface FastSAMDetectedGrain {
-  tempId: string;
-  contour: Array<{ x: number; y: number }>;
-  area: number;
-  centroid: { x: number; y: number };
-  boundingBox: { x: number; y: number; width: number; height: number };
-  perimeter: number;
-  circularity: number;
-  confidence: number;
-}
-
-interface FastSAMDetectionResult {
-  success: boolean;
-  grains?: FastSAMDetectedGrain[];
-  processingTimeMs?: number;
-  inferenceTimeMs?: number;
-  imageDimensions?: { width: number; height: number };
-  error?: string;
-}
-
-// Raw mask result for OpenCV.js processing (GrainSight-compatible)
-interface FastSAMRawMask {
-  maskBase64: string; // Base64-encoded PNG of upsampled binary mask
-  confidence: number;
-  area: number;
-  box: [number, number, number, number]; // [x1, y1, x2, y2] in INPUT_SIZE coords
-}
-
-interface FastSAMRawMaskResult {
-  success: boolean;
-  masks?: FastSAMRawMask[];
-  preprocessInfo?: {
-    origW: number;
-    origH: number;
-    scale: number;
-    padX: number;
-    padY: number;
-  };
-  processingTimeMs?: number;
-  inferenceTimeMs?: number;
-  error?: string;
-}
+// FastSAM types are now defined in src/services/fastsamInference.ts
+// The renderer-side inference service handles all detection via onnxruntime-web
