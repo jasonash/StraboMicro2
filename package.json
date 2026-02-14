@@ -100,7 +100,9 @@
       "**/*.node",
       "node_modules/sharp/**/*",
       "node_modules/@img/**/*",
-      "node_modules/canvas/**/*"
+      "node_modules/canvas/**/*",
+      "dist/assets/ort-wasm*",
+      "dist/ort-wasm*"
     ],
     "fileAssociations": [
       {
