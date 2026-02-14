@@ -15,33 +15,101 @@ const log = require('electron-log');
 // Fix sharp native module resolution in Windows packaged builds.
 // The @img/sharp-win32-x64 package uses a package.json exports map
 // ("./sharp.node" -> "./lib/sharp-win32-x64.node") which fails to resolve
-// inside Electron's asar archive. This patches Module._resolveFilename to
-// bypass the exports map and resolve directly to the unpacked native binary.
+// inside Electron's asar archive, especially when require-in-the-middle hooks
+// (from Sentry/OpenTelemetry) patch Module.prototype.require.
+//
+// Strategy: Patch at TWO levels before loading sharp:
+// 1. Module._resolveFilename — intercepts path resolution
+// 2. Module.prototype.require — intercepts the require call itself
+// Also writes diagnostics to %APPDATA%/StraboMicro2/sharp-debug.log
+const _sharpDebugLog = [];
 if (process.platform === 'win32' && app.isPackaged) {
   const Module = require('module');
-  const originalResolveFilename = Module._resolveFilename;
-  Module._resolveFilename = function (request, parent, isMain, options) {
-    if (request === '@img/sharp-win32-x64/sharp.node') {
-      const unpackedPath = path.join(
-        process.resourcesPath,
-        'app.asar.unpacked',
-        'node_modules',
-        '@img',
-        'sharp-win32-x64',
-        'lib',
-        'sharp-win32-x64.node'
-      );
-      if (fs.existsSync(unpackedPath)) {
-        return unpackedPath;
+  const nativePath = path.join(
+    process.resourcesPath,
+    'app.asar.unpacked',
+    'node_modules',
+    '@img',
+    'sharp-win32-x64',
+    'lib',
+    'sharp-win32-x64.node'
+  );
+  const nativeExists = fs.existsSync(nativePath);
+  _sharpDebugLog.push(`[${new Date().toISOString()}] Sharp fix starting`);
+  _sharpDebugLog.push(`Native binary path: ${nativePath}`);
+  _sharpDebugLog.push(`Native binary exists: ${nativeExists}`);
+  _sharpDebugLog.push(`RITM active before patches: ${Module.prototype.require.name !== 'require'} (fn name: ${Module.prototype.require.name})`);
+
+  if (nativeExists) {
+    // Patch 1: Module._resolveFilename — handle path resolution
+    const originalResolveFilename = Module._resolveFilename;
+    Module._resolveFilename = function (request, parent, isMain, options) {
+      if (request === '@img/sharp-win32-x64/sharp.node') {
+        _sharpDebugLog.push(`_resolveFilename intercepted: ${request} -> ${nativePath}`);
+        return nativePath;
       }
-    }
-    return originalResolveFilename.call(this, request, parent, isMain, options);
-  };
+      return originalResolveFilename.call(this, request, parent, isMain, options);
+    };
+
+    // Patch 2: Module.prototype.require — intercept at require level
+    // This handles cases where require-in-the-middle hooks bypass _resolveFilename
+    const originalRequire = Module.prototype.require;
+    Module.prototype.require = function patchedSharpRequire(id) {
+      if (id === '@img/sharp-win32-x64/sharp.node') {
+        _sharpDebugLog.push(`Module.require intercepted: ${id} -> loading via direct path`);
+        return originalRequire.call(this, nativePath);
+      }
+      return originalRequire.call(this, id);
+    };
+  }
 }
 
-// IMPORTANT: Load sharp BEFORE Sentry. Sentry's require-in-the-middle hooks
-// (via @opentelemetry/instrumentation) can interfere with asar path resolution.
-const sharp = require('sharp');
+// Load sharp BEFORE Sentry to minimize hook interference.
+let sharp;
+try {
+  sharp = require('sharp');
+  _sharpDebugLog.push('Sharp loaded successfully');
+} catch (err) {
+  _sharpDebugLog.push(`Sharp load FAILED: ${err.message}`);
+  _sharpDebugLog.push(`Stack: ${err.stack}`);
+
+  // Last resort: try loading the native binary directly via process.dlopen
+  if (process.platform === 'win32' && app.isPackaged) {
+    const Module = require('module');
+    const nativePath = path.join(
+      process.resourcesPath,
+      'app.asar.unpacked',
+      'node_modules',
+      '@img',
+      'sharp-win32-x64',
+      'lib',
+      'sharp-win32-x64.node'
+    );
+    try {
+      _sharpDebugLog.push(`Attempting direct dlopen: ${nativePath}`);
+      const nativeModule = new Module(nativePath);
+      nativeModule.filename = nativePath;
+      process.dlopen(nativeModule, nativePath);
+      _sharpDebugLog.push('dlopen succeeded, retrying require("sharp")');
+
+      // Cache the native module under the resolution path
+      require.cache[nativePath] = nativeModule;
+      sharp = require('sharp');
+      _sharpDebugLog.push('Sharp loaded successfully after dlopen workaround');
+    } catch (dlErr) {
+      _sharpDebugLog.push(`dlopen FAILED: ${dlErr.message}`);
+    }
+  }
+
+  // Write diagnostics before potentially crashing
+  try {
+    const logDir = app.getPath('userData');
+    if (!fs.existsSync(logDir)) fs.mkdirSync(logDir, { recursive: true });
+    fs.writeFileSync(path.join(logDir, 'sharp-debug.log'), _sharpDebugLog.join('\n'));
+  } catch (_) { /* ignore */ }
+
+  if (!sharp) throw err;
+}
 
 const Sentry = require('@sentry/electron/main');
 
@@ -68,6 +136,15 @@ Sentry.init({
 // These settings apply to all modules that use sharp
 sharp.concurrency(1); // Single-threaded to reduce memory pressure
 sharp.cache({ memory: 256, files: 0, items: 50 }); // Conservative 256MB cache
+
+// Write sharp diagnostics log (on Windows packaged builds)
+if (process.platform === 'win32' && app.isPackaged && _sharpDebugLog.length > 0) {
+  try {
+    const logDir = app.getPath('userData');
+    if (!fs.existsSync(logDir)) fs.mkdirSync(logDir, { recursive: true });
+    fs.writeFileSync(path.join(logDir, 'sharp-debug.log'), _sharpDebugLog.join('\n'));
+  } catch (_) { /* ignore */ }
+}
 
 const archiver = require('archiver');
 const projectFolders = require('./projectFolders');
