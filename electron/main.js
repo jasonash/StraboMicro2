@@ -15,53 +15,50 @@ const log = require('electron-log');
 // Fix sharp native module resolution in Windows packaged builds.
 // The @img/sharp-win32-x64 package uses a package.json exports map
 // ("./sharp.node" -> "./lib/sharp-win32-x64.node") which fails to resolve
-// inside Electron's asar archive, especially when require-in-the-middle hooks
-// (from Sentry/OpenTelemetry) patch Module.prototype.require.
-//
-// Strategy: Patch at TWO levels before loading sharp:
-// 1. Module._resolveFilename — intercepts path resolution
-// 2. Module.prototype.require — intercepts the require call itself
-// Also writes diagnostics to %APPDATA%/StraboMicro2/sharp-debug.log
+// inside Electron's asar archive. The fix: add the unpacked node_modules
+// directory to NODE_PATH so Node resolves sharp's native dependency from
+// the real filesystem instead of through the asar.
 const _sharpDebugLog = [];
 if (process.platform === 'win32' && app.isPackaged) {
   const Module = require('module');
-  const nativePath = path.join(
-    process.resourcesPath,
-    'app.asar.unpacked',
-    'node_modules',
-    '@img',
-    'sharp-win32-x64',
-    'lib',
-    'sharp-win32-x64.node'
-  );
-  const nativeExists = fs.existsSync(nativePath);
+  const unpackedModules = path.join(process.resourcesPath, 'app.asar.unpacked', 'node_modules');
+  const nativeBinaryPath = path.join(unpackedModules, '@img', 'sharp-win32-x64', 'lib', 'sharp-win32-x64.node');
+
   _sharpDebugLog.push(`[${new Date().toISOString()}] Sharp fix starting`);
-  _sharpDebugLog.push(`Native binary path: ${nativePath}`);
-  _sharpDebugLog.push(`Native binary exists: ${nativeExists}`);
-  _sharpDebugLog.push(`RITM active before patches: ${Module.prototype.require.name !== 'require'} (fn name: ${Module.prototype.require.name})`);
+  _sharpDebugLog.push(`Unpacked modules dir: ${unpackedModules}`);
+  _sharpDebugLog.push(`Unpacked dir exists: ${fs.existsSync(unpackedModules)}`);
+  _sharpDebugLog.push(`Native binary exists: ${fs.existsSync(nativeBinaryPath)}`);
 
-  if (nativeExists) {
-    // Patch 1: Module._resolveFilename — handle path resolution
-    const originalResolveFilename = Module._resolveFilename;
-    Module._resolveFilename = function (request, parent, isMain, options) {
-      if (request === '@img/sharp-win32-x64/sharp.node') {
-        _sharpDebugLog.push(`_resolveFilename intercepted: ${request} -> ${nativePath}`);
-        return nativePath;
-      }
-      return originalResolveFilename.call(this, request, parent, isMain, options);
-    };
-
-    // Patch 2: Module.prototype.require — intercept at require level
-    // This handles cases where require-in-the-middle hooks bypass _resolveFilename
-    const originalRequire = Module.prototype.require;
-    Module.prototype.require = function patchedSharpRequire(id) {
-      if (id === '@img/sharp-win32-x64/sharp.node') {
-        _sharpDebugLog.push(`Module.require intercepted: ${id} -> loading via direct path`);
-        return originalRequire.call(this, nativePath);
-      }
-      return originalRequire.call(this, id);
-    };
+  // Fix 1: Add unpacked node_modules to NODE_PATH so module resolution
+  // finds @img/sharp-win32-x64 outside the asar (no exports map issues)
+  if (fs.existsSync(unpackedModules)) {
+    process.env.NODE_PATH = process.env.NODE_PATH
+      ? `${unpackedModules};${process.env.NODE_PATH}`
+      : unpackedModules;
+    Module._initPaths();
+    _sharpDebugLog.push(`NODE_PATH set to: ${process.env.NODE_PATH}`);
+    _sharpDebugLog.push(`Global paths: ${JSON.stringify(Module.globalPaths)}`);
   }
+
+  // Fix 2: Patch Module._resolveFilename as a direct fallback
+  const originalResolveFilename = Module._resolveFilename;
+  Module._resolveFilename = function (request, parent, isMain, options) {
+    if (request === '@img/sharp-win32-x64/sharp.node' && fs.existsSync(nativeBinaryPath)) {
+      _sharpDebugLog.push(`_resolveFilename intercepted: ${request} -> ${nativeBinaryPath}`);
+      return nativeBinaryPath;
+    }
+    return originalResolveFilename.call(this, request, parent, isMain, options);
+  };
+
+  // Fix 3: Patch Module.prototype.require as highest-level fallback
+  const originalRequire = Module.prototype.require;
+  Module.prototype.require = function patchedSharpRequire(id) {
+    if (id === '@img/sharp-win32-x64/sharp.node' && fs.existsSync(nativeBinaryPath)) {
+      _sharpDebugLog.push(`Module.require intercepted: ${id}`);
+      return originalRequire.call(this, nativeBinaryPath);
+    }
+    return originalRequire.call(this, id);
+  };
 }
 
 // Load sharp BEFORE Sentry to minimize hook interference.
@@ -72,43 +69,13 @@ try {
 } catch (err) {
   _sharpDebugLog.push(`Sharp load FAILED: ${err.message}`);
   _sharpDebugLog.push(`Stack: ${err.stack}`);
-
-  // Last resort: try loading the native binary directly via process.dlopen
-  if (process.platform === 'win32' && app.isPackaged) {
-    const Module = require('module');
-    const nativePath = path.join(
-      process.resourcesPath,
-      'app.asar.unpacked',
-      'node_modules',
-      '@img',
-      'sharp-win32-x64',
-      'lib',
-      'sharp-win32-x64.node'
-    );
-    try {
-      _sharpDebugLog.push(`Attempting direct dlopen: ${nativePath}`);
-      const nativeModule = new Module(nativePath);
-      nativeModule.filename = nativePath;
-      process.dlopen(nativeModule, nativePath);
-      _sharpDebugLog.push('dlopen succeeded, retrying require("sharp")');
-
-      // Cache the native module under the resolution path
-      require.cache[nativePath] = nativeModule;
-      sharp = require('sharp');
-      _sharpDebugLog.push('Sharp loaded successfully after dlopen workaround');
-    } catch (dlErr) {
-      _sharpDebugLog.push(`dlopen FAILED: ${dlErr.message}`);
-    }
-  }
-
-  // Write diagnostics before potentially crashing
+  // Write diagnostics to temp dir (more reliable than userData early in startup)
   try {
-    const logDir = app.getPath('userData');
-    if (!fs.existsSync(logDir)) fs.mkdirSync(logDir, { recursive: true });
-    fs.writeFileSync(path.join(logDir, 'sharp-debug.log'), _sharpDebugLog.join('\n'));
+    const tmpLog = path.join(process.env.TEMP || process.env.TMP || '.', 'sharp-debug.log');
+    fs.writeFileSync(tmpLog, _sharpDebugLog.join('\n'));
+    _sharpDebugLog.push(`Diagnostics written to: ${tmpLog}`);
   } catch (_) { /* ignore */ }
-
-  if (!sharp) throw err;
+  throw err;
 }
 
 const Sentry = require('@sentry/electron/main');
@@ -143,7 +110,12 @@ if (process.platform === 'win32' && app.isPackaged && _sharpDebugLog.length > 0)
     const logDir = app.getPath('userData');
     if (!fs.existsSync(logDir)) fs.mkdirSync(logDir, { recursive: true });
     fs.writeFileSync(path.join(logDir, 'sharp-debug.log'), _sharpDebugLog.join('\n'));
-  } catch (_) { /* ignore */ }
+  } catch (_) {
+    // Fallback to temp dir
+    try {
+      fs.writeFileSync(path.join(process.env.TEMP || '.', 'sharp-debug.log'), _sharpDebugLog.join('\n'));
+    } catch (__) { /* ignore */ }
+  }
 }
 
 const archiver = require('archiver');
