@@ -54,10 +54,6 @@ Sentry.init({
   release: `strabomicro2@${app.getVersion()}`,
   // Set environment
   environment: app.isPackaged ? 'production' : 'development',
-  // Disable OpenTelemetry auto-instrumentation. This prevents require-in-the-middle
-  // hooks from patching Node's require system, which can break native module resolution
-  // in asar-packaged builds. Error capture still works without OpenTelemetry.
-  skipOpenTelemetrySetup: true,
   // Filter out sensitive file paths
   beforeSend(event) {
     // Scrub user home directory from file paths
