@@ -12,8 +12,35 @@ const path = require('path');
 const fs = require('fs');
 const log = require('electron-log');
 
+// Fix sharp native module resolution in Windows packaged builds.
+// The @img/sharp-win32-x64 package uses a package.json exports map
+// ("./sharp.node" -> "./lib/sharp-win32-x64.node") which fails to resolve
+// inside Electron's asar archive. This patches Module._resolveFilename to
+// bypass the exports map and resolve directly to the unpacked native binary.
+if (process.platform === 'win32' && app.isPackaged) {
+  const Module = require('module');
+  const originalResolveFilename = Module._resolveFilename;
+  Module._resolveFilename = function (request, parent, isMain, options) {
+    if (request === '@img/sharp-win32-x64/sharp.node') {
+      const unpackedPath = path.join(
+        process.resourcesPath,
+        'app.asar.unpacked',
+        'node_modules',
+        '@img',
+        'sharp-win32-x64',
+        'lib',
+        'sharp-win32-x64.node'
+      );
+      if (fs.existsSync(unpackedPath)) {
+        return unpackedPath;
+      }
+    }
+    return originalResolveFilename.call(this, request, parent, isMain, options);
+  };
+}
+
 // IMPORTANT: Load sharp BEFORE Sentry. Sentry's require-in-the-middle hooks
-// break asar path resolution for native modules like @img/sharp-win32-x64.
+// (via @opentelemetry/instrumentation) can interfere with asar path resolution.
 const sharp = require('sharp');
 
 const Sentry = require('@sentry/electron/main');
@@ -27,6 +54,10 @@ Sentry.init({
   release: `strabomicro2@${app.getVersion()}`,
   // Set environment
   environment: app.isPackaged ? 'production' : 'development',
+  // Disable OpenTelemetry auto-instrumentation. This prevents require-in-the-middle
+  // hooks from patching Node's require system, which can break native module resolution
+  // in asar-packaged builds. Error capture still works without OpenTelemetry.
+  skipOpenTelemetrySetup: true,
   // Filter out sensitive file paths
   beforeSend(event) {
     // Scrub user home directory from file paths
