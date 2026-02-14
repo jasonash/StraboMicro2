@@ -1388,6 +1388,22 @@ app.whenReady().then(async () => {
       log.info(`[Protocol] Serving static file: ${filePath}`);
       return net.fetch(`file://${filePath}`);
     });
+
+    // Override the file:// protocol handler to redirect ort-wasm requests
+    // from app.asar to app.asar.unpacked. Chromium's dynamic import()
+    // cannot load ES modules from inside an asar archive, so the WASM
+    // backend .mjs and .wasm files must come from the real filesystem.
+    // net.fetch inside protocol.handle uses Electron's original file handler,
+    // so all non-ort-wasm requests pass through unchanged.
+    protocol.handle('file', (request) => {
+      const url = request.url;
+      if (url.includes('app.asar') && url.includes('ort-wasm') && !url.includes('app.asar.unpacked')) {
+        const redirected = url.replace('app.asar', 'app.asar.unpacked');
+        log.info(`[WASM] Redirecting: ${url} -> ${redirected}`);
+        return net.fetch(redirected);
+      }
+      return net.fetch(url);
+    });
   }
 
   // Initialize log service (persistent logging to file)
