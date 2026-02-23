@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useCallback, useMemo, useSyncExternalStore } from 'react';
 import type { PopoverOrigin } from '@mui/material';
 
 type DockEdge = 'right' | 'bottom' | 'left' | 'top';
@@ -6,12 +6,31 @@ type DockEdge = 'right' | 'bottom' | 'left' | 'top';
 const STORAGE_KEY = 'toolbarDockEdge';
 const CYCLE_ORDER: DockEdge[] = ['right', 'bottom', 'left', 'top'];
 
-function getInitialEdge(): DockEdge {
+function readEdge(): DockEdge {
   const stored = localStorage.getItem(STORAGE_KEY);
   if (stored && CYCLE_ORDER.includes(stored as DockEdge)) {
     return stored as DockEdge;
   }
   return 'right';
+}
+
+// Shared module-level state so all hook consumers stay in sync
+let currentEdge: DockEdge = readEdge();
+const listeners = new Set<() => void>();
+
+function subscribe(listener: () => void) {
+  listeners.add(listener);
+  return () => { listeners.delete(listener); };
+}
+
+function getSnapshot(): DockEdge {
+  return currentEdge;
+}
+
+function setEdge(edge: DockEdge) {
+  currentEdge = edge;
+  localStorage.setItem(STORAGE_KEY, edge);
+  listeners.forEach(l => l());
 }
 
 const TOOLTIP_PLACEMENT: Record<DockEdge, 'left' | 'right' | 'top' | 'bottom'> = {
@@ -48,15 +67,12 @@ const POPOVER_ANCHORS: Record<DockEdge, { anchor: PopoverOrigin; transform: Popo
 };
 
 export function useToolbarDock() {
-  const [dockEdge, setDockEdge] = useState<DockEdge>(getInitialEdge);
+  const dockEdge = useSyncExternalStore(subscribe, getSnapshot);
 
   const cycleDock = useCallback(() => {
-    setDockEdge((prev) => {
-      const idx = CYCLE_ORDER.indexOf(prev);
-      const next = CYCLE_ORDER[(idx + 1) % CYCLE_ORDER.length]!;
-      localStorage.setItem(STORAGE_KEY, next);
-      return next;
-    });
+    const idx = CYCLE_ORDER.indexOf(currentEdge);
+    const next = CYCLE_ORDER[(idx + 1) % CYCLE_ORDER.length]!;
+    setEdge(next);
   }, []);
 
   const isHorizontal = dockEdge === 'top' || dockEdge === 'bottom';
