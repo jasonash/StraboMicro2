@@ -2,12 +2,13 @@ import React, { useState } from 'react';
 import { Box, IconButton, Tooltip, Slider, Popover, Typography } from '@mui/material';
 import { HexColorPicker } from 'react-colorful';
 import { useAppStore, DrawingTool } from '@/store';
+import { useToolbarDock } from '@/hooks/useToolbarDock';
 import './SketchToolbar.css';
 
 /**
  * SketchToolbar - Floating toolbar for sketch drawing tools
  *
- * Positioned absolutely on the right side of the viewer canvas.
+ * Dockable to any edge of the viewer canvas (right/bottom/left/top).
  * Contains sketch tools: Pen, Marker, Eraser, plus color picker and width slider.
  * Only visible when sketch mode is active.
  */
@@ -25,6 +26,15 @@ const SketchToolbar: React.FC = () => {
   const activeSketchLayerId = useAppStore((state) => state.activeSketchLayerId);
   const activeMicrographId = useAppStore((state) => state.activeMicrographId);
   const getSketchLayers = useAppStore((state) => state.getSketchLayers);
+
+  const {
+    isHorizontal,
+    positionStyle,
+    tooltipPlacement,
+    popoverAnchorOrigin,
+    popoverTransformOrigin,
+    cycleDock,
+  } = useToolbarDock();
 
   // Color picker popover state
   const [colorAnchorEl, setColorAnchorEl] = useState<HTMLButtonElement | null>(null);
@@ -67,10 +77,12 @@ const SketchToolbar: React.FC = () => {
   // Check if text tool is active (to show font size slider instead of stroke width)
   const isTextTool = activeTool === 'sketch-text';
 
+  const orientationClass = isHorizontal ? 'dock-horizontal' : 'dock-vertical';
+
   return (
-    <Box className="sketch-toolbar">
+    <Box className={`sketch-toolbar ${orientationClass}`} style={positionStyle}>
       {/* Exit Sketch Mode */}
-      <Tooltip title="Exit Sketch Mode (Esc)" placement="left">
+      <Tooltip title="Exit Sketch Mode (Esc)" placement={tooltipPlacement}>
         <IconButton
           className="toolbar-button exit-button"
           onClick={handleExitSketch}
@@ -90,7 +102,7 @@ const SketchToolbar: React.FC = () => {
       <Box className="toolbar-divider" />
 
       {/* Pen Tool */}
-      <Tooltip title={canDraw ? "Pen Tool (1)" : "Create a sketch layer first"} placement="left">
+      <Tooltip title={canDraw ? "Pen Tool (1)" : "Create a sketch layer first"} placement={tooltipPlacement}>
         <span>
           <IconButton
             className={`toolbar-button ${activeTool === 'sketch-pen' ? 'active' : ''}`}
@@ -114,7 +126,7 @@ const SketchToolbar: React.FC = () => {
       </Tooltip>
 
       {/* Marker Tool */}
-      <Tooltip title={canDraw ? "Marker Tool (2)" : "Create a sketch layer first"} placement="left">
+      <Tooltip title={canDraw ? "Marker Tool (2)" : "Create a sketch layer first"} placement={tooltipPlacement}>
         <span>
           <IconButton
             className={`toolbar-button ${activeTool === 'sketch-marker' ? 'active' : ''}`}
@@ -149,7 +161,7 @@ const SketchToolbar: React.FC = () => {
       </Tooltip>
 
       {/* Eraser Tool */}
-      <Tooltip title={canDraw ? "Eraser Tool (3)" : "Create a sketch layer first"} placement="left">
+      <Tooltip title={canDraw ? "Eraser Tool (3)" : "Create a sketch layer first"} placement={tooltipPlacement}>
         <span>
           <IconButton
             className={`toolbar-button ${activeTool === 'sketch-eraser' ? 'active' : ''}`}
@@ -178,7 +190,7 @@ const SketchToolbar: React.FC = () => {
       </Tooltip>
 
       {/* Text Tool */}
-      <Tooltip title={canDraw ? "Text Tool (4 or T)" : "Create a sketch layer first"} placement="left">
+      <Tooltip title={canDraw ? "Text Tool (4 or T)" : "Create a sketch layer first"} placement={tooltipPlacement}>
         <span>
           <IconButton
             className={`toolbar-button ${activeTool === 'sketch-text' ? 'active' : ''}`}
@@ -207,7 +219,7 @@ const SketchToolbar: React.FC = () => {
       <Box className="toolbar-divider" />
 
       {/* Color Picker */}
-      <Tooltip title="Stroke Color" placement="left">
+      <Tooltip title="Stroke Color" placement={tooltipPlacement}>
         <IconButton
           className="toolbar-button color-button"
           onClick={handleColorClick}
@@ -225,15 +237,8 @@ const SketchToolbar: React.FC = () => {
         open={colorOpen}
         anchorEl={colorAnchorEl}
         onClose={handleColorClose}
-        anchorOrigin={{
-          vertical: 'center',
-          horizontal: 'left',
-        }}
-        transformOrigin={{
-          vertical: 'center',
-          horizontal: 'right',
-        }}
-        sx={{ marginRight: 1 }}
+        anchorOrigin={popoverAnchorOrigin}
+        transformOrigin={popoverTransformOrigin}
       >
         <Box sx={{ p: 2 }}>
           <Typography variant="caption" sx={{ mb: 1, display: 'block', color: 'text.secondary' }}>
@@ -247,9 +252,9 @@ const SketchToolbar: React.FC = () => {
       <Box className="width-slider-container">
         <Tooltip
           title={isTextTool ? `Font Size: ${sketchFontSize}px` : `Stroke Width: ${sketchStrokeWidth}px`}
-          placement="left"
+          placement={tooltipPlacement}
         >
-          <Box sx={{ width: '100%', px: 0.5 }}>
+          <Box sx={isHorizontal ? { width: 60, px: 0.5 } : { width: '100%', px: 0.5 }}>
             <Slider
               value={isTextTool ? sketchFontSize : sketchStrokeWidth}
               onChange={isTextTool ? handleFontSizeChange : handleWidthChange}
@@ -303,6 +308,29 @@ const SketchToolbar: React.FC = () => {
           </Typography>
         </Box>
       )}
+
+      {/* Divider before dock button */}
+      <Box className="toolbar-divider" />
+
+      {/* Dock cycle button */}
+      <Tooltip title="Move Toolbar" placement={tooltipPlacement}>
+        <IconButton
+          className="dock-button"
+          onClick={cycleDock}
+          aria-label="Cycle toolbar position"
+        >
+          <svg width="16" height="16" viewBox="0 0 16 16">
+            <path
+              d="M8 1v14M1 8h14M8 1l-2.5 2.5M8 1l2.5 2.5M8 15l-2.5-2.5M8 15l2.5-2.5M1 8l2.5-2.5M1 8l2.5 2.5M15 8l-2.5-2.5M15 8l-2.5 2.5"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              fill="none"
+            />
+          </svg>
+        </IconButton>
+      </Tooltip>
     </Box>
   );
 };
