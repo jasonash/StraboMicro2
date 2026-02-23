@@ -13,6 +13,7 @@
 
 .drawing-toolbar.dock-vertical {
   flex-direction: column;
+  align-items: center;
 }
 
 .drawing-toolbar.dock-horizontal {

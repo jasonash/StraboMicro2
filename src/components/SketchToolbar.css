@@ -13,6 +13,7 @@
 
 .sketch-toolbar.dock-vertical {
   flex-direction: column;
+  align-items: center;
 }
 
 .sketch-toolbar.dock-horizontal {
@@ -121,10 +122,16 @@
   flex-direction: row;
   padding: 4px 8px;
   min-height: 40px;
+  gap: 8px;
 }
 
 .sketch-toolbar.dock-horizontal .width-slider-container .MuiSlider-root {
   width: 60px;
+  flex-shrink: 0;
+}
+
+.sketch-toolbar.dock-horizontal .width-preview {
+  flex-shrink: 0;
 }
 
 /* Width preview */
