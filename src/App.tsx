@@ -492,8 +492,14 @@ function App() {
         return;
       }
 
-      const micrograph = useAppStore.getState().micrographIndex.get(currentMicrographId);
-      const spotCount = micrograph?.spots?.length || 0;
+      // If viewing a secondary sibling (XPL), resolve to the primary (PPL) where spots are stored
+      const currentMicro = useAppStore.getState().micrographIndex.get(currentMicrographId);
+      const targetId = currentMicro?.isPrimarySibling === false && currentMicro?.siblingImageId
+        ? currentMicro.siblingImageId
+        : currentMicrographId;
+
+      const targetMicro = useAppStore.getState().micrographIndex.get(targetId);
+      const spotCount = targetMicro?.spots?.length || 0;
 
       if (spotCount === 0) {
         alert('No spots to clear on this micrograph.');
@@ -504,8 +510,8 @@ function App() {
         return;
       }
 
-      useAppStore.getState().clearAllSpots(currentMicrographId);
-      console.log(`[App] Cleared ${spotCount} spots from micrograph ${currentMicrographId}`);
+      useAppStore.getState().clearAllSpots(targetId);
+      console.log(`[App] Cleared ${spotCount} spots from micrograph ${targetId}`);
     }));
 
     // Quick Edit Spots menu item (Edit menu, Cmd+Shift+Q)
@@ -515,8 +521,12 @@ function App() {
         alert('Please select a micrograph first.');
         return;
       }
-      // Check if there are spots on the micrograph
-      const micrograph = state.micrographIndex.get(state.activeMicrographId);
+      // If viewing a secondary sibling (XPL), resolve to the primary (PPL) where spots are stored
+      const currentMicro = state.micrographIndex.get(state.activeMicrographId);
+      const resolvedId = currentMicro?.isPrimarySibling === false && currentMicro?.siblingImageId
+        ? currentMicro.siblingImageId
+        : state.activeMicrographId;
+      const micrograph = state.micrographIndex.get(resolvedId);
       if (!micrograph?.spots || micrograph.spots.length === 0) {
         alert('No spots on this micrograph.\n\nDraw some spots or use "Detect Grains" first.');
         return;
