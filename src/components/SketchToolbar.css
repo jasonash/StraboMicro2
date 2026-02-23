@@ -128,10 +128,12 @@
 .sketch-toolbar.dock-horizontal .width-slider-container .MuiSlider-root {
   width: 60px;
   flex-shrink: 0;
+  padding: 0;
 }
 
 .sketch-toolbar.dock-horizontal .width-preview {
   flex-shrink: 0;
+  margin-left: 4px;
 }
 
 /* Width preview */
