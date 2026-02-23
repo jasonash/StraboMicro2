@@ -5,7 +5,7 @@
  * Uses the same fields as NewSampleDialog but pre-populates with existing data.
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -64,7 +64,22 @@ export function EditSampleDialog({ isOpen, onClose, sample }: EditSampleDialogPr
   const [shouldUnlink, setShouldUnlink] = useState(false);
 
   const updateSample = useAppStore((state) => state.updateSample);
+  const project = useAppStore((state) => state.project);
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
+
+  // Collect all existing sample IDs in the project (excluding the current sample being edited)
+  const existingSampleIds = useMemo(() => {
+    const ids = new Set<string>();
+    if (!project?.datasets) return ids;
+    for (const dataset of project.datasets) {
+      for (const s of dataset.samples || []) {
+        if (s.id !== sample?.id) {
+          ids.add(s.id);
+        }
+      }
+    }
+    return ids;
+  }, [project, sample?.id]);
 
   // Track if sample is already linked to server (and not being unlinked)
   const isAlreadyLinked = sample?.existsOnServer === true && !shouldUnlink;
@@ -485,6 +500,7 @@ export function EditSampleDialog({ isOpen, onClose, sample }: EditSampleDialogPr
         open={showLinkDialog}
         onClose={() => setShowLinkDialog(false)}
         onSelectSample={handleLinkedSampleSelect}
+        existingSampleIds={existingSampleIds}
       />
     </Dialog>
   );

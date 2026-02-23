@@ -5,7 +5,7 @@
  * Requires a dataset ID to know where to add the sample.
  */
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -63,7 +63,20 @@ export function NewSampleDialog({ isOpen, onClose, datasetId }: NewSampleDialogP
   const [linkedSampleData, setLinkedSampleData] = useState<Partial<SampleMetadata> | null>(null);
 
   const addSample = useAppStore((state) => state.addSample);
+  const project = useAppStore((state) => state.project);
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
+
+  // Collect all existing sample IDs in the project to prevent duplicate linking
+  const existingSampleIds = useMemo(() => {
+    const ids = new Set<string>();
+    if (!project?.datasets) return ids;
+    for (const dataset of project.datasets) {
+      for (const sample of dataset.samples || []) {
+        ids.add(sample.id);
+      }
+    }
+    return ids;
+  }, [project]);
 
   const updateField = (field: keyof SampleFormData, value: string) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
@@ -384,6 +397,7 @@ export function NewSampleDialog({ isOpen, onClose, datasetId }: NewSampleDialogP
         open={showLinkDialog}
         onClose={() => setShowLinkDialog(false)}
         onSelectSample={handleLinkedSampleSelect}
+        existingSampleIds={existingSampleIds}
       />
     </Dialog>
   );
