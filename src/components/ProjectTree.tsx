@@ -67,7 +67,7 @@ import { EditMicrographLocationDialog } from './dialogs/EditMicrographLocationDi
 import { BatchImportDialog } from './dialogs/BatchImportDialog';
 import { SetScaleDialog } from './dialogs/SetScaleDialog';
 import { LinkSiblingDialog } from './dialogs/LinkSiblingDialog';
-import { AddSiblingXPLDialog } from './dialogs/AddSiblingXPLDialog';
+import { AddSiblingDialog } from './dialogs/AddSiblingDialog';
 import { findMicrographById } from '@/store/helpers';
 import type { DatasetMetadata, SampleMetadata, MicrographMetadata } from '@/types/project-types';
 
@@ -361,9 +361,9 @@ export function ProjectTree() {
   const [showLinkSibling, setShowLinkSibling] = useState(false);
   const [linkSiblingMicrographId, setLinkSiblingMicrographId] = useState<string | null>(null);
 
-  // Add Sibling XPL dialog state (for adding XPL after-the-fact)
-  const [showAddSiblingXPL, setShowAddSiblingXPL] = useState(false);
-  const [addSiblingXPLMicrographId, setAddSiblingXPLMicrographId] = useState<string | null>(null);
+  // Add Sibling dialog state (for adding PPL/XPL sibling after-the-fact)
+  const [showAddSibling, setShowAddSibling] = useState(false);
+  const [addSiblingMicrographId, setAddSiblingMicrographId] = useState<string | null>(null);
 
   // Opacity popover state (use position instead of element to avoid anchor disappearing)
   const [opacityAnchorPosition, setOpacityAnchorPosition] = useState<{
@@ -1190,16 +1190,17 @@ export function ProjectTree() {
           >
             Batch Import Associated Micrographs
           </MenuItem>
-          {/* Add Corresponding XPL Image - only show if no sibling and is PPL */}
-          {!micrograph.siblingImageId && micrograph.imageType === 'Plane Polarized Light' && (
+          {/* Add Corresponding Sibling Image - show for PPL or XPL without existing sibling */}
+          {!micrograph.siblingImageId &&
+            (micrograph.imageType === 'Plane Polarized Light' || micrograph.imageType === 'Cross Polarized Light') && (
             <MenuItem
               onClick={() => {
-                setAddSiblingXPLMicrographId(micrograph.id);
-                setShowAddSiblingXPL(true);
+                setAddSiblingMicrographId(micrograph.id);
+                setShowAddSibling(true);
                 setMicrographAddAnchor({ ...micrographAddAnchor, [micrograph.id]: null });
               }}
             >
-              Add Corresponding XPL Image
+              Add Corresponding {micrograph.imageType === 'Plane Polarized Light' ? 'XPL' : 'PPL'} Image
             </MenuItem>
           )}
         </Menu>
@@ -1834,14 +1835,14 @@ export function ProjectTree() {
         micrographId={linkSiblingMicrographId}
       />
 
-      {/* Add Sibling XPL Dialog */}
-      <AddSiblingXPLDialog
-        open={showAddSiblingXPL}
+      {/* Add Sibling Dialog (PPL↔XPL) */}
+      <AddSiblingDialog
+        open={showAddSibling}
         onClose={() => {
-          setShowAddSiblingXPL(false);
-          setAddSiblingXPLMicrographId(null);
+          setShowAddSibling(false);
+          setAddSiblingMicrographId(null);
         }}
-        pplMicrographId={addSiblingXPLMicrographId}
+        sourceMicrographId={addSiblingMicrographId}
       />
 
       {/* Opacity Slider Popover */}

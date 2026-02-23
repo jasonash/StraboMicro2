@@ -1,12 +1,12 @@
 /**
- * Add Sibling XPL Dialog
+ * Add Sibling Dialog
  *
- * Simple dialog for adding a corresponding XPL image to an existing PPL micrograph.
- * This provides a streamlined way to add the XPL sibling if the user forgot during
- * initial PPL creation.
+ * Dialog for adding a corresponding PPL or XPL image to an existing micrograph.
+ * Works bidirectionally: can add XPL to PPL, or PPL to XPL.
+ * The direction is derived from the source micrograph's imageType.
  */
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -23,19 +23,28 @@ import { Image as ImageIcon } from '@mui/icons-material';
 import { useAppStore } from '@/store';
 import type { MicrographMetadata } from '@/types/project-types';
 
-interface AddSiblingXPLDialogProps {
+interface AddSiblingDialogProps {
   open: boolean;
   onClose: () => void;
-  pplMicrographId: string | null;
+  sourceMicrographId: string | null;
 }
 
-export function AddSiblingXPLDialog({
+const PPL_TYPES = ['PPL', 'Plane Polarized Light', 'Plane-Polarized Light'];
+
+function isPPLType(imageType: string | undefined | null): boolean {
+  if (!imageType) return false;
+  const normalized = imageType.toUpperCase();
+  return PPL_TYPES.some(t => normalized.includes(t.toUpperCase()));
+}
+
+
+export function AddSiblingDialog({
   open,
   onClose,
-  pplMicrographId,
-}: AddSiblingXPLDialogProps) {
-  const [xplName, setXplName] = useState('');
-  const [xplFileName, setXplFileName] = useState('');
+  sourceMicrographId,
+}: AddSiblingDialogProps) {
+  const [siblingName, setSiblingName] = useState('');
+  const [siblingFileName, setSiblingFileName] = useState('');
   const [scratchIdentifier, setScratchIdentifier] = useState<string | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [imageWidth, setImageWidth] = useState<number>(0);
@@ -55,26 +64,37 @@ export function AddSiblingXPLDialog({
   // Aspect ratio tolerance for sibling matching (1%)
   const ASPECT_RATIO_TOLERANCE = 0.01;
 
-  // Find the PPL micrograph and its sample
-  const { pplMicrograph, sampleId } = (() => {
-    if (!project || !pplMicrographId) return { pplMicrograph: null, sampleId: null };
+  // Find the source micrograph and its sample
+  const { sourceMicrograph, sampleId } = (() => {
+    if (!project || !sourceMicrographId) return { sourceMicrograph: null, sampleId: null };
 
     for (const dataset of project.datasets || []) {
       for (const sample of dataset.samples || []) {
-        const micro = sample.micrographs?.find(m => m.id === pplMicrographId);
+        const micro = sample.micrographs?.find(m => m.id === sourceMicrographId);
         if (micro) {
-          return { pplMicrograph: micro, sampleId: sample.id };
+          return { sourceMicrograph: micro, sampleId: sample.id };
         }
       }
     }
-    return { pplMicrograph: null, sampleId: null };
+    return { sourceMicrograph: null, sampleId: null };
   })();
+
+  // Derive direction from source micrograph's imageType
+  const { sourceIsPPL, siblingType, siblingLabel, sourceLabel } = useMemo(() => {
+    const srcIsPPL = isPPLType(sourceMicrograph?.imageType);
+    return {
+      sourceIsPPL: srcIsPPL,
+      siblingType: srcIsPPL ? 'Cross Polarized Light' as const : 'Plane Polarized Light' as const,
+      siblingLabel: srcIsPPL ? 'XPL' : 'PPL',
+      sourceLabel: srcIsPPL ? 'PPL' : 'XPL',
+    };
+  }, [sourceMicrograph?.imageType]);
 
   // Reset state when dialog opens/closes
   useEffect(() => {
     if (!open) {
-      setXplName('');
-      setXplFileName('');
+      setSiblingName('');
+      setSiblingFileName('');
       setScratchIdentifier(null);
       setPreviewUrl(null);
       setImageWidth(0);
@@ -88,7 +108,7 @@ export function AddSiblingXPLDialog({
 
   // Handle file selection
   const handleBrowseImage = useCallback(async () => {
-    if (!window.api?.openTiffDialog || !pplMicrograph) return;
+    if (!window.api?.openTiffDialog || !sourceMicrograph) return;
 
     try {
       setError(null);
@@ -103,8 +123,8 @@ export function AddSiblingXPLDialog({
       const fileName = filePath.split(/[\\/]/).pop() || 'image.tif';
       const nameWithoutExt = fileName.substring(0, fileName.lastIndexOf('.')) || fileName;
 
-      setXplFileName(fileName);
-      setXplName(nameWithoutExt);
+      setSiblingFileName(fileName);
+      setSiblingName(nameWithoutExt);
 
       // Listen for progress updates
       if (window.api.onConversionProgress) {
@@ -120,18 +140,18 @@ export function AddSiblingXPLDialog({
         throw new Error('Image conversion failed');
       }
 
-      // Get PPL dimensions for validation
-      const pplWidth = pplMicrograph?.width || pplMicrograph?.imageWidth || 0;
-      const pplHeight = pplMicrograph?.height || pplMicrograph?.imageHeight || 0;
-      const xplWidth = conversionResult.jpegWidth;
-      const xplHeight = conversionResult.jpegHeight;
+      // Get source dimensions for validation
+      const sourceWidth = sourceMicrograph?.width || sourceMicrograph?.imageWidth || 0;
+      const sourceHeight = sourceMicrograph?.height || sourceMicrograph?.imageHeight || 0;
+      const newWidth = conversionResult.jpegWidth;
+      const newHeight = conversionResult.jpegHeight;
 
       // Validate aspect ratios match
-      if (pplWidth > 0 && pplHeight > 0 && xplWidth > 0 && xplHeight > 0) {
-        const pplAspectRatio = pplWidth / pplHeight;
-        const xplAspectRatio = xplWidth / xplHeight;
-        const aspectDiff = Math.abs(pplAspectRatio - xplAspectRatio);
-        const tolerance = ASPECT_RATIO_TOLERANCE * Math.max(pplAspectRatio, xplAspectRatio);
+      if (sourceWidth > 0 && sourceHeight > 0 && newWidth > 0 && newHeight > 0) {
+        const sourceAspectRatio = sourceWidth / sourceHeight;
+        const newAspectRatio = newWidth / newHeight;
+        const aspectDiff = Math.abs(sourceAspectRatio - newAspectRatio);
+        const tolerance = ASPECT_RATIO_TOLERANCE * Math.max(sourceAspectRatio, newAspectRatio);
 
         if (aspectDiff > tolerance) {
           // Aspect ratios don't match - clean up and show error
@@ -139,8 +159,8 @@ export function AddSiblingXPLDialog({
             await window.api.deleteScratchImage(conversionResult.identifier);
           }
           setDimensionError(
-            `The XPL image dimensions (${xplWidth} × ${xplHeight}) are not compatible with ` +
-            `the PPL image (${pplWidth} × ${pplHeight}). Both images must have the same aspect ratio.`
+            `The ${siblingLabel} image dimensions (${newWidth} \u00d7 ${newHeight}) are not compatible with ` +
+            `the ${sourceLabel} image (${sourceWidth} \u00d7 ${sourceHeight}). Both images must have the same aspect ratio.`
           );
           setConversionProgress(null);
           setLoading(false);
@@ -151,8 +171,8 @@ export function AddSiblingXPLDialog({
       // Dimensions are compatible
       setDimensionError(null);
       setScratchIdentifier(conversionResult.identifier);
-      setImageWidth(xplWidth);
-      setImageHeight(xplHeight);
+      setImageWidth(newWidth);
+      setImageHeight(newHeight);
 
       // Load preview thumbnail
       const tileData = await window.api.loadImageWithTiles(conversionResult.scratchPath);
@@ -163,16 +183,16 @@ export function AddSiblingXPLDialog({
 
       setConversionProgress(null);
     } catch (err) {
-      console.error('[AddSiblingXPLDialog] Error loading image:', err);
+      console.error('[AddSiblingDialog] Error loading image:', err);
       setError(err instanceof Error ? err.message : 'Failed to load image');
     } finally {
       setLoading(false);
     }
-  }, [pplMicrograph, ASPECT_RATIO_TOLERANCE]);
+  }, [sourceMicrograph, ASPECT_RATIO_TOLERANCE, siblingLabel, sourceLabel]);
 
-  // Handle adding the XPL image
+  // Handle adding the sibling image
   const handleAdd = useCallback(async () => {
-    if (!pplMicrograph || !sampleId || !scratchIdentifier || !project || !window.api) {
+    if (!sourceMicrograph || !sampleId || !scratchIdentifier || !project || !window.api) {
       return;
     }
 
@@ -180,76 +200,81 @@ export function AddSiblingXPLDialog({
       setLoading(true);
       setError(null);
 
-      const xplMicrographId = crypto.randomUUID();
+      const siblingMicrographId = crypto.randomUUID();
 
-      // Get PPL dimensions
-      const pplWidth = pplMicrograph.width || pplMicrograph.imageWidth || 0;
-      const pplHeight = pplMicrograph.height || pplMicrograph.imageHeight || 0;
+      // Get source dimensions
+      const sourceWidth = sourceMicrograph.width || sourceMicrograph.imageWidth || 0;
+      const sourceHeight = sourceMicrograph.height || sourceMicrograph.imageHeight || 0;
 
-      // If XPL has different dimensions than PPL, resize it to match
+      // If sibling has different dimensions than source, resize it to match
       let finalWidth = imageWidth;
       let finalHeight = imageHeight;
 
-      if (pplWidth > 0 && pplHeight > 0 && (pplWidth !== imageWidth || pplHeight !== imageHeight)) {
-        console.log(`[AddSiblingXPLDialog] Resizing XPL from ${imageWidth}x${imageHeight} to ${pplWidth}x${pplHeight}`);
-        setConversionProgress({ stage: 'Resizing to match PPL...', percent: 50 });
+      if (sourceWidth > 0 && sourceHeight > 0 && (sourceWidth !== imageWidth || sourceHeight !== imageHeight)) {
+        console.log(`[AddSiblingDialog] Resizing ${siblingLabel} from ${imageWidth}x${imageHeight} to ${sourceWidth}x${sourceHeight}`);
+        setConversionProgress({ stage: `Resizing to match ${sourceLabel}...`, percent: 50 });
 
-        await window.api.resizeScratchImage(scratchIdentifier, pplWidth, pplHeight);
-        finalWidth = pplWidth;
-        finalHeight = pplHeight;
+        await window.api.resizeScratchImage(scratchIdentifier, sourceWidth, sourceHeight);
+        finalWidth = sourceWidth;
+        finalHeight = sourceHeight;
 
-        console.log(`[AddSiblingXPLDialog] XPL resized to ${pplWidth}x${pplHeight}`);
+        console.log(`[AddSiblingDialog] ${siblingLabel} resized to ${sourceWidth}x${sourceHeight}`);
       }
 
       setConversionProgress({ stage: 'Saving image...', percent: 75 });
 
       // Move image from scratch to project folder
-      console.log(`[AddSiblingXPLDialog] Moving XPL image to project folder: ${xplMicrographId}`);
-      await window.api.moveFromScratch(scratchIdentifier, project.id, xplMicrographId);
+      console.log(`[AddSiblingDialog] Moving ${siblingLabel} image to project folder: ${siblingMicrographId}`);
+      await window.api.moveFromScratch(scratchIdentifier, project.id, siblingMicrographId);
 
-      // Create XPL micrograph - inherits position and instrument from PPL
-      // Dimensions now match PPL, so no scale adjustments needed
-      const xplMicrograph: MicrographMetadata = {
-        id: xplMicrographId,
-        name: xplName || xplFileName || 'XPL Image',
-        imageFilename: xplFileName,
-        imagePath: xplMicrographId,
+      // Create sibling micrograph - inherits position and instrument from source
+      const newSiblingMicrograph: MicrographMetadata = {
+        id: siblingMicrographId,
+        name: siblingName || siblingFileName || `${siblingLabel} Image`,
+        imageFilename: siblingFileName,
+        imagePath: siblingMicrographId,
         imageWidth: finalWidth,
         imageHeight: finalHeight,
         width: finalWidth,
         height: finalHeight,
-        opacity: pplMicrograph.opacity ?? 1.0,
-        imageType: 'Cross Polarized Light',
-        // Inherit parent and position from PPL
-        parentID: pplMicrograph.parentID,
-        offsetInParent: pplMicrograph.offsetInParent
-          ? { ...pplMicrograph.offsetInParent }
+        opacity: sourceMicrograph.opacity ?? 1.0,
+        imageType: siblingType,
+        // Inherit parent and position from source
+        parentID: sourceMicrograph.parentID,
+        offsetInParent: sourceMicrograph.offsetInParent
+          ? { ...sourceMicrograph.offsetInParent }
           : undefined,
-        rotation: pplMicrograph.rotation,
+        rotation: sourceMicrograph.rotation,
         // Inherit scaleX/scaleY for overlay placement
-        scaleX: pplMicrograph.scaleX,
-        scaleY: pplMicrograph.scaleY,
-        pointInParent: pplMicrograph.pointInParent
-          ? { ...pplMicrograph.pointInParent }
+        scaleX: sourceMicrograph.scaleX,
+        scaleY: sourceMicrograph.scaleY,
+        pointInParent: sourceMicrograph.pointInParent
+          ? { ...sourceMicrograph.pointInParent }
           : undefined,
-        // Inherit instrument settings from PPL
-        instrument: pplMicrograph.instrument
-          ? { ...pplMicrograph.instrument }
+        // Inherit instrument settings from source
+        instrument: sourceMicrograph.instrument
+          ? { ...sourceMicrograph.instrument }
           : undefined,
-        // Same scale as PPL since dimensions now match
-        scalePixelsPerCentimeter: pplMicrograph.scalePixelsPerCentimeter,
+        // Same scale as source since dimensions now match
+        scalePixelsPerCentimeter: sourceMicrograph.scalePixelsPerCentimeter,
         // Default visibility
         isMicroVisible: true,
         isFlipped: false,
       };
 
       // Add to store
-      addMicrograph(sampleId, xplMicrograph);
-      console.log('[AddSiblingXPLDialog] XPL micrograph created:', xplMicrographId);
+      addMicrograph(sampleId, newSiblingMicrograph);
+      console.log(`[AddSiblingDialog] ${siblingLabel} micrograph created:`, siblingMicrographId);
 
-      // Link as siblings (PPL is primary, XPL is secondary)
-      linkSiblingImages(pplMicrograph.id, xplMicrographId);
-      console.log('[AddSiblingXPLDialog] Sibling link created:', pplMicrograph.id, '<->', xplMicrographId);
+      // Link as siblings - PPL is always primary, XPL is always secondary
+      if (sourceIsPPL) {
+        // Source is PPL (primary), new sibling is XPL (secondary)
+        linkSiblingImages(sourceMicrograph.id, siblingMicrographId);
+      } else {
+        // Source is XPL, new sibling is PPL (primary) → PPL first
+        linkSiblingImages(siblingMicrographId, sourceMicrograph.id);
+      }
+      console.log(`[AddSiblingDialog] Sibling link created: PPL <-> XPL`);
 
       // Close dialog first
       onClose();
@@ -260,38 +285,38 @@ export function AddSiblingXPLDialog({
           const freshProject = useAppStore.getState().project;
           if (!freshProject || !window.api) return;
 
-          // Generate XPL thumbnail
-          await window.api.generateCompositeThumbnail(freshProject.id, xplMicrographId, freshProject);
+          // Generate sibling thumbnail
+          await window.api.generateCompositeThumbnail(freshProject.id, siblingMicrographId, freshProject);
           window.dispatchEvent(
-            new CustomEvent('thumbnail-generated', { detail: { micrographId: xplMicrographId } })
+            new CustomEvent('thumbnail-generated', { detail: { micrographId: siblingMicrographId } })
           );
 
           // Regenerate parent thumbnail if this is an associated micrograph
-          if (pplMicrograph.parentID) {
+          if (sourceMicrograph.parentID) {
             await window.api.generateCompositeThumbnail(
               freshProject.id,
-              pplMicrograph.parentID,
+              sourceMicrograph.parentID,
               freshProject
             );
             window.dispatchEvent(
-              new CustomEvent('thumbnail-generated', { detail: { micrographId: pplMicrograph.parentID } })
+              new CustomEvent('thumbnail-generated', { detail: { micrographId: sourceMicrograph.parentID } })
             );
           }
 
-          console.log('[AddSiblingXPLDialog] Thumbnails generated');
+          console.log('[AddSiblingDialog] Thumbnails generated');
         } catch (err) {
-          console.error('[AddSiblingXPLDialog] Error generating thumbnails:', err);
+          console.error('[AddSiblingDialog] Error generating thumbnails:', err);
         }
       }, 100);
 
     } catch (err) {
-      console.error('[AddSiblingXPLDialog] Error adding XPL:', err);
-      setError(err instanceof Error ? err.message : 'Failed to add XPL image');
+      console.error(`[AddSiblingDialog] Error adding ${siblingLabel}:`, err);
+      setError(err instanceof Error ? err.message : `Failed to add ${siblingLabel} image`);
       setLoading(false);
     }
-  }, [pplMicrograph, sampleId, scratchIdentifier, project, xplName, xplFileName, imageWidth, imageHeight, addMicrograph, linkSiblingImages, onClose]);
+  }, [sourceMicrograph, sampleId, scratchIdentifier, project, siblingName, siblingFileName, imageWidth, imageHeight, addMicrograph, linkSiblingImages, onClose, sourceIsPPL, siblingLabel, sourceLabel, siblingType]);
 
-  const canAdd = scratchIdentifier && xplName && !loading && !dimensionError;
+  const canAdd = scratchIdentifier && siblingName && !loading && !dimensionError;
 
   return (
     <Dialog
@@ -299,19 +324,19 @@ export function AddSiblingXPLDialog({
       onClose={onClose}
       maxWidth="sm"
       fullWidth
-      aria-labelledby="add-sibling-xpl-dialog-title"
+      aria-labelledby="add-sibling-dialog-title"
     >
-      <DialogTitle id="add-sibling-xpl-dialog-title">
-        Add Corresponding XPL Image
+      <DialogTitle id="add-sibling-dialog-title">
+        Add Corresponding {siblingLabel} Image
       </DialogTitle>
       <DialogContent>
-        {!pplMicrograph ? (
-          <Alert severity="error">PPL micrograph not found.</Alert>
+        {!sourceMicrograph ? (
+          <Alert severity="error">Source micrograph not found.</Alert>
         ) : (
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
             <Typography variant="body2" color="text.secondary">
-              Add a Cross Polarized Light (XPL) image to pair with "{pplMicrograph.name || pplMicrograph.imageFilename}".
-              The XPL will inherit the position and settings from the PPL.
+              Add a {siblingType} ({siblingLabel}) image to pair with &quot;{sourceMicrograph.name || sourceMicrograph.imageFilename}&quot;.
+              The {siblingLabel} will inherit the position and settings from the {sourceLabel}.
             </Typography>
 
             {error && (
@@ -335,7 +360,7 @@ export function AddSiblingXPLDialog({
                 startIcon={<ImageIcon />}
                 fullWidth
               >
-                {scratchIdentifier ? 'Change Image...' : 'Select XPL Image...'}
+                {scratchIdentifier ? 'Change Image...' : `Select ${siblingLabel} Image...`}
               </Button>
             </Box>
 
@@ -359,7 +384,7 @@ export function AddSiblingXPLDialog({
                 <Box
                   component="img"
                   src={previewUrl}
-                  alt="XPL Preview"
+                  alt={`${siblingLabel} Preview`}
                   sx={{
                     width: 120,
                     height: 90,
@@ -372,8 +397,8 @@ export function AddSiblingXPLDialog({
                 <Box sx={{ flex: 1 }}>
                   <TextField
                     label="Name"
-                    value={xplName}
-                    onChange={(e) => setXplName(e.target.value)}
+                    value={siblingName}
+                    onChange={(e) => setSiblingName(e.target.value)}
                     fullWidth
                     size="small"
                     disabled={loading}
@@ -382,7 +407,7 @@ export function AddSiblingXPLDialog({
                     {imageWidth} × {imageHeight} pixels
                   </Typography>
                   <Typography variant="caption" color="text.secondary">
-                    {xplFileName}
+                    {siblingFileName}
                   </Typography>
                 </Box>
               </Box>
@@ -399,7 +424,7 @@ export function AddSiblingXPLDialog({
           variant="contained"
           disabled={!canAdd}
         >
-          {loading ? 'Adding...' : 'Add XPL Image'}
+          {loading ? 'Adding...' : `Add ${siblingLabel} Image`}
         </Button>
       </DialogActions>
     </Dialog>
