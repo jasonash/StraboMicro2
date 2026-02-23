@@ -187,6 +187,7 @@ const Viewer: React.FC = () => {
   const sketchModeActive = useAppStore((state) => state.sketchModeActive);
   const setSketchModeActive = useAppStore((state) => state.setSketchModeActive);
   const setActiveTool = useAppStore((state) => state.setActiveTool);
+  const sketchTextInputActive = useAppStore((state) => state.sketchTextInputActive);
   const activeSketchLayerId = useAppStore((state) => state.activeSketchLayerId);
   const micrographIndex = useAppStore((state) => state.micrographIndex);
   const setSketchLayerVisible = useAppStore((state) => state.setSketchLayerVisible);
@@ -219,15 +220,15 @@ const Viewer: React.FC = () => {
         return;
       }
 
-      // Escape to exit sketch mode
-      if (e.key === 'Escape' && sketchModeActive) {
+      // Escape to exit sketch mode (but not while text input is active — let it handle Escape)
+      if (e.key === 'Escape' && sketchModeActive && !sketchTextInputActive) {
         e.preventDefault();
         setSketchModeActive(false);
         return;
       }
 
-      // Sketch tool shortcuts (only when in sketch mode)
-      if (sketchModeActive) {
+      // Sketch tool shortcuts (only when in sketch mode, disabled while text input is active)
+      if (sketchModeActive && !sketchTextInputActive) {
         if (e.key === '1') {
           e.preventDefault();
           setActiveTool('sketch-pen');
@@ -246,7 +247,7 @@ const Viewer: React.FC = () => {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [activeMicrographId, sketchModeActive, setSketchModeActive, setActiveTool]);
+  }, [activeMicrographId, sketchModeActive, sketchTextInputActive, setSketchModeActive, setActiveTool]);
 
   // Export with sketches dialog state
   const [exportDialogOpen, setExportDialogOpen] = useState(false);

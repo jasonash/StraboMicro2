@@ -249,6 +249,8 @@ interface AppState {
   sketchStrokeWidth: number;
   /** Current font size for sketch text tool (in image pixels) */
   sketchFontSize: number;
+  /** Whether the sketch text input overlay is currently active (open for editing) */
+  sketchTextInputActive: boolean;
 
   // ========== GENERATION SETTINGS (persisted) ==========
   /** Last used point counting settings */
@@ -352,6 +354,8 @@ interface AppState {
   setSketchStrokeWidth: (width: number) => void;
   /** Set the font size for sketch text tool */
   setSketchFontSize: (size: number) => void;
+  /** Set whether the sketch text input overlay is active */
+  setSketchTextInputActive: (active: boolean) => void;
 
   // ========== CRUD: DATASET ==========
   addDataset: (dataset: DatasetMetadata) => void;
@@ -933,6 +937,7 @@ export const useAppStore = create<AppState>()(
           sketchStrokeColor: localStorage.getItem('sketchStrokeColor') || '#ff0000', // Default: red
           sketchStrokeWidth: parseInt(localStorage.getItem('sketchStrokeWidth') || '3', 10), // Default: 3px
           sketchFontSize: parseInt(localStorage.getItem('sketchFontSize') || '24', 10), // Default: 24px
+          sketchTextInputActive: false,
 
           // Generation settings (persisted defaults)
           lastPointCountSettings: null,
@@ -1635,6 +1640,10 @@ export const useAppStore = create<AppState>()(
           setSketchFontSize: (size) => {
             localStorage.setItem('sketchFontSize', size.toString());
             set({ sketchFontSize: size });
+          },
+
+          setSketchTextInputActive: (active) => {
+            set({ sketchTextInputActive: active });
           },
 
           // ========== CRUD: DATASET ==========

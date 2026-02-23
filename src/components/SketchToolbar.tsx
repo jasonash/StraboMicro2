@@ -25,6 +25,7 @@ const SketchToolbar: React.FC = () => {
   const setSketchFontSize = useAppStore((state) => state.setSketchFontSize);
   const activeSketchLayerId = useAppStore((state) => state.activeSketchLayerId);
   const activeMicrographId = useAppStore((state) => state.activeMicrographId);
+  const sketchTextInputActive = useAppStore((state) => state.sketchTextInputActive);
   const getSketchLayers = useAppStore((state) => state.getSketchLayers);
 
   const {
@@ -77,15 +78,20 @@ const SketchToolbar: React.FC = () => {
   // Check if text tool is active (to show font size slider instead of stroke width)
   const isTextTool = activeTool === 'sketch-text';
 
+  // Disable tool switching while the text input overlay is open
+  const toolsLocked = sketchTextInputActive;
+
   const orientationClass = isHorizontal ? 'dock-horizontal' : 'dock-vertical';
 
   return (
     <Box className={`sketch-toolbar ${orientationClass}`} style={positionStyle}>
       {/* Exit Sketch Mode */}
-      <Tooltip title="Exit Sketch Mode (Esc)" placement={tooltipPlacement}>
+      <Tooltip title={toolsLocked ? "Finish text editing first" : "Exit Sketch Mode (Esc)"} placement={tooltipPlacement}>
+        <span>
         <IconButton
           className="toolbar-button exit-button"
           onClick={handleExitSketch}
+          disabled={toolsLocked}
           aria-label="Exit sketch mode"
         >
           <svg width="20" height="20" viewBox="0 0 20 20">
@@ -97,17 +103,18 @@ const SketchToolbar: React.FC = () => {
             />
           </svg>
         </IconButton>
+        </span>
       </Tooltip>
 
       <Box className="toolbar-divider" />
 
       {/* Pen Tool */}
-      <Tooltip title={canDraw ? "Pen Tool (1)" : "Create a sketch layer first"} placement={tooltipPlacement}>
+      <Tooltip title={toolsLocked ? "Finish text editing first" : canDraw ? "Pen Tool (1)" : "Create a sketch layer first"} placement={tooltipPlacement}>
         <span>
           <IconButton
             className={`toolbar-button ${activeTool === 'sketch-pen' ? 'active' : ''}`}
             onClick={() => handleToolClick('sketch-pen')}
-            disabled={!canDraw}
+            disabled={!canDraw || toolsLocked}
             aria-label="Pen tool"
           >
             {/* Pencil icon */}
@@ -126,12 +133,12 @@ const SketchToolbar: React.FC = () => {
       </Tooltip>
 
       {/* Marker Tool */}
-      <Tooltip title={canDraw ? "Marker Tool (2)" : "Create a sketch layer first"} placement={tooltipPlacement}>
+      <Tooltip title={toolsLocked ? "Finish text editing first" : canDraw ? "Marker Tool (2)" : "Create a sketch layer first"} placement={tooltipPlacement}>
         <span>
           <IconButton
             className={`toolbar-button ${activeTool === 'sketch-marker' ? 'active' : ''}`}
             onClick={() => handleToolClick('sketch-marker')}
-            disabled={!canDraw}
+            disabled={!canDraw || toolsLocked}
             aria-label="Marker tool"
           >
             {/* Highlighter icon */}
@@ -161,12 +168,12 @@ const SketchToolbar: React.FC = () => {
       </Tooltip>
 
       {/* Eraser Tool */}
-      <Tooltip title={canDraw ? "Eraser Tool (3)" : "Create a sketch layer first"} placement={tooltipPlacement}>
+      <Tooltip title={toolsLocked ? "Finish text editing first" : canDraw ? "Eraser Tool (3)" : "Create a sketch layer first"} placement={tooltipPlacement}>
         <span>
           <IconButton
             className={`toolbar-button ${activeTool === 'sketch-eraser' ? 'active' : ''}`}
             onClick={() => handleToolClick('sketch-eraser')}
-            disabled={!canDraw}
+            disabled={!canDraw || toolsLocked}
             aria-label="Eraser tool"
           >
             {/* Eraser icon */}
@@ -190,12 +197,12 @@ const SketchToolbar: React.FC = () => {
       </Tooltip>
 
       {/* Text Tool */}
-      <Tooltip title={canDraw ? "Text Tool (4 or T)" : "Create a sketch layer first"} placement={tooltipPlacement}>
+      <Tooltip title={toolsLocked ? "Finish text editing first" : canDraw ? "Text Tool (4 or T)" : "Create a sketch layer first"} placement={tooltipPlacement}>
         <span>
           <IconButton
             className={`toolbar-button ${activeTool === 'sketch-text' ? 'active' : ''}`}
             onClick={() => handleToolClick('sketch-text')}
-            disabled={!canDraw}
+            disabled={!canDraw || toolsLocked}
             aria-label="Text tool"
           >
             {/* Text/T icon */}
@@ -219,18 +226,20 @@ const SketchToolbar: React.FC = () => {
       <Box className="toolbar-divider" />
 
       {/* Color Picker */}
-      <Tooltip title="Stroke Color" placement={tooltipPlacement}>
+      <Tooltip title={toolsLocked ? "Finish text editing first" : "Stroke Color"} placement={tooltipPlacement}>
+        <span>
         <IconButton
           className="toolbar-button color-button"
           onClick={handleColorClick}
           aria-label="Stroke color"
-          disabled={!canDraw}
+          disabled={!canDraw || toolsLocked}
         >
           <Box
             className="color-swatch"
             sx={{ backgroundColor: sketchStrokeColor }}
           />
         </IconButton>
+        </span>
       </Tooltip>
 
       <Popover
