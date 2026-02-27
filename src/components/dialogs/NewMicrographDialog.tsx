@@ -655,6 +655,13 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
       try {
         const filePath = await window.api.openTiffDialog();
         if (filePath) {
+          // Validate the file is readable and has a recognized image format
+          const [validation] = await window.api.validateImageFiles([filePath]);
+          if (!validation?.valid) {
+            alert(validation?.error || 'The selected file could not be read. If it is stored in cloud storage, please download it locally first.');
+            return;
+          }
+
           const fileName = filePath.split(/[\\/]/).pop() || '';
           // Extract name without extension for micrograph name (matching legacy behavior)
           const nameWithoutExt = fileName.substring(0, fileName.lastIndexOf('.')) || fileName;
@@ -745,6 +752,13 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
     try {
       const filePath = await window.api.openTiffDialog();
       if (!filePath) return;
+
+      // Validate the file is readable and has a recognized image format
+      const [validation] = await window.api.validateImageFiles([filePath]);
+      if (!validation?.valid) {
+        alert(validation?.error || 'The selected file could not be read. If it is stored in cloud storage, please download it locally first.');
+        return;
+      }
 
       const fileName = filePath.split(/[\\/]/).pop() || '';
       console.log('[NewMicrographDialog] Selected XPL file:', filePath);

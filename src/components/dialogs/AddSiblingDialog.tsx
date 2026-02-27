@@ -116,6 +116,13 @@ export function AddSiblingDialog({
       const filePath = await window.api.openTiffDialog();
       if (!filePath) return;
 
+      // Validate the file is readable and has a recognized image format
+      const [validation] = await window.api.validateImageFiles([filePath]);
+      if (!validation?.valid) {
+        setError(validation?.error || 'The selected file could not be read. If it is stored in cloud storage, please download it locally first.');
+        return;
+      }
+
       setLoading(true);
       setConversionProgress({ stage: 'Converting image...', percent: 0 });
 
