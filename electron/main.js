@@ -3140,6 +3140,16 @@ ipcMain.handle('project:delete-from-associated-files', async (event, projectId, 
  * Convert image to JPEG in scratch space (for immediate preview during workflow)
  * This should be called as soon as user selects an image
  */
+/**
+ * Validate image files before import (checks readability and magic bytes)
+ */
+ipcMain.handle('image:validate-files', async (event, filePaths) => {
+  const results = await Promise.all(
+    filePaths.map((filePath) => imageConverter.validateImageFile(filePath))
+  );
+  return results;
+});
+
 ipcMain.handle('image:convert-to-scratch', async (event, sourcePath) => {
   try {
     log.info(`[IPC] Converting to scratch JPEG: ${sourcePath}`);

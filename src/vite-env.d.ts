@@ -289,7 +289,8 @@ interface Window {
       message?: string;
     }>;
 
-    // Image conversion
+    // Image validation and conversion
+    validateImageFiles: (filePaths: string[]) => Promise<Array<{ valid: boolean; format?: string; error?: string }>>;
     convertToScratchJPEG: (sourcePath: string) => Promise<{
       identifier: string;
       scratchPath: string;

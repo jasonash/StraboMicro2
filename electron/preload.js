@@ -261,7 +261,8 @@ contextBridge.exposeInMainWorld('api', {
   deleteFromAssociatedFiles: (projectId, fileName) =>
     ipcRenderer.invoke('project:delete-from-associated-files', projectId, fileName),
 
-  // Image conversion
+  // Image validation and conversion
+  validateImageFiles: (filePaths) => ipcRenderer.invoke('image:validate-files', filePaths),
   convertToScratchJPEG: (sourcePath) => ipcRenderer.invoke('image:convert-to-scratch', sourcePath),
   moveFromScratch: (identifier, projectId, micrographId) => ipcRenderer.invoke('image:move-from-scratch', identifier, projectId, micrographId),
   deleteScratchImage: (identifier) => ipcRenderer.invoke('image:delete-scratch', identifier),
