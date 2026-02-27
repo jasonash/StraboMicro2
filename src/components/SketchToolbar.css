@@ -1,10 +1,6 @@
 .sketch-toolbar {
   position: absolute;
-  top: 50%;
-  right: 16px;
-  transform: translateY(-50%);
   display: flex;
-  flex-direction: column;
   gap: 4px;
   background-color: var(--bg-tertiary);
   border: 1px solid var(--border);
@@ -13,6 +9,16 @@
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
   z-index: 101; /* Above drawing toolbar */
   backdrop-filter: blur(4px);
+}
+
+.sketch-toolbar.dock-vertical {
+  flex-direction: column;
+  align-items: center;
+}
+
+.sketch-toolbar.dock-horizontal {
+  flex-direction: row;
+  align-items: center;
 }
 
 .sketch-toolbar .toolbar-button {
@@ -72,9 +78,18 @@
 
 /* Divider */
 .sketch-toolbar .toolbar-divider {
-  height: 1px;
   background-color: var(--border);
+}
+
+.sketch-toolbar.dock-vertical .toolbar-divider {
+  height: 1px;
   margin: 4px 0;
+}
+
+.sketch-toolbar.dock-horizontal .toolbar-divider {
+  width: 1px;
+  height: 28px;
+  margin: 0 4px;
 }
 
 /* Color button and swatch */
@@ -93,11 +108,32 @@
 /* Width slider container */
 .sketch-toolbar .width-slider-container {
   display: flex;
-  flex-direction: column;
   align-items: center;
-  padding: 8px 4px;
   gap: 4px;
+}
+
+.sketch-toolbar.dock-vertical .width-slider-container {
+  flex-direction: column;
+  padding: 8px 4px;
   min-width: 40px;
+}
+
+.sketch-toolbar.dock-horizontal .width-slider-container {
+  flex-direction: row;
+  padding: 4px 8px;
+  min-height: 40px;
+  gap: 8px;
+}
+
+.sketch-toolbar.dock-horizontal .width-slider-container .MuiSlider-root {
+  width: 60px;
+  flex-shrink: 0;
+  padding: 0;
+}
+
+.sketch-toolbar.dock-horizontal .width-preview {
+  flex-shrink: 0;
+  margin-left: 4px;
 }
 
 /* Width preview */
@@ -121,4 +157,8 @@
   padding: 8px 4px;
   max-width: 100px;
   text-align: center;
+}
+
+.sketch-toolbar.dock-horizontal .no-layer-warning {
+  max-width: 120px;
 }

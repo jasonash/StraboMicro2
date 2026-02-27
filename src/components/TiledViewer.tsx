@@ -161,6 +161,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
     const addSketchText = useAppStore((state) => state.addSketchText);
     const updateSketchText = useAppStore((state) => state.updateSketchText);
     const sketchModeActive = useAppStore((state) => state.sketchModeActive);
+    const setSketchTextInputActive = useAppStore((state) => state.setSketchTextInputActive);
     const theme = useAppStore((state) => state.theme);
     const selectActiveSpot = useAppStore((state) => state.selectActiveSpot);
     const selectSpot = useAppStore((state) => state.selectSpot);
@@ -217,6 +218,11 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
     const [textInputPosition, setTextInputPosition] = useState({ screenX: 0, screenY: 0, imageX: 0, imageY: 0 });
     const [editingTextId, setEditingTextId] = useState<string | null>(null);
     const [editingTextInitial, setEditingTextInitial] = useState('');
+
+    // Sync text input visibility to store so SketchToolbar can disable tools while editing
+    useEffect(() => {
+      setSketchTextInputActive(textInputVisible);
+    }, [textInputVisible, setSketchTextInputActive]);
 
     /**
      * Handle stroke click for eraser tool

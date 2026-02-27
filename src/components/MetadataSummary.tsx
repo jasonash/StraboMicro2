@@ -930,6 +930,86 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
                 <Typography variant="body2" component="span">{micrograph.imageType}</Typography>
               </Box>
             )}
+            {micrograph?.orientationInfo?.orientationMethod && (
+              <>
+                <Box>
+                  <Typography variant="caption" color="text.secondary">Orientation: </Typography>
+                  <Typography variant="body2" component="span">
+                    {micrograph.orientationInfo.orientationMethod === 'trendPlunge'
+                      ? 'Trend & Plunge'
+                      : micrograph.orientationInfo.orientationMethod === 'fabricReference'
+                        ? 'Fabric Reference'
+                        : micrograph.orientationInfo.orientationMethod}
+                  </Typography>
+                </Box>
+                {micrograph.orientationInfo.orientationMethod === 'trendPlunge' && (
+                  <>
+                    {micrograph.orientationInfo.topTrend != null && micrograph.orientationInfo.topPlunge != null && (
+                      <Box sx={{ pl: 1 }}>
+                        <Typography variant="caption" color="text.secondary">Top: </Typography>
+                        <Typography variant="body2" component="span">
+                          {micrograph.orientationInfo.topTrend}° / {micrograph.orientationInfo.topPlunge}°
+                          {micrograph.orientationInfo.topReferenceCorner && ` (${micrograph.orientationInfo.topReferenceCorner})`}
+                        </Typography>
+                      </Box>
+                    )}
+                    {micrograph.orientationInfo.sideTrend != null && micrograph.orientationInfo.sidePlunge != null && (
+                      <Box sx={{ pl: 1 }}>
+                        <Typography variant="caption" color="text.secondary">Side: </Typography>
+                        <Typography variant="body2" component="span">
+                          {micrograph.orientationInfo.sideTrend}° / {micrograph.orientationInfo.sidePlunge}°
+                          {micrograph.orientationInfo.sideReferenceCorner && ` (${micrograph.orientationInfo.sideReferenceCorner})`}
+                        </Typography>
+                      </Box>
+                    )}
+                  </>
+                )}
+                {micrograph.orientationInfo.orientationMethod === 'fabricReference' && (
+                  <>
+                    {micrograph.orientationInfo.fabricReference && (
+                      <Box sx={{ pl: 1 }}>
+                        <Typography variant="caption" color="text.secondary">Reference: </Typography>
+                        <Typography variant="body2" component="span">{micrograph.orientationInfo.fabricReference}</Typography>
+                      </Box>
+                    )}
+                    {micrograph.orientationInfo.fabricStrike != null && micrograph.orientationInfo.fabricDip != null && (
+                      <Box sx={{ pl: 1 }}>
+                        <Typography variant="caption" color="text.secondary">Strike/Dip: </Typography>
+                        <Typography variant="body2" component="span">
+                          {micrograph.orientationInfo.fabricStrike}° / {micrograph.orientationInfo.fabricDip}°
+                        </Typography>
+                      </Box>
+                    )}
+                    {micrograph.orientationInfo.fabricTrend != null && micrograph.orientationInfo.fabricPlunge != null && (
+                      <Box sx={{ pl: 1 }}>
+                        <Typography variant="caption" color="text.secondary">Trend/Plunge: </Typography>
+                        <Typography variant="body2" component="span">
+                          {micrograph.orientationInfo.fabricTrend}° / {micrograph.orientationInfo.fabricPlunge}°
+                        </Typography>
+                      </Box>
+                    )}
+                    {micrograph.orientationInfo.fabricRake != null && (
+                      <Box sx={{ pl: 1 }}>
+                        <Typography variant="caption" color="text.secondary">Rake: </Typography>
+                        <Typography variant="body2" component="span">{micrograph.orientationInfo.fabricRake}°</Typography>
+                      </Box>
+                    )}
+                    {micrograph.orientationInfo.lookDirection && (
+                      <Box sx={{ pl: 1 }}>
+                        <Typography variant="caption" color="text.secondary">Look Direction: </Typography>
+                        <Typography variant="body2" component="span">{micrograph.orientationInfo.lookDirection}</Typography>
+                      </Box>
+                    )}
+                    {micrograph.orientationInfo.topCorner && (
+                      <Box sx={{ pl: 1 }}>
+                        <Typography variant="caption" color="text.secondary">Top Corner: </Typography>
+                        <Typography variant="body2" component="span">{micrograph.orientationInfo.topCorner}</Typography>
+                      </Box>
+                    )}
+                  </>
+                )}
+              </>
+            )}
             {/* Spot Measurements - only shown for spots with scale set */}
             {spot && spotParentMicrograph?.scalePixelsPerCentimeter && (
               <SpotMeasurements spot={spot} scale={spotParentMicrograph.scalePixelsPerCentimeter} />

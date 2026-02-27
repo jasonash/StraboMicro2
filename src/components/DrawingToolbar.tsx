@@ -2,12 +2,13 @@ import React from 'react';
 import { Box, IconButton, Tooltip } from '@mui/material';
 import { Straighten as RulerIcon } from '@mui/icons-material';
 import { useAppStore } from '@/store';
+import { useToolbarDock } from '@/hooks/useToolbarDock';
 import './DrawingToolbar.css';
 
 /**
- * DrawingToolbar - Floating vertical toolbar for drawing tools
+ * DrawingToolbar - Floating toolbar for drawing tools
  *
- * Positioned absolutely on the right side of the viewer canvas.
+ * Dockable to any edge of the viewer canvas (right/bottom/left/top).
  * Contains drawing tools: Point, Line, Polygon, Lasso, Sketch, and Measure.
  * Hidden when in point count mode or sketch mode.
  */
@@ -20,6 +21,8 @@ const DrawingToolbar: React.FC = () => {
   const sketchModeActive = useAppStore((state) => state.sketchModeActive);
   const setSketchModeActive = useAppStore((state) => state.setSketchModeActive);
   const activeMicrographId = useAppStore((state) => state.activeMicrographId);
+
+  const { isHorizontal, positionStyle, tooltipPlacement, cycleDock } = useToolbarDock();
 
   // Hide toolbar when in point count mode or sketch mode
   if (pointCountMode || sketchModeActive) {
@@ -57,9 +60,15 @@ const DrawingToolbar: React.FC = () => {
     setActiveTool(activeTool === 'measure' ? null : 'measure');
   };
 
+  const orientationClass = isHorizontal ? 'dock-horizontal' : 'dock-vertical';
+
+  const dividerSx = isHorizontal
+    ? { width: '1px', height: '28px', bgcolor: 'var(--text-muted)', mx: 1 }
+    : { height: '2px', bgcolor: 'var(--text-muted)', mx: 1, my: 1 };
+
   return (
-    <Box className="drawing-toolbar">
-      <Tooltip title="Point Spot" placement="left">
+    <Box className={`drawing-toolbar ${orientationClass}`} style={positionStyle}>
+      <Tooltip title="Point Spot" placement={tooltipPlacement}>
         <IconButton
           className={`toolbar-button ${activeTool === 'point' ? 'active' : ''}`}
           onClick={handlePointClick}
@@ -73,7 +82,7 @@ const DrawingToolbar: React.FC = () => {
         </IconButton>
       </Tooltip>
 
-      <Tooltip title="Line Spot" placement="left">
+      <Tooltip title="Line Spot" placement={tooltipPlacement}>
         <IconButton
           className={`toolbar-button ${activeTool === 'line' ? 'active' : ''}`}
           onClick={handleLineClick}
@@ -88,7 +97,7 @@ const DrawingToolbar: React.FC = () => {
         </IconButton>
       </Tooltip>
 
-      <Tooltip title="Polygon Spot" placement="left">
+      <Tooltip title="Polygon Spot" placement={tooltipPlacement}>
         <IconButton
           className={`toolbar-button ${activeTool === 'polygon' ? 'active' : ''}`}
           onClick={handlePolygonClick}
@@ -113,9 +122,9 @@ const DrawingToolbar: React.FC = () => {
       </Tooltip>
 
       {/* Divider */}
-      <Box sx={{ height: '2px', bgcolor: 'var(--text-muted)', mx: 1, my: 1 }} />
+      <Box sx={dividerSx} />
 
-      <Tooltip title="Lasso Select (Shift+Drag)" placement="left">
+      <Tooltip title="Lasso Select (Shift+Drag)" placement={tooltipPlacement}>
         <IconButton
           className={`toolbar-button ${spotLassoToolActive ? 'active' : ''}`}
           onClick={handleLassoClick}
@@ -137,7 +146,7 @@ const DrawingToolbar: React.FC = () => {
       </Tooltip>
 
       {/* Sketch Mode */}
-      <Tooltip title={activeMicrographId ? "Sketch Mode (S)" : "Select a micrograph first"} placement="left">
+      <Tooltip title={activeMicrographId ? "Sketch Mode (S)" : "Select a micrograph first"} placement={tooltipPlacement}>
         <span>
           <IconButton
             className="toolbar-button"
@@ -160,13 +169,36 @@ const DrawingToolbar: React.FC = () => {
         </span>
       </Tooltip>
 
-      <Tooltip title="Measure Distance" placement="left">
+      <Tooltip title="Measure Distance" placement={tooltipPlacement}>
         <IconButton
           className={`toolbar-button ${activeTool === 'measure' ? 'active' : ''}`}
           onClick={handleMeasureClick}
           aria-label="Measure tool"
         >
           <RulerIcon sx={{ fontSize: 20 }} />
+        </IconButton>
+      </Tooltip>
+
+      {/* Divider before dock button */}
+      <Box sx={dividerSx} />
+
+      {/* Dock cycle button */}
+      <Tooltip title="Move Toolbar" placement={tooltipPlacement}>
+        <IconButton
+          className="dock-button"
+          onClick={cycleDock}
+          aria-label="Cycle toolbar position"
+        >
+          <svg width="16" height="16" viewBox="0 0 16 16">
+            <path
+              d="M8 1v14M1 8h14M8 1l-2.5 2.5M8 1l2.5 2.5M8 15l-2.5-2.5M8 15l2.5-2.5M1 8l2.5-2.5M1 8l2.5 2.5M15 8l-2.5-2.5M15 8l-2.5 2.5"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              fill="none"
+            />
+          </svg>
         </IconButton>
       </Tooltip>
     </Box>
