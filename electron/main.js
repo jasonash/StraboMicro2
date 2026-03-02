@@ -735,7 +735,6 @@ function createWindow() {
       submenu: [
         {
           label: 'Point Count...',
-          accelerator: 'CmdOrCtrl+Shift+P',
           click: () => {
             if (mainWindow) {
               mainWindow.webContents.send('menu:point-count');
@@ -775,6 +774,7 @@ function createWindow() {
       submenu: [
         {
           label: 'Quick Spot Presets...',
+          accelerator: 'CmdOrCtrl+Shift+P',
           click: () => {
             if (mainWindow) {
               mainWindow.webContents.send('menu:quick-apply-presets');
@@ -1156,7 +1156,6 @@ function createWindow() {
         },
         {
           label: 'Load Sample Project',
-          accelerator: 'CmdOrCtrl+Shift+P',
           click: () => {
             if (mainWindow) {
               mainWindow.webContents.send('menu:load-sample-project');
