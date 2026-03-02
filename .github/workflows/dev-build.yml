@@ -343,6 +343,9 @@ jobs:
         run: |
           gh release delete dev-latest --yes || true
           git push origin :refs/tags/dev-latest || true
+          # Wait for GitHub to propagate the tag deletion before recreating,
+          # otherwise the new release gets "untagged-*" download URLs
+          sleep 10
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -469,4 +472,16 @@ jobs:
           else
             git commit -m "[CI] Update dev-releases.json (build #${{ github.run_number }})"
             git push origin ${{ inputs.branch }}
+          fi
+
+          # Also update main so dev-releases.json is current on both branches
+          git fetch origin main
+          git checkout main
+          git checkout ${{ inputs.branch }} -- dev-releases.json
+          git add dev-releases.json
+          if git diff --cached --quiet; then
+            echo "No changes to dev-releases.json on main"
+          else
+            git commit -m "[CI] Update dev-releases.json (build #${{ github.run_number }})"
+            git push origin main
           fi

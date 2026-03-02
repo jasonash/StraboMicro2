@@ -17,12 +17,16 @@ import {
   Stack,
   Chip,
   Link,
+  IconButton,
+  Tooltip,
   styled,
 } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import EditIcon from '@mui/icons-material/Edit';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
+import ClearIcon from '@mui/icons-material/Clear';
 import { useAppStore } from '@/store';
+import type { QuickApplyPreset } from '@/types/preset-types';
 import { findMicrographById, findSpotById, findSpotParentMicrograph, getMicrographParentSample } from '@/store/helpers';
 import type {
   FractureType,
@@ -654,6 +658,8 @@ function SpotMeasurements({ spot, scale }: { spot: Spot; scale: number }) {
 
 export function MetadataSummary({ micrographId, spotId, onEditSection }: MetadataSummaryProps) {
   const project = useAppStore((state) => state.project);
+  const globalPresets = useAppStore((state) => state.globalPresets);
+  const updateSpotData = useAppStore((state) => state.updateSpotData);
 
   // Load expansion state from localStorage
   const [expanded, setExpanded] = useState<AccordionState>(() => {
@@ -716,6 +722,41 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
     return items?.length || 0;
   };
 
+  // Get applied presets for spots
+  const appliedPresets: QuickApplyPreset[] = [];
+  if (spot && spot.appliedPresetIds && spot.appliedPresetIds.length > 0) {
+    // Build a map of all presets (global + project)
+    const presetMap = new Map<string, QuickApplyPreset>();
+    for (const preset of globalPresets) {
+      presetMap.set(preset.id, preset);
+    }
+    for (const preset of project?.presets || []) {
+      presetMap.set(preset.id, preset);
+    }
+    // Get presets for each applied ID
+    for (const presetId of spot.appliedPresetIds) {
+      const preset = presetMap.get(presetId);
+      if (preset) {
+        appliedPresets.push(preset);
+      }
+    }
+  }
+
+  // Clear a specific preset from the spot
+  const clearPreset = (presetId: string) => {
+    if (!spot || !spotId) return;
+    const newAppliedIds = spot.appliedPresetIds?.filter((id) => id !== presetId) || [];
+    updateSpotData(spotId, {
+      appliedPresetIds: newAppliedIds.length > 0 ? newAppliedIds : undefined,
+    });
+  };
+
+  // Clear all presets from the spot
+  const clearAllPresets = () => {
+    if (!spot || !spotId) return;
+    updateSpotData(spotId, { appliedPresetIds: undefined });
+  };
+
   return (
     <Stack spacing={0.5}>
       {/* Sample Metadata */}
@@ -774,32 +815,28 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
                   Linked to StraboField (View on Server)
                 </Box>
               )}
-              {sample.name && (
-                <Box>
-                  <Typography variant="caption" color="text.secondary">Name: </Typography>
-                  <Typography variant="body2" component="span">{sample.name}</Typography>
-                </Box>
-              )}
-              {sample.label && (
-                <Box>
-                  <Typography variant="caption" color="text.secondary">Label: </Typography>
-                  <Typography variant="body2" component="span">{sample.label}</Typography>
-                </Box>
-              )}
               {sample.sampleID && (
                 <Box>
                   <Typography variant="caption" color="text.secondary">Sample ID: </Typography>
                   <Typography variant="body2" component="span">{sample.sampleID}</Typography>
                 </Box>
               )}
-              {(sample.latitude !== null || sample.longitude !== null) && (
+              {sample.igsn && (
                 <Box>
-                  <Typography variant="caption" color="text.secondary">Location: </Typography>
-                  <Typography variant="body2" component="span">
-                    {sample.latitude !== null && `Lat: ${sample.latitude}`}
-                    {sample.latitude !== null && sample.longitude !== null && ', '}
-                    {sample.longitude !== null && `Lon: ${sample.longitude}`}
-                  </Typography>
+                  <Typography variant="caption" color="text.secondary">IGSN: </Typography>
+                  <Typography variant="body2" component="span">{sample.igsn}</Typography>
+                </Box>
+              )}
+              {sample.longitude !== null && sample.longitude !== undefined && (
+                <Box>
+                  <Typography variant="caption" color="text.secondary">Longitude: </Typography>
+                  <Typography variant="body2" component="span">{sample.longitude}</Typography>
+                </Box>
+              )}
+              {sample.latitude !== null && sample.latitude !== undefined && (
+                <Box>
+                  <Typography variant="caption" color="text.secondary">Latitude: </Typography>
+                  <Typography variant="body2" component="span">{sample.latitude}</Typography>
                 </Box>
               )}
               {sample.sampleDescription && (
@@ -811,7 +848,11 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
               {sample.materialType && (
                 <Box>
                   <Typography variant="caption" color="text.secondary">Material Type: </Typography>
-                  <Typography variant="body2" component="span">{sample.materialType}</Typography>
+                  <Typography variant="body2" component="span">
+                    {sample.materialType === 'other' && sample.otherMaterialType
+                      ? sample.otherMaterialType
+                      : sample.materialType}
+                  </Typography>
                 </Box>
               )}
               {sample.sampleType && (
@@ -820,7 +861,7 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
                   <Typography variant="body2" component="span">{sample.sampleType}</Typography>
                 </Box>
               )}
-              {!sample.name && !sample.label && !sample.sampleID && (
+              {!sample.sampleID && (
                 <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
                   No sample metadata set
                 </Typography>
@@ -889,6 +930,86 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
                 <Typography variant="body2" component="span">{micrograph.imageType}</Typography>
               </Box>
             )}
+            {micrograph?.orientationInfo?.orientationMethod && (
+              <>
+                <Box>
+                  <Typography variant="caption" color="text.secondary">Orientation: </Typography>
+                  <Typography variant="body2" component="span">
+                    {micrograph.orientationInfo.orientationMethod === 'trendPlunge'
+                      ? 'Trend & Plunge'
+                      : micrograph.orientationInfo.orientationMethod === 'fabricReference'
+                        ? 'Fabric Reference'
+                        : micrograph.orientationInfo.orientationMethod}
+                  </Typography>
+                </Box>
+                {micrograph.orientationInfo.orientationMethod === 'trendPlunge' && (
+                  <>
+                    {micrograph.orientationInfo.topTrend != null && micrograph.orientationInfo.topPlunge != null && (
+                      <Box sx={{ pl: 1 }}>
+                        <Typography variant="caption" color="text.secondary">Top: </Typography>
+                        <Typography variant="body2" component="span">
+                          {micrograph.orientationInfo.topTrend}° / {micrograph.orientationInfo.topPlunge}°
+                          {micrograph.orientationInfo.topReferenceCorner && ` (${micrograph.orientationInfo.topReferenceCorner})`}
+                        </Typography>
+                      </Box>
+                    )}
+                    {micrograph.orientationInfo.sideTrend != null && micrograph.orientationInfo.sidePlunge != null && (
+                      <Box sx={{ pl: 1 }}>
+                        <Typography variant="caption" color="text.secondary">Side: </Typography>
+                        <Typography variant="body2" component="span">
+                          {micrograph.orientationInfo.sideTrend}° / {micrograph.orientationInfo.sidePlunge}°
+                          {micrograph.orientationInfo.sideReferenceCorner && ` (${micrograph.orientationInfo.sideReferenceCorner})`}
+                        </Typography>
+                      </Box>
+                    )}
+                  </>
+                )}
+                {micrograph.orientationInfo.orientationMethod === 'fabricReference' && (
+                  <>
+                    {micrograph.orientationInfo.fabricReference && (
+                      <Box sx={{ pl: 1 }}>
+                        <Typography variant="caption" color="text.secondary">Reference: </Typography>
+                        <Typography variant="body2" component="span">{micrograph.orientationInfo.fabricReference}</Typography>
+                      </Box>
+                    )}
+                    {micrograph.orientationInfo.fabricStrike != null && micrograph.orientationInfo.fabricDip != null && (
+                      <Box sx={{ pl: 1 }}>
+                        <Typography variant="caption" color="text.secondary">Strike/Dip: </Typography>
+                        <Typography variant="body2" component="span">
+                          {micrograph.orientationInfo.fabricStrike}° / {micrograph.orientationInfo.fabricDip}°
+                        </Typography>
+                      </Box>
+                    )}
+                    {micrograph.orientationInfo.fabricTrend != null && micrograph.orientationInfo.fabricPlunge != null && (
+                      <Box sx={{ pl: 1 }}>
+                        <Typography variant="caption" color="text.secondary">Trend/Plunge: </Typography>
+                        <Typography variant="body2" component="span">
+                          {micrograph.orientationInfo.fabricTrend}° / {micrograph.orientationInfo.fabricPlunge}°
+                        </Typography>
+                      </Box>
+                    )}
+                    {micrograph.orientationInfo.fabricRake != null && (
+                      <Box sx={{ pl: 1 }}>
+                        <Typography variant="caption" color="text.secondary">Rake: </Typography>
+                        <Typography variant="body2" component="span">{micrograph.orientationInfo.fabricRake}°</Typography>
+                      </Box>
+                    )}
+                    {micrograph.orientationInfo.lookDirection && (
+                      <Box sx={{ pl: 1 }}>
+                        <Typography variant="caption" color="text.secondary">Look Direction: </Typography>
+                        <Typography variant="body2" component="span">{micrograph.orientationInfo.lookDirection}</Typography>
+                      </Box>
+                    )}
+                    {micrograph.orientationInfo.topCorner && (
+                      <Box sx={{ pl: 1 }}>
+                        <Typography variant="caption" color="text.secondary">Top Corner: </Typography>
+                        <Typography variant="body2" component="span">{micrograph.orientationInfo.topCorner}</Typography>
+                      </Box>
+                    )}
+                  </>
+                )}
+              </>
+            )}
             {/* Spot Measurements - only shown for spots with scale set */}
             {spot && spotParentMicrograph?.scalePixelsPerCentimeter && (
               <SpotMeasurements spot={spot} scale={spotParentMicrograph.scalePixelsPerCentimeter} />
@@ -901,6 +1022,75 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
           </Stack>
         </AccordionDetails>
       </StyledAccordion>
+
+      {/* Applied Presets (spots only) */}
+      {spot && appliedPresets.length > 0 && (
+        <StyledAccordion
+          expanded={expanded['appliedPresets'] || false}
+          onChange={handleExpand('appliedPresets')}
+          disableGutters
+          sx={{ '&:before': { display: 'none' } }}
+        >
+          <StyledAccordionSummary expandIcon={<ExpandMoreIcon />}>
+            <Typography variant="subtitle2">Applied Presets</Typography>
+            <Chip label={`${appliedPresets.length}`} size="small" />
+            <Box sx={{ flexGrow: 1 }} />
+            <Tooltip title="Untrack all presets (metadata is preserved)">
+              <Box
+                onClick={(e) => {
+                  e.stopPropagation();
+                  clearAllPresets();
+                }}
+                sx={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  width: 32,
+                  height: 32,
+                  mr: 1,
+                  cursor: 'pointer',
+                  borderRadius: '50%',
+                  '&:hover': { bgcolor: 'action.hover' },
+                }}
+              >
+                <ClearIcon fontSize="small" />
+              </Box>
+            </Tooltip>
+          </StyledAccordionSummary>
+          <AccordionDetails sx={{ py: 1 }}>
+            <Stack spacing={1}>
+              {appliedPresets.map((preset) => (
+                <Box
+                  key={preset.id}
+                  sx={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 1,
+                    p: 0.5,
+                    borderRadius: 1,
+                    '&:hover': { bgcolor: 'action.hover' },
+                  }}
+                >
+                  {/* Preset name */}
+                  <Typography variant="body2" sx={{ flex: 1 }}>
+                    {preset.name}
+                  </Typography>
+                  {/* Clear button */}
+                  <Tooltip title="Untrack preset (metadata is preserved)">
+                    <IconButton
+                      size="small"
+                      onClick={() => clearPreset(preset.id)}
+                      sx={{ p: 0.25 }}
+                    >
+                      <ClearIcon fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
+                </Box>
+              ))}
+            </Stack>
+          </AccordionDetails>
+        </StyledAccordion>
+      )}
 
       {/* Mineralogy/Lithology */}
       {(hasData(data.mineralogy) || hasData(data.lithologyInfo)) && (

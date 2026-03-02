@@ -4,8 +4,9 @@
  * Displays metadata for the currently selected micrograph or spot.
  * Provides a dropdown menu to add/edit various types of geological data.
  *
- * Two-tab layout:
+ * Tab layout:
  * - Micrograph/Spot tab: Shows metadata for the selected micrograph or spot
+ * - Sketches tab: Sketch layer management (only shown when micrograph is selected)
  * - Project tab: Shows project-level metadata
  */
 
@@ -17,13 +18,21 @@ import {
   Alert,
   Tabs,
   Tab,
+  Button,
+  Menu,
+  MenuItem,
+  ListItemIcon,
+  ListItemText,
+  Divider,
 } from '@mui/material';
+import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh';
+import CircleIcon from '@mui/icons-material/Circle';
 import { useAppStore } from '@/store';
 import { BreadcrumbsBar } from './BreadcrumbsBar';
 import { CombinedDataTypeSelector } from './CombinedDataTypeSelector';
 import { ConfirmDialog } from './dialogs/ConfirmDialog';
 import { NotesDialog } from './dialogs/metadata/NotesDialog';
-import { SampleInfoDialog } from './dialogs/metadata/SampleInfoDialog';
+import { EditSampleDialog } from './dialogs/EditSampleDialog';
 import { EditMicrographDialog } from './dialogs/metadata/EditMicrographDialog';
 import { EditSpotDialog } from './dialogs/metadata/EditSpotDialog';
 import { EditDatasetDialog } from './dialogs/EditDatasetDialog';
@@ -43,7 +52,12 @@ import { ExtinctionMicrostructureInfoDialog } from './dialogs/metadata/extinctio
 import { AssociatedFilesInfoDialog } from './dialogs/metadata/associatedfiles/AssociatedFilesInfoDialog';
 import { LinksInfoDialog } from './dialogs/metadata/links/LinksInfoDialog';
 import { MetadataSummary } from './MetadataSummary';
+import { GrainSizeSummary } from './GrainSizeSummary';
+import { PointCountSummary } from './PointCountSummary';
 import { ProjectMetadataSection } from './ProjectMetadataSection';
+import { SketchLayersPanel } from './SketchLayersPanel';
+import { getPresetSummary } from '@/types/preset-types';
+import type { PresetWithScope } from '@/types/preset-types';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -77,9 +91,22 @@ export function PropertiesPanel() {
   const selectMicrograph = useAppStore((state) => state.selectMicrograph);
   const selectActiveSpot = useAppStore((state) => state.selectActiveSpot);
 
+  // Quick Spot Presets
+  const getAllPresetsWithScope = useAppStore((state) => state.getAllPresetsWithScope);
+  const applyPresetToSpot = useAppStore((state) => state.applyPresetToSpot);
+
+  // Point count sessions
+  const loadPointCountSessions = useAppStore((state) => state.loadPointCountSessions);
+
+  // Sketch mode state
+  const sketchModeActive = useAppStore((state) => state.sketchModeActive);
+
   const [openDialog, setOpenDialog] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<'micrograph' | 'spot' | null>(null);
   const [activeTab, setActiveTab] = useState(0);
+
+  // Apply Preset menu state
+  const [presetMenuAnchor, setPresetMenuAnchor] = useState<HTMLElement | null>(null);
 
   // Auto-switch to Micrograph/Spot tab when selection changes
   useEffect(() => {
@@ -87,6 +114,20 @@ export function PropertiesPanel() {
       setActiveTab(0);
     }
   }, [activeMicrographId, activeSpotId]);
+
+  // Auto-switch to Sketches tab when entering sketch mode
+  useEffect(() => {
+    if (sketchModeActive && activeMicrographId && !activeSpotId) {
+      setActiveTab(1); // Sketches tab
+    }
+  }, [sketchModeActive, activeMicrographId, activeSpotId]);
+
+  // Load point count sessions when viewing a micrograph (not a spot)
+  useEffect(() => {
+    if (activeMicrographId && !activeSpotId) {
+      loadPointCountSessions(activeMicrographId);
+    }
+  }, [activeMicrographId, activeSpotId, loadPointCountSessions]);
 
   const handleTabChange = (_event: React.SyntheticEvent, newValue: number) => {
     setActiveTab(newValue);
@@ -100,13 +141,13 @@ export function PropertiesPanel() {
     severity: 'success' | 'error' | 'info';
   }>({ open: false, message: '', severity: 'info' });
 
-  // Find the sample ID for the active micrograph
-  const findSampleIdForMicrograph = (): string | undefined => {
+  // Find the sample for the active micrograph
+  const findSampleForMicrograph = () => {
     if (!activeMicrographId || !project) return undefined;
     for (const dataset of project.datasets || []) {
       for (const sample of dataset.samples || []) {
         if (sample.micrographs?.some((m) => m.id === activeMicrographId)) {
-          return sample.id;
+          return sample;
         }
       }
     }
@@ -126,7 +167,7 @@ export function PropertiesPanel() {
     return undefined;
   };
 
-  const sampleId = findSampleIdForMicrograph();
+  const sample = findSampleForMicrograph();
   const datasetId = findDatasetIdForMicrograph();
 
   // Determine what type of entity is selected (check spot first since it's more specific)
@@ -210,8 +251,40 @@ export function PropertiesPanel() {
     setConfirmDelete(null);
   };
 
+  // Handle Apply Preset menu
+  const handleOpenPresetMenu = (event: React.MouseEvent<HTMLButtonElement>) => {
+    setPresetMenuAnchor(event.currentTarget);
+  };
+
+  const handleClosePresetMenu = () => {
+    setPresetMenuAnchor(null);
+  };
+
+  const handleApplyPreset = (preset: PresetWithScope) => {
+    if (activeSpotId) {
+      applyPresetToSpot(preset.id, activeSpotId);
+      setSnackbar({
+        open: true,
+        message: `Applied preset "${preset.name}"`,
+        severity: 'success',
+      });
+    }
+    handleClosePresetMenu();
+  };
+
+  // Get available presets for the menu
+  const availablePresets = getAllPresetsWithScope();
+  const globalPresets = availablePresets.filter((p) => p.scope === 'global');
+  const projectPresets = availablePresets.filter((p) => p.scope === 'project');
+
   // Determine the first tab label based on selection
   const firstTabLabel = activeSpotId ? 'Spot' : 'Micrograph';
+
+  // Determine if we should show the Sketches tab (only for micrographs, not spots)
+  const showSketchesTab = !activeSpotId && activeMicrographId;
+
+  // Calculate tab indices based on whether Sketches tab is shown
+  const projectTabIndex = showSketchesTab ? 2 : 1;
 
   return (
     <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
@@ -235,6 +308,7 @@ export function PropertiesPanel() {
         }}
       >
         <Tab label={firstTabLabel} disableRipple />
+        {showSketchesTab && <Tab label="Sketches" disableRipple />}
         <Tab label="Project" disableRipple />
       </Tabs>
 
@@ -273,6 +347,72 @@ export function PropertiesPanel() {
               />
             </Box>
 
+            {/* Apply Preset Button (spots only) */}
+            {selectionType === 'spot' && availablePresets.length > 0 && (
+              <Box sx={{ mb: 2 }}>
+                <Button
+                  variant="outlined"
+                  size="small"
+                  startIcon={<AutoFixHighIcon />}
+                  onClick={handleOpenPresetMenu}
+                  sx={{ textTransform: 'none' }}
+                >
+                  Apply Preset
+                </Button>
+                <Menu
+                  anchorEl={presetMenuAnchor}
+                  open={Boolean(presetMenuAnchor)}
+                  onClose={handleClosePresetMenu}
+                  anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+                  transformOrigin={{ vertical: 'top', horizontal: 'left' }}
+                >
+                  {globalPresets.length > 0 && (
+                    <MenuItem disabled sx={{ opacity: 0.7, fontSize: '0.75rem' }}>
+                      Global Presets
+                    </MenuItem>
+                  )}
+                  {globalPresets.map((preset) => (
+                    <MenuItem
+                      key={preset.id}
+                      onClick={() => handleApplyPreset(preset)}
+                    >
+                      <ListItemIcon>
+                        <CircleIcon sx={{ color: preset.color, fontSize: 16 }} />
+                      </ListItemIcon>
+                      <ListItemText
+                        primary={preset.name}
+                        secondary={getPresetSummary(preset).slice(0, 2).join(', ') || 'No data'}
+                        primaryTypographyProps={{ variant: 'body2' }}
+                        secondaryTypographyProps={{ variant: 'caption' }}
+                      />
+                    </MenuItem>
+                  ))}
+                  {globalPresets.length > 0 && projectPresets.length > 0 && <Divider />}
+                  {projectPresets.length > 0 && (
+                    <MenuItem disabled sx={{ opacity: 0.7, fontSize: '0.75rem' }}>
+                      Project Presets
+                    </MenuItem>
+                  )}
+                  {projectPresets.map((preset) => (
+                    <MenuItem
+                      key={preset.id}
+                      onClick={() => handleApplyPreset(preset)}
+                    >
+                      <ListItemIcon>
+                        <CircleIcon sx={{ color: preset.color, fontSize: 16 }} />
+                      </ListItemIcon>
+                      <ListItemText
+                        primary={preset.name}
+                        secondary={getPresetSummary(preset).slice(0, 2).join(', ') || 'No data'}
+                        primaryTypographyProps={{ variant: 'body2' }}
+                        secondaryTypographyProps={{ variant: 'caption' }}
+                      />
+                    </MenuItem>
+                  ))}
+                </Menu>
+              </Box>
+            )}
+
             {/* Metadata Summary Section */}
             <Box sx={{ flex: 1, overflow: 'auto' }}>
               <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>
@@ -284,13 +424,35 @@ export function PropertiesPanel() {
                 spotId={activeSpotId || undefined}
                 onEditSection={(sectionId) => setOpenDialog(sectionId)}
               />
+
+              {/* Inline analytical summaries (micrograph only) */}
+              {!activeSpotId && activeMicrographId && (
+                <>
+                  <GrainSizeSummary micrographId={activeMicrographId} />
+                  <PointCountSummary micrographId={activeMicrographId} />
+                </>
+              )}
             </Box>
           </Box>
         )}
       </TabPanel>
 
+      {/* Sketches Tab (only shown for micrographs) */}
+      {showSketchesTab && (
+        <TabPanel value={activeTab} index={1}>
+          <Box sx={{ p: 2, height: '100%', display: 'flex', flexDirection: 'column' }}>
+            <Typography variant="h6" sx={{ mb: 2, fontWeight: 600 }}>
+              Sketch Layers
+            </Typography>
+            <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+              <SketchLayersPanel />
+            </Box>
+          </Box>
+        </TabPanel>
+      )}
+
       {/* Project Tab */}
-      <TabPanel value={activeTab} index={1}>
+      <TabPanel value={activeTab} index={projectTabIndex}>
         {!project ? (
           <Box sx={{ p: 2, height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center' }}>
@@ -331,11 +493,11 @@ export function PropertiesPanel() {
         />
       )}
 
-      {openDialog === 'sample' && sampleId && (
-        <SampleInfoDialog
+      {openDialog === 'sample' && sample && (
+        <EditSampleDialog
           isOpen={true}
           onClose={() => setOpenDialog(null)}
-          sampleId={sampleId}
+          sample={sample}
         />
       )}
 

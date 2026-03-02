@@ -248,6 +248,7 @@ async function listSessions(projectId, micrographId) {
             gridType: session.gridType,
             totalPoints: session.summary?.totalPoints || session.points?.length || 0,
             classifiedCount: session.summary?.classifiedCount || 0,
+            modalComposition: session.summary?.modalComposition || {},
           });
         }
       } catch (error) {
@@ -320,6 +321,7 @@ async function listAllSessions(projectId) {
           gridType: session.gridType,
           totalPoints: session.summary?.totalPoints || session.points?.length || 0,
           classifiedCount: session.summary?.classifiedCount || 0,
+          modalComposition: session.summary?.modalComposition || {},
         });
       } catch (error) {
         console.warn(`[PointCountStorage] Error reading session file ${file}:`, error.message);

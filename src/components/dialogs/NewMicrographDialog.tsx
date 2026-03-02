@@ -655,6 +655,13 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
       try {
         const filePath = await window.api.openTiffDialog();
         if (filePath) {
+          // Validate the file is readable and has a recognized image format
+          const [validation] = await window.api.validateImageFiles([filePath]);
+          if (!validation?.valid) {
+            alert(validation?.error || 'The selected file could not be read. If it is stored in cloud storage, please download it locally first.');
+            return;
+          }
+
           const fileName = filePath.split(/[\\/]/).pop() || '';
           // Extract name without extension for micrograph name (matching legacy behavior)
           const nameWithoutExt = fileName.substring(0, fileName.lastIndexOf('.')) || fileName;
@@ -746,6 +753,13 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
       const filePath = await window.api.openTiffDialog();
       if (!filePath) return;
 
+      // Validate the file is readable and has a recognized image format
+      const [validation] = await window.api.validateImageFiles([filePath]);
+      if (!validation?.valid) {
+        alert(validation?.error || 'The selected file could not be read. If it is stored in cloud storage, please download it locally first.');
+        return;
+      }
+
       const fileName = filePath.split(/[\\/]/).pop() || '';
       console.log('[NewMicrographDialog] Selected XPL file:', filePath);
 
@@ -756,14 +770,16 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
 
       console.log('[NewMicrographDialog] XPL conversion complete:', conversionResult);
 
-      // Validate dimensions match the main PPL image
+      // Validate dimensions match the main image
+      const sibLabel = formData.imageType === 'Plane Polarized Light' ? 'XPL' : 'PPL';
+      const srcLabel = formData.imageType === 'Plane Polarized Light' ? 'PPL' : 'XPL';
       if (
         conversionResult.jpegWidth !== formData.micrographWidth ||
         conversionResult.jpegHeight !== formData.micrographHeight
       ) {
         alert(
-          `The XPL image dimensions (${conversionResult.jpegWidth} x ${conversionResult.jpegHeight}) ` +
-            `do not match the PPL image dimensions (${formData.micrographWidth} x ${formData.micrographHeight}).\n\n` +
+          `The ${sibLabel} image dimensions (${conversionResult.jpegWidth} x ${conversionResult.jpegHeight}) ` +
+            `do not match the ${srcLabel} image dimensions (${formData.micrographWidth} x ${formData.micrographHeight}).\n\n` +
             `Both images must have the same pixel dimensions.`
         );
         // Clean up the scratch file
@@ -781,10 +797,11 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
       setXplHeight(conversionResult.jpegHeight);
       setXplScratchIdentifier(conversionResult.identifier);
 
-      console.log('[NewMicrographDialog] XPL image added successfully');
+      console.log('[NewMicrographDialog] Sibling image added successfully');
     } catch (error) {
-      console.error('[NewMicrographDialog] Error adding XPL image:', error);
-      alert(`Error loading XPL image: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      console.error('[NewMicrographDialog] Error adding sibling image:', error);
+      const errSibLabel = formData.imageType === 'Plane Polarized Light' ? 'XPL' : 'PPL';
+      alert(`Error loading ${errSibLabel} image: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setIsLoadingXpl(false);
     }
@@ -1379,24 +1396,37 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
         const xplNameWithoutExt =
           xplFileName.substring(0, xplFileName.lastIndexOf('.')) || xplFileName;
 
-        // Create XPL micrograph - inherits everything from PPL except imageType
-        // XPL is a SIBLING of the PPL (same parentID), not a child
+        // Create sibling micrograph - inherits everything from main except imageType
+        // Sibling has the SAME parent as main (they are siblings, not parent/child)
+        const siblingImageType = formData.imageType === 'Plane Polarized Light'
+          ? 'Cross Polarized Light'
+          : 'Plane Polarized Light';
+
         xplMicrograph = {
           ...micrograph,
           id: xplMicrographId,
           name: xplNameWithoutExt,
           imageFilename: xplFileName,
           imagePath: xplMicrographId,
-          // XPL has the SAME parent as PPL (they are siblings)
           // parentID is already inherited from micrograph via spread
-          // Override imageType to Cross Polarized Light (at micrograph level)
-          imageType: 'Cross Polarized Light',
+          // Override imageType to complement of main
+          imageType: siblingImageType,
           // For Optical Microscopy, instrument.dataType is empty (only imageType is used)
-          // The instrument object is inherited from PPL via spread, which is correct
+          // The instrument object is inherited from main via spread, which is correct
         };
 
         useAppStore.getState().addMicrograph(targetSampleId, xplMicrograph);
-        console.log('XPL micrograph created successfully:', xplMicrograph.id);
+        console.log('Sibling micrograph created successfully:', xplMicrograph.id);
+
+        // Link as siblings - PPL is always primary, XPL is always secondary
+        if (formData.imageType === 'Plane Polarized Light') {
+          // Main is PPL (primary), sibling is XPL (secondary)
+          useAppStore.getState().linkSiblingImages(micrograph.id, xplMicrograph.id);
+        } else {
+          // Main is XPL (secondary), sibling is PPL (primary)
+          useAppStore.getState().linkSiblingImages(xplMicrograph.id, micrograph.id);
+        }
+        console.log('PPL/XPL sibling link created:', micrograph.id, '<->', xplMicrograph.id);
 
         // Clear XPL scratch identifier since it's been moved
         setXplScratchIdentifier(null);
@@ -1600,14 +1630,36 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
         // Associated micrograph only - must select a location method
         return formData.locationMethod !== '';
 
-      case 'assoc-scale-method':
-        // Associated micrograph only - must select a scale method
+      case 'assoc-scale-method': {
+        // Associated micrograph only - must select a scale method that's valid for the location method
         if (formData.scaleMethod === '') return false;
+
+        // Validate that the selected scale method is valid for the current location method
+        const isScaledRectangle = formData.locationMethod === 'Locate as a scaled rectangle';
+        const validScaledRectangleMethods = [
+          'Trace Scale Bar and Drag',
+          'Stretch and Drag',
+          'Pixel Conversion Factor',
+          'Provide Width/Height of Image',
+          'Copy Size from Existing Micrograph',
+        ];
+        const validPointMethods = [
+          'Trace Scale Bar',
+          'Use Same Scale as Parent',
+          'Pixel Conversion Factor',
+          'Provide Width/Height of Image',
+          'Copy Size from Existing Micrograph',
+        ];
+
+        const validMethods = isScaledRectangle ? validScaledRectangleMethods : validPointMethods;
+        if (!validMethods.includes(formData.scaleMethod)) return false;
+
         // If "Copy Size from Existing", require a micrograph selection
         if (formData.scaleMethod === 'Copy Size from Existing Micrograph') {
           return formData.copySizeFromMicrographId !== '';
         }
         return true;
+      }
 
       case 'location-placement':
         // Associated micrograph only - validate placement and scale inputs
@@ -2451,7 +2503,15 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
         </Typography>
         <RadioGroup
           value={formData.locationMethod}
-          onChange={(e) => updateField('locationMethod', e.target.value)}
+          onChange={(e) => {
+            // Reset scaleMethod when location method changes since each method has different valid options
+            setFormData((prev) => ({
+              ...prev,
+              locationMethod: e.target.value as MicrographFormData['locationMethod'],
+              scaleMethod: '',
+              copySizeFromMicrographId: '',
+            }));
+          }}
         >
           <FormControlLabel
             value="Locate as a scaled rectangle"
@@ -3193,15 +3253,15 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
               </TextField>
             )}
 
-            {/* Add Corresponding XPL Image button - shown for Optical Microscopy + Plane Polarized Light */}
+            {/* Add Corresponding Sibling Image button - shown for Optical Microscopy + PPL or XPL */}
             {formData.instrumentType === 'Optical Microscopy' &&
-              formData.imageType === 'Plane Polarized Light' && (
+              (formData.imageType === 'Plane Polarized Light' || formData.imageType === 'Cross Polarized Light') && (
                 <Box sx={{ mt: 1 }}>
                   {xplFilePath ? (
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                       <CheckCircle color="success" fontSize="small" />
                       <Typography variant="body2" sx={{ flex: 1 }}>
-                        XPL Image: {xplFileName}
+                        {formData.imageType === 'Plane Polarized Light' ? 'XPL' : 'PPL'} Image: {xplFileName}
                       </Typography>
                       <IconButton
                         size="small"
@@ -3212,7 +3272,7 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
                           setXplHeight(null);
                           setXplScratchIdentifier(null);
                         }}
-                        title="Remove XPL image"
+                        title={`Remove ${formData.imageType === 'Plane Polarized Light' ? 'XPL' : 'PPL'} image`}
                       >
                         <Cancel fontSize="small" />
                       </IconButton>
@@ -3225,7 +3285,7 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
                       disabled={isLoadingXpl}
                     >
                       {isLoadingXpl ? <CircularProgress size={16} sx={{ mr: 1 }} /> : null}
-                      Add Corresponding XPL Image?
+                      Add Corresponding {formData.imageType === 'Plane Polarized Light' ? 'XPL' : 'PPL'} Image?
                     </Button>
                   )}
                 </Box>

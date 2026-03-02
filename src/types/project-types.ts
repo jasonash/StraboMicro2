@@ -11,6 +11,9 @@
  * Last updated: 2025-11-22
  */
 
+import type { QuickApplyPreset } from './preset-types';
+import type { MineralColorEntry } from './mineral-color-types';
+
 // ============================================================================
 // ROOT PROJECT STRUCTURE
 // ============================================================================
@@ -44,6 +47,13 @@ export interface ProjectMetadata {
   datasets?: DatasetMetadata[] | null;
   groups?: GroupMetadata[] | null;
   tags?: Tag[] | null;
+
+  // Quick Spot Presets (project-level)
+  presets?: QuickApplyPreset[] | null;
+  presetKeyBindings?: Record<string, string> | null; // Optional project override for key bindings
+
+  // Mineral Color overrides (project-level)
+  mineralColors?: MineralColorEntry[] | null;
 }
 
 export interface DatasetMetadata {
@@ -240,6 +250,18 @@ export interface MicrographMetadata {
   extinctionMicrostructureInfo?: ExtinctionMicrostructureInfoType | null;
   lithologyInfo?: LithologyInfoType | null;
 
+  // ========== XPL/PPL SIBLING PAIRING ==========
+  /** ID of the paired sibling micrograph (bidirectional link for PPL/XPL pairs) */
+  siblingImageId?: string | null;
+  /** Whether this is the primary image shown in tree (PPL=true, XPL=false) */
+  isPrimarySibling?: boolean | null;
+  /** Scale factor to match sibling dimensions at render-time (if aspect ratios match but sizes differ) */
+  siblingScaleFactor?: number | null;
+
+  // ========== SKETCH OVERLAY LAYERS ==========
+  /** Sketch overlay layers for freeform annotations on this micrograph */
+  sketchLayers?: SketchLayer[] | null;
+
   // UI state (not serialized, runtime only)
   isExpanded?: boolean | null;
   isSpotExpanded?: boolean | null;
@@ -355,6 +377,14 @@ export interface Spot {
    * Archived spots are preserved but not displayed unless "Show Archived Spots" is enabled
    */
   archived?: boolean;
+
+  // ========== QUICK APPLY PRESETS ==========
+
+  /**
+   * IDs of presets that have been applied to this spot (in order of application).
+   * Used for visual feedback (pie chart indicator) and tracking.
+   */
+  appliedPresetIds?: string[] | null;
 }
 
 // ============================================================================
@@ -381,6 +411,86 @@ export interface LineStringGeometry extends Geometry {
 export interface PolygonGeometry extends Geometry {
   type: 'Polygon';
   coordinates: Array<Array<[number, number]>>;
+}
+
+// ============================================================================
+// SKETCH OVERLAY TYPES
+// ============================================================================
+
+/**
+ * A single freeform stroke in a sketch layer
+ */
+export interface SketchStroke {
+  /** Unique identifier */
+  id: string;
+
+  /** Flat array of coordinates [x1,y1,x2,y2,...] in image space */
+  points: number[];
+
+  /** Stroke color (hex string, e.g., "#ff0000") */
+  color: string;
+
+  /** Stroke width in image pixels */
+  strokeWidth: number;
+
+  /** Opacity 0-1 (pen=1.0, marker=0.4) */
+  opacity: number;
+
+  /** Tool used to create this stroke */
+  tool: 'pen' | 'marker';
+}
+
+/**
+ * A text annotation in a sketch layer
+ */
+export interface SketchText {
+  /** Unique identifier */
+  id: string;
+
+  /** X position in image coordinates */
+  x: number;
+
+  /** Y position in image coordinates */
+  y: number;
+
+  /** The text content */
+  text: string;
+
+  /** Font size in image pixels */
+  fontSize: number;
+
+  /** Font family name */
+  fontFamily: string;
+
+  /** Text color (hex string) */
+  color: string;
+
+  /** Rotation in degrees (optional) */
+  rotation?: number;
+}
+
+/**
+ * A sketch layer containing freeform annotations
+ * Think of it as an "acetate overlay" on top of the micrograph
+ */
+export interface SketchLayer {
+  /** Unique identifier */
+  id: string;
+
+  /** User-editable layer name */
+  name: string;
+
+  /** Whether layer is currently visible */
+  visible: boolean;
+
+  /** ISO timestamp of creation */
+  createdAt: string;
+
+  /** Freeform strokes in this layer */
+  strokes: SketchStroke[];
+
+  /** Text annotations in this layer */
+  textItems: SketchText[];
 }
 
 // ============================================================================

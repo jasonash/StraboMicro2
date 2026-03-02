@@ -19,6 +19,7 @@ import {
   Popover,
   Slider,
   Tooltip,
+  Chip,
 } from '@mui/material';
 import {
   ExpandMore,
@@ -65,6 +66,8 @@ import { EditMicrographDialog } from './dialogs/metadata/EditMicrographDialog';
 import { EditMicrographLocationDialog } from './dialogs/EditMicrographLocationDialog';
 import { BatchImportDialog } from './dialogs/BatchImportDialog';
 import { SetScaleDialog } from './dialogs/SetScaleDialog';
+import { LinkSiblingDialog } from './dialogs/LinkSiblingDialog';
+import { AddSiblingDialog } from './dialogs/AddSiblingDialog';
 import { findMicrographById } from '@/store/helpers';
 import type { DatasetMetadata, SampleMetadata, MicrographMetadata } from '@/types/project-types';
 
@@ -291,12 +294,14 @@ export function ProjectTree() {
   const project = useAppStore((state) => state.project);
   const selectMicrograph = useAppStore((state) => state.selectMicrograph);
   const activeMicrographId = useAppStore((state) => state.activeMicrographId);
+  const deleteDataset = useAppStore((state) => state.deleteDataset);
   const deleteSample = useAppStore((state) => state.deleteSample);
   const deleteMicrograph = useAppStore((state) => state.deleteMicrograph);
   const updateMicrographMetadata = useAppStore((state) => state.updateMicrographMetadata);
   const reorderMicrographs = useAppStore((state) => state.reorderMicrographs);
   const reorderSamples = useAppStore((state) => state.reorderSamples);
   const reorderDatasets = useAppStore((state) => state.reorderDatasets);
+  const unlinkSiblingImages = useAppStore((state) => state.unlinkSiblingImages);
 
   // Drag and drop sensors with activation constraint to distinguish from clicks
   const sensors = useSensors(
@@ -334,6 +339,8 @@ export function ProjectTree() {
   );
 
   // Confirm dialog states
+  const [showDeleteDatasetConfirm, setShowDeleteDatasetConfirm] = useState(false);
+  const [deletingDataset, setDeletingDataset] = useState<DatasetMetadata | null>(null);
   const [showDeleteSampleConfirm, setShowDeleteSampleConfirm] = useState(false);
   const [deletingSample, setDeletingSample] = useState<SampleMetadata | null>(null);
   const [showDeleteMicrographConfirm, setShowDeleteMicrographConfirm] = useState(false);
@@ -349,6 +356,14 @@ export function ProjectTree() {
   // Set scale dialog state (for batch-imported reference micrographs)
   const [showSetScale, setShowSetScale] = useState(false);
   const [setScaleMicrographId, setSetScaleMicrographId] = useState<string | null>(null);
+
+  // Link Sibling dialog state (for PPL/XPL pairing)
+  const [showLinkSibling, setShowLinkSibling] = useState(false);
+  const [linkSiblingMicrographId, setLinkSiblingMicrographId] = useState<string | null>(null);
+
+  // Add Sibling dialog state (for adding PPL/XPL sibling after-the-fact)
+  const [showAddSibling, setShowAddSibling] = useState(false);
+  const [addSiblingMicrographId, setAddSiblingMicrographId] = useState<string | null>(null);
 
   // Opacity popover state (use position instead of element to avoid anchor disappearing)
   const [opacityAnchorPosition, setOpacityAnchorPosition] = useState<{
@@ -602,7 +617,14 @@ export function ProjectTree() {
     micrographs: MicrographMetadata[],
     parentId: string | null = null
   ): MicrographMetadata[] => {
-    return micrographs.filter((m) => (m.parentID || null) === parentId);
+    return micrographs.filter((m) => {
+      // Filter by parent ID
+      if ((m.parentID || null) !== parentId) return false;
+      // Filter out secondary siblings (XPL images) - only show primary (PPL)
+      // isPrimarySibling is true for primary (show), false for secondary (hide), null/undefined for no sibling
+      if (m.isPrimarySibling === false) return false;
+      return true;
+    });
   };
 
   // Handle drag end for micrograph reordering
@@ -881,6 +903,22 @@ export function ProjectTree() {
               {micrograph.name || micrograph.imageFilename || 'Unnamed Micrograph'}
               {isReference && ' (Reference)'}
             </Typography>
+            {/* PPL/XPL indicator for micrographs with siblings */}
+            {micrograph.siblingImageId && (
+              <Tooltip title="Has PPL/XPL pair - Press X to toggle" placement="top">
+                <Chip
+                  label="PPL/XPL"
+                  size="small"
+                  sx={{
+                    ml: 0.5,
+                    height: 18,
+                    fontSize: '0.65rem',
+                    bgcolor: 'info.main',
+                    color: 'info.contrastText',
+                  }}
+                />
+              </Tooltip>
+            )}
           </Stack>
 
           {/* Thumbnail + Button Column */}
@@ -1057,6 +1095,29 @@ export function ProjectTree() {
           >
             Delete Micrograph
           </MenuItem>
+          {/* PPL/XPL Sibling Pairing - only for PPL/XPL image types */}
+          {(micrograph.imageType === 'Plane Polarized Light' || micrograph.imageType === 'Cross Polarized Light') && (
+            !micrograph.siblingImageId ? (
+              <MenuItem
+                onClick={() => {
+                  setLinkSiblingMicrographId(micrograph.id);
+                  setShowLinkSibling(true);
+                  setMicrographOptionsAnchor({ ...micrographOptionsAnchor, [micrograph.id]: null });
+                }}
+              >
+                Link Sibling PPL/XPL Image
+              </MenuItem>
+            ) : (
+              <MenuItem
+                onClick={() => {
+                  unlinkSiblingImages(micrograph.id);
+                  setMicrographOptionsAnchor({ ...micrographOptionsAnchor, [micrograph.id]: null });
+                }}
+              >
+                Unlink Sibling Image
+              </MenuItem>
+            )
+          )}
           {/* Show/Hide All Associated Micrographs - only if has children */}
           {hasChildren && (
             <>
@@ -1129,6 +1190,19 @@ export function ProjectTree() {
           >
             Batch Import Associated Micrographs
           </MenuItem>
+          {/* Add Corresponding Sibling Image - show for PPL or XPL without existing sibling */}
+          {!micrograph.siblingImageId &&
+            (micrograph.imageType === 'Plane Polarized Light' || micrograph.imageType === 'Cross Polarized Light') && (
+            <MenuItem
+              onClick={() => {
+                setAddSiblingMicrographId(micrograph.id);
+                setShowAddSibling(true);
+                setMicrographAddAnchor({ ...micrographAddAnchor, [micrograph.id]: null });
+              }}
+            >
+              Add Corresponding {micrograph.imageType === 'Plane Polarized Light' ? 'XPL' : 'PPL'} Image
+            </MenuItem>
+          )}
         </Menu>
       </Box>
     );
@@ -1153,8 +1227,16 @@ export function ProjectTree() {
           <IconButton size="small" onClick={() => toggleSample(sample.id)} sx={{ p: 0 }}>
             {isExpanded ? <ExpandMore fontSize="small" /> : <ChevronRight fontSize="small" />}
           </IconButton>
-          <Science fontSize="small" sx={{ color: 'primary.main' }} />
-          <Typography variant="body2" sx={{ flex: 1, fontWeight: 500 }}>
+          <Science
+            fontSize="small"
+            sx={{ color: 'primary.main', cursor: 'pointer' }}
+            onClick={() => toggleSample(sample.id)}
+          />
+          <Typography
+            variant="body2"
+            sx={{ flex: 1, fontWeight: 500, cursor: 'pointer' }}
+            onClick={() => toggleSample(sample.id)}
+          >
             {sample.name || sample.sampleID || 'Unnamed Sample'}
           </Typography>
 
@@ -1287,11 +1369,23 @@ export function ProjectTree() {
             {isExpanded ? <ExpandMore fontSize="small" /> : <ChevronRight fontSize="small" />}
           </IconButton>
           {isExpanded ? (
-            <FolderOpen fontSize="small" sx={{ color: 'warning.main' }} />
+            <FolderOpen
+              fontSize="small"
+              sx={{ color: 'warning.main', cursor: 'pointer' }}
+              onClick={() => toggleDataset(dataset.id)}
+            />
           ) : (
-            <Folder fontSize="small" sx={{ color: 'warning.main' }} />
+            <Folder
+              fontSize="small"
+              sx={{ color: 'warning.main', cursor: 'pointer' }}
+              onClick={() => toggleDataset(dataset.id)}
+            />
           )}
-          <Typography variant="body2" sx={{ flex: 1, fontWeight: 600 }}>
+          <Typography
+            variant="body2"
+            sx={{ flex: 1, fontWeight: 600, cursor: 'pointer' }}
+            onClick={() => toggleDataset(dataset.id)}
+          >
             {dataset.name}
           </Typography>
 
@@ -1355,6 +1449,15 @@ export function ProjectTree() {
             }}
           >
             Edit Dataset Metadata
+          </MenuItem>
+          <MenuItem
+            onClick={() => {
+              setDeletingDataset(dataset);
+              setShowDeleteDatasetConfirm(true);
+              setDatasetMenuAnchor({ ...datasetMenuAnchor, [dataset.id]: null });
+            }}
+          >
+            Delete Dataset
           </MenuItem>
         </Menu>
 
@@ -1557,6 +1660,41 @@ export function ProjectTree() {
         />
       )}
 
+      {/* Delete Dataset Confirmation */}
+      <ConfirmDialog
+        open={showDeleteDatasetConfirm}
+        title="Delete Dataset"
+        message={
+          deletingDataset ? (
+            <>
+              Are you sure you want to delete the dataset "{deletingDataset.name}"?
+              <br />
+              <br />
+              This will remove all samples, micrographs, and spots within this dataset from the project.
+              <br />
+              <br />
+              <strong>Note:</strong> Image files will remain on disk and can be re-added later. They
+              will be excluded when exporting to .smz format.
+            </>
+          ) : (
+            ''
+          )
+        }
+        confirmLabel="Delete"
+        confirmColor="error"
+        onConfirm={() => {
+          if (deletingDataset) {
+            deleteDataset(deletingDataset.id);
+          }
+          setShowDeleteDatasetConfirm(false);
+          setDeletingDataset(null);
+        }}
+        onCancel={() => {
+          setShowDeleteDatasetConfirm(false);
+          setDeletingDataset(null);
+        }}
+      />
+
       {/* Delete Sample Confirmation */}
       <ConfirmDialog
         open={showDeleteSampleConfirm}
@@ -1686,6 +1824,26 @@ export function ProjectTree() {
           micrographId={setScaleMicrographId}
         />
       )}
+
+      {/* Link Sibling PPL/XPL Dialog */}
+      <LinkSiblingDialog
+        open={showLinkSibling}
+        onClose={() => {
+          setShowLinkSibling(false);
+          setLinkSiblingMicrographId(null);
+        }}
+        micrographId={linkSiblingMicrographId}
+      />
+
+      {/* Add Sibling Dialog (PPL↔XPL) */}
+      <AddSiblingDialog
+        open={showAddSibling}
+        onClose={() => {
+          setShowAddSibling(false);
+          setAddSiblingMicrographId(null);
+        }}
+        sourceMicrographId={addSiblingMicrographId}
+      />
 
       {/* Opacity Slider Popover */}
       <Popover

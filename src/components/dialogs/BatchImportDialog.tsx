@@ -40,7 +40,7 @@ import {
   LinearProgress,
   Alert,
 } from '@mui/material';
-import { Delete, CloudUpload } from '@mui/icons-material';
+import { Delete, CloudUpload, Warning } from '@mui/icons-material';
 import { useAppStore } from '@/store';
 import type { MicrographMetadata } from '@/types/project-types';
 import { InstrumentInfoForm, type InstrumentFormData } from './InstrumentInfoForm';
@@ -58,6 +58,7 @@ interface BatchImportDialogProps {
 interface SelectedFile {
   path: string;
   name: string;
+  validationError?: string;
 }
 
 const initialInstrumentInfoData: InstrumentFormData = {
@@ -95,6 +96,10 @@ export const BatchImportDialog: React.FC<BatchImportDialogProps> = ({
 
   // Determine if this is for associated micrographs (has parent) or reference (no parent)
   const isAssociated = parentMicrographId !== null;
+
+  // Split selected files into valid and invalid
+  const validFiles = useMemo(() => selectedFiles.filter((f) => !f.validationError), [selectedFiles]);
+  const invalidFiles = useMemo(() => selectedFiles.filter((f) => f.validationError), [selectedFiles]);
 
   // Get project from store
   const project = useAppStore((state) => state.project);
@@ -134,9 +139,13 @@ export const BatchImportDialog: React.FC<BatchImportDialogProps> = ({
       try {
         const filePaths = await window.api.openMultipleTiffDialog();
         if (filePaths && filePaths.length > 0) {
-          const newFiles: SelectedFile[] = filePaths.map((path: string) => ({
-            path,
-            name: path.split(/[\\/]/).pop() || path,
+          // Validate all selected files (checks readability and magic bytes)
+          const validationResults = await window.api.validateImageFiles(filePaths);
+
+          const newFiles: SelectedFile[] = filePaths.map((filePath: string, i: number) => ({
+            path: filePath,
+            name: filePath.split(/[\\/]/).pop() || filePath,
+            validationError: validationResults[i]?.valid ? undefined : validationResults[i]?.error,
           }));
           // Add to existing files, avoiding duplicates
           setSelectedFiles((prev) => {
@@ -269,7 +278,7 @@ export const BatchImportDialog: React.FC<BatchImportDialogProps> = ({
 
     switch (currentStepName) {
       case 'Select Files':
-        return selectedFiles.length > 0;
+        return validFiles.length > 0;
 
       case 'Instrument & Image Info':
         // Require instrumentType and imageType (matching legacy validation)
@@ -327,7 +336,7 @@ export const BatchImportDialog: React.FC<BatchImportDialogProps> = ({
     }
 
     setIsImporting(true);
-    setImportProgress({ current: 0, total: selectedFiles.length, currentFile: '' });
+    setImportProgress({ current: 0, total: validFiles.length, currentFile: '' });
     setImportErrors([]);
 
     const errors: string[] = [];
@@ -343,9 +352,9 @@ export const BatchImportDialog: React.FC<BatchImportDialogProps> = ({
       return;
     }
 
-    for (let i = 0; i < selectedFiles.length; i++) {
-      const file = selectedFiles[i];
-      setImportProgress({ current: i + 1, total: selectedFiles.length, currentFile: file.name });
+    for (let i = 0; i < validFiles.length; i++) {
+      const file = validFiles[i];
+      setImportProgress({ current: i + 1, total: validFiles.length, currentFile: file.name });
 
       try {
         // Release memory between imports to prevent OOM crashes
@@ -568,12 +577,21 @@ export const BatchImportDialog: React.FC<BatchImportDialogProps> = ({
                   {selectedFiles.map((file) => (
                     <ListItem
                       key={file.path}
-                      sx={{ bgcolor: 'action.hover' }}
+                      sx={{
+                        bgcolor: file.validationError ? 'error.dark' : 'action.hover',
+                        opacity: file.validationError ? 0.8 : 1,
+                      }}
                     >
+                      {file.validationError && (
+                        <Warning color="error" sx={{ mr: 1, flexShrink: 0 }} fontSize="small" />
+                      )}
                       <ListItemText
                         primary={file.name}
-                        secondary={file.path}
-                        secondaryTypographyProps={{ noWrap: true }}
+                        secondary={file.validationError || file.path}
+                        secondaryTypographyProps={{
+                          noWrap: !file.validationError,
+                          color: file.validationError ? 'error.light' : undefined,
+                        }}
                       />
                       <ListItemSecondaryAction>
                         <IconButton
@@ -592,7 +610,8 @@ export const BatchImportDialog: React.FC<BatchImportDialogProps> = ({
 
             {selectedFiles.length > 0 && (
               <Typography variant="body2" color="text.secondary">
-                {selectedFiles.length} file{selectedFiles.length !== 1 ? 's' : ''} selected
+                {validFiles.length} of {selectedFiles.length} file{selectedFiles.length !== 1 ? 's' : ''} ready to import
+                {invalidFiles.length > 0 && ` (${invalidFiles.length} skipped — see warnings above)`}
               </Typography>
             )}
           </Stack>
@@ -636,7 +655,7 @@ export const BatchImportDialog: React.FC<BatchImportDialogProps> = ({
           <Stack spacing={3}>
             <Typography variant="h6">Ready to Import</Typography>
             <Typography variant="body2">
-              {selectedFiles.length} micrograph{selectedFiles.length !== 1 ? 's' : ''} will be imported
+              {validFiles.length} micrograph{validFiles.length !== 1 ? 's' : ''} will be imported
               {isAssociated ? ` as associated micrographs` : ` as reference micrographs`}.
             </Typography>
 

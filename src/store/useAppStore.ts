@@ -93,6 +93,9 @@ import {
   GroupMetadata,
   Tag,
   SimpleCoord,
+  SketchLayer,
+  SketchStroke,
+  SketchText,
 } from '@/types/project-types';
 import * as turf from '@turf/turf';
 import polygonClipping from 'polygon-clipping';
@@ -101,6 +104,16 @@ import {
   PointCountSessionSummary,
   calculateSessionSummary,
 } from '@/types/point-count-types';
+import type {
+  QuickApplyPreset,
+  PresetWithScope,
+  PresetScope,
+  PresetData,
+  PresetKeyBindings,
+} from '@/types/preset-types';
+import type { MineralColorEntry, SpotColorMode, SpotLabelMode } from '@/types/mineral-color-types';
+import { DEFAULT_MINERAL_COLORS } from '@/constants/mineralColorDefaults';
+import { PRESET_FEATURE_FIELDS } from '@/types/preset-types';
 import {
   updateMicrograph,
   updateSpot,
@@ -115,7 +128,7 @@ import type { TiledViewerRef } from '@/components/TiledViewer';
 // TYPE DEFINITIONS
 // ============================================================================
 
-export type DrawingTool = 'select' | 'point' | 'line' | 'polygon' | 'measure' | null;
+export type DrawingTool = 'select' | 'point' | 'line' | 'polygon' | 'measure' | 'sketch-pen' | 'sketch-marker' | 'sketch-eraser' | 'sketch-text' | null;
 export type SidebarTab = 'samples' | 'groups' | 'spots' | 'tags';
 export type ThemeMode = 'dark' | 'light' | 'system';
 
@@ -146,7 +159,7 @@ interface AppState {
   originalGeometry: Array<{ X: number; Y: number }> | null; // Backup of original geometry for cancel
   zoom: number;
   pan: { x: number; y: number };
-  showSpotLabels: boolean;
+  spotLabelMode: SpotLabelMode;
   showMicrographOutlines: boolean;
   showRecursiveSpots: boolean;
   showArchivedSpots: boolean;
@@ -179,6 +192,12 @@ interface AppState {
   /** Whether Batch Edit Spots dialog is visible */
   batchEditDialogOpen: boolean;
 
+  // ========== QUICK APPLY PRESETS STATE (global - persisted) ==========
+  /** Global presets stored app-wide (not project-specific) */
+  globalPresets: QuickApplyPreset[];
+  /** Key bindings for presets (keys "1"-"9" -> preset ID) */
+  presetKeyBindings: PresetKeyBindings;
+
   // ========== POINT COUNT MODE STATE ==========
   /** Whether Point Count mode is active (separate from spots) */
   pointCountMode: boolean;
@@ -209,6 +228,30 @@ interface AppState {
   /** Filter applied when entering Quick Edit */
   quickEditFilter: 'all' | 'unclassified';
 
+  // ========== XPL/PPL SIBLING VIEW STATE ==========
+  /** Whether currently viewing the sibling (XPL) instead of primary (PPL) */
+  siblingViewActive: boolean;
+  /** Flag indicating a sibling toggle is in progress (for TiledViewer to preserve view state) */
+  siblingToggleInProgress: boolean;
+  /** Cached zoom level before toggling to sibling */
+  siblingCachedZoom: number | null;
+  /** Cached pan position before toggling to sibling */
+  siblingCachedPosition: { x: number; y: number } | null;
+
+  // ========== SKETCH OVERLAY STATE ==========
+  /** ID of the currently active sketch layer (for drawing/editing) */
+  activeSketchLayerId: string | null;
+  /** Whether sketch mode is active (shows sketch toolbar, enables sketch tools) */
+  sketchModeActive: boolean;
+  /** Current stroke color for sketch tools (hex string) */
+  sketchStrokeColor: string;
+  /** Current stroke width for sketch tools (in image pixels) */
+  sketchStrokeWidth: number;
+  /** Current font size for sketch text tool (in image pixels) */
+  sketchFontSize: number;
+  /** Whether the sketch text input overlay is currently active (open for editing) */
+  sketchTextInputActive: boolean;
+
   // ========== GENERATION SETTINGS (persisted) ==========
   /** Last used point counting settings */
   lastPointCountSettings: {
@@ -232,6 +275,12 @@ interface AppState {
     opacity: number;
     namingPattern: string;
   } | null;
+
+  // ========== MINERAL COLOR STATE ==========
+  /** Current spot color mode: 'spot-color' (default) or 'mineral-color' */
+  spotColorMode: SpotColorMode;
+  /** Global mineral color assignments (persisted to app prefs) */
+  globalMineralColors: MineralColorEntry[];
 
   // ========== COMPUTED INDEXES (for performance) ==========
   micrographIndex: Map<string, MicrographMetadata>;
@@ -262,6 +311,52 @@ interface AppState {
   // ========== SPLIT MODE ACTIONS ==========
   setSplitModeSpotId: (spotId: string | null) => void;
 
+  // ========== XPL/PPL SIBLING ACTIONS ==========
+  /** Toggle between PPL (primary) and XPL (sibling) view */
+  toggleSiblingView: () => void;
+  /** Clear the sibling toggle in progress flag (called by TiledViewer after image loads) */
+  clearSiblingToggleInProgress: () => void;
+  /** Link two micrographs as PPL/XPL siblings (bidirectional) */
+  linkSiblingImages: (primaryId: string, secondaryId: string) => void;
+  /** Remove sibling link from both micrographs */
+  unlinkSiblingImages: (micrographId: string) => void;
+  /** Get the sibling ID for a micrograph (if any) */
+  getSiblingId: (micrographId: string | null) => string | null;
+
+  // ========== SKETCH OVERLAY ACTIONS ==========
+  /** Add a new sketch layer to a micrograph */
+  addSketchLayer: (micrographId: string, layer?: Partial<SketchLayer>) => string;
+  /** Remove a sketch layer from a micrograph */
+  removeSketchLayer: (micrographId: string, layerId: string) => void;
+  /** Rename a sketch layer */
+  renameSketchLayer: (micrographId: string, layerId: string, name: string) => void;
+  /** Set visibility of a sketch layer */
+  setSketchLayerVisible: (micrographId: string, layerId: string, visible: boolean) => void;
+  /** Add a stroke to a sketch layer */
+  addSketchStroke: (micrographId: string, layerId: string, stroke: SketchStroke) => void;
+  /** Remove a stroke from a sketch layer */
+  removeSketchStroke: (micrographId: string, layerId: string, strokeId: string) => void;
+  /** Add a text annotation to a sketch layer */
+  addSketchText: (micrographId: string, layerId: string, text: SketchText) => void;
+  /** Remove a text annotation from a sketch layer */
+  removeSketchText: (micrographId: string, layerId: string, textId: string) => void;
+  /** Update a text annotation in a sketch layer */
+  updateSketchText: (micrographId: string, layerId: string, textId: string, updates: Partial<SketchText>) => void;
+  /** Set the active sketch layer for editing */
+  setActiveSketchLayerId: (layerId: string | null) => void;
+  /** Get sketch layers for a micrograph */
+  getSketchLayers: (micrographId: string | null) => SketchLayer[];
+  /** Enable/disable sketch mode (shows sketch toolbar) */
+  setSketchModeActive: (active: boolean) => void;
+  /** Set the stroke color for sketch tools */
+  setSketchStrokeColor: (color: string) => void;
+  /** Set the stroke width for sketch tools */
+  setSketchStrokeWidth: (width: number) => void;
+  /** Set the font size for sketch text tool */
+  setSketchFontSize: (size: number) => void;
+  /** Set whether the sketch text input overlay is active */
+  setSketchTextInputActive: (active: boolean) => void;
+
   // ========== CRUD: DATASET ==========
   addDataset: (dataset: DatasetMetadata) => void;
   updateDataset: (id: string, updates: Partial<DatasetMetadata>) => void;
@@ -288,6 +383,8 @@ interface AppState {
   /** Update multiple spots with the same changes (batch edit) */
   batchUpdateSpots: (spotIds: string[], updates: Partial<Spot>) => void;
   deleteSpot: (id: string) => void;
+  /** Delete multiple spots at once (for batch delete) - single undo step */
+  batchDeleteSpots: (spotIds: string[]) => void;
   /** Clear all spots from a specific micrograph */
   clearAllSpots: (micrographId: string) => void;
   /** Merge multiple polygon spots into a single spot */
@@ -304,6 +401,46 @@ interface AppState {
   setStatisticsPanelVisible: (visible: boolean) => void;
   /** Toggle Batch Edit dialog visibility */
   setBatchEditDialogOpen: (open: boolean) => void;
+
+  // ========== MINERAL COLOR ACTIONS ==========
+  /** Set the spot color mode */
+  setSpotColorMode: (mode: SpotColorMode) => void;
+  /** Replace all global mineral color entries */
+  setGlobalMineralColors: (entries: MineralColorEntry[]) => void;
+  /** Update a single global mineral color */
+  updateGlobalMineralColor: (mineral: string, color: string) => void;
+  /** Add a new global mineral color entry */
+  addGlobalMineralColor: (entry: MineralColorEntry) => void;
+  /** Remove a global mineral color entry by mineral name */
+  removeGlobalMineralColor: (mineral: string) => void;
+  /** Reset global mineral colors to defaults */
+  resetGlobalMineralColors: () => void;
+  /** Set or clear project-level mineral color overrides */
+  setProjectMineralColors: (entries: MineralColorEntry[] | null) => void;
+
+  // ========== QUICK APPLY PRESETS ACTIONS ==========
+  /** Create a new preset */
+  createPreset: (preset: QuickApplyPreset, scope: PresetScope) => void;
+  /** Update an existing preset */
+  updatePreset: (id: string, updates: Partial<QuickApplyPreset>, scope: PresetScope) => void;
+  /** Delete a preset */
+  deletePreset: (id: string, scope: PresetScope) => void;
+  /** Reorder presets within a scope */
+  reorderPresets: (orderedIds: string[], scope: PresetScope) => void;
+  /** Apply a preset to a single spot (additive merge) */
+  applyPresetToSpot: (presetId: string, spotId: string) => void;
+  /** Apply a preset to multiple spots (batch) */
+  applyPresetToSpots: (presetId: string, spotIds: string[]) => void;
+  /** Set or clear a key binding for a preset */
+  setPresetKeyBinding: (key: string, presetId: string | null) => void;
+  /** Get all presets with their scope information */
+  getAllPresetsWithScope: () => PresetWithScope[];
+  /** Get a preset by ID (searches both global and project) */
+  getPresetById: (id: string) => PresetWithScope | null;
+  /** Check if any presets are bound to keys 1-9 */
+  hasPresetsConfigured: () => boolean;
+  /** Create a preset from an existing spot's data */
+  createPresetFromSpot: (spotId: string, name: string, color: string, scope: PresetScope) => QuickApplyPreset | null;
 
   // ========== POINT COUNT MODE ACTIONS ==========
   /** Enter Point Count mode with a session */
@@ -345,6 +482,8 @@ interface AppState {
   exitQuickEditMode: () => void;
   /** Navigate to next spot in Quick Edit */
   quickEditNext: () => void;
+  /** Navigate to next unclassified spot in Quick Edit (skips already-classified spots) */
+  quickEditNextUnclassified: () => void;
   /** Navigate to previous spot in Quick Edit */
   quickEditPrev: () => void;
   /** Navigate to specific index in Quick Edit */
@@ -380,7 +519,7 @@ interface AppState {
   setActiveTool: (tool: DrawingTool) => void;
   setZoom: (zoom: number) => void;
   setPan: (pan: { x: number; y: number }) => void;
-  setShowSpotLabels: (show: boolean) => void;
+  setSpotLabelMode: (mode: SpotLabelMode) => void;
   setShowMicrographOutlines: (show: boolean) => void;
   setShowRecursiveSpots: (show: boolean) => void;
   setShowArchivedSpots: (show: boolean) => void;
@@ -409,6 +548,285 @@ interface AppState {
 
   // ========== NAVIGATION GUARD ACTIONS ==========
   setNavigationGuard: (guard: (() => Promise<boolean>) | null) => void;
+}
+
+// ============================================================================
+// PRESET MERGE HELPER
+// ============================================================================
+
+/**
+ * Merge preset data into a spot using additive rules:
+ * - Scalars (color, opacity): preset replaces spot value
+ * - mineralogy.minerals[]: append preset minerals to existing
+ * - Other *Info arrays: append preset entries to existing
+ * - Notes fields: concatenate with newline
+ */
+function mergePresetIntoSpot(spot: Spot, presetData: PresetData): void {
+  // Merge scalar appearance properties (replace)
+  if (presetData.color !== undefined) {
+    spot.color = presetData.color;
+  }
+  if (presetData.labelColor !== undefined) {
+    spot.labelColor = presetData.labelColor;
+  }
+  if (presetData.opacity !== undefined) {
+    spot.opacity = presetData.opacity;
+  }
+
+  // Merge mineralogy (append minerals)
+  if (presetData.mineralogy) {
+    if (!spot.mineralogy) {
+      spot.mineralogy = structuredClone(presetData.mineralogy);
+    } else {
+      // Append minerals
+      if (presetData.mineralogy.minerals?.length) {
+        if (!spot.mineralogy.minerals) {
+          spot.mineralogy.minerals = [];
+        }
+        spot.mineralogy.minerals.push(...structuredClone(presetData.mineralogy.minerals));
+      }
+      // Concatenate notes
+      if (presetData.mineralogy.notes) {
+        spot.mineralogy.notes = spot.mineralogy.notes
+          ? `${spot.mineralogy.notes}\n${presetData.mineralogy.notes}`
+          : presetData.mineralogy.notes;
+      }
+      // Replace other fields if set
+      if (presetData.mineralogy.percentageCalculationMethod) {
+        spot.mineralogy.percentageCalculationMethod = presetData.mineralogy.percentageCalculationMethod;
+      }
+      if (presetData.mineralogy.mineralogyMethod) {
+        spot.mineralogy.mineralogyMethod = presetData.mineralogy.mineralogyMethod;
+      }
+    }
+  }
+
+  // Merge grainInfo (append arrays, concatenate notes)
+  if (presetData.grainInfo) {
+    if (!spot.grainInfo) {
+      spot.grainInfo = structuredClone(presetData.grainInfo);
+    } else {
+      if (presetData.grainInfo.grainSizeInfo?.length) {
+        if (!spot.grainInfo.grainSizeInfo) spot.grainInfo.grainSizeInfo = [];
+        spot.grainInfo.grainSizeInfo.push(...structuredClone(presetData.grainInfo.grainSizeInfo));
+      }
+      if (presetData.grainInfo.grainShapeInfo?.length) {
+        if (!spot.grainInfo.grainShapeInfo) spot.grainInfo.grainShapeInfo = [];
+        spot.grainInfo.grainShapeInfo.push(...structuredClone(presetData.grainInfo.grainShapeInfo));
+      }
+      if (presetData.grainInfo.grainOrientationInfo?.length) {
+        if (!spot.grainInfo.grainOrientationInfo) spot.grainInfo.grainOrientationInfo = [];
+        spot.grainInfo.grainOrientationInfo.push(...structuredClone(presetData.grainInfo.grainOrientationInfo));
+      }
+      if (presetData.grainInfo.grainSizeNotes) {
+        spot.grainInfo.grainSizeNotes = spot.grainInfo.grainSizeNotes
+          ? `${spot.grainInfo.grainSizeNotes}\n${presetData.grainInfo.grainSizeNotes}`
+          : presetData.grainInfo.grainSizeNotes;
+      }
+      if (presetData.grainInfo.grainShapeNotes) {
+        spot.grainInfo.grainShapeNotes = spot.grainInfo.grainShapeNotes
+          ? `${spot.grainInfo.grainShapeNotes}\n${presetData.grainInfo.grainShapeNotes}`
+          : presetData.grainInfo.grainShapeNotes;
+      }
+      if (presetData.grainInfo.grainOrientationNotes) {
+        spot.grainInfo.grainOrientationNotes = spot.grainInfo.grainOrientationNotes
+          ? `${spot.grainInfo.grainOrientationNotes}\n${presetData.grainInfo.grainOrientationNotes}`
+          : presetData.grainInfo.grainOrientationNotes;
+      }
+    }
+  }
+
+  // Merge fabricInfo (append fabrics array, concatenate notes)
+  if (presetData.fabricInfo) {
+    if (!spot.fabricInfo) {
+      spot.fabricInfo = structuredClone(presetData.fabricInfo);
+    } else {
+      if (presetData.fabricInfo.fabrics?.length) {
+        if (!spot.fabricInfo.fabrics) spot.fabricInfo.fabrics = [];
+        spot.fabricInfo.fabrics.push(...structuredClone(presetData.fabricInfo.fabrics));
+      }
+      if (presetData.fabricInfo.notes) {
+        spot.fabricInfo.notes = spot.fabricInfo.notes
+          ? `${spot.fabricInfo.notes}\n${presetData.fabricInfo.notes}`
+          : presetData.fabricInfo.notes;
+      }
+    }
+  }
+
+  // Merge fractureInfo (append fractures array, concatenate notes)
+  if (presetData.fractureInfo) {
+    if (!spot.fractureInfo) {
+      spot.fractureInfo = structuredClone(presetData.fractureInfo);
+    } else {
+      if (presetData.fractureInfo.fractures?.length) {
+        if (!spot.fractureInfo.fractures) spot.fractureInfo.fractures = [];
+        spot.fractureInfo.fractures.push(...structuredClone(presetData.fractureInfo.fractures));
+      }
+      if (presetData.fractureInfo.notes) {
+        spot.fractureInfo.notes = spot.fractureInfo.notes
+          ? `${spot.fractureInfo.notes}\n${presetData.fractureInfo.notes}`
+          : presetData.fractureInfo.notes;
+      }
+    }
+  }
+
+  // Merge foldInfo (append folds array, concatenate notes)
+  if (presetData.foldInfo) {
+    if (!spot.foldInfo) {
+      spot.foldInfo = structuredClone(presetData.foldInfo);
+    } else {
+      if (presetData.foldInfo.folds?.length) {
+        if (!spot.foldInfo.folds) spot.foldInfo.folds = [];
+        spot.foldInfo.folds.push(...structuredClone(presetData.foldInfo.folds));
+      }
+      if (presetData.foldInfo.notes) {
+        spot.foldInfo.notes = spot.foldInfo.notes
+          ? `${spot.foldInfo.notes}\n${presetData.foldInfo.notes}`
+          : presetData.foldInfo.notes;
+      }
+    }
+  }
+
+  // Merge veinInfo (append veins array, concatenate notes)
+  if (presetData.veinInfo) {
+    if (!spot.veinInfo) {
+      spot.veinInfo = structuredClone(presetData.veinInfo);
+    } else {
+      if (presetData.veinInfo.veins?.length) {
+        if (!spot.veinInfo.veins) spot.veinInfo.veins = [];
+        spot.veinInfo.veins.push(...structuredClone(presetData.veinInfo.veins));
+      }
+      if (presetData.veinInfo.notes) {
+        spot.veinInfo.notes = spot.veinInfo.notes
+          ? `${spot.veinInfo.notes}\n${presetData.veinInfo.notes}`
+          : presetData.veinInfo.notes;
+      }
+    }
+  }
+
+  // Merge clasticDeformationBandInfo
+  if (presetData.clasticDeformationBandInfo) {
+    if (!spot.clasticDeformationBandInfo) {
+      spot.clasticDeformationBandInfo = structuredClone(presetData.clasticDeformationBandInfo);
+    } else {
+      if (presetData.clasticDeformationBandInfo.bands?.length) {
+        if (!spot.clasticDeformationBandInfo.bands) spot.clasticDeformationBandInfo.bands = [];
+        spot.clasticDeformationBandInfo.bands.push(...structuredClone(presetData.clasticDeformationBandInfo.bands));
+      }
+      if (presetData.clasticDeformationBandInfo.notes) {
+        spot.clasticDeformationBandInfo.notes = spot.clasticDeformationBandInfo.notes
+          ? `${spot.clasticDeformationBandInfo.notes}\n${presetData.clasticDeformationBandInfo.notes}`
+          : presetData.clasticDeformationBandInfo.notes;
+      }
+    }
+  }
+
+  // Merge grainBoundaryInfo
+  if (presetData.grainBoundaryInfo) {
+    if (!spot.grainBoundaryInfo) {
+      spot.grainBoundaryInfo = structuredClone(presetData.grainBoundaryInfo);
+    } else {
+      if (presetData.grainBoundaryInfo.boundaries?.length) {
+        if (!spot.grainBoundaryInfo.boundaries) spot.grainBoundaryInfo.boundaries = [];
+        spot.grainBoundaryInfo.boundaries.push(...structuredClone(presetData.grainBoundaryInfo.boundaries));
+      }
+      if (presetData.grainBoundaryInfo.notes) {
+        spot.grainBoundaryInfo.notes = spot.grainBoundaryInfo.notes
+          ? `${spot.grainBoundaryInfo.notes}\n${presetData.grainBoundaryInfo.notes}`
+          : presetData.grainBoundaryInfo.notes;
+      }
+    }
+  }
+
+  // Merge intraGrainInfo
+  if (presetData.intraGrainInfo) {
+    if (!spot.intraGrainInfo) {
+      spot.intraGrainInfo = structuredClone(presetData.intraGrainInfo);
+    } else {
+      if (presetData.intraGrainInfo.grains?.length) {
+        if (!spot.intraGrainInfo.grains) spot.intraGrainInfo.grains = [];
+        spot.intraGrainInfo.grains.push(...structuredClone(presetData.intraGrainInfo.grains));
+      }
+      if (presetData.intraGrainInfo.notes) {
+        spot.intraGrainInfo.notes = spot.intraGrainInfo.notes
+          ? `${spot.intraGrainInfo.notes}\n${presetData.intraGrainInfo.notes}`
+          : presetData.intraGrainInfo.notes;
+      }
+    }
+  }
+
+  // Merge pseudotachylyteInfo
+  if (presetData.pseudotachylyteInfo) {
+    if (!spot.pseudotachylyteInfo) {
+      spot.pseudotachylyteInfo = structuredClone(presetData.pseudotachylyteInfo);
+    } else {
+      if (presetData.pseudotachylyteInfo.pseudotachylytes?.length) {
+        if (!spot.pseudotachylyteInfo.pseudotachylytes) spot.pseudotachylyteInfo.pseudotachylytes = [];
+        spot.pseudotachylyteInfo.pseudotachylytes.push(...structuredClone(presetData.pseudotachylyteInfo.pseudotachylytes));
+      }
+      if (presetData.pseudotachylyteInfo.notes) {
+        spot.pseudotachylyteInfo.notes = spot.pseudotachylyteInfo.notes
+          ? `${spot.pseudotachylyteInfo.notes}\n${presetData.pseudotachylyteInfo.notes}`
+          : presetData.pseudotachylyteInfo.notes;
+      }
+      if (presetData.pseudotachylyteInfo.reasoning) {
+        spot.pseudotachylyteInfo.reasoning = spot.pseudotachylyteInfo.reasoning
+          ? `${spot.pseudotachylyteInfo.reasoning}\n${presetData.pseudotachylyteInfo.reasoning}`
+          : presetData.pseudotachylyteInfo.reasoning;
+      }
+    }
+  }
+
+  // Merge faultsShearZonesInfo
+  if (presetData.faultsShearZonesInfo) {
+    if (!spot.faultsShearZonesInfo) {
+      spot.faultsShearZonesInfo = structuredClone(presetData.faultsShearZonesInfo);
+    } else {
+      if (presetData.faultsShearZonesInfo.faultsShearZones?.length) {
+        if (!spot.faultsShearZonesInfo.faultsShearZones) spot.faultsShearZonesInfo.faultsShearZones = [];
+        spot.faultsShearZonesInfo.faultsShearZones.push(...structuredClone(presetData.faultsShearZonesInfo.faultsShearZones));
+      }
+      if (presetData.faultsShearZonesInfo.notes) {
+        spot.faultsShearZonesInfo.notes = spot.faultsShearZonesInfo.notes
+          ? `${spot.faultsShearZonesInfo.notes}\n${presetData.faultsShearZonesInfo.notes}`
+          : presetData.faultsShearZonesInfo.notes;
+      }
+    }
+  }
+
+  // Merge extinctionMicrostructureInfo
+  if (presetData.extinctionMicrostructureInfo) {
+    if (!spot.extinctionMicrostructureInfo) {
+      spot.extinctionMicrostructureInfo = structuredClone(presetData.extinctionMicrostructureInfo);
+    } else {
+      if (presetData.extinctionMicrostructureInfo.extinctionMicrostructures?.length) {
+        if (!spot.extinctionMicrostructureInfo.extinctionMicrostructures) spot.extinctionMicrostructureInfo.extinctionMicrostructures = [];
+        spot.extinctionMicrostructureInfo.extinctionMicrostructures.push(...structuredClone(presetData.extinctionMicrostructureInfo.extinctionMicrostructures));
+      }
+      if (presetData.extinctionMicrostructureInfo.notes) {
+        spot.extinctionMicrostructureInfo.notes = spot.extinctionMicrostructureInfo.notes
+          ? `${spot.extinctionMicrostructureInfo.notes}\n${presetData.extinctionMicrostructureInfo.notes}`
+          : presetData.extinctionMicrostructureInfo.notes;
+      }
+    }
+  }
+
+  // Merge lithologyInfo
+  if (presetData.lithologyInfo) {
+    if (!spot.lithologyInfo) {
+      spot.lithologyInfo = structuredClone(presetData.lithologyInfo);
+    } else {
+      if (presetData.lithologyInfo.lithologies?.length) {
+        if (!spot.lithologyInfo.lithologies) spot.lithologyInfo.lithologies = [];
+        spot.lithologyInfo.lithologies.push(...structuredClone(presetData.lithologyInfo.lithologies));
+      }
+      if (presetData.lithologyInfo.notes) {
+        spot.lithologyInfo.notes = spot.lithologyInfo.notes
+          ? `${spot.lithologyInfo.notes}\n${presetData.lithologyInfo.notes}`
+          : presetData.lithologyInfo.notes;
+      }
+    }
+  }
 }
 
 // ============================================================================
@@ -442,7 +860,7 @@ export const useAppStore = create<AppState>()(
           originalGeometry: null,
           zoom: 1,
           pan: { x: 0, y: 0 },
-          showSpotLabels: true,
+          spotLabelMode: 'original' as SpotLabelMode,
           showMicrographOutlines: true,
           showRecursiveSpots: false,
           showArchivedSpots: false,
@@ -467,25 +885,28 @@ export const useAppStore = create<AppState>()(
           // excluded - the mineralogy schema only supports actual mineral names.
           // See PROJECT_STATUS.md for future schema expansion plans.
           quickClassifyShortcuts: {
-            'q': 'quartz',
-            'p': 'plagioclase',
-            'k': 'k-feldspar',
-            'o': 'olivine',
-            'x': 'pyroxene',
-            'a': 'amphibole',
-            'h': 'hornblende',
-            'b': 'biotite',
-            'm': 'muscovite',
-            'g': 'garnet',
-            'c': 'calcite',
-            'd': 'dolomite',
-            'e': 'epidote',
-            's': 'serpentine',
-            'z': 'zircon',
-            'u': 'unknown',
+            'q': 'Quartz',
+            'p': 'Plagioclase',
+            'k': 'K-Feldspar',
+            'o': 'Olivine',
+            'x': 'Clinopyroxene',
+            'a': 'Amphibole',
+            'h': 'Hornblende',
+            'b': 'Biotite',
+            'm': 'Muscovite',
+            'g': 'Garnet',
+            'c': 'Calcite',
+            'd': 'Dolomite',
+            'e': 'Epidote',
+            's': 'Serpentine',
+            'z': 'Zircon',
           },
           statisticsPanelVisible: false,
           batchEditDialogOpen: false,
+
+          // Quick Spot Presets state (global - persisted)
+          globalPresets: [],
+          presetKeyBindings: {},
 
           // Point Count mode state
           pointCountMode: false,
@@ -504,9 +925,27 @@ export const useAppStore = create<AppState>()(
           quickEditSortOrder: 'spatial' as const,
           quickEditFilter: 'all' as const,
 
+          // XPL/PPL sibling view state
+          siblingViewActive: false,
+          siblingToggleInProgress: false,
+          siblingCachedZoom: null,
+          siblingCachedPosition: null,
+
+          // Sketch overlay state
+          activeSketchLayerId: null,
+          sketchModeActive: false,
+          sketchStrokeColor: localStorage.getItem('sketchStrokeColor') || '#ff0000', // Default: red
+          sketchStrokeWidth: parseInt(localStorage.getItem('sketchStrokeWidth') || '3', 10), // Default: 3px
+          sketchFontSize: parseInt(localStorage.getItem('sketchFontSize') || '24', 10), // Default: 24px
+          sketchTextInputActive: false,
+
           // Generation settings (persisted defaults)
           lastPointCountSettings: null,
           lastGrainDetectionSettings: null,
+
+          // Mineral color state
+          spotColorMode: 'spot-color' as const,
+          globalMineralColors: [...DEFAULT_MINERAL_COLORS],
 
           micrographIndex: new Map(),
           spotIndex: new Map(),
@@ -528,6 +967,9 @@ export const useAppStore = create<AppState>()(
               micrographNavigationStack: [],
               selectedSpotIds: [],
               spotLassoToolActive: false,
+              siblingViewActive: false,
+              siblingCachedZoom: null,
+              siblingCachedPosition: null,
               micrographIndex,
               spotIndex,
             });
@@ -544,6 +986,9 @@ export const useAppStore = create<AppState>()(
             micrographNavigationStack: [],
             selectedSpotIds: [],
             spotLassoToolActive: false,
+            siblingViewActive: false,
+            siblingCachedZoom: null,
+            siblingCachedPosition: null,
             micrographIndex: new Map(),
             spotIndex: new Map(),
           }),
@@ -603,12 +1048,17 @@ export const useAppStore = create<AppState>()(
               activeMicrographId: id,
               activeSpotId: null,
               micrographNavigationStack: [], // Clear stack when selecting from sidebar
+              siblingViewActive: false, // Reset sibling view when changing micrograph
+              siblingCachedZoom: null,
+              siblingCachedPosition: null,
+              sketchModeActive: false, // Exit sketch mode when switching micrographs
+              activeTool: null,
             });
             return true;
           },
 
           selectActiveSpot: async (id) => {
-            const { navigationGuard, activeSpotId } = get();
+            const { navigationGuard, activeSpotId, quickEditMode, quickEditSpotIds } = get();
 
             // Skip guard if selecting the same spot
             if (id === activeSpotId) return true;
@@ -617,6 +1067,15 @@ export const useAppStore = create<AppState>()(
             if (navigationGuard) {
               const canProceed = await navigationGuard();
               if (!canProceed) return false;
+            }
+
+            // If in Quick Edit mode, sync the index to match the clicked spot
+            if (quickEditMode && id) {
+              const newIndex = quickEditSpotIds.indexOf(id);
+              if (newIndex !== -1) {
+                set({ activeSpotId: id, quickEditCurrentIndex: newIndex });
+                return true;
+              }
             }
 
             set({ activeSpotId: id });
@@ -638,6 +1097,11 @@ export const useAppStore = create<AppState>()(
               activeMicrographId: id,
               activeSpotId: null,
               micrographNavigationStack: [...micrographNavigationStack, activeMicrographId],
+              sketchModeActive: false, // Exit sketch mode when drilling down
+              activeTool: null,
+              siblingViewActive: false, // Reset sibling view when drilling down
+              siblingCachedZoom: null,
+              siblingCachedPosition: null,
             });
             return true;
           },
@@ -660,6 +1124,11 @@ export const useAppStore = create<AppState>()(
               activeMicrographId: previousMicrographId,
               activeSpotId: null,
               micrographNavigationStack: newStack,
+              sketchModeActive: false, // Exit sketch mode when navigating back
+              activeTool: null,
+              siblingViewActive: false, // Reset sibling view when navigating back
+              siblingCachedZoom: null,
+              siblingCachedPosition: null,
             });
             return true;
           },
@@ -698,6 +1167,484 @@ export const useAppStore = create<AppState>()(
 
           // ========== SPLIT MODE ACTIONS ==========
           setSplitModeSpotId: (spotId) => set({ splitModeSpotId: spotId }),
+
+          // ========== XPL/PPL SIBLING ACTIONS ==========
+
+          toggleSiblingView: () => {
+            const { activeMicrographId, siblingViewActive, zoom, pan, micrographIndex } = get();
+            if (!activeMicrographId) return;
+
+            const currentMicro = micrographIndex.get(activeMicrographId);
+            if (!currentMicro?.siblingImageId) return;
+
+            const siblingMicro = micrographIndex.get(currentMicro.siblingImageId);
+            if (!siblingMicro) return;
+
+            // Toggle the view and cache/restore zoom/pan
+            if (!siblingViewActive) {
+              // Switching to sibling view - cache current state
+              set({
+                siblingViewActive: true,
+                siblingToggleInProgress: true, // Signal TiledViewer to preserve view state
+                siblingCachedZoom: zoom,
+                siblingCachedPosition: pan,
+                activeMicrographId: currentMicro.siblingImageId,
+              });
+            } else {
+              // Switching back to primary - restore cached state
+              const { siblingCachedZoom, siblingCachedPosition } = get();
+              set({
+                siblingViewActive: false,
+                siblingToggleInProgress: true, // Signal TiledViewer to preserve view state
+                activeMicrographId: currentMicro.siblingImageId,
+                zoom: siblingCachedZoom ?? zoom,
+                pan: siblingCachedPosition ?? pan,
+                siblingCachedZoom: null,
+                siblingCachedPosition: null,
+              });
+            }
+          },
+
+          clearSiblingToggleInProgress: () => set({ siblingToggleInProgress: false }),
+
+          linkSiblingImages: (primaryId, secondaryId) => set((state) => {
+            if (!state.project) return state;
+
+            const newProject = structuredClone(state.project);
+
+            // First pass: find the primary micrograph and its position data
+            let primaryMicro: MicrographMetadata | null = null;
+            for (const dataset of newProject.datasets || []) {
+              for (const sample of dataset.samples || []) {
+                for (const micro of sample.micrographs || []) {
+                  if (micro.id === primaryId) {
+                    primaryMicro = micro;
+                    break;
+                  }
+                }
+                if (primaryMicro) break;
+              }
+              if (primaryMicro) break;
+            }
+
+            // Second pass: update both micrographs with bidirectional link
+            // and copy position from primary to secondary
+            for (const dataset of newProject.datasets || []) {
+              for (const sample of dataset.samples || []) {
+                for (const micro of sample.micrographs || []) {
+                  if (micro.id === primaryId) {
+                    micro.siblingImageId = secondaryId;
+                    micro.isPrimarySibling = true;
+                  } else if (micro.id === secondaryId) {
+                    micro.siblingImageId = primaryId;
+                    micro.isPrimarySibling = false;
+                    // Copy position from primary to secondary (XPL inherits PPL's position)
+                    if (primaryMicro) {
+                      micro.offsetInParent = primaryMicro.offsetInParent
+                        ? { ...primaryMicro.offsetInParent }
+                        : null;
+                      micro.rotation = primaryMicro.rotation;
+                      micro.scaleX = primaryMicro.scaleX;
+                      micro.scaleY = primaryMicro.scaleY;
+                      micro.pointInParent = primaryMicro.pointInParent
+                        ? { ...primaryMicro.pointInParent }
+                        : null;
+                    }
+                  }
+                }
+              }
+            }
+
+            return {
+              project: newProject,
+              isDirty: true,
+              micrographIndex: buildMicrographIndex(newProject),
+            };
+          }),
+
+          unlinkSiblingImages: (micrographId) => set((state) => {
+            if (!state.project) return state;
+
+            const newProject = structuredClone(state.project);
+
+            // Find the micrograph and its sibling
+            let siblingId: string | null = null;
+            for (const dataset of newProject.datasets || []) {
+              for (const sample of dataset.samples || []) {
+                for (const micro of sample.micrographs || []) {
+                  if (micro.id === micrographId && micro.siblingImageId) {
+                    siblingId = micro.siblingImageId;
+                    micro.siblingImageId = null;
+                    micro.isPrimarySibling = null;
+                    micro.siblingScaleFactor = null;
+                  }
+                }
+              }
+            }
+
+            // Also clear the sibling's link
+            if (siblingId) {
+              for (const dataset of newProject.datasets || []) {
+                for (const sample of dataset.samples || []) {
+                  for (const micro of sample.micrographs || []) {
+                    if (micro.id === siblingId) {
+                      micro.siblingImageId = null;
+                      micro.isPrimarySibling = null;
+                      micro.siblingScaleFactor = null;
+                    }
+                  }
+                }
+              }
+            }
+
+            return {
+              project: newProject,
+              isDirty: true,
+              micrographIndex: buildMicrographIndex(newProject),
+              siblingViewActive: false,
+              siblingCachedZoom: null,
+              siblingCachedPosition: null,
+            };
+          }),
+
+          getSiblingId: (micrographId) => {
+            if (!micrographId) return null;
+            const { micrographIndex } = get();
+            const micro = micrographIndex.get(micrographId);
+            return micro?.siblingImageId ?? null;
+          },
+
+          // ========== SKETCH OVERLAY ACTIONS ==========
+
+          addSketchLayer: (micrographId, layerOptions = {}) => {
+            const layerId = `sketch-layer-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+            const newLayer: SketchLayer = {
+              id: layerId,
+              name: layerOptions.name || 'New Sketch Layer',
+              visible: layerOptions.visible ?? true,
+              createdAt: new Date().toISOString(),
+              strokes: layerOptions.strokes || [],
+              textItems: layerOptions.textItems || [],
+            };
+
+            set((state) => {
+              if (!state.project) return state;
+
+              const updatedProject = updateMicrograph(state.project, micrographId, (m) => {
+                if (!m.sketchLayers) {
+                  m.sketchLayers = [];
+                }
+                m.sketchLayers.push(newLayer);
+              });
+
+              if (!updatedProject) return state;
+
+              return {
+                project: updatedProject,
+                isDirty: true,
+                micrographIndex: buildMicrographIndex(updatedProject),
+                activeSketchLayerId: layerId,
+              };
+            });
+
+            return layerId;
+          },
+
+          removeSketchLayer: (micrographId, layerId) => set((state) => {
+            if (!state.project) return state;
+
+            const updatedProject = updateMicrograph(state.project, micrographId, (m) => {
+              if (m.sketchLayers) {
+                m.sketchLayers = m.sketchLayers.filter((l) => l.id !== layerId);
+              }
+            });
+
+            if (!updatedProject) return state;
+
+            // If the deleted layer was active, clear the active layer
+            const newActiveLayerId = state.activeSketchLayerId === layerId ? null : state.activeSketchLayerId;
+
+            return {
+              project: updatedProject,
+              isDirty: true,
+              micrographIndex: buildMicrographIndex(updatedProject),
+              activeSketchLayerId: newActiveLayerId,
+            };
+          }),
+
+          renameSketchLayer: (micrographId, layerId, name) => set((state) => {
+            if (!state.project) return state;
+
+            const updatedProject = updateMicrograph(state.project, micrographId, (m) => {
+              const layer = m.sketchLayers?.find((l) => l.id === layerId);
+              if (layer) {
+                layer.name = name;
+              }
+            });
+
+            if (!updatedProject) return state;
+
+            return {
+              project: updatedProject,
+              isDirty: true,
+              micrographIndex: buildMicrographIndex(updatedProject),
+            };
+          }),
+
+          setSketchLayerVisible: (micrographId, layerId, visible) => set((state) => {
+            if (!state.project) return state;
+
+            const updatedProject = updateMicrograph(state.project, micrographId, (m) => {
+              const layer = m.sketchLayers?.find((l) => l.id === layerId);
+              if (layer) {
+                layer.visible = visible;
+              }
+            });
+
+            if (!updatedProject) return state;
+
+            return {
+              project: updatedProject,
+              isDirty: true,
+              micrographIndex: buildMicrographIndex(updatedProject),
+            };
+          }),
+
+          addSketchStroke: (micrographId, layerId, stroke) => set((state) => {
+            if (!state.project) return state;
+
+            const updatedProject = updateMicrograph(state.project, micrographId, (m) => {
+              const layer = m.sketchLayers?.find((l) => l.id === layerId);
+              if (layer) {
+                layer.strokes.push(stroke);
+              }
+            });
+
+            if (!updatedProject) return state;
+
+            return {
+              project: updatedProject,
+              isDirty: true,
+              micrographIndex: buildMicrographIndex(updatedProject),
+            };
+          }),
+
+          removeSketchStroke: (micrographId, layerId, strokeId) => set((state) => {
+            if (!state.project) return state;
+
+            const updatedProject = updateMicrograph(state.project, micrographId, (m) => {
+              const layer = m.sketchLayers?.find((l) => l.id === layerId);
+              if (layer) {
+                layer.strokes = layer.strokes.filter((s) => s.id !== strokeId);
+              }
+            });
+
+            if (!updatedProject) return state;
+
+            return {
+              project: updatedProject,
+              isDirty: true,
+              micrographIndex: buildMicrographIndex(updatedProject),
+            };
+          }),
+
+          addSketchText: (micrographId, layerId, text) => set((state) => {
+            if (!state.project) return state;
+
+            const updatedProject = updateMicrograph(state.project, micrographId, (m) => {
+              const layer = m.sketchLayers?.find((l) => l.id === layerId);
+              if (layer) {
+                layer.textItems.push(text);
+              }
+            });
+
+            if (!updatedProject) return state;
+
+            return {
+              project: updatedProject,
+              isDirty: true,
+              micrographIndex: buildMicrographIndex(updatedProject),
+            };
+          }),
+
+          removeSketchText: (micrographId, layerId, textId) => set((state) => {
+            if (!state.project) return state;
+
+            const updatedProject = updateMicrograph(state.project, micrographId, (m) => {
+              const layer = m.sketchLayers?.find((l) => l.id === layerId);
+              if (layer) {
+                layer.textItems = layer.textItems.filter((t) => t.id !== textId);
+              }
+            });
+
+            if (!updatedProject) return state;
+
+            return {
+              project: updatedProject,
+              isDirty: true,
+              micrographIndex: buildMicrographIndex(updatedProject),
+            };
+          }),
+
+          updateSketchText: (micrographId, layerId, textId, updates) => set((state) => {
+            if (!state.project) return state;
+
+            const updatedProject = updateMicrograph(state.project, micrographId, (m) => {
+              const layer = m.sketchLayers?.find((l) => l.id === layerId);
+              if (layer) {
+                const textItem = layer.textItems.find((t) => t.id === textId);
+                if (textItem) {
+                  Object.assign(textItem, updates);
+                }
+              }
+            });
+
+            if (!updatedProject) return state;
+
+            return {
+              project: updatedProject,
+              isDirty: true,
+              micrographIndex: buildMicrographIndex(updatedProject),
+            };
+          }),
+
+          setActiveSketchLayerId: (layerId) => set({ activeSketchLayerId: layerId }),
+
+          getSketchLayers: (micrographId) => {
+            if (!micrographId) return [];
+            const { micrographIndex } = get();
+            const micro = micrographIndex.get(micrographId);
+            return micro?.sketchLayers || [];
+          },
+
+          setSketchModeActive: (active) => set((state) => {
+            // When exiting sketch mode, clear the sketch tool
+            if (!active) {
+              return {
+                sketchModeActive: false,
+                activeTool: null,
+              };
+            }
+
+            // Entering sketch mode - ensure we have a valid active layer
+            if (!state.activeMicrographId || !state.project) {
+              return {
+                sketchModeActive: true,
+                activeTool: 'sketch-pen' as const,
+              };
+            }
+
+            const micro = state.micrographIndex.get(state.activeMicrographId);
+            const existingLayers = micro?.sketchLayers || [];
+
+            // Check if current activeSketchLayerId is valid for this micrograph
+            const currentLayer = state.activeSketchLayerId
+              ? existingLayers.find(l => l.id === state.activeSketchLayerId)
+              : null;
+
+            if (currentLayer) {
+              // Current layer is valid - ensure it's visible
+              if (!currentLayer.visible) {
+                const updatedProject = updateMicrograph(state.project, state.activeMicrographId, (m) => {
+                  const layer = m.sketchLayers?.find(l => l.id === state.activeSketchLayerId);
+                  if (layer) layer.visible = true;
+                });
+                if (updatedProject) {
+                  return {
+                    project: updatedProject,
+                    isDirty: true,
+                    micrographIndex: buildMicrographIndex(updatedProject),
+                    sketchModeActive: true,
+                    activeTool: 'sketch-pen' as const,
+                  };
+                }
+              }
+              return {
+                sketchModeActive: true,
+                activeTool: 'sketch-pen' as const,
+              };
+            }
+
+            // Need to select or create a layer
+            if (existingLayers.length > 0) {
+              // Select the first existing layer and ensure it's visible
+              const firstLayer = existingLayers[0];
+              if (!firstLayer.visible) {
+                const updatedProject = updateMicrograph(state.project, state.activeMicrographId, (m) => {
+                  const layer = m.sketchLayers?.find(l => l.id === firstLayer.id);
+                  if (layer) layer.visible = true;
+                });
+                if (updatedProject) {
+                  return {
+                    project: updatedProject,
+                    isDirty: true,
+                    micrographIndex: buildMicrographIndex(updatedProject),
+                    sketchModeActive: true,
+                    activeSketchLayerId: firstLayer.id,
+                    activeTool: 'sketch-pen' as const,
+                  };
+                }
+              }
+              return {
+                sketchModeActive: true,
+                activeSketchLayerId: firstLayer.id,
+                activeTool: 'sketch-pen' as const,
+              };
+            }
+
+            // No layers exist - create one automatically
+            const layerId = `sketch-layer-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+            const newLayer = {
+              id: layerId,
+              name: 'Sketch Layer 1',
+              visible: true,
+              createdAt: new Date().toISOString(),
+              strokes: [],
+              textItems: [],
+            };
+
+            const updatedProject = updateMicrograph(state.project, state.activeMicrographId, (m) => {
+              if (!m.sketchLayers) {
+                m.sketchLayers = [];
+              }
+              m.sketchLayers.push(newLayer);
+            });
+
+            if (!updatedProject) {
+              return {
+                sketchModeActive: true,
+                activeTool: 'sketch-pen' as const,
+              };
+            }
+
+            return {
+              project: updatedProject,
+              isDirty: true,
+              micrographIndex: buildMicrographIndex(updatedProject),
+              sketchModeActive: true,
+              activeSketchLayerId: layerId,
+              activeTool: 'sketch-pen' as const,
+            };
+          }),
+
+          setSketchStrokeColor: (color) => {
+            localStorage.setItem('sketchStrokeColor', color);
+            set({ sketchStrokeColor: color });
+          },
+
+          setSketchStrokeWidth: (width) => {
+            localStorage.setItem('sketchStrokeWidth', width.toString());
+            set({ sketchStrokeWidth: width });
+          },
+
+          setSketchFontSize: (size) => {
+            localStorage.setItem('sketchFontSize', size.toString());
+            set({ sketchFontSize: size });
+          },
+
+          setSketchTextInputActive: (active) => {
+            set({ sketchTextInputActive: active });
+          },
 
           // ========== CRUD: DATASET ==========
 
@@ -914,17 +1861,27 @@ export const useAppStore = create<AppState>()(
               for (const sample of dataset.samples || []) {
                 if (!sample.micrographs) continue;
 
-                // Build set of IDs to delete: the target + all descendants
+                // Build set of IDs to delete: the target + all descendants + siblings
                 const idsToDelete = new Set<string>();
                 idsToDelete.add(id);
 
-                // Recursively find all descendants
+                // Also delete sibling if this micrograph has one (PPL/XPL pair)
+                const targetMicro = sample.micrographs.find(m => m.id === id);
+                if (targetMicro?.siblingImageId) {
+                  idsToDelete.add(targetMicro.siblingImageId);
+                }
+
+                // Recursively find all descendants (of both target and sibling)
                 let foundMore = true;
                 while (foundMore) {
                   foundMore = false;
                   for (const m of sample.micrographs) {
                     if (m.parentID && idsToDelete.has(m.parentID) && !idsToDelete.has(m.id)) {
                       idsToDelete.add(m.id);
+                      // Also add sibling of any descendant
+                      if (m.siblingImageId && !idsToDelete.has(m.siblingImageId)) {
+                        idsToDelete.add(m.siblingImageId);
+                      }
                       foundMore = true;
                     }
                   }
@@ -1014,8 +1971,14 @@ export const useAppStore = create<AppState>()(
           addSpot: (micrographId, spot) => set((state) => {
             if (!state.project) return state;
 
-            const newProject = updateMicrograph(state.project, micrographId, (micrograph) => {
-              micrograph.spots = [...(micrograph.spots || []), spot];
+            // If this is a secondary sibling (XPL), redirect spots to the primary (PPL)
+            const micrograph = state.micrographIndex.get(micrographId);
+            const targetId = micrograph?.isPrimarySibling === false && micrograph?.siblingImageId
+              ? micrograph.siblingImageId
+              : micrographId;
+
+            const newProject = updateMicrograph(state.project, targetId, (micro) => {
+              micro.spots = [...(micro.spots || []), spot];
             });
 
             return {
@@ -1029,8 +1992,14 @@ export const useAppStore = create<AppState>()(
           addSpots: (micrographId, spots) => set((state) => {
             if (!state.project || spots.length === 0) return state;
 
-            const newProject = updateMicrograph(state.project, micrographId, (micrograph) => {
-              micrograph.spots = [...(micrograph.spots || []), ...spots];
+            // If this is a secondary sibling (XPL), redirect spots to the primary (PPL)
+            const micrograph = state.micrographIndex.get(micrographId);
+            const targetId = micrograph?.isPrimarySibling === false && micrograph?.siblingImageId
+              ? micrograph.siblingImageId
+              : micrographId;
+
+            const newProject = updateMicrograph(state.project, targetId, (micro) => {
+              micro.spots = [...(micro.spots || []), ...spots];
             });
 
             return {
@@ -1076,10 +2045,30 @@ export const useAppStore = create<AppState>()(
               }
             }
 
+            // Handle Quick Edit mode - mark updated spots as reviewed
+            let quickEditUpdates: Partial<AppState> = {};
+            if (state.quickEditMode) {
+              // Add all batch-updated spots to reviewed list (if not already there)
+              const currentReviewed = new Set(state.quickEditReviewedIds);
+              const spotsInSession = new Set(state.quickEditSpotIds);
+
+              // Only mark spots that are part of the current Quick Edit session
+              const newlyReviewed = spotIds.filter(
+                id => spotsInSession.has(id) && !currentReviewed.has(id)
+              );
+
+              if (newlyReviewed.length > 0) {
+                quickEditUpdates = {
+                  quickEditReviewedIds: [...state.quickEditReviewedIds, ...newlyReviewed],
+                };
+              }
+            }
+
             return {
               project: newProject,
               isDirty: true,
               spotIndex: buildSpotIndex(newProject),
+              ...quickEditUpdates,
             };
           }),
 
@@ -1101,6 +2090,68 @@ export const useAppStore = create<AppState>()(
               isDirty: true,
               selectedSpotIds: state.selectedSpotIds.filter(sid => sid !== id),
               spotIndex: buildSpotIndex(newProject),
+            };
+          }),
+
+          batchDeleteSpots: (spotIds) => set((state) => {
+            if (!state.project || spotIds.length === 0) return state;
+
+            const spotIdSet = new Set(spotIds);
+            const newProject = structuredClone(state.project);
+
+            for (const dataset of newProject.datasets || []) {
+              for (const sample of dataset.samples || []) {
+                for (const micrograph of sample.micrographs || []) {
+                  micrograph.spots = micrograph.spots?.filter(s => !spotIdSet.has(s.id)) || [];
+                }
+              }
+            }
+
+            // Handle Quick Edit mode state updates
+            let quickEditUpdates: Partial<AppState> = {};
+            if (state.quickEditMode) {
+              // Filter out deleted spots from the quick edit list
+              const newQuickEditSpotIds = state.quickEditSpotIds.filter(id => !spotIdSet.has(id));
+              const newQuickEditReviewedIds = state.quickEditReviewedIds.filter(id => !spotIdSet.has(id));
+
+              // Count how many deleted spots were in the quick edit list
+              const deletedFromQuickEdit = state.quickEditSpotIds.filter(id => spotIdSet.has(id)).length;
+
+              // Calculate new index - need to account for spots removed before current position
+              let newIndex = state.quickEditCurrentIndex;
+              if (newQuickEditSpotIds.length === 0) {
+                newIndex = -1;
+              } else {
+                // Count how many spots before the current index were deleted
+                const spotsDeletedBeforeIndex = state.quickEditSpotIds
+                  .slice(0, state.quickEditCurrentIndex)
+                  .filter(id => spotIdSet.has(id)).length;
+                newIndex = Math.max(0, state.quickEditCurrentIndex - spotsDeletedBeforeIndex);
+
+                // Clamp to valid range
+                if (newIndex >= newQuickEditSpotIds.length) {
+                  newIndex = newQuickEditSpotIds.length - 1;
+                }
+              }
+
+              quickEditUpdates = {
+                quickEditSpotIds: newQuickEditSpotIds,
+                quickEditReviewedIds: newQuickEditReviewedIds,
+                quickEditDeletedCount: state.quickEditDeletedCount + deletedFromQuickEdit,
+                quickEditCurrentIndex: newIndex,
+                // Update activeSpotId if it was deleted or if we need to select the new current spot
+                activeSpotId: spotIdSet.has(state.activeSpotId || '')
+                  ? (newIndex >= 0 ? newQuickEditSpotIds[newIndex] : null)
+                  : state.activeSpotId,
+              };
+            }
+
+            return {
+              project: newProject,
+              isDirty: true,
+              selectedSpotIds: state.selectedSpotIds.filter(sid => !spotIdSet.has(sid)),
+              spotIndex: buildSpotIndex(newProject),
+              ...quickEditUpdates,
             };
           }),
 
@@ -1739,7 +2790,7 @@ export const useAppStore = create<AppState>()(
 
           setPan: (pan) => set({ pan }),
 
-          setShowSpotLabels: (show) => set({ showSpotLabels: show }),
+          setSpotLabelMode: (mode) => set({ spotLabelMode: mode }),
 
           setShowMicrographOutlines: (show) => set({ showMicrographOutlines: show }),
 
@@ -1893,6 +2944,370 @@ export const useAppStore = create<AppState>()(
           setStatisticsPanelVisible: (visible) => set({ statisticsPanelVisible: visible }),
 
           setBatchEditDialogOpen: (open) => set({ batchEditDialogOpen: open }),
+
+          // ========== MINERAL COLOR ACTIONS ==========
+
+          setSpotColorMode: (mode) => set({ spotColorMode: mode }),
+
+          setGlobalMineralColors: (entries) => set({ globalMineralColors: entries }),
+
+          updateGlobalMineralColor: (mineral, color) => set((state) => ({
+            globalMineralColors: state.globalMineralColors.map((e) =>
+              e.mineral === mineral ? { ...e, color } : e
+            ),
+          })),
+
+          addGlobalMineralColor: (entry) => set((state) => {
+            if (state.globalMineralColors.some((e) => e.mineral === entry.mineral)) {
+              return state; // Already exists, no-op
+            }
+            return { globalMineralColors: [...state.globalMineralColors, entry] };
+          }),
+
+          removeGlobalMineralColor: (mineral) => set((state) => ({
+            globalMineralColors: state.globalMineralColors.filter((e) => e.mineral !== mineral),
+          })),
+
+          resetGlobalMineralColors: () => set({ globalMineralColors: [...DEFAULT_MINERAL_COLORS] }),
+
+          setProjectMineralColors: (entries) => set((state) => {
+            if (!state.project) return state;
+            return {
+              project: { ...state.project, mineralColors: entries },
+              isDirty: true,
+            };
+          }),
+
+          // ========== QUICK APPLY PRESETS ACTIONS ==========
+
+          createPreset: (preset, scope) => set((state) => {
+            if (scope === 'global') {
+              return {
+                globalPresets: [...state.globalPresets, preset],
+              };
+            } else {
+              // Project scope
+              if (!state.project) return state;
+              const existingPresets = state.project.presets || [];
+              return {
+                project: {
+                  ...state.project,
+                  presets: [...existingPresets, preset],
+                },
+                isDirty: true,
+              };
+            }
+          }),
+
+          updatePreset: (id, updates, scope) => set((state) => {
+            const now = new Date().toISOString();
+            if (scope === 'global') {
+              return {
+                globalPresets: state.globalPresets.map((p) =>
+                  p.id === id ? { ...p, ...updates, modifiedAt: now } : p
+                ),
+              };
+            } else {
+              if (!state.project) return state;
+              const existingPresets = state.project.presets || [];
+              return {
+                project: {
+                  ...state.project,
+                  presets: existingPresets.map((p) =>
+                    p.id === id ? { ...p, ...updates, modifiedAt: now } : p
+                  ),
+                },
+                isDirty: true,
+              };
+            }
+          }),
+
+          deletePreset: (id, scope) => set((state) => {
+            // Also unbind the key if this preset was bound
+            const newKeyBindings = { ...state.presetKeyBindings };
+            for (const [key, presetId] of Object.entries(newKeyBindings)) {
+              if (presetId === id) {
+                delete newKeyBindings[key];
+              }
+            }
+
+            if (scope === 'global') {
+              return {
+                globalPresets: state.globalPresets.filter((p) => p.id !== id),
+                presetKeyBindings: newKeyBindings,
+              };
+            } else {
+              if (!state.project) return state;
+              const existingPresets = state.project.presets || [];
+              // Also remove from project key bindings if present
+              const projectKeyBindings = { ...state.project.presetKeyBindings };
+              if (projectKeyBindings) {
+                for (const [key, presetId] of Object.entries(projectKeyBindings)) {
+                  if (presetId === id) {
+                    delete projectKeyBindings[key];
+                  }
+                }
+              }
+              return {
+                project: {
+                  ...state.project,
+                  presets: existingPresets.filter((p) => p.id !== id),
+                  presetKeyBindings: Object.keys(projectKeyBindings || {}).length > 0 ? projectKeyBindings : null,
+                },
+                presetKeyBindings: newKeyBindings,
+                isDirty: true,
+              };
+            }
+          }),
+
+          reorderPresets: (orderedIds, scope) => set((state) => {
+            if (scope === 'global') {
+              const presetMap = new Map(state.globalPresets.map((p) => [p.id, p]));
+              const reordered = orderedIds
+                .map((id) => presetMap.get(id))
+                .filter((p): p is QuickApplyPreset => p !== undefined);
+              return { globalPresets: reordered };
+            } else {
+              if (!state.project) return state;
+              const existingPresets = state.project.presets || [];
+              const presetMap = new Map(existingPresets.map((p) => [p.id, p]));
+              const reordered = orderedIds
+                .map((id) => presetMap.get(id))
+                .filter((p): p is QuickApplyPreset => p !== undefined);
+              return {
+                project: {
+                  ...state.project,
+                  presets: reordered,
+                },
+                isDirty: true,
+              };
+            }
+          }),
+
+          applyPresetToSpot: (presetId, spotId) => set((state) => {
+            if (!state.project) return state;
+
+            // Find the preset (check global first, then project)
+            let preset: QuickApplyPreset | undefined = state.globalPresets.find((p) => p.id === presetId);
+            if (!preset) {
+              preset = state.project.presets?.find((p) => p.id === presetId);
+            }
+            if (!preset) {
+              console.warn(`[Store] Preset ${presetId} not found`);
+              return state;
+            }
+
+            // Check if preset was already applied to this spot
+            const existingSpot = state.spotIndex.get(spotId);
+            if (existingSpot?.appliedPresetIds?.includes(presetId)) {
+              // Preset already applied - do nothing
+              return state;
+            }
+
+            // Apply preset to spot using additive merge
+            const newProject = updateSpot(state.project, spotId, (spot) => {
+              mergePresetIntoSpot(spot, preset!.data);
+
+              // Track applied preset ID
+              if (!spot.appliedPresetIds) {
+                spot.appliedPresetIds = [];
+              }
+              spot.appliedPresetIds.push(presetId);
+
+              spot.modifiedTimestamp = Date.now();
+            });
+
+            return {
+              project: newProject,
+              isDirty: true,
+              spotIndex: buildSpotIndex(newProject),
+            };
+          }),
+
+          applyPresetToSpots: (presetId, spotIds) => set((state) => {
+            if (!state.project || spotIds.length === 0) return state;
+
+            // Find the preset
+            let preset: QuickApplyPreset | undefined = state.globalPresets.find((p) => p.id === presetId);
+            if (!preset) {
+              preset = state.project.presets?.find((p) => p.id === presetId);
+            }
+            if (!preset) {
+              console.warn(`[Store] Preset ${presetId} not found`);
+              return state;
+            }
+
+            const spotIdSet = new Set(spotIds);
+            const newProject = structuredClone(state.project);
+            const now = Date.now();
+            let anyApplied = false;
+
+            // Apply preset to all matching spots (skip if already applied)
+            for (const dataset of newProject.datasets || []) {
+              for (const sample of dataset.samples || []) {
+                for (const micrograph of sample.micrographs || []) {
+                  if (micrograph.spots) {
+                    for (const spot of micrograph.spots) {
+                      if (spotIdSet.has(spot.id)) {
+                        // Skip if preset already applied to this spot
+                        if (spot.appliedPresetIds?.includes(presetId)) {
+                          continue;
+                        }
+
+                        mergePresetIntoSpot(spot, preset!.data);
+
+                        if (!spot.appliedPresetIds) {
+                          spot.appliedPresetIds = [];
+                        }
+                        spot.appliedPresetIds.push(presetId);
+
+                        spot.modifiedTimestamp = now;
+                        anyApplied = true;
+                      }
+                    }
+                  }
+                }
+              }
+            }
+
+            // If no spots were modified, return unchanged state
+            if (!anyApplied) {
+              return state;
+            }
+
+            // Handle Quick Edit mode - mark updated spots as reviewed
+            let quickEditUpdates: Partial<AppState> = {};
+            if (state.quickEditMode) {
+              const currentReviewed = new Set(state.quickEditReviewedIds);
+              const spotsInSession = new Set(state.quickEditSpotIds);
+              const newlyReviewed = spotIds.filter(
+                (id) => spotsInSession.has(id) && !currentReviewed.has(id)
+              );
+              if (newlyReviewed.length > 0) {
+                quickEditUpdates = {
+                  quickEditReviewedIds: [...state.quickEditReviewedIds, ...newlyReviewed],
+                };
+              }
+            }
+
+            return {
+              ...quickEditUpdates,
+              project: newProject,
+              isDirty: true,
+              spotIndex: buildSpotIndex(newProject),
+            };
+          }),
+
+          setPresetKeyBinding: (key, presetId) => set((state) => {
+            // Validate key is 1-9
+            if (!/^[1-9]$/.test(key)) {
+              console.warn(`[Store] Invalid preset key binding: ${key}`);
+              return state;
+            }
+
+            const newKeyBindings = { ...state.presetKeyBindings };
+
+            if (presetId === null) {
+              // Clear binding
+              delete newKeyBindings[key];
+            } else {
+              // Clear any existing binding for this preset
+              for (const [existingKey, existingId] of Object.entries(newKeyBindings)) {
+                if (existingId === presetId) {
+                  delete newKeyBindings[existingKey];
+                }
+              }
+              // Set new binding
+              newKeyBindings[key] = presetId;
+            }
+
+            return { presetKeyBindings: newKeyBindings };
+          }),
+
+          getAllPresetsWithScope: () => {
+            const state = get();
+            const result: PresetWithScope[] = [];
+
+            // Add global presets
+            for (const preset of state.globalPresets) {
+              result.push({ ...preset, scope: 'global' });
+            }
+
+            // Add project presets
+            if (state.project?.presets) {
+              for (const preset of state.project.presets) {
+                result.push({ ...preset, scope: 'project' });
+              }
+            }
+
+            return result;
+          },
+
+          getPresetById: (id) => {
+            const state = get();
+
+            // Check global presets first
+            const globalPreset = state.globalPresets.find((p) => p.id === id);
+            if (globalPreset) {
+              return { ...globalPreset, scope: 'global' as const };
+            }
+
+            // Check project presets
+            const projectPreset = state.project?.presets?.find((p) => p.id === id);
+            if (projectPreset) {
+              return { ...projectPreset, scope: 'project' as const };
+            }
+
+            return null;
+          },
+
+          hasPresetsConfigured: () => {
+            const state = get();
+            return Object.keys(state.presetKeyBindings).length > 0;
+          },
+
+          createPresetFromSpot: (spotId, name, color, scope) => {
+            const state = get();
+            if (!state.project) return null;
+
+            // Find the spot
+            const spot = state.spotIndex.get(spotId);
+            if (!spot) {
+              console.warn(`[Store] Spot ${spotId} not found`);
+              return null;
+            }
+
+            // Extract preset data from spot
+            const data: PresetData = {};
+
+            // Copy appearance properties
+            if (spot.color) data.color = spot.color;
+            if (spot.labelColor) data.labelColor = spot.labelColor;
+            if (spot.opacity != null) data.opacity = spot.opacity;
+
+            // Copy feature info fields
+            for (const field of PRESET_FEATURE_FIELDS) {
+              const value = spot[field];
+              if (value != null) {
+                (data as Record<string, unknown>)[field] = structuredClone(value);
+              }
+            }
+
+            const now = new Date().toISOString();
+            const preset: QuickApplyPreset = {
+              id: crypto.randomUUID(),
+              name,
+              color,
+              createdAt: now,
+              modifiedAt: now,
+              data,
+            };
+
+            // Create the preset
+            get().createPreset(preset, scope);
+
+            return preset;
+          },
 
           // ========== POINT COUNT MODE ACTIONS ==========
 
@@ -2321,6 +3736,43 @@ export const useAppStore = create<AppState>()(
             });
           },
 
+          quickEditNextUnclassified: () => {
+            const { quickEditSpotIds, quickEditCurrentIndex, spotIndex } = get();
+            if (quickEditSpotIds.length === 0) return;
+
+            // Helper to check if a spot is unclassified (no mineralogy)
+            const isUnclassified = (spotId: string): boolean => {
+              const spot = spotIndex.get(spotId);
+              if (!spot) return false;
+              const minerals = spot.mineralogy?.minerals;
+              return !minerals || minerals.length === 0;
+            };
+
+            // Search forward from current position (wrapping around)
+            const totalSpots = quickEditSpotIds.length;
+            for (let i = 1; i <= totalSpots; i++) {
+              const checkIndex = (quickEditCurrentIndex + i) % totalSpots;
+              const spotId = quickEditSpotIds[checkIndex];
+              if (isUnclassified(spotId)) {
+                set({
+                  quickEditCurrentIndex: checkIndex,
+                  activeSpotId: spotId,
+                });
+                return;
+              }
+            }
+
+            // All spots are classified - just advance to next (wrap behavior)
+            const nextIndex = quickEditCurrentIndex >= totalSpots - 1
+              ? 0
+              : quickEditCurrentIndex + 1;
+
+            set({
+              quickEditCurrentIndex: nextIndex,
+              activeSpotId: quickEditSpotIds[nextIndex],
+            });
+          },
+
           quickEditPrev: () => {
             const { quickEditSpotIds, quickEditCurrentIndex } = get();
             if (quickEditSpotIds.length === 0) return;
@@ -2346,7 +3798,7 @@ export const useAppStore = create<AppState>()(
           },
 
           quickEditMarkReviewed: () => {
-            const { quickEditSpotIds, quickEditCurrentIndex, quickEditReviewedIds, quickEditNext } = get();
+            const { quickEditSpotIds, quickEditCurrentIndex, quickEditReviewedIds, quickEditNextUnclassified } = get();
             if (quickEditCurrentIndex < 0 || quickEditCurrentIndex >= quickEditSpotIds.length) return;
 
             const currentSpotId = quickEditSpotIds[quickEditCurrentIndex];
@@ -2356,8 +3808,8 @@ export const useAppStore = create<AppState>()(
               });
             }
 
-            // Advance to next spot
-            quickEditNext();
+            // Advance to next unclassified spot (skips already-classified spots)
+            quickEditNextUnclassified();
           },
 
           quickEditDeleteCurrent: () => {
@@ -2434,7 +3886,8 @@ export const useAppStore = create<AppState>()(
           // UI preferences
           sidebarTab: state.sidebarTab,
           detailsPanelOpen: state.detailsPanelOpen,
-          showSpotLabels: state.showSpotLabels,
+          showRulers: state.showRulers,
+          spotLabelMode: state.spotLabelMode,
           showMicrographOutlines: state.showMicrographOutlines,
           showRecursiveSpots: state.showRecursiveSpots,
           showArchivedSpots: state.showArchivedSpots,
@@ -2449,9 +3902,17 @@ export const useAppStore = create<AppState>()(
           // Quick Classify settings
           quickClassifyShortcuts: state.quickClassifyShortcuts,
 
+          // Quick Spot Presets settings (global presets and key bindings)
+          globalPresets: state.globalPresets,
+          presetKeyBindings: state.presetKeyBindings,
+
           // Generation settings
           lastPointCountSettings: state.lastPointCountSettings,
           lastGrainDetectionSettings: state.lastGrainDetectionSettings,
+
+          // Mineral color settings
+          spotColorMode: state.spotColorMode,
+          globalMineralColors: state.globalMineralColors,
         }),
         // Rebuild indexes after rehydrating from file storage
         onRehydrateStorage: () => (state) => {
@@ -2461,9 +3922,29 @@ export const useAppStore = create<AppState>()(
             state.spotIndex = buildSpotIndex(state.project);
             console.log('[Store] Rehydrated indexes - micrographs:', state.micrographIndex.size, 'spots:', state.spotIndex.size);
           }
+          // Migrate legacy showSpotLabels boolean to spotLabelMode
+          if (state && !state.spotLabelMode) {
+            const legacy = (state as any).showSpotLabels;
+            state.spotLabelMode = legacy === false ? 'none' : 'original';
+          }
+          // Ensure globalMineralColors has defaults after rehydration
+          // (covers upgrade from older stored state that didn't have this field)
+          if (state && (!state.globalMineralColors || state.globalMineralColors.length === 0)) {
+            state.globalMineralColors = [...DEFAULT_MINERAL_COLORS];
+          }
           // Sync theme with main process menu after rehydration
           if (state?.theme && window.api?.notifyThemeChanged) {
             window.api.notifyThemeChanged(state.theme);
+          }
+          // Sync view preferences with main process menu after rehydration
+          if (state && window.api?.notifyViewPrefsChanged) {
+            window.api.notifyViewPrefsChanged({
+              showRulers: state.showRulers ?? true,
+              spotLabelMode: state.spotLabelMode ?? 'original',
+              showOverlayOutlines: state.showMicrographOutlines ?? true,
+              showRecursiveSpots: state.showRecursiveSpots ?? false,
+              spotColorMode: state.spotColorMode ?? 'spot-color',
+            });
           }
         },
       }

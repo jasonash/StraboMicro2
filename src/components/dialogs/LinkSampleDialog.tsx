@@ -51,10 +51,12 @@ interface ServerSample {
   label?: string;
   sample_description?: string;
   material_type?: string;
+  other_material_type?: string;
   sample_type?: string;
   longitude?: number;
   latitude?: number;
   main_sampling_purpose?: string;
+  other_sampling_purpose?: string;
   inplaceness_of_sample?: string;
   oriented_sample?: string;
   sample_orientation_notes?: string;
@@ -207,7 +209,28 @@ export function LinkSampleDialog({ open, onClose, onSelectSample }: LinkSampleDi
         const spotSamples = feature?.properties?.samples;
         if (Array.isArray(spotSamples)) {
           console.log('[LinkSampleDialog] Found samples in spot:', feature?.properties?.name, spotSamples);
-          extractedSamples.push(...spotSamples);
+
+          // Extract point coordinates from spot geometry if available
+          // GeoJSON coordinates are [longitude, latitude]
+          let spotLongitude: number | undefined;
+          let spotLatitude: number | undefined;
+          if (feature?.geometry?.type === 'Point' && Array.isArray(feature.geometry.coordinates)) {
+            const [lng, lat] = feature.geometry.coordinates;
+            if (typeof lng === 'number' && typeof lat === 'number') {
+              spotLongitude = lng;
+              spotLatitude = lat;
+            }
+          }
+
+          // Add samples with spot coordinates injected (if sample doesn't have its own)
+          for (const sample of spotSamples) {
+            extractedSamples.push({
+              ...sample,
+              // Use sample's own coordinates if present, otherwise use spot's point coordinates
+              longitude: sample.longitude ?? spotLongitude,
+              latitude: sample.latitude ?? spotLatitude,
+            });
+          }
         }
       }
 
@@ -469,10 +492,12 @@ export function mapServerSampleToLocal(serverSample: ServerSample): {
   label?: string;
   sampleDescription?: string;
   materialType?: string;
+  otherMaterialType?: string;
   sampleType?: string;
   longitude?: number;
   latitude?: number;
   mainSamplingPurpose?: string;
+  otherSamplingPurpose?: string;
   inplacenessOfSample?: string;
   orientedSample?: string;
   sampleOrientationNotes?: string;
@@ -494,10 +519,12 @@ export function mapServerSampleToLocal(serverSample: ServerSample): {
     label: serverSample.label,
     sampleDescription: serverSample.sample_description,
     materialType: serverSample.material_type,
+    otherMaterialType: serverSample.other_material_type,
     sampleType: serverSample.sample_type,
     longitude: serverSample.longitude,
     latitude: serverSample.latitude,
     mainSamplingPurpose: serverSample.main_sampling_purpose,
+    otherSamplingPurpose: serverSample.other_sampling_purpose,
     inplacenessOfSample: serverSample.inplaceness_of_sample,
     orientedSample: serverSample.oriented_sample,
     sampleOrientationNotes: serverSample.sample_orientation_notes,

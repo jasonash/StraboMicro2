@@ -92,21 +92,40 @@ class ScratchSpace {
    * @param {string} destination - Final destination path
    */
   async moveToFinal(identifier, destination) {
-    try {
-      const scratchPath = this.getScratchPath(identifier);
+    const scratchPath = this.getScratchPath(identifier);
 
-      // Ensure destination directory exists
-      await fs.promises.mkdir(path.dirname(destination), { recursive: true });
+    // Ensure destination directory exists
+    await fs.promises.mkdir(path.dirname(destination), { recursive: true });
 
-      // Use copy+unlink instead of rename to support cross-filesystem moves
-      // (On Linux, /tmp is often a separate tmpfs filesystem from /home)
-      await fs.promises.copyFile(scratchPath, destination);
-      await fs.promises.unlink(scratchPath);
-      log.info(`[ScratchSpace] Moved ${identifier} to ${destination}`);
-    } catch (error) {
-      log.error('[ScratchSpace] Error moving file to final destination:', error);
-      throw error;
+    // Use copy+unlink instead of rename to support cross-filesystem moves
+    // (On Linux, /tmp is often a separate tmpfs filesystem from /home)
+    await fs.promises.copyFile(scratchPath, destination);
+
+    // On Windows, antivirus scanners (e.g. Windows Defender) can briefly
+    // lock newly-written files, causing EPERM on immediate unlink.
+    // Retry with backoff; if all retries fail, log a warning and move on —
+    // the copy already succeeded and cleanupAll() handles stale files on restart.
+    const maxRetries = 3;
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        await fs.promises.unlink(scratchPath);
+        break;
+      } catch (unlinkError) {
+        if (unlinkError.code === 'EPERM' && attempt < maxRetries) {
+          const delay = (attempt + 1) * 200;
+          log.warn(`[ScratchSpace] EPERM on unlink, retrying in ${delay}ms (attempt ${attempt + 1}/${maxRetries})`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+        } else if (unlinkError.code === 'ENOENT') {
+          break; // Already gone
+        } else if (attempt === maxRetries) {
+          log.warn(`[ScratchSpace] Could not delete scratch file after ${maxRetries} retries (will be cleaned up on next launch): ${scratchPath}`);
+        } else {
+          throw unlinkError;
+        }
+      }
     }
+
+    log.info(`[ScratchSpace] Moved ${identifier} to ${destination}`);
   }
 }
 

@@ -30,12 +30,21 @@ import { useAppStore } from '@/store';
 import { AutocompleteMineralSearch } from './reusable/AutocompleteMineralSearch';
 import { LithologyPicker, LithologySelection } from './reusable/LithologyPicker';
 import { OtherTextField } from './reusable/OtherTextField';
+import type { MineralogyType, LithologyInfoType } from '@/types/project-types';
 
 interface MineralogyDialogProps {
   isOpen: boolean;
   onClose: () => void;
   micrographId?: string;
   spotId?: string;
+  // Preset mode: when true, uses initialData and calls onSavePresetData instead of updating store
+  presetMode?: boolean;
+  initialMineralogy?: MineralogyType | null;
+  initialLithology?: LithologyInfoType | null;
+  onSavePresetData?: (
+    mineralogy: MineralogyType | null,
+    lithology: LithologyInfoType | null
+  ) => void;
 }
 
 interface TabPanelProps {
@@ -87,6 +96,10 @@ export function MineralogyDialog({
   onClose,
   micrographId,
   spotId,
+  presetMode,
+  initialMineralogy,
+  initialLithology,
+  onSavePresetData,
 }: MineralogyDialogProps) {
   const project = useAppStore((state) => state.project);
   const updateMicrographMetadata = useAppStore((state) => state.updateMicrographMetadata);
@@ -105,11 +118,35 @@ export function MineralogyDialog({
   // Mineralogy tab - temporary state for adding new mineral
   const [selectedMinerals, setSelectedMinerals] = useState<string[]>([]);
   const [currentOperator, setCurrentOperator] = useState<string>('eq');
-  const [currentPercentage, setCurrentPercentage] = useState<number>(0);
+  const [currentPercentage, setCurrentPercentage] = useState<number | null>(null);
 
   // Load existing data when dialog opens
   useEffect(() => {
-    if (!isOpen || !project) return;
+    if (!isOpen) return;
+
+    // Preset mode: load from props instead of store
+    if (presetMode) {
+      setFormData({
+        minerals: initialMineralogy?.minerals?.map(m => ({
+          name: m.name || '',
+          operator: m.operator || 'eq',
+          percentage: m.percentage || 0,
+        })) || [],
+        determinationMethod: initialMineralogy?.mineralogyMethod || '',
+        percentageCalculationMethod: initialMineralogy?.percentageCalculationMethod || '',
+        mineralogyNotes: initialMineralogy?.notes || '',
+        lithologies: initialLithology?.lithologies?.map(l => ({
+          level1: l.level1 || '',
+          level2: l.level2 || '',
+          level3: l.level3 || '',
+        })) || [],
+        lithologyNotes: initialLithology?.notes || '',
+      });
+      return;
+    }
+
+    // Normal mode: load from store
+    if (!project) return;
 
     // Load from TWO separate fields: mineralogy and lithologyInfo
     let existingMineralogy = null;
@@ -144,8 +181,8 @@ export function MineralogyDialog({
     });
     setSelectedMinerals([]);
     setCurrentOperator('eq');
-    setCurrentPercentage(0);
-  }, [isOpen, micrographId, spotId, project]);
+    setCurrentPercentage(null);
+  }, [isOpen, micrographId, spotId, project, presetMode, initialMineralogy, initialLithology]);
 
   const handleTabChange = (_event: React.SyntheticEvent, newValue: number) => {
     setCurrentTab(newValue);
@@ -153,12 +190,18 @@ export function MineralogyDialog({
 
   // Add selected mineral with percentage to list
   const handleAddMineral = () => {
-    if (selectedMinerals.length > 0 && currentPercentage > 0) {
+    if (selectedMinerals.length > 0) {
       const newMineral: MineralWithPercentage = {
         name: selectedMinerals[0],
-        operator: currentOperator,
-        percentage: currentPercentage,
+        operator: currentPercentage != null ? currentOperator : '', // Only set operator if percentage is specified
+        percentage: currentPercentage ?? 0, // Use 0 for storage but we track null state separately
       };
+
+      // Only include percentage info if actually entered
+      if (currentPercentage == null) {
+        newMineral.operator = '';
+        newMineral.percentage = 0;
+      }
 
       setFormData(prev => ({
         ...prev,
@@ -168,7 +211,7 @@ export function MineralogyDialog({
       // Reset selection
       setSelectedMinerals([]);
       setCurrentOperator('eq');
-      setCurrentPercentage(0);
+      setCurrentPercentage(null);
     }
   };
 
@@ -213,6 +256,26 @@ export function MineralogyDialog({
     const hasLithologyData = (lithologyInfo.lithologies && lithologyInfo.lithologies.length > 0) ||
       lithologyInfo.notes;
 
+    // Preset mode: return data via callback
+    if (presetMode && onSavePresetData) {
+      console.log('[MineralogyDialog] Preset mode save:', {
+        presetMode,
+        hasMineralogyData,
+        hasLithologyData,
+        mineralogy: hasMineralogyData ? mineralogy : null,
+        lithologyInfo: hasLithologyData ? lithologyInfo : null,
+      });
+      onSavePresetData(
+        hasMineralogyData ? mineralogy : null,
+        hasLithologyData ? lithologyInfo : null
+      );
+      onClose();
+      return;
+    } else {
+      console.log('[MineralogyDialog] NOT in preset mode or no callback:', { presetMode, hasCallback: !!onSavePresetData });
+    }
+
+    // Normal mode: save to store
     if (micrographId) {
       updateMicrographMetadata(micrographId, {
         mineralogy: hasMineralogyData ? mineralogy : null,
@@ -234,10 +297,12 @@ export function MineralogyDialog({
     onClose();
   };
 
-  const title = micrographId
-    ? 'Micrograph Mineralogy/Lithology'
-    : spotId
-      ? 'Spot Mineralogy/Lithology'
+  const title = presetMode
+    ? 'Preset Mineralogy/Lithology'
+    : micrographId
+      ? 'Micrograph Mineralogy/Lithology'
+      : spotId
+        ? 'Spot Mineralogy/Lithology'
       : 'Mineralogy/Lithology';
 
   return (
@@ -280,15 +345,18 @@ export function MineralogyDialog({
               <TextField
                 type="number"
                 label="Percentage"
-                value={currentPercentage || ''}
-                onChange={(e) => setCurrentPercentage(parseFloat(e.target.value) || 0)}
+                value={currentPercentage ?? ''}
+                onChange={(e) => {
+                  const val = e.target.value.trim();
+                  setCurrentPercentage(val === '' ? null : parseFloat(val) || 0);
+                }}
                 inputProps={{ min: 0, max: 100, step: 0.1 }}
                 sx={{ width: 120 }}
               />
               <Button
                 variant="outlined"
                 onClick={handleAddMineral}
-                disabled={selectedMinerals.length === 0 || currentPercentage <= 0}
+                disabled={selectedMinerals.length === 0}
                 sx={{ height: 56 }}
               >
                 Add

@@ -28,6 +28,7 @@ import FolderOpenIcon from '@mui/icons-material/FolderOpen';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import ErrorIcon from '@mui/icons-material/Error';
 import WarningIcon from '@mui/icons-material/Warning';
+import { useAppStore } from '../../store/useAppStore';
 
 interface ImportProgress {
   phase: string;
@@ -72,6 +73,9 @@ export function ImportSmzDialog({
   onImportComplete,
   initialFilePath,
 }: ImportSmzDialogProps) {
+  // Get global presets for deduplication during import
+  const globalPresets = useAppStore((state) => state.globalPresets);
+
   const [dialogState, setDialogState] = useState<DialogState>('selecting');
   const [filePath, setFilePath] = useState<string | null>(null);
   const [inspectResult, setInspectResult] = useState<InspectResult | null>(null);
@@ -213,7 +217,31 @@ export function ImportSmzDialog({
 
   const handleComplete = () => {
     if (importResult?.projectData) {
-      onImportComplete(importResult.projectData);
+      // Deduplicate project presets against global presets
+      // If a preset ID already exists in globalPresets, don't include it in project.presets
+      // This prevents duplicates when importing a project that was exported with global presets
+      let projectData = importResult.projectData;
+
+      if (projectData.presets && projectData.presets.length > 0 && globalPresets.length > 0) {
+        const globalPresetIds = new Set(globalPresets.map((p) => p.id));
+        const dedupedPresets = projectData.presets.filter(
+          (p: { id: string }) => !globalPresetIds.has(p.id)
+        );
+
+        if (dedupedPresets.length < projectData.presets.length) {
+          const removedCount = projectData.presets.length - dedupedPresets.length;
+          console.log(
+            `[ImportSmzDialog] Removed ${removedCount} preset(s) that already exist in global presets`
+          );
+
+          projectData = {
+            ...projectData,
+            presets: dedupedPresets.length > 0 ? dedupedPresets : undefined,
+          };
+        }
+      }
+
+      onImportComplete(projectData);
     }
     onClose();
   };

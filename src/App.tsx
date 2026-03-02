@@ -27,7 +27,10 @@ import { PointCountDialog } from './components/dialogs/PointCountDialog';
 import { GrainDetectionDialog } from './components/dialogs/GrainDetectionDialog';
 import { ImageComparatorDialog } from './components/dialogs/ImageComparatorDialog';
 import { GrainSizeAnalysisDialog } from './components/dialogs/GrainSizeAnalysisDialog';
+import { MineralColorDialog } from './components/dialogs/MineralColorDialog';
 import { QuickEditEntryDialog } from './components/dialogs/QuickEditEntryDialog';
+import { QuickApplyPresetsDialog } from './components/dialogs/QuickApplyPresetsDialog';
+import { StartupMessageDialog } from './components/dialogs/StartupMessageDialog';
 import {
   IncompleteMicrographsDialog,
   findIncompleteMicrographs,
@@ -189,12 +192,17 @@ function App() {
   const [isImageComparatorDialogOpen, setIsImageComparatorDialogOpen] = useState(false);
   const [isGrainSizeAnalysisDialogOpen, setIsGrainSizeAnalysisDialogOpen] = useState(false);
   const [isQuickEditEntryDialogOpen, setIsQuickEditEntryDialogOpen] = useState(false);
+  const [isQuickApplyPresetsDialogOpen, setIsQuickApplyPresetsDialogOpen] = useState(false);
+  const [isMineralColorDialogOpen, setIsMineralColorDialogOpen] = useState(false);
+  const [isStartupMessageOpen, setIsStartupMessageOpen] = useState(false);
+  const [startupMessage, setStartupMessage] = useState('');
+  const [startupMessageUuid, setStartupMessageUuid] = useState('');
   const setSplitModeSpotId = useAppStore(state => state.setSplitModeSpotId);
   const closeProject = useAppStore(state => state.closeProject);
   const project = useAppStore(state => state.project);
   const setTheme = useAppStore(state => state.setTheme);
   const setShowRulers = useAppStore(state => state.setShowRulers);
-  const setShowSpotLabels = useAppStore(state => state.setShowSpotLabels);
+  const setSpotLabelMode = useAppStore(state => state.setSpotLabelMode);
   const setShowMicrographOutlines = useAppStore(state => state.setShowMicrographOutlines);
   const setShowRecursiveSpots = useAppStore(state => state.setShowRecursiveSpots);
   const setShowArchivedSpots = useAppStore(state => state.setShowArchivedSpots);
@@ -204,7 +212,7 @@ function App() {
   const micrographIndex = useAppStore(state => state.micrographIndex);
   const addSpot = useAppStore(state => state.addSpot);
   const updateMicrographMetadata = useAppStore(state => state.updateMicrographMetadata);
-  const { checkAuthStatus, logout, isAuthenticated } = useAuthStore();
+  const { checkAuthStatus, logout, user } = useAuthStore();
 
   // Initialize theme system
   useTheme();
@@ -254,6 +262,34 @@ function App() {
   useEffect(() => {
     checkAuthStatus();
   }, [checkAuthStatus]);
+
+  // Fetch startup message from StraboSpot on mount
+  useEffect(() => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
+
+    fetch(`https://strabospot.org/micromessage.json?_=${Date.now()}`, { signal: controller.signal })
+      .then(res => res.json())
+      .then((data: { uuid?: string; message?: string }) => {
+        clearTimeout(timeout);
+        if (data.uuid && data.message && data.message.trim().length > 0) {
+          const dismissedUuid = localStorage.getItem('startup-message:dismissed-uuid');
+          if (dismissedUuid !== data.uuid) {
+            setStartupMessage(data.message);
+            setStartupMessageUuid(data.uuid);
+            setIsStartupMessageOpen(true);
+          }
+        }
+      })
+      .catch(() => {
+        clearTimeout(timeout);
+      });
+
+    return () => {
+      clearTimeout(timeout);
+      controller.abort();
+    };
+  }, []);
 
   // Ref to track if project validation has already run (persists across StrictMode remounts)
   const hasValidatedProject = useRef(false);
@@ -427,6 +463,27 @@ function App() {
       setIsGrainSizeAnalysisDialogOpen(true);
     }));
 
+    // Grain Size Analysis from PropertiesPanel summary
+    const handleOpenGrainAnalysis = () => setIsGrainSizeAnalysisDialogOpen(true);
+    window.addEventListener('open-grain-size-analysis', handleOpenGrainAnalysis);
+    unsubscribers.push(() => window.removeEventListener('open-grain-size-analysis', handleOpenGrainAnalysis));
+
+    // Configure Mineral Colors menu item (Tools menu)
+    if (window.api.onConfigureMineralColors) {
+      unsubscribers.push(window.api.onConfigureMineralColors(() => {
+        setIsMineralColorDialogOpen(true);
+      }));
+    }
+
+    // Spot Color Mode toggle (View menu)
+    if (window.api.onSpotColorMode) {
+      unsubscribers.push(window.api.onSpotColorMode((mode) => {
+        console.log('[App] Spot color mode changed to:', mode);
+        useAppStore.getState().setSpotColorMode(mode);
+        window.api?.notifyViewPrefsChanged({ spotColorMode: mode });
+      }));
+    }
+
     // Clear All Spots menu item (Edit menu)
     unsubscribers.push(window.api.onClearAllSpots(() => {
       const currentMicrographId = useAppStore.getState().activeMicrographId;
@@ -435,8 +492,14 @@ function App() {
         return;
       }
 
-      const micrograph = useAppStore.getState().micrographIndex.get(currentMicrographId);
-      const spotCount = micrograph?.spots?.length || 0;
+      // If viewing a secondary sibling (XPL), resolve to the primary (PPL) where spots are stored
+      const currentMicro = useAppStore.getState().micrographIndex.get(currentMicrographId);
+      const targetId = currentMicro?.isPrimarySibling === false && currentMicro?.siblingImageId
+        ? currentMicro.siblingImageId
+        : currentMicrographId;
+
+      const targetMicro = useAppStore.getState().micrographIndex.get(targetId);
+      const spotCount = targetMicro?.spots?.length || 0;
 
       if (spotCount === 0) {
         alert('No spots to clear on this micrograph.');
@@ -447,8 +510,8 @@ function App() {
         return;
       }
 
-      useAppStore.getState().clearAllSpots(currentMicrographId);
-      console.log(`[App] Cleared ${spotCount} spots from micrograph ${currentMicrographId}`);
+      useAppStore.getState().clearAllSpots(targetId);
+      console.log(`[App] Cleared ${spotCount} spots from micrograph ${targetId}`);
     }));
 
     // Quick Edit Spots menu item (Edit menu, Cmd+Shift+Q)
@@ -458,8 +521,12 @@ function App() {
         alert('Please select a micrograph first.');
         return;
       }
-      // Check if there are spots on the micrograph
-      const micrograph = state.micrographIndex.get(state.activeMicrographId);
+      // If viewing a secondary sibling (XPL), resolve to the primary (PPL) where spots are stored
+      const currentMicro = state.micrographIndex.get(state.activeMicrographId);
+      const resolvedId = currentMicro?.isPrimarySibling === false && currentMicro?.siblingImageId
+        ? currentMicro.siblingImageId
+        : state.activeMicrographId;
+      const micrograph = state.micrographIndex.get(resolvedId);
       if (!micrograph?.spots || micrograph.spots.length === 0) {
         alert('No spots on this micrograph.\n\nDraw some spots or use "Detect Grains" first.');
         return;
@@ -476,6 +543,11 @@ function App() {
         return;
       }
       useAppStore.getState().setBatchEditDialogOpen(true);
+    }));
+
+    // Quick Spot Presets menu item (Tools menu)
+    unsubscribers.push(window.api.onQuickApplyPresets(() => {
+      setIsQuickApplyPresetsDialogOpen(true);
     }));
 
     // Merge Selected Spots menu item (Edit menu, Cmd+M)
@@ -789,7 +861,6 @@ function App() {
     unsubscribers.push(window.api.onUndo(() => {
       const temporalState = useTemporalStore.getState();
       temporalState.undo();
-      console.log('Undo performed');
     }));
 
     // Redo menu item
@@ -807,21 +878,25 @@ function App() {
     // View: Toggle Rulers menu item
     unsubscribers.push(window.api.onToggleRulers((checked) => {
       setShowRulers(checked);
+      window.api?.notifyViewPrefsChanged({ showRulers: checked });
     }));
 
-    // View: Toggle Spot Labels menu item
-    unsubscribers.push(window.api.onToggleSpotLabels((checked) => {
-      setShowSpotLabels(checked);
+    // View: Spot Label Mode menu item
+    unsubscribers.push(window.api.onSpotLabelMode((mode) => {
+      setSpotLabelMode(mode);
+      window.api?.notifyViewPrefsChanged({ spotLabelMode: mode });
     }));
 
     // View: Toggle Overlay Outlines menu item
     unsubscribers.push(window.api.onToggleOverlayOutlines((checked) => {
       setShowMicrographOutlines(checked);
+      window.api?.notifyViewPrefsChanged({ showOverlayOutlines: checked });
     }));
 
     // View: Toggle Recursive Spots menu item
     unsubscribers.push(window.api.onToggleRecursiveSpots((checked) => {
       setShowRecursiveSpots(checked);
+      window.api?.notifyViewPrefsChanged({ showRecursiveSpots: checked });
     }));
 
     // View: Toggle Archived Spots menu item
@@ -1127,7 +1202,7 @@ function App() {
     return () => {
       unsubscribers.forEach(unsub => unsub?.());
     };
-  }, [closeProject, setTheme, setShowRulers, setShowSpotLabels, setShowMicrographOutlines, logout, project, manualSave, saveBeforeSwitch, loadProjectWithPreparation, activeMicrographId, micrographIndex, addSpot, updateMicrographMetadata]);
+  }, [closeProject, setTheme, setShowRulers, setSpotLabelMode, setShowMicrographOutlines, logout, project, manualSave, saveBeforeSwitch, loadProjectWithPreparation, activeMicrographId, micrographIndex, addSpot, updateMicrographMetadata]);
 
   return (
     <>
@@ -1167,8 +1242,7 @@ function App() {
       <SendErrorReportModal
         open={isSendErrorReportOpen}
         onClose={() => setIsSendErrorReportOpen(false)}
-        isLoggedIn={isAuthenticated}
-        onLoginRequest={() => setIsLoginDialogOpen(true)}
+        userEmail={user?.email}
       />
       <ExportAllImagesDialog
         open={isExportAllImagesOpen}
@@ -1273,9 +1347,23 @@ function App() {
         open={isGrainSizeAnalysisDialogOpen}
         onClose={() => setIsGrainSizeAnalysisDialogOpen(false)}
       />
+      <MineralColorDialog
+        isOpen={isMineralColorDialogOpen}
+        onClose={() => setIsMineralColorDialogOpen(false)}
+      />
       <QuickEditEntryDialog
         isOpen={isQuickEditEntryDialogOpen}
         onClose={() => setIsQuickEditEntryDialogOpen(false)}
+      />
+      <QuickApplyPresetsDialog
+        open={isQuickApplyPresetsDialogOpen}
+        onClose={() => setIsQuickApplyPresetsDialogOpen(false)}
+      />
+      <StartupMessageDialog
+        isOpen={isStartupMessageOpen}
+        onClose={() => setIsStartupMessageOpen(false)}
+        message={startupMessage}
+        onDismiss={() => localStorage.setItem('startup-message:dismissed-uuid', startupMessageUuid)}
       />
       <StatisticsPanel />
       <QuickClassifyToolbar

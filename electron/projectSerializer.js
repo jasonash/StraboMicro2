@@ -310,6 +310,11 @@ function serializeToLegacyFormat(project) {
     datasets: (project.datasets || []).map(serializeDataset),
     groups: project.groups || [], // Not implemented yet
     tags: project.tags || [], // Not implemented yet
+    // Quick Spot Presets (project-level)
+    presets: project.presets || undefined,
+    presetKeyBindings: project.presetKeyBindings || undefined,
+    // Mineral Color overrides (project-level)
+    mineralColors: project.mineralColors || undefined,
   };
 }
 
@@ -416,6 +421,12 @@ function serializeMicrograph(micrograph) {
     affineTransformedWidth: micrograph.affineTransformedWidth || undefined,
     affineTransformedHeight: micrograph.affineTransformedHeight || undefined,
     affineTileHash: micrograph.affineTileHash || undefined,
+    // XPL/PPL sibling pairing
+    siblingImageId: micrograph.siblingImageId || undefined,
+    isPrimarySibling: micrograph.isPrimarySibling !== undefined ? micrograph.isPrimarySibling : undefined,
+    siblingScaleFactor: roundForDb(micrograph.siblingScaleFactor) || undefined,
+    // Sketch overlay layers (new feature - not in legacy schema)
+    sketchLayers: micrograph.sketchLayers || undefined,
   };
 }
 
@@ -471,6 +482,8 @@ function serializeSpot(spot) {
     splitFrom: spot.splitFrom || undefined,
     // Archive status
     archived: spot.archived || undefined,
+    // Quick Spot Presets tracking
+    appliedPresetIds: spot.appliedPresetIds || undefined,
   };
 }
 
@@ -495,6 +508,11 @@ function deserializeFromLegacyFormat(legacyJson) {
     datasets: (legacyJson.datasets || []).map(deserializeDataset),
     groups: legacyJson.groups || [],
     tags: legacyJson.tags || [],
+    // Quick Spot Presets (project-level)
+    presets: legacyJson.presets || undefined,
+    presetKeyBindings: legacyJson.presetKeyBindings || undefined,
+    // Mineral Color overrides (project-level)
+    mineralColors: legacyJson.mineralColors || undefined,
   };
 }
 
@@ -598,6 +616,12 @@ function deserializeMicrograph(micrograph) {
     affineTransformedWidth: micrograph.affineTransformedWidth,
     affineTransformedHeight: micrograph.affineTransformedHeight,
     affineTileHash: micrograph.affineTileHash,
+    // XPL/PPL sibling pairing
+    siblingImageId: micrograph.siblingImageId,
+    isPrimarySibling: micrograph.isPrimarySibling,
+    siblingScaleFactor: micrograph.siblingScaleFactor,
+    // Sketch overlay layers (new feature - not in legacy schema)
+    sketchLayers: micrograph.sketchLayers,
   };
 }
 
@@ -643,6 +667,8 @@ function deserializeSpot(spot) {
     splitFrom: spot.splitFrom,
     // Archive status
     archived: spot.archived,
+    // Quick Spot Presets tracking
+    appliedPresetIds: spot.appliedPresetIds,
   };
 }
 

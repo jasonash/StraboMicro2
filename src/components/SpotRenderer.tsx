@@ -5,10 +5,12 @@
  * Handles visual representation including colors, labels, opacity, and selection states.
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Circle, Line, Group, Text, Rect } from 'react-konva';
 import { Spot } from '@/types/project-types';
 import { useAppStore } from '@/store';
+import { DEFAULT_MINERAL_COLORS, NO_MINERAL_COLOR } from '@/constants/mineralColorDefaults';
+import { loadMinerals } from '@/utils/mineralData';
 
 /**
  * Convert legacy color format (0xRRGGBBAA) to web format (#RRGGBB)
@@ -27,6 +29,20 @@ function convertLegacyColor(color: string): string {
   }
 
   return color; // Return as-is if unknown format
+}
+
+/**
+ * Build a Map of lowercase mineral name → abbreviation from mineralDB.
+ * Lazily initialized on first access.
+ */
+let mineralAbbrevMap: Map<string, string> | null = null;
+function getMineralAbbrevMap(): Map<string, string> {
+  if (mineralAbbrevMap) return mineralAbbrevMap;
+  mineralAbbrevMap = new Map();
+  for (const m of loadMinerals()) {
+    mineralAbbrevMap.set(m.mineralname.toLowerCase(), m.abbrev);
+  }
+  return mineralAbbrevMap;
 }
 
 interface SpotRendererProps {
@@ -58,6 +74,14 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
   // Split mode state
   const splitModeSpotId = useAppStore((state) => state.splitModeSpotId);
 
+  // Spot label mode state
+  const spotLabelMode = useAppStore((state) => state.spotLabelMode ?? 'original');
+
+  // Mineral color mode state (with fallbacks for rehydration from older stored state)
+  const spotColorMode = useAppStore((state) => state.spotColorMode ?? 'spot-color');
+  const globalMineralColors = useAppStore((state) => state.globalMineralColors);
+  const projectMineralColors = useAppStore((state) => state.project?.mineralColors);
+
   // Clear hover state when spot becomes selected
   // IMPORTANT: This must be BEFORE any conditional returns (React hooks rules)
   useEffect(() => {
@@ -65,6 +89,19 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
       setIsHovered(false);
     }
   }, [isSelected]);
+
+  // Compute label text based on spotLabelMode
+  // IMPORTANT: This useMemo must be BEFORE any conditional returns (React hooks rules)
+  const labelText = useMemo(() => {
+    if (spotLabelMode === 'none') return null;
+    if (spotLabelMode === 'original') return spot.name;
+    // spotLabelMode === 'mineralogy'
+    const mineralName = spot.mineralogy?.minerals?.[0]?.name;
+    if (!mineralName) return null;
+    const abbrevMap = getMineralAbbrevMap();
+    const abbrev = abbrevMap.get(mineralName.toLowerCase());
+    return abbrev || mineralName.slice(0, 3);
+  }, [spotLabelMode, spot.name, spot.mineralogy?.minerals]);
 
   const isEditing = editingSpotId === spot.id;
 
@@ -75,7 +112,25 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
   if (!spot.geometryType && !spot.geometry) return null;
 
   const geometryType = spot.geometryType || spot.geometry?.type;
-  const baseColor = convertLegacyColor(spot.color || '#00ff00');
+
+  // Determine base color: mineral-based or spot-based
+  let baseColor: string;
+  if (spotColorMode === 'mineral-color') {
+    const mineralName = spot.mineralogy?.minerals?.[0]?.name;
+    if (mineralName) {
+      // Project override > global default > hardcoded default > gray fallback
+      // Use case-insensitive matching since mineral names may differ in casing
+      const nameLower = mineralName.toLowerCase();
+      const projectEntry = projectMineralColors?.find((e) => e.mineral.toLowerCase() === nameLower);
+      const globalEntry = globalMineralColors?.find((e) => e.mineral.toLowerCase() === nameLower);
+      const defaultEntry = DEFAULT_MINERAL_COLORS.find((e) => e.mineral.toLowerCase() === nameLower);
+      baseColor = projectEntry?.color ?? globalEntry?.color ?? defaultEntry?.color ?? NO_MINERAL_COLOR;
+    } else {
+      baseColor = NO_MINERAL_COLOR;
+    }
+  } else {
+    baseColor = convertLegacyColor(spot.color || '#00ff00');
+  }
   const labelColor = convertLegacyColor(spot.labelColor || '#ffffff');
   const showLabel = spot.showLabel ?? true;
   const baseOpacity = (spot.opacity ?? 50) / 100; // Convert 0-100 to 0-1
@@ -94,19 +149,9 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
 
   if (quickEditMode) {
     if (isInQuickEditSession) {
-      // In Quick Edit session - use outline style
-      fillOpacity = 0; // No fill
-
-      if (isClassified) {
-        // Classified spots get bright green outline
-        color = '#00ff00'; // Lime green (bright)
-      } else {
-        // Unclassified spots get cyan outline (visible on both light and dark backgrounds)
-        color = '#00ffff'; // Cyan
-      }
-
+      // In Quick Edit session - use standard filled style (same as normal view)
+      // Current spot gets gold highlight to stand out
       if (isCurrentQuickEditSpot) {
-        // Current spot gets gold highlight
         color = '#ffd700'; // Gold
       }
     } else {
@@ -167,14 +212,14 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
 
     // If rendering labels only, skip the shape
     if (renderLabelsOnly) {
-      return showLabel ? (
+      return (showLabel && labelText) ? (
         <Group name={`spot-${spot.id}-label`}>
           {/* Label background box */}
           <Rect
             key="label-bg"
             x={x + 8 / scale}
             y={y + 8 / scale}
-            width={(spot.name.length * 8.5 + 8) / scale}
+            width={(labelText.length * 8.5 + 8) / scale}
             height={22 / scale}
             fill="#000000"
             opacity={0.7}
@@ -186,7 +231,7 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
             key="label"
             x={x + 12 / scale}
             y={y + 11 / scale}
-            text={spot.name}
+            text={labelText}
             fontSize={16 / scale}
             fontStyle="bold"
             fill={labelColor}
@@ -219,15 +264,14 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
         )}
 
         {/* Circle: always filled with spot color */}
-        {/* In Quick Edit mode: different colors based on state */}
         <Circle
           key="point"
           x={x}
           y={y}
           radius={(isCurrentQuickEditSpot ? 8 : 6) / scale}
-          fill={quickEditMode ? (fillOpacity === 0 ? 'transparent' : color) : color}
-          opacity={quickEditMode ? opacity : baseOpacity}
-          stroke={quickEditMode ? strokeColor : '#ffffff'}
+          fill={color}
+          opacity={opacity}
+          stroke={isCurrentQuickEditSpot ? strokeColor : '#ffffff'}
           strokeWidth={(isCurrentQuickEditSpot ? 3 : 2) / scale}
         />
       </Group>
@@ -247,14 +291,14 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
 
     // If rendering labels only, skip the shape
     if (renderLabelsOnly) {
-      return showLabel && coords[0] ? (
+      return (showLabel && labelText && coords[0]) ? (
         <Group name={`spot-${spot.id}-label`}>
           {/* Label background box */}
           <Rect
             key="label-bg"
             x={coords[0][0] + 8 / scale}
             y={coords[0][1] + 8 / scale}
-            width={(spot.name.length * 8.5 + 8) / scale}
+            width={(labelText.length * 8.5 + 8) / scale}
             height={22 / scale}
             fill="#000000"
             opacity={0.7}
@@ -266,7 +310,7 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
             key="label"
             x={coords[0][0] + 12 / scale}
             y={coords[0][1] + 11 / scale}
-            text={spot.name}
+            text={labelText}
             fontSize={16 / scale}
             fontStyle="bold"
             fill={labelColor}
@@ -328,14 +372,14 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
 
     // If rendering labels only, skip the shape
     if (renderLabelsOnly) {
-      return showLabel && coords[0] ? (
+      return (showLabel && labelText && coords[0]) ? (
         <Group name={`spot-${spot.id}-label`}>
           {/* Label background box */}
           <Rect
             key="label-bg"
             x={coords[0][0] + 8 / scale}
             y={coords[0][1] + 8 / scale}
-            width={(spot.name.length * 8.5 + 8) / scale}
+            width={(labelText.length * 8.5 + 8) / scale}
             height={22 / scale}
             fill="#000000"
             opacity={0.7}
@@ -347,7 +391,7 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
             key="label"
             x={coords[0][0] + 12 / scale}
             y={coords[0][1] + 11 / scale}
-            text={spot.name}
+            text={labelText}
             fontSize={16 / scale}
             fontStyle="bold"
             fill={labelColor}
@@ -379,13 +423,12 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
         )}
 
         {/* Polygon: solid fill if classified, faded with dashed stroke if unclassified */}
-        {/* In Quick Edit mode: no fill, outline only */}
         <Line
           key="polygon"
           points={points}
           stroke={isSelected ? 'transparent' : strokeColor}
           strokeWidth={isSelected ? 0 : strokeWidth}
-          dash={quickEditMode ? undefined : (isClassified ? undefined : [8 / scale, 4 / scale])}
+          dash={isClassified ? undefined : [8 / scale, 4 / scale]}
           fill={fillOpacity === 0 ? 'transparent' : color}
           opacity={opacity}
           closed={true}

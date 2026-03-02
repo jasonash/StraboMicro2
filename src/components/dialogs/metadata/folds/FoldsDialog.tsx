@@ -31,6 +31,10 @@ interface FoldsDialogProps {
   onClose: () => void;
   micrographId?: string;
   spotId?: string;
+  // Preset mode props
+  presetMode?: boolean;
+  initialData?: FoldInfoType | null;
+  onSavePresetData?: (data: FoldInfoType | null) => void;
 }
 
 export function FoldsDialog({
@@ -38,6 +42,9 @@ export function FoldsDialog({
   onClose,
   micrographId,
   spotId,
+  presetMode,
+  initialData,
+  onSavePresetData,
 }: FoldsDialogProps) {
   const project = useAppStore((state) => state.project);
   const updateMicrographMetadata = useAppStore((state) => state.updateMicrographMetadata);
@@ -49,7 +56,17 @@ export function FoldsDialog({
 
   // Load existing data when dialog opens
   useEffect(() => {
-    if (!isOpen || !project) return;
+    if (!isOpen) return;
+
+    // Preset mode: load from props instead of store
+    if (presetMode) {
+      setFolds((initialData?.folds || []) as FoldData[]);
+      setNotes(initialData?.notes || '');
+      return;
+    }
+
+    // Normal mode: load from store
+    if (!project) return;
 
     let existingData: FoldInfoType | null | undefined = null;
 
@@ -63,14 +80,23 @@ export function FoldsDialog({
 
     setFolds((existingData?.folds || []) as FoldData[]);
     setNotes(existingData?.notes || '');
-  }, [isOpen, micrographId, spotId, project]);
+  }, [isOpen, micrographId, spotId, project, presetMode, initialData]);
 
   const handleSave = () => {
+    const hasData = folds.length > 0 || notes;
     const foldInfo: FoldInfoType = {
       folds: folds as FoldType[],
       notes: notes,
     };
 
+    // Preset mode: return data via callback
+    if (presetMode && onSavePresetData) {
+      onSavePresetData(hasData ? foldInfo : null);
+      onClose();
+      return;
+    }
+
+    // Normal mode: save to store
     if (micrographId) {
       updateMicrographMetadata(micrographId, { foldInfo });
     } else if (spotId) {
@@ -84,11 +110,13 @@ export function FoldsDialog({
     onClose();
   };
 
-  const title = micrographId
-    ? 'Micrograph Fold Data'
-    : spotId
-      ? 'Spot Fold Data'
-      : 'Fold Data';
+  const title = presetMode
+    ? 'Preset Fold Data'
+    : micrographId
+      ? 'Micrograph Fold Data'
+      : spotId
+        ? 'Spot Fold Data'
+        : 'Fold Data';
 
   return (
     <Dialog

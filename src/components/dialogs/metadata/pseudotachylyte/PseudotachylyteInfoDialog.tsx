@@ -25,6 +25,10 @@ interface PseudotachylyteInfoDialogProps {
   onClose: () => void;
   micrographId?: string;
   spotId?: string;
+  // Preset mode props
+  presetMode?: boolean;
+  initialData?: PseudotachylyteInfoType | null;
+  onSavePresetData?: (data: PseudotachylyteInfoType | null) => void;
 }
 
 export function PseudotachylyteInfoDialog({
@@ -32,6 +36,9 @@ export function PseudotachylyteInfoDialog({
   onClose,
   micrographId,
   spotId,
+  presetMode,
+  initialData,
+  onSavePresetData,
 }: PseudotachylyteInfoDialogProps) {
   const project = useAppStore((state) => state.project);
   const updateMicrographMetadata = useAppStore((state) => state.updateMicrographMetadata);
@@ -42,7 +49,18 @@ export function PseudotachylyteInfoDialog({
   const [notes, setNotes] = useState<string>('');
 
   useEffect(() => {
-    if (!isOpen || !project) return;
+    if (!isOpen) return;
+
+    // Preset mode: load from props instead of store
+    if (presetMode) {
+      setPseudotachylytes((initialData?.pseudotachylytes || []) as PseudotachylyteData[]);
+      setReasoning(initialData?.reasoning || '');
+      setNotes(initialData?.notes || '');
+      return;
+    }
+
+    // Normal mode: load from store
+    if (!project) return;
 
     let existingData: PseudotachylyteInfoType | null | undefined = null;
 
@@ -57,15 +75,24 @@ export function PseudotachylyteInfoDialog({
     setPseudotachylytes((existingData?.pseudotachylytes || []) as PseudotachylyteData[]);
     setReasoning(existingData?.reasoning || '');
     setNotes(existingData?.notes || '');
-  }, [isOpen, micrographId, spotId, project]);
+  }, [isOpen, micrographId, spotId, project, presetMode, initialData]);
 
   const handleSave = () => {
+    const hasData = pseudotachylytes.length > 0 || reasoning || notes;
     const pseudotachylyteInfo: PseudotachylyteInfoType = {
       pseudotachylytes: pseudotachylytes as PseudotachylyteType[],
       reasoning,
       notes: notes,
     };
 
+    // Preset mode: return data via callback
+    if (presetMode && onSavePresetData) {
+      onSavePresetData(hasData ? pseudotachylyteInfo : null);
+      onClose();
+      return;
+    }
+
+    // Normal mode: save to store
     if (micrographId) {
       updateMicrographMetadata(micrographId, { pseudotachylyteInfo });
     } else if (spotId) {
@@ -79,11 +106,13 @@ export function PseudotachylyteInfoDialog({
     onClose();
   };
 
-  const title = micrographId
-    ? 'Micrograph Pseudotachylyte Info'
-    : spotId
-      ? 'Spot Pseudotachylyte Info'
-      : 'Pseudotachylyte Info';
+  const title = presetMode
+    ? 'Preset Pseudotachylyte Info'
+    : micrographId
+      ? 'Micrograph Pseudotachylyte Info'
+      : spotId
+        ? 'Spot Pseudotachylyte Info'
+        : 'Pseudotachylyte Info';
 
   return (
     <Dialog

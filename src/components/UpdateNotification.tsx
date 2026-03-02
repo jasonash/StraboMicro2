@@ -6,6 +6,7 @@
  */
 
 import { useEffect, useState, useCallback } from 'react';
+import { useAppStore } from '../store/useAppStore';
 import {
   Snackbar,
   Alert,
@@ -50,6 +51,7 @@ export default function UpdateNotification({
   const [showRestartDialog, setShowRestartDialog] = useState(false);
   const [showNoUpdateDialog, setShowNoUpdateDialog] = useState(false);
   const [showDevModeDialog, setShowDevModeDialog] = useState(false);
+  const [downloadFailed, setDownloadFailed] = useState(false);
 
   // Subscribe to update status events
   useEffect(() => {
@@ -61,6 +63,7 @@ export default function UpdateNotification({
       switch (data.status) {
         case 'available':
           setShowSnackbar(true);
+          setDownloadFailed(false);
           onManualCheckComplete?.();
           break;
         case 'not-available':
@@ -70,12 +73,19 @@ export default function UpdateNotification({
           }
           onManualCheckComplete?.();
           break;
+        case 'downloading':
+          setDownloadFailed(false);
+          break;
         case 'downloaded':
           setShowSnackbar(false);
+          setDownloadFailed(false);
           setShowRestartDialog(true);
           break;
         case 'error':
-          // Show error in snackbar
+          // Track if this error came from a download attempt
+          if (status?.status === 'downloading') {
+            setDownloadFailed(true);
+          }
           setShowSnackbar(true);
           onManualCheckComplete?.();
           break;
@@ -106,8 +116,22 @@ export default function UpdateNotification({
     window.api?.autoUpdater?.downloadUpdate();
   }, []);
 
-  const handleInstall = useCallback(() => {
+  const handleInstall = useCallback(async () => {
+    try {
+      // Auto-save project if there are unsaved changes
+      const { isDirty, saveProject } = useAppStore.getState();
+      if (isDirty) {
+        await saveProject();
+      }
+    } catch (error) {
+      console.error('[UpdateNotification] Error auto-saving before update:', error);
+    }
     window.api?.autoUpdater?.installUpdate();
+  }, []);
+
+  const handleRetryDownload = useCallback(() => {
+    setDownloadFailed(false);
+    window.api?.autoUpdater?.downloadUpdate();
   }, []);
 
   const handleDismiss = useCallback(() => {
@@ -197,9 +221,16 @@ export default function UpdateNotification({
             severity="error"
             sx={{ width: '100%' }}
             action={
-              <IconButton size="small" color="inherit" onClick={handleDismiss}>
-                <CloseIcon fontSize="small" />
-              </IconButton>
+              <Box sx={{ display: 'flex', gap: 1 }}>
+                {downloadFailed && (
+                  <Button color="inherit" size="small" onClick={handleRetryDownload}>
+                    Retry
+                  </Button>
+                )}
+                <IconButton size="small" color="inherit" onClick={handleDismiss}>
+                  <CloseIcon fontSize="small" />
+                </IconButton>
+              </Box>
             }
           >
             Update error: {status.message}
@@ -223,13 +254,34 @@ export default function UpdateNotification({
       </Snackbar>
 
       {/* Restart dialog when download is complete */}
-      <Dialog open={showRestartDialog} onClose={handleCloseRestartDialog}>
+      <Dialog open={showRestartDialog} onClose={handleCloseRestartDialog} maxWidth="sm" fullWidth>
         <DialogTitle>Update Ready to Install</DialogTitle>
         <DialogContent>
           <DialogContentText>
             Version {status?.version} has been downloaded and is ready to install.
             The application will restart to apply the update.
           </DialogContentText>
+          {status?.releaseNotes && (
+            <Box
+              sx={{
+                mt: 2,
+                p: 2,
+                bgcolor: 'action.hover',
+                borderRadius: 1,
+                maxHeight: 200,
+                overflow: 'auto',
+                '& h1, & h2, & h3': { fontSize: '0.95rem', fontWeight: 600, mt: 1, mb: 0.5 },
+                '& ul': { pl: 2.5, my: 0.5 },
+                '& li': { fontSize: '0.85rem', mb: 0.25 },
+                '& p': { fontSize: '0.85rem', my: 0.5 },
+              }}
+              dangerouslySetInnerHTML={{
+                __html: typeof status.releaseNotes === 'string'
+                  ? status.releaseNotes
+                  : '',
+              }}
+            />
+          )}
         </DialogContent>
         <DialogActions>
           <Button onClick={handleCloseRestartDialog}>Later</Button>

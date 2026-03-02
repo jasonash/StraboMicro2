@@ -41,6 +41,10 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('menu:batch-edit-spots', callback);
     return () => ipcRenderer.removeListener('menu:batch-edit-spots', callback);
   },
+  onQuickApplyPresets: (callback) => {
+    ipcRenderer.on('menu:quick-apply-presets', callback);
+    return () => ipcRenderer.removeListener('menu:quick-apply-presets', callback);
+  },
   onMergeSpots: (callback) => {
     ipcRenderer.on('menu:merge-spots', callback);
     return () => ipcRenderer.removeListener('menu:merge-spots', callback);
@@ -136,6 +140,7 @@ contextBridge.exposeInMainWorld('api', {
     return () => ipcRenderer.removeListener('theme:set', handler);
   },
   notifyThemeChanged: (theme) => ipcRenderer.send('theme:changed', theme),
+  notifyViewPrefsChanged: (prefs) => ipcRenderer.send('view-prefs:changed', prefs),
 
   // View preferences
   onToggleRulers: (callback) => {
@@ -143,10 +148,10 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('view:toggle-rulers', handler);
     return () => ipcRenderer.removeListener('view:toggle-rulers', handler);
   },
-  onToggleSpotLabels: (callback) => {
-    const handler = (event, checked) => callback(checked);
-    ipcRenderer.on('view:toggle-spot-labels', handler);
-    return () => ipcRenderer.removeListener('view:toggle-spot-labels', handler);
+  onSpotLabelMode: (callback) => {
+    const handler = (event, mode) => callback(mode);
+    ipcRenderer.on('view:spot-label-mode', handler);
+    return () => ipcRenderer.removeListener('view:spot-label-mode', handler);
   },
   onToggleOverlayOutlines: (callback) => {
     const handler = (event, checked) => callback(checked);
@@ -256,10 +261,12 @@ contextBridge.exposeInMainWorld('api', {
   deleteFromAssociatedFiles: (projectId, fileName) =>
     ipcRenderer.invoke('project:delete-from-associated-files', projectId, fileName),
 
-  // Image conversion
+  // Image validation and conversion
+  validateImageFiles: (filePaths) => ipcRenderer.invoke('image:validate-files', filePaths),
   convertToScratchJPEG: (sourcePath) => ipcRenderer.invoke('image:convert-to-scratch', sourcePath),
   moveFromScratch: (identifier, projectId, micrographId) => ipcRenderer.invoke('image:move-from-scratch', identifier, projectId, micrographId),
   deleteScratchImage: (identifier) => ipcRenderer.invoke('image:delete-scratch', identifier),
+  resizeScratchImage: (identifier, targetWidth, targetHeight) => ipcRenderer.invoke('image:resize-scratch', identifier, targetWidth, targetHeight),
   onConversionProgress: (callback) => ipcRenderer.on('image:conversion-progress', (event, progress) => callback(progress)),
   convertAndSaveMicrographImage: (sourcePath, projectId, micrographId) =>
     ipcRenderer.invoke('image:convert-and-save-micrograph', sourcePath, projectId, micrographId),
@@ -315,6 +322,12 @@ contextBridge.exposeInMainWorld('api', {
   onExportAllImages: (callback) => {
     ipcRenderer.on('menu:export-all-images', callback);
     return () => ipcRenderer.removeListener('menu:export-all-images', callback);
+  },
+
+  // Menu event for export with sketches
+  onExportWithSketches: (callback) => {
+    ipcRenderer.on('menu:export-with-sketches', callback);
+    return () => ipcRenderer.removeListener('menu:export-with-sketches', callback);
   },
 
   // Export project as JSON
@@ -382,8 +395,8 @@ contextBridge.exposeInMainWorld('api', {
     write: (level, message, source) => ipcRenderer.invoke('logs:write', level, message, source),
   },
 
-  // Send error report to server
-  sendErrorReport: (notes) => ipcRenderer.invoke('logs:send-report', notes),
+  // Send error report to server (email is optional, used when not logged in)
+  sendErrorReport: (notes, email) => ipcRenderer.invoke('logs:send-report', notes, email),
 
   // Auto-updater
   autoUpdater: {
@@ -622,10 +635,20 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('menu:grain-size-analysis', handler);
     return () => ipcRenderer.removeListener('menu:grain-size-analysis', handler);
   },
+  onConfigureMineralColors: (callback) => {
+    const handler = () => callback();
+    ipcRenderer.on('menu:configure-mineral-colors', handler);
+    return () => ipcRenderer.removeListener('menu:configure-mineral-colors', handler);
+  },
+  onSpotColorMode: (callback) => {
+    const handler = (event, mode) => callback(mode);
+    ipcRenderer.on('view:spot-color-mode', handler);
+    return () => ipcRenderer.removeListener('view:spot-color-mode', handler);
+  },
 
-  // FastSAM Grain Detection
+  // FastSAM Grain Detection (model management only - inference runs in renderer via onnxruntime-web)
   fastsam: {
-    // Check if FastSAM model is available
+    // Check if FastSAM model file is available
     isAvailable: () => ipcRenderer.invoke('fastsam:is-available'),
     // Get path where model should be downloaded
     getDownloadPath: () => ipcRenderer.invoke('fastsam:get-download-path'),
@@ -639,27 +662,7 @@ contextBridge.exposeInMainWorld('api', {
       ipcRenderer.on('fastsam:download-progress', handler);
       return () => ipcRenderer.removeListener('fastsam:download-progress', handler);
     },
-    // Preload model (optional optimization)
-    preloadModel: () => ipcRenderer.invoke('fastsam:preload-model'),
-    // Unload model to free memory
-    unloadModel: () => ipcRenderer.invoke('fastsam:unload-model'),
-    // Run detection on image file path (legacy - uses broken contour extraction)
-    detectGrains: (imagePath, params, options) =>
-      ipcRenderer.invoke('fastsam:detect-grains', imagePath, params, options),
-    // Run detection from image buffer (legacy - uses broken contour extraction)
-    detectGrainsFromBuffer: (imageBuffer, params, options) =>
-      ipcRenderer.invoke('fastsam:detect-grains-from-buffer', imageBuffer, params, options),
-    // NEW: Run detection and return raw masks for OpenCV.js processing (GrainSight-compatible)
-    detectRawMasks: (imagePath, params) =>
-      ipcRenderer.invoke('fastsam:detect-raw-masks', imagePath, params),
-    // NEW: Run detection from buffer and return raw masks
-    detectRawMasksFromBuffer: (imageBuffer, params) =>
-      ipcRenderer.invoke('fastsam:detect-raw-masks-from-buffer', imageBuffer, params),
-    // Listen for detection progress updates
-    onProgress: (callback) => {
-      const handler = (event, progress) => callback(progress);
-      ipcRenderer.on('fastsam:progress', handler);
-      return () => ipcRenderer.removeListener('fastsam:progress', handler);
-    },
+    // Read model file bytes (renderer passes to onnxruntime-web directly)
+    loadModelBytes: () => ipcRenderer.invoke('fastsam:load-model-bytes'),
   },
 });

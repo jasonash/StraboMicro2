@@ -1,9 +1,11 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { Box, Typography, IconButton, Tooltip } from '@mui/material';
-import { KeyboardArrowDown, KeyboardArrowUp } from '@mui/icons-material';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import { Box, Typography, IconButton, Tooltip, Paper, Button } from '@mui/material';
+import { KeyboardArrowDown, KeyboardArrowUp, VisibilityOff } from '@mui/icons-material';
 import DrawingToolbar from './DrawingToolbar';
+import SketchToolbar from './SketchToolbar';
 import BottomPanel from './BottomPanel';
 import { TiledViewer, TiledViewerRef } from './TiledViewer';
+import { ExportWithSketchesDialog, ExportOptions } from './dialogs/ExportWithSketchesDialog';
 import { useAppStore } from '../store';
 import { findMicrographById, findSpotById } from '../store/helpers';
 
@@ -18,6 +20,9 @@ const Viewer: React.FC = () => {
   const activeSpotId = useAppStore((state) => state.activeSpotId);
   const selectedSpotIds = useAppStore((state) => state.selectedSpotIds);
   const setViewerRef = useAppStore((state) => state.setViewerRef);
+  const quickClassifyVisible = useAppStore((state) => state.quickClassifyVisible);
+  const toggleSiblingView = useAppStore((state) => state.toggleSiblingView);
+  const getSiblingId = useAppStore((state) => state.getSiblingId);
 
   // Get names for status bar title
   const activeMicrograph = activeMicrographId ? findMicrographById(project, activeMicrographId) : null;
@@ -152,6 +157,137 @@ const Viewer: React.FC = () => {
     };
   }, []);
 
+  // Keyboard shortcut for XPL/PPL toggle (X key)
+  // Only active when Quick Classify toolbar is NOT visible (X is used for pyroxene there)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Only trigger if:
+      // 1. Key is X
+      // 2. Quick Classify toolbar is NOT visible
+      // 3. Not in an input field
+      // 4. Active micrograph has a sibling
+      if (
+        e.key.toLowerCase() === 'x' &&
+        !quickClassifyVisible &&
+        !['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement).tagName)
+      ) {
+        const siblingId = getSiblingId(activeMicrographId);
+        if (siblingId) {
+          e.preventDefault();
+          toggleSiblingView();
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [activeMicrographId, quickClassifyVisible, getSiblingId, toggleSiblingView]);
+
+  // Sketch mode state for keyboard shortcuts and hidden layer warning
+  const sketchModeActive = useAppStore((state) => state.sketchModeActive);
+  const setSketchModeActive = useAppStore((state) => state.setSketchModeActive);
+  const setActiveTool = useAppStore((state) => state.setActiveTool);
+  const sketchTextInputActive = useAppStore((state) => state.sketchTextInputActive);
+  const activeSketchLayerId = useAppStore((state) => state.activeSketchLayerId);
+  const micrographIndex = useAppStore((state) => state.micrographIndex);
+  const setSketchLayerVisible = useAppStore((state) => state.setSketchLayerVisible);
+
+  // Check if active sketch layer is hidden (for warning modal)
+  // Use micrographIndex directly to ensure reactivity when layers change
+  const activeSketchLayer = useMemo(() => {
+    if (!activeMicrographId || !activeSketchLayerId) return null;
+    const micro = micrographIndex.get(activeMicrographId);
+    return micro?.sketchLayers?.find(l => l.id === activeSketchLayerId) ?? null;
+  }, [micrographIndex, activeMicrographId, activeSketchLayerId]);
+  const isSketchLayerHidden = sketchModeActive && activeSketchLayer && !activeSketchLayer.visible;
+
+  const handleShowSketchLayer = useCallback(() => {
+    if (activeMicrographId && activeSketchLayerId) {
+      setSketchLayerVisible(activeMicrographId, activeSketchLayerId, true);
+    }
+  }, [activeMicrographId, activeSketchLayerId, setSketchLayerVisible]);
+
+  // Keyboard shortcuts for sketch mode
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't trigger in input fields
+      if (['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement).tagName)) return;
+
+      // S key to enter sketch mode (when a micrograph is active)
+      if (e.key.toLowerCase() === 's' && !sketchModeActive && activeMicrographId) {
+        e.preventDefault();
+        setSketchModeActive(true);
+        return;
+      }
+
+      // Escape to exit sketch mode (but not while text input is active — let it handle Escape)
+      if (e.key === 'Escape' && sketchModeActive && !sketchTextInputActive) {
+        e.preventDefault();
+        setSketchModeActive(false);
+        return;
+      }
+
+      // Sketch tool shortcuts (only when in sketch mode, disabled while text input is active)
+      if (sketchModeActive && !sketchTextInputActive) {
+        if (e.key === '1') {
+          e.preventDefault();
+          setActiveTool('sketch-pen');
+        } else if (e.key === '2') {
+          e.preventDefault();
+          setActiveTool('sketch-marker');
+        } else if (e.key === '3') {
+          e.preventDefault();
+          setActiveTool('sketch-eraser');
+        } else if (e.key === '4' || e.key.toLowerCase() === 't') {
+          e.preventDefault();
+          setActiveTool('sketch-text');
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [activeMicrographId, sketchModeActive, sketchTextInputActive, setSketchModeActive, setActiveTool]);
+
+  // Export with sketches dialog state
+  const [exportDialogOpen, setExportDialogOpen] = useState(false);
+
+  // Handle export with sketches
+  const handleExportWithSketches = useCallback(async (options: ExportOptions) => {
+    if (!tiledViewerRef.current) {
+      throw new Error('Viewer not available');
+    }
+
+    // Get the data URL from the viewer
+    const dataUrl = await tiledViewerRef.current.exportImage(options);
+
+    // Trigger download
+    const link = document.createElement('a');
+    link.href = dataUrl;
+
+    // Generate filename
+    const micrographName = activeMicrograph?.name || 'micrograph';
+    const timestamp = new Date().toISOString().slice(0, 19).replace(/[:-]/g, '');
+    link.download = `${micrographName}_with_sketches_${timestamp}.${options.format}`;
+
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  }, [activeMicrograph]);
+
+  // Listen for menu export command
+  useEffect(() => {
+    if (!window.api?.onExportWithSketches) return;
+
+    const unsubscribe = window.api.onExportWithSketches(() => {
+      if (activeMicrographId) {
+        setExportDialogOpen(true);
+      }
+    });
+
+    return unsubscribe;
+  }, [activeMicrographId]);
+
   return (
     <Box
       className="viewer-container"
@@ -161,6 +297,44 @@ const Viewer: React.FC = () => {
       <Box sx={{ flex: 1, bgcolor: 'background.default', position: 'relative' }}>
         <TiledViewer ref={tiledViewerRef} imagePath={activeMicrographPath} onCursorMove={setCursorCoords} />
         <DrawingToolbar />
+        <SketchToolbar />
+
+        {/* Warning modal when sketch layer is hidden */}
+        {isSketchLayerHidden && (
+          <Paper
+            elevation={8}
+            sx={{
+              position: 'absolute',
+              top: '50%',
+              left: '50%',
+              transform: 'translate(-50%, -50%)',
+              zIndex: 1000,
+              p: 3,
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: 2,
+              bgcolor: 'background.paper',
+              borderRadius: 2,
+              maxWidth: 300,
+            }}
+          >
+            <VisibilityOff sx={{ fontSize: 40, color: 'warning.main' }} />
+            <Typography variant="h6" sx={{ textAlign: 'center' }}>
+              Layer is Hidden
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center' }}>
+              The active sketch layer is hidden. Show it to continue drawing.
+            </Typography>
+            <Button
+              variant="contained"
+              onClick={handleShowSketchLayer}
+              sx={{ mt: 1 }}
+            >
+              Show Layer
+            </Button>
+          </Paper>
+        )}
 
         {/* Floating toggle button when bottom panel is collapsed */}
         {isBottomPanelCollapsed && (
@@ -306,6 +480,13 @@ const Viewer: React.FC = () => {
 
         <BottomPanel />
       </Box>
+
+      {/* Export with Sketches Dialog */}
+      <ExportWithSketchesDialog
+        open={exportDialogOpen}
+        onClose={() => setExportDialogOpen(false)}
+        onExport={handleExportWithSketches}
+      />
     </Box>
   );
 };

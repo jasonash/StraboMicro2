@@ -31,6 +31,10 @@ interface VeinsDialogProps {
   onClose: () => void;
   micrographId?: string;
   spotId?: string;
+  // Preset mode props
+  presetMode?: boolean;
+  initialData?: VeinInfoType | null;
+  onSavePresetData?: (data: VeinInfoType | null) => void;
 }
 
 export function VeinsDialog({
@@ -38,6 +42,9 @@ export function VeinsDialog({
   onClose,
   micrographId,
   spotId,
+  presetMode,
+  initialData,
+  onSavePresetData,
 }: VeinsDialogProps) {
   const project = useAppStore((state) => state.project);
   const updateMicrographMetadata = useAppStore((state) => state.updateMicrographMetadata);
@@ -49,7 +56,17 @@ export function VeinsDialog({
 
   // Load existing data when dialog opens
   useEffect(() => {
-    if (!isOpen || !project) return;
+    if (!isOpen) return;
+
+    // Preset mode: load from props instead of store
+    if (presetMode) {
+      setVeins((initialData?.veins || []) as VeinData[]);
+      setNotes(initialData?.notes || '');
+      return;
+    }
+
+    // Normal mode: load from store
+    if (!project) return;
 
     let existingData: VeinInfoType | null | undefined = null;
 
@@ -63,14 +80,23 @@ export function VeinsDialog({
 
     setVeins((existingData?.veins || []) as VeinData[]);
     setNotes(existingData?.notes || '');
-  }, [isOpen, micrographId, spotId, project]);
+  }, [isOpen, micrographId, spotId, project, presetMode, initialData]);
 
   const handleSave = () => {
+    const hasData = veins.length > 0 || notes;
     const veinInfo: VeinInfoType = {
       veins: veins as VeinType[],
       notes: notes,
     };
 
+    // Preset mode: return data via callback
+    if (presetMode && onSavePresetData) {
+      onSavePresetData(hasData ? veinInfo : null);
+      onClose();
+      return;
+    }
+
+    // Normal mode: save to store
     if (micrographId) {
       updateMicrographMetadata(micrographId, { veinInfo });
     } else if (spotId) {
@@ -84,11 +110,13 @@ export function VeinsDialog({
     onClose();
   };
 
-  const title = micrographId
-    ? 'Micrograph Vein'
-    : spotId
-      ? 'Spot Vein'
-      : 'Edit Vein';
+  const title = presetMode
+    ? 'Preset Vein Info'
+    : micrographId
+      ? 'Micrograph Vein'
+      : spotId
+        ? 'Spot Vein'
+        : 'Edit Vein';
 
   return (
     <Dialog

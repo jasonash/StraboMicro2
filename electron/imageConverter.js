@@ -28,8 +28,99 @@ async function getTiffDecoder() {
   return decodeTIFF;
 }
 
+/**
+ * Known image format magic byte signatures.
+ * Used to verify files are actually readable and contain valid image data.
+ * This catches cloud-only placeholder files (Dropbox, iCloud, OneDrive)
+ * where the file appears in the filesystem but bytes aren't on disk.
+ */
+const IMAGE_SIGNATURES = [
+  { name: 'PNG',             bytes: [0x89, 0x50, 0x4E, 0x47] },
+  { name: 'JPEG',            bytes: [0xFF, 0xD8, 0xFF] },
+  { name: 'TIFF (little-endian)', bytes: [0x49, 0x49, 0x2A, 0x00] },
+  { name: 'TIFF (big-endian)',    bytes: [0x4D, 0x4D, 0x00, 0x2A] },
+  { name: 'BigTIFF (little-endian)', bytes: [0x49, 0x49, 0x2B, 0x00] },
+  { name: 'BigTIFF (big-endian)',    bytes: [0x4D, 0x4D, 0x00, 0x2B] },
+  { name: 'BMP',             bytes: [0x42, 0x4D] },
+];
+
+/**
+ * Validate that a file is readable and contains a recognized image format.
+ * Reads the first 8 bytes and checks against known magic signatures.
+ *
+ * @param {string} filePath - Path to the image file
+ * @returns {Promise<{valid: boolean, format?: string, error?: string}>}
+ */
+async function validateImageFile(filePath) {
+  const fileName = path.basename(filePath);
+  let fd;
+  try {
+    fd = await fs.promises.open(filePath, 'r');
+    const headerBuf = Buffer.alloc(8);
+    const { bytesRead } = await fd.read(headerBuf, 0, 8, 0);
+
+    if (bytesRead === 0) {
+      return { valid: false, error: `"${fileName}" is empty or could not be read. If the file is stored in cloud storage (Dropbox, iCloud, OneDrive), please download it locally first.` };
+    }
+
+    if (bytesRead < 3) {
+      return { valid: false, error: `"${fileName}" is too small to be a valid image file (${bytesRead} bytes read).` };
+    }
+
+    // Check against known signatures
+    for (const sig of IMAGE_SIGNATURES) {
+      if (bytesRead >= sig.bytes.length && sig.bytes.every((b, i) => headerBuf[i] === b)) {
+        return { valid: true, format: sig.name };
+      }
+    }
+
+    // No known signature matched
+    const hexPreview = headerBuf.slice(0, Math.min(bytesRead, 8)).toString('hex').match(/.{2}/g).join(' ');
+    return { valid: false, error: `"${fileName}" does not appear to be a supported image format (header bytes: ${hexPreview}). If this file is stored in cloud storage (Dropbox, iCloud, OneDrive), please download it locally and try again.` };
+  } catch (err) {
+    // File read failed entirely — most likely cloud-only placeholder or permission issue
+    if (err.code === 'ENOENT') {
+      return { valid: false, error: `"${fileName}" was not found. It may have been moved or deleted.` };
+    }
+    if (err.code === 'EACCES' || err.code === 'EPERM') {
+      return { valid: false, error: `"${fileName}" could not be read (permission denied). If the file is stored in cloud storage, please download it locally first.` };
+    }
+    return { valid: false, error: `"${fileName}" could not be read: ${err.message}. If the file is stored in cloud storage (Dropbox, iCloud, OneDrive), please download it locally and try again.` };
+  } finally {
+    if (fd) await fd.close();
+  }
+}
+
 // Note: Sharp configuration is centralized in main.js to prevent conflicts
 // Do not configure sharp.cache() or sharp.concurrency() here
+
+/**
+ * Maximum image dimension (long edge) for performance.
+ * Images larger than this will be downscaled during import.
+ * 10K pixels provides excellent detail while keeping tile counts manageable.
+ */
+const MAX_IMAGE_DIMENSION = 10000;
+
+/**
+ * Calculate downscaled dimensions if image exceeds MAX_IMAGE_DIMENSION.
+ * Maintains aspect ratio, scaling based on the longer edge.
+ * @param {number} width - Original width
+ * @param {number} height - Original height
+ * @returns {{width: number, height: number, downscaled: boolean}}
+ */
+function calculateDownscaledDimensions(width, height) {
+  const longEdge = Math.max(width, height);
+  if (longEdge <= MAX_IMAGE_DIMENSION) {
+    return { width, height, downscaled: false };
+  }
+
+  const scale = MAX_IMAGE_DIMENSION / longEdge;
+  return {
+    width: Math.round(width * scale),
+    height: Math.round(height * scale),
+    downscaled: true,
+  };
+}
 
 /**
  * Convert TIFF (or other format) to JPEG in scratch space
@@ -43,6 +134,15 @@ async function getTiffDecoder() {
 async function convertToScratchJPEG(inputPath, progressCallback = null) {
   try {
     log.info(`[ImageConverter] Converting to scratch JPEG: ${inputPath}`);
+
+    // Pre-validate: check that the file is readable and has a recognized image header.
+    // This catches cloud-only placeholder files (Dropbox, iCloud, OneDrive) early
+    // with a clear error message instead of a cryptic Sharp/tiff library error.
+    const validation = await validateImageFile(inputPath);
+    if (!validation.valid) {
+      throw new Error(validation.error);
+    }
+    log.info(`[ImageConverter] File validated as: ${validation.format}`);
 
     // Ensure scratch directory exists
     await scratchSpace.ensureScratchDir();
@@ -110,16 +210,28 @@ async function convertToScratchJPEG(inputPath, progressCallback = null) {
       // Release tiffData - we've extracted what we need into rawBuffer
       tiffData = null;
 
+      // Check if downscaling is needed
+      const targetDims = calculateDownscaledDimensions(width, height);
+      if (targetDims.downscaled) {
+        log.info(`[ImageConverter] Image exceeds ${MAX_IMAGE_DIMENSION}px limit, will downscale to ${targetDims.width}x${targetDims.height}`);
+      }
+
       log.info(`[ImageConverter] Converting raw pixel data to JPEG with Sharp...`);
 
-      // Use Sharp to convert raw pixel data to JPEG
-      const info = await sharp(rawBuffer, {
+      // Use Sharp to convert raw pixel data to JPEG (with optional downscale)
+      let sharpPipeline = sharp(rawBuffer, {
         raw: {
           width,
           height,
           channels,
         },
-      })
+      });
+
+      if (targetDims.downscaled) {
+        sharpPipeline = sharpPipeline.resize(targetDims.width, targetDims.height);
+      }
+
+      const info = await sharpPipeline
         .jpeg({
           quality: 95,
           mozjpeg: true,
@@ -188,16 +300,28 @@ async function convertToScratchJPEG(inputPath, progressCallback = null) {
       // Release bmpData - we've extracted what we need
       bmpData = null;
 
+      // Check if downscaling is needed
+      const targetDims = calculateDownscaledDimensions(width, height);
+      if (targetDims.downscaled) {
+        log.info(`[ImageConverter] Image exceeds ${MAX_IMAGE_DIMENSION}px limit, will downscale to ${targetDims.width}x${targetDims.height}`);
+      }
+
       log.info(`[ImageConverter] Converting BMP raw pixel data to JPEG with Sharp...`);
 
-      // Use Sharp to convert raw pixel data to JPEG
-      const info = await sharp(rgbBuffer, {
+      // Use Sharp to convert raw pixel data to JPEG (with optional downscale)
+      let sharpPipeline = sharp(rgbBuffer, {
         raw: {
           width,
           height,
           channels: 3,
         },
-      })
+      });
+
+      if (targetDims.downscaled) {
+        sharpPipeline = sharpPipeline.resize(targetDims.width, targetDims.height);
+      }
+
+      const info = await sharpPipeline
         .jpeg({
           quality: 95,
           mozjpeg: true,
@@ -235,14 +359,27 @@ async function convertToScratchJPEG(inputPath, progressCallback = null) {
 
       log.info(`[ImageConverter] Source image: ${metadata.width}x${metadata.height}, format: ${metadata.format}`);
 
+      // Check if downscaling is needed
+      const targetDims = calculateDownscaledDimensions(metadata.width, metadata.height);
+      if (targetDims.downscaled) {
+        log.info(`[ImageConverter] Image exceeds ${MAX_IMAGE_DIMENSION}px limit, will downscale to ${targetDims.width}x${targetDims.height}`);
+      }
+
       if (progressCallback) {
         progressCallback({ stage: 'converting', percent: 30 });
       }
 
-      const info = await sharp(inputPath, {
+      // Use Sharp to convert to JPEG (with optional downscale)
+      let sharpPipeline = sharp(inputPath, {
         limitInputPixels: false,
         sequentialRead: true,
-      })
+      });
+
+      if (targetDims.downscaled) {
+        sharpPipeline = sharpPipeline.resize(targetDims.width, targetDims.height);
+      }
+
+      const info = await sharpPipeline
         .jpeg({
           quality: 95,
           mozjpeg: true,
@@ -468,6 +605,47 @@ async function isValidImage(filePath) {
   }
 }
 
+/**
+ * Resize a scratch image to target dimensions
+ * Used when adding XPL sibling that has different dimensions than PPL
+ * @param {string} identifier - Scratch identifier
+ * @param {number} targetWidth - Target width in pixels
+ * @param {number} targetHeight - Target height in pixels
+ * @returns {Promise<Object>} Result with new dimensions
+ */
+async function resizeScratchImage(identifier, targetWidth, targetHeight) {
+  try {
+    const scratchPath = scratchSpace.getScratchPath(identifier);
+    log.info(`[ImageConverter] Resizing scratch image ${identifier} to ${targetWidth}x${targetHeight}`);
+
+    // Read the current image
+    const imageBuffer = await fs.promises.readFile(scratchPath);
+
+    // Resize to target dimensions
+    const resizedBuffer = await sharp(imageBuffer)
+      .resize(targetWidth, targetHeight, {
+        fit: 'fill', // Exact dimensions (aspect ratios should already match)
+        kernel: sharp.kernel.lanczos3,
+      })
+      .jpeg({ quality: 95 })
+      .toBuffer();
+
+    // Write back to the same scratch path
+    await fs.promises.writeFile(scratchPath, resizedBuffer);
+
+    log.info(`[ImageConverter] Successfully resized scratch image to ${targetWidth}x${targetHeight}`);
+
+    return {
+      success: true,
+      width: targetWidth,
+      height: targetHeight,
+    };
+  } catch (error) {
+    log.error(`[ImageConverter] Error resizing scratch image: ${error.message}`);
+    throw error;
+  }
+}
+
 module.exports = {
   convertToScratchJPEG,
   convertToJPEG,
@@ -475,4 +653,6 @@ module.exports = {
   generateImageVariants,
   getImageDimensions,
   isValidImage,
+  validateImageFile,
+  resizeScratchImage,
 };

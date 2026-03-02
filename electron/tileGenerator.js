@@ -196,7 +196,8 @@ class TileGenerator {
     const thumbHeight = Math.round(height * scale);
 
     // Use sharp to resize efficiently (doesn't load full image into canvas)
-    const buffer = await sharp(imagePath)
+    // limitInputPixels: false allows processing very large images (e.g., panoramas)
+    const buffer = await sharp(imagePath, { limitInputPixels: false })
       .resize(thumbWidth, thumbHeight, { fit: 'inside' })
       .jpeg({ quality: Math.round(JPEG_QUALITY * 100) })
       .toBuffer();
@@ -231,7 +232,8 @@ class TileGenerator {
     const medHeight = Math.round(height * scale);
 
     // Use sharp to resize efficiently
-    const buffer = await sharp(imagePath)
+    // limitInputPixels: false allows processing very large images (e.g., panoramas)
+    const buffer = await sharp(imagePath, { limitInputPixels: false })
       .resize(medWidth, medHeight, { fit: 'inside' })
       .jpeg({ quality: Math.round(JPEG_QUALITY * 100) })
       .toBuffer();
@@ -248,7 +250,8 @@ class TileGenerator {
    */
   async generateThumbnail(imagePath) {
     // Get image dimensions
-    const metadata = await sharp(imagePath).metadata();
+    // limitInputPixels: false allows processing very large images (e.g., panoramas)
+    const metadata = await sharp(imagePath, { limitInputPixels: false }).metadata();
     const width = metadata.width;
     const height = metadata.height;
 
@@ -258,7 +261,7 @@ class TileGenerator {
     const thumbHeight = Math.round(height * scale);
 
     // Generate and return buffer (don't save to cache - caller will do that)
-    const buffer = await sharp(imagePath)
+    const buffer = await sharp(imagePath, { limitInputPixels: false })
       .resize(thumbWidth, thumbHeight, { fit: 'inside' })
       .jpeg({ quality: Math.round(JPEG_QUALITY * 100) })
       .toBuffer();
@@ -275,7 +278,8 @@ class TileGenerator {
    */
   async generateMedium(imagePath) {
     // Get image dimensions
-    const metadata = await sharp(imagePath).metadata();
+    // limitInputPixels: false allows processing very large images (e.g., panoramas)
+    const metadata = await sharp(imagePath, { limitInputPixels: false }).metadata();
     const width = metadata.width;
     const height = metadata.height;
 
@@ -285,7 +289,7 @@ class TileGenerator {
     const medHeight = Math.round(height * scale);
 
     // Generate and return buffer (don't save to cache - caller will do that)
-    const buffer = await sharp(imagePath)
+    const buffer = await sharp(imagePath, { limitInputPixels: false })
       .resize(medWidth, medHeight, { fit: 'inside' })
       .jpeg({ quality: Math.round(JPEG_QUALITY * 100) })
       .toBuffer();

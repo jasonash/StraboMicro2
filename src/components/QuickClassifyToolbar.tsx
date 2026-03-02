@@ -32,6 +32,7 @@ import {
 import { useAppStore } from '../store';
 import { findMicrographById, findSpotById } from '../store/helpers';
 import type { MineralogyType, MineralType } from '../types/project-types';
+import type { PresetWithScope } from '../types/preset-types';
 
 // Navigation keys that are not configurable
 const NAVIGATION_KEYS: Record<string, string> = {
@@ -98,6 +99,18 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
   const quickEditMarkReviewed = useAppStore((state) => state.quickEditMarkReviewed);
   const quickEditDeleteCurrent = useAppStore((state) => state.quickEditDeleteCurrent);
   const exitQuickEditMode = useAppStore((state) => state.exitQuickEditMode);
+
+  // Store - spot lasso selection (for batch operations on spots)
+  const selectedSpotIds = useAppStore((state) => state.selectedSpotIds);
+  const clearSpotSelection = useAppStore((state) => state.clearSpotSelection);
+  const batchUpdateSpots = useAppStore((state) => state.batchUpdateSpots);
+  const batchDeleteSpots = useAppStore((state) => state.batchDeleteSpots);
+
+  // Store - Quick Spot Presets
+  const presetKeyBindings = useAppStore((state) => state.presetKeyBindings);
+  const applyPresetToSpot = useAppStore((state) => state.applyPresetToSpot);
+  const applyPresetToSpots = useAppStore((state) => state.applyPresetToSpots);
+  const getPresetById = useAppStore((state) => state.getPresetById);
 
   // Flash state for visual feedback
   const [flashId, setFlashId] = useState<string | null>(null);
@@ -412,6 +425,26 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
         }, 50);
       } else {
         // Spot mode (includes Quick Edit mode)
+
+        // Check for batch selection first (lassoed spots)
+        if (selectedSpotIds.length > 0) {
+          const mineralogy: MineralogyType = {
+            minerals: [{ name: mineralName } as MineralType],
+          };
+
+          // Batch classify all selected spots
+          batchUpdateSpots(selectedSpotIds, { mineralogy });
+
+          // Flash visual feedback
+          setFlashId('batch');
+          setTimeout(() => setFlashId(null), 300);
+
+          // Clear selection after batch operation
+          clearSpotSelection();
+          return;
+        }
+
+        // Single spot classification
         if (!activeSpotId) return;
 
         const mineralogy: MineralogyType = {
@@ -441,9 +474,12 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
       currentPoint,
       activeSpotId,
       selectedPointIndices,
+      selectedSpotIds,
       classifyPoint,
       classifySelectedPoints,
       updateSpotData,
+      batchUpdateSpots,
+      clearSpotSelection,
       goToNextUnclassifiedPoint,
       selectNextUnclassifiedSpot,
       quickEditMarkReviewed,
@@ -463,6 +499,73 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
       setTimeout(() => setFlashId(null), 300);
     }
   }, [pointCountMode, currentPoint, activeSpotId, clearPointClassification, updateSpotData]);
+
+  // ============================================================================
+  // QUICK APPLY PRESET
+  // ============================================================================
+
+  /**
+   * Apply a preset to the current spot(s) in Quick Edit mode.
+   * Supports both single spot and batch selection (lassoed spots).
+   *
+   * IMPORTANT: When presets are defined, we do NOT auto-advance after applying.
+   * This allows users to apply multiple presets to the same spot.
+   * User must press Enter or Space to manually advance to the next spot.
+   */
+  const applyPresetToCurrent = useCallback((presetId: string) => {
+    // Only works in Quick Edit mode (not point count mode)
+    if (pointCountMode) return;
+
+    // Check for batch selection first (lassoed spots)
+    if (selectedSpotIds.length > 0) {
+      // Apply preset to all selected spots
+      applyPresetToSpots(presetId, selectedSpotIds);
+
+      // Flash visual feedback
+      setFlashId('batch');
+      setTimeout(() => setFlashId(null), 300);
+
+      // Clear selection after batch operation
+      clearSpotSelection();
+      return;
+    }
+
+    // Single spot application
+    if (!activeSpotId) return;
+
+    applyPresetToSpot(presetId, activeSpotId);
+
+    // Flash visual feedback
+    setFlashId(activeSpotId);
+    setTimeout(() => setFlashId(null), 300);
+
+    // Do NOT auto-advance when applying presets.
+    // This allows users to apply multiple presets to the same spot.
+    // User must press Enter or Space to manually advance.
+  }, [
+    pointCountMode,
+    activeSpotId,
+    selectedSpotIds,
+    applyPresetToSpot,
+    applyPresetToSpots,
+    clearSpotSelection,
+  ]);
+
+  /**
+   * Get presets bound to keys 1-9 for display in the toolbar.
+   */
+  const boundPresets = useMemo((): Array<{ key: string; preset: PresetWithScope }> => {
+    const result: Array<{ key: string; preset: PresetWithScope }> = [];
+    for (const [key, presetId] of Object.entries(presetKeyBindings)) {
+      const preset = getPresetById(presetId);
+      if (preset) {
+        result.push({ key, preset });
+      }
+    }
+    // Sort by key number
+    result.sort((a, b) => parseInt(a.key) - parseInt(b.key));
+    return result;
+  }, [presetKeyBindings, getPresetById]);
 
   // ============================================================================
   // UNIFIED NAVIGATION
@@ -497,12 +600,22 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
     }
   }, [pointCountMode, goToNextUnclassifiedPoint, selectNextUnclassifiedSpot]);
 
-  // Delete current spot (Quick Edit mode only)
+  // Delete spots - handles both batch selection and single spot deletion
   const handleDeleteCurrent = useCallback(() => {
+    // Check for batch selection first (lassoed spots)
+    if (selectedSpotIds.length > 0) {
+      // Delete all selected spots in one operation (single undo step)
+      batchDeleteSpots(selectedSpotIds);
+      // Clear selection after batch delete
+      clearSpotSelection();
+      return;
+    }
+
+    // Single spot deletion (Quick Edit mode only)
     if (quickEditMode) {
       quickEditDeleteCurrent();
     }
-  }, [quickEditMode, quickEditDeleteCurrent]);
+  }, [quickEditMode, quickEditDeleteCurrent, selectedSpotIds, batchDeleteSpots, clearSpotSelection]);
 
   // ============================================================================
   // SPATIAL NAVIGATION (Point Count mode only - arrow keys)
@@ -603,6 +716,12 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
         return;
       }
 
+      // Don't intercept keyboard shortcuts with modifier keys (Cmd+Z, Ctrl+S, etc.)
+      // Let them pass through to the system/menu handlers
+      if (e.metaKey || e.ctrlKey || e.altKey) {
+        return;
+      }
+
       if (activeTool && activeTool !== 'select') {
         return;
       }
@@ -627,10 +746,12 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
             goToPrevious();
             break;
           case 'exit':
-            // If points are selected, clear selection first; otherwise close
+            // If points or spots are selected, clear selection first; otherwise close
             if (selectedPointIndices.length > 0) {
               clearSelectedPoints();
               setLassoToolActive(false);
+            } else if (selectedSpotIds.length > 0) {
+              clearSpotSelection();
             } else {
               handleClose();
             }
@@ -639,9 +760,11 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
             selectNextUnclassified();
             break;
           case 'clear':
-            // In Quick Edit mode, Delete key deletes the spot
-            // In other modes, it clears the classification
-            if (quickEditMode) {
+            // Delete key behavior:
+            // 1. If spots are lassoed (selected), delete all selected spots
+            // 2. In Quick Edit mode, delete the current spot
+            // 3. Otherwise, clear the classification
+            if (selectedSpotIds.length > 0 || quickEditMode) {
               handleDeleteCurrent();
             } else {
               clearCurrentItem();
@@ -690,6 +813,17 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
         }
       }
 
+      // Check for preset keys (1-9) - only in Quick Edit mode (not point count)
+      // Presets take priority over mineral shortcuts for numeric keys
+      if (!pointCountMode && /^[1-9]$/.test(e.key)) {
+        const presetId = presetKeyBindings[e.key];
+        if (presetId) {
+          e.preventDefault();
+          applyPresetToCurrent(presetId);
+          return;
+        }
+      }
+
       // Check mineral shortcuts
       if (shortcuts[key]) {
         e.preventDefault();
@@ -708,13 +842,17 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
       clearCurrentItem,
       classifyCurrentItem,
       selectedPointIndices,
+      selectedSpotIds,
       clearSelectedPoints,
+      clearSpotSelection,
       setLassoToolActive,
       pointCountMode,
       quickEditMode,
       navigateSpatially,
       handleDeleteCurrent,
       quickEditMarkReviewed,
+      presetKeyBindings,
+      applyPresetToCurrent,
     ]
   );
 
@@ -730,7 +868,9 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
   // ============================================================================
 
   useEffect(() => {
-    if (quickClassifyVisible && !pointCountMode && spots.length > 0 && !activeSpotId) {
+    // Auto-select first spot when entering Quick Classify mode
+    // BUT don't auto-select if spots are already selected via lasso
+    if (quickClassifyVisible && !pointCountMode && spots.length > 0 && !activeSpotId && selectedSpotIds.length === 0) {
       const firstUnclassified = spots.find((s) => {
         const minerals = s.mineralogy?.minerals;
         return !minerals || minerals.length === 0 || !minerals[0].name;
@@ -741,7 +881,7 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
         selectActiveSpot(spots[0].id);
       }
     }
-  }, [quickClassifyVisible, pointCountMode, spots, activeSpotId, selectActiveSpot]);
+  }, [quickClassifyVisible, pointCountMode, spots, activeSpotId, selectedSpotIds, selectActiveSpot]);
 
   // ============================================================================
   // PAN TO CURRENT ITEM
@@ -970,6 +1110,33 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
 
       {/* Content */}
       <Box sx={{ p: 1.5, bgcolor: 'background.default' }}>
+        {/* Preset chips row (Quick Edit mode only, when presets are configured) */}
+        {quickEditMode && boundPresets.length > 0 && (
+          <Box sx={{ display: 'flex', alignItems: 'center', mb: 1, gap: 0.5 }}>
+            <Typography variant="caption" color="text.secondary" sx={{ mr: 0.5 }}>
+              Presets:
+            </Typography>
+            {boundPresets.map(({ key, preset }) => (
+              <Tooltip key={key} title={`${key} = ${preset.name}`} arrow>
+                <Chip
+                  label={`${key}`}
+                  size="small"
+                  color="primary"
+                  variant="outlined"
+                  onClick={() => applyPresetToCurrent(preset.id)}
+                  sx={{
+                    cursor: 'pointer',
+                    flexShrink: 0,
+                    fontWeight: 'bold',
+                    minWidth: 28,
+                    '& .MuiChip-label': { px: 1 },
+                  }}
+                />
+              </Tooltip>
+            ))}
+          </Box>
+        )}
+
         {/* Shortcut chips row */}
         <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
           {canScrollLeft && (
@@ -1057,13 +1224,15 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
             sx={{
               fontWeight: 500,
               transition: 'background-color 0.3s ease',
-              bgcolor: flashId ? 'success.light' : (selectedPointIndices.length > 0 ? 'info.dark' : 'transparent'),
+              bgcolor: flashId ? 'success.light' : (selectedPointIndices.length > 0 || selectedSpotIds.length > 0 ? 'info.dark' : 'transparent'),
               px: 1,
               borderRadius: 1,
             }}
           >
             {selectedPointIndices.length > 0 ? (
               `${selectedPointIndices.length} points selected`
+            ) : selectedSpotIds.length > 0 ? (
+              `${selectedSpotIds.length} spots selected`
             ) : (
               <>
                 {currentName}
@@ -1078,7 +1247,9 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
 
           {/* Navigation hints */}
           <Typography variant="caption" color="text.secondary">
-            Space=Skip ⌫=Back Del=Clear Esc=Exit
+            {quickEditMode && boundPresets.length > 0
+              ? `1-${Math.min(9, boundPresets.length)}=Presets Enter=Next ⌫=Back`
+              : 'Space=Skip ⌫=Back Del=Clear Esc=Exit'}
           </Typography>
 
           {/* Done button */}
