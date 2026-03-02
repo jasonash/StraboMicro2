@@ -2046,8 +2046,6 @@ ipcMain.handle('micrograph:export-composite', async (event, projectId, micrograp
         const color = convertColor(spot.color || '#00ff00');
         const labelColor = convertColor(spot.labelColor || '#ffffff');
         const opacity = (spot.opacity ?? 50) / 100;
-        const showLabel = spot.showLabel !== false;
-
         if (includeSpots) {
           // Render spot shape
           if (geometryType === 'point' || geometryType === 'Point') {
@@ -2084,7 +2082,7 @@ ipcMain.handle('micrograph:export-composite', async (event, projectId, micrograp
         }
 
         // Render label
-        if (includeLabels && showLabel && spot.name) {
+        if (includeLabels && spot.name) {
           let labelX = 0, labelY = 0;
 
           if (geometryType === 'point' || geometryType === 'Point') {
@@ -4727,8 +4725,6 @@ async function generateCompositeBuffer(projectId, micrograph, projectData, folde
       const color = convertColor(spot.color || '#00ff00');
       const labelColor = convertColor(spot.labelColor || '#ffffff');
       const opacity = (spot.opacity ?? 50) / 100;
-      const showLabel = spot.showLabel !== false;
-
       if (includeSpots) {
         if (geometryType === 'point' || geometryType === 'Point') {
           const x = Array.isArray(spot.geometry?.coordinates)
@@ -4757,7 +4753,7 @@ async function generateCompositeBuffer(projectId, micrograph, projectData, folde
         }
       }
 
-      if (includeLabels && showLabel && spot.name) {
+      if (includeLabels && spot.name) {
         let labelX = 0, labelY = 0;
         if (geometryType === 'point' || geometryType === 'Point') {
           labelX = (Array.isArray(spot.geometry?.coordinates) ? spot.geometry.coordinates[0] : spot.points?.[0]?.X) || 0;

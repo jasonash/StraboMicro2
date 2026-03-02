@@ -51,15 +51,9 @@ export const NewSpotDialog: React.FC<NewSpotDialogProps> = ({
     return saved ? parseInt(saved, 10) : 50;
   };
 
-  const getDefaultShowLabel = () => {
-    const saved = localStorage.getItem('spot_showLabel');
-    return saved ? saved === 'true' : true;
-  };
-
   // Form state
   const [name, setName] = useState('');
   const [notes, setNotes] = useState('');
-  const [showLabel, setShowLabel] = useState(getDefaultShowLabel());
   const [labelColor, setLabelColor] = useState('#ffffff'); // Default to white for better readability with background box
   const [spotColor, setSpotColor] = useState(getDefaultColor('spotColor', '#00ff00'));
   const [opacity, setOpacity] = useState(getDefaultOpacity());
@@ -90,7 +84,6 @@ export const NewSpotDialog: React.FC<NewSpotDialogProps> = ({
     if (open) {
       setName('');
       setNotes('');
-      setShowLabel(getDefaultShowLabel());
       setLabelColor('#ffffff'); // Default to white
       setSpotColor(getDefaultColor('spotColor', '#00ff00'));
       setOpacity(getDefaultOpacity());
@@ -126,8 +119,6 @@ export const NewSpotDialog: React.FC<NewSpotDialogProps> = ({
     localStorage.setItem('spot_labelColor', labelColor);
     localStorage.setItem('spot_spotColor', spotColor);
     localStorage.setItem('spot_opacity', opacity.toString());
-    localStorage.setItem('spot_showLabel', showLabel.toString());
-
     // Convert GeoJSON geometry to legacy format
     let points: Array<{ X: number; Y: number }> = [];
     let legacyGeometryType: string = '';
@@ -158,7 +149,6 @@ export const NewSpotDialog: React.FC<NewSpotDialogProps> = ({
       name: name.trim(),
       notes: notes.trim() || '',
       labelColor: convertColorToLegacy(labelColor),
-      showLabel,
       color: convertColorToLegacy(spotColor),
       opacity,
       date: new Date().toISOString(),
@@ -278,12 +268,6 @@ export const NewSpotDialog: React.FC<NewSpotDialogProps> = ({
             multiline
             rows={3}
             fullWidth
-          />
-
-          {/* Show Label */}
-          <FormControlLabel
-            control={<Checkbox checked={showLabel} onChange={(e) => setShowLabel(e.target.checked)} />}
-            label="Show Label"
           />
 
           {/* Label Color - Commented out for now, defaulting to white for better readability */}

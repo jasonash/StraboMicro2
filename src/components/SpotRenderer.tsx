@@ -132,7 +132,8 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
     baseColor = convertLegacyColor(spot.color || '#00ff00');
   }
   const labelColor = convertLegacyColor(spot.labelColor || '#ffffff');
-  const showLabel = spot.showLabel ?? true;
+  // Per-spot showLabel is ignored — label visibility is controlled globally via View menu
+  const showLabel = true;
   const baseOpacity = (spot.opacity ?? 50) / 100; // Convert 0-100 to 0-1
 
   // Check if spot has mineralogy classification

@@ -448,7 +448,7 @@ function serializeSpot(spot) {
     id: spot.id,
     name: spot.name || '',
     labelColor: spot.labelColor || '',
-    showLabel: spot.showLabel || false,
+    showLabel: spot.showLabel ?? true,
     color: spot.color || '',
     opacity: roundForDb(spot.opacity),
     date: spot.date || '',
