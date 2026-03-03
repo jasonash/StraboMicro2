@@ -492,6 +492,23 @@ function ComparatorCanvas({
     setLastPointerPos(null);
   }, []);
 
+  // Handle double-click to reset view to fit-to-canvas
+  const handleDblClick = useCallback(() => {
+    if (!state.imageData) return;
+
+    const scaleX = canvasSize.width / state.imageData.width;
+    const scaleY = canvasSize.height / state.imageData.height;
+    const fitZoom = Math.min(scaleX, scaleY) * 0.95;
+
+    onStateChange({
+      zoom: fitZoom,
+      position: {
+        x: (canvasSize.width - state.imageData.width * fitZoom) / 2,
+        y: (canvasSize.height - state.imageData.height * fitZoom) / 2,
+      },
+    });
+  }, [state.imageData, canvasSize, onStateChange]);
+
   // Render tiles
   const renderTiles = () => {
     if (!state.imageData) return null;
@@ -806,6 +823,7 @@ function ComparatorCanvas({
             onMouseMove={handleMouseMove}
             onMouseUp={handleMouseUp}
             onMouseLeave={handleMouseUp}
+            onDblClick={handleDblClick}
           >
             <Layer>
               <Group x={state.position.x} y={state.position.y} scaleX={state.zoom} scaleY={state.zoom}>
