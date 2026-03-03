@@ -705,6 +705,7 @@ export function ProjectTree() {
 
     if (e.key === 'ArrowUp' && currentIndex > 0) {
       e.preventDefault();
+      e.stopPropagation();
       const newOrder = arrayMove(siblings, currentIndex, currentIndex - 1);
       reorderMicrographs(
         sampleId,
@@ -714,6 +715,7 @@ export function ProjectTree() {
       didReorder = true;
     } else if (e.key === 'ArrowDown' && currentIndex < siblings.length - 1) {
       e.preventDefault();
+      e.stopPropagation();
       const newOrder = arrayMove(siblings, currentIndex, currentIndex + 1);
       reorderMicrographs(
         sampleId,
@@ -752,6 +754,7 @@ export function ProjectTree() {
 
     if (e.key === 'ArrowUp' && currentIndex > 0) {
       e.preventDefault();
+      e.stopPropagation();
       const newOrder = arrayMove(samples, currentIndex, currentIndex - 1);
       reorderSamples(
         datasetId,
@@ -759,6 +762,7 @@ export function ProjectTree() {
       );
     } else if (e.key === 'ArrowDown' && currentIndex < samples.length - 1) {
       e.preventDefault();
+      e.stopPropagation();
       const newOrder = arrayMove(samples, currentIndex, currentIndex + 1);
       reorderSamples(
         datasetId,
