@@ -160,6 +160,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
     const removeSketchStroke = useAppStore((state) => state.removeSketchStroke);
     const addSketchText = useAppStore((state) => state.addSketchText);
     const updateSketchText = useAppStore((state) => state.updateSketchText);
+    const removeSketchText = useAppStore((state) => state.removeSketchText);
     const sketchModeActive = useAppStore((state) => state.sketchModeActive);
     const setSketchTextInputActive = useAppStore((state) => state.setSketchTextInputActive);
     const theme = useAppStore((state) => state.theme);
@@ -239,6 +240,22 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
       // Remove the stroke from the store
       removeSketchStroke(activeMicrographId, layerId, strokeId);
     }, [activeMicrographId, removeSketchStroke]);
+
+    /**
+     * Handle text click/drag for eraser tool
+     */
+    const handleEraseText = useCallback((layerId: string, textId: string) => {
+      if (!activeMicrographId) return;
+
+      // Don't erase the same item twice during a drag
+      if (erasedStrokeIdsRef.current.has(textId)) return;
+
+      // Mark as erased during this drag session
+      erasedStrokeIdsRef.current.add(textId);
+
+      // Remove the text from the store
+      removeSketchText(activeMicrographId, layerId, textId);
+    }, [activeMicrographId, removeSketchText]);
 
     /**
      * Handle text input confirmation - create new text or update existing
@@ -1240,14 +1257,21 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
         // Handle eraser tool - start drag-to-erase (only if layer is visible)
         if (activeTool === 'sketch-eraser' && isActiveLayerVisible) {
           isEraserDraggingRef.current = true;
-          erasedStrokeIdsRef.current.clear(); // Clear previously erased strokes
+          erasedStrokeIdsRef.current.clear(); // Clear previously erased items
 
-          // Check if we clicked directly on a stroke
+          // Check if we clicked directly on a stroke or text item
           const target = e.target;
-          if (target && target.name() === 'sketch-stroke') {
-            const strokeId = target.id();
-            if (strokeId && activeMicrographId && activeSketchLayerId) {
-              handleEraseStroke(activeSketchLayerId, strokeId);
+          if (target && activeMicrographId && activeSketchLayerId) {
+            if (target.name() === 'sketch-stroke') {
+              const strokeId = target.id();
+              if (strokeId) {
+                handleEraseStroke(activeSketchLayerId, strokeId);
+              }
+            } else if (target.name() === 'sketch-text') {
+              const textId = target.id();
+              if (textId) {
+                handleEraseText(activeSketchLayerId, textId);
+              }
             }
           }
           return;
@@ -1265,7 +1289,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
           setLastPointerPos(pos);
         }
       },
-      [activeTool, position, zoom, rulerTool, lassoToolActive, spotLassoToolActive, pointCountMode, lasso, setSpotLassoActiveWithRef, activeSketchLayerId, activeMicrographId, handleEraseStroke]
+      [activeTool, position, zoom, rulerTool, lassoToolActive, spotLassoToolActive, pointCountMode, lasso, setSpotLassoActiveWithRef, activeSketchLayerId, activeMicrographId, handleEraseStroke, handleEraseText]
     );
 
     const handleMouseMove = useCallback(() => {
@@ -1330,10 +1354,17 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
       if (isEraserDraggingRef.current && activeTool === 'sketch-eraser' && activeSketchLayerId) {
         // Use Konva's getIntersection to find shapes under the cursor
         const shape = stage.getIntersection(pos);
-        if (shape && shape.name() === 'sketch-stroke') {
-          const strokeId = shape.id();
-          if (strokeId && activeMicrographId) {
-            handleEraseStroke(activeSketchLayerId, strokeId);
+        if (shape && activeMicrographId) {
+          if (shape.name() === 'sketch-stroke') {
+            const strokeId = shape.id();
+            if (strokeId) {
+              handleEraseStroke(activeSketchLayerId, strokeId);
+            }
+          } else if (shape.name() === 'sketch-text') {
+            const textId = shape.id();
+            if (textId) {
+              handleEraseText(activeSketchLayerId, textId);
+            }
           }
         }
         setHasDragged(true);
@@ -2400,6 +2431,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                     activeLayerId={activeSketchLayerId}
                     eraserActive={activeTool === 'sketch-eraser'}
                     onStrokeClick={handleEraseStroke}
+                    onTextErase={handleEraseText}
                     textDraggable={sketchModeActive && activeTool === 'sketch-text'}
                     onTextDragEnd={handleTextDragEnd}
                     onTextClick={handleTextDoubleClick}
@@ -2675,6 +2707,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                     activeLayerId={activeSketchLayerId}
                     eraserActive={activeTool === 'sketch-eraser'}
                     onStrokeClick={handleEraseStroke}
+                    onTextErase={handleEraseText}
                     textDraggable={sketchModeActive && activeTool === 'sketch-text'}
                     onTextDragEnd={handleTextDragEnd}
                     onTextClick={handleTextDoubleClick}
