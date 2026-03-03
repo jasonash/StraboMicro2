@@ -656,7 +656,7 @@ function createWindow() {
           }
         },
         {
-          label: 'Export View with Sketches...',
+          label: 'Export Micrograph with Sketches...',
           click: () => {
             if (mainWindow) {
               mainWindow.webContents.send('menu:export-with-sketches');

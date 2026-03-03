@@ -123,7 +123,7 @@ export function ExportWithSketchesDialog({
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
-      <DialogTitle>Export Image with Sketches</DialogTitle>
+      <DialogTitle>Export Micrograph with Sketches</DialogTitle>
       <DialogContent>
         <Box sx={{ py: 1 }}>
           {/* Content options */}
