@@ -260,6 +260,9 @@ const Viewer: React.FC = () => {
         } else if (key === 'g') {
           e.preventDefault();
           setActiveTool('polygon');
+        } else if (key === 'm') {
+          e.preventDefault();
+          setActiveTool('measure');
         }
       }
     };
