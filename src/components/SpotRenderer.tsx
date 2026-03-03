@@ -77,6 +77,9 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
   // Spot label mode state
   const spotLabelMode = useAppStore((state) => state.spotLabelMode ?? 'original');
 
+  // Sketch mode - spots should be non-interactive during sketching
+  const sketchModeActive = useAppStore((state) => state.sketchModeActive);
+
   // Mineral color mode state (with fallbacks for rehydration from older stored state)
   const spotColorMode = useAppStore((state) => state.spotColorMode ?? 'spot-color');
   const globalMineralColors = useAppStore((state) => state.globalMineralColors);
@@ -246,6 +249,7 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
     return (
       <Group
         name={`spot-${spot.id}`}
+        listening={!sketchModeActive}
         onClick={handleClick}
         onContextMenu={handleContextMenu}
         onMouseEnter={handleMouseEnter}
@@ -325,6 +329,7 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
     return (
       <Group
         name={`spot-${spot.id}`}
+        listening={!sketchModeActive}
         onClick={handleClick}
         onContextMenu={handleContextMenu}
         onMouseEnter={handleMouseEnter}
@@ -406,6 +411,7 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
     return (
       <Group
         name={`spot-${spot.id}`}
+        listening={!sketchModeActive}
         onClick={handleClick}
         onContextMenu={handleContextMenu}
         onMouseEnter={handleMouseEnter}
