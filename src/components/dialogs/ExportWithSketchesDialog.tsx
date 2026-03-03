@@ -48,12 +48,14 @@ export function ExportWithSketchesDialog({
   onExport,
 }: ExportWithSketchesDialogProps) {
   const activeMicrographId = useAppStore((state) => state.activeMicrographId);
-  const getSketchLayers = useAppStore((state) => state.getSketchLayers);
+  const micrographIndex = useAppStore((state) => state.micrographIndex);
 
   // Get sketch layers for the active micrograph
   const layers: SketchLayer[] = useMemo(() => {
-    return activeMicrographId ? getSketchLayers(activeMicrographId) : [];
-  }, [activeMicrographId, getSketchLayers]);
+    if (!activeMicrographId) return [];
+    const micro = micrographIndex.get(activeMicrographId);
+    return micro?.sketchLayers || [];
+  }, [activeMicrographId, micrographIndex]);
 
   // Export options state
   const [includeImage, setIncludeImage] = useState(true);
