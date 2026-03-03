@@ -119,8 +119,8 @@ export const SketchLayerRenderer: React.FC<SketchLayerRendererProps> = ({
                   fill={isTextHovered ? '#ff4444' : textItem.color}
                   opacity={isTextHovered ? 0.8 : 1}
                   rotation={textItem.rotation || 0}
-                  draggable={textDraggable && layer.id === activeLayerId}
-                  listening={eraserActive ? isActiveLayer : undefined}
+                  draggable={textDraggable && isActiveLayer}
+                  listening={(eraserActive || textDraggable) ? isActiveLayer : undefined}
                   onClick={
                     eraserActive && onTextErase
                       ? () => onTextErase(layer.id, textItem.id)

@@ -1644,6 +1644,16 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
 
         // Handle text tool - show input overlay at click position (only if layer is visible)
         if (activeTool === 'sketch-text' && isActiveLayerVisible) {
+          // Check if we clicked on an existing text item — edit it instead of creating new
+          const targetName = e.target.name?.() || '';
+          if (targetName === 'sketch-text' && activeSketchLayerId) {
+            const textId = e.target.id?.();
+            if (textId) {
+              handleTextDoubleClick(activeSketchLayerId, textId);
+              return;
+            }
+          }
+
           setTextInputPosition({
             screenX: pos.x,
             screenY: pos.y,
@@ -1655,7 +1665,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
           setTextInputVisible(true);
         }
       },
-      [activeTool, position, zoom, polygonDrawing, lineDrawing, selectActiveSpot, clearSpotSelection, hasDragged, splitModeSpotId, splitLineDrawing, activeSketchLayerId]
+      [activeTool, position, zoom, polygonDrawing, lineDrawing, selectActiveSpot, clearSpotSelection, hasDragged, splitModeSpotId, splitLineDrawing, activeSketchLayerId, handleTextDoubleClick]
     );
 
     /**
