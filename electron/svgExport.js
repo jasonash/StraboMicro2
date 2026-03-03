@@ -441,9 +441,7 @@ function generateSpotSvgElements(spots, width, height) {
   for (const spot of spots) {
     const geometryType = spot.geometryType || spot.geometry?.type;
     const labelColor = convertColor(spot.labelColor || '#ffffff');
-    const showLabel = spot.showLabel !== false;
-
-    if (!showLabel || !spot.name) continue;
+    if (!spot.name) continue;
 
     let labelX = 0, labelY = 0;
 

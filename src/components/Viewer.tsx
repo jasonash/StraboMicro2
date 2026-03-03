@@ -213,8 +213,8 @@ const Viewer: React.FC = () => {
       // Don't trigger in input fields
       if (['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement).tagName)) return;
 
-      // S key to enter sketch mode (when a micrograph is active)
-      if (e.key.toLowerCase() === 's' && !sketchModeActive && activeMicrographId) {
+      // S key to enter sketch mode (when a micrograph is active, no modifiers)
+      if (e.key.toLowerCase() === 's' && !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey && !sketchModeActive && activeMicrographId) {
         e.preventDefault();
         setSketchModeActive(true);
         return;
@@ -241,6 +241,28 @@ const Viewer: React.FC = () => {
         } else if (e.key === '4' || e.key.toLowerCase() === 't') {
           e.preventDefault();
           setActiveTool('sketch-text');
+        }
+        return;
+      }
+
+      // Spot tool shortcuts (only when not in sketch mode, no modifiers)
+      if (!sketchModeActive && activeMicrographId && !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey) {
+        const key = e.key.toLowerCase();
+        if (key === 'v') {
+          e.preventDefault();
+          setActiveTool('select');
+        } else if (key === 'p') {
+          e.preventDefault();
+          setActiveTool('point');
+        } else if (key === 'l') {
+          e.preventDefault();
+          setActiveTool('line');
+        } else if (key === 'g') {
+          e.preventDefault();
+          setActiveTool('polygon');
+        } else if (key === 'm') {
+          e.preventDefault();
+          setActiveTool('measure');
         }
       }
     };

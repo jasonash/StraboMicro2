@@ -91,7 +91,6 @@ function generateTestSpots(count: number, imageWidth: number, imageHeight: numbe
           name: `Test Point ${spotIndex + 1}`,
           color,
           opacity: 70,
-          showLabel: true,
           geometry: {
             type: 'Point' as const,
             coordinates: [x, y],
@@ -113,7 +112,6 @@ function generateTestSpots(count: number, imageWidth: number, imageHeight: numbe
           name: `Test Line ${spotIndex + 1}`,
           color,
           opacity: 80,
-          showLabel: true,
           geometry: {
             type: 'LineString' as const,
             coordinates: lineCoords,
@@ -146,7 +144,6 @@ function generateTestSpots(count: number, imageWidth: number, imageHeight: numbe
           name: `Test Polygon ${spotIndex + 1}`,
           color,
           opacity: 50,
-          showLabel: true,
           geometry: {
             type: 'Polygon' as const,
             coordinates: [polyCoords],

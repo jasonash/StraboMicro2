@@ -570,7 +570,6 @@ function createWindow() {
         },
         {
           label: 'Open Remote Project...',
-          accelerator: 'CmdOrCtrl+Shift+O',
           enabled: isLoggedIn,
           click: () => {
             if (mainWindow) {
@@ -656,7 +655,7 @@ function createWindow() {
           }
         },
         {
-          label: 'Export View with Sketches...',
+          label: 'Export Micrograph with Sketches...',
           click: () => {
             if (mainWindow) {
               mainWindow.webContents.send('menu:export-with-sketches');
@@ -868,6 +867,20 @@ function createWindow() {
         },
         { type: 'separator' },
         {
+          label: 'Cycle Spot Labels',
+          accelerator: 'CmdOrCtrl+Shift+L',
+          click: () => {
+            // Cycle: original → mineralogy → none → original
+            const modes = ['original', 'mineralogy', 'none'];
+            const currentIndex = modes.indexOf(currentViewPrefs.spotLabelMode || 'original');
+            const nextMode = modes[(currentIndex + 1) % modes.length];
+            currentViewPrefs.spotLabelMode = nextMode;
+            if (mainWindow) {
+              mainWindow.webContents.send('view:spot-label-mode', nextMode);
+            }
+          }
+        },
+        {
           label: 'Show Original Spot Labels',
           type: 'radio',
           checked: currentViewPrefs.spotLabelMode === 'original',
@@ -905,6 +918,7 @@ function createWindow() {
           label: 'Show Overlay Outlines',
           type: 'checkbox',
           checked: currentViewPrefs.showOverlayOutlines,
+          accelerator: 'CmdOrCtrl+Shift+O',
           click: (menuItem) => {
             currentViewPrefs.showOverlayOutlines = menuItem.checked;
             if (mainWindow) {
@@ -916,6 +930,7 @@ function createWindow() {
           label: 'Show Recursive Spots',
           type: 'checkbox',
           checked: currentViewPrefs.showRecursiveSpots,
+          accelerator: 'CmdOrCtrl+Shift+R',
           click: (menuItem) => {
             currentViewPrefs.showRecursiveSpots = menuItem.checked;
             if (mainWindow) {
@@ -1068,7 +1083,6 @@ function createWindow() {
         { role: 'reload' },
         {
           label: 'Force Reload',
-          accelerator: 'CmdOrCtrl+Shift+R',
           click: () => {
             if (mainWindow) {
               mainWindow.webContents.reloadIgnoringCache();
@@ -1121,7 +1135,6 @@ function createWindow() {
         },
         {
           label: 'Test Orientation Step',
-          accelerator: 'CmdOrCtrl+Shift+O',
           click: () => {
             if (mainWindow) {
               mainWindow.webContents.send('menu:test-orientation-step');
@@ -1130,7 +1143,6 @@ function createWindow() {
         },
         {
           label: 'Test Scale Bar Step',
-          accelerator: 'CmdOrCtrl+Shift+S',
           click: () => {
             if (mainWindow) {
               mainWindow.webContents.send('menu:test-scale-bar-step');
@@ -1147,7 +1159,6 @@ function createWindow() {
         },
         {
           label: 'Quick Load Image to Canvas',
-          accelerator: 'CmdOrCtrl+Shift+L',
           click: () => {
             if (mainWindow) {
               mainWindow.webContents.send('menu:quick-load-image');
@@ -1164,7 +1175,6 @@ function createWindow() {
         },
         {
           label: 'Reset Everything (Clean Test)',
-          accelerator: 'CmdOrCtrl+Shift+R',
           click: () => {
             if (mainWindow) {
               mainWindow.webContents.send('menu:reset-everything');
@@ -2046,8 +2056,6 @@ ipcMain.handle('micrograph:export-composite', async (event, projectId, micrograp
         const color = convertColor(spot.color || '#00ff00');
         const labelColor = convertColor(spot.labelColor || '#ffffff');
         const opacity = (spot.opacity ?? 50) / 100;
-        const showLabel = spot.showLabel !== false;
-
         if (includeSpots) {
           // Render spot shape
           if (geometryType === 'point' || geometryType === 'Point') {
@@ -2084,7 +2092,7 @@ ipcMain.handle('micrograph:export-composite', async (event, projectId, micrograp
         }
 
         // Render label
-        if (includeLabels && showLabel && spot.name) {
+        if (includeLabels && spot.name) {
           let labelX = 0, labelY = 0;
 
           if (geometryType === 'point' || geometryType === 'Point') {
@@ -4727,8 +4735,6 @@ async function generateCompositeBuffer(projectId, micrograph, projectData, folde
       const color = convertColor(spot.color || '#00ff00');
       const labelColor = convertColor(spot.labelColor || '#ffffff');
       const opacity = (spot.opacity ?? 50) / 100;
-      const showLabel = spot.showLabel !== false;
-
       if (includeSpots) {
         if (geometryType === 'point' || geometryType === 'Point') {
           const x = Array.isArray(spot.geometry?.coordinates)
@@ -4757,7 +4763,7 @@ async function generateCompositeBuffer(projectId, micrograph, projectData, folde
         }
       }
 
-      if (includeLabels && showLabel && spot.name) {
+      if (includeLabels && spot.name) {
         let labelX = 0, labelY = 0;
         if (geometryType === 'point' || geometryType === 'Point') {
           labelX = (Array.isArray(spot.geometry?.coordinates) ? spot.geometry.coordinates[0] : spot.points?.[0]?.X) || 0;

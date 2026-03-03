@@ -19,6 +19,8 @@ interface SketchLayerRendererProps {
   activeLayerId?: string | null;
   /** Callback when a stroke is clicked (for eraser tool) */
   onStrokeClick?: (layerId: string, strokeId: string) => void;
+  /** Callback when a text item is erased (for eraser tool) */
+  onTextErase?: (layerId: string, textId: string) => void;
   /** Callback when a text item is clicked */
   onTextClick?: (layerId: string, textId: string) => void;
   /** Callback when a text item is dragged */
@@ -38,13 +40,15 @@ export const SketchLayerRenderer: React.FC<SketchLayerRendererProps> = ({
   scale: _scale, // Reserved for future use (e.g., stroke width scaling)
   activeLayerId,
   onStrokeClick,
+  onTextErase,
   onTextClick,
   onTextDragEnd,
   eraserActive = false,
   textDraggable = false,
 }) => {
-  // Track which stroke is being hovered for visual feedback
+  // Track which stroke/text is being hovered for visual feedback
   const [hoveredStrokeId, setHoveredStrokeId] = useState<string | null>(null);
+  const [hoveredTextId, setHoveredTextId] = useState<string | null>(null);
 
   return (
     <>
@@ -99,39 +103,59 @@ export const SketchLayerRenderer: React.FC<SketchLayerRendererProps> = ({
             })}
 
             {/* Render text items */}
-            {layer.textItems.map((textItem) => (
-              <Text
-                key={textItem.id}
-                name="sketch-text"
-                id={textItem.id}
-                x={textItem.x}
-                y={textItem.y}
-                text={textItem.text}
-                fontSize={textItem.fontSize}
-                fontFamily={textItem.fontFamily}
-                fill={textItem.color}
-                rotation={textItem.rotation || 0}
-                draggable={textDraggable && layer.id === activeLayerId}
-                onClick={
-                  onTextClick
-                    ? () => onTextClick(layer.id, textItem.id)
-                    : undefined
-                }
-                onTap={
-                  onTextClick
-                    ? () => onTextClick(layer.id, textItem.id)
-                    : undefined
-                }
-                onDragEnd={
-                  onTextDragEnd
-                    ? (e) => {
-                        const node = e.target;
-                        onTextDragEnd(layer.id, textItem.id, node.x(), node.y());
-                      }
-                    : undefined
-                }
-              />
-            ))}
+            {layer.textItems.map((textItem) => {
+              const isTextHovered = eraserActive && isActiveLayer && hoveredTextId === textItem.id;
+
+              return (
+                <Text
+                  key={textItem.id}
+                  name="sketch-text"
+                  id={textItem.id}
+                  x={textItem.x}
+                  y={textItem.y}
+                  text={textItem.text}
+                  fontSize={textItem.fontSize}
+                  fontFamily={textItem.fontFamily}
+                  fill={isTextHovered ? '#ff4444' : textItem.color}
+                  opacity={isTextHovered ? 0.8 : 1}
+                  rotation={textItem.rotation || 0}
+                  draggable={textDraggable && isActiveLayer}
+                  listening={(eraserActive || textDraggable) ? isActiveLayer : undefined}
+                  onClick={
+                    eraserActive && onTextErase
+                      ? () => onTextErase(layer.id, textItem.id)
+                      : onTextClick
+                        ? () => onTextClick(layer.id, textItem.id)
+                        : undefined
+                  }
+                  onTap={
+                    eraserActive && onTextErase
+                      ? () => onTextErase(layer.id, textItem.id)
+                      : onTextClick
+                        ? () => onTextClick(layer.id, textItem.id)
+                        : undefined
+                  }
+                  onMouseEnter={
+                    eraserActive && isActiveLayer
+                      ? () => setHoveredTextId(textItem.id)
+                      : undefined
+                  }
+                  onMouseLeave={
+                    eraserActive && isActiveLayer
+                      ? () => setHoveredTextId(null)
+                      : undefined
+                  }
+                  onDragEnd={
+                    onTextDragEnd
+                      ? (e) => {
+                          const node = e.target;
+                          onTextDragEnd(layer.id, textItem.id, node.x(), node.y());
+                        }
+                      : undefined
+                  }
+                />
+              );
+            })}
           </Group>
         );
       })}

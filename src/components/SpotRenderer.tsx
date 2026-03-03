@@ -77,6 +77,9 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
   // Spot label mode state
   const spotLabelMode = useAppStore((state) => state.spotLabelMode ?? 'original');
 
+  // Sketch mode - spots should be non-interactive during sketching
+  const sketchModeActive = useAppStore((state) => state.sketchModeActive);
+
   // Mineral color mode state (with fallbacks for rehydration from older stored state)
   const spotColorMode = useAppStore((state) => state.spotColorMode ?? 'spot-color');
   const globalMineralColors = useAppStore((state) => state.globalMineralColors);
@@ -132,7 +135,8 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
     baseColor = convertLegacyColor(spot.color || '#00ff00');
   }
   const labelColor = convertLegacyColor(spot.labelColor || '#ffffff');
-  const showLabel = spot.showLabel ?? true;
+  // Per-spot showLabel is ignored — label visibility is controlled globally via View menu
+  const showLabel = true;
   const baseOpacity = (spot.opacity ?? 50) / 100; // Convert 0-100 to 0-1
 
   // Check if spot has mineralogy classification
@@ -245,6 +249,7 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
     return (
       <Group
         name={`spot-${spot.id}`}
+        listening={!sketchModeActive}
         onClick={handleClick}
         onContextMenu={handleContextMenu}
         onMouseEnter={handleMouseEnter}
@@ -324,6 +329,7 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
     return (
       <Group
         name={`spot-${spot.id}`}
+        listening={!sketchModeActive}
         onClick={handleClick}
         onContextMenu={handleContextMenu}
         onMouseEnter={handleMouseEnter}
@@ -405,6 +411,7 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
     return (
       <Group
         name={`spot-${spot.id}`}
+        listening={!sketchModeActive}
         onClick={handleClick}
         onContextMenu={handleContextMenu}
         onMouseEnter={handleMouseEnter}

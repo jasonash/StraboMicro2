@@ -15,8 +15,6 @@ import {
   Typography,
   Box,
   Slider,
-  FormControlLabel,
-  Checkbox,
 } from '@mui/material';
 import { MuiColorInput } from 'mui-color-input';
 import { useAppStore } from '@/store';
@@ -39,7 +37,6 @@ export function EditSpotDialog({ isOpen, onClose, spotId }: EditSpotDialogProps)
   const [labelColor, setLabelColor] = useState('#ffffff'); // Default to white for better readability with background box
   const [spotColor, setSpotColor] = useState('#00ff00');
   const [opacity, setOpacity] = useState(50);
-  const [showLabel, setShowLabel] = useState(true);
 
   // Convert legacy color format (0xRRGGBBAA) to web format (#RRGGBB)
   const convertLegacyColorToWeb = (color: string | null | undefined): string => {
@@ -65,7 +62,6 @@ export function EditSpotDialog({ isOpen, onClose, spotId }: EditSpotDialogProps)
       setLabelColor(convertLegacyColorToWeb(spot.labelColor));
       setSpotColor(convertLegacyColorToWeb(spot.color));
       setOpacity(spot.opacity ?? 50);
-      setShowLabel(spot.showLabel ?? true);
     }
   }, [spot]);
 
@@ -81,7 +77,6 @@ export function EditSpotDialog({ isOpen, onClose, spotId }: EditSpotDialogProps)
       labelColor: convertWebColorToLegacy(labelColor),
       color: convertWebColorToLegacy(spotColor),
       opacity,
-      showLabel,
       modifiedTimestamp: Date.now(),
     });
 
@@ -115,12 +110,6 @@ export function EditSpotDialog({ isOpen, onClose, spotId }: EditSpotDialogProps)
             multiline
             rows={3}
             fullWidth
-          />
-
-          {/* Show Label */}
-          <FormControlLabel
-            control={<Checkbox checked={showLabel} onChange={(e) => setShowLabel(e.target.checked)} />}
-            label="Show label on image"
           />
 
           {/* Label Color - Commented out for now, defaulting to white for better readability */}
