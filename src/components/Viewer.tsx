@@ -242,6 +242,25 @@ const Viewer: React.FC = () => {
           e.preventDefault();
           setActiveTool('sketch-text');
         }
+        return;
+      }
+
+      // Spot tool shortcuts (only when not in sketch mode, no modifiers)
+      if (!sketchModeActive && activeMicrographId && !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey) {
+        const key = e.key.toLowerCase();
+        if (key === 'v') {
+          e.preventDefault();
+          setActiveTool('select');
+        } else if (key === 'p') {
+          e.preventDefault();
+          setActiveTool('point');
+        } else if (key === 'l') {
+          e.preventDefault();
+          setActiveTool('line');
+        } else if (key === 'g') {
+          e.preventDefault();
+          setActiveTool('polygon');
+        }
       }
     };
 

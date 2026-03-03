@@ -570,7 +570,6 @@ function createWindow() {
         },
         {
           label: 'Open Remote Project...',
-          accelerator: 'CmdOrCtrl+Shift+O',
           enabled: isLoggedIn,
           click: () => {
             if (mainWindow) {
@@ -868,6 +867,20 @@ function createWindow() {
         },
         { type: 'separator' },
         {
+          label: 'Cycle Spot Labels',
+          accelerator: 'CmdOrCtrl+Shift+L',
+          click: () => {
+            // Cycle: original → mineralogy → none → original
+            const modes = ['original', 'mineralogy', 'none'];
+            const currentIndex = modes.indexOf(currentViewPrefs.spotLabelMode || 'original');
+            const nextMode = modes[(currentIndex + 1) % modes.length];
+            currentViewPrefs.spotLabelMode = nextMode;
+            if (mainWindow) {
+              mainWindow.webContents.send('view:spot-label-mode', nextMode);
+            }
+          }
+        },
+        {
           label: 'Show Original Spot Labels',
           type: 'radio',
           checked: currentViewPrefs.spotLabelMode === 'original',
@@ -905,6 +918,7 @@ function createWindow() {
           label: 'Show Overlay Outlines',
           type: 'checkbox',
           checked: currentViewPrefs.showOverlayOutlines,
+          accelerator: 'CmdOrCtrl+Shift+O',
           click: (menuItem) => {
             currentViewPrefs.showOverlayOutlines = menuItem.checked;
             if (mainWindow) {
@@ -916,6 +930,7 @@ function createWindow() {
           label: 'Show Recursive Spots',
           type: 'checkbox',
           checked: currentViewPrefs.showRecursiveSpots,
+          accelerator: 'CmdOrCtrl+Shift+R',
           click: (menuItem) => {
             currentViewPrefs.showRecursiveSpots = menuItem.checked;
             if (mainWindow) {
@@ -1068,7 +1083,6 @@ function createWindow() {
         { role: 'reload' },
         {
           label: 'Force Reload',
-          accelerator: 'CmdOrCtrl+Shift+R',
           click: () => {
             if (mainWindow) {
               mainWindow.webContents.reloadIgnoringCache();
@@ -1121,7 +1135,6 @@ function createWindow() {
         },
         {
           label: 'Test Orientation Step',
-          accelerator: 'CmdOrCtrl+Shift+O',
           click: () => {
             if (mainWindow) {
               mainWindow.webContents.send('menu:test-orientation-step');
@@ -1130,7 +1143,6 @@ function createWindow() {
         },
         {
           label: 'Test Scale Bar Step',
-          accelerator: 'CmdOrCtrl+Shift+S',
           click: () => {
             if (mainWindow) {
               mainWindow.webContents.send('menu:test-scale-bar-step');
@@ -1147,7 +1159,6 @@ function createWindow() {
         },
         {
           label: 'Quick Load Image to Canvas',
-          accelerator: 'CmdOrCtrl+Shift+L',
           click: () => {
             if (mainWindow) {
               mainWindow.webContents.send('menu:quick-load-image');
@@ -1164,7 +1175,6 @@ function createWindow() {
         },
         {
           label: 'Reset Everything (Clean Test)',
-          accelerator: 'CmdOrCtrl+Shift+R',
           click: () => {
             if (mainWindow) {
               mainWindow.webContents.send('menu:reset-everything');
