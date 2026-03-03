@@ -697,6 +697,11 @@ export function ProjectTree() {
     siblings: MicrographMetadata[]
   ) => {
     if (!e.ctrlKey && !e.metaKey) return;
+    if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+
+    // Always consume Cmd+Arrow on micrographs to prevent parent DndContext from moving the sample
+    e.preventDefault();
+    e.stopPropagation();
 
     const currentIndex = siblings.findIndex((m) => m.id === micrographId);
     if (currentIndex === -1) return;
@@ -704,8 +709,6 @@ export function ProjectTree() {
     let didReorder = false;
 
     if (e.key === 'ArrowUp' && currentIndex > 0) {
-      e.preventDefault();
-      e.stopPropagation();
       const newOrder = arrayMove(siblings, currentIndex, currentIndex - 1);
       reorderMicrographs(
         sampleId,
@@ -714,8 +717,6 @@ export function ProjectTree() {
       );
       didReorder = true;
     } else if (e.key === 'ArrowDown' && currentIndex < siblings.length - 1) {
-      e.preventDefault();
-      e.stopPropagation();
       const newOrder = arrayMove(siblings, currentIndex, currentIndex + 1);
       reorderMicrographs(
         sampleId,
@@ -748,21 +749,22 @@ export function ProjectTree() {
     samples: SampleMetadata[]
   ) => {
     if (!e.ctrlKey && !e.metaKey) return;
+    if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+
+    // Always consume Cmd+Arrow on samples to prevent parent DndContext from moving the dataset
+    e.preventDefault();
+    e.stopPropagation();
 
     const currentIndex = samples.findIndex((s) => s.id === sampleId);
     if (currentIndex === -1) return;
 
     if (e.key === 'ArrowUp' && currentIndex > 0) {
-      e.preventDefault();
-      e.stopPropagation();
       const newOrder = arrayMove(samples, currentIndex, currentIndex - 1);
       reorderSamples(
         datasetId,
         newOrder.map((s) => s.id)
       );
     } else if (e.key === 'ArrowDown' && currentIndex < samples.length - 1) {
-      e.preventDefault();
-      e.stopPropagation();
       const newOrder = arrayMove(samples, currentIndex, currentIndex + 1);
       reorderSamples(
         datasetId,
