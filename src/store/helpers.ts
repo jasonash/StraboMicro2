@@ -310,6 +310,101 @@ export function getMicrographAncestorChain(
 }
 
 /**
+ * Collect all associated file names from a micrograph, its descendants (and their siblings),
+ * and all spots on those micrographs.
+ * Used to clean up physical files on disk when a micrograph is deleted.
+ */
+export function collectMicrographAssociatedFileNames(
+  project: ProjectMetadata | null,
+  micrographId: string
+): string[] {
+  if (!project?.datasets) return [];
+
+  // First, find the sample containing the micrograph (micrographs are flat within a sample)
+  let sampleMicrographs: MicrographMetadata[] = [];
+  for (const dataset of project.datasets) {
+    for (const sample of dataset.samples || []) {
+      if (sample.micrographs?.some(m => m.id === micrographId)) {
+        sampleMicrographs = sample.micrographs;
+        break;
+      }
+    }
+    if (sampleMicrographs.length > 0) break;
+  }
+
+  if (sampleMicrographs.length === 0) return [];
+
+  // Build the set of IDs to collect from (same logic as deleteMicrograph in the store)
+  const idsToCollect = new Set<string>();
+  idsToCollect.add(micrographId);
+
+  const targetMicro = sampleMicrographs.find(m => m.id === micrographId);
+  if (targetMicro?.siblingImageId) {
+    idsToCollect.add(targetMicro.siblingImageId);
+  }
+
+  // Recursively find all descendants
+  let foundMore = true;
+  while (foundMore) {
+    foundMore = false;
+    for (const m of sampleMicrographs) {
+      if (m.parentID && idsToCollect.has(m.parentID) && !idsToCollect.has(m.id)) {
+        idsToCollect.add(m.id);
+        if (m.siblingImageId && !idsToCollect.has(m.siblingImageId)) {
+          idsToCollect.add(m.siblingImageId);
+        }
+        foundMore = true;
+      }
+    }
+  }
+
+  // Collect file names from all micrographs and their spots
+  const fileNames: string[] = [];
+  for (const m of sampleMicrographs) {
+    if (!idsToCollect.has(m.id)) continue;
+    for (const af of m.associatedFiles || []) {
+      if (af.fileName) fileNames.push(af.fileName);
+    }
+    for (const spot of m.spots || []) {
+      for (const af of spot.associatedFiles || []) {
+        if (af.fileName) fileNames.push(af.fileName);
+      }
+    }
+  }
+
+  return fileNames;
+}
+
+/**
+ * Collect associated file names from specific spots by ID.
+ * Used to clean up physical files on disk when spots are deleted.
+ */
+export function collectSpotAssociatedFileNames(
+  project: ProjectMetadata | null,
+  spotIds: string[]
+): string[] {
+  if (!project?.datasets || spotIds.length === 0) return [];
+
+  const spotIdSet = new Set(spotIds);
+  const fileNames: string[] = [];
+
+  for (const dataset of project.datasets) {
+    for (const sample of dataset.samples || []) {
+      for (const micrograph of sample.micrographs || []) {
+        for (const spot of micrograph.spots || []) {
+          if (!spotIdSet.has(spot.id)) continue;
+          for (const af of spot.associatedFiles || []) {
+            if (af.fileName) fileNames.push(af.fileName);
+          }
+        }
+      }
+    }
+  }
+
+  return fileNames;
+}
+
+/**
  * Get available mineral phases from a micrograph's or spot's mineralogy data
  * Used to populate "Which Phases?" checkboxes in grain/fabric/etc dialogs
  */

@@ -288,6 +288,10 @@ interface Window {
       fileName: string;
       message?: string;
     }>;
+    cleanupOrphanedAssociatedFiles: (projectId: string, projectData: unknown) => Promise<{
+      success: boolean;
+      deletedCount: number;
+    }>;
 
     // Image validation and conversion
     validateImageFiles: (filePaths: string[]) => Promise<Array<{ valid: boolean; format?: string; error?: string }>>;

@@ -68,7 +68,7 @@ import { BatchImportDialog } from './dialogs/BatchImportDialog';
 import { SetScaleDialog } from './dialogs/SetScaleDialog';
 import { LinkSiblingDialog } from './dialogs/LinkSiblingDialog';
 import { AddSiblingDialog } from './dialogs/AddSiblingDialog';
-import { findMicrographById } from '@/store/helpers';
+import { findMicrographById, collectMicrographAssociatedFileNames } from '@/store/helpers';
 import type { DatasetMetadata, SampleMetadata, MicrographMetadata } from '@/types/project-types';
 
 /**
@@ -1769,7 +1769,20 @@ export function ProjectTree() {
         onConfirm={() => {
           if (deletingMicrograph) {
             const parentId = deletingMicrograph.parentID;
+
+            // Collect associated file names before deletion removes the metadata
+            const filesToDelete = collectMicrographAssociatedFileNames(project, deletingMicrograph.id);
+
             deleteMicrograph(deletingMicrograph.id);
+
+            // Fire-and-forget: delete associated files from disk
+            if (filesToDelete.length > 0 && project) {
+              for (const fileName of filesToDelete) {
+                window.api?.deleteFromAssociatedFiles(project.id, fileName).catch((err) => {
+                  console.error(`[ProjectTree] Failed to delete associated file ${fileName}:`, err);
+                });
+              }
+            }
 
             // Regenerate parent's composite thumbnail if this was a child micrograph
             if (parentId && project) {

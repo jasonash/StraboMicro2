@@ -3138,6 +3138,21 @@ ipcMain.handle('project:delete-from-associated-files', async (event, projectId, 
 });
 
 /**
+ * Clean up orphaned files in the project's associatedFiles folder
+ */
+ipcMain.handle('project:cleanup-orphaned-associated-files', async (event, projectId, projectData) => {
+  try {
+    log.info('[IPC] Cleaning up orphaned associated files');
+    const count = await projectFolders.cleanupOrphanedAssociatedFiles(projectId, projectData);
+    log.info(`[IPC] Orphaned associated file cleanup complete: ${count} file(s) removed`);
+    return { success: true, deletedCount: count };
+  } catch (error) {
+    log.error('[IPC] Error cleaning up orphaned associated files:', error);
+    throw error;
+  }
+});
+
+/**
  * ============================================================================
  * IMAGE CONVERSION HANDLERS
  * ============================================================================

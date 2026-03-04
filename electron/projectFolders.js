@@ -331,6 +331,68 @@ async function deleteFromAssociatedFiles(projectId, fileName) {
   }
 }
 
+/**
+ * Clean up orphaned files in the project's associatedFiles folder.
+ * Compares files on disk against all filenames referenced in the project data,
+ * and deletes any files not referenced.
+ * @param {string} projectId - UUID of the project
+ * @param {object} projectData - The full project metadata object
+ * @returns {Promise<number>} Number of orphaned files deleted
+ */
+async function cleanupOrphanedAssociatedFiles(projectId, projectData) {
+  const paths = getProjectFolderPaths(projectId);
+  const assocDir = paths.associatedFiles;
+
+  // Read files on disk (may not exist yet)
+  let filesOnDisk;
+  try {
+    filesOnDisk = await fs.promises.readdir(assocDir);
+  } catch (error) {
+    if (error.code === 'ENOENT') return 0; // No directory, nothing to clean
+    throw error;
+  }
+
+  if (filesOnDisk.length === 0) return 0;
+
+  // Build set of all referenced file names from project data
+  const referencedFiles = new Set();
+  for (const dataset of projectData.datasets || []) {
+    for (const sample of dataset.samples || []) {
+      for (const micrograph of sample.micrographs || []) {
+        for (const af of micrograph.associatedFiles || []) {
+          if (af.fileName) referencedFiles.add(af.fileName);
+        }
+        for (const spot of micrograph.spots || []) {
+          for (const af of spot.associatedFiles || []) {
+            if (af.fileName) referencedFiles.add(af.fileName);
+          }
+        }
+      }
+    }
+  }
+
+  // Delete orphaned files
+  let deletedCount = 0;
+  for (const fileName of filesOnDisk) {
+    if (!referencedFiles.has(fileName)) {
+      const filePath = path.join(assocDir, fileName);
+      try {
+        await fs.promises.unlink(filePath);
+        console.log(`[ProjectFolders] Deleted orphaned associated file: ${fileName}`);
+        deletedCount++;
+      } catch (error) {
+        console.error(`[ProjectFolders] Failed to delete orphaned file ${fileName}:`, error);
+      }
+    }
+  }
+
+  if (deletedCount > 0) {
+    console.log(`[ProjectFolders] Cleaned up ${deletedCount} orphaned associated file(s)`);
+  }
+
+  return deletedCount;
+}
+
 module.exports = {
   getDocumentsPath,
   getStraboMicro2DataPath,
@@ -342,5 +404,6 @@ module.exports = {
   deleteProjectFolder,
   listProjectFolders,
   copyFileToAssociatedFiles,
-  deleteFromAssociatedFiles
+  deleteFromAssociatedFiles,
+  cleanupOrphanedAssociatedFiles
 };
