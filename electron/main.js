@@ -4074,12 +4074,6 @@ ipcMain.handle('project:save-json', async (event, project, projectId) => {
     log.info(`[IPC] Saving project.json for: ${projectId}`);
     const savedPath = await projectSerializer.saveProjectJson(project, projectId);
     log.info('[IPC] Successfully saved project.json');
-
-    // Clean up orphaned associated files after save (non-blocking)
-    projectFolders.cleanupOrphanedAssociatedFiles(projectId, project).catch((err) => {
-      log.error('[IPC] Error cleaning up orphaned associated files after save:', err);
-    });
-
     return { success: true, path: savedPath };
   } catch (error) {
     log.error('[IPC] Error saving project.json:', error);
