@@ -30,7 +30,7 @@ import {
   Gesture as LassoIcon,
 } from '@mui/icons-material';
 import { useAppStore } from '../store';
-import { findMicrographById, findSpotById, collectSpotAssociatedFileNames } from '../store/helpers';
+import { findMicrographById, findSpotById } from '../store/helpers';
 import type { MineralogyType, MineralType } from '../types/project-types';
 import type { PresetWithScope } from '../types/preset-types';
 
@@ -604,22 +604,10 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
   const handleDeleteCurrent = useCallback(() => {
     // Check for batch selection first (lassoed spots)
     if (selectedSpotIds.length > 0) {
-      // Collect associated file names before deletion removes the metadata
-      const filesToDelete = collectSpotAssociatedFileNames(project, selectedSpotIds);
-
       // Delete all selected spots in one operation (single undo step)
       batchDeleteSpots(selectedSpotIds);
       // Clear selection after batch delete
       clearSpotSelection();
-
-      // Fire-and-forget: delete associated files from disk
-      if (filesToDelete.length > 0 && project) {
-        for (const fileName of filesToDelete) {
-          window.api?.deleteFromAssociatedFiles(project.id, fileName).catch((err) => {
-            console.error(`[QuickClassifyToolbar] Failed to delete associated file ${fileName}:`, err);
-          });
-        }
-      }
       return;
     }
 
@@ -627,7 +615,7 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
     if (quickEditMode) {
       quickEditDeleteCurrent();
     }
-  }, [quickEditMode, quickEditDeleteCurrent, selectedSpotIds, batchDeleteSpots, clearSpotSelection, project]);
+  }, [quickEditMode, quickEditDeleteCurrent, selectedSpotIds, batchDeleteSpots, clearSpotSelection]);
 
   // ============================================================================
   // SPATIAL NAVIGATION (Point Count mode only - arrow keys)

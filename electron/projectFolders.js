@@ -254,11 +254,13 @@ async function copyFileToAssociatedFiles(sourcePath, projectId, fileName) {
     // Check if file already exists in associatedFiles folder
     try {
       await fs.promises.access(destinationPath, fs.constants.F_OK);
-      // File exists - throw error to prevent overwriting
-      const error = new Error(`A file with the name "${fileName}" already exists in the associatedFiles folder. Please rename the file before adding it.`);
-      error.code = 'FILE_EXISTS';
-      console.error(`[ProjectFolders] File already exists: ${destinationPath}`);
-      throw error;
+      // File already exists on disk — skip the copy (may be an orphan awaiting cleanup)
+      console.log(`[ProjectFolders] File already exists, skipping copy: ${destinationPath}`);
+      return {
+        destinationPath,
+        fileName,
+        success: true
+      };
     } catch (error) {
       // If error is not ENOENT (file not found), rethrow it
       if (error.code !== 'ENOENT' && error.code !== undefined) {

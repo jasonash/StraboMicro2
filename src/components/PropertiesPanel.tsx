@@ -54,7 +54,6 @@ import { LinksInfoDialog } from './dialogs/metadata/links/LinksInfoDialog';
 import { MetadataSummary } from './MetadataSummary';
 import { GrainSizeSummary } from './GrainSizeSummary';
 import { PointCountSummary } from './PointCountSummary';
-import { collectSpotAssociatedFileNames, collectMicrographAssociatedFileNames } from '@/store/helpers';
 import { ProjectMetadataSection } from './ProjectMetadataSection';
 import { SketchLayersPanel } from './SketchLayersPanel';
 import { getPresetSummary } from '@/types/preset-types';
@@ -243,31 +242,11 @@ export function PropertiesPanel() {
   // Handle delete confirmation
   const handleConfirmDelete = () => {
     if (confirmDelete === 'micrograph' && activeMicrographId) {
-      // Collect associated file names before deletion removes the metadata
-      const filesToDelete = collectMicrographAssociatedFileNames(project, activeMicrographId);
       deleteMicrograph(activeMicrographId);
       selectMicrograph(null);
-      // Fire-and-forget: delete associated files from disk
-      if (filesToDelete.length > 0 && project) {
-        for (const fileName of filesToDelete) {
-          window.api?.deleteFromAssociatedFiles(project.id, fileName).catch((err) => {
-            console.error(`[PropertiesPanel] Failed to delete associated file ${fileName}:`, err);
-          });
-        }
-      }
     } else if (confirmDelete === 'spot' && activeSpotId) {
-      // Collect associated file names before deletion removes the metadata
-      const filesToDelete = collectSpotAssociatedFileNames(project, [activeSpotId]);
       deleteSpot(activeSpotId);
       selectActiveSpot(null);
-      // Fire-and-forget: delete associated files from disk
-      if (filesToDelete.length > 0 && project) {
-        for (const fileName of filesToDelete) {
-          window.api?.deleteFromAssociatedFiles(project.id, fileName).catch((err) => {
-            console.error(`[PropertiesPanel] Failed to delete associated file ${fileName}:`, err);
-          });
-        }
-      }
     }
     setConfirmDelete(null);
   };
