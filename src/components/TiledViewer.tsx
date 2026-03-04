@@ -18,7 +18,7 @@ import { Box, CircularProgress, Typography, IconButton, Tooltip } from '@mui/mat
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
 import { useAppStore } from '@/store';
-import { getChildMicrographs } from '@/store/helpers';
+import { getChildMicrographs, collectSpotAssociatedFileNames } from '@/store/helpers';
 import { AssociatedImageRenderer } from './AssociatedImageRenderer';
 import { ChildSpotsRenderer } from './ChildSpotsRenderer';
 import { SpotRenderer } from './SpotRenderer';
@@ -1766,11 +1766,19 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
     const handleDeleteSpot = useCallback(
       (spot: Spot) => {
         if (window.confirm(`Delete spot "${spot.name}"?\n\nThis action cannot be undone.`)) {
+          const filesToDelete = collectSpotAssociatedFileNames(project, [spot.id]);
           deleteSpot(spot.id);
+          if (filesToDelete.length > 0 && project) {
+            for (const fileName of filesToDelete) {
+              window.api?.deleteFromAssociatedFiles(project.id, fileName).catch((err) => {
+                console.error(`[TiledViewer] Failed to delete associated file ${fileName}:`, err);
+              });
+            }
+          }
           console.log('Spot deleted:', spot.name);
         }
       },
-      [deleteSpot]
+      [deleteSpot, project]
     );
 
     /**
@@ -1786,15 +1794,24 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
 
       const count = allIds.length;
       if (window.confirm(`Delete ${count} selected spots?\n\nThis action cannot be undone.`)) {
+        const filesToDelete = collectSpotAssociatedFileNames(project, allIds);
         // Delete each spot
         for (const spotId of allIds) {
           deleteSpot(spotId);
         }
         // Clear selection
         clearSpotSelection();
+        // Fire-and-forget: delete associated files from disk
+        if (filesToDelete.length > 0 && project) {
+          for (const fileName of filesToDelete) {
+            window.api?.deleteFromAssociatedFiles(project.id, fileName).catch((err) => {
+              console.error(`[TiledViewer] Failed to delete associated file ${fileName}:`, err);
+            });
+          }
+        }
         console.log(`Deleted ${count} spots`);
       }
-    }, [activeSpotId, selectedSpotIds, deleteSpot, clearSpotSelection]);
+    }, [activeSpotId, selectedSpotIds, deleteSpot, clearSpotSelection, project]);
 
     /**
      * Handle overlay click for drill-down navigation
