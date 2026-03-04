@@ -80,6 +80,10 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
   // Sketch mode - spots should be non-interactive during sketching
   const sketchModeActive = useAppStore((state) => state.sketchModeActive);
 
+  // Spots should be non-interactive when a drawing tool is active or sketch mode is on
+  const isDrawingTool = activeTool === 'point' || activeTool === 'line' || activeTool === 'polygon' || activeTool === 'measure';
+  const spotsNonInteractive = sketchModeActive || isDrawingTool;
+
   // Mineral color mode state (with fallbacks for rehydration from older stored state)
   const spotColorMode = useAppStore((state) => state.spotColorMode ?? 'spot-color');
   const globalMineralColors = useAppStore((state) => state.globalMineralColors);
@@ -249,7 +253,7 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
     return (
       <Group
         name={`spot-${spot.id}`}
-        listening={!sketchModeActive}
+        listening={!spotsNonInteractive}
         onClick={handleClick}
         onContextMenu={handleContextMenu}
         onMouseEnter={handleMouseEnter}
@@ -329,7 +333,7 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
     return (
       <Group
         name={`spot-${spot.id}`}
-        listening={!sketchModeActive}
+        listening={!spotsNonInteractive}
         onClick={handleClick}
         onContextMenu={handleContextMenu}
         onMouseEnter={handleMouseEnter}
@@ -411,7 +415,7 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
     return (
       <Group
         name={`spot-${spot.id}`}
-        listening={!sketchModeActive}
+        listening={!spotsNonInteractive}
         onClick={handleClick}
         onContextMenu={handleContextMenu}
         onMouseEnter={handleMouseEnter}

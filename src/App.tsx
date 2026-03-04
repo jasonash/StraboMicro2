@@ -317,6 +317,10 @@ function App() {
         alert(`The previously opened project could not be found on disk.\n\nReason: ${result.reason}\n\nPlease open or create a new project.`);
       } else {
         console.log('[App] Project folder validated successfully');
+        // Fire-and-forget: clean up orphaned associated files on disk
+        window.api.cleanupOrphanedAssociatedFiles(currentProject.id, currentProject).catch((error) => {
+          console.error('[App] Failed to clean up orphaned associated files:', error);
+        });
       }
     };
 

@@ -973,6 +973,11 @@ export const useAppStore = create<AppState>()(
               micrographIndex,
               spotIndex,
             });
+
+            // Fire-and-forget: clean up orphaned associated files on disk
+            window.api?.cleanupOrphanedAssociatedFiles(project.id, project).catch((error) => {
+              console.error('[Store] Failed to clean up orphaned associated files:', error);
+            });
           },
 
           closeProject: () => set({

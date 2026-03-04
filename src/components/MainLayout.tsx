@@ -205,6 +205,65 @@ const MainLayout: React.FC = () => {
           <Viewer />
         </Box>
 
+        {/* Resize handle for right panel - outside panel to avoid overflow clipping */}
+        {!isRightPanelCollapsed && (
+          <Box
+            sx={{
+              position: 'relative',
+              width: '4px',
+              marginLeft: '-4px',
+              zIndex: 10,
+            }}
+          >
+            {/* Resize handle (lower part) */}
+            <Box
+              onMouseDown={handleMouseDown('right')}
+              sx={{
+                position: 'absolute',
+                left: 0,
+                top: 60,
+                bottom: 0,
+                width: '4px',
+                cursor: 'col-resize',
+                '&:hover': {
+                  bgcolor: 'primary.main',
+                  width: '2px',
+                },
+              }}
+            />
+
+            {/* Vertical collapse button on divider */}
+            <Tooltip title="Hide Panel" placement="left">
+              <Box
+                onClick={() => setIsRightPanelCollapsed(true)}
+                sx={{
+                  position: 'absolute',
+                  left: '-4px',
+                  top: 8,
+                  width: '12px',
+                  height: '40px',
+                  bgcolor: 'background.paper',
+                  border: 1,
+                  borderColor: 'divider',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  transition: 'background-color 0.2s, border-color 0.2s',
+                  zIndex: 11,
+                  '&:hover': {
+                    bgcolor: 'background.default',
+                    borderColor: 'primary.main',
+                  },
+                }}
+              >
+                <ChevronRight sx={{ fontSize: 14, color: 'text.secondary' }} />
+              </Box>
+            </Tooltip>
+          </Box>
+        )}
+
         {/* Right Details Panel */}
         <Box
           sx={{
@@ -218,65 +277,6 @@ const MainLayout: React.FC = () => {
             transition: isTransitionEnabled ? 'width 0.3s ease-in-out' : 'none',
           }}
         >
-          {/* Resize handle with integrated collapse button - only show when not collapsed */}
-          {!isRightPanelCollapsed && (
-            <Box
-              sx={{
-                position: 'absolute',
-                left: 0,
-                top: 0,
-                bottom: 0,
-                width: '4px',
-              }}
-            >
-              {/* Resize handle (lower part) */}
-              <Box
-                onMouseDown={handleMouseDown('right')}
-                sx={{
-                  position: 'absolute',
-                  left: 0,
-                  top: 60,
-                  bottom: 0,
-                  width: '4px',
-                  cursor: 'col-resize',
-                  '&:hover': {
-                    bgcolor: 'primary.main',
-                    width: '2px',
-                  },
-                }}
-              />
-
-              {/* Vertical collapse button on divider */}
-              <Tooltip title="Hide Panel" placement="left">
-                <Box
-                  onClick={() => setIsRightPanelCollapsed(true)}
-                  sx={{
-                    position: 'absolute',
-                    left: '-4px',
-                    top: 8,
-                    width: '12px',
-                    height: '40px',
-                    bgcolor: 'background.paper',
-                    border: 1,
-                    borderColor: 'divider',
-                    borderRadius: '4px',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    transition: 'background-color 0.2s, border-color 0.2s',
-                    '&:hover': {
-                      bgcolor: 'background.default',
-                      borderColor: 'primary.main',
-                    },
-                  }}
-                >
-                  <ChevronRight sx={{ fontSize: 14, color: 'text.secondary' }} />
-                </Box>
-              </Tooltip>
-            </Box>
-          )}
-
           <PropertiesPanel />
         </Box>
 

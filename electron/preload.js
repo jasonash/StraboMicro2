@@ -260,6 +260,8 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('project:copy-to-associated-files', sourcePath, projectId, fileName),
   deleteFromAssociatedFiles: (projectId, fileName) =>
     ipcRenderer.invoke('project:delete-from-associated-files', projectId, fileName),
+  cleanupOrphanedAssociatedFiles: (projectId, projectData) =>
+    ipcRenderer.invoke('project:cleanup-orphaned-associated-files', projectId, projectData),
 
   // Image validation and conversion
   validateImageFiles: (filePaths) => ipcRenderer.invoke('image:validate-files', filePaths),
