@@ -6139,8 +6139,10 @@ ipcMain.handle("load-opencv-script", async () => {
       // In development, load from public folder
       opencvPath = path.join(__dirname, "..", "public", "opencv.js");
     } else {
-      // In production, load from dist folder (which becomes resources/app/dist)
-      opencvPath = path.join(__dirname, "..", "dist", "opencv.js");
+      // In production, load from unpacked dist folder (asarUnpack extracts it)
+      // app.asar path → app.asar.unpacked path for reliable fs access
+      opencvPath = path.join(__dirname, "..", "dist", "opencv.js")
+        .replace("app.asar", "app.asar.unpacked");
     }
 
     log.info("[OpenCV] Loading from:", opencvPath);
