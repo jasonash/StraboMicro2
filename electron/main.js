@@ -1029,7 +1029,7 @@ function createWindow() {
         {
           label: 'StraboMicro User Guide',
           click: async () => {
-            await shell.openExternal('https://strabospot.org/manual/micro');
+            await shell.openExternal('https://strabospot.org/manual/micro2');
           }
         },
         { type: 'separator' },
