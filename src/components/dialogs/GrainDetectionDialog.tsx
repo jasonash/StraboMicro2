@@ -268,7 +268,8 @@ export function GrainDetectionDialog({
       // Load OpenCV script
       let opencvScript: string | undefined;
       try {
-        opencvScript = await window.api?.loadOpencvScript() || undefined;
+        const script = await window.api?.loadOpencvScript();
+        opencvScript = (script && script.length > 0) ? script : undefined;
       } catch (err) {
         console.warn('[GrainDetection] Could not pre-load OpenCV script:', err);
       }
@@ -652,8 +653,13 @@ export function GrainDetectionDialog({
     try {
       if (window.api?.loadOpencvScript) {
         console.log('[GrainDetection] Loading OpenCV via IPC...');
-        opencvScript = await window.api.loadOpencvScript();
-        console.log('[GrainDetection] OpenCV script loaded, size:', opencvScript?.length);
+        const script = await window.api.loadOpencvScript();
+        if (script && script.length > 0) {
+          opencvScript = script;
+          console.log('[GrainDetection] OpenCV script loaded, size:', script.length);
+        } else {
+          console.warn('[GrainDetection] OpenCV script loaded but was empty');
+        }
       }
     } catch (err) {
       console.warn('[GrainDetection] Failed to load OpenCV via IPC, worker will try fetch:', err);
