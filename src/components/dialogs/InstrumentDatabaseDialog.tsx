@@ -25,6 +25,7 @@ import {
 } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
 import { getRestServerUrl } from '@/components/dialogs/PreferencesDialog';
+import { useAuthStore } from '@/store/useAuthStore';
 import type { InstrumentDetectorType } from '@/types/project-types';
 
 // ============================================================================
@@ -86,6 +87,7 @@ export function InstrumentDatabaseDialog({
   onClose,
   onSelect,
 }: InstrumentDatabaseDialogProps) {
+  const { isAuthenticated, user } = useAuthStore();
   const [instruments, setInstruments] = useState<InstrumentListItem[]>([]);
   const [filteredInstruments, setFilteredInstruments] = useState<InstrumentListItem[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -196,6 +198,19 @@ export function InstrumentDatabaseDialog({
     <Dialog open={isOpen} onClose={handleClose} maxWidth="sm" fullWidth>
       <DialogTitle>Find Instrument in Database</DialogTitle>
       <DialogContent>
+        <Typography variant="body2" sx={{ mb: 1 }}>
+          <a
+            href={(() => {
+              const name = isAuthenticated && user?.name ? user.name : 'your name here';
+              const account = isAuthenticated && user?.email ? user.email : 'your StraboSpot email';
+              const body = `Hello,\n\nPlease add the following institute to the StraboMicro Apparatus Repository:\n\nLab or Facility Name:\nInstitute Name:\n\nStraboSpot Account: ${account}\n\nThanks,\n\n${name}`;
+              return `mailto:strabospot@gmail.com?subject=${encodeURIComponent('Need Institute Added to StraboMicro Apparatus Repository')}&body=${encodeURIComponent(body)}`;
+            })()}
+            style={{ color: '#90caf9', textDecoration: 'none' }}
+          >
+            Need your instrument added to the database? Click here.
+          </a>
+        </Typography>
         {error && (
           <Alert severity="error" sx={{ mb: 2 }}>
             {error}

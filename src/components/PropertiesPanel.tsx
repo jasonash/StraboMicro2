@@ -415,8 +415,8 @@ export function PropertiesPanel() {
 
             {/* Metadata Summary Section */}
             <Box sx={{ flex: 1, overflow: 'auto' }}>
-              <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>
-                Collected Data
+              <Typography variant="subtitle1" sx={{ mb: 1, fontWeight: 600 }}>
+                Collected Data:
               </Typography>
 
               <MetadataSummary

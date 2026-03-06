@@ -1845,27 +1845,6 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
         </StyledAccordion>
       )}
 
-      {/* Show empty state if no metadata exists */}
-      {!hasData(data.mineralogy) &&
-       !hasData(data.lithologyInfo) &&
-       !hasData(data.grainInfo) &&
-       !hasData(data.fabricInfo) &&
-       !hasData(data.clasticDeformationBandInfo) &&
-       !hasData(data.faultsShearZonesInfo) &&
-       !hasData(data.extinctionMicrostructureInfo) &&
-       !hasData(data.grainBoundaryInfo) &&
-       !hasData(data.intraGrainInfo) &&
-       !hasData(data.veinInfo) &&
-       !hasData(data.pseudotachylyteInfo) &&
-       !hasData(data.foldInfo) &&
-       !hasData(data.fractureInfo) &&
-       !hasData(data.notes) &&
-       !hasData(data.associatedFiles) &&
-       !hasData(data.links) && (
-        <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic', p: 2, textAlign: 'center' }}>
-          No metadata collected yet. Use the dropdown above to add data.
-        </Typography>
-      )}
     </Stack>
   );
 }
