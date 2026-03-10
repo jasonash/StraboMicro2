@@ -85,14 +85,14 @@ function StatRow({ label, value }: { label: string; value: string }) {
 export function GrainSizeSummary({ micrographId }: GrainSizeSummaryProps) {
   const micrographIndex = useAppStore((s) => s.micrographIndex);
   const project = useAppStore((s) => s.project);
-  const grainSpotFilter = useAppStore((s) => s.project?.grainAnalysisSpotFilter ?? 'all');
-  const grainSelectedIds = useAppStore((s) => s.project?.grainAnalysisSelectedSpotIds ?? null);
+  const grainSpotFilter = useAppStore((s) => s.grainAnalysisSpotFilter);
+  const grainSelectedIds = useAppStore((s) => s.grainAnalysisSelectedSpotIds);
 
   const micrograph = micrographIndex.get(micrographId);
 
   // Build a set of selected IDs for fast lookup (only when filter is 'selected')
   const selectedIdSet = useMemo(() => {
-    if (grainSpotFilter !== 'selected' || !grainSelectedIds) return null;
+    if (grainSpotFilter !== 'selected' || grainSelectedIds.length === 0) return null;
     return new Set(grainSelectedIds);
   }, [grainSpotFilter, grainSelectedIds]);
 
@@ -148,6 +148,15 @@ export function GrainSizeSummary({ micrographId }: GrainSizeSummaryProps) {
     return results;
   }, [micrograph, micrographId, project, selectedIdSet]);
 
+  // Count total polygon spots (before filtering) for the "X of Y" indicator
+  // NOTE: This hook must be before the early return to maintain consistent hook order
+  const totalPolygonCount = useMemo(() => {
+    if (!micrograph) return 0;
+    return (micrograph.spots || []).filter(
+      (s) => !s.archived && s.geometryType === 'polygon' && (s.points?.length ?? 0) >= 3
+    ).length;
+  }, [micrograph]);
+
   // Don't render if no results
   if (!analysisResults || analysisResults.grains.length === 0) {
     return null;
@@ -155,14 +164,6 @@ export function GrainSizeSummary({ micrographId }: GrainSizeSummaryProps) {
 
   const { sizeStats, sortingCoefficient, sortingClass, mineralGroups, preferredOrientation } =
     analysisResults;
-
-  // Count total polygon spots (before filtering) for the "X of Y" indicator
-  const totalPolygonCount = useMemo(() => {
-    if (!micrograph) return 0;
-    return (micrograph.spots || []).filter(
-      (s) => !s.archived && s.geometryType === 'polygon' && (s.points?.length ?? 0) >= 3
-    ).length;
-  }, [micrograph]);
 
   const isFiltered = selectedIdSet !== null && sizeStats.count < totalPolygonCount;
 

@@ -147,16 +147,16 @@ export function GrainSizeAnalysisDialog({ open, onClose }: GrainSizeAnalysisDial
   const activeMicrographId = useAppStore((s) => s.activeMicrographId);
   const micrographIndex = useAppStore((s) => s.micrographIndex);
 
-  // Persisted grain analysis selection from project
-  const projectSpotFilter = useAppStore((s) => s.project?.grainAnalysisSpotFilter ?? 'all');
-  const projectSelectedIds = useAppStore((s) => s.project?.grainAnalysisSelectedSpotIds ?? null);
+  // Persisted grain analysis selection from store
+  const storeSpotFilter = useAppStore((s) => s.grainAnalysisSpotFilter);
+  const storeSelectedIds = useAppStore((s) => s.grainAnalysisSelectedSpotIds);
   const setGrainAnalysisSpotFilter = useAppStore((s) => s.setGrainAnalysisSpotFilter);
   const setGrainAnalysisSelectedSpotIds = useAppStore((s) => s.setGrainAnalysisSelectedSpotIds);
 
   // Dialog state
   const [rockType, setRockType] = useState<RockType>('sedimentary');
   const [scope, setScope] = useState<AnalysisScope>('current');
-  const [spotFilter, setSpotFilter] = useState<'all' | 'selected'>(projectSpotFilter);
+  const [spotFilter, setSpotFilter] = useState<'all' | 'selected'>(storeSpotFilter);
   const [selectedSpotIds, setSelectedSpotIds] = useState<Set<string>>(new Set());
   const [useLogScale, setUseLogScale] = useState(false);
   const [showGrid, setShowGrid] = useState(true);
@@ -208,14 +208,14 @@ export function GrainSizeAnalysisDialog({ open, onClose }: GrainSizeAnalysisDial
   // If we have a persisted selection, intersect with available spots; otherwise select all
   useEffect(() => {
     const allIds = new Set(allPolygonSpots.map(({ spot }) => spot.id));
-    if (projectSelectedIds && projectSelectedIds.length > 0) {
+    if (storeSelectedIds && storeSelectedIds.length > 0) {
       // Keep only IDs that still exist in the current spot set
-      const persisted = new Set(projectSelectedIds.filter((id) => allIds.has(id)));
+      const persisted = new Set(storeSelectedIds.filter((id) => allIds.has(id)));
       setSelectedSpotIds(persisted.size > 0 ? persisted : allIds);
     } else {
       setSelectedSpotIds(allIds);
     }
-  }, [allPolygonSpots, projectSelectedIds]);
+  }, [allPolygonSpots, storeSelectedIds]);
 
   // Apply spot filter
   const spots = useMemo(() => {
