@@ -85,8 +85,16 @@ function StatRow({ label, value }: { label: string; value: string }) {
 export function GrainSizeSummary({ micrographId }: GrainSizeSummaryProps) {
   const micrographIndex = useAppStore((s) => s.micrographIndex);
   const project = useAppStore((s) => s.project);
+  const grainSpotFilter = useAppStore((s) => s.project?.grainAnalysisSpotFilter ?? 'all');
+  const grainSelectedIds = useAppStore((s) => s.project?.grainAnalysisSelectedSpotIds ?? null);
 
   const micrograph = micrographIndex.get(micrographId);
+
+  // Build a set of selected IDs for fast lookup (only when filter is 'selected')
+  const selectedIdSet = useMemo(() => {
+    if (grainSpotFilter !== 'selected' || !grainSelectedIds) return null;
+    return new Set(grainSelectedIds);
+  }, [grainSpotFilter, grainSelectedIds]);
 
   // Compute analysis results
   const analysisResults = useMemo(() => {
@@ -96,9 +104,14 @@ export function GrainSizeSummary({ micrographId }: GrainSizeSummaryProps) {
     if (!scale) return null;
 
     // Filter non-archived polygon spots
-    const polygonSpots = (micrograph.spots || []).filter(
+    let polygonSpots = (micrograph.spots || []).filter(
       (s) => !s.archived && s.geometryType === 'polygon' && (s.points?.length ?? 0) >= 3
     );
+
+    // Apply grain analysis selection filter
+    if (selectedIdSet) {
+      polygonSpots = polygonSpots.filter((s) => selectedIdSet.has(s.id));
+    }
 
     if (polygonSpots.length === 0) return null;
 
@@ -133,7 +146,7 @@ export function GrainSizeSummary({ micrographId }: GrainSizeSummaryProps) {
     );
 
     return results;
-  }, [micrograph, micrographId, project]);
+  }, [micrograph, micrographId, project, selectedIdSet]);
 
   // Don't render if no results
   if (!analysisResults || analysisResults.grains.length === 0) {
@@ -143,6 +156,16 @@ export function GrainSizeSummary({ micrographId }: GrainSizeSummaryProps) {
   const { sizeStats, sortingCoefficient, sortingClass, mineralGroups, preferredOrientation } =
     analysisResults;
 
+  // Count total polygon spots (before filtering) for the "X of Y" indicator
+  const totalPolygonCount = useMemo(() => {
+    if (!micrograph) return 0;
+    return (micrograph.spots || []).filter(
+      (s) => !s.archived && s.geometryType === 'polygon' && (s.points?.length ?? 0) >= 3
+    ).length;
+  }, [micrograph]);
+
+  const isFiltered = selectedIdSet !== null && sizeStats.count < totalPolygonCount;
+
   const handleOpenFullAnalysis = () => {
     window.dispatchEvent(new CustomEvent('open-grain-size-analysis'));
   };
@@ -151,7 +174,10 @@ export function GrainSizeSummary({ micrographId }: GrainSizeSummaryProps) {
     <StyledAccordion disableGutters defaultExpanded={false}>
       <StyledAccordionSummary expandIcon={<ExpandMoreIcon />}>
         <Typography variant="subtitle2">Grain Size Analysis</Typography>
-        <Chip label={`${sizeStats.count} grains`} size="small" />
+        <Chip
+          label={isFiltered ? `${sizeStats.count} of ${totalPolygonCount}` : `${sizeStats.count} grains`}
+          size="small"
+        />
       </StyledAccordionSummary>
       <AccordionDetails sx={{ py: 1 }}>
         <Stack spacing={1}>

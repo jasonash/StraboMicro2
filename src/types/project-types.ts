@@ -54,6 +54,10 @@ export interface ProjectMetadata {
 
   // Mineral Color overrides (project-level)
   mineralColors?: MineralColorEntry[] | null;
+
+  // Grain Size Analysis spot selection (project-level)
+  grainAnalysisSpotFilter?: 'all' | 'selected' | null;
+  grainAnalysisSelectedSpotIds?: string[] | null;
 }
 
 export interface DatasetMetadata {

@@ -402,6 +402,12 @@ interface AppState {
   /** Toggle Batch Edit dialog visibility */
   setBatchEditDialogOpen: (open: boolean) => void;
 
+  // ========== GRAIN ANALYSIS SELECTION ACTIONS ==========
+  /** Set grain analysis spot filter and persist to project */
+  setGrainAnalysisSpotFilter: (filter: 'all' | 'selected') => void;
+  /** Set grain analysis selected spot IDs and persist to project */
+  setGrainAnalysisSelectedSpotIds: (ids: string[]) => void;
+
   // ========== MINERAL COLOR ACTIONS ==========
   /** Set the spot color mode */
   setSpotColorMode: (mode: SpotColorMode) => void;
@@ -2949,6 +2955,22 @@ export const useAppStore = create<AppState>()(
           setStatisticsPanelVisible: (visible) => set({ statisticsPanelVisible: visible }),
 
           setBatchEditDialogOpen: (open) => set({ batchEditDialogOpen: open }),
+
+          // ========== GRAIN ANALYSIS SELECTION ACTIONS ==========
+
+          setGrainAnalysisSpotFilter: (filter) => set((state) => {
+            if (!state.project) return state;
+            const project = structuredClone(state.project);
+            project.grainAnalysisSpotFilter = filter;
+            return { project, isDirty: true };
+          }),
+
+          setGrainAnalysisSelectedSpotIds: (ids) => set((state) => {
+            if (!state.project) return state;
+            const project = structuredClone(state.project);
+            project.grainAnalysisSelectedSpotIds = ids;
+            return { project, isDirty: true };
+          }),
 
           // ========== MINERAL COLOR ACTIONS ==========
 
