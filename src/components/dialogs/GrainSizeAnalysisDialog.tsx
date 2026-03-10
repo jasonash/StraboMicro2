@@ -650,7 +650,7 @@ export function GrainSizeAnalysisDialog({ open, onClose }: GrainSizeAnalysisDial
                       Range: <strong>{formatSize(analysisResults.sizeStats.min)} - {formatSize(analysisResults.sizeStats.max)}</strong>
                     </Typography>
                     {analysisResults.sortingCoefficient !== null && (
-                      <Typography variant="body2">
+                      <Typography variant="body2" component="div">
                         Sorting: <strong>{analysisResults.sortingCoefficient.toFixed(2)}</strong>
                         {' '}
                         <Chip
