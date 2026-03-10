@@ -3953,10 +3953,6 @@ export const useAppStore = create<AppState>()(
           // Mineral color settings
           spotColorMode: state.spotColorMode,
           globalMineralColors: state.globalMineralColors,
-
-          // Grain analysis selection
-          grainAnalysisSpotFilter: state.grainAnalysisSpotFilter,
-          grainAnalysisSelectedSpotIds: state.grainAnalysisSelectedSpotIds,
         }),
         // Rebuild indexes after rehydrating from file storage
         onRehydrateStorage: () => (state) => {
