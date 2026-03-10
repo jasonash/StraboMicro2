@@ -315,6 +315,9 @@ function serializeToLegacyFormat(project) {
     presetKeyBindings: project.presetKeyBindings || undefined,
     // Mineral Color overrides (project-level)
     mineralColors: project.mineralColors || undefined,
+    // Grain Size Analysis spot selection (project-level)
+    grainAnalysisSpotFilter: project.grainAnalysisSpotFilter || undefined,
+    grainAnalysisSelectedSpotIds: project.grainAnalysisSelectedSpotIds || undefined,
   };
 }
 
@@ -513,6 +516,9 @@ function deserializeFromLegacyFormat(legacyJson) {
     presetKeyBindings: legacyJson.presetKeyBindings || undefined,
     // Mineral Color overrides (project-level)
     mineralColors: legacyJson.mineralColors || undefined,
+    // Grain Size Analysis spot selection (project-level)
+    grainAnalysisSpotFilter: legacyJson.grainAnalysisSpotFilter || undefined,
+    grainAnalysisSelectedSpotIds: legacyJson.grainAnalysisSelectedSpotIds || undefined,
   };
 }
 

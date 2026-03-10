@@ -402,6 +402,18 @@ interface AppState {
   /** Toggle Batch Edit dialog visibility */
   setBatchEditDialogOpen: (open: boolean) => void;
 
+  // ========== GRAIN ANALYSIS SELECTION STATE ==========
+  /** Grain analysis spot filter mode */
+  grainAnalysisSpotFilter: 'all' | 'selected';
+  /** Grain analysis selected spot IDs (when filter is 'selected') */
+  grainAnalysisSelectedSpotIds: string[];
+
+  // ========== GRAIN ANALYSIS SELECTION ACTIONS ==========
+  /** Set grain analysis spot filter mode */
+  setGrainAnalysisSpotFilter: (filter: 'all' | 'selected') => void;
+  /** Set grain analysis selected spot IDs */
+  setGrainAnalysisSelectedSpotIds: (ids: string[]) => void;
+
   // ========== MINERAL COLOR ACTIONS ==========
   /** Set the spot color mode */
   setSpotColorMode: (mode: SpotColorMode) => void;
@@ -943,6 +955,10 @@ export const useAppStore = create<AppState>()(
           lastPointCountSettings: null,
           lastGrainDetectionSettings: null,
 
+          // Grain analysis selection state (synced to project on save)
+          grainAnalysisSpotFilter: 'all' as const,
+          grainAnalysisSelectedSpotIds: [] as string[],
+
           // Mineral color state
           spotColorMode: 'spot-color' as const,
           globalMineralColors: [...DEFAULT_MINERAL_COLORS],
@@ -970,6 +986,9 @@ export const useAppStore = create<AppState>()(
               siblingViewActive: false,
               siblingCachedZoom: null,
               siblingCachedPosition: null,
+              // Restore grain analysis selection from project
+              grainAnalysisSpotFilter: project.grainAnalysisSpotFilter || 'all',
+              grainAnalysisSelectedSpotIds: project.grainAnalysisSelectedSpotIds || [],
               micrographIndex,
               spotIndex,
             });
@@ -2950,6 +2969,21 @@ export const useAppStore = create<AppState>()(
 
           setBatchEditDialogOpen: (open) => set({ batchEditDialogOpen: open }),
 
+          // ========== GRAIN ANALYSIS SELECTION ACTIONS ==========
+
+          setGrainAnalysisSpotFilter: (filter) => {
+            // Sync to project in-place so all save paths (autosave, save-before-close) pick it up
+            const project = get().project;
+            if (project) project.grainAnalysisSpotFilter = filter;
+            set({ grainAnalysisSpotFilter: filter, isDirty: true });
+          },
+
+          setGrainAnalysisSelectedSpotIds: (ids) => {
+            const project = get().project;
+            if (project) project.grainAnalysisSelectedSpotIds = ids;
+            set({ grainAnalysisSelectedSpotIds: ids, isDirty: true });
+          },
+
           // ========== MINERAL COLOR ACTIONS ==========
 
           setSpotColorMode: (mode) => set({ spotColorMode: mode }),
@@ -3926,6 +3960,9 @@ export const useAppStore = create<AppState>()(
             state.micrographIndex = buildMicrographIndex(state.project);
             state.spotIndex = buildSpotIndex(state.project);
             console.log('[Store] Rehydrated indexes - micrographs:', state.micrographIndex.size, 'spots:', state.spotIndex.size);
+            // Restore grain analysis selection from project data
+            state.grainAnalysisSpotFilter = state.project.grainAnalysisSpotFilter || 'all';
+            state.grainAnalysisSelectedSpotIds = state.project.grainAnalysisSelectedSpotIds || [];
           }
           // Migrate legacy showSpotLabels boolean to spotLabelMode
           if (state && !state.spotLabelMode) {

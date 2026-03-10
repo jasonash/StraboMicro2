@@ -147,10 +147,16 @@ export function GrainSizeAnalysisDialog({ open, onClose }: GrainSizeAnalysisDial
   const activeMicrographId = useAppStore((s) => s.activeMicrographId);
   const micrographIndex = useAppStore((s) => s.micrographIndex);
 
+  // Persisted grain analysis selection from store
+  const storeSpotFilter = useAppStore((s) => s.grainAnalysisSpotFilter);
+  const storeSelectedIds = useAppStore((s) => s.grainAnalysisSelectedSpotIds);
+  const setGrainAnalysisSpotFilter = useAppStore((s) => s.setGrainAnalysisSpotFilter);
+  const setGrainAnalysisSelectedSpotIds = useAppStore((s) => s.setGrainAnalysisSelectedSpotIds);
+
   // Dialog state
   const [rockType, setRockType] = useState<RockType>('sedimentary');
   const [scope, setScope] = useState<AnalysisScope>('current');
-  const [spotFilter, setSpotFilter] = useState<'all' | 'selected'>('all');
+  const [spotFilter, setSpotFilter] = useState<'all' | 'selected'>(storeSpotFilter);
   const [selectedSpotIds, setSelectedSpotIds] = useState<Set<string>>(new Set());
   const [useLogScale, setUseLogScale] = useState(false);
   const [showGrid, setShowGrid] = useState(true);
@@ -199,9 +205,17 @@ export function GrainSizeAnalysisDialog({ open, onClose }: GrainSizeAnalysisDial
   }, [micrographsToAnalyze]);
 
   // Initialize selectedSpotIds when available spots change
+  // If we have a persisted selection, intersect with available spots; otherwise select all
   useEffect(() => {
-    setSelectedSpotIds(new Set(allPolygonSpots.map(({ spot }) => spot.id)));
-  }, [allPolygonSpots]);
+    const allIds = new Set(allPolygonSpots.map(({ spot }) => spot.id));
+    if (storeSelectedIds && storeSelectedIds.length > 0) {
+      // Keep only IDs that still exist in the current spot set
+      const persisted = new Set(storeSelectedIds.filter((id) => allIds.has(id)));
+      setSelectedSpotIds(persisted.size > 0 ? persisted : allIds);
+    } else {
+      setSelectedSpotIds(allIds);
+    }
+  }, [allPolygonSpots, storeSelectedIds]);
 
   // Apply spot filter
   const spots = useMemo(() => {
@@ -435,7 +449,11 @@ export function GrainSizeAnalysisDialog({ open, onClose }: GrainSizeAnalysisDial
             <RadioGroup
               row
               value={spotFilter}
-              onChange={(e) => setSpotFilter(e.target.value as 'all' | 'selected')}
+              onChange={(e) => {
+                const val = e.target.value as 'all' | 'selected';
+                setSpotFilter(val);
+                setGrainAnalysisSpotFilter(val);
+              }}
             >
               <FormControlLabel value="all" control={<Radio size="small" />} label="All spots" />
               <FormControlLabel value="selected" control={<Radio size="small" />} label="Selected spots" />
@@ -459,14 +477,21 @@ export function GrainSizeAnalysisDialog({ open, onClose }: GrainSizeAnalysisDial
                 <Button
                   size="small"
                   sx={{ minWidth: 0, fontSize: '0.7rem', px: 1, py: 0 }}
-                  onClick={() => setSelectedSpotIds(new Set(allPolygonSpots.map(({ spot }) => spot.id)))}
+                  onClick={() => {
+                    const allIds = allPolygonSpots.map(({ spot }) => spot.id);
+                    setSelectedSpotIds(new Set(allIds));
+                    setGrainAnalysisSelectedSpotIds(allIds);
+                  }}
                 >
                   Select All
                 </Button>
                 <Button
                   size="small"
                   sx={{ minWidth: 0, fontSize: '0.7rem', px: 1, py: 0 }}
-                  onClick={() => setSelectedSpotIds(new Set())}
+                  onClick={() => {
+                    setSelectedSpotIds(new Set());
+                    setGrainAnalysisSelectedSpotIds([]);
+                  }}
                 >
                   Select None
                 </Button>
@@ -492,6 +517,7 @@ export function GrainSizeAnalysisDialog({ open, onClose }: GrainSizeAnalysisDial
                           } else {
                             next.delete(spot.id);
                           }
+                          setGrainAnalysisSelectedSpotIds(Array.from(next));
                           return next;
                         });
                       }}
@@ -624,7 +650,7 @@ export function GrainSizeAnalysisDialog({ open, onClose }: GrainSizeAnalysisDial
                       Range: <strong>{formatSize(analysisResults.sizeStats.min)} - {formatSize(analysisResults.sizeStats.max)}</strong>
                     </Typography>
                     {analysisResults.sortingCoefficient !== null && (
-                      <Typography variant="body2">
+                      <Typography variant="body2" component="div">
                         Sorting: <strong>{analysisResults.sortingCoefficient.toFixed(2)}</strong>
                         {' '}
                         <Chip
