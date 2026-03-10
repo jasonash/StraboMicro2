@@ -3960,6 +3960,9 @@ export const useAppStore = create<AppState>()(
             state.micrographIndex = buildMicrographIndex(state.project);
             state.spotIndex = buildSpotIndex(state.project);
             console.log('[Store] Rehydrated indexes - micrographs:', state.micrographIndex.size, 'spots:', state.spotIndex.size);
+            // Restore grain analysis selection from project data
+            state.grainAnalysisSpotFilter = state.project.grainAnalysisSpotFilter || 'all';
+            state.grainAnalysisSelectedSpotIds = state.project.grainAnalysisSelectedSpotIds || [];
           }
           // Migrate legacy showSpotLabels boolean to spotLabelMode
           if (state && !state.spotLabelMode) {
