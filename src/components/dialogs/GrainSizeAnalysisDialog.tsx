@@ -150,8 +150,8 @@ export function GrainSizeAnalysisDialog({ open, onClose }: GrainSizeAnalysisDial
   // Dialog state
   const [rockType, setRockType] = useState<RockType>('sedimentary');
   const [scope, setScope] = useState<AnalysisScope>('current');
-  const [polygonOnly, setPolygonOnly] = useState(true);
-  const [classifiedOnly, setClassifiedOnly] = useState(false);
+  const [spotFilter, setSpotFilter] = useState<'all' | 'selected'>('all');
+  const [selectedSpotIds, setSelectedSpotIds] = useState<Set<string>>(new Set());
   const [useLogScale, setUseLogScale] = useState(false);
   const [showGrid, setShowGrid] = useState(true);
   const [copied, setCopied] = useState(false);
@@ -183,30 +183,31 @@ export function GrainSizeAnalysisDialog({ open, onClose }: GrainSizeAnalysisDial
     return all;
   }, [project, scope, currentMicrograph]);
 
-  // Collect and filter spots
-  const spots = useMemo(() => {
-    const allSpots: Array<{ spot: Spot; micrograph: MicrographMetadata }> = [];
+  // Collect all polygon spots (always polygon-only)
+  const allPolygonSpots = useMemo(() => {
+    const result: Array<{ spot: Spot; micrograph: MicrographMetadata }> = [];
 
     for (const micrograph of micrographsToAnalyze) {
       for (const spot of micrograph.spots || []) {
-        // Filter by geometry type
-        if (polygonOnly && spot.geometryType !== 'polygon') continue;
-
-        // Filter by classification
-        if (classifiedOnly) {
-          const hasMineral = spot.mineralogy?.minerals && spot.mineralogy.minerals.length > 0;
-          if (!hasMineral) continue;
-        }
-
-        // Skip archived spots
+        if (spot.geometryType !== 'polygon') continue;
         if (spot.archived) continue;
-
-        allSpots.push({ spot, micrograph });
+        result.push({ spot, micrograph });
       }
     }
 
-    return allSpots;
-  }, [micrographsToAnalyze, polygonOnly, classifiedOnly]);
+    return result;
+  }, [micrographsToAnalyze]);
+
+  // Initialize selectedSpotIds when available spots change
+  useEffect(() => {
+    setSelectedSpotIds(new Set(allPolygonSpots.map(({ spot }) => spot.id)));
+  }, [allPolygonSpots]);
+
+  // Apply spot filter
+  const spots = useMemo(() => {
+    if (spotFilter === 'all') return allPolygonSpots;
+    return allPolygonSpots.filter(({ spot }) => selectedSpotIds.has(spot.id));
+  }, [allPolygonSpots, spotFilter, selectedSpotIds]);
 
   // Calculate grain metrics
   const grainMetrics = useMemo(() => {
@@ -428,33 +429,97 @@ export function GrainSizeAnalysisDialog({ open, onClose }: GrainSizeAnalysisDial
             </RadioGroup>
           </FormControl>
 
-          {/* Filters */}
-          <Box>
-            <FormLabel component="legend" sx={{ fontSize: '0.75rem', mb: 0.5 }}>Filter</FormLabel>
-            <FormControlLabel
-              control={
-                <Checkbox
-                  checked={polygonOnly}
-                  onChange={(e) => setPolygonOnly(e.target.checked)}
-                  size="small"
-                />
-              }
-              label="Polygon spots only"
-            />
-            <FormControlLabel
-              control={
-                <Checkbox
-                  checked={classifiedOnly}
-                  onChange={(e) => setClassifiedOnly(e.target.checked)}
-                  size="small"
-                />
-              }
-              label="Classified only"
-            />
-          </Box>
+          {/* Spot Filter */}
+          <FormControl component="fieldset" size="small">
+            <FormLabel component="legend" sx={{ fontSize: '0.75rem' }}>Spots</FormLabel>
+            <RadioGroup
+              row
+              value={spotFilter}
+              onChange={(e) => setSpotFilter(e.target.value as 'all' | 'selected')}
+            >
+              <FormControlLabel value="all" control={<Radio size="small" />} label="All spots" />
+              <FormControlLabel value="selected" control={<Radio size="small" />} label="Selected spots" />
+            </RadioGroup>
+          </FormControl>
         </Stack>
 
         <Divider sx={{ mb: 2 }} />
+
+        {/* Spot Selection List */}
+        {spotFilter === 'selected' && allPolygonSpots.length > 0 && (
+          <Paper
+            variant="outlined"
+            sx={{ mb: 2, maxHeight: 160, display: 'flex', flexDirection: 'column' }}
+          >
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', px: 1.5, py: 0.5, borderBottom: '1px solid', borderColor: 'divider' }}>
+              <Typography variant="caption" color="text.secondary">
+                {selectedSpotIds.size} of {allPolygonSpots.length} polygon spots selected
+              </Typography>
+              <Stack direction="row" spacing={0.5}>
+                <Button
+                  size="small"
+                  sx={{ minWidth: 0, fontSize: '0.7rem', px: 1, py: 0 }}
+                  onClick={() => setSelectedSpotIds(new Set(allPolygonSpots.map(({ spot }) => spot.id)))}
+                >
+                  Select All
+                </Button>
+                <Button
+                  size="small"
+                  sx={{ minWidth: 0, fontSize: '0.7rem', px: 1, py: 0 }}
+                  onClick={() => setSelectedSpotIds(new Set())}
+                >
+                  Select None
+                </Button>
+              </Stack>
+            </Box>
+            <List dense disablePadding sx={{ overflow: 'auto', flex: 1 }}>
+              {allPolygonSpots.map(({ spot, micrograph }) => {
+                const mineral = spot.mineralogy?.minerals?.[0]?.name;
+                return (
+                  <ListItem
+                    key={spot.id}
+                    disablePadding
+                    sx={{ px: 1.5, py: 0 }}
+                  >
+                    <Checkbox
+                      size="small"
+                      checked={selectedSpotIds.has(spot.id)}
+                      onChange={(e) => {
+                        setSelectedSpotIds(prev => {
+                          const next = new Set(prev);
+                          if (e.target.checked) {
+                            next.add(spot.id);
+                          } else {
+                            next.delete(spot.id);
+                          }
+                          return next;
+                        });
+                      }}
+                      sx={{ p: 0.25, mr: 1 }}
+                    />
+                    <ListItemText
+                      primary={
+                        <Typography variant="body2" noWrap>
+                          {spot.name || spot.id.slice(0, 8)}
+                          {mineral && (
+                            <Typography component="span" variant="caption" color="text.secondary" sx={{ ml: 1 }}>
+                              {mineral}
+                            </Typography>
+                          )}
+                          {scope === 'all' && (
+                            <Typography component="span" variant="caption" color="text.secondary" sx={{ ml: 1 }}>
+                              — {micrograph.name}
+                            </Typography>
+                          )}
+                        </Typography>
+                      }
+                    />
+                  </ListItem>
+                );
+              })}
+            </List>
+          </Paper>
+        )}
 
         {/* Main Content */}
         {grainMetrics.length === 0 ? (
