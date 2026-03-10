@@ -1018,7 +1018,7 @@ export const useAppStore = create<AppState>()(
           }),
 
           saveProject: async () => {
-            const { project, isDirty, grainAnalysisSpotFilter, grainAnalysisSelectedSpotIds } = get();
+            const { project, isDirty } = get();
 
             if (!project) {
               console.warn('[Store] No project to save');
@@ -1028,16 +1028,6 @@ export const useAppStore = create<AppState>()(
             if (!isDirty) {
               console.log('[Store] Project is already clean, skipping save');
               return;
-            }
-
-            // Sync grain analysis selection to project before saving
-            if (grainAnalysisSpotFilter !== 'all' || grainAnalysisSelectedSpotIds.length > 0) {
-              project.grainAnalysisSpotFilter = grainAnalysisSpotFilter;
-              project.grainAnalysisSelectedSpotIds = grainAnalysisSelectedSpotIds;
-            } else {
-              // Clean up if back to defaults
-              delete project.grainAnalysisSpotFilter;
-              delete project.grainAnalysisSelectedSpotIds;
             }
 
             try {
@@ -2981,9 +2971,18 @@ export const useAppStore = create<AppState>()(
 
           // ========== GRAIN ANALYSIS SELECTION ACTIONS ==========
 
-          setGrainAnalysisSpotFilter: (filter) => set({ grainAnalysisSpotFilter: filter, isDirty: true }),
+          setGrainAnalysisSpotFilter: (filter) => {
+            // Sync to project in-place so all save paths (autosave, save-before-close) pick it up
+            const project = get().project;
+            if (project) project.grainAnalysisSpotFilter = filter;
+            set({ grainAnalysisSpotFilter: filter, isDirty: true });
+          },
 
-          setGrainAnalysisSelectedSpotIds: (ids) => set({ grainAnalysisSelectedSpotIds: ids, isDirty: true }),
+          setGrainAnalysisSelectedSpotIds: (ids) => {
+            const project = get().project;
+            if (project) project.grainAnalysisSelectedSpotIds = ids;
+            set({ grainAnalysisSelectedSpotIds: ids, isDirty: true });
+          },
 
           // ========== MINERAL COLOR ACTIONS ==========
 
