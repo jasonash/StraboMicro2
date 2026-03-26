@@ -607,4 +607,117 @@ export function colorIndexAdaptive(
   const percentage = totalPixels > 0 ? (foregroundCount / totalPixels) * 100 : 0;
   return { resultImage: result, percentage };
 }
-// TODO Phase 5: kMeansClustering
+// ─── Mode Tool (K-Means) ─────────────────────────────────────────────────────
+
+/** Number of K-means iterations (matches Swift: colorModeIterations = 5) */
+const KMEANS_ITERATIONS = 5;
+
+/**
+ * K-means color clustering for mineral phase segmentation.
+ *
+ * Matches Swift app behavior:
+ * 1. Use first numPhases of 6 fixed initial centroids
+ * 2. Run 5 iterations: assign pixels by Euclidean RGB distance, update centroids
+ * 3. Colorize output using predefined phase colors
+ * 4. Report percentage per phase
+ *
+ * @param imageData - Original RGBA ImageData
+ * @param numPhases - Number of phases (2–6)
+ * @returns Colorized ImageData and per-phase percentages
+ */
+export function kMeansClustering(
+  imageData: ImageData,
+  numPhases: number,
+): ModeToolResult {
+  const { data, width, height } = imageData;
+  const totalPixels = width * height;
+
+  // Initialize centroids (normalized 0–255)
+  const centroids: [number, number, number][] = [];
+  for (let k = 0; k < numPhases; k++) {
+    centroids.push([
+      INITIAL_CENTROIDS[k][0] * 255,
+      INITIAL_CENTROIDS[k][1] * 255,
+      INITIAL_CENTROIDS[k][2] * 255,
+    ]);
+  }
+
+  // Pixel assignment array
+  const assignments = new Uint8Array(totalPixels);
+
+  // K-means iterations
+  for (let iter = 0; iter < KMEANS_ITERATIONS; iter++) {
+    // Assignment step: assign each pixel to nearest centroid
+    for (let i = 0; i < totalPixels; i++) {
+      const offset = i * 4;
+      const r = data[offset];
+      const g = data[offset + 1];
+      const b = data[offset + 2];
+
+      let minDist = Infinity;
+      let bestK = 0;
+
+      for (let k = 0; k < numPhases; k++) {
+        const dr = r - centroids[k][0];
+        const dg = g - centroids[k][1];
+        const db = b - centroids[k][2];
+        const dist = dr * dr + dg * dg + db * db;
+
+        if (dist < minDist) {
+          minDist = dist;
+          bestK = k;
+        }
+      }
+
+      assignments[i] = bestK;
+    }
+
+    // Update step: recompute centroids as mean of assigned pixels
+    const sumR = new Float64Array(numPhases);
+    const sumG = new Float64Array(numPhases);
+    const sumB = new Float64Array(numPhases);
+    const counts = new Uint32Array(numPhases);
+
+    for (let i = 0; i < totalPixels; i++) {
+      const k = assignments[i];
+      const offset = i * 4;
+      sumR[k] += data[offset];
+      sumG[k] += data[offset + 1];
+      sumB[k] += data[offset + 2];
+      counts[k]++;
+    }
+
+    for (let k = 0; k < numPhases; k++) {
+      if (counts[k] > 0) {
+        centroids[k][0] = sumR[k] / counts[k];
+        centroids[k][1] = sumG[k] / counts[k];
+        centroids[k][2] = sumB[k] / counts[k];
+      }
+    }
+  }
+
+  // Build colorized output image
+  const result = new ImageData(width, height);
+  const out = result.data;
+
+  // Count final assignments for percentages
+  const finalCounts = new Uint32Array(numPhases);
+
+  for (let i = 0; i < totalPixels; i++) {
+    const k = assignments[i];
+    finalCounts[k]++;
+    const offset = i * 4;
+    out[offset] = PHASE_COLORS[k][0];
+    out[offset + 1] = PHASE_COLORS[k][1];
+    out[offset + 2] = PHASE_COLORS[k][2];
+    out[offset + 3] = 255;
+  }
+
+  // Calculate percentages
+  const phasePercentages: number[] = [];
+  for (let k = 0; k < numPhases; k++) {
+    phasePercentages.push((finalCounts[k] / totalPixels) * 100);
+  }
+
+  return { resultImage: result, phasePercentages };
+}
