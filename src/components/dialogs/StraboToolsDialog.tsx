@@ -1,0 +1,489 @@
+/**
+ * StraboTools Dialog
+ *
+ * A full-screen modal providing 4 geological image analysis tools:
+ * - Edge Fabric: gradient-based fabric orientation analysis
+ * - Color Index: threshold-based mineral area measurement
+ * - Edge Detect: Sobel edge detection visualization
+ * - Mode Tool: K-means color phase segmentation
+ *
+ * Follows the ImageComparatorDialog pattern for the full-screen modal,
+ * micrograph selector with thumbnails, and image loading via loadMedium.
+ */
+
+import { useEffect, useState, useRef, useCallback } from 'react';
+import {
+  Dialog,
+  Box,
+  Typography,
+  IconButton,
+  Tooltip,
+  Select,
+  MenuItem,
+  FormControl,
+  Tab,
+  Tabs,
+  CircularProgress,
+  ListItemIcon,
+  ListItemText,
+  Avatar,
+} from '@mui/material';
+import CloseIcon from '@mui/icons-material/Close';
+import LayersIcon from '@mui/icons-material/Layers';
+import { useAppStore } from '@/store';
+
+// ─── Types ───────────────────────────────────────────────────────────────────
+
+interface StraboToolsDialogProps {
+  open: boolean;
+  onClose: () => void;
+  initialMicrographId?: string | null;
+}
+
+type ToolTab = 'edge-fabric' | 'color-index' | 'edge-detect' | 'mode';
+
+interface MicrographOption {
+  id: string;
+  name: string;
+  sampleName?: string;
+  datasetName?: string;
+  thumbnail?: string;
+}
+
+// ─── Component ───────────────────────────────────────────────────────────────
+
+export function StraboToolsDialog({ open, onClose, initialMicrographId }: StraboToolsDialogProps) {
+  const project = useAppStore((state) => state.project);
+
+  // Tab state
+  const [activeTab, setActiveTab] = useState<ToolTab>('edge-fabric');
+
+  // Micrograph selection
+  const [selectedMicrographId, setSelectedMicrographId] = useState<string | null>(null);
+  const [micrographOptions, setMicrographOptions] = useState<MicrographOption[]>([]);
+
+  // Image loading
+  const [isLoading, setIsLoading] = useState(false);
+  const [imageLoaded, setImageLoaded] = useState(false);
+
+  // Canvas refs
+  const canvasContainerRef = useRef<HTMLDivElement>(null);
+  const displayCanvasRef = useRef<HTMLCanvasElement>(null);
+  const [canvasSize, setCanvasSize] = useState({ width: 800, height: 600 });
+
+  // Store the original ImageData for processing
+  const originalImageDataRef = useRef<ImageData | null>(null);
+  const imageDimensionsRef = useRef<{ width: number; height: number }>({ width: 0, height: 0 });
+
+  // ─── Reset state when dialog opens ───────────────────────────────────────
+
+  useEffect(() => {
+    if (open) {
+      setActiveTab('edge-fabric');
+      setSelectedMicrographId(initialMicrographId || null);
+      setImageLoaded(false);
+      originalImageDataRef.current = null;
+      imageDimensionsRef.current = { width: 0, height: 0 };
+    }
+  }, [open, initialMicrographId]);
+
+  // ─── Build micrograph options with thumbnails ────────────────────────────
+
+  useEffect(() => {
+    if (!open || !project) {
+      setMicrographOptions([]);
+      return;
+    }
+
+    const buildOptions = async () => {
+      const options: MicrographOption[] = [];
+      const folderPaths = await window.api?.getProjectFolderPaths(project.id);
+
+      for (const dataset of project.datasets || []) {
+        for (const sample of dataset.samples || []) {
+          for (const micro of sample.micrographs || []) {
+            options.push({
+              id: micro.id,
+              name: micro.name || 'Unnamed',
+              sampleName: sample.label || sample.sampleID || undefined,
+              datasetName: dataset.name || undefined,
+            });
+          }
+        }
+      }
+
+      // Load thumbnails in parallel
+      if (folderPaths) {
+        const thumbnailPromises = options.map(async (option) => {
+          try {
+            const imagePath = `${folderPaths.images}/${option.id}`;
+            const cacheInfo = await window.api?.checkImageCache(imagePath);
+            if (cacheInfo?.cached && cacheInfo.hash) {
+              const dataUrl = await window.api?.loadThumbnail(cacheInfo.hash);
+              return { id: option.id, dataUrl };
+            }
+          } catch {
+            // Ignore thumbnail load errors
+          }
+          return null;
+        });
+
+        const results = await Promise.all(thumbnailPromises);
+        for (const result of results) {
+          if (result?.dataUrl) {
+            const option = options.find((o) => o.id === result.id);
+            if (option) {
+              option.thumbnail = result.dataUrl;
+            }
+          }
+        }
+      }
+
+      setMicrographOptions(options);
+    };
+
+    buildOptions();
+  }, [open, project]);
+
+  // ─── Canvas resize observer ──────────────────────────────────────────────
+
+  useEffect(() => {
+    if (!canvasContainerRef.current) return;
+
+    const updateSize = () => {
+      if (canvasContainerRef.current) {
+        const rect = canvasContainerRef.current.getBoundingClientRect();
+        if (rect.width > 0 && rect.height > 0) {
+          setCanvasSize({ width: rect.width, height: rect.height });
+        }
+      }
+    };
+
+    updateSize();
+
+    const observer = new ResizeObserver(updateSize);
+    observer.observe(canvasContainerRef.current);
+
+    return () => observer.disconnect();
+  }, [open]);
+
+  // ─── Load selected micrograph image ──────────────────────────────────────
+
+  const loadMicrographImage = useCallback(async (micrographId: string) => {
+    if (!project) return;
+
+    setIsLoading(true);
+    setImageLoaded(false);
+    originalImageDataRef.current = null;
+
+    try {
+      const folderPaths = await window.api?.getProjectFolderPaths(project.id);
+      if (!folderPaths) return;
+
+      const imagePath = `${folderPaths.images}/${micrographId}`;
+      const tileResult = await window.api?.loadImageWithTiles(imagePath);
+      if (!tileResult?.hash) return;
+
+      // Load the 2048px medium resolution image
+      const mediumDataUrl = await window.api?.loadMedium(tileResult.hash);
+      if (!mediumDataUrl) return;
+
+      // Load into an Image element
+      const img = new Image();
+      await new Promise<void>((resolve, reject) => {
+        img.onload = () => resolve();
+        img.onerror = () => reject(new Error('Failed to load medium image'));
+        img.src = mediumDataUrl;
+      });
+
+      // Draw to offscreen canvas to get ImageData
+      const offscreen = document.createElement('canvas');
+      offscreen.width = img.naturalWidth;
+      offscreen.height = img.naturalHeight;
+      const offCtx = offscreen.getContext('2d');
+      if (!offCtx) return;
+
+      offCtx.drawImage(img, 0, 0);
+      const imageData = offCtx.getImageData(0, 0, offscreen.width, offscreen.height);
+
+      originalImageDataRef.current = imageData;
+      imageDimensionsRef.current = { width: offscreen.width, height: offscreen.height };
+
+      // Draw the original image to the display canvas
+      drawOriginalImage();
+
+      setImageLoaded(true);
+    } catch (err) {
+      console.error('StraboTools: Failed to load micrograph:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [project]);
+
+  // ─── Draw original image to display canvas (scaled to fit) ───────────────
+
+  const drawOriginalImage = useCallback(() => {
+    const canvas = displayCanvasRef.current;
+    const imageData = originalImageDataRef.current;
+    if (!canvas || !imageData) return;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const imgW = imageData.width;
+    const imgH = imageData.height;
+
+    // Set canvas to container size
+    canvas.width = canvasSize.width;
+    canvas.height = canvasSize.height;
+
+    // Calculate fit scale
+    const scaleX = canvasSize.width / imgW;
+    const scaleY = canvasSize.height / imgH;
+    const scale = Math.min(scaleX, scaleY) * 0.95;
+
+    // Center the image
+    const drawW = imgW * scale;
+    const drawH = imgH * scale;
+    const offsetX = (canvasSize.width - drawW) / 2;
+    const offsetY = (canvasSize.height - drawH) / 2;
+
+    // Clear and draw
+    ctx.fillStyle = '#1a1a1a';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Create a temporary canvas with the imageData to draw scaled
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = imgW;
+    tempCanvas.height = imgH;
+    const tempCtx = tempCanvas.getContext('2d');
+    if (tempCtx) {
+      tempCtx.putImageData(imageData, 0, 0);
+      ctx.drawImage(tempCanvas, offsetX, offsetY, drawW, drawH);
+    }
+  }, [canvasSize]);
+
+  // Redraw when canvas size changes or image loads
+  useEffect(() => {
+    if (imageLoaded) {
+      drawOriginalImage();
+    }
+  }, [canvasSize, imageLoaded, drawOriginalImage]);
+
+  // Load image when micrograph selection changes
+  useEffect(() => {
+    if (selectedMicrographId && open) {
+      loadMicrographImage(selectedMicrographId);
+    }
+  }, [selectedMicrographId, open, loadMicrographImage]);
+
+  // ─── Handle micrograph selection ─────────────────────────────────────────
+
+  const handleMicrographChange = useCallback((newId: string | null) => {
+    setSelectedMicrographId(newId);
+    setImageLoaded(false);
+    originalImageDataRef.current = null;
+  }, []);
+
+  // ─── Handle tab change ──────────────────────────────────────────────────
+
+  const handleTabChange = useCallback((_: React.SyntheticEvent, newValue: ToolTab) => {
+    setActiveTab(newValue);
+  }, []);
+
+  // ─── Handle escape key ──────────────────────────────────────────────────
+
+  useEffect(() => {
+    if (!open) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [open, onClose]);
+
+  // ─── Tab content renderers ──────────────────────────────────────────────
+
+  const renderTabContent = () => {
+    if (!imageLoaded) return null;
+
+    switch (activeTab) {
+      case 'edge-fabric':
+        return (
+          <Box sx={{ p: 2, color: 'text.secondary' }}>
+            <Typography variant="body2">
+              Edge Fabric analysis — coming in Phase 3
+            </Typography>
+          </Box>
+        );
+      case 'color-index':
+        return (
+          <Box sx={{ p: 2, color: 'text.secondary' }}>
+            <Typography variant="body2">
+              Color Index tool — coming in Phase 4
+            </Typography>
+          </Box>
+        );
+      case 'edge-detect':
+        return (
+          <Box sx={{ p: 2, color: 'text.secondary' }}>
+            <Typography variant="body2">
+              Edge Detect tool — coming in Phase 2
+            </Typography>
+          </Box>
+        );
+      case 'mode':
+        return (
+          <Box sx={{ p: 2, color: 'text.secondary' }}>
+            <Typography variant="body2">
+              Mode Tool — coming in Phase 5
+            </Typography>
+          </Box>
+        );
+      default:
+        return null;
+    }
+  };
+
+  // ─── Render ─────────────────────────────────────────────────────────────
+
+  return (
+    <Dialog
+      open={open}
+      onClose={onClose}
+      fullScreen
+      PaperProps={{
+        sx: { bgcolor: 'background.default' },
+      }}
+    >
+      {/* Header */}
+      <Box
+        sx={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          p: 1,
+          borderBottom: 1,
+          borderColor: 'divider',
+          flexShrink: 0,
+        }}
+      >
+        <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, ml: 1 }}>
+          StraboTools
+        </Typography>
+
+        {/* Micrograph selector */}
+        <FormControl size="small" sx={{ minWidth: 300 }}>
+          <Select
+            value={selectedMicrographId || ''}
+            onChange={(e) => handleMicrographChange(e.target.value || null)}
+            displayEmpty
+            renderValue={(selected) => {
+              if (!selected) return <em>Select micrograph...</em>;
+              const option = micrographOptions.find((o) => o.id === selected);
+              return option?.name || 'Unknown';
+            }}
+          >
+            <MenuItem value="">
+              <em>None</em>
+            </MenuItem>
+            {micrographOptions.map((option) => (
+              <MenuItem key={option.id} value={option.id}>
+                <ListItemIcon sx={{ minWidth: 40 }}>
+                  <Avatar
+                    src={option.thumbnail}
+                    variant="rounded"
+                    sx={{ width: 32, height: 32 }}
+                  >
+                    <LayersIcon fontSize="small" />
+                  </Avatar>
+                </ListItemIcon>
+                <ListItemText
+                  primary={option.name}
+                  secondary={option.sampleName}
+                  primaryTypographyProps={{ noWrap: true }}
+                  secondaryTypographyProps={{ noWrap: true }}
+                />
+              </MenuItem>
+            ))}
+          </Select>
+        </FormControl>
+
+        <Tooltip title="Close (Escape)">
+          <IconButton onClick={onClose}>
+            <CloseIcon />
+          </IconButton>
+        </Tooltip>
+      </Box>
+
+      {/* Tab bar */}
+      <Box sx={{ borderBottom: 1, borderColor: 'divider', flexShrink: 0 }}>
+        <Tabs
+          value={activeTab}
+          onChange={handleTabChange}
+          variant="standard"
+          sx={{ minHeight: 40, px: 1 }}
+        >
+          <Tab label="Edge Fabric" value="edge-fabric" sx={{ minHeight: 40, py: 0 }} />
+          <Tab label="Color Index" value="color-index" sx={{ minHeight: 40, py: 0 }} />
+          <Tab label="Edge Detect" value="edge-detect" sx={{ minHeight: 40, py: 0 }} />
+          <Tab label="Mode" value="mode" sx={{ minHeight: 40, py: 0 }} />
+        </Tabs>
+      </Box>
+
+      {/* Main content area */}
+      <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        {/* Canvas area */}
+        <Box
+          ref={canvasContainerRef}
+          sx={{
+            flex: 1,
+            position: 'relative',
+            overflow: 'hidden',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          {isLoading && (
+            <Box
+              sx={{
+                position: 'absolute',
+                inset: 0,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                zIndex: 10,
+                bgcolor: 'rgba(0, 0, 0, 0.5)',
+              }}
+            >
+              <CircularProgress />
+            </Box>
+          )}
+
+          {!selectedMicrographId && !isLoading && (
+            <Typography variant="body1" color="text.secondary">
+              Select a micrograph to begin analysis
+            </Typography>
+          )}
+
+          <canvas
+            ref={displayCanvasRef}
+            style={{
+              display: imageLoaded ? 'block' : 'none',
+              width: '100%',
+              height: '100%',
+            }}
+          />
+        </Box>
+
+        {/* Tool-specific controls (below canvas) */}
+        {renderTabContent()}
+      </Box>
+    </Dialog>
+  );
+}

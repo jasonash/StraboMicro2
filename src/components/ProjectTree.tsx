@@ -1067,6 +1067,14 @@ export function ProjectTree() {
           >
             Edit Micrograph Metadata
           </MenuItem>
+          <MenuItem
+            onClick={() => {
+              window.dispatchEvent(new CustomEvent('open-strabo-tools', { detail: micrograph.id }));
+              setMicrographOptionsAnchor({ ...micrographOptionsAnchor, [micrograph.id]: null });
+            }}
+          >
+            Open in StraboTools
+          </MenuItem>
           {!isReference && (
             <>
               <MenuItem
