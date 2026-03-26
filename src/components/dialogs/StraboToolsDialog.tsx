@@ -592,14 +592,26 @@ export function StraboToolsDialog({ open, onClose, initialMicrographId }: Strabo
 
       addMicrograph(sampleId, newMicrograph);
 
-      // Generate composite thumbnail in background
+      // Generate composite thumbnail and notify tree to reload
       try {
         const currentProject = useAppStore.getState().project;
         if (currentProject) {
           await window.api?.generateCompositeThumbnail(project.id, newMicrographId, currentProject);
+          window.dispatchEvent(
+            new CustomEvent('thumbnail-generated', { detail: { micrographId: newMicrographId } })
+          );
+
+          // Also regenerate parent's thumbnail if this is a child micrograph
+          const micro = findMicrograph(selectedMicrographId);
+          if (micro?.parentID) {
+            await window.api?.generateCompositeThumbnail(project.id, micro.parentID, currentProject);
+            window.dispatchEvent(
+              new CustomEvent('thumbnail-generated', { detail: { micrographId: micro.parentID } })
+            );
+          }
         }
       } catch {
-        // Non-fatal — thumbnail will generate on next project load
+        // Non-fatal
       }
 
       setSaveProgress({ stage: 'Complete!', percent: 100 });
@@ -673,11 +685,23 @@ export function StraboToolsDialog({ open, onClose, initialMicrographId }: Strabo
         imageHeight: result.height,
       });
 
-      // Regenerate composite thumbnail
+      // Regenerate composite thumbnails (this micrograph + its parent if applicable)
       try {
         const currentProject = useAppStore.getState().project;
         if (currentProject) {
           await window.api?.generateCompositeThumbnail(project.id, selectedMicrographId, currentProject);
+          window.dispatchEvent(
+            new CustomEvent('thumbnail-generated', { detail: { micrographId: selectedMicrographId } })
+          );
+
+          // Also regenerate the parent's composite thumbnail if this is a child micrograph
+          const micro = findMicrograph(selectedMicrographId);
+          if (micro?.parentID) {
+            await window.api?.generateCompositeThumbnail(project.id, micro.parentID, currentProject);
+            window.dispatchEvent(
+              new CustomEvent('thumbnail-generated', { detail: { micrographId: micro.parentID } })
+            );
+          }
         }
       } catch {
         // Non-fatal
