@@ -380,7 +380,7 @@ export function StraboToolsDialog({ open, onClose, initialMicrographId }: Strabo
         const sobel = ensureSobelResult();
         const fabric = ensureFabricResult();
         if (!sobel || !fabric) return;
-        const result = renderEdgeFabricImage(sobel, fabric);
+        const result = renderEdgeFabricImage(originalImageDataRef.current, sobel, fabric);
         drawImageDataToCanvas(result);
         break;
       }

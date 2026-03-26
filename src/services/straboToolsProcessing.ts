@@ -323,31 +323,17 @@ function eigVecValForEllipse(
  * Matches the Swift app's ellipse rendering with dot-pattern parametric curves.
  */
 export function renderEdgeFabricImage(
+  originalImage: ImageData,
   sobelResult: SobelResult,
   _fabricResult: EdgeFabricResult,
 ): ImageData {
-  const { magnitude, width: sobelWidth, height: sobelHeight, gx, gy } = sobelResult;
+  const { gx, gy } = sobelResult;
 
-  // First, build the magnitude background image
-  let maxMag = 0;
-  for (let i = 0; i < magnitude.length; i++) {
-    if (magnitude[i] > maxMag) maxMag = magnitude[i];
-  }
-  if (maxMag === 0) maxMag = 1;
-
-  const result = new ImageData(sobelWidth, sobelHeight);
+  // Use the original color image as background
+  const imgW = originalImage.width;
+  const imgH = originalImage.height;
+  const result = new ImageData(new Uint8ClampedArray(originalImage.data), imgW, imgH);
   const data = result.data;
-
-  // Draw magnitude as background (sqrt-compressed grayscale)
-  for (let i = 0; i < magnitude.length; i++) {
-    const val = Math.round(Math.sqrt(magnitude[i] / maxMag) * 255);
-    const invVal = 255 - val; // Invert so edges are dark
-    const offset = i * 4;
-    data[offset] = invVal;
-    data[offset + 1] = invVal;
-    data[offset + 2] = invVal;
-    data[offset + 3] = 255;
-  }
 
   // Compute eigenvectors/eigenvalues for ellipse rendering
   const n = gx.length;
@@ -369,8 +355,8 @@ export function renderEdgeFabricImage(
 
   const { vec, val } = eigVecValForEllipse(xxCov, xyCov, yyCov);
 
-  const xCenter = Math.round(sobelWidth / 2);
-  const yCenter = Math.round(sobelHeight / 2);
+  const xCenter = Math.round(imgW / 2);
+  const yCenter = Math.round(imgH / 2);
   const ellipseMultiplier = xCenter / 2;
 
   // Parametric ellipse: [ax*sin(t) + bx*cos(t), ay*sin(t) + by*cos(t)]
@@ -396,14 +382,14 @@ export function renderEdgeFabricImage(
   // Draw yellow (outer) ellipse — uses val[0] for bx,by (matching Swift first draw)
   const bxYellow = vec[0][1] * val[0];
   const byYellow = vec[1][1] * val[0];
-  drawEllipseOnImageData(data, sobelWidth, sobelHeight, xCenter, yCenter,
+  drawEllipseOnImageData(data, imgW, imgH, xCenter, yCenter,
     ax, ay, bxYellow, byYellow, maxVal, ellipseMultiplier, numPoints,
     255, 255, 0); // Yellow
 
   // Draw red (inner) ellipse — uses val[1] for bx,by (matching Swift second draw)
   const bxRed = vec[0][1] * val[1];
   const byRed = vec[1][1] * val[1];
-  drawEllipseOnImageData(data, sobelWidth, sobelHeight, xCenter, yCenter,
+  drawEllipseOnImageData(data, imgW, imgH, xCenter, yCenter,
     ax, ay, bxRed, byRed, maxVal, ellipseMultiplier, numPoints,
     255, 0, 0); // Red
 
