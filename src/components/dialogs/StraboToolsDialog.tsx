@@ -97,6 +97,10 @@ export function StraboToolsDialog({ open, onClose, initialMicrographId }: Strabo
   // Cached Edge Fabric result
   const fabricResultRef = useRef<EdgeFabricResult | null>(null);
 
+  // Edge Fabric display state
+  const [fabricAzimuth, setFabricAzimuth] = useState<number | null>(null);
+  const [fabricAxialRatio, setFabricAxialRatio] = useState<number | null>(null);
+
   // Edge Detect state
   const [edgeThreshold, setEdgeThreshold] = useState(128);
 
@@ -121,6 +125,8 @@ export function StraboToolsDialog({ open, onClose, initialMicrographId }: Strabo
       setActiveTab('edge-fabric');
       setSelectedMicrographId(initialMicrographId || null);
       setImageLoaded(false);
+      setFabricAzimuth(null);
+      setFabricAxialRatio(null);
       setEdgeThreshold(128);
       setCiThreshold(128);
       setCiAdaptive(false);
@@ -382,6 +388,8 @@ export function StraboToolsDialog({ open, onClose, initialMicrographId }: Strabo
         if (!sobel || !fabric) return;
         const result = renderEdgeFabricImage(originalImageDataRef.current, sobel, fabric);
         drawImageDataToCanvas(result);
+        setFabricAzimuth(fabric.azimuth);
+        setFabricAxialRatio(fabric.axialRatio);
         break;
       }
       case 'color-index': {
@@ -473,19 +481,17 @@ export function StraboToolsDialog({ open, onClose, initialMicrographId }: Strabo
     if (!imageLoaded) return null;
 
     switch (activeTab) {
-      case 'edge-fabric': {
-        const fabric = fabricResultRef.current;
+      case 'edge-fabric':
         return (
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 4, px: 3, py: 1.5 }}>
             <Typography variant="body2">
-              <strong>Azimuth:</strong> {fabric ? fabric.azimuth.toFixed(2) : '—'}°
+              <strong>Azimuth:</strong> {fabricAzimuth !== null ? fabricAzimuth.toFixed(2) : '—'}°
             </Typography>
             <Typography variant="body2">
-              <strong>Axial Ratio:</strong> {fabric ? fabric.axialRatio.toFixed(2) : '—'}
+              <strong>Axial Ratio:</strong> {fabricAxialRatio !== null ? fabricAxialRatio.toFixed(2) : '—'}
             </Typography>
           </Box>
         );
-      }
       case 'color-index':
         return (
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, px: 3, py: 1.5, flexWrap: 'wrap' }}>
