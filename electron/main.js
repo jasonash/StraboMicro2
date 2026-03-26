@@ -137,6 +137,7 @@ const autoUpdaterModule = require('./autoUpdater');
 const logService = require('./logService');
 const pointCountStorage = require('./pointCountStorage');
 const fastsamService = require('./fastsamService');
+const straboToolsMain = require('./straboToolsMain');
 
 // Handle EPIPE errors at process level (prevents crash on broken stdout pipe)
 process.stdout.on('error', (err) => {
@@ -6248,6 +6249,37 @@ ipcMain.handle('fastsam:load-model-bytes', async () => {
     return { success: true, buffer };
   } catch (error) {
     log.error('[FastSAM] Error reading model file:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// ========== StraboTools Full-Resolution Processing ==========
+
+ipcMain.handle('strabo-tools:process-full-resolution', async (event, params) => {
+  try {
+    const result = await straboToolsMain.processFullResolution({
+      ...params,
+      progressCallback: (progress) => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('strabo-tools:progress', progress);
+        }
+      },
+    });
+    return { success: true, ...result };
+  } catch (error) {
+    log.error('[StraboTools] Full-resolution processing error:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('strabo-tools:overwrite-image', async (event, { identifier, targetPath }) => {
+  try {
+    const scratchPath = scratchSpace.getScratchPath(identifier);
+    await fs.promises.copyFile(scratchPath, targetPath);
+    try { await fs.promises.unlink(scratchPath); } catch { /* ignore cleanup failure */ }
+    return { success: true };
+  } catch (error) {
+    log.error('[StraboTools] Image overwrite error:', error);
     return { success: false, error: error.message };
   }
 });

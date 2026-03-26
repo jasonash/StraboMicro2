@@ -765,6 +765,25 @@ interface Window {
     onImageComparator: (callback: () => void) => Unsubscribe;
     onGrainSizeAnalysis: (callback: () => void) => Unsubscribe;
     onStraboTools: (callback: () => void) => Unsubscribe;
+    straboTools: {
+      processFullResolution: (params: {
+        imagePath: string;
+        tool: 'edge-fabric' | 'color-index' | 'edge-detect' | 'mode';
+        toolParams: Record<string, unknown>;
+      }) => Promise<{
+        success: boolean;
+        identifier?: string;
+        width?: number;
+        height?: number;
+        analyticalResults?: Record<string, unknown>;
+        error?: string;
+      }>;
+      overwriteImage: (params: {
+        identifier: string;
+        targetPath: string;
+      }) => Promise<{ success: boolean; error?: string }>;
+      onProgress: (callback: (progress: { stage: string; percent: number }) => void) => Unsubscribe;
+    };
     onConfigureMineralColors: (callback: () => void) => Unsubscribe;
     onSpotColorMode: (callback: (mode: 'spot-color' | 'mineral-color') => void) => Unsubscribe;
 

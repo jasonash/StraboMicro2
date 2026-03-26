@@ -430,6 +430,8 @@ function serializeMicrograph(micrograph) {
     siblingScaleFactor: roundForDb(micrograph.siblingScaleFactor) || undefined,
     // Sketch overlay layers (new feature - not in legacy schema)
     sketchLayers: micrograph.sketchLayers || undefined,
+    // StraboTools analysis results
+    straboTools: cleanObjectForDb(micrograph.straboTools),
   };
 }
 
@@ -628,6 +630,8 @@ function deserializeMicrograph(micrograph) {
     siblingScaleFactor: micrograph.siblingScaleFactor,
     // Sketch overlay layers (new feature - not in legacy schema)
     sketchLayers: micrograph.sketchLayers,
+    // StraboTools analysis results
+    straboTools: micrograph.straboTools,
   };
 }
 

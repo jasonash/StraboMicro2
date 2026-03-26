@@ -266,6 +266,10 @@ export interface MicrographMetadata {
   /** Sketch overlay layers for freeform annotations on this micrograph */
   sketchLayers?: SketchLayer[] | null;
 
+  // ========== STRABO TOOLS ANALYSIS RESULTS ==========
+  /** Results from StraboTools image analysis (Edge Fabric, Color Index, Edge Detect, Mode) */
+  straboTools?: StraboToolsResult | null;
+
   // UI state (not serialized, runtime only)
   isExpanded?: boolean | null;
   isSpotExpanded?: boolean | null;
@@ -477,6 +481,31 @@ export interface SketchText {
  * A sketch layer containing freeform annotations
  * Think of it as an "acetate overlay" on top of the micrograph
  */
+// ─── StraboTools Analysis Results ──────────────────────────────────────────
+
+export interface StraboToolsResult {
+  /** Which tool generated this result */
+  tool: 'edge-fabric' | 'color-index' | 'edge-detect' | 'mode';
+  /** ISO timestamp of when analysis was run */
+  timestamp: string;
+  /** ID of the original micrograph this analysis was derived from (for siblings) */
+  sourceMicrographId?: string | null;
+  // Edge Fabric results
+  azimuth?: number | null;
+  axialRatio?: number | null;
+  // Color Index results
+  colorIndexPercentage?: number | null;
+  colorIndexThreshold?: number | null;
+  colorIndexMode?: 'global' | 'adaptive' | null;
+  // Edge Detect results
+  edgeDetectThreshold?: number | null;
+  // Mode Tool results
+  modeNumPhases?: number | null;
+  modePhasePercentages?: number[] | null;
+}
+
+// ─── Sketch Overlay Types ──────────────────────────────────────────────────
+
 export interface SketchLayer {
   /** Unique identifier */
   id: string;
