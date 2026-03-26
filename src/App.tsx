@@ -27,6 +27,7 @@ import { PointCountDialog } from './components/dialogs/PointCountDialog';
 import { GrainDetectionDialog } from './components/dialogs/GrainDetectionDialog';
 import { ImageComparatorDialog } from './components/dialogs/ImageComparatorDialog';
 import { GrainSizeAnalysisDialog } from './components/dialogs/GrainSizeAnalysisDialog';
+import { StraboToolsDialog } from './components/dialogs/StraboToolsDialog';
 import { MineralColorDialog } from './components/dialogs/MineralColorDialog';
 import { QuickEditEntryDialog } from './components/dialogs/QuickEditEntryDialog';
 import { QuickApplyPresetsDialog } from './components/dialogs/QuickApplyPresetsDialog';
@@ -188,6 +189,8 @@ function App() {
   const [isGrainDetectionDialogOpen, setIsGrainDetectionDialogOpen] = useState(false);
   const [isImageComparatorDialogOpen, setIsImageComparatorDialogOpen] = useState(false);
   const [isGrainSizeAnalysisDialogOpen, setIsGrainSizeAnalysisDialogOpen] = useState(false);
+  const [isStraboToolsDialogOpen, setIsStraboToolsDialogOpen] = useState(false);
+  const [straboToolsInitialMicrographId, setStraboToolsInitialMicrographId] = useState<string | null>(null);
   const [isQuickEditEntryDialogOpen, setIsQuickEditEntryDialogOpen] = useState(false);
   const [isQuickApplyPresetsDialogOpen, setIsQuickApplyPresetsDialogOpen] = useState(false);
   const [isMineralColorDialogOpen, setIsMineralColorDialogOpen] = useState(false);
@@ -464,10 +467,25 @@ function App() {
       setIsGrainSizeAnalysisDialogOpen(true);
     }));
 
+    // StraboTools menu item (Tools menu)
+    unsubscribers.push(window.api.onStraboTools(() => {
+      setStraboToolsInitialMicrographId(null);
+      setIsStraboToolsDialogOpen(true);
+    }));
+
     // Grain Size Analysis from PropertiesPanel summary
     const handleOpenGrainAnalysis = () => setIsGrainSizeAnalysisDialogOpen(true);
     window.addEventListener('open-grain-size-analysis', handleOpenGrainAnalysis);
     unsubscribers.push(() => window.removeEventListener('open-grain-size-analysis', handleOpenGrainAnalysis));
+
+    // StraboTools from ProjectTree context menu
+    const handleOpenStraboTools = (e: Event) => {
+      const micrographId = (e as CustomEvent<string>).detail;
+      setStraboToolsInitialMicrographId(micrographId || null);
+      setIsStraboToolsDialogOpen(true);
+    };
+    window.addEventListener('open-strabo-tools', handleOpenStraboTools);
+    unsubscribers.push(() => window.removeEventListener('open-strabo-tools', handleOpenStraboTools));
 
     // Configure Mineral Colors menu item (Tools menu)
     if (window.api.onConfigureMineralColors) {
@@ -1343,6 +1361,14 @@ function App() {
       <ImageComparatorDialog
         open={isImageComparatorDialogOpen}
         onClose={() => setIsImageComparatorDialogOpen(false)}
+      />
+      <StraboToolsDialog
+        open={isStraboToolsDialogOpen}
+        onClose={() => {
+          setIsStraboToolsDialogOpen(false);
+          setStraboToolsInitialMicrographId(null);
+        }}
+        initialMicrographId={straboToolsInitialMicrographId}
       />
       <GrainSizeAnalysisDialog
         open={isGrainSizeAnalysisDialogOpen}

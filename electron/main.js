@@ -766,6 +766,15 @@ function createWindow() {
             }
           }
         },
+        {
+          label: 'StraboTools...',
+          accelerator: 'CmdOrCtrl+Shift+T',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('menu:strabo-tools');
+            }
+          }
+        },
       ],
     },
     {

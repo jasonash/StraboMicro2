@@ -642,6 +642,11 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('menu:configure-mineral-colors', handler);
     return () => ipcRenderer.removeListener('menu:configure-mineral-colors', handler);
   },
+  onStraboTools: (callback) => {
+    const handler = () => callback();
+    ipcRenderer.on('menu:strabo-tools', handler);
+    return () => ipcRenderer.removeListener('menu:strabo-tools', handler);
+  },
   onSpotColorMode: (callback) => {
     const handler = (event, mode) => callback(mode);
     ipcRenderer.on('view:spot-color-mode', handler);
