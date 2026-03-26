@@ -657,6 +657,9 @@ export function StraboToolsDialog({ open, onClose, initialMicrographId }: Strabo
         await window.api?.clearImageCache(cacheInfo.hash);
       }
 
+      // Re-tile the new image so it's ready for viewing
+      await window.api?.loadImageWithTiles(imagePath);
+
       // Update micrograph metadata
       const straboToolsResult: StraboToolsResult = {
         ...result.analyticalResults as Partial<StraboToolsResult>,
@@ -679,6 +682,13 @@ export function StraboToolsDialog({ open, onClose, initialMicrographId }: Strabo
       } catch {
         // Non-fatal
       }
+
+      // Force the main viewer to reload by re-selecting the micrograph
+      const selectMicrograph = useAppStore.getState().selectMicrograph;
+      const micrographIdToReload = selectedMicrographId;
+      // Brief deselect + reselect forces TiledViewer to discard cached tiles and reload
+      await selectMicrograph(null);
+      await selectMicrograph(micrographIdToReload);
 
       setSaveProgress({ stage: 'Complete!', percent: 100 });
     } catch (err) {
