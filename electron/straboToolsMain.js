@@ -7,7 +7,7 @@
  */
 
 const sharp = require('sharp');
-const { v4: uuidv4 } = require('uuid');
+const crypto = require('crypto');
 const scratchSpace = require('./scratchSpace');
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -525,7 +525,7 @@ async function processFullResolution({ imagePath, tool, toolParams, progressCall
 
   // Step 3: Save result as JPEG to scratch space
   progress('Saving result...', 0);
-  const identifier = uuidv4();
+  const identifier = crypto.randomUUID();
   const scratchPath = scratchSpace.getScratchPath(identifier);
 
   await sharp(resultBuffer, {
