@@ -24,16 +24,28 @@ import {
   Tab,
   Tabs,
   Slider,
+  Button,
+  ButtonGroup,
   ToggleButton,
   ToggleButtonGroup,
   CircularProgress,
+  LinearProgress,
   ListItemIcon,
   ListItemText,
   Avatar,
+  Popper,
+  Grow,
+  Paper,
+  ClickAwayListener,
+  MenuList,
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
+import SaveIcon from '@mui/icons-material/Save';
+import ArrowDropDownIcon from '@mui/icons-material/ArrowDropDown';
 import LayersIcon from '@mui/icons-material/Layers';
+import { v4 as uuidv4 } from 'uuid';
 import { useAppStore } from '@/store';
+import type { MicrographMetadata, StraboToolsResult } from '@/types/project-types';
 import {
   toGrayscale,
   applySobel,
@@ -117,6 +129,17 @@ export function StraboToolsDialog({ open, onClose, initialMicrographId }: Strabo
   // Mode Tool state
   const [modeNumPhases, setModeNumPhases] = useState(4);
   const [modePercentages, setModePercentages] = useState<number[]>([]);
+
+  // Save state
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveProgress, setSaveProgress] = useState<{ stage: string; percent: number } | null>(null);
+  const [saveMenuOpen, setSaveMenuOpen] = useState(false);
+  const [showReplaceWarning, setShowReplaceWarning] = useState(false);
+  const saveAnchorRef = useRef<HTMLDivElement>(null);
+
+  // Store actions
+  const addMicrograph = useAppStore((state) => state.addMicrograph);
+  const updateMicrographMetadata = useAppStore((state) => state.updateMicrographMetadata);
 
   // ─── Reset state when dialog opens ───────────────────────────────────────
 
@@ -454,6 +477,221 @@ export function StraboToolsDialog({ open, onClose, initialMicrographId }: Strabo
     avgMatrixRef.current = null;
   }, []);
 
+  // ─── Tool display names ──────────────────────────────────────────────────
+
+  const TOOL_DISPLAY_NAMES: Record<ToolTab, string> = {
+    'edge-fabric': 'Edge Fabric',
+    'color-index': 'Color Index',
+    'edge-detect': 'Edge Detect',
+    'mode': 'Mode',
+  };
+
+  // ─── Build tool params from current UI state ──────────────────────────────
+
+  const getToolParams = useCallback((): Record<string, unknown> => {
+    switch (activeTab) {
+      case 'edge-detect': return { threshold: edgeThreshold };
+      case 'edge-fabric': return {};
+      case 'color-index': return { threshold: ciThreshold, adaptive: ciAdaptive, highlightColor: ciHighlightColor };
+      case 'mode': return { numPhases: modeNumPhases };
+      default: return {};
+    }
+  }, [activeTab, edgeThreshold, ciThreshold, ciAdaptive, ciHighlightColor, modeNumPhases]);
+
+  // ─── Find sample ID for a micrograph ──────────────────────────────────────
+
+  const findSampleIdForMicrograph = useCallback((micrographId: string): string | null => {
+    if (!project) return null;
+    for (const dataset of project.datasets || []) {
+      for (const sample of dataset.samples || []) {
+        for (const micro of sample.micrographs || []) {
+          if (micro.id === micrographId) return sample.id;
+        }
+      }
+    }
+    return null;
+  }, [project]);
+
+  // ─── Find source micrograph ───────────────────────────────────────────────
+
+  const findMicrograph = useCallback((micrographId: string): MicrographMetadata | null => {
+    if (!project) return null;
+    for (const dataset of project.datasets || []) {
+      for (const sample of dataset.samples || []) {
+        for (const micro of sample.micrographs || []) {
+          if (micro.id === micrographId) return micro;
+        }
+      }
+    }
+    return null;
+  }, [project]);
+
+  // ─── Save as Sibling ─────────────────────────────────────────────────────
+
+  const handleSaveAsSibling = useCallback(async () => {
+    if (!project || !selectedMicrographId || isSaving) return;
+
+    const sampleId = findSampleIdForMicrograph(selectedMicrographId);
+    const sourceMicro = findMicrograph(selectedMicrographId);
+    if (!sampleId || !sourceMicro) return;
+
+    setIsSaving(true);
+    setSaveProgress({ stage: 'Preparing...', percent: 0 });
+
+    const unsubProgress = window.api?.straboTools.onProgress((progress) => {
+      setSaveProgress(progress);
+    });
+
+    try {
+      const folderPaths = await window.api?.getProjectFolderPaths(project.id);
+      if (!folderPaths) return;
+
+      const imagePath = `${folderPaths.images}/${selectedMicrographId}`;
+      const toolParams = getToolParams();
+
+      const result = await window.api?.straboTools.processFullResolution({
+        imagePath,
+        tool: activeTab,
+        toolParams,
+      });
+
+      if (!result?.success || !result.identifier) {
+        console.error('StraboTools: Processing failed:', result?.error);
+        return;
+      }
+
+      // Move processed image to project folder
+      const newMicrographId = uuidv4();
+      await window.api?.moveFromScratch(result.identifier, project.id, newMicrographId);
+
+      // Build metadata for new micrograph
+      const straboToolsResult: StraboToolsResult = {
+        ...result.analyticalResults as Partial<StraboToolsResult>,
+        tool: activeTab,
+        timestamp: new Date().toISOString(),
+        sourceMicrographId: selectedMicrographId,
+      };
+
+      const newMicrograph: MicrographMetadata = {
+        id: newMicrographId,
+        name: `${sourceMicro.name || 'Unnamed'} - ${TOOL_DISPLAY_NAMES[activeTab]}`,
+        imagePath: newMicrographId,
+        imageWidth: result.width,
+        imageHeight: result.height,
+        // Inherit from source
+        parentID: sourceMicro.parentID,
+        offsetInParent: sourceMicro.offsetInParent,
+        rotation: sourceMicro.rotation,
+        scaleX: sourceMicro.scaleX,
+        scaleY: sourceMicro.scaleY,
+        scalePixelsPerCentimeter: sourceMicro.scalePixelsPerCentimeter,
+        instrument: sourceMicro.instrument ? { ...sourceMicro.instrument } : undefined,
+        // Analysis results
+        straboTools: straboToolsResult,
+      };
+
+      addMicrograph(sampleId, newMicrograph);
+
+      // Generate composite thumbnail in background
+      try {
+        const currentProject = useAppStore.getState().project;
+        if (currentProject) {
+          await window.api?.generateCompositeThumbnail(project.id, newMicrographId, currentProject);
+        }
+      } catch {
+        // Non-fatal — thumbnail will generate on next project load
+      }
+
+      setSaveProgress({ stage: 'Complete!', percent: 100 });
+    } catch (err) {
+      console.error('StraboTools: Save as sibling failed:', err);
+    } finally {
+      unsubProgress?.();
+      setTimeout(() => {
+        setIsSaving(false);
+        setSaveProgress(null);
+      }, 500);
+    }
+  }, [project, selectedMicrographId, activeTab, isSaving, getToolParams, findSampleIdForMicrograph, findMicrograph, addMicrograph, TOOL_DISPLAY_NAMES]);
+
+  // ─── Replace Original ─────────────────────────────────────────────────────
+
+  const handleReplaceOriginal = useCallback(async () => {
+    if (!project || !selectedMicrographId || isSaving) return;
+
+    setShowReplaceWarning(false);
+    setIsSaving(true);
+    setSaveProgress({ stage: 'Preparing...', percent: 0 });
+
+    const unsubProgress = window.api?.straboTools.onProgress((progress) => {
+      setSaveProgress(progress);
+    });
+
+    try {
+      const folderPaths = await window.api?.getProjectFolderPaths(project.id);
+      if (!folderPaths) return;
+
+      const imagePath = `${folderPaths.images}/${selectedMicrographId}`;
+      const toolParams = getToolParams();
+
+      const result = await window.api?.straboTools.processFullResolution({
+        imagePath,
+        tool: activeTab,
+        toolParams,
+      });
+
+      if (!result?.success || !result.identifier) {
+        console.error('StraboTools: Processing failed:', result?.error);
+        return;
+      }
+
+      // Overwrite the original image file
+      await window.api?.straboTools.overwriteImage({
+        identifier: result.identifier,
+        targetPath: imagePath,
+      });
+
+      // Clear tile cache for the old image
+      const cacheInfo = await window.api?.checkImageCache(imagePath);
+      if (cacheInfo?.cached && cacheInfo.hash) {
+        await window.api?.clearImageCache(cacheInfo.hash);
+      }
+
+      // Update micrograph metadata
+      const straboToolsResult: StraboToolsResult = {
+        ...result.analyticalResults as Partial<StraboToolsResult>,
+        tool: activeTab,
+        timestamp: new Date().toISOString(),
+      };
+
+      updateMicrographMetadata(selectedMicrographId, {
+        straboTools: straboToolsResult,
+        imageWidth: result.width,
+        imageHeight: result.height,
+      });
+
+      // Regenerate composite thumbnail
+      try {
+        const currentProject = useAppStore.getState().project;
+        if (currentProject) {
+          await window.api?.generateCompositeThumbnail(project.id, selectedMicrographId, currentProject);
+        }
+      } catch {
+        // Non-fatal
+      }
+
+      setSaveProgress({ stage: 'Complete!', percent: 100 });
+    } catch (err) {
+      console.error('StraboTools: Replace original failed:', err);
+    } finally {
+      unsubProgress?.();
+      setTimeout(() => {
+        setIsSaving(false);
+        setSaveProgress(null);
+      }, 500);
+    }
+  }, [project, selectedMicrographId, activeTab, isSaving, getToolParams, updateMicrographMetadata]);
+
   // ─── Handle tab change ──────────────────────────────────────────────────
 
   const handleTabChange = useCallback((_: React.SyntheticEvent, newValue: ToolTab) => {
@@ -659,6 +897,54 @@ export function StraboToolsDialog({ open, onClose, initialMicrographId }: Strabo
           </Select>
         </FormControl>
 
+        {/* Save split button */}
+        <ButtonGroup
+          variant="contained"
+          size="small"
+          ref={saveAnchorRef}
+          disabled={!imageLoaded || !selectedMicrographId || isSaving}
+        >
+          <Button
+            startIcon={<SaveIcon />}
+            onClick={handleSaveAsSibling}
+            sx={{ textTransform: 'none' }}
+          >
+            Save as Sibling
+          </Button>
+          <Button
+            size="small"
+            onClick={() => setSaveMenuOpen((prev) => !prev)}
+            sx={{ px: 0.5 }}
+          >
+            <ArrowDropDownIcon />
+          </Button>
+        </ButtonGroup>
+        <Popper
+          open={saveMenuOpen}
+          anchorEl={saveAnchorRef.current}
+          placement="bottom-end"
+          transition
+          disablePortal
+          sx={{ zIndex: 1300 }}
+        >
+          {({ TransitionProps }) => (
+            <Grow {...TransitionProps}>
+              <Paper elevation={4}>
+                <ClickAwayListener onClickAway={() => setSaveMenuOpen(false)}>
+                  <MenuList>
+                    <MenuItem onClick={() => { setSaveMenuOpen(false); handleSaveAsSibling(); }}>
+                      Save as Sibling to Original Micrograph
+                    </MenuItem>
+                    <MenuItem onClick={() => { setSaveMenuOpen(false); setShowReplaceWarning(true); }}>
+                      Save as Replacement to Original Micrograph
+                    </MenuItem>
+                  </MenuList>
+                </ClickAwayListener>
+              </Paper>
+            </Grow>
+          )}
+        </Popper>
+
         <Tooltip title="Close (Escape)">
           <IconButton onClick={onClose}>
             <CloseIcon />
@@ -695,19 +981,35 @@ export function StraboToolsDialog({ open, onClose, initialMicrographId }: Strabo
             justifyContent: 'center',
           }}
         >
-          {isLoading && (
+          {(isLoading || isSaving) && (
             <Box
               sx={{
                 position: 'absolute',
                 inset: 0,
                 display: 'flex',
+                flexDirection: 'column',
                 alignItems: 'center',
                 justifyContent: 'center',
+                gap: 2,
                 zIndex: 10,
-                bgcolor: 'rgba(0, 0, 0, 0.5)',
+                bgcolor: 'rgba(0, 0, 0, 0.6)',
               }}
             >
-              <CircularProgress />
+              {isSaving && saveProgress ? (
+                <>
+                  <Typography variant="body1" color="white">
+                    {saveProgress.stage}
+                  </Typography>
+                  <Box sx={{ width: 300 }}>
+                    <LinearProgress
+                      variant={saveProgress.percent > 0 ? 'determinate' : 'indeterminate'}
+                      value={saveProgress.percent}
+                    />
+                  </Box>
+                </>
+              ) : (
+                <CircularProgress />
+              )}
             </Box>
           )}
 
@@ -730,6 +1032,37 @@ export function StraboToolsDialog({ open, onClose, initialMicrographId }: Strabo
         {/* Tool-specific controls (below canvas) */}
         {renderTabContent()}
       </Box>
+
+      {/* Replace Original confirmation dialog */}
+      <Dialog
+        open={showReplaceWarning}
+        onClose={() => setShowReplaceWarning(false)}
+        maxWidth="sm"
+      >
+        <Box sx={{ p: 3 }}>
+          <Typography variant="h6" gutterBottom>
+            Replace Original Image?
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+            This will permanently replace the original micrograph image with the{' '}
+            <strong>{TOOL_DISPLAY_NAMES[activeTab]}</strong> analysis result.
+            This action cannot be undone. The original image data, cached tiles, and
+            downsampled images will all be replaced.
+          </Typography>
+          <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
+            <Button onClick={() => setShowReplaceWarning(false)}>
+              Cancel
+            </Button>
+            <Button
+              variant="contained"
+              color="error"
+              onClick={handleReplaceOriginal}
+            >
+              Replace
+            </Button>
+          </Box>
+        </Box>
+      </Dialog>
     </Dialog>
   );
 }
