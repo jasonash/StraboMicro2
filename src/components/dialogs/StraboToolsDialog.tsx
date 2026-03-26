@@ -91,8 +91,6 @@ export function StraboToolsDialog({ open, onClose, initialMicrographId }: Strabo
 
   // Store the original ImageData for processing
   const originalImageDataRef = useRef<ImageData | null>(null);
-  const imageDimensionsRef = useRef<{ width: number; height: number }>({ width: 0, height: 0 });
-
   // Cached Sobel results (shared between Edge Detect and Edge Fabric)
   const sobelResultRef = useRef<SobelResult | null>(null);
 
@@ -131,7 +129,7 @@ export function StraboToolsDialog({ open, onClose, initialMicrographId }: Strabo
       setModeNumPhases(4);
       setModePercentages([]);
       originalImageDataRef.current = null;
-      imageDimensionsRef.current = { width: 0, height: 0 };
+
       sobelResultRef.current = null;
       fabricResultRef.current = null;
       grayDataRef.current = null;
@@ -263,7 +261,7 @@ export function StraboToolsDialog({ open, onClose, initialMicrographId }: Strabo
       const imageData = offCtx.getImageData(0, 0, offscreen.width, offscreen.height);
 
       originalImageDataRef.current = imageData;
-      imageDimensionsRef.current = { width: offscreen.width, height: offscreen.height };
+
 
       setImageLoaded(true);
     } catch (err) {
