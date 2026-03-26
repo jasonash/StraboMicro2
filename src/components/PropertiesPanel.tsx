@@ -54,6 +54,7 @@ import { LinksInfoDialog } from './dialogs/metadata/links/LinksInfoDialog';
 import { MetadataSummary } from './MetadataSummary';
 import { GrainSizeSummary } from './GrainSizeSummary';
 import { PointCountSummary } from './PointCountSummary';
+import { StraboToolsSummary } from './StraboToolsSummary';
 import { ProjectMetadataSection } from './ProjectMetadataSection';
 import { SketchLayersPanel } from './SketchLayersPanel';
 import { getPresetSummary } from '@/types/preset-types';
@@ -430,6 +431,7 @@ export function PropertiesPanel() {
                 <>
                   <GrainSizeSummary micrographId={activeMicrographId} />
                   <PointCountSummary micrographId={activeMicrographId} />
+                  <StraboToolsSummary micrographId={activeMicrographId} />
                 </>
               )}
             </Box>
