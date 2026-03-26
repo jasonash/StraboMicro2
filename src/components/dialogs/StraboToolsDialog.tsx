@@ -32,8 +32,14 @@ import {
 import CloseIcon from '@mui/icons-material/Close';
 import LayersIcon from '@mui/icons-material/Layers';
 import { useAppStore } from '@/store';
-import { toGrayscale, applySobel, edgeDetect } from '@/services/straboToolsProcessing';
-import type { SobelResult } from '@/services/straboToolsProcessing';
+import {
+  toGrayscale,
+  applySobel,
+  edgeDetect,
+  edgeFabric,
+  renderEdgeFabricImage,
+} from '@/services/straboToolsProcessing';
+import type { SobelResult, EdgeFabricResult } from '@/services/straboToolsProcessing';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -81,6 +87,9 @@ export function StraboToolsDialog({ open, onClose, initialMicrographId }: Strabo
   // Cached Sobel results (shared between Edge Detect and Edge Fabric)
   const sobelResultRef = useRef<SobelResult | null>(null);
 
+  // Cached Edge Fabric result
+  const fabricResultRef = useRef<EdgeFabricResult | null>(null);
+
   // Edge Detect state
   const [edgeThreshold, setEdgeThreshold] = useState(128);
 
@@ -95,6 +104,7 @@ export function StraboToolsDialog({ open, onClose, initialMicrographId }: Strabo
       originalImageDataRef.current = null;
       imageDimensionsRef.current = { width: 0, height: 0 };
       sobelResultRef.current = null;
+      fabricResultRef.current = null;
     }
   }, [open, initialMicrographId]);
 
@@ -187,6 +197,7 @@ export function StraboToolsDialog({ open, onClose, initialMicrographId }: Strabo
     setImageLoaded(false);
     originalImageDataRef.current = null;
     sobelResultRef.current = null;
+    fabricResultRef.current = null;
 
     try {
       const folderPaths = await window.api?.getProjectFolderPaths(project.id);
@@ -287,6 +298,19 @@ export function StraboToolsDialog({ open, onClose, initialMicrographId }: Strabo
 
   // ─── Render current tab's visualization ────────────────────────────────
 
+  // ─── Ensure Edge Fabric result is computed (cached) ─────────────────────
+
+  const ensureFabricResult = useCallback((): EdgeFabricResult | null => {
+    if (fabricResultRef.current) return fabricResultRef.current;
+
+    const sobel = ensureSobelResult();
+    if (!sobel) return null;
+
+    const result = edgeFabric(sobel.gx, sobel.gy, sobel.width, sobel.height);
+    fabricResultRef.current = result;
+    return result;
+  }, [ensureSobelResult]);
+
   const renderCurrentVisualization = useCallback(() => {
     if (!imageLoaded || !originalImageDataRef.current) return;
 
@@ -298,12 +322,20 @@ export function StraboToolsDialog({ open, onClose, initialMicrographId }: Strabo
         drawImageDataToCanvas(result);
         break;
       }
+      case 'edge-fabric': {
+        const sobel = ensureSobelResult();
+        const fabric = ensureFabricResult();
+        if (!sobel || !fabric) return;
+        const result = renderEdgeFabricImage(sobel, fabric);
+        drawImageDataToCanvas(result);
+        break;
+      }
       default:
         // For tabs not yet implemented, show the original image
         drawImageDataToCanvas(originalImageDataRef.current);
         break;
     }
-  }, [activeTab, edgeThreshold, imageLoaded, ensureSobelResult, drawImageDataToCanvas]);
+  }, [activeTab, edgeThreshold, imageLoaded, ensureSobelResult, ensureFabricResult, drawImageDataToCanvas]);
 
   // Redraw when canvas size, tab, or tool params change
   useEffect(() => {
@@ -326,6 +358,7 @@ export function StraboToolsDialog({ open, onClose, initialMicrographId }: Strabo
     setImageLoaded(false);
     originalImageDataRef.current = null;
     sobelResultRef.current = null;
+    fabricResultRef.current = null;
   }, []);
 
   // ─── Handle tab change ──────────────────────────────────────────────────
@@ -355,14 +388,19 @@ export function StraboToolsDialog({ open, onClose, initialMicrographId }: Strabo
     if (!imageLoaded) return null;
 
     switch (activeTab) {
-      case 'edge-fabric':
+      case 'edge-fabric': {
+        const fabric = fabricResultRef.current;
         return (
-          <Box sx={{ p: 2, color: 'text.secondary' }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 4, px: 3, py: 1.5 }}>
             <Typography variant="body2">
-              Edge Fabric analysis — coming in Phase 3
+              <strong>Azimuth:</strong> {fabric ? fabric.azimuth.toFixed(2) : '—'}°
+            </Typography>
+            <Typography variant="body2">
+              <strong>Axial Ratio:</strong> {fabric ? fabric.axialRatio.toFixed(2) : '—'}
             </Typography>
           </Box>
         );
+      }
       case 'color-index':
         return (
           <Box sx={{ p: 2, color: 'text.secondary' }}>

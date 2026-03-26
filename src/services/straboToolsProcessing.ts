@@ -198,6 +198,262 @@ export function edgeDetect(
   return result;
 }
 
-// TODO Phase 3: edgeFabric, renderEdgeFabricOverlay
+// ─── Edge Fabric ─────────────────────────────────────────────────────────────
+
+/**
+ * Compute edge fabric analysis from Sobel gradient components.
+ *
+ * Algorithm (matching Swift app):
+ * 1. Column-vectorize gx, gy into Nx2 matrix
+ * 2. Compute 2x2 sample covariance: [[Σxx, Σxy], [Σxy, Σyy]] / (N-1)
+ * 3. Eigenvalue decomposition of covariance matrix
+ * 4. Azimuth from eigenvector of smaller eigenvalue
+ * 5. Axial ratio from eigenvalue ratio
+ */
+export function edgeFabric(
+  gx: Float32Array,
+  gy: Float32Array,
+  _sobelWidth: number,
+  _sobelHeight: number,
+): EdgeFabricResult {
+  const n = gx.length;
+
+  // Step 1: Compute means
+  let xSum = 0;
+  let ySum = 0;
+  for (let i = 0; i < n; i++) {
+    xSum += gx[i];
+    ySum += gy[i];
+  }
+  const xMean = xSum / n;
+  const yMean = ySum / n;
+
+  // Step 2: Compute 2x2 covariance matrix (sample covariance, N-1 denominator)
+  let xxSum = 0;
+  let xySum = 0;
+  let yySum = 0;
+  for (let i = 0; i < n; i++) {
+    const dx = gx[i] - xMean;
+    const dy = gy[i] - yMean;
+    xxSum += dx * dx;
+    xySum += dx * dy;
+    yySum += dy * dy;
+  }
+  const xxCov = xxSum / (n - 1);
+  const xyCov = xySum / (n - 1);
+  const yyCov = yySum / (n - 1);
+
+  // Step 3: Eigenvalue decomposition of 2x2 matrix
+  // Matches eig22() from Swift
+  const trace = xxCov + yyCov;
+  const det = xxCov * yyCov - xyCov * xyCov;
+  const discriminant = Math.sqrt(Math.max(0, trace * trace - 4 * det));
+
+  const lambda1 = (trace + discriminant) / 2; // Larger eigenvalue
+  const lambda2 = (trace - discriminant) / 2; // Smaller eigenvalue
+
+  // Eigenvectors from eig22():
+  // v1 = [lambda1 - yyCov, xyCov]
+  // v2 = [lambda2 - yyCov, xyCov]
+  const v1: [number, number] = [lambda1 - yyCov, xyCov];
+  const v2: [number, number] = [lambda2 - yyCov, xyCov];
+
+  // Step 4: Azimuth from v2 (matching Swift: theta = (90 - atan2d(v2[0], v2[1]) + 360) % 180)
+  const azimuth = ((90 - Math.atan2(v2[0], v2[1]) * 180 / Math.PI) + 360) % 180;
+
+  // Step 5: Axial ratio = sqrt(lambda1) / sqrt(lambda2)
+  const sqrtL1 = Math.sqrt(Math.max(0, lambda1));
+  const sqrtL2 = Math.sqrt(Math.max(0, lambda2));
+  const axialRatio = sqrtL2 > 0 ? sqrtL1 / sqrtL2 : 1;
+
+  return {
+    azimuth,
+    axialRatio,
+    eigenvalue1: lambda1,
+    eigenvalue2: lambda2,
+    eigenvector1: v1,
+    eigenvector2: v2,
+  };
+}
+
+/**
+ * Compute eigenvector/eigenvalue data for ellipse rendering.
+ * Matches eigVecVal() from Swift — normalizes eigenvalues as ratios.
+ *
+ * Returns: { vec: 2x2 matrix [v2; v1], val: 2x2 diagonal of normalized sqrt eigenvalues }
+ */
+function eigVecValForEllipse(
+  xxCov: number, xyCov: number, yyCov: number,
+): { vec: [[number, number], [number, number]]; val: [number, number] } {
+  const trace = xxCov + yyCov;
+  const det = xxCov * yyCov - xyCov * xyCov;
+  const discriminant = Math.sqrt(Math.max(0, trace * trace - 4 * det));
+
+  let l1 = (trace + discriminant) / 2;
+  let l2 = (trace - discriminant) / 2;
+
+  // Eigenvectors matching eigVecVal() from Swift
+  // v1 = [xyCov, l1 - xxCov]
+  // v2 = [l2 - yyCov, xyCov]
+  const vec: [[number, number], [number, number]] = [
+    [l2 - yyCov, xyCov],   // v2 (row 0)
+    [xyCov, l1 - xxCov],   // v1 (row 1)
+  ];
+
+  // Normalize eigenvalues as ratio then sqrt (matching Swift)
+  if (l2 > l1) {
+    l2 = l2 / l1;
+    l1 = 1;
+  } else {
+    l1 = l1 / l2;
+    l2 = 1;
+  }
+
+  return { vec, val: [Math.sqrt(l2), Math.sqrt(l1)] };
+}
+
+/**
+ * Render edge fabric ellipses and magnitude image onto a canvas context.
+ *
+ * Draws:
+ * 1. Sobel magnitude as background (grayscale, sqrt-compressed)
+ * 2. Yellow ellipse (outer, using both eigenvalues)
+ * 3. Red ellipse (inner, using smaller eigenvalue only)
+ *
+ * Matches the Swift app's ellipse rendering with dot-pattern parametric curves.
+ */
+export function renderEdgeFabricImage(
+  sobelResult: SobelResult,
+  _fabricResult: EdgeFabricResult,
+): ImageData {
+  const { magnitude, width: sobelWidth, height: sobelHeight, gx, gy } = sobelResult;
+
+  // First, build the magnitude background image
+  let maxMag = 0;
+  for (let i = 0; i < magnitude.length; i++) {
+    if (magnitude[i] > maxMag) maxMag = magnitude[i];
+  }
+  if (maxMag === 0) maxMag = 1;
+
+  const result = new ImageData(sobelWidth, sobelHeight);
+  const data = result.data;
+
+  // Draw magnitude as background (sqrt-compressed grayscale)
+  for (let i = 0; i < magnitude.length; i++) {
+    const val = Math.round(Math.sqrt(magnitude[i] / maxMag) * 255);
+    const invVal = 255 - val; // Invert so edges are dark
+    const offset = i * 4;
+    data[offset] = invVal;
+    data[offset + 1] = invVal;
+    data[offset + 2] = invVal;
+    data[offset + 3] = 255;
+  }
+
+  // Compute eigenvectors/eigenvalues for ellipse rendering
+  const n = gx.length;
+  let xSum = 0, ySum = 0;
+  for (let i = 0; i < n; i++) { xSum += gx[i]; ySum += gy[i]; }
+  const xMean = xSum / n;
+  const yMean = ySum / n;
+  let xxSum = 0, xySum = 0, yySum = 0;
+  for (let i = 0; i < n; i++) {
+    const dx = gx[i] - xMean;
+    const dy = gy[i] - yMean;
+    xxSum += dx * dx;
+    xySum += dx * dy;
+    yySum += dy * dy;
+  }
+  const xxCov = xxSum / (n - 1);
+  const xyCov = xySum / (n - 1);
+  const yyCov = yySum / (n - 1);
+
+  const { vec, val } = eigVecValForEllipse(xxCov, xyCov, yyCov);
+
+  const xCenter = Math.round(sobelWidth / 2);
+  const yCenter = Math.round(sobelHeight / 2);
+  const ellipseMultiplier = xCenter / 2;
+
+  // Parametric ellipse: [ax*sin(t) + bx*cos(t), ay*sin(t) + by*cos(t)]
+  const ax = vec[0][0] * val[0];
+  const ay = vec[1][0] * val[0];
+
+  const numPoints = 1000;
+
+  // First pass: find max extent for normalization
+  let maxVal = 0;
+  // Use the larger ellipse (bx/by with val[1]) for max extent calculation
+  let bxOuter = vec[0][1] * val[1];
+  let byOuter = vec[1][1] * val[1];
+  for (let i = 0; i < numPoints; i++) {
+    const t = (i / numPoints) * 2 * Math.PI;
+    const ex = ax * Math.sin(t) + bxOuter * Math.cos(t);
+    const ey = ay * Math.sin(t) + byOuter * Math.cos(t);
+    if (Math.abs(ex) > maxVal) maxVal = Math.abs(ex);
+    if (Math.abs(ey) > maxVal) maxVal = Math.abs(ey);
+  }
+  if (maxVal === 0) maxVal = 1;
+
+  // Draw yellow (outer) ellipse — uses val[0] for bx,by (matching Swift first draw)
+  const bxYellow = vec[0][1] * val[0];
+  const byYellow = vec[1][1] * val[0];
+  drawEllipseOnImageData(data, sobelWidth, sobelHeight, xCenter, yCenter,
+    ax, ay, bxYellow, byYellow, maxVal, ellipseMultiplier, numPoints,
+    255, 255, 0); // Yellow
+
+  // Draw red (inner) ellipse — uses val[1] for bx,by (matching Swift second draw)
+  const bxRed = vec[0][1] * val[1];
+  const byRed = vec[1][1] * val[1];
+  drawEllipseOnImageData(data, sobelWidth, sobelHeight, xCenter, yCenter,
+    ax, ay, bxRed, byRed, maxVal, ellipseMultiplier, numPoints,
+    255, 0, 0); // Red
+
+  return result;
+}
+
+/** Draw a parametric ellipse onto an ImageData buffer using dot patterns. */
+function drawEllipseOnImageData(
+  data: Uint8ClampedArray,
+  width: number,
+  height: number,
+  xCenter: number,
+  yCenter: number,
+  ax: number,
+  ay: number,
+  bx: number,
+  by: number,
+  maxVal: number,
+  multiplier: number,
+  numPoints: number,
+  r: number,
+  g: number,
+  b: number,
+): void {
+  // Draw 3px radius dots at each parametric point (simplified from Swift's 12x12 dot matrix)
+  const dotRadius = 3;
+
+  for (let i = 0; i < numPoints; i++) {
+    const t = (i / numPoints) * 2 * Math.PI;
+    const ex = (ax * Math.sin(t) + bx * Math.cos(t)) / maxVal * multiplier;
+    const ey = (ay * Math.sin(t) + by * Math.cos(t)) / maxVal * multiplier;
+
+    const px = Math.round(xCenter + ex);
+    const py = Math.round(yCenter + ey);
+
+    // Draw dot at (px, py)
+    for (let dy = -dotRadius; dy <= dotRadius; dy++) {
+      for (let dx = -dotRadius; dx <= dotRadius; dx++) {
+        if (dx * dx + dy * dy > dotRadius * dotRadius) continue; // Circle shape
+        const col = px + dx;
+        const row = py + dy;
+        if (col < 0 || col >= width || row < 0 || row >= height) continue;
+        const offset = (row * width + col) * 4;
+        data[offset] = r;
+        data[offset + 1] = g;
+        data[offset + 2] = b;
+        data[offset + 3] = 255;
+      }
+    }
+  }
+}
 // TODO Phase 4: buildIntegralImage, colorIndexGlobal, colorIndexAdaptive
 // TODO Phase 5: kMeansClustering
