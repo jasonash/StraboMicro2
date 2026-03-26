@@ -23,6 +23,7 @@ import {
   FormControl,
   Tab,
   Tabs,
+  Slider,
   CircularProgress,
   ListItemIcon,
   ListItemText,
@@ -31,6 +32,8 @@ import {
 import CloseIcon from '@mui/icons-material/Close';
 import LayersIcon from '@mui/icons-material/Layers';
 import { useAppStore } from '@/store';
+import { toGrayscale, applySobel, edgeDetect } from '@/services/straboToolsProcessing';
+import type { SobelResult } from '@/services/straboToolsProcessing';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -75,6 +78,12 @@ export function StraboToolsDialog({ open, onClose, initialMicrographId }: Strabo
   const originalImageDataRef = useRef<ImageData | null>(null);
   const imageDimensionsRef = useRef<{ width: number; height: number }>({ width: 0, height: 0 });
 
+  // Cached Sobel results (shared between Edge Detect and Edge Fabric)
+  const sobelResultRef = useRef<SobelResult | null>(null);
+
+  // Edge Detect state
+  const [edgeThreshold, setEdgeThreshold] = useState(128);
+
   // ─── Reset state when dialog opens ───────────────────────────────────────
 
   useEffect(() => {
@@ -82,8 +91,10 @@ export function StraboToolsDialog({ open, onClose, initialMicrographId }: Strabo
       setActiveTab('edge-fabric');
       setSelectedMicrographId(initialMicrographId || null);
       setImageLoaded(false);
+      setEdgeThreshold(128);
       originalImageDataRef.current = null;
       imageDimensionsRef.current = { width: 0, height: 0 };
+      sobelResultRef.current = null;
     }
   }, [open, initialMicrographId]);
 
@@ -175,6 +186,7 @@ export function StraboToolsDialog({ open, onClose, initialMicrographId }: Strabo
     setIsLoading(true);
     setImageLoaded(false);
     originalImageDataRef.current = null;
+    sobelResultRef.current = null;
 
     try {
       const folderPaths = await window.api?.getProjectFolderPaths(project.id);
@@ -209,9 +221,6 @@ export function StraboToolsDialog({ open, onClose, initialMicrographId }: Strabo
       originalImageDataRef.current = imageData;
       imageDimensionsRef.current = { width: offscreen.width, height: offscreen.height };
 
-      // Draw the original image to the display canvas
-      drawOriginalImage();
-
       setImageLoaded(true);
     } catch (err) {
       console.error('StraboTools: Failed to load micrograph:', err);
@@ -220,12 +229,11 @@ export function StraboToolsDialog({ open, onClose, initialMicrographId }: Strabo
     }
   }, [project]);
 
-  // ─── Draw original image to display canvas (scaled to fit) ───────────────
+  // ─── Draw ImageData to display canvas (scaled to fit) ───────────────────
 
-  const drawOriginalImage = useCallback(() => {
+  const drawImageDataToCanvas = useCallback((imageData: ImageData) => {
     const canvas = displayCanvasRef.current;
-    const imageData = originalImageDataRef.current;
-    if (!canvas || !imageData) return;
+    if (!canvas) return;
 
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
@@ -263,12 +271,46 @@ export function StraboToolsDialog({ open, onClose, initialMicrographId }: Strabo
     }
   }, [canvasSize]);
 
-  // Redraw when canvas size changes or image loads
+  // ─── Ensure Sobel results are computed (cached) ────────────────────────
+
+  const ensureSobelResult = useCallback((): SobelResult | null => {
+    if (sobelResultRef.current) return sobelResultRef.current;
+
+    const imageData = originalImageDataRef.current;
+    if (!imageData) return null;
+
+    const gray = toGrayscale(imageData);
+    const result = applySobel(gray, imageData.width, imageData.height);
+    sobelResultRef.current = result;
+    return result;
+  }, []);
+
+  // ─── Render current tab's visualization ────────────────────────────────
+
+  const renderCurrentVisualization = useCallback(() => {
+    if (!imageLoaded || !originalImageDataRef.current) return;
+
+    switch (activeTab) {
+      case 'edge-detect': {
+        const sobel = ensureSobelResult();
+        if (!sobel) return;
+        const result = edgeDetect(sobel.magnitude, sobel.width, sobel.height, edgeThreshold);
+        drawImageDataToCanvas(result);
+        break;
+      }
+      default:
+        // For tabs not yet implemented, show the original image
+        drawImageDataToCanvas(originalImageDataRef.current);
+        break;
+    }
+  }, [activeTab, edgeThreshold, imageLoaded, ensureSobelResult, drawImageDataToCanvas]);
+
+  // Redraw when canvas size, tab, or tool params change
   useEffect(() => {
     if (imageLoaded) {
-      drawOriginalImage();
+      renderCurrentVisualization();
     }
-  }, [canvasSize, imageLoaded, drawOriginalImage]);
+  }, [imageLoaded, renderCurrentVisualization, canvasSize]);
 
   // Load image when micrograph selection changes
   useEffect(() => {
@@ -283,6 +325,7 @@ export function StraboToolsDialog({ open, onClose, initialMicrographId }: Strabo
     setSelectedMicrographId(newId);
     setImageLoaded(false);
     originalImageDataRef.current = null;
+    sobelResultRef.current = null;
   }, []);
 
   // ─── Handle tab change ──────────────────────────────────────────────────
@@ -330,9 +373,20 @@ export function StraboToolsDialog({ open, onClose, initialMicrographId }: Strabo
         );
       case 'edge-detect':
         return (
-          <Box sx={{ p: 2, color: 'text.secondary' }}>
-            <Typography variant="body2">
-              Edge Detect tool — coming in Phase 2
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, px: 3, py: 1.5 }}>
+            <Typography variant="body2" sx={{ whiteSpace: 'nowrap', minWidth: 70 }}>
+              Threshold
+            </Typography>
+            <Slider
+              value={edgeThreshold}
+              onChange={(_, value) => setEdgeThreshold(value as number)}
+              min={0}
+              max={255}
+              valueLabelDisplay="auto"
+              sx={{ flex: 1, maxWidth: 400 }}
+            />
+            <Typography variant="body2" sx={{ minWidth: 30, textAlign: 'right' }}>
+              {edgeThreshold}
             </Typography>
           </Box>
         );
