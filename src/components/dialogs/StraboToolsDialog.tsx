@@ -24,6 +24,8 @@ import {
   Tab,
   Tabs,
   Slider,
+  ToggleButton,
+  ToggleButtonGroup,
   CircularProgress,
   ListItemIcon,
   ListItemText,
@@ -38,8 +40,12 @@ import {
   edgeDetect,
   edgeFabric,
   renderEdgeFabricImage,
+  buildIntegralImage,
+  buildAvgMatrix,
+  colorIndexGlobal,
+  colorIndexAdaptive,
 } from '@/services/straboToolsProcessing';
-import type { SobelResult, EdgeFabricResult } from '@/services/straboToolsProcessing';
+import type { SobelResult, EdgeFabricResult, HighlightColor } from '@/services/straboToolsProcessing';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -93,6 +99,16 @@ export function StraboToolsDialog({ open, onClose, initialMicrographId }: Strabo
   // Edge Detect state
   const [edgeThreshold, setEdgeThreshold] = useState(128);
 
+  // Color Index state
+  const [ciThreshold, setCiThreshold] = useState(128);
+  const [ciAdaptive, setCiAdaptive] = useState(false);
+  const [ciHighlightColor, setCiHighlightColor] = useState<HighlightColor>('red');
+  const [ciPercentage, setCiPercentage] = useState(0);
+
+  // Cached Color Index data (integral image + average matrix)
+  const grayDataRef = useRef<Float32Array | null>(null);
+  const avgMatrixRef = useRef<Float64Array | null>(null);
+
   // ─── Reset state when dialog opens ───────────────────────────────────────
 
   useEffect(() => {
@@ -101,10 +117,16 @@ export function StraboToolsDialog({ open, onClose, initialMicrographId }: Strabo
       setSelectedMicrographId(initialMicrographId || null);
       setImageLoaded(false);
       setEdgeThreshold(128);
+      setCiThreshold(128);
+      setCiAdaptive(false);
+      setCiHighlightColor('red');
+      setCiPercentage(0);
       originalImageDataRef.current = null;
       imageDimensionsRef.current = { width: 0, height: 0 };
       sobelResultRef.current = null;
       fabricResultRef.current = null;
+      grayDataRef.current = null;
+      avgMatrixRef.current = null;
     }
   }, [open, initialMicrographId]);
 
@@ -198,6 +220,8 @@ export function StraboToolsDialog({ open, onClose, initialMicrographId }: Strabo
     originalImageDataRef.current = null;
     sobelResultRef.current = null;
     fabricResultRef.current = null;
+    grayDataRef.current = null;
+    avgMatrixRef.current = null;
 
     try {
       const folderPaths = await window.api?.getProjectFolderPaths(project.id);
@@ -311,6 +335,21 @@ export function StraboToolsDialog({ open, onClose, initialMicrographId }: Strabo
     return result;
   }, [ensureSobelResult]);
 
+  // ─── Ensure grayscale + avgMatrix are computed (cached for Color Index) ──
+
+  const ensureColorIndexData = useCallback(() => {
+    const imageData = originalImageDataRef.current;
+    if (!imageData) return;
+
+    if (!grayDataRef.current) {
+      grayDataRef.current = toGrayscale(imageData);
+    }
+    if (!avgMatrixRef.current) {
+      const ii = buildIntegralImage(grayDataRef.current, imageData.width, imageData.height);
+      avgMatrixRef.current = buildAvgMatrix(ii, imageData.width, imageData.height);
+    }
+  }, []);
+
   const renderCurrentVisualization = useCallback(() => {
     if (!imageLoaded || !originalImageDataRef.current) return;
 
@@ -330,12 +369,34 @@ export function StraboToolsDialog({ open, onClose, initialMicrographId }: Strabo
         drawImageDataToCanvas(result);
         break;
       }
+      case 'color-index': {
+        ensureColorIndexData();
+        const imageData = originalImageDataRef.current;
+        const gray = grayDataRef.current;
+        const avgMatrix = avgMatrixRef.current;
+        if (!imageData) break;
+
+        if (ciAdaptive && gray && avgMatrix) {
+          const { resultImage, percentage } = colorIndexAdaptive(
+            imageData, gray, avgMatrix, ciThreshold, ciHighlightColor,
+          );
+          drawImageDataToCanvas(resultImage);
+          setCiPercentage(percentage);
+        } else {
+          const { resultImage, percentage } = colorIndexGlobal(
+            imageData, ciThreshold, ciHighlightColor,
+          );
+          drawImageDataToCanvas(resultImage);
+          setCiPercentage(percentage);
+        }
+        break;
+      }
       default:
         // For tabs not yet implemented, show the original image
         drawImageDataToCanvas(originalImageDataRef.current);
         break;
     }
-  }, [activeTab, edgeThreshold, imageLoaded, ensureSobelResult, ensureFabricResult, drawImageDataToCanvas]);
+  }, [activeTab, edgeThreshold, ciThreshold, ciAdaptive, ciHighlightColor, imageLoaded, ensureSobelResult, ensureFabricResult, ensureColorIndexData, drawImageDataToCanvas]);
 
   // Redraw when canvas size, tab, or tool params change
   useEffect(() => {
@@ -359,6 +420,8 @@ export function StraboToolsDialog({ open, onClose, initialMicrographId }: Strabo
     originalImageDataRef.current = null;
     sobelResultRef.current = null;
     fabricResultRef.current = null;
+    grayDataRef.current = null;
+    avgMatrixRef.current = null;
   }, []);
 
   // ─── Handle tab change ──────────────────────────────────────────────────
@@ -403,9 +466,41 @@ export function StraboToolsDialog({ open, onClose, initialMicrographId }: Strabo
       }
       case 'color-index':
         return (
-          <Box sx={{ p: 2, color: 'text.secondary' }}>
-            <Typography variant="body2">
-              Color Index tool — coming in Phase 4
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, px: 3, py: 1.5, flexWrap: 'wrap' }}>
+            <Typography variant="body2" sx={{ whiteSpace: 'nowrap', minWidth: 70 }}>
+              Threshold
+            </Typography>
+            <Slider
+              value={ciThreshold}
+              onChange={(_, value) => setCiThreshold(value as number)}
+              min={0}
+              max={255}
+              valueLabelDisplay="auto"
+              sx={{ flex: 1, minWidth: 150, maxWidth: 300 }}
+            />
+            <Typography variant="body2" sx={{ minWidth: 30, textAlign: 'right' }}>
+              {ciThreshold}
+            </Typography>
+            <ToggleButtonGroup
+              value={ciAdaptive ? 'adaptive' : 'global'}
+              exclusive
+              onChange={(_, val) => { if (val) setCiAdaptive(val === 'adaptive'); }}
+              size="small"
+            >
+              <ToggleButton value="global">Global</ToggleButton>
+              <ToggleButton value="adaptive">Adaptive</ToggleButton>
+            </ToggleButtonGroup>
+            <ToggleButtonGroup
+              value={ciHighlightColor}
+              exclusive
+              onChange={(_, val) => { if (val) setCiHighlightColor(val as HighlightColor); }}
+              size="small"
+            >
+              <ToggleButton value="red" sx={{ color: 'error.main' }}>Red</ToggleButton>
+              <ToggleButton value="blue" sx={{ color: 'info.main' }}>Blue</ToggleButton>
+            </ToggleButtonGroup>
+            <Typography variant="body2" sx={{ fontWeight: 'bold', ml: 1 }}>
+              Color Index: {ciPercentage.toFixed(1)}%
             </Typography>
           </Box>
         );

@@ -455,5 +455,156 @@ function drawEllipseOnImageData(
     }
   }
 }
-// TODO Phase 4: buildIntegralImage, colorIndexGlobal, colorIndexAdaptive
+// ─── Color Index ─────────────────────────────────────────────────────────────
+
+/**
+ * Build integral image (summed-area table) from grayscale array.
+ * ii[y][x] = gray[y][x] + ii[y-1][x] + ii[y][x-1] - ii[y-1][x-1]
+ *
+ * Matches Swift's cumsum(dimension:1) then cumsum(dimension:2) approach.
+ */
+export function buildIntegralImage(
+  gray: Float32Array,
+  width: number,
+  height: number,
+): Float64Array {
+  const ii = new Float64Array(width * height);
+
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const idx = y * width + x;
+      let val = gray[idx];
+      if (x > 0) val += ii[idx - 1];
+      if (y > 0) val += ii[idx - width];
+      if (x > 0 && y > 0) val -= ii[idx - width - 1];
+      ii[idx] = val;
+    }
+  }
+
+  return ii;
+}
+
+/**
+ * Build average matrix from integral image for adaptive thresholding.
+ * Uses a local window of size s = 2 * floor(min(width, height/16)).
+ *
+ * Matches Swift's prepareCIData() avgMatrix computation.
+ */
+export function buildAvgMatrix(
+  integralImage: Float64Array,
+  width: number,
+  height: number,
+): Float64Array {
+  const avg = new Float64Array(width * height);
+  const s = Math.floor(2 * Math.floor(Math.min(width, height / 16)));
+  const halfS = Math.floor(s / 2);
+
+  for (let i = 0; i < width; i++) {
+    for (let j = 0; j < height; j++) {
+      const x1 = Math.max(0, i - halfS);
+      const x2 = Math.min(width - 1, i + halfS);
+      const y1 = Math.max(0, j - halfS);
+      const y2 = Math.min(height - 1, j + halfS);
+      const count = (x2 - x1) * (y2 - y1);
+
+      // Summed-area table lookup (matching Swift's intImg indexing with max(1, ...) clamping)
+      const safeY1 = Math.max(1, y1) - 1;
+      const safeX1 = Math.max(1, x1) - 1;
+
+      const sum =
+        integralImage[y2 * width + x2]
+        - integralImage[safeY1 * width + x2]
+        - integralImage[y2 * width + safeX1]
+        + integralImage[safeY1 * width + safeX1];
+
+      avg[j * width + i] = count > 0 ? sum / count : 0;
+    }
+  }
+
+  return avg;
+}
+
+export type HighlightColor = 'red' | 'blue';
+
+/**
+ * Global color index thresholding.
+ *
+ * Matches Swift's non-adaptive processColorIndexImage():
+ * For each pixel, compute gray = R*0.2989 + G*0.5870 + B*0.1140.
+ * If gray < threshold → foreground (colored red or blue).
+ * Returns the colored image and the percentage of foreground pixels.
+ */
+export function colorIndexGlobal(
+  imageData: ImageData,
+  threshold: number,
+  highlightColor: HighlightColor,
+): ColorIndexResult {
+  const { data, width, height } = imageData;
+  const result = new ImageData(new Uint8ClampedArray(data), width, height);
+  const out = result.data;
+
+  const hr = highlightColor === 'red' ? 255 : 0;
+  const hg = 0;
+  const hb = highlightColor === 'blue' ? 255 : 0;
+
+  let foregroundCount = 0;
+  const totalPixels = width * height;
+
+  for (let i = 0; i < totalPixels; i++) {
+    const offset = i * 4;
+    const gray = out[offset] * LUMINANCE_R + out[offset + 1] * LUMINANCE_G + out[offset + 2] * LUMINANCE_B;
+
+    if (gray < threshold) {
+      out[offset] = hr;
+      out[offset + 1] = hg;
+      out[offset + 2] = hb;
+      out[offset + 3] = 255;
+      foregroundCount++;
+    }
+  }
+
+  const percentage = totalPixels > 0 ? (foregroundCount / totalPixels) * 100 : 0;
+  return { resultImage: result, percentage };
+}
+
+/**
+ * Adaptive color index thresholding using integral image.
+ *
+ * Matches Swift's adaptiveThreshold() + processColorIndexImage():
+ * For each pixel, foreground if gray < (threshold/255) * localAvg.
+ * Pixels below adaptive threshold are colored red or blue.
+ */
+export function colorIndexAdaptive(
+  imageData: ImageData,
+  gray: Float32Array,
+  avgMatrix: Float64Array,
+  threshold: number,
+  highlightColor: HighlightColor,
+): ColorIndexResult {
+  const { data, width, height } = imageData;
+  const result = new ImageData(new Uint8ClampedArray(data), width, height);
+  const out = result.data;
+
+  const hr = highlightColor === 'red' ? 255 : 0;
+  const hg = 0;
+  const hb = highlightColor === 'blue' ? 255 : 0;
+
+  const testValue = threshold / 255;
+  let foregroundCount = 0;
+  const totalPixels = width * height;
+
+  for (let i = 0; i < totalPixels; i++) {
+    if (gray[i] < testValue * avgMatrix[i]) {
+      const offset = i * 4;
+      out[offset] = hr;
+      out[offset + 1] = hg;
+      out[offset + 2] = hb;
+      out[offset + 3] = 255;
+      foregroundCount++;
+    }
+  }
+
+  const percentage = totalPixels > 0 ? (foregroundCount / totalPixels) * 100 : 0;
+  return { resultImage: result, percentage };
+}
 // TODO Phase 5: kMeansClustering
