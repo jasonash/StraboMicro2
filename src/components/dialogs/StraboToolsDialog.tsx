@@ -275,28 +275,36 @@ export function StraboToolsDialog({ open, onClose, initialMicrographId }: Strabo
 
   const drawImageDataToCanvas = useCallback((imageData: ImageData) => {
     const canvas = displayCanvasRef.current;
-    if (!canvas) return;
+    const container = canvasContainerRef.current;
+    if (!canvas || !container) return;
 
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
+    // Read container's actual dimensions directly to avoid stale canvasSize state
+    // (on first open, the ResizeObserver may not have fired yet)
+    const rect = container.getBoundingClientRect();
+    const cw = rect.width;
+    const ch = rect.height;
+    if (cw <= 0 || ch <= 0) return;
+
     const imgW = imageData.width;
     const imgH = imageData.height;
 
-    // Set canvas to container size
-    canvas.width = canvasSize.width;
-    canvas.height = canvasSize.height;
+    // Set canvas bitmap to actual container size
+    canvas.width = cw;
+    canvas.height = ch;
 
     // Calculate fit scale
-    const scaleX = canvasSize.width / imgW;
-    const scaleY = canvasSize.height / imgH;
+    const scaleX = cw / imgW;
+    const scaleY = ch / imgH;
     const scale = Math.min(scaleX, scaleY) * 0.95;
 
     // Center the image
     const drawW = imgW * scale;
     const drawH = imgH * scale;
-    const offsetX = (canvasSize.width - drawW) / 2;
-    const offsetY = (canvasSize.height - drawH) / 2;
+    const offsetX = (cw - drawW) / 2;
+    const offsetY = (ch - drawH) / 2;
 
     // Clear and draw
     ctx.fillStyle = '#1a1a1a';
@@ -311,7 +319,7 @@ export function StraboToolsDialog({ open, onClose, initialMicrographId }: Strabo
       tempCtx.putImageData(imageData, 0, 0);
       ctx.drawImage(tempCanvas, offsetX, offsetY, drawW, drawH);
     }
-  }, [canvasSize]);
+  }, []);
 
   // ─── Ensure Sobel results are computed (cached) ────────────────────────
 
