@@ -44,6 +44,9 @@ import {
   buildAvgMatrix,
   colorIndexGlobal,
   colorIndexAdaptive,
+  kMeansClustering,
+  PHASE_COLORS,
+  PHASE_NAMES,
 } from '@/services/straboToolsProcessing';
 import type { SobelResult, EdgeFabricResult, HighlightColor } from '@/services/straboToolsProcessing';
 
@@ -109,6 +112,10 @@ export function StraboToolsDialog({ open, onClose, initialMicrographId }: Strabo
   const grayDataRef = useRef<Float32Array | null>(null);
   const avgMatrixRef = useRef<Float64Array | null>(null);
 
+  // Mode Tool state
+  const [modeNumPhases, setModeNumPhases] = useState(4);
+  const [modePercentages, setModePercentages] = useState<number[]>([]);
+
   // ─── Reset state when dialog opens ───────────────────────────────────────
 
   useEffect(() => {
@@ -121,6 +128,8 @@ export function StraboToolsDialog({ open, onClose, initialMicrographId }: Strabo
       setCiAdaptive(false);
       setCiHighlightColor('red');
       setCiPercentage(0);
+      setModeNumPhases(4);
+      setModePercentages([]);
       originalImageDataRef.current = null;
       imageDimensionsRef.current = { width: 0, height: 0 };
       sobelResultRef.current = null;
@@ -391,12 +400,19 @@ export function StraboToolsDialog({ open, onClose, initialMicrographId }: Strabo
         }
         break;
       }
+      case 'mode': {
+        const imageData = originalImageDataRef.current;
+        if (!imageData) break;
+        const { resultImage, phasePercentages } = kMeansClustering(imageData, modeNumPhases);
+        drawImageDataToCanvas(resultImage);
+        setModePercentages(phasePercentages);
+        break;
+      }
       default:
-        // For tabs not yet implemented, show the original image
         drawImageDataToCanvas(originalImageDataRef.current);
         break;
     }
-  }, [activeTab, edgeThreshold, ciThreshold, ciAdaptive, ciHighlightColor, imageLoaded, ensureSobelResult, ensureFabricResult, ensureColorIndexData, drawImageDataToCanvas]);
+  }, [activeTab, edgeThreshold, ciThreshold, ciAdaptive, ciHighlightColor, modeNumPhases, imageLoaded, ensureSobelResult, ensureFabricResult, ensureColorIndexData, drawImageDataToCanvas]);
 
   // Redraw when canvas size, tab, or tool params change
   useEffect(() => {
@@ -525,10 +541,41 @@ export function StraboToolsDialog({ open, onClose, initialMicrographId }: Strabo
         );
       case 'mode':
         return (
-          <Box sx={{ p: 2, color: 'text.secondary' }}>
-            <Typography variant="body2">
-              Mode Tool — coming in Phase 5
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, px: 3, py: 1.5, flexWrap: 'wrap' }}>
+            <Typography variant="body2" sx={{ whiteSpace: 'nowrap' }}>
+              Number of Phases
             </Typography>
+            <ToggleButtonGroup
+              value={modeNumPhases}
+              exclusive
+              onChange={(_, val) => { if (val !== null) setModeNumPhases(val as number); }}
+              size="small"
+            >
+              {[2, 3, 4, 5, 6].map((n) => (
+                <ToggleButton key={n} value={n}>{n}</ToggleButton>
+              ))}
+            </ToggleButtonGroup>
+            {modePercentages.length > 0 && (
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, ml: 2 }}>
+                {modePercentages.map((pct, i) => (
+                  <Box key={i} sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                    <Box
+                      sx={{
+                        width: 14,
+                        height: 14,
+                        borderRadius: '2px',
+                        bgcolor: `rgb(${PHASE_COLORS[i][0]},${PHASE_COLORS[i][1]},${PHASE_COLORS[i][2]})`,
+                        border: '1px solid',
+                        borderColor: 'divider',
+                      }}
+                    />
+                    <Typography variant="caption">
+                      {PHASE_NAMES[i]}: {pct.toFixed(1)}%
+                    </Typography>
+                  </Box>
+                ))}
+              </Box>
+            )}
           </Box>
         );
       default:
