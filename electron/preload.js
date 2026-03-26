@@ -647,6 +647,15 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('menu:strabo-tools', handler);
     return () => ipcRenderer.removeListener('menu:strabo-tools', handler);
   },
+  straboTools: {
+    processFullResolution: (params) => ipcRenderer.invoke('strabo-tools:process-full-resolution', params),
+    overwriteImage: (params) => ipcRenderer.invoke('strabo-tools:overwrite-image', params),
+    onProgress: (callback) => {
+      const handler = (event, progress) => callback(progress);
+      ipcRenderer.on('strabo-tools:progress', handler);
+      return () => ipcRenderer.removeListener('strabo-tools:progress', handler);
+    },
+  },
   onSpotColorMode: (callback) => {
     const handler = (event, mode) => callback(mode);
     ipcRenderer.on('view:spot-color-mode', handler);
