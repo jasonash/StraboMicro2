@@ -1435,51 +1435,26 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
       // Select the PPL micrograph (the main one the user was creating)
       useAppStore.getState().selectMicrograph(micrograph.id);
 
-      // Generate composite thumbnails in the background (non-blocking)
-      // Use setTimeout to ensure these run AFTER the current execution context completes
-      setTimeout(() => {
-        // Get fresh project state (includes the newly added micrograph)
-        const freshProject = useAppStore.getState().project;
+      // Capture project state immediately after all mutations (addMicrograph,
+      // linkSiblingImages, etc.) while the store is guaranteed to contain the
+      // new micrograph. Previously, a setTimeout(fn, 0) re-read from the store,
+      // which could race with middleware (persist/temporal/devtools) and return
+      // a snapshot missing the newly added micrograph.
+      const projectForThumbnails = useAppStore.getState().project;
 
-        if (!freshProject || !window.api) {
-          console.warn(
-            '[NewMicrographDialog] No project or API available for thumbnail generation'
-          );
-          return;
-        }
-
-        console.log('[NewMicrographDialog] Fresh project state obtained for thumbnail generation');
-
+      if (projectForThumbnails && window.api) {
         // If this is an associated micrograph (has parentID), regenerate parent's thumbnail
         if (micrograph.parentID) {
           console.log(
             `[NewMicrographDialog] Generating composite thumbnail for parent: ${micrograph.parentID}`
           );
 
-          // Log all children of the parent to debug
-          let parentChildCount = 0;
-          for (const dataset of freshProject.datasets || []) {
-            for (const sample of dataset.samples || []) {
-              const children = (sample.micrographs || []).filter(
-                (m) => m.parentID === micrograph.parentID
-              );
-              if (children.length > 0) {
-                parentChildCount = children.length;
-                console.log(
-                  `[NewMicrographDialog] Parent ${micrograph.parentID} has ${children.length} children:`,
-                  children.map((c) => ({ id: c.id, name: c.name }))
-                );
-              }
-            }
-          }
-
           window.api
-            .generateCompositeThumbnail(freshProject.id, micrograph.parentID, freshProject)
+            .generateCompositeThumbnail(projectForThumbnails.id, micrograph.parentID, projectForThumbnails)
             .then(() => {
               console.log(
-                `[NewMicrographDialog] Successfully generated parent composite thumbnail with ${parentChildCount} children`
+                '[NewMicrographDialog] Successfully generated parent composite thumbnail'
               );
-              // Trigger thumbnail refresh
               window.dispatchEvent(
                 new CustomEvent('thumbnail-generated', {
                   detail: { micrographId: micrograph.parentID },
@@ -1494,16 +1469,15 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
             });
         }
 
-        // Also generate thumbnail for the new micrograph itself (may have children in the future, including XPL)
+        // Generate thumbnail for the new micrograph itself
         console.log(
           `[NewMicrographDialog] Generating composite thumbnail for new micrograph: ${micrograph.id}`
         );
 
         window.api
-          .generateCompositeThumbnail(freshProject.id, micrograph.id, freshProject)
+          .generateCompositeThumbnail(projectForThumbnails.id, micrograph.id, projectForThumbnails)
           .then(() => {
             console.log('[NewMicrographDialog] Successfully generated composite thumbnail');
-            // Trigger thumbnail refresh
             window.dispatchEvent(
               new CustomEvent('thumbnail-generated', { detail: { micrographId: micrograph.id } })
             );
@@ -1519,7 +1493,7 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
           );
 
           window.api
-            .generateCompositeThumbnail(freshProject.id, xplMicrograph.id, freshProject)
+            .generateCompositeThumbnail(projectForThumbnails.id, xplMicrograph.id, projectForThumbnails)
             .then(() => {
               console.log('[NewMicrographDialog] Successfully generated XPL thumbnail');
               window.dispatchEvent(
@@ -1532,7 +1506,7 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
               console.error('[NewMicrographDialog] Failed to generate XPL thumbnail:', error);
             });
         }
-      }, 0);
+      }
 
       // Close dialog immediately (don't block on thumbnail generation)
       handleCancel();
