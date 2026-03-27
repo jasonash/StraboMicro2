@@ -183,30 +183,25 @@ export function LinkSiblingDialog({
       linkSiblingImages(selectedCandidateId, sourceMicrograph.id);
     }
 
+    // Capture project state immediately after mutation for thumbnail generation
+    const projectForThumbnail = useAppStore.getState().project;
+
     // Close dialog first, then regenerate thumbnail in the background
     onClose();
 
     // Regenerate parent's composite thumbnail since XPL position changed
-    // Use setTimeout to ensure state update has fully propagated
     const parentId = sourceMicrograph.parentID;
-    if (parentId) {
-      setTimeout(async () => {
-        try {
-          // Get fresh project state after linking
-          const freshProject = useAppStore.getState().project;
-          if (freshProject) {
-            console.log('[LinkSiblingDialog] Regenerating parent thumbnail for:', parentId);
-            await window.api?.generateCompositeThumbnail(freshProject.id, parentId, freshProject);
-            console.log('[LinkSiblingDialog] Parent thumbnail regenerated');
-            // Dispatch event to notify thumbnail components to reload
-            window.dispatchEvent(
-              new CustomEvent('thumbnail-generated', { detail: { micrographId: parentId } })
-            );
-          }
-        } catch (error) {
+    if (parentId && projectForThumbnail) {
+      window.api?.generateCompositeThumbnail(projectForThumbnail.id, parentId, projectForThumbnail)
+        .then(() => {
+          console.log('[LinkSiblingDialog] Parent thumbnail regenerated');
+          window.dispatchEvent(
+            new CustomEvent('thumbnail-generated', { detail: { micrographId: parentId } })
+          );
+        })
+        .catch((error) => {
           console.error('[LinkSiblingDialog] Error regenerating parent thumbnail:', error);
-        }
-      }, 100);
+        });
     }
   }, [sourceMicrograph, selectedCandidateId, project, linkSiblingImages, onClose]);
 

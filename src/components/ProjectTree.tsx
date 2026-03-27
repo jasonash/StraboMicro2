@@ -1780,11 +1780,9 @@ export function ProjectTree() {
             deleteMicrograph(deletingMicrograph.id);
 
             // Regenerate parent's composite thumbnail if this was a child micrograph
-            if (parentId && project) {
-              setTimeout(() => {
-                const freshProject = useAppStore.getState().project;
-                if (!freshProject) return;
-
+            if (parentId) {
+              const freshProject = useAppStore.getState().project;
+              if (freshProject) {
                 window.api
                   ?.generateCompositeThumbnail(freshProject.id, parentId, freshProject)
                   .then(() => {
@@ -1803,7 +1801,7 @@ export function ProjectTree() {
                       error
                     );
                   });
-              }, 0);
+              }
             }
           }
           setShowDeleteMicrographConfirm(false);

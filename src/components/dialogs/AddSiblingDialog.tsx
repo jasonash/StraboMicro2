@@ -283,38 +283,38 @@ export function AddSiblingDialog({
       }
       console.log(`[AddSiblingDialog] Sibling link created: PPL <-> XPL`);
 
+      // Capture project state immediately after mutations for thumbnail generation
+      const projectForThumbnails = useAppStore.getState().project;
+
       // Close dialog first
       onClose();
 
       // Generate thumbnails in the background
-      setTimeout(async () => {
-        try {
-          const freshProject = useAppStore.getState().project;
-          if (!freshProject || !window.api) return;
-
-          // Generate sibling thumbnail
-          await window.api.generateCompositeThumbnail(freshProject.id, siblingMicrographId, freshProject);
-          window.dispatchEvent(
-            new CustomEvent('thumbnail-generated', { detail: { micrographId: siblingMicrographId } })
-          );
-
-          // Regenerate parent thumbnail if this is an associated micrograph
-          if (sourceMicrograph.parentID) {
-            await window.api.generateCompositeThumbnail(
-              freshProject.id,
-              sourceMicrograph.parentID,
-              freshProject
-            );
+      if (projectForThumbnails && window.api) {
+        (async () => {
+          try {
+            await window.api!.generateCompositeThumbnail(projectForThumbnails.id, siblingMicrographId, projectForThumbnails);
             window.dispatchEvent(
-              new CustomEvent('thumbnail-generated', { detail: { micrographId: sourceMicrograph.parentID } })
+              new CustomEvent('thumbnail-generated', { detail: { micrographId: siblingMicrographId } })
             );
-          }
 
-          console.log('[AddSiblingDialog] Thumbnails generated');
-        } catch (err) {
-          console.error('[AddSiblingDialog] Error generating thumbnails:', err);
-        }
-      }, 100);
+            if (sourceMicrograph.parentID) {
+              await window.api!.generateCompositeThumbnail(
+                projectForThumbnails.id,
+                sourceMicrograph.parentID,
+                projectForThumbnails
+              );
+              window.dispatchEvent(
+                new CustomEvent('thumbnail-generated', { detail: { micrographId: sourceMicrograph.parentID } })
+              );
+            }
+
+            console.log('[AddSiblingDialog] Thumbnails generated');
+          } catch (err) {
+            console.error('[AddSiblingDialog] Error generating thumbnails:', err);
+          }
+        })();
+      }
 
     } catch (err) {
       console.error(`[AddSiblingDialog] Error adding ${siblingLabel}:`, err);
