@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { Backdrop, CircularProgress, Typography, Box } from '@mui/material';
 import * as Sentry from '@sentry/electron/renderer';
 import MainLayout from './components/MainLayout';
 import { NewProjectDialog } from './components/dialogs/NewProjectDialog';
@@ -194,6 +195,8 @@ function App() {
   const [isQuickEditEntryDialogOpen, setIsQuickEditEntryDialogOpen] = useState(false);
   const [isQuickApplyPresetsDialogOpen, setIsQuickApplyPresetsDialogOpen] = useState(false);
   const [isMineralColorDialogOpen, setIsMineralColorDialogOpen] = useState(false);
+  const [isLoadingProject, setIsLoadingProject] = useState(false);
+  const [loadingProjectName, setLoadingProjectName] = useState('');
   const [isStartupMessageOpen, setIsStartupMessageOpen] = useState(false);
   const [startupMessage, setStartupMessage] = useState('');
   const [startupMessageUuid, setStartupMessageUuid] = useState('');
@@ -1197,13 +1200,16 @@ function App() {
         return;
       }
 
-      // Close current project
+      // Close current project and show loading indicator
       closeProject();
+      setLoadingProjectName('');
+      setIsLoadingProject(true);
 
       // Load the new project
       try {
         const result = await window.api?.projects.load(projectId);
         if (result?.success && result.project) {
+          setLoadingProjectName(result.project.name || '');
           // Load with preparation (prepares image cache before loading into store)
           await loadProjectWithPreparation(result.project, null);
           console.log('[App] Project loaded successfully:', result.project.name);
@@ -1214,6 +1220,8 @@ function App() {
       } catch (error) {
         console.error('[App] Error loading project:', error);
         alert(`Error loading project: ${error}`);
+      } finally {
+        setIsLoadingProject(false);
       }
     }));
 
@@ -1336,6 +1344,17 @@ function App() {
           closeProject();
         }}
       />
+      <Backdrop
+        open={isLoadingProject && !isPreparingProject}
+        sx={{ zIndex: (theme) => theme.zIndex.modal + 1, flexDirection: 'column', gap: 2 }}
+      >
+        <CircularProgress size={48} />
+        <Box sx={{ textAlign: 'center' }}>
+          <Typography variant="h6" color="white">
+            {loadingProjectName ? `Opening "${loadingProjectName}"…` : 'Opening project…'}
+          </Typography>
+        </Box>
+      </Backdrop>
       <ProjectPrepDialog
         open={isPreparingProject}
         totalImages={preparationProgress.totalImages}
