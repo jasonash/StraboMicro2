@@ -1,13 +1,12 @@
 /**
  * ProjectTree — Hierarchical project navigation
- *
- * Displays Dataset → Sample → Micrograph tree with composite thumbnails,
- * collapse/expand, and active highlighting. Read-only (no drag-drop, context menus).
- * Built from scratch — the desktop version (1986 lines) is too editing-heavy to adapt.
+ * Uses MUI components matching the desktop app's ProjectTree styling.
  */
 
 import { useState, useEffect, useMemo } from 'react';
-import { colors, fonts } from '../styles/theme';
+import { Box, Typography, Collapse, IconButton } from '@mui/material';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import { HttpTileLoader } from '../services/tileLoader';
 import type { ProjectMetadata, DatasetMetadata, SampleMetadata, MicrographMetadata } from '../types/project-types';
 
@@ -19,167 +18,81 @@ interface ProjectTreeProps {
   onSelectMicrograph: (id: string) => void;
 }
 
-export function ProjectTree({
-  project,
-  allMicrographs,
-  activeMicrographId,
-  tileLoader,
-  onSelectMicrograph,
-}: ProjectTreeProps) {
+export function ProjectTree({ project, allMicrographs, activeMicrographId, tileLoader, onSelectMicrograph }: ProjectTreeProps) {
   return (
-    <div style={{ padding: '0' }}>
+    <Box>
       {(project.datasets || []).map(dataset => (
-        <DatasetNode
-          key={dataset.id}
-          dataset={dataset}
-          allMicrographs={allMicrographs}
-          activeMicrographId={activeMicrographId}
-          tileLoader={tileLoader}
-          onSelectMicrograph={onSelectMicrograph}
-        />
+        <DatasetNode key={dataset.id} dataset={dataset} allMicrographs={allMicrographs}
+          activeMicrographId={activeMicrographId} tileLoader={tileLoader} onSelectMicrograph={onSelectMicrograph} />
       ))}
-    </div>
+    </Box>
   );
 }
 
-// ============================================================================
-// DATASET NODE
-// ============================================================================
-
-function DatasetNode({
-  dataset,
-  allMicrographs,
-  activeMicrographId,
-  tileLoader,
-  onSelectMicrograph,
-}: {
-  dataset: DatasetMetadata;
-  allMicrographs: MicrographMetadata[];
-  activeMicrographId: string | null;
-  tileLoader: HttpTileLoader;
-  onSelectMicrograph: (id: string) => void;
+function DatasetNode({ dataset, allMicrographs, activeMicrographId, tileLoader, onSelectMicrograph }: {
+  dataset: DatasetMetadata; allMicrographs: MicrographMetadata[]; activeMicrographId: string | null;
+  tileLoader: HttpTileLoader; onSelectMicrograph: (id: string) => void;
 }) {
-  const samples = dataset.samples || [];
-
-  // If only one dataset, skip the dataset header
   return (
-    <div>
-      {samples.map(sample => (
-        <SampleNode
-          key={sample.id}
-          sample={sample}
-          allMicrographs={allMicrographs}
-          activeMicrographId={activeMicrographId}
-          tileLoader={tileLoader}
-          onSelectMicrograph={onSelectMicrograph}
-        />
+    <Box>
+      {(dataset.samples || []).map(sample => (
+        <SampleNode key={sample.id} sample={sample} allMicrographs={allMicrographs}
+          activeMicrographId={activeMicrographId} tileLoader={tileLoader} onSelectMicrograph={onSelectMicrograph} />
       ))}
-    </div>
+    </Box>
   );
 }
 
-// ============================================================================
-// SAMPLE NODE
-// ============================================================================
-
-function SampleNode({
-  sample,
-  allMicrographs,
-  activeMicrographId,
-  tileLoader,
-  onSelectMicrograph,
-}: {
-  sample: SampleMetadata;
-  allMicrographs: MicrographMetadata[];
-  activeMicrographId: string | null;
-  tileLoader: HttpTileLoader;
-  onSelectMicrograph: (id: string) => void;
+function SampleNode({ sample, allMicrographs, activeMicrographId, tileLoader, onSelectMicrograph }: {
+  sample: SampleMetadata; allMicrographs: MicrographMetadata[]; activeMicrographId: string | null;
+  tileLoader: HttpTileLoader; onSelectMicrograph: (id: string) => void;
 }) {
   const [isExpanded, setIsExpanded] = useState(true);
-
-  // Root micrographs belonging to this sample (no parent)
   const rootMicrographs = useMemo(() => {
-    const sampleMicroIds = new Set((sample.micrographs || []).map(m => m.id));
-    return allMicrographs.filter(m => sampleMicroIds.has(m.id) && !m.parentID);
+    const ids = new Set((sample.micrographs || []).map(m => m.id));
+    return allMicrographs.filter(m => ids.has(m.id) && !m.parentID);
   }, [sample, allMicrographs]);
 
-  const micrographCount = (sample.micrographs || []).length;
-
   return (
-    <div>
-      {/* Sample header */}
-      <div
+    <Box>
+      <Box
         onClick={() => setIsExpanded(!isExpanded)}
-        style={{
-          padding: '6px 8px',
-          fontSize: fonts.sizeBase,
-          fontWeight: 'bold',
-          color: colors.textMuted,
-          textTransform: 'uppercase',
-          letterSpacing: '0.5px',
-          backgroundColor: colors.bgDark,
-          borderBottom: `1px solid ${colors.border}`,
-          cursor: 'pointer',
+        sx={{
           display: 'flex',
           alignItems: 'center',
-          gap: '6px',
+          px: 1,
+          py: 0.5,
+          cursor: 'pointer',
+          bgcolor: 'background.default',
+          borderBottom: 1,
+          borderColor: 'divider',
+          '&:hover': { bgcolor: 'action.hover' },
           userSelect: 'none',
         }}
       >
-        <span style={{
-          fontSize: '9px',
-          transition: 'transform 0.15s',
-          transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
-        }}>
-          &#9654;
-        </span>
-        <span style={{ flex: 1 }}>{sample.label || sample.name}</span>
-        <span style={{
-          fontSize: fonts.sizeXs,
-          color: colors.textDim,
-          fontWeight: 'normal',
-          textTransform: 'none',
-        }}>
-          {micrographCount}
-        </span>
-      </div>
-
-      {/* Micrographs */}
-      {isExpanded && rootMicrographs.map(micro => (
-        <MicrographNode
-          key={micro.id}
-          micrograph={micro}
-          allMicrographs={allMicrographs}
-          depth={0}
-          activeMicrographId={activeMicrographId}
-          tileLoader={tileLoader}
-          onSelectMicrograph={onSelectMicrograph}
-        />
-      ))}
-    </div>
+        {isExpanded ? <ExpandMoreIcon sx={{ fontSize: 16, color: 'text.secondary' }} /> : <ChevronRightIcon sx={{ fontSize: 16, color: 'text.secondary' }} />}
+        <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: 0.5, flex: 1, ml: 0.5 }}>
+          {sample.label || sample.name}
+        </Typography>
+        <Typography variant="caption" color="text.disabled">
+          {(sample.micrographs || []).length}
+        </Typography>
+      </Box>
+      <Collapse in={isExpanded}>
+        {rootMicrographs.map(micro => (
+          <MicrographNode key={micro.id} micrograph={micro} allMicrographs={allMicrographs} depth={0}
+            activeMicrographId={activeMicrographId} tileLoader={tileLoader} onSelectMicrograph={onSelectMicrograph} />
+        ))}
+      </Collapse>
+    </Box>
   );
 }
 
-// ============================================================================
-// MICROGRAPH NODE (recursive)
-// ============================================================================
-
-function MicrographNode({
-  micrograph,
-  allMicrographs,
-  depth,
-  activeMicrographId,
-  tileLoader,
-  onSelectMicrograph,
-}: {
-  micrograph: MicrographMetadata;
-  allMicrographs: MicrographMetadata[];
-  depth: number;
-  activeMicrographId: string | null;
-  tileLoader: HttpTileLoader;
-  onSelectMicrograph: (id: string) => void;
+function MicrographNode({ micrograph, allMicrographs, depth, activeMicrographId, tileLoader, onSelectMicrograph }: {
+  micrograph: MicrographMetadata; allMicrographs: MicrographMetadata[]; depth: number;
+  activeMicrographId: string | null; tileLoader: HttpTileLoader; onSelectMicrograph: (id: string) => void;
 }) {
-  const [thumbnailUrl, setThumbnailUrl] = useState<string>('');
+  const [thumbnailUrl, setThumbnailUrl] = useState('');
   const [isExpanded, setIsExpanded] = useState(true);
 
   const children = useMemo(
@@ -195,89 +108,81 @@ function MicrographNode({
   }, [micrograph.id, tileLoader]);
 
   return (
-    <div>
-      <div
+    <Box>
+      <Box
         onClick={() => onSelectMicrograph(micrograph.id)}
-        style={{
-          paddingLeft: `${8 + depth * 16}px`,
-          paddingRight: '8px',
-          paddingTop: '4px',
-          paddingBottom: '4px',
+        sx={{
+          pl: `${12 + depth * 16}px`,
+          pr: 1,
+          py: 0.5,
           cursor: 'pointer',
-          backgroundColor: isActive ? colors.bgActive : 'transparent',
-          borderLeft: isActive ? `3px solid ${colors.accent}` : '3px solid transparent',
+          bgcolor: isActive ? 'rgba(228, 76, 101, 0.15)' : 'transparent',
+          borderLeft: isActive ? '3px solid' : '3px solid transparent',
+          borderLeftColor: isActive ? 'primary.main' : 'transparent',
+          '&:hover': { bgcolor: isActive ? 'rgba(228, 76, 101, 0.15)' : 'action.hover' },
+          transition: 'background-color 0.15s',
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-          {/* Expand/collapse for items with children */}
-          {hasChildren && (
-            <span
-              onClick={(e) => {
-                e.stopPropagation();
-                setIsExpanded(!isExpanded);
-              }}
-              style={{
-                fontSize: '9px',
-                cursor: 'pointer',
-                transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
-                transition: 'transform 0.15s',
-                color: colors.textMuted,
-                padding: '2px',
-              }}
+        {/* Name row */}
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.25 }}>
+          {hasChildren ? (
+            <IconButton
+              size="small"
+              onClick={(e) => { e.stopPropagation(); setIsExpanded(!isExpanded); }}
+              sx={{ p: 0, width: 16, height: 16 }}
             >
-              &#9654;
-            </span>
+              {isExpanded ? <ExpandMoreIcon sx={{ fontSize: 14 }} /> : <ChevronRightIcon sx={{ fontSize: 14 }} />}
+            </IconButton>
+          ) : (
+            <Box sx={{ width: 16 }} />
           )}
-          {!hasChildren && <span style={{ width: '13px' }} />}
-
-          <span style={{
-            fontWeight: isActive ? 'bold' : 'normal',
-            fontSize: fonts.sizeBase,
-            color: isActive ? colors.textPrimary : colors.textSecondary,
-            flex: 1,
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
-          }}>
-            {micrograph.name}
-          </span>
-
-          {hasChildren && (
-            <span style={{ fontSize: fonts.sizeXs, color: colors.textDim }}>
-              {children.length}
-            </span>
-          )}
-        </div>
-
-        {thumbnailUrl && (
-          <img
-            src={thumbnailUrl}
-            alt={micrograph.name}
-            style={{
-              width: `${Math.max(60, 160 - depth * 20)}px`,
-              height: 'auto',
-              borderRadius: '3px',
-              border: isActive ? `2px solid ${colors.accent}` : `1px solid ${colors.border}`,
-              marginTop: '3px',
-              marginLeft: hasChildren ? '19px' : '13px',
-              display: 'block',
+          <Typography
+            variant="body2"
+            sx={{
+              fontWeight: isActive ? 600 : 400,
+              color: isActive ? 'text.primary' : 'text.secondary',
+              flex: 1,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+              fontSize: '0.8rem',
             }}
-          />
+          >
+            {micrograph.name}
+          </Typography>
+          {hasChildren && (
+            <Typography variant="caption" color="text.disabled">{children.length}</Typography>
+          )}
+        </Box>
+
+        {/* Thumbnail */}
+        {thumbnailUrl && (
+          <Box sx={{ ml: hasChildren ? '20px' : '16px' }}>
+            <Box
+              component="img"
+              src={thumbnailUrl}
+              alt={micrograph.name}
+              sx={{
+                width: Math.max(80, 160 - depth * 20),
+                height: 'auto',
+                borderRadius: '4px',
+                border: isActive ? '2px solid' : '1px solid',
+                borderColor: isActive ? 'primary.main' : 'divider',
+                display: 'block',
+              }}
+            />
+          </Box>
         )}
-      </div>
+      </Box>
 
       {/* Children */}
-      {isExpanded && children.map(child => (
-        <MicrographNode
-          key={child.id}
-          micrograph={child}
-          allMicrographs={allMicrographs}
-          depth={depth + 1}
-          activeMicrographId={activeMicrographId}
-          tileLoader={tileLoader}
-          onSelectMicrograph={onSelectMicrograph}
-        />
-      ))}
-    </div>
+      <Collapse in={isExpanded}>
+        {children.map(child => (
+          <MicrographNode key={child.id} micrograph={child} allMicrographs={allMicrographs}
+            depth={depth + 1} activeMicrographId={activeMicrographId}
+            tileLoader={tileLoader} onSelectMicrograph={onSelectMicrograph} />
+        ))}
+      </Collapse>
+    </Box>
   );
 }

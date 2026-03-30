@@ -1,9 +1,10 @@
 /**
  * Header — Top bar with project title and download actions
+ * Uses MUI components matching the desktop app's AppBar styling.
  */
 
 import { useState } from 'react';
-import { colors, fonts } from '../styles/theme';
+import { AppBar, Toolbar, Typography, Button, Box } from '@mui/material';
 import { HttpTileLoader } from '../services/tileLoader';
 
 interface HeaderProps {
@@ -22,63 +23,45 @@ export function Header({ projectName, tileLoader }: HeaderProps) {
   };
 
   return (
-    <div style={{
-      height: '44px',
-      backgroundColor: colors.bgHeader,
-      color: colors.textPrimary,
-      display: 'flex',
-      alignItems: 'center',
-      padding: '0 16px',
-      borderBottom: `1px solid ${colors.border}`,
-      flexShrink: 0,
-      gap: '12px',
-    }}>
-      <span style={{ fontWeight: 'bold', fontSize: fonts.sizeXl }}>StraboMicro</span>
-      <span style={{ color: colors.textDim }}>|</span>
-      <span style={{ fontSize: fonts.sizeLg, color: colors.textMuted, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-        {projectName}
-      </span>
-
-      <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
-        <HeaderButton href={tileLoader.getPdfUrl()} label="PDF" />
-        <HeaderButton href={tileLoader.getSmzUrl()} label="SMZ" />
-        <button
-          onClick={handleShare}
-          style={{
-            background: 'none',
-            border: `1px solid ${colors.border}`,
-            color: copied ? colors.success : colors.textLink,
-            padding: '4px 10px',
-            borderRadius: '4px',
-            cursor: 'pointer',
-            fontSize: fonts.sizeSm,
-            transition: 'color 0.15s',
-          }}
-        >
-          {copied ? 'Copied!' : 'Share'}
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function HeaderButton({ href, label }: { href: string; label: string }) {
-  return (
-    <a
-      href={href}
-      target="_blank"
-      rel="noopener noreferrer"
-      download
-      style={{
-        color: colors.textLink,
-        textDecoration: 'none',
-        fontSize: fonts.sizeSm,
-        border: `1px solid ${colors.border}`,
-        padding: '4px 10px',
-        borderRadius: '4px',
-      }}
-    >
-      {label}
-    </a>
+    <AppBar position="static" elevation={0} sx={{ borderBottom: 1, borderColor: 'divider' }}>
+      <Toolbar variant="dense" sx={{ minHeight: 40, gap: 1.5 }}>
+        <Typography variant="subtitle1" sx={{ fontWeight: 700, letterSpacing: 1 }}>
+          STRABOMICRO
+        </Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {projectName}
+        </Typography>
+        <Box sx={{ display: 'flex', gap: 1 }}>
+          <Button
+            size="small"
+            variant="outlined"
+            color="primary"
+            href={tileLoader.getPdfUrl()}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            PDF
+          </Button>
+          <Button
+            size="small"
+            variant="outlined"
+            color="primary"
+            href={tileLoader.getSmzUrl()}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            SMZ
+          </Button>
+          <Button
+            size="small"
+            variant="outlined"
+            color={copied ? 'success' : 'primary'}
+            onClick={handleShare}
+          >
+            {copied ? 'Copied!' : 'Share'}
+          </Button>
+        </Box>
+      </Toolbar>
+    </AppBar>
   );
 }
