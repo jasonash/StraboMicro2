@@ -12,8 +12,9 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Stage, Layer, Image as KonvaImage } from 'react-konva';
 import Konva from 'konva';
 import { SpotRenderer } from './SpotRenderer';
+import { SketchLayerRenderer } from './SketchLayerRenderer';
 import { HttpTileLoader, TileMetadata } from '../services/tileLoader';
-import type { Spot } from '../types/project-types';
+import type { Spot, SketchLayer } from '../types/project-types';
 
 // Constants matching desktop app
 const TILE_SIZE = 256;
@@ -30,11 +31,12 @@ interface TileInfo {
 interface TiledViewerProps {
   micrographId: string | null;
   spots: Spot[];
+  sketchLayers?: SketchLayer[] | null;
   tileLoader: HttpTileLoader;
   onSpotClick?: (spot: Spot) => void;
 }
 
-export function TiledViewer({ micrographId, spots, tileLoader, onSpotClick }: TiledViewerProps) {
+export function TiledViewer({ micrographId, spots, sketchLayers, tileLoader, onSpotClick }: TiledViewerProps) {
   // Container sizing
   const containerRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<Konva.Stage>(null);
@@ -408,6 +410,18 @@ export function TiledViewer({ micrographId, spots, tileLoader, onSpotClick }: Ti
               />
             ))}
         </Layer>
+
+        {/* Sketch layers */}
+        {sketchLayers && sketchLayers.length > 0 && (
+          <Layer
+            x={position.x}
+            y={position.y}
+            scaleX={zoom}
+            scaleY={zoom}
+          >
+            <SketchLayerRenderer layers={sketchLayers} />
+          </Layer>
+        )}
       </Stage>
     </div>
   );
