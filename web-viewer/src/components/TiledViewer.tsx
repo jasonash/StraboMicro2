@@ -338,7 +338,7 @@ export function TiledViewer({ micrographId, spots, sketchLayers, scalePixelsPerC
         width: '100%',
         height: '100%',
         overflow: 'hidden',
-        backgroundColor: '#1a1a2e',
+        backgroundColor: '#1a1a1a',
         cursor: cursorStyle,
         position: 'relative',
       }}

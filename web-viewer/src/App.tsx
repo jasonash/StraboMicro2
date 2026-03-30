@@ -6,6 +6,7 @@
  */
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
+import { Box, Typography } from '@mui/material';
 import { TiledViewer } from './components/TiledViewer';
 import { PropertiesPanel } from './components/PropertiesPanel';
 import { ProjectTree } from './components/ProjectTree';
@@ -175,35 +176,17 @@ export default function App() {
 
   if (error) {
     return (
-      <div style={{
-        display: 'flex',
-        justifyContent: 'center',
-        alignItems: 'center',
-        height: '100vh',
-        backgroundColor: '#1a1a2e',
-        color: '#fff',
-        fontFamily: 'sans-serif',
-        fontSize: '18px',
-      }}>
-        {error}
-      </div>
+      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', bgcolor: 'background.default' }}>
+        <Typography color="text.secondary">{error}</Typography>
+      </Box>
     );
   }
 
   if (!project || !tileLoader) {
     return (
-      <div style={{
-        display: 'flex',
-        justifyContent: 'center',
-        alignItems: 'center',
-        height: '100vh',
-        backgroundColor: '#1a1a2e',
-        color: '#fff',
-        fontFamily: 'sans-serif',
-        fontSize: '18px',
-      }}>
-        Loading project...
-      </div>
+      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', bgcolor: 'background.default' }}>
+        <Typography color="text.secondary">Loading project...</Typography>
+      </Box>
     );
   }
 
@@ -212,17 +195,18 @@ export default function App() {
   // ============================================================================
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', fontFamily: 'sans-serif' }}>
+    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
       {/* Header */}
       <Header projectName={project.name} tileLoader={tileLoader} />
 
       {/* Main content */}
-      <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+      <Box sx={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
         {/* Sidebar — Project Tree */}
-        <div style={{
-          width: '220px',
-          backgroundColor: '#1a1a2e',
-          borderRight: '1px solid #333',
+        <Box sx={{
+          width: 240,
+          bgcolor: 'background.paper',
+          borderRight: 1,
+          borderColor: 'divider',
           overflowY: 'auto',
           flexShrink: 0,
         }}>
@@ -233,17 +217,17 @@ export default function App() {
             tileLoader={tileLoader}
             onSelectMicrograph={handleSelectMicrograph}
           />
-        </div>
+        </Box>
 
         {/* Canvas area */}
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
           <BreadcrumbsBar
             micrograph={activeMicrograph}
             allMicrographs={allMicrographs}
             selectedSpotName={selectedSpot?.name}
             onNavigate={handleSelectMicrograph}
           />
-          <div style={{ flex: 1, position: 'relative' }}>
+          <Box sx={{ flex: 1, position: 'relative' }}>
             <TiledViewer
               micrographId={activeMicrographId}
               spots={activeSpots}
@@ -256,14 +240,15 @@ export default function App() {
               onSpotClick={handleSpotClick}
               onOverlayClick={handleSelectMicrograph}
             />
-          </div>
-        </div>
+          </Box>
+        </Box>
 
         {/* Right panel — properties */}
-        <div style={{
-          width: '300px',
-          backgroundColor: '#1a1a2e',
-          borderLeft: '1px solid #333',
+        <Box sx={{
+          width: 300,
+          bgcolor: 'background.paper',
+          borderLeft: 1,
+          borderColor: 'divider',
           flexShrink: 0,
           display: 'flex',
           flexDirection: 'column',
@@ -277,9 +262,9 @@ export default function App() {
             allMicrographs={allMicrographs}
             onDeselectSpot={() => setSelectedSpot(null)}
           />
-        </div>
-      </div>
-    </div>
+        </Box>
+      </Box>
+    </Box>
   );
 }
 

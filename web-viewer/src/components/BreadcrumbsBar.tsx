@@ -1,12 +1,11 @@
 /**
  * BreadcrumbsBar — Micrograph hierarchy navigation
- *
- * Shows the ancestor chain for the current micrograph (for overlay hierarchies).
- * Clicking an ancestor navigates to that micrograph.
+ * Uses MUI components matching the desktop app's BreadcrumbsBar styling.
  */
 
 import { useMemo } from 'react';
-import { colors, fonts } from '../styles/theme';
+import { Box, Typography, Link } from '@mui/material';
+import NavigateNextIcon from '@mui/icons-material/NavigateNext';
 import type { MicrographMetadata } from '../types/project-types';
 
 interface BreadcrumbsBarProps {
@@ -17,16 +16,13 @@ interface BreadcrumbsBarProps {
 }
 
 export function BreadcrumbsBar({ micrograph, allMicrographs, selectedSpotName, onNavigate }: BreadcrumbsBarProps) {
-  // Build ancestor chain from root to current
   const chain = useMemo(() => {
     if (!micrograph) return [];
     const ancestors: MicrographMetadata[] = [];
     let current: MicrographMetadata | undefined = micrograph;
     while (current) {
       ancestors.unshift(current);
-      current = current.parentID
-        ? allMicrographs.find(m => m.id === current!.parentID)
-        : undefined;
+      current = current.parentID ? allMicrographs.find(m => m.id === current!.parentID) : undefined;
     }
     return ancestors;
   }, [micrograph, allMicrographs]);
@@ -34,45 +30,44 @@ export function BreadcrumbsBar({ micrograph, allMicrographs, selectedSpotName, o
   if (chain.length <= 1 && !selectedSpotName) return null;
 
   return (
-    <div style={{
+    <Box sx={{
       display: 'flex',
       alignItems: 'center',
-      gap: '4px',
-      padding: '4px 12px',
-      backgroundColor: colors.bgDark,
-      borderBottom: `1px solid ${colors.border}`,
-      fontSize: fonts.sizeSm,
-      overflow: 'hidden',
+      gap: 0.5,
+      px: 1.5,
+      py: 0.5,
+      bgcolor: 'background.default',
+      borderBottom: 1,
+      borderColor: 'divider',
       flexShrink: 0,
+      overflow: 'hidden',
     }}>
       {chain.map((item, i) => {
         const isLast = i === chain.length - 1 && !selectedSpotName;
         return (
-          <span key={item.id} style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-            {i > 0 && <span style={{ color: colors.textDim }}>&rsaquo;</span>}
+          <Box key={item.id} sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+            {i > 0 && <NavigateNextIcon sx={{ fontSize: 14, color: 'text.disabled' }} />}
             {isLast ? (
-              <span style={{ color: colors.textSecondary, fontWeight: 500 }}>{item.name}</span>
+              <Typography variant="caption" sx={{ fontWeight: 500 }}>{item.name}</Typography>
             ) : (
-              <span
+              <Link
+                component="button"
+                variant="caption"
                 onClick={() => onNavigate(item.id)}
-                style={{
-                  color: colors.textLink,
-                  cursor: 'pointer',
-                  textDecoration: 'none',
-                }}
+                sx={{ textDecoration: 'none', '&:hover': { textDecoration: 'underline' } }}
               >
                 {item.name}
-              </span>
+              </Link>
             )}
-          </span>
+          </Box>
         );
       })}
       {selectedSpotName && (
-        <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-          <span style={{ color: colors.textDim }}>&rsaquo;</span>
-          <span style={{ color: colors.textSecondary, fontWeight: 500 }}>{selectedSpotName}</span>
-        </span>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+          <NavigateNextIcon sx={{ fontSize: 14, color: 'text.disabled' }} />
+          <Typography variant="caption" sx={{ fontWeight: 500 }}>{selectedSpotName}</Typography>
+        </Box>
       )}
-    </div>
+    </Box>
   );
 }
