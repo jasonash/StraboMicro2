@@ -59,8 +59,10 @@ export function TiledViewer({ micrographId, spots, sketchLayers, scalePixelsPerC
   // Image state
   const [metadata, setMetadata] = useState<TileMetadata | null>(null);
   const [thumbnail, setThumbnail] = useState<HTMLImageElement | null>(null);
+  const [mediumImage, setMediumImage] = useState<HTMLImageElement | null>(null);
   const [tiles, setTiles] = useState<Map<string, TileInfo>>(new Map());
-  const [renderMode, setRenderMode] = useState<'loading' | 'thumbnail' | 'tiled'>('loading');
+  const [tilesLoaded, setTilesLoaded] = useState(false);
+  const [renderMode, setRenderMode] = useState<'loading' | 'thumbnail' | 'medium' | 'tiled'>('loading');
   const [visibleTiles, setVisibleTiles] = useState<string[]>([]);
 
   // Viewport state
@@ -133,7 +135,9 @@ export function TiledViewer({ micrographId, spots, sketchLayers, scalePixelsPerC
       setLoadingMessage('Loading metadata...');
       setRenderMode('loading');
       setTiles(new Map());
+      setTilesLoaded(false);
       setThumbnail(null);
+      setMediumImage(null);
 
       try {
         // Step 1: Load metadata
@@ -151,17 +155,23 @@ export function TiledViewer({ micrographId, spots, sketchLayers, scalePixelsPerC
           setRenderMode('thumbnail');
           fitToScreen(meta.width, meta.height);
         } catch {
-          // Thumbnail might not exist, try medium
-          const mediumImg = await tileLoader.loadMedium(micrographId);
+          // Thumbnail might not exist, skip
+        }
+
+        // Step 3: Load medium image (2048px — seamless, good for most zoom levels)
+        try {
+          const medImg = await tileLoader.loadMedium(micrographId);
           if (currentSession !== sessionRef.current) return;
-          setThumbnail(mediumImg);
-          setRenderMode('thumbnail');
-          fitToScreen(meta.width, meta.height);
+          setMediumImage(medImg);
+          setRenderMode('medium');
+          if (!thumbnail) fitToScreen(meta.width, meta.height);
+        } catch {
+          // Medium might not exist, skip
         }
 
         setIsLoading(false);
 
-        // Step 3: Load all tiles in background
+        // Step 4: Load all tiles in background (for high-zoom detail)
         setLoadingMessage('Loading tiles...');
         const allCoords: Array<{ x: number; y: number }> = [];
         for (let y = 0; y < meta.tilesY; y++) {
@@ -179,8 +189,9 @@ export function TiledViewer({ micrographId, spots, sketchLayers, scalePixelsPerC
         }
 
         setTiles(newTiles);
-        setRenderMode('tiled');
+        setTilesLoaded(true);
         setLoadingMessage('');
+        // Don't switch to 'tiled' here — let the zoom-based LOD effect handle it
       } catch (err) {
         if (currentSession !== sessionRef.current) return;
         console.error('Failed to load image:', err);
@@ -219,6 +230,26 @@ export function TiledViewer({ micrographId, spots, sketchLayers, scalePixelsPerC
 
     setVisibleTiles(visible);
   }, [metadata, position, zoom, stageSize, renderMode]);
+
+  // ============================================================================
+  // ZOOM-BASED LOD: Switch between medium and tiled based on zoom level
+  // ============================================================================
+
+  useEffect(() => {
+    if (!metadata) return;
+    if (!mediumImage && !tilesLoaded) return; // Nothing to switch between yet
+
+    // Calculate: at what zoom does 1 image pixel = 1 screen pixel?
+    // That's zoom = 1.0. Below that, medium (2048px) is sufficient.
+    // Switch to tiles when zoom > 0.5 (tiles provide detail above half-resolution)
+    const TILE_ZOOM_THRESHOLD = 0.5;
+
+    if (tilesLoaded && zoom >= TILE_ZOOM_THRESHOLD) {
+      if (renderMode !== 'tiled') setRenderMode('tiled');
+    } else if (mediumImage) {
+      if (renderMode !== 'medium') setRenderMode('medium');
+    }
+  }, [zoom, tilesLoaded, mediumImage, metadata, renderMode]);
 
   // ============================================================================
   // WHEEL ZOOM
@@ -378,7 +409,7 @@ export function TiledViewer({ micrographId, spots, sketchLayers, scalePixelsPerC
           scaleX={zoom}
           scaleY={zoom}
         >
-          {/* Thumbnail fallback */}
+          {/* Thumbnail (lowest res, shown first while loading) */}
           {renderMode === 'thumbnail' && thumbnail && metadata && (
             <KonvaImage
               image={thumbnail}
@@ -389,7 +420,18 @@ export function TiledViewer({ micrographId, spots, sketchLayers, scalePixelsPerC
             />
           )}
 
-          {/* Tiled rendering */}
+          {/* Medium image (2048px — seamless, used when zoomed out) */}
+          {renderMode === 'medium' && mediumImage && metadata && (
+            <KonvaImage
+              image={mediumImage}
+              x={0}
+              y={0}
+              width={metadata.width}
+              height={metadata.height}
+            />
+          )}
+
+          {/* Tiled rendering (full resolution, used when zoomed in) */}
           {renderMode === 'tiled' &&
             visibleTiles.map((tileKey) => {
               const tile = tiles.get(tileKey);
@@ -445,7 +487,7 @@ export function TiledViewer({ micrographId, spots, sketchLayers, scalePixelsPerC
           scaleX={zoom}
           scaleY={zoom}
         >
-          {(renderMode === 'thumbnail' || renderMode === 'tiled') &&
+          {renderMode !== 'loading' &&
             spots.map((spot) => (
               <SpotRenderer
                 key={spot.id}
