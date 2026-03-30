@@ -72,7 +72,7 @@ export function TiledViewer({ micrographId, spots, sketchLayers, scalePixelsPerC
   // Pan state
   const [isPanning, setIsPanning] = useState(false);
   const [lastPointerPos, setLastPointerPos] = useState<{ x: number; y: number } | null>(null);
-  const [hasDragged, setHasDragged] = useState(false);
+  const hasDraggedRef = useRef(false);
   const [cursorImagePos, setCursorImagePos] = useState<{ x: number; y: number } | null>(null);
 
   // Loading state
@@ -308,7 +308,7 @@ export function TiledViewer({ micrographId, spots, sketchLayers, scalePixelsPerC
 
   const handleMouseDown = useCallback((e: Konva.KonvaEventObject<MouseEvent>) => {
     if (e.evt.button !== 0) return;
-    setHasDragged(false);
+    hasDraggedRef.current = false;
 
     const stage = stageRef.current;
     if (!stage) return;
@@ -337,7 +337,7 @@ export function TiledViewer({ micrographId, spots, sketchLayers, scalePixelsPerC
       const dy = pos.y - lastPointerPos.y;
 
       if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
-        setHasDragged(true);
+        hasDraggedRef.current = true;
       }
 
       setPosition({
@@ -350,13 +350,13 @@ export function TiledViewer({ micrographId, spots, sketchLayers, scalePixelsPerC
 
   const handleMouseUp = useCallback(() => {
     // If user clicked without dragging and didn't click a spot, deselect
-    if (!hasDragged && !spotClickedRef.current) {
+    if (!hasDraggedRef.current && !spotClickedRef.current) {
       onCanvasClick?.();
     }
     spotClickedRef.current = false;
     setIsPanning(false);
     setLastPointerPos(null);
-  }, [hasDragged, onCanvasClick]);
+  }, [onCanvasClick]);
 
   // ============================================================================
   // SPOT CLICK
@@ -365,10 +365,10 @@ export function TiledViewer({ micrographId, spots, sketchLayers, scalePixelsPerC
   const spotClickedRef = useRef(false);
 
   const handleSpotClickInternal = useCallback((spot: Spot) => {
-    if (hasDragged) return;
+    if (hasDraggedRef.current) return;
     spotClickedRef.current = true;
     onSpotClick?.(spot);
-  }, [hasDragged, onSpotClick]);
+  }, [onSpotClick]);
 
   // ============================================================================
   // CURSOR STYLE
@@ -493,7 +493,7 @@ export function TiledViewer({ micrographId, spots, sketchLayers, scalePixelsPerC
                 stageScale={zoom}
                 tileLoader={tileLoader}
                 onClick={onOverlayClick}
-                hasDragged={hasDragged}
+                hasDragged={hasDraggedRef.current}
               />
             ))}
           </Layer>
