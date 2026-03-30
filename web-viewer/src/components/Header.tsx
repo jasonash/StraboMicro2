@@ -3,7 +3,6 @@
  * Matches the desktop app's Header styling.
  */
 
-import { useState } from 'react';
 import { AppBar, Toolbar, Typography, Button, Box } from '@mui/material';
 import { HttpTileLoader } from '../services/tileLoader';
 import appIcon from '../assets/app-icon.png';
@@ -14,14 +13,6 @@ interface HeaderProps {
 }
 
 export function Header({ projectName, tileLoader }: HeaderProps) {
-  const [copied, setCopied] = useState(false);
-
-  const handleShare = () => {
-    navigator.clipboard.writeText(window.location.href).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    });
-  };
 
   return (
     <AppBar position="static" elevation={0} sx={{ borderBottom: 1, borderColor: 'divider' }}>
@@ -73,10 +64,12 @@ export function Header({ projectName, tileLoader }: HeaderProps) {
           <Button
             size="small"
             variant="outlined"
-            color={copied ? 'success' : 'primary'}
-            onClick={handleShare}
+            color="primary"
+            href={tileLoader.getShareUrl()}
+            target="_blank"
+            rel="noopener noreferrer"
           >
-            {copied ? 'Copied!' : 'Share'}
+            Share
           </Button>
         </Box>
       </Toolbar>
