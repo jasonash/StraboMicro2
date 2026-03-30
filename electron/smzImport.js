@@ -19,6 +19,7 @@ const projectFolders = require('./projectFolders');
 const projectSerializer = require('./projectSerializer');
 const versionHistory = require('./versionHistory');
 const affineTileGenerator = require('./affineTileGenerator');
+const tileCache = require('./tileCache');
 
 /**
  * Ensure the images folder has files.
@@ -517,6 +518,14 @@ async function importSmz(smzPath, progressCallback) {
       } else if (pathWithinProject.startsWith('webThumbnails/')) {
         const filename = path.basename(pathWithinProject);
         destPath = path.join(folderPaths.webThumbnails, filename);
+      } else if (pathWithinProject.startsWith('tiles/')) {
+        // Tile pyramid files — extract to a temporary tiles/ directory within the project
+        // These will be restored into the tile cache after all images are extracted
+        const tilesBasePath = path.join(folderPaths.projectPath, 'tiles');
+        const relativeTilePath = pathWithinProject.substring('tiles/'.length);
+        const tileDest = path.join(tilesBasePath, relativeTilePath);
+        await fs.promises.mkdir(path.dirname(tileDest), { recursive: true });
+        destPath = tileDest;
       } else if (pathWithinProject.startsWith('thumbnailImages/')) {
         // thumbnailImages folder - we don't have this in our folder structure
         // but we should preserve it if present
@@ -594,6 +603,110 @@ async function importSmz(smzPath, progressCallback) {
     if (dimensionStats.updated > 0) {
       log.info(`[SmzImport] Updated dimensions for ${dimensionStats.updated} micrograph(s), saving project...`);
       await projectSerializer.saveProjectJson(projectData, projectId);
+    }
+
+    // --- Restore tiles from archive into local tile cache ---
+    const extractedTilesPath = path.join(folderPaths.projectPath, 'tiles');
+    let tilesRestored = 0;
+
+    if (fs.existsSync(extractedTilesPath)) {
+      log.info('[SmzImport] Found tiles/ directory in archive, restoring to tile cache...');
+      sendProgress('Restoring tiles', 94, 'Restoring tile cache from archive...');
+
+      // Get list of micrograph IDs that have tiles
+      let tileMicrographDirs = [];
+      try {
+        tileMicrographDirs = await fs.promises.readdir(extractedTilesPath);
+        tileMicrographDirs = tileMicrographDirs.filter(f => !f.startsWith('.'));
+      } catch (err) {
+        log.warn('[SmzImport] Could not read extracted tiles directory:', err.message);
+      }
+
+      for (const micrographId of tileMicrographDirs) {
+        try {
+          // The image should already be extracted to images/<micrographId>
+          const imagePath = path.join(folderPaths.images, micrographId);
+          if (!fs.existsSync(imagePath)) {
+            log.warn(`[SmzImport] Image not found for tile restoration: ${micrographId}`);
+            continue;
+          }
+
+          // Compute the tile cache hash for the extracted image
+          const imageHash = await tileCache.generateImageHash(imagePath);
+          const cacheDir = tileCache.getCacheDir(imageHash);
+
+          // Check if tiles already exist in cache (from a previous import)
+          const cacheStatus = await tileCache.isCacheValid(imagePath);
+          if (cacheStatus.exists) {
+            log.info(`[SmzImport] Tile cache already exists for ${micrographId}, skipping restore`);
+            tilesRestored++;
+            continue;
+          }
+
+          // Create cache directory
+          await fs.promises.mkdir(cacheDir, { recursive: true });
+
+          // Source tile directory from the extracted archive
+          const sourceTileDir = path.join(extractedTilesPath, micrographId);
+
+          // Copy metadata.json and update originalPath
+          const sourceMetadataPath = path.join(sourceTileDir, 'metadata.json');
+          if (fs.existsSync(sourceMetadataPath)) {
+            const metadataContent = await fs.promises.readFile(sourceMetadataPath, 'utf-8');
+            const metadata = JSON.parse(metadataContent);
+            // Update originalPath to point to the newly extracted image
+            metadata.originalPath = imagePath;
+            await fs.promises.writeFile(
+              path.join(cacheDir, 'metadata.json'),
+              JSON.stringify(metadata, null, 2)
+            );
+          }
+
+          // Copy thumbnail.jpg
+          const sourceThumbnail = path.join(sourceTileDir, 'thumbnail.jpg');
+          if (fs.existsSync(sourceThumbnail)) {
+            await fs.promises.copyFile(sourceThumbnail, path.join(cacheDir, 'thumbnail.jpg'));
+          }
+
+          // Copy medium.jpg
+          const sourceMedium = path.join(sourceTileDir, 'medium.jpg');
+          if (fs.existsSync(sourceMedium)) {
+            await fs.promises.copyFile(sourceMedium, path.join(cacheDir, 'medium.jpg'));
+          }
+
+          // Copy all tile files
+          const sourceTilesSubdir = path.join(sourceTileDir, 'tiles');
+          if (fs.existsSync(sourceTilesSubdir)) {
+            const destTilesSubdir = path.join(cacheDir, 'tiles');
+            await fs.promises.mkdir(destTilesSubdir, { recursive: true });
+
+            const tileFiles = await fs.promises.readdir(sourceTilesSubdir);
+            for (const tileFile of tileFiles) {
+              await fs.promises.copyFile(
+                path.join(sourceTilesSubdir, tileFile),
+                path.join(destTilesSubdir, tileFile)
+              );
+            }
+            log.info(`[SmzImport] Restored ${tileFiles.length} tiles for ${micrographId}`);
+          }
+
+          tilesRestored++;
+          const pct = 94 + Math.round((tilesRestored / tileMicrographDirs.length) * 3);
+          sendProgress('Restoring tiles', pct, `Restored: ${micrographId.substring(0, 8)}...`);
+        } catch (err) {
+          log.error(`[SmzImport] Error restoring tiles for ${micrographId}:`, err);
+        }
+      }
+
+      // Clean up the extracted tiles directory (it was temporary)
+      try {
+        await fs.promises.rm(extractedTilesPath, { recursive: true, force: true });
+        log.info('[SmzImport] Cleaned up extracted tiles directory');
+      } catch (err) {
+        log.warn('[SmzImport] Failed to clean up extracted tiles directory:', err.message);
+      }
+
+      log.info(`[SmzImport] Tile restoration complete: ${tilesRestored} micrograph(s) restored`);
     }
 
     // Regenerate affine tiles for any affine-placed micrographs
