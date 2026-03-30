@@ -401,8 +401,8 @@ export function TiledViewer({ micrographId, spots, sketchLayers, scalePixelsPerC
                   image={tile.image}
                   x={tile.x * TILE_SIZE}
                   y={tile.y * TILE_SIZE}
-                  width={TILE_SIZE + 1}
-                  height={TILE_SIZE + 1}
+                  width={TILE_SIZE + 2}
+                  height={TILE_SIZE + 2}
                 />
               );
             })}
