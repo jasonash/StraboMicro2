@@ -8,6 +8,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { TiledViewer } from './components/TiledViewer';
 import { PropertiesPanel } from './components/PropertiesPanel';
+import { ProjectTree } from './components/ProjectTree';
 import { HttpTileLoader } from './services/tileLoader';
 import type { ProjectMetadata, MicrographMetadata, SampleMetadata, Spot } from './types/project-types';
 
@@ -62,77 +63,6 @@ function findParentSample(project: ProjectMetadata, micrographId: string): Sampl
 }
 
 // ============================================================================
-// SIDEBAR MICROGRAPH ITEM
-// ============================================================================
-
-interface SidebarItemProps {
-  micrograph: MicrographMetadata;
-  allMicrographs: MicrographMetadata[];
-  depth: number;
-  activeMicrographId: string | null;
-  tileLoader: HttpTileLoader;
-  onSelect: (id: string) => void;
-}
-
-function SidebarItem({ micrograph, allMicrographs, depth, activeMicrographId, tileLoader, onSelect }: SidebarItemProps) {
-  const [thumbnailUrl, setThumbnailUrl] = useState<string>('');
-  const children = useMemo(() => getChildren(micrograph.id, allMicrographs), [micrograph.id, allMicrographs]);
-  const isActive = micrograph.id === activeMicrographId;
-
-  useEffect(() => {
-    tileLoader.loadCompositeThumbnail(micrograph.id).then(setThumbnailUrl);
-  }, [micrograph.id, tileLoader]);
-
-  return (
-    <>
-      <div
-        onClick={() => onSelect(micrograph.id)}
-        style={{
-          paddingLeft: `${8 + depth * 12}px`,
-          paddingTop: '4px',
-          paddingBottom: '4px',
-          cursor: 'pointer',
-          backgroundColor: isActive ? '#2a4a7f' : 'transparent',
-          borderLeft: isActive ? '3px solid #5b9aff' : '3px solid transparent',
-        }}
-      >
-        <div style={{
-          fontWeight: 'bold',
-          fontSize: '12px',
-          color: isActive ? '#fff' : '#ccc',
-          marginBottom: '2px',
-        }}>
-          {micrograph.name}
-        </div>
-        {thumbnailUrl && (
-          <img
-            src={thumbnailUrl}
-            alt={micrograph.name}
-            style={{
-              width: `${Math.max(80, 180 - depth * 20)}px`,
-              height: 'auto',
-              borderRadius: '3px',
-              border: isActive ? '2px solid #5b9aff' : '1px solid #444',
-            }}
-          />
-        )}
-      </div>
-      {children.map(child => (
-        <SidebarItem
-          key={child.id}
-          micrograph={child}
-          allMicrographs={allMicrographs}
-          depth={depth + 1}
-          activeMicrographId={activeMicrographId}
-          tileLoader={tileLoader}
-          onSelect={onSelect}
-        />
-      ))}
-    </>
-  );
-}
-
-// ============================================================================
 // MAIN APP
 // ============================================================================
 
@@ -154,11 +84,6 @@ export default function App() {
     if (!project) return [];
     return collectAllMicrographs(project);
   }, [project]);
-
-  // Root micrographs (no parent)
-  const rootMicrographs = useMemo(() => {
-    return allMicrographs.filter(m => !m.parentID);
-  }, [allMicrographs]);
 
   // Active micrograph data
   const activeMicrograph = useMemo(() => {
@@ -307,7 +232,7 @@ export default function App() {
 
       {/* Main content */}
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
-        {/* Sidebar */}
+        {/* Sidebar — Project Tree */}
         <div style={{
           width: '220px',
           backgroundColor: '#1a1a2e',
@@ -315,39 +240,13 @@ export default function App() {
           overflowY: 'auto',
           flexShrink: 0,
         }}>
-          {/* Sample labels and micrographs */}
-          {(project.datasets || []).map(dataset => (
-            (dataset.samples || []).map(sample => (
-              <div key={sample.id}>
-                <div style={{
-                  padding: '8px',
-                  fontSize: '12px',
-                  fontWeight: 'bold',
-                  color: '#888',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.5px',
-                  backgroundColor: '#111',
-                  borderBottom: '1px solid #333',
-                }}>
-                  {sample.label || sample.name}
-                </div>
-                {rootMicrographs
-                  .filter(m => (sample.micrographs || []).some(sm => sm.id === m.id))
-                  .map(micro => (
-                    <SidebarItem
-                      key={micro.id}
-                      micrograph={micro}
-                      allMicrographs={allMicrographs}
-                      depth={0}
-                      activeMicrographId={activeMicrographId}
-                      tileLoader={tileLoader}
-                      onSelect={handleSelectMicrograph}
-                    />
-                  ))
-                }
-              </div>
-            ))
-          ))}
+          <ProjectTree
+            project={project}
+            allMicrographs={allMicrographs}
+            activeMicrographId={activeMicrographId}
+            tileLoader={tileLoader}
+            onSelectMicrograph={handleSelectMicrograph}
+          />
         </div>
 
         {/* Canvas */}
