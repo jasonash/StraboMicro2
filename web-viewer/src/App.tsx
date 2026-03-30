@@ -6,12 +6,13 @@
  */
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { Box, Typography, Tabs, Tab, List, ListItemButton, ListItemText, Chip } from '@mui/material';
+import { Box, Typography, Tabs, Tab, List, ListItemButton, ListItemText } from '@mui/material';
 import { TiledViewer } from './components/TiledViewer';
 import { PropertiesPanel } from './components/PropertiesPanel';
 import { ProjectTree } from './components/ProjectTree';
 import { Header } from './components/Header';
 import { BreadcrumbsBar } from './components/BreadcrumbsBar';
+import { SpotsPanel } from './components/SpotsPanel';
 import { HttpTileLoader } from './services/tileLoader';
 import type { ProjectMetadata, MicrographMetadata, SampleMetadata, Spot } from './types/project-types';
 
@@ -99,17 +100,6 @@ export default function App() {
   const activeSpots = useMemo(() => {
     return activeMicrograph?.spots || [];
   }, [activeMicrograph]);
-
-  // All spots across all micrographs (for Spots tab)
-  const allSpots = useMemo(() => {
-    const spots: { spot: Spot; micrographName: string; micrographId: string }[] = [];
-    for (const m of allMicrographs) {
-      for (const s of m.spots || []) {
-        spots.push({ spot: s, micrographName: m.name, micrographId: m.id });
-      }
-    }
-    return spots;
-  }, [allMicrographs]);
 
   // Child micrographs (overlays) for the active micrograph
   const childMicrographs = useMemo(() => {
@@ -287,35 +277,13 @@ export default function App() {
 
             {/* Spots tab */}
             {sidebarTab === 2 && (
-              <Box>
-                {allSpots.length === 0 ? (
-                  <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic', p: 2 }}>No spots</Typography>
-                ) : (
-                  <List dense disablePadding>
-                    {allSpots.map(({ spot, micrographName, micrographId }) => (
-                      <ListItemButton
-                        key={spot.id}
-                        selected={selectedSpot?.id === spot.id}
-                        onClick={() => {
-                          setActiveMicrographId(micrographId);
-                          setSelectedSpot(spot);
-                        }}
-                        sx={{ py: 0.5 }}
-                      >
-                        <ListItemText
-                          primary={spot.name}
-                          secondary={micrographName}
-                          primaryTypographyProps={{ variant: 'body2', noWrap: true }}
-                          secondaryTypographyProps={{ variant: 'caption', noWrap: true }}
-                        />
-                        {spot.geometryType && (
-                          <Chip label={spot.geometryType} size="small" variant="outlined" sx={{ ml: 0.5, height: 18, fontSize: '0.65rem' }} />
-                        )}
-                      </ListItemButton>
-                    ))}
-                  </List>
-                )}
-              </Box>
+              <SpotsPanel
+                project={project}
+                onSpotClick={(spot, micrographId) => {
+                  setActiveMicrographId(micrographId);
+                  setSelectedSpot(spot);
+                }}
+              />
             )}
 
             {/* Tags tab */}
