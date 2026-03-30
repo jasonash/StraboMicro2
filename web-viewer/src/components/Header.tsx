@@ -1,11 +1,12 @@
 /**
- * Header — Top bar with project title and download actions
- * Uses MUI components matching the desktop app's AppBar styling.
+ * Header — Top bar with logo, project title, and download actions
+ * Matches the desktop app's Header styling.
  */
 
 import { useState } from 'react';
 import { AppBar, Toolbar, Typography, Button, Box } from '@mui/material';
 import { HttpTileLoader } from '../services/tileLoader';
+import appIcon from '../assets/app-icon.png';
 
 interface HeaderProps {
   projectName: string;
@@ -24,14 +25,31 @@ export function Header({ projectName, tileLoader }: HeaderProps) {
 
   return (
     <AppBar position="static" elevation={0} sx={{ borderBottom: 1, borderColor: 'divider' }}>
-      <Toolbar variant="dense" sx={{ minHeight: 40, gap: 1.5 }}>
-        <Typography variant="subtitle1" sx={{ fontWeight: 700, letterSpacing: 1 }}>
-          STRABOMICRO
-        </Typography>
+      <Toolbar sx={{ gap: 2 }}>
+        {/* Left: Logo and Title */}
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, ml: -1 }}>
+          <img
+            src={appIcon}
+            alt="StraboMicro Logo"
+            style={{ height: '32px', width: 'auto', borderRadius: '25%' }}
+          />
+          <Typography
+            variant="h5"
+            component="h1"
+            color="text.primary"
+            sx={{ fontWeight: 300, letterSpacing: 0.5, fontSize: '1.75rem' }}
+          >
+            STRABOMICRO
+          </Typography>
+        </Box>
+
+        {/* Center spacer + project name */}
         <Typography variant="body2" color="text.secondary" sx={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {projectName}
         </Typography>
-        <Box sx={{ display: 'flex', gap: 1 }}>
+
+        {/* Right: Action buttons */}
+        <Box sx={{ display: 'flex', gap: 1, flexShrink: 0 }}>
           <Button
             size="small"
             variant="outlined"
