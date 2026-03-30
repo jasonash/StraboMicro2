@@ -9,6 +9,8 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { TiledViewer } from './components/TiledViewer';
 import { PropertiesPanel } from './components/PropertiesPanel';
 import { ProjectTree } from './components/ProjectTree';
+import { Header } from './components/Header';
+import { BreadcrumbsBar } from './components/BreadcrumbsBar';
 import { HttpTileLoader } from './services/tileLoader';
 import type { ProjectMetadata, MicrographMetadata, SampleMetadata, Spot } from './types/project-types';
 
@@ -206,29 +208,7 @@ export default function App() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', fontFamily: 'sans-serif' }}>
       {/* Header */}
-      <div style={{
-        height: '48px',
-        backgroundColor: '#16213e',
-        color: '#fff',
-        display: 'flex',
-        alignItems: 'center',
-        padding: '0 16px',
-        borderBottom: '1px solid #333',
-        flexShrink: 0,
-      }}>
-        <span style={{ fontWeight: 'bold', fontSize: '16px' }}>StraboMicro</span>
-        <span style={{ margin: '0 12px', color: '#666' }}>|</span>
-        <span style={{ fontSize: '14px', color: '#aaa' }}>{project.name}</span>
-        <div style={{ flex: 1 }} />
-        {tileLoader && (
-          <div style={{ display: 'flex', gap: '12px' }}>
-            <a href={tileLoader.getPdfUrl()} target="_blank" rel="noopener noreferrer"
-              style={{ color: '#5b9aff', textDecoration: 'none', fontSize: '13px' }}>
-              Download PDF
-            </a>
-          </div>
-        )}
-      </div>
+      <Header projectName={project.name} tileLoader={tileLoader} />
 
       {/* Main content */}
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
@@ -249,15 +229,24 @@ export default function App() {
           />
         </div>
 
-        {/* Canvas */}
-        <div style={{ flex: 1 }}>
-          <TiledViewer
-            micrographId={activeMicrographId}
-            spots={activeSpots}
-            sketchLayers={activeMicrograph?.sketchLayers}
-            tileLoader={tileLoader}
-            onSpotClick={handleSpotClick}
+        {/* Canvas area */}
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          <BreadcrumbsBar
+            micrograph={activeMicrograph}
+            allMicrographs={allMicrographs}
+            selectedSpotName={selectedSpot?.name}
+            onNavigate={handleSelectMicrograph}
           />
+          <div style={{ flex: 1, position: 'relative' }}>
+            <TiledViewer
+              micrographId={activeMicrographId}
+              spots={activeSpots}
+              sketchLayers={activeMicrograph?.sketchLayers}
+              scalePixelsPerCentimeter={activeMicrograph?.scalePixelsPerCentimeter}
+              tileLoader={tileLoader}
+              onSpotClick={handleSpotClick}
+            />
+          </div>
         </div>
 
         {/* Right panel — properties */}

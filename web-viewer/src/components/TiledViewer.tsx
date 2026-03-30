@@ -13,6 +13,8 @@ import { Stage, Layer, Image as KonvaImage } from 'react-konva';
 import Konva from 'konva';
 import { SpotRenderer } from './SpotRenderer';
 import { SketchLayerRenderer } from './SketchLayerRenderer';
+import { ScaleBar } from './ScaleBar';
+import { CursorLocation } from './CursorLocation';
 import { HttpTileLoader, TileMetadata } from '../services/tileLoader';
 import type { Spot, SketchLayer } from '../types/project-types';
 
@@ -32,11 +34,12 @@ interface TiledViewerProps {
   micrographId: string | null;
   spots: Spot[];
   sketchLayers?: SketchLayer[] | null;
+  scalePixelsPerCentimeter?: number | null;
   tileLoader: HttpTileLoader;
   onSpotClick?: (spot: Spot) => void;
 }
 
-export function TiledViewer({ micrographId, spots, sketchLayers, tileLoader, onSpotClick }: TiledViewerProps) {
+export function TiledViewer({ micrographId, spots, sketchLayers, scalePixelsPerCentimeter, tileLoader, onSpotClick }: TiledViewerProps) {
   // Container sizing
   const containerRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<Konva.Stage>(null);
@@ -57,6 +60,7 @@ export function TiledViewer({ micrographId, spots, sketchLayers, tileLoader, onS
   const [isPanning, setIsPanning] = useState(false);
   const [lastPointerPos, setLastPointerPos] = useState<{ x: number; y: number } | null>(null);
   const [hasDragged, setHasDragged] = useState(false);
+  const [cursorImagePos, setCursorImagePos] = useState<{ x: number; y: number } | null>(null);
 
   // Loading state
   const [isLoading, setIsLoading] = useState(false);
@@ -263,6 +267,11 @@ export function TiledViewer({ micrographId, spots, sketchLayers, tileLoader, onS
     const pos = stage.getPointerPosition();
     if (!pos) return;
 
+    // Track cursor position in image coordinates
+    const imageX = (pos.x - position.x) / zoom;
+    const imageY = (pos.y - position.y) / zoom;
+    setCursorImagePos({ x: imageX, y: imageY });
+
     if (isPanning && lastPointerPos) {
       const dx = pos.x - lastPointerPos.x;
       const dy = pos.y - lastPointerPos.y;
@@ -277,7 +286,7 @@ export function TiledViewer({ micrographId, spots, sketchLayers, tileLoader, onS
       });
       setLastPointerPos(pos);
     }
-  }, [isPanning, lastPointerPos, position]);
+  }, [isPanning, lastPointerPos, position, zoom]);
 
   const handleMouseUp = useCallback(() => {
     setIsPanning(false);
@@ -423,6 +432,16 @@ export function TiledViewer({ micrographId, spots, sketchLayers, tileLoader, onS
           </Layer>
         )}
       </Stage>
+
+      {/* Scale bar overlay */}
+      <ScaleBar scalePixelsPerCentimeter={scalePixelsPerCentimeter} zoom={zoom} />
+
+      {/* Cursor location overlay */}
+      <CursorLocation
+        x={cursorImagePos?.x ?? null}
+        y={cursorImagePos?.y ?? null}
+        scalePixelsPerCentimeter={scalePixelsPerCentimeter}
+      />
     </div>
   );
 }
