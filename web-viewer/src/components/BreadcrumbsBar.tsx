@@ -27,7 +27,7 @@ export function BreadcrumbsBar({ micrograph, allMicrographs, selectedSpotName, o
     return ancestors;
   }, [micrograph, allMicrographs]);
 
-  if (chain.length <= 1 && !selectedSpotName) return null;
+  if (chain.length === 0) return null;
 
   return (
     <Box sx={{
