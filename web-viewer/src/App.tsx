@@ -322,8 +322,10 @@ export default function App() {
               childMicrographs={childMicrographs}
               imageWidth={activeMicrograph?.width || activeMicrograph?.imageWidth}
               imageHeight={activeMicrograph?.height || activeMicrograph?.imageHeight}
+              selectedSpotId={selectedSpot?.id || null}
               tileLoader={tileLoader}
               onSpotClick={handleSpotClick}
+              onCanvasClick={() => setSelectedSpot(null)}
               onOverlayClick={handleSelectMicrograph}
             />
           </Box>

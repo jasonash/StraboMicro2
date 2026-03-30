@@ -41,12 +41,16 @@ interface TiledViewerProps {
   /** Parent image dimensions (needed for overlay positioning) */
   imageWidth?: number | null;
   imageHeight?: number | null;
+  /** Currently selected spot ID (controlled from parent) */
+  selectedSpotId?: string | null;
   tileLoader: HttpTileLoader;
   onSpotClick?: (spot: Spot) => void;
+  /** Called when user clicks empty canvas (deselect) */
+  onCanvasClick?: () => void;
   onOverlayClick?: (micrographId: string) => void;
 }
 
-export function TiledViewer({ micrographId, spots, sketchLayers, scalePixelsPerCentimeter, childMicrographs, imageWidth, imageHeight, tileLoader, onSpotClick, onOverlayClick }: TiledViewerProps) {
+export function TiledViewer({ micrographId, spots, sketchLayers, scalePixelsPerCentimeter, childMicrographs, imageWidth, imageHeight, selectedSpotId, tileLoader, onSpotClick, onCanvasClick, onOverlayClick }: TiledViewerProps) {
   // Container sizing
   const containerRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<Konva.Stage>(null);
@@ -296,28 +300,24 @@ export function TiledViewer({ micrographId, spots, sketchLayers, scalePixelsPerC
   }, [isPanning, lastPointerPos, position, zoom]);
 
   const handleMouseUp = useCallback(() => {
+    // If user clicked without dragging and didn't click a spot, deselect
+    if (!hasDragged && !spotClickedRef.current) {
+      onCanvasClick?.();
+    }
+    spotClickedRef.current = false;
     setIsPanning(false);
     setLastPointerPos(null);
-  }, []);
+  }, [hasDragged, onCanvasClick]);
 
   // ============================================================================
   // SPOT CLICK
   // ============================================================================
 
-  const handleSpotClick = useCallback((spot: Spot) => {
+  const spotClickedRef = useRef(false);
+
+  const handleSpotClickInternal = useCallback((spot: Spot) => {
     if (hasDragged) return;
-    onSpotClick?.(spot);
-  }, [hasDragged, onSpotClick]);
-
-  // ============================================================================
-  // SELECTED SPOT (for highlight)
-  // ============================================================================
-
-  const [selectedSpotId, setSelectedSpotId] = useState<string | null>(null);
-
-  const handleSpotClickWithSelect = useCallback((spot: Spot) => {
-    if (hasDragged) return;
-    setSelectedSpotId(spot.id);
+    spotClickedRef.current = true;
     onSpotClick?.(spot);
   }, [hasDragged, onSpotClick]);
 
@@ -451,7 +451,7 @@ export function TiledViewer({ micrographId, spots, sketchLayers, scalePixelsPerC
                 spot={spot}
                 scale={zoom}
                 isSelected={spot.id === selectedSpotId}
-                onClick={handleSpotClickWithSelect}
+                onClick={handleSpotClickInternal}
               />
             ))}
         </Layer>
