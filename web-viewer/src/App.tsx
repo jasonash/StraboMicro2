@@ -254,6 +254,7 @@ export default function App() {
           <TiledViewer
             micrographId={activeMicrographId}
             spots={activeSpots}
+            sketchLayers={activeMicrograph?.sketchLayers}
             tileLoader={tileLoader}
             onSpotClick={handleSpotClick}
           />
