@@ -98,6 +98,12 @@ export default function App() {
     return activeMicrograph?.spots || [];
   }, [activeMicrograph]);
 
+  // Child micrographs (overlays) for the active micrograph
+  const childMicrographs = useMemo(() => {
+    if (!activeMicrographId) return [];
+    return allMicrographs.filter(m => m.parentID === activeMicrographId);
+  }, [activeMicrographId, allMicrographs]);
+
   // Parent sample for active micrograph
   const activeSample = useMemo(() => {
     if (!project || !activeMicrographId) return null;
@@ -243,8 +249,12 @@ export default function App() {
               spots={activeSpots}
               sketchLayers={activeMicrograph?.sketchLayers}
               scalePixelsPerCentimeter={activeMicrograph?.scalePixelsPerCentimeter}
+              childMicrographs={childMicrographs}
+              imageWidth={activeMicrograph?.width || activeMicrograph?.imageWidth}
+              imageHeight={activeMicrograph?.height || activeMicrograph?.imageHeight}
               tileLoader={tileLoader}
               onSpotClick={handleSpotClick}
+              onOverlayClick={handleSelectMicrograph}
             />
           </div>
         </div>

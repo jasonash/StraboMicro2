@@ -13,10 +13,11 @@ import { Stage, Layer, Image as KonvaImage } from 'react-konva';
 import Konva from 'konva';
 import { SpotRenderer } from './SpotRenderer';
 import { SketchLayerRenderer } from './SketchLayerRenderer';
+import { AssociatedImageRenderer } from './AssociatedImageRenderer';
 import { ScaleBar } from './ScaleBar';
 import { CursorLocation } from './CursorLocation';
 import { HttpTileLoader, TileMetadata } from '../services/tileLoader';
-import type { Spot, SketchLayer } from '../types/project-types';
+import type { Spot, SketchLayer, MicrographMetadata } from '../types/project-types';
 
 // Constants matching desktop app
 const TILE_SIZE = 256;
@@ -35,11 +36,17 @@ interface TiledViewerProps {
   spots: Spot[];
   sketchLayers?: SketchLayer[] | null;
   scalePixelsPerCentimeter?: number | null;
+  /** Child micrographs to render as overlays */
+  childMicrographs?: MicrographMetadata[];
+  /** Parent image dimensions (needed for overlay positioning) */
+  imageWidth?: number | null;
+  imageHeight?: number | null;
   tileLoader: HttpTileLoader;
   onSpotClick?: (spot: Spot) => void;
+  onOverlayClick?: (micrographId: string) => void;
 }
 
-export function TiledViewer({ micrographId, spots, sketchLayers, scalePixelsPerCentimeter, tileLoader, onSpotClick }: TiledViewerProps) {
+export function TiledViewer({ micrographId, spots, sketchLayers, scalePixelsPerCentimeter, childMicrographs, imageWidth, imageHeight, tileLoader, onSpotClick, onOverlayClick }: TiledViewerProps) {
   // Container sizing
   const containerRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<Konva.Stage>(null);
@@ -400,6 +407,35 @@ export function TiledViewer({ micrographId, spots, sketchLayers, scalePixelsPerC
               );
             })}
         </Layer>
+
+        {/* Associated image overlays */}
+        {childMicrographs && childMicrographs.length > 0 && (
+          <Layer
+            x={position.x}
+            y={position.y}
+            scaleX={zoom}
+            scaleY={zoom}
+          >
+            {childMicrographs.map(child => (
+              <AssociatedImageRenderer
+                key={child.id}
+                micrograph={child}
+                parentScalePixelsPerCm={scalePixelsPerCentimeter || 100}
+                parentWidth={imageWidth || metadata?.width || 0}
+                parentHeight={imageHeight || metadata?.height || 0}
+                viewport={{
+                  x: position.x,
+                  y: position.y,
+                  width: stageSize.width,
+                  height: stageSize.height,
+                }}
+                stageScale={zoom}
+                tileLoader={tileLoader}
+                onClick={onOverlayClick}
+              />
+            ))}
+          </Layer>
+        )}
 
         {/* Spots layer */}
         <Layer
