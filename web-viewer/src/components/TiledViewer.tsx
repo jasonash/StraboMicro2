@@ -349,13 +349,23 @@ export function TiledViewer({ micrographId, spots, sketchLayers, scalePixelsPerC
   }, [isPanning, lastPointerPos, position, zoom]);
 
   const handleMouseUp = useCallback(() => {
-    // If user clicked without dragging and didn't click a spot, deselect
-    if (!hasDraggedRef.current && !spotClickedRef.current) {
-      onCanvasClick?.();
-    }
-    spotClickedRef.current = false;
     setIsPanning(false);
     setLastPointerPos(null);
+  }, []);
+
+  // Deselect on click — Konva 'click' only fires for genuine clicks (not drags)
+  const handleStageClick = useCallback((e: Konva.KonvaEventObject<MouseEvent>) => {
+    if (hasDraggedRef.current) return;
+    if (spotClickedRef.current) {
+      spotClickedRef.current = false;
+      return;
+    }
+    // Only deselect if clicking on the stage background or image tiles (not a spot)
+    const target = e.target;
+    const stage = stageRef.current;
+    if (target === stage || target.getClassName() === 'Image' || target.getClassName() === 'Rect') {
+      onCanvasClick?.();
+    }
   }, [onCanvasClick]);
 
   // ============================================================================
@@ -418,7 +428,8 @@ export function TiledViewer({ micrographId, spots, sketchLayers, scalePixelsPerC
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
-        onMouseLeave={handleMouseUp}
+        onMouseLeave={() => { setIsPanning(false); setLastPointerPos(null); }}
+        onClick={handleStageClick}
       >
         {/* Image layer */}
         <Layer
