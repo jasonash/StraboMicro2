@@ -233,22 +233,40 @@ export function TiledViewer({ micrographId, spots, sketchLayers, scalePixelsPerC
 
   // ============================================================================
   // ZOOM-BASED LOD: Switch between medium and tiled based on zoom level
+  // Debounced to prevent thrashing during rapid zoom
   // ============================================================================
+
+  const lodTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (!metadata) return;
-    if (!mediumImage && !tilesLoaded) return; // Nothing to switch between yet
+    if (!mediumImage && !tilesLoaded) return;
 
-    // Calculate: at what zoom does 1 image pixel = 1 screen pixel?
-    // That's zoom = 1.0. Below that, medium (2048px) is sufficient.
-    // Switch to tiles when zoom > 0.5 (tiles provide detail above half-resolution)
     const TILE_ZOOM_THRESHOLD = 0.5;
 
-    if (tilesLoaded && zoom >= TILE_ZOOM_THRESHOLD) {
-      if (renderMode !== 'tiled') setRenderMode('tiled');
-    } else if (mediumImage) {
-      if (renderMode !== 'medium') setRenderMode('medium');
+    // Determine target mode
+    const targetMode = (tilesLoaded && zoom >= TILE_ZOOM_THRESHOLD) ? 'tiled' : 'medium';
+
+    if (targetMode === renderMode) return;
+
+    // Switching TO tiled is expensive (many nodes) — debounce it
+    // Switching FROM tiled to medium is cheap — do it immediately to stop rendering tiles
+    if (targetMode === 'medium') {
+      if (lodTimerRef.current) clearTimeout(lodTimerRef.current);
+      lodTimerRef.current = null;
+      setRenderMode('medium');
+    } else {
+      // Debounce switching to tiled — wait for zoom to settle
+      if (lodTimerRef.current) clearTimeout(lodTimerRef.current);
+      lodTimerRef.current = setTimeout(() => {
+        setRenderMode('tiled');
+        lodTimerRef.current = null;
+      }, 200);
     }
+
+    return () => {
+      if (lodTimerRef.current) clearTimeout(lodTimerRef.current);
+    };
   }, [zoom, tilesLoaded, mediumImage, metadata, renderMode]);
 
   // ============================================================================
