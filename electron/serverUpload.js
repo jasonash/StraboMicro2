@@ -24,7 +24,7 @@ const ENDPOINTS = {
   VERSION_CHECK: 'https://strabospot.org/straboMicroVersion.json',
   PROJECT_COUNT: 'https://strabospot.org/jwtmicrodb/projectCount',
   FILE_UPLOAD: 'https://microupload.strabospot.org/upload.php',
-  DB_POPULATE: 'https://strabospot.org/jwtmicrodb/projectwithoutfile2',
+  DB_POPULATE: 'https://strabospot.org/jwtmicrodb/projectwithoutfile',
 };
 
 /**
