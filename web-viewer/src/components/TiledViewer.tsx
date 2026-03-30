@@ -475,6 +475,7 @@ export function TiledViewer({ micrographId, spots, sketchLayers, scalePixelsPerC
                 stageScale={zoom}
                 tileLoader={tileLoader}
                 onClick={onOverlayClick}
+                hasDragged={hasDragged}
               />
             ))}
           </Layer>

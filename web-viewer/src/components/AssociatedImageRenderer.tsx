@@ -45,6 +45,8 @@ interface AssociatedImageRendererProps {
   stageScale: number;
   tileLoader: HttpTileLoader;
   onClick?: (micrographId: string) => void;
+  /** Whether the user is currently dragging/panning — suppresses click */
+  hasDragged?: boolean;
 }
 
 export function AssociatedImageRenderer({
@@ -56,6 +58,7 @@ export function AssociatedImageRenderer({
   stageScale,
   tileLoader,
   onClick,
+  hasDragged,
 }: AssociatedImageRendererProps) {
   const [thumbnailImage, setThumbnailImage] = useState<HTMLImageElement | null>(null);
   const [mediumImage, setMediumImage] = useState<HTMLImageElement | null>(null);
@@ -286,8 +289,9 @@ export function AssociatedImageRenderer({
   // ============================================================================
 
   const handleClick = useCallback(() => {
+    if (hasDragged) return;
     onClick?.(micrograph.id);
-  }, [onClick, micrograph.id]);
+  }, [onClick, micrograph.id, hasDragged]);
 
   // ============================================================================
   // RENDER
