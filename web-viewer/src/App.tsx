@@ -7,8 +7,9 @@
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { TiledViewer } from './components/TiledViewer';
+import { PropertiesPanel } from './components/PropertiesPanel';
 import { HttpTileLoader } from './services/tileLoader';
-import type { ProjectMetadata, MicrographMetadata, Spot } from './types/project-types';
+import type { ProjectMetadata, MicrographMetadata, SampleMetadata, Spot } from './types/project-types';
 
 // ============================================================================
 // CONFIGURATION
@@ -46,6 +47,18 @@ function collectAllMicrographs(project: ProjectMetadata): MicrographMetadata[] {
 /** Get children of a micrograph */
 function getChildren(micrographId: string, allMicrographs: MicrographMetadata[]): MicrographMetadata[] {
   return allMicrographs.filter(m => m.parentID === micrographId);
+}
+
+/** Find the parent sample for a micrograph */
+function findParentSample(project: ProjectMetadata, micrographId: string): SampleMetadata | null {
+  for (const dataset of project.datasets || []) {
+    for (const sample of dataset.samples || []) {
+      for (const micro of sample.micrographs || []) {
+        if (micro.id === micrographId) return sample;
+      }
+    }
+  }
+  return null;
 }
 
 // ============================================================================
@@ -157,6 +170,25 @@ export default function App() {
   const activeSpots = useMemo(() => {
     return activeMicrograph?.spots || [];
   }, [activeMicrograph]);
+
+  // Parent sample for active micrograph
+  const activeSample = useMemo(() => {
+    if (!project || !activeMicrographId) return null;
+    // For child micrographs, find the root micrograph's sample
+    let rootId = activeMicrographId;
+    const micro = allMicrographs.find(m => m.id === rootId);
+    if (micro?.parentID) {
+      // Walk up to root
+      let current = micro;
+      while (current?.parentID) {
+        const parent = allMicrographs.find(m => m.id === current!.parentID);
+        if (!parent) break;
+        current = parent;
+      }
+      rootId = current?.id || rootId;
+    }
+    return findParentSample(project, rootId);
+  }, [project, activeMicrographId, allMicrographs]);
 
   // ============================================================================
   // LOAD PROJECT
@@ -328,59 +360,27 @@ export default function App() {
           />
         </div>
 
-        {/* Right panel — spot details */}
-        {selectedSpot && (
-          <div style={{
-            width: '280px',
-            backgroundColor: '#1a1a2e',
-            borderLeft: '1px solid #333',
-            overflowY: 'auto',
-            padding: '12px',
-            color: '#ccc',
-            flexShrink: 0,
-          }}>
-            <div style={{
-              fontSize: '14px',
-              fontWeight: 'bold',
-              color: '#fff',
-              marginBottom: '12px',
-              paddingBottom: '8px',
-              borderBottom: '1px solid #333',
-            }}>
-              Spot: {selectedSpot.name}
-            </div>
-            <DetailRow label="Type" value={selectedSpot.geometryType || selectedSpot.geometry?.type} />
-            {selectedSpot.notes && <DetailRow label="Notes" value={selectedSpot.notes} />}
-            {selectedSpot.date && <DetailRow label="Date" value={selectedSpot.date} />}
-            <div style={{ marginTop: '16px' }}>
-              <button
-                onClick={() => setSelectedSpot(null)}
-                style={{
-                  background: 'none',
-                  border: '1px solid #555',
-                  color: '#aaa',
-                  padding: '4px 12px',
-                  borderRadius: '4px',
-                  cursor: 'pointer',
-                  fontSize: '12px',
-                }}
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        )}
+        {/* Right panel — properties */}
+        <div style={{
+          width: '300px',
+          backgroundColor: '#1a1a2e',
+          borderLeft: '1px solid #333',
+          flexShrink: 0,
+          display: 'flex',
+          flexDirection: 'column',
+          overflow: 'hidden',
+        }}>
+          <PropertiesPanel
+            project={project}
+            micrograph={activeMicrograph}
+            spot={selectedSpot}
+            sample={activeSample}
+            allMicrographs={allMicrographs}
+            onDeselectSpot={() => setSelectedSpot(null)}
+          />
+        </div>
       </div>
     </div>
   );
 }
 
-function DetailRow({ label, value }: { label: string; value?: string | null }) {
-  if (!value) return null;
-  return (
-    <div style={{ marginBottom: '6px', fontSize: '12px' }}>
-      <span style={{ color: '#888' }}>{label}: </span>
-      <span style={{ color: '#ddd' }}>{value}</span>
-    </div>
-  );
-}
