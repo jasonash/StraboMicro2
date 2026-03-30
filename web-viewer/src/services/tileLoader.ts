@@ -76,8 +76,7 @@ export class HttpTileLoader {
    * Get the URL for the .smz download
    */
   getSmzUrl(): string {
-    // This depends on server setup — may need adjustment
-    return `${this.baseUrl}/${this.projectId}.smz`;
+    return `/download_smz_file?u=${this.projectId}`;
   }
 
   /**
