@@ -2,20 +2,24 @@
  * SMZ Export Service
  *
  * Handles exporting projects as .smz archives (ZIP files with .smz extension).
- * Generates all required image variants and packages them with project data.
+ * Packages project data, images, composite thumbnails, and tile pyramids.
  *
  * Folder structure inside .smz:
  * <project-uuid>/
  * ├── project.json                    # Full project data (legacy schema compliant)
  * ├── project.pdf                     # PDF report of entire project
+ * ├── README.txt                      # Archive description
  * ├── associatedFiles/                # External files (copied from project)
+ * ├── point-counts/                   # Point count session JSON files
  * ├── images/                         # Full-size JPEGs (no extension), named by micrograph ID
- * ├── uiImages/                       # 2500px long edge, plain images
- * ├── compositeImages/                # 2000px long edge, with overlays (no spots/labels)
- * ├── compositeThumbnails/            # 250px long edge, with overlays
- * ├── thumbnailImages/                # 200px long edge, plain images (no overlays)
- * ├── webImages/                      # 750px long edge, with overlays
- * └── webThumbnails/                  # 200px long edge, with overlays
+ * ├── compositeThumbnails/            # 250px long edge, with overlays (sidebar thumbnails)
+ * └── tiles/<micrographId>/           # Tile pyramid per micrograph
+ *     ├── metadata.json               # Dimensions, tile count, tile size
+ *     ├── thumbnail.jpg               # 512x512 plain preview
+ *     ├── medium.jpg                  # 2048x2048 plain preview
+ *     └── tiles/
+ *         ├── tile_0_0.webp           # 256x256 WebP tiles
+ *         └── ...
  */
 
 const fs = require('fs');
@@ -24,6 +28,7 @@ const log = require('electron-log');
 const sharp = require('sharp');
 const archiver = require('archiver');
 const tileCache = require('./tileCache');
+const tileGenerator = require('./tileGenerator');
 
 /**
  * Resolve image path with fallback to uiImages for legacy projects.
@@ -64,16 +69,9 @@ async function resolveImagePathWithLegacyFallback(imagePath) {
 }
 
 /**
- * Image size configurations for export
+ * Image size configuration retained for compositeThumbnails generation fallback
  */
-const IMAGE_SIZES = {
-  uiImages: { maxLongEdge: 2500, isComposite: false },
-  compositeImages: { maxLongEdge: 2000, isComposite: true },
-  compositeThumbnails: { maxLongEdge: 250, isComposite: true },
-  thumbnailImages: { maxLongEdge: 200, isComposite: false }, // Clean thumbnails, no overlays
-  webImages: { maxLongEdge: 750, isComposite: true },
-  webThumbnails: { maxLongEdge: 200, isComposite: true },
-};
+const COMPOSITE_THUMBNAIL_SIZE = 250;
 
 /**
  * Collect all micrograph IDs from project (for filtering during ZIP creation)
@@ -227,25 +225,17 @@ function generateReadme(projectData, allMicrographs) {
     '     Full-resolution micrograph images in JPEG format.',
     '     Files are named by micrograph UUID (no file extension).',
     '',
-    '  📁 uiImages/',
-    '     Micrograph images resized to 2500px (long edge).',
-    '     Plain images without overlays.',
-    '',
-    '  📁 compositeImages/',
-    '     Composite images (2000px) showing base micrograph with',
-    '     associated micrograph overlays. Does not include spots/annotations.',
-    '',
     '  📁 compositeThumbnails/',
-    '     Small composite thumbnails (250px) for quick preview.',
+    '     Small composite thumbnails (250px) for quick preview in sidebars.',
+    '     Includes child micrograph overlays.',
     '',
-    '  📁 thumbnailImages/',
-    '     Plain thumbnail images (200px) without overlays.',
-    '',
-    '  📁 webImages/',
-    '     Web-optimized composite images (750px) for online viewing.',
-    '',
-    '  📁 webThumbnails/',
-    '     Tiny thumbnails (200px) for web galleries and lists.',
+    '  📁 tiles/<micrographId>/',
+    '     Tile pyramid for each micrograph, used by the web viewer and',
+    '     desktop app for efficient image display:',
+    '       metadata.json  - Image dimensions and tile grid info',
+    '       thumbnail.jpg  - 512x512 quick preview',
+    '       medium.jpg     - 2048x2048 medium resolution preview',
+    '       tiles/         - 256x256 WebP tiles for full-resolution viewing',
     '',
     '  📁 associatedFiles/',
     '     Any external files attached to the project (PDFs, documents, etc.).',
@@ -643,9 +633,9 @@ async function exportSmz(
     log.info(`[SmzExport] Found ${totalMicrographs} micrographs`);
 
     // Calculate total steps for progress
-    // Steps: project.json (1) + each micrograph * 7 image types + associatedFiles (1) + PDF (1)
-    // Image types: images(copy), uiImages, compositeImages, compositeThumbnails, thumbnailImages, webImages, webThumbnails
-    const totalSteps = 1 + (totalMicrographs * 7) + 1 + 1;
+    // Steps: project.json (1) + tile completeness pass (totalMicrographs)
+    //        + each micrograph * 3 (image + thumbnail + tiles) + associatedFiles (1) + PDF (1)
+    const totalSteps = 1 + totalMicrographs + (totalMicrographs * 3) + 1 + 1;
     let currentStep = 0;
 
     const sendProgress = (phase, itemName) => {
@@ -683,7 +673,40 @@ async function exportSmz(
     const readmeContent = generateReadme(projectData, allMicrographs);
     archive.append(readmeContent, { name: `${projectId}/README.txt` });
 
-    // --- Step 2: Process each micrograph ---
+    // --- Step 2: Tile completeness pass ---
+    // Ensure all tiles exist in the local tile cache before packaging
+    log.info(`[SmzExport] Running tile completeness pass for ${totalMicrographs} micrographs...`);
+
+    for (const { micrograph } of allMicrographs) {
+      const micrographName = micrograph.name || micrograph.id;
+      const micrographId = micrograph.id;
+
+      sendProgress('Generating tiles', micrographName);
+
+      const sourceImagePath = await resolveImagePathWithLegacyFallback(
+        path.join(folderPaths.images, micrographId)
+      );
+
+      if (!fs.existsSync(sourceImagePath)) {
+        log.warn(`[SmzExport] Source image not found for tile generation: ${sourceImagePath}`);
+        continue;
+      }
+
+      try {
+        // processImageComplete generates thumbnail, medium, and ALL tiles
+        // It checks cache first and only generates missing tiles
+        const result = await tileGenerator.processImageComplete(sourceImagePath);
+        if (result.fromCache) {
+          log.info(`[SmzExport] Tiles already complete for: ${micrographName}`);
+        } else {
+          log.info(`[SmzExport] Generated ${result.tilesGenerated} tiles for: ${micrographName}`);
+        }
+      } catch (err) {
+        log.error(`[SmzExport] Failed to complete tiles for ${micrographId}:`, err);
+      }
+    }
+
+    // --- Step 3: Process each micrograph ---
     for (const { micrograph } of allMicrographs) {
       const micrographName = micrograph.name || micrograph.id;
       const micrographId = micrograph.id;
@@ -694,76 +717,87 @@ async function exportSmz(
       );
       if (!fs.existsSync(sourceImagePath)) {
         log.warn(`[SmzExport] Source image not found: ${sourceImagePath}`);
-        // Skip steps for this micrograph but still count them
-        currentStep += 7;
+        currentStep += 3;
         continue;
       }
 
-      // 2a. Copy original image to images/ folder
+      // 3a. Copy original image to images/ folder
       sendProgress('Copying original images', micrographName);
       const imageBuffer = await fs.promises.readFile(sourceImagePath);
       archive.append(imageBuffer, { name: `${projectId}/images/${micrographId}` });
 
-      // 2b. Generate uiImages (2500px, plain - no overlays)
-      sendProgress('Generating UI images', micrographName);
+      // 3b. Copy composite thumbnail from disk (already maintained by desktop app)
+      sendProgress('Copying composite thumbnails', micrographName);
       try {
-        const uiBuffer = await generatePlainResized(sourceImagePath, IMAGE_SIZES.uiImages.maxLongEdge);
-        archive.append(uiBuffer, { name: `${projectId}/uiImages/${micrographId}` });
+        const compositeThumbnailPath = path.join(folderPaths.compositeThumbnails, micrographId);
+        if (fs.existsSync(compositeThumbnailPath)) {
+          const thumbBuffer = await fs.promises.readFile(compositeThumbnailPath);
+          archive.append(thumbBuffer, { name: `${projectId}/compositeThumbnails/${micrographId}` });
+        } else {
+          // Fallback: generate composite thumbnail if not on disk
+          log.warn(`[SmzExport] Composite thumbnail not found on disk for ${micrographId}, generating...`);
+          try {
+            const compositeBuffer = await generateCompositeBufferNoSpots(projectId, micrograph, projectData, folderPaths);
+            const resizedThumb = await resizeToMaxLongEdge(compositeBuffer, COMPOSITE_THUMBNAIL_SIZE);
+            archive.append(resizedThumb, { name: `${projectId}/compositeThumbnails/${micrographId}` });
+          } catch (genErr) {
+            log.error(`[SmzExport] Failed to generate fallback compositeThumbnail for ${micrographId}:`, genErr);
+          }
+        }
       } catch (err) {
-        log.error(`[SmzExport] Failed to generate uiImage for ${micrographId}:`, err);
+        log.error(`[SmzExport] Failed to copy compositeThumbnail for ${micrographId}:`, err);
       }
 
-      // 2c. Generate compositeImages (2000px, with overlays, no spots)
-      sendProgress('Generating composite images', micrographName);
+      // 3c. Package tile cache into tiles/<micrographId>/
+      sendProgress('Packaging tiles', micrographName);
       try {
-        const compositeBuffer = await generateCompositeBufferNoSpots(projectId, micrograph, projectData, folderPaths);
-        const resizedComposite = await resizeToMaxLongEdge(compositeBuffer, IMAGE_SIZES.compositeImages.maxLongEdge);
-        archive.append(resizedComposite, { name: `${projectId}/compositeImages/${micrographId}` });
-      } catch (err) {
-        log.error(`[SmzExport] Failed to generate compositeImage for ${micrographId}:`, err);
-      }
+        const imageHash = await tileCache.generateImageHash(sourceImagePath);
+        const cacheDir = tileCache.getCacheDir(imageHash);
+        const tileArchivePrefix = `${projectId}/tiles/${micrographId}`;
 
-      // 2d. Generate compositeThumbnails (250px, with overlays, no spots)
-      sendProgress('Generating composite thumbnails', micrographName);
-      try {
-        const compositeBuffer = await generateCompositeBufferNoSpots(projectId, micrograph, projectData, folderPaths);
-        const resizedThumb = await resizeToMaxLongEdge(compositeBuffer, IMAGE_SIZES.compositeThumbnails.maxLongEdge);
-        archive.append(resizedThumb, { name: `${projectId}/compositeThumbnails/${micrographId}` });
-      } catch (err) {
-        log.error(`[SmzExport] Failed to generate compositeThumbnail for ${micrographId}:`, err);
-      }
+        // Copy metadata.json
+        const metadataPath = path.join(cacheDir, 'metadata.json');
+        if (fs.existsSync(metadataPath)) {
+          const metadataBuffer = await fs.promises.readFile(metadataPath);
+          archive.append(metadataBuffer, { name: `${tileArchivePrefix}/metadata.json` });
+        } else {
+          log.warn(`[SmzExport] Tile metadata not found for ${micrographId}`);
+        }
 
-      // 2e. Generate thumbnailImages (200px, plain - no overlays)
-      sendProgress('Generating thumbnail images', micrographName);
-      try {
-        const thumbBuffer = await generatePlainResized(sourceImagePath, IMAGE_SIZES.thumbnailImages.maxLongEdge);
-        archive.append(thumbBuffer, { name: `${projectId}/thumbnailImages/${micrographId}` });
-      } catch (err) {
-        log.error(`[SmzExport] Failed to generate thumbnailImage for ${micrographId}:`, err);
-      }
+        // Copy thumbnail.jpg
+        const thumbnailPath = tileCache.getThumbnailPath(imageHash);
+        if (fs.existsSync(thumbnailPath)) {
+          const thumbBuffer = await fs.promises.readFile(thumbnailPath);
+          archive.append(thumbBuffer, { name: `${tileArchivePrefix}/thumbnail.jpg` });
+        }
 
-      // 2f. Generate webImages (750px, with overlays, no spots)
-      sendProgress('Generating web images', micrographName);
-      try {
-        const compositeBuffer = await generateCompositeBufferNoSpots(projectId, micrograph, projectData, folderPaths);
-        const resizedWeb = await resizeToMaxLongEdge(compositeBuffer, IMAGE_SIZES.webImages.maxLongEdge);
-        archive.append(resizedWeb, { name: `${projectId}/webImages/${micrographId}` });
-      } catch (err) {
-        log.error(`[SmzExport] Failed to generate webImage for ${micrographId}:`, err);
-      }
+        // Copy medium.jpg
+        const mediumPath = tileCache.getMediumPath(imageHash);
+        if (fs.existsSync(mediumPath)) {
+          const mediumBuffer = await fs.promises.readFile(mediumPath);
+          archive.append(mediumBuffer, { name: `${tileArchivePrefix}/medium.jpg` });
+        }
 
-      // 2g. Generate webThumbnails (200px, with overlays, no spots)
-      sendProgress('Generating web thumbnails', micrographName);
-      try {
-        const compositeBuffer = await generateCompositeBufferNoSpots(projectId, micrograph, projectData, folderPaths);
-        const resizedWebThumb = await resizeToMaxLongEdge(compositeBuffer, IMAGE_SIZES.webThumbnails.maxLongEdge);
-        archive.append(resizedWebThumb, { name: `${projectId}/webThumbnails/${micrographId}` });
+        // Copy all tile files
+        const tilesDir = path.join(cacheDir, 'tiles');
+        if (fs.existsSync(tilesDir)) {
+          const tileFiles = await fs.promises.readdir(tilesDir);
+          const webpFiles = tileFiles.filter(f => f.endsWith('.webp'));
+          for (const tileFile of webpFiles) {
+            const tilePath = path.join(tilesDir, tileFile);
+            const tileBuffer = await fs.promises.readFile(tilePath);
+            archive.append(tileBuffer, { name: `${tileArchivePrefix}/tiles/${tileFile}` });
+          }
+          log.info(`[SmzExport] Packaged ${webpFiles.length} tiles for ${micrographName}`);
+        } else {
+          log.warn(`[SmzExport] Tiles directory not found for ${micrographId}`);
+        }
       } catch (err) {
-        log.error(`[SmzExport] Failed to generate webThumbnail for ${micrographId}:`, err);
+        log.error(`[SmzExport] Failed to package tiles for ${micrographId}:`, err);
       }
     }
 
-    // --- Step 3: Copy associatedFiles folder and all contents ---
+    // --- Step 4: Copy associatedFiles folder and all contents ---
     sendProgress('Copying associated files', 'associatedFiles');
     try {
       const associatedFilesPath = folderPaths.associatedFiles;
@@ -792,7 +826,7 @@ async function exportSmz(
       archive.append('', { name: `${projectId}/associatedFiles/.gitkeep` });
     }
 
-    // --- Step 3b: Copy point-counts folder and all session files ---
+    // --- Step 4b: Copy point-counts folder and all session files ---
     sendProgress('Copying point count sessions', 'point-counts');
     try {
       const pointCountsPath = path.join(folderPaths.projectPath, 'point-counts');
@@ -817,7 +851,7 @@ async function exportSmz(
       // Non-critical - continue without point counts
     }
 
-    // --- Step 4: Generate project.pdf ---
+    // --- Step 5: Generate project.pdf ---
     sendProgress('Generating PDF report', 'project.pdf');
     try {
       // Create a temporary file for the PDF
@@ -877,5 +911,4 @@ module.exports = {
   generateCompositeBufferNoSpots,
   generatePlainResized,
   resizeToMaxLongEdge,
-  IMAGE_SIZES,
 };
