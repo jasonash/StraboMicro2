@@ -80,6 +80,13 @@ export class HttpTileLoader {
   }
 
   /**
+   * Get the URL for sharing this project
+   */
+  getShareUrl(): string {
+    return `/share_micro_file?u=${this.projectId}`;
+  }
+
+  /**
    * Load multiple tiles in batch, returning results as they complete
    */
   async loadTilesBatch(
