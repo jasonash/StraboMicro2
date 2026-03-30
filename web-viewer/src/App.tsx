@@ -6,7 +6,7 @@
  */
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { Box, Typography } from '@mui/material';
+import { Box, Typography, Tabs, Tab, List, ListItemButton, ListItemText, Chip } from '@mui/material';
 import { TiledViewer } from './components/TiledViewer';
 import { PropertiesPanel } from './components/PropertiesPanel';
 import { ProjectTree } from './components/ProjectTree';
@@ -74,6 +74,7 @@ export default function App() {
   const [activeMicrographId, setActiveMicrographId] = useState<string | null>(null);
   const [selectedSpot, setSelectedSpot] = useState<Spot | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [sidebarTab, setSidebarTab] = useState(0);
 
   const projectId = useMemo(() => getProjectId(), []);
   const baseUrl = useMemo(() => getBaseUrl(), []);
@@ -98,6 +99,17 @@ export default function App() {
   const activeSpots = useMemo(() => {
     return activeMicrograph?.spots || [];
   }, [activeMicrograph]);
+
+  // All spots across all micrographs (for Spots tab)
+  const allSpots = useMemo(() => {
+    const spots: { spot: Spot; micrographName: string; micrographId: string }[] = [];
+    for (const m of allMicrographs) {
+      for (const s of m.spots || []) {
+        spots.push({ spot: s, micrographName: m.name, micrographId: m.id });
+      }
+    }
+    return spots;
+  }, [allMicrographs]);
 
   // Child micrographs (overlays) for the active micrograph
   const childMicrographs = useMemo(() => {
@@ -201,22 +213,128 @@ export default function App() {
 
       {/* Main content */}
       <Box sx={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
-        {/* Sidebar — Project Tree */}
+        {/* Sidebar */}
         <Box sx={{
           width: 240,
           bgcolor: 'background.paper',
           borderRight: 1,
           borderColor: 'divider',
-          overflowY: 'auto',
           flexShrink: 0,
+          display: 'flex',
+          flexDirection: 'column',
+          overflow: 'hidden',
         }}>
-          <ProjectTree
-            project={project}
-            allMicrographs={allMicrographs}
-            activeMicrographId={activeMicrographId}
-            tileLoader={tileLoader}
-            onSelectMicrograph={handleSelectMicrograph}
-          />
+          <Tabs
+            value={sidebarTab}
+            onChange={(_, v) => setSidebarTab(v)}
+            variant="fullWidth"
+            sx={{
+              minHeight: 32,
+              borderBottom: 1,
+              borderColor: 'divider',
+              '& .MuiTab-root': {
+                minHeight: 32,
+                py: 0.5,
+                px: 0.5,
+                fontSize: '0.7rem',
+                fontWeight: 600,
+                minWidth: 0,
+              },
+              '& .MuiTabs-indicator': {
+                backgroundColor: 'primary.main',
+              },
+            }}
+          >
+            <Tab label="Samples" disableRipple />
+            <Tab label="Groups" disableRipple />
+            <Tab label="Spots" disableRipple />
+            <Tab label="Tags" disableRipple />
+          </Tabs>
+
+          <Box sx={{ flex: 1, overflow: 'auto' }}>
+            {/* Samples tab */}
+            {sidebarTab === 0 && (
+              <ProjectTree
+                project={project}
+                allMicrographs={allMicrographs}
+                activeMicrographId={activeMicrographId}
+                tileLoader={tileLoader}
+                onSelectMicrograph={handleSelectMicrograph}
+              />
+            )}
+
+            {/* Groups tab */}
+            {sidebarTab === 1 && (
+              <Box sx={{ p: 1 }}>
+                {(project.groups || []).length === 0 ? (
+                  <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic', p: 1 }}>No groups</Typography>
+                ) : (
+                  <List dense disablePadding>
+                    {(project.groups || []).map(group => (
+                      <ListItemButton key={group.id} sx={{ borderRadius: 1, py: 0.5 }}>
+                        <ListItemText
+                          primary={group.name}
+                          secondary={`${(group.spotIDs || []).length} spots`}
+                          primaryTypographyProps={{ variant: 'body2' }}
+                          secondaryTypographyProps={{ variant: 'caption' }}
+                        />
+                      </ListItemButton>
+                    ))}
+                  </List>
+                )}
+              </Box>
+            )}
+
+            {/* Spots tab */}
+            {sidebarTab === 2 && (
+              <Box>
+                {allSpots.length === 0 ? (
+                  <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic', p: 2 }}>No spots</Typography>
+                ) : (
+                  <List dense disablePadding>
+                    {allSpots.map(({ spot, micrographName, micrographId }) => (
+                      <ListItemButton
+                        key={spot.id}
+                        selected={selectedSpot?.id === spot.id}
+                        onClick={() => {
+                          setActiveMicrographId(micrographId);
+                          setSelectedSpot(spot);
+                        }}
+                        sx={{ py: 0.5 }}
+                      >
+                        <ListItemText
+                          primary={spot.name}
+                          secondary={micrographName}
+                          primaryTypographyProps={{ variant: 'body2', noWrap: true }}
+                          secondaryTypographyProps={{ variant: 'caption', noWrap: true }}
+                        />
+                        {spot.geometryType && (
+                          <Chip label={spot.geometryType} size="small" variant="outlined" sx={{ ml: 0.5, height: 18, fontSize: '0.65rem' }} />
+                        )}
+                      </ListItemButton>
+                    ))}
+                  </List>
+                )}
+              </Box>
+            )}
+
+            {/* Tags tab */}
+            {sidebarTab === 3 && (
+              <Box sx={{ p: 1 }}>
+                {(project.tags || []).length === 0 ? (
+                  <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic', p: 1 }}>No tags</Typography>
+                ) : (
+                  <List dense disablePadding>
+                    {(project.tags || []).map(tag => (
+                      <ListItemButton key={tag.id} sx={{ borderRadius: 1, py: 0.5 }}>
+                        <ListItemText primary={tag.name} primaryTypographyProps={{ variant: 'body2' }} />
+                      </ListItemButton>
+                    ))}
+                  </List>
+                )}
+              </Box>
+            )}
+          </Box>
         </Box>
 
         {/* Canvas area */}
