@@ -9,7 +9,7 @@
  */
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { Stage, Layer, Image as KonvaImage } from 'react-konva';
+import { Stage, Layer, Image as KonvaImage, Shape } from 'react-konva';
 import Konva from 'konva';
 import { SpotRenderer } from './SpotRenderer';
 import { SketchLayerRenderer } from './SketchLayerRenderer';
@@ -390,22 +390,29 @@ export function TiledViewer({ micrographId, spots, sketchLayers, scalePixelsPerC
           )}
 
           {/* Tiled rendering */}
-          {renderMode === 'tiled' &&
-            visibleTiles.map((tileKey) => {
-              const tile = tiles.get(tileKey);
-              if (!tile) return null;
-
-              return (
-                <KonvaImage
-                  key={tileKey}
-                  image={tile.image}
-                  x={tile.x * TILE_SIZE}
-                  y={tile.y * TILE_SIZE}
-                  width={TILE_SIZE + 2}
-                  height={TILE_SIZE + 2}
-                />
-              );
-            })}
+          {/* Draw all tiles in a single Shape to avoid sub-pixel gaps between individual elements */}
+          {renderMode === 'tiled' && metadata && (
+            <Shape
+              x={0}
+              y={0}
+              width={metadata.width}
+              height={metadata.height}
+              sceneFunc={(context) => {
+                const ctx = context._context as CanvasRenderingContext2D;
+                for (const tileKey of visibleTiles) {
+                  const tile = tiles.get(tileKey);
+                  if (!tile) continue;
+                  ctx.drawImage(
+                    tile.image,
+                    tile.x * TILE_SIZE,
+                    tile.y * TILE_SIZE,
+                    TILE_SIZE,
+                    TILE_SIZE,
+                  );
+                }
+              }}
+            />
+          )}
         </Layer>
 
         {/* Associated image overlays */}
