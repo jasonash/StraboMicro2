@@ -76,14 +76,14 @@ export class HttpTileLoader {
    * Get the URL for the .smz download
    */
   getSmzUrl(): string {
-    return `/download_smz_file?u=${this.projectId}`;
+    return `/download_micro_file?project_id=${this.projectId}`;
   }
 
   /**
    * Get the URL for sharing this project
    */
   getShareUrl(): string {
-    return `/share_micro_file?u=${this.projectId}`;
+    return `/share_micro_file?project_id=${this.projectId}`;
   }
 
   /**
