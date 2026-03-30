@@ -64,8 +64,23 @@ export function AssociatedImageRenderer({
   const [renderMode, setRenderMode] = useState<RenderMode>('THUMBNAIL');
   const sessionRef = useRef(0);
 
-  const imageWidth = micrograph.width || micrograph.imageWidth || 0;
-  const imageHeight = micrograph.height || micrograph.imageHeight || 0;
+  // Dimensions from project.json — may be 0 if not serialized
+  const projectWidth = micrograph.width || micrograph.imageWidth || 0;
+  const projectHeight = micrograph.height || micrograph.imageHeight || 0;
+
+  // Use tile metadata dimensions as fallback when project.json has 0
+  const imageWidth = projectWidth || tileMetadata?.width || 0;
+  const imageHeight = projectHeight || tileMetadata?.height || 0;
+
+  // ============================================================================
+  // EAGERLY LOAD TILE METADATA (needed for dimensions and tiled mode)
+  // ============================================================================
+
+  useEffect(() => {
+    tileLoader.loadMetadata(micrograph.id)
+      .then(meta => setTileMetadata(meta))
+      .catch(() => {});
+  }, [micrograph.id, tileLoader]);
 
   // ============================================================================
   // OVERLAY TRANSFORM
@@ -282,7 +297,8 @@ export function AssociatedImageRenderer({
   if (micrograph.isMicroVisible === false) return null;
 
   const { x, y, scaleX, scaleY, rotation, offsetX, offsetY, isAffine, transformedWidth, transformedHeight, affineOutlinePoints } = overlayTransform;
-  const opacity = (micrograph.opacity ?? 100) / 100;
+  // Micrograph overlay opacity is 0-1 (not 0-100 like spots)
+  const opacity = micrograph.opacity ?? 1.0;
 
   // Get the best available image for current mode
   let displayImage: HTMLImageElement | null = null;
