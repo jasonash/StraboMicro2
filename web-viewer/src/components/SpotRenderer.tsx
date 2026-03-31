@@ -6,7 +6,7 @@
  * No editing capabilities, no Zustand store dependency.
  */
 
-import { useState, useMemo, useCallback } from 'react';
+import { useMemo, useCallback } from 'react';
 import { Circle, Line, Group, Text, Rect } from 'react-konva';
 import type { Spot, SimpleCoord } from '../types/project-types';
 
@@ -70,8 +70,6 @@ function getGeometryType(spot: Spot): string | null {
 }
 
 export function SpotRenderer({ spot, scale, isSelected, onClick }: SpotRendererProps) {
-  const [isHovered, setIsHovered] = useState(false);
-
   const fillColor = convertLegacyColor(spot.color);
   const geometryType = getGeometryType(spot);
   const pointsFlat = useMemo(() => getPointsFlat(spot), [spot]);
@@ -101,8 +99,6 @@ export function SpotRenderer({ spot, scale, isSelected, onClick }: SpotRendererP
       <Group
         onClick={handleClick}
         onTap={handleClick}
-        onMouseEnter={() => setIsHovered(true)}
-        onMouseLeave={() => setIsHovered(false)}
       >
         {/* Selection ring */}
         {isSelected && (
@@ -120,7 +116,7 @@ export function SpotRenderer({ spot, scale, isSelected, onClick }: SpotRendererP
           y={y}
           radius={radius}
           fill={fillColor}
-          stroke={isHovered ? '#ffff00' : '#ffffff'}
+          stroke={isSelected ? '#ffff00' : '#ffffff'}
           strokeWidth={strokeWidth}
           hitStrokeWidth={hitStrokeWidth}
         />
@@ -152,8 +148,6 @@ export function SpotRenderer({ spot, scale, isSelected, onClick }: SpotRendererP
       <Group
         onClick={handleClick}
         onTap={handleClick}
-        onMouseEnter={() => setIsHovered(true)}
-        onMouseLeave={() => setIsHovered(false)}
       >
         {isSelected && (
           <Line
@@ -166,7 +160,7 @@ export function SpotRenderer({ spot, scale, isSelected, onClick }: SpotRendererP
         )}
         <Line
           points={pointsFlat}
-          stroke={isHovered ? '#ffff00' : fillColor}
+          stroke={isSelected ? '#ffff00' : fillColor}
           strokeWidth={Math.max(2, 3 / scale)}
           lineCap="round"
           lineJoin="round"
@@ -198,8 +192,6 @@ export function SpotRenderer({ spot, scale, isSelected, onClick }: SpotRendererP
       <Group
         onClick={handleClick}
         onTap={handleClick}
-        onMouseEnter={() => setIsHovered(true)}
-        onMouseLeave={() => setIsHovered(false)}
       >
         {isSelected && (
           <Line
@@ -214,7 +206,7 @@ export function SpotRenderer({ spot, scale, isSelected, onClick }: SpotRendererP
           closed
           fill={fillColor}
           opacity={fillOpacity}
-          stroke={isHovered ? '#ffff00' : fillColor}
+          stroke={isSelected ? '#ffff00' : fillColor}
           strokeWidth={strokeWidth}
           hitStrokeWidth={hitStrokeWidth}
         />
