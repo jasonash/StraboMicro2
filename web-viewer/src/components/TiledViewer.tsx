@@ -74,6 +74,7 @@ export function TiledViewer({ micrographId, spots, sketchLayers, scalePixelsPerC
   const [lastPointerPos, setLastPointerPos] = useState<{ x: number; y: number } | null>(null);
   const hasDraggedRef = useRef(false);
   const [cursorImagePos, setCursorImagePos] = useState<{ x: number; y: number } | null>(null);
+  const cursorThrottleRef = useRef<number>(0);
 
   // Loading state
   const [isLoading, setIsLoading] = useState(false);
@@ -327,10 +328,14 @@ export function TiledViewer({ micrographId, spots, sketchLayers, scalePixelsPerC
     const pos = stage.getPointerPosition();
     if (!pos) return;
 
-    // Track cursor position in image coordinates
-    const imageX = (pos.x - position.x) / zoom;
-    const imageY = (pos.y - position.y) / zoom;
-    setCursorImagePos({ x: imageX, y: imageY });
+    // Track cursor position in image coordinates (throttled to avoid excess re-renders)
+    const now = Date.now();
+    if (now - cursorThrottleRef.current > 50) {
+      cursorThrottleRef.current = now;
+      const imageX = (pos.x - position.x) / zoom;
+      const imageY = (pos.y - position.y) / zoom;
+      setCursorImagePos({ x: imageX, y: imageY });
+    }
 
     if (isPanning && lastPointerPos) {
       const dx = pos.x - lastPointerPos.x;
@@ -431,12 +436,13 @@ export function TiledViewer({ micrographId, spots, sketchLayers, scalePixelsPerC
         onMouseLeave={() => { setIsPanning(false); setLastPointerPos(null); }}
         onClick={handleStageClick}
       >
-        {/* Image layer */}
+        {/* Image layer — no interaction needed, disable hit detection */}
         <Layer
           x={position.x}
           y={position.y}
           scaleX={zoom}
           scaleY={zoom}
+          listening={false}
         >
           {/* Thumbnail (lowest res, shown first while loading) */}
           {renderMode === 'thumbnail' && thumbnail && metadata && (
@@ -510,7 +516,7 @@ export function TiledViewer({ micrographId, spots, sketchLayers, scalePixelsPerC
           </Layer>
         )}
 
-        {/* Spots layer */}
+        {/* Spots layer — click enabled, hover removed from SpotRenderer */}
         <Layer
           x={position.x}
           y={position.y}
@@ -529,13 +535,14 @@ export function TiledViewer({ micrographId, spots, sketchLayers, scalePixelsPerC
             ))}
         </Layer>
 
-        {/* Sketch layers */}
+        {/* Sketch layers — read-only, no interaction */}
         {sketchLayers && sketchLayers.length > 0 && (
           <Layer
             x={position.x}
             y={position.y}
             scaleX={zoom}
             scaleY={zoom}
+            listening={false}
           >
             <SketchLayerRenderer layers={sketchLayers} />
           </Layer>
