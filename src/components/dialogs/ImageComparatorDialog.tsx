@@ -859,18 +859,27 @@ export function ImageComparatorDialog({ open, onClose }: ImageComparatorDialogPr
   // Build micrograph options with thumbnails
   const [micrographOptions, setMicrographOptions] = useState<MicrographOption[]>([]);
 
-  // Reset state when dialog opens
+  // Track project ID to detect project switches while dialog is open
+  const prevProjectIdRef = useRef<string | null>(null);
+
+  // Reset state when dialog opens or project changes
   useEffect(() => {
-    if (open) {
-      setGridMode(2);
-      setCanvasStates([
-        { ...initialCanvasState },
-        { ...initialCanvasState },
-        { ...initialCanvasState },
-        { ...initialCanvasState },
-      ]);
-    }
-  }, [open]);
+    if (!open) return;
+
+    const projectId = project?.id ?? null;
+    const projectChanged = prevProjectIdRef.current !== null && prevProjectIdRef.current !== projectId;
+    prevProjectIdRef.current = projectId;
+
+    if (!projectChanged && canvasStates.some((cs) => cs.micrographId)) return;
+
+    setGridMode(2);
+    setCanvasStates([
+      { ...initialCanvasState },
+      { ...initialCanvasState },
+      { ...initialCanvasState },
+      { ...initialCanvasState },
+    ]);
+  }, [open, project?.id]);
 
   // Build micrograph options
   useEffect(() => {

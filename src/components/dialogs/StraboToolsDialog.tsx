@@ -141,30 +141,40 @@ export function StraboToolsDialog({ open, onClose, initialMicrographId }: Strabo
   const addMicrograph = useAppStore((state) => state.addMicrograph);
   const updateMicrographMetadata = useAppStore((state) => state.updateMicrographMetadata);
 
-  // ─── Reset state when dialog opens ───────────────────────────────────────
+  // Track project ID to detect project switches while dialog is open
+  const prevProjectIdRef = useRef<string | null>(null);
+
+  // ─── Reset state when dialog opens or project changes ───────────────────
 
   useEffect(() => {
-    if (open) {
-      setActiveTab('edge-fabric');
-      setSelectedMicrographId(initialMicrographId || null);
-      setImageLoaded(false);
-      setFabricAzimuth(null);
-      setFabricAxialRatio(null);
-      setEdgeThreshold(128);
-      setCiThreshold(128);
-      setCiAdaptive(false);
-      setCiHighlightColor('red');
-      setCiPercentage(0);
-      setModeNumPhases(4);
-      setModePercentages([]);
-      originalImageDataRef.current = null;
+    if (!open) return;
 
-      sobelResultRef.current = null;
-      fabricResultRef.current = null;
-      grayDataRef.current = null;
-      avgMatrixRef.current = null;
-    }
-  }, [open, initialMicrographId]);
+    const projectId = project?.id ?? null;
+    const projectChanged = prevProjectIdRef.current !== null && prevProjectIdRef.current !== projectId;
+    prevProjectIdRef.current = projectId;
+
+    // On dialog open: use initialMicrographId; on project switch: clear selection
+    const newMicrographId = projectChanged ? null : (initialMicrographId || null);
+
+    setActiveTab('edge-fabric');
+    setSelectedMicrographId(newMicrographId);
+    setImageLoaded(false);
+    setFabricAzimuth(null);
+    setFabricAxialRatio(null);
+    setEdgeThreshold(128);
+    setCiThreshold(128);
+    setCiAdaptive(false);
+    setCiHighlightColor('red');
+    setCiPercentage(0);
+    setModeNumPhases(4);
+    setModePercentages([]);
+    originalImageDataRef.current = null;
+
+    sobelResultRef.current = null;
+    fabricResultRef.current = null;
+    grayDataRef.current = null;
+    avgMatrixRef.current = null;
+  }, [open, initialMicrographId, project?.id]);
 
   // ─── Build micrograph options with thumbnails ────────────────────────────
 
