@@ -99,6 +99,11 @@ class TileGenerator {
       console.log(`Cache exists for image: ${imagePath}`);
       metadata = cacheStatus.metadata;
       fromCache = true;
+
+      // Backfill medium.jpg for caches created by older versions that skipped small images
+      if (!await tileCache.hasMedium(hash)) {
+        await this.generateMediumFromFile(hash, imagePath, metadata.width, metadata.height);
+      }
     } else {
       console.log(`Cache miss - generating all assets for: ${imagePath}`);
 
@@ -220,9 +225,15 @@ class TileGenerator {
       return;
     }
 
-    // Skip if image is smaller than medium size
+    // For images smaller than medium size, save a JPEG copy at original dimensions
+    // (needed by the web viewer which has no access to the original source file)
     if (width <= MEDIUM_SIZE && height <= MEDIUM_SIZE) {
-      console.log('Image smaller than medium size, skipping');
+      const buffer = await sharp(imagePath, { limitInputPixels: false })
+        .jpeg({ quality: Math.round(JPEG_QUALITY * 100) })
+        .toBuffer();
+
+      await tileCache.saveMedium(hash, buffer);
+      console.log(`Generated medium (original size): ${width}x${height}`);
       return;
     }
 
