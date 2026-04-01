@@ -270,6 +270,7 @@ export function StraboToolsDialog({ open, onClose, initialMicrographId }: Strabo
     );
     if (!micrographExists) return;
 
+
     setIsLoading(true);
     setImageLoaded(false);
     originalImageDataRef.current = null;
