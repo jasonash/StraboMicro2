@@ -264,6 +264,12 @@ export function StraboToolsDialog({ open, onClose, initialMicrographId }: Strabo
   const loadMicrographImage = useCallback(async (micrographId: string) => {
     if (!project) return;
 
+    // Validate micrograph belongs to current project (guard against stale IDs during project switch)
+    const micrographExists = project.datasets?.some((ds) =>
+      ds.samples?.some((s) => s.micrographs?.some((m) => m.id === micrographId))
+    );
+    if (!micrographExists) return;
+
     setIsLoading(true);
     setImageLoaded(false);
     originalImageDataRef.current = null;
