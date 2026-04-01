@@ -1,0 +1,3 @@
+# Keep the current branch's version of CI-managed release files during merges
+releases.json merge=ours
+dev-releases.json merge=ours
