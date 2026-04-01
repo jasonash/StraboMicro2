@@ -864,7 +864,10 @@ export function ImageComparatorDialog({ open, onClose }: ImageComparatorDialogPr
 
   // Reset state when dialog opens or project changes
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      prevProjectIdRef.current = null;
+      return;
+    }
 
     const projectId = project?.id ?? null;
     const projectChanged = prevProjectIdRef.current !== null && prevProjectIdRef.current !== projectId;
