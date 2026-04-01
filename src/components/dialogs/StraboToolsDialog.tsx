@@ -187,19 +187,6 @@ export function StraboToolsDialog({ open, onClose, initialMicrographId }: Strabo
       return;
     }
 
-    // Build the valid ID set synchronously so we can clear stale selections immediately
-    const validIds = new Set<string>();
-    for (const dataset of project.datasets || []) {
-      for (const sample of dataset.samples || []) {
-        for (const micro of sample.micrographs || []) {
-          validIds.add(micro.id);
-        }
-      }
-    }
-
-    // Clear stale selection before async work to suppress MUI out-of-range warnings
-    setSelectedMicrographId((prev) => (prev && !validIds.has(prev) ? null : prev));
-
     const buildOptions = async () => {
       const options: MicrographOption[] = [];
       const folderPaths = await window.api?.getProjectFolderPaths(project.id);
@@ -929,7 +916,7 @@ export function StraboToolsDialog({ open, onClose, initialMicrographId }: Strabo
         {/* Micrograph selector */}
         <FormControl size="small" sx={{ minWidth: 300 }}>
           <Select
-            value={selectedMicrographId || ''}
+            value={selectedMicrographId && micrographOptions.some((o) => o.id === selectedMicrographId) ? selectedMicrographId : ''}
             onChange={(e) => handleMicrographChange(e.target.value || null)}
             displayEmpty
             renderValue={(selected) => {
