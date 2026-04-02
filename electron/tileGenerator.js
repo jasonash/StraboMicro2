@@ -24,6 +24,15 @@ const JPEG_QUALITY = 0.85; // 85% quality for thumbnails/medium
 const TILE_WEBP_QUALITY = 90; // 90% quality for WebP tiles (Sharp uses 0-100 scale)
 
 class TileGenerator {
+  constructor() {
+    // Tracks in-flight processImage calls to prevent race conditions.
+    // When multiple callers request the same image concurrently (e.g. composite
+    // thumbnail generation + viewer progressive loading), the second caller
+    // awaits the first instead of seeing a half-written cache (metadata.json
+    // exists but thumbnail.jpg hasn't been written yet).
+    this._inFlightProcessing = new Map();
+  }
+
   /**
    * Process an image and generate all cached assets
    *
@@ -35,6 +44,26 @@ class TileGenerator {
    * @returns {Promise<{hash: string, metadata: Object}>}
    */
   async processImage(imagePath) {
+    // Deduplicate concurrent calls for the same image path
+    if (this._inFlightProcessing.has(imagePath)) {
+      console.log(`Waiting for in-flight processing: ${imagePath}`);
+      return this._inFlightProcessing.get(imagePath);
+    }
+
+    const promise = this._processImageInternal(imagePath);
+    this._inFlightProcessing.set(imagePath, promise);
+
+    try {
+      return await promise;
+    } finally {
+      this._inFlightProcessing.delete(imagePath);
+    }
+  }
+
+  /**
+   * Internal implementation of processImage (called once per concurrent group)
+   */
+  async _processImageInternal(imagePath) {
     // Generate hash and check cache
     const hash = await tileCache.generateImageHash(imagePath);
     const cacheStatus = await tileCache.isCacheValid(imagePath);
