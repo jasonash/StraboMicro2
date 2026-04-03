@@ -66,7 +66,7 @@ function getGeometryType(spot: Spot): string | null {
       case 'Polygon': return 'polygon';
     }
   }
-  return spot.geometryType || null;
+  return spot.geometryType?.toLowerCase() || null;
 }
 
 export function SpotRenderer({ spot, scale, isSelected, onClick }: SpotRendererProps) {
