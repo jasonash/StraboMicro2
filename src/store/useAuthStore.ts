@@ -31,17 +31,29 @@ interface AuthState {
   isLoading: boolean;
   error: string | null;
 
+  // ========== LOGIN PROMPT STATE ==========
+  /** When true, the login dialog should be shown for re-authentication */
+  loginPromptActive: boolean;
+  /** Message to show in the login dialog (e.g. "Your session has expired") */
+  loginPromptMessage: string | null;
+
   // ========== AUTH ACTIONS ==========
   login: (email: string, password: string) => Promise<boolean>;
   logout: () => Promise<void>;
   checkAuthStatus: () => Promise<void>;
   refreshToken: () => Promise<boolean>;
   clearError: () => void;
+  /** Called by App.tsx when the login prompt dialog is dismissed (cancel) */
+  dismissLoginPrompt: () => void;
 }
 
 // ============================================================================
 // STORE IMPLEMENTATION
 // ============================================================================
+
+// Pending login resolvers — when authenticatedFetch needs re-auth, it pushes
+// a { resolve, reject } here and awaits. Login success resolves all; cancel rejects all.
+let pendingLoginResolvers: Array<{ resolve: () => void; reject: (err: Error) => void }> = [];
 
 export const useAuthStore = create<AuthState>()((set, get) => ({
   // ========== INITIAL STATE ==========
@@ -49,6 +61,8 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
   user: null,
   isLoading: false,
   error: null,
+  loginPromptActive: false,
+  loginPromptMessage: null,
 
   // ========== AUTH ACTIONS ==========
 
@@ -74,10 +88,16 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
           user: result.user,
           isLoading: false,
           error: null,
+          loginPromptActive: false,
+          loginPromptMessage: null,
         });
         // Notify main process to update menu
         window.api.auth.notifyStateChanged(true);
         console.log('[AuthStore] Login successful for:', result.user?.email);
+        // Resolve any pending auth requests that were waiting for re-login
+        const resolvers = pendingLoginResolvers;
+        pendingLoginResolvers = [];
+        resolvers.forEach(({ resolve }) => resolve());
         return true;
       } else {
         set({
@@ -222,11 +242,38 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
    * Clear error state
    */
   clearError: () => set({ error: null }),
+
+  /**
+   * Dismiss the login prompt (user cancelled)
+   * Rejects all pending auth requests so callers get an error
+   */
+  dismissLoginPrompt: () => {
+    set({ loginPromptActive: false, loginPromptMessage: null });
+    const resolvers = pendingLoginResolvers;
+    pendingLoginResolvers = [];
+    resolvers.forEach(({ reject }) => reject(new Error('Login cancelled')));
+  },
 }));
 
 // ============================================================================
 // HELPER FUNCTIONS
 // ============================================================================
+
+/**
+ * Request re-authentication from the user.
+ * Shows the login dialog and returns a promise that resolves when login succeeds
+ * or rejects if the user cancels.
+ */
+function requestLogin(message: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    pendingLoginResolvers.push({ resolve, reject });
+    // Only activate the prompt once (multiple concurrent callers share the same dialog)
+    const { loginPromptActive } = useAuthStore.getState();
+    if (!loginPromptActive) {
+      useAuthStore.setState({ loginPromptActive: true, loginPromptMessage: message });
+    }
+  });
+}
 
 /**
  * Get the current access token for making authenticated API calls
@@ -265,7 +312,8 @@ export async function getAccessToken(): Promise<string | null> {
 
 /**
  * Make an authenticated fetch request
- * Automatically includes Bearer token and handles token refresh
+ * Automatically includes Bearer token and handles token refresh.
+ * If no valid token is available, prompts the user to re-login and retries.
  */
 export async function authenticatedFetch(
   url: string,
@@ -273,12 +321,18 @@ export async function authenticatedFetch(
 ): Promise<Response> {
   console.log('[authenticatedFetch] Fetching:', url);
 
-  const token = await getAccessToken();
+  let token = await getAccessToken();
   console.log('[authenticatedFetch] Token retrieved:', token ? `${token.substring(0, 20)}...` : 'null');
 
   if (!token) {
-    console.error('[authenticatedFetch] No token available - not authenticated');
-    throw new Error('Not authenticated');
+    console.warn('[authenticatedFetch] No token available — prompting user to log in');
+    // Show login dialog and wait for the user to authenticate (or cancel)
+    await requestLogin('Your session has expired. Please sign in again to continue.');
+    // After successful re-login, get the fresh token
+    token = await getAccessToken();
+    if (!token) {
+      throw new Error('Not authenticated');
+    }
   }
 
   const headers = new Headers(options.headers);

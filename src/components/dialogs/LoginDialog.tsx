@@ -25,9 +25,11 @@ import { useAuthStore } from '@/store/useAuthStore';
 interface LoginDialogProps {
   isOpen: boolean;
   onClose: () => void;
+  /** Optional message shown above the form (e.g. session expiry notice) */
+  message?: string | null;
 }
 
-export function LoginDialog({ isOpen, onClose }: LoginDialogProps) {
+export function LoginDialog({ isOpen, onClose, message }: LoginDialogProps) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
 
@@ -87,6 +89,11 @@ export function LoginDialog({ isOpen, onClose }: LoginDialogProps) {
       <DialogTitle>Sign in to StraboSpot</DialogTitle>
       <DialogContent>
         <Box sx={{ pt: 1 }}>
+          {message && !error && (
+            <Alert severity="warning" sx={{ mb: 2 }}>
+              {message}
+            </Alert>
+          )}
           {error && (
             <Alert severity="error" sx={{ mb: 2 }}>
               {error}
