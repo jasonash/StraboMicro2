@@ -136,6 +136,10 @@ export function LinkSampleDialog({ open, onClose, onSelectSample }: LinkSampleDi
       console.log('[LinkSampleDialog] Parsed projects array:', projectsArray);
       setProjects(projectsArray);
     } catch (err) {
+      if (err instanceof Error && err.message === 'Login cancelled') {
+        onClose();
+        return;
+      }
       console.error('[LinkSampleDialog] Error loading projects:', err);
       setError(err instanceof Error ? err.message : 'Failed to load projects');
     } finally {
@@ -168,6 +172,10 @@ export function LinkSampleDialog({ open, onClose, onSelectSample }: LinkSampleDi
       console.log('[LinkSampleDialog] Parsed datasets array:', datasetsArray);
       setDatasets(datasetsArray);
     } catch (err) {
+      if (err instanceof Error && err.message === 'Login cancelled') {
+        onClose();
+        return;
+      }
       console.error('[LinkSampleDialog] Error loading datasets:', err);
       setError(err instanceof Error ? err.message : 'Failed to load datasets');
     } finally {
@@ -237,6 +245,10 @@ export function LinkSampleDialog({ open, onClose, onSelectSample }: LinkSampleDi
       console.log('[LinkSampleDialog] Total extracted samples:', extractedSamples.length, extractedSamples);
       setSamples(extractedSamples);
     } catch (err) {
+      if (err instanceof Error && err.message === 'Login cancelled') {
+        onClose();
+        return;
+      }
       console.error('[LinkSampleDialog] Error loading samples:', err);
       setError(err instanceof Error ? err.message : 'Failed to load samples');
     } finally {

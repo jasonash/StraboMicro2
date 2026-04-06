@@ -215,7 +215,7 @@ function App() {
   const micrographIndex = useAppStore(state => state.micrographIndex);
   const addSpot = useAppStore(state => state.addSpot);
   const updateMicrographMetadata = useAppStore(state => state.updateMicrographMetadata);
-  const { checkAuthStatus, logout, user } = useAuthStore();
+  const { checkAuthStatus, logout, user, loginPromptActive, loginPromptMessage, dismissLoginPrompt } = useAuthStore();
 
   // Initialize theme system
   useTheme();
@@ -1255,8 +1255,14 @@ function App() {
         onClose={() => setIsPreferencesOpen(false)}
       />
       <LoginDialog
-        isOpen={isLoginDialogOpen}
-        onClose={() => setIsLoginDialogOpen(false)}
+        isOpen={isLoginDialogOpen || loginPromptActive}
+        onClose={() => {
+          setIsLoginDialogOpen(false);
+          if (loginPromptActive) {
+            dismissLoginPrompt();
+          }
+        }}
+        message={loginPromptActive ? loginPromptMessage : undefined}
       />
       <AboutDialog
         isOpen={isAboutOpen}
