@@ -262,6 +262,96 @@ async function downscaleLargeImages(folderPaths, sendProgress) {
 }
 
 /**
+ * Legacy JavaFX minimum display width for images.
+ * The legacy app upscaled images with width < 2000px to 2000px for display,
+ * and stored offsetInParent coordinates in that upscaled coordinate space.
+ * See: legacy-java-code/src/main/java/org/strabospot/util/straboMicrographImages.java (line 62)
+ */
+const LEGACY_MIN_WIDTH = 2000;
+
+/**
+ * Upscale small images in legacy projects to match the legacy app's display coordinate space.
+ *
+ * The legacy JavaFX app resized all images with width < 2000px to width=2000 for display.
+ * Associated micrograph offsetInParent coordinates were stored relative to this upscaled size.
+ * Without upscaling, overlays render at incorrect positions on small parent images.
+ *
+ * Only called for legacy projects (numeric project IDs).
+ *
+ * @param {Object} folderPaths - Project folder paths
+ * @param {Function} sendProgress - Progress callback
+ * @returns {Promise<{upscaled: number, skipped: number, failed: number}>}
+ */
+async function upscaleLegacySmallImages(folderPaths, sendProgress) {
+  const stats = { upscaled: 0, skipped: 0, failed: 0 };
+
+  try {
+    let imageFiles = [];
+    try {
+      imageFiles = await fs.promises.readdir(folderPaths.images);
+    } catch (err) {
+      log.warn('[SmzImport] Could not read images folder:', err.message);
+      return stats;
+    }
+
+    imageFiles = imageFiles.filter(f => !f.startsWith('.') && f !== '.gitkeep');
+
+    if (imageFiles.length === 0) {
+      log.info('[SmzImport] No images to check for legacy upscaling');
+      return stats;
+    }
+
+    log.info(`[SmzImport] Checking ${imageFiles.length} images for legacy upscaling (minWidth=${LEGACY_MIN_WIDTH})...`);
+
+    for (let i = 0; i < imageFiles.length; i++) {
+      const filename = imageFiles[i];
+      const imagePath = path.join(folderPaths.images, filename);
+
+      try {
+        const metadata = await sharp(imagePath, { limitInputPixels: false }).metadata();
+        const { width, height } = metadata;
+
+        if (width >= LEGACY_MIN_WIDTH) {
+          stats.skipped++;
+          continue;
+        }
+
+        // Upscale to width=2000, maintaining aspect ratio (matches legacy Scalr.resize behavior)
+        const newWidth = LEGACY_MIN_WIDTH;
+        const newHeight = Math.round(height * (newWidth / width));
+
+        log.info(`[SmzImport] Upscaling legacy image ${filename}: ${width}x${height} → ${newWidth}x${newHeight}`);
+
+        if (sendProgress) {
+          sendProgress('Upscaling images', 92, `Upscaling ${filename}...`);
+        }
+
+        const buffer = await sharp(imagePath, { limitInputPixels: false })
+          .resize(newWidth, newHeight)
+          .jpeg({ quality: 95, mozjpeg: true })
+          .toBuffer();
+
+        await fs.promises.writeFile(imagePath, buffer);
+
+        log.info(`[SmzImport] Successfully upscaled ${filename}`);
+        stats.upscaled++;
+
+      } catch (err) {
+        log.error(`[SmzImport] Failed to upscale image ${filename}:`, err.message);
+        stats.failed++;
+      }
+    }
+
+    log.info(`[SmzImport] Legacy upscale complete: ${stats.upscaled} upscaled, ${stats.skipped} already >= ${LEGACY_MIN_WIDTH}px, ${stats.failed} failed`);
+    return stats;
+
+  } catch (error) {
+    log.error('[SmzImport] Error in upscaleLegacySmallImages:', error);
+    return stats;
+  }
+}
+
+/**
  * Update micrograph dimensions in project data to match actual image file dimensions.
  * Legacy projects may have stored uiImages dimensions (downscaled) instead of actual image dimensions.
  * This causes rendering issues when the viewer uses project.json dimensions but tiles use actual dimensions.
@@ -588,6 +678,19 @@ async function importSmz(smzPath, progressCallback) {
     const downscaleStats = await downscaleLargeImages(folderPaths, sendProgress);
     if (downscaleStats.downscaled > 0) {
       log.info(`[SmzImport] Downscaled ${downscaleStats.downscaled} large images for better performance`);
+    }
+
+    // Upscale small images in legacy projects to match the legacy app's coordinate space.
+    // The legacy JavaFX app displayed images at min width=2000px and stored overlay positions
+    // (offsetInParent) in that upscaled coordinate space. Without this, overlays render at
+    // incorrect positions on small parent images.
+    const isLegacyProject = /^\d+$/.test(projectId);
+    if (isLegacyProject) {
+      sendProgress('Upscaling images', 92, 'Adjusting legacy image sizes...');
+      const upscaleStats = await upscaleLegacySmallImages(folderPaths, sendProgress);
+      if (upscaleStats.upscaled > 0) {
+        log.info(`[SmzImport] Upscaled ${upscaleStats.upscaled} small legacy images to ${LEGACY_MIN_WIDTH}px width`);
+      }
     }
 
     // Load the project data
