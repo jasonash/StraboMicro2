@@ -95,6 +95,15 @@ async function validateImageFile(filePath) {
 // Do not configure sharp.cache() or sharp.concurrency() here
 
 /**
+ * Minimum image width for consistent overlay positioning.
+ * The legacy JavaFX app upscaled images with width < 2000px to 2000px for display,
+ * storing offsetInParent coordinates in that upscaled coordinate space.
+ * Enforcing this minimum on all new images ensures coordinates stay consistent
+ * and prevents legacy import from misinterpreting new-app offsets on re-import.
+ */
+const MIN_IMAGE_WIDTH = 2000;
+
+/**
  * Maximum image dimension (long edge) for performance.
  * Images larger than this will be downscaled during import.
  * 10K pixels provides excellent detail while keeping tile counts manageable.
@@ -119,6 +128,26 @@ function calculateDownscaledDimensions(width, height) {
     width: Math.round(width * scale),
     height: Math.round(height * scale),
     downscaled: true,
+  };
+}
+
+/**
+ * Calculate upscaled dimensions if image width is below MIN_IMAGE_WIDTH.
+ * Maintains aspect ratio, scaling based on width.
+ * @param {number} width - Original width
+ * @param {number} height - Original height
+ * @returns {{width: number, height: number, upscaled: boolean}}
+ */
+function calculateUpscaledDimensions(width, height) {
+  if (width >= MIN_IMAGE_WIDTH) {
+    return { width, height, upscaled: false };
+  }
+
+  const scale = MIN_IMAGE_WIDTH / width;
+  return {
+    width: MIN_IMAGE_WIDTH,
+    height: Math.round(height * scale),
+    upscaled: true,
   };
 }
 
@@ -210,15 +239,20 @@ async function convertToScratchJPEG(inputPath, progressCallback = null) {
       // Release tiffData - we've extracted what we need into rawBuffer
       tiffData = null;
 
-      // Check if downscaling is needed
-      const targetDims = calculateDownscaledDimensions(width, height);
+      // Check if resizing is needed (downscale large images, upscale small images)
+      let targetDims = calculateDownscaledDimensions(width, height);
       if (targetDims.downscaled) {
         log.info(`[ImageConverter] Image exceeds ${MAX_IMAGE_DIMENSION}px limit, will downscale to ${targetDims.width}x${targetDims.height}`);
+      } else {
+        targetDims = calculateUpscaledDimensions(width, height);
+        if (targetDims.upscaled) {
+          log.info(`[ImageConverter] Image width below ${MIN_IMAGE_WIDTH}px, will upscale to ${targetDims.width}x${targetDims.height}`);
+        }
       }
 
       log.info(`[ImageConverter] Converting raw pixel data to JPEG with Sharp...`);
 
-      // Use Sharp to convert raw pixel data to JPEG (with optional downscale)
+      // Use Sharp to convert raw pixel data to JPEG (with optional resize)
       let sharpPipeline = sharp(rawBuffer, {
         raw: {
           width,
@@ -227,7 +261,7 @@ async function convertToScratchJPEG(inputPath, progressCallback = null) {
         },
       });
 
-      if (targetDims.downscaled) {
+      if (targetDims.downscaled || targetDims.upscaled) {
         sharpPipeline = sharpPipeline.resize(targetDims.width, targetDims.height);
       }
 
@@ -300,15 +334,20 @@ async function convertToScratchJPEG(inputPath, progressCallback = null) {
       // Release bmpData - we've extracted what we need
       bmpData = null;
 
-      // Check if downscaling is needed
-      const targetDims = calculateDownscaledDimensions(width, height);
+      // Check if resizing is needed (downscale large images, upscale small images)
+      let targetDims = calculateDownscaledDimensions(width, height);
       if (targetDims.downscaled) {
         log.info(`[ImageConverter] Image exceeds ${MAX_IMAGE_DIMENSION}px limit, will downscale to ${targetDims.width}x${targetDims.height}`);
+      } else {
+        targetDims = calculateUpscaledDimensions(width, height);
+        if (targetDims.upscaled) {
+          log.info(`[ImageConverter] Image width below ${MIN_IMAGE_WIDTH}px, will upscale to ${targetDims.width}x${targetDims.height}`);
+        }
       }
 
       log.info(`[ImageConverter] Converting BMP raw pixel data to JPEG with Sharp...`);
 
-      // Use Sharp to convert raw pixel data to JPEG (with optional downscale)
+      // Use Sharp to convert raw pixel data to JPEG (with optional resize)
       let sharpPipeline = sharp(rgbBuffer, {
         raw: {
           width,
@@ -317,7 +356,7 @@ async function convertToScratchJPEG(inputPath, progressCallback = null) {
         },
       });
 
-      if (targetDims.downscaled) {
+      if (targetDims.downscaled || targetDims.upscaled) {
         sharpPipeline = sharpPipeline.resize(targetDims.width, targetDims.height);
       }
 
@@ -359,23 +398,28 @@ async function convertToScratchJPEG(inputPath, progressCallback = null) {
 
       log.info(`[ImageConverter] Source image: ${metadata.width}x${metadata.height}, format: ${metadata.format}`);
 
-      // Check if downscaling is needed
-      const targetDims = calculateDownscaledDimensions(metadata.width, metadata.height);
+      // Check if resizing is needed (downscale large images, upscale small images)
+      let targetDims = calculateDownscaledDimensions(metadata.width, metadata.height);
       if (targetDims.downscaled) {
         log.info(`[ImageConverter] Image exceeds ${MAX_IMAGE_DIMENSION}px limit, will downscale to ${targetDims.width}x${targetDims.height}`);
+      } else {
+        targetDims = calculateUpscaledDimensions(metadata.width, metadata.height);
+        if (targetDims.upscaled) {
+          log.info(`[ImageConverter] Image width below ${MIN_IMAGE_WIDTH}px, will upscale to ${targetDims.width}x${targetDims.height}`);
+        }
       }
 
       if (progressCallback) {
         progressCallback({ stage: 'converting', percent: 30 });
       }
 
-      // Use Sharp to convert to JPEG (with optional downscale)
+      // Use Sharp to convert to JPEG (with optional resize)
       let sharpPipeline = sharp(inputPath, {
         limitInputPixels: false,
         sequentialRead: true,
       });
 
-      if (targetDims.downscaled) {
+      if (targetDims.downscaled || targetDims.upscaled) {
         sharpPipeline = sharpPipeline.resize(targetDims.width, targetDims.height);
       }
 
