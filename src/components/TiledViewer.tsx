@@ -394,6 +394,39 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
       return children.filter(child => child.isPrimarySibling !== false);
     }, [project, activeMicrographId])();
 
+    // Compute effective scalePixelsPerCentimeter for affine-placed micrographs.
+    // Affine children often have a default scalePixelsPerCentimeter (100) because their real-world
+    // scale is defined by the affine transform relative to the parent. Walk up the ancestor chain,
+    // accumulating affine scale factors, until we reach a micrograph with a calibrated scale.
+    const effectiveScalePixelsPerCentimeter = useMemo(() => {
+      if (!activeMicrograph) return null;
+
+      // Walk up through affine ancestors accumulating the combined scale factor
+      let cumulativeAffineScale = 1;
+      let current = activeMicrograph;
+
+      while (
+        current.placementType === 'affine' &&
+        current.affineMatrix &&
+        current.parentID
+      ) {
+        const [a, , , c] = current.affineMatrix;
+        const affineScale = Math.sqrt(a * a + c * c);
+        if (affineScale <= 0) break;
+        cumulativeAffineScale *= affineScale;
+
+        const parent = micrographIndex.get(current.parentID);
+        if (!parent) break;
+        current = parent;
+      }
+
+      // current is now the root ancestor (or the micrograph itself if not affine-placed)
+      const rootScale = current.scalePixelsPerCentimeter;
+      if (!rootScale) return activeMicrograph.scalePixelsPerCentimeter ?? null;
+
+      return rootScale / cumulativeAffineScale;
+    }, [activeMicrograph, micrographIndex]);
+
     // Get effective spots - if viewing a secondary sibling (XPL), show spots from primary (PPL)
     const effectiveSpots = useMemo(() => {
       if (!activeMicrograph) return [];
@@ -486,7 +519,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
     const rulerTool = useRulerTool({
       layer: drawingLayerRef.current,
       scale: zoom,
-      scalePixelsPerCentimeter: activeMicrograph?.scalePixelsPerCentimeter || null,
+      scalePixelsPerCentimeter: effectiveScalePixelsPerCentimeter,
     });
 
     // Imperative geometry editing hook (pass refs as stable object)
@@ -1397,8 +1430,8 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
       const imageY = (pos.y - position.y) / zoom;
 
       // Format and send coordinates to parent
-      if (onCursorMove && activeMicrograph?.scalePixelsPerCentimeter) {
-        const scale = activeMicrograph.scalePixelsPerCentimeter;
+      if (onCursorMove && effectiveScalePixelsPerCentimeter) {
+        const scale = effectiveScalePixelsPerCentimeter;
 
         // Convert pixel coordinates to centimeters
         const xInCm = imageX / scale;
@@ -2111,7 +2144,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                       activeMicrograph?.height ||
                       imageMetadata.height
                     }
-                    scalePixelsPerCentimeter={activeMicrograph?.scalePixelsPerCentimeter || null}
+                    scalePixelsPerCentimeter={effectiveScalePixelsPerCentimeter}
                   />
                 </div>
 
@@ -2131,7 +2164,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                       activeMicrograph?.height ||
                       imageMetadata.height
                     }
-                    scalePixelsPerCentimeter={activeMicrograph?.scalePixelsPerCentimeter || null}
+                    scalePixelsPerCentimeter={effectiveScalePixelsPerCentimeter}
                   />
                 </div>
               </>

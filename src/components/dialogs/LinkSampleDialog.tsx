@@ -73,6 +73,8 @@ interface LinkSampleDialogProps {
   open: boolean;
   onClose: () => void;
   onSelectSample: (sample: ServerSample) => void;
+  /** Sample IDs already linked in the project (to prevent duplicates) */
+  existingSampleIds?: Set<string>;
 }
 
 type Step = 'projects' | 'datasets' | 'samples';
@@ -81,7 +83,7 @@ type Step = 'projects' | 'datasets' | 'samples';
 // COMPONENT
 // ============================================================================
 
-export function LinkSampleDialog({ open, onClose, onSelectSample }: LinkSampleDialogProps) {
+export function LinkSampleDialog({ open, onClose, onSelectSample, existingSampleIds }: LinkSampleDialogProps) {
   const [step, setStep] = useState<Step>('projects');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -414,28 +416,35 @@ export function LinkSampleDialog({ open, onClose, onSelectSample }: LinkSampleDi
 
     return (
       <List sx={{ maxHeight: 400, overflow: 'auto' }}>
-        {samples.map((sample) => (
-          <ListItemButton
-            key={sample.id}
-            onClick={() => handleSampleSelect(sample)}
-            divider
-          >
-            <ListItemText
-              primary={sample.sample_id_name || sample.label || `Sample ${sample.id}`}
-              secondary={
-                <>
-                  {sample.material_type && <span>Material: {sample.material_type}</span>}
-                  {sample.sample_description && (
-                    <>
-                      {sample.material_type && ' | '}
-                      {sample.sample_description}
-                    </>
-                  )}
-                </>
-              }
-            />
-          </ListItemButton>
-        ))}
+        {samples.map((sample) => {
+          const alreadyLinked = existingSampleIds?.has(String(sample.id)) ?? false;
+          return (
+            <ListItemButton
+              key={sample.id}
+              onClick={() => !alreadyLinked && handleSampleSelect(sample)}
+              disabled={alreadyLinked}
+              divider
+            >
+              <ListItemText
+                primary={
+                  (sample.sample_id_name || sample.label || `Sample ${sample.id}`) +
+                  (alreadyLinked ? ' (already linked)' : '')
+                }
+                secondary={
+                  <>
+                    {sample.material_type && <span>Material: {sample.material_type}</span>}
+                    {sample.sample_description && (
+                      <>
+                        {sample.material_type && ' | '}
+                        {sample.sample_description}
+                      </>
+                    )}
+                  </>
+                }
+              />
+            </ListItemButton>
+          );
+        })}
       </List>
     );
   };
