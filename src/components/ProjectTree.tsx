@@ -5,7 +5,7 @@
  * Includes "Add" buttons at each level to trigger the appropriate dialog.
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Box,
   Typography,
@@ -20,6 +20,8 @@ import {
   Slider,
   Tooltip,
   Chip,
+  TextField,
+  InputAdornment,
 } from '@mui/material';
 import {
   ExpandMore,
@@ -35,6 +37,7 @@ import {
   DragIndicator,
   Close as CloseIcon,
   Warning as WarningIcon,
+  Search as SearchIcon,
 } from '@mui/icons-material';
 import {
   DndContext,
@@ -380,6 +383,114 @@ export function ProjectTree() {
   } | null>(null);
   const [batchOpacityParentId, setBatchOpacityParentId] = useState<string | null>(null);
   const [batchOpacityValue, setBatchOpacityValue] = useState<number>(1.0);
+
+  // Search state (local to tree — not persisted; ephemeral quick-find)
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // Compute which datasets/samples/micrographs are visible under the current
+  // search query. A node is visible when it matches directly, an ancestor matches,
+  // or a descendant matches. `directMatches` is used for highlighting.
+  const searchFilter = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q || !project?.datasets) return null;
+
+    const directMatches = new Set<string>();
+    const visibleDatasets = new Set<string>();
+    const visibleSamples = new Set<string>();
+    const visibleMicrographs = new Set<string>();
+
+    for (const d of project.datasets) {
+      const dMatches = (d.name ?? '').toLowerCase().includes(q);
+      if (dMatches) directMatches.add(d.id);
+
+      let anyDescendantInDataset = false;
+
+      for (const s of d.samples ?? []) {
+        const sName = s.name ?? s.sampleID ?? '';
+        const sMatches = sName.toLowerCase().includes(q);
+        if (sMatches) directMatches.add(s.id);
+
+        const byId = new Map<string, MicrographMetadata>();
+        (s.micrographs ?? []).forEach((m) => byId.set(m.id, m));
+
+        let anyDescendantInSample = false;
+
+        for (const m of s.micrographs ?? []) {
+          const mName = m.name ?? m.imageFilename ?? '';
+          const mMatches = mName.toLowerCase().includes(q);
+          if (mMatches) directMatches.add(m.id);
+
+          // Include this micrograph if it matches, an ancestor matches
+          // (dataset/sample/any parent micrograph), or we'll later mark it as a
+          // descendant-inclusion ancestor (handled below).
+          let ancestorMicrographMatches = false;
+          let curr: string | null | undefined = m.parentID;
+          while (curr && byId.has(curr)) {
+            const parent = byId.get(curr)!;
+            const pName = parent.name ?? parent.imageFilename ?? '';
+            if (pName.toLowerCase().includes(q)) {
+              ancestorMicrographMatches = true;
+              break;
+            }
+            curr = parent.parentID;
+          }
+
+          if (mMatches || ancestorMicrographMatches || sMatches || dMatches) {
+            visibleMicrographs.add(m.id);
+            if (mMatches) anyDescendantInSample = true;
+          }
+
+          // If this micrograph matches, surface its full parent chain too.
+          if (mMatches) {
+            let chain: string | null | undefined = m.parentID;
+            while (chain && byId.has(chain)) {
+              visibleMicrographs.add(chain);
+              chain = byId.get(chain)!.parentID;
+            }
+          }
+        }
+
+        if (sMatches || dMatches || anyDescendantInSample) {
+          visibleSamples.add(s.id);
+          if (sMatches || anyDescendantInSample) anyDescendantInDataset = true;
+        }
+      }
+
+      if (dMatches || anyDescendantInDataset) {
+        visibleDatasets.add(d.id);
+      }
+    }
+
+    return { query: q, visibleDatasets, visibleSamples, visibleMicrographs, directMatches };
+  }, [searchQuery, project?.datasets]);
+
+  // Highlight the matched substring when a node's own name matches.
+  const highlightMatch = useCallback(
+    (text: string, isDirectMatch: boolean): React.ReactNode => {
+      if (!searchFilter || !isDirectMatch) return text;
+      const idx = text.toLowerCase().indexOf(searchFilter.query);
+      if (idx < 0) return text;
+      const end = idx + searchFilter.query.length;
+      return (
+        <>
+          {text.slice(0, idx)}
+          <Box
+            component="span"
+            sx={{
+              bgcolor: 'warning.main',
+              color: 'warning.contrastText',
+              px: 0.25,
+              borderRadius: 0.5,
+            }}
+          >
+            {text.slice(idx, end)}
+          </Box>
+          {text.slice(end)}
+        </>
+      );
+    },
+    [searchFilter]
+  );
 
   // Expansion states - from zustand store (persisted via session state)
   const expandedDatasetsArray = useAppStore((state) => state.expandedDatasets);
@@ -828,9 +939,12 @@ export function ProjectTree() {
     sampleId: string,
     siblings: MicrographMetadata[]
   ) => {
-    const isExpanded = expandedMicrographs.has(micrograph.id);
+    const isExpanded = searchFilter ? true : expandedMicrographs.has(micrograph.id);
     const isActive = micrograph.id === activeMicrographId;
-    const children = buildMicrographHierarchy(allMicrographs, micrograph.id);
+    const allChildren = buildMicrographHierarchy(allMicrographs, micrograph.id);
+    const children = searchFilter
+      ? allChildren.filter((c) => searchFilter.visibleMicrographs.has(c.id))
+      : allChildren;
     const hasChildren = children.length > 0;
     const isReference = !micrograph.parentID;
     const isHidden = micrograph.isMicroVisible === false;
@@ -906,7 +1020,10 @@ export function ProjectTree() {
               }}
               onClick={() => handleMicrographClick(micrograph.id)}
             >
-              {micrograph.name || micrograph.imageFilename || 'Unnamed Micrograph'}
+              {highlightMatch(
+                micrograph.name || micrograph.imageFilename || 'Unnamed Micrograph',
+                searchFilter?.directMatches.has(micrograph.id) ?? false
+              )}
               {isReference && ' (Reference)'}
             </Typography>
             {/* PPL/XPL indicator for micrographs with siblings */}
@@ -1227,7 +1344,7 @@ export function ProjectTree() {
     datasetId: string,
     allSamples: SampleMetadata[]
   ) => {
-    const isExpanded = expandedSamples.has(sample.id);
+    const isExpanded = searchFilter ? true : expandedSamples.has(sample.id);
     const hasMicrographs = sample.micrographs && sample.micrographs.length > 0;
 
     return (
@@ -1251,7 +1368,10 @@ export function ProjectTree() {
             sx={{ flex: 1, fontWeight: 500, cursor: 'pointer' }}
             onClick={() => toggleSample(sample.id)}
           >
-            {sample.name || sample.sampleID || 'Unnamed Sample'}
+            {highlightMatch(
+              sample.name || sample.sampleID || 'Unnamed Sample',
+              searchFilter?.directMatches.has(sample.id) ?? false
+            )}
           </Typography>
 
           {/* Sample Options Menu Button */}
@@ -1281,7 +1401,11 @@ export function ProjectTree() {
           <Box sx={{ ml: 0 }}>
             {hasMicrographs &&
               (() => {
-                const referenceMicrographs = buildMicrographHierarchy(sample.micrographs!, null);
+                const allReference = buildMicrographHierarchy(sample.micrographs!, null);
+                const referenceMicrographs = searchFilter
+                  ? allReference.filter((m) => searchFilter.visibleMicrographs.has(m.id))
+                  : allReference;
+                if (referenceMicrographs.length === 0) return null;
                 return (
                   <DndContext
                     sensors={sensors}
@@ -1368,8 +1492,11 @@ export function ProjectTree() {
   };
 
   const renderDataset = (dataset: DatasetMetadata, allDatasets: DatasetMetadata[]) => {
-    const isExpanded = expandedDatasets.has(dataset.id);
+    const isExpanded = searchFilter ? true : expandedDatasets.has(dataset.id);
     const hasSamples = dataset.samples && dataset.samples.length > 0;
+    const visibleSamples = searchFilter
+      ? (dataset.samples ?? []).filter((s) => searchFilter.visibleSamples.has(s.id))
+      : (dataset.samples ?? []);
 
     return (
       <Box
@@ -1400,7 +1527,10 @@ export function ProjectTree() {
             sx={{ flex: 1, fontWeight: 600, cursor: 'pointer' }}
             onClick={() => toggleDataset(dataset.id)}
           >
-            {dataset.name}
+            {highlightMatch(
+              dataset.name,
+              searchFilter?.directMatches.has(dataset.id) ?? false
+            )}
           </Typography>
 
           {/* Dataset Options Menu Button */}
@@ -1428,19 +1558,19 @@ export function ProjectTree() {
 
         <Collapse in={isExpanded}>
           <Box sx={{ ml: 0 }}>
-            {hasSamples && (
+            {hasSamples && visibleSamples.length > 0 && (
               <DndContext
                 sensors={sensors}
                 collisionDetection={closestCenter}
-                onDragEnd={(event) => handleSampleDragEnd(event, dataset.id, dataset.samples!)}
+                onDragEnd={(event) => handleSampleDragEnd(event, dataset.id, visibleSamples)}
               >
                 <SortableContext
-                  items={dataset.samples!.map((s) => s.id)}
+                  items={visibleSamples.map((s) => s.id)}
                   strategy={verticalListSortingStrategy}
                 >
-                  {dataset.samples!.map((sample) => (
+                  {visibleSamples.map((sample) => (
                     <SortableItemWrapper key={sample.id} id={sample.id}>
-                      {renderSample(sample, dataset.id, dataset.samples!)}
+                      {renderSample(sample, dataset.id, visibleSamples)}
                     </SortableItemWrapper>
                   ))}
                 </SortableContext>
@@ -1539,26 +1669,80 @@ export function ProjectTree() {
         </Stack>
       </Box>
 
+      {/* Quick search */}
+      {hasDatasets && (
+        <Box sx={{ px: 2, py: 1, borderBottom: 1, borderColor: 'divider' }}>
+          <TextField
+            size="small"
+            fullWidth
+            placeholder="Search datasets, samples, micrographs…"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') {
+                setSearchQuery('');
+              }
+            }}
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <SearchIcon fontSize="small" />
+                </InputAdornment>
+              ),
+              endAdornment: searchQuery ? (
+                <InputAdornment position="end">
+                  <IconButton
+                    size="small"
+                    edge="end"
+                    onClick={() => setSearchQuery('')}
+                    aria-label="Clear search"
+                  >
+                    <CloseIcon fontSize="small" />
+                  </IconButton>
+                </InputAdornment>
+              ) : null,
+            }}
+          />
+        </Box>
+      )}
+
       {/* Dataset tree */}
       <Box sx={{ p: 1 }}>
-        {hasDatasets && (
-          <DndContext
-            sensors={sensors}
-            collisionDetection={closestCenter}
-            onDragEnd={(event) => handleDatasetDragEnd(event, project.datasets!)}
-          >
-            <SortableContext
-              items={project.datasets!.map((d) => d.id)}
-              strategy={verticalListSortingStrategy}
-            >
-              {project.datasets!.map((dataset) => (
-                <SortableItemWrapper key={dataset.id} id={dataset.id}>
-                  {renderDataset(dataset, project.datasets!)}
-                </SortableItemWrapper>
-              ))}
-            </SortableContext>
-          </DndContext>
-        )}
+        {hasDatasets &&
+          (() => {
+            const visibleDatasetsList = searchFilter
+              ? project.datasets!.filter((d) => searchFilter.visibleDatasets.has(d.id))
+              : project.datasets!;
+
+            if (visibleDatasetsList.length === 0 && searchFilter) {
+              return (
+                <Box sx={{ p: 2, textAlign: 'center' }}>
+                  <Typography variant="body2" color="text.secondary">
+                    No matches for &ldquo;{searchQuery}&rdquo;
+                  </Typography>
+                </Box>
+              );
+            }
+
+            return (
+              <DndContext
+                sensors={sensors}
+                collisionDetection={closestCenter}
+                onDragEnd={(event) => handleDatasetDragEnd(event, visibleDatasetsList)}
+              >
+                <SortableContext
+                  items={visibleDatasetsList.map((d) => d.id)}
+                  strategy={verticalListSortingStrategy}
+                >
+                  {visibleDatasetsList.map((dataset) => (
+                    <SortableItemWrapper key={dataset.id} id={dataset.id}>
+                      {renderDataset(dataset, visibleDatasetsList)}
+                    </SortableItemWrapper>
+                  ))}
+                </SortableContext>
+              </DndContext>
+            );
+          })()}
       </Box>
 
       {/* Project Options Menu */}
