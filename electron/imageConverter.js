@@ -202,8 +202,23 @@ async function convertToScratchJPEG(inputPath, progressCallback = null) {
         progressCallback({ stage: 'converting', percent: 30 });
       }
 
-      // Decode TIFF (this library handles large TIFFs efficiently)
-      let tiffData = decode(fileBuffer);
+      // Decode TIFF (this library handles large TIFFs efficiently).
+      // Note: the `tiff` library only supports a subset of photometric
+      // interpretations (WhiteIsZero, BlackIsZero, RGB, Palette) and
+      // compression schemes. For unsupported variants (YCbCr, CMYK, CIELab,
+      // certain compressions/bit-depths), fall back to Sharp/libvips, which
+      // covers a wider range of TIFF formats.
+      let tiffData;
+      try {
+        tiffData = decode(fileBuffer);
+      } catch (decodeErr) {
+        if (decodeErr && typeof decodeErr.message === 'string' && decodeErr.message.startsWith('Unsupported ')) {
+          log.warn(`[ImageConverter] tiff library rejected file (${decodeErr.message}); falling back to Sharp/libvips`);
+          fileBuffer = null;
+          return await convertDirectWithSharp(inputPath, scratchPath, identifier, progressCallback);
+        }
+        throw decodeErr;
+      }
 
       // Release file buffer immediately - no longer needed after decode
       fileBuffer = null;
@@ -390,68 +405,83 @@ async function convertToScratchJPEG(inputPath, progressCallback = null) {
     } else {
       // For other files (JPEG, PNG), use Sharp directly
       log.info(`[ImageConverter] Using Sharp for standard image file...`);
-
-      const metadata = await sharp(inputPath, {
-        limitInputPixels: false,
-        sequentialRead: true,
-      }).metadata();
-
-      log.info(`[ImageConverter] Source image: ${metadata.width}x${metadata.height}, format: ${metadata.format}`);
-
-      // Check if resizing is needed (downscale large images, upscale small images)
-      let targetDims = calculateDownscaledDimensions(metadata.width, metadata.height);
-      if (targetDims.downscaled) {
-        log.info(`[ImageConverter] Image exceeds ${MAX_IMAGE_DIMENSION}px limit, will downscale to ${targetDims.width}x${targetDims.height}`);
-      } else {
-        targetDims = calculateUpscaledDimensions(metadata.width, metadata.height);
-        if (targetDims.upscaled) {
-          log.info(`[ImageConverter] Image width below ${MIN_IMAGE_WIDTH}px, will upscale to ${targetDims.width}x${targetDims.height}`);
-        }
-      }
-
-      if (progressCallback) {
-        progressCallback({ stage: 'converting', percent: 30 });
-      }
-
-      // Use Sharp to convert to JPEG (with optional resize)
-      let sharpPipeline = sharp(inputPath, {
-        limitInputPixels: false,
-        sequentialRead: true,
-      });
-
-      if (targetDims.downscaled || targetDims.upscaled) {
-        sharpPipeline = sharpPipeline.resize(targetDims.width, targetDims.height);
-      }
-
-      const info = await sharpPipeline
-        .jpeg({
-          quality: 95,
-          mozjpeg: true,
-        })
-        .toFile(scratchPath);
-
-      if (progressCallback) {
-        progressCallback({ stage: 'complete', percent: 100 });
-      }
-
-      log.info(`[ImageConverter] Successfully converted to JPEG: ${info.width}x${info.height}, ${info.size} bytes`);
-      log.info(`[ImageConverter] Scratch location: ${scratchPath}`);
-
-      return {
-        identifier,
-        scratchPath,
-        originalWidth: metadata.width,
-        originalHeight: metadata.height,
-        originalFormat: metadata.format,
-        jpegWidth: info.width,
-        jpegHeight: info.height,
-        jpegSize: info.size,
-      };
+      return await convertDirectWithSharp(inputPath, scratchPath, identifier, progressCallback);
     }
   } catch (error) {
     log.error(`[ImageConverter] Error converting to scratch JPEG:`, error);
     throw error;
   }
+}
+
+/**
+ * Convert an image directly with Sharp/libvips, applying the same
+ * downscale/upscale rules used by the main pipeline and writing a JPEG
+ * into scratch space.
+ *
+ * Used for:
+ *  - Standard formats (JPEG, PNG) as the primary path
+ *  - TIFF variants that the `tiff` library rejects (e.g. YCbCr, CMYK)
+ *
+ * @param {string} inputPath
+ * @param {string} scratchPath
+ * @param {string} identifier
+ * @param {Function|null} progressCallback
+ */
+async function convertDirectWithSharp(inputPath, scratchPath, identifier, progressCallback) {
+  const metadata = await sharp(inputPath, {
+    limitInputPixels: false,
+    sequentialRead: true,
+  }).metadata();
+
+  log.info(`[ImageConverter] Source image: ${metadata.width}x${metadata.height}, format: ${metadata.format}`);
+
+  let targetDims = calculateDownscaledDimensions(metadata.width, metadata.height);
+  if (targetDims.downscaled) {
+    log.info(`[ImageConverter] Image exceeds ${MAX_IMAGE_DIMENSION}px limit, will downscale to ${targetDims.width}x${targetDims.height}`);
+  } else {
+    targetDims = calculateUpscaledDimensions(metadata.width, metadata.height);
+    if (targetDims.upscaled) {
+      log.info(`[ImageConverter] Image width below ${MIN_IMAGE_WIDTH}px, will upscale to ${targetDims.width}x${targetDims.height}`);
+    }
+  }
+
+  if (progressCallback) {
+    progressCallback({ stage: 'converting', percent: 30 });
+  }
+
+  let sharpPipeline = sharp(inputPath, {
+    limitInputPixels: false,
+    sequentialRead: true,
+  });
+
+  if (targetDims.downscaled || targetDims.upscaled) {
+    sharpPipeline = sharpPipeline.resize(targetDims.width, targetDims.height);
+  }
+
+  const info = await sharpPipeline
+    .jpeg({
+      quality: 95,
+      mozjpeg: true,
+    })
+    .toFile(scratchPath);
+
+  if (progressCallback) {
+    progressCallback({ stage: 'complete', percent: 100 });
+  }
+
+  log.info(`[ImageConverter] Successfully converted to JPEG: ${info.width}x${info.height}, ${info.size} bytes`);
+  log.info(`[ImageConverter] Scratch location: ${scratchPath}`);
+
+  return {
+    identifier,
+    scratchPath,
+    originalWidth: metadata.width,
+    originalHeight: metadata.height,
+    originalFormat: metadata.format,
+    jpegWidth: info.width,
+    jpegHeight: info.height,
+    jpegSize: info.size,
+  };
 }
 
 /**
