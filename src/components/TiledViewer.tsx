@@ -2341,7 +2341,16 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                             onTap={async () => {
                               await useAppStore.getState().drillDownToMicrograph(childMicro.id);
                             }}
-                            style={{ cursor: 'pointer' }}
+                            onMouseEnter={(e) => {
+                              if (activeTool) return;
+                              const container = e.target.getStage()?.container();
+                              if (container) container.style.cursor = 'pointer';
+                            }}
+                            onMouseLeave={(e) => {
+                              if (activeTool) return;
+                              const container = e.target.getStage()?.container();
+                              if (container) container.style.cursor = 'grab';
+                            }}
                           />
                         );
                       })}
