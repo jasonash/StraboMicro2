@@ -1637,41 +1637,21 @@ export function ProjectTree() {
   const hasDatasets = project.datasets && project.datasets.length > 0;
 
   return (
-    <Box sx={{ height: '100%', overflow: 'auto' }}>
-      {/* Project header */}
-      <Box sx={{ px: 2, py: 1, borderBottom: 1, borderColor: 'divider' }}>
-        <Stack direction="row" alignItems="center" spacing={0.5}>
-          <Typography variant="subtitle2" sx={{ flex: 1, fontWeight: 700, color: 'text.primary' }}>
-            {project.name}
-          </Typography>
-
-          {/* Project Options Menu Button */}
-          <IconButton
-            size="small"
-            onClick={(e) => {
-              setProjectMenuAnchor(e.currentTarget);
-            }}
-            sx={{ p: 0.5 }}
-          >
-            <MoreVert fontSize="small" />
-          </IconButton>
-
-          {/* Project Add Menu Button */}
-          <IconButton
-            size="small"
-            onClick={(e) => {
-              setProjectAddAnchor(e.currentTarget);
-            }}
-            sx={{ p: 0.5 }}
-          >
-            <Add fontSize="small" />
-          </IconButton>
-        </Stack>
-      </Box>
-
-      {/* Quick search */}
+    <Box sx={{ height: '100%' }}>
+      {/* Quick search — pinned to top so it remains visible while the tree scrolls */}
       {hasDatasets && (
-        <Box sx={{ px: 2, py: 1, borderBottom: 1, borderColor: 'divider' }}>
+        <Box
+          sx={{
+            position: 'sticky',
+            top: 0,
+            zIndex: 2,
+            bgcolor: 'background.paper',
+            px: 2,
+            py: 1,
+            borderBottom: 1,
+            borderColor: 'divider',
+          }}
+        >
           <TextField
             size="small"
             fullWidth
@@ -1705,6 +1685,37 @@ export function ProjectTree() {
           />
         </Box>
       )}
+
+      {/* Project header */}
+      <Box sx={{ px: 2, py: 1, borderBottom: 1, borderColor: 'divider' }}>
+        <Stack direction="row" alignItems="center" spacing={0.5}>
+          <Typography variant="subtitle2" sx={{ flex: 1, fontWeight: 700, color: 'text.primary' }}>
+            {project.name}
+          </Typography>
+
+          {/* Project Options Menu Button */}
+          <IconButton
+            size="small"
+            onClick={(e) => {
+              setProjectMenuAnchor(e.currentTarget);
+            }}
+            sx={{ p: 0.5 }}
+          >
+            <MoreVert fontSize="small" />
+          </IconButton>
+
+          {/* Project Add Menu Button */}
+          <IconButton
+            size="small"
+            onClick={(e) => {
+              setProjectAddAnchor(e.currentTarget);
+            }}
+            sx={{ p: 0.5 }}
+          >
+            <Add fontSize="small" />
+          </IconButton>
+        </Stack>
+      </Box>
 
       {/* Dataset tree */}
       <Box sx={{ p: 1 }}>
