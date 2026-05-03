@@ -1,6 +1,6 @@
 {
   "name": "strabomicro2",
-  "version": "2.0.16",
+  "version": "2.0.17",
   "description": "StraboMicro - Geological Microanalysis Application",
   "main": "electron/main.js",
   "scripts": {
@@ -135,6 +135,10 @@
     },
     "dmg": {
       "background": "build/dmg-background.png",
+      "window": {
+        "width": 540,
+        "height": 380
+      },
       "contents": [
         {
           "x": 130,
