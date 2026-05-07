@@ -267,13 +267,15 @@ async function convertToScratchJPEG(inputPath, progressCallback = null) {
 
       log.info(`[ImageConverter] Converting raw pixel data to JPEG with Sharp...`);
 
-      // Use Sharp to convert raw pixel data to JPEG (with optional resize)
+      // Use Sharp to convert raw pixel data to JPEG (with optional resize).
+      // limitInputPixels: false allows processing very large images (e.g., panoramas).
       let sharpPipeline = sharp(rawBuffer, {
         raw: {
           width,
           height,
           channels,
         },
+        limitInputPixels: false,
       });
 
       if (targetDims.downscaled || targetDims.upscaled) {
@@ -362,13 +364,15 @@ async function convertToScratchJPEG(inputPath, progressCallback = null) {
 
       log.info(`[ImageConverter] Converting BMP raw pixel data to JPEG with Sharp...`);
 
-      // Use Sharp to convert raw pixel data to JPEG (with optional resize)
+      // Use Sharp to convert raw pixel data to JPEG (with optional resize).
+      // limitInputPixels: false allows processing very large images (e.g., panoramas).
       let sharpPipeline = sharp(rgbBuffer, {
         raw: {
           width,
           height,
           channels: 3,
         },
+        limitInputPixels: false,
       });
 
       if (targetDims.downscaled || targetDims.upscaled) {
@@ -507,7 +511,10 @@ async function convertToJPEG(inputPath, outputPath, options = {}) {
     log.info(`[ImageConverter] Quality: ${quality}, maxWidth: ${maxWidth}, maxHeight: ${maxHeight}`);
 
     // Create sharp instance
-    let image = sharp(inputPath);
+    let image = sharp(inputPath, {
+      limitInputPixels: false,
+      sequentialRead: true,
+    });
 
     // Get original metadata
     const metadata = await image.metadata();
