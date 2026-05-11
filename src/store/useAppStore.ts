@@ -2537,7 +2537,7 @@ export const useAppStore = create<AppState>()(
                     color: spot.color,
                     opacity: spot.opacity,
                     points: newPoints,
-                    geometryType: 'Polygon',
+                    geometryType: 'polygon',
                     modifiedTimestamp: Date.now(),
                     splitFrom: spotId,
                     generationMethod: 'manual' as const,
