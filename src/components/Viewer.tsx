@@ -13,6 +13,7 @@ const Viewer: React.FC = () => {
   const [bottomHeight, setBottomHeight] = useState(200);
   const tiledViewerRef = useRef<TiledViewerRef>(null);
   const [cursorCoords, setCursorCoords] = useState<{ x: number; y: number; unit: string; decimals: number } | null>(null);
+  const [currentZoom, setCurrentZoom] = useState<number>(1);
 
   // Get active micrograph and spot from store
   const project = useAppStore((state) => state.project);
@@ -310,6 +311,14 @@ const Viewer: React.FC = () => {
     return unsubscribe;
   }, [activeMicrographId]);
 
+  // Debug menu: snap to exact zoom (tile-seam sanity check)
+  useEffect(() => {
+    if (!window.api?.onSetExactZoom) return;
+    return window.api.onSetExactZoom((value) => {
+      tiledViewerRef.current?.setExactZoom(value);
+    });
+  }, []);
+
   return (
     <Box
       className="viewer-container"
@@ -317,7 +326,7 @@ const Viewer: React.FC = () => {
     >
       {/* Canvas area */}
       <Box sx={{ flex: 1, bgcolor: 'background.default', position: 'relative' }}>
-        <TiledViewer ref={tiledViewerRef} imagePath={activeMicrographPath} onCursorMove={setCursorCoords} />
+        <TiledViewer ref={tiledViewerRef} imagePath={activeMicrographPath} onCursorMove={setCursorCoords} onZoomChange={setCurrentZoom} />
         <DrawingToolbar />
         <SketchToolbar />
 
@@ -408,7 +417,7 @@ const Viewer: React.FC = () => {
         </Typography>
       </Box>
 
-      {/* Status bar - cursor coordinates */}
+      {/* Status bar - cursor coordinates + zoom level */}
       <Box
         sx={{
           height: 28,
@@ -418,6 +427,7 @@ const Viewer: React.FC = () => {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
+          gap: 3,
           px: 2,
           flexShrink: 0,
         }}
@@ -426,6 +436,9 @@ const Viewer: React.FC = () => {
           {cursorCoords
             ? `X: ${cursorCoords.x.toFixed(cursorCoords.decimals)} ${cursorCoords.unit} × Y: ${cursorCoords.y.toFixed(cursorCoords.decimals)} ${cursorCoords.unit}`
             : 'X: 0.000 cm × Y: 0.000 cm'}
+        </Typography>
+        <Typography variant="body2" color="text.secondary">
+          Zoom: {(currentZoom * 100).toFixed(currentZoom < 1 ? 1 : 0)}%
         </Typography>
       </Box>
 

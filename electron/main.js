@@ -1217,6 +1217,23 @@ function createWindow() {
           }
         },
         { type: 'separator' },
+        {
+          label: 'Zoom to 100% (1.0x exact)',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('debug:set-exact-zoom', 1.0);
+            }
+          }
+        },
+        {
+          label: 'Zoom to 200% (2.0x exact)',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('debug:set-exact-zoom', 2.0);
+            }
+          }
+        },
+        { type: 'separator' },
         { role: 'toggleDevTools' },
       ],
     }] : []),

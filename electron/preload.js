@@ -332,6 +332,13 @@ contextBridge.exposeInMainWorld('api', {
     return () => ipcRenderer.removeListener('menu:export-with-sketches', callback);
   },
 
+  // Debug menu: snap viewer to exact zoom (used for tile-seam diagnostics)
+  onSetExactZoom: (callback) => {
+    const handler = (_event, value) => callback(value);
+    ipcRenderer.on('debug:set-exact-zoom', handler);
+    return () => ipcRenderer.removeListener('debug:set-exact-zoom', handler);
+  },
+
   // Export project as JSON
   exportProjectJson: (projectData) =>
     ipcRenderer.invoke('project:export-json', projectData),

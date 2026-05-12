@@ -449,6 +449,9 @@ interface Window {
     // Menu event for export with sketches
     onExportWithSketches: (callback: () => void) => Unsubscribe;
 
+    // Debug menu: snap viewer to exact zoom (tile-seam diagnostics)
+    onSetExactZoom: (callback: (value: number) => void) => Unsubscribe;
+
     // Export project as JSON
     exportProjectJson: (projectData: any) => Promise<{
       success: boolean;
