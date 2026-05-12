@@ -384,11 +384,10 @@ export function GrainDetectionDialog({
         workerRef.current.terminate();
         workerRef.current = null;
       }
-      if (contourWorkerRef.current) {
-        contourWorkerRef.current.terminate();
-        contourWorkerRef.current = null;
-        contourWorkerReadyRef.current = false;
-      }
+      // NOTE: contourWorkerRef is intentionally NOT terminated here.
+      // Its lifecycle is owned by the pre-init effect (keyed on [isOpen]) so
+      // it survives reference changes to `micrograph`/`project` that re-fire
+      // this effect mid-detection.
     };
   }, [isOpen, micrograph, project]);
 
