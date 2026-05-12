@@ -53,6 +53,8 @@ interface ImageState {
   mode: RenderMode;
   imageObj: HTMLImageElement | null;
   tiles: Map<string, TileInfo>;
+  /** Halo pixels each tile carries on edges with neighbors (cacheVersion >= 1.1). Undefined for legacy caches. */
+  tilePadding?: number;
   isLoading: boolean;
   targetMode?: RenderMode; // Track what mode we're currently loading
   retryCount: number; // Track retries to avoid infinite loops
@@ -454,6 +456,7 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
           // TILED mode - load all tiles
           let tilesX: number;
           let tilesY: number;
+          let tilePadding: number | undefined;
 
           if (isAffine) {
             // Load affine metadata to get tile counts
@@ -464,9 +467,11 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
             }
             tilesX = affineMetadata.tilesX;
             tilesY = affineMetadata.tilesY;
+            tilePadding = affineMetadata.tilePadding;
           } else {
             tilesX = result.metadata.tilesX;
             tilesY = result.metadata.tilesY;
+            tilePadding = result.metadata.tilePadding;
           }
 
           // Notify parent that we're loading tiles
@@ -505,6 +510,7 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
             mode: 'TILED',
             imageObj: null,
             tiles: newTiles,
+            tilePadding,
             isLoading: false,
             retryCount: 0, // Reset retry count on success
           });
@@ -688,14 +694,31 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
         {Array.from(imageState.tiles.values()).map((tile) => {
           if (!tile.imageObj) return null;
 
+          const padding = imageState.tilePadding ?? 0;
+          if (padding > 0) {
+            const padLeft = tile.x > 0 ? padding : 0;
+            const padTop = tile.y > 0 ? padding : 0;
+            return (
+              <KonvaImage
+                key={`${tile.x}_${tile.y}`}
+                image={tile.imageObj}
+                x={tile.x * TILE_SIZE - padLeft}
+                y={tile.y * TILE_SIZE - padTop}
+                width={tile.imageObj.naturalWidth}
+                height={tile.imageObj.naturalHeight}
+                opacity={micrograph.opacity ?? 1.0}
+              />
+            );
+          }
+
           return (
             <KonvaImage
               key={`${tile.x}_${tile.y}`}
               image={tile.imageObj}
               x={tile.x * TILE_SIZE}
               y={tile.y * TILE_SIZE}
-              width={TILE_SIZE + 2}  // 2px overlap to prevent seams when rotated
-              height={TILE_SIZE + 2} // 2px overlap to prevent seams when rotated
+              width={TILE_SIZE + 2}
+              height={TILE_SIZE + 2}
               opacity={micrograph.opacity ?? 1.0}
             />
           );

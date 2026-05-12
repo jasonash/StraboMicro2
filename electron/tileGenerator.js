@@ -18,6 +18,7 @@ const sharp = require('sharp');
 
 // Tile configuration
 const TILE_SIZE = 256;
+const TILE_PADDING = 2; // Halo pixels sampled from neighboring tile regions to hide subpixel-rendering seams
 const THUMBNAIL_SIZE = 512;
 const MEDIUM_SIZE = 2048;
 const JPEG_QUALITY = 0.85; // 85% quality for thumbnails/medium
@@ -79,6 +80,10 @@ class TileGenerator {
 
     console.log(`Cache miss - generating thumbnails for: ${imagePath}`);
 
+    // Cache is invalid (missing, version mismatch, or path mismatch). Wipe any stale
+    // files so leftover unpadded tiles don't get served to the new halo-aware renderer.
+    await tileCache.clearImageCache(hash);
+
     // Get image dimensions using Sharp metadata (doesn't load full image into memory)
     // Set unlimited pixel limit to allow reading metadata from very large images
     const sharpMetadata = await sharp(imagePath, { limitInputPixels: false }).metadata();
@@ -135,6 +140,10 @@ class TileGenerator {
       }
     } else {
       console.log(`Cache miss - generating all assets for: ${imagePath}`);
+
+      // Cache is invalid (missing, version mismatch, or path mismatch). Wipe any stale
+      // files so leftover unpadded tiles don't get served to the new halo-aware renderer.
+      await tileCache.clearImageCache(hash);
 
       // Get image dimensions using Sharp metadata
       const sharpMetadata = await sharp(imagePath, { limitInputPixels: false }).metadata();
@@ -436,30 +445,38 @@ class TileGenerator {
       return cached;
     }
 
-    // Calculate tile bounds
-    const x = tileX * TILE_SIZE;
-    const y = tileY * TILE_SIZE;
-    const tileWidth = Math.min(TILE_SIZE, width - x);
-    const tileHeight = Math.min(TILE_SIZE, height - y);
+    // Core tile bounds (unpadded, in source-image coordinates)
+    const coreLeft = tileX * TILE_SIZE;
+    const coreTop = tileY * TILE_SIZE;
+    const coreRight = Math.min(width, coreLeft + TILE_SIZE);
+    const coreBottom = Math.min(height, coreTop + TILE_SIZE);
 
-    // Create raw RGBA buffer for the tile (with transparent background)
-    const tileBuffer = Buffer.alloc(TILE_SIZE * TILE_SIZE * 4, 0); // All zeros = transparent
+    // Padded bounds, clamped to image extents. Edge tiles get less halo on their
+    // image-boundary side; interior tiles get TILE_PADDING on all four sides.
+    const padLeft = coreLeft - Math.max(0, coreLeft - TILE_PADDING);
+    const padTop = coreTop - Math.max(0, coreTop - TILE_PADDING);
+    const padRight = Math.min(width, coreRight + TILE_PADDING) - coreRight;
+    const padBottom = Math.min(height, coreBottom + TILE_PADDING) - coreBottom;
 
-    // Copy pixel data for this tile
-    for (let row = 0; row < tileHeight; row++) {
-      const sourceRow = y + row;
-      const sourceOffset = (sourceRow * width + x) * 4;
-      const tileOffset = row * TILE_SIZE * 4; // Use TILE_SIZE for row stride
+    const sampleLeft = coreLeft - padLeft;
+    const sampleTop = coreTop - padTop;
+    const sampleWidth = (coreRight - coreLeft) + padLeft + padRight;
+    const sampleHeight = (coreBottom - coreTop) + padTop + padBottom;
 
-      const sourceSlice = data.slice(sourceOffset, sourceOffset + tileWidth * 4);
-      sourceSlice.copy(tileBuffer, tileOffset);
+    // Copy the padded RGBA region row by row from the source buffer
+    const tileBuffer = Buffer.alloc(sampleWidth * sampleHeight * 4);
+    for (let row = 0; row < sampleHeight; row++) {
+      const sourceOffset = ((sampleTop + row) * width + sampleLeft) * 4;
+      const destOffset = row * sampleWidth * 4;
+      data.copy(tileBuffer, destOffset, sourceOffset, sourceOffset + sampleWidth * 4);
     }
 
-    // Use Sharp to encode as WebP with transparency support
+    // Encode as WebP at the padded dimensions — the renderer reads the tile's
+    // natural size and offsets by padLeft/padTop so the halo overlaps neighbors.
     const buffer = await sharp(tileBuffer, {
       raw: {
-        width: TILE_SIZE,
-        height: TILE_SIZE,
+        width: sampleWidth,
+        height: sampleHeight,
         channels: 4
       }
     })

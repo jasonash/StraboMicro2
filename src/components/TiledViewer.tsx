@@ -83,6 +83,8 @@ interface ImageMetadata {
   height: number;
   tilesX: number;
   tilesY: number;
+  /** Pixels of halo each tile carries on every edge that has a neighbor. Absent on legacy caches. */
+  tilePadding?: number;
   fromCache: boolean;
 }
 
@@ -631,6 +633,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
             height: result.metadata.height,
             tilesX: result.metadata.tilesX,
             tilesY: result.metadata.tilesY,
+            tilePadding: result.metadata.tilePadding,
             fromCache: result.fromCache,
           });
 
@@ -2251,11 +2254,29 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                     />
                   )}
 
-                  {/* Render visible tiles in tiled mode with 1px overlap to prevent seams */}
+                  {/* Render visible tiles. Halo-padded tiles (cacheVersion >= 1.1) render at their
+                      natural pixel size, offset by the padding amount on edges that have a neighbor.
+                      Legacy tiles fall back to the original +1px stretch. */}
                   {renderMode === 'tiled' &&
                     visibleTiles.map((tileKey) => {
                       const tile = tiles.get(tileKey);
                       if (!tile || !tile.imageObj) return null;
+
+                      const padding = imageMetadata?.tilePadding ?? 0;
+                      if (padding > 0) {
+                        const padLeft = tile.x > 0 ? padding : 0;
+                        const padTop = tile.y > 0 ? padding : 0;
+                        return (
+                          <KonvaImage
+                            key={tileKey}
+                            image={tile.imageObj}
+                            x={tile.x * TILE_SIZE - padLeft}
+                            y={tile.y * TILE_SIZE - padTop}
+                            width={tile.imageObj.naturalWidth}
+                            height={tile.imageObj.naturalHeight}
+                          />
+                        );
+                      }
 
                       return (
                         <KonvaImage
@@ -2263,8 +2284,8 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                           image={tile.imageObj}
                           x={tile.x * TILE_SIZE}
                           y={tile.y * TILE_SIZE}
-                          width={TILE_SIZE + 1} // 1px overlap to prevent seams
-                          height={TILE_SIZE + 1} // 1px overlap to prevent seams
+                          width={TILE_SIZE + 1}
+                          height={TILE_SIZE + 1}
                         />
                       );
                     })}
@@ -2592,10 +2613,27 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                     />
                   )}
 
+                  {/* Render visible tiles (XPL/PPL sibling view). Same halo-aware logic as the main path. */}
                   {renderMode === 'tiled' &&
                     visibleTiles.map((tileKey) => {
                       const tile = tiles.get(tileKey);
                       if (!tile || !tile.imageObj) return null;
+
+                      const padding = imageMetadata?.tilePadding ?? 0;
+                      if (padding > 0) {
+                        const padLeft = tile.x > 0 ? padding : 0;
+                        const padTop = tile.y > 0 ? padding : 0;
+                        return (
+                          <KonvaImage
+                            key={tileKey}
+                            image={tile.imageObj}
+                            x={tile.x * TILE_SIZE - padLeft}
+                            y={tile.y * TILE_SIZE - padTop}
+                            width={tile.imageObj.naturalWidth}
+                            height={tile.imageObj.naturalHeight}
+                          />
+                        );
+                      }
 
                       return (
                         <KonvaImage

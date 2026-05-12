@@ -9,6 +9,8 @@ export interface TileMetadata {
   width: number;
   height: number;
   tileSize: number;
+  /** Halo pixels each tile carries on edges with neighbors (cacheVersion >= 1.1). Absent for legacy .smz exports. */
+  tilePadding?: number;
   tilesX: number;
   tilesY: number;
   totalTiles: number;
