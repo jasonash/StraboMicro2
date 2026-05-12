@@ -80,6 +80,10 @@ class TileGenerator {
 
     console.log(`Cache miss - generating thumbnails for: ${imagePath}`);
 
+    // Cache is invalid (missing, version mismatch, or path mismatch). Wipe any stale
+    // files so leftover unpadded tiles don't get served to the new halo-aware renderer.
+    await tileCache.clearImageCache(hash);
+
     // Get image dimensions using Sharp metadata (doesn't load full image into memory)
     // Set unlimited pixel limit to allow reading metadata from very large images
     const sharpMetadata = await sharp(imagePath, { limitInputPixels: false }).metadata();
@@ -136,6 +140,10 @@ class TileGenerator {
       }
     } else {
       console.log(`Cache miss - generating all assets for: ${imagePath}`);
+
+      // Cache is invalid (missing, version mismatch, or path mismatch). Wipe any stale
+      // files so leftover unpadded tiles don't get served to the new halo-aware renderer.
+      await tileCache.clearImageCache(hash);
 
       // Get image dimensions using Sharp metadata
       const sharpMetadata = await sharp(imagePath, { limitInputPixels: false }).metadata();
