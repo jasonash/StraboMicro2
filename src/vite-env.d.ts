@@ -40,6 +40,8 @@ interface TileMetadata {
   width: number;
   height: number;
   tileSize: number;
+  /** Halo pixels each tile carries on edges with neighbors. Absent on legacy caches (cacheVersion < 1.1). */
+  tilePadding?: number;
   tilesX: number;
   tilesY: number;
   totalTiles: number;
