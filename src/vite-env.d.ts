@@ -456,6 +456,28 @@ interface Window {
     // Debug menu: snap viewer to exact zoom (tile-seam diagnostics)
     onSetExactZoom: (callback: (value: number) => void) => Unsubscribe;
 
+    // Rebuild the tile cache for every micrograph in the project
+    rebuildProjectTiles: (projectId: string, projectData: any) => Promise<{
+      success: boolean;
+      total?: number;
+      skipped?: number;
+      succeeded?: number;
+      errors?: Array<{ micrographName: string; error: string }>;
+      error?: string;
+    }>;
+    onRebuildTilesProgress: (callback: (progress: {
+      current: number;
+      total: number;
+      micrographName: string;
+      phase: 'regular' | 'affine';
+      tilesGenerated: number;
+      totalTiles: number;
+      status: 'processing' | 'error';
+      error?: string;
+    }) => void) => void;
+    removeRebuildTilesProgressListener: () => void;
+    onRebuildTileCache: (callback: () => void) => Unsubscribe;
+
     // Export project as JSON
     exportProjectJson: (projectData: any) => Promise<{
       success: boolean;

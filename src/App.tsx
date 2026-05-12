@@ -12,6 +12,7 @@ import { AboutDialog } from './components/dialogs/AboutDialog';
 import { LogViewerModal } from './components/dialogs/LogViewerModal';
 import { SendErrorReportModal } from './components/dialogs/SendErrorReportModal';
 import { ExportAllImagesDialog } from './components/dialogs/ExportAllImagesDialog';
+import { RebuildTileCacheDialog } from './components/dialogs/RebuildTileCacheDialog';
 import { ExportPDFDialog } from './components/dialogs/ExportPDFDialog';
 import { ExportSmzDialog } from './components/dialogs/ExportSmzDialog';
 import { PushToServerDialog } from './components/dialogs/PushToServerDialog';
@@ -169,6 +170,7 @@ function App() {
   const [isPreferencesOpen, setIsPreferencesOpen] = useState(false);
   const [isLoginDialogOpen, setIsLoginDialogOpen] = useState(false);
   const [isExportAllImagesOpen, setIsExportAllImagesOpen] = useState(false);
+  const [isRebuildTileCacheOpen, setIsRebuildTileCacheOpen] = useState(false);
   const [isExportPDFOpen, setIsExportPDFOpen] = useState(false);
   const [isExportSmzOpen, setIsExportSmzOpen] = useState(false);
   const [isPushToServerOpen, setIsPushToServerOpen] = useState(false);
@@ -1057,6 +1059,17 @@ function App() {
       setIsExportAllImagesOpen(true);
     }));
 
+    // Tools: Rebuild Tile Cache menu item
+    if (window.api.onRebuildTileCache) {
+      unsubscribers.push(window.api.onRebuildTileCache(() => {
+        if (!project) {
+          alert('No project loaded. Please load a project first.');
+          return;
+        }
+        setIsRebuildTileCacheOpen(true);
+      }));
+    }
+
     // File: Export Project as JSON menu item
     unsubscribers.push(window.api?.onExportProjectJson(async () => {
       if (!project) {
@@ -1280,6 +1293,12 @@ function App() {
       <ExportAllImagesDialog
         open={isExportAllImagesOpen}
         onClose={() => setIsExportAllImagesOpen(false)}
+        projectId={project?.id ?? null}
+        projectData={project}
+      />
+      <RebuildTileCacheDialog
+        open={isRebuildTileCacheOpen}
+        onClose={() => setIsRebuildTileCacheOpen(false)}
         projectId={project?.id ?? null}
         projectData={project}
       />
