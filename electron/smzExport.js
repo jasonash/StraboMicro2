@@ -749,48 +749,102 @@ async function exportSmz(
       }
 
       // 3c. Package tile cache into tiles/<micrographId>/
+      // For affine-placed overlays (3-point registration), package the pre-transformed
+      // pyramid from tiles-affine/ so the web viewer renders the warped image at
+      // affineBoundsOffset — the transform is baked into the pixels.
       sendProgress('Packaging tiles', micrographName);
       try {
-        const imageHash = await tileCache.generateImageHash(sourceImagePath);
-        const cacheDir = tileCache.getCacheDir(imageHash);
         const tileArchivePrefix = `${projectId}/tiles/${micrographId}`;
+        const isAffine = micrograph.placementType === 'affine';
 
-        // Copy metadata.json
-        const metadataPath = path.join(cacheDir, 'metadata.json');
-        if (fs.existsSync(metadataPath)) {
-          const metadataBuffer = await fs.promises.readFile(metadataPath);
-          archive.append(metadataBuffer, { name: `${tileArchivePrefix}/metadata.json` });
-        } else {
-          log.warn(`[SmzExport] Tile metadata not found for ${micrographId}`);
-        }
+        if (isAffine) {
+          const affineHash = micrograph.affineTileHash;
+          if (!affineHash) {
+            log.warn(`[SmzExport] Affine micrograph ${micrographId} missing affineTileHash, skipping tiles`);
+          } else {
+            const affineDir = tileCache.getAffineTilesDir(affineHash);
 
-        // Copy thumbnail.jpg
-        const thumbnailPath = tileCache.getThumbnailPath(imageHash);
-        if (fs.existsSync(thumbnailPath)) {
-          const thumbBuffer = await fs.promises.readFile(thumbnailPath);
-          archive.append(thumbBuffer, { name: `${tileArchivePrefix}/thumbnail.jpg` });
-        }
+            // Normalize metadata: web viewer's TileMetadata expects width/height,
+            // but the affine generator writes transformedWidth/transformedHeight.
+            const affineMetadataPath = tileCache.getAffineMetadataPath(affineHash);
+            if (fs.existsSync(affineMetadataPath)) {
+              const raw = JSON.parse(await fs.promises.readFile(affineMetadataPath, 'utf-8'));
+              const normalized = {
+                ...raw,
+                width: raw.transformedWidth ?? raw.width,
+                height: raw.transformedHeight ?? raw.height,
+              };
+              archive.append(JSON.stringify(normalized, null, 2), { name: `${tileArchivePrefix}/metadata.json` });
+            } else {
+              log.warn(`[SmzExport] Affine tile metadata not found for ${micrographId}`);
+            }
 
-        // Copy medium.jpg
-        const mediumPath = tileCache.getMediumPath(imageHash);
-        if (fs.existsSync(mediumPath)) {
-          const mediumBuffer = await fs.promises.readFile(mediumPath);
-          archive.append(mediumBuffer, { name: `${tileArchivePrefix}/medium.jpg` });
-        }
+            const affineThumbPath = tileCache.getAffineThumbnailPath(affineHash);
+            if (fs.existsSync(affineThumbPath)) {
+              const thumbBuffer = await fs.promises.readFile(affineThumbPath);
+              archive.append(thumbBuffer, { name: `${tileArchivePrefix}/thumbnail.jpg` });
+            }
 
-        // Copy all tile files
-        const tilesDir = path.join(cacheDir, 'tiles');
-        if (fs.existsSync(tilesDir)) {
-          const tileFiles = await fs.promises.readdir(tilesDir);
-          const webpFiles = tileFiles.filter(f => f.endsWith('.webp'));
-          for (const tileFile of webpFiles) {
-            const tilePath = path.join(tilesDir, tileFile);
-            const tileBuffer = await fs.promises.readFile(tilePath);
-            archive.append(tileBuffer, { name: `${tileArchivePrefix}/tiles/${tileFile}` });
+            const affineMediumPath = tileCache.getAffineMediumPath(affineHash);
+            if (fs.existsSync(affineMediumPath)) {
+              const mediumBuffer = await fs.promises.readFile(affineMediumPath);
+              archive.append(mediumBuffer, { name: `${tileArchivePrefix}/medium.jpg` });
+            }
+
+            if (fs.existsSync(affineDir)) {
+              const tileFiles = await fs.promises.readdir(affineDir);
+              const webpFiles = tileFiles.filter(f => f.startsWith('tile_') && f.endsWith('.webp'));
+              for (const tileFile of webpFiles) {
+                const tilePath = path.join(affineDir, tileFile);
+                const tileBuffer = await fs.promises.readFile(tilePath);
+                archive.append(tileBuffer, { name: `${tileArchivePrefix}/tiles/${tileFile}` });
+              }
+              log.info(`[SmzExport] Packaged ${webpFiles.length} affine tiles for ${micrographName}`);
+            } else {
+              log.warn(`[SmzExport] Affine tiles directory not found for ${micrographId}`);
+            }
           }
-          log.info(`[SmzExport] Packaged ${webpFiles.length} tiles for ${micrographName}`);
         } else {
-          log.warn(`[SmzExport] Tiles directory not found for ${micrographId}`);
+          const imageHash = await tileCache.generateImageHash(sourceImagePath);
+          const cacheDir = tileCache.getCacheDir(imageHash);
+
+          // Copy metadata.json
+          const metadataPath = path.join(cacheDir, 'metadata.json');
+          if (fs.existsSync(metadataPath)) {
+            const metadataBuffer = await fs.promises.readFile(metadataPath);
+            archive.append(metadataBuffer, { name: `${tileArchivePrefix}/metadata.json` });
+          } else {
+            log.warn(`[SmzExport] Tile metadata not found for ${micrographId}`);
+          }
+
+          // Copy thumbnail.jpg
+          const thumbnailPath = tileCache.getThumbnailPath(imageHash);
+          if (fs.existsSync(thumbnailPath)) {
+            const thumbBuffer = await fs.promises.readFile(thumbnailPath);
+            archive.append(thumbBuffer, { name: `${tileArchivePrefix}/thumbnail.jpg` });
+          }
+
+          // Copy medium.jpg
+          const mediumPath = tileCache.getMediumPath(imageHash);
+          if (fs.existsSync(mediumPath)) {
+            const mediumBuffer = await fs.promises.readFile(mediumPath);
+            archive.append(mediumBuffer, { name: `${tileArchivePrefix}/medium.jpg` });
+          }
+
+          // Copy all tile files
+          const tilesDir = path.join(cacheDir, 'tiles');
+          if (fs.existsSync(tilesDir)) {
+            const tileFiles = await fs.promises.readdir(tilesDir);
+            const webpFiles = tileFiles.filter(f => f.endsWith('.webp'));
+            for (const tileFile of webpFiles) {
+              const tilePath = path.join(tilesDir, tileFile);
+              const tileBuffer = await fs.promises.readFile(tilePath);
+              archive.append(tileBuffer, { name: `${tileArchivePrefix}/tiles/${tileFile}` });
+            }
+            log.info(`[SmzExport] Packaged ${webpFiles.length} tiles for ${micrographName}`);
+          } else {
+            log.warn(`[SmzExport] Tiles directory not found for ${micrographId}`);
+          }
         }
       } catch (err) {
         log.error(`[SmzExport] Failed to package tiles for ${micrographId}:`, err);
