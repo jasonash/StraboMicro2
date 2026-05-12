@@ -70,6 +70,8 @@ interface AffineTileMetadata {
   affineMatrix: [number, number, number, number, number, number];
   boundsOffset: { x: number; y: number };
   tileSize: number;
+  /** Halo pixels each affine tile carries on edges with neighbors. Absent on legacy caches. */
+  tilePadding?: number;
   tilesX: number;
   tilesY: number;
   totalTiles: number;
