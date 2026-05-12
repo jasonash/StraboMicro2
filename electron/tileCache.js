@@ -23,10 +23,11 @@ const crypto = require('crypto');
 const { app } = require('electron');
 
 // Configuration
-const TILE_SIZE = 256;           // 256x256 pixel tiles
+const TILE_SIZE = 256;           // 256x256 pixel tiles (core, unpadded)
+const TILE_PADDING = 2;          // Halo pixels sampled from neighbors on each side to hide subpixel-rendering seams
 const THUMBNAIL_SIZE = 512;      // 512x512 thumbnail
 const MEDIUM_SIZE = 2048;        // 2048x2048 medium resolution
-const CACHE_VERSION = '1.0';     // Increment to invalidate old caches
+const CACHE_VERSION = '1.1';     // Increment to invalidate old caches (1.1 = halo tiles)
 
 class TileCache {
   constructor() {
@@ -135,6 +136,7 @@ class TileCache {
       width,
       height,
       tileSize: TILE_SIZE,
+      tilePadding: TILE_PADDING,
       tilesX,
       tilesY,
       totalTiles: tilesX * tilesY,
