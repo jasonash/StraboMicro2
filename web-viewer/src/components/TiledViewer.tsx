@@ -466,11 +466,29 @@ export function TiledViewer({ micrographId, spots, sketchLayers, scalePixelsPerC
             />
           )}
 
-          {/* Tiled rendering (full resolution, used when zoomed in) */}
+          {/* Tiled rendering (full resolution, used when zoomed in). Halo-padded tiles render
+              at their natural size offset by padLeft/padTop; legacy tiles fall back to the +1 stretch. */}
           {renderMode === 'tiled' &&
             visibleTiles.map((tileKey) => {
               const tile = tiles.get(tileKey);
               if (!tile) return null;
+
+              const padding = metadata?.tilePadding ?? 0;
+              if (padding > 0) {
+                const padLeft = tile.x > 0 ? padding : 0;
+                const padTop = tile.y > 0 ? padding : 0;
+                return (
+                  <KonvaImage
+                    key={tileKey}
+                    image={tile.image}
+                    x={tile.x * TILE_SIZE - padLeft}
+                    y={tile.y * TILE_SIZE - padTop}
+                    width={tile.image.naturalWidth}
+                    height={tile.image.naturalHeight}
+                    perfectDrawEnabled={false}
+                  />
+                );
+              }
 
               return (
                 <KonvaImage
