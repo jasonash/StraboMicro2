@@ -776,6 +776,15 @@ function createWindow() {
             }
           }
         },
+        { type: 'separator' },
+        {
+          label: 'Rebuild Tile Cache...',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('menu:rebuild-tile-cache');
+            }
+          }
+        },
       ],
     },
     {
@@ -1213,6 +1222,23 @@ function createWindow() {
           click: () => {
             if (mainWindow) {
               mainWindow.webContents.send('debug:clear-all-spots');
+            }
+          }
+        },
+        { type: 'separator' },
+        {
+          label: 'Zoom to 100% (1.0x exact)',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('debug:set-exact-zoom', 1.0);
+            }
+          }
+        },
+        {
+          label: 'Zoom to 200% (2.0x exact)',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('debug:set-exact-zoom', 2.0);
             }
           }
         },
@@ -2724,6 +2750,108 @@ ipcMain.handle('tiles:generate-affine', async (event, imagePath, imageHash, affi
     return { success: true, metadata, progressChannel };
   } catch (error) {
     log.error('[Affine] Failed to generate tiles:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+/**
+ * Force-rebuild the tile cache for every micrograph in a project.
+ *
+ * Streams progress events on `tiles:rebuild-progress` so a renderer dialog can
+ * show per-micrograph status. Micrographs without a scale set (e.g. batch
+ * imports awaiting setup) are skipped — they have no tile cache to rebuild.
+ */
+ipcMain.handle('tiles:rebuild-project', async (event, projectId, projectData) => {
+  try {
+    log.info(`[RebuildTiles] Starting full rebuild for project: ${projectId}`);
+
+    const allMicrographs = collectAllMicrographs(projectData);
+    const rebuildable = allMicrographs.filter(({ micrograph }) =>
+      micrograph.imagePath &&
+      micrograph.scalePixelsPerCentimeter !== undefined &&
+      micrograph.scalePixelsPerCentimeter !== null
+    );
+    const total = rebuildable.length;
+    const skipped = allMicrographs.length - total;
+
+    if (total === 0) {
+      return { success: false, error: 'No rebuildable micrographs found in project', skipped };
+    }
+
+    log.info(`[RebuildTiles] ${total} micrographs to rebuild (${skipped} skipped — no scale set)`);
+
+    const folderPaths = await projectFolders.getProjectFolderPaths(projectId);
+    const imagesDir = folderPaths.images;
+    const errors = [];
+
+    for (let i = 0; i < total; i++) {
+      const { micrograph } = rebuildable[i];
+      const micrographName = micrograph.name || 'Unnamed';
+      const current = i + 1;
+
+      try {
+        // Resolve the image path. imagePath is stored as the micrograph ID; resolve to absolute.
+        const candidatePath = path.join(imagesDir, micrograph.imagePath);
+        const resolvedPath = await resolveImagePathWithLegacyFallback(candidatePath);
+        const hash = await tileCache.generateImageHash(resolvedPath);
+
+        // Wipe the entire image cache (regular tiles, thumbnail, medium, and any affine subdir).
+        await tileCache.clearImageCache(hash);
+
+        event.sender.send('tiles:rebuild-progress', {
+          current, total, micrographName,
+          phase: 'regular',
+          tilesGenerated: 0,
+          totalTiles: 0,
+          status: 'processing',
+        });
+
+        // Regenerate regular tiles with per-tile progress.
+        await tileGenerator.processImageComplete(resolvedPath, (tilesDone, totalTiles) => {
+          event.sender.send('tiles:rebuild-progress', {
+            current, total, micrographName,
+            phase: 'regular',
+            tilesGenerated: tilesDone,
+            totalTiles,
+            status: 'processing',
+          });
+        });
+
+        // Regenerate affine tiles if this micrograph uses 3-point registration.
+        if (micrograph.affineMatrix && micrograph.placementType === 'affine') {
+          event.sender.send('tiles:rebuild-progress', {
+            current, total, micrographName,
+            phase: 'affine',
+            tilesGenerated: 0,
+            totalTiles: 0,
+            status: 'processing',
+          });
+          await affineTileGenerator.generateAffineTiles(resolvedPath, hash, micrograph.affineMatrix);
+        }
+      } catch (err) {
+        log.error(`[RebuildTiles] Failed for ${micrographName}:`, err);
+        errors.push({ micrographName, error: err.message });
+        event.sender.send('tiles:rebuild-progress', {
+          current, total, micrographName,
+          phase: 'regular',
+          tilesGenerated: 0,
+          totalTiles: 0,
+          status: 'error',
+          error: err.message,
+        });
+      }
+    }
+
+    log.info(`[RebuildTiles] Complete. ${total - errors.length}/${total} succeeded, ${skipped} skipped`);
+    return {
+      success: errors.length === 0,
+      total,
+      skipped,
+      succeeded: total - errors.length,
+      errors,
+    };
+  } catch (error) {
+    log.error('[RebuildTiles] Unexpected error:', error);
     return { success: false, error: error.message };
   }
 });

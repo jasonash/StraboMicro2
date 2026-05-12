@@ -40,6 +40,8 @@ interface TileMetadata {
   width: number;
   height: number;
   tileSize: number;
+  /** Halo pixels each tile carries on edges with neighbors. Absent on legacy caches (cacheVersion < 1.1). */
+  tilePadding?: number;
   tilesX: number;
   tilesY: number;
   totalTiles: number;
@@ -68,6 +70,8 @@ interface AffineTileMetadata {
   affineMatrix: [number, number, number, number, number, number];
   boundsOffset: { x: number; y: number };
   tileSize: number;
+  /** Halo pixels each affine tile carries on edges with neighbors. Absent on legacy caches. */
+  tilePadding?: number;
   tilesX: number;
   tilesY: number;
   totalTiles: number;
@@ -448,6 +452,31 @@ interface Window {
 
     // Menu event for export with sketches
     onExportWithSketches: (callback: () => void) => Unsubscribe;
+
+    // Debug menu: snap viewer to exact zoom (tile-seam diagnostics)
+    onSetExactZoom: (callback: (value: number) => void) => Unsubscribe;
+
+    // Rebuild the tile cache for every micrograph in the project
+    rebuildProjectTiles: (projectId: string, projectData: any) => Promise<{
+      success: boolean;
+      total?: number;
+      skipped?: number;
+      succeeded?: number;
+      errors?: Array<{ micrographName: string; error: string }>;
+      error?: string;
+    }>;
+    onRebuildTilesProgress: (callback: (progress: {
+      current: number;
+      total: number;
+      micrographName: string;
+      phase: 'regular' | 'affine';
+      tilesGenerated: number;
+      totalTiles: number;
+      status: 'processing' | 'error';
+      error?: string;
+    }) => void) => void;
+    removeRebuildTilesProgressListener: () => void;
+    onRebuildTileCache: (callback: () => void) => Unsubscribe;
 
     // Export project as JSON
     exportProjectJson: (projectData: any) => Promise<{

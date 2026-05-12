@@ -14,6 +14,7 @@ const tileCache = require('./tileCache');
 
 // Configuration (matches tileGenerator.js)
 const TILE_SIZE = 256;
+const TILE_PADDING = 2; // Halo pixels sampled from neighboring tile regions in the warped output buffer
 const THUMBNAIL_SIZE = 512;
 const MEDIUM_SIZE = 2048;
 const PNG_COMPRESSION = 6;
@@ -314,6 +315,7 @@ async function generateAffineTiles(imagePath, imageHash, affineMatrix, onProgres
     affineMatrix,
     boundsOffset: { x: bounds.minX, y: bounds.minY },
     tileSize: TILE_SIZE,
+    tilePadding: TILE_PADDING,
     tilesX,
     tilesY,
     totalTiles,
@@ -340,37 +342,42 @@ async function generateAffineTiles(imagePath, imageHash, affineMatrix, onProgres
  * @param {string} imageHash - Image hash for cache path
  */
 async function generateSingleTile(data, imageWidth, imageHeight, channels, tileX, tileY, imageHash) {
-  const x = tileX * TILE_SIZE;
-  const y = tileY * TILE_SIZE;
-  const tileWidth = Math.min(TILE_SIZE, imageWidth - x);
-  const tileHeight = Math.min(TILE_SIZE, imageHeight - y);
+  // Core tile bounds (unpadded, in warped-output coordinates)
+  const coreLeft = tileX * TILE_SIZE;
+  const coreTop = tileY * TILE_SIZE;
+  const coreRight = Math.min(imageWidth, coreLeft + TILE_SIZE);
+  const coreBottom = Math.min(imageHeight, coreTop + TILE_SIZE);
 
-  // Create buffer for this tile (always TILE_SIZE x TILE_SIZE for consistency)
-  // Initialize with zeros (transparent)
-  const tileBuffer = Buffer.alloc(TILE_SIZE * TILE_SIZE * channels, 0);
+  // Padded bounds clamped to the warped buffer — edge tiles get less halo.
+  const padLeft = coreLeft - Math.max(0, coreLeft - TILE_PADDING);
+  const padTop = coreTop - Math.max(0, coreTop - TILE_PADDING);
+  const padRight = Math.min(imageWidth, coreRight + TILE_PADDING) - coreRight;
+  const padBottom = Math.min(imageHeight, coreBottom + TILE_PADDING) - coreBottom;
 
-  // Copy pixel data for this tile
-  for (let row = 0; row < tileHeight; row++) {
-    const sourceRow = y + row;
-    const sourceOffset = (sourceRow * imageWidth + x) * channels;
-    const tileOffset = row * TILE_SIZE * channels;
+  const sampleLeft = coreLeft - padLeft;
+  const sampleTop = coreTop - padTop;
+  const sampleWidth = (coreRight - coreLeft) + padLeft + padRight;
+  const sampleHeight = (coreBottom - coreTop) + padTop + padBottom;
 
-    const rowData = data.slice(sourceOffset, sourceOffset + tileWidth * channels);
-    rowData.copy(tileBuffer, tileOffset);
+  // Copy the padded RGBA region row by row from the warped output buffer
+  const tileBuffer = Buffer.alloc(sampleWidth * sampleHeight * channels);
+  for (let row = 0; row < sampleHeight; row++) {
+    const sourceOffset = ((sampleTop + row) * imageWidth + sampleLeft) * channels;
+    const destOffset = row * sampleWidth * channels;
+    data.copy(tileBuffer, destOffset, sourceOffset, sourceOffset + sampleWidth * channels);
   }
 
-  // Encode as WebP with alpha
+  // Encode as WebP with alpha at the padded dimensions
   const webpBuffer = await sharp(tileBuffer, {
     raw: {
-      width: TILE_SIZE,
-      height: TILE_SIZE,
+      width: sampleWidth,
+      height: sampleHeight,
       channels
     }
   })
     .webp({ quality: WEBP_QUALITY, alphaQuality: 100 })
     .toBuffer();
 
-  // Save tile
   await tileCache.saveAffineTile(imageHash, tileX, tileY, webpBuffer);
 }
 
@@ -384,6 +391,9 @@ async function generateSingleTile(data, imageWidth, imageHeight, channels, tileX
 async function hasMatchingAffineTiles(imageHash, affineMatrix) {
   const metadata = await tileCache.loadAffineMetadata(imageHash);
   if (!metadata) return false;
+
+  // Treat legacy unpadded affine tiles as stale so they get regenerated with halos.
+  if (!metadata.tilePadding) return false;
 
   // Check if matrices match
   const storedMatrix = metadata.affineMatrix;

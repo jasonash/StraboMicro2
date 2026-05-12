@@ -344,9 +344,25 @@ export function AssociatedImageRenderer({
         />
       )}
 
-      {/* Tiled mode */}
+      {/* Tiled mode — halo-padded tiles render at natural size with offset; legacy falls back to +2 stretch */}
       {showTiles && Array.from(tiles.entries()).map(([key, img]) => {
         const [tx, ty] = key.split('_').map(Number);
+        const padding = tileMetadata?.tilePadding ?? 0;
+        if (padding > 0) {
+          const padLeft = tx > 0 ? padding : 0;
+          const padTop = ty > 0 ? padding : 0;
+          return (
+            <KonvaImage
+              key={key}
+              image={img}
+              x={tx * TILE_SIZE - padLeft}
+              y={ty * TILE_SIZE - padTop}
+              width={img.naturalWidth}
+              height={img.naturalHeight}
+              opacity={opacity}
+            />
+          );
+        }
         return (
           <KonvaImage
             key={key}

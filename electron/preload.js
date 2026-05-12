@@ -332,6 +332,27 @@ contextBridge.exposeInMainWorld('api', {
     return () => ipcRenderer.removeListener('menu:export-with-sketches', callback);
   },
 
+  // Debug menu: snap viewer to exact zoom (used for tile-seam diagnostics)
+  onSetExactZoom: (callback) => {
+    const handler = (_event, value) => callback(value);
+    ipcRenderer.on('debug:set-exact-zoom', handler);
+    return () => ipcRenderer.removeListener('debug:set-exact-zoom', handler);
+  },
+
+  // Rebuild the tile cache for every micrograph in the project
+  rebuildProjectTiles: (projectId, projectData) =>
+    ipcRenderer.invoke('tiles:rebuild-project', projectId, projectData),
+  onRebuildTilesProgress: (callback) =>
+    ipcRenderer.on('tiles:rebuild-progress', (_event, progress) => callback(progress)),
+  removeRebuildTilesProgressListener: () =>
+    ipcRenderer.removeAllListeners('tiles:rebuild-progress'),
+
+  // Menu event for Tools → Rebuild Tile Cache
+  onRebuildTileCache: (callback) => {
+    ipcRenderer.on('menu:rebuild-tile-cache', callback);
+    return () => ipcRenderer.removeListener('menu:rebuild-tile-cache', callback);
+  },
+
   // Export project as JSON
   exportProjectJson: (projectData) =>
     ipcRenderer.invoke('project:export-json', projectData),

@@ -49,12 +49,15 @@ const ZOOM_STEP = 1.1;
 interface TiledViewerProps {
   imagePath: string | null;
   onCursorMove?: (coords: { x: number; y: number; unit: string; decimals: number } | null) => void;
+  onZoomChange?: (zoom: number) => void;
 }
 
 export interface TiledViewerRef {
   fitToScreen: () => void;
   zoomIn: () => void;
   zoomOut: () => void;
+  /** Snap zoom to an exact value, keeping the viewport center fixed. Clamped to [MIN_ZOOM, MAX_ZOOM]. */
+  setExactZoom: (value: number) => void;
   /** Ensure a point is visible on screen, panning only if necessary (lazy/soft pan) */
   panToPoint: (x: number, y: number) => void;
   /** Export the current view as an image with optional sketch layers */
@@ -80,6 +83,8 @@ interface ImageMetadata {
   height: number;
   tilesX: number;
   tilesY: number;
+  /** Pixels of halo each tile carries on every edge that has a neighbor. Absent on legacy caches. */
+  tilePadding?: number;
   fromCache: boolean;
 }
 
@@ -91,7 +96,7 @@ interface ThumbnailState {
 }
 
 export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
-  ({ imagePath, onCursorMove }, ref) => {
+  ({ imagePath, onCursorMove, onZoomChange }, ref) => {
     const stageRef = useRef<any>(null);
     const containerRef = useRef<HTMLDivElement>(null);
     const drawingLayerRef = useRef<any>(null);
@@ -628,6 +633,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
             height: result.metadata.height,
             tilesX: result.metadata.tilesX,
             tilesY: result.metadata.tilesY,
+            tilePadding: result.metadata.tilePadding,
             fromCache: result.fromCache,
           });
 
@@ -1895,6 +1901,33 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
       geometryEditing.updateHandleSizes(newZoom);
     }, [zoom, position, stageSize, polygonDrawing, lineDrawing, rulerTool, geometryEditing]);
 
+    // Snap zoom to an exact value (used by Debug menu for tile-seam sanity checks).
+    // Centers on viewport middle so the user can verify the resulting zoom in the indicator.
+    const setExactZoom = useCallback((value: number) => {
+      const newZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, value));
+      if (newZoom === zoom) return;
+      const centerX = stageSize.width / 2;
+      const centerY = stageSize.height / 2;
+      const mousePointTo = {
+        x: (centerX - position.x) / zoom,
+        y: (centerY - position.y) / zoom,
+      };
+      const newPos = {
+        x: centerX - mousePointTo.x * newZoom,
+        y: centerY - mousePointTo.y * newZoom,
+      };
+      setZoom(newZoom);
+      setPosition(newPos);
+      polygonDrawing.updateStrokeWidth(newZoom);
+      lineDrawing.updateStrokeWidth(newZoom);
+      rulerTool.updateStrokeWidth(newZoom);
+      geometryEditing.updateHandleSizes(newZoom);
+    }, [zoom, position, stageSize, polygonDrawing, lineDrawing, rulerTool, geometryEditing]);
+
+    useEffect(() => {
+      onZoomChange?.(zoom);
+    }, [zoom, onZoomChange]);
+
     // Ensure a point is visible on screen, panning only if necessary (lazy/soft pan)
     const panToPoint = useCallback((x: number, y: number) => {
       // Calculate where the point currently is in screen coordinates
@@ -2013,10 +2046,11 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
         fitToScreen: handleResetZoom,
         zoomIn: handleZoomIn,
         zoomOut: handleZoomOut,
+        setExactZoom,
         panToPoint,
         exportImage,
       }),
-      [handleResetZoom, handleZoomIn, handleZoomOut, panToPoint, exportImage]
+      [handleResetZoom, handleZoomIn, handleZoomOut, setExactZoom, panToPoint, exportImage]
     );
 
     const RULER_SIZE = 30; // Width/height of ruler bars
@@ -2220,11 +2254,29 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                     />
                   )}
 
-                  {/* Render visible tiles in tiled mode with 1px overlap to prevent seams */}
+                  {/* Render visible tiles. Halo-padded tiles (cacheVersion >= 1.1) render at their
+                      natural pixel size, offset by the padding amount on edges that have a neighbor.
+                      Legacy tiles fall back to the original +1px stretch. */}
                   {renderMode === 'tiled' &&
                     visibleTiles.map((tileKey) => {
                       const tile = tiles.get(tileKey);
                       if (!tile || !tile.imageObj) return null;
+
+                      const padding = imageMetadata?.tilePadding ?? 0;
+                      if (padding > 0) {
+                        const padLeft = tile.x > 0 ? padding : 0;
+                        const padTop = tile.y > 0 ? padding : 0;
+                        return (
+                          <KonvaImage
+                            key={tileKey}
+                            image={tile.imageObj}
+                            x={tile.x * TILE_SIZE - padLeft}
+                            y={tile.y * TILE_SIZE - padTop}
+                            width={tile.imageObj.naturalWidth}
+                            height={tile.imageObj.naturalHeight}
+                          />
+                        );
+                      }
 
                       return (
                         <KonvaImage
@@ -2232,8 +2284,8 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                           image={tile.imageObj}
                           x={tile.x * TILE_SIZE}
                           y={tile.y * TILE_SIZE}
-                          width={TILE_SIZE + 1} // 1px overlap to prevent seams
-                          height={TILE_SIZE + 1} // 1px overlap to prevent seams
+                          width={TILE_SIZE + 1}
+                          height={TILE_SIZE + 1}
                         />
                       );
                     })}
@@ -2561,10 +2613,27 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                     />
                   )}
 
+                  {/* Render visible tiles (XPL/PPL sibling view). Same halo-aware logic as the main path. */}
                   {renderMode === 'tiled' &&
                     visibleTiles.map((tileKey) => {
                       const tile = tiles.get(tileKey);
                       if (!tile || !tile.imageObj) return null;
+
+                      const padding = imageMetadata?.tilePadding ?? 0;
+                      if (padding > 0) {
+                        const padLeft = tile.x > 0 ? padding : 0;
+                        const padTop = tile.y > 0 ? padding : 0;
+                        return (
+                          <KonvaImage
+                            key={tileKey}
+                            image={tile.imageObj}
+                            x={tile.x * TILE_SIZE - padLeft}
+                            y={tile.y * TILE_SIZE - padTop}
+                            width={tile.imageObj.naturalWidth}
+                            height={tile.imageObj.naturalHeight}
+                          />
+                        );
+                      }
 
                       return (
                         <KonvaImage
