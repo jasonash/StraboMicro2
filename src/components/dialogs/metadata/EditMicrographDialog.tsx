@@ -36,7 +36,17 @@ import { useAppStore } from '@/store';
 import { findMicrographById } from '@/store/helpers';
 import { PeriodicTableModal } from '../PeriodicTableModal';
 import { InstrumentDatabaseDialog, type InstrumentData } from '../InstrumentDatabaseDialog';
-import type { InstrumentDetectorType, MicrographMetadata } from '@/types/project-types';
+import {
+  OrientationForm,
+  initialOrientationData,
+  validateOrientationForm,
+  type OrientationFormData,
+} from '../OrientationForm';
+import type {
+  InstrumentDetectorType,
+  MicrographMetadata,
+  MicrographOrientation,
+} from '@/types/project-types';
 
 interface EditMicrographDialogProps {
   isOpen: boolean;
@@ -196,7 +206,78 @@ const initialFormData: MicrographFormData = {
 };
 
 // Step IDs for the edit wizard
-type EditStepId = 'instrument-info' | 'instrument-data' | 'instrument-settings' | 'metadata';
+type EditStepId =
+  | 'instrument-info'
+  | 'instrument-data'
+  | 'instrument-settings'
+  | 'metadata'
+  | 'orientation';
+
+// Convert stored MicrographOrientation (numbers/strings, may be null) into form-state strings.
+// Only used for reference micrographs.
+function orientationInfoToFormData(
+  info: MicrographOrientation | null | undefined
+): OrientationFormData {
+  if (!info) return { ...initialOrientationData };
+
+  const method =
+    info.orientationMethod === 'trendPlunge' || info.orientationMethod === 'fabricReference'
+      ? info.orientationMethod
+      : 'unoriented';
+
+  const numToStr = (n: number | null | undefined): string =>
+    n === null || n === undefined || Number.isNaN(n) ? '' : String(n);
+
+  return {
+    orientationMethod: method,
+    topTrend: numToStr(info.topTrend),
+    topPlunge: numToStr(info.topPlunge),
+    topReferenceCorner: info.topReferenceCorner === 'right' ? 'right' : 'left',
+    sideTrend: numToStr(info.sideTrend),
+    sidePlunge: numToStr(info.sidePlunge),
+    sideReferenceCorner: info.sideReferenceCorner === 'bottom' ? 'bottom' : 'top',
+    trendPlungeStrike: numToStr(info.trendPlungeStrike),
+    trendPlungeDip: numToStr(info.trendPlungeDip),
+    fabricReference:
+      info.fabricReference === 'yz' ? 'yz' : info.fabricReference === 'xy' ? 'xy' : 'xz',
+    fabricStrike: numToStr(info.fabricStrike),
+    fabricDip: numToStr(info.fabricDip),
+    fabricTrend: numToStr(info.fabricTrend),
+    fabricPlunge: numToStr(info.fabricPlunge),
+    fabricRake: numToStr(info.fabricRake),
+    lookDirection: info.lookDirection === 'up' ? 'up' : 'down',
+  };
+}
+
+// Build the orientationInfo payload from form state. Mirrors NewMicrographDialog's builder.
+function buildOrientationInfo(data: OrientationFormData): MicrographOrientation {
+  if (data.orientationMethod === 'unoriented') {
+    return { orientationMethod: 'unoriented' };
+  }
+  if (data.orientationMethod === 'trendPlunge') {
+    return {
+      orientationMethod: 'trendPlunge',
+      topTrend: data.topTrend ? parseFloat(data.topTrend) : null,
+      topPlunge: data.topPlunge ? parseFloat(data.topPlunge) : null,
+      topReferenceCorner: data.topReferenceCorner,
+      sideTrend: data.sideTrend ? parseFloat(data.sideTrend) : null,
+      sidePlunge: data.sidePlunge ? parseFloat(data.sidePlunge) : null,
+      sideReferenceCorner: data.sideReferenceCorner,
+      trendPlungeStrike: data.trendPlungeStrike ? parseFloat(data.trendPlungeStrike) : null,
+      trendPlungeDip: data.trendPlungeDip ? parseFloat(data.trendPlungeDip) : null,
+    };
+  }
+  return {
+    orientationMethod: 'fabricReference',
+    fabricReference: data.fabricReference,
+    fabricStrike: data.fabricStrike ? parseFloat(data.fabricStrike) : null,
+    fabricDip: data.fabricDip ? parseFloat(data.fabricDip) : null,
+    fabricTrend: data.fabricTrend ? parseFloat(data.fabricTrend) : null,
+    fabricPlunge: data.fabricPlunge ? parseFloat(data.fabricPlunge) : null,
+    fabricRake: data.fabricRake ? parseFloat(data.fabricRake) : null,
+    lookDirection: data.lookDirection,
+  };
+}
 
 interface EditStepConfig {
   id: EditStepId;
@@ -212,6 +293,16 @@ export function EditMicrographDialog({ isOpen, onClose, micrographId }: EditMicr
   const [detectors, setDetectors] = useState<Detector[]>([{ type: '', make: '', model: '' }]);
   const [showPeriodicTable, setShowPeriodicTable] = useState(false);
   const [showInstrumentDatabase, setShowInstrumentDatabase] = useState(false);
+  const [orientationData, setOrientationData] =
+    useState<OrientationFormData>(initialOrientationData);
+  const [orientationPreviewUrl, setOrientationPreviewUrl] = useState<string | undefined>(undefined);
+
+  // Reference micrographs have no parent. Orientation is only meaningful for these —
+  // associated micrographs inherit orientation from their parent reference.
+  const isReference = useMemo(() => {
+    const micrograph = findMicrographById(project, micrographId);
+    return micrograph != null && !micrograph.parentID;
+  }, [project, micrographId]);
 
   // Get all micrographs in the project for "Load Metadata from Previous Image" dropdown
   // Excludes the current micrograph being edited
@@ -432,9 +523,41 @@ export function EditMicrographDialog({ isOpen, onClose, micrographId }: EditMicr
       setDetectors([{ type: '', make: '', model: '' }]);
     }
 
+    // Load existing orientation data (reference micrographs only — associated inherit from parent)
+    setOrientationData(orientationInfoToFormData(micrograph.orientationInfo));
+
     // Reset to first step
     setActiveStep(0);
   }, [isOpen, micrographId, project]);
+
+  // Load a thumbnail preview for the orientation step's reference-arrow diagram.
+  // Only fetched for reference micrographs since the orientation step is hidden otherwise.
+  useEffect(() => {
+    if (!isOpen || !isReference) {
+      setOrientationPreviewUrl(undefined);
+      return;
+    }
+    const micrograph = findMicrographById(project, micrographId);
+    // imagePath is a runtime-only filename (set to micrograph.id by the serializer);
+    // it must be joined with the project's images folder to form an absolute path.
+    if (!project?.id || !micrograph?.imagePath) return;
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const folderPaths = await window.api!.getProjectFolderPaths(project.id);
+        const fullPath = `${folderPaths.images}/${micrograph.imagePath}`;
+        const result = await window.api!.loadImageWithTiles(fullPath);
+        const dataUrl = await window.api!.loadThumbnail(result.hash);
+        if (!cancelled) setOrientationPreviewUrl(dataUrl);
+      } catch (err) {
+        console.warn('[EditMicrographDialog] Failed to load orientation preview thumbnail:', err);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, isReference, micrographId, project]);
 
   // Auto-set imageType based on dataType for certain instrument/data type combinations
   useEffect(() => {
@@ -579,6 +702,10 @@ export function EditMicrographDialog({ isOpen, onClose, micrographId }: EditMicr
       stepList.push({ id: 'instrument-settings', label: 'Instrument Settings' });
     }
     stepList.push({ id: 'metadata', label: 'Metadata' });
+    // Reference micrographs get an orientation step at the end (associated inherit from parent)
+    if (isReference) {
+      stepList.push({ id: 'orientation', label: 'Micrograph Orientation' });
+    }
     return stepList;
   })();
 
@@ -679,6 +806,11 @@ export function EditMicrographDialog({ isOpen, onClose, micrographId }: EditMicr
       notesOnCrystalStructuresUsed: formData.notesOnCrystalStructuresUsed || null,
     };
 
+    // Only reference micrographs carry orientation data — associated inherit from parent.
+    if (isReference) {
+      updates.orientationInfo = buildOrientationInfo(orientationData);
+    }
+
     console.log('[EditMicrographDialog] Saving updates:', updates);
     updateMicrographMetadata(micrographId, updates);
     onClose();
@@ -722,6 +854,9 @@ export function EditMicrographDialog({ isOpen, onClose, micrographId }: EditMicr
       case 'metadata':
         return formData.micrographName !== '' && (!formData.micrographPolished || formData.micrographPolishDescription !== '');
 
+      case 'orientation':
+        return validateOrientationForm(orientationData);
+
       default:
         return true;
     }
@@ -737,10 +872,22 @@ export function EditMicrographDialog({ isOpen, onClose, micrographId }: EditMicr
         return renderInstrumentSettingsStep();
       case 'metadata':
         return renderMetadataStep();
+      case 'orientation':
+        return renderOrientationStep();
       default:
         return null;
     }
   };
+
+  const renderOrientationStep = () => (
+    <OrientationForm
+      formData={orientationData}
+      onFormChange={(field, value) =>
+        setOrientationData((prev) => ({ ...prev, [field]: value }))
+      }
+      micrographPreviewUrl={orientationPreviewUrl}
+    />
+  );
 
   const renderInstrumentInfoStep = () => {
     return (
