@@ -826,8 +826,11 @@ export function EditMicrographDialog({ isOpen, onClose, micrographId }: EditMicr
       case 'instrument-info':
         // Instrument type is always required
         if (formData.instrumentType === '') return false;
-        // Other instrument type required if "Other" selected
-        if (formData.instrumentType === 'Other' && formData.otherInstrumentType === '') return false;
+        // "Other" only collects a free-text instrument name — no dataType/imageType UI is shown,
+        // so otherInstrumentType is the only required field for it.
+        if (formData.instrumentType === 'Other') {
+          return formData.otherInstrumentType !== '';
+        }
 
         // For instruments that don't have a dataType dropdown (only imageType):
         // Optical Microscopy, FTIR, Raman, Scanner, AFM
