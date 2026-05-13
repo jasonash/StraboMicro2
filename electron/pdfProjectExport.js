@@ -730,6 +730,7 @@ class PDFProjectExporter {
 
       const instrumentFields = [
         { key: 'instrumentType', label: 'Instrument Type' },
+        { key: 'otherInstrumentType', label: 'Other Instrument Type' },
         { key: 'dataType', label: 'Data Type' },
         { key: 'instrumentBrand', label: 'Brand' },
         { key: 'instrumentModel', label: 'Model' },

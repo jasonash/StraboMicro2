@@ -159,7 +159,11 @@ export function MetadataSummary({ micrograph, spot, sample, isMicrograph }: Meta
                     ? (micrograph.polish ? `Yes${micrograph.polishDescription ? ` (${micrograph.polishDescription})` : ''}` : 'No')
                     : undefined
                 } />
-                <Field label="Instrument" value={micrograph.instrument?.instrumentType} />
+                <Field label="Instrument" value={
+                  micrograph.instrument?.instrumentType === 'Other' && micrograph.instrument?.otherInstrumentType
+                    ? `Other (${micrograph.instrument.otherInstrumentType})`
+                    : micrograph.instrument?.instrumentType
+                } />
                 <Field label="Image Type" value={micrograph.imageType} />
                 {micrograph.orientationInfo?.orientationMethod && (
                   <>

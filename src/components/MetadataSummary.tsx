@@ -921,6 +921,9 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
                 <Typography variant="caption" color="text.secondary">Instrument: </Typography>
                 <Typography variant="body2" component="span">
                   {micrograph.instrument.instrumentType}
+                  {micrograph.instrument.instrumentType === 'Other' &&
+                    micrograph.instrument.otherInstrumentType &&
+                    ` (${micrograph.instrument.otherInstrumentType})`}
                 </Typography>
               </Box>
             )}
