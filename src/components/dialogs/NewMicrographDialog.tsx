@@ -1559,7 +1559,11 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
       case 'instrument-info':
         // Legacy app requires both instrumentType AND imageType
         if (!formData.instrumentType) return false;
-        if (formData.instrumentType === 'Other' && !formData.otherInstrumentType) return false;
+        // "Other" only collects a free-text instrument name — no dataType/imageType UI is shown,
+        // so otherInstrumentType is the only required field for it.
+        if (formData.instrumentType === 'Other') {
+          return !!formData.otherInstrumentType;
+        }
         // imageType is required (matches legacy validation)
         if (!formData.imageType) return false;
         return true;
