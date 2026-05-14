@@ -65,6 +65,10 @@ export function AssociatedImageRenderer({
   const [tiles, setTiles] = useState<Map<string, HTMLImageElement>>(new Map());
   const [tileMetadata, setTileMetadata] = useState<TileMetadata | null>(null);
   const [renderMode, setRenderMode] = useState<RenderMode>('THUMBNAIL');
+  // Which pyramid to load tiles from. Affine overlays prefer tilesAffine/<id>/
+  // (warped pixels), but legacy .smz exports stored those at tiles/<id>/, so
+  // we fall back to 'original' if the affine metadata 404s.
+  const [tileVariant, setTileVariant] = useState<'original' | 'affine' | null>(null);
   const sessionRef = useRef(0);
 
   // Dimensions from project.json — may be 0 if not serialized
@@ -77,13 +81,39 @@ export function AssociatedImageRenderer({
 
   // ============================================================================
   // EAGERLY LOAD TILE METADATA (needed for dimensions and tiled mode)
+  // For affine placements: try tilesAffine/ first, fall back to tiles/ if absent.
   // ============================================================================
 
   useEffect(() => {
-    tileLoader.loadMetadata(micrograph.id)
-      .then(meta => setTileMetadata(meta))
-      .catch(() => {});
-  }, [micrograph.id, tileLoader]);
+    let cancelled = false;
+    const isAffine = micrograph.placementType === 'affine';
+
+    const resolve = async () => {
+      if (isAffine) {
+        try {
+          const meta = await tileLoader.loadMetadata(micrograph.id, 'affine');
+          if (cancelled) return;
+          setTileVariant('affine');
+          setTileMetadata(meta);
+          return;
+        } catch {
+          // tilesAffine/ missing — legacy .smz where tiles/ holds the warped pyramid
+        }
+      }
+      try {
+        const meta = await tileLoader.loadMetadata(micrograph.id, 'original');
+        if (cancelled) return;
+        setTileVariant('original');
+        setTileMetadata(meta);
+      } catch {
+        if (cancelled) return;
+        setTileVariant('original');
+      }
+    };
+
+    resolve();
+    return () => { cancelled = true; };
+  }, [micrograph.id, micrograph.placementType, tileLoader]);
 
   // ============================================================================
   // OVERLAY TRANSFORM
@@ -226,32 +256,35 @@ export function AssociatedImageRenderer({
 
   // Load thumbnail
   useEffect(() => {
+    if (!tileVariant) return;
     const session = ++sessionRef.current;
-    tileLoader.loadThumbnail(micrograph.id)
+    tileLoader.loadThumbnail(micrograph.id, tileVariant)
       .then(img => { if (session === sessionRef.current) setThumbnailImage(img); })
       .catch(() => {});
-  }, [micrograph.id, tileLoader]);
+  }, [micrograph.id, tileLoader, tileVariant]);
 
   // Load medium when needed
   useEffect(() => {
+    if (!tileVariant) return;
     if (renderMode !== 'MEDIUM' && renderMode !== 'TILED') return;
     if (mediumImage) return; // Already loaded
 
-    tileLoader.loadMedium(micrograph.id)
+    tileLoader.loadMedium(micrograph.id, tileVariant)
       .then(img => setMediumImage(img))
       .catch(() => {});
-  }, [renderMode, micrograph.id, tileLoader, mediumImage]);
+  }, [renderMode, micrograph.id, tileLoader, mediumImage, tileVariant]);
 
   // Load tile metadata and tiles when in TILED mode
   useEffect(() => {
     if (renderMode !== 'TILED') return;
+    if (!tileVariant) return;
 
     const loadTiles = async () => {
       try {
         // Load metadata if not yet loaded
         let meta = tileMetadata;
         if (!meta) {
-          meta = await tileLoader.loadMetadata(micrograph.id);
+          meta = await tileLoader.loadMetadata(micrograph.id, tileVariant);
           setTileMetadata(meta);
         }
 
@@ -268,7 +301,7 @@ export function AssociatedImageRenderer({
 
         if (tileCoords.length === 0) return;
 
-        const results = await tileLoader.loadTilesBatch(micrograph.id, tileCoords);
+        const results = await tileLoader.loadTilesBatch(micrograph.id, tileCoords, tileVariant);
         setTiles(prev => {
           const next = new Map(prev);
           for (const { x, y, image } of results) {
@@ -282,7 +315,7 @@ export function AssociatedImageRenderer({
     };
 
     loadTiles();
-  }, [renderMode, micrograph.id, tileLoader, tileMetadata, tiles]);
+  }, [renderMode, micrograph.id, tileLoader, tileMetadata, tiles, tileVariant]);
 
   // ============================================================================
   // CLICK HANDLER
