@@ -9,7 +9,7 @@
  */
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { Stage, Layer, Image as KonvaImage } from 'react-konva';
+import { Stage, Layer, Image as KonvaImage, Circle } from 'react-konva';
 import Konva from 'konva';
 import { SpotRenderer } from './SpotRenderer';
 import { SketchLayerRenderer } from './SketchLayerRenderer';
@@ -386,6 +386,27 @@ export function TiledViewer({ micrographId, spots, sketchLayers, scalePixelsPerC
   }, [onSpotClick]);
 
   // ============================================================================
+  // SPLIT CHILDREN: rectangle/affine overlays vs point-located markers.
+  // Matches the desktop's filter — pointInParent renders as a Circle, not an image.
+  // ============================================================================
+
+  const { overlayChildren, pointChildren } = useMemo(() => {
+    const overlays: MicrographMetadata[] = [];
+    const points: Array<{ child: MicrographMetadata; x: number; y: number }> = [];
+    for (const child of childMicrographs ?? []) {
+      const p = child.pointInParent;
+      if (p) {
+        const px = p.X ?? p.x ?? 0;
+        const py = p.Y ?? p.y ?? 0;
+        points.push({ child, x: px, y: py });
+      } else {
+        overlays.push(child);
+      }
+    }
+    return { overlayChildren: overlays, pointChildren: points };
+  }, [childMicrographs]);
+
+  // ============================================================================
   // CURSOR STYLE
   // ============================================================================
 
@@ -504,15 +525,16 @@ export function TiledViewer({ micrographId, spots, sketchLayers, scalePixelsPerC
             })}
         </Layer>
 
-        {/* Associated image overlays */}
-        {childMicrographs && childMicrographs.length > 0 && (
+        {/* Associated image overlays — rectangle/affine placements only.
+            Point-located children render as Circle markers below to match the desktop app. */}
+        {overlayChildren.length > 0 && (
           <Layer
             x={position.x}
             y={position.y}
             scaleX={zoom}
             scaleY={zoom}
           >
-            {childMicrographs.map(child => (
+            {overlayChildren.map(child => (
               <AssociatedImageRenderer
                 key={child.id}
                 micrograph={child}
@@ -529,6 +551,38 @@ export function TiledViewer({ micrographId, spots, sketchLayers, scalePixelsPerC
                 tileLoader={tileLoader}
                 onClick={onOverlayClick}
                 hasDragged={hasDraggedRef.current}
+              />
+            ))}
+          </Layer>
+        )}
+
+        {/* Point-located associated micrographs render as clickable Circle markers */}
+        {pointChildren.length > 0 && (
+          <Layer
+            x={position.x}
+            y={position.y}
+            scaleX={zoom}
+            scaleY={zoom}
+          >
+            {pointChildren.map(({ child, x, y }) => (
+              <Circle
+                key={`point-${child.id}`}
+                x={x}
+                y={y}
+                radius={9 / zoom}
+                fill="#e44c65"
+                stroke="#ffffff"
+                strokeWidth={1.5 / zoom}
+                onClick={() => {
+                  if (hasDraggedRef.current) return;
+                  spotClickedRef.current = true;
+                  onOverlayClick?.(child.id);
+                }}
+                onTap={() => {
+                  if (hasDraggedRef.current) return;
+                  spotClickedRef.current = true;
+                  onOverlayClick?.(child.id);
+                }}
               />
             ))}
           </Layer>
