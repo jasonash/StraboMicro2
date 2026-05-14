@@ -26,10 +26,19 @@ export class HttpTileLoader {
   }
 
   /**
+   * Pyramid variant — 'original' lives in tiles/<id>/, 'affine' in tilesAffine/<id>/.
+   * The affine pyramid carries the warped overlay pixels for 3-point-registered
+   * micrographs; it only exists when placementType === 'affine'.
+   */
+  private pyramidPath(variant: 'original' | 'affine'): string {
+    return variant === 'affine' ? 'tilesAffine' : 'tiles';
+  }
+
+  /**
    * Load tile metadata for a micrograph
    */
-  async loadMetadata(micrographId: string): Promise<TileMetadata> {
-    const url = `${this.baseUrl}/${this.projectId}/tiles/${micrographId}/metadata.json`;
+  async loadMetadata(micrographId: string, variant: 'original' | 'affine' = 'original'): Promise<TileMetadata> {
+    const url = `${this.baseUrl}/${this.projectId}/${this.pyramidPath(variant)}/${micrographId}/metadata.json`;
     const response = await fetch(url);
     if (!response.ok) throw new Error(`Failed to load metadata: ${response.status}`);
     return response.json();
@@ -38,24 +47,24 @@ export class HttpTileLoader {
   /**
    * Load a single tile as an HTMLImageElement (ready for Konva)
    */
-  async loadTile(micrographId: string, x: number, y: number): Promise<HTMLImageElement> {
-    const url = `${this.baseUrl}/${this.projectId}/tiles/${micrographId}/tiles/tile_${x}_${y}.webp`;
+  async loadTile(micrographId: string, x: number, y: number, variant: 'original' | 'affine' = 'original'): Promise<HTMLImageElement> {
+    const url = `${this.baseUrl}/${this.projectId}/${this.pyramidPath(variant)}/${micrographId}/tiles/tile_${x}_${y}.webp`;
     return this.loadImageFromUrl(url);
   }
 
   /**
    * Load the medium resolution preview (2048px)
    */
-  async loadMedium(micrographId: string): Promise<HTMLImageElement> {
-    const url = `${this.baseUrl}/${this.projectId}/tiles/${micrographId}/medium.jpg`;
+  async loadMedium(micrographId: string, variant: 'original' | 'affine' = 'original'): Promise<HTMLImageElement> {
+    const url = `${this.baseUrl}/${this.projectId}/${this.pyramidPath(variant)}/${micrographId}/medium.jpg`;
     return this.loadImageFromUrl(url);
   }
 
   /**
    * Load the thumbnail (512px)
    */
-  async loadThumbnail(micrographId: string): Promise<HTMLImageElement> {
-    const url = `${this.baseUrl}/${this.projectId}/tiles/${micrographId}/thumbnail.jpg`;
+  async loadThumbnail(micrographId: string, variant: 'original' | 'affine' = 'original'): Promise<HTMLImageElement> {
+    const url = `${this.baseUrl}/${this.projectId}/${this.pyramidPath(variant)}/${micrographId}/thumbnail.jpg`;
     return this.loadImageFromUrl(url);
   }
 
@@ -93,7 +102,8 @@ export class HttpTileLoader {
    */
   async loadTilesBatch(
     micrographId: string,
-    tiles: Array<{ x: number; y: number }>
+    tiles: Array<{ x: number; y: number }>,
+    variant: 'original' | 'affine' = 'original'
   ): Promise<Array<{ x: number; y: number; image: HTMLImageElement }>> {
     const results: Array<{ x: number; y: number; image: HTMLImageElement }> = [];
 
@@ -103,7 +113,7 @@ export class HttpTileLoader {
       const chunk = tiles.slice(i, i + CHUNK_SIZE);
       const chunkResults = await Promise.all(
         chunk.map(async ({ x, y }) => {
-          const image = await this.loadTile(micrographId, x, y);
+          const image = await this.loadTile(micrographId, x, y, variant);
           return { x, y, image };
         })
       );
