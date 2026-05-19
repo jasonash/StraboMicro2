@@ -639,6 +639,7 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
           width={renderWidth}
           height={renderHeight}
           opacity={micrograph.opacity ?? 1.0}
+          listening={false}
         />
         {/* Red outline around overlay - use Line for affine (parallelogram), Rect otherwise */}
         {showOutline && overlayTransform.affineOutlinePoints ? (
@@ -660,8 +661,14 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
             listening={false}
           />
         ) : null}
-        {/* Transparent hit area for reliable click detection */}
-        {onClick && (
+        {/* Transparent hit area for reliable click detection — parallelogram for affine, AABB otherwise */}
+        {onClick && (overlayTransform.affineOutlinePoints ? (
+          <Line
+            points={overlayTransform.affineOutlinePoints}
+            closed
+            fill="transparent"
+          />
+        ) : (
           <Rect
             x={0}
             y={0}
@@ -669,7 +676,7 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
             height={renderHeight}
             fill="transparent"
           />
-        )}
+        ))}
       </Group>
     );
   } else {
@@ -707,6 +714,7 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
                 width={tile.imageObj.naturalWidth}
                 height={tile.imageObj.naturalHeight}
                 opacity={micrograph.opacity ?? 1.0}
+                listening={false}
               />
             );
           }
@@ -720,6 +728,7 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
               width={TILE_SIZE + 2}
               height={TILE_SIZE + 2}
               opacity={micrograph.opacity ?? 1.0}
+              listening={false}
             />
           );
         })}
@@ -743,8 +752,14 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
             listening={false}
           />
         ) : null}
-        {/* Transparent hit area for reliable click detection */}
-        {onClick && (
+        {/* Transparent hit area for reliable click detection — parallelogram for affine, AABB otherwise */}
+        {onClick && (overlayTransform.affineOutlinePoints ? (
+          <Line
+            points={overlayTransform.affineOutlinePoints}
+            closed
+            fill="transparent"
+          />
+        ) : (
           <Rect
             x={0}
             y={0}
@@ -752,7 +767,7 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
             height={renderHeight}
             fill="transparent"
           />
-        )}
+        ))}
       </Group>
     );
   }
