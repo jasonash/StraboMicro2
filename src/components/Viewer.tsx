@@ -214,13 +214,6 @@ const Viewer: React.FC = () => {
       // Don't trigger in input fields
       if (['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement).tagName)) return;
 
-      // S key to enter sketch mode (when a micrograph is active, no modifiers)
-      if (e.key.toLowerCase() === 's' && !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey && !sketchModeActive && activeMicrographId) {
-        e.preventDefault();
-        setSketchModeActive(true);
-        return;
-      }
-
       // Escape to exit sketch mode (but not while text input is active — let it handle Escape)
       if (e.key === 'Escape' && sketchModeActive && !sketchTextInputActive) {
         e.preventDefault();
