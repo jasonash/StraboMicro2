@@ -33,9 +33,15 @@ import {
 import { WizardProgress } from '../../WizardProgress';
 import { Delete as DeleteIcon } from '@mui/icons-material';
 import { useAppStore } from '@/store';
-import { findMicrographById } from '@/store/helpers';
+import {
+  findMicrographById,
+  getDescendantMicrographs,
+  isPointPlacedMicrograph,
+} from '@/store/helpers';
 import { PeriodicTableModal } from '../PeriodicTableModal';
 import { InstrumentDatabaseDialog, type InstrumentData } from '../InstrumentDatabaseDialog';
+import { ConfirmDialog } from '../ConfirmDialog';
+import { ScaleEditorPanel } from '../../ScaleEditorPanel';
 import {
   OrientationForm,
   initialOrientationData,
@@ -211,7 +217,8 @@ type EditStepId =
   | 'instrument-data'
   | 'instrument-settings'
   | 'metadata'
-  | 'orientation';
+  | 'orientation'
+  | 'scale';
 
 // Convert stored MicrographOrientation (numbers/strings, may be null) into form-state strings.
 // Only used for reference micrographs.
@@ -287,6 +294,9 @@ interface EditStepConfig {
 export function EditMicrographDialog({ isOpen, onClose, micrographId }: EditMicrographDialogProps) {
   const project = useAppStore((state) => state.project);
   const updateMicrographMetadata = useAppStore((state) => state.updateMicrographMetadata);
+  const updateMicrographScaleWithCascade = useAppStore(
+    (state) => state.updateMicrographScaleWithCascade
+  );
 
   const [activeStep, setActiveStep] = useState(0);
   const [formData, setFormData] = useState<MicrographFormData>(initialFormData);
@@ -296,6 +306,17 @@ export function EditMicrographDialog({ isOpen, onClose, micrographId }: EditMicr
   const [orientationData, setOrientationData] =
     useState<OrientationFormData>(initialOrientationData);
   const [orientationPreviewUrl, setOrientationPreviewUrl] = useState<string | undefined>(undefined);
+
+  // Scale step state — only populated for reference micrographs when the user reaches Step 5.
+  // scaleStepNewScale is null until the user enters valid inputs in ScaleEditorPanel.
+  const [scaleStepPreviewUrl, setScaleStepPreviewUrl] = useState<string | null>(null);
+  const [scaleStepIsLoadingPreview, setScaleStepIsLoadingPreview] = useState(false);
+  const [scaleStepNewScale, setScaleStepNewScale] = useState<number | null>(null);
+  // Cascade preview dialog state. pendingScale is the new scale awaiting user confirmation
+  // when descendants exist and would be rescaled.
+  const [cascadePreviewOpen, setCascadePreviewOpen] = useState(false);
+  const [pendingScale, setPendingScale] = useState<number | null>(null);
+  const [pendingMetadataUpdates, setPendingMetadataUpdates] = useState<Record<string, unknown> | null>(null);
 
   // Reference micrographs have no parent. Orientation is only meaningful for these —
   // associated micrographs inherit orientation from their parent reference.
@@ -559,6 +580,44 @@ export function EditMicrographDialog({ isOpen, onClose, micrographId }: EditMicr
     };
   }, [isOpen, isReference, micrographId, project]);
 
+  // Load a medium-resolution preview for the scale step's ScaleEditorPanel.
+  // Only fetched for reference micrographs since the scale step is hidden otherwise.
+  useEffect(() => {
+    if (!isOpen || !isReference) {
+      setScaleStepPreviewUrl(null);
+      return;
+    }
+    const micrograph = findMicrographById(project, micrographId);
+    if (!project?.id || !micrograph?.imagePath) return;
+
+    let cancelled = false;
+    setScaleStepIsLoadingPreview(true);
+    (async () => {
+      try {
+        const folderPaths = await window.api!.getProjectFolderPaths(project.id);
+        const fullPath = `${folderPaths.images}/${micrograph.imagePath}`;
+        const result = await window.api!.loadImageWithTiles(fullPath);
+        const dataUrl = await window.api!.loadMedium(result.hash);
+        if (!cancelled) setScaleStepPreviewUrl(dataUrl);
+      } catch (err) {
+        console.warn('[EditMicrographDialog] Failed to load scale step preview:', err);
+      } finally {
+        if (!cancelled) setScaleStepIsLoadingPreview(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, isReference, micrographId, project]);
+
+  // Reset transient scale-step state whenever the dialog opens or the target changes
+  useEffect(() => {
+    setScaleStepNewScale(null);
+    setCascadePreviewOpen(false);
+    setPendingScale(null);
+    setPendingMetadataUpdates(null);
+  }, [isOpen, micrographId]);
+
   // Auto-set imageType based on dataType for certain instrument/data type combinations
   useEffect(() => {
     if (formData.instrumentType === 'Transmission Electron Microscopy (TEM)' && formData.dataType) {
@@ -702,9 +761,11 @@ export function EditMicrographDialog({ isOpen, onClose, micrographId }: EditMicr
       stepList.push({ id: 'instrument-settings', label: 'Instrument Settings' });
     }
     stepList.push({ id: 'metadata', label: 'Metadata' });
-    // Reference micrographs get an orientation step at the end (associated inherit from parent)
+    // Reference micrographs get orientation and scale steps at the end
+    // (associated inherit orientation from parent and have their scale set at creation time)
     if (isReference) {
       stepList.push({ id: 'orientation', label: 'Micrograph Orientation' });
+      stepList.push({ id: 'scale', label: 'Micrograph Scale' });
     }
     return stepList;
   })();
@@ -812,8 +873,55 @@ export function EditMicrographDialog({ isOpen, onClose, micrographId }: EditMicr
     }
 
     console.log('[EditMicrographDialog] Saving updates:', updates);
-    updateMicrographMetadata(micrographId, updates);
+
+    // Decide whether the scale change needs to cascade to descendants.
+    // Only reference micrographs get the scale step, but we still defensively check.
+    const currentMicrograph = findMicrographById(project, micrographId);
+    const currentScale = currentMicrograph?.scalePixelsPerCentimeter;
+    const wantsScaleChange =
+      scaleStepNewScale != null &&
+      scaleStepNewScale > 0 &&
+      scaleStepNewScale !== currentScale;
+
+    if (wantsScaleChange) {
+      const affected = getDescendantMicrographs(project, micrographId).filter(
+        (m) => !isPointPlacedMicrograph(m) && m.scalePixelsPerCentimeter != null
+      );
+
+      if (affected.length > 0) {
+        // Defer save until the user confirms the cascade.
+        setPendingMetadataUpdates(updates);
+        setPendingScale(scaleStepNewScale);
+        setCascadePreviewOpen(true);
+        return;
+      }
+    }
+
+    applyAllUpdates(updates, wantsScaleChange ? scaleStepNewScale : null);
     onClose();
+  };
+
+  const applyAllUpdates = (
+    updates: Record<string, unknown>,
+    newScale: number | null
+  ) => {
+    updateMicrographMetadata(micrographId, updates);
+    if (newScale != null) {
+      updateMicrographScaleWithCascade(micrographId, newScale);
+    }
+  };
+
+  const handleConfirmCascade = () => {
+    if (pendingScale == null || pendingMetadataUpdates == null) return;
+    applyAllUpdates(pendingMetadataUpdates, pendingScale);
+    setCascadePreviewOpen(false);
+    setPendingScale(null);
+    setPendingMetadataUpdates(null);
+    onClose();
+  };
+
+  const handleCancelCascade = () => {
+    setCascadePreviewOpen(false);
   };
 
   const handleCancel = () => {
@@ -860,6 +968,11 @@ export function EditMicrographDialog({ isOpen, onClose, micrographId }: EditMicr
       case 'orientation':
         return validateOrientationForm(orientationData);
 
+      case 'scale':
+        // Always valid — user may leave inputs blank to keep the existing scale.
+        // If they did enter values, ScaleEditorPanel only emits a positive number.
+        return true;
+
       default:
         return true;
     }
@@ -877,9 +990,50 @@ export function EditMicrographDialog({ isOpen, onClose, micrographId }: EditMicr
         return renderMetadataStep();
       case 'orientation':
         return renderOrientationStep();
+      case 'scale':
+        return renderScaleStep();
       default:
         return null;
     }
+  };
+
+  const renderScaleStep = () => {
+    const micrograph = findMicrographById(project, micrographId);
+    if (!micrograph) return null;
+
+    const currentScale = micrograph.scalePixelsPerCentimeter;
+
+    return (
+      <Stack spacing={2}>
+        <Box
+          sx={{
+            p: 1.5,
+            border: '1px solid',
+            borderColor: 'divider',
+            borderRadius: 1,
+            bgcolor: 'background.paper',
+          }}
+        >
+          <Typography variant="body2" color="text.secondary">
+            Current scale:{' '}
+            <strong>
+              {currentScale != null ? `${currentScale.toFixed(2)} pixels/cm` : 'not set'}
+            </strong>
+          </Typography>
+          <Typography variant="caption" color="text.secondary">
+            Leave the form below blank to keep the current scale. Entering a new scale will
+            also rescale every non-point descendant micrograph by the same ratio so that
+            existing placements continue to line up.
+          </Typography>
+        </Box>
+        <ScaleEditorPanel
+          micrograph={micrograph}
+          previewUrl={scaleStepPreviewUrl}
+          isLoadingPreview={scaleStepIsLoadingPreview}
+          onScaleChange={setScaleStepNewScale}
+        />
+      </Stack>
+    );
   };
 
   const renderOrientationStep = () => (
@@ -2635,6 +2789,55 @@ export function EditMicrographDialog({ isOpen, onClose, micrographId }: EditMicr
         isOpen={showInstrumentDatabase}
         onClose={() => setShowInstrumentDatabase(false)}
         onSelect={handleInstrumentFromDatabase}
+      />
+
+      <ConfirmDialog
+        open={cascadePreviewOpen}
+        title="Rescale descendant micrographs?"
+        message={(() => {
+          const currentMicrograph = findMicrographById(project, micrographId);
+          const oldScale = currentMicrograph?.scalePixelsPerCentimeter ?? null;
+          const newScale = pendingScale;
+          if (oldScale == null || newScale == null || oldScale === 0) {
+            return <Typography>Confirm the scale change.</Typography>;
+          }
+          const ratio = newScale / oldScale;
+          const affected = getDescendantMicrographs(project, micrographId).filter(
+            (m) => !isPointPlacedMicrograph(m) && m.scalePixelsPerCentimeter != null
+          );
+          return (
+            <Stack spacing={1.5}>
+              <Box>
+                <Typography variant="body2" color="text.secondary">Current scale</Typography>
+                <Typography>{oldScale.toFixed(2)} pixels/cm</Typography>
+              </Box>
+              <Box>
+                <Typography variant="body2" color="text.secondary">New scale</Typography>
+                <Typography>{newScale.toFixed(2)} pixels/cm</Typography>
+              </Box>
+              <Box>
+                <Typography variant="body2" color="text.secondary">Ratio</Typography>
+                <Typography>{ratio.toFixed(4)}×</Typography>
+              </Box>
+              <Divider />
+              <Typography variant="body2">
+                <strong>{affected.length}</strong>{' '}
+                non-point descendant{affected.length === 1 ? '' : 's'} will be rescaled
+                by the same ratio so existing placements continue to line up. Point-placed
+                children render as markers and are not affected.
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                Spot measurements (length, area, grain metrics) inside the rescaled
+                descendants will display new real-world values. Undo (Cmd+Z) reverts the
+                whole change.
+              </Typography>
+            </Stack>
+          );
+        })()}
+        confirmLabel="Apply Cascade"
+        cancelLabel="Cancel"
+        onConfirm={handleConfirmCascade}
+        onCancel={handleCancelCascade}
       />
     </>
   );
