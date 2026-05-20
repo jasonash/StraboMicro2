@@ -8,12 +8,60 @@
  * - Position offset (where the child is placed on the parent)
  * - Scale difference (pixels-per-centimeter ratio between parent and child)
  * - Rotation (child micrograph rotation)
+ * - Affine transform (when the child is placed via 3-Point Registration)
  */
 
 import { useMemo } from 'react';
 import { Group } from 'react-konva';
-import { MicrographMetadata, Spot } from '@/types/project-types';
+import { MicrographMetadata, Spot, Geometry } from '@/types/project-types';
+import type { AffineMatrix } from '@/utils/affineTransform';
 import { SpotRenderer } from './SpotRenderer';
+
+// Apply a 2x3 affine matrix [a, b, tx, c, d, ty] to a 2D point.
+const applyAffine = (matrix: AffineMatrix, x: number, y: number): [number, number] => {
+  const [a, b, tx, c, d, ty] = matrix;
+  return [a * x + b * y + tx, c * x + d * y + ty];
+};
+
+// Return a shallow-cloned Spot with its geometry/points mapped through the
+// affine matrix. The original spot is untouched so callers (selection, edit
+// callbacks) keep operating on the canonical spot in child coordinate space.
+const transformSpotByAffine = (spot: Spot, matrix: AffineMatrix): Spot => {
+  const next: Spot = { ...spot };
+
+  if (spot.geometry) {
+    const { type, coordinates } = spot.geometry;
+    if (type === 'Point') {
+      const [x, y] = coordinates as [number, number];
+      next.geometry = { ...spot.geometry, coordinates: applyAffine(matrix, x, y) } as Geometry;
+    } else if (type === 'LineString') {
+      next.geometry = {
+        ...spot.geometry,
+        coordinates: (coordinates as Array<[number, number]>).map(([x, y]) =>
+          applyAffine(matrix, x, y)
+        ),
+      } as Geometry;
+    } else if (type === 'Polygon') {
+      next.geometry = {
+        ...spot.geometry,
+        coordinates: (coordinates as Array<Array<[number, number]>>).map((ring) =>
+          ring.map(([x, y]) => applyAffine(matrix, x, y))
+        ),
+      } as Geometry;
+    }
+  }
+
+  if (spot.points) {
+    next.points = spot.points.map((p) => {
+      const sx = p.X ?? p.x ?? 0;
+      const sy = p.Y ?? p.y ?? 0;
+      const [nx, ny] = applyAffine(matrix, sx, sy);
+      return { X: nx, Y: ny };
+    });
+  }
+
+  return next;
+};
 
 interface ChildSpotsRendererProps {
   /** The child micrograph whose spots we're rendering */
@@ -49,6 +97,25 @@ export const ChildSpotsRenderer: React.FC<ChildSpotsRendererProps> = ({
   if (!childMicrograph.spots || childMicrograph.spots.length === 0) {
     return null;
   }
+
+  // For affine (3-Point Registration) placements, the child→parent mapping is
+  // an arbitrary 2x3 matrix that doesn't decompose cleanly into Konva's
+  // Group transform fields (x/y/scale/rotation/skew/offset). Pre-transform
+  // each spot's vertices into parent coordinates and render with an identity
+  // Group so strokes still scale 1:1 with the stage zoom.
+  const isAffine =
+    childMicrograph.placementType === 'affine' &&
+    Array.isArray(childMicrograph.affineMatrix) &&
+    childMicrograph.affineMatrix.length === 6;
+
+  const affineSpots = useMemo(() => {
+    if (!isAffine || !childMicrograph.affineMatrix || !childMicrograph.spots) return null;
+    const matrix = childMicrograph.affineMatrix as AffineMatrix;
+    return childMicrograph.spots.map((original) => ({
+      original,
+      transformed: transformSpotByAffine(original, matrix),
+    }));
+  }, [isAffine, childMicrograph.affineMatrix, childMicrograph.spots]);
 
   /**
    * Calculate the transformation to map child coordinates to parent coordinates.
@@ -95,6 +162,30 @@ export const ChildSpotsRenderer: React.FC<ChildSpotsRendererProps> = ({
       offsetY: imageHeight / 2, // Rotate around center
     };
   }, [childMicrograph, parentMetadata]);
+
+  // Affine path: spot coords are already in parent space, so render at identity
+  // and pass stageScale as the effective scale (strokes are in parent pixels).
+  if (affineSpots) {
+    return (
+      <Group>
+        {affineSpots.map(({ original, transformed }) => (
+          <SpotRenderer
+            key={original.id}
+            spot={transformed}
+            scale={stageScale}
+            isSelected={
+              original.id === activeSpotId || selectedSpotIds.includes(original.id)
+            }
+            onClick={onSpotClick ? (_, event) => onSpotClick(original, event) : undefined}
+            onContextMenu={
+              onSpotContextMenu ? (_, x, y) => onSpotContextMenu(original, x, y) : undefined
+            }
+            renderLabelsOnly={false}
+          />
+        ))}
+      </Group>
+    );
+  }
 
   // Calculate effective scale for spot rendering
   // Spots need to know the combined scale to render stroke widths correctly
