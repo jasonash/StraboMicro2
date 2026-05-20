@@ -119,19 +119,18 @@ export function useAutosave() {
       return true; // Nothing to save, proceed with switch
     }
 
-    // Show confirmation dialog
+    // Show confirmation dialog. OK = save and proceed, Cancel = abort the switch
+    // (preserving the user's unsaved changes).
     const shouldSave = window.confirm(
       'You have unsaved changes. Would you like to save before switching projects?'
     );
 
-    if (shouldSave) {
-      const result = await performSave(false);
-      return result.success;
+    if (!shouldSave) {
+      return false; // Abort - keep unsaved changes intact
     }
 
-    // User chose not to save - mark as clean so switch can proceed
-    useAppStore.getState().markClean();
-    return true;
+    const result = await performSave(false);
+    return result.success;
   }, [performSave]);
 
   /**

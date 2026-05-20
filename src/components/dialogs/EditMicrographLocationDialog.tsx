@@ -32,11 +32,14 @@ import {
   Select,
   MenuItem,
 } from '@mui/material';
+import { CheckCircle } from '@mui/icons-material';
 import { useAppStore } from '@/store';
 import { findMicrographById } from '@/store/helpers';
 import PlacementCanvas from './PlacementCanvas';
 import { PointPlacementCanvas } from './PointPlacementCanvas';
+import { AffineRegistrationModal } from './AffineRegistrationModal';
 import type { MicrographMetadata } from '@/types/project-types';
+import type { AffineMatrix, ControlPoint } from '@/utils/affineTransform';
 
 interface EditMicrographLocationDialogProps {
   open: boolean;
@@ -44,7 +47,10 @@ interface EditMicrographLocationDialogProps {
   micrographId: string;
 }
 
-type LocationMethod = 'Locate as a scaled rectangle' | 'Locate by an approximate point';
+type LocationMethod =
+  | 'Locate as a scaled rectangle'
+  | 'Locate by an approximate point'
+  | '3-Point Registration';
 type ScaleMethod =
   | 'Trace Scale Bar and Drag'
   | 'Stretch and Drag'
@@ -92,6 +98,15 @@ export function EditMicrographLocationDialog({
 
   // Point placement state (for "Locate as a point" method)
   const [hasPointPlaced, setHasPointPlaced] = useState(false);
+
+  // Affine state (for "3-Point Registration" method)
+  const [affineMatrix, setAffineMatrix] = useState<AffineMatrix | null>(null);
+  const [affineControlPoints, setAffineControlPoints] = useState<ControlPoint[] | null>(null);
+  const [affineBoundsOffset, setAffineBoundsOffset] = useState<{ x: number; y: number } | null>(null);
+  const [affineTransformedWidth, setAffineTransformedWidth] = useState<number | null>(null);
+  const [affineTransformedHeight, setAffineTransformedHeight] = useState<number | null>(null);
+  const [affineTileHash, setAffineTileHash] = useState<string | null>(null);
+  const [showAffineRegistration, setShowAffineRegistration] = useState(false);
 
   // Project folder paths for constructing image paths
   const [imagesFolder, setImagesFolder] = useState<string>('');
@@ -179,8 +194,29 @@ export function EditMicrographLocationDialog({
     // Determine current location method from existing data
     const hasOffset = !!(micro as { offsetInParent?: unknown }).offsetInParent;
     const hasPoint = !!micro.pointInParent;
+    const hasAffine = micro.placementType === 'affine' && !!micro.affineMatrix;
 
-    if (hasOffset) {
+    // Reset affine state by default; will be populated below if applicable
+    setAffineMatrix(null);
+    setAffineControlPoints(null);
+    setAffineBoundsOffset(null);
+    setAffineTransformedWidth(null);
+    setAffineTransformedHeight(null);
+    setAffineTileHash(null);
+
+    if (hasAffine) {
+      setLocationMethod('3-Point Registration');
+      setScaleMethod('');
+      setAffineMatrix(micro.affineMatrix ?? null);
+      setAffineControlPoints(
+        micro.controlPoints?.map((cp) => ({ source: cp.source, target: cp.target })) ?? null
+      );
+      setAffineBoundsOffset(micro.affineBoundsOffset ?? null);
+      setAffineTransformedWidth(micro.affineTransformedWidth ?? null);
+      setAffineTransformedHeight(micro.affineTransformedHeight ?? null);
+      setAffineTileHash(micro.affineTileHash ?? null);
+      setOpacity(micro.opacity ?? 1);
+    } else if (hasOffset) {
       setLocationMethod('Locate as a scaled rectangle');
       setScaleMethod('Stretch and Drag'); // Default for editing
       const offset = (micro as { offsetInParent: { X: number; Y: number } }).offsetInParent;
@@ -214,6 +250,11 @@ export function EditMicrographLocationDialog({
 
   // Reset scale method when location method changes
   useEffect(() => {
+    if (locationMethod === '3-Point Registration') {
+      // 3-Point Registration computes scale from the affine matrix; no scale method needed.
+      setScaleMethod('');
+      return;
+    }
     if (locationMethod === 'Locate as a scaled rectangle') {
       if (scaleMethod !== 'Trace Scale Bar and Drag' &&
           scaleMethod !== 'Stretch and Drag' &&
@@ -309,6 +350,10 @@ export function EditMicrographLocationDialog({
 
   // Check if Save should be enabled
   const canSave = (): boolean => {
+    if (locationMethod === '3-Point Registration') {
+      return affineMatrix !== null;
+    }
+
     const isPointLocation = locationMethod === 'Locate by an approximate point';
 
     // For point location, always require a point to be placed
@@ -335,7 +380,12 @@ export function EditMicrographLocationDialog({
 
   const handleNext = () => {
     if (step === 0) {
-      setStep(1);
+      // 3-Point Registration skips the Scale Method step (affine matrix encodes scale)
+      if (locationMethod === '3-Point Registration') {
+        setStep(2);
+      } else {
+        setStep(1);
+      }
     } else if (step === 1 && canProceedFromScaleMethod()) {
       // Reset scale data and point placement when entering placement step
       setHasScaleData(false);
@@ -349,7 +399,12 @@ export function EditMicrographLocationDialog({
       // Reset scale data and point placement when going back
       setHasScaleData(false);
       setHasPointPlaced(false);
-      setStep(step - 1);
+      // From the placement step under 3-Point, jump back to the Location Method step
+      if (step === 2 && locationMethod === '3-Point Registration') {
+        setStep(0);
+      } else {
+        setStep(step - 1);
+      }
     }
   };
 
@@ -410,24 +465,64 @@ export function EditMicrographLocationDialog({
       newChildPxPerCm,
     });
 
-    if (locationMethod === 'Locate as a scaled rectangle') {
+    if (locationMethod === '3-Point Registration') {
+      // Affine placement: store matrix + control points, clear other placement fields.
+      // scalePixelsPerCentimeter is a placeholder for affine descendants (effective scale
+      // is derived from the root non-affine ancestor at render time); preserve the existing
+      // value if any, otherwise default to the parent's scale.
+      updateMicrographMetadata(micrographId, {
+        placementType: 'affine',
+        affineMatrix,
+        controlPoints: affineControlPoints?.map((cp) => ({
+          source: cp.source,
+          target: cp.target,
+        })),
+        affineBoundsOffset,
+        affineTransformedWidth,
+        affineTransformedHeight,
+        affineTileHash,
+        scalePixelsPerCentimeter:
+          micrograph.scalePixelsPerCentimeter ?? parentPxPerCm,
+        opacity,
+        // Clear other placement methods
+        offsetInParent: undefined,
+        rotation: undefined,
+        scaleX: undefined,
+        scaleY: undefined,
+        pointInParent: undefined,
+      });
+    } else if (locationMethod === 'Locate as a scaled rectangle') {
       updateMicrographMetadata(micrographId, {
         offsetInParent: { X: offsetX, Y: offsetY },
         rotation,
         scalePixelsPerCentimeter: newChildPxPerCm,
         opacity,
-        // Clear point placement if switching methods
+        // Clear point and affine placement if switching methods
         pointInParent: undefined,
+        placementType: undefined,
+        affineMatrix: undefined,
+        controlPoints: undefined,
+        affineBoundsOffset: undefined,
+        affineTransformedWidth: undefined,
+        affineTransformedHeight: undefined,
+        affineTileHash: undefined,
       });
     } else {
       updateMicrographMetadata(micrographId, {
         pointInParent: { X: pointX, Y: pointY },
         scalePixelsPerCentimeter: newChildPxPerCm,
-        // Clear rectangle placement if switching methods
+        // Clear rectangle and affine placement if switching methods
         offsetInParent: undefined,
         rotation: undefined,
         scaleX: undefined,
         scaleY: undefined,
+        placementType: undefined,
+        affineMatrix: undefined,
+        controlPoints: undefined,
+        affineBoundsOffset: undefined,
+        affineTransformedWidth: undefined,
+        affineTransformedHeight: undefined,
+        affineTileHash: undefined,
       });
     }
 
@@ -483,7 +578,14 @@ export function EditMicrographLocationDialog({
   // Same pattern as parent: ${folderPaths.images}/${micrograph.imagePath}
   const childImagePath = `${imagesFolder}/${micrograph.imagePath}`;
 
-  const steps = ['Location Method', 'Scale Method', 'Position'];
+  const isAffine = locationMethod === '3-Point Registration';
+  // 3-Point Registration skips the Scale Method step (affine matrix encodes scale)
+  const steps = isAffine
+    ? ['Location Method', 'Position']
+    : ['Location Method', 'Scale Method', 'Position'];
+  // For the Stepper UI, when 3-Point is selected and the user is on the Position step
+  // (internal step = 2), display it as step 1 since we hide the Scale Method step.
+  const displayStep = isAffine && step === 2 ? 1 : step;
   const isScaledRectangle = locationMethod === 'Locate as a scaled rectangle';
   const hasMatchingAspectRatio = matchingSiblings.length > 0;
 
@@ -500,7 +602,7 @@ export function EditMicrographLocationDialog({
       <DialogTitle>Edit Micrograph Location</DialogTitle>
 
       <DialogContent>
-        <Stepper activeStep={step} sx={{ mb: 3 }}>
+        <Stepper activeStep={displayStep} sx={{ mb: 3 }}>
           {steps.map((label) => (
             <Step key={label}>
               <StepLabel>{label}</StepLabel>
@@ -532,8 +634,17 @@ export function EditMicrographLocationDialog({
                 control={<Radio />}
                 label="Locate by an approximate point"
               />
-              <Typography variant="caption" color="text.secondary" sx={{ ml: 4, mt: -1 }}>
+              <Typography variant="caption" color="text.secondary" sx={{ ml: 4, mt: -1, mb: 2 }}>
                 Mark a single point showing approximate location
+              </Typography>
+
+              <FormControlLabel
+                value="3-Point Registration"
+                control={<Radio />}
+                label="3-Point Registration"
+              />
+              <Typography variant="caption" color="text.secondary" sx={{ ml: 4, mt: -1 }}>
+                Match 3+ corresponding features to compute precise alignment (handles rotation, scale, and skew)
               </Typography>
             </RadioGroup>
           </Stack>
@@ -638,7 +749,70 @@ export function EditMicrographLocationDialog({
         {/* Step 2: Placement UI */}
         {step === 2 && (
           <Box>
-            {isScaledRectangle ? (
+            {isAffine ? (
+              <Stack spacing={2}>
+                <Typography variant="body2" color="text.secondary">
+                  Use 3-point registration to precisely align this micrograph on its parent by
+                  matching corresponding features between both images.
+                </Typography>
+
+                <Box
+                  sx={{
+                    p: 3,
+                    border: '2px solid',
+                    borderColor: affineMatrix ? 'success.main' : 'divider',
+                    borderRadius: 1,
+                    bgcolor: affineMatrix ? 'success.light' : 'action.hover',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    gap: 2,
+                  }}
+                >
+                  {affineMatrix ? (
+                    <>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <CheckCircle color="success" />
+                        <Typography variant="subtitle1" color="success.dark" fontWeight="bold">
+                          Registration Complete
+                        </Typography>
+                      </Box>
+                      <Typography variant="body2" color="text.primary">
+                        {affineControlPoints?.length || 0} control points defined
+                      </Typography>
+                      <Button
+                        variant="outlined"
+                        onClick={() => setShowAffineRegistration(true)}
+                      >
+                        Edit Registration
+                      </Button>
+                    </>
+                  ) : (
+                    <>
+                      <Typography variant="body2" color="text.secondary" textAlign="center">
+                        Click the button below to open the registration interface where you can
+                        click corresponding features on both images.
+                      </Typography>
+                      <Button
+                        variant="contained"
+                        onClick={() => setShowAffineRegistration(true)}
+                        size="large"
+                      >
+                        Start 3-Point Registration
+                      </Button>
+                    </>
+                  )}
+                </Box>
+
+                {affineMatrix && (
+                  <Typography variant="caption" color="text.secondary">
+                    The overlay will be transformed using an affine matrix computed from your
+                    control points. This handles translation, rotation, scale, and skew
+                    corrections.
+                  </Typography>
+                )}
+              </Stack>
+            ) : isScaledRectangle ? (
               <PlacementCanvas
                 parentMicrographId={parentMicrograph.id}
                 childScratchPath={childImagePath}
@@ -716,6 +890,26 @@ export function EditMicrographLocationDialog({
           </Button>
         )}
       </DialogActions>
+
+      {/* Affine Registration Modal for 3-Point Registration */}
+      <AffineRegistrationModal
+        open={showAffineRegistration}
+        onClose={() => setShowAffineRegistration(false)}
+        parentMicrographId={parentMicrograph.id}
+        overlayImagePath={childImagePath}
+        overlayWidth={micrograph.imageWidth || 800}
+        overlayHeight={micrograph.imageHeight || 600}
+        existingControlPoints={affineControlPoints ?? undefined}
+        onApply={(matrix, controlPoints, boundsOffset, transformedWidth, transformedHeight, tileHash) => {
+          setAffineMatrix(matrix);
+          setAffineControlPoints(controlPoints);
+          setAffineBoundsOffset(boundsOffset);
+          setAffineTransformedWidth(transformedWidth);
+          setAffineTransformedHeight(transformedHeight);
+          setAffineTileHash(tileHash);
+          setShowAffineRegistration(false);
+        }}
+      />
     </Dialog>
   );
 }

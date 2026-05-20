@@ -442,7 +442,6 @@ export function AffineRegistrationModal({
           const img = new Image();
           img.onload = () => {
             setOverlayImage(img);
-            setIsLoading(false);
             setOverlayCentered(false); // Will be centered by the centering effect
           };
           img.src = mediumDataUrl;
@@ -455,6 +454,15 @@ export function AffineRegistrationModal({
 
     loadOverlayImage();
   }, [open, overlayImagePath]);
+
+  // Hide the loading overlay only after BOTH parent and overlay images have decoded.
+  // Previously setIsLoading(false) fired as soon as the (smaller) overlay finished,
+  // briefly revealing empty panels while the parent was still being decoded.
+  useEffect(() => {
+    if (parentImage && overlayImage) {
+      setIsLoading(false);
+    }
+  }, [parentImage, overlayImage]);
 
   // Center overlay image when panel size and image are available
   useEffect(() => {

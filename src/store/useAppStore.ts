@@ -121,6 +121,8 @@ import {
   buildSpotIndex,
   findSpotParentMicrograph,
   findMicrographById,
+  getDescendantMicrographs,
+  isPointPlacedMicrograph,
 } from './helpers';
 import type { TiledViewerRef } from '@/components/TiledViewer';
 
@@ -372,6 +374,12 @@ interface AppState {
   // ========== CRUD: MICROGRAPH ==========
   addMicrograph: (sampleId: string, micrograph: MicrographMetadata) => void;
   updateMicrographMetadata: (id: string, updates: Partial<MicrographMetadata>) => void;
+  /**
+   * Set scalePixelsPerCentimeter on a micrograph and cascade the same ratio to every
+   * non-point descendant. Point-placed descendants render as markers (not scaled
+   * overlays), so their scale is independent and is intentionally left alone.
+   */
+  updateMicrographScaleWithCascade: (id: string, newScale: number) => void;
   deleteMicrograph: (id: string) => void;
   reorderMicrographs: (sampleId: string, parentId: string | null, orderedIds: string[]) => void;
 
@@ -1868,6 +1876,40 @@ export const useAppStore = create<AppState>()(
                 offsetInParent: micrograph.offsetInParent,
               });
             });
+
+            return {
+              project: newProject,
+              isDirty: true,
+              micrographIndex: buildMicrographIndex(newProject),
+            };
+          }),
+
+          updateMicrographScaleWithCascade: (id, newScale) => set((state) => {
+            if (!state.project) return state;
+
+            const target = findMicrographById(state.project, id);
+            if (!target) return state;
+
+            const oldScale = target.scalePixelsPerCentimeter;
+            const newProject = structuredClone(state.project);
+
+            const applyScale = (micrograph: MicrographMetadata, value: number) => {
+              micrograph.scalePixelsPerCentimeter = value;
+            };
+
+            const targetClone = findMicrographById(newProject, id);
+            if (!targetClone) return state;
+            applyScale(targetClone, newScale);
+
+            if (oldScale && oldScale > 0) {
+              const ratio = newScale / oldScale;
+              const descendants = getDescendantMicrographs(newProject, id);
+              for (const descendant of descendants) {
+                if (isPointPlacedMicrograph(descendant)) continue;
+                if (descendant.scalePixelsPerCentimeter == null) continue;
+                applyScale(descendant, descendant.scalePixelsPerCentimeter * ratio);
+              }
+            }
 
             return {
               project: newProject,

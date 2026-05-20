@@ -258,6 +258,55 @@ export function getChildMicrographs(
 }
 
 /**
+ * Get all descendants of a micrograph (children, grandchildren, ...) in breadth-first order.
+ * Unlike getChildMicrographs, this does NOT filter by isMicroVisible — cascade operations
+ * (like a scale change) need to reach hidden descendants too.
+ */
+export function getDescendantMicrographs(
+  project: ProjectMetadata | null,
+  ancestorId: string
+): MicrographMetadata[] {
+  if (!project?.datasets) return [];
+
+  const childrenByParent = new Map<string, MicrographMetadata[]>();
+  for (const dataset of project.datasets) {
+    for (const sample of dataset.samples || []) {
+      for (const micrograph of sample.micrographs || []) {
+        if (micrograph.parentID) {
+          const arr = childrenByParent.get(micrograph.parentID) || [];
+          arr.push(micrograph);
+          childrenByParent.set(micrograph.parentID, arr);
+        }
+      }
+    }
+  }
+
+  const descendants: MicrographMetadata[] = [];
+  const queue: string[] = [ancestorId];
+
+  while (queue.length > 0) {
+    const currentId = queue.shift()!;
+    const children = childrenByParent.get(currentId) || [];
+    for (const child of children) {
+      descendants.push(child);
+      queue.push(child.id);
+    }
+  }
+
+  return descendants;
+}
+
+/**
+ * Point-placed children render as markers, not scaled image overlays
+ * (TiledViewer.tsx renders them as a Circle). Their scalePixelsPerCentimeter
+ * only affects measurements made on their own canvas — never the parent.
+ * So a parent's scale change must NOT cascade into them.
+ */
+export function isPointPlacedMicrograph(micrograph: MicrographMetadata): boolean {
+  return micrograph.placementType === 'point' || micrograph.pointInParent != null;
+}
+
+/**
  * Get all reference micrographs (no parentID)
  */
 export function getReferenceMicrographs(
