@@ -1,6 +1,6 @@
 {
   "name": "strabomicro2",
-  "version": "2.0.25",
+  "version": "2.0.26",
   "description": "StraboMicro - Geological Microanalysis Application",
   "main": "electron/main.js",
   "scripts": {
