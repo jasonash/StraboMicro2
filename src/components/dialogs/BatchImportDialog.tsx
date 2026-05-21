@@ -399,6 +399,9 @@ export const BatchImportDialog: React.FC<BatchImportDialogProps> = ({
           height: conversionResult.jpegHeight,
           // NO scalePixelsPerCentimeter - this is the key marker for batch-imported images
           parentID: isAssociated ? parentMicrographId : undefined,
+          // Flag micrographs that skipped the Instrument & Image Info step so the
+          // user is prompted for it the first time they click the thumbnail.
+          needsInstrumentInfo: includeInstrumentInfo ? undefined : true,
         };
 
         // Add instrument info if included (FULL data model)

@@ -67,6 +67,7 @@ import { ConfirmDialog } from './dialogs/ConfirmDialog';
 import { AddMicrographToGroupsDialog } from './dialogs/AddMicrographToGroupsDialog';
 import { EditMicrographDialog } from './dialogs/metadata/EditMicrographDialog';
 import { EditMicrographLocationDialog } from './dialogs/EditMicrographLocationDialog';
+import { CompleteInstrumentInfoDialog } from './dialogs/CompleteInstrumentInfoDialog';
 import { BatchImportDialog } from './dialogs/BatchImportDialog';
 import { SetScaleDialog } from './dialogs/SetScaleDialog';
 import { LinkSiblingDialog } from './dialogs/LinkSiblingDialog';
@@ -88,6 +89,8 @@ interface MicrographThumbnailProps {
   needsScale?: boolean;
   /** Whether this micrograph needs location to be set (associated micrographs only) */
   needsLocation?: boolean;
+  /** Whether this micrograph still needs instrument/image info (batch-imported without it) */
+  needsInstrumentInfo?: boolean;
 }
 
 function MicrographThumbnail({
@@ -98,8 +101,9 @@ function MicrographThumbnail({
   height = 40,
   needsScale = false,
   needsLocation = false,
+  needsInstrumentInfo = false,
 }: MicrographThumbnailProps) {
-  const needsSetup = needsScale || needsLocation;
+  const needsSetup = needsScale || needsLocation || needsInstrumentInfo;
   const [thumbnailDataUrl, setThumbnailDataUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -198,6 +202,7 @@ function MicrographThumbnail({
   // Build tooltip message for incomplete setup
   const tooltipMessage = needsSetup
     ? [
+        needsInstrumentInfo && 'Instrument info not set',
         needsScale && 'Scale not set',
         needsLocation && 'Location not set',
       ].filter(Boolean).join(' • ')
@@ -359,6 +364,11 @@ export function ProjectTree() {
   // Set scale dialog state (for batch-imported reference micrographs)
   const [showSetScale, setShowSetScale] = useState(false);
   const [setScaleMicrographId, setSetScaleMicrographId] = useState<string | null>(null);
+
+  // Complete Instrument Info dialog (for batch-imported micrographs missing instrument/image info)
+  const [showCompleteInstrumentInfo, setShowCompleteInstrumentInfo] = useState(false);
+  const [completeInstrumentInfoMicrographId, setCompleteInstrumentInfoMicrographId] =
+    useState<string | null>(null);
 
   // Link Sibling dialog state (for PPL/XPL pairing)
   const [showLinkSibling, setShowLinkSibling] = useState(false);
@@ -693,34 +703,49 @@ export function ProjectTree() {
     setShowNewMicrograph(true);
   };
 
+  // Open the scale/location setup dialog if the micrograph still needs it,
+  // otherwise select the micrograph normally. Used both directly on click and
+  // as the follow-up after the Complete Instrument Info dialog closes.
+  const continueAfterInstrumentInfo = (micrographId: string) => {
+    if (!project) {
+      selectMicrograph(micrographId);
+      return;
+    }
+    // Re-read from store so any field updates we just made are visible.
+    const latest = useAppStore.getState().project;
+    const micrograph = latest ? findMicrographById(latest, micrographId) : null;
+    if (!micrograph) {
+      selectMicrograph(micrographId);
+      return;
+    }
+    const noScale =
+      micrograph.scalePixelsPerCentimeter === undefined ||
+      micrograph.scalePixelsPerCentimeter === null;
+    if (noScale) {
+      const isAssociated = !!micrograph.parentID;
+      if (isAssociated) {
+        setEditLocationMicrographId(micrographId);
+        setShowEditLocation(true);
+      } else {
+        setSetScaleMicrographId(micrographId);
+        setShowSetScale(true);
+      }
+      return;
+    }
+    selectMicrograph(micrographId);
+  };
+
   const handleMicrographClick = (micrographId: string) => {
-    // Check if micrograph needs scale setup (batch-imported without scale)
     if (project) {
       const micrograph = findMicrographById(project, micrographId);
-      if (micrograph) {
-        // Check if micrograph has no scale set
-        if (
-          micrograph.scalePixelsPerCentimeter === undefined ||
-          micrograph.scalePixelsPerCentimeter === null
-        ) {
-          const isAssociated = !!micrograph.parentID;
-
-          if (isAssociated) {
-            // For associated micrographs, use the location/scale dialog
-            setEditLocationMicrographId(micrographId);
-            setShowEditLocation(true);
-          } else {
-            // For reference micrographs, use the set scale dialog
-            setSetScaleMicrographId(micrographId);
-            setShowSetScale(true);
-          }
-          return;
-        }
+      // Batch-imported without instrument info: prompt for it before anything else.
+      if (micrograph?.needsInstrumentInfo) {
+        setCompleteInstrumentInfoMicrographId(micrographId);
+        setShowCompleteInstrumentInfo(true);
+        return;
       }
     }
-
-    // Normal selection if scale is set
-    selectMicrograph(micrographId);
+    continueAfterInstrumentInfo(micrographId);
   };
 
   // Build hierarchy from flat micrograph array
@@ -950,12 +975,14 @@ export function ProjectTree() {
     const isHidden = micrograph.isMicroVisible === false;
     const parentId = micrograph.parentID || null;
 
-    // Check if micrograph needs setup (missing scale or location)
+    // Check if micrograph needs setup (missing scale, location, or instrument info)
     const needsScale = !micrograph.scalePixelsPerCentimeter;
     // Location can be set via offsetInParent (scaled rectangle), pointInParent (approximate point), or affine placement
     const hasLocation = micrograph.offsetInParent || micrograph.pointInParent || micrograph.xOffset !== undefined || micrograph.placementType === 'affine';
     const needsLocation = !isReference && !hasLocation;
-    const needsSetup = needsScale || needsLocation;
+    // Set only by Batch Import when "Instrument and Image Info" was unchecked; legacy/manual-import micrographs leave this absent.
+    const needsInstrumentInfo = !!micrograph.needsInstrumentInfo;
+    const needsSetup = needsScale || needsLocation || needsInstrumentInfo;
 
     // Use percentage-based sizing for responsive thumbnails
     // This allows thumbnails to shrink/grow with the sidebar width
@@ -1074,6 +1101,7 @@ export function ProjectTree() {
                     micrographName={micrograph.name || micrograph.imageFilename || 'Unnamed'}
                     needsScale={needsScale}
                     needsLocation={needsLocation}
+                    needsInstrumentInfo={needsInstrumentInfo}
                   />
                 </Box>
               )}
@@ -1868,6 +1896,22 @@ export function ProjectTree() {
           micrographId={editLocationMicrographId}
         />
       )}
+
+      {/* Complete Instrument & Image Info Dialog (batch-imported micrographs without instrument info) */}
+      <CompleteInstrumentInfoDialog
+        isOpen={showCompleteInstrumentInfo}
+        micrographId={completeInstrumentInfoMicrographId}
+        onClose={() => {
+          setShowCompleteInstrumentInfo(false);
+          setCompleteInstrumentInfoMicrographId(null);
+        }}
+        onComplete={() => {
+          const id = completeInstrumentInfoMicrographId;
+          setShowCompleteInstrumentInfo(false);
+          setCompleteInstrumentInfoMicrographId(null);
+          if (id) continueAfterInstrumentInfo(id);
+        }}
+      />
 
       {/* Delete Dataset Confirmation */}
       <ConfirmDialog
