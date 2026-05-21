@@ -270,6 +270,17 @@ export interface MicrographMetadata {
   /** Results from StraboTools image analysis (Edge Fabric, Color Index, Edge Detect, Mode) */
   straboTools?: StraboToolsResult | null;
 
+  // ========== BATCH IMPORT COMPLETION FLAGS ==========
+  /**
+   * Set to true when a micrograph was created via Batch Import with the
+   * "Instrument and Image Info" checkbox unchecked. The next time the
+   * thumbnail is clicked, the user is prompted to provide instrument/image
+   * info before the standard scale/location flow runs. Cleared once the
+   * info has been supplied. Absent on micrographs created via the manual
+   * single-import wizard or imported from legacy/.smz projects.
+   */
+  needsInstrumentInfo?: boolean | null;
+
   // UI state (not serialized, runtime only)
   isExpanded?: boolean | null;
   isSpotExpanded?: boolean | null;
