@@ -28,6 +28,7 @@ export interface IncompleteMicrograph {
   name: string;
   needsScale: boolean;
   needsLocation: boolean;
+  needsInstrumentInfo: boolean;
   isReference: boolean;
 }
 
@@ -60,7 +61,7 @@ export function IncompleteMicrographsDialog({
       </DialogTitle>
       <DialogContent>
         <Typography variant="body1" sx={{ mb: 2 }}>
-          The following micrographs are missing required scale or location data.
+          The following micrographs are missing required scale, location, or instrument data.
           Please set up these micrographs before {actionName}ing.
         </Typography>
 
@@ -83,6 +84,15 @@ export function IncompleteMicrographsDialog({
                   primary={micro.name}
                   secondary={
                     <Stack direction="row" spacing={0.5} sx={{ mt: 0.5 }}>
+                      {micro.needsInstrumentInfo && (
+                        <Chip
+                          label="Needs instrument info"
+                          size="small"
+                          color="warning"
+                          variant="outlined"
+                          sx={{ height: 20, fontSize: '0.7rem' }}
+                        />
+                      )}
                       {micro.needsScale && (
                         <Chip
                           label="Needs scale"
@@ -136,13 +146,15 @@ export function findIncompleteMicrographs(project: ProjectMetadata): IncompleteM
         // Location can be set via offsetInParent (scaled rectangle), pointInParent (approximate point), or affine placement
         const hasLocation = micro.offsetInParent || micro.pointInParent || micro.xOffset !== undefined || micro.placementType === 'affine';
         const needsLocation = !isReference && !hasLocation;
+        const needsInstrumentInfo = !!micro.needsInstrumentInfo;
 
-        if (needsScale || needsLocation) {
+        if (needsScale || needsLocation || needsInstrumentInfo) {
           incomplete.push({
             id: micro.id,
             name: micro.name || micro.imageFilename || 'Unnamed',
             needsScale,
             needsLocation,
+            needsInstrumentInfo,
             isReference,
           });
         }

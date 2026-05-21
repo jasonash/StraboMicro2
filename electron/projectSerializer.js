@@ -432,6 +432,9 @@ function serializeMicrograph(micrograph) {
     sketchLayers: micrograph.sketchLayers || undefined,
     // StraboTools analysis results
     straboTools: cleanObjectForDb(micrograph.straboTools),
+    // Batch-import completion flag: set when "Instrument and Image Info" was skipped at import.
+    // Cleared (false) once the user supplies the info via the post-batch completion dialog.
+    needsInstrumentInfo: micrograph.needsInstrumentInfo === true ? true : undefined,
   };
 }
 
@@ -632,6 +635,8 @@ function deserializeMicrograph(micrograph) {
     sketchLayers: micrograph.sketchLayers,
     // StraboTools analysis results
     straboTools: micrograph.straboTools,
+    // Batch-import completion flag
+    needsInstrumentInfo: micrograph.needsInstrumentInfo,
   };
 }
 
