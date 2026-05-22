@@ -14,6 +14,11 @@ export interface TileMetadata {
   tilesX: number;
   tilesY: number;
   totalTiles: number;
+  /** Affine-only: ratio of output-buffer (tiled) size to parent-coord size. Renderer applies 1/oversample to bring tiles back to parent-coord space. Absent (=1) on legacy .smz exports. */
+  oversample?: number;
+  /** Affine-only: parent-coord AABB dimensions. Absent on legacy .smz exports — fall back to micrograph.affineTransformedWidth/Height. */
+  parentSpaceWidth?: number;
+  parentSpaceHeight?: number;
 }
 
 export class HttpTileLoader {

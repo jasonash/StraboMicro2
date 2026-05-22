@@ -20,6 +20,37 @@ const MEDIUM_SIZE = 2048;
 const PNG_COMPRESSION = 6;
 const WEBP_QUALITY = 90;
 
+// Oversampling: bake the warped buffer larger than parent-coord space so source detail
+// is preserved at deep zoom. Without this, an overlay that occupies a small parent-space
+// AABB gets baked down to parent-pixel resolution, discarding source detail.
+// Policy: "no axis undersampled" — pick s so that the worst-compressed axis still has
+// at least one output pixel per source pixel. Capped to keep disk/generation bounded.
+const MAX_OUTPUT_PIXELS = 100_000_000; // 100 Mpx — caps warped buffer area
+const MAX_TILES = 1500;                // caps tile count for pathological skews
+
+/**
+ * Compute the oversample factor for an affine warp.
+ *
+ * Returns a value >= 1. For uniform affines (no compression) returns 1.
+ * For affines that shrink the overlay into a small parent-space footprint,
+ * returns the axis ratio that would preserve source detail, capped by
+ * MAX_OUTPUT_PIXELS and MAX_TILES.
+ *
+ * @param {number} srcWidth - Source image width
+ * @param {number} srcHeight - Source image height
+ * @param {{width: number, height: number}} bounds - Parent-space AABB of warped overlay
+ * @returns {number} Oversample factor (>= 1)
+ */
+function computeOversample(srcWidth, srcHeight, bounds) {
+  const axisMax = Math.max(srcWidth / bounds.width, srcHeight / bounds.height);
+  if (!isFinite(axisMax) || axisMax <= 1) return 1;
+
+  const areaCap = Math.sqrt(MAX_OUTPUT_PIXELS / (bounds.width * bounds.height));
+  const tileCap = Math.sqrt((MAX_TILES * TILE_SIZE * TILE_SIZE) / (bounds.width * bounds.height));
+
+  return Math.min(axisMax, areaCap, tileCap);
+}
+
 /**
  * Compute the inverse of an affine matrix.
  * @param {number[]} matrix - Affine matrix [a, b, tx, c, d, ty]
@@ -188,11 +219,19 @@ async function generateAffineTiles(imagePath, imageHash, affineMatrix, onProgres
   const bounds = computeTransformedBounds(srcWidth, srcHeight, affineMatrix);
   console.log(`[AffineTileGenerator] Transformed bounds:`, bounds);
 
-  // Output dimensions (in parent coordinate space)
-  const outputWidth = Math.max(1, Math.ceil(bounds.width));
-  const outputHeight = Math.max(1, Math.ceil(bounds.height));
+  // Pick an oversample factor that preserves source detail along the worst-compressed axis.
+  // Output buffer is oversample× larger than parent-coord space; the renderer applies the
+  // inverse scale at view time. Parent-space AABB (bounds.width × bounds.height) stays the
+  // canonical footprint of the overlay on the parent.
+  const oversample = computeOversample(srcWidth, srcHeight, bounds);
+  const parentSpaceWidth = Math.max(1, Math.ceil(bounds.width));
+  const parentSpaceHeight = Math.max(1, Math.ceil(bounds.height));
+  const outputWidth = Math.max(1, Math.ceil(bounds.width * oversample));
+  const outputHeight = Math.max(1, Math.ceil(bounds.height * oversample));
 
-  console.log(`[AffineTileGenerator] Output dimensions: ${outputWidth}x${outputHeight}`);
+  console.log(`[AffineTileGenerator] Oversample factor: ${oversample.toFixed(3)}`);
+  console.log(`[AffineTileGenerator] Parent-space AABB: ${parentSpaceWidth}x${parentSpaceHeight}`);
+  console.log(`[AffineTileGenerator] Output buffer: ${outputWidth}x${outputHeight}`);
 
   // 3. Compute the INVERSE matrix
   // For each output pixel, we need to find where it samples from in the source
@@ -208,14 +247,16 @@ async function generateAffineTiles(imagePath, imageHash, affineMatrix, onProgres
 
   const outputData = Buffer.alloc(outputWidth * outputHeight * 4, 0);
 
-  // For each output pixel (ox, oy), compute source position and sample
+  // For each output pixel (ox, oy), compute parent-space position then sample source.
+  // One output pixel covers 1/oversample parent units, so the parent-space position is
+  // bounds.minX + ox/oversample (and likewise for y).
   for (let oy = 0; oy < outputHeight; oy++) {
     // Parent-space position for this row
-    const parentY = bounds.minY + oy;
+    const parentY = bounds.minY + oy / oversample;
 
     for (let ox = 0; ox < outputWidth; ox++) {
       // Parent-space position
-      const parentX = bounds.minX + ox;
+      const parentX = bounds.minX + ox / oversample;
 
       // Apply inverse transform to get source (overlay) position
       // source = M^(-1) * parent
@@ -307,11 +348,17 @@ async function generateAffineTiles(imagePath, imageHash, affineMatrix, onProgres
   }
 
   // 9. Save metadata
+  // transformedWidth/Height represent the output buffer (tiles wrap this).
+  // parentSpaceWidth/Height represent the parent-coord AABB (matches project.json's
+  // affineTransformedWidth/Height). oversample is the ratio between them.
   const metadata = {
     originalWidth: srcWidth,
     originalHeight: srcHeight,
     transformedWidth: outputWidth,
     transformedHeight: outputHeight,
+    parentSpaceWidth,
+    parentSpaceHeight,
+    oversample,
     affineMatrix,
     boundsOffset: { x: bounds.minX, y: bounds.minY },
     tileSize: TILE_SIZE,
@@ -394,6 +441,11 @@ async function hasMatchingAffineTiles(imageHash, affineMatrix) {
 
   // Treat legacy unpadded affine tiles as stale so they get regenerated with halos.
   if (!metadata.tilePadding) return false;
+
+  // Treat caches without an explicit oversample factor as stale — they were baked at
+  // parent-coord resolution and lose source detail at deep zoom. Regenerate to pick
+  // up the oversampled buffer.
+  if (typeof metadata.oversample !== 'number') return false;
 
   // Check if matrices match
   const storedMatrix = metadata.affineMatrix;

@@ -124,8 +124,14 @@ export function AssociatedImageRenderer({
 
     // Affine placement
     if (micrograph.placementType === 'affine') {
-      const transformedWidth = micrograph.affineTransformedWidth || imageWidth;
-      const transformedHeight = micrograph.affineTransformedHeight || imageHeight;
+      // Parent-coord AABB (footprint on parent canvas) — from project.json.
+      const parentSpaceWidth = micrograph.affineTransformedWidth || imageWidth;
+      const parentSpaceHeight = micrograph.affineTransformedHeight || imageHeight;
+      // Oversample factor: present on new exports, absent (= 1) on legacy .smz files where
+      // affine tiles were baked at parent-coord resolution.
+      const oversample = tileMetadata?.oversample ?? 1;
+      const outputWidth = parentSpaceWidth * oversample;
+      const outputHeight = parentSpaceHeight * oversample;
       const boundsOffset = micrograph.affineBoundsOffset || { x: 0, y: 0 };
       const matrix = micrograph.affineMatrix;
 
@@ -134,22 +140,22 @@ export function AssociatedImageRenderer({
         const [a, b, tx, c, d, ty] = matrix;
         const corners = [[0, 0], [imageWidth, 0], [imageWidth, imageHeight], [0, imageHeight]];
         affineOutlinePoints = corners.flatMap(([x, y]) => [
-          a * x + b * y + tx - boundsOffset.x,
-          c * x + d * y + ty - boundsOffset.y,
+          (a * x + b * y + tx - boundsOffset.x) * oversample,
+          (c * x + d * y + ty - boundsOffset.y) * oversample,
         ]);
       }
 
       return {
-        x: boundsOffset.x + transformedWidth / 2,
-        y: boundsOffset.y + transformedHeight / 2,
-        scaleX: 1,
-        scaleY: 1,
+        x: boundsOffset.x + parentSpaceWidth / 2,
+        y: boundsOffset.y + parentSpaceHeight / 2,
+        scaleX: 1 / oversample,
+        scaleY: 1 / oversample,
         rotation: 0,
-        offsetX: transformedWidth / 2,
-        offsetY: transformedHeight / 2,
+        offsetX: outputWidth / 2,
+        offsetY: outputHeight / 2,
         isAffine: true,
-        transformedWidth,
-        transformedHeight,
+        transformedWidth: outputWidth,
+        transformedHeight: outputHeight,
         affineOutlinePoints,
       };
     }
@@ -190,7 +196,7 @@ export function AssociatedImageRenderer({
       transformedHeight: imageHeight,
       affineOutlinePoints: null,
     };
-  }, [micrograph, imageWidth, imageHeight, parentScalePixelsPerCm]);
+  }, [micrograph, imageWidth, imageHeight, parentScalePixelsPerCm, tileMetadata]);
 
   // ============================================================================
   // VIEWPORT CULLING
