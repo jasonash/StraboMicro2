@@ -65,8 +65,14 @@ interface TileData extends TileCoordinate {
 interface AffineTileMetadata {
   originalWidth: number;
   originalHeight: number;
+  /** Output-buffer dimensions (= parentSpace × oversample). Tiles wrap this. */
   transformedWidth: number;
   transformedHeight: number;
+  /** Parent-coord AABB dimensions of the placed parallelogram. Absent on legacy caches. */
+  parentSpaceWidth?: number;
+  parentSpaceHeight?: number;
+  /** Ratio of output-buffer size to parent-coord size; renderer scales by 1/oversample. Absent (=1) on legacy caches. */
+  oversample?: number;
   affineMatrix: [number, number, number, number, number, number];
   boundsOffset: { x: number; y: number };
   tileSize: number;

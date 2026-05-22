@@ -81,6 +81,11 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
     retryCount: 0,
   });
 
+  // Oversample factor for affine overlays: tiles are baked into an output buffer
+  // `oversample`× larger than parent-coord space, so the Group needs scaleX/Y = 1/oversample
+  // at render. Defaults to 1 for legacy caches (without the field) and for non-affine.
+  const [affineOversample, setAffineOversample] = useState<number>(1);
+
   // Get active tool to avoid changing cursor when drawing/measuring
   const activeTool = useAppStore((state) => state.activeTool);
 
@@ -103,6 +108,25 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
       }
     };
   }, [imageState.imageObj, imageState.tiles]);
+
+  // Load the affine cache metadata once to pick up the oversample factor. Done separately
+  // from tile loading because overlayTransform needs it synchronously for positioning,
+  // even in THUMBNAIL/MEDIUM modes before tiles are requested.
+  useEffect(() => {
+    if (micrograph.placementType !== 'affine' || !micrograph.affineTileHash || !window.api) {
+      setAffineOversample(1);
+      return;
+    }
+    const hash = micrograph.affineTileHash;
+    let cancelled = false;
+    window.api.loadAffineMetadata(hash).then((meta) => {
+      if (cancelled) return;
+      setAffineOversample(meta && typeof meta.oversample === 'number' ? meta.oversample : 1);
+    }).catch(() => {
+      if (!cancelled) setAffineOversample(1);
+    });
+    return () => { cancelled = true; };
+  }, [micrograph.placementType, micrograph.affineTileHash]);
 
   /**
    * Calculate screen coverage percentage (0.0 to 1.0)
@@ -260,15 +284,21 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
   const overlayTransform = useMemo(() => {
     // Handle affine placement type
     if (micrograph.placementType === 'affine') {
-      const transformedWidth = micrograph.affineTransformedWidth || micrograph.imageWidth || 0;
-      const transformedHeight = micrograph.affineTransformedHeight || micrograph.imageHeight || 0;
+      // Parent-space AABB dimensions (footprint on the parent canvas). These come from
+      // project.json and represent the size of the placed parallelogram's bounding box.
+      const parentSpaceWidth = micrograph.affineTransformedWidth || micrograph.imageWidth || 0;
+      const parentSpaceHeight = micrograph.affineTransformedHeight || micrograph.imageHeight || 0;
+      // Output buffer dimensions (what the tile grid actually wraps). Oversample × parent-space.
+      // For legacy caches (oversample defaults to 1) these equal parent-space dimensions.
+      const outputWidth = parentSpaceWidth * affineOversample;
+      const outputHeight = parentSpaceHeight * affineOversample;
       const boundsOffset = micrograph.affineBoundsOffset || { x: 0, y: 0 };
       const matrix = micrograph.affineMatrix;
       const srcWidth = micrograph.imageWidth || 0;
       const srcHeight = micrograph.imageHeight || 0;
 
-      // Compute the outline points for the affine parallelogram
-      // Transform the four corners of the original image, then offset relative to boundsOffset
+      // Compute the outline points for the affine parallelogram in output-buffer coords
+      // (Konva group's 1/oversample scale brings them back to parent-coord space).
       let affineOutlinePoints: number[] | null = null;
       if (matrix && matrix.length === 6) {
         const [a, b, tx, c, d, ty] = matrix;
@@ -278,25 +308,25 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
           [srcWidth, srcHeight],
           [0, srcHeight],
         ];
-        // Transform corners and subtract boundsOffset to get positions relative to tile grid
         affineOutlinePoints = corners.flatMap(([x, y]) => [
-          a * x + b * y + tx - boundsOffset.x,
-          c * x + d * y + ty - boundsOffset.y,
+          (a * x + b * y + tx - boundsOffset.x) * affineOversample,
+          (c * x + d * y + ty - boundsOffset.y) * affineOversample,
         ]);
       }
 
-      // Position at the top-left of the transformed bounds, convert to center
+      // Position the Group in parent-coord space; child content is sized in output-buffer
+      // coords and scaled back down by 1/oversample.
       return {
-        x: boundsOffset.x + transformedWidth / 2,
-        y: boundsOffset.y + transformedHeight / 2,
-        scaleX: 1, // No additional scale - transform is baked into tiles
-        scaleY: 1,
+        x: boundsOffset.x + parentSpaceWidth / 2,
+        y: boundsOffset.y + parentSpaceHeight / 2,
+        scaleX: 1 / affineOversample,
+        scaleY: 1 / affineOversample,
         rotation: 0, // No additional rotation - transform is baked into tiles
-        offsetX: transformedWidth / 2,
-        offsetY: transformedHeight / 2,
+        offsetX: outputWidth / 2,
+        offsetY: outputHeight / 2,
         isAffine: true,
-        transformedWidth,
-        transformedHeight,
+        transformedWidth: outputWidth,
+        transformedHeight: outputHeight,
         affineOutlinePoints,
       };
     }
@@ -345,7 +375,7 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
       transformedHeight: imageHeight,
       affineOutlinePoints: null,
     };
-  }, [micrograph, parentMetadata]);
+  }, [micrograph, parentMetadata, affineOversample]);
 
   /**
    * Load image for the determined render mode
