@@ -3455,30 +3455,36 @@ ipcMain.handle('image:is-valid', async (event, filePath) => {
  * Also clears the tile cache for this image so it gets re-tiled
  */
 ipcMain.handle('image:flip-horizontal', async (event, imagePath) => {
+  const fsp = require('fs').promises;
+  const tmpPath = imagePath + '.tmp';
   try {
     log.info(`[IPC] Flipping image horizontally: ${imagePath}`);
 
-    // Read the image
-    const imageBuffer = await sharp(imagePath).flop().toBuffer();
+    // Read the source into a Node Buffer so Sharp never opens the file by
+    // path. On Windows, libvips can briefly hold a file handle after a
+    // path-based read, which races against the unlink below and trips
+    // EPERM. Reading via fs.readFile keeps Sharp on an in-memory Buffer.
+    const inputBuffer = await fsp.readFile(imagePath);
 
-    // Get metadata to determine output format
-    const metadata = await sharp(imagePath).metadata();
+    const metadata = await sharp(inputBuffer).metadata();
+    const flippedBuffer = await sharp(inputBuffer).flop().toBuffer();
 
-    // Write back to the same file
     // Use PNG for lossless quality preservation
-    if (metadata.format === 'png' || imagePath.toLowerCase().endsWith('.png')) {
-      await sharp(imageBuffer).png().toFile(imagePath + '.tmp');
-    } else if (metadata.format === 'tiff' || imagePath.toLowerCase().endsWith('.tif') || imagePath.toLowerCase().endsWith('.tiff')) {
-      await sharp(imageBuffer).tiff().toFile(imagePath + '.tmp');
-    } else {
-      // Default to JPEG for other formats
-      await sharp(imageBuffer).jpeg({ quality: 95 }).toFile(imagePath + '.tmp');
-    }
+    const lower = imagePath.toLowerCase();
+    const isPng = metadata.format === 'png' || lower.endsWith('.png');
+    const isTiff = metadata.format === 'tiff' || lower.endsWith('.tif') || lower.endsWith('.tiff');
 
-    // Replace original with flipped version
-    const fs = require('fs').promises;
-    await fs.unlink(imagePath);
-    await fs.rename(imagePath + '.tmp', imagePath);
+    let writer = sharp(flippedBuffer);
+    if (isPng) writer = writer.png();
+    else if (isTiff) writer = writer.tiff();
+    else writer = writer.jpeg({ quality: 95 });
+    await writer.toFile(tmpPath);
+
+    // Replace original with flipped version. Retry on EPERM/EBUSY/EACCES to
+    // ride out brief Windows file locks (antivirus scans, lingering Sharp
+    // handles from elsewhere in the app).
+    await unlinkWithRetry(imagePath);
+    await fsp.rename(tmpPath, imagePath);
 
     // Clear tile cache for this image so it gets re-tiled
     const imageHash = await tileCache.generateImageHash(imagePath);
@@ -3487,10 +3493,32 @@ ipcMain.handle('image:flip-horizontal', async (event, imagePath) => {
     log.info(`[IPC] Successfully flipped image: ${imagePath}`);
     return { success: true, hash: imageHash };
   } catch (error) {
+    // Best-effort cleanup of the orphaned .tmp if we wrote it but couldn't swap
+    try { await fsp.unlink(tmpPath); } catch (_) { /* may not exist */ }
     log.error('[IPC] Error flipping image:', error);
     throw error;
   }
 });
+
+/**
+ * Unlink with retry on transient Windows file locks.
+ * EPERM/EBUSY/EACCES on unlink usually means another process (AV scanner,
+ * indexer) or a not-yet-released native handle has the file open. A short
+ * backoff is enough to ride out almost all real-world cases.
+ */
+async function unlinkWithRetry(filePath, { attempts = 6, baseDelayMs = 50 } = {}) {
+  const fsp = require('fs').promises;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      await fsp.unlink(filePath);
+      return;
+    } catch (err) {
+      const retryable = err && (err.code === 'EPERM' || err.code === 'EBUSY' || err.code === 'EACCES');
+      if (!retryable || i === attempts - 1) throw err;
+      await new Promise(r => setTimeout(r, baseDelayMs * (i + 1)));
+    }
+  }
+}
 
 /**
  * ============================================================================
