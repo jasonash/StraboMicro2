@@ -240,7 +240,10 @@ const Viewer: React.FC = () => {
       }
 
       // Spot tool shortcuts (only when not in sketch mode, no modifiers)
-      if (!sketchModeActive && activeMicrographId && !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey) {
+      // Suppressed while the Quick Classify toolbar is visible (Quick Classify / Quick Edit /
+      // Point Count modes) so V/P/L/G/M reach the mineral-shortcut handler instead of
+      // silently switching the active drawing tool.
+      if (!sketchModeActive && !quickClassifyVisible && activeMicrographId && !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey) {
         const key = e.key.toLowerCase();
         if (key === 'v') {
           e.preventDefault();
@@ -263,7 +266,7 @@ const Viewer: React.FC = () => {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [activeMicrographId, sketchModeActive, sketchTextInputActive, setSketchModeActive, setActiveTool]);
+  }, [activeMicrographId, sketchModeActive, sketchTextInputActive, quickClassifyVisible, setSketchModeActive, setActiveTool]);
 
   // Export with sketches dialog state
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
