@@ -558,7 +558,11 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
         const scaleRatio = parentOriginalWidth / parentImage.width;
         const originalX = topLeft.x * scaleRatio;
         const originalY = topLeft.y * scaleRatio;
-        onPlacementChange(originalX, originalY, childTransform.rotation, childTransform.scaleX, childTransform.scaleY);
+        // childTransform.scaleX is relative to the displayed (downsampled) parent;
+        // report it relative to the original parent, matching the drag/transform handlers
+        const correctedScaleX = childTransform.scaleX * scaleRatio;
+        const correctedScaleY = childTransform.scaleY * scaleRatio;
+        onPlacementChange(originalX, originalY, childTransform.rotation, correctedScaleX, correctedScaleY);
       }
       prevScaleRef.current = { scaleX: childTransform.scaleX, scaleY: childTransform.scaleY };
     }
