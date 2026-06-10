@@ -415,12 +415,13 @@ export function AssociatedImageRenderer({
         );
       })}
 
-      {/* Outline */}
+      {/* Outline — Group scaleX is 1/oversample for affine, scaleFactor for non-affine, so
+          dividing by it cancels the Group transform and keeps the stroke at a constant ~1px on screen. */}
       {isAffine && affineOutlinePoints ? (
         <Line
           points={affineOutlinePoints}
           stroke="#5b9aff"
-          strokeWidth={1 / stageScale}
+          strokeWidth={1 / (stageScale * scaleX)}
           closed
           opacity={0.5}
           listening={false}
@@ -432,7 +433,7 @@ export function AssociatedImageRenderer({
           width={transformedWidth}
           height={transformedHeight}
           stroke="#5b9aff"
-          strokeWidth={1 / stageScale}
+          strokeWidth={1 / (stageScale * scaleX)}
           opacity={0.5}
           listening={false}
         />

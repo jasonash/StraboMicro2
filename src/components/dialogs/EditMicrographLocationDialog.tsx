@@ -40,6 +40,7 @@ import { PointPlacementCanvas } from './PointPlacementCanvas';
 import { AffineRegistrationModal } from './AffineRegistrationModal';
 import type { MicrographMetadata } from '@/types/project-types';
 import type { AffineMatrix, ControlPoint } from '@/utils/affineTransform';
+import { computeCopySizePlacement } from '@/utils/copySizePlacement';
 
 interface EditMicrographLocationDialogProps {
   open: boolean;
@@ -408,7 +409,7 @@ export function EditMicrographLocationDialog({
     }
   };
 
-  // Get copy size data from selected sibling
+  // Get copy size data from selected sibling (shared math with NewMicrographDialog)
   const getCopySizeData = () => {
     if (scaleMethod !== 'Copy Size from Existing Micrograph' || !copySizeFromMicrographId || !micrograph) {
       return null;
@@ -417,30 +418,34 @@ export function EditMicrographLocationDialog({
     const sibling = findMicrographById(project, copySizeFromMicrographId);
     if (!sibling) return null;
 
+    const data = computeCopySizePlacement(sibling, micrograph.imageWidth);
+    if (!data) return null;
+
     const isRectangle = locationMethod === 'Locate as a scaled rectangle';
 
     if (isRectangle) {
-      const siblingOffset = (sibling as { offsetInParent?: { X: number; Y: number } }).offsetInParent;
-      if (!siblingOffset || !sibling.scaleX || !sibling.imageWidth || !micrograph.imageWidth) return null;
+      // matchingSiblings already filters to rectangle-placed siblings, but guard anyway
+      if (!sibling.offsetInParent) return null;
 
-      // Calculate the pixelsPerCm for the sibling, then apply to our image
-      const siblingPixelsPerCm = sibling.scaleX * sibling.imageWidth;
-      const newImageScaleX = siblingPixelsPerCm / micrograph.imageWidth;
+      // Display scale shown in the placement canvas = parentPxPerCm / childPxPerCm
+      const parentPxPerCm = parentMicrograph?.scalePixelsPerCentimeter;
+      const displayScale = parentPxPerCm ? parentPxPerCm / data.newImagePixelsPerCm : 1;
 
       return {
-        xOffset: siblingOffset.X,
-        yOffset: siblingOffset.Y,
-        rotation: sibling.rotation || 0,
-        newImagePixelsPerCm: siblingPixelsPerCm,
-        scaleX: newImageScaleX,
-        scaleY: newImageScaleX, // Uniform scaling
+        xOffset: data.xOffset,
+        yOffset: data.yOffset,
+        rotation: data.rotation,
+        newImagePixelsPerCm: data.newImagePixelsPerCm,
+        scaleX: displayScale,
+        scaleY: displayScale, // Uniform scaling
       };
     } else {
       // Point placement
-      if (!sibling.pointInParent) return null;
+      if (!data.pointInParent) return null;
       return {
-        pointX: sibling.pointInParent.X,
-        pointY: sibling.pointInParent.Y,
+        pointX: data.pointInParent.x,
+        pointY: data.pointInParent.y,
+        newImagePixelsPerCm: data.newImagePixelsPerCm,
       };
     }
   };
@@ -508,9 +513,17 @@ export function EditMicrographLocationDialog({
         affineTileHash: undefined,
       });
     } else {
+      // For Copy Size, take the child's px/cm from the sibling directly — the point
+      // placement canvas has no scale interaction, so scaleX stays at its default
+      // and the display-scale formula above would just yield the parent's scale.
+      const copyData = getCopySizeData();
+      const pointChildPxPerCm =
+        scaleMethod === 'Copy Size from Existing Micrograph' && copyData?.newImagePixelsPerCm
+          ? copyData.newImagePixelsPerCm
+          : newChildPxPerCm;
       updateMicrographMetadata(micrographId, {
         pointInParent: { X: pointX, Y: pointY },
-        scalePixelsPerCentimeter: newChildPxPerCm,
+        scalePixelsPerCentimeter: pointChildPxPerCm,
         // Clear rectangle and affine placement if switching methods
         offsetInParent: undefined,
         rotation: undefined,
@@ -718,7 +731,7 @@ export function EditMicrographLocationDialog({
                   <FormControlLabel
                     value="Copy Size from Existing Micrograph"
                     control={<Radio />}
-                    label="Copy Size from Existing Micrograph"
+                    label="Copy Size and Location from Existing Micrograph"
                   />
                   <Typography variant="caption" color="text.secondary" sx={{ ml: 4, mt: -1 }}>
                     Copy position and scale from a sibling micrograph
@@ -863,6 +876,7 @@ export function EditMicrographLocationDialog({
                 scaleMethod={scaleMethod}
                 initialOffsetX={copySizeData?.pointX ?? pointX}
                 initialOffsetY={copySizeData?.pointY ?? pointY}
+                copySizePixelsPerCm={copySizeData?.newImagePixelsPerCm}
                 onPlacementChange={(x, y) => handlePointPlacementChange(x, y)}
                 onScaleDataChange={handleScaleDataChange}
               />

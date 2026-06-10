@@ -671,13 +671,15 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
           opacity={micrograph.opacity ?? 1.0}
           listening={false}
         />
-        {/* Red outline around overlay - use Line for affine (parallelogram), Rect otherwise */}
+        {/* Red outline around overlay - use Line for affine (parallelogram), Rect otherwise.
+            Group scaleX is 1/oversample for affine, scaleFactor for non-affine, so dividing by
+            it cancels the Group transform and keeps the stroke at a constant ~3px on screen. */}
         {showOutline && overlayTransform.affineOutlinePoints ? (
           <Line
             points={overlayTransform.affineOutlinePoints}
             closed
             stroke="#cc3333"
-            strokeWidth={3 / stageScale} // Constant screen size regardless of zoom
+            strokeWidth={3 / (stageScale * overlayTransform.scaleX)}
             listening={false}
           />
         ) : showOutline ? (
@@ -687,7 +689,7 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
             width={renderWidth}
             height={renderHeight}
             stroke="#cc3333"
-            strokeWidth={3 / (stageScale * overlayTransform.scaleX)} // Constant screen size regardless of zoom/scale
+            strokeWidth={3 / (stageScale * overlayTransform.scaleX)}
             listening={false}
           />
         ) : null}
@@ -762,13 +764,15 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
             />
           );
         })}
-        {/* Red outline around overlay - use Line for affine (parallelogram), Rect otherwise */}
+        {/* Red outline around overlay - use Line for affine (parallelogram), Rect otherwise.
+            Group scaleX is 1/oversample for affine, scaleFactor for non-affine, so dividing by
+            it cancels the Group transform and keeps the stroke at a constant ~3px on screen. */}
         {showOutline && overlayTransform.affineOutlinePoints ? (
           <Line
             points={overlayTransform.affineOutlinePoints}
             closed
             stroke="#cc3333"
-            strokeWidth={3 / stageScale} // Constant screen size regardless of zoom
+            strokeWidth={3 / (stageScale * overlayTransform.scaleX)}
             listening={false}
           />
         ) : showOutline ? (
@@ -778,7 +782,7 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
             width={renderWidth}
             height={renderHeight}
             stroke="#cc3333"
-            strokeWidth={3 / (stageScale * overlayTransform.scaleX)} // Constant screen size regardless of zoom/scale
+            strokeWidth={3 / (stageScale * overlayTransform.scaleX)}
             listening={false}
           />
         ) : null}
