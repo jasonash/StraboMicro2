@@ -51,6 +51,8 @@ import { PointPlacementCanvas } from './PointPlacementCanvas';
 import { AffineRegistrationModal } from './AffineRegistrationModal';
 import { PanTool, Timeline, RestartAlt, CheckCircle, Cancel } from '@mui/icons-material';
 import type { AffineMatrix, ControlPoint } from '@/utils/affineTransform';
+import { computeCopySizePlacement } from '@/utils/copySizePlacement';
+import { findMicrographById } from '@/store/helpers';
 
 interface NewMicrographDialogProps {
   isOpen: boolean;
@@ -1197,35 +1199,24 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
       formData.copySizeFromMicrographId
     ) {
       // Find the sibling micrograph and calculate the new image's scale
-      // newImagePixelsPerCm = siblingScalePxPerCm * (newWidth / siblingWidth)
       const { project } = useAppStore.getState();
-      if (project?.datasets) {
-        for (const dataset of project.datasets) {
-          if (dataset.samples) {
-            for (const sample of dataset.samples) {
-              if (sample.micrographs) {
-                const siblingMicrograph = sample.micrographs.find(
-                  (m) => m.id === formData.copySizeFromMicrographId
-                );
-                if (siblingMicrograph?.scalePixelsPerCentimeter && siblingMicrograph.imageWidth) {
-                  scalePixelsPerCentimeter =
-                    siblingMicrograph.scalePixelsPerCentimeter *
-                    (formData.micrographWidth / siblingMicrograph.imageWidth);
-                  console.log(
-                    '[NewMicrographDialog] Calculated scale from Copy Size from Existing:',
-                    {
-                      siblingScale: siblingMicrograph.scalePixelsPerCentimeter,
-                      siblingWidth: siblingMicrograph.imageWidth,
-                      newWidth: formData.micrographWidth,
-                      newScale: scalePixelsPerCentimeter,
-                    }
-                  );
-                  break;
-                }
-              }
-            }
+      const siblingMicrograph = project
+        ? findMicrographById(project, formData.copySizeFromMicrographId)
+        : null;
+      const copyData = siblingMicrograph
+        ? computeCopySizePlacement(siblingMicrograph, formData.micrographWidth)
+        : null;
+      if (copyData) {
+        scalePixelsPerCentimeter = copyData.newImagePixelsPerCm;
+        console.log(
+          '[NewMicrographDialog] Calculated scale from Copy Size from Existing:',
+          {
+            siblingScale: siblingMicrograph?.scalePixelsPerCentimeter,
+            siblingWidth: siblingMicrograph?.imageWidth,
+            newWidth: formData.micrographWidth,
+            newScale: scalePixelsPerCentimeter,
           }
-        }
+        );
       }
     }
 
@@ -2709,62 +2700,22 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
       const project = useAppStore.getState().project;
       if (!project) return null;
 
-      for (const dataset of project.datasets || []) {
-        for (const sample of dataset.samples || []) {
-          for (const micrograph of sample.micrographs || []) {
-            if (micrograph.id === formData.copySizeFromMicrographId) {
-              // Get sibling's dimensions and scale (px/cm)
-              const siblingWidth = micrograph.imageWidth ?? 1;
-              const siblingScalePxPerCm = micrograph.scalePixelsPerCentimeter ?? 1;
+      const sibling = findMicrographById(project, formData.copySizeFromMicrographId);
+      if (!sibling) return null;
 
-              // The sibling covers a physical area. The new image covers the SAME physical area
-              // but has different pixel dimensions. So its pixelsPerCm is different.
-              //
-              // Physical width of sibling = siblingWidth / siblingScalePxPerCm
-              // New image has same physical width, but newWidth pixels
-              // So: newScalePxPerCm = newWidth / physicalWidth
-              //                     = newWidth / (siblingWidth / siblingScalePxPerCm)
-              //                     = newWidth * siblingScalePxPerCm / siblingWidth
-              //                     = siblingScalePxPerCm * (newWidth / siblingWidth)
-              const newImagePixelsPerCm =
-                siblingScalePxPerCm * (formData.micrographWidth / siblingWidth);
+      const data = computeCopySizePlacement(sibling, formData.micrographWidth);
+      if (!data) return null;
 
-              // Get position from offsetInParent (the actual saved field) or xOffset/yOffset
-              const offsetInParent = (micrograph as { offsetInParent?: { X: number; Y: number } })
-                .offsetInParent;
-              const xOffset = offsetInParent?.X ?? micrograph.xOffset ?? 0;
-              const yOffset = offsetInParent?.Y ?? micrograph.yOffset ?? 0;
+      console.log('[NewMicrographDialog] Copy Size calculation:', {
+        siblingId: sibling.id,
+        siblingName: sibling.name,
+        siblingWidth: sibling.imageWidth,
+        siblingScalePxPerCm: sibling.scalePixelsPerCentimeter,
+        newWidth: formData.micrographWidth,
+        ...data,
+      });
 
-              console.log('[NewMicrographDialog] Copy Size calculation:', {
-                siblingId: micrograph.id,
-                siblingName: micrograph.name,
-                siblingWidth,
-                siblingScalePxPerCm,
-                newWidth: formData.micrographWidth,
-                newImagePixelsPerCm,
-                offsetInParent,
-                xOffset,
-                yOffset,
-                rotation: micrograph.rotation,
-              });
-
-              return {
-                xOffset,
-                yOffset,
-                rotation: micrograph.rotation ?? 0,
-                newImagePixelsPerCm,
-                pointInParent: micrograph.pointInParent
-                  ? {
-                      x: micrograph.pointInParent.x ?? micrograph.pointInParent.X ?? 0,
-                      y: micrograph.pointInParent.y ?? micrograph.pointInParent.Y ?? 0,
-                    }
-                  : undefined,
-              };
-            }
-          }
-        }
-      }
-      return null;
+      return data;
     };
 
     const copySizeData = getCopySizeData();
