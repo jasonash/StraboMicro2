@@ -1529,11 +1529,11 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
       >
         {(
           [
-            { key: 'x', label: 'X (px)', value: originalPlacement?.x },
-            { key: 'y', label: 'Y (px)', value: originalPlacement?.y },
-            { key: 'rotation', label: 'Rotation (°)', value: childTransform.rotation },
+            { key: 'x', label: 'X (px)', value: originalPlacement?.x, step: 1 },
+            { key: 'y', label: 'Y (px)', value: originalPlacement?.y, step: 1 },
+            { key: 'rotation', label: 'Rotation (°)', value: childTransform.rotation, step: 0.1 },
           ] as const
-        ).map(({ key, label, value }) => (
+        ).map(({ key, label, value, step }) => (
           <TextField
             key={key}
             label={label}
@@ -1563,7 +1563,7 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
                 (e.target as HTMLInputElement).blur();
               }
             }}
-            inputProps={{ step: 1 }}
+            inputProps={{ step }}
           />
         ))}
         <Typography variant="caption" color="text.secondary">
