@@ -731,7 +731,7 @@ export function EditMicrographLocationDialog({
                   <FormControlLabel
                     value="Copy Size from Existing Micrograph"
                     control={<Radio />}
-                    label="Copy Size from Existing Micrograph"
+                    label="Copy Size and Location from Existing Micrograph"
                   />
                   <Typography variant="caption" color="text.secondary" sx={{ ml: 4, mt: -1 }}>
                     Copy position and scale from a sibling micrograph

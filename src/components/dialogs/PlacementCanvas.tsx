@@ -150,6 +150,13 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
   const [parentScale, setParentScale] = useState<number | null>(null);
   const [parentOriginalWidth, setParentOriginalWidth] = useState<number | null>(null);
 
+  // Editable coordinate fields below the canvas: X/Y are the overlay's top-left in
+  // original parent pixels (the offsetInParent convention); rotation is in degrees.
+  // While a field is focused, its text is held locally so partial input doesn't fight
+  // the live value derived from childTransform.
+  const [editingCoordField, setEditingCoordField] = useState<'x' | 'y' | 'rotation' | null>(null);
+  const [editingCoordText, setEditingCoordText] = useState('');
+
   // Helper function to convert from center-based to top-left-based coordinates
   const convertCenterToTopLeft = (centerX: number, centerY: number, _rotation: number, scaleX: number, scaleY: number) => {
     // The child Group is positioned at its center due to offsetX/offsetY
@@ -165,6 +172,40 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
     const topLeftY = centerY - halfHeight;
 
     return { x: topLeftX, y: topLeftY };
+  };
+
+  // Inverse of convertCenterToTopLeft (same legacy convention: top-left measured pre-rotation)
+  const convertTopLeftToCenter = (topLeftX: number, topLeftY: number, scaleX: number, scaleY: number) => {
+    const halfWidth = (childWidth * scaleX) / 2;
+    const halfHeight = (childHeight * scaleY) / 2;
+    return { x: topLeftX + halfWidth, y: topLeftY + halfHeight };
+  };
+
+  // Current overlay top-left in original parent pixel coordinates (the offsetInParent convention)
+  const getOriginalPlacement = () => {
+    if (!parentOriginalWidth || !parentImage?.width) return null;
+    const topLeft = convertCenterToTopLeft(
+      childTransform.x, childTransform.y, childTransform.rotation,
+      childTransform.scaleX, childTransform.scaleY
+    );
+    const scaleRatio = parentOriginalWidth / parentImage.width;
+    return { x: topLeft.x * scaleRatio, y: topLeft.y * scaleRatio };
+  };
+
+  // Report a transform to the parent dialog: top-left position in original parent
+  // coordinates, scale corrected for the displayed parent's downsampling.
+  // No-op until the parent image is loaded (matching the old drag/transform handlers).
+  const reportPlacement = (transform: { x: number; y: number; rotation: number; scaleX: number; scaleY: number }) => {
+    if (!parentOriginalWidth || !parentImage?.width) return;
+    const topLeft = convertCenterToTopLeft(transform.x, transform.y, transform.rotation, transform.scaleX, transform.scaleY);
+    const scaleRatio = parentOriginalWidth / parentImage.width;
+    onPlacementChange(
+      topLeft.x * scaleRatio,
+      topLeft.y * scaleRatio,
+      transform.rotation,
+      transform.scaleX * scaleRatio,
+      transform.scaleY * scaleRatio
+    );
   };
 
   // Determine if resize handles should be shown based on scale method
@@ -986,22 +1027,14 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
     };
 
     setChildTransform(newTransform);
+    reportPlacement(newTransform);
+  };
 
-    // Convert center position to top-left for legacy compatibility
-    const topLeft = convertCenterToTopLeft(newTransform.x, newTransform.y, newTransform.rotation, newTransform.scaleX, newTransform.scaleY);
-
-    // Convert from displayed image coordinates to original image coordinates
-    if (!parentOriginalWidth || !parentImage?.width) return;
-    const scaleRatio = parentOriginalWidth / parentImage.width;
-    const originalX = topLeft.x * scaleRatio;
-    const originalY = topLeft.y * scaleRatio;
-
-    // For Stretch and Drag, correct the scale for parent image display size vs original size
-    const parentDisplayRatio = parentOriginalWidth / parentImage.width;
-    const correctedScaleX = newTransform.scaleX * parentDisplayRatio;
-    const correctedScaleY = newTransform.scaleY * parentDisplayRatio;
-
-    onPlacementChange(originalX, originalY, newTransform.rotation, correctedScaleX, correctedScaleY);
+  // Live-update the coordinate readout/fields while the child is being dragged
+  const handleChildDragMove = () => {
+    const node = childGroupRef.current;
+    if (!node) return;
+    setChildTransform(prev => ({ ...prev, x: node.x(), y: node.y() }));
   };
 
   const handleChildTransformEnd = () => {
@@ -1021,24 +1054,34 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
     };
 
     setChildTransform(newTransform);
+    reportPlacement(newTransform);
+  };
 
-    // Convert center position to top-left for legacy compatibility
-    const topLeft = convertCenterToTopLeft(newTransform.x, newTransform.y, newTransform.rotation, displayedScaleX, displayedScaleY);
-
-    // Convert from displayed image coordinates to original image coordinates
+  const applyCoordinateEdit = (field: 'x' | 'y' | 'rotation', value: number) => {
     if (!parentOriginalWidth || !parentImage?.width) return;
-    const scaleRatio = parentOriginalWidth / parentImage.width;
-    const originalX = topLeft.x * scaleRatio;
-    const originalY = topLeft.y * scaleRatio;
 
-    // For Stretch and Drag, we need to correct the scale for parent image display size vs original size
-    // The parent may be displayed larger than its original size (e.g., 250px original shown as 512px thumbnail)
-    // The scaleX from Konva is relative to the displayed parent, but we need it relative to the original
-    const parentDisplayRatio = parentOriginalWidth / parentImage.width;
-    const correctedScaleX = displayedScaleX * parentDisplayRatio;
-    const correctedScaleY = displayedScaleY * parentDisplayRatio;
+    let newTransform;
+    if (field === 'rotation') {
+      // Rotation is about the center, and top-left is measured pre-rotation,
+      // so X/Y are unaffected by a rotation edit
+      newTransform = { ...childTransform, rotation: value };
+    } else {
+      const scaleRatio = parentOriginalWidth / parentImage.width;
+      const currentTopLeft = convertCenterToTopLeft(
+        childTransform.x, childTransform.y, childTransform.rotation,
+        childTransform.scaleX, childTransform.scaleY
+      );
+      const displayedTopLeftX = field === 'x' ? value / scaleRatio : currentTopLeft.x;
+      const displayedTopLeftY = field === 'y' ? value / scaleRatio : currentTopLeft.y;
+      const center = convertTopLeftToCenter(
+        displayedTopLeftX, displayedTopLeftY,
+        childTransform.scaleX, childTransform.scaleY
+      );
+      newTransform = { ...childTransform, x: center.x, y: center.y };
+    }
 
-    onPlacementChange(originalX, originalY, newTransform.rotation, correctedScaleX, correctedScaleY);
+    setChildTransform(newTransform);
+    reportPlacement(newTransform);
   };
 
   const handleResetChild = () => {
@@ -1072,6 +1115,10 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
     // Reset the child overlay position/rotation/scale
     handleResetChild();
   };
+
+  // Top-left in original parent pixels for the editable coordinate fields
+  // (null until both images are loaded)
+  const originalPlacement = getOriginalPlacement();
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, width: '100%', alignItems: 'center' }}>
@@ -1413,6 +1460,7 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
                 offsetX={childWidth / 2}
                 offsetY={childHeight / 2}
                 draggable={enableDrag}
+                onDragMove={handleChildDragMove}
                 onDragEnd={handleChildDragEnd}
                 onTransformEnd={handleChildTransformEnd}
               >
@@ -1472,12 +1520,56 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
         </Stage>
       </Box>
 
-      <Typography variant="caption" color="text.secondary" sx={{ width: CANVAS_WIDTH, textAlign: 'center' }}>
-        Overlay Position: ({childTransform.x.toFixed(1)}, {childTransform.y.toFixed(1)}) |
-        Rotation: {childTransform.rotation.toFixed(1)}° |
-        Scale: {childTransform.scaleX.toFixed(2)}x |
-        Zoom: {(scale * 100).toFixed(0)}%
-      </Typography>
+      <Stack
+        direction="row"
+        spacing={1.5}
+        alignItems="center"
+        justifyContent="center"
+        sx={{ width: CANVAS_WIDTH, mt: 0.5 }}
+      >
+        {(
+          [
+            { key: 'x', label: 'X (px)', value: originalPlacement?.x, step: 1 },
+            { key: 'y', label: 'Y (px)', value: originalPlacement?.y, step: 1 },
+            { key: 'rotation', label: 'Rotation (°)', value: childTransform.rotation, step: 0.1 },
+          ] as const
+        ).map(({ key, label, value, step }) => (
+          <TextField
+            key={key}
+            label={label}
+            type="number"
+            size="small"
+            sx={{ width: 110 }}
+            disabled={!originalPlacement}
+            value={
+              editingCoordField === key
+                ? editingCoordText
+                : (value ?? 0).toFixed(1)
+            }
+            onFocus={() => {
+              setEditingCoordField(key);
+              setEditingCoordText((value ?? 0).toFixed(1));
+            }}
+            onBlur={() => setEditingCoordField(null)}
+            onChange={(e) => {
+              setEditingCoordText(e.target.value);
+              const parsed = parseFloat(e.target.value);
+              if (Number.isFinite(parsed)) {
+                applyCoordinateEdit(key, parsed);
+              }
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                (e.target as HTMLInputElement).blur();
+              }
+            }}
+            inputProps={{ step }}
+          />
+        ))}
+        <Typography variant="caption" color="text.secondary">
+          Scale: {childTransform.scaleX.toFixed(2)}x | Zoom: {(scale * 100).toFixed(0)}%
+        </Typography>
+      </Stack>
     </Box>
   );
 };
