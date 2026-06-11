@@ -721,15 +721,23 @@ export function ProjectTree() {
     const noScale =
       micrograph.scalePixelsPerCentimeter === undefined ||
       micrograph.scalePixelsPerCentimeter === null;
-    if (noScale) {
-      const isAssociated = !!micrograph.parentID;
-      if (isAssociated) {
-        setEditLocationMicrographId(micrographId);
-        setShowEditLocation(true);
-      } else {
-        setSetScaleMicrographId(micrographId);
-        setShowSetScale(true);
-      }
+    const isAssociated = !!micrograph.parentID;
+    // Mirror the warning-icon criteria (needsLocation in renderMicrograph): an
+    // associated micrograph with a scale but no placement is still un-set-up and
+    // must go through the location dialog, not open in the viewer.
+    const hasLocation =
+      micrograph.offsetInParent ||
+      micrograph.pointInParent ||
+      micrograph.xOffset !== undefined ||
+      micrograph.placementType === 'affine';
+    if (isAssociated && (noScale || !hasLocation)) {
+      setEditLocationMicrographId(micrographId);
+      setShowEditLocation(true);
+      return;
+    }
+    if (!isAssociated && noScale) {
+      setSetScaleMicrographId(micrographId);
+      setShowSetScale(true);
       return;
     }
     selectMicrograph(micrographId);
