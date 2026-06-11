@@ -407,17 +407,10 @@ function App() {
 
     // Open Project menu item - opens file dialog for .smz files
     unsubscribers.push(window.api.onOpenProject(async () => {
-      // Check for unsaved changes first
-      const isDirty = useAppStore.getState().isDirty;
-      const currentProject = useAppStore.getState().project;
-
-      if (isDirty && currentProject) {
-        const shouldContinue = window.confirm(
-          'You have unsaved changes. Save before opening a new project?'
-        );
-        if (shouldContinue) {
-          await saveBeforeSwitch();
-        }
+      // saveBeforeSwitch prompts if dirty: OK saves, Cancel aborts the switch.
+      const proceed = await saveBeforeSwitch();
+      if (!proceed) {
+        return;
       }
 
       setImportSmzFilePath(null); // Clear any previous file path
@@ -428,17 +421,10 @@ function App() {
     unsubscribers.push(window.api.onOpenSmzFile(async (filePath: string) => {
       console.log('[App] Received file association open request:', filePath);
 
-      // Check for unsaved changes first
-      const isDirty = useAppStore.getState().isDirty;
-      const currentProject = useAppStore.getState().project;
-
-      if (isDirty && currentProject) {
-        const shouldContinue = window.confirm(
-          'You have unsaved changes. Save before opening a new project?'
-        );
-        if (shouldContinue) {
-          await saveBeforeSwitch();
-        }
+      // saveBeforeSwitch prompts if dirty: OK saves, Cancel aborts the switch.
+      const proceed = await saveBeforeSwitch();
+      if (!proceed) {
+        return;
       }
 
       // Set the file path and open the import dialog
@@ -1157,17 +1143,10 @@ function App() {
 
     // File: Open Remote Project menu item
     unsubscribers.push(window.api?.onOpenRemoteProject(async () => {
-      // Check for unsaved changes first
-      const isDirty = useAppStore.getState().isDirty;
-      const currentProject = useAppStore.getState().project;
-
-      if (isDirty && currentProject) {
-        const shouldContinue = window.confirm(
-          'You have unsaved changes. Save before opening a remote project?'
-        );
-        if (shouldContinue) {
-          await saveBeforeSwitch();
-        }
+      // saveBeforeSwitch prompts if dirty: OK saves, Cancel aborts the switch.
+      const proceed = await saveBeforeSwitch();
+      if (!proceed) {
+        return;
       }
 
       setIsRemoteProjectsOpen(true);
@@ -1175,17 +1154,10 @@ function App() {
 
     // File: Open Shared Project menu item
     unsubscribers.push(window.api?.onOpenSharedProject(async () => {
-      // Check for unsaved changes first
-      const isDirty = useAppStore.getState().isDirty;
-      const currentProject = useAppStore.getState().project;
-
-      if (isDirty && currentProject) {
-        const shouldContinue = window.confirm(
-          'You have unsaved changes. Save before opening a shared project?'
-        );
-        if (shouldContinue) {
-          await saveBeforeSwitch();
-        }
+      // saveBeforeSwitch prompts if dirty: OK saves, Cancel aborts the switch.
+      const proceed = await saveBeforeSwitch();
+      if (!proceed) {
+        return;
       }
 
       setIsSharedProjectOpen(true);
