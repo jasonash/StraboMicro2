@@ -394,7 +394,14 @@ function App() {
     const unsubscribers: Array<(() => void) | undefined> = [];
 
     // New Project menu item
-    unsubscribers.push(window.api.onNewProject(() => {
+    unsubscribers.push(window.api.onNewProject(async () => {
+      // A dirty project must be saved (or the switch aborted) before the new
+      // project replaces it — a never-saved project only enters Recent Projects
+      // on its first save, so skipping this loses it entirely.
+      const proceed = await saveBeforeSwitch();
+      if (!proceed) {
+        return;
+      }
       setIsNewProjectDialogOpen(true);
     }));
 
