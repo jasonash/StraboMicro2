@@ -126,7 +126,10 @@ export function NewProjectDialog({ isOpen, onClose }: NewProjectDialogProps) {
       onClose();
     } catch (error) {
       console.error('[NewProjectDialog] Error creating project folders:', error);
-      alert('Failed to create project folders. Please check the console for details.');
+      // Surface the underlying reason (e.g. a OneDrive-redirected Documents folder)
+      // so the user gets something actionable rather than a generic failure.
+      const message = error instanceof Error ? error.message : String(error);
+      alert(`Failed to create project folders.\n\n${message}`);
     }
   };
 

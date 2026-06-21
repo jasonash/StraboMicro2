@@ -1842,10 +1842,29 @@ export const useAppStore = create<AppState>()(
 
             const newProject = structuredClone(state.project);
 
+            // Auto-expand everything above the new micrograph so it is visible
+            // in the tree immediately — a collapsed parent made freshly added
+            // associated micrographs appear to vanish.
+            const expandedDatasets = new Set(state.expandedDatasets);
+            const expandedSamples = new Set(state.expandedSamples);
+            const expandedMicrographs = new Set(state.expandedMicrographs);
+
             for (const dataset of newProject.datasets || []) {
               const sample = dataset.samples?.find(s => s.id === sampleId);
               if (sample) {
                 sample.micrographs = [...(sample.micrographs || []), micrograph];
+
+                expandedDatasets.add(dataset.id);
+                expandedSamples.add(sample.id);
+                // Walk the parent chain (associated micrographs can nest);
+                // visited guards against a malformed parentID cycle.
+                const visited = new Set<string>();
+                let parentId = micrograph.parentID;
+                while (parentId && !visited.has(parentId)) {
+                  visited.add(parentId);
+                  expandedMicrographs.add(parentId);
+                  parentId = sample.micrographs.find(m => m.id === parentId)?.parentID;
+                }
                 break;
               }
             }
@@ -1855,6 +1874,9 @@ export const useAppStore = create<AppState>()(
               isDirty: true,
               micrographIndex: buildMicrographIndex(newProject),
               spotIndex: buildSpotIndex(newProject),
+              expandedDatasets: Array.from(expandedDatasets),
+              expandedSamples: Array.from(expandedSamples),
+              expandedMicrographs: Array.from(expandedMicrographs),
             };
           }),
 

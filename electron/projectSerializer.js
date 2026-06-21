@@ -389,7 +389,13 @@ function serializeMicrograph(micrograph) {
     polishDescription: micrograph.polishDescription || '',
     description: micrograph.description || '',
     notes: micrograph.notes || '',
-    scalePixelsPerCentimeter: roundForDb(micrograph.scalePixelsPerCentimeter) || 100,
+    // Preserve absence: an unset scale means "not yet located/scaled" (legacy app
+    // convention — it gates its own locate/scale flow on null). Defaulting to 100
+    // here would mark batch-imported micrographs as scaled on the first save.
+    scalePixelsPerCentimeter:
+      micrograph.scalePixelsPerCentimeter != null
+        ? roundForDb(micrograph.scalePixelsPerCentimeter)
+        : undefined,
     offsetInParent: serializeCoordinate(micrograph.offsetInParent),
     pointInParent: serializeCoordinate(micrograph.pointInParent),
     rotation: roundForDb(micrograph.rotation) || 0,
