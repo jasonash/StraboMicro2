@@ -23,31 +23,57 @@ const { app } = require('electron');
 const os = require('os');
 
 /**
- * Get the platform-specific path to the user's Documents folder
- * @returns {string} Path to Documents folder
+ * Fallback Documents path derived purely from the home/profile directory.
+ * Used only when Electron's shell-aware lookup is unavailable (e.g. app not
+ * ready) — assumes Documents lives literally under the user profile, which is
+ * NOT true when Windows redirects the Known Folder (OneDrive, roaming profiles).
+ * @returns {string} Best-guess path to Documents folder
  */
-function getDocumentsPath() {
+function getFallbackDocumentsPath() {
   const platform = os.platform();
 
   switch (platform) {
-    case 'darwin': // macOS
-      return path.join(os.homedir(), 'Documents');
-
     case 'win32': // Windows
-      // Try to get the Documents folder from Windows environment
-      const winDocuments = process.env.USERPROFILE
+      return process.env.USERPROFILE
         ? path.join(process.env.USERPROFILE, 'Documents')
         : path.join(os.homedir(), 'Documents');
-      return winDocuments;
 
-    case 'linux': // Linux
-      // Many Linux distros use ~/Documents
+    case 'darwin': // macOS
+    case 'linux': // Linux (most distros use ~/Documents)
       return path.join(os.homedir(), 'Documents');
 
     default:
       // Fallback to home directory
       return os.homedir();
   }
+}
+
+/**
+ * Get the platform-specific path to the user's Documents folder.
+ *
+ * Prefers Electron's `app.getPath('documents')`, which queries the OS shell for
+ * the real Known Folder location. This is essential on Windows, where Documents
+ * is routinely relocated by OneDrive "Known Folder Move" — in that case the
+ * literal `%USERPROFILE%\Documents` may not exist as a directory at all, which
+ * caused ENOTDIR failures creating the data folder (Sentry 2026-06-21).
+ *
+ * Falls back to a home-directory guess if the shell lookup is unavailable.
+ * @returns {string} Path to Documents folder
+ */
+function getDocumentsPath() {
+  try {
+    // app.getPath throws if the location can't be resolved; it also requires
+    // the app to be ready (always true by the time IPC handlers run).
+    const documents = app.getPath('documents');
+    if (documents) return documents;
+  } catch (error) {
+    console.warn(
+      `[ProjectFolders] app.getPath('documents') failed, falling back to profile path:`,
+      error
+    );
+  }
+
+  return getFallbackDocumentsPath();
 }
 
 /**
@@ -73,8 +99,26 @@ async function ensureStraboMicro2DataDir() {
   } catch (error) {
     // Directory doesn't exist, create it
     console.log(`[ProjectFolders] Creating StraboMicro2Data directory: ${dataPath}`);
-    await fs.promises.mkdir(dataPath, { recursive: true });
-    console.log(`[ProjectFolders] Successfully created StraboMicro2Data directory`);
+    try {
+      await fs.promises.mkdir(dataPath, { recursive: true });
+      console.log(`[ProjectFolders] Successfully created StraboMicro2Data directory`);
+    } catch (mkdirError) {
+      // ENOTDIR means a parent path component exists but is not a directory —
+      // typically a OneDrive Known Folder redirect leaving %USERPROFILE%\Documents
+      // as a non-directory placeholder. Surface something actionable instead of raw ENOTDIR.
+      if (mkdirError && mkdirError.code === 'ENOTDIR') {
+        const friendly = new Error(
+          `Could not create the StraboMicro2 data folder because the Documents folder ` +
+          `location ("${getDocumentsPath()}") is not a usable directory. This can happen ` +
+          `when OneDrive has redirected your Documents folder. Please ensure your Documents ` +
+          `folder is available locally, then try again.`
+        );
+        friendly.code = 'ENOTDIR';
+        friendly.path = mkdirError.path;
+        throw friendly;
+      }
+      throw mkdirError;
+    }
   }
 
   return dataPath;
