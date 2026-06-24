@@ -828,34 +828,57 @@ async function importSmz(smzPath, progressCallback) {
       log.info(`[SmzImport] Regenerating affine tiles for ${affineMicrographs.length} micrograph(s)...`);
       sendProgress('Regenerating affine tiles', 94, `Processing ${affineMicrographs.length} affine overlay(s)...`);
 
+      let affineSkipped = 0;
+      let affineFailed = 0;
+
       for (let i = 0; i < affineMicrographs.length; i++) {
         const micro = affineMicrographs[i];
+        const label = micro.name || micro.id;
         try {
           // Get the original image path
           const imagePath = path.join(folderPaths.images, micro.id);
 
-          // Check if image file exists
+          // If the source image is genuinely missing we can't bake here. That's
+          // recoverable — the renderer regenerates affine tiles on demand from the
+          // image + stored matrix on first view — but log it loudly with the overlay
+          // name and consequence rather than swallowing it silently.
           if (!fs.existsSync(imagePath)) {
-            log.warn(`[SmzImport] Image not found for affine micrograph ${micro.id}, skipping tile generation`);
+            log.warn(`[SmzImport] Source image missing for affine overlay "${label}" (${micro.id}) at ${imagePath}; skipping affine bake. It will be regenerated on first view if the image is present.`);
+            affineSkipped++;
             continue;
           }
 
-          log.info(`[SmzImport] Generating affine tiles for: ${micro.name || micro.id}`);
-          sendProgress('Regenerating affine tiles', 94 + Math.round((i / affineMicrographs.length) * 4), `Processing: ${micro.name || micro.id}`);
+          // Bake under the SAME hash the renderer reads from: the stored affineTileHash,
+          // or — for older projects that lack it — the image-path hash the renderer
+          // falls back to. Without this, generation could land under a hash nothing loads.
+          const affineHash = micro.affineTileHash || await tileCache.generateImageHash(imagePath);
+
+          log.info(`[SmzImport] Generating affine tiles for: ${label} (hash ${affineHash})`);
+          sendProgress('Regenerating affine tiles', 94 + Math.round((i / affineMicrographs.length) * 4), `Processing: ${label}`);
 
           // Generate affine tiles using the stored matrix
           await affineTileGenerator.generateAffineTiles(
             imagePath,
-            micro.affineTileHash,
+            affineHash,
             micro.affineMatrix
           );
 
-          log.info(`[SmzImport] Affine tiles regenerated for: ${micro.name || micro.id}`);
+          // Confirm the bake actually produced a loadable bundle.
+          if (await tileCache.hasAffineTiles(affineHash)) {
+            log.info(`[SmzImport] Affine tiles regenerated for: ${label}`);
+          } else {
+            log.warn(`[SmzImport] Affine generation for "${label}" left no metadata; overlay will regenerate on first view.`);
+            affineFailed++;
+          }
         } catch (err) {
-          log.error(`[SmzImport] Error generating affine tiles for ${micro.id}:`, err);
-          // Continue with other micrographs
+          log.error(`[SmzImport] Error generating affine tiles for ${label} (${micro.id}):`, err);
+          affineFailed++;
+          // Continue with other micrographs — the renderer self-heals on first view.
         }
       }
+
+      const affineOk = affineMicrographs.length - affineSkipped - affineFailed;
+      log.info(`[SmzImport] Affine tile generation: ${affineOk} ok, ${affineSkipped} skipped (missing image), ${affineFailed} failed`);
     }
 
     log.info(`[SmzImport] Import complete: ${projectName} (${projectId})`);
