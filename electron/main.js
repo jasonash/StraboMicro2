@@ -2754,6 +2754,53 @@ ipcMain.handle('tiles:generate-affine', async (event, imagePath, imageHash, affi
   }
 });
 
+// Tracks in-flight affine regenerations keyed by image hash so that a parent with
+// several renderer instances (and the renderer's own retries) only bakes once.
+const affineGenerationInFlight = new Map();
+
+/**
+ * Ensure affine-transformed tiles exist for an overlay, regenerating them on
+ * demand if the cache is missing or stale.
+ *
+ * Regular tiles self-heal — the viewer regenerates them from the source image
+ * whenever they're absent. Affine tiles historically did not: they were baked
+ * from the image + stored matrix only at registration time, so if they were
+ * evicted by the LRU cache, cleared, or never restored after an .smz import, the
+ * overlay failed to render with "Affine thumbnail not found". This rebuilds them
+ * under the SAME hash the renderer reads from (the micrograph's affineTileHash).
+ */
+ipcMain.handle('tiles:ensure-affine-tiles', async (event, imagePath, imageHash, affineMatrix) => {
+  try {
+    if (!imageHash || !Array.isArray(affineMatrix) || affineMatrix.length !== 6) {
+      return { success: false, error: 'Missing image hash or affine matrix' };
+    }
+
+    // Fast path: tiles already baked with a matching matrix — nothing to do.
+    if (await affineTileGenerator.hasMatchingAffineTiles(imageHash, affineMatrix)) {
+      return { success: true, regenerated: false };
+    }
+
+    // Coalesce concurrent regeneration of the same overlay onto one promise.
+    let pending = affineGenerationInFlight.get(imageHash);
+    if (!pending) {
+      pending = (async () => {
+        const resolvedPath = await resolveImagePathWithLegacyFallback(imagePath);
+        log.info(`[Affine] Regenerating missing affine tiles for ${imageHash} from ${resolvedPath}`);
+        // Drop any stale/partial affine subdir before re-baking under this hash.
+        await tileCache.deleteAffineTiles(imageHash);
+        await affineTileGenerator.generateAffineTiles(resolvedPath, imageHash, affineMatrix);
+      })().finally(() => affineGenerationInFlight.delete(imageHash));
+      affineGenerationInFlight.set(imageHash, pending);
+    }
+    await pending;
+
+    return { success: true, regenerated: true };
+  } catch (error) {
+    log.error('[Affine] Failed to ensure affine tiles:', error);
+    return { success: false, error: error.message };
+  }
+});
+
 /**
  * Force-rebuild the tile cache for every micrograph in a project.
  *
@@ -2795,7 +2842,9 @@ ipcMain.handle('tiles:rebuild-project', async (event, projectId, projectData) =>
         const resolvedPath = await resolveImagePathWithLegacyFallback(candidatePath);
         const hash = await tileCache.generateImageHash(resolvedPath);
 
-        // Wipe the entire image cache (regular tiles, thumbnail, medium, and any affine subdir).
+        // Wipe the regular image cache (tiles, thumbnail, medium) under the project-path
+        // hash. Affine tiles usually live under a different hash and are cleared separately
+        // below before being re-baked.
         await tileCache.clearImageCache(hash);
 
         event.sender.send('tiles:rebuild-progress', {
@@ -2826,7 +2875,13 @@ ipcMain.handle('tiles:rebuild-project', async (event, projectId, projectData) =>
             totalTiles: 0,
             status: 'processing',
           });
-          await affineTileGenerator.generateAffineTiles(resolvedPath, hash, micrograph.affineMatrix);
+          // Affine tiles live under affineTileHash (computed from the scratch path at
+          // registration time), which is usually a DIFFERENT cache dir than the regular
+          // project-path hash cleared above. Regenerate under that same hash — and clear
+          // its affine subdir first — so the renderer actually finds the rebuilt tiles.
+          const affineHash = micrograph.affineTileHash || hash;
+          await tileCache.deleteAffineTiles(affineHash);
+          await affineTileGenerator.generateAffineTiles(resolvedPath, affineHash, micrograph.affineMatrix);
         }
       } catch (err) {
         log.error(`[RebuildTiles] Failed for ${micrographName}:`, err);
