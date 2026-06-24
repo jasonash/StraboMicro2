@@ -223,6 +223,8 @@ contextBridge.exposeInMainWorld('api', {
   // Affine tile operations (3-point registration placement)
   generateAffineTiles: (imagePath, imageHash, affineMatrix) =>
     ipcRenderer.invoke('tiles:generate-affine', imagePath, imageHash, affineMatrix),
+  ensureAffineTiles: (imagePath, imageHash, affineMatrix) =>
+    ipcRenderer.invoke('tiles:ensure-affine-tiles', imagePath, imageHash, affineMatrix),
   loadAffineTile: (imageHash, tileX, tileY) =>
     ipcRenderer.invoke('tiles:load-affine-tile', imageHash, tileX, tileY),
   loadAffineTilesBatch: (imageHash, tiles) =>
