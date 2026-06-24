@@ -440,6 +440,15 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
           console.log(`[AssociatedImageRenderer] Target mode: ${targetMode}`);
         }
 
+        // Affine tiles don't self-heal like regular tiles. If they're missing from the
+        // cache (LRU eviction, .smz import, interrupted registration) the load below throws
+        // "Affine thumbnail not found". A failed first attempt bumps retryCount; on the
+        // retry, regenerate the tiles on demand from the source image + stored matrix under
+        // the same hash before loading. Gated on retryCount so the healthy path pays nothing.
+        if (isAffine && micrograph.affineMatrix && imageState.retryCount > 0) {
+          await window.api!.ensureAffineTiles(fullPath, imageHash, micrograph.affineMatrix);
+        }
+
         if (targetMode === 'THUMBNAIL') {
           // Load 512x512 thumbnail
           const thumbnailDataUrl = isAffine

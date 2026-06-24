@@ -252,6 +252,11 @@ interface Window {
       imageHash: string,
       affineMatrix: [number, number, number, number, number, number]
     ) => Promise<AffineTileGenerationResult>;
+    ensureAffineTiles: (
+      imagePath: string,
+      imageHash: string,
+      affineMatrix: [number, number, number, number, number, number]
+    ) => Promise<{ success: boolean; regenerated?: boolean; error?: string }>;
     loadAffineTile: (imageHash: string, tileX: number, tileY: number) => Promise<string | null>;
     loadAffineTilesBatch: (imageHash: string, tiles: TileCoordinate[]) => Promise<TileData[]>;
     loadAffineThumbnail: (imageHash: string) => Promise<string>;
