@@ -810,6 +810,10 @@ interface Window {
         imagePath: string;
         tool: 'edge-fabric' | 'color-index' | 'edge-detect' | 'mode';
         toolParams: Record<string, unknown>;
+        // Dimensions of the medium-resolution preview the tool sliders were tuned
+        // against; lets resolution-sensitive tools reproduce the previewed result.
+        previewWidth?: number;
+        previewHeight?: number;
       }) => Promise<{
         success: boolean;
         identifier?: string;
