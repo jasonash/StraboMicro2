@@ -584,6 +584,35 @@ export function StraboToolsDialog({ open, onClose, initialMicrographId }: Strabo
       const newMicrographId = uuidv4();
       await window.api?.moveFromScratch(result.identifier, project.id, newMicrographId);
 
+      // For an affine-placed (3-point-registered) source, the overlay renders from
+      // pre-baked tiles keyed by affineTileHash (the *warped* image content), not from
+      // the live image like rectangle/point placements do. The sibling shares the
+      // source's placement geometry (same matrix/bounds, because the analysis image is
+      // pixel-identical in size), but it must bake its OWN affine tiles from the new
+      // analysis image under a DISTINCT hash — reusing the source's hash would render
+      // the source's pixels. Bake here, before addMicrograph, so the overlay and the
+      // composite thumbnail both pick up the sibling's content immediately.
+      const affineMatrix = sourceMicro.affineMatrix;
+      const isAffineSource =
+        sourceMicro.placementType === 'affine' && Array.isArray(affineMatrix) && affineMatrix.length === 6;
+      let affineTileHash: string | undefined;
+      if (isAffineSource && affineMatrix) {
+        setSaveProgress({ stage: 'Generating overlay tiles...', percent: 0 });
+        const siblingImagePath = `${folderPaths.images}/${newMicrographId}`;
+        // Use the new micrograph id as the cache key: unique, stable, and distinct from
+        // the source's content hash. affineTileHash is decoupled from the image's content
+        // hash by design (see the field doc), so any stable per-overlay key is valid.
+        affineTileHash = newMicrographId;
+        const affineResult = await window.api?.generateAffineTiles(
+          siblingImagePath,
+          affineTileHash,
+          affineMatrix
+        );
+        if (!affineResult?.success) {
+          throw new Error(`Affine tile generation failed: ${affineResult?.error ?? 'unknown error'}`);
+        }
+      }
+
       // Build metadata for new micrograph
       const straboToolsResult: StraboToolsResult = {
         ...result.analyticalResults as Partial<StraboToolsResult>,
@@ -598,13 +627,26 @@ export function StraboToolsDialog({ open, onClose, initialMicrographId }: Strabo
         imagePath: newMicrographId,
         imageWidth: result.width,
         imageHeight: result.height,
-        // Inherit from source
+        // Inherit the full spatial placement from the source so the sibling sits exactly
+        // where the original does (location + scale). Covers rectangle, point, and affine.
         parentID: sourceMicro.parentID,
+        placementType: sourceMicro.placementType,
         offsetInParent: sourceMicro.offsetInParent,
+        pointInParent: sourceMicro.pointInParent,
+        xOffset: sourceMicro.xOffset,
+        yOffset: sourceMicro.yOffset,
         rotation: sourceMicro.rotation,
         scaleX: sourceMicro.scaleX,
         scaleY: sourceMicro.scaleY,
         scalePixelsPerCentimeter: sourceMicro.scalePixelsPerCentimeter,
+        // Affine geometry (only meaningful when placementType === 'affine'); the tiles
+        // are freshly baked above under the sibling's own affineTileHash.
+        affineMatrix: sourceMicro.affineMatrix,
+        controlPoints: sourceMicro.controlPoints,
+        affineBoundsOffset: sourceMicro.affineBoundsOffset,
+        affineTransformedWidth: sourceMicro.affineTransformedWidth,
+        affineTransformedHeight: sourceMicro.affineTransformedHeight,
+        affineTileHash,
         instrument: sourceMicro.instrument ? { ...sourceMicro.instrument } : undefined,
         // Analysis results
         straboTools: straboToolsResult,
