@@ -428,7 +428,7 @@ function kMeansToRGBA(data, width, height, channels, numPhases) {
  * @param {Function} params.progressCallback - (stage, percent) => void
  * @returns {{ identifier: string, width: number, height: number, analyticalResults: Object }}
  */
-async function processFullResolution({ imagePath, tool, toolParams, progressCallback }) {
+async function processFullResolution({ imagePath, tool, toolParams, previewWidth, previewHeight, progressCallback }) {
   const progress = (stage, percent) => {
     if (progressCallback) progressCallback({ stage, percent });
   };
@@ -460,12 +460,47 @@ async function processFullResolution({ imagePath, tool, toolParams, progressCall
 
   switch (tool) {
     case 'edge-detect': {
-      const gray = toGrayscale(data, width, height, channels);
-      const sobel = applySobel(gray, width, height);
-      const result = edgeDetectToRGBA(sobel.magnitude, sobel.width, sobel.height, toolParams.threshold || 128);
-      resultBuffer = result.buffer;
-      resultWidth = result.width;
-      resultHeight = result.height;
+      // Edge magnitudes are normalized per-image (by the max gradient) before the
+      // threshold is applied — see edgeDetectToRGBA — so the SAME threshold selects a
+      // different set of edges at a different resolution: the full-res image's max
+      // gradient is dominated by its sharpest transitions, pushing subtler edges below
+      // the cutoff. The user tunes the slider against the medium-resolution preview, so
+      // detect at that resolution to reproduce exactly what they saw, then upscale the
+      // edge map back to full resolution so the sibling keeps the source's pixel
+      // dimensions (required for the inherited overlay placement to line up).
+      let edgeData = data;
+      let edgeW = width;
+      let edgeH = height;
+      let edgeCh = channels;
+      if (previewWidth && previewWidth < width) {
+        const downscaled = await sharp(imagePath)
+          .resize(previewWidth)
+          .ensureAlpha()
+          .raw()
+          .toBuffer({ resolveWithObject: true });
+        edgeData = downscaled.data;
+        edgeW = downscaled.info.width;
+        edgeH = downscaled.info.height;
+        edgeCh = downscaled.info.channels;
+      }
+      const gray = toGrayscale(edgeData, edgeW, edgeH, edgeCh);
+      const sobel = applySobel(gray, edgeW, edgeH);
+      const edged = edgeDetectToRGBA(sobel.magnitude, sobel.width, sobel.height, toolParams.threshold || 128);
+      if (edgeW !== width || edgeH !== height) {
+        const upscaled = await sharp(edged.buffer, {
+          raw: { width: edged.width, height: edged.height, channels: 4 },
+        })
+          .resize(width, height, { fit: 'fill' })
+          .raw()
+          .toBuffer({ resolveWithObject: true });
+        resultBuffer = upscaled.data;
+        resultWidth = upscaled.info.width;
+        resultHeight = upscaled.info.height;
+      } else {
+        resultBuffer = edged.buffer;
+        resultWidth = edged.width;
+        resultHeight = edged.height;
+      }
       analyticalResults = {
         tool: 'edge-detect',
         edgeDetectThreshold: toolParams.threshold || 128,

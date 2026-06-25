@@ -573,6 +573,10 @@ export function StraboToolsDialog({ open, onClose, initialMicrographId }: Strabo
         imagePath,
         tool: activeTab,
         toolParams,
+        // Resolution the slider was tuned against (the medium preview), so resolution-
+        // sensitive tools (edge-detect) reproduce the previewed result at full res.
+        previewWidth: originalImageDataRef.current?.width,
+        previewHeight: originalImageDataRef.current?.height,
       });
 
       if (!result?.success || !result.identifier) {
@@ -712,6 +716,10 @@ export function StraboToolsDialog({ open, onClose, initialMicrographId }: Strabo
         imagePath,
         tool: activeTab,
         toolParams,
+        // Resolution the slider was tuned against (the medium preview), so resolution-
+        // sensitive tools (edge-detect) reproduce the previewed result at full res.
+        previewWidth: originalImageDataRef.current?.width,
+        previewHeight: originalImageDataRef.current?.height,
       });
 
       if (!result?.success || !result.identifier) {
