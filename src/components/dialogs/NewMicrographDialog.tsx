@@ -368,6 +368,14 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
   const [canvasTool, setCanvasTool] = useState<Tool>('pointer');
   const [isFlipped, setIsFlipped] = useState(false);
   const [isFlipping, setIsFlipping] = useState(false);
+  // Guard against duplicate/concurrent submissions of the wizard. The ref is the
+  // source of truth for correctness: it updates synchronously, so a rapid
+  // double-click on Finish cannot start a second interleaved creation (which
+  // previously produced an image-less "ghost" micrograph plus a scratch-move
+  // ENOENT, because the first run had already consumed the scratch files).
+  // isCreating only drives the button's disabled state / label for feedback.
+  const isFinishingRef = useRef(false);
+  const [isCreating, setIsCreating] = useState(false);
   const canvasRef = useRef<ScaleBarCanvasRef>(null);
 
   // State for corresponding cross-polarized (XPL) image
@@ -899,7 +907,7 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
     onClose();
   };
 
-  const handleFinish = async () => {
+  const runFinish = async () => {
     // For associated micrographs, we need to find the sampleId from the parent micrograph
     let targetSampleId = sampleId;
 
@@ -1506,6 +1514,27 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
       alert(
         `Failed to create micrograph: ${error instanceof Error ? error.message : 'Unknown error'}`
       );
+    }
+  };
+
+  const handleFinish = async () => {
+    // Re-entrancy guard. Finish stays clickable while the (async) creation runs,
+    // so a double-click used to invoke this twice; the two runs interleaved over
+    // shared scratch-identifier state, leaving a ghost micrograph with no image
+    // file plus an image:move-from-scratch ENOENT. Bail out on any re-entry.
+    if (isFinishingRef.current) {
+      console.warn(
+        '[NewMicrographDialog] Finish already in progress — ignoring duplicate invocation'
+      );
+      return;
+    }
+    isFinishingRef.current = true;
+    setIsCreating(true);
+    try {
+      await runFinish();
+    } finally {
+      isFinishingRef.current = false;
+      setIsCreating(false);
     }
   };
 
@@ -4843,8 +4872,12 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
               Next
             </Button>
           ) : (
-            <Button variant="contained" onClick={handleFinish} disabled={!canProceed()}>
-              Finish
+            <Button
+              variant="contained"
+              onClick={handleFinish}
+              disabled={!canProceed() || isCreating}
+            >
+              {isCreating ? 'Creating…' : 'Finish'}
             </Button>
           )}
         </DialogActions>
