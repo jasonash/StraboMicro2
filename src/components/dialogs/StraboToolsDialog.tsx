@@ -132,6 +132,10 @@ export function StraboToolsDialog({ open, onClose, initialMicrographId }: Strabo
 
   // Save state
   const [isSaving, setIsSaving] = useState(false);
+  // Synchronous re-entrancy guard shared by both save handlers (Save as Sibling /
+  // Replace Original are mutually exclusive). Blocks a same-tick double-click that
+  // the `isSaving` state hasn't yet disabled the button against.
+  const isSavingRef = useRef(false);
   const [saveProgress, setSaveProgress] = useState<{ stage: string; percent: number } | null>(null);
   const [saveMenuOpen, setSaveMenuOpen] = useState(false);
   const [showReplaceWarning, setShowReplaceWarning] = useState(false);
@@ -549,12 +553,13 @@ export function StraboToolsDialog({ open, onClose, initialMicrographId }: Strabo
   // ─── Save as Sibling ─────────────────────────────────────────────────────
 
   const handleSaveAsSibling = useCallback(async () => {
-    if (!project || !selectedMicrographId || isSaving) return;
+    if (!project || !selectedMicrographId || isSaving || isSavingRef.current) return;
 
     const sampleId = findSampleIdForMicrograph(selectedMicrographId);
     const sourceMicro = findMicrograph(selectedMicrographId);
     if (!sampleId || !sourceMicro) return;
 
+    isSavingRef.current = true;
     setIsSaving(true);
     setSaveProgress({ stage: 'Preparing...', percent: 0 });
 
@@ -685,6 +690,7 @@ export function StraboToolsDialog({ open, onClose, initialMicrographId }: Strabo
       console.error('StraboTools: Save as sibling failed:', err);
     } finally {
       unsubProgress?.();
+      isSavingRef.current = false;
       setTimeout(() => {
         setIsSaving(false);
         setSaveProgress(null);
@@ -695,9 +701,10 @@ export function StraboToolsDialog({ open, onClose, initialMicrographId }: Strabo
   // ─── Replace Original ─────────────────────────────────────────────────────
 
   const handleReplaceOriginal = useCallback(async () => {
-    if (!project || !selectedMicrographId || isSaving) return;
+    if (!project || !selectedMicrographId || isSaving || isSavingRef.current) return;
 
     setShowReplaceWarning(false);
+    isSavingRef.current = true;
     setIsSaving(true);
     setSaveProgress({ stage: 'Preparing...', percent: 0 });
 
@@ -789,6 +796,7 @@ export function StraboToolsDialog({ open, onClose, initialMicrographId }: Strabo
       console.error('StraboTools: Replace original failed:', err);
     } finally {
       unsubProgress?.();
+      isSavingRef.current = false;
       setTimeout(() => {
         setIsSaving(false);
         setSaveProgress(null);
