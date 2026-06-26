@@ -139,6 +139,10 @@ interface AppState {
   project: ProjectMetadata | null;
   projectFilePath: string | null;
   isDirty: boolean;
+  // Transient (not persisted): false until the startup validation of the
+  // rehydrated project has settled. Gates the Viewer's initial image load so it
+  // doesn't race the validation that clears a stale session for a deleted project.
+  startupValidationComplete: boolean;
 
   // ========== NAVIGATION STATE ==========
   activeDatasetId: string | null;
@@ -399,6 +403,9 @@ interface AppState {
   mergeSpots: (spotIds: string[]) => string | null;
   /** Split a polygon spot with a line, creating multiple spots */
   splitSpot: (spotId: string, splitLine: SimpleCoord[]) => string[] | null;
+
+  /** Mark startup project validation as settled, unblocking the Viewer's initial load */
+  setStartupValidationComplete: (value: boolean) => void;
 
   // ========== QUICK CLASSIFY ACTIONS ==========
   /** Toggle Quick Classify toolbar visibility */
@@ -897,6 +904,8 @@ export const useAppStore = create<AppState>()(
           expandedMicrographs: [],
 
           navigationGuard: null,
+
+          startupValidationComplete: false,
 
           // Quick Classify state
           quickClassifyVisible: false,
@@ -3015,6 +3024,8 @@ export const useAppStore = create<AppState>()(
           // ========== NAVIGATION GUARD ACTIONS ==========
 
           setNavigationGuard: (guard) => set({ navigationGuard: guard }),
+
+          setStartupValidationComplete: (value) => set({ startupValidationComplete: value }),
 
           // ========== QUICK CLASSIFY ACTIONS ==========
 

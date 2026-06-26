@@ -24,6 +24,7 @@ const Viewer: React.FC = () => {
   const quickClassifyVisible = useAppStore((state) => state.quickClassifyVisible);
   const toggleSiblingView = useAppStore((state) => state.toggleSiblingView);
   const getSiblingId = useAppStore((state) => state.getSiblingId);
+  const startupValidationComplete = useAppStore((state) => state.startupValidationComplete);
 
   // Get names for status bar title
   const activeMicrograph = activeMicrographId ? findMicrographById(project, activeMicrographId) : null;
@@ -35,6 +36,15 @@ const Viewer: React.FC = () => {
 
   React.useEffect(() => {
     const buildImagePath = async () => {
+      // Wait until startup project validation has settled before loading the
+      // rehydrated micrograph. If the persisted project's folder was deleted,
+      // App's validation clears the session; loading concurrently would stat a
+      // missing file and emit a harmless-but-Sentry-reported ENOENT. The effect
+      // re-runs when startupValidationComplete flips, so nothing is lost.
+      if (!startupValidationComplete) {
+        return;
+      }
+
       if (!project || !activeMicrographId || !project.datasets || !window.api) {
         setActiveMicrographPath(null);
         return;
@@ -77,7 +87,7 @@ const Viewer: React.FC = () => {
     };
 
     buildImagePath();
-  }, [project, activeMicrographId]);
+  }, [project, activeMicrographId, startupValidationComplete]);
 
   // Load collapse state from localStorage
   const [isBottomPanelCollapsed, setIsBottomPanelCollapsed] = useState(() => {
