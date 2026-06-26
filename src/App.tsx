@@ -204,6 +204,7 @@ function App() {
   const [startupMessageUuid, setStartupMessageUuid] = useState('');
   const setSplitModeSpotId = useAppStore(state => state.setSplitModeSpotId);
   const closeProject = useAppStore(state => state.closeProject);
+  const setStartupValidationComplete = useAppStore(state => state.setStartupValidationComplete);
   const project = useAppStore(state => state.project);
   const setTheme = useAppStore(state => state.setTheme);
   const setShowRulers = useAppStore(state => state.setShowRulers);
@@ -307,28 +308,38 @@ function App() {
       if (hasValidatedProject.current) return;
       hasValidatedProject.current = true;
 
-      if (!window.api?.validateProjectExists) return;
+      try {
+        if (!window.api?.validateProjectExists) return;
 
-      const currentProject = useAppStore.getState().project;
-      if (!currentProject?.id) return;
+        const currentProject = useAppStore.getState().project;
+        if (!currentProject?.id) return;
 
-      console.log('[App] Validating persisted project:', currentProject.id);
-      const result = await window.api.validateProjectExists(currentProject.id);
+        console.log('[App] Validating persisted project:', currentProject.id);
+        const result = await window.api.validateProjectExists(currentProject.id);
 
-      if (!result.exists) {
-        console.warn('[App] Project folder not found, clearing session:', result.reason);
-        // Clear the project from state
-        closeProject();
-        // Clear persisted session
-        await window.api.session.clear();
-        // Show user-friendly message
-        alert(`The previously opened project could not be found on disk.\n\nReason: ${result.reason}\n\nPlease open or create a new project.`);
-      } else {
-        console.log('[App] Project folder validated successfully');
-        // Fire-and-forget: clean up orphaned associated files on disk
-        window.api.cleanupOrphanedAssociatedFiles(currentProject.id, currentProject).catch((error) => {
-          console.error('[App] Failed to clean up orphaned associated files:', error);
-        });
+        if (!result.exists) {
+          console.warn('[App] Project folder not found, clearing session:', result.reason);
+          // Clear the project from state
+          closeProject();
+          // Clear persisted session
+          await window.api.session.clear();
+          // Show user-friendly message
+          alert(`The previously opened project could not be found on disk.\n\nReason: ${result.reason}\n\nPlease open or create a new project.`);
+        } else {
+          console.log('[App] Project folder validated successfully');
+          // Fire-and-forget: clean up orphaned associated files on disk
+          window.api.cleanupOrphanedAssociatedFiles(currentProject.id, currentProject).catch((error) => {
+            console.error('[App] Failed to clean up orphaned associated files:', error);
+          });
+        }
+      } catch (error) {
+        console.error('[App] Error validating persisted project:', error);
+      } finally {
+        // Validation has settled (project valid, cleared, or nothing to check) —
+        // unblock the Viewer's initial image load. This prevents the load from
+        // racing a session-clear for a deleted project and logging a (harmless,
+        // but Sentry-reported) ENOENT. See fix/gate-viewer-load-on-validation.
+        setStartupValidationComplete(true);
       }
     };
 
