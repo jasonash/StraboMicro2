@@ -6,7 +6,7 @@
  * The direction is derived from the source micrograph's imageType.
  */
 
-import { useState, useCallback, useEffect, useMemo } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -50,6 +50,10 @@ export function AddSiblingDialog({
   const [imageWidth, setImageWidth] = useState<number>(0);
   const [imageHeight, setImageHeight] = useState<number>(0);
   const [loading, setLoading] = useState(false);
+  // Synchronous re-entrancy guard: blocks a same-tick double-click from running
+  // handleAdd twice (the second pass would re-move an already-moved scratch file
+  // → ENOENT). Updates synchronously, unlike the `loading` state the button uses.
+  const isAddingRef = useRef(false);
   const [conversionProgress, setConversionProgress] = useState<{
     stage: string;
     percent: number;
@@ -203,6 +207,11 @@ export function AddSiblingDialog({
       return;
     }
 
+    // Bail out if a creation is already in flight (set before the first await,
+    // so a same-tick second invocation sees it). Reset in the finally below.
+    if (isAddingRef.current) return;
+    isAddingRef.current = true;
+
     try {
       setLoading(true);
       setError(null);
@@ -320,6 +329,8 @@ export function AddSiblingDialog({
       console.error(`[AddSiblingDialog] Error adding ${siblingLabel}:`, err);
       setError(err instanceof Error ? err.message : `Failed to add ${siblingLabel} image`);
       setLoading(false);
+    } finally {
+      isAddingRef.current = false;
     }
   }, [sourceMicrograph, sampleId, scratchIdentifier, project, siblingName, siblingFileName, imageWidth, imageHeight, addMicrograph, linkSiblingImages, onClose, sourceIsPPL, siblingLabel, sourceLabel, siblingType]);
 

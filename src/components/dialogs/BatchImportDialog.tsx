@@ -16,7 +16,7 @@
  * IMPORTANT: Full data model compatibility with legacy JavaFX app is maintained.
  */
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -91,6 +91,9 @@ export const BatchImportDialog: React.FC<BatchImportDialogProps> = ({
 
   // Import state
   const [isImporting, setIsImporting] = useState(false);
+  // Synchronous re-entrancy guard for the import run — blocks a same-tick double
+  // -click before the `isImporting` state has re-rendered the button as disabled.
+  const isImportingRef = useRef(false);
   const [importProgress, setImportProgress] = useState({ current: 0, total: 0, currentFile: '' });
   const [importErrors, setImportErrors] = useState<string[]>([]);
 
@@ -311,6 +314,7 @@ export const BatchImportDialog: React.FC<BatchImportDialogProps> = ({
   };
 
   const handleImport = async () => {
+    if (isImportingRef.current) return;
     if (!project?.id) {
       console.error('No project ID found');
       return;
@@ -335,6 +339,7 @@ export const BatchImportDialog: React.FC<BatchImportDialogProps> = ({
       return;
     }
 
+    isImportingRef.current = true;
     setIsImporting(true);
     setImportProgress({ current: 0, total: validFiles.length, currentFile: '' });
     setImportErrors([]);
@@ -496,6 +501,7 @@ export const BatchImportDialog: React.FC<BatchImportDialogProps> = ({
     await window.api!.releaseMemory();
 
     setImportErrors(errors);
+    isImportingRef.current = false;
     setIsImporting(false);
 
     // If all successful, close dialog
