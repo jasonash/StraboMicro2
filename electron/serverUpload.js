@@ -141,17 +141,31 @@ async function uploadZipFile(zipPath, projectId, overwrite, progressCallback) {
 
       log.info('[ServerUpload] File size:', totalBytes, 'bytes');
 
-      // Read the file into a buffer (for reliable FormData handling)
-      const fileBuffer = await fs.promises.readFile(zipPath);
+      // Stream the file from disk instead of reading it into a single Buffer.
+      // A large project (3 GB+) can exceed Node's max Buffer size (~2 GiB), which
+      // made fs.readFile throw ERR_FS_FILE_TOO_LARGE ("File size (...) is greater
+      // than 2 GiB") before a single byte was ever sent. Streaming has no such
+      // ceiling and keeps memory usage flat regardless of project size.
+      const fileStream = fs.createReadStream(zipPath);
+      fileStream.on('error', (error) => {
+        console.error('[ServerUpload] File read error:', error);
+        resolve({ success: false, error: error.message });
+      });
 
-      // Create form data with all required fields
-      // Order matters for some servers - put text fields first, then file
+      // Create form data with all required fields.
+      // Order matters for some servers - put text fields first, then file.
+      // Append the fs read stream directly: this is form-data's native, fully
+      // supported path. (Tee'ing it through our own Transform tripped a
+      // combined-stream/DelayedStream bug on Electron's bundled Node 18.)
+      // knownLength lets form-data compute an accurate Content-Length without
+      // buffering the stream.
       const form = new FormData();
       form.append('overwrite', overwrite ? 'yes' : 'no');
       form.append('project_id', projectId);
-      form.append('microProject', fileBuffer, {
+      form.append('microProject', fileStream, {
         filename: 'temp.zip',
         contentType: 'application/octet-stream',
+        knownLength: totalBytes,
       });
 
       // Build Basic Auth header for service credentials
@@ -165,6 +179,27 @@ async function uploadZipFile(zipPath, projectId, overwrite, progressCallback) {
       // Parse the upload URL
       const uploadUrl = new URL(ENDPOINTS.FILE_UPLOAD);
 
+      // Compute the full multipart Content-Length up front so the server gets a
+      // well-formed request. form-data reports it via callback; if it can't, we
+      // omit the header and fall back to chunked transfer-encoding.
+      const contentLength = await new Promise((resolveLen) => {
+        form.getLength((err, len) => resolveLen(err ? null : len));
+      });
+
+      // Report progress by observing bytes as they leave the form toward the
+      // socket. This is a passive listener alongside form.pipe(req) below (both
+      // receive the same chunks). The byte count includes minor multipart
+      // overhead, so the displayed file-byte count is capped at the real size.
+      let bytesSent = 0;
+      form.on('data', (chunk) => {
+        bytesSent += chunk.length;
+        progressCallback({
+          bytesUploaded: Math.min(totalBytes, bytesSent),
+          bytesTotal: totalBytes,
+          percentage: Math.min(100, Math.round((bytesSent / (contentLength || totalBytes)) * 100)),
+        });
+      });
+
       // Set up the request options
       const options = {
         hostname: uploadUrl.hostname,
@@ -174,11 +209,9 @@ async function uploadZipFile(zipPath, projectId, overwrite, progressCallback) {
         headers: {
           'Authorization': `Basic ${authBase64}`,
           ...form.getHeaders(),
+          ...(contentLength != null ? { 'Content-Length': contentLength } : {}),
         },
       };
-
-      // Track bytes sent for progress
-      let bytesSent = 0;
 
       const req = https.request(options, (res) => {
         let responseData = '';
@@ -230,51 +263,11 @@ async function uploadZipFile(zipPath, projectId, overwrite, progressCallback) {
         resolve({ success: false, error: error.message });
       });
 
-      // Track upload progress by monitoring the socket
-      req.on('socket', (socket) => {
-        socket.on('data', () => {
-          // This is for response data, not upload
-        });
-      });
-
-      // Use form-data's pipe with progress tracking
-      // Get the form as a buffer and write in chunks to track progress
-      const formBuffer = form.getBuffer();
-      const chunkSize = 64 * 1024; // 64KB chunks
-      let offset = 0;
-
-      const writeNextChunk = () => {
-        while (offset < formBuffer.length) {
-          const end = Math.min(offset + chunkSize, formBuffer.length);
-          const chunk = formBuffer.slice(offset, end);
-          const canContinue = req.write(chunk);
-
-          bytesSent += chunk.length;
-
-          // Calculate progress based on form buffer (includes overhead) but display file size
-          const progressPercent = Math.min(100, Math.round((bytesSent / formBuffer.length) * 100));
-          const estimatedFileBytes = Math.min(totalBytes, Math.round((bytesSent / formBuffer.length) * totalBytes));
-
-          progressCallback({
-            bytesUploaded: estimatedFileBytes,
-            bytesTotal: totalBytes,
-            percentage: progressPercent,
-          });
-
-          offset = end;
-
-          if (!canContinue) {
-            // Wait for drain event before continuing
-            req.once('drain', writeNextChunk);
-            return;
-          }
-        }
-
-        // All data written, end the request
-        req.end();
-      };
-
-      writeNextChunk();
+      // Stream the multipart body straight to the request. form-data applies
+      // backpressure as the socket drains and calls req.end() when the stream is
+      // exhausted, so the whole file never lives in memory at once. Progress is
+      // reported by progressCounter as bytes flow through it.
+      form.pipe(req);
 
     } catch (error) {
       console.error('[ServerUpload] Upload error:', error);
