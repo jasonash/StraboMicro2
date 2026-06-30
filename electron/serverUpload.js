@@ -10,7 +10,6 @@
 const fs = require('fs');
 const path = require('path');
 const https = require('https');
-const { Transform } = require('stream');
 const log = require('electron-log');
 const { app } = require('electron');
 const FormData = require('form-data');
@@ -147,34 +146,23 @@ async function uploadZipFile(zipPath, projectId, overwrite, progressCallback) {
       // made fs.readFile throw ERR_FS_FILE_TOO_LARGE ("File size (...) is greater
       // than 2 GiB") before a single byte was ever sent. Streaming has no such
       // ceiling and keeps memory usage flat regardless of project size.
-      let bytesSent = 0;
-      const progressCounter = new Transform({
-        transform(chunk, _encoding, cb) {
-          bytesSent += chunk.length;
-          progressCallback({
-            bytesUploaded: Math.min(totalBytes, bytesSent),
-            bytesTotal: totalBytes,
-            percentage: Math.min(100, Math.round((bytesSent / totalBytes) * 100)),
-          });
-          cb(null, chunk);
-        },
-      });
-
       const fileStream = fs.createReadStream(zipPath);
       fileStream.on('error', (error) => {
         console.error('[ServerUpload] File read error:', error);
         resolve({ success: false, error: error.message });
       });
-      fileStream.pipe(progressCounter);
 
-      // Create form data with all required fields
+      // Create form data with all required fields.
       // Order matters for some servers - put text fields first, then file.
-      // knownLength lets form-data compute an accurate Content-Length for the
-      // streamed part (it can't stat a stream the way it sizes a Buffer).
+      // Append the fs read stream directly: this is form-data's native, fully
+      // supported path. (Tee'ing it through our own Transform tripped a
+      // combined-stream/DelayedStream bug on Electron's bundled Node 18.)
+      // knownLength lets form-data compute an accurate Content-Length without
+      // buffering the stream.
       const form = new FormData();
       form.append('overwrite', overwrite ? 'yes' : 'no');
       form.append('project_id', projectId);
-      form.append('microProject', progressCounter, {
+      form.append('microProject', fileStream, {
         filename: 'temp.zip',
         contentType: 'application/octet-stream',
         knownLength: totalBytes,
@@ -196,6 +184,20 @@ async function uploadZipFile(zipPath, projectId, overwrite, progressCallback) {
       // omit the header and fall back to chunked transfer-encoding.
       const contentLength = await new Promise((resolveLen) => {
         form.getLength((err, len) => resolveLen(err ? null : len));
+      });
+
+      // Report progress by observing bytes as they leave the form toward the
+      // socket. This is a passive listener alongside form.pipe(req) below (both
+      // receive the same chunks). The byte count includes minor multipart
+      // overhead, so the displayed file-byte count is capped at the real size.
+      let bytesSent = 0;
+      form.on('data', (chunk) => {
+        bytesSent += chunk.length;
+        progressCallback({
+          bytesUploaded: Math.min(totalBytes, bytesSent),
+          bytesTotal: totalBytes,
+          percentage: Math.min(100, Math.round((bytesSent / (contentLength || totalBytes)) * 100)),
+        });
       });
 
       // Set up the request options
