@@ -507,6 +507,39 @@ async function inspectSmz(smzPath) {
 }
 
 /**
+ * Recursively search a directory tree for any regular file (non-directory entry).
+ * Used to decide whether a partially-deleted project folder is safe to import over.
+ *
+ * @param {string} dirPath - Directory to search
+ * @returns {Promise<string|null>} Path of the first file found, or null if none exist
+ */
+async function findAnyFile(dirPath) {
+  let entries;
+  try {
+    entries = await fs.promises.readdir(dirPath, { withFileTypes: true });
+  } catch (error) {
+    if (error.code === 'ENOENT') {
+      return null;
+    }
+    throw error;
+  }
+
+  for (const entry of entries) {
+    const entryPath = path.join(dirPath, entry.name);
+    if (entry.isDirectory()) {
+      const nested = await findAnyFile(entryPath);
+      if (nested) {
+        return nested;
+      }
+    } else {
+      return entryPath;
+    }
+  }
+
+  return null;
+}
+
+/**
  * Import an .smz file into the application
  * This is a DESTRUCTIVE operation - it replaces any existing project with the same ID
  *
@@ -540,7 +573,33 @@ async function importSmz(smzPath, progressCallback) {
     if (projectExists) {
       log.info(`[SmzImport] Deleting existing project folder: ${projectId}`);
       sendProgress('Removing existing project', 10, 'Clearing local data...');
-      await projectFolders.deleteProjectFolder(projectId);
+      try {
+        await projectFolders.deleteProjectFolder(projectId);
+      } catch (deleteError) {
+        // On Windows, sync clients (OneDrive) can hold locks on directories so
+        // the recursive delete dies on rmdir even after the files inside are
+        // gone. Extraction below recreates folders (mkdir recursive) and writes
+        // files by name, so leftover EMPTY directories are harmless — continue.
+        // If any file survived, abort: stale data from the old project could
+        // otherwise mix with the imported one.
+        let leftoverFile = null;
+        try {
+          leftoverFile = await findAnyFile(projectFolders.getProjectFolderPath(projectId));
+        } catch (scanError) {
+          log.error('[SmzImport] Could not verify leftover project contents:', scanError);
+          throw deleteError;
+        }
+
+        if (leftoverFile) {
+          log.error(`[SmzImport] Could not clear existing project, file remains: ${leftoverFile}`);
+          throw deleteError;
+        }
+
+        log.warn(
+          `[SmzImport] Project folder delete failed (${deleteError.code || deleteError.message}) ` +
+          `but only empty directories remain — continuing with import`
+        );
+      }
     }
 
     // Clear version history for this project ID (whether it existed or not)

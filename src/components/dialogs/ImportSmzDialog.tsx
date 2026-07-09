@@ -193,6 +193,20 @@ export function ImportSmzDialog({
     setDialogState('importing');
     setProgress(null);
 
+    // If we're replacing the project that's currently open, unload it first so
+    // the viewer doesn't keep reading image files while the import deletes and
+    // rewrites them. The user has already confirmed the local data will be
+    // replaced, so there's nothing worth saving.
+    const { project, closeProject } = useAppStore.getState();
+    if (
+      inspectResult?.projectExists &&
+      inspectResult.projectId &&
+      project?.id === inspectResult.projectId
+    ) {
+      console.log('[ImportSmzDialog] Unloading currently open project before replace-import');
+      closeProject();
+    }
+
     try {
       const result = await window.api.smzImport.import(filePath);
 
@@ -207,7 +221,7 @@ export function ImportSmzDialog({
       setErrorMessage(error instanceof Error ? error.message : 'Import failed');
       setDialogState('error');
     }
-  }, [filePath]);
+  }, [filePath, inspectResult]);
 
   const handleClose = () => {
     // Don't allow closing during import
