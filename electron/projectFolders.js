@@ -234,10 +234,33 @@ async function deleteProjectFolder(projectId) {
   console.log(`[ProjectFolders] WARNING: Deleting project folder: ${projectPath}`);
 
   try {
-    await fs.promises.rm(projectPath, { recursive: true, force: true });
+    // maxRetries/retryDelay: on Windows, sync clients (OneDrive) and antivirus
+    // hold transient locks that surface as EPERM/EBUSY/ENOTEMPTY on rmdir;
+    // fs.rm retries those codes automatically with escalating backoff. Retries
+    // compound across the recursive walk, so keep the budget modest: 5/200
+    // rides out a few seconds of lock per directory but still fails within
+    // ~20s (measured on Node 18) if a lock is never released.
+    await fs.promises.rm(projectPath, {
+      recursive: true,
+      force: true,
+      maxRetries: 5,
+      retryDelay: 200
+    });
     console.log(`[ProjectFolders] Successfully deleted project folder: ${projectId}`);
   } catch (error) {
     console.error(`[ProjectFolders] Error deleting project folder:`, error);
+
+    if (error && (error.code === 'EPERM' || error.code === 'EBUSY' || error.code === 'ENOTEMPTY')) {
+      const friendly = new Error(
+        `Could not remove the project folder because another program is locking it — ` +
+        `often OneDrive or antivirus syncing/scanning "${error.path || projectPath}". ` +
+        `Pause file syncing (or wait a minute) and try again.`
+      );
+      friendly.code = error.code;
+      friendly.path = error.path;
+      throw friendly;
+    }
+
     throw error;
   }
 }
