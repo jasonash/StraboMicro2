@@ -344,6 +344,8 @@ export interface GroupMetadata {
   id: string;
   name: string;
   spotIDs?: string[] | null;
+  micrographs?: string[] | null;
+  isExpanded?: boolean | null;
 }
 
 export interface Tag {
