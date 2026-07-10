@@ -10,6 +10,7 @@ import { Box, Typography, Tabs, Tab, List, ListItemButton, ListItemText } from '
 import { TiledViewer } from './components/TiledViewer';
 import { PropertiesPanel } from './components/PropertiesPanel';
 import { ProjectTree } from './components/ProjectTree';
+import { GroupsPanel } from './components/GroupsPanel';
 import { Header } from './components/Header';
 import { BreadcrumbsBar } from './components/BreadcrumbsBar';
 import { SpotsPanel } from './components/SpotsPanel';
@@ -255,24 +256,13 @@ export default function App() {
 
             {/* Groups tab */}
             {sidebarTab === 1 && (
-              <Box sx={{ p: 1 }}>
-                {(project.groups || []).length === 0 ? (
-                  <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic', p: 1 }}>No groups</Typography>
-                ) : (
-                  <List dense disablePadding>
-                    {(project.groups || []).map(group => (
-                      <ListItemButton key={group.id} sx={{ borderRadius: 1, py: 0.5 }}>
-                        <ListItemText
-                          primary={group.name}
-                          secondary={`${(group.spotIDs || []).length} spots`}
-                          primaryTypographyProps={{ variant: 'body2' }}
-                          secondaryTypographyProps={{ variant: 'caption' }}
-                        />
-                      </ListItemButton>
-                    ))}
-                  </List>
-                )}
-              </Box>
+              <GroupsPanel
+                project={project}
+                allMicrographs={allMicrographs}
+                activeMicrographId={activeMicrographId}
+                tileLoader={tileLoader}
+                onSelectMicrograph={handleSelectMicrograph}
+              />
             )}
 
             {/* Spots tab */}
