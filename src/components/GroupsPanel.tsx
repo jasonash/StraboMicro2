@@ -305,6 +305,21 @@ function GroupItem({ group, projectId, onAddMicrograph, onEditName, onDelete }: 
                       />
                     </Box>
 
+                    {/* Micrograph name - clickable to open micrograph */}
+                    <Typography
+                      variant="body2"
+                      onClick={() => selectMicrograph(micrograph.id)}
+                      sx={{
+                        flex: 1,
+                        ml: 1,
+                        fontSize: '0.875rem',
+                        cursor: 'pointer',
+                        wordBreak: 'break-word',
+                      }}
+                    >
+                      {micrograph.name || micrograph.imageFilename || 'Unnamed Micrograph'}
+                    </Typography>
+
                     {/* Buttons column */}
                     <Box sx={{ display: 'flex', flexDirection: 'column', ml: 1, gap: 0.5 }}>
                       {/* More options menu */}
@@ -345,17 +360,6 @@ function GroupItem({ group, projectId, onAddMicrograph, onEditName, onDelete }: 
               Remove from This Group
             </MenuItem>
           </Menu>
-
-          {/* Micrograph name below thumbnail (matching legacy layout) */}
-          {groupMicrographs.map((micrograph) => (
-            <Typography
-              key={`name-${micrograph.id}`}
-              variant="caption"
-              sx={{ display: 'none' }} // Hidden - name shown via thumbnail
-            >
-              {micrograph.name}
-            </Typography>
-          ))}
         </Box>
       </Collapse>
     </Box>
