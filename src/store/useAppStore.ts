@@ -376,7 +376,12 @@ interface AppState {
   reorderSamples: (datasetId: string, orderedIds: string[]) => void;
 
   // ========== CRUD: MICROGRAPH ==========
-  addMicrograph: (sampleId: string, micrograph: MicrographMetadata) => void;
+  /**
+   * Add a micrograph to the sample with the given id. Returns false (and leaves the
+   * store untouched) when no such sample exists in the current project — callers MUST
+   * check this and surface a failure instead of assuming the add succeeded.
+   */
+  addMicrograph: (sampleId: string, micrograph: MicrographMetadata) => boolean;
   updateMicrographMetadata: (id: string, updates: Partial<MicrographMetadata>) => void;
   /**
    * Set scalePixelsPerCentimeter on a micrograph and cascade the same ratio to every
@@ -1846,48 +1851,76 @@ export const useAppStore = create<AppState>()(
 
           // ========== CRUD: MICROGRAPH ==========
 
-          addMicrograph: (sampleId, micrograph) => set((state) => {
-            if (!state.project) return state;
+          addMicrograph: (sampleId, micrograph) => {
+            // Tracks whether the target sample was actually found. A stale/unknown
+            // sampleId used to drop the micrograph silently while still marking the
+            // project dirty — the import looked successful but saved nothing
+            // (Sentry 2026-07-15, 38-file batch import lost).
+            let added = false;
 
-            const newProject = structuredClone(state.project);
+            set((state) => {
+              if (!state.project) return state;
 
-            // Auto-expand everything above the new micrograph so it is visible
-            // in the tree immediately — a collapsed parent made freshly added
-            // associated micrographs appear to vanish.
-            const expandedDatasets = new Set(state.expandedDatasets);
-            const expandedSamples = new Set(state.expandedSamples);
-            const expandedMicrographs = new Set(state.expandedMicrographs);
+              const newProject = structuredClone(state.project);
 
-            for (const dataset of newProject.datasets || []) {
-              const sample = dataset.samples?.find(s => s.id === sampleId);
-              if (sample) {
-                sample.micrographs = [...(sample.micrographs || []), micrograph];
+              // Auto-expand everything above the new micrograph so it is visible
+              // in the tree immediately — a collapsed parent made freshly added
+              // associated micrographs appear to vanish.
+              const expandedDatasets = new Set(state.expandedDatasets);
+              const expandedSamples = new Set(state.expandedSamples);
+              const expandedMicrographs = new Set(state.expandedMicrographs);
 
-                expandedDatasets.add(dataset.id);
-                expandedSamples.add(sample.id);
-                // Walk the parent chain (associated micrographs can nest);
-                // visited guards against a malformed parentID cycle.
-                const visited = new Set<string>();
-                let parentId = micrograph.parentID;
-                while (parentId && !visited.has(parentId)) {
-                  visited.add(parentId);
-                  expandedMicrographs.add(parentId);
-                  parentId = sample.micrographs.find(m => m.id === parentId)?.parentID;
+              for (const dataset of newProject.datasets || []) {
+                const sample = dataset.samples?.find(s => s.id === sampleId);
+                if (sample) {
+                  sample.micrographs = [...(sample.micrographs || []), micrograph];
+                  added = true;
+
+                  expandedDatasets.add(dataset.id);
+                  expandedSamples.add(sample.id);
+                  // Walk the parent chain (associated micrographs can nest);
+                  // visited guards against a malformed parentID cycle.
+                  const visited = new Set<string>();
+                  let parentId = micrograph.parentID;
+                  while (parentId && !visited.has(parentId)) {
+                    visited.add(parentId);
+                    expandedMicrographs.add(parentId);
+                    parentId = sample.micrographs.find(m => m.id === parentId)?.parentID;
+                  }
+                  break;
                 }
-                break;
               }
+
+              // Sample not found: leave the store untouched (no dirty flag, no
+              // project clone) so the failure is observable and side-effect free.
+              if (!added) return state;
+
+              return {
+                project: newProject,
+                isDirty: true,
+                micrographIndex: buildMicrographIndex(newProject),
+                spotIndex: buildSpotIndex(newProject),
+                expandedDatasets: Array.from(expandedDatasets),
+                expandedSamples: Array.from(expandedSamples),
+                expandedMicrographs: Array.from(expandedMicrographs),
+              };
+            });
+
+            if (!added) {
+              const currentProject = get().project;
+              const availableSamples = (currentProject?.datasets || []).flatMap(
+                (d) => (d.samples || []).map((s) => s.id)
+              );
+              console.error(
+                `[Store] addMicrograph: sample ${sampleId} not found in project ` +
+                `${currentProject?.id ?? '(none loaded)'} — micrograph ${micrograph.id} ` +
+                `(${micrograph.name ?? 'unnamed'}) was NOT added. ` +
+                `Available sample ids: [${availableSamples.join(', ')}]`
+              );
             }
 
-            return {
-              project: newProject,
-              isDirty: true,
-              micrographIndex: buildMicrographIndex(newProject),
-              spotIndex: buildSpotIndex(newProject),
-              expandedDatasets: Array.from(expandedDatasets),
-              expandedSamples: Array.from(expandedSamples),
-              expandedMicrographs: Array.from(expandedMicrographs),
-            };
-          }),
+            return added;
+          },
 
           updateMicrographMetadata: (id, updates) => set((state) => {
             if (!state.project) return state;
