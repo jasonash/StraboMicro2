@@ -3596,8 +3596,10 @@ ipcMain.handle('composite:generate-thumbnail', async (event, projectId, microgra
     // Get project folder paths
     const folderPaths = await projectFolders.getProjectFolderPaths(projectId);
 
-    // Use provided project data instead of loading from disk (may be stale)
-    const project = projectData;
+    // Use provided project data instead of loading from disk (may be stale).
+    // Guard against a missing snapshot so the failure below is a diagnosable
+    // "not found" error rather than an opaque TypeError.
+    const project = projectData || {};
 
     // Find the micrograph in the project hierarchy
     let micrograph = null;
@@ -3627,9 +3629,16 @@ ipcMain.handle('composite:generate-thumbnail', async (event, projectId, microgra
     }
 
     if (!micrograph) {
-      log.error(`[IPC] Micrograph ${micrographId} not found in project. Available micrographs:`,
-        project.datasets?.flatMap(d => d.samples?.flatMap(s => s.micrographs?.map(m => m.id)) || []) || []);
-      throw new Error(`Micrograph ${micrographId} not found in project`);
+      const availableIds = project.datasets?.flatMap(d => d.samples?.flatMap(s => s.micrographs?.map(m => m.id)) || []) || [];
+      const datasetCount = project.datasets?.length ?? 0;
+      const sampleCount = project.datasets?.reduce((n, d) => n + (d.samples?.length || 0), 0) ?? 0;
+      log.error(`[IPC] Micrograph ${micrographId} not found in project. Available micrographs:`, availableIds);
+      // Include snapshot shape in the message so remote error reports (Sentry) are
+      // self-diagnosing — distinguishes "empty/stale snapshot" from "wrong id".
+      throw new Error(
+        `Micrograph ${micrographId} not found in project ` +
+        `(snapshot: ${datasetCount} datasets, ${sampleCount} samples, ${availableIds.length} micrographs)`
+      );
     }
 
     // Load base micrograph image (with fallback to uiImages for legacy projects)

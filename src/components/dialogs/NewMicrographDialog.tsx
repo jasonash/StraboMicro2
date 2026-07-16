@@ -1368,8 +1368,15 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
         isFlipped: false,
       };
 
-      // Add micrograph to store
-      useAppStore.getState().addMicrograph(targetSampleId, micrograph);
+      // Add micrograph to store. A false return means the target sample no longer
+      // exists in the project — fail loudly instead of continuing with a micrograph
+      // that was never actually added (the image file has already been moved, but
+      // without metadata it would be silently orphaned).
+      if (!useAppStore.getState().addMicrograph(targetSampleId, micrograph)) {
+        throw new Error(
+          'The target sample no longer exists in the project, so the micrograph could not be created. Please close this dialog and try again.'
+        );
+      }
 
       console.log('Micrograph created successfully:', micrograph.id);
 
@@ -1414,7 +1421,11 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
           // The instrument object is inherited from main via spread, which is correct
         };
 
-        useAppStore.getState().addMicrograph(targetSampleId, xplMicrograph);
+        if (!useAppStore.getState().addMicrograph(targetSampleId, xplMicrograph)) {
+          throw new Error(
+            'The target sample no longer exists in the project, so the XPL sibling micrograph could not be created. Please close this dialog and try again.'
+          );
+        }
         console.log('Sibling micrograph created successfully:', xplMicrograph.id);
 
         // Link as siblings - PPL is always primary, XPL is always secondary
