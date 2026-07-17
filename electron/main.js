@@ -1483,7 +1483,10 @@ app.on('window-all-closed', () => {
 });
 
 app.on('activate', () => {
-  if (BrowserWindow.getAllWindows().length === 0) {
+  // On macOS 'activate' can fire before 'ready' (e.g. Dock click during
+  // launch); creating a BrowserWindow then throws. The whenReady() startup
+  // path creates the windows moments later, so dropping the event is safe.
+  if (app.isReady() && BrowserWindow.getAllWindows().length === 0) {
     // Show splash on reactivation too
     createSplashWindow();
     createWindow();
