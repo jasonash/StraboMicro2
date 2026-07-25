@@ -661,7 +661,13 @@ export function StraboToolsDialog({ open, onClose, initialMicrographId }: Strabo
         straboTools: straboToolsResult,
       };
 
-      addMicrograph(sampleId, newMicrograph);
+      // A false return means the sample no longer exists in the project and the
+      // sibling was NOT added — fail before generating thumbnails for it.
+      if (!addMicrograph(sampleId, newMicrograph)) {
+        throw new Error(
+          'The sample no longer exists in the project, so the analysis sibling could not be saved. Please close this dialog and try again.'
+        );
+      }
 
       // Generate composite thumbnail and notify tree to reload
       try {
@@ -688,6 +694,9 @@ export function StraboToolsDialog({ open, onClose, initialMicrographId }: Strabo
       setSaveProgress({ stage: 'Complete!', percent: 100 });
     } catch (err) {
       console.error('StraboTools: Save as sibling failed:', err);
+      // Surface the failure — previously the progress indicator just vanished
+      // and the user had no way to know the save didn't happen.
+      alert(`Failed to save as sibling: ${err instanceof Error ? err.message : 'Unknown error'}`);
     } finally {
       unsubProgress?.();
       isSavingRef.current = false;

@@ -320,11 +320,24 @@ export const BatchImportDialog: React.FC<BatchImportDialogProps> = ({
       return;
     }
 
-    // Determine target sample ID
-    let targetSampleId = sampleId;
+    // Determine target sample ID. Resolve against the CURRENT store state, not the
+    // render-captured `project` — the snapshot can be stale by the time Import is
+    // clicked, and a stale/missing sample id made addMicrograph silently drop every
+    // imported micrograph while the dialog reported success (Sentry 2026-07-15).
+    const freshProject = useAppStore.getState().project;
+    if (!freshProject || freshProject.id !== project.id) {
+      console.error(
+        `[BatchImport] Active project changed since the dialog was opened ` +
+        `(was ${project.id}, now ${freshProject?.id ?? 'none'}) — aborting import`
+      );
+      setImportErrors(['The open project changed since this dialog was opened. Please close this dialog and start the import again.']);
+      return;
+    }
+
+    let targetSampleId: string | null = null;
     if (isAssociated && parentMicrographId) {
       // Find sample containing parent micrograph
-      for (const dataset of project.datasets || []) {
+      for (const dataset of freshProject.datasets || []) {
         for (const sample of dataset.samples || []) {
           if (sample.micrographs?.some((m) => m.id === parentMicrographId)) {
             targetSampleId = sample.id;
@@ -332,10 +345,20 @@ export const BatchImportDialog: React.FC<BatchImportDialogProps> = ({
           }
         }
       }
+    } else if (sampleId) {
+      // Reference import: confirm the sample from the tree still exists
+      const sampleExists = (freshProject.datasets || []).some(
+        (dataset) => (dataset.samples || []).some((sample) => sample.id === sampleId)
+      );
+      targetSampleId = sampleExists ? sampleId : null;
     }
 
     if (!targetSampleId) {
-      console.error('Could not determine target sample');
+      console.error(
+        `[BatchImport] Could not resolve target sample (sampleId: ${sampleId}, ` +
+        `parentMicrographId: ${parentMicrographId}) — aborting import`
+      );
+      setImportErrors(['The target sample could not be found in the current project. Please close this dialog and start the import again.']);
       return;
     }
 
@@ -470,7 +493,16 @@ export const BatchImportDialog: React.FC<BatchImportDialogProps> = ({
 
         // Add micrograph to store
         // Note: moveFromScratch was already called above before loadImageWithTiles
-        useAppStore.getState().addMicrograph(targetSampleId, micrograph);
+        const added = useAppStore.getState().addMicrograph(targetSampleId, micrograph);
+        if (!added) {
+          // The target sample vanished mid-import. Every remaining file would fail
+          // the same way, so stop here instead of orphaning more image files.
+          errors.push(
+            `${file.name}: the target sample no longer exists in the project — ` +
+            `import stopped. Remaining files were not imported; please retry the import.`
+          );
+          break;
+        }
 
         // Generate composite thumbnail for the new micrograph
         // Capture project state immediately after addMicrograph to avoid race condition

@@ -278,8 +278,13 @@ export function AddSiblingDialog({
         isFlipped: false,
       };
 
-      // Add to store
-      addMicrograph(sampleId, newSiblingMicrograph);
+      // Add to store — a false return means the sample no longer exists in the
+      // project and the sibling was NOT added; fail before linking to it.
+      if (!addMicrograph(sampleId, newSiblingMicrograph)) {
+        throw new Error(
+          'The sample no longer exists in the project, so the sibling image could not be added. Please close this dialog and try again.'
+        );
+      }
       console.log(`[AddSiblingDialog] ${siblingLabel} micrograph created:`, siblingMicrographId);
 
       // Link as siblings - PPL is always primary, XPL is always secondary
