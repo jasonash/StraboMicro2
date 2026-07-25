@@ -352,6 +352,123 @@ async function upscaleLegacySmallImages(folderPaths, sendProgress) {
 }
 
 /**
+ * Normalize oversized legacy images to the micrograph's declared dimensions.
+ *
+ * The legacy JavaFX app kept TWO copies of each micrograph image:
+ *   - images/<id>:   the ORIGINAL file, untouched (full resolution)
+ *   - uiImages/<id>: the display image, downscaled to max width 2500 (getOutImage in
+ *     legacy straboMicroUtil.java) — the image the legacy app actually rendered
+ *
+ * All pixel-space metadata (spot coordinates, scalePixelsPerCentimeter, offsetInParent,
+ * pointInParent) was recorded against the DISPLAY image, and micrograph.width/height in
+ * project.json are the display image's dimensions. Locally-saved legacy .smz files include
+ * BOTH folders (fileSaver.java), while legacy server uploads omit images/ (serverUploadProject.java).
+ *
+ * When we import the original from images/, any micrograph whose original was larger than
+ * the legacy display cap renders bigger than its coordinate space — spots land at
+ * declaredWidth/actualWidth of their correct position (reported by Peter Lindquist, 2026-07).
+ *
+ * Fix: for legacy projects, when the images/ file is LARGER than the declared dimensions,
+ * replace it with the uiImages/ copy when that matches the declared size (pixel-exact legacy
+ * fidelity), otherwise downscale the original to the declared size. Only the oversized
+ * direction is handled here — undersized images remain the job of upscaleLegacySmallImages,
+ * which encodes the legacy min-width=2000 display behavior.
+ *
+ * Must run BEFORE syncMicrographDimensions, which would otherwise rewrite the declared
+ * dimensions to the original's and permanently bake in the mismatch.
+ *
+ * @param {Object} projectData - The project data object
+ * @param {Object} folderPaths - Project folder paths
+ * @param {Function} sendProgress - Progress callback
+ * @returns {Promise<{normalized: number, fromUiImage: number, skipped: number, failed: number}>}
+ */
+async function normalizeLegacyOversizedImages(projectData, folderPaths, sendProgress) {
+  const stats = { normalized: 0, fromUiImage: 0, skipped: 0, failed: 0 };
+
+  const micrographs = [];
+  for (const dataset of projectData.datasets || []) {
+    for (const sample of dataset.samples || []) {
+      for (const micrograph of sample.micrographs || []) {
+        micrographs.push(micrograph);
+      }
+    }
+  }
+
+  if (micrographs.length === 0) {
+    return stats;
+  }
+
+  log.info(`[SmzImport] Checking ${micrographs.length} micrograph(s) for oversized legacy images...`);
+
+  for (const micrograph of micrographs) {
+    try {
+      const declaredWidth = Math.round(micrograph.imageWidth || micrograph.width || 0);
+      const declaredHeight = Math.round(micrograph.imageHeight || micrograph.height || 0);
+      if (!declaredWidth || !declaredHeight) {
+        stats.skipped++;
+        continue;
+      }
+
+      const imagePath = path.join(folderPaths.images, micrograph.id);
+      if (!fs.existsSync(imagePath)) {
+        stats.skipped++;
+        continue;
+      }
+
+      const metadata = await sharp(imagePath, { limitInputPixels: false }).metadata();
+      if (metadata.width <= declaredWidth) {
+        stats.skipped++;
+        continue;
+      }
+
+      log.info(
+        `[SmzImport] Legacy image ${micrograph.name || micrograph.id} is ${metadata.width}x${metadata.height} ` +
+        `but declared (coordinate space) is ${declaredWidth}x${declaredHeight} — normalizing`
+      );
+
+      if (sendProgress) {
+        sendProgress('Normalizing images', 93, `Adjusting ${micrograph.name || micrograph.id}...`);
+      }
+
+      // Prefer the legacy display image itself — pixel-exact match for the coordinate space
+      let usedUiImage = false;
+      const uiImagePath = path.join(folderPaths.uiImages, micrograph.id);
+      if (fs.existsSync(uiImagePath)) {
+        const uiMeta = await sharp(uiImagePath, { limitInputPixels: false }).metadata();
+        if (uiMeta.width === declaredWidth && uiMeta.height === declaredHeight) {
+          const buffer = await sharp(uiImagePath, { limitInputPixels: false })
+            .jpeg({ quality: 95, mozjpeg: true })
+            .toBuffer();
+          await fs.promises.writeFile(imagePath, buffer);
+          usedUiImage = true;
+        }
+      }
+
+      if (!usedUiImage) {
+        const buffer = await sharp(imagePath, { limitInputPixels: false })
+          .resize(declaredWidth, declaredHeight, { fit: 'fill' })
+          .jpeg({ quality: 95, mozjpeg: true })
+          .toBuffer();
+        await fs.promises.writeFile(imagePath, buffer);
+      }
+
+      stats.normalized++;
+      if (usedUiImage) stats.fromUiImage++;
+
+    } catch (err) {
+      log.error(`[SmzImport] Failed to normalize legacy image ${micrograph.id}:`, err.message);
+      stats.failed++;
+    }
+  }
+
+  log.info(
+    `[SmzImport] Legacy oversized-image normalization complete: ${stats.normalized} normalized ` +
+    `(${stats.fromUiImage} from uiImages), ${stats.skipped} skipped, ${stats.failed} failed`
+  );
+  return stats;
+}
+
+/**
  * Update micrograph dimensions in project data to match actual image file dimensions.
  * Legacy projects may have stored uiImages dimensions (downscaled) instead of actual image dimensions.
  * This causes rendering issues when the viewer uses project.json dimensions but tiles use actual dimensions.
@@ -758,6 +875,19 @@ async function importSmz(smzPath, progressCallback) {
 
     const projectData = await projectSerializer.loadProjectJson(projectId);
 
+    // Normalize oversized legacy images BEFORE syncing dimensions.
+    // Locally-saved legacy .smz files include full-resolution originals in images/, but all
+    // pixel-space metadata (spots, scale, overlay offsets) is in the legacy display space
+    // (uiImages, max width 2500). Without this, spots render displaced on any micrograph
+    // whose original exceeded the legacy display cap.
+    if (isLegacyProject) {
+      sendProgress('Normalizing images', 93, 'Checking legacy image sizes...');
+      const normalizeStats = await normalizeLegacyOversizedImages(projectData, folderPaths, sendProgress);
+      if (normalizeStats.normalized > 0) {
+        log.info(`[SmzImport] Normalized ${normalizeStats.normalized} oversized legacy image(s) to their declared dimensions`);
+      }
+    }
+
     // Sync micrograph dimensions with actual image files
     // Legacy projects may have stored uiImages dimensions (downscaled) instead of actual dimensions
     sendProgress('Syncing dimensions', 93, 'Verifying image dimensions...');
@@ -957,4 +1087,5 @@ async function importSmz(smzPath, progressCallback) {
 module.exports = {
   inspectSmz,
   importSmz,
+  normalizeLegacyOversizedImages,
 };
