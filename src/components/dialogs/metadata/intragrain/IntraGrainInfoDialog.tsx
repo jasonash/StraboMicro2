@@ -13,8 +13,8 @@ import {
   Button,
 } from '@mui/material';
 import { useAppStore } from '@/store';
-import { IntraGrainInfoType, IntraGrainType } from '@/types/project-types';
-import { findMicrographById, findSpotById, getAvailablePhasesFromMicrograph, getAvailablePhasesFromSpot } from '@/store/helpers';
+import { IntraGrainInfoType, IntraGrainType, MineralogyType } from '@/types/project-types';
+import { findMicrographById, findSpotById, getAvailablePhasesFromMicrograph, getAvailablePhasesFromMineralogy, getAvailablePhasesFromSpot } from '@/store/helpers';
 import { ListManager } from '../reusable/ListManager';
 import { IntraGrainAddForm, IntraGrainData } from './IntraGrainAddForm';
 import { IntraGrainListItem } from './IntraGrainListItem';
@@ -27,6 +27,7 @@ interface IntraGrainInfoDialogProps {
   // Preset mode props
   presetMode?: boolean;
   initialData?: IntraGrainInfoType | null;
+  presetMineralogy?: MineralogyType | null;
   onSavePresetData?: (data: IntraGrainInfoType | null) => void;
 }
 
@@ -37,6 +38,7 @@ export function IntraGrainInfoDialog({
   spotId,
   presetMode,
   initialData,
+  presetMineralogy,
   onSavePresetData,
 }: IntraGrainInfoDialogProps) {
   const project = useAppStore((state) => state.project);
@@ -102,11 +104,14 @@ export function IntraGrainInfoDialog({
   };
 
   // Get available phases from mineralogy data (LEGACY: lines 444-462 in editIntraGrain.java)
-  const availablePhases: string[] = micrographId
-    ? getAvailablePhasesFromMicrograph(findMicrographById(project, micrographId))
-    : spotId
-      ? getAvailablePhasesFromSpot(findSpotById(project, spotId))
-      : [];
+  // Preset mode has no micrograph/spot — phases come from the preset's own mineralogy
+  const availablePhases: string[] = presetMode
+    ? getAvailablePhasesFromMineralogy(presetMineralogy)
+    : micrographId
+      ? getAvailablePhasesFromMicrograph(findMicrographById(project, micrographId))
+      : spotId
+        ? getAvailablePhasesFromSpot(findSpotById(project, spotId))
+        : [];
 
   const title = presetMode
     ? 'Preset Intragranular Structures'

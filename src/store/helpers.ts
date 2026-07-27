@@ -10,8 +10,10 @@ import {
   DatasetMetadata,
   SampleMetadata,
   MicrographMetadata,
+  MineralogyType,
   Spot,
 } from '@/types/project-types';
+import type { PresetData } from '@/types/preset-types';
 
 /**
  * Find a dataset by ID within a project
@@ -362,20 +364,26 @@ export function getMicrographAncestorChain(
  * Get available mineral phases from a micrograph's or spot's mineralogy data
  * Used to populate "Which Phases?" checkboxes in grain/fabric/etc dialogs
  */
-export function getAvailablePhasesFromMicrograph(
-  micrograph: MicrographMetadata | null
+export function getAvailablePhasesFromMineralogy(
+  mineralogy: MineralogyType | null | undefined
 ): string[] {
-  if (!micrograph?.mineralogy?.minerals || micrograph.mineralogy.minerals.length === 0) {
+  if (!mineralogy?.minerals || mineralogy.minerals.length === 0) {
     return [];
   }
 
   // Extract unique mineral names from the minerals array
-  const phases = micrograph.mineralogy.minerals
+  const phases = mineralogy.minerals
     .map((m) => m.name)
     .filter((name): name is string => !!name); // Type guard to filter out undefined
 
   // Return unique phases
   return Array.from(new Set(phases));
+}
+
+export function getAvailablePhasesFromMicrograph(
+  micrograph: MicrographMetadata | null
+): string[] {
+  return getAvailablePhasesFromMineralogy(micrograph?.mineralogy);
 }
 
 /**
@@ -384,15 +392,285 @@ export function getAvailablePhasesFromMicrograph(
 export function getAvailablePhasesFromSpot(
   spot: Spot | null
 ): string[] {
-  if (!spot?.mineralogy?.minerals || spot.mineralogy.minerals.length === 0) {
-    return [];
+  return getAvailablePhasesFromMineralogy(spot?.mineralogy);
+}
+
+// ============================================================================
+// PRESET MERGE HELPER
+// ============================================================================
+
+/**
+ * Merge preset data into a spot using additive rules:
+ * - Scalars (color, opacity): preset replaces spot value
+ * - mineralogy.minerals[]: append preset minerals to existing
+ * - Other *Info arrays: append preset entries to existing
+ * - Notes fields: concatenate with newline
+ */
+export function mergePresetIntoSpot(spot: Spot, presetData: PresetData): void {
+  // Merge scalar appearance properties (replace)
+  if (presetData.color !== undefined) {
+    spot.color = presetData.color;
+  }
+  if (presetData.labelColor !== undefined) {
+    spot.labelColor = presetData.labelColor;
+  }
+  if (presetData.opacity !== undefined) {
+    spot.opacity = presetData.opacity;
   }
 
-  // Extract unique mineral names from the minerals array
-  const phases = spot.mineralogy.minerals
-    .map((m) => m.name)
-    .filter((name): name is string => !!name);
+  // Merge mineralogy (append minerals)
+  if (presetData.mineralogy) {
+    if (!spot.mineralogy) {
+      spot.mineralogy = structuredClone(presetData.mineralogy);
+    } else {
+      // Append minerals
+      if (presetData.mineralogy.minerals?.length) {
+        if (!spot.mineralogy.minerals) {
+          spot.mineralogy.minerals = [];
+        }
+        spot.mineralogy.minerals.push(...structuredClone(presetData.mineralogy.minerals));
+      }
+      // Concatenate notes
+      if (presetData.mineralogy.notes) {
+        spot.mineralogy.notes = spot.mineralogy.notes
+          ? `${spot.mineralogy.notes}\n${presetData.mineralogy.notes}`
+          : presetData.mineralogy.notes;
+      }
+      // Replace other fields if set
+      if (presetData.mineralogy.percentageCalculationMethod) {
+        spot.mineralogy.percentageCalculationMethod = presetData.mineralogy.percentageCalculationMethod;
+      }
+      if (presetData.mineralogy.mineralogyMethod) {
+        spot.mineralogy.mineralogyMethod = presetData.mineralogy.mineralogyMethod;
+      }
+    }
+  }
 
-  // Return unique phases
-  return Array.from(new Set(phases));
+  // Merge grainInfo (append arrays, concatenate notes)
+  if (presetData.grainInfo) {
+    if (!spot.grainInfo) {
+      spot.grainInfo = structuredClone(presetData.grainInfo);
+    } else {
+      if (presetData.grainInfo.grainSizeInfo?.length) {
+        if (!spot.grainInfo.grainSizeInfo) spot.grainInfo.grainSizeInfo = [];
+        spot.grainInfo.grainSizeInfo.push(...structuredClone(presetData.grainInfo.grainSizeInfo));
+      }
+      if (presetData.grainInfo.grainShapeInfo?.length) {
+        if (!spot.grainInfo.grainShapeInfo) spot.grainInfo.grainShapeInfo = [];
+        spot.grainInfo.grainShapeInfo.push(...structuredClone(presetData.grainInfo.grainShapeInfo));
+      }
+      if (presetData.grainInfo.grainOrientationInfo?.length) {
+        if (!spot.grainInfo.grainOrientationInfo) spot.grainInfo.grainOrientationInfo = [];
+        spot.grainInfo.grainOrientationInfo.push(...structuredClone(presetData.grainInfo.grainOrientationInfo));
+      }
+      if (presetData.grainInfo.grainSizeNotes) {
+        spot.grainInfo.grainSizeNotes = spot.grainInfo.grainSizeNotes
+          ? `${spot.grainInfo.grainSizeNotes}\n${presetData.grainInfo.grainSizeNotes}`
+          : presetData.grainInfo.grainSizeNotes;
+      }
+      if (presetData.grainInfo.grainShapeNotes) {
+        spot.grainInfo.grainShapeNotes = spot.grainInfo.grainShapeNotes
+          ? `${spot.grainInfo.grainShapeNotes}\n${presetData.grainInfo.grainShapeNotes}`
+          : presetData.grainInfo.grainShapeNotes;
+      }
+      if (presetData.grainInfo.grainOrientationNotes) {
+        spot.grainInfo.grainOrientationNotes = spot.grainInfo.grainOrientationNotes
+          ? `${spot.grainInfo.grainOrientationNotes}\n${presetData.grainInfo.grainOrientationNotes}`
+          : presetData.grainInfo.grainOrientationNotes;
+      }
+    }
+  }
+
+  // Merge fabricInfo (append fabrics array, concatenate notes)
+  if (presetData.fabricInfo) {
+    if (!spot.fabricInfo) {
+      spot.fabricInfo = structuredClone(presetData.fabricInfo);
+    } else {
+      if (presetData.fabricInfo.fabrics?.length) {
+        if (!spot.fabricInfo.fabrics) spot.fabricInfo.fabrics = [];
+        spot.fabricInfo.fabrics.push(...structuredClone(presetData.fabricInfo.fabrics));
+      }
+      if (presetData.fabricInfo.notes) {
+        spot.fabricInfo.notes = spot.fabricInfo.notes
+          ? `${spot.fabricInfo.notes}\n${presetData.fabricInfo.notes}`
+          : presetData.fabricInfo.notes;
+      }
+    }
+  }
+
+  // Merge fractureInfo (append fractures array, concatenate notes)
+  if (presetData.fractureInfo) {
+    if (!spot.fractureInfo) {
+      spot.fractureInfo = structuredClone(presetData.fractureInfo);
+    } else {
+      if (presetData.fractureInfo.fractures?.length) {
+        if (!spot.fractureInfo.fractures) spot.fractureInfo.fractures = [];
+        spot.fractureInfo.fractures.push(...structuredClone(presetData.fractureInfo.fractures));
+      }
+      if (presetData.fractureInfo.notes) {
+        spot.fractureInfo.notes = spot.fractureInfo.notes
+          ? `${spot.fractureInfo.notes}\n${presetData.fractureInfo.notes}`
+          : presetData.fractureInfo.notes;
+      }
+    }
+  }
+
+  // Merge foldInfo (append folds array, concatenate notes)
+  if (presetData.foldInfo) {
+    if (!spot.foldInfo) {
+      spot.foldInfo = structuredClone(presetData.foldInfo);
+    } else {
+      if (presetData.foldInfo.folds?.length) {
+        if (!spot.foldInfo.folds) spot.foldInfo.folds = [];
+        spot.foldInfo.folds.push(...structuredClone(presetData.foldInfo.folds));
+      }
+      if (presetData.foldInfo.notes) {
+        spot.foldInfo.notes = spot.foldInfo.notes
+          ? `${spot.foldInfo.notes}\n${presetData.foldInfo.notes}`
+          : presetData.foldInfo.notes;
+      }
+    }
+  }
+
+  // Merge veinInfo (append veins array, concatenate notes)
+  if (presetData.veinInfo) {
+    if (!spot.veinInfo) {
+      spot.veinInfo = structuredClone(presetData.veinInfo);
+    } else {
+      if (presetData.veinInfo.veins?.length) {
+        if (!spot.veinInfo.veins) spot.veinInfo.veins = [];
+        spot.veinInfo.veins.push(...structuredClone(presetData.veinInfo.veins));
+      }
+      if (presetData.veinInfo.notes) {
+        spot.veinInfo.notes = spot.veinInfo.notes
+          ? `${spot.veinInfo.notes}\n${presetData.veinInfo.notes}`
+          : presetData.veinInfo.notes;
+      }
+    }
+  }
+
+  // Merge clasticDeformationBandInfo
+  if (presetData.clasticDeformationBandInfo) {
+    if (!spot.clasticDeformationBandInfo) {
+      spot.clasticDeformationBandInfo = structuredClone(presetData.clasticDeformationBandInfo);
+    } else {
+      if (presetData.clasticDeformationBandInfo.bands?.length) {
+        if (!spot.clasticDeformationBandInfo.bands) spot.clasticDeformationBandInfo.bands = [];
+        spot.clasticDeformationBandInfo.bands.push(...structuredClone(presetData.clasticDeformationBandInfo.bands));
+      }
+      if (presetData.clasticDeformationBandInfo.notes) {
+        spot.clasticDeformationBandInfo.notes = spot.clasticDeformationBandInfo.notes
+          ? `${spot.clasticDeformationBandInfo.notes}\n${presetData.clasticDeformationBandInfo.notes}`
+          : presetData.clasticDeformationBandInfo.notes;
+      }
+    }
+  }
+
+  // Merge grainBoundaryInfo
+  if (presetData.grainBoundaryInfo) {
+    if (!spot.grainBoundaryInfo) {
+      spot.grainBoundaryInfo = structuredClone(presetData.grainBoundaryInfo);
+    } else {
+      if (presetData.grainBoundaryInfo.boundaries?.length) {
+        if (!spot.grainBoundaryInfo.boundaries) spot.grainBoundaryInfo.boundaries = [];
+        spot.grainBoundaryInfo.boundaries.push(...structuredClone(presetData.grainBoundaryInfo.boundaries));
+      }
+      if (presetData.grainBoundaryInfo.notes) {
+        spot.grainBoundaryInfo.notes = spot.grainBoundaryInfo.notes
+          ? `${spot.grainBoundaryInfo.notes}\n${presetData.grainBoundaryInfo.notes}`
+          : presetData.grainBoundaryInfo.notes;
+      }
+    }
+  }
+
+  // Merge intraGrainInfo
+  if (presetData.intraGrainInfo) {
+    if (!spot.intraGrainInfo) {
+      spot.intraGrainInfo = structuredClone(presetData.intraGrainInfo);
+    } else {
+      if (presetData.intraGrainInfo.grains?.length) {
+        if (!spot.intraGrainInfo.grains) spot.intraGrainInfo.grains = [];
+        spot.intraGrainInfo.grains.push(...structuredClone(presetData.intraGrainInfo.grains));
+      }
+      if (presetData.intraGrainInfo.notes) {
+        spot.intraGrainInfo.notes = spot.intraGrainInfo.notes
+          ? `${spot.intraGrainInfo.notes}\n${presetData.intraGrainInfo.notes}`
+          : presetData.intraGrainInfo.notes;
+      }
+    }
+  }
+
+  // Merge pseudotachylyteInfo
+  if (presetData.pseudotachylyteInfo) {
+    if (!spot.pseudotachylyteInfo) {
+      spot.pseudotachylyteInfo = structuredClone(presetData.pseudotachylyteInfo);
+    } else {
+      if (presetData.pseudotachylyteInfo.pseudotachylytes?.length) {
+        if (!spot.pseudotachylyteInfo.pseudotachylytes) spot.pseudotachylyteInfo.pseudotachylytes = [];
+        spot.pseudotachylyteInfo.pseudotachylytes.push(...structuredClone(presetData.pseudotachylyteInfo.pseudotachylytes));
+      }
+      if (presetData.pseudotachylyteInfo.notes) {
+        spot.pseudotachylyteInfo.notes = spot.pseudotachylyteInfo.notes
+          ? `${spot.pseudotachylyteInfo.notes}\n${presetData.pseudotachylyteInfo.notes}`
+          : presetData.pseudotachylyteInfo.notes;
+      }
+      if (presetData.pseudotachylyteInfo.reasoning) {
+        spot.pseudotachylyteInfo.reasoning = spot.pseudotachylyteInfo.reasoning
+          ? `${spot.pseudotachylyteInfo.reasoning}\n${presetData.pseudotachylyteInfo.reasoning}`
+          : presetData.pseudotachylyteInfo.reasoning;
+      }
+    }
+  }
+
+  // Merge faultsShearZonesInfo
+  if (presetData.faultsShearZonesInfo) {
+    if (!spot.faultsShearZonesInfo) {
+      spot.faultsShearZonesInfo = structuredClone(presetData.faultsShearZonesInfo);
+    } else {
+      if (presetData.faultsShearZonesInfo.faultsShearZones?.length) {
+        if (!spot.faultsShearZonesInfo.faultsShearZones) spot.faultsShearZonesInfo.faultsShearZones = [];
+        spot.faultsShearZonesInfo.faultsShearZones.push(...structuredClone(presetData.faultsShearZonesInfo.faultsShearZones));
+      }
+      if (presetData.faultsShearZonesInfo.notes) {
+        spot.faultsShearZonesInfo.notes = spot.faultsShearZonesInfo.notes
+          ? `${spot.faultsShearZonesInfo.notes}\n${presetData.faultsShearZonesInfo.notes}`
+          : presetData.faultsShearZonesInfo.notes;
+      }
+    }
+  }
+
+  // Merge extinctionMicrostructureInfo
+  if (presetData.extinctionMicrostructureInfo) {
+    if (!spot.extinctionMicrostructureInfo) {
+      spot.extinctionMicrostructureInfo = structuredClone(presetData.extinctionMicrostructureInfo);
+    } else {
+      if (presetData.extinctionMicrostructureInfo.extinctionMicrostructures?.length) {
+        if (!spot.extinctionMicrostructureInfo.extinctionMicrostructures) spot.extinctionMicrostructureInfo.extinctionMicrostructures = [];
+        spot.extinctionMicrostructureInfo.extinctionMicrostructures.push(...structuredClone(presetData.extinctionMicrostructureInfo.extinctionMicrostructures));
+      }
+      if (presetData.extinctionMicrostructureInfo.notes) {
+        spot.extinctionMicrostructureInfo.notes = spot.extinctionMicrostructureInfo.notes
+          ? `${spot.extinctionMicrostructureInfo.notes}\n${presetData.extinctionMicrostructureInfo.notes}`
+          : presetData.extinctionMicrostructureInfo.notes;
+      }
+    }
+  }
+
+  // Merge lithologyInfo
+  if (presetData.lithologyInfo) {
+    if (!spot.lithologyInfo) {
+      spot.lithologyInfo = structuredClone(presetData.lithologyInfo);
+    } else {
+      if (presetData.lithologyInfo.lithologies?.length) {
+        if (!spot.lithologyInfo.lithologies) spot.lithologyInfo.lithologies = [];
+        spot.lithologyInfo.lithologies.push(...structuredClone(presetData.lithologyInfo.lithologies));
+      }
+      if (presetData.lithologyInfo.notes) {
+        spot.lithologyInfo.notes = spot.lithologyInfo.notes
+          ? `${spot.lithologyInfo.notes}\n${presetData.lithologyInfo.notes}`
+          : presetData.lithologyInfo.notes;
+      }
+    }
+  }
 }
+
