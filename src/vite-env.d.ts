@@ -357,6 +357,12 @@ interface Window {
     }>;
     isValidImage: (filePath: string) => Promise<boolean>;
     flipImageHorizontal: (imagePath: string) => Promise<{ success: boolean; hash: string }>;
+    rotateImage: (imagePath: string, degrees: number) => Promise<{
+      success: boolean;
+      hash: string;
+      width: number;
+      height: number;
+    }>;
 
     // Composite thumbnail generation
     generateCompositeThumbnail: (projectId: string, micrographId: string, projectData: any) => Promise<{
