@@ -43,3 +43,6 @@ release/
 
 # Prototype test artifacts
 prototypes/
+
+# TypeScript incremental build cache
+*.tsbuildinfo
