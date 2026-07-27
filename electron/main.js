@@ -3559,6 +3559,61 @@ ipcMain.handle('image:flip-horizontal', async (event, imagePath) => {
 });
 
 /**
+ * Rotate an image file in place by a multiple of 90 degrees (clockwise).
+ * Used by the import-time Image Rotation step; the rotation is baked into
+ * the pixels before the image enters the project, so no metadata field is
+ * needed and every downstream consumer (tiles, thumbnails, exports) stays
+ * consistent. Also clears the tile cache for this image so it gets re-tiled.
+ */
+ipcMain.handle('image:rotate', async (event, imagePath, degrees) => {
+  const fsp = require('fs').promises;
+  const tmpPath = imagePath + '.tmp';
+  if (![90, 180, 270].includes(degrees)) {
+    throw new Error(`Invalid rotation: ${degrees} (must be 90, 180, or 270)`);
+  }
+  try {
+    log.info(`[IPC] Rotating image ${degrees}° clockwise: ${imagePath}`);
+
+    // Read the source into a Node Buffer so Sharp never opens the file by
+    // path. On Windows, libvips can briefly hold a file handle after a
+    // path-based read, which races against the unlink below and trips
+    // EPERM. Reading via fs.readFile keeps Sharp on an in-memory Buffer.
+    const inputBuffer = await fsp.readFile(imagePath);
+
+    const metadata = await sharp(inputBuffer).metadata();
+    const rotatedBuffer = await sharp(inputBuffer).rotate(degrees).toBuffer();
+
+    const lower = imagePath.toLowerCase();
+    const isPng = metadata.format === 'png' || lower.endsWith('.png');
+    const isTiff = metadata.format === 'tiff' || lower.endsWith('.tif') || lower.endsWith('.tiff');
+
+    let writer = sharp(rotatedBuffer);
+    if (isPng) writer = writer.png();
+    else if (isTiff) writer = writer.tiff();
+    else writer = writer.jpeg({ quality: 95 });
+    const info = await writer.toFile(tmpPath);
+
+    // Replace original with rotated version. Retry on EPERM/EBUSY/EACCES to
+    // ride out brief Windows file locks (antivirus scans, lingering Sharp
+    // handles from elsewhere in the app).
+    await unlinkWithRetry(imagePath);
+    await fsp.rename(tmpPath, imagePath);
+
+    // Clear tile cache for this image so it gets re-tiled
+    const imageHash = await tileCache.generateImageHash(imagePath);
+    await tileCache.clearImageCache(imageHash);
+
+    log.info(`[IPC] Successfully rotated image ${degrees}°: ${imagePath} (${info.width}x${info.height})`);
+    return { success: true, hash: imageHash, width: info.width, height: info.height };
+  } catch (error) {
+    // Best-effort cleanup of the orphaned .tmp if we wrote it but couldn't swap
+    try { await fsp.unlink(tmpPath); } catch (_) { /* may not exist */ }
+    log.error('[IPC] Error rotating image:', error);
+    throw error;
+  }
+});
+
+/**
  * Unlink with retry on transient Windows file locks.
  * EPERM/EBUSY/EACCES on unlink usually means another process (AV scanner,
  * indexer) or a not-yet-released native handle has the file open. A short
