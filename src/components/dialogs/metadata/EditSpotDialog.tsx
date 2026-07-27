@@ -19,6 +19,8 @@ import {
 import { MuiColorInput } from 'mui-color-input';
 import { useAppStore } from '@/store';
 import { findSpotById } from '@/store/helpers';
+import { legacyColorToHex, hexToLegacyColor } from '@/utils/colorUtils';
+import { PresetSelector } from '../../PresetSelector';
 
 interface EditSpotDialogProps {
   isOpen: boolean;
@@ -29,6 +31,8 @@ interface EditSpotDialogProps {
 export function EditSpotDialog({ isOpen, onClose, spotId }: EditSpotDialogProps) {
   const project = useAppStore((state) => state.project);
   const updateSpotData = useAppStore((state) => state.updateSpotData);
+  const applyPresetToSpot = useAppStore((state) => state.applyPresetToSpot);
+  const getPresetById = useAppStore((state) => state.getPresetById);
 
   const spot = project ? findSpotById(project, spotId) : null;
 
@@ -37,33 +41,41 @@ export function EditSpotDialog({ isOpen, onClose, spotId }: EditSpotDialogProps)
   const [labelColor, setLabelColor] = useState('#ffffff'); // Default to white for better readability with background box
   const [spotColor, setSpotColor] = useState('#00ff00');
   const [opacity, setOpacity] = useState(50);
-
-  // Convert legacy color format (0xRRGGBBAA) to web format (#RRGGBB)
-  const convertLegacyColorToWeb = (color: string | null | undefined): string => {
-    if (!color) return '#00ff00';
-    if (color.startsWith('#')) return color;
-    if (color.startsWith('0x')) {
-      const hex = color.slice(2, 8); // Take RRGGBB, ignore AA
-      return '#' + hex;
-    }
-    return color;
-  };
-
-  // Convert web color format (#RRGGBB) to legacy format (0xRRGGBBFF)
-  const convertWebColorToLegacy = (hexColor: string): string => {
-    return '0x' + hexColor.slice(1) + 'ff';
-  };
+  const [selectedPresetIds, setSelectedPresetIds] = useState<string[]>([]);
 
   // Load spot data when dialog opens
   useEffect(() => {
     if (spot) {
       setName(spot.name || '');
       setNotes(spot.notes || '');
-      setLabelColor(convertLegacyColorToWeb(spot.labelColor));
-      setSpotColor(convertLegacyColorToWeb(spot.color));
+      setLabelColor(legacyColorToHex(spot.labelColor, '#ffffff'));
+      setSpotColor(legacyColorToHex(spot.color));
       setOpacity(spot.opacity ?? 50);
     }
   }, [spot]);
+
+  // Reset preset selection each time the dialog opens
+  useEffect(() => {
+    if (isOpen) {
+      setSelectedPresetIds([]);
+    }
+  }, [isOpen]);
+
+  // Selecting a preset prefills the appearance controls (which the user can
+  // still override — whatever is in the controls at save time wins)
+  const handlePresetSelectionChange = (presetIds: string[]) => {
+    const newlyAdded = presetIds.filter((id) => !selectedPresetIds.includes(id));
+    for (const id of newlyAdded) {
+      const preset = getPresetById(id);
+      if (preset?.data.color) {
+        setSpotColor(legacyColorToHex(preset.data.color));
+      }
+      if (preset?.data.opacity != null) {
+        setOpacity(preset.data.opacity);
+      }
+    }
+    setSelectedPresetIds(presetIds);
+  };
 
   const handleSave = () => {
     if (!name.trim()) {
@@ -71,11 +83,17 @@ export function EditSpotDialog({ isOpen, onClose, spotId }: EditSpotDialogProps)
       return;
     }
 
+    // Apply newly selected presets first (additive merge, store dedups),
+    // then write the control values — controls win over preset appearance
+    for (const presetId of selectedPresetIds) {
+      applyPresetToSpot(presetId, spotId);
+    }
+
     updateSpotData(spotId, {
       name: name.trim(),
       notes: notes.trim() || '',
-      labelColor: convertWebColorToLegacy(labelColor),
-      color: convertWebColorToLegacy(spotColor),
+      labelColor: hexToLegacyColor(labelColor),
+      color: hexToLegacyColor(spotColor),
       opacity,
       modifiedTimestamp: Date.now(),
     });
@@ -110,6 +128,13 @@ export function EditSpotDialog({ isOpen, onClose, spotId }: EditSpotDialogProps)
             multiline
             rows={3}
             fullWidth
+          />
+
+          {/* Quick Spot Presets (hidden when none exist) */}
+          <PresetSelector
+            selectedPresetIds={selectedPresetIds}
+            onChange={handlePresetSelectionChange}
+            appliedPresetIds={spot.appliedPresetIds ?? undefined}
           />
 
           {/* Label Color - Commented out for now, defaulting to white for better readability */}

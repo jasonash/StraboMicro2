@@ -28,6 +28,7 @@ import {
 import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh';
 import CircleIcon from '@mui/icons-material/Circle';
 import { useAppStore } from '@/store';
+import { findSpotById } from '@/store/helpers';
 import { BreadcrumbsBar } from './BreadcrumbsBar';
 import { CombinedDataTypeSelector } from './CombinedDataTypeSelector';
 import { ConfirmDialog } from './dialogs/ConfirmDialog';
@@ -278,6 +279,11 @@ export function PropertiesPanel() {
   const globalPresets = availablePresets.filter((p) => p.scope === 'global');
   const projectPresets = availablePresets.filter((p) => p.scope === 'project');
 
+  // Presets already applied to the active spot (application is an additive
+  // merge and can't be undone, so re-applying is blocked)
+  const activeSpot = activeSpotId && project ? findSpotById(project, activeSpotId) : null;
+  const appliedPresetIds = new Set(activeSpot?.appliedPresetIds || []);
+
   // Determine the first tab label based on selection
   const firstTabLabel = activeSpotId ? 'Spot' : 'Micrograph';
 
@@ -376,13 +382,18 @@ export function PropertiesPanel() {
                     <MenuItem
                       key={preset.id}
                       onClick={() => handleApplyPreset(preset)}
+                      disabled={appliedPresetIds.has(preset.id)}
                     >
                       <ListItemIcon>
                         <CircleIcon sx={{ color: preset.color, fontSize: 16 }} />
                       </ListItemIcon>
                       <ListItemText
                         primary={preset.name}
-                        secondary={getPresetSummary(preset).slice(0, 2).join(', ') || 'No data'}
+                        secondary={
+                          appliedPresetIds.has(preset.id)
+                            ? 'Already applied'
+                            : getPresetSummary(preset).slice(0, 2).join(', ') || 'No data'
+                        }
                         primaryTypographyProps={{ variant: 'body2' }}
                         secondaryTypographyProps={{ variant: 'caption' }}
                       />
@@ -398,13 +409,18 @@ export function PropertiesPanel() {
                     <MenuItem
                       key={preset.id}
                       onClick={() => handleApplyPreset(preset)}
+                      disabled={appliedPresetIds.has(preset.id)}
                     >
                       <ListItemIcon>
                         <CircleIcon sx={{ color: preset.color, fontSize: 16 }} />
                       </ListItemIcon>
                       <ListItemText
                         primary={preset.name}
-                        secondary={getPresetSummary(preset).slice(0, 2).join(', ') || 'No data'}
+                        secondary={
+                          appliedPresetIds.has(preset.id)
+                            ? 'Already applied'
+                            : getPresetSummary(preset).slice(0, 2).join(', ') || 'No data'
+                        }
                         primaryTypographyProps={{ variant: 'body2' }}
                         secondaryTypographyProps={{ variant: 'caption' }}
                       />

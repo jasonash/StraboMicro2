@@ -24,6 +24,10 @@ import {
 import { MuiColorInput } from 'mui-color-input';
 import { Spot, Geometry } from '@/types/project-types';
 import { v4 as uuidv4 } from 'uuid';
+import { useAppStore } from '@/store';
+import { mergePresetIntoSpot } from '@/store/helpers';
+import { legacyColorToHex, hexToLegacyColor } from '@/utils/colorUtils';
+import { PresetSelector } from '../PresetSelector';
 
 interface NewSpotDialogProps {
   open: boolean;
@@ -51,12 +55,31 @@ export const NewSpotDialog: React.FC<NewSpotDialogProps> = ({
     return saved ? parseInt(saved, 10) : 50;
   };
 
+  const getPresetById = useAppStore((state) => state.getPresetById);
+
   // Form state
   const [name, setName] = useState('');
   const [notes, setNotes] = useState('');
   const [labelColor, setLabelColor] = useState('#ffffff'); // Default to white for better readability with background box
   const [spotColor, setSpotColor] = useState(getDefaultColor('spotColor', '#00ff00'));
   const [opacity, setOpacity] = useState(getDefaultOpacity());
+  const [selectedPresetIds, setSelectedPresetIds] = useState<string[]>([]);
+
+  // Selecting a preset prefills the appearance controls (which the user can
+  // still override — whatever is in the controls at save time wins)
+  const handlePresetSelectionChange = (presetIds: string[]) => {
+    const newlyAdded = presetIds.filter((id) => !selectedPresetIds.includes(id));
+    for (const id of newlyAdded) {
+      const preset = getPresetById(id);
+      if (preset?.data.color) {
+        setSpotColor(legacyColorToHex(preset.data.color));
+      }
+      if (preset?.data.opacity != null) {
+        setOpacity(preset.data.opacity);
+      }
+    }
+    setSelectedPresetIds(presetIds);
+  };
 
   // Copy from existing spot state
   const [enableCopy, setEnableCopy] = useState(false);
@@ -87,6 +110,7 @@ export const NewSpotDialog: React.FC<NewSpotDialogProps> = ({
       setLabelColor('#ffffff'); // Default to white
       setSpotColor(getDefaultColor('spotColor', '#00ff00'));
       setOpacity(getDefaultOpacity());
+      setSelectedPresetIds([]);
       setEnableCopy(false);
       setSelectedSpotToCopy(null);
       setCopyFields({
@@ -137,19 +161,13 @@ export const NewSpotDialog: React.FC<NewSpotDialogProps> = ({
       points = ring.map(([x, y]) => ({ X: x, Y: y }));
     }
 
-    // Convert hex color from #RRGGBB to legacy 0xRRGGBBFF format
-    const convertColorToLegacy = (hexColor: string): string => {
-      // Remove # and add 0x prefix and FF suffix for full opacity
-      return '0x' + hexColor.slice(1) + 'ff';
-    };
-
     // Create the new spot in legacy format
     const newSpot: Spot = {
       id: uuidv4(),
       name: name.trim(),
       notes: notes.trim() || '',
-      labelColor: convertColorToLegacy(labelColor),
-      color: convertColorToLegacy(spotColor),
+      labelColor: hexToLegacyColor(labelColor),
+      color: hexToLegacyColor(spotColor),
       opacity,
       date: new Date().toISOString(),
       time: new Date().toISOString(),
@@ -157,6 +175,26 @@ export const NewSpotDialog: React.FC<NewSpotDialogProps> = ({
       geometryType: legacyGeometryType,
       points,
     };
+
+    // Merge selected presets (additive, same rules as Quick Edit), then
+    // re-assert the dialog's appearance controls — controls win over preset
+    // appearance since they were prefilled from it and may have been overridden
+    if (selectedPresetIds.length > 0) {
+      const appliedIds: string[] = [];
+      for (const presetId of selectedPresetIds) {
+        const preset = getPresetById(presetId);
+        if (preset) {
+          mergePresetIntoSpot(newSpot, preset.data);
+          appliedIds.push(presetId);
+        }
+      }
+      if (appliedIds.length > 0) {
+        newSpot.appliedPresetIds = appliedIds;
+      }
+      newSpot.labelColor = hexToLegacyColor(labelColor);
+      newSpot.color = hexToLegacyColor(spotColor);
+      newSpot.opacity = opacity;
+    }
 
     // If copying from existing spot, copy selected fields
     if (enableCopy && selectedSpotToCopy) {
@@ -268,6 +306,12 @@ export const NewSpotDialog: React.FC<NewSpotDialogProps> = ({
             multiline
             rows={3}
             fullWidth
+          />
+
+          {/* Quick Spot Presets (hidden when none exist) */}
+          <PresetSelector
+            selectedPresetIds={selectedPresetIds}
+            onChange={handlePresetSelectionChange}
           />
 
           {/* Label Color - Commented out for now, defaulting to white for better readability */}
