@@ -10,6 +10,7 @@ import {
   DatasetMetadata,
   SampleMetadata,
   MicrographMetadata,
+  MineralogyType,
   Spot,
 } from '@/types/project-types';
 
@@ -362,20 +363,26 @@ export function getMicrographAncestorChain(
  * Get available mineral phases from a micrograph's or spot's mineralogy data
  * Used to populate "Which Phases?" checkboxes in grain/fabric/etc dialogs
  */
-export function getAvailablePhasesFromMicrograph(
-  micrograph: MicrographMetadata | null
+export function getAvailablePhasesFromMineralogy(
+  mineralogy: MineralogyType | null | undefined
 ): string[] {
-  if (!micrograph?.mineralogy?.minerals || micrograph.mineralogy.minerals.length === 0) {
+  if (!mineralogy?.minerals || mineralogy.minerals.length === 0) {
     return [];
   }
 
   // Extract unique mineral names from the minerals array
-  const phases = micrograph.mineralogy.minerals
+  const phases = mineralogy.minerals
     .map((m) => m.name)
     .filter((name): name is string => !!name); // Type guard to filter out undefined
 
   // Return unique phases
   return Array.from(new Set(phases));
+}
+
+export function getAvailablePhasesFromMicrograph(
+  micrograph: MicrographMetadata | null
+): string[] {
+  return getAvailablePhasesFromMineralogy(micrograph?.mineralogy);
 }
 
 /**
@@ -384,15 +391,5 @@ export function getAvailablePhasesFromMicrograph(
 export function getAvailablePhasesFromSpot(
   spot: Spot | null
 ): string[] {
-  if (!spot?.mineralogy?.minerals || spot.mineralogy.minerals.length === 0) {
-    return [];
-  }
-
-  // Extract unique mineral names from the minerals array
-  const phases = spot.mineralogy.minerals
-    .map((m) => m.name)
-    .filter((name): name is string => !!name);
-
-  // Return unique phases
-  return Array.from(new Set(phases));
+  return getAvailablePhasesFromMineralogy(spot?.mineralogy);
 }
