@@ -13,7 +13,7 @@ import {
   Button,
 } from '@mui/material';
 import { useAppStore } from '@/store';
-import { GrainBoundaryInfoType, GrainBoundaryType } from '@/types/project-types';
+import { GrainBoundaryInfoType, GrainBoundaryType, MineralogyType } from '@/types/project-types';
 import { findMicrographById, findSpotById } from '@/store/helpers';
 import { ListManager } from '../reusable/ListManager';
 import { GrainBoundaryAddForm, GrainBoundaryData } from './GrainBoundaryAddForm';
@@ -27,6 +27,7 @@ interface GrainBoundaryInfoDialogProps {
   // Preset mode props
   presetMode?: boolean;
   initialData?: GrainBoundaryInfoType | null;
+  presetMineralogy?: MineralogyType | null;
   onSavePresetData?: (data: GrainBoundaryInfoType | null) => void;
 }
 
@@ -37,6 +38,7 @@ export function GrainBoundaryInfoDialog({
   spotId,
   presetMode,
   initialData,
+  presetMineralogy,
   onSavePresetData,
 }: GrainBoundaryInfoDialogProps) {
   const project = useAppStore((state) => state.project);
@@ -140,6 +142,8 @@ export function GrainBoundaryInfoDialog({
               initialData={initialData}
               micrographId={micrographId}
               spotId={spotId}
+              presetMode={presetMode}
+              presetMineralogy={presetMineralogy}
             />
           )}
         />

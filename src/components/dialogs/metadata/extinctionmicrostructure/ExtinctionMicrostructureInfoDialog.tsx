@@ -13,8 +13,8 @@ import {
   Button,
 } from '@mui/material';
 import { useAppStore } from '@/store';
-import { ExtinctionMicrostructureInfoType, ExtinctionMicrostructureType } from '@/types/project-types';
-import { findMicrographById, findSpotById, getAvailablePhasesFromMicrograph, getAvailablePhasesFromSpot } from '@/store/helpers';
+import { ExtinctionMicrostructureInfoType, ExtinctionMicrostructureType, MineralogyType } from '@/types/project-types';
+import { findMicrographById, findSpotById, getAvailablePhasesFromMicrograph, getAvailablePhasesFromMineralogy, getAvailablePhasesFromSpot } from '@/store/helpers';
 import { ListManager } from '../reusable/ListManager';
 import { ExtinctionMicrostructureAddForm, ExtinctionMicrostructureData } from './ExtinctionMicrostructureAddForm';
 import { ExtinctionMicrostructureListItem } from './ExtinctionMicrostructureListItem';
@@ -27,6 +27,7 @@ interface ExtinctionMicrostructureInfoDialogProps {
   // Preset mode props
   presetMode?: boolean;
   initialData?: ExtinctionMicrostructureInfoType | null;
+  presetMineralogy?: MineralogyType | null;
   onSavePresetData?: (data: ExtinctionMicrostructureInfoType | null) => void;
 }
 
@@ -37,6 +38,7 @@ export function ExtinctionMicrostructureInfoDialog({
   spotId,
   presetMode,
   initialData,
+  presetMineralogy,
   onSavePresetData,
 }: ExtinctionMicrostructureInfoDialogProps) {
   const project = useAppStore((state) => state.project);
@@ -102,11 +104,14 @@ export function ExtinctionMicrostructureInfoDialog({
   };
 
   // Get available phases from mineralogy data (LEGACY: lines 162-183 in editExtinctionMicrostructure.java)
-  const availablePhases: string[] = micrographId
-    ? getAvailablePhasesFromMicrograph(findMicrographById(project, micrographId))
-    : spotId
-      ? getAvailablePhasesFromSpot(findSpotById(project, spotId))
-      : [];
+  // Preset mode has no micrograph/spot — phases come from the preset's own mineralogy
+  const availablePhases: string[] = presetMode
+    ? getAvailablePhasesFromMineralogy(presetMineralogy)
+    : micrographId
+      ? getAvailablePhasesFromMicrograph(findMicrographById(project, micrographId))
+      : spotId
+        ? getAvailablePhasesFromSpot(findSpotById(project, spotId))
+        : [];
 
   const title = presetMode
     ? 'Preset Extinction Microstructures'

@@ -685,6 +685,7 @@ export function QuickApplyPresetEditorDialog({
         onClose={() => setOpenFeatureDialog(null)}
         presetMode={true}
         initialData={featureData.grainInfo}
+        presetMineralogy={featureData.mineralogy}
         onSavePresetData={handleGrainInfoSave}
       />
 
@@ -739,6 +740,7 @@ export function QuickApplyPresetEditorDialog({
         onClose={() => setOpenFeatureDialog(null)}
         presetMode={true}
         initialData={featureData.grainBoundaryInfo}
+        presetMineralogy={featureData.mineralogy}
         onSavePresetData={handleGrainBoundarySave}
       />
 
@@ -748,6 +750,7 @@ export function QuickApplyPresetEditorDialog({
         onClose={() => setOpenFeatureDialog(null)}
         presetMode={true}
         initialData={featureData.intraGrainInfo}
+        presetMineralogy={featureData.mineralogy}
         onSavePresetData={handleIntraGrainSave}
       />
 
@@ -775,6 +778,7 @@ export function QuickApplyPresetEditorDialog({
         onClose={() => setOpenFeatureDialog(null)}
         presetMode={true}
         initialData={featureData.extinctionMicrostructureInfo}
+        presetMineralogy={featureData.mineralogy}
         onSavePresetData={handleExtinctionMicrostructureSave}
       />
 

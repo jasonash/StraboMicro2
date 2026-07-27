@@ -20,7 +20,8 @@ import {
   TextField,
 } from '@mui/material';
 import { useAppStore } from '@/store';
-import { findMicrographById, findSpotById, getAvailablePhasesFromMicrograph, getAvailablePhasesFromSpot } from '@/store/helpers';
+import { findMicrographById, findSpotById, getAvailablePhasesFromMicrograph, getAvailablePhasesFromMineralogy, getAvailablePhasesFromSpot } from '@/store/helpers';
+import { MineralogyType } from '@/types/project-types';
 
 export interface GrainBoundaryMorphologyData {
   type: string;
@@ -50,6 +51,9 @@ interface GrainBoundaryAddFormProps {
   initialData?: GrainBoundaryData;
   micrographId?: string;
   spotId?: string;
+  // Preset mode props
+  presetMode?: boolean;
+  presetMineralogy?: MineralogyType | null;
 }
 
 const DEFAULT_BOUNDARY: GrainBoundaryData = {
@@ -66,6 +70,8 @@ export function GrainBoundaryAddForm({
   initialData,
   micrographId,
   spotId,
+  presetMode,
+  presetMineralogy,
 }: GrainBoundaryAddFormProps) {
   const project = useAppStore((state) => state.project);
 
@@ -101,6 +107,12 @@ export function GrainBoundaryAddForm({
 
   // Load available phases from mineralogy
   useEffect(() => {
+    // Preset mode has no micrograph/spot — phases come from the preset's own mineralogy
+    if (presetMode) {
+      setAvailablePhases(getAvailablePhasesFromMineralogy(presetMineralogy));
+      return;
+    }
+
     if (!project) return;
 
     let phases: string[] = [];
@@ -114,7 +126,7 @@ export function GrainBoundaryAddForm({
     }
 
     setAvailablePhases(phases);
-  }, [project, micrographId, spotId]);
+  }, [project, micrographId, spotId, presetMode, presetMineralogy]);
 
   // Load initial data
   useEffect(() => {

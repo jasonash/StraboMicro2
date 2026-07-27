@@ -30,8 +30,10 @@ import {
   findMicrographById,
   findSpotById,
   getAvailablePhasesFromMicrograph,
+  getAvailablePhasesFromMineralogy,
   getAvailablePhasesFromSpot,
 } from '@/store/helpers';
+import { MineralogyType } from '@/types/project-types';
 import {
   GrainInfoType,
   GrainSizeType,
@@ -53,6 +55,7 @@ interface GrainInfoDialogProps {
   // Preset mode props
   presetMode?: boolean;
   initialData?: GrainInfoType | null;
+  presetMineralogy?: MineralogyType | null;
   onSavePresetData?: (data: GrainInfoType | null) => void;
 }
 
@@ -77,6 +80,7 @@ export function GrainInfoDialog({
   spotId,
   presetMode,
   initialData,
+  presetMineralogy,
   onSavePresetData,
 }: GrainInfoDialogProps) {
   const project = useAppStore((state) => state.project);
@@ -104,11 +108,14 @@ export function GrainInfoDialog({
   const [orientationEditIndex, setOrientationEditIndex] = useState<number | null>(null);
 
   // Get available phases
-  const availablePhases: string[] = micrographId
-    ? getAvailablePhasesFromMicrograph(findMicrographById(project, micrographId))
-    : spotId
-      ? getAvailablePhasesFromSpot(findSpotById(project, spotId))
-      : [];
+  // Preset mode has no micrograph/spot — phases come from the preset's own mineralogy
+  const availablePhases: string[] = presetMode
+    ? getAvailablePhasesFromMineralogy(presetMineralogy)
+    : micrographId
+      ? getAvailablePhasesFromMicrograph(findMicrographById(project, micrographId))
+      : spotId
+        ? getAvailablePhasesFromSpot(findSpotById(project, spotId))
+        : [];
 
   // Load existing data when dialog opens
   useEffect(() => {
