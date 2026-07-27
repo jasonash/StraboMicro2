@@ -22,54 +22,62 @@ const affineTileGenerator = require('./affineTileGenerator');
 const tileCache = require('./tileCache');
 
 /**
- * Ensure the images folder has files.
- * Legacy .smz files may not have an images/ folder, only uiImages/.
- * In that case, copy all files from uiImages/ to images/.
+ * Ensure the images folder has the files the project needs.
+ *
+ * Legacy .smz files can be missing some or all originals in images/:
+ *  - v1 server uploads strip images/ entirely (only uiImages/ is present)
+ *  - mixed-history v1 projects (e.g. downloaded from the server, then extended
+ *    locally) carry originals for only SOME micrographs
+ *
+ * For legacy projects, copy each uiImages/ file that has no images/ counterpart
+ * (per-file gap fill). uiImage space is the legacy coordinate space, so the
+ * substitute renders correctly. For non-legacy projects a downscaled uiImage
+ * under original-space coordinates would misplace spots, so only the
+ * whole-folder-empty fallback applies there.
  *
  * @param {Object} folderPaths - Project folder paths
+ * @param {boolean} isLegacyProject - Whether the project has a legacy (numeric) ID
  */
-async function ensureImagesFolder(folderPaths) {
+async function ensureImagesFolder(folderPaths, isLegacyProject) {
   try {
-    // Check if images folder exists and has files
-    let imagesFiles = [];
-    try {
-      imagesFiles = await fs.promises.readdir(folderPaths.images);
-    } catch (err) {
-      // Folder doesn't exist or can't be read
-      imagesFiles = [];
-    }
+    // Read a folder's files, filtering out hidden files and .gitkeep
+    const readImageDir = async (dirPath) => {
+      let files = [];
+      try {
+        files = await fs.promises.readdir(dirPath);
+      } catch (err) {
+        // Folder doesn't exist or can't be read
+        files = [];
+      }
+      return files.filter(f => !f.startsWith('.') && f !== '.gitkeep');
+    };
 
-    // Filter out hidden files and .gitkeep
-    imagesFiles = imagesFiles.filter(f => !f.startsWith('.') && f !== '.gitkeep');
+    const imagesFiles = await readImageDir(folderPaths.images);
+    const uiImagesFiles = await readImageDir(folderPaths.uiImages);
 
-    if (imagesFiles.length > 0) {
+    if (imagesFiles.length > 0 && !isLegacyProject) {
       log.info(`[SmzImport] Images folder has ${imagesFiles.length} files, no fallback needed`);
       return;
     }
 
-    // Images folder is empty - check uiImages
-    log.info('[SmzImport] Images folder is empty, checking uiImages for fallback...');
+    const existingImages = new Set(imagesFiles);
+    const missingFiles = uiImagesFiles.filter(f => !existingImages.has(f));
 
-    let uiImagesFiles = [];
-    try {
-      uiImagesFiles = await fs.promises.readdir(folderPaths.uiImages);
-    } catch (err) {
-      log.warn('[SmzImport] uiImages folder not found or empty');
+    if (missingFiles.length === 0) {
+      if (imagesFiles.length === 0 && uiImagesFiles.length === 0) {
+        log.warn('[SmzImport] Both images and uiImages folders are empty');
+      } else {
+        log.info(`[SmzImport] Images folder has ${imagesFiles.length} files, no fallback needed`);
+      }
       return;
     }
 
-    // Filter out hidden files and .gitkeep
-    uiImagesFiles = uiImagesFiles.filter(f => !f.startsWith('.') && f !== '.gitkeep');
+    log.info(
+      `[SmzImport] Copying ${missingFiles.length} file(s) from uiImages to images ` +
+      `(legacy fallback; images folder had ${imagesFiles.length})`
+    );
 
-    if (uiImagesFiles.length === 0) {
-      log.warn('[SmzImport] Both images and uiImages folders are empty');
-      return;
-    }
-
-    // Copy files from uiImages to images
-    log.info(`[SmzImport] Copying ${uiImagesFiles.length} files from uiImages to images (legacy fallback)`);
-
-    for (const filename of uiImagesFiles) {
+    for (const filename of missingFiles) {
       const sourcePath = path.join(folderPaths.uiImages, filename);
       const destPath = path.join(folderPaths.images, filename);
 
@@ -837,10 +845,12 @@ async function importSmz(smzPath, progressCallback) {
       sendProgress('Extracting files', percentage, path.basename(pathWithinProject));
     }
 
-    // Check if images folder is empty (legacy .smz files may not have it)
-    // If so, copy files from uiImages to images
+    const isLegacyProject = /^\d+$/.test(projectId);
+
+    // Fill in missing images/ files from uiImages (legacy .smz files may lack
+    // some or all originals — see ensureImagesFolder)
     sendProgress('Checking images', 91, 'Verifying image files...');
-    await ensureImagesFolder(folderPaths);
+    await ensureImagesFolder(folderPaths, isLegacyProject);
 
     // Convert any non-JPEG images to JPEG (legacy projects may have TIFF images)
     sendProgress('Converting images', 91, 'Checking image formats...');
@@ -860,7 +870,6 @@ async function importSmz(smzPath, progressCallback) {
     // The legacy JavaFX app displayed images at min width=2000px and stored overlay positions
     // (offsetInParent) in that upscaled coordinate space. Without this, overlays render at
     // incorrect positions on small parent images.
-    const isLegacyProject = /^\d+$/.test(projectId);
     if (isLegacyProject) {
       sendProgress('Upscaling images', 92, 'Adjusting legacy image sizes...');
       const upscaleStats = await upscaleLegacySmallImages(folderPaths, sendProgress);
@@ -1088,4 +1097,5 @@ module.exports = {
   inspectSmz,
   importSmz,
   normalizeLegacyOversizedImages,
+  ensureImagesFolder,
 };
