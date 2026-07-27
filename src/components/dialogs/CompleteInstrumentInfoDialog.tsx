@@ -1,16 +1,21 @@
 /**
  * Complete Instrument Info Dialog
  *
- * Two-step wizard used to collect Instrument & Image Info for a micrograph
- * that was created via Batch Import with the "Instrument and Image Info"
- * checkbox unchecked. Mirrors the two instrument steps from BatchImportDialog
- * so users get the same fields they would have provided at import time.
+ * Three-step wizard used to complete a micrograph that was created via Batch
+ * Import: an Image Rotation step (offered here because the Batch Import
+ * "Rotate Images" checkbox may have been left unchecked), then the two
+ * instrument steps mirroring BatchImportDialog so users get the same fields
+ * they would have provided at import time.
+ *
+ * Rotation is safe here for the same reason it is safe at import: while
+ * `needsInstrumentInfo` is true the micrograph has never been viewable, so it
+ * cannot have spots, children, or scale/placement data in its pixel space.
  *
  * Opens before EditMicrographLocationDialog / SetScaleDialog when a
  * batch-imported thumbnail with `needsInstrumentInfo: true` is clicked.
  */
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -21,7 +26,14 @@ import {
   Step,
   StepLabel,
   Stack,
+  Box,
+  Typography,
+  Alert,
+  IconButton,
+  Tooltip,
+  CircularProgress,
 } from '@mui/material';
+import { RotateLeft, RotateRight } from '@mui/icons-material';
 import { useAppStore } from '@/store';
 import type { InstrumentType, MicrographMetadata } from '@/types/project-types';
 import { InstrumentInfoForm, type InstrumentFormData } from './InstrumentInfoForm';
@@ -32,6 +44,13 @@ import {
   initialInstrumentDataFormData,
 } from './InstrumentDataForm';
 import type { InstrumentData } from './InstrumentDatabaseDialog';
+import {
+  rotateCW,
+  rotateCCW,
+  isQuarterTurn,
+  rotationLabel,
+  type RotationDegrees,
+} from '@/utils/rotationUtils';
 
 interface CompleteInstrumentInfoDialogProps {
   isOpen: boolean;
@@ -47,7 +66,7 @@ const initialInstrumentInfoData: InstrumentFormData = {
   imageType: '',
 };
 
-const STEPS = ['Instrument & Image Info', 'Instrument Data'] as const;
+const STEPS = ['Image Rotation', 'Instrument & Image Info', 'Instrument Data'] as const;
 
 export const CompleteInstrumentInfoDialog: React.FC<CompleteInstrumentInfoDialogProps> = ({
   isOpen,
@@ -64,6 +83,52 @@ export const CompleteInstrumentInfoDialog: React.FC<CompleteInstrumentInfoDialog
   const [instrumentDataFormData, setInstrumentDataFormData] =
     useState<InstrumentDataFormData>(initialInstrumentDataFormData);
   const [detectors, setDetectors] = useState<Detector[]>([{ type: '', make: '', model: '' }]);
+
+  // Image rotation step state. The image is already in the project images
+  // folder (batch import moves it before tiling), so rotation operates on the
+  // project image path rather than a scratch path.
+  const [imagePath, setImagePath] = useState<string | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [pendingRotation, setPendingRotation] = useState<RotationDegrees>(0);
+  const [isRotating, setIsRotating] = useState(false);
+
+  const micrograph = useMemo((): MicrographMetadata | null => {
+    if (!project || !micrographId) return null;
+    for (const dataset of project.datasets || []) {
+      for (const sample of dataset.samples || []) {
+        const micro = sample.micrographs?.find((m) => m.id === micrographId);
+        if (micro) return micro;
+      }
+    }
+    return null;
+  }, [project, micrographId]);
+
+  // Load the image preview when the dialog opens (already tiled by batch import,
+  // so this is normally a cache hit)
+  useEffect(() => {
+    if (!isOpen || !micrographId || !project?.id || !window.api) return;
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const folderPaths = await window.api!.getProjectFolderPaths(project.id);
+        if (!folderPaths || cancelled) return;
+        const path = `${folderPaths.images}/${micrographId}`;
+        const tileData = await window.api!.loadImageWithTiles(path);
+        if (!tileData || cancelled) return;
+        const mediumDataUrl = await window.api!.loadMedium(tileData.hash);
+        if (cancelled) return;
+        setImagePath(path);
+        setPreviewUrl(mediumDataUrl || null);
+      } catch (error) {
+        console.error('[CompleteInstrumentInfo] Failed to load image preview:', error);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, micrographId, project?.id]);
 
   const existingMicrographs = useMemo((): MicrographMetadata[] => {
     if (!project) return [];
@@ -85,6 +150,10 @@ export const CompleteInstrumentInfoDialog: React.FC<CompleteInstrumentInfoDialog
     setInstrumentInfoData(initialInstrumentInfoData);
     setInstrumentDataFormData(initialInstrumentDataFormData);
     setDetectors([{ type: '', make: '', model: '' }]);
+    setImagePath(null);
+    setPreviewUrl(null);
+    setPendingRotation(0);
+    setIsRotating(false);
   };
 
   const handleClose = () => {
@@ -180,7 +249,7 @@ export const CompleteInstrumentInfoDialog: React.FC<CompleteInstrumentInfoDialog
   // Matches BatchImportDialog and NewMicrographDialog validation for the
   // Instrument & Image Info step.
   const canProceed = () => {
-    if (activeStep === 0) {
+    if (STEPS[activeStep] === 'Instrument & Image Info') {
       if (!instrumentInfoData.instrumentType) return false;
       if (
         instrumentInfoData.instrumentType === 'Other' &&
@@ -194,7 +263,69 @@ export const CompleteInstrumentInfoDialog: React.FC<CompleteInstrumentInfoDialog
     return true;
   };
 
-  const handleNext = () => setActiveStep((prev) => prev + 1);
+  // Apply the pending rotation to the project image pixels. Same commit-boundary
+  // pattern as the import wizards: preview is CSS-only until the user leaves the
+  // rotation step, so the image is re-encoded at most once per pass.
+  const applyPendingRotation = async (): Promise<boolean> => {
+    const api = window.api;
+    if (!api || !imagePath || !micrographId || pendingRotation === 0) return true;
+
+    setIsRotating(true);
+    try {
+      const result = await api.rotateImage(imagePath, pendingRotation);
+
+      // Re-tile from the (now rotated) project image and refresh the preview
+      const tileData = await api.loadImageWithTiles(imagePath);
+      if (tileData) {
+        const mediumDataUrl = await api.loadMedium(tileData.hash);
+        if (mediumDataUrl) {
+          setPreviewUrl(mediumDataUrl);
+        }
+      }
+
+      // Persist the swapped dimensions on the micrograph
+      updateMicrographMetadata(micrographId, {
+        imageWidth: result.width,
+        imageHeight: result.height,
+        width: result.width,
+        height: result.height,
+      });
+
+      // Regenerate the tree thumbnail in the background (batch import created
+      // one from the pre-rotation pixels)
+      const projectForThumb = useAppStore.getState().project;
+      if (projectForThumb) {
+        api
+          .generateCompositeThumbnail(projectForThumb.id, micrographId, projectForThumb)
+          .then(() => {
+            window.dispatchEvent(
+              new CustomEvent('thumbnail-generated', { detail: { micrographId } })
+            );
+          })
+          .catch((err) => {
+            console.error('[CompleteInstrumentInfo] Failed to regenerate thumbnail:', err);
+          });
+      }
+
+      setPendingRotation(0);
+      return true;
+    } catch (error) {
+      console.error('[CompleteInstrumentInfo] Error rotating image:', error);
+      alert(`Error rotating image: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      return false;
+    } finally {
+      setIsRotating(false);
+    }
+  };
+
+  const handleNext = async () => {
+    // Leaving the rotation step commits any pending rotation to the pixels
+    if (STEPS[activeStep] === 'Image Rotation') {
+      const ok = await applyPendingRotation();
+      if (!ok) return; // Stay on the step; pending rotation is preserved
+    }
+    setActiveStep((prev) => prev + 1);
+  };
   const handleBack = () => setActiveStep((prev) => prev - 1);
 
   const handleSave = () => {
@@ -257,7 +388,84 @@ export const CompleteInstrumentInfoDialog: React.FC<CompleteInstrumentInfoDialog
         </Stepper>
 
         <Stack spacing={2}>
-          {activeStep === 0 && (
+          {STEPS[activeStep] === 'Image Rotation' && (
+            <Stack spacing={2}>
+              <Alert severity="info">
+                <strong>Rotate the image pixels (optional).</strong> Rotation permanently changes
+                the image's pixels and controls how the image appears everywhere it is shown —
+                the main detail view, thumbnails, and exports. It does <strong>not</strong> affect
+                how an associated micrograph is positioned on its parent image. This is the last
+                opportunity to rotate: once this setup is complete, the rotation{' '}
+                <strong>cannot be changed</strong>, so if the image was captured sideways or
+                upside down, correct it now.
+              </Alert>
+              {/* Square container: the rotated bounding box never overflows at 90°/270° */}
+              <Box sx={{ display: 'flex', justifyContent: 'center' }}>
+                <Box
+                  sx={{
+                    width: 360,
+                    height: 360,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    bgcolor: 'action.hover',
+                    borderRadius: 1,
+                  }}
+                >
+                  {previewUrl ? (
+                    <Box
+                      component="img"
+                      src={previewUrl}
+                      alt="Micrograph preview"
+                      sx={{
+                        maxWidth: '100%',
+                        maxHeight: '100%',
+                        transform: `rotate(${pendingRotation}deg)`,
+                        transition: 'transform 150ms ease',
+                      }}
+                    />
+                  ) : (
+                    <CircularProgress />
+                  )}
+                </Box>
+              </Box>
+              <Stack direction="row" spacing={2} alignItems="center" justifyContent="center">
+                <Tooltip title="Rotate 90° counter-clockwise">
+                  <span>
+                    <IconButton
+                      onClick={() => setPendingRotation(rotateCCW(pendingRotation))}
+                      disabled={isRotating || !previewUrl}
+                    >
+                      <RotateLeft />
+                    </IconButton>
+                  </span>
+                </Tooltip>
+                <Typography variant="body2" sx={{ minWidth: 180, textAlign: 'center' }}>
+                  {rotationLabel(pendingRotation)}
+                </Typography>
+                <Tooltip title="Rotate 90° clockwise">
+                  <span>
+                    <IconButton
+                      onClick={() => setPendingRotation(rotateCW(pendingRotation))}
+                      disabled={isRotating || !previewUrl}
+                    >
+                      <RotateRight />
+                    </IconButton>
+                  </span>
+                </Tooltip>
+              </Stack>
+              {micrograph && (
+                <Typography variant="caption" color="text.secondary" sx={{ textAlign: 'center' }}>
+                  Resulting dimensions:{' '}
+                  {isQuarterTurn(pendingRotation)
+                    ? `${micrograph.height ?? micrograph.imageHeight ?? 0} × ${micrograph.width ?? micrograph.imageWidth ?? 0}`
+                    : `${micrograph.width ?? micrograph.imageWidth ?? 0} × ${micrograph.height ?? micrograph.imageHeight ?? 0}`}{' '}
+                  pixels
+                </Typography>
+              )}
+            </Stack>
+          )}
+          {STEPS[activeStep] === 'Instrument & Image Info' && (
             <InstrumentInfoForm
               formData={instrumentInfoData}
               onFormChange={handleInstrumentInfoChange}
@@ -267,7 +475,7 @@ export const CompleteInstrumentInfoDialog: React.FC<CompleteInstrumentInfoDialog
               showCopyFromExisting={true}
             />
           )}
-          {activeStep === 1 && (
+          {STEPS[activeStep] === 'Instrument Data' && (
             <InstrumentDataForm
               formData={instrumentDataFormData}
               detectors={detectors}
@@ -282,8 +490,10 @@ export const CompleteInstrumentInfoDialog: React.FC<CompleteInstrumentInfoDialog
       </DialogContent>
 
       <DialogActions>
-        <Button onClick={handleClose}>Cancel</Button>
-        <Button onClick={handleBack} disabled={activeStep === 0}>
+        <Button onClick={handleClose} disabled={isRotating}>
+          Cancel
+        </Button>
+        <Button onClick={handleBack} disabled={activeStep === 0 || isRotating}>
           Back
         </Button>
         {isLastStep ? (
@@ -291,8 +501,8 @@ export const CompleteInstrumentInfoDialog: React.FC<CompleteInstrumentInfoDialog
             Save
           </Button>
         ) : (
-          <Button variant="contained" onClick={handleNext} disabled={!canProceed()}>
-            Next
+          <Button variant="contained" onClick={handleNext} disabled={!canProceed() || isRotating}>
+            {isRotating ? 'Rotating…' : 'Next'}
           </Button>
         )}
       </DialogActions>
