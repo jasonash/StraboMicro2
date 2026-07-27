@@ -6,12 +6,13 @@
  *
  * Steps:
  * 1. Load Reference Micrograph (file browser)
- * 2. Instrument & Image Information (with periodic table for EDS/WDS)
- * 3. Instrument Data (conditional based on instrument type)
- * 4. Micrograph Metadata (name, polished, notes)
- * 5. Micrograph Orientation (3 methods: unoriented, trend/plunge, fabric reference)
- * 6. Scale Method Selection (3 methods)
- * 7. Scale Input (conditional based on method chosen in Step 6)
+ * 2. Image Rotation (optional destructive 90° pixel rotation, import-time only)
+ * 3. Instrument & Image Information (with periodic table for EDS/WDS)
+ * 4. Instrument Data (conditional based on instrument type)
+ * 5. Micrograph Metadata (name, polished, notes)
+ * 6. Micrograph Orientation (3 methods: unoriented, trend/plunge, fabric reference)
+ * 7. Scale Method Selection (3 methods)
+ * 8. Scale Input (conditional based on method chosen in Step 7)
  */
 
 import { useState, useEffect, useRef, useMemo } from 'react';
@@ -39,6 +40,7 @@ import {
   CircularProgress,
   IconButton,
   Tooltip,
+  Alert,
 } from '@mui/material';
 import { WizardProgress } from '../WizardProgress';
 import { useAppStore } from '@/store';
@@ -49,10 +51,17 @@ import { ScaleBarCanvas, type Tool, type ScaleBarCanvasRef } from '../ScaleBarCa
 import PlacementCanvas from './PlacementCanvas';
 import { PointPlacementCanvas } from './PointPlacementCanvas';
 import { AffineRegistrationModal } from './AffineRegistrationModal';
-import { PanTool, Timeline, RestartAlt, CheckCircle, Cancel } from '@mui/icons-material';
+import { PanTool, Timeline, RestartAlt, CheckCircle, Cancel, RotateLeft, RotateRight } from '@mui/icons-material';
 import type { AffineMatrix, ControlPoint } from '@/utils/affineTransform';
 import { computeCopySizePlacement } from '@/utils/copySizePlacement';
 import { findMicrographById } from '@/store/helpers';
+import {
+  rotateCW,
+  rotateCCW,
+  isQuarterTurn,
+  rotationLabel,
+  type RotationDegrees,
+} from '@/utils/rotationUtils';
 
 interface NewMicrographDialogProps {
   isOpen: boolean;
@@ -334,6 +343,7 @@ const initialFormData: MicrographFormData = {
 // Step IDs for the wizard - using IDs instead of indices for clarity
 type StepId =
   | 'load'
+  | 'image-rotation'     // Both flows - destructive pixel rotation, import-time only
   | 'instrument-info'
   | 'instrument-data'
   | 'instrument-settings'
@@ -368,6 +378,13 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
   const [canvasTool, setCanvasTool] = useState<Tool>('pointer');
   const [isFlipped, setIsFlipped] = useState(false);
   const [isFlipping, setIsFlipping] = useState(false);
+  // Import-time image rotation. pendingRotation is preview-only (CSS transform);
+  // the pixels are rotated once, when the user leaves the image-rotation step.
+  // appliedRotation is the cumulative rotation already baked into the scratch
+  // pixels — needed so an XPL image added later receives the same rotation.
+  const [pendingRotation, setPendingRotation] = useState<RotationDegrees>(0);
+  const [appliedRotation, setAppliedRotation] = useState<RotationDegrees>(0);
+  const [isRotating, setIsRotating] = useState(false);
   // Guard against duplicate/concurrent submissions of the wizard. The ref is the
   // source of truth for correctness: it updates synchronously, so a rapid
   // double-click on Finish cannot start a second interleaved creation (which
@@ -554,7 +571,11 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
       label: isAssociated ? 'Load Associated Micrograph' : 'Load Reference Micrograph',
     });
 
-    // Step 2: Instrument info (always)
+    // Step 2: Image rotation (always) - destructive 90° pixel rotation, import-time only.
+    // Distinct from the 'orientation' step, which is geological orientation metadata.
+    stepList.push({ id: 'image-rotation', label: 'Image Rotation' });
+
+    // Step 3: Instrument info (always)
     stepList.push({ id: 'instrument-info', label: 'Instrument & Image Information' });
 
     // Step 3: Instrument data (always)
@@ -649,9 +670,11 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
     }
   }, [currentStepId, formData.scaleMethod]);
 
-  // Reset flip state when a new micrograph file is selected
+  // Reset flip and rotation state when a new micrograph file is selected
   useEffect(() => {
     setIsFlipped(false);
+    setPendingRotation(0);
+    setAppliedRotation(0);
   }, [formData.micrographFilePath]);
 
   const [scratchIdentifier, setScratchIdentifier] = useState<string | null>(null);
@@ -780,15 +803,38 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
 
       console.log('[NewMicrographDialog] XPL conversion complete:', conversionResult);
 
+      // The main image's pixels already carry any rotation applied on the
+      // Image Rotation step; the sibling comes off the instrument in the same
+      // raw orientation, so give it the same rotation before comparing dims.
+      let xplWidth = conversionResult.jpegWidth;
+      let xplHeight = conversionResult.jpegHeight;
+      if (appliedRotation !== 0) {
+        try {
+          const rotateResult = await window.api.rotateImage(
+            conversionResult.scratchPath,
+            appliedRotation
+          );
+          xplWidth = rotateResult.width;
+          xplHeight = rotateResult.height;
+        } catch (rotateError) {
+          console.error('[NewMicrographDialog] Error rotating XPL image:', rotateError);
+          if (window.api.deleteScratchImage) {
+            await window.api.deleteScratchImage(conversionResult.identifier);
+          }
+          alert(
+            `Error rotating the image to match: ${rotateError instanceof Error ? rotateError.message : 'Unknown error'}`
+          );
+          setIsLoadingXpl(false);
+          return;
+        }
+      }
+
       // Validate dimensions match the main image
       const sibLabel = formData.imageType === 'Plane Polarized Light' ? 'XPL' : 'PPL';
       const srcLabel = formData.imageType === 'Plane Polarized Light' ? 'PPL' : 'XPL';
-      if (
-        conversionResult.jpegWidth !== formData.micrographWidth ||
-        conversionResult.jpegHeight !== formData.micrographHeight
-      ) {
+      if (xplWidth !== formData.micrographWidth || xplHeight !== formData.micrographHeight) {
         alert(
-          `The ${sibLabel} image dimensions (${conversionResult.jpegWidth} x ${conversionResult.jpegHeight}) ` +
+          `The ${sibLabel} image dimensions (${xplWidth} x ${xplHeight}) ` +
             `do not match the ${srcLabel} image dimensions (${formData.micrographWidth} x ${formData.micrographHeight}).\n\n` +
             `Both images must have the same pixel dimensions.`
         );
@@ -803,8 +849,8 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
       // Dimensions match - store the XPL image info
       setXplFilePath(conversionResult.scratchPath);
       setXplFileName(fileName);
-      setXplWidth(conversionResult.jpegWidth);
-      setXplHeight(conversionResult.jpegHeight);
+      setXplWidth(xplWidth);
+      setXplHeight(xplHeight);
       setXplScratchIdentifier(conversionResult.identifier);
 
       console.log('[NewMicrographDialog] Sibling image added successfully');
@@ -817,7 +863,78 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
     }
   };
 
-  const handleNext = () => {
+  // Apply the pending rotation to the scratch image pixels. Called when leaving
+  // the image-rotation step; the preview up to that point is CSS-only so the
+  // scratch file is re-encoded at most once per pass through the step.
+  const applyPendingRotation = async (): Promise<boolean> => {
+    const api = window.api;
+    if (!api || !formData.micrographFilePath || pendingRotation === 0) return true;
+
+    setIsRotating(true);
+    try {
+      const result = await api.rotateImage(formData.micrographFilePath, pendingRotation);
+
+      // Reload through the tile system and refresh both previews
+      const tileData = await api.loadImageWithTiles(formData.micrographFilePath);
+      if (tileData) {
+        const mediumDataUrl = await api.loadMedium(tileData.hash);
+        if (mediumDataUrl) {
+          setMicrographPreviewUrl(mediumDataUrl);
+        }
+        const thumbnailDataUrl = await api.loadThumbnail(tileData.hash);
+        if (thumbnailDataUrl) {
+          setThumbnailUrl(thumbnailDataUrl);
+        }
+      }
+
+      // A sibling XPL image can only exist here via Back-navigation from the
+      // instrument step; keep the pair in lockstep by rotating it identically.
+      if (xplFilePath) {
+        const xplResult = await api.rotateImage(xplFilePath, pendingRotation);
+        setXplWidth(xplResult.width);
+        setXplHeight(xplResult.height);
+      }
+
+      // Update dimensions and clear any state expressed in the old pixel space:
+      // a traced scale bar line, a rectangle placement offset, and 3-point affine
+      // registration (its tiles were baked from the pre-rotation scratch pixels).
+      setFormData((prev) => ({
+        ...prev,
+        micrographWidth: result.width,
+        micrographHeight: result.height,
+        scaleBarLineStart: null,
+        scaleBarLineEnd: null,
+        scaleBarLineLengthPixels: '',
+        offsetInParent: { X: 0, Y: 0 },
+        affineMatrix: null,
+        affineControlPoints: null,
+        affineBoundsOffset: null,
+        affineTransformedWidth: null,
+        affineTransformedHeight: null,
+        affineTileHash: null,
+      }));
+
+      setAppliedRotation((prev) => {
+        const total = (prev + pendingRotation) % 360;
+        return total === 90 || total === 180 || total === 270 ? total : 0;
+      });
+      setPendingRotation(0);
+      return true;
+    } catch (error) {
+      console.error('[NewMicrographDialog] Error rotating image:', error);
+      alert(`Error rotating image: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      return false;
+    } finally {
+      setIsRotating(false);
+    }
+  };
+
+  const handleNext = async () => {
+    // Leaving the rotation step commits any pending rotation to the pixels
+    if (currentStepId === 'image-rotation') {
+      const ok = await applyPendingRotation();
+      if (!ok) return; // Stay on the step; pending rotation is preserved
+    }
     // Skip the scale method step for 3-Point Registration since affine transform handles scale
     if (currentStepId === 'location-method' && formData.locationMethod === '3-Point Registration') {
       // Find the index of 'location-placement' step and jump directly to it
@@ -1586,6 +1703,10 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
     switch (currentStepId) {
       case 'load':
         return formData.micrographFilePath !== '';
+
+      case 'image-rotation':
+        // Rotation is optional; the pending rotation is applied on Next
+        return true;
 
       case 'instrument-info':
         // Legacy app requires both instrumentType AND imageType
@@ -2993,6 +3114,83 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
                 Browse...
               </Button>
             </Box>
+          </Stack>
+        );
+      case 'image-rotation':
+        return (
+          <Stack spacing={2}>
+            <Alert severity="info">
+              <strong>Rotate the image pixels (optional).</strong> Rotation permanently changes
+              the imported image's pixels and controls how the image appears everywhere it is
+              shown — the main detail view, thumbnails, and exports. It does <strong>not</strong>{' '}
+              affect how an associated micrograph is positioned on its parent image; placement is
+              configured separately in a later step. Rotation{' '}
+              <strong>cannot be changed after import</strong>, so if the image was captured
+              sideways or upside down, correct it now.
+            </Alert>
+            {/* Square container: both image dimensions are constrained to fit, so the
+                rotated bounding box never overflows at 90°/270° */}
+            <Box sx={{ display: 'flex', justifyContent: 'center' }}>
+              <Box
+                sx={{
+                  width: 360,
+                  height: 360,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  bgcolor: 'action.hover',
+                  borderRadius: 1,
+                }}
+              >
+                {micrographPreviewUrl ? (
+                  <Box
+                    component="img"
+                    src={micrographPreviewUrl}
+                    alt="Micrograph preview"
+                    sx={{
+                      maxWidth: '100%',
+                      maxHeight: '100%',
+                      transform: `rotate(${pendingRotation}deg)`,
+                      transition: 'transform 150ms ease',
+                    }}
+                  />
+                ) : (
+                  <CircularProgress />
+                )}
+              </Box>
+            </Box>
+            <Stack direction="row" spacing={2} alignItems="center" justifyContent="center">
+              <Tooltip title="Rotate 90° counter-clockwise">
+                <span>
+                  <IconButton
+                    onClick={() => setPendingRotation(rotateCCW(pendingRotation))}
+                    disabled={isRotating || isLoadingPreview || !micrographPreviewUrl}
+                  >
+                    <RotateLeft />
+                  </IconButton>
+                </span>
+              </Tooltip>
+              <Typography variant="body2" sx={{ minWidth: 180, textAlign: 'center' }}>
+                {rotationLabel(pendingRotation)}
+              </Typography>
+              <Tooltip title="Rotate 90° clockwise">
+                <span>
+                  <IconButton
+                    onClick={() => setPendingRotation(rotateCW(pendingRotation))}
+                    disabled={isRotating || isLoadingPreview || !micrographPreviewUrl}
+                  >
+                    <RotateRight />
+                  </IconButton>
+                </span>
+              </Tooltip>
+            </Stack>
+            <Typography variant="caption" color="text.secondary" sx={{ textAlign: 'center' }}>
+              Resulting dimensions:{' '}
+              {isQuarterTurn(pendingRotation)
+                ? `${formData.micrographHeight} × ${formData.micrographWidth}`
+                : `${formData.micrographWidth} × ${formData.micrographHeight}`}{' '}
+              pixels
+            </Typography>
           </Stack>
         );
       case 'instrument-info':
@@ -4876,11 +5074,15 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
           <Box sx={{ mt: 2, mb: 1 }}>{renderStepContent()}</Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={handleCancel}>Cancel</Button>
-          {activeStep > 0 && <Button onClick={handleBack}>Back</Button>}
+          <Button onClick={handleCancel} disabled={isRotating}>Cancel</Button>
+          {activeStep > 0 && (
+            <Button onClick={handleBack} disabled={isRotating}>
+              Back
+            </Button>
+          )}
           {activeStep < steps.length - 1 ? (
-            <Button variant="contained" onClick={handleNext} disabled={!canProceed()}>
-              Next
+            <Button variant="contained" onClick={handleNext} disabled={!canProceed() || isRotating}>
+              {isRotating ? 'Rotating…' : 'Next'}
             </Button>
           ) : (
             <Button
