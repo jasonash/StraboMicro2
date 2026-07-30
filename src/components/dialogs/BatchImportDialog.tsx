@@ -42,8 +42,17 @@ import {
   Alert,
   CircularProgress,
 } from '@mui/material';
-import { Delete, CloudUpload, Warning, RotateLeft, RotateRight } from '@mui/icons-material';
-import { rotateCW, rotateCCW, rotationLabel, type RotationDegrees } from '@/utils/rotationUtils';
+import { Delete, CloudUpload, Warning, RotateLeft, RotateRight, Flip } from '@mui/icons-material';
+import {
+  IDENTITY_ORIENTATION,
+  isIdentityOrientation,
+  orientationRotateCW,
+  orientationRotateCCW,
+  toggleOrientationFlip,
+  orientationCssTransform,
+  orientationLabel,
+  type Orientation,
+} from '@/utils/rotationUtils';
 import { useAppStore } from '@/store';
 import type { MicrographMetadata } from '@/types/project-types';
 import { InstrumentInfoForm, type InstrumentFormData } from './InstrumentInfoForm';
@@ -85,7 +94,7 @@ export const BatchImportDialog: React.FC<BatchImportDialogProps> = ({
 
   // Per-file rotation (path → clockwise degrees). Preview-only until the import
   // loop, where each file's rotation is baked into its scratch JPEG's pixels.
-  const [fileRotations, setFileRotations] = useState<Record<string, RotationDegrees>>({});
+  const [fileOrientations, setFileOrientations] = useState<Record<string, Orientation>>({});
   // Source-file thumbnails for the Rotation step (path → data URL; '' = failed).
   // Source files aren't converted to scratch until import, so previews come from
   // loadImagePreview, which decodes the full file — hence lazy + sequential.
@@ -181,7 +190,7 @@ export const BatchImportDialog: React.FC<BatchImportDialogProps> = ({
 
   const handleRemoveFile = (path: string) => {
     setSelectedFiles((prev) => prev.filter((f) => f.path !== path));
-    setFileRotations((prev) => {
+    setFileOrientations((prev) => {
       const { [path]: _removed, ...rest } = prev;
       return rest;
     });
@@ -466,13 +475,19 @@ export const BatchImportDialog: React.FC<BatchImportDialogProps> = ({
         console.log(`[BatchImport] Converting file ${i + 1}/${selectedFiles.length}: ${file.name}`);
         const conversionResult = await window.api!.convertToScratchJPEG(file.path);
 
-        // Bake the user's chosen rotation into the scratch pixels before the
-        // image enters the project. 90°/270° swap the stored dimensions.
+        // Bake the user's chosen rotation/flip into the scratch pixels before
+        // the image enters the project. 90°/270° swap the stored dimensions.
         let imageWidth = conversionResult.jpegWidth;
         let imageHeight = conversionResult.jpegHeight;
-        const rotation = includeRotation ? (fileRotations[file.path] ?? 0) : 0;
-        if (rotation !== 0) {
-          const rotateResult = await window.api!.rotateImage(conversionResult.scratchPath, rotation);
+        const orientation = includeRotation
+          ? (fileOrientations[file.path] ?? IDENTITY_ORIENTATION)
+          : IDENTITY_ORIENTATION;
+        if (!isIdentityOrientation(orientation)) {
+          const rotateResult = await window.api!.rotateImage(
+            conversionResult.scratchPath,
+            orientation.rotation,
+            orientation.flip
+          );
           imageWidth = rotateResult.width;
           imageHeight = rotateResult.height;
         }
@@ -627,7 +642,7 @@ export const BatchImportDialog: React.FC<BatchImportDialogProps> = ({
     setIncludeInstrumentInfo(false);
     setIncludeOrientation(false);
     setIncludeRotation(false);
-    setFileRotations({});
+    setFileOrientations({});
     setPreviewCache({});
     setInstrumentInfoData(initialInstrumentInfoData);
     setInstrumentDataFormData(initialInstrumentDataFormData);
@@ -681,7 +696,7 @@ export const BatchImportDialog: React.FC<BatchImportDialogProps> = ({
                     onChange={(e) => setIncludeRotation(e.target.checked)}
                   />
                 }
-                label="Rotate Images"
+                label="Rotate / Flip Images"
               />
             </Box>
 
@@ -783,14 +798,14 @@ export const BatchImportDialog: React.FC<BatchImportDialogProps> = ({
         return (
           <Stack spacing={2}>
             <Alert severity="info">
-              Rotation permanently changes each image's pixels before import and affects how the
-              image appears everywhere (detail view, thumbnails, exports). It cannot be changed
-              after import.
+              Rotation and flipping permanently change each image's pixels before import and
+              affect how the image appears everywhere (detail view, thumbnails, exports). They
+              cannot be changed after import.
             </Alert>
             <Paper variant="outlined" sx={{ maxHeight: 420, overflow: 'auto' }}>
               <List dense>
                 {validFiles.map((file) => {
-                  const rotation = fileRotations[file.path] ?? 0;
+                  const orientation = fileOrientations[file.path] ?? IDENTITY_ORIENTATION;
                   const preview = previewCache[file.path];
                   return (
                     <ListItem key={file.path} sx={{ gap: 2 }}>
@@ -819,7 +834,7 @@ export const BatchImportDialog: React.FC<BatchImportDialogProps> = ({
                             sx={{
                               maxWidth: '100%',
                               maxHeight: '100%',
-                              transform: `rotate(${rotation}deg)`,
+                              transform: orientationCssTransform(orientation),
                               transition: 'transform 150ms ease',
                             }}
                           />
@@ -827,16 +842,16 @@ export const BatchImportDialog: React.FC<BatchImportDialogProps> = ({
                       </Box>
                       <ListItemText
                         primary={file.name}
-                        secondary={rotationLabel(rotation)}
+                        secondary={orientationLabel(orientation)}
                         primaryTypographyProps={{ noWrap: true }}
                       />
                       <IconButton
                         size="small"
                         title="Rotate 90° counter-clockwise"
                         onClick={() =>
-                          setFileRotations((prev) => ({
+                          setFileOrientations((prev) => ({
                             ...prev,
-                            [file.path]: rotateCCW(rotation),
+                            [file.path]: orientationRotateCCW(orientation),
                           }))
                         }
                       >
@@ -846,13 +861,26 @@ export const BatchImportDialog: React.FC<BatchImportDialogProps> = ({
                         size="small"
                         title="Rotate 90° clockwise"
                         onClick={() =>
-                          setFileRotations((prev) => ({
+                          setFileOrientations((prev) => ({
                             ...prev,
-                            [file.path]: rotateCW(rotation),
+                            [file.path]: orientationRotateCW(orientation),
                           }))
                         }
                       >
                         <RotateRight />
+                      </IconButton>
+                      <IconButton
+                        size="small"
+                        title="Flip (mirror) left-right"
+                        color={orientation.flip ? 'primary' : 'default'}
+                        onClick={() =>
+                          setFileOrientations((prev) => ({
+                            ...prev,
+                            [file.path]: toggleOrientationFlip(orientation),
+                          }))
+                        }
+                      >
+                        <Flip />
                       </IconButton>
                     </ListItem>
                   );

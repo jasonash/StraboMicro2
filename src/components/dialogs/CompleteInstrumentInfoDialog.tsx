@@ -32,6 +32,8 @@ import {
   IconButton,
   Tooltip,
   CircularProgress,
+  FormControlLabel,
+  Checkbox,
 } from '@mui/material';
 import { RotateLeft, RotateRight } from '@mui/icons-material';
 import { useAppStore } from '@/store';
@@ -45,11 +47,15 @@ import {
 } from './InstrumentDataForm';
 import type { InstrumentData } from './InstrumentDatabaseDialog';
 import {
-  rotateCW,
-  rotateCCW,
   isQuarterTurn,
-  rotationLabel,
-  type RotationDegrees,
+  IDENTITY_ORIENTATION,
+  isIdentityOrientation,
+  orientationRotateCW,
+  orientationRotateCCW,
+  toggleOrientationFlip,
+  orientationCssTransform,
+  orientationLabel,
+  type Orientation,
 } from '@/utils/rotationUtils';
 
 interface CompleteInstrumentInfoDialogProps {
@@ -89,7 +95,7 @@ export const CompleteInstrumentInfoDialog: React.FC<CompleteInstrumentInfoDialog
   // project image path rather than a scratch path.
   const [imagePath, setImagePath] = useState<string | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const [pendingRotation, setPendingRotation] = useState<RotationDegrees>(0);
+  const [pendingOrientation, setPendingOrientation] = useState<Orientation>(IDENTITY_ORIENTATION);
   const [isRotating, setIsRotating] = useState(false);
 
   const micrograph = useMemo((): MicrographMetadata | null => {
@@ -152,7 +158,7 @@ export const CompleteInstrumentInfoDialog: React.FC<CompleteInstrumentInfoDialog
     setDetectors([{ type: '', make: '', model: '' }]);
     setImagePath(null);
     setPreviewUrl(null);
-    setPendingRotation(0);
+    setPendingOrientation(IDENTITY_ORIENTATION);
     setIsRotating(false);
   };
 
@@ -263,16 +269,22 @@ export const CompleteInstrumentInfoDialog: React.FC<CompleteInstrumentInfoDialog
     return true;
   };
 
-  // Apply the pending rotation to the project image pixels. Same commit-boundary
-  // pattern as the import wizards: preview is CSS-only until the user leaves the
-  // rotation step, so the image is re-encoded at most once per pass.
+  // Apply the pending rotation/flip to the project image pixels. Same commit-
+  // boundary pattern as the import wizards: preview is CSS-only until the user
+  // leaves the rotation step, so the image is re-encoded at most once per pass.
   const applyPendingRotation = async (): Promise<boolean> => {
     const api = window.api;
-    if (!api || !imagePath || !micrographId || pendingRotation === 0) return true;
+    if (!api || !imagePath || !micrographId || isIdentityOrientation(pendingOrientation)) {
+      return true;
+    }
 
     setIsRotating(true);
     try {
-      const result = await api.rotateImage(imagePath, pendingRotation);
+      const result = await api.rotateImage(
+        imagePath,
+        pendingOrientation.rotation,
+        pendingOrientation.flip
+      );
 
       // Re-tile from the (now rotated) project image and refresh the preview
       const tileData = await api.loadImageWithTiles(imagePath);
@@ -307,7 +319,7 @@ export const CompleteInstrumentInfoDialog: React.FC<CompleteInstrumentInfoDialog
           });
       }
 
-      setPendingRotation(0);
+      setPendingOrientation(IDENTITY_ORIENTATION);
       return true;
     } catch (error) {
       console.error('[CompleteInstrumentInfo] Error rotating image:', error);
@@ -391,13 +403,13 @@ export const CompleteInstrumentInfoDialog: React.FC<CompleteInstrumentInfoDialog
           {STEPS[activeStep] === 'Image Rotation' && (
             <Stack spacing={2}>
               <Alert severity="info">
-                <strong>Rotate the image pixels (optional).</strong> Rotation permanently changes
-                the image's pixels and controls how the image appears everywhere it is shown —
-                the main detail view, thumbnails, and exports. It does <strong>not</strong> affect
-                how an associated micrograph is positioned on its parent image. This is the last
-                opportunity to rotate: once this setup is complete, the rotation{' '}
-                <strong>cannot be changed</strong>, so if the image was captured sideways or
-                upside down, correct it now.
+                <strong>Rotate or flip the image pixels (optional).</strong> Rotation and flipping
+                permanently change the image's pixels and control how the image appears everywhere
+                it is shown — the main detail view, thumbnails, and exports. They do{' '}
+                <strong>not</strong> affect how an associated micrograph is positioned on its
+                parent image. This is the last opportunity to rotate or flip: once this setup is
+                complete, the orientation <strong>cannot be changed</strong>, so if the image was
+                captured sideways, upside down, or mirrored, correct it now.
               </Alert>
               {/* Square container: the rotated bounding box never overflows at 90°/270° */}
               <Box sx={{ display: 'flex', justifyContent: 'center' }}>
@@ -420,7 +432,7 @@ export const CompleteInstrumentInfoDialog: React.FC<CompleteInstrumentInfoDialog
                       sx={{
                         maxWidth: '100%',
                         maxHeight: '100%',
-                        transform: `rotate(${pendingRotation}deg)`,
+                        transform: orientationCssTransform(pendingOrientation),
                         transition: 'transform 150ms ease',
                       }}
                     />
@@ -433,7 +445,7 @@ export const CompleteInstrumentInfoDialog: React.FC<CompleteInstrumentInfoDialog
                 <Tooltip title="Rotate 90° counter-clockwise">
                   <span>
                     <IconButton
-                      onClick={() => setPendingRotation(rotateCCW(pendingRotation))}
+                      onClick={() => setPendingOrientation(orientationRotateCCW(pendingOrientation))}
                       disabled={isRotating || !previewUrl}
                     >
                       <RotateLeft />
@@ -441,12 +453,12 @@ export const CompleteInstrumentInfoDialog: React.FC<CompleteInstrumentInfoDialog
                   </span>
                 </Tooltip>
                 <Typography variant="body2" sx={{ minWidth: 180, textAlign: 'center' }}>
-                  {rotationLabel(pendingRotation)}
+                  {orientationLabel(pendingOrientation)}
                 </Typography>
                 <Tooltip title="Rotate 90° clockwise">
                   <span>
                     <IconButton
-                      onClick={() => setPendingRotation(rotateCW(pendingRotation))}
+                      onClick={() => setPendingOrientation(orientationRotateCW(pendingOrientation))}
                       disabled={isRotating || !previewUrl}
                     >
                       <RotateRight />
@@ -454,10 +466,25 @@ export const CompleteInstrumentInfoDialog: React.FC<CompleteInstrumentInfoDialog
                   </span>
                 </Tooltip>
               </Stack>
+              <Stack direction="row" justifyContent="center">
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      checked={pendingOrientation.flip}
+                      onChange={() =>
+                        setPendingOrientation(toggleOrientationFlip(pendingOrientation))
+                      }
+                      disabled={isRotating || !previewUrl}
+                      size="small"
+                    />
+                  }
+                  label="Flip (mirror) the image left-right"
+                />
+              </Stack>
               {micrograph && (
                 <Typography variant="caption" color="text.secondary" sx={{ textAlign: 'center' }}>
                   Resulting dimensions:{' '}
-                  {isQuarterTurn(pendingRotation)
+                  {isQuarterTurn(pendingOrientation.rotation)
                     ? `${micrograph.height ?? micrograph.imageHeight ?? 0} × ${micrograph.width ?? micrograph.imageWidth ?? 0}`
                     : `${micrograph.width ?? micrograph.imageWidth ?? 0} × ${micrograph.height ?? micrograph.imageHeight ?? 0}`}{' '}
                   pixels
