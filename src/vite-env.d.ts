@@ -356,8 +356,7 @@ interface Window {
       format: string;
     }>;
     isValidImage: (filePath: string) => Promise<boolean>;
-    flipImageHorizontal: (imagePath: string) => Promise<{ success: boolean; hash: string }>;
-    rotateImage: (imagePath: string, degrees: number) => Promise<{
+    rotateImage: (imagePath: string, degrees: number, flip?: boolean) => Promise<{
       success: boolean;
       hash: string;
       width: number;
