@@ -56,11 +56,16 @@ import type { AffineMatrix, ControlPoint } from '@/utils/affineTransform';
 import { computeCopySizePlacement } from '@/utils/copySizePlacement';
 import { findMicrographById } from '@/store/helpers';
 import {
-  rotateCW,
-  rotateCCW,
   isQuarterTurn,
-  rotationLabel,
-  type RotationDegrees,
+  IDENTITY_ORIENTATION,
+  isIdentityOrientation,
+  orientationRotateCW,
+  orientationRotateCCW,
+  toggleOrientationFlip,
+  composeOrientations,
+  orientationCssTransform,
+  orientationLabel,
+  type Orientation,
 } from '@/utils/rotationUtils';
 
 interface NewMicrographDialogProps {
@@ -376,14 +381,13 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
   const [thumbnailUrl, setThumbnailUrl] = useState<string>('');
   const [isLoadingPreview, setIsLoadingPreview] = useState(false);
   const [canvasTool, setCanvasTool] = useState<Tool>('pointer');
-  const [isFlipped, setIsFlipped] = useState(false);
-  const [isFlipping, setIsFlipping] = useState(false);
-  // Import-time image rotation. pendingRotation is preview-only (CSS transform);
-  // the pixels are rotated once, when the user leaves the image-rotation step.
-  // appliedRotation is the cumulative rotation already baked into the scratch
-  // pixels — needed so an XPL image added later receives the same rotation.
-  const [pendingRotation, setPendingRotation] = useState<RotationDegrees>(0);
-  const [appliedRotation, setAppliedRotation] = useState<RotationDegrees>(0);
+  // Import-time image rotation & flip. pendingOrientation is preview-only
+  // (CSS transform); the pixels are transformed once, when the user leaves
+  // the image-rotation step. appliedOrientation is the cumulative transform
+  // already baked into the scratch pixels — needed so an XPL image added
+  // later receives the same rotation/flip.
+  const [pendingOrientation, setPendingOrientation] = useState<Orientation>(IDENTITY_ORIENTATION);
+  const [appliedOrientation, setAppliedOrientation] = useState<Orientation>(IDENTITY_ORIENTATION);
   const [isRotating, setIsRotating] = useState(false);
   // Guard against duplicate/concurrent submissions of the wizard. The ref is the
   // source of truth for correctness: it updates synchronously, so a rapid
@@ -670,11 +674,10 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
     }
   }, [currentStepId, formData.scaleMethod]);
 
-  // Reset flip and rotation state when a new micrograph file is selected
+  // Reset rotation/flip state when a new micrograph file is selected
   useEffect(() => {
-    setIsFlipped(false);
-    setPendingRotation(0);
-    setAppliedRotation(0);
+    setPendingOrientation(IDENTITY_ORIENTATION);
+    setAppliedOrientation(IDENTITY_ORIENTATION);
   }, [formData.micrographFilePath]);
 
   const [scratchIdentifier, setScratchIdentifier] = useState<string | null>(null);
@@ -803,16 +806,18 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
 
       console.log('[NewMicrographDialog] XPL conversion complete:', conversionResult);
 
-      // The main image's pixels already carry any rotation applied on the
-      // Image Rotation step; the sibling comes off the instrument in the same
-      // raw orientation, so give it the same rotation before comparing dims.
+      // The main image's pixels already carry any rotation/flip applied on
+      // the Image Rotation step; the sibling comes off the instrument in the
+      // same raw orientation, so give it the same transform before comparing
+      // dims.
       let xplWidth = conversionResult.jpegWidth;
       let xplHeight = conversionResult.jpegHeight;
-      if (appliedRotation !== 0) {
+      if (!isIdentityOrientation(appliedOrientation)) {
         try {
           const rotateResult = await window.api.rotateImage(
             conversionResult.scratchPath,
-            appliedRotation
+            appliedOrientation.rotation,
+            appliedOrientation.flip
           );
           xplWidth = rotateResult.width;
           xplHeight = rotateResult.height;
@@ -863,16 +868,22 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
     }
   };
 
-  // Apply the pending rotation to the scratch image pixels. Called when leaving
-  // the image-rotation step; the preview up to that point is CSS-only so the
-  // scratch file is re-encoded at most once per pass through the step.
+  // Apply the pending rotation/flip to the scratch image pixels. Called when
+  // leaving the image-rotation step; the preview up to that point is CSS-only
+  // so the scratch file is re-encoded at most once per pass through the step.
   const applyPendingRotation = async (): Promise<boolean> => {
     const api = window.api;
-    if (!api || !formData.micrographFilePath || pendingRotation === 0) return true;
+    if (!api || !formData.micrographFilePath || isIdentityOrientation(pendingOrientation)) {
+      return true;
+    }
 
     setIsRotating(true);
     try {
-      const result = await api.rotateImage(formData.micrographFilePath, pendingRotation);
+      const result = await api.rotateImage(
+        formData.micrographFilePath,
+        pendingOrientation.rotation,
+        pendingOrientation.flip
+      );
 
       // Reload through the tile system and refresh both previews
       const tileData = await api.loadImageWithTiles(formData.micrographFilePath);
@@ -888,9 +899,13 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
       }
 
       // A sibling XPL image can only exist here via Back-navigation from the
-      // instrument step; keep the pair in lockstep by rotating it identically.
+      // instrument step; keep the pair in lockstep by transforming it identically.
       if (xplFilePath) {
-        const xplResult = await api.rotateImage(xplFilePath, pendingRotation);
+        const xplResult = await api.rotateImage(
+          xplFilePath,
+          pendingOrientation.rotation,
+          pendingOrientation.flip
+        );
         setXplWidth(xplResult.width);
         setXplHeight(xplResult.height);
       }
@@ -914,11 +929,8 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
         affineTileHash: null,
       }));
 
-      setAppliedRotation((prev) => {
-        const total = (prev + pendingRotation) % 360;
-        return total === 90 || total === 180 || total === 270 ? total : 0;
-      });
-      setPendingRotation(0);
+      setAppliedOrientation((prev) => composeOrientations(prev, pendingOrientation));
+      setPendingOrientation(IDENTITY_ORIENTATION);
       return true;
     } catch (error) {
       console.error('[NewMicrographDialog] Error rotating image:', error);
@@ -959,33 +971,6 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
     setActiveStep((prevActiveStep) => prevActiveStep - 1);
   };
 
-  // Handle flip checkbox change for the image
-  const handleFlipImage = async () => {
-    if (!formData.micrographFilePath) return;
-
-    setIsFlipping(true);
-    try {
-      // Flip the image on disk
-      await window.api?.flipImageHorizontal(formData.micrographFilePath);
-
-      // Reload the image through the tile system (which will re-tile the flipped image)
-      const tileData = await window.api?.loadImageWithTiles(formData.micrographFilePath);
-      if (tileData) {
-        const mediumDataUrl = await window.api?.loadMedium(tileData.hash);
-        if (mediumDataUrl) {
-          setMicrographPreviewUrl(mediumDataUrl);
-        }
-      }
-
-      // Toggle flip state
-      setIsFlipped(!isFlipped);
-    } catch (error) {
-      console.error('[NewMicrographDialog] Error flipping image:', error);
-    } finally {
-      setIsFlipping(false);
-    }
-  };
-
   const handleCancel = async () => {
     // Clean up scratch file if exists
     if (scratchIdentifier && window.api) {
@@ -1012,7 +997,8 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
     setDetectors([]);
     setScratchIdentifier(null);
     setConversionProgress(null);
-    setIsFlipped(false);
+    setPendingOrientation(IDENTITY_ORIENTATION);
+    setAppliedOrientation(IDENTITY_ORIENTATION);
     setMicrographPreviewUrl('');
     setThumbnailUrl('');
     // Reset XPL state
@@ -2339,19 +2325,6 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
                   <RestartAlt />
                 </IconButton>
               </Tooltip>
-
-              {/* Flip checkbox */}
-              <FormControlLabel
-                control={
-                  isFlipping ? (
-                    <CircularProgress size={20} sx={{ mx: 1.25 }} />
-                  ) : (
-                    <Checkbox checked={isFlipped} onChange={handleFlipImage} size="small" />
-                  )
-                }
-                label="Flip?"
-                sx={{ ml: 1, mr: 0 }}
-              />
             </Stack>
 
             <Divider orientation="vertical" flexItem />
@@ -2968,8 +2941,6 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
             initialOffsetY={copySizeData?.yOffset ?? formData.offsetInParent.Y}
             initialRotation={copySizeData?.rotation ?? formData.rotationAngle}
             initialOpacity={formData.opacity}
-            isFlipped={isFlipped}
-            onFlipChange={setIsFlipped}
             copySizePixelsPerCm={copySizeData?.newImagePixelsPerCm}
             onPlacementChange={handlePlacementChange}
             onOpacityChange={handleOpacityChange}
@@ -3120,13 +3091,13 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
         return (
           <Stack spacing={2}>
             <Alert severity="info">
-              <strong>Rotate the image pixels (optional).</strong> Rotation permanently changes
-              the imported image's pixels and controls how the image appears everywhere it is
-              shown — the main detail view, thumbnails, and exports. It does <strong>not</strong>{' '}
-              affect how an associated micrograph is positioned on its parent image; placement is
-              configured separately in a later step. Rotation{' '}
+              <strong>Rotate or flip the image pixels (optional).</strong> Rotation and flipping
+              permanently change the imported image's pixels and control how the image appears
+              everywhere it is shown — the main detail view, thumbnails, and exports. They do{' '}
+              <strong>not</strong> affect how an associated micrograph is positioned on its parent
+              image; placement is configured separately in a later step. Rotation and flip{' '}
               <strong>cannot be changed after import</strong>, so if the image was captured
-              sideways or upside down, correct it now.
+              sideways, upside down, or mirrored, correct it now.
             </Alert>
             {/* Square container: both image dimensions are constrained to fit, so the
                 rotated bounding box never overflows at 90°/270° */}
@@ -3150,7 +3121,7 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
                     sx={{
                       maxWidth: '100%',
                       maxHeight: '100%',
-                      transform: `rotate(${pendingRotation}deg)`,
+                      transform: orientationCssTransform(pendingOrientation),
                       transition: 'transform 150ms ease',
                     }}
                   />
@@ -3163,7 +3134,7 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
               <Tooltip title="Rotate 90° counter-clockwise">
                 <span>
                   <IconButton
-                    onClick={() => setPendingRotation(rotateCCW(pendingRotation))}
+                    onClick={() => setPendingOrientation(orientationRotateCCW(pendingOrientation))}
                     disabled={isRotating || isLoadingPreview || !micrographPreviewUrl}
                   >
                     <RotateLeft />
@@ -3171,12 +3142,12 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
                 </span>
               </Tooltip>
               <Typography variant="body2" sx={{ minWidth: 180, textAlign: 'center' }}>
-                {rotationLabel(pendingRotation)}
+                {orientationLabel(pendingOrientation)}
               </Typography>
               <Tooltip title="Rotate 90° clockwise">
                 <span>
                   <IconButton
-                    onClick={() => setPendingRotation(rotateCW(pendingRotation))}
+                    onClick={() => setPendingOrientation(orientationRotateCW(pendingOrientation))}
                     disabled={isRotating || isLoadingPreview || !micrographPreviewUrl}
                   >
                     <RotateRight />
@@ -3184,9 +3155,22 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
                 </span>
               </Tooltip>
             </Stack>
+            <Stack direction="row" justifyContent="center">
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={pendingOrientation.flip}
+                    onChange={() => setPendingOrientation(toggleOrientationFlip(pendingOrientation))}
+                    disabled={isRotating || isLoadingPreview || !micrographPreviewUrl}
+                    size="small"
+                  />
+                }
+                label="Flip (mirror) the image left-right"
+              />
+            </Stack>
             <Typography variant="caption" color="text.secondary" sx={{ textAlign: 'center' }}>
               Resulting dimensions:{' '}
-              {isQuarterTurn(pendingRotation)
+              {isQuarterTurn(pendingOrientation.rotation)
                 ? `${formData.micrographHeight} × ${formData.micrographWidth}`
                 : `${formData.micrographWidth} × ${formData.micrographHeight}`}{' '}
               pixels

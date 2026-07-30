@@ -20,15 +20,19 @@ import {
   Alert,
   IconButton,
 } from '@mui/material';
-import { Image as ImageIcon, RotateLeft, RotateRight } from '@mui/icons-material';
+import { Image as ImageIcon, RotateLeft, RotateRight, Flip } from '@mui/icons-material';
 import { useAppStore } from '@/store';
 import type { MicrographMetadata } from '@/types/project-types';
 import {
-  rotateCW,
-  rotateCCW,
   isQuarterTurn,
-  rotationLabel,
-  type RotationDegrees,
+  IDENTITY_ORIENTATION,
+  isIdentityOrientation,
+  orientationRotateCW,
+  orientationRotateCCW,
+  toggleOrientationFlip,
+  orientationCssTransform,
+  orientationLabel,
+  type Orientation,
 } from '@/utils/rotationUtils';
 
 interface AddSiblingDialogProps {
@@ -60,8 +64,8 @@ export function AddSiblingDialog({
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [imageWidth, setImageWidth] = useState<number>(0);
   const [imageHeight, setImageHeight] = useState<number>(0);
-  // Pending rotation, preview-only (CSS transform); baked into the pixels on Add
-  const [rotation, setRotation] = useState<RotationDegrees>(0);
+  // Pending rotation/flip, preview-only (CSS transform); baked into the pixels on Add
+  const [orientation, setOrientation] = useState<Orientation>(IDENTITY_ORIENTATION);
   const [rotationNotice, setRotationNotice] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   // Synchronous re-entrancy guard: blocks a same-tick double-click from running
@@ -118,7 +122,7 @@ export function AddSiblingDialog({
       setPreviewUrl(null);
       setImageWidth(0);
       setImageHeight(0);
-      setRotation(0);
+      setOrientation(IDENTITY_ORIENTATION);
       setRotationNotice(null);
       setLoading(false);
       setConversionProgress(null);
@@ -134,7 +138,7 @@ export function AddSiblingDialog({
     try {
       setError(null);
       setDimensionError(null);
-      setRotation(0);
+      setOrientation(IDENTITY_ORIENTATION);
       setRotationNotice(null);
       const filePath = await window.api.openTiffDialog();
       if (!filePath) return;
@@ -202,7 +206,7 @@ export function AddSiblingDialog({
         }
 
         if (!matchesAsIs && matchesRotated) {
-          setRotation(90);
+          setOrientation({ rotation: 90, flip: false });
           setRotationNotice(
             `This image appears to be rotated 90\u00b0 relative to the ${sourceLabel} \u2014 a 90\u00b0 ` +
             `rotation has been pre-selected. Adjust with the rotate buttons if needed.`
@@ -254,9 +258,10 @@ export function AddSiblingDialog({
       const sourceWidth = sourceMicrograph.width || sourceMicrograph.imageWidth || 0;
       const sourceHeight = sourceMicrograph.height || sourceMicrograph.imageHeight || 0;
 
-      // Effective dimensions after the pending rotation (90°/270° swap them)
-      const effectiveWidth = isQuarterTurn(rotation) ? imageHeight : imageWidth;
-      const effectiveHeight = isQuarterTurn(rotation) ? imageWidth : imageHeight;
+      // Effective dimensions after the pending rotation (90°/270° swap them;
+      // the flip never changes dimensions)
+      const effectiveWidth = isQuarterTurn(orientation.rotation) ? imageHeight : imageWidth;
+      const effectiveHeight = isQuarterTurn(orientation.rotation) ? imageWidth : imageHeight;
 
       // Re-validate the aspect ratio in the chosen orientation before mutating
       // anything — the user may have rotated away from the matching orientation.
@@ -276,10 +281,10 @@ export function AddSiblingDialog({
         }
       }
 
-      // Bake the pending rotation into the scratch pixels
-      if (rotation !== 0 && scratchPath) {
+      // Bake the pending rotation/flip into the scratch pixels
+      if (!isIdentityOrientation(orientation) && scratchPath) {
         setConversionProgress({ stage: 'Rotating image...', percent: 25 });
-        await window.api.rotateImage(scratchPath, rotation);
+        await window.api.rotateImage(scratchPath, orientation.rotation, orientation.flip);
       }
 
       // If sibling has different dimensions than source, resize it to match
@@ -397,7 +402,7 @@ export function AddSiblingDialog({
     } finally {
       isAddingRef.current = false;
     }
-  }, [sourceMicrograph, sampleId, scratchIdentifier, scratchPath, rotation, project, siblingName, siblingFileName, imageWidth, imageHeight, addMicrograph, linkSiblingImages, onClose, sourceIsPPL, siblingLabel, sourceLabel, siblingType, ASPECT_RATIO_TOLERANCE]);
+  }, [sourceMicrograph, sampleId, scratchIdentifier, scratchPath, orientation, project, siblingName, siblingFileName, imageWidth, imageHeight, addMicrograph, linkSiblingImages, onClose, sourceIsPPL, siblingLabel, sourceLabel, siblingType, ASPECT_RATIO_TOLERANCE]);
 
   const canAdd = scratchIdentifier && siblingName && !loading && !dimensionError;
 
@@ -492,7 +497,7 @@ export function AddSiblingDialog({
                       sx={{
                         maxWidth: '100%',
                         maxHeight: '100%',
-                        transform: `rotate(${rotation}deg)`,
+                        transform: orientationCssTransform(orientation),
                         transition: 'transform 150ms ease',
                       }}
                     />
@@ -501,21 +506,30 @@ export function AddSiblingDialog({
                     <IconButton
                       size="small"
                       title="Rotate 90° counter-clockwise"
-                      onClick={() => setRotation(rotateCCW(rotation))}
+                      onClick={() => setOrientation(orientationRotateCCW(orientation))}
                       disabled={loading}
                     >
                       <RotateLeft fontSize="small" />
                     </IconButton>
                     <Typography variant="caption" color="text.secondary" sx={{ mx: 0.5 }}>
-                      {rotationLabel(rotation)}
+                      {orientationLabel(orientation)}
                     </Typography>
                     <IconButton
                       size="small"
                       title="Rotate 90° clockwise"
-                      onClick={() => setRotation(rotateCW(rotation))}
+                      onClick={() => setOrientation(orientationRotateCW(orientation))}
                       disabled={loading}
                     >
                       <RotateRight fontSize="small" />
+                    </IconButton>
+                    <IconButton
+                      size="small"
+                      title="Flip (mirror) left-right"
+                      color={orientation.flip ? 'primary' : 'default'}
+                      onClick={() => setOrientation(toggleOrientationFlip(orientation))}
+                      disabled={loading}
+                    >
+                      <Flip fontSize="small" />
                     </IconButton>
                   </Box>
                 </Box>
@@ -529,7 +543,7 @@ export function AddSiblingDialog({
                     disabled={loading}
                   />
                   <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
-                    {isQuarterTurn(rotation)
+                    {isQuarterTurn(orientation.rotation)
                       ? `${imageHeight} × ${imageWidth}`
                       : `${imageWidth} × ${imageHeight}`}{' '}
                     pixels
@@ -538,8 +552,8 @@ export function AddSiblingDialog({
                     {siblingFileName}
                   </Typography>
                   <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
-                    Rotation is applied permanently to the image pixels when the image is added
-                    and cannot be changed later. It does not affect placement.
+                    Rotation and flip are applied permanently to the image pixels when the image
+                    is added and cannot be changed later. They do not affect placement.
                   </Typography>
                 </Box>
               </Box>

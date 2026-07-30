@@ -278,8 +278,7 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('image:generate-variants', sourcePath, projectId, micrographId),
   getImageDimensions: (imagePath) => ipcRenderer.invoke('image:get-dimensions', imagePath),
   isValidImage: (filePath) => ipcRenderer.invoke('image:is-valid', filePath),
-  flipImageHorizontal: (imagePath) => ipcRenderer.invoke('image:flip-horizontal', imagePath),
-  rotateImage: (imagePath, degrees) => ipcRenderer.invoke('image:rotate', imagePath, degrees),
+  rotateImage: (imagePath, degrees, flip) => ipcRenderer.invoke('image:rotate', imagePath, degrees, flip),
 
   // Composite thumbnail generation
   generateCompositeThumbnail: (projectId, micrographId, projectData) =>
