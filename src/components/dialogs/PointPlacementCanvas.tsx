@@ -4,6 +4,7 @@ import { Box, Stack, IconButton, Tooltip, Paper, TextField, Select, MenuItem, Fo
 import { PanTool, Timeline, ZoomIn, ZoomOut, RestartAlt, Place } from '@mui/icons-material';
 import Konva from 'konva';
 import { useAppStore } from '@/store';
+import { releaseImage } from '@/utils/imageUtils';
 
 interface PointPlacementCanvasProps {
   parentMicrographId: string;
@@ -61,14 +62,10 @@ export const PointPlacementCanvas = ({
   useEffect(() => {
     return () => {
       if (parentImageRef.current) {
-        parentImageRef.current.src = '';
-        parentImageRef.current.onload = null;
-        parentImageRef.current.onerror = null;
+        releaseImage(parentImageRef.current);
       }
       if (childImageRef.current) {
-        childImageRef.current.src = '';
-        childImageRef.current.onload = null;
-        childImageRef.current.onerror = null;
+        releaseImage(childImageRef.current);
       }
     };
   }, []);

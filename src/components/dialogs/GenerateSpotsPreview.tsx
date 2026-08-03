@@ -4,6 +4,7 @@ import { Box, Stack, IconButton, Tooltip, Typography, Chip } from '@mui/material
 import { PanTool, CropFree, ZoomIn, ZoomOut, RestartAlt, ClearAll } from '@mui/icons-material';
 import Konva from 'konva';
 import { useAppStore } from '@/store';
+import { releaseImage } from '@/utils/imageUtils';
 
 export interface GeneratedPoint {
   x: number;
@@ -49,9 +50,7 @@ export const GenerateSpotsPreview = ({
   useEffect(() => {
     return () => {
       if (imageRef.current) {
-        imageRef.current.src = '';
-        imageRef.current.onload = null;
-        imageRef.current.onerror = null;
+        releaseImage(imageRef.current);
       }
     };
   }, []);
