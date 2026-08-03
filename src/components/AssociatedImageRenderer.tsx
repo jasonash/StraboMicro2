@@ -16,6 +16,7 @@ import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { Group, Image as KonvaImage, Rect, Line } from 'react-konva';
 import { MicrographMetadata } from '@/types/project-types';
 import { useAppStore } from '@/store';
+import { releaseImage, isImageUsable } from '@/utils/imageUtils';
 
 // Render modes based on screen coverage and zoom
 export type RenderMode = 'THUMBNAIL' | 'MEDIUM' | 'TILED';
@@ -94,16 +95,12 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
     return () => {
       // Clean up main image
       if (imageState.imageObj) {
-        imageState.imageObj.src = '';
-        imageState.imageObj.onload = null;
-        imageState.imageObj.onerror = null;
+        releaseImage(imageState.imageObj);
       }
       // Clean up all tiles
       for (const [, tileInfo] of imageState.tiles) {
         if (tileInfo.imageObj) {
-          tileInfo.imageObj.src = '';
-          tileInfo.imageObj.onload = null;
-          tileInfo.imageObj.onerror = null;
+          releaseImage(tileInfo.imageObj);
         }
       }
     };
@@ -457,9 +454,13 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
 
           const img = new Image();
           img.src = thumbnailDataUrl;
-          await new Promise((resolve) => {
-            img.onload = resolve;
+          const loaded = await new Promise<boolean>((resolve) => {
+            img.onload = () => resolve(true);
+            img.onerror = () => resolve(false);
           });
+          // Throw into the catch below so the existing retry path handles it —
+          // a broken image must never reach Konva (drawImage throws on it)
+          if (!loaded) throw new Error('Thumbnail failed to decode');
 
           // Swap to thumbnail AFTER it's loaded (keep current image visible until then)
           setImageState({
@@ -478,9 +479,11 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
 
           const img = new Image();
           img.src = mediumDataUrl;
-          await new Promise((resolve) => {
-            img.onload = resolve;
+          const loaded = await new Promise<boolean>((resolve) => {
+            img.onload = () => resolve(true);
+            img.onerror = () => resolve(false);
           });
+          if (!loaded) throw new Error('Medium image failed to decode');
 
           // Swap to medium AFTER it's loaded (keep current image visible until then)
           setImageState({
@@ -537,9 +540,16 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
           for (const { x, y, dataUrl } of tileResults) {
             const img = new Image();
             img.src = dataUrl;
-            await new Promise((resolve) => {
-              img.onload = resolve;
+            const loaded = await new Promise<boolean>((resolve) => {
+              img.onload = () => resolve(true);
+              img.onerror = () => resolve(false);
             });
+            if (!loaded) {
+              // Skip the broken tile so it never reaches Konva (drawImage
+              // throws InvalidStateError on a broken image element)
+              console.warn(`[AssociatedImageRenderer] Tile ${x}_${y} failed to decode, skipping`);
+              continue;
+            }
 
             newTiles.set(`${x}_${y}`, { x, y, dataUrl, imageObj: img });
           }
@@ -656,7 +666,7 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
 
   if (imageState.mode === 'THUMBNAIL' || imageState.mode === 'MEDIUM') {
     // Render as single image
-    if (!imageState.imageObj) return null;
+    if (!imageState.imageObj || !isImageUsable(imageState.imageObj)) return null;
 
     return (
       <Group
@@ -740,7 +750,7 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
         onMouseLeave={handleMouseLeave}
       >
         {Array.from(imageState.tiles.values()).map((tile) => {
-          if (!tile.imageObj) return null;
+          if (!tile.imageObj || !isImageUsable(tile.imageObj)) return null;
 
           const padding = imageState.tilePadding ?? 0;
           if (padding > 0) {

@@ -14,6 +14,7 @@ import {
 import { PanTool, RestartAlt, Timeline } from '@mui/icons-material';
 import Konva from 'konva';
 import { useAppStore } from '@/store';
+import { releaseImage } from '@/utils/imageUtils';
 
 interface PlacementCanvasProps {
   parentMicrographId: string;
@@ -84,14 +85,10 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
   useEffect(() => {
     return () => {
       if (parentImageRef.current) {
-        parentImageRef.current.src = '';
-        parentImageRef.current.onload = null;
-        parentImageRef.current.onerror = null;
+        releaseImage(parentImageRef.current);
       }
       if (childImageRef.current) {
-        childImageRef.current.src = '';
-        childImageRef.current.onload = null;
-        childImageRef.current.onerror = null;
+        releaseImage(childImageRef.current);
       }
     };
   }, []);
