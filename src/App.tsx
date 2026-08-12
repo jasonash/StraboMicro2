@@ -455,7 +455,9 @@ function App() {
         return;
       }
 
-      setDeepLinkPkey(pkey);
+      // Ignore new links while a deep link dialog is already in flight; the
+      // dialog's resolved name/size must stay consistent with its pkey.
+      setDeepLinkPkey((prev) => prev ?? pkey);
     }));
 
     // Edit Project menu item
