@@ -3,7 +3,7 @@
  * Matches the desktop app's Header styling.
  */
 
-import { AppBar, Toolbar, Typography, Button, Box } from '@mui/material';
+import { AppBar, Toolbar, Typography, Button, Box, Link } from '@mui/material';
 import { HttpTileLoader } from '../services/tileLoader';
 import appIcon from '../assets/app-icon.png';
 
@@ -39,8 +39,34 @@ export function Header({ projectName, tileLoader }: HeaderProps) {
           {projectName}
         </Typography>
 
-        {/* Right: Action buttons */}
-        <Box sx={{ display: 'flex', gap: 1, flexShrink: 0 }}>
+        {/* Right: Action buttons. Top-aligned so all buttons share one
+            baseline; the deep link's fallback caption hangs below its
+            button without pushing it off the row. */}
+        <Box sx={{ display: 'flex', gap: 1, flexShrink: 0, alignItems: 'flex-start' }}>
+          {/* Deep link into the installed desktop app. Browsers cannot tell
+              whether the app is installed (deliberate anti-fingerprinting),
+              so the button is always shown with a download fallback below.
+              No target="_blank": the browser hands the strabomicro:// URI
+              to the OS without leaving this page. */}
+          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', mr: 0.5 }}>
+            <Button
+              size="small"
+              variant="outlined"
+              color="primary"
+              href={tileLoader.getDeepLinkUrl()}
+            >
+              Open in StraboMicro
+            </Button>
+            <Link
+              href={tileLoader.getAppDownloadUrl()}
+              target="_blank"
+              rel="noopener noreferrer"
+              underline="hover"
+              sx={{ fontSize: '0.65rem', lineHeight: 1.4, color: 'text.secondary', mt: 0.25 }}
+            >
+              Don't have StraboMicro? Download it
+            </Link>
+          </Box>
           <Button
             size="small"
             variant="outlined"

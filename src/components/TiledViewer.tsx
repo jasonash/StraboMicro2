@@ -39,6 +39,7 @@ import { useRulerTool } from '@/hooks/useRulerTool';
 import { useLasso, getIndicesInPolygon, isPointInPolygon } from '@/hooks/useLasso';
 import { useImperativeGeometryEditing } from '@/hooks/useImperativeGeometryEditing';
 import { getEffectiveTheme } from '@/hooks/useTheme';
+import { releaseImage, isImageUsable } from '@/utils/imageUtils';
 import './TiledViewer.css';
 
 const TILE_SIZE = 256;
@@ -351,25 +352,19 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
     const cleanupTileMemory = useCallback(() => {
       // Clear all pending Image objects (abort their loading)
       for (const img of pendingTileImagesRef.current) {
-        img.src = ''; // Cancel any in-progress loading
-        img.onload = null;
-        img.onerror = null;
+        releaseImage(img);
       }
       pendingTileImagesRef.current.clear();
 
       // Clear thumbnail
       if (thumbnail?.imageObj) {
-        thumbnail.imageObj.src = '';
-        thumbnail.imageObj.onload = null;
-        thumbnail.imageObj.onerror = null;
+        releaseImage(thumbnail.imageObj);
       }
 
       // Clear all tile Image objects from state
       for (const [, tileInfo] of tiles) {
         if (tileInfo.imageObj) {
-          tileInfo.imageObj.src = '';
-          tileInfo.imageObj.onload = null;
-          tileInfo.imageObj.onerror = null;
+          releaseImage(tileInfo.imageObj);
         }
       }
 
@@ -649,8 +644,9 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
 
           const thumbnailImg = new Image();
           thumbnailImg.src = thumbnailDataUrl;
-          await new Promise((resolve) => {
-            thumbnailImg.onload = resolve;
+          const thumbnailLoaded = await new Promise<boolean>((resolve) => {
+            thumbnailImg.onload = () => resolve(true);
+            thumbnailImg.onerror = () => resolve(false);
           });
 
           // Check session again after image decode
@@ -659,10 +655,16 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
             return;
           }
 
-          setThumbnail({
-            imageObj: thumbnailImg,
-            dataUrl: thumbnailDataUrl,
-          });
+          if (thumbnailLoaded) {
+            setThumbnail({
+              imageObj: thumbnailImg,
+              dataUrl: thumbnailDataUrl,
+            });
+          } else {
+            // A broken image must never reach Konva (drawImage throws on it).
+            // Continue without a thumbnail preview; tiles can still load fine.
+            console.warn('[TiledViewer] Thumbnail failed to decode, skipping preview');
+          }
 
           // Restore preserved zoom/position for sibling toggle, otherwise fit to screen
           if (isSiblingToggle && preservedViewStateRef.current) {
@@ -784,9 +786,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
               );
               // Clean up any images we created for this aborted session
               for (const img of sessionImages) {
-                img.src = '';
-                img.onload = null;
-                img.onerror = null;
+                releaseImage(img);
                 pendingTileImagesRef.current.delete(img);
               }
               setIsLoadingTiles(false);
@@ -811,6 +811,10 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                 };
                 img.onerror = () => {
                   pendingTileImagesRef.current.delete(img);
+                  // Drop the broken tile so it never reaches Konva (drawImage
+                  // throws InvalidStateError on a broken image element)
+                  newTiles.delete(tileKey);
+                  console.warn(`[Session ${sessionId}] Tile ${tileKey} failed to decode, skipping`);
                   resolve(); // Don't block on errors
                 };
               });
@@ -840,9 +844,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
             );
             // Clean up all images from this aborted session
             for (const img of sessionImages) {
-              img.src = '';
-              img.onload = null;
-              img.onerror = null;
+              releaseImage(img);
               pendingTileImagesRef.current.delete(img);
             }
             setIsLoadingTiles(false);
@@ -2244,7 +2246,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
               >
                 <Layer key="image-layer" name="image-layer" x={position.x} y={position.y} scaleX={zoom} scaleY={zoom}>
                   {/* Progressive loading: Show thumbnail first, then switch to tiles */}
-                  {renderMode === 'thumbnail' && thumbnail && (
+                  {renderMode === 'thumbnail' && thumbnail && isImageUsable(thumbnail.imageObj) && (
                     <KonvaImage
                       image={thumbnail.imageObj}
                       x={0}
@@ -2260,7 +2262,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                   {renderMode === 'tiled' &&
                     visibleTiles.map((tileKey) => {
                       const tile = tiles.get(tileKey);
-                      if (!tile || !tile.imageObj) return null;
+                      if (!tile || !tile.imageObj || !isImageUsable(tile.imageObj)) return null;
 
                       const padding = imageMetadata?.tilePadding ?? 0;
                       if (padding > 0) {

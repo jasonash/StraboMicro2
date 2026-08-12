@@ -487,6 +487,22 @@ contextBridge.exposeInMainWorld('api', {
     downloadSharedProject: (shareCode) => ipcRenderer.invoke('server:download-shared-project', shareCode),
   },
 
+  // Deep link (strabomicro:// protocol) - "Open in StraboMicro" web links
+  deepLink: {
+    inspect: (pkey) => ipcRenderer.invoke('deeplink:inspect', pkey),
+    download: (pkey) => ipcRenderer.invoke('deeplink:download', pkey),
+    onDownloadProgress: (callback) => {
+      const handler = (event, progress) => callback(progress);
+      ipcRenderer.on('deeplink:download-progress', handler);
+      return () => ipcRenderer.removeListener('deeplink:download-progress', handler);
+    },
+    onOpenProject: (callback) => {
+      const handler = (event, pkey) => callback(pkey);
+      ipcRenderer.on('deeplink:open-project', handler);
+      return () => ipcRenderer.removeListener('deeplink:open-project', handler);
+    },
+  },
+
   // Open Remote Project menu event
   onOpenRemoteProject: (callback) => {
     ipcRenderer.on('menu:open-remote-project', callback);

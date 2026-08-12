@@ -114,6 +114,14 @@
         "role": "Editor"
       }
     ],
+    "protocols": [
+      {
+        "name": "StraboMicro",
+        "schemes": [
+          "strabomicro"
+        ]
+      }
+    ],
     "extraResources": [
       {
         "from": "src/assets/app-icon.png",
@@ -169,7 +177,8 @@
       "allowToChangeInstallationDirectory": true,
       "deleteAppDataOnUninstall": false,
       "installerHeader": "build/installerHeader.bmp",
-      "installerSidebar": "build/installerSidebar.bmp"
+      "installerSidebar": "build/installerSidebar.bmp",
+      "include": "build/installer.nsh"
     },
     "linux": {
       "icon": "build/icons",
