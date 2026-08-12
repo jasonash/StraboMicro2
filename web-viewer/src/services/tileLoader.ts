@@ -103,6 +103,24 @@ export class HttpTileLoader {
   }
 
   /**
+   * Get the strabomicro:// deep link that opens this project in the
+   * installed desktop app (StraboMicro >= the release carrying the deep
+   * link handler). Browsers cannot detect whether the app is installed,
+   * so callers must always pair this with the app-download fallback link.
+   */
+  getDeepLinkUrl(): string {
+    return `strabomicro://open?p=${this.projectId}`;
+  }
+
+  /**
+   * Get the URL of the StraboMicro app download page (fallback for users
+   * without the app installed)
+   */
+  getAppDownloadUrl(): string {
+    return '/micro_download.php';
+  }
+
+  /**
    * Load multiple tiles in batch, returning results as they complete
    */
   async loadTilesBatch(
