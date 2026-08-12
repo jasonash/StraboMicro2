@@ -138,6 +138,7 @@ const logService = require('./logService');
 const pointCountStorage = require('./pointCountStorage');
 const fastsamService = require('./fastsamService');
 const straboToolsMain = require('./straboToolsMain');
+const deepLink = require('./deepLink');
 
 // Handle EPIPE errors at process level (prevents crash on broken stdout pipe)
 process.stdout.on('error', (err) => {
@@ -230,6 +231,59 @@ app.on('open-file', (event, filePath) => {
   handleOpenFile(filePath);
 });
 
+// =============================================================================
+// DEEP LINK (strabomicro:// protocol)
+// =============================================================================
+
+// Register the strabomicro:// scheme with the OS. Installed builds get the
+// OS-level registration from the packager config ("protocols" in package.json:
+// Windows registry keys, macOS CFBundleURLTypes); this call keeps the running
+// binary claimed as the handler. In dev mode the executable is electron with
+// the app path as an argument, so both must be passed explicitly. macOS dev
+// runs never receive protocol launches (the OS indexes the scheme from an
+// installed bundle's Info.plist); use Debug > Simulate Deep Link there.
+if (process.defaultApp) {
+  if (process.argv.length >= 2) {
+    app.setAsDefaultProtocolClient(deepLink.SCHEME, process.execPath, [path.resolve(process.argv[1])]);
+  }
+} else {
+  app.setAsDefaultProtocolClient(deepLink.SCHEME);
+}
+
+let pendingDeepLinkPkey = null;
+
+/**
+ * Route a strabomicro:// URI: validate it, then hand the pkey to the
+ * renderer (or stash it until the window exists, mirroring
+ * pendingFileToOpen). Invalid URIs are logged and dropped; the scheme is
+ * invokable by any website, so rejection must be silent for the sender.
+ */
+function handleDeepLinkUrl(rawUrl) {
+  const parsed = deepLink.parseDeepLink(rawUrl);
+  if (!parsed) {
+    const preview = typeof rawUrl === 'string' ? rawUrl.slice(0, 256) : String(rawUrl);
+    log.warn('[DeepLink] Ignoring invalid deep link URI:', preview);
+    return;
+  }
+
+  log.info('[DeepLink] Open-project request for pkey:', parsed.pkey);
+
+  if (mainWindow && mainWindow.webContents) {
+    mainWindow.webContents.send('deeplink:open-project', parsed.pkey);
+  } else {
+    log.info('[DeepLink] Window not ready, storing pkey for later');
+    pendingDeepLinkPkey = parsed.pkey;
+  }
+}
+
+// macOS: protocol launches arrive as open-url events (never in argv), both
+// on cold start and while running. Must be registered before 'ready'.
+app.on('open-url', (event, url) => {
+  event.preventDefault();
+  log.info('[DeepLink] macOS open-url event:', typeof url === 'string' ? url.slice(0, 256) : url);
+  handleDeepLinkUrl(url);
+});
+
 // Windows/Linux: Single instance lock and command line argument handling
 // When a second instance tries to open, we get the file path from argv
 const gotTheLock = app.requestSingleInstanceLock();
@@ -248,6 +302,13 @@ if (!gotTheLock) {
     const smzFile = argv.find(arg => arg.toLowerCase().endsWith('.smz'));
     if (smzFile) {
       handleOpenFile(smzFile);
+    }
+
+    // Windows/Linux: protocol launches route here when the app is already
+    // running (the second process carries the URI in its argv)
+    const deepLinkArg = argv.find(arg => arg.startsWith(`${deepLink.SCHEME}://`));
+    if (deepLinkArg) {
+      handleDeepLinkUrl(deepLinkArg);
     }
 
     // Focus our window
@@ -1153,6 +1214,18 @@ function createWindow() {
           }
         },
         {
+          label: 'Simulate Deep Link from Clipboard',
+          click: () => {
+            // macOS dev builds can't receive real protocol launches (the OS
+            // needs an installed bundle), so this feeds a strabomicro:// URI
+            // from the clipboard through the same handler for testing.
+            const { clipboard } = require('electron');
+            const text = (clipboard.readText() || '').trim();
+            log.info('[Debug] Simulating deep link from clipboard');
+            handleDeepLinkUrl(text);
+          }
+        },
+        {
           label: 'Test Orientation Step',
           click: () => {
             if (mainWindow) {
@@ -1323,6 +1396,13 @@ function createWindow() {
           pendingFileToOpen = null;
         }
 
+        // Check for pending deep link (macOS open-url before window ready)
+        if (pendingDeepLinkPkey) {
+          log.info('[DeepLink] Processing pending deep link, pkey:', pendingDeepLinkPkey);
+          mainWindow.webContents.send('deeplink:open-project', pendingDeepLinkPkey);
+          pendingDeepLinkPkey = null;
+        }
+
         // Windows: Check command line arguments on initial launch
         // (macOS uses open-file event instead)
         if (process.platform !== 'darwin') {
@@ -1330,6 +1410,13 @@ function createWindow() {
           if (smzFile && fs.existsSync(smzFile)) {
             log.info('[FileAssoc] Found .smz in command line args:', smzFile);
             mainWindow.webContents.send('file:open-smz', smzFile);
+          }
+
+          // Windows/Linux: protocol cold start puts the URI in argv
+          const deepLinkArg = process.argv.find(arg => arg.startsWith(`${deepLink.SCHEME}://`));
+          if (deepLinkArg) {
+            log.info('[DeepLink] Found deep link in command line args');
+            handleDeepLinkUrl(deepLinkArg);
           }
         }
       }, 500);
@@ -6182,6 +6269,26 @@ ipcMain.handle('server:download-project', async (event, projectId) => {
   );
 
   return result;
+});
+
+/**
+ * Deep link: resolve project name and size for a pkey (HEAD request).
+ * The pkey arrives from the renderer and is re-validated in the service.
+ */
+ipcMain.handle('deeplink:inspect', async (event, pkey) => {
+  return deepLink.inspectRemoteProject(pkey);
+});
+
+/**
+ * Deep link: download the project .smz to a temp file.
+ * Cleanup uses the shared server:cleanup-download handler.
+ */
+ipcMain.handle('deeplink:download', async (event, pkey) => {
+  return deepLink.downloadRemoteProject(pkey, (progress) => {
+    if (mainWindow) {
+      mainWindow.webContents.send('deeplink:download-progress', progress);
+    }
+  });
 });
 
 /**

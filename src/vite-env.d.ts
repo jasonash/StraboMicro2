@@ -758,6 +758,35 @@ interface Window {
     // File association - open .smz from double-click or command line
     onOpenSmzFile: (callback: (filePath: string) => void) => Unsubscribe;
 
+    // Deep link (strabomicro:// protocol) - "Open in StraboMicro" web links
+    deepLink: {
+      // Resolve project name and download size for a pkey (HEAD request)
+      inspect: (pkey: string) => Promise<{
+        success: boolean;
+        found?: boolean;
+        name?: string;
+        bytes?: number;
+        bytesFormatted?: string;
+        error?: string;
+      }>;
+      // Download the project .smz to a temp file
+      download: (pkey: string) => Promise<{
+        success: boolean;
+        zipPath?: string;
+        error?: string;
+      }>;
+      // Progress updates during the deep link download
+      onDownloadProgress: (callback: (progress: {
+        phase: string;
+        percentage: number;
+        message: string;
+        bytesDownloaded?: number;
+        bytesTotal?: number;
+      }) => void) => Unsubscribe;
+      // A validated strabomicro://open?p=<pkey> link arrived from the OS
+      onOpenProject: (callback: (pkey: string) => void) => Unsubscribe;
+    };
+
     // Debug menu events (only used in development)
     onDebugTriggerTestError: (callback: () => void) => Unsubscribe;
     onDebugGenerateTestSpots: (callback: () => void) => Unsubscribe;

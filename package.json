@@ -114,6 +114,14 @@
         "role": "Editor"
       }
     ],
+    "protocols": [
+      {
+        "name": "StraboMicro",
+        "schemes": [
+          "strabomicro"
+        ]
+      }
+    ],
     "extraResources": [
       {
         "from": "src/assets/app-icon.png",
