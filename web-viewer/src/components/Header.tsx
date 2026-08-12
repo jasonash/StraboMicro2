@@ -39,8 +39,10 @@ export function Header({ projectName, tileLoader }: HeaderProps) {
           {projectName}
         </Typography>
 
-        {/* Right: Action buttons */}
-        <Box sx={{ display: 'flex', gap: 1, flexShrink: 0, alignItems: 'center' }}>
+        {/* Right: Action buttons. Top-aligned so all buttons share one
+            baseline; the deep link's fallback caption hangs below its
+            button without pushing it off the row. */}
+        <Box sx={{ display: 'flex', gap: 1, flexShrink: 0, alignItems: 'flex-start' }}>
           {/* Deep link into the installed desktop app. Browsers cannot tell
               whether the app is installed (deliberate anti-fingerprinting),
               so the button is always shown with a download fallback below.
@@ -49,9 +51,8 @@ export function Header({ projectName, tileLoader }: HeaderProps) {
           <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', mr: 0.5 }}>
             <Button
               size="small"
-              variant="contained"
+              variant="outlined"
               color="primary"
-              disableElevation
               href={tileLoader.getDeepLinkUrl()}
             >
               Open in StraboMicro
