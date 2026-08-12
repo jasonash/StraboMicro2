@@ -21,6 +21,7 @@ import { StatisticsPanel } from './components/StatisticsPanel';
 import { QuickClassifyToolbar } from './components/QuickClassifyToolbar';
 import { ConfigureShortcutsDialog } from './components/dialogs/ConfigureShortcutsDialog';
 import { ImportSmzDialog } from './components/dialogs/ImportSmzDialog';
+import { DeepLinkOpenDialog } from './components/dialogs/DeepLinkOpenDialog';
 import { RemoteProjectsDialog } from './components/dialogs/RemoteProjectsDialog';
 import { SharedProjectDialog } from './components/dialogs/SharedProjectDialog';
 import { CloseProjectDialog } from './components/dialogs/CloseProjectDialog';
@@ -180,6 +181,7 @@ function App() {
   const [incompleteActionName, setIncompleteActionName] = useState('export');
   const [isImportSmzOpen, setIsImportSmzOpen] = useState(false);
   const [importSmzFilePath, setImportSmzFilePath] = useState<string | null>(null);
+  const [deepLinkPkey, setDeepLinkPkey] = useState<string | null>(null);
   const [isRemoteProjectsOpen, setIsRemoteProjectsOpen] = useState(false);
   const [isSharedProjectOpen, setIsSharedProjectOpen] = useState(false);
   const [isCloseProjectOpen, setIsCloseProjectOpen] = useState(false);
@@ -441,6 +443,19 @@ function App() {
       // Set the file path and open the import dialog
       setImportSmzFilePath(filePath);
       setIsImportSmzOpen(true);
+    }));
+
+    // Deep link - "Open in StraboMicro" web link (strabomicro://open?p=<pkey>)
+    unsubscribers.push(window.api.deepLink.onOpenProject(async (pkey: string) => {
+      console.log('[App] Received deep link open request, pkey:', pkey);
+
+      // saveBeforeSwitch prompts if dirty: OK saves, Cancel aborts the switch.
+      const proceed = await saveBeforeSwitch();
+      if (!proceed) {
+        return;
+      }
+
+      setDeepLinkPkey(pkey);
     }));
 
     // Edit Project menu item
@@ -1336,6 +1351,15 @@ function App() {
       <RemoteProjectsDialog
         open={isRemoteProjectsOpen}
         onClose={() => setIsRemoteProjectsOpen(false)}
+        onImportComplete={(importedProject: any) => {
+          // Load the imported project with image preparation
+          loadProjectWithPreparation(importedProject, null);
+        }}
+      />
+      <DeepLinkOpenDialog
+        open={deepLinkPkey !== null}
+        pkey={deepLinkPkey ?? ''}
+        onClose={() => setDeepLinkPkey(null)}
         onImportComplete={(importedProject: any) => {
           // Load the imported project with image preparation
           loadProjectWithPreparation(importedProject, null);

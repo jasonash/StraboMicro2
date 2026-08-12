@@ -42,6 +42,8 @@ import WarningIcon from '@mui/icons-material/Warning';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import StorageIcon from '@mui/icons-material/Storage';
 import { useAuthStore } from '@/store/useAuthStore';
+import { useAppStore } from '@/store/useAppStore';
+import { unloadIfReplacingOpenProject, dedupeImportedPresets } from '@/utils/importUtils';
 
 interface RemoteProject {
   id: string;
@@ -77,7 +79,7 @@ interface InspectResult {
 interface ImportResult {
   success: boolean;
   projectId?: string;
-  projectData?: unknown;
+  projectData?: { presets?: Array<{ id: string }> };
   error?: string;
 }
 
@@ -113,6 +115,7 @@ export function RemoteProjectsDialog({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const { logout } = useAuthStore();
+  const globalPresets = useAppStore((state) => state.globalPresets);
 
   // Set up progress listeners
   useEffect(() => {
@@ -249,6 +252,13 @@ export function RemoteProjectsDialog({
     setDialogState('importing');
     setImportProgress(null);
 
+    // If we're replacing the project that's currently open, unload it first
+    // so the viewer doesn't keep reading image files while the import deletes
+    // and rewrites them (same guard as ImportSmzDialog).
+    if (inspectResult?.projectExists) {
+      unloadIfReplacingOpenProject(inspectResult.projectId);
+    }
+
     try {
       const result = await window.api.smzImport.import(pathToImport);
 
@@ -269,7 +279,7 @@ export function RemoteProjectsDialog({
       setErrorMessage(error instanceof Error ? error.message : 'Import failed');
       setDialogState('error');
     }
-  }, [downloadedZipPath]);
+  }, [downloadedZipPath, inspectResult]);
 
   const handleClose = () => {
     // Don't allow closing during download or import
@@ -279,7 +289,9 @@ export function RemoteProjectsDialog({
 
   const handleComplete = () => {
     if (importResult?.projectData) {
-      onImportComplete(importResult.projectData);
+      // Deduplicate imported presets against global presets (same as the
+      // local .smz import flow)
+      onImportComplete(dedupeImportedPresets(importResult.projectData, globalPresets));
     }
     onClose();
   };

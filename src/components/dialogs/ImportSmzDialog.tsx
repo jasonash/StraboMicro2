@@ -29,6 +29,7 @@ import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import ErrorIcon from '@mui/icons-material/Error';
 import WarningIcon from '@mui/icons-material/Warning';
 import { useAppStore } from '../../store/useAppStore';
+import { unloadIfReplacingOpenProject, dedupeImportedPresets } from '../../utils/importUtils';
 
 interface ImportProgress {
   phase: string;
@@ -197,14 +198,8 @@ export function ImportSmzDialog({
     // the viewer doesn't keep reading image files while the import deletes and
     // rewrites them. The user has already confirmed the local data will be
     // replaced, so there's nothing worth saving.
-    const { project, closeProject } = useAppStore.getState();
-    if (
-      inspectResult?.projectExists &&
-      inspectResult.projectId &&
-      project?.id === inspectResult.projectId
-    ) {
-      console.log('[ImportSmzDialog] Unloading currently open project before replace-import');
-      closeProject();
+    if (inspectResult?.projectExists) {
+      unloadIfReplacingOpenProject(inspectResult.projectId);
     }
 
     try {
@@ -231,31 +226,9 @@ export function ImportSmzDialog({
 
   const handleComplete = () => {
     if (importResult?.projectData) {
-      // Deduplicate project presets against global presets
-      // If a preset ID already exists in globalPresets, don't include it in project.presets
-      // This prevents duplicates when importing a project that was exported with global presets
-      let projectData = importResult.projectData;
-
-      if (projectData.presets && projectData.presets.length > 0 && globalPresets.length > 0) {
-        const globalPresetIds = new Set(globalPresets.map((p) => p.id));
-        const dedupedPresets = projectData.presets.filter(
-          (p: { id: string }) => !globalPresetIds.has(p.id)
-        );
-
-        if (dedupedPresets.length < projectData.presets.length) {
-          const removedCount = projectData.presets.length - dedupedPresets.length;
-          console.log(
-            `[ImportSmzDialog] Removed ${removedCount} preset(s) that already exist in global presets`
-          );
-
-          projectData = {
-            ...projectData,
-            presets: dedupedPresets.length > 0 ? dedupedPresets : undefined,
-          };
-        }
-      }
-
-      onImportComplete(projectData);
+      // Deduplicate project presets against global presets (prevents
+      // duplicates when importing a project exported with global presets)
+      onImportComplete(dedupeImportedPresets(importResult.projectData, globalPresets));
     }
     onClose();
   };
