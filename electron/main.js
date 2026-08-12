@@ -289,10 +289,16 @@ app.on('open-url', (event, url) => {
 const gotTheLock = app.requestSingleInstanceLock();
 
 if (!gotTheLock) {
-  // Another instance is already running, quit this one
-  // The other instance will receive the second-instance event with our argv
-  log.info('[FileAssoc] Another instance is running, quitting');
-  app.quit();
+  // Another instance is already running; it receives the second-instance
+  // event with our argv (forwarded inside requestSingleInstanceLock).
+  // Exit immediately rather than app.quit(): quit() before 'ready' is
+  // deferred until after 'ready' fires, which let this doomed instance run
+  // the whenReady() startup path far enough to flash its own splash window
+  // and start scratch-space cleanup against the running instance's data
+  // (observed on Windows with deep links and .smz opens while the app is
+  // already running).
+  log.info('[FileAssoc] Another instance is running, exiting');
+  app.exit(0);
 } else {
   // We got the lock, handle second-instance events
   app.on('second-instance', (event, argv, workingDirectory) => {
