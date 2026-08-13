@@ -82,10 +82,16 @@ export class HttpTileLoader {
   }
 
   /**
-   * Get the URL for the project PDF
+   * Get the URL for the project PDF.
+   *
+   * Goes through the server endpoint (NOT the static
+   * smzFiles/<id>/project.pdf file): the endpoint regenerates the PDF
+   * with fresh StraboSamples spine values when a Samples-app edit has
+   * marked it dirty. Linking the static file serves the upload-time PDF
+   * forever. Matches the legacy landing page and straboMicroView.
    */
   getPdfUrl(): string {
-    return `${this.baseUrl}/${this.projectId}/project.pdf`;
+    return `/download_micro_pdf?project_id=${this.projectId}`;
   }
 
   /**
