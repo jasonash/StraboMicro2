@@ -758,10 +758,10 @@ async function generateProjectPDF(outputPath, projectData, projectId, folderPath
     )
   );
 
-  // Dataset pages
-  allDatasets.forEach((dataset, i) => {
+  // Page builders for the content sections (emitted in tree order below, matching the TOC)
+  const buildDatasetPage = (dataset, i) => {
     const sampleCount = (dataset.samples || []).length;
-    pages.push(
+    return (
       React.createElement(Page, { key: `dataset-${i}`, size: 'LETTER', style: styles.page },
         React.createElement(SectionHeader, { title: `Dataset: ${dataset.name || 'Unnamed'}`, id: `dataset-${i}` }),
         React.createElement(View, { style: styles.card },
@@ -778,14 +778,13 @@ async function generateProjectPDF(outputPath, projectData, projectId, folderPath
         })
       )
     );
-  });
+  };
 
-  // Sample pages
-  allSamples.forEach(({ sample, dataset, index }) => {
+  const buildSamplePage = ({ sample, dataset, index }) => {
     const sampleName = sample.name || sample.label || 'Unnamed';
     const microCount = (sample.micrographs || []).length;
 
-    pages.push(
+    return (
       React.createElement(Page, { key: `sample-${index}`, size: 'LETTER', style: styles.page },
         React.createElement(Text, { style: styles.breadcrumb }, dataset.name || 'Dataset'),
         React.createElement(SectionHeader, { title: `Sample: ${sampleName}`, id: `sample-${index}` }),
@@ -817,10 +816,9 @@ async function generateProjectPDF(outputPath, projectData, projectId, folderPath
         })
       )
     );
-  });
+  };
 
-  // Micrograph pages
-  allMicrographs.forEach(({ micrograph, sample, dataset, index }) => {
+  const buildMicrographPage = ({ micrograph, sample, dataset, index }) => {
     const micrographName = micrograph.name || 'Unnamed';
     const isReference = !micrograph.parentID;
     const breadcrumb = `${dataset.name || 'Dataset'} > ${sample.name || sample.label || 'Sample'}`;
@@ -904,13 +902,12 @@ async function generateProjectPDF(outputPath, projectData, projectId, folderPath
       })
     );
 
-    pages.push(
+    return (
       React.createElement(Page, { key: `micrograph-${index}`, size: 'LETTER', style: styles.page }, ...pageElements)
     );
-  });
+  };
 
-  // Spot pages
-  allSpots.forEach(({ spot, micrograph, sample, dataset, index }) => {
+  const buildSpotPage = ({ spot, micrograph, sample, dataset, index }) => {
     const spotName = spot.name || 'Unnamed';
     const breadcrumb = `${dataset.name || 'Dataset'} > ${sample.name || sample.label || 'Sample'} > ${micrograph.name || 'Micrograph'}`;
 
@@ -943,9 +940,30 @@ async function generateProjectPDF(outputPath, projectData, projectId, folderPath
       })
     );
 
-    pages.push(
+    return (
       React.createElement(Page, { key: `spot-${index}`, size: 'LETTER', style: styles.page }, ...pageElements)
     );
+  };
+
+  // Emit content pages in tree order so the document body matches the table of contents:
+  // dataset, then each of its samples, each followed by its micrographs and their spots.
+  // allSamples/allMicrographs/allSpots were collected by this same traversal, so
+  // sequential cursors stay aligned with the tree walk (and with micrographImages).
+  let sampleCursor = 0;
+  let micrographCursor = 0;
+  let spotCursor = 0;
+  allDatasets.forEach((dataset, datasetIdx) => {
+    pages.push(buildDatasetPage(dataset, datasetIdx));
+    for (const sample of dataset.samples || []) {
+      pages.push(buildSamplePage(allSamples[sampleCursor++]));
+      for (const micrograph of sample.micrographs || []) {
+        pages.push(buildMicrographPage(allMicrographs[micrographCursor++]));
+        const spotCount = (micrograph.spots || []).length;
+        for (let s = 0; s < spotCount; s++) {
+          pages.push(buildSpotPage(allSpots[spotCursor++]));
+        }
+      }
+    }
   });
 
   // Create document
