@@ -5,7 +5,7 @@
  * Uses the same fields as NewSampleDialog but pre-populates with existing data.
  */
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -17,11 +17,21 @@ import {
   Box,
   Stack,
   Divider,
+  Alert,
 } from '@mui/material';
 import { Link as LinkIcon } from '@mui/icons-material';
 import { useAppStore } from '@/store';
 import { useAuthStore } from '@/store/useAuthStore';
-import { LinkSampleDialog, mapServerSampleToLocal } from './LinkSampleDialog';
+import { LinkStraboSampleDialog } from './LinkStraboSampleDialog';
+import {
+  fetchSample,
+  mapSpineSampleToLocal,
+  isFieldLinked,
+  splitSelectValue,
+  VALID_MATERIAL_TYPES,
+  VALID_SAMPLING_PURPOSES,
+  type SpineSampleRecord,
+} from '@/services/straboSamplesApi';
 import type { SampleMetadata } from '@/types/project-types';
 
 interface EditSampleDialogProps {
@@ -62,6 +72,13 @@ export function EditSampleDialog({ isOpen, onClose, sample }: EditSampleDialogPr
   const [linkedSampleId, setLinkedSampleId] = useState<string | null>(null);
   const [linkedSampleData, setLinkedSampleData] = useState<Partial<SampleMetadata> | null>(null);
   const [shouldUnlink, setShouldUnlink] = useState(false);
+  // True when the (existing or newly picked) linked sample is hosted by
+  // StraboField: the server reasserts its values for the spine-managed fields
+  // on every download, so the form locks them instead of losing edits silently.
+  const [fieldManaged, setFieldManaged] = useState(false);
+  // Guards the open-time link check against overriding a link/unlink the user
+  // made while the check was still in flight
+  const linkSelectionMadeRef = useRef(false);
 
   const updateSample = useAppStore((state) => state.updateSample);
   const project = useAppStore((state) => state.project);
@@ -84,6 +101,9 @@ export function EditSampleDialog({ isOpen, onClose, sample }: EditSampleDialogPr
   // Track if sample is already linked to server (and not being unlinked)
   const isAlreadyLinked = sample?.existsOnServer === true && !shouldUnlink;
 
+  // Lock the StraboField-managed fields (unlinking releases the lock)
+  const fieldLocked = fieldManaged && !shouldUnlink;
+
   // Load sample data when dialog opens
   useEffect(() => {
     if (isOpen && sample) {
@@ -103,64 +123,68 @@ export function EditSampleDialog({ isOpen, onClose, sample }: EditSampleDialogPr
       setLinkedSampleId(null);
       setLinkedSampleData(null);
       setShouldUnlink(false);
+      setFieldManaged(false);
+      linkSelectionMadeRef.current = false;
     }
   }, [isOpen, sample]);
 
-  const handleLinkedSampleSelect = (serverSample: Parameters<typeof mapServerSampleToLocal>[0]) => {
-    const mappedData = mapServerSampleToLocal(serverSample);
+  // Live check: is the already-linked sample hosted by StraboField?
+  // Fields stay editable until (and unless) the check confirms a Field link,
+  // so offline use and server errors degrade gracefully.
+  useEffect(() => {
+    if (!isOpen || !sample?.existsOnServer || !isAuthenticated) return;
+    const sampleId = sample.id;
+    let cancelled = false;
+    (async () => {
+      try {
+        const record = await fetchSample(sampleId);
+        if (!cancelled && !linkSelectionMadeRef.current && isFieldLinked(record)) {
+          setFieldManaged(true);
+        }
+      } catch (err) {
+        // Not found, offline, or login cancelled: leave the form editable
+        console.warn('[EditSampleDialog] Field-link check skipped:', err);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, sample?.id, sample?.existsOnServer, isAuthenticated]);
+
+  const handleLinkedSampleSelect = (record: SpineSampleRecord) => {
+    const mappedData = mapSpineSampleToLocal(record);
 
     // Store the linked sample ID and data
     setLinkedSampleId(mappedData.id);
     setLinkedSampleData(mappedData);
     setShouldUnlink(false); // Clear unlink flag when linking to a new sample
+    setFieldManaged(isFieldLinked(record));
+    linkSelectionMadeRef.current = true;
+
+    // Normalize select values (out-of-vocabulary values become 'other' + text)
+    const purpose = splitSelectValue(
+      mappedData.mainSamplingPurpose,
+      mappedData.otherSamplingPurpose,
+      VALID_SAMPLING_PURPOSES
+    );
+    const material = splitSelectValue(
+      mappedData.materialType,
+      mappedData.otherMaterialType,
+      VALID_MATERIAL_TYPES
+    );
 
     // Populate form fields with server data
-    // Use fallback to "Sample {id}" to match LinkSampleDialog display behavior
-
-    // Handle mainSamplingPurpose - check if it's a known dropdown value
-    const validSamplingPurposes = ['fabric___micro', 'petrology', 'geochronology', 'geochemistry', 'active_eruptio', 'other'];
-    const serverPurpose = mappedData.mainSamplingPurpose || '';
-    let mainSamplingPurpose = '';
-    let otherSamplingPurpose = '';
-    if (validSamplingPurposes.includes(serverPurpose)) {
-      mainSamplingPurpose = serverPurpose;
-      // If 'other', use the server's otherSamplingPurpose value
-      if (serverPurpose === 'other') {
-        otherSamplingPurpose = mappedData.otherSamplingPurpose || '';
-      }
-    } else if (serverPurpose) {
-      // Server has a custom value not in dropdown - treat as "other"
-      mainSamplingPurpose = 'other';
-      otherSamplingPurpose = serverPurpose;
-    }
-
-    // Handle materialType - same logic
-    const validMaterialTypes = ['intact_rock', 'fragmented_roc', 'sediment', 'tephra', 'carbon_or_animal', 'other'];
-    const serverMaterial = mappedData.materialType || '';
-    let materialType = '';
-    let otherMaterialType = '';
-    if (validMaterialTypes.includes(serverMaterial)) {
-      materialType = serverMaterial;
-      // If 'other', use the server's otherMaterialType value
-      if (serverMaterial === 'other') {
-        otherMaterialType = mappedData.otherMaterialType || '';
-      }
-    } else if (serverMaterial) {
-      // Server has a custom value not in dropdown - treat as "other"
-      materialType = 'other';
-      otherMaterialType = serverMaterial;
-    }
-
+    // Use fallback to "Sample {id}" to match picker display behavior
     setFormData({
       sampleID: mappedData.sampleID || mappedData.label || `Sample ${mappedData.id}`,
       igsn: mappedData.igsn || '',
       longitude: mappedData.longitude?.toString() || '',
       latitude: mappedData.latitude?.toString() || '',
-      mainSamplingPurpose,
-      otherSamplingPurpose,
+      mainSamplingPurpose: purpose.value,
+      otherSamplingPurpose: purpose.otherValue,
       sampleDescription: mappedData.sampleDescription || '',
-      materialType,
-      otherMaterialType,
+      materialType: material.value,
+      otherMaterialType: material.otherValue,
       sampleNotes: mappedData.sampleNotes || '',
     });
   };
@@ -169,6 +193,8 @@ export function EditSampleDialog({ isOpen, onClose, sample }: EditSampleDialogPr
     setShouldUnlink(true);
     setLinkedSampleId(null);
     setLinkedSampleData(null);
+    setFieldManaged(false);
+    linkSelectionMadeRef.current = true;
   };
 
   const updateField = (field: keyof SampleFormData, value: string) => {
@@ -291,7 +317,7 @@ export function EditSampleDialog({ isOpen, onClose, sample }: EditSampleDialogPr
       <DialogContent>
         <Box sx={{ pt: 2 }}>
           <Stack spacing={3}>
-            {/* Link/Unlink Sample From StraboField - only visible when logged in */}
+            {/* Link/Unlink Sample From StraboSamples - only visible when logged in */}
             {isAuthenticated && (
               <>
                 {/* Show current linked status */}
@@ -305,7 +331,7 @@ export function EditSampleDialog({ isOpen, onClose, sample }: EditSampleDialogPr
                       textAlign: 'center',
                     }}
                   >
-                    Linked to StraboField (ID: {sample?.id})
+                    Linked to StraboSamples (ID: {sample?.id})
                   </Box>
                 )}
 
@@ -320,7 +346,7 @@ export function EditSampleDialog({ isOpen, onClose, sample }: EditSampleDialogPr
                       textAlign: 'center',
                     }}
                   >
-                    Will link to server sample (ID: {linkedSampleId})
+                    Will link to StraboSamples (ID: {linkedSampleId})
                   </Box>
                 )}
 
@@ -335,8 +361,18 @@ export function EditSampleDialog({ isOpen, onClose, sample }: EditSampleDialogPr
                       textAlign: 'center',
                     }}
                   >
-                    Will unlink from StraboField (new UUID will be assigned)
+                    Will unlink from StraboSamples (a new ID will make this a
+                    separate, independent sample)
                   </Box>
+                )}
+
+                {/* Field-managed hint */}
+                {fieldManaged && !shouldUnlink && (
+                  <Alert severity="info">
+                    This sample is managed by StraboField, so its core fields are
+                    locked here. Edit them in StraboField or on My Samples at
+                    strabospot.org; changes sync to this project automatically.
+                  </Alert>
                 )}
 
                 {/* Link/Re-link button */}
@@ -346,7 +382,7 @@ export function EditSampleDialog({ isOpen, onClose, sample }: EditSampleDialogPr
                   onClick={() => setShowLinkDialog(true)}
                   fullWidth
                 >
-                  {isAlreadyLinked ? 'Link to Different Sample' : 'Link Sample From StraboField'}
+                  {isAlreadyLinked ? 'Link to Different Sample' : 'Link Sample From StraboSamples'}
                 </Button>
 
                 {/* Unlink button - only show if already linked and not already pending unlink */}
@@ -357,7 +393,7 @@ export function EditSampleDialog({ isOpen, onClose, sample }: EditSampleDialogPr
                     onClick={handleUnlink}
                     fullWidth
                   >
-                    Unlink from StraboField
+                    Unlink from StraboSamples
                   </Button>
                 )}
 
@@ -372,6 +408,7 @@ export function EditSampleDialog({ isOpen, onClose, sample }: EditSampleDialogPr
               required
               fullWidth
               autoFocus
+              disabled={fieldLocked}
             />
 
             <TextField
@@ -389,16 +426,18 @@ export function EditSampleDialog({ isOpen, onClose, sample }: EditSampleDialogPr
                 placeholder="-180 to 180"
                 value={formData.longitude}
                 onChange={(e) => handleLongitudeChange(e.target.value)}
-                helperText="Valid range: -180 to 180"
+                helperText={fieldLocked ? 'Location is managed by StraboField' : 'Valid range: -180 to 180'}
                 fullWidth
+                disabled={fieldLocked}
               />
               <TextField
                 label="Latitude"
                 placeholder="-90 to 90"
                 value={formData.latitude}
                 onChange={(e) => handleLatitudeChange(e.target.value)}
-                helperText="Valid range: -90 to 90"
+                helperText={fieldLocked ? 'Location is managed by StraboField' : 'Valid range: -90 to 90'}
                 fullWidth
+                disabled={fieldLocked}
               />
             </Stack>
 
@@ -413,6 +452,7 @@ export function EditSampleDialog({ isOpen, onClose, sample }: EditSampleDialogPr
                 }
               }}
               fullWidth
+              disabled={fieldLocked}
             >
               <MenuItem value="">Select Main Sampling Purpose...</MenuItem>
               <MenuItem value="fabric___micro">Fabric / Microstructure</MenuItem>
@@ -439,6 +479,7 @@ export function EditSampleDialog({ isOpen, onClose, sample }: EditSampleDialogPr
               value={formData.sampleDescription}
               onChange={(e) => updateField('sampleDescription', e.target.value)}
               fullWidth
+              disabled={fieldLocked}
             />
 
             <TextField
@@ -452,6 +493,7 @@ export function EditSampleDialog({ isOpen, onClose, sample }: EditSampleDialogPr
                 }
               }}
               fullWidth
+              disabled={fieldLocked}
             >
               <MenuItem value="">Select Material Type...</MenuItem>
               <MenuItem value="intact_rock">Intact Rock</MenuItem>
@@ -480,6 +522,7 @@ export function EditSampleDialog({ isOpen, onClose, sample }: EditSampleDialogPr
               multiline
               rows={4}
               fullWidth
+              disabled={fieldLocked}
             />
           </Stack>
         </Box>
@@ -496,7 +539,7 @@ export function EditSampleDialog({ isOpen, onClose, sample }: EditSampleDialogPr
       </DialogActions>
 
       {/* Link Sample Dialog */}
-      <LinkSampleDialog
+      <LinkStraboSampleDialog
         open={showLinkDialog}
         onClose={() => setShowLinkDialog(false)}
         onSelectSample={handleLinkedSampleSelect}

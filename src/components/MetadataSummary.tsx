@@ -26,6 +26,8 @@ import EditIcon from '@mui/icons-material/Edit';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import ClearIcon from '@mui/icons-material/Clear';
 import { useAppStore } from '@/store';
+import { useAuthStore } from '@/store/useAuthStore';
+import { getRestServerUrl } from '@/components/dialogs/PreferencesDialog';
 import type { QuickApplyPreset } from '@/types/preset-types';
 import { findMicrographById, findSpotById, findSpotParentMicrograph, getMicrographParentSample } from '@/store/helpers';
 import type {
@@ -658,6 +660,7 @@ function SpotMeasurements({ spot, scale }: { spot: Spot; scale: number }) {
 
 export function MetadataSummary({ micrographId, spotId, onEditSection }: MetadataSummaryProps) {
   const project = useAppStore((state) => state.project);
+  const myPkey = useAuthStore((state) => state.user?.pkey);
   const globalPresets = useAppStore((state) => state.globalPresets);
   const updateSpotData = useAppStore((state) => state.updateSpotData);
 
@@ -789,11 +792,17 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
           </StyledAccordionSummary>
           <AccordionDetails sx={{ py: 1 }}>
             <Stack spacing={0.5}>
-              {/* Linked to StraboField indicator */}
+              {/* Linked to StraboSamples indicator */}
               {sample.existsOnServer && (
                 <Box
                   onClick={() => {
-                    window.api?.openExternalLink(`https://strabospot.org/spotdetails/?s=${sample.id}`);
+                    // Sample Overview page is addressed by (owner pkey, id);
+                    // linked samples are always owned by the linking user.
+                    // Without a pkey (logged out), fall back to My Samples.
+                    const url = myPkey
+                      ? `${getRestServerUrl()}/samples/${myPkey}/${sample.id}`
+                      : `${getRestServerUrl()}/my_samples.php`;
+                    window.api?.openExternalLink(url);
                   }}
                   sx={{
                     display: 'block',
@@ -812,7 +821,7 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
                     },
                   }}
                 >
-                  Linked to StraboField (View on Server)
+                  Linked to StraboSamples (View on Server)
                 </Box>
               )}
               {sample.sampleID && (
