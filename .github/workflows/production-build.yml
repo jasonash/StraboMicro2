@@ -472,7 +472,7 @@ jobs:
             |----------|----------|
             | macOS (Apple Silicon) | `StraboMicro2-${{ inputs.version }}-arm64.dmg` |
             | macOS (Intel) | `StraboMicro2-${{ inputs.version }}.dmg` |
-            | Windows | `StraboMicro2 Setup ${{ inputs.version }}.exe` |
+            | Windows | `StraboMicro2-Setup-${{ inputs.version }}.exe` |
             | Linux (AppImage) | `StraboMicro2-${{ inputs.version }}.AppImage` |
             | Linux (Debian) | `strabomicro2_${{ inputs.version }}_amd64.deb` |
 
