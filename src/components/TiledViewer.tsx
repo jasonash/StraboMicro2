@@ -2389,10 +2389,13 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                             stroke="#ffffff"
                             strokeWidth={1.5 / zoom}
                             onClick={async () => {
+                              // Click-transparent while a drawing/measure/sketch tool is active
+                              if (activeTool && activeTool !== 'select') return;
                               // Navigate to the child micrograph when clicked (drill-down enables back button)
                               await useAppStore.getState().drillDownToMicrograph(childMicro.id);
                             }}
                             onTap={async () => {
+                              if (activeTool && activeTool !== 'select') return;
                               await useAppStore.getState().drillDownToMicrograph(childMicro.id);
                             }}
                             onMouseEnter={(e) => {

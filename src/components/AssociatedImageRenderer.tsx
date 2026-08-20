@@ -602,7 +602,9 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
   }, []);
 
   const handleMouseUp = useCallback((e: any) => {
-    if (!onClick || !mouseDownPosRef.current) {
+    // While a drawing/measure/sketch tool is active, overlays are click-transparent:
+    // the click belongs to the drawing handlers on the stage, not drill-down navigation
+    if (!onClick || !mouseDownPosRef.current || (activeTool && activeTool !== 'select')) {
       mouseDownPosRef.current = null;
       return;
     }
@@ -623,7 +625,7 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
     }
 
     mouseDownPosRef.current = null;
-  }, [onClick, micrograph.id]);
+  }, [onClick, micrograph.id, activeTool]);
 
   const handleMouseEnter = useCallback((e: any) => {
     // Don't change cursor if a drawing/measure tool is active
