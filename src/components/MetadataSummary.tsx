@@ -28,6 +28,11 @@ import ClearIcon from '@mui/icons-material/Clear';
 import { useAppStore } from '@/store';
 import { useAuthStore } from '@/store/useAuthStore';
 import { getRestServerUrl } from '@/components/dialogs/PreferencesDialog';
+import {
+  checkSpineStatus,
+  SUBSYSTEM_LABELS,
+  type SpineStatusResult,
+} from '@/services/straboSamplesApi';
 import type { QuickApplyPreset } from '@/types/preset-types';
 import { findMicrographById, findSpotById, findSpotParentMicrograph, getMicrographParentSample } from '@/store/helpers';
 import type {
@@ -661,6 +666,7 @@ function SpotMeasurements({ spot, scale }: { spot: Spot; scale: number }) {
 export function MetadataSummary({ micrographId, spotId, onEditSection }: MetadataSummaryProps) {
   const project = useAppStore((state) => state.project);
   const myPkey = useAuthStore((state) => state.user?.pkey);
+  const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
   const globalPresets = useAppStore((state) => state.globalPresets);
   const updateSpotData = useAppStore((state) => state.updateSpotData);
 
@@ -697,6 +703,27 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
   const sample = activeMicrographId && project
     ? getMicrographParentSample(project, activeMicrographId)
     : undefined;
+
+  // Spine status for the accordion indicator + subsystem badges. Cache-first
+  // (checkSpineStatus keeps a session cache), checked lazily on expand. Runs
+  // for EVERY sample, since a project upload auto-populates the spine.
+  const [sampleSpineStatus, setSampleSpineStatus] = useState<SpineStatusResult | null>(null);
+  const sampleExpanded = expanded['sample'] || false;
+  const sampleId = sample?.id;
+  useEffect(() => {
+    setSampleSpineStatus(null);
+    if (!sampleExpanded || !sampleId || !isAuthenticated) return;
+    let cancelled = false;
+    (async () => {
+      const result = await checkSpineStatus(sampleId);
+      if (!cancelled && result.status !== 'unknown') {
+        setSampleSpineStatus(result);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [sampleExpanded, sampleId, isAuthenticated]);
 
   if (!data) {
     return (
@@ -792,37 +819,55 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
           </StyledAccordionSummary>
           <AccordionDetails sx={{ py: 1 }}>
             <Stack spacing={0.5}>
-              {/* Linked to StraboSamples indicator */}
-              {sample.existsOnServer && (
-                <Box
-                  onClick={() => {
-                    // Sample Overview page is addressed by (owner pkey, id);
-                    // linked samples are always owned by the linking user.
-                    // Without a pkey (logged out), fall back to My Samples.
-                    const url = myPkey
-                      ? `${getRestServerUrl()}/samples/${myPkey}/${sample.id}`
-                      : `${getRestServerUrl()}/my_samples.php`;
-                    window.api?.openExternalLink(url);
-                  }}
-                  sx={{
-                    display: 'block',
-                    p: 1,
-                    mb: 1,
-                    bgcolor: 'success.main',
-                    color: 'success.contrastText',
-                    borderRadius: 1,
-                    textAlign: 'center',
-                    fontSize: '0.875rem',
-                    fontWeight: 500,
-                    cursor: 'pointer',
-                    '&:hover': {
-                      bgcolor: 'success.dark',
-                      textDecoration: 'underline',
-                    },
-                  }}
-                >
-                  Linked to StraboSamples (View on Server)
-                </Box>
+              {/* StraboSamples indicator. Three states:
+                  - explicitly linked (existsOnServer) or field-linked: green "Linked"
+                  - in the spine via project upload only: neutral "In StraboSamples"
+                  - not in the spine / not checkable: nothing */}
+              {(sample.existsOnServer || sampleSpineStatus?.status === 'found') && (() => {
+                const linked = sample.existsOnServer || sampleSpineStatus?.fieldLinked;
+                const palette = linked ? 'success' : 'info';
+                return (
+                  <Box
+                    onClick={() => {
+                      // Sample Overview page is addressed by (owner pkey, id);
+                      // spine rows reachable from here are always owned by the
+                      // current user. Without a pkey (logged out), fall back to
+                      // My Samples.
+                      const url = myPkey
+                        ? `${getRestServerUrl()}/samples/${myPkey}/${sample.id}`
+                        : `${getRestServerUrl()}/my_samples.php`;
+                      window.api?.openExternalLink(url);
+                    }}
+                    sx={{
+                      display: 'block',
+                      p: 1,
+                      mb: 1,
+                      bgcolor: `${palette}.main`,
+                      color: `${palette}.contrastText`,
+                      borderRadius: 1,
+                      textAlign: 'center',
+                      fontSize: '0.875rem',
+                      fontWeight: 500,
+                      cursor: 'pointer',
+                      '&:hover': {
+                        bgcolor: `${palette}.dark`,
+                        textDecoration: 'underline',
+                      },
+                    }}
+                  >
+                    {linked
+                      ? 'Linked to StraboSamples (View on Server)'
+                      : 'In StraboSamples (View on Server)'}
+                  </Box>
+                );
+              })()}
+              {/* Subsystem badges: which Strabo systems reference this sample */}
+              {sampleSpineStatus && sampleSpineStatus.subsystems.length > 0 && (
+                <Stack direction="row" spacing={0.5} sx={{ mb: 1 }}>
+                  {sampleSpineStatus.subsystems.map((subsystem) => (
+                    <Chip key={subsystem} size="small" label={SUBSYSTEM_LABELS[subsystem]} />
+                  ))}
+                </Stack>
               )}
               {sample.sampleID && (
                 <Box>

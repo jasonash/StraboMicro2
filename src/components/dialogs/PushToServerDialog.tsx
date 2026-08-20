@@ -22,6 +22,7 @@ import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import ErrorIcon from '@mui/icons-material/Error';
 import { ConfirmDialog } from './ConfirmDialog';
 import { useAuthStore } from '@/store/useAuthStore';
+import { invalidateSpineStatus } from '@/services/straboSamplesApi';
 
 interface PushProgress {
   phase: string;
@@ -113,6 +114,11 @@ export function PushToServerDialog({
       }
 
       setResult(pushResult);
+      if (pushResult.success) {
+        // The upload just auto-populated every sample into the StraboSamples
+        // spine; drop cached "not in spine" answers so the UI picks that up.
+        invalidateSpineStatus();
+      }
     } catch (error) {
       setResult({
         success: false,

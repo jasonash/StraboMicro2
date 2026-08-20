@@ -18,19 +18,24 @@ import {
   Stack,
   Divider,
   Alert,
+  Chip,
 } from '@mui/material';
 import { Link as LinkIcon } from '@mui/icons-material';
 import { useAppStore } from '@/store';
 import { useAuthStore } from '@/store/useAuthStore';
+import { getRestServerUrl } from '@/components/dialogs/PreferencesDialog';
 import { LinkStraboSampleDialog } from './LinkStraboSampleDialog';
 import {
-  fetchSample,
   mapSpineSampleToLocal,
   isFieldLinked,
   splitSelectValue,
+  checkSpineStatus,
+  spineStatusFromRecord,
+  SUBSYSTEM_LABELS,
   VALID_MATERIAL_TYPES,
   VALID_SAMPLING_PURPOSES,
   type SpineSampleRecord,
+  type SpineStatusResult,
 } from '@/services/straboSamplesApi';
 import type { SampleMetadata } from '@/types/project-types';
 
@@ -76,6 +81,10 @@ export function EditSampleDialog({ isOpen, onClose, sample }: EditSampleDialogPr
   // StraboField: the server reasserts its values for the spine-managed fields
   // on every download, so the form locks them instead of losing edits silently.
   const [fieldManaged, setFieldManaged] = useState(false);
+  // Live answer to "is this sample in the StraboSamples spine?" — covers both
+  // explicitly linked samples and ones auto-populated by a project upload.
+  // Also carries the subsystem links for the badges.
+  const [spineStatus, setSpineStatus] = useState<SpineStatusResult | null>(null);
   // Guards the open-time link check against overriding a link/unlink the user
   // made while the check was still in flight
   const linkSelectionMadeRef = useRef(false);
@@ -83,6 +92,7 @@ export function EditSampleDialog({ isOpen, onClose, sample }: EditSampleDialogPr
   const updateSample = useAppStore((state) => state.updateSample);
   const project = useAppStore((state) => state.project);
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
+  const myPkey = useAuthStore((state) => state.user?.pkey);
 
   // Collect all existing sample IDs in the project (excluding the current sample being edited)
   const existingSampleIds = useMemo(() => {
@@ -124,32 +134,35 @@ export function EditSampleDialog({ isOpen, onClose, sample }: EditSampleDialogPr
       setLinkedSampleData(null);
       setShouldUnlink(false);
       setFieldManaged(false);
+      setSpineStatus(null);
       linkSelectionMadeRef.current = false;
     }
   }, [isOpen, sample]);
 
-  // Live check: is the already-linked sample hosted by StraboField?
-  // Fields stay editable until (and unless) the check confirms a Field link,
-  // so offline use and server errors degrade gracefully.
+  // Live check on open, for EVERY sample (not just explicitly linked ones):
+  // project upload auto-populates the spine, so any sample may have a row.
+  // Confirms field-linkage (locks the Field-managed fields) and drives the
+  // "In StraboSamples" indicator + subsystem badges. Fields stay editable
+  // until (and unless) the check confirms a Field link, so offline use and
+  // server errors degrade gracefully. force: the lock check must reflect the
+  // server NOW, not a cached answer from earlier in the session.
   useEffect(() => {
-    if (!isOpen || !sample?.existsOnServer || !isAuthenticated) return;
+    if (!isOpen || !sample || !isAuthenticated) return;
     const sampleId = sample.id;
     let cancelled = false;
     (async () => {
-      try {
-        const record = await fetchSample(sampleId);
-        if (!cancelled && !linkSelectionMadeRef.current && isFieldLinked(record)) {
-          setFieldManaged(true);
-        }
-      } catch (err) {
-        // Not found, offline, or login cancelled: leave the form editable
-        console.warn('[EditSampleDialog] Field-link check skipped:', err);
+      const result = await checkSpineStatus(sampleId, { force: true });
+      if (cancelled || linkSelectionMadeRef.current) return;
+      if (result.status === 'unknown') return;
+      setSpineStatus(result);
+      if (result.fieldLinked) {
+        setFieldManaged(true);
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [isOpen, sample?.id, sample?.existsOnServer, isAuthenticated]);
+  }, [isOpen, sample?.id, isAuthenticated]);
 
   const handleLinkedSampleSelect = (record: SpineSampleRecord) => {
     const mappedData = mapSpineSampleToLocal(record);
@@ -159,6 +172,7 @@ export function EditSampleDialog({ isOpen, onClose, sample }: EditSampleDialogPr
     setLinkedSampleData(mappedData);
     setShouldUnlink(false); // Clear unlink flag when linking to a new sample
     setFieldManaged(isFieldLinked(record));
+    setSpineStatus(spineStatusFromRecord(record));
     linkSelectionMadeRef.current = true;
 
     // Normalize select values (out-of-vocabulary values become 'other' + text)
@@ -194,7 +208,18 @@ export function EditSampleDialog({ isOpen, onClose, sample }: EditSampleDialogPr
     setLinkedSampleId(null);
     setLinkedSampleData(null);
     setFieldManaged(false);
+    setSpineStatus(null); // Unlinking mints a new id with no spine row
     linkSelectionMadeRef.current = true;
+  };
+
+  const handleViewOnServer = () => {
+    // Sample Overview is addressed by (owner pkey, id); spine rows reachable
+    // from here are always owned by the current user. Without a pkey
+    // (logged out), fall back to My Samples.
+    const url = myPkey
+      ? `${getRestServerUrl()}/samples/${myPkey}/${sample?.id}`
+      : `${getRestServerUrl()}/my_samples.php`;
+    window.api?.openExternalLink(url);
   };
 
   const updateField = (field: keyof SampleFormData, value: string) => {
@@ -364,6 +389,39 @@ export function EditSampleDialog({ isOpen, onClose, sample }: EditSampleDialogPr
                     Will unlink from StraboSamples (a new ID will make this a
                     separate, independent sample)
                   </Box>
+                )}
+
+                {/* Auto-populated sample: in the spine because a project upload
+                    put it there, without an explicit link. View-only, so no
+                    unlink controls and no green "Linked" claim. */}
+                {!isAlreadyLinked && !linkedSampleId && !shouldUnlink &&
+                  spineStatus?.status === 'found' && (
+                  <Box
+                    onClick={handleViewOnServer}
+                    sx={{
+                      p: 1.5,
+                      bgcolor: 'info.main',
+                      color: 'info.contrastText',
+                      borderRadius: 1,
+                      textAlign: 'center',
+                      cursor: 'pointer',
+                      '&:hover': {
+                        bgcolor: 'info.dark',
+                        textDecoration: 'underline',
+                      },
+                    }}
+                  >
+                    In StraboSamples (View on Server)
+                  </Box>
+                )}
+
+                {/* Subsystem badges: which Strabo systems reference this sample */}
+                {!shouldUnlink && spineStatus && spineStatus.subsystems.length > 0 && (
+                  <Stack direction="row" spacing={1} justifyContent="center">
+                    {spineStatus.subsystems.map((subsystem) => (
+                      <Chip key={subsystem} size="small" label={SUBSYSTEM_LABELS[subsystem]} />
+                    ))}
+                  </Stack>
                 )}
 
                 {/* Field-managed hint */}

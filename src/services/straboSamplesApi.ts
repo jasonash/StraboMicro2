@@ -15,7 +15,7 @@
  * (capital E); JSON bodies require Content-Type: application/json.
  */
 
-import { authenticatedFetch } from '@/store/useAuthStore';
+import { authenticatedFetch, getAccessToken, useAuthStore } from '@/store/useAuthStore';
 import { getRestServerUrl } from '@/components/dialogs/PreferencesDialog';
 
 // ============================================================================
@@ -141,6 +141,125 @@ export async function fetchSample(id: string): Promise<SpineSampleRecord> {
  */
 export function isFieldLinked(record: SpineSampleRecord): boolean {
   return (record.subsystem_links ?? []).some((link) => link.subsystem === 'field');
+}
+
+// ============================================================================
+// SPINE STATUS: existence + linkage, with a session cache
+// ============================================================================
+
+export type SpineSubsystem = SpineSubsystemLink['subsystem'];
+
+export const SUBSYSTEM_LABELS: Record<SpineSubsystem, string> = {
+  field: 'StraboField',
+  micro: 'StraboMicro',
+  experimental: 'StraboExperimental',
+};
+
+/**
+ * Answer to "does the spine have a row for this sample id, as the current
+ * user?". Project upload auto-populates every sample into the spine, so a
+ * sample can be 'found' without ever having been explicitly linked.
+ * 'unknown' means the question could not be answered (offline, auth trouble);
+ * callers should show nothing rather than guessing.
+ */
+export interface SpineStatusResult {
+  status: 'found' | 'not-found' | 'unknown';
+  fieldLinked: boolean;
+  subsystems: SpineSubsystem[];
+}
+
+const UNKNOWN_SPINE_STATUS: SpineStatusResult = {
+  status: 'unknown',
+  fieldLinked: false,
+  subsystems: [],
+};
+
+export function spineStatusFromRecord(record: SpineSampleRecord): SpineStatusResult {
+  const subsystems = Array.from(
+    new Set((record.subsystem_links ?? []).map((link) => link.subsystem))
+  );
+  return { status: 'found', fieldLinked: isFieldLinked(record), subsystems };
+}
+
+// Keyed by (user pkey, sample id) so an account switch never serves the other
+// account's answers. 'unknown' results are never cached, so a check that
+// failed offline recovers on the next attempt.
+const spineStatusCache = new Map<string, SpineStatusResult>();
+const spineStatusInFlight = new Map<string, Promise<SpineStatusResult>>();
+
+function spineStatusKey(sampleId: string): string | null {
+  const pkey = useAuthStore.getState().user?.pkey;
+  return pkey ? `${pkey}:${sampleId}` : null;
+}
+
+/**
+ * Drop cached answers: one sample's, or all of them (no argument).
+ * Call the no-argument form after a successful project upload, since the
+ * upload just auto-populated every sample and any cached 'not-found' is stale.
+ */
+export function invalidateSpineStatus(sampleId?: string): void {
+  if (sampleId === undefined) {
+    spineStatusCache.clear();
+    return;
+  }
+  const key = spineStatusKey(sampleId);
+  if (key) spineStatusCache.delete(key);
+}
+
+/**
+ * Check whether the spine has a row for this sample id.
+ * Reads on a nonexistent OR inaccessible sample both return 404 ("not found
+ * for you"); either way there is nothing this user can view, so 404 maps to
+ * 'not-found'. Never throws. Concurrent checks for the same id share one
+ * request. `force` bypasses the cache for freshness-sensitive callers (the
+ * field-lock check) but still updates it for cache-first callers.
+ */
+export async function checkSpineStatus(
+  sampleId: string,
+  options?: { force?: boolean }
+): Promise<SpineStatusResult> {
+  const key = spineStatusKey(sampleId);
+  if (!key) return UNKNOWN_SPINE_STATUS; // logged out
+  if (!options?.force) {
+    const cached = spineStatusCache.get(key);
+    if (cached) return cached;
+  }
+  const inFlight = spineStatusInFlight.get(key);
+  if (inFlight) return inFlight;
+
+  const promise = (async (): Promise<SpineStatusResult> => {
+    try {
+      // Deliberately NOT authenticatedFetch: this is a passive check, and
+      // authenticatedFetch prompts for login when the token is missing.
+      // No silently available token -> 'unknown', never a login dialog.
+      const token = await getAccessToken();
+      if (!token) return UNKNOWN_SPINE_STATUS;
+      const url = `${getRestServerUrl()}/samplesjwtdb/sample/${encodeURIComponent(sampleId)}`;
+      const response = await fetch(url, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (response.status === 404) {
+        const result: SpineStatusResult = {
+          status: 'not-found',
+          fieldLinked: false,
+          subsystems: [],
+        };
+        spineStatusCache.set(key, result);
+        return result;
+      }
+      if (!response.ok) return UNKNOWN_SPINE_STATUS;
+      const record: SpineSampleRecord = await response.json();
+      const result = spineStatusFromRecord(record);
+      spineStatusCache.set(key, result);
+      return result;
+    } catch {
+      return UNKNOWN_SPINE_STATUS;
+    } finally {
+      spineStatusInFlight.delete(key);
+    }
+  })();
+  spineStatusInFlight.set(key, promise);
+  return promise;
 }
 
 // ============================================================================
