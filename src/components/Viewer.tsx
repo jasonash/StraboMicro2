@@ -5,7 +5,6 @@ import DrawingToolbar from './DrawingToolbar';
 import SketchToolbar from './SketchToolbar';
 import BottomPanel from './BottomPanel';
 import { TiledViewer, TiledViewerRef } from './TiledViewer';
-import { ExportWithSketchesDialog, ExportOptions } from './dialogs/ExportWithSketchesDialog';
 import { useAppStore } from '../store';
 import { findMicrographById, findSpotById } from '../store/helpers';
 
@@ -278,45 +277,6 @@ const Viewer: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [activeMicrographId, sketchModeActive, sketchTextInputActive, quickClassifyVisible, setSketchModeActive, setActiveTool]);
 
-  // Export with sketches dialog state
-  const [exportDialogOpen, setExportDialogOpen] = useState(false);
-
-  // Handle export with sketches
-  const handleExportWithSketches = useCallback(async (options: ExportOptions) => {
-    if (!tiledViewerRef.current) {
-      throw new Error('Viewer not available');
-    }
-
-    // Get the data URL from the viewer
-    const dataUrl = await tiledViewerRef.current.exportImage(options);
-
-    // Trigger download
-    const link = document.createElement('a');
-    link.href = dataUrl;
-
-    // Generate filename
-    const micrographName = activeMicrograph?.name || 'micrograph';
-    const timestamp = new Date().toISOString().slice(0, 19).replace(/[:-]/g, '');
-    link.download = `${micrographName}_with_sketches_${timestamp}.${options.format}`;
-
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  }, [activeMicrograph]);
-
-  // Listen for menu export command
-  useEffect(() => {
-    if (!window.api?.onExportWithSketches) return;
-
-    const unsubscribe = window.api.onExportWithSketches(() => {
-      if (activeMicrographId) {
-        setExportDialogOpen(true);
-      }
-    });
-
-    return unsubscribe;
-  }, [activeMicrographId]);
-
   // Debug menu: snap to exact zoom (tile-seam sanity check)
   useEffect(() => {
     if (!window.api?.onSetExactZoom) return;
@@ -521,13 +481,6 @@ const Viewer: React.FC = () => {
 
         <BottomPanel />
       </Box>
-
-      {/* Export with Sketches Dialog */}
-      <ExportWithSketchesDialog
-        open={exportDialogOpen}
-        onClose={() => setExportDialogOpen(false)}
-        onExport={handleExportWithSketches}
-      />
     </Box>
   );
 };

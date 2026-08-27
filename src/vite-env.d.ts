@@ -412,62 +412,27 @@ interface Window {
       filePath?: string;
     }>;
 
-    // Micrograph download
-    downloadMicrograph: (imagePath: string, suggestedName: string) => Promise<{
-      success: boolean;
-      canceled?: boolean;
-      filePath?: string;
-    }>;
-
-    // Export composite micrograph (with overlays, spots, and labels)
-    exportCompositeMicrograph: (
+    // Export one micrograph as an image file (JPEG / PNG / SVG); shows a save dialog
+    exportMicrographImage: (
       projectId: string,
       micrographId: string,
       projectData: any,
-      options?: {
-        includeSpots?: boolean;
-        includeLabels?: boolean;
-      }
-    ) => Promise<{
-      success: boolean;
-      canceled?: boolean;
-      filePath?: string;
-    }>;
+      options: import('./types/image-export-types').ImageExportOptions
+    ) => Promise<import('./types/image-export-types').ImageExportResult>;
 
-    // Export micrograph as SVG (vector spots)
-    exportMicrographAsSvg: (
+    // Export micrographs (all, or options.micrographIds) to a ZIP of images
+    exportImages: (
       projectId: string,
-      micrographId: string,
-      projectData: any
-    ) => Promise<{
-      success: boolean;
-      canceled?: boolean;
-      filePath?: string;
-    }>;
+      projectData: any,
+      options: import('./types/image-export-types').BatchImageExportRequest
+    ) => Promise<import('./types/image-export-types').ImageExportResult>;
+    onExportImagesProgress: (
+      callback: (progress: import('./types/image-export-types').ImageExportProgress) => void
+    ) => void;
+    removeExportImagesProgressListener: () => void;
 
-    // Export all images to ZIP
-    exportAllImages: (projectId: string, projectData: any, format?: 'jpeg' | 'svg') => Promise<{
-      success: boolean;
-      canceled?: boolean;
-      filePath?: string;
-      exported?: number;
-      error?: string;
-      errors?: Array<{ micrographId: string; name: string; error: string }>;
-    }>;
-    onExportAllImagesProgress: (callback: (progress: {
-      current: number;
-      total: number;
-      currentName: string;
-      status: 'processing' | 'complete' | 'error';
-      error?: string;
-    }) => void) => void;
-    removeExportAllImagesProgressListener: () => void;
-
-    // Menu event for export all images
-    onExportAllImages: (callback: () => void) => Unsubscribe;
-
-    // Menu event for export with sketches
-    onExportWithSketches: (callback: () => void) => Unsubscribe;
+    // Menu event: File > Export Images...
+    onExportImages: (callback: () => void) => Unsubscribe;
 
     // Debug menu: snap viewer to exact zoom (tile-seam diagnostics)
     onSetExactZoom: (callback: (value: number) => void) => Unsubscribe;
