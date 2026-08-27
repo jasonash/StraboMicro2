@@ -302,10 +302,6 @@ contextBridge.exposeInMainWorld('api', {
   exportDetailedNotesToPDF: (projectData, micrographId, spotId) =>
     ipcRenderer.invoke('pdf:export-detailed-notes', projectData, micrographId, spotId),
 
-  // Micrograph download (save to user's chosen location)
-  downloadMicrograph: (imagePath, suggestedName) =>
-    ipcRenderer.invoke('micrograph:download', imagePath, suggestedName),
-
   // Export composite micrograph (with overlays, spots, and labels)
   exportCompositeMicrograph: (projectId, micrographId, projectData, options) =>
     ipcRenderer.invoke('micrograph:export-composite', projectId, micrographId, projectData, options),

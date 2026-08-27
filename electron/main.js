@@ -130,7 +130,7 @@ const smzExport = require('./smzExport');
 const serverUpload = require('./serverUpload');
 const versionHistory = require('./versionHistory');
 const projectsIndex = require('./projectsIndex');
-const svgExport = require('./svgExport');
+const imageExport = require('./imageExport');
 const smzImport = require('./smzImport');
 const serverDownload = require('./serverDownload');
 const autoUpdaterModule = require('./autoUpdater');
@@ -1845,543 +1845,76 @@ ipcMain.handle('pdf:export-detailed-notes', async (event, projectData, micrograp
   }
 });
 
-// Download micrograph image to user's chosen location
-ipcMain.handle('micrograph:download', async (event, imagePath, suggestedName) => {
-  try {
-    log.info(`[IPC] Download micrograph: ${imagePath}`);
-
-    // Get the file extension from the source file
-    const ext = path.extname(imagePath).toLowerCase() || '.jpg';
-    const cleanName = (suggestedName || 'micrograph').replace(/[<>:"/\\|?*]/g, '_');
-    const defaultFileName = `${cleanName}${ext}`;
-
-    // Show save dialog
-    const result = await dialog.showSaveDialog({
-      title: 'Download Micrograph',
-      defaultPath: defaultFileName,
-      filters: [
-        { name: 'Image Files', extensions: ['jpg', 'jpeg', 'png', 'tif', 'tiff'] },
-        { name: 'All Files', extensions: ['*'] }
-      ]
-    });
-
-    if (result.canceled || !result.filePath) {
-      return { success: false, canceled: true };
-    }
-
-    // Copy the file to the chosen location
-    const fs = require('fs').promises;
-    await fs.copyFile(imagePath, result.filePath);
-
-    log.info(`[IPC] Micrograph downloaded to: ${result.filePath}`);
-    return { success: true, filePath: result.filePath };
-
-  } catch (error) {
-    log.error('[IPC] Error downloading micrograph:', error);
-    throw error;
-  }
-});
-
 /**
- * Export composite micrograph image with overlays, spots, and labels
- *
- * Creates a full-resolution image with:
- * - Base micrograph
- * - All child micrographs (associated images) overlaid in correct positions
- * - Spots (points, lines, polygons) with their colors and opacity
- * - Labels with black semi-transparent background boxes and white text
- *
- * @param {string} projectId - Project ID
- * @param {string} micrographId - Micrograph ID to export
- * @param {object} projectData - Current project data from renderer
- * @param {object} options - Export options
- * @param {boolean} options.includeSpots - Include spot shapes (default: true)
- * @param {boolean} options.includeLabels - Include spot labels (default: true)
+ * Show a save dialog and write a rendered micrograph export to disk.
+ * Shared by the single-micrograph export handlers.
  */
+async function saveRenderedExport(rendered, micrographName, title) {
+  const cleanName = imageExport.sanitizeFilename(micrographName);
+  const filterName = rendered.format === 'svg' ? 'SVG Image' : rendered.format === 'png' ? 'PNG Image' : 'JPEG Image';
+  const extensions = rendered.format === 'jpeg' ? ['jpg', 'jpeg'] : [rendered.extension];
+
+  const result = await dialog.showSaveDialog({
+    title,
+    defaultPath: `${cleanName}_composite.${rendered.extension}`,
+    filters: [
+      { name: filterName, extensions },
+      { name: 'All Files', extensions: ['*'] }
+    ]
+  });
+
+  if (result.canceled || !result.filePath) {
+    return { success: false, canceled: true };
+  }
+
+  await fs.promises.writeFile(result.filePath, rendered.buffer);
+  log.info(`[IPC] Micrograph export written to: ${result.filePath}`);
+  return { success: true, filePath: result.filePath };
+}
+
+// Export composite micrograph: full-resolution JPEG with overlays, spots and labels
 ipcMain.handle('micrograph:export-composite', async (event, projectId, micrographId, projectData, options = {}) => {
   try {
     log.info(`[IPC] Exporting composite micrograph: ${micrographId}`);
-
-    const includeSpots = options.includeSpots !== false;
-    const includeLabels = options.includeLabels !== false;
-
-    // Get project folder paths
     const folderPaths = await projectFolders.getProjectFolderPaths(projectId);
-
-    // Find the micrograph in the project hierarchy
-    let micrograph = null;
-    let childMicrographs = [];
-
-    for (const dataset of projectData.datasets || []) {
-      for (const sample of dataset.samples || []) {
-        for (const micro of sample.micrographs || []) {
-          if (micro.id === micrographId) {
-            micrograph = micro;
-            // Exclude secondary siblings (XPL) - they share same view area as primary (PPL)
-            childMicrographs = (sample.micrographs || []).filter(
-              m => m.parentID === micrographId && m.isPrimarySibling !== false
-            );
-            break;
-          }
-        }
-        if (micrograph) break;
-      }
-      if (micrograph) break;
-    }
-
+    const micrograph = imageExport.findMicrograph(projectData, micrographId);
     if (!micrograph) {
       throw new Error(`Micrograph ${micrographId} not found in project`);
     }
 
-    // Load base micrograph image (with fallback to uiImages for legacy projects)
-    const basePath = await resolveImagePathWithLegacyFallback(
-      path.join(folderPaths.images, micrograph.imagePath)
-    );
-    log.info(`[IPC] Loading base image: ${basePath}`);
-
-    let baseImage = sharp(basePath);
-    const baseMetadata = await baseImage.metadata();
-    const baseWidth = baseMetadata.width;
-    const baseHeight = baseMetadata.height;
-
-    log.info(`[IPC] Base image dimensions: ${baseWidth}x${baseHeight}`);
-
-    // Build composite layers for child micrographs
-    const compositeInputs = [];
-
-    for (const child of childMicrographs) {
-      try {
-        // Skip point-located micrographs
-        if (child.pointInParent) {
-          log.info(`[IPC] Skipping point-located child ${child.id}`);
-          continue;
-        }
-
-        // Handle affine-transformed overlays specially - load pre-transformed image from cache
-        if (child.placementType === 'affine' && child.affineTileHash) {
-          log.info(`[IPC] Loading affine overlay ${child.id} from cache`);
-          const tileCache = require('./tileCache');
-          const affineBuffer = await tileCache.loadAffineMedium(child.affineTileHash);
-
-          if (affineBuffer) {
-            // Use bounds and dimensions from micrograph data (not cache metadata)
-            const boundsOffset = child.affineBoundsOffset || { x: 0, y: 0 };
-            const transformedWidth = child.affineTransformedWidth || 0;
-            const transformedHeight = child.affineTransformedHeight || 0;
-
-            log.info(`[IPC] Affine overlay ${child.id}: bounds=(${boundsOffset.x}, ${boundsOffset.y}), size=${transformedWidth}x${transformedHeight}`);
-
-            // Resize medium image to full transformed dimensions
-            let childImage = sharp(affineBuffer);
-            if (transformedWidth > 0 && transformedHeight > 0) {
-              childImage = childImage.resize(transformedWidth, transformedHeight, {
-                fit: 'fill',
-                kernel: sharp.kernel.lanczos3
-              });
-            }
-
-            // Apply opacity
-            const childOpacity = child.opacity ?? 1.0;
-            childImage = childImage.ensureAlpha();
-
-            if (childOpacity < 1.0) {
-              const { data, info } = await childImage.raw().toBuffer({ resolveWithObject: true });
-              for (let i = 3; i < data.length; i += 4) {
-                data[i] = Math.round(data[i] * childOpacity);
-              }
-              childImage = sharp(data, {
-                raw: { width: info.width, height: info.height, channels: info.channels }
-              });
-            }
-
-            const finalBuffer = await childImage.png().toBuffer();
-            let finalX = Math.round(boundsOffset.x);
-            let finalY = Math.round(boundsOffset.y);
-
-            // Bounds checking
-            const childBufferMeta = await sharp(finalBuffer).metadata();
-            const childW = childBufferMeta.width;
-            const childH = childBufferMeta.height;
-
-            if (finalX + childW > 0 && finalY + childH > 0 && finalX < baseWidth && finalY < baseHeight) {
-              // Crop if needed
-              let cropX = 0, cropY = 0, cropW = childW, cropH = childH;
-              let compositeX = finalX, compositeY = finalY;
-
-              if (finalX < 0) { cropX = -finalX; cropW -= cropX; compositeX = 0; }
-              if (finalY < 0) { cropY = -finalY; cropH -= cropY; compositeY = 0; }
-              if (compositeX + cropW > baseWidth) { cropW = baseWidth - compositeX; }
-              if (compositeY + cropH > baseHeight) { cropH = baseHeight - compositeY; }
-
-              if (cropW > 0 && cropH > 0) {
-                let compositeBuffer = finalBuffer;
-                if (cropX > 0 || cropY > 0 || cropW !== childW || cropH !== childH) {
-                  compositeBuffer = await sharp(finalBuffer)
-                    .extract({ left: Math.round(cropX), top: Math.round(cropY), width: Math.round(cropW), height: Math.round(cropH) })
-                    .toBuffer();
-                }
-                compositeInputs.push({ input: compositeBuffer, left: Math.round(compositeX), top: Math.round(compositeY) });
-                log.info(`[IPC] Added affine overlay at (${compositeX}, ${compositeY}), size ${cropW}x${cropH}`);
-              }
-            }
-          } else {
-            log.warn(`[IPC] No cached affine data for ${child.id}, skipping`);
-          }
-          continue;
-        }
-
-        // Skip children that haven't been located yet (no position data)
-        // This prevents loading ALL child images when only some have position data
-        if (!child.offsetInParent && child.xOffset === undefined) {
-          log.info(`[IPC] Skipping unlocated child ${child.id} (${child.name}) - no position data yet`);
-          continue;
-        }
-
-        // Load child image (with fallback to uiImages for legacy projects)
-        const childPath = await resolveImagePathWithLegacyFallback(
-          path.join(folderPaths.images, child.imagePath)
-        );
-        let childImage = sharp(childPath);
-        const childMetadata = await childImage.metadata();
-
-        // Use stored dimensions
-        const childImageWidth = child.imageWidth || childMetadata.width;
-        const childImageHeight = child.imageHeight || childMetadata.height;
-
-        // Calculate display scale based on pixels per centimeter
-        const childPxPerCm = child.scalePixelsPerCentimeter || 100;
-        const parentPxPerCm = micrograph.scalePixelsPerCentimeter || 100;
-        const displayScale = parentPxPerCm / childPxPerCm;
-
-        // Calculate child dimensions in parent's coordinate space
-        const childDisplayWidth = Math.round(childImageWidth * displayScale);
-        const childDisplayHeight = Math.round(childImageHeight * displayScale);
-
-        // Get child position (ensure integers for Sharp)
-        let topLeftX = 0, topLeftY = 0;
-        if (child.offsetInParent) {
-          topLeftX = Math.round(child.offsetInParent.X);
-          topLeftY = Math.round(child.offsetInParent.Y);
-        } else if (child.xOffset !== undefined && child.yOffset !== undefined) {
-          topLeftX = Math.round(child.xOffset);
-          topLeftY = Math.round(child.yOffset);
-        }
-
-        // Resize child image to display dimensions
-        childImage = childImage.resize(childDisplayWidth, childDisplayHeight, {
-          fit: 'fill',
-          kernel: sharp.kernel.lanczos3
-        });
-
-        // Apply opacity
-        const childOpacity = child.opacity ?? 1.0;
-        childImage = childImage.ensureAlpha();
-
-        if (childOpacity < 1.0) {
-          const { data, info } = await childImage.raw().toBuffer({ resolveWithObject: true });
-          for (let i = 3; i < data.length; i += 4) {
-            data[i] = Math.round(data[i] * childOpacity);
-          }
-          childImage = sharp(data, {
-            raw: { width: info.width, height: info.height, channels: info.channels }
-          });
-        }
-
-        // Apply rotation if needed
-        let finalX = topLeftX, finalY = topLeftY, finalBuffer;
-        if (child.rotation) {
-          const centerX = topLeftX + childDisplayWidth / 2;
-          const centerY = topLeftY + childDisplayHeight / 2;
-
-          childImage = childImage.rotate(child.rotation, {
-            background: { r: 0, g: 0, b: 0, alpha: 0 }
-          });
-
-          const radians = (child.rotation * Math.PI) / 180;
-          const cos = Math.abs(Math.cos(radians));
-          const sin = Math.abs(Math.sin(radians));
-          const rotatedWidth = childDisplayWidth * cos + childDisplayHeight * sin;
-          const rotatedHeight = childDisplayWidth * sin + childDisplayHeight * cos;
-
-          finalX = Math.round(centerX - rotatedWidth / 2);
-          finalY = Math.round(centerY - rotatedHeight / 2);
-          finalBuffer = await childImage.png().toBuffer();
-        } else {
-          finalBuffer = await childImage.png().toBuffer();
-        }
-
-        // Bounds checking and cropping (similar to thumbnail generator)
-        const childBufferMeta = await sharp(finalBuffer).metadata();
-        const childW = childBufferMeta.width;
-        const childH = childBufferMeta.height;
-
-        if (finalX + childW <= 0 || finalY + childH <= 0 || finalX >= baseWidth || finalY >= baseHeight) {
-          continue;
-        }
-
-        let cropX = 0, cropY = 0, cropW = childW, cropH = childH;
-        let compositeX = finalX, compositeY = finalY;
-
-        if (finalX < 0) { cropX = -finalX; cropW -= cropX; compositeX = 0; }
-        if (finalY < 0) { cropY = -finalY; cropH -= cropY; compositeY = 0; }
-        if (compositeX + cropW > baseWidth) { cropW = baseWidth - compositeX; }
-        if (compositeY + cropH > baseHeight) { cropH = baseHeight - compositeY; }
-
-        if (cropW <= 0 || cropH <= 0) continue;
-
-        // Ensure all values are integers for Sharp
-        cropX = Math.round(cropX);
-        cropY = Math.round(cropY);
-        cropW = Math.round(cropW);
-        cropH = Math.round(cropH);
-        compositeX = Math.round(compositeX);
-        compositeY = Math.round(compositeY);
-
-        let compositeBuffer = finalBuffer;
-        if (cropX > 0 || cropY > 0 || cropW !== childW || cropH !== childH) {
-          compositeBuffer = await sharp(finalBuffer)
-            .extract({ left: cropX, top: cropY, width: cropW, height: cropH })
-            .toBuffer();
-        }
-
-        compositeInputs.push({ input: compositeBuffer, left: compositeX, top: compositeY });
-      } catch (error) {
-        log.error(`[IPC] Failed to composite child ${child.id}:`, error);
-      }
-    }
-
-    // Generate SVG overlay for spots and labels
-    if ((includeSpots || includeLabels) && micrograph.spots && micrograph.spots.length > 0) {
-      // Calculate size multiplier based on image dimensions
-      // Base reference: 1000px image = multiplier of 1.0
-      // This scales spots/labels proportionally for larger/smaller images
-      const longestSide = Math.max(baseWidth, baseHeight);
-      const sizeMultiplier = longestSide / 1000;
-
-      log.info(`[IPC] Image size: ${baseWidth}x${baseHeight}, longest side: ${longestSide}, size multiplier: ${sizeMultiplier.toFixed(2)}`);
-
-      // Base sizes (for a ~1000px image)
-      const basePointRadius = 6;
-      const basePointStrokeWidth = 2;
-      const baseLineStrokeWidth = 3;
-      const baseFontSize = 16;
-      const basePadding = 4;
-      const baseOffset = 8;
-      const baseCornerRadius = 3;
-
-      // Scaled sizes
-      const pointRadius = Math.round(basePointRadius * sizeMultiplier);
-      const pointStrokeWidth = Math.round(basePointStrokeWidth * sizeMultiplier);
-      const lineStrokeWidth = Math.round(baseLineStrokeWidth * sizeMultiplier);
-      const fontSize = Math.round(baseFontSize * sizeMultiplier);
-      const padding = Math.round(basePadding * sizeMultiplier);
-      const labelOffset = Math.round(baseOffset * sizeMultiplier);
-      const cornerRadius = Math.round(baseCornerRadius * sizeMultiplier);
-      const charWidth = 8.5 * sizeMultiplier; // Approximate character width
-
-      const svgParts = [];
-      svgParts.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${baseWidth}" height="${baseHeight}">`);
-      svgParts.push('<defs><style>text { font-family: Arial, sans-serif; font-weight: bold; }</style></defs>');
-
-      for (const spot of micrograph.spots) {
-        const geometryType = spot.geometryType || spot.geometry?.type;
-        const color = convertColor(spot.color || '#00ff00');
-        const labelColor = convertColor(spot.labelColor || '#ffffff');
-        const opacity = (spot.opacity ?? 50) / 100;
-        if (includeSpots) {
-          // Render spot shape
-          if (geometryType === 'point' || geometryType === 'Point') {
-            const x = Array.isArray(spot.geometry?.coordinates)
-              ? spot.geometry.coordinates[0]
-              : spot.points?.[0]?.X ?? 0;
-            const y = Array.isArray(spot.geometry?.coordinates)
-              ? spot.geometry.coordinates[1]
-              : spot.points?.[0]?.Y ?? 0;
-
-            // White outline circle (scaled)
-            svgParts.push(`<circle cx="${x}" cy="${y}" r="${pointRadius}" fill="${color}" stroke="#ffffff" stroke-width="${pointStrokeWidth}"/>`);
-
-          } else if (geometryType === 'line' || geometryType === 'LineString') {
-            const coords = Array.isArray(spot.geometry?.coordinates)
-              ? spot.geometry.coordinates
-              : spot.points?.map(p => [p.X ?? 0, p.Y ?? 0]) || [];
-
-            if (coords.length >= 2) {
-              const pathData = coords.map((c, i) => `${i === 0 ? 'M' : 'L'}${c[0]},${c[1]}`).join(' ');
-              svgParts.push(`<path d="${pathData}" fill="none" stroke="${color}" stroke-width="${lineStrokeWidth}" stroke-linecap="round" stroke-linejoin="round"/>`);
-            }
-
-          } else if (geometryType === 'polygon' || geometryType === 'Polygon') {
-            const coords = Array.isArray(spot.geometry?.coordinates)
-              ? (spot.geometry.coordinates[0] || [])
-              : spot.points?.map(p => [p.X ?? 0, p.Y ?? 0]) || [];
-
-            if (coords.length >= 3) {
-              const pointsStr = coords.map(c => `${c[0]},${c[1]}`).join(' ');
-              svgParts.push(`<polygon points="${pointsStr}" fill="${color}" fill-opacity="${opacity}" stroke="${color}" stroke-width="${lineStrokeWidth}"/>`);
-            }
-          }
-        }
-
-        // Render label
-        if (includeLabels && spot.name) {
-          let labelX = 0, labelY = 0;
-
-          if (geometryType === 'point' || geometryType === 'Point') {
-            labelX = (Array.isArray(spot.geometry?.coordinates) ? spot.geometry.coordinates[0] : spot.points?.[0]?.X) || 0;
-            labelY = (Array.isArray(spot.geometry?.coordinates) ? spot.geometry.coordinates[1] : spot.points?.[0]?.Y) || 0;
-          } else {
-            const coords = Array.isArray(spot.geometry?.coordinates)
-              ? (spot.geometry.coordinates[0] || spot.geometry.coordinates)
-              : spot.points?.map(p => [p.X ?? 0, p.Y ?? 0]) || [];
-            if (coords[0]) {
-              labelX = coords[0][0] || coords[0];
-              labelY = coords[0][1] || coords[1];
-            }
-          }
-
-          // Label dimensions (scaled)
-          const labelWidth = spot.name.length * charWidth + padding * 2;
-          const labelHeight = fontSize + padding * 2;
-
-          // Black semi-transparent background box
-          svgParts.push(`<rect x="${labelX + labelOffset}" y="${labelY + labelOffset}" width="${labelWidth}" height="${labelHeight}" rx="${cornerRadius}" fill="#000000" fill-opacity="0.7"/>`);
-          // White label text
-          svgParts.push(`<text x="${labelX + labelOffset + padding}" y="${labelY + labelOffset + fontSize + padding/2}" font-size="${fontSize}" fill="${labelColor}">${escapeXml(spot.name)}</text>`);
-        }
-      }
-
-      svgParts.push('</svg>');
-
-      const svgOverlay = Buffer.from(svgParts.join('\n'));
-      compositeInputs.push({ input: svgOverlay, left: 0, top: 0 });
-    }
-
-    // Apply all composites
-    let finalImage;
-    if (compositeInputs.length > 0) {
-      finalImage = baseImage.composite(compositeInputs);
-    } else {
-      finalImage = baseImage;
-    }
-
-    // Show save dialog
-    const cleanName = (micrograph.name || 'micrograph').replace(/[<>:"/\\|?*]/g, '_');
-    const result = await dialog.showSaveDialog({
-      title: 'Export Composite Micrograph',
-      defaultPath: `${cleanName}_composite.jpg`,
-      filters: [
-        { name: 'JPEG Image', extensions: ['jpg', 'jpeg'] },
-        // { name: 'PNG Image', extensions: ['png'] }, // Commented out for now - may re-enable later
-        { name: 'All Files', extensions: ['*'] }
-      ]
+    const rendered = await imageExport.renderMicrographExport(projectId, micrograph, projectData, folderPaths, {
+      format: 'jpeg',
+      includeSpots: options.includeSpots !== false,
+      includeLabels: options.includeLabels !== false,
+      sketchLayers: 'none',
     });
-
-    if (result.canceled || !result.filePath) {
-      return { success: false, canceled: true };
-    }
-
-    // Save based on extension
-    const ext = path.extname(result.filePath).toLowerCase();
-    if (ext === '.png') {
-      // PNG support kept for manual use via "All Files" filter
-      await finalImage.png().toFile(result.filePath);
-    } else {
-      // Default to JPEG
-      await finalImage.jpeg({ quality: 95 }).toFile(result.filePath);
-    }
-
-    log.info(`[IPC] Composite micrograph exported to: ${result.filePath}`);
-    return { success: true, filePath: result.filePath };
-
+    return await saveRenderedExport(rendered, micrograph.name, 'Export Composite Micrograph');
   } catch (error) {
     log.error('[IPC] Error exporting composite micrograph:', error);
     throw error;
   }
 });
 
-// Export micrograph as SVG with vector spots
+// Export micrograph as SVG with vector spots and labels
 ipcMain.handle('micrograph:export-svg', async (event, projectId, micrographId, projectData) => {
   try {
     log.info(`[IPC] Exporting micrograph as SVG: ${micrographId}`);
-
-    // Get project folder paths
     const folderPaths = await projectFolders.getProjectFolderPaths(projectId);
-
-    // Find the micrograph to get its name
-    let micrographName = 'micrograph';
-    for (const dataset of projectData.datasets || []) {
-      for (const sample of dataset.samples || []) {
-        for (const micro of sample.micrographs || []) {
-          if (micro.id === micrographId) {
-            micrographName = micro.name || 'micrograph';
-            break;
-          }
-        }
-      }
+    const micrograph = imageExport.findMicrograph(projectData, micrographId);
+    if (!micrograph) {
+      throw new Error(`Micrograph ${micrographId} not found in project`);
     }
 
-    // Generate SVG
-    const { svg } = await svgExport.exportMicrographAsSvg(
-      projectId,
-      micrographId,
-      projectData,
-      folderPaths
-    );
-
-    // Show save dialog
-    const cleanName = micrographName.replace(/[<>:"/\\|?*]/g, '_');
-    const result = await dialog.showSaveDialog({
-      title: 'Export Micrograph as SVG',
-      defaultPath: `${cleanName}_composite.svg`,
-      filters: [
-        { name: 'SVG Image', extensions: ['svg'] },
-        { name: 'All Files', extensions: ['*'] }
-      ]
+    const rendered = await imageExport.renderMicrographExport(projectId, micrograph, projectData, folderPaths, {
+      format: 'svg',
+      sketchLayers: 'none',
     });
-
-    if (result.canceled || !result.filePath) {
-      return { success: false, canceled: true };
-    }
-
-    // Write SVG file
-    await fs.promises.writeFile(result.filePath, svg, 'utf8');
-
-    log.info(`[IPC] SVG exported to: ${result.filePath}`);
-    return { success: true, filePath: result.filePath };
-
+    return await saveRenderedExport(rendered, micrograph.name, 'Export Micrograph as SVG');
   } catch (error) {
     log.error('[IPC] Error exporting SVG:', error);
     throw error;
   }
 });
-
-/**
- * Helper: Convert legacy color format (0xRRGGBBAA) to web format (#RRGGBB)
- */
-function convertColor(color) {
-  if (!color) return '#00ff00';
-  if (color.startsWith('#')) return color;
-  if (color.startsWith('0x')) {
-    const hex = color.slice(2);
-    const rgb = hex.slice(0, 6);
-    return '#' + rgb;
-  }
-  return color;
-}
-
-/**
- * Helper: Escape XML special characters for SVG
- */
-function escapeXml(str) {
-  return str
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&apos;');
-}
-
 // Image loading (supports TIFF, JPEG, PNG, BMP) - dimensions only for performance
 ipcMain.handle('load-tiff-image', async (event, filePath) => {
   try {
@@ -4808,354 +4341,15 @@ ipcMain.handle('auth:check-storage', async () => {
 // =============================================================================
 
 /**
- * Helper: Generate composite image buffer for a micrograph
- * Reuses logic from micrograph:export-composite but returns buffer instead of saving
+ * Composite JPEG buffer for a micrograph (child overlays + spots + labels).
+ * Used by the PDF report; delegates to the shared image export renderer.
  */
 async function generateCompositeBuffer(projectId, micrograph, projectData, folderPaths) {
-  const includeSpots = true;
-  const includeLabels = true;
-
-  // Find child micrographs for this micrograph
-  // Exclude secondary siblings (XPL) - they share same view area as primary (PPL)
-  let childMicrographs = [];
-  for (const dataset of projectData.datasets || []) {
-    for (const sample of dataset.samples || []) {
-      const children = (sample.micrographs || []).filter(
-        m => m.parentID === micrograph.id && m.isPrimarySibling !== false
-      );
-      childMicrographs.push(...children);
-    }
-  }
-
-  // Load base micrograph image (with fallback to uiImages for legacy projects)
-  const basePath = await resolveImagePathWithLegacyFallback(
-    path.join(folderPaths.images, micrograph.imagePath)
-  );
-  let baseImage = sharp(basePath);
-  const baseMetadata = await baseImage.metadata();
-  const baseWidth = baseMetadata.width;
-  const baseHeight = baseMetadata.height;
-
-  // Build composite layers for child micrographs
-  const compositeInputs = [];
-
-  for (const child of childMicrographs) {
-    try {
-      // Skip point-located micrographs
-      if (child.pointInParent) {
-        continue;
-      }
-
-      // Handle affine-placed overlays specially
-      if (child.placementType === 'affine') {
-        try {
-          const affineTileHash = child.affineTileHash;
-          if (!affineTileHash) {
-            log.warn(`[generateCompositeBuffer] Affine overlay ${child.id} missing affineTileHash`);
-            continue;
-          }
-
-          // Load pre-transformed image from affine tile cache
-          const mediumBuffer = await tileCache.loadAffineMedium(affineTileHash);
-          if (!mediumBuffer) {
-            log.warn(`[generateCompositeBuffer] Affine medium image not found for ${child.id}`);
-            continue;
-          }
-
-          // Get bounds offset for positioning from micrograph data
-          const boundsOffset = child.affineBoundsOffset || { x: 0, y: 0 };
-          const transformedWidth = child.affineTransformedWidth || 0;
-          const transformedHeight = child.affineTransformedHeight || 0;
-
-          log.info(`[generateCompositeBuffer] Affine overlay ${child.id}: bounds=(${boundsOffset.x}, ${boundsOffset.y}), size=${transformedWidth}x${transformedHeight}`);
-
-          // Always resize medium image to full transformed dimensions
-          let childImage = sharp(mediumBuffer);
-          if (transformedWidth > 0 && transformedHeight > 0) {
-            childImage = childImage.resize(transformedWidth, transformedHeight, {
-              fit: 'fill',
-              kernel: sharp.kernel.lanczos3
-            });
-          }
-
-          // Apply opacity
-          const childOpacity = child.opacity ?? 1.0;
-          childImage = childImage.ensureAlpha();
-
-          if (childOpacity < 1.0) {
-            const { data, info } = await childImage.raw().toBuffer({ resolveWithObject: true });
-            for (let i = 3; i < data.length; i += 4) {
-              data[i] = Math.round(data[i] * childOpacity);
-            }
-            childImage = sharp(data, {
-              raw: { width: info.width, height: info.height, channels: info.channels }
-            });
-          }
-
-          const finalBuffer = await childImage.png().toBuffer();
-          let finalX = Math.round(boundsOffset.x);
-          let finalY = Math.round(boundsOffset.y);
-
-          // Bounds checking and cropping
-          const childBufferMeta = await sharp(finalBuffer).metadata();
-          const childW = childBufferMeta.width;
-          const childH = childBufferMeta.height;
-
-          if (finalX + childW <= 0 || finalY + childH <= 0 || finalX >= baseWidth || finalY >= baseHeight) {
-            continue;
-          }
-
-          let cropX = 0, cropY = 0, cropW = childW, cropH = childH;
-          let compositeX = finalX, compositeY = finalY;
-
-          if (finalX < 0) { cropX = -finalX; cropW -= cropX; compositeX = 0; }
-          if (finalY < 0) { cropY = -finalY; cropH -= cropY; compositeY = 0; }
-          if (compositeX + cropW > baseWidth) { cropW = baseWidth - compositeX; }
-          if (compositeY + cropH > baseHeight) { cropH = baseHeight - compositeY; }
-
-          if (cropW <= 0 || cropH <= 0) continue;
-
-          cropX = Math.round(cropX);
-          cropY = Math.round(cropY);
-          cropW = Math.round(cropW);
-          cropH = Math.round(cropH);
-          compositeX = Math.round(compositeX);
-          compositeY = Math.round(compositeY);
-
-          let compositeBuffer = finalBuffer;
-          if (cropX > 0 || cropY > 0 || cropW !== childW || cropH !== childH) {
-            compositeBuffer = await sharp(finalBuffer)
-              .extract({ left: cropX, top: cropY, width: cropW, height: cropH })
-              .toBuffer();
-          }
-
-          compositeInputs.push({
-            input: compositeBuffer,
-            left: compositeX,
-            top: compositeY
-          });
-
-          log.info(`[generateCompositeBuffer] Added affine overlay ${child.id} at (${compositeX}, ${compositeY})`);
-        } catch (err) {
-          log.error(`[generateCompositeBuffer] Error processing affine overlay ${child.id}:`, err);
-        }
-        continue;
-      }
-
-      // Skip children that haven't been located yet (no position data)
-      // This prevents loading ALL child images when only some have position data
-      if (!child.offsetInParent && child.xOffset === undefined) {
-        continue;
-      }
-
-      // Load child image (with fallback to uiImages for legacy projects)
-      const childPath = await resolveImagePathWithLegacyFallback(
-        path.join(folderPaths.images, child.imagePath)
-      );
-      let childImage = sharp(childPath);
-      const childMetadata = await childImage.metadata();
-
-      // Use stored dimensions
-      const childImageWidth = child.imageWidth || childMetadata.width;
-      const childImageHeight = child.imageHeight || childMetadata.height;
-
-      // Calculate display scale based on pixels per centimeter
-      const childPxPerCm = child.scalePixelsPerCentimeter || 100;
-      const parentPxPerCm = micrograph.scalePixelsPerCentimeter || 100;
-      const displayScale = parentPxPerCm / childPxPerCm;
-
-      // Calculate child dimensions in parent's coordinate space
-      const childDisplayWidth = Math.round(childImageWidth * displayScale);
-      const childDisplayHeight = Math.round(childImageHeight * displayScale);
-
-      // Get child position (ensure integers for Sharp)
-      let topLeftX = 0, topLeftY = 0;
-      if (child.offsetInParent) {
-        topLeftX = Math.round(child.offsetInParent.X);
-        topLeftY = Math.round(child.offsetInParent.Y);
-      } else if (child.xOffset !== undefined && child.yOffset !== undefined) {
-        topLeftX = Math.round(child.xOffset);
-        topLeftY = Math.round(child.yOffset);
-      }
-
-      // Resize child image to display dimensions
-      childImage = childImage.resize(childDisplayWidth, childDisplayHeight, {
-        fit: 'fill',
-        kernel: sharp.kernel.lanczos3
-      });
-
-      // Apply opacity
-      const childOpacity = child.opacity ?? 1.0;
-      childImage = childImage.ensureAlpha();
-
-      if (childOpacity < 1.0) {
-        const { data, info } = await childImage.raw().toBuffer({ resolveWithObject: true });
-        for (let i = 3; i < data.length; i += 4) {
-          data[i] = Math.round(data[i] * childOpacity);
-        }
-        childImage = sharp(data, {
-          raw: { width: info.width, height: info.height, channels: info.channels }
-        });
-      }
-
-      // Apply rotation if needed
-      let finalX = topLeftX, finalY = topLeftY, finalBuffer;
-      if (child.rotation) {
-        const centerX = topLeftX + childDisplayWidth / 2;
-        const centerY = topLeftY + childDisplayHeight / 2;
-
-        childImage = childImage.rotate(child.rotation, {
-          background: { r: 0, g: 0, b: 0, alpha: 0 }
-        });
-
-        const radians = (child.rotation * Math.PI) / 180;
-        const cos = Math.abs(Math.cos(radians));
-        const sin = Math.abs(Math.sin(radians));
-        const rotatedWidth = childDisplayWidth * cos + childDisplayHeight * sin;
-        const rotatedHeight = childDisplayWidth * sin + childDisplayHeight * cos;
-
-        finalX = Math.round(centerX - rotatedWidth / 2);
-        finalY = Math.round(centerY - rotatedHeight / 2);
-        finalBuffer = await childImage.png().toBuffer();
-      } else {
-        finalBuffer = await childImage.png().toBuffer();
-      }
-
-      // Bounds checking and cropping
-      const childBufferMeta = await sharp(finalBuffer).metadata();
-      const childW = childBufferMeta.width;
-      const childH = childBufferMeta.height;
-
-      if (finalX + childW <= 0 || finalY + childH <= 0 || finalX >= baseWidth || finalY >= baseHeight) {
-        continue;
-      }
-
-      let cropX = 0, cropY = 0, cropW = childW, cropH = childH;
-      let compositeX = finalX, compositeY = finalY;
-
-      if (finalX < 0) { cropX = -finalX; cropW -= cropX; compositeX = 0; }
-      if (finalY < 0) { cropY = -finalY; cropH -= cropY; compositeY = 0; }
-      if (compositeX + cropW > baseWidth) { cropW = baseWidth - compositeX; }
-      if (compositeY + cropH > baseHeight) { cropH = baseHeight - compositeY; }
-
-      if (cropW <= 0 || cropH <= 0) continue;
-
-      // Ensure all values are integers for Sharp
-      cropX = Math.round(cropX);
-      cropY = Math.round(cropY);
-      cropW = Math.round(cropW);
-      cropH = Math.round(cropH);
-      compositeX = Math.round(compositeX);
-      compositeY = Math.round(compositeY);
-
-      let compositeBuffer = finalBuffer;
-      if (cropX > 0 || cropY > 0 || cropW !== childW || cropH !== childH) {
-        compositeBuffer = await sharp(finalBuffer)
-          .extract({ left: cropX, top: cropY, width: cropW, height: cropH })
-          .toBuffer();
-      }
-
-      compositeInputs.push({ input: compositeBuffer, left: compositeX, top: compositeY });
-    } catch (error) {
-      log.error(`[BatchExport] Failed to composite child ${child.id}:`, error);
-    }
-  }
-
-  // Generate SVG overlay for spots and labels
-  if ((includeSpots || includeLabels) && micrograph.spots && micrograph.spots.length > 0) {
-    const longestSide = Math.max(baseWidth, baseHeight);
-    const sizeMultiplier = longestSide / 1000;
-
-    const basePointRadius = 6;
-    const basePointStrokeWidth = 2;
-    const baseLineStrokeWidth = 3;
-    const baseFontSize = 16;
-    const basePadding = 4;
-    const baseOffset = 8;
-    const baseCornerRadius = 3;
-
-    const pointRadius = Math.round(basePointRadius * sizeMultiplier);
-    const pointStrokeWidth = Math.round(basePointStrokeWidth * sizeMultiplier);
-    const lineStrokeWidth = Math.round(baseLineStrokeWidth * sizeMultiplier);
-    const fontSize = Math.round(baseFontSize * sizeMultiplier);
-    const padding = Math.round(basePadding * sizeMultiplier);
-    const labelOffset = Math.round(baseOffset * sizeMultiplier);
-    const cornerRadius = Math.round(baseCornerRadius * sizeMultiplier);
-    const charWidth = 8.5 * sizeMultiplier;
-
-    const svgParts = [];
-    svgParts.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${baseWidth}" height="${baseHeight}">`);
-    svgParts.push('<defs><style>text { font-family: Arial, sans-serif; font-weight: bold; }</style></defs>');
-
-    for (const spot of micrograph.spots) {
-      const geometryType = spot.geometryType || spot.geometry?.type;
-      const color = convertColor(spot.color || '#00ff00');
-      const labelColor = convertColor(spot.labelColor || '#ffffff');
-      const opacity = (spot.opacity ?? 50) / 100;
-      if (includeSpots) {
-        if (geometryType === 'point' || geometryType === 'Point') {
-          const x = Array.isArray(spot.geometry?.coordinates)
-            ? spot.geometry.coordinates[0]
-            : spot.points?.[0]?.X ?? 0;
-          const y = Array.isArray(spot.geometry?.coordinates)
-            ? spot.geometry.coordinates[1]
-            : spot.points?.[0]?.Y ?? 0;
-          svgParts.push(`<circle cx="${x}" cy="${y}" r="${pointRadius}" fill="${color}" stroke="#ffffff" stroke-width="${pointStrokeWidth}"/>`);
-        } else if (geometryType === 'line' || geometryType === 'LineString') {
-          const coords = Array.isArray(spot.geometry?.coordinates)
-            ? spot.geometry.coordinates
-            : spot.points?.map(p => [p.X ?? 0, p.Y ?? 0]) || [];
-          if (coords.length >= 2) {
-            const pathData = coords.map((c, i) => `${i === 0 ? 'M' : 'L'}${c[0]},${c[1]}`).join(' ');
-            svgParts.push(`<path d="${pathData}" fill="none" stroke="${color}" stroke-width="${lineStrokeWidth}" stroke-linecap="round" stroke-linejoin="round"/>`);
-          }
-        } else if (geometryType === 'polygon' || geometryType === 'Polygon') {
-          const coords = Array.isArray(spot.geometry?.coordinates)
-            ? (spot.geometry.coordinates[0] || [])
-            : spot.points?.map(p => [p.X ?? 0, p.Y ?? 0]) || [];
-          if (coords.length >= 3) {
-            const pointsStr = coords.map(c => `${c[0]},${c[1]}`).join(' ');
-            svgParts.push(`<polygon points="${pointsStr}" fill="${color}" fill-opacity="${opacity}" stroke="${color}" stroke-width="${lineStrokeWidth}"/>`);
-          }
-        }
-      }
-
-      if (includeLabels && spot.name) {
-        let labelX = 0, labelY = 0;
-        if (geometryType === 'point' || geometryType === 'Point') {
-          labelX = (Array.isArray(spot.geometry?.coordinates) ? spot.geometry.coordinates[0] : spot.points?.[0]?.X) || 0;
-          labelY = (Array.isArray(spot.geometry?.coordinates) ? spot.geometry.coordinates[1] : spot.points?.[0]?.Y) || 0;
-        } else {
-          const coords = Array.isArray(spot.geometry?.coordinates)
-            ? (spot.geometry.coordinates[0] || spot.geometry.coordinates)
-            : spot.points?.map(p => [p.X ?? 0, p.Y ?? 0]) || [];
-          if (coords[0]) {
-            labelX = coords[0][0] || coords[0];
-            labelY = coords[0][1] || coords[1];
-          }
-        }
-        const labelWidth = spot.name.length * charWidth + padding * 2;
-        const labelHeight = fontSize + padding * 2;
-        svgParts.push(`<rect x="${labelX + labelOffset}" y="${labelY + labelOffset}" width="${labelWidth}" height="${labelHeight}" rx="${cornerRadius}" fill="#000000" fill-opacity="0.7"/>`);
-        svgParts.push(`<text x="${labelX + labelOffset + padding}" y="${labelY + labelOffset + fontSize + padding/2}" font-size="${fontSize}" fill="${labelColor}">${escapeXml(spot.name)}</text>`);
-      }
-    }
-
-    svgParts.push('</svg>');
-    const svgOverlay = Buffer.from(svgParts.join('\n'));
-    compositeInputs.push({ input: svgOverlay, left: 0, top: 0 });
-  }
-
-  // Apply all composites
-  let finalImage;
-  if (compositeInputs.length > 0) {
-    finalImage = baseImage.composite(compositeInputs);
-  } else {
-    finalImage = baseImage;
-  }
-
-  // Return JPEG buffer
-  return await finalImage.jpeg({ quality: 95 }).toBuffer();
+  const rendered = await imageExport.renderMicrographExport(projectId, micrograph, projectData, folderPaths, {
+    format: 'jpeg',
+    sketchLayers: 'none',
+  });
+  return rendered.buffer;
 }
 
 /**
@@ -5181,27 +4375,35 @@ function collectAllMicrographs(projectData) {
  * Export all micrographs to a ZIP file
  * Sends progress updates to renderer via IPC
  */
-ipcMain.handle('project:export-all-images', async (event, projectId, projectData, format = 'jpeg') => {
-  try {
-    log.info(`[BatchExport] Starting batch export for project: ${projectId} (format: ${format})`);
+/**
+ * Export micrographs to a ZIP file, one rendered image each.
+ *
+ * exportOptions: ImageExportOptions (see electron/imageExport.js) plus an
+ * optional micrographIds array (omitted/null = every micrograph in the project).
+ * A bare format string is accepted for backward compatibility.
+ * Sends progress updates to the renderer via 'export-all-images:progress'.
+ */
+ipcMain.handle('project:export-all-images', async (event, projectId, projectData, exportOptions = {}) => {
+  const options = typeof exportOptions === 'string' ? { format: exportOptions } : (exportOptions || {});
+  const renderOptions = imageExport.normalizeOptions(options);
+  const fileExtension = imageExport.extensionForFormat(renderOptions.format);
 
-    // Collect all micrographs
-    const allMicrographs = collectAllMicrographs(projectData);
-    const total = allMicrographs.length;
+  try {
+    log.info(`[BatchExport] Starting batch export for project: ${projectId} (format: ${renderOptions.format})`);
+
+    const selected = imageExport.collectMicrographs(projectData, options.micrographIds ?? null);
+    const total = selected.length;
 
     if (total === 0) {
-      return { success: false, error: 'No micrographs found in project' };
+      return { success: false, error: 'No micrographs selected for export' };
     }
 
-    log.info(`[BatchExport] Found ${total} micrographs to export`);
-
-    // Determine file extension based on format
-    const fileExtension = format === 'svg' ? 'svg' : 'jpg';
+    log.info(`[BatchExport] Exporting ${total} micrographs`);
 
     // Show save dialog for ZIP file
-    const projectName = (projectData.name || 'project').replace(/[<>:"/\\|?*]/g, '_');
+    const projectName = imageExport.sanitizeFilename(projectData.name, 'project');
     const result = await dialog.showSaveDialog({
-      title: 'Export All Images',
+      title: 'Export Images',
       defaultPath: `${projectName}_images.zip`,
       filters: [
         { name: 'ZIP Archive', extensions: ['zip'] },
@@ -5213,54 +4415,41 @@ ipcMain.handle('project:export-all-images', async (event, projectId, projectData
       return { success: false, canceled: true };
     }
 
-    // Get project folder paths
     const folderPaths = await projectFolders.getProjectFolderPaths(projectId);
 
-    // Create ZIP file
     const output = fs.createWriteStream(result.filePath);
     const archive = archiver('zip', { zlib: { level: 6 } });
-
-    // Handle errors
-    archive.on('error', (err) => {
-      throw err;
-    });
-
-    // Pipe archive to output file
+    const archiveFailure = new Promise((_, reject) => archive.on('error', reject));
     archive.pipe(output);
 
-    // Process each micrograph
     let completed = 0;
     const errors = [];
+    const usedNames = new Set();
 
-    // Import SVG export module if needed
-    const svgExport = format === 'svg' ? require('./svgExport') : null;
-
-    for (const { micrograph, datasetName, sampleName } of allMicrographs) {
+    for (const { micrograph } of selected) {
       try {
-        // Send progress update to renderer
-        const progress = {
+        event.sender.send('export-all-images:progress', {
           current: completed + 1,
           total,
           currentName: micrograph.name || 'Unnamed',
           status: 'processing'
-        };
-        event.sender.send('export-all-images:progress', progress);
+        });
 
         log.info(`[BatchExport] Processing ${completed + 1}/${total}: ${micrograph.name}`);
 
-        // Create filename (sanitize for ZIP)
-        const cleanName = (micrograph.name || 'micrograph').replace(/[<>:"/\\|?*]/g, '_');
-        const filename = `${cleanName}.${fileExtension}`;
-
-        if (format === 'svg') {
-          // Generate SVG
-          const { svg } = await svgExport.exportMicrographAsSvg(projectId, micrograph.id, projectData, folderPaths);
-          archive.append(svg, { name: filename });
-        } else {
-          // Generate JPEG composite buffer
-          const buffer = await generateCompositeBuffer(projectId, micrograph, projectData, folderPaths);
-          archive.append(buffer, { name: filename });
+        // Unique filename inside the ZIP (micrograph names are not guaranteed unique)
+        const cleanName = imageExport.sanitizeFilename(micrograph.name);
+        let filename = `${cleanName}.${fileExtension}`;
+        for (let n = 2; usedNames.has(filename); n++) {
+          filename = `${cleanName}_${n}.${fileExtension}`;
         }
+        usedNames.add(filename);
+
+        const rendered = await Promise.race([
+          imageExport.renderMicrographExport(projectId, micrograph, projectData, folderPaths, renderOptions),
+          archiveFailure,
+        ]);
+        archive.append(rendered.buffer, { name: filename });
 
         completed++;
       } catch (error) {
@@ -5274,16 +4463,13 @@ ipcMain.handle('project:export-all-images', async (event, projectId, projectData
       }
     }
 
-    // Finalize archive
     await archive.finalize();
 
-    // Wait for output stream to finish
     await new Promise((resolve, reject) => {
       output.on('close', resolve);
       output.on('error', reject);
     });
 
-    // Send completion
     event.sender.send('export-all-images:progress', {
       current: total,
       total,
@@ -5291,12 +4477,13 @@ ipcMain.handle('project:export-all-images', async (event, projectId, projectData
       status: 'complete'
     });
 
-    log.info(`[BatchExport] Export complete: ${result.filePath} (${completed} images)`);
+    const exported = completed - errors.length;
+    log.info(`[BatchExport] Export complete: ${result.filePath} (${exported} of ${total} images)`);
 
     return {
       success: true,
       filePath: result.filePath,
-      exported: completed,
+      exported,
       errors: errors.length > 0 ? errors : undefined
     };
 

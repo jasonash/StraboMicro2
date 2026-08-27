@@ -412,13 +412,6 @@ interface Window {
       filePath?: string;
     }>;
 
-    // Micrograph download
-    downloadMicrograph: (imagePath: string, suggestedName: string) => Promise<{
-      success: boolean;
-      canceled?: boolean;
-      filePath?: string;
-    }>;
-
     // Export composite micrograph (with overlays, spots, and labels)
     exportCompositeMicrograph: (
       projectId: string,
