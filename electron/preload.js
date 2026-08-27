@@ -302,36 +302,22 @@ contextBridge.exposeInMainWorld('api', {
   exportDetailedNotesToPDF: (projectData, micrographId, spotId) =>
     ipcRenderer.invoke('pdf:export-detailed-notes', projectData, micrographId, spotId),
 
-  // Micrograph download (save to user's chosen location)
-  downloadMicrograph: (imagePath, suggestedName) =>
-    ipcRenderer.invoke('micrograph:download', imagePath, suggestedName),
+  // Export one micrograph as an image file (JPEG / PNG / SVG); shows a save dialog
+  exportMicrographImage: (projectId, micrographId, projectData, options) =>
+    ipcRenderer.invoke('micrograph:export-image', projectId, micrographId, projectData, options),
 
-  // Export composite micrograph (with overlays, spots, and labels)
-  exportCompositeMicrograph: (projectId, micrographId, projectData, options) =>
-    ipcRenderer.invoke('micrograph:export-composite', projectId, micrographId, projectData, options),
+  // Export micrographs (all, or options.micrographIds) to a ZIP of images
+  exportImages: (projectId, projectData, options) =>
+    ipcRenderer.invoke('project:export-images', projectId, projectData, options),
+  onExportImagesProgress: (callback) =>
+    ipcRenderer.on('export-images:progress', (event, progress) => callback(progress)),
+  removeExportImagesProgressListener: () =>
+    ipcRenderer.removeAllListeners('export-images:progress'),
 
-  // Export micrograph as SVG (vector spots)
-  exportMicrographAsSvg: (projectId, micrographId, projectData) =>
-    ipcRenderer.invoke('micrograph:export-svg', projectId, micrographId, projectData),
-
-  // Export all images to ZIP
-  exportAllImages: (projectId, projectData, format = 'jpeg') =>
-    ipcRenderer.invoke('project:export-all-images', projectId, projectData, format),
-  onExportAllImagesProgress: (callback) =>
-    ipcRenderer.on('export-all-images:progress', (event, progress) => callback(progress)),
-  removeExportAllImagesProgressListener: () =>
-    ipcRenderer.removeAllListeners('export-all-images:progress'),
-
-  // Menu event for export all images
-  onExportAllImages: (callback) => {
-    ipcRenderer.on('menu:export-all-images', callback);
-    return () => ipcRenderer.removeListener('menu:export-all-images', callback);
-  },
-
-  // Menu event for export with sketches
-  onExportWithSketches: (callback) => {
-    ipcRenderer.on('menu:export-with-sketches', callback);
-    return () => ipcRenderer.removeListener('menu:export-with-sketches', callback);
+  // Menu event: File > Export Images...
+  onExportImages: (callback) => {
+    ipcRenderer.on('menu:export-images', callback);
+    return () => ipcRenderer.removeListener('menu:export-images', callback);
   },
 
   // Debug menu: snap viewer to exact zoom (used for tile-seam diagnostics)

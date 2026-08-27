@@ -17,11 +17,20 @@ import {
   Box,
   Stack,
   Divider,
+  Alert,
 } from '@mui/material';
 import { Link as LinkIcon } from '@mui/icons-material';
 import { useAppStore } from '@/store';
 import { useAuthStore } from '@/store/useAuthStore';
-import { LinkSampleDialog, mapServerSampleToLocal } from './LinkSampleDialog';
+import { LinkStraboSampleDialog } from './LinkStraboSampleDialog';
+import {
+  mapSpineSampleToLocal,
+  isFieldLinked,
+  splitSelectValue,
+  VALID_MATERIAL_TYPES,
+  VALID_SAMPLING_PURPOSES,
+  type SpineSampleRecord,
+} from '@/services/straboSamplesApi';
 import type { SampleMetadata } from '@/types/project-types';
 
 interface NewSampleDialogProps {
@@ -61,6 +70,10 @@ export function NewSampleDialog({ isOpen, onClose, datasetId }: NewSampleDialogP
   const [showLinkDialog, setShowLinkDialog] = useState(false);
   const [linkedSampleId, setLinkedSampleId] = useState<string | null>(null);
   const [linkedSampleData, setLinkedSampleData] = useState<Partial<SampleMetadata> | null>(null);
+  // True when the linked sample is hosted by StraboField: the server reasserts
+  // its values for the spine-managed fields on every download, so local edits
+  // to them would not stick and the form locks them instead.
+  const [linkedFieldManaged, setLinkedFieldManaged] = useState(false);
 
   const addSample = useAppStore((state) => state.addSample);
   const project = useAppStore((state) => state.project);
@@ -137,24 +150,37 @@ export function NewSampleDialog({ isOpen, onClose, datasetId }: NewSampleDialogP
     return true;
   };
 
-  const handleLinkedSampleSelect = (serverSample: Parameters<typeof mapServerSampleToLocal>[0]) => {
-    const mappedData = mapServerSampleToLocal(serverSample);
+  const handleLinkedSampleSelect = (record: SpineSampleRecord) => {
+    const mappedData = mapSpineSampleToLocal(record);
 
     // Store the linked sample ID and data
     setLinkedSampleId(mappedData.id);
     setLinkedSampleData(mappedData);
+    setLinkedFieldManaged(isFieldLinked(record));
+
+    // Normalize select values (out-of-vocabulary values become 'other' + text)
+    const purpose = splitSelectValue(
+      mappedData.mainSamplingPurpose,
+      mappedData.otherSamplingPurpose,
+      VALID_SAMPLING_PURPOSES
+    );
+    const material = splitSelectValue(
+      mappedData.materialType,
+      mappedData.otherMaterialType,
+      VALID_MATERIAL_TYPES
+    );
 
     // Populate form fields with server data
     setFormData({
-      sampleID: mappedData.sampleID || mappedData.label || '',
+      sampleID: mappedData.sampleID || mappedData.label || `Sample ${mappedData.id}`,
       igsn: mappedData.igsn || '',
       longitude: mappedData.longitude?.toString() || '',
       latitude: mappedData.latitude?.toString() || '',
-      mainSamplingPurpose: mappedData.mainSamplingPurpose || '',
-      otherSamplingPurpose: '',
+      mainSamplingPurpose: purpose.value,
+      otherSamplingPurpose: purpose.otherValue,
       sampleDescription: mappedData.sampleDescription || '',
-      materialType: mappedData.materialType || '',
-      otherMaterialType: '',
+      materialType: material.value,
+      otherMaterialType: material.otherValue,
       sampleNotes: mappedData.sampleNotes || '',
     });
   };
@@ -208,6 +234,7 @@ export function NewSampleDialog({ isOpen, onClose, datasetId }: NewSampleDialogP
     setFormData(initialFormData);
     setLinkedSampleId(null);
     setLinkedSampleData(null);
+    setLinkedFieldManaged(false);
   };
 
   const handleCancel = () => {
@@ -232,7 +259,7 @@ export function NewSampleDialog({ isOpen, onClose, datasetId }: NewSampleDialogP
       <DialogContent>
         <Box sx={{ pt: 2 }}>
           <Stack spacing={3}>
-            {/* Link Sample From StraboField - only visible when logged in */}
+            {/* Link Sample From StraboSamples - only visible when logged in */}
             {isAuthenticated && (
               <>
                 <Button
@@ -241,7 +268,7 @@ export function NewSampleDialog({ isOpen, onClose, datasetId }: NewSampleDialogP
                   onClick={() => setShowLinkDialog(true)}
                   fullWidth
                 >
-                  Link Sample From StraboField
+                  Link Sample From StraboSamples
                 </Button>
                 {linkedSampleId && (
                   <Box
@@ -253,8 +280,15 @@ export function NewSampleDialog({ isOpen, onClose, datasetId }: NewSampleDialogP
                       textAlign: 'center',
                     }}
                   >
-                    Linked to server sample (ID: {linkedSampleId})
+                    Linked to StraboSamples (ID: {linkedSampleId})
                   </Box>
+                )}
+                {linkedFieldManaged && (
+                  <Alert severity="info">
+                    This sample is managed by StraboField, so its core fields are
+                    locked here. Edit them in StraboField or on My Samples at
+                    strabospot.org; changes sync to this project automatically.
+                  </Alert>
                 )}
                 <Divider />
               </>
@@ -267,6 +301,7 @@ export function NewSampleDialog({ isOpen, onClose, datasetId }: NewSampleDialogP
               required
               fullWidth
               autoFocus
+              disabled={linkedFieldManaged}
             />
 
             <TextField
@@ -286,6 +321,7 @@ export function NewSampleDialog({ isOpen, onClose, datasetId }: NewSampleDialogP
                 onChange={(e) => handleLongitudeChange(e.target.value)}
                 helperText="Valid range: -180 to 180"
                 fullWidth
+                disabled={linkedFieldManaged}
               />
               <TextField
                 label="Latitude"
@@ -294,6 +330,7 @@ export function NewSampleDialog({ isOpen, onClose, datasetId }: NewSampleDialogP
                 onChange={(e) => handleLatitudeChange(e.target.value)}
                 helperText="Valid range: -90 to 90"
                 fullWidth
+                disabled={linkedFieldManaged}
               />
             </Stack>
 
@@ -309,6 +346,7 @@ export function NewSampleDialog({ isOpen, onClose, datasetId }: NewSampleDialogP
                 }
               }}
               fullWidth
+              disabled={linkedFieldManaged}
             >
               <MenuItem value="">Select Main Sampling Purpose...</MenuItem>
               <MenuItem value="fabric___micro">Fabric / Microstructure</MenuItem>
@@ -335,6 +373,7 @@ export function NewSampleDialog({ isOpen, onClose, datasetId }: NewSampleDialogP
               value={formData.sampleDescription}
               onChange={(e) => updateField('sampleDescription', e.target.value)}
               fullWidth
+              disabled={linkedFieldManaged}
             />
 
             <TextField
@@ -349,6 +388,7 @@ export function NewSampleDialog({ isOpen, onClose, datasetId }: NewSampleDialogP
                 }
               }}
               fullWidth
+              disabled={linkedFieldManaged}
             >
               <MenuItem value="">Select Material Type...</MenuItem>
               <MenuItem value="intact_rock">Intact Rock</MenuItem>
@@ -377,6 +417,7 @@ export function NewSampleDialog({ isOpen, onClose, datasetId }: NewSampleDialogP
               multiline
               rows={4}
               fullWidth
+              disabled={linkedFieldManaged}
             />
           </Stack>
         </Box>
@@ -393,7 +434,7 @@ export function NewSampleDialog({ isOpen, onClose, datasetId }: NewSampleDialogP
       </DialogActions>
 
       {/* Link Sample Dialog */}
-      <LinkSampleDialog
+      <LinkStraboSampleDialog
         open={showLinkDialog}
         onClose={() => setShowLinkDialog(false)}
         onSelectSample={handleLinkedSampleSelect}

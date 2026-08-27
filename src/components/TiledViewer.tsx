@@ -61,14 +61,6 @@ export interface TiledViewerRef {
   setExactZoom: (value: number) => void;
   /** Ensure a point is visible on screen, panning only if necessary (lazy/soft pan) */
   panToPoint: (x: number, y: number) => void;
-  /** Export the current view as an image with optional sketch layers */
-  exportImage: (options: {
-    includeImage: boolean;
-    includeSpots: boolean;
-    includedLayerIds: string[];
-    format: 'png' | 'jpeg';
-    scale: number;
-  }) => Promise<string>;
 }
 
 interface TileInfo {
@@ -1976,71 +1968,6 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
     }, [stageSize, zoom, position]);
 
     // Export image function for use via ref
-    const exportImage = useCallback(async (options: {
-      includeImage: boolean;
-      includeSpots: boolean;
-      includedLayerIds: string[];
-      format: 'png' | 'jpeg';
-      scale: number;
-    }): Promise<string> => {
-      const stage = stageRef.current;
-      if (!stage) {
-        throw new Error('Stage not available');
-      }
-
-      // Get all layers from the stage
-      const layers = stage.getLayers();
-
-      // Store original visibility states
-      const originalVisibility = new Map<string, boolean>();
-
-      // Find and control layer visibility based on options
-      layers.forEach((layer: any) => {
-        const layerName = layer.name();
-        originalVisibility.set(layerName, layer.visible());
-
-        if (layerName === 'image-layer') {
-          layer.visible(options.includeImage);
-        } else if (layerName === 'spots-layer') {
-          layer.visible(options.includeSpots);
-        } else if (layerName === 'sketch-layer') {
-          // Sketch layer visibility is controlled by which strokes/text to render
-          // We'll handle this by temporarily modifying the sketch layers
-          layer.visible(options.includedLayerIds.length > 0);
-        } else if (layerName === 'drawing-layer') {
-          // Hide drawing layer during export (temporary drawings)
-          layer.visible(false);
-        }
-      });
-
-      // Force a synchronous redraw
-      stage.batchDraw();
-
-      // Determine mime type
-      const mimeType = options.format === 'jpeg' ? 'image/jpeg' : 'image/png';
-
-      // Export with specified scale
-      const dataUrl = stage.toDataURL({
-        pixelRatio: options.scale,
-        mimeType,
-        quality: options.format === 'jpeg' ? 0.92 : undefined,
-      });
-
-      // Restore original visibility
-      layers.forEach((layer: any) => {
-        const layerName = layer.name();
-        const wasVisible = originalVisibility.get(layerName);
-        if (wasVisible !== undefined) {
-          layer.visible(wasVisible);
-        }
-      });
-
-      // Redraw to restore state
-      stage.batchDraw();
-
-      return dataUrl;
-    }, []);
-
     // Expose methods to parent components via ref
     useImperativeHandle(
       ref,
@@ -2050,9 +1977,8 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
         zoomOut: handleZoomOut,
         setExactZoom,
         panToPoint,
-        exportImage,
       }),
-      [handleResetZoom, handleZoomIn, handleZoomOut, setExactZoom, panToPoint, exportImage]
+      [handleResetZoom, handleZoomIn, handleZoomOut, setExactZoom, panToPoint]
     );
 
     const RULER_SIZE = 30; // Width/height of ruler bars
@@ -2389,10 +2315,13 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                             stroke="#ffffff"
                             strokeWidth={1.5 / zoom}
                             onClick={async () => {
+                              // Click-transparent while a drawing/measure/sketch tool is active
+                              if (activeTool && activeTool !== 'select') return;
                               // Navigate to the child micrograph when clicked (drill-down enables back button)
                               await useAppStore.getState().drillDownToMicrograph(childMicro.id);
                             }}
                             onTap={async () => {
+                              if (activeTool && activeTool !== 'select') return;
                               await useAppStore.getState().drillDownToMicrograph(childMicro.id);
                             }}
                             onMouseEnter={(e) => {

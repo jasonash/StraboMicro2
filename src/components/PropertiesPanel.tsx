@@ -30,6 +30,7 @@ import CircleIcon from '@mui/icons-material/Circle';
 import { useAppStore } from '@/store';
 import { findSpotById } from '@/store/helpers';
 import { BreadcrumbsBar } from './BreadcrumbsBar';
+import { ExportImagesDialog } from './dialogs/ExportImagesDialog';
 import { CombinedDataTypeSelector } from './CombinedDataTypeSelector';
 import { ConfirmDialog } from './dialogs/ConfirmDialog';
 import { NotesDialog } from './dialogs/metadata/NotesDialog';
@@ -135,13 +136,19 @@ export function PropertiesPanel() {
     setActiveTab(newValue);
   };
 
-  // Export feedback state
-  const [isExporting, setIsExporting] = useState(false);
+  // Image export dialog (single-micrograph mode)
+  const [exportDialogOpen, setExportDialogOpen] = useState(false);
+
+  // Feedback snackbar (preset application)
   const [snackbar, setSnackbar] = useState<{
     open: boolean;
     message: string;
     severity: 'success' | 'error' | 'info';
   }>({ open: false, message: '', severity: 'info' });
+
+  const handleCloseSnackbar = () => {
+    setSnackbar((prev) => ({ ...prev, open: false }));
+  };
 
   // Find the sample for the active micrograph
   const findSampleForMicrograph = () => {
@@ -174,72 +181,6 @@ export function PropertiesPanel() {
 
   // Determine what type of entity is selected (check spot first since it's more specific)
   const selectionType = activeSpotId ? 'spot' : activeMicrographId ? 'micrograph' : null;
-
-  // Handle download micrograph as JPEG
-  const handleDownloadJpeg = async () => {
-    if (!activeMicrographId || !project?.id || isExporting) return;
-
-    setIsExporting(true);
-    setSnackbar({ open: true, message: 'Exporting as JPEG...', severity: 'info' });
-
-    try {
-      const result = await window.api?.exportCompositeMicrograph(
-        project.id,
-        activeMicrographId,
-        project,
-        { includeSpots: true, includeLabels: true }
-      );
-
-      if (result?.success) {
-        setSnackbar({ open: true, message: 'JPEG exported successfully', severity: 'success' });
-      } else if (result?.canceled) {
-        setSnackbar({ open: false, message: '', severity: 'info' });
-      }
-    } catch (error) {
-      setSnackbar({
-        open: true,
-        message: `Export failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        severity: 'error'
-      });
-    } finally {
-      setIsExporting(false);
-    }
-  };
-
-  // Handle download micrograph as SVG (vector)
-  const handleDownloadSvg = async () => {
-    if (!activeMicrographId || !project?.id || isExporting) return;
-
-    setIsExporting(true);
-    setSnackbar({ open: true, message: 'Exporting as SVG...', severity: 'info' });
-
-    try {
-      const result = await window.api?.exportMicrographAsSvg(
-        project.id,
-        activeMicrographId,
-        project
-      );
-
-      if (result?.success) {
-        setSnackbar({ open: true, message: 'SVG exported successfully', severity: 'success' });
-      } else if (result?.canceled) {
-        setSnackbar({ open: false, message: '', severity: 'info' });
-      }
-    } catch (error) {
-      setSnackbar({
-        open: true,
-        message: `Export failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        severity: 'error'
-      });
-    } finally {
-      setIsExporting(false);
-    }
-  };
-
-  // Close snackbar
-  const handleCloseSnackbar = () => {
-    setSnackbar((prev) => ({ ...prev, open: false }));
-  };
 
   // Handle delete confirmation
   const handleConfirmDelete = () => {
@@ -336,11 +277,9 @@ export function PropertiesPanel() {
 
             {/* Breadcrumbs Navigation Bar */}
             <BreadcrumbsBar
-              onDownloadJpeg={handleDownloadJpeg}
-              onDownloadSvg={handleDownloadSvg}
+              onExport={() => setExportDialogOpen(true)}
               onDeleteMicrograph={() => setConfirmDelete('micrograph')}
               onDeleteSpot={() => setConfirmDelete('spot')}
-              isDownloading={isExporting}
             />
 
             {/* Combined Data Type Selector */}
@@ -676,7 +615,7 @@ export function PropertiesPanel() {
         confirmColor="error"
       />
 
-      {/* Export Feedback Snackbar */}
+      {/* Feedback Snackbar */}
       <Snackbar
         open={snackbar.open}
         autoHideDuration={snackbar.severity === 'info' ? null : 4000}
@@ -699,6 +638,15 @@ export function PropertiesPanel() {
           {snackbar.message}
         </Alert>
       </Snackbar>
+
+      {/* Image export dialog for the active micrograph */}
+      {activeMicrographId && (
+        <ExportImagesDialog
+          open={exportDialogOpen}
+          onClose={() => setExportDialogOpen(false)}
+          mode={{ kind: 'single', micrographId: activeMicrographId }}
+        />
+      )}
     </Box>
   );
 }

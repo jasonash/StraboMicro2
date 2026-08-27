@@ -11,7 +11,7 @@ import { LoginDialog } from './components/dialogs/LoginDialog';
 import { AboutDialog } from './components/dialogs/AboutDialog';
 import { LogViewerModal } from './components/dialogs/LogViewerModal';
 import { SendErrorReportModal } from './components/dialogs/SendErrorReportModal';
-import { ExportAllImagesDialog } from './components/dialogs/ExportAllImagesDialog';
+import { ExportImagesDialog } from './components/dialogs/ExportImagesDialog';
 import { RebuildTileCacheDialog } from './components/dialogs/RebuildTileCacheDialog';
 import { ExportPDFDialog } from './components/dialogs/ExportPDFDialog';
 import { ExportSmzDialog } from './components/dialogs/ExportSmzDialog';
@@ -170,7 +170,7 @@ function App() {
   const [isSerializedJsonModalOpen, setIsSerializedJsonModalOpen] = useState(false);
   const [isPreferencesOpen, setIsPreferencesOpen] = useState(false);
   const [isLoginDialogOpen, setIsLoginDialogOpen] = useState(false);
-  const [isExportAllImagesOpen, setIsExportAllImagesOpen] = useState(false);
+  const [isExportImagesOpen, setIsExportImagesOpen] = useState(false);
   const [isRebuildTileCacheOpen, setIsRebuildTileCacheOpen] = useState(false);
   const [isExportPDFOpen, setIsExportPDFOpen] = useState(false);
   const [isExportSmzOpen, setIsExportSmzOpen] = useState(false);
@@ -1071,13 +1071,13 @@ function App() {
       console.log('[Debug] All spots cleared');
     }));
 
-    // File: Export All Images menu item
-    unsubscribers.push(window.api.onExportAllImages(() => {
+    // File: Export Images menu item
+    unsubscribers.push(window.api.onExportImages(() => {
       if (!project) {
         alert('No project loaded. Please load a project first.');
         return;
       }
-      setIsExportAllImagesOpen(true);
+      setIsExportImagesOpen(true);
     }));
 
     // Tools: Rebuild Tile Cache menu item
@@ -1297,11 +1297,10 @@ function App() {
         onClose={() => setIsSendErrorReportOpen(false)}
         userEmail={user?.email}
       />
-      <ExportAllImagesDialog
-        open={isExportAllImagesOpen}
-        onClose={() => setIsExportAllImagesOpen(false)}
-        projectId={project?.id ?? null}
-        projectData={project}
+      <ExportImagesDialog
+        open={isExportImagesOpen}
+        onClose={() => setIsExportImagesOpen(false)}
+        mode={{ kind: 'batch' }}
       />
       <RebuildTileCacheDialog
         open={isRebuildTileCacheOpen}
