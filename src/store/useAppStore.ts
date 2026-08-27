@@ -11,6 +11,7 @@
 import { create } from 'zustand';
 import { devtools, persist, createJSONStorage, StateStorage } from 'zustand/middleware';
 import { temporal } from 'zundo';
+import { DEFAULT_IMAGE_EXPORT_PREFERENCES, type ImageExportPreferences } from '@/types/image-export-types';
 
 /**
  * Custom storage adapter that uses Electron IPC to persist state to a file
@@ -172,6 +173,8 @@ interface AppState {
   showArchivedSpots: boolean;
   showRulers: boolean;
   spotOverlayOpacity: number;
+  /** Last-used image export settings (File > Export Images / micrograph export button) */
+  imageExportOptions: ImageExportPreferences;
   viewerRef: React.RefObject<TiledViewerRef> | null;
 
   // ========== UI STATE (persisted) ==========
@@ -558,6 +561,7 @@ interface AppState {
   setShowArchivedSpots: (show: boolean) => void;
   setShowRulers: (show: boolean) => void;
   setSpotOverlayOpacity: (opacity: number) => void;
+  setImageExportOptions: (options: ImageExportPreferences) => void;
   setViewerRef: (ref: React.RefObject<TiledViewerRef> | null) => void;
 
   // ========== GEOMETRY EDITING ACTIONS ==========
@@ -620,6 +624,7 @@ export const useAppStore = create<AppState>()(
           showArchivedSpots: false,
           showRulers: true,
           spotOverlayOpacity: 0.7,
+          imageExportOptions: DEFAULT_IMAGE_EXPORT_PREFERENCES,
           viewerRef: null,
 
           sidebarTab: 'samples',
@@ -2654,6 +2659,8 @@ export const useAppStore = create<AppState>()(
 
           setSpotOverlayOpacity: (opacity) => set({ spotOverlayOpacity: opacity }),
 
+          setImageExportOptions: (options) => set({ imageExportOptions: options }),
+
           setViewerRef: (ref) => set({ viewerRef: ref }),
 
           // ========== GEOMETRY EDITING ACTIONS ==========
@@ -3757,6 +3764,7 @@ export const useAppStore = create<AppState>()(
           detailsPanelOpen: state.detailsPanelOpen,
           showRulers: state.showRulers,
           spotLabelMode: state.spotLabelMode,
+          imageExportOptions: state.imageExportOptions,
           showMicrographOutlines: state.showMicrographOutlines,
           showRecursiveSpots: state.showRecursiveSpots,
           showArchivedSpots: state.showArchivedSpots,
@@ -3803,6 +3811,10 @@ export const useAppStore = create<AppState>()(
           // (covers upgrade from older stored state that didn't have this field)
           if (state && (!state.globalMineralColors || state.globalMineralColors.length === 0)) {
             state.globalMineralColors = [...DEFAULT_MINERAL_COLORS];
+          }
+          // Fill in any export options added since the state was persisted
+          if (state) {
+            state.imageExportOptions = { ...DEFAULT_IMAGE_EXPORT_PREFERENCES, ...(state.imageExportOptions || {}) };
           }
           // Sync theme with main process menu after rehydration
           if (state?.theme && window.api?.notifyThemeChanged) {

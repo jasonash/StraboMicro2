@@ -715,18 +715,10 @@ function createWindow() {
           }
         },
         {
-          label: 'Export All Images...',
+          label: 'Export Images...',
           click: () => {
             if (mainWindow) {
-              mainWindow.webContents.send('menu:export-all-images');
-            }
-          }
-        },
-        {
-          label: 'Export Micrograph with Sketches...',
-          click: () => {
-            if (mainWindow) {
-              mainWindow.webContents.send('menu:export-with-sketches');
+              mainWindow.webContents.send('menu:export-images');
             }
           }
         },
@@ -1856,7 +1848,7 @@ async function saveRenderedExport(rendered, micrographName, title) {
 
   const result = await dialog.showSaveDialog({
     title,
-    defaultPath: `${cleanName}_composite.${rendered.extension}`,
+    defaultPath: `${cleanName}.${rendered.extension}`,
     filters: [
       { name: filterName, extensions },
       { name: 'All Files', extensions: ['*'] }
@@ -1872,49 +1864,27 @@ async function saveRenderedExport(rendered, micrographName, title) {
   return { success: true, filePath: result.filePath };
 }
 
-// Export composite micrograph: full-resolution JPEG with overlays, spots and labels
-ipcMain.handle('micrograph:export-composite', async (event, projectId, micrographId, projectData, options = {}) => {
+/**
+ * Export one micrograph as an image file (JPEG / PNG / SVG).
+ * options: ImageExportOptions (see electron/imageExport.js). Shows a save dialog.
+ */
+ipcMain.handle('micrograph:export-image', async (event, projectId, micrographId, projectData, options = {}) => {
   try {
-    log.info(`[IPC] Exporting composite micrograph: ${micrographId}`);
+    log.info(`[IPC] Exporting micrograph image: ${micrographId}`);
     const folderPaths = await projectFolders.getProjectFolderPaths(projectId);
     const micrograph = imageExport.findMicrograph(projectData, micrographId);
     if (!micrograph) {
       throw new Error(`Micrograph ${micrographId} not found in project`);
     }
 
-    const rendered = await imageExport.renderMicrographExport(projectId, micrograph, projectData, folderPaths, {
-      format: 'jpeg',
-      includeSpots: options.includeSpots !== false,
-      includeLabels: options.includeLabels !== false,
-      sketchLayers: 'none',
-    });
-    return await saveRenderedExport(rendered, micrograph.name, 'Export Composite Micrograph');
+    const rendered = await imageExport.renderMicrographExport(projectId, micrograph, projectData, folderPaths, options);
+    return await saveRenderedExport(rendered, micrograph.name, 'Export Micrograph');
   } catch (error) {
-    log.error('[IPC] Error exporting composite micrograph:', error);
+    log.error('[IPC] Error exporting micrograph image:', error);
     throw error;
   }
 });
 
-// Export micrograph as SVG with vector spots and labels
-ipcMain.handle('micrograph:export-svg', async (event, projectId, micrographId, projectData) => {
-  try {
-    log.info(`[IPC] Exporting micrograph as SVG: ${micrographId}`);
-    const folderPaths = await projectFolders.getProjectFolderPaths(projectId);
-    const micrograph = imageExport.findMicrograph(projectData, micrographId);
-    if (!micrograph) {
-      throw new Error(`Micrograph ${micrographId} not found in project`);
-    }
-
-    const rendered = await imageExport.renderMicrographExport(projectId, micrograph, projectData, folderPaths, {
-      format: 'svg',
-      sketchLayers: 'none',
-    });
-    return await saveRenderedExport(rendered, micrograph.name, 'Export Micrograph as SVG');
-  } catch (error) {
-    log.error('[IPC] Error exporting SVG:', error);
-    throw error;
-  }
-});
 // Image loading (supports TIFF, JPEG, PNG, BMP) - dimensions only for performance
 ipcMain.handle('load-tiff-image', async (event, filePath) => {
   try {
@@ -4380,11 +4350,10 @@ function collectAllMicrographs(projectData) {
  *
  * exportOptions: ImageExportOptions (see electron/imageExport.js) plus an
  * optional micrographIds array (omitted/null = every micrograph in the project).
- * A bare format string is accepted for backward compatibility.
- * Sends progress updates to the renderer via 'export-all-images:progress'.
+ * Sends progress updates to the renderer via 'export-images:progress'.
  */
-ipcMain.handle('project:export-all-images', async (event, projectId, projectData, exportOptions = {}) => {
-  const options = typeof exportOptions === 'string' ? { format: exportOptions } : (exportOptions || {});
+ipcMain.handle('project:export-images', async (event, projectId, projectData, exportOptions = {}) => {
+  const options = exportOptions || {};
   const renderOptions = imageExport.normalizeOptions(options);
   const fileExtension = imageExport.extensionForFormat(renderOptions.format);
 
@@ -4428,7 +4397,7 @@ ipcMain.handle('project:export-all-images', async (event, projectId, projectData
 
     for (const { micrograph } of selected) {
       try {
-        event.sender.send('export-all-images:progress', {
+        event.sender.send('export-images:progress', {
           current: completed + 1,
           total,
           currentName: micrograph.name || 'Unnamed',
@@ -4470,7 +4439,7 @@ ipcMain.handle('project:export-all-images', async (event, projectId, projectData
       output.on('error', reject);
     });
 
-    event.sender.send('export-all-images:progress', {
+    event.sender.send('export-images:progress', {
       current: total,
       total,
       currentName: '',
@@ -4489,7 +4458,7 @@ ipcMain.handle('project:export-all-images', async (event, projectId, projectData
 
   } catch (error) {
     log.error('[BatchExport] Export failed:', error);
-    event.sender.send('export-all-images:progress', {
+    event.sender.send('export-images:progress', {
       current: 0,
       total: 0,
       currentName: '',
