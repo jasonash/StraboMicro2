@@ -1913,9 +1913,11 @@ ipcMain.handle('load-tiff-image', async (event, filePath) => {
 
       log.info(`TIFF dimensions: ${width}x${height}`);
     } else {
-      // For JPEG, PNG, BMP - use canvas loadImage to get dimensions
+      // For JPEG, PNG, BMP - use canvas loadImage to get dimensions.
+      // Read via Node and pass a Buffer: node-canvas cannot open non-ASCII
+      // paths on Windows when given the path string (see tileGenerator.decodeImage).
       const { loadImage } = require('canvas');
-      const img = await loadImage(filePath);
+      const img = await loadImage(await fs.promises.readFile(filePath));
       width = img.width;
       height = img.height;
 

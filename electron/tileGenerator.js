@@ -576,7 +576,16 @@ class TileGenerator {
    * @returns {Promise<{width: number, height: number, data: Buffer}>}
    */
   async decodeImage(imagePath) {
-    const image = await loadImage(imagePath);
+    // Read the file through Node (Unicode-safe on every platform) and hand node-canvas
+    // a Buffer. Passing the path string directly makes node-canvas open it with a
+    // narrow fopen() on Windows, which fails with a bare "No such file or directory"
+    // whenever the path contains non-ASCII characters (accented, Cyrillic, or CJK
+    // user names). Sharp reads such paths fine, so thumbnails and medium images
+    // succeeded while full-resolution tiles silently never loaded.
+    const fs = require('fs').promises;
+    let fileBuffer = await fs.readFile(imagePath);
+    const image = await loadImage(fileBuffer);
+    fileBuffer = null;
     const { width, height } = image;
 
     // Create canvas and extract RGBA data
