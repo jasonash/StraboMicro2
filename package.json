@@ -32,7 +32,7 @@
   "license": "MIT",
   "devDependencies": {
     "@electron/rebuild": "^4.0.1",
-    "@types/node": "^20.11.0",
+    "@types/node": "^24.13.0",
     "@types/react": "^18.2.48",
     "@types/react-dom": "^18.2.18",
     "@types/uuid": "^10.0.0",
@@ -85,6 +85,9 @@
     "uuid": "^13.0.0",
     "zundo": "^2.3.0",
     "zustand": "^5.0.8"
+  },
+  "overrides": {
+    "protobufjs": "^7.5.5"
   },
   "build": {
     "appId": "org.strabospot.strabomicro2",
@@ -194,5 +197,13 @@
       "owner": "jasonash",
       "repo": "StraboMicro2"
     }
+  },
+  "allowScripts": {
+    "canvas": true,
+    "electron": true,
+    "esbuild": true,
+    "fsevents": true,
+    "protobufjs": true,
+    "sharp": true
   }
 }

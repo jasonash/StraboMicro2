@@ -15,7 +15,7 @@ on:
         type: string
 
 env:
-  NODE_VERSION: '20'
+  NODE_VERSION: '24'
 
 jobs:
   # macOS ARM64 (Apple Silicon) - runs on macos-latest (ARM64 runner)
