@@ -78,7 +78,7 @@
     "react-dom": "^18.2.0",
     "react-konva": "^18.2.14",
     "react-markdown": "^10.1.0",
-    "sharp": "^0.34.5",
+    "sharp": "^0.35.4",
     "tiff": "^7.1.2",
     "unzipper": "^0.12.3",
     "uuid": "^13.0.0",

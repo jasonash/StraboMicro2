@@ -13,16 +13,28 @@ const fs = require('fs');
 const log = require('electron-log');
 
 // Fix sharp native module resolution in Windows packaged builds.
-// The @img/sharp-win32-x64 package uses a package.json exports map
-// ("./sharp.node" -> "./lib/sharp-win32-x64.node") which fails to resolve
-// inside Electron's asar archive. The fix: add the unpacked node_modules
-// directory to NODE_PATH so Node resolves sharp's native dependency from
-// the real filesystem instead of through the asar.
+// sharp loads its binary via require('@img/sharp-win32-x64/sharp.node'), a
+// package.json exports-map entry that failed to resolve inside Electron's
+// asar archive (Electron 28 + Sentry's require hooks). The fix: add the
+// unpacked node_modules directory to NODE_PATH so Node resolves sharp's
+// native dependency from the real filesystem instead of through the asar,
+// with two lower-level fallbacks that hand back the .node file directly.
+// Since sharp 0.35 the exports entry points at an index.cjs shim and the
+// binary file name carries the version (lib/sharp-win32-x64-<ver>.node),
+// so the binary is located by scanning lib/ rather than by a fixed name.
 const _sharpDebugLog = [];
 if (process.platform === 'win32' && app.isPackaged) {
   const Module = require('module');
   const unpackedModules = path.join(process.resourcesPath, 'app.asar.unpacked', 'node_modules');
-  const nativeBinaryPath = path.join(unpackedModules, '@img', 'sharp-win32-x64', 'lib', 'sharp-win32-x64.node');
+  const sharpWinLib = path.join(unpackedModules, '@img', 'sharp-win32-x64', 'lib');
+  let nativeBinaryPath = path.join(sharpWinLib, 'sharp-win32-x64.node');
+  try {
+    const candidate = fs.readdirSync(sharpWinLib)
+      .filter((name) => /^sharp-win32-x64.*\.node$/.test(name))
+      .sort()
+      .pop();
+    if (candidate) nativeBinaryPath = path.join(sharpWinLib, candidate);
+  } catch (_) { /* lib dir missing; existsSync checks below handle it */ }
 
   _sharpDebugLog.push(`[${new Date().toISOString()}] Sharp fix starting`);
   _sharpDebugLog.push(`Unpacked modules dir: ${unpackedModules}`);
