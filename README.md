@@ -139,7 +139,7 @@ Download the latest development build for your platform:
 ### Build from Source
 
 #### Prerequisites
-- Node.js 18+
+- Node.js 24 (Active LTS)
 - npm 9+
 
 #### Steps
