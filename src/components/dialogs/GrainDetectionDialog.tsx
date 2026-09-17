@@ -118,6 +118,7 @@ export function GrainDetectionDialog({
   const workerRef = useRef<Worker | null>(null);
   const contourWorkerRef = useRef<Worker | null>(null); // Worker for FastSAM contour extraction
   const contourWorkerReadyRef = useRef<boolean>(false); // Whether OpenCV is loaded in contour worker
+  const contourWorkerInitErrorRef = useRef<string | null>(null); // Why pre-init failed, if it did
 
   // Container width (responsive)
   const [containerWidth, setContainerWidth] = useState(600);
@@ -264,6 +265,7 @@ export function GrainDetectionDialog({
         contourWorkerRef.current = null;
         contourWorkerReadyRef.current = false;
       }
+      contourWorkerInitErrorRef.current = null;
 
       // Load OpenCV script
       let opencvScript: string | undefined;
@@ -287,7 +289,19 @@ export function GrainDetectionDialog({
         if (event.data.type === 'init-complete') {
           console.log('[GrainDetection] Contour worker pre-initialized (OpenCV ready)');
           contourWorkerReadyRef.current = true;
+        } else if (event.data.type === 'error') {
+          // Logged (not just stored) so the reason reaches Sentry breadcrumbs
+          contourWorkerInitErrorRef.current = String(event.data.message ?? 'unknown error');
+          console.error('[GrainDetection] Contour worker init failed:', contourWorkerInitErrorRef.current);
         }
+      };
+
+      // An ErrorEvent with no message means the worker script itself failed
+      // to load (for example when the page origin is not allowed to spawn
+      // workers), which is otherwise invisible.
+      worker.onerror = (event) => {
+        contourWorkerInitErrorRef.current = event.message || 'worker script failed to load';
+        console.error('[GrainDetection] Contour worker error:', event.message, event.filename, event.lineno);
       };
 
       worker.postMessage({ type: 'init', opencvScript });
@@ -557,11 +571,16 @@ export function GrainDetectionDialog({
         console.log('[GrainDetection] Waiting for contour worker initialization...');
         setDetectionProgress({ step: 'Waiting for OpenCV...', percent: 50 });
         const waitStart = Date.now();
-        while ((!contourWorkerRef.current || !contourWorkerReadyRef.current) && Date.now() - waitStart < 15000) {
+        while (
+          (!contourWorkerRef.current || !contourWorkerReadyRef.current) &&
+          !contourWorkerInitErrorRef.current &&
+          Date.now() - waitStart < 15000
+        ) {
           await new Promise((r) => setTimeout(r, 100));
         }
         if (!contourWorkerRef.current || !contourWorkerReadyRef.current) {
-          throw new Error('Contour worker failed to initialize (OpenCV not ready)');
+          const reason = contourWorkerInitErrorRef.current ?? 'OpenCV not ready';
+          throw new Error(`Contour worker failed to initialize (${reason})`);
         }
       }
 

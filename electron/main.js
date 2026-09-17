@@ -10,6 +10,7 @@ const { app, BrowserWindow, Menu, ipcMain, dialog, screen, nativeTheme, shell, p
 
 const path = require('path');
 const fs = require('fs');
+const { pathToFileURL } = require('url');
 const log = require('electron-log');
 
 // Fix sharp native module resolution in Windows packaged builds.
@@ -115,6 +116,24 @@ Sentry.init({
 // These settings apply to all modules that use sharp
 sharp.concurrency(1); // Single-threaded to reduce memory pressure
 sharp.cache({ memory: 256, files: 0, items: 50 }); // Conservative 256MB cache
+
+// Packaged builds serve the renderer from app://bundle/ instead of file://.
+// Chromium 152 (Electron 44) no longer lets a file:// page spawn dedicated
+// workers (new Worker() fails with an empty error event) or become
+// cross-origin isolated, which broke the grain-detection contour worker and
+// dropped onnxruntime-web to a single thread. A scheme registered as
+// standard + secure behaves like https: workers load, and the COOP/COEP
+// headers added by the handler give crossOriginIsolated = true, so
+// SharedArrayBuffer and multi-threaded WASM work again. Registration must
+// happen before the app 'ready' event; the handler is installed in whenReady.
+const APP_SCHEME = 'app';
+const APP_HOST = 'bundle';
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: APP_SCHEME,
+    privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true, stream: true },
+  },
+]);
 
 // Write sharp diagnostics log (on Windows packaged builds)
 if (process.platform === 'win32' && app.isPackaged && _sharpDebugLog.length > 0) {
@@ -1446,7 +1465,7 @@ function createWindow() {
       mainWindow.webContents.openDevTools({ mode: 'detach' });
     });
   } else {
-    mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
+    mainWindow.loadURL(`${APP_SCHEME}://${APP_HOST}/index.html`);
   }
 
   // Track if we're in the process of closing this window
@@ -1512,7 +1531,17 @@ app.whenReady().then(async () => {
   // onnxruntime-web requires crossOriginIsolated=true to use SharedArrayBuffer
   // for multi-threaded WASM execution (massive speedup for FastSAM inference).
   // This is safe because all external network requests go through the main process.
+  // Responses served by the app:// handler already carry these headers;
+  // adding them again would produce "same-origin, same-origin", which is not
+  // a valid structured header value, so Chromium would ignore the policy and
+  // the page would not be cross-origin isolated. Only add them when absent
+  // (the Vite dev server case).
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+    const existing = Object.keys(details.responseHeaders || {}).map((k) => k.toLowerCase());
+    if (existing.includes('cross-origin-opener-policy') || existing.includes('cross-origin-embedder-policy')) {
+      callback({ responseHeaders: details.responseHeaders });
+      return;
+    }
     callback({
       responseHeaders: {
         ...details.responseHeaders,
@@ -1522,14 +1551,62 @@ app.whenReady().then(async () => {
     });
   });
 
-  // Register custom protocol to serve static files in production
-  // This allows web workers to fetch files like opencv.js
+  // Serve the built renderer (dist/) at app://bundle/<path> in packaged
+  // builds. See the APP_SCHEME comment near the top of this file for why.
+  // net.fetch on a file: URL is asar-aware, so files listed in asarUnpack
+  // (opencv.js, the onnxruntime WASM loaders) are read from app.asar.unpacked
+  // transparently. Content types are set explicitly because Chromium's ES
+  // module loader and WebAssembly.instantiateStreaming require them.
   if (!isDev) {
-    protocol.handle('static', (request) => {
+    const distDir = path.join(__dirname, '..', 'dist');
+    const contentTypes = {
+      '.html': 'text/html; charset=utf-8',
+      '.js': 'text/javascript',
+      '.mjs': 'text/javascript',
+      '.css': 'text/css',
+      '.json': 'application/json',
+      '.wasm': 'application/wasm',
+      '.png': 'image/png',
+      '.jpg': 'image/jpeg',
+      '.jpeg': 'image/jpeg',
+      '.gif': 'image/gif',
+      '.svg': 'image/svg+xml',
+      '.ico': 'image/x-icon',
+      '.woff': 'font/woff',
+      '.woff2': 'font/woff2',
+      '.ttf': 'font/ttf',
+      '.csv': 'text/csv',
+      '.txt': 'text/plain',
+    };
+    protocol.handle(APP_SCHEME, async (request) => {
       const url = new URL(request.url);
-      const filePath = path.join(__dirname, '..', 'dist', url.pathname);
-      log.info(`[Protocol] Serving static file: ${filePath}`);
-      return net.fetch(`file://${filePath}`);
+      if (url.host !== APP_HOST) {
+        return new Response('Not found', { status: 404 });
+      }
+      let relativePath;
+      try {
+        relativePath = decodeURIComponent(url.pathname).replace(/^\/+/, '');
+      } catch {
+        return new Response('Bad request', { status: 400 });
+      }
+      const filePath = path.normalize(path.join(distDir, relativePath || 'index.html'));
+      if (filePath !== distDir && !filePath.startsWith(distDir + path.sep)) {
+        return new Response('Forbidden', { status: 403 });
+      }
+      let upstream;
+      try {
+        upstream = await net.fetch(pathToFileURL(filePath).toString());
+      } catch (error) {
+        log.warn(`[Protocol] app://${APP_HOST}/${relativePath} -> ${error.message}`);
+        return new Response('Not found', { status: 404 });
+      }
+      const headers = new Headers(upstream.headers);
+      const contentType = contentTypes[path.extname(filePath).toLowerCase()];
+      if (contentType) headers.set('Content-Type', contentType);
+      headers.set('Cross-Origin-Opener-Policy', 'same-origin');
+      headers.set('Cross-Origin-Embedder-Policy', 'require-corp');
+      headers.set('Cross-Origin-Resource-Policy', 'same-origin');
+      return new Response(upstream.body, { status: upstream.status, headers });
     });
   }
 
