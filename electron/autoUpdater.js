@@ -5,6 +5,8 @@
  * Uses GitHub Releases as the update source.
  */
 
+const os = require('os');
+const { app } = require('electron');
 const { autoUpdater } = require('electron-updater');
 const log = require('electron-log');
 
@@ -30,6 +32,71 @@ let checkInterval = null;
 // Check for updates every 4 hours
 const CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000;
 
+// Whether the most recent check was a silent (startup/periodic) one, and
+// whether the "your OS is too old for the latest version" notice has already
+// been shown this session. Silent checks show it once; manual checks always.
+let lastCheckSilent = true;
+let unsupportedOsNotified = false;
+
+// os.release() on macOS is the Darwin kernel version, which is what
+// electron-updater compares minimumSystemVersion against.
+const DARWIN_TO_MACOS = {
+  20: 'macOS 11 (Big Sur)',
+  21: 'macOS 12 (Monterey)',
+  22: 'macOS 13 (Ventura)',
+  23: 'macOS 14 (Sonoma)',
+  24: 'macOS 15 (Sequoia)',
+  25: 'macOS 26 (Tahoe)',
+};
+
+/**
+ * Compare two dotted numeric version strings ("22.6.0", "2.0.45").
+ * Missing or non-numeric components count as 0.
+ * @returns {number} negative if a < b, 0 if equal, positive if a > b
+ */
+function compareVersions(a, b) {
+  const pa = String(a).split('.').map((x) => parseInt(x, 10) || 0);
+  const pb = String(b).split('.').map((x) => parseInt(x, 10) || 0);
+  const len = Math.max(pa.length, pb.length);
+  for (let i = 0; i < len; i++) {
+    const diff = (pa[i] || 0) - (pb[i] || 0);
+    if (diff !== 0) return diff;
+  }
+  return 0;
+}
+
+/**
+ * Human-readable name for a minimumSystemVersion value from the update feed.
+ * @param {string} minimumSystemVersion - Darwin version on macOS
+ * @returns {string}
+ */
+function describeMinimumOs(minimumSystemVersion) {
+  const major = parseInt(minimumSystemVersion, 10);
+  if (process.platform === 'darwin' && DARWIN_TO_MACOS[major]) {
+    return DARWIN_TO_MACOS[major];
+  }
+  return `OS version ${minimumSystemVersion}`;
+}
+
+/**
+ * Detect "a newer version exists but this machine's OS is too old to run it".
+ * electron-updater checks updateInfo.minimumSystemVersion against os.release()
+ * and, when the OS is too old, reports a plain 'update-not-available', which
+ * would leave the user believing they are current.
+ *
+ * @param {object} info - updateInfo from electron-updater
+ * @returns {{version: string, requiredOs: string} | null}
+ */
+function unsupportedOsInfo(info) {
+  if (!info || !info.minimumSystemVersion || !info.version) return null;
+  if (compareVersions(info.version, app.getVersion()) <= 0) return null;
+  if (compareVersions(os.release(), info.minimumSystemVersion) >= 0) return null;
+  return {
+    version: info.version,
+    requiredOs: describeMinimumOs(info.minimumSystemVersion),
+  };
+}
+
 /**
  * Initialize the auto-updater with the main window reference
  * @param {BrowserWindow} window - The main application window
@@ -54,8 +121,19 @@ function initAutoUpdater(window) {
   });
 
   autoUpdater.on('update-not-available', (info) => {
-    log.info('No updates available. Current version:', info.version);
     updateAvailable = null;
+
+    const unsupported = unsupportedOsInfo(info);
+    if (unsupported) {
+      log.info(`Update ${unsupported.version} exists but requires ${unsupported.requiredOs}; this machine reports OS ${os.release()}`);
+      if (!lastCheckSilent || !unsupportedOsNotified) {
+        unsupportedOsNotified = true;
+        sendStatusToWindow('unsupported-os', unsupported);
+      }
+      return;
+    }
+
+    log.info('No updates available. Current version:', info.version);
     sendStatusToWindow('not-available', { version: info.version });
   });
 
@@ -115,6 +193,7 @@ function sendStatusToWindow(status, data = {}) {
  * @param {boolean} silent - If true, don't notify if no update is available
  */
 async function checkForUpdates(silent = true) {
+  lastCheckSilent = silent;
   try {
     if (!silent) {
       sendStatusToWindow('checking');
@@ -187,5 +266,8 @@ module.exports = {
   downloadUpdate,
   quitAndInstall,
   getUpdateState,
-  cleanup
+  cleanup,
+  // Exported for tests
+  compareVersions,
+  unsupportedOsInfo,
 };

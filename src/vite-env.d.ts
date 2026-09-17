@@ -553,10 +553,12 @@ interface Window {
         updateDownloaded: boolean;
       }>;
       onUpdateStatus: (callback: (data: {
-        status: 'checking' | 'available' | 'not-available' | 'downloading' | 'downloaded' | 'error';
+        status: 'checking' | 'available' | 'not-available' | 'unsupported-os' | 'downloading' | 'downloaded' | 'error';
         version?: string;
         releaseDate?: string;
         releaseNotes?: string;
+        /** For 'unsupported-os': the OS the newer version needs, e.g. "macOS 13 (Ventura)" */
+        requiredOs?: string;
         percent?: number;
         bytesPerSecond?: number;
         transferred?: number;

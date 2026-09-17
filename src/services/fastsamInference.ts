@@ -86,20 +86,17 @@ function configureWasm(): void {
   if (import.meta.env.DEV) {
     // Dev: Vite serves WASM files from node_modules
     ort.env.wasm.wasmPaths = '/node_modules/onnxruntime-web/dist/';
-  } else if (window.location.href.includes('app.asar')) {
-    // Packaged Electron: Chromium's dynamic import() cannot load ES modules
-    // from inside asar archives. Use wasmPaths.mjs to point onnxruntime-web
-    // directly at the unpacked .mjs file. The .wasm binary is then resolved
-    // relative to the .mjs URL automatically (see ort.mjs locateFile logic).
-    const unpackedBase = window.location.href
-      .replace(/app\.asar(?!\.)/, 'app.asar.unpacked')
-      .replace(/[^/]*$/, ''); // strip filename, keep directory
-    const mjsUrl = `${unpackedBase}ort-wasm-simd-threaded.jsep.mjs`;
-    ort.env.wasm.wasmPaths = { mjs: mjsUrl };
-    console.log('[FastSAM-Web] Using unpacked WASM path:', mjsUrl);
   } else {
-    // Non-asar production build (e.g. --dir build)
-    ort.env.wasm.wasmPaths = './';
+    // Packaged Electron: the renderer is served from app://bundle/ by
+    // electron/main.js, which maps that scheme onto dist/. Point
+    // onnxruntime-web at the .mjs loader that vite.config.ts copies into
+    // dist/; the .wasm binary is then resolved relative to the .mjs URL
+    // automatically (see ort.mjs locateFile logic). Chromium's import()
+    // could not load ES modules straight from an asar file:// URL, which
+    // is why the loader is served through the protocol handler instead.
+    const mjsUrl = new URL('ort-wasm-simd-threaded.jsep.mjs', window.location.href).href;
+    ort.env.wasm.wasmPaths = { mjs: mjsUrl };
+    console.log('[FastSAM-Web] Using WASM loader:', mjsUrl);
   }
 
   // Multi-threading requires crossOriginIsolated=true (enabled via COOP/COEP
