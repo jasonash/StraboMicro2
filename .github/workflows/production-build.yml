@@ -431,6 +431,19 @@ jobs:
             rm "${MAC_YMLS[0]}"
           fi
 
+          # Electron 44+ apps require macOS 13 (Ventura). electron-updater compares
+          # minimumSystemVersion against os.release(), the Darwin kernel version, so
+          # macOS 13 is expressed as 22.0.0. Older Macs then get "no update" from the
+          # updater (the app explains why) instead of an update that macOS refuses
+          # to launch. electron-builder itself never writes this field; mac.minimumSystemVersion
+          # only sets LSMinimumSystemVersion in Info.plist. Not applied to latest.yml
+          # (Windows) or latest-linux.yml, where os.release() has a different meaning.
+          if [ -f artifacts/latest-mac.yml ]; then
+            yq -i '.minimumSystemVersion = "22.0.0"' artifacts/latest-mac.yml
+            echo "latest-mac.yml with minimumSystemVersion:"
+            cat artifacts/latest-mac.yml
+          fi
+
           # Deduplicate Windows and Linux yml files (only one build each, just move to root)
           for pattern in "latest.yml" "latest-linux.yml"; do
             FOUND=($(find artifacts -mindepth 2 -name "$pattern"))
