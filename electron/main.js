@@ -138,6 +138,7 @@ const logService = require('./logService');
 const pointCountStorage = require('./pointCountStorage');
 const fastsamService = require('./fastsamService');
 const straboToolsMain = require('./straboToolsMain');
+const dialogDirs = require('./dialogDirs');
 const deepLink = require('./deepLink');
 
 // Handle EPIPE errors at process level (prevents crash on broken stdout pipe)
@@ -1646,6 +1647,7 @@ ipcMain.handle('project:validate-exists', async (event, projectId) => {
 ipcMain.handle('dialog:open-tiff', async () => {
   const result = await dialog.showOpenDialog(mainWindow, {
     title: 'Select Micrograph Image',
+    defaultPath: dialogDirs.getDefaultPath('images'),
     filters: [
       { name: 'Image Files', extensions: ['tif', 'tiff', 'jpg', 'jpeg', 'png', 'bmp'] },
       { name: 'TIFF Images', extensions: ['tif', 'tiff'] },
@@ -1661,6 +1663,7 @@ ipcMain.handle('dialog:open-tiff', async () => {
     return null;
   }
 
+  dialogDirs.remember('images', result.filePaths[0]);
   return result.filePaths[0];
 });
 
@@ -1668,6 +1671,7 @@ ipcMain.handle('dialog:open-tiff', async () => {
 ipcMain.handle('dialog:open-multiple-tiff', async () => {
   const result = await dialog.showOpenDialog(mainWindow, {
     title: 'Select Micrograph Images',
+    defaultPath: dialogDirs.getDefaultPath('images'),
     filters: [
       { name: 'Image Files', extensions: ['tif', 'tiff', 'jpg', 'jpeg', 'png', 'bmp'] },
       { name: 'TIFF Images', extensions: ['tif', 'tiff'] },
@@ -1683,6 +1687,7 @@ ipcMain.handle('dialog:open-multiple-tiff', async () => {
     return [];
   }
 
+  dialogDirs.remember('images', result.filePaths[0]);
   return result.filePaths;
 });
 
@@ -1690,6 +1695,7 @@ ipcMain.handle('dialog:open-multiple-tiff', async () => {
 ipcMain.handle('dialog:open-file', async () => {
   const result = await dialog.showOpenDialog(mainWindow, {
     title: 'Select File',
+    defaultPath: dialogDirs.getDefaultPath('files'),
     filters: [
       { name: 'All Files', extensions: ['*'] }
     ],
@@ -1700,6 +1706,7 @@ ipcMain.handle('dialog:open-file', async () => {
     return null;
   }
 
+  dialogDirs.remember('files', result.filePaths[0]);
   return result.filePaths[0];
 });
 
@@ -1707,6 +1714,7 @@ ipcMain.handle('dialog:open-file', async () => {
 ipcMain.handle('dialog:open-files', async () => {
   const result = await dialog.showOpenDialog(mainWindow, {
     title: 'Select Files',
+    defaultPath: dialogDirs.getDefaultPath('files'),
     filters: [
       { name: 'All Files', extensions: ['*'] }
     ],
@@ -1717,6 +1725,7 @@ ipcMain.handle('dialog:open-files', async () => {
     return [];
   }
 
+  dialogDirs.remember('files', result.filePaths[0]);
   return result.filePaths;
 });
 
@@ -5331,6 +5340,7 @@ ipcMain.handle('smz:select-file', async () => {
   log.info('[SmzImport] Opening file selection dialog...');
   const result = await dialog.showOpenDialog(mainWindow, {
     title: 'Open StraboMicro Project',
+    defaultPath: dialogDirs.getDefaultPath('project'),
     filters: [
       { name: 'StraboMicro Project', extensions: ['smz'] },
       { name: 'All Files', extensions: ['*'] }
@@ -5344,6 +5354,7 @@ ipcMain.handle('smz:select-file', async () => {
   }
 
   const filePath = result.filePaths[0];
+  dialogDirs.remember('project', filePath);
   log.info('[SmzImport] Selected file:', filePath);
   return { cancelled: false, filePath };
 });
