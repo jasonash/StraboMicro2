@@ -24,10 +24,12 @@ import {
 import CloseIcon from '@mui/icons-material/Close';
 
 interface UpdateStatus {
-  status: 'checking' | 'available' | 'not-available' | 'downloading' | 'downloaded' | 'error';
+  status: 'checking' | 'available' | 'not-available' | 'unsupported-os' | 'downloading' | 'downloaded' | 'error';
   version?: string;
   releaseDate?: string;
   releaseNotes?: string;
+  /** For 'unsupported-os': the OS the newer version needs, e.g. "macOS 13 (Ventura)" */
+  requiredOs?: string;
   percent?: number;
   bytesPerSecond?: number;
   transferred?: number;
@@ -50,6 +52,7 @@ export default function UpdateNotification({
   const [showSnackbar, setShowSnackbar] = useState(false);
   const [showRestartDialog, setShowRestartDialog] = useState(false);
   const [showNoUpdateDialog, setShowNoUpdateDialog] = useState(false);
+  const [showUnsupportedOsDialog, setShowUnsupportedOsDialog] = useState(false);
   const [showDevModeDialog, setShowDevModeDialog] = useState(false);
   const [downloadFailed, setDownloadFailed] = useState(false);
 
@@ -70,6 +73,16 @@ export default function UpdateNotification({
           // Only show dialog if manual check
           if (manualCheck) {
             setShowNoUpdateDialog(true);
+          }
+          onManualCheckComplete?.();
+          break;
+        case 'unsupported-os':
+          // A newer version exists but this machine's OS is too old to run it.
+          // Dialog on a manual check, dismissable snackbar otherwise.
+          if (manualCheck) {
+            setShowUnsupportedOsDialog(true);
+          } else {
+            setShowSnackbar(true);
           }
           onManualCheckComplete?.();
           break;
@@ -147,6 +160,11 @@ export default function UpdateNotification({
     onManualCheckComplete?.();
   }, [onManualCheckComplete]);
 
+  const handleCloseUnsupportedOsDialog = useCallback(() => {
+    setShowUnsupportedOsDialog(false);
+    onManualCheckComplete?.();
+  }, [onManualCheckComplete]);
+
   const handleCloseDevModeDialog = useCallback(() => {
     setShowDevModeDialog(false);
     onManualCheckComplete?.();
@@ -212,6 +230,22 @@ export default function UpdateNotification({
               </Typography>
               {renderDownloadProgress()}
             </Box>
+          </Alert>
+        );
+
+      case 'unsupported-os':
+        return (
+          <Alert
+            severity="warning"
+            sx={{ width: '100%' }}
+            action={
+              <IconButton size="small" color="inherit" onClick={handleDismiss}>
+                <CloseIcon fontSize="small" />
+              </IconButton>
+            }
+          >
+            Version {status.version} is available but requires {status.requiredOs}.
+            This computer will stay on the current version.
           </Alert>
         );
 
@@ -301,6 +335,23 @@ export default function UpdateNotification({
         </DialogContent>
         <DialogActions>
           <Button onClick={handleCloseNoUpdateDialog} variant="contained">
+            OK
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Newer version exists but this OS is too old for it (manual checks) */}
+      <Dialog open={showUnsupportedOsDialog} onClose={handleCloseUnsupportedOsDialog}>
+        <DialogTitle>Update Requires a Newer Operating System</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            StraboMicro {status?.version} is available, but it requires {status?.requiredOs}.
+            This computer will stay on the current version. To get future updates,
+            upgrade the operating system and then check for updates again.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseUnsupportedOsDialog} variant="contained">
             OK
           </Button>
         </DialogActions>
