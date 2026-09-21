@@ -1386,9 +1386,17 @@ function createWindow() {
     buildMenu();
   });
 
-  // Show main window and close splash when ready
-  mainWindow.once('ready-to-show', () => {
-    log.info('[Main] Main window ready to show');
+  // Show main window and close splash when ready.
+  // 'ready-to-show' needs the hidden window's first painted frame. On Linux
+  // (Wayland, VM GPUs) that frame sometimes never comes, which left the app
+  // running invisibly behind the splash. 'did-finish-load' and a timer are
+  // fallbacks so the window can never stay hidden; whichever fires first wins.
+  const windowToReveal = mainWindow;
+  let mainWindowRevealed = false;
+  const revealMainWindow = (trigger) => {
+    if (mainWindowRevealed || windowToReveal.isDestroyed()) return;
+    mainWindowRevealed = true;
+    log.info(`[Main] Main window ready to show (trigger: ${trigger})`);
 
     // Small delay to ensure the app is fully rendered
     setTimeout(() => {
@@ -1451,7 +1459,13 @@ function createWindow() {
         }
       }, 500);
     }, 500);
+  };
+
+  mainWindow.once('ready-to-show', () => revealMainWindow('ready-to-show'));
+  mainWindow.webContents.once('did-finish-load', () => {
+    setTimeout(() => revealMainWindow('did-finish-load fallback'), 2000);
   });
+  setTimeout(() => revealMainWindow('startup timeout'), 15000);
 
   // Load the app - use app.isPackaged which is more reliable than NODE_ENV
   const isDev = !app.isPackaged;
