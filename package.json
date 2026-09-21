@@ -35,13 +35,13 @@
     "@types/react": "^18.2.48",
     "@types/react-dom": "^18.2.18",
     "@types/uuid": "^10.0.0",
-    "@vitejs/plugin-react": "^4.2.1",
+    "@vitejs/plugin-react": "^6.1.1",
     "concurrently": "^8.2.2",
     "electron": "^44.4.1",
     "electron-builder": "^26.16.1",
     "electron-devtools-installer": "^4.0.0",
     "typescript": "^5.3.3",
-    "vite": "^5.0.11",
+    "vite": "^8.3.0",
     "wait-on": "^7.2.0"
   },
   "dependencies": {
