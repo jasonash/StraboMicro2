@@ -40,7 +40,7 @@
     "electron": "^44.4.1",
     "electron-builder": "^26.16.1",
     "electron-devtools-installer": "^4.0.0",
-    "typescript": "^5.3.3",
+    "typescript": "^7.0.2",
     "vite": "^8.3.0",
     "wait-on": "^9.1.0"
   },

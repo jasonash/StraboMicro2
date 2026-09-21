@@ -114,7 +114,7 @@ export function GrainDetectionDialog({
   // Refs
   const stageRef = useRef<any>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const detectionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const detectionTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const workerRef = useRef<Worker | null>(null);
   const contourWorkerRef = useRef<Worker | null>(null); // Worker for FastSAM contour extraction
   const contourWorkerReadyRef = useRef<boolean>(false); // Whether OpenCV is loaded in contour worker
