@@ -69,7 +69,7 @@
     "mui-color-input": "^7.0.0",
     "node-fetch": "^3.3.2",
     "onnxruntime-web": "^1.21.0",
-    "pdfkit": "^0.17.2",
+    "pdfkit": "^0.20.2",
     "polygon-clipping": "^0.15.7",
     "react": "^18.2.0",
     "react-colorful": "^5.6.1",
