@@ -12,7 +12,7 @@ import { useAppStore } from '@/store';
 const AUTOSAVE_INTERVAL_MS = 5 * 60 * 1000;
 
 export function useAutosave() {
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isDirty = useAppStore((state) => state.isDirty);
   const project = useAppStore((state) => state.project);
 
