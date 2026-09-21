@@ -40,7 +40,6 @@
     "electron": "^44.4.1",
     "electron-builder": "^26.16.1",
     "electron-devtools-installer": "^4.0.0",
-    "react-devtools": "^7.0.1",
     "typescript": "^5.3.3",
     "vite": "^5.0.11",
     "wait-on": "^7.2.0"
@@ -66,7 +65,6 @@
     "electron-store": "^11.0.2",
     "electron-updater": "^6.8.9",
     "form-data": "^4.0.6",
-    "immer": "^10.2.0",
     "konva": "^9.3.22",
     "mui-color-input": "^7.0.0",
     "node-fetch": "^3.3.2",

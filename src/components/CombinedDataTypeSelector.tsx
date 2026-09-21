@@ -163,7 +163,7 @@ export function CombinedDataTypeSelector({ context, onSelectModal }: CombinedDat
   };
 
   const renderOption = (
-    props: React.HTMLAttributes<HTMLLIElement> & { key?: string },
+    props: React.HTMLAttributes<HTMLLIElement> & { key?: React.Key },
     option: OptionType
   ) => {
     const { key, ...otherProps } = props;
