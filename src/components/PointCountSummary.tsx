@@ -111,7 +111,9 @@ function SessionDetail({ session }: { session: PointCountSessionSummary }) {
         <Typography variant="body2" sx={{ fontWeight: 500 }}>
           {session.name}
         </Typography>
-        <Typography variant="caption" color="text.secondary">
+        <Typography variant="caption" sx={{
+          color: 'text.secondary'
+        }}>
           {formatDate(session.updatedAt)}
         </Typography>
       </Box>
@@ -123,7 +125,12 @@ function SessionDetail({ session }: { session: PointCountSessionSummary }) {
           value={progress}
           sx={{ flex: 1, height: 6, borderRadius: 3 }}
         />
-        <Typography variant="caption" color="text.secondary" sx={{ whiteSpace: 'nowrap' }}>
+        <Typography
+          variant="caption"
+          sx={{
+            color: 'text.secondary',
+            whiteSpace: 'nowrap'
+          }}>
           {session.classifiedCount}/{session.totalPoints}
         </Typography>
       </Box>
@@ -162,7 +169,12 @@ function SessionDetail({ session }: { session: PointCountSessionSummary }) {
                 <Typography variant="caption" sx={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>
                   {mineral}
                 </Typography>
-                <Typography variant="caption" color="text.secondary" sx={{ whiteSpace: 'nowrap' }}>
+                <Typography
+                  variant="caption"
+                  sx={{
+                    color: 'text.secondary',
+                    whiteSpace: 'nowrap'
+                  }}>
                   {count}
                 </Typography>
                 <Typography variant="caption" sx={{ fontWeight: 500, width: 40, textAlign: 'right' }}>
@@ -207,9 +219,12 @@ export function PointCountSummary({ micrographId }: PointCountSummaryProps) {
             <Box>
               <Typography
                 variant="caption"
-                color="text.secondary"
-                sx={{ display: 'block', mt: 1, mb: 0.5 }}
-              >
+                sx={{
+                  color: 'text.secondary',
+                  display: 'block',
+                  mt: 1,
+                  mb: 0.5
+                }}>
                 Older Sessions:
               </Typography>
               <Stack spacing={1}>

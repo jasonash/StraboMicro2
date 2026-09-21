@@ -345,7 +345,11 @@ export function QuickApplyPresetsDialog({ open, onClose }: QuickApplyPresetsDial
     if (presets.length === 0) {
       return (
         <Box sx={{ textAlign: 'center', py: 4 }}>
-          <Typography color="text.secondary" sx={{ mb: 2 }}>
+          <Typography
+            sx={{
+              color: 'text.secondary',
+              mb: 2
+            }}>
             No {scope === 'global' ? 'global' : 'project'} presets yet
           </Typography>
           <Button variant="outlined" startIcon={<AddIcon />} onClick={handleCreateNew}>
@@ -413,7 +417,9 @@ export function QuickApplyPresetsDialog({ open, onClose }: QuickApplyPresetsDial
               renderPresetList(projectPresets, 'project')
             ) : (
               <Box sx={{ textAlign: 'center', py: 4 }}>
-                <Typography color="text.secondary">
+                <Typography sx={{
+                  color: 'text.secondary'
+                }}>
                   Open a project to manage project presets
                 </Typography>
               </Box>

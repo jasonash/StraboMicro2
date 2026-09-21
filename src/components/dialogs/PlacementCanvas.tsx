@@ -1072,7 +1072,13 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, width: '100%', alignItems: 'center' }}>
-      <Typography variant="body2" color="text.secondary" sx={{ width: '100%', textAlign: 'center' }}>
+      <Typography
+        variant="body2"
+        sx={{
+          color: 'text.secondary',
+          width: '100%',
+          textAlign: 'center'
+        }}>
         Pan and zoom the parent micrograph. Drag, resize, and rotate the overlay to position it.
       </Typography>
 
@@ -1082,7 +1088,9 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
           <Typography variant="subtitle2" gutterBottom>
             Pixel Conversion Factor
           </Typography>
-          <Stack direction="row" spacing={2} alignItems="flex-end">
+          <Stack direction="row" spacing={2} sx={{
+            alignItems: 'flex-end'
+          }}>
             {/* Tool buttons on the left */}
             <Stack direction="row" spacing={0.5}>
               <Tooltip title="Pan Tool">
@@ -1099,7 +1107,9 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
 
             {/* Input fields on the right */}
             <Box sx={{ flexGrow: 1 }}>
-              <Grid container spacing={2} alignItems="flex-end">
+              <Grid container spacing={2} sx={{
+                alignItems: 'flex-end'
+              }}>
                 <Grid size={4}>
                   <TextField
                     label="Number of Pixels"
@@ -1139,7 +1149,13 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
               </Grid>
             </Box>
           </Stack>
-          <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+          <Typography
+            variant="caption"
+            sx={{
+              color: 'text.secondary',
+              mt: 1,
+              display: 'block'
+            }}>
             Enter how many pixels correspond to a known physical length. The overlay will resize automatically.
           </Typography>
         </Paper>
@@ -1151,7 +1167,9 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
           <Typography variant="subtitle2" gutterBottom>
             Image Physical Dimensions
           </Typography>
-          <Stack direction="row" spacing={2} alignItems="flex-end">
+          <Stack direction="row" spacing={2} sx={{
+            alignItems: 'flex-end'
+          }}>
             {/* Tool buttons on the left */}
             <Stack direction="row" spacing={0.5}>
               <Tooltip title="Pan Tool">
@@ -1168,7 +1186,9 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
 
             {/* Input fields on the right */}
             <Box sx={{ flexGrow: 1 }}>
-              <Grid container spacing={2} alignItems="flex-end">
+              <Grid container spacing={2} sx={{
+                alignItems: 'flex-end'
+              }}>
                 <Grid size={4}>
                   <TextField
                     label="Width"
@@ -1208,7 +1228,13 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
               </Grid>
             </Box>
           </Stack>
-          <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+          <Typography
+            variant="caption"
+            sx={{
+              color: 'text.secondary',
+              mt: 1,
+              display: 'block'
+            }}>
             Enter width or height - the other dimension will auto-populate. The overlay will resize automatically.
           </Typography>
         </Paper>
@@ -1220,7 +1246,9 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
           <Typography variant="subtitle2" gutterBottom>
             Trace Scale Bar
           </Typography>
-          <Stack direction="row" spacing={2} alignItems="flex-end">
+          <Stack direction="row" spacing={2} sx={{
+            alignItems: 'flex-end'
+          }}>
             {/* Tool buttons on the left */}
             <Stack direction="row" spacing={0.5}>
               <Tooltip title="Pan Tool">
@@ -1250,7 +1278,9 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
 
             {/* Input fields on the right */}
             <Box sx={{ flexGrow: 1 }}>
-              <Grid container spacing={2} alignItems="flex-end">
+              <Grid container spacing={2} sx={{
+                alignItems: 'flex-end'
+              }}>
                 <Grid size={4}>
                   <TextField
                     label="Pixel Count"
@@ -1259,8 +1289,10 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
                     onChange={(e) => setScaleBarPixelInput(e.target.value)}
                     fullWidth
                     size="small"
-                    InputProps={{ readOnly: true }}
                     placeholder="Auto-filled from line"
+                    slotProps={{
+                      input: { readOnly: true }
+                    }}
                   />
                 </Grid>
                 <Grid size={4}>
@@ -1292,7 +1324,13 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
               </Grid>
             </Box>
           </Stack>
-          <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+          <Typography
+            variant="caption"
+            sx={{
+              color: 'text.secondary',
+              mt: 1,
+              display: 'block'
+            }}>
             Use the line tool to trace a scale bar on the child micrograph. Enter the physical length it represents.
           </Typography>
         </Paper>
@@ -1301,7 +1339,9 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
       {/* Toolbar for Stretch and Drag method */}
       {scaleMethod === 'Stretch and Drag' && (
         <Paper elevation={2} sx={{ p: 1, width: CANVAS_WIDTH }}>
-          <Stack direction="row" spacing={0.5} alignItems="center">
+          <Stack direction="row" spacing={0.5} sx={{
+            alignItems: 'center'
+          }}>
             <Tooltip title="Pan Tool">
               <IconButton size="small" color="primary">
                 <PanTool />
@@ -1319,7 +1359,12 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
 
       {/* Opacity Slider */}
       <Box sx={{ width: CANVAS_WIDTH, display: 'flex', alignItems: 'center', gap: 2 }}>
-        <Typography variant="body2" color="text.secondary" sx={{ minWidth: 90 }}>
+        <Typography
+          variant="body2"
+          sx={{
+            color: 'text.secondary',
+            minWidth: 90
+          }}>
           Transparency:
         </Typography>
         <Slider
@@ -1334,7 +1379,12 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
           step={0.01}
           sx={{ flex: 1 }}
         />
-        <Typography variant="body2" color="text.secondary" sx={{ minWidth: 40 }}>
+        <Typography
+          variant="body2"
+          sx={{
+            color: 'text.secondary',
+            minWidth: 40
+          }}>
           {Math.round(childOpacity * 100)}%
         </Typography>
       </Box>
@@ -1454,10 +1504,12 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
       <Stack
         direction="row"
         spacing={1.5}
-        alignItems="center"
-        justifyContent="center"
-        sx={{ width: CANVAS_WIDTH, mt: 0.5 }}
-      >
+        sx={{
+          alignItems: 'center',
+          justifyContent: 'center',
+          width: CANVAS_WIDTH,
+          mt: 0.5
+        }}>
         {(
           [
             { key: 'x', label: 'X (px)', value: originalPlacement?.x, step: 1 },
@@ -1494,10 +1546,14 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
                 (e.target as HTMLInputElement).blur();
               }
             }}
-            inputProps={{ step }}
+            slotProps={{
+              htmlInput: { step }
+            }}
           />
         ))}
-        <Typography variant="caption" color="text.secondary">
+        <Typography variant="caption" sx={{
+          color: 'text.secondary'
+        }}>
           Scale: {childTransform.scaleX.toFixed(2)}x | Zoom: {(scale * 100).toFixed(0)}%
         </Typography>
       </Stack>

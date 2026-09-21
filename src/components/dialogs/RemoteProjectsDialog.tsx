@@ -44,6 +44,7 @@ import StorageIcon from '@mui/icons-material/Storage';
 import { useAuthStore } from '@/store/useAuthStore';
 import { useAppStore } from '@/store/useAppStore';
 import { unloadIfReplacingOpenProject, dedupeImportedPresets } from '@/utils/importUtils';
+import { closeUnlessEscapeBlocked } from '@/utils/dialogClose';
 
 interface RemoteProject {
   id: string;
@@ -326,10 +327,17 @@ export function RemoteProjectsDialog({
       {projects.length === 0 ? (
         <Box sx={{ textAlign: 'center', py: 4 }}>
           <StorageIcon sx={{ fontSize: 60, color: 'text.secondary', mb: 2 }} />
-          <Typography variant="body1" color="text.secondary">
+          <Typography variant="body1" sx={{
+            color: 'text.secondary'
+          }}>
             No projects found on the server.
           </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+          <Typography
+            variant="body2"
+            sx={{
+              color: 'text.secondary',
+              mt: 1
+            }}>
             Push a project to the server first using File → Push to Server.
           </Typography>
         </Box>
@@ -346,7 +354,9 @@ export function RemoteProjectsDialog({
                   primary={project.name}
                   secondary={
                     <Box component="span" sx={{ display: 'flex', gap: 1, alignItems: 'center', mt: 0.5 }}>
-                      <Typography variant="caption" color="text.secondary">
+                      <Typography variant="caption" sx={{
+                        color: 'text.secondary'
+                      }}>
                         {project.uploadDate}
                       </Typography>
                       <Chip
@@ -403,10 +413,14 @@ export function RemoteProjectsDialog({
               sx={{ mb: 1 }}
             />
             <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-              <Typography variant="body2" color="text.secondary">
+              <Typography variant="body2" sx={{
+                color: 'text.secondary'
+              }}>
                 {downloadProgress?.message || 'Starting download...'}
               </Typography>
-              <Typography variant="body2" color="text.secondary">
+              <Typography variant="body2" sx={{
+                color: 'text.secondary'
+              }}>
                 {downloadProgress?.percentage || 0}%
               </Typography>
             </Box>
@@ -428,7 +442,12 @@ export function RemoteProjectsDialog({
               {inspectResult?.projectName || selectedProject?.name}
             </Typography>
 
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            <Typography
+              variant="body2"
+              sx={{
+                color: 'text.secondary',
+                mb: 2
+              }}>
               Project ID: {inspectResult?.projectId}
             </Typography>
 
@@ -481,10 +500,14 @@ export function RemoteProjectsDialog({
               sx={{ mb: 1 }}
             />
             <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-              <Typography variant="body2" color="text.secondary">
+              <Typography variant="body2" sx={{
+                color: 'text.secondary'
+              }}>
                 {importProgress?.detail || ''}
               </Typography>
-              <Typography variant="body2" color="text.secondary">
+              <Typography variant="body2" sx={{
+                color: 'text.secondary'
+              }}>
                 {importProgress?.percentage || 0}%
               </Typography>
             </Box>
@@ -501,7 +524,9 @@ export function RemoteProjectsDialog({
             <Typography variant="h6" gutterBottom>
               Download Complete!
             </Typography>
-            <Typography variant="body2" color="text.secondary">
+            <Typography variant="body2" sx={{
+              color: 'text.secondary'
+            }}>
               Project "{selectedProject?.name}" has been downloaded and imported successfully.
             </Typography>
           </Box>
@@ -517,7 +542,9 @@ export function RemoteProjectsDialog({
             <Typography variant="h6" gutterBottom color="error">
               {dialogState === 'error' && selectedProject ? 'Download Failed' : 'Error'}
             </Typography>
-            <Typography variant="body2" color="text.secondary">
+            <Typography variant="body2" sx={{
+              color: 'text.secondary'
+            }}>
               {errorMessage || 'An unknown error occurred.'}
             </Typography>
           </Box>
@@ -585,10 +612,9 @@ export function RemoteProjectsDialog({
   return (
     <Dialog
       open={open}
-      onClose={handleClose}
+      onClose={closeUnlessEscapeBlocked(handleClose, dialogState === 'downloading' || dialogState === 'importing')}
       maxWidth="sm"
       fullWidth
-      disableEscapeKeyDown={dialogState === 'downloading' || dialogState === 'importing'}
     >
       <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
         <CloudDownloadIcon color="primary" />

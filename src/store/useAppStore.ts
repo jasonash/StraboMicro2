@@ -175,7 +175,7 @@ interface AppState {
   spotOverlayOpacity: number;
   /** Last-used image export settings (File > Export Images / micrograph export button) */
   imageExportOptions: ImageExportPreferences;
-  viewerRef: React.RefObject<TiledViewerRef> | null;
+  viewerRef: React.RefObject<TiledViewerRef | null> | null;
 
   // ========== UI STATE (persisted) ==========
   sidebarTab: SidebarTab;
@@ -562,7 +562,7 @@ interface AppState {
   setShowRulers: (show: boolean) => void;
   setSpotOverlayOpacity: (opacity: number) => void;
   setImageExportOptions: (options: ImageExportPreferences) => void;
-  setViewerRef: (ref: React.RefObject<TiledViewerRef> | null) => void;
+  setViewerRef: (ref: React.RefObject<TiledViewerRef | null> | null) => void;
 
   // ========== GEOMETRY EDITING ACTIONS ==========
   startEditingSpot: (spotId: string, geometry: Array<{ X: number; Y: number }>) => void;

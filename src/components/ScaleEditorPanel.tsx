@@ -137,7 +137,13 @@ export function ScaleEditorPanel({
             control={<Radio />}
             label="Trace Scale Bar"
           />
-          <Typography variant="body2" color="text.secondary" sx={{ ml: 4, mb: 1 }}>
+          <Typography
+            variant="body2"
+            sx={{
+              color: 'text.secondary',
+              ml: 4,
+              mb: 1
+            }}>
             Draw a line over the scale bar in the micrograph (most accurate)
           </Typography>
           <FormControlLabel
@@ -145,7 +151,13 @@ export function ScaleEditorPanel({
             control={<Radio />}
             label="Pixel Conversion Factor"
           />
-          <Typography variant="body2" color="text.secondary" sx={{ ml: 4, mb: 1 }}>
+          <Typography
+            variant="body2"
+            sx={{
+              color: 'text.secondary',
+              ml: 4,
+              mb: 1
+            }}>
             Enter the number of pixels per unit directly
           </Typography>
           <FormControlLabel
@@ -153,7 +165,12 @@ export function ScaleEditorPanel({
             control={<Radio />}
             label="Provide Width/Height of Image"
           />
-          <Typography variant="body2" color="text.secondary" sx={{ ml: 4 }}>
+          <Typography
+            variant="body2"
+            sx={{
+              color: 'text.secondary',
+              ml: 4
+            }}>
             Enter the physical dimensions of the entire image
           </Typography>
         </RadioGroup>
@@ -206,9 +223,11 @@ export function ScaleEditorPanel({
               required
               label="Line Length (pixels)"
               value={tracePixels}
-              InputProps={{ readOnly: true }}
               size="small"
               sx={{ width: 180 }}
+              slotProps={{
+                input: { readOnly: true }
+              }}
             />
             <TextField
               required
@@ -264,7 +283,9 @@ export function ScaleEditorPanel({
               {isLoadingPreview ? (
                 <CircularProgress />
               ) : (
-                <Typography color="text.secondary">Preview unavailable</Typography>
+                <Typography sx={{
+                  color: 'text.secondary'
+                }}>Preview unavailable</Typography>
               )}
             </Box>
           )}
@@ -293,7 +314,9 @@ export function ScaleEditorPanel({
               />
             </Box>
           )}
-          <Typography variant="body2" color="text.secondary">
+          <Typography variant="body2" sx={{
+            color: 'text.secondary'
+          }}>
             Enter the number of pixels that corresponds to a known physical length.
           </Typography>
           <Box sx={{ display: 'flex', gap: 2 }}>
@@ -353,7 +376,9 @@ export function ScaleEditorPanel({
               />
             </Box>
           )}
-          <Typography variant="body2" color="text.secondary">
+          <Typography variant="body2" sx={{
+            color: 'text.secondary'
+          }}>
             Enter the physical width and/or height of the entire micrograph image. At least one
             dimension is required.
           </Typography>

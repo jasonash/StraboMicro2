@@ -143,7 +143,12 @@ export function BatchEditSpotsDialog({ isOpen, onClose }: BatchEditSpotsDialogPr
       </DialogTitle>
 
       <DialogContent>
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+        <Typography
+          variant="body2"
+          sx={{
+            color: 'text.secondary',
+            mb: 2
+          }}>
           Check the fields you want to update. Only checked fields will be applied to all selected spots.
         </Typography>
 

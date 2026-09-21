@@ -57,7 +57,9 @@ const PHASE_NAMES = ['Black', 'White', 'Pink', 'Green', 'Lavender', 'Blue'];
 function Row({ label, value }: { label: string; value: string }) {
   return (
     <Box sx={{ display: 'flex', justifyContent: 'space-between', px: 0.5 }}>
-      <Typography variant="caption" color="text.secondary">{label}</Typography>
+      <Typography variant="caption" sx={{
+        color: 'text.secondary'
+      }}>{label}</Typography>
       <Typography variant="caption" sx={{ fontWeight: 500 }}>{value}</Typography>
     </Box>
   );
@@ -72,7 +74,9 @@ export function StraboToolsSummary({ straboTools: st }: StraboToolsSummaryProps)
       <StyledAccordionSummary expandIcon={<ExpandMoreIcon />}>
         <Typography variant="body2" sx={{ fontWeight: 500 }}>StraboTools</Typography>
         <Chip label={toolName} size="small" variant="outlined" />
-        {timestamp && <Typography variant="caption" color="text.secondary">{timestamp}</Typography>}
+        {timestamp && <Typography variant="caption" sx={{
+          color: 'text.secondary'
+        }}>{timestamp}</Typography>}
       </StyledAccordionSummary>
       <AccordionDetails sx={{ pt: 0, pb: 1, px: 1.5 }}>
         {st.tool === 'edge-fabric' && (
@@ -95,7 +99,9 @@ export function StraboToolsSummary({ straboTools: st }: StraboToolsSummaryProps)
             {st.modePhasePercentages?.map((pct, i) => (
               <Box key={i} sx={{ display: 'flex', alignItems: 'center', gap: 1, pl: 1 }}>
                 <Box sx={{ width: 12, height: 12, borderRadius: '2px', bgcolor: `rgb(${PHASE_COLORS[i][0]},${PHASE_COLORS[i][1]},${PHASE_COLORS[i][2]})`, border: '1px solid', borderColor: 'divider', flexShrink: 0 }} />
-                <Typography variant="caption" color="text.secondary">{PHASE_NAMES[i]}: {pct.toFixed(1)}%</Typography>
+                <Typography variant="caption" sx={{
+                  color: 'text.secondary'
+                }}>{PHASE_NAMES[i]}: {pct.toFixed(1)}%</Typography>
               </Box>
             ))}
           </Box>

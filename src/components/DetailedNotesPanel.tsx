@@ -373,7 +373,7 @@ export function DetailedNotesPanel({ micrographId, spotId, onEditSection, onView
   };
 
   // Build the sections
-  const sections: JSX.Element[] = [];
+  const sections: React.JSX.Element[] = [];
   let isFirst = true;
 
   // Always-visible sections (inline editable)

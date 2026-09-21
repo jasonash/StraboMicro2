@@ -77,11 +77,18 @@ export function AssociatedFileListItem({ file, projectId }: AssociatedFileListIt
           {file.fileName}
         </Typography>
       )}
-      <Typography variant="body2" color="text.secondary">
+      <Typography variant="body2" sx={{
+        color: 'text.secondary'
+      }}>
         Type: {displayType}
       </Typography>
       {file.notes && (
-        <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+        <Typography
+          variant="body2"
+          sx={{
+            color: 'text.secondary',
+            mt: 0.5
+          }}>
           {file.notes}
         </Typography>
       )}

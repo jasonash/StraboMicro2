@@ -746,9 +746,10 @@ function ComparatorCanvas({
                 <ListItemText
                   primary={option.name}
                   secondary={option.sampleName}
-                  primaryTypographyProps={{ noWrap: true }}
-                  secondaryTypographyProps={{ noWrap: true }}
-                />
+                  slotProps={{
+                    primary: { noWrap: true },
+                    secondary: { noWrap: true }
+                  }} />
               </MenuItem>
             ))}
           </Select>
@@ -978,8 +979,10 @@ export function ImageComparatorDialog({ open, onClose }: ImageComparatorDialogPr
       open={open}
       onClose={onClose}
       fullScreen
-      PaperProps={{
-        sx: { bgcolor: 'background.default' },
+      slotProps={{
+        paper: {
+          sx: { bgcolor: 'background.default' },
+        }
       }}
     >
       {/* Header */}

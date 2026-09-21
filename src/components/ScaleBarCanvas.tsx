@@ -261,7 +261,9 @@ export const ScaleBarCanvas = forwardRef<ScaleBarCanvasRef, ScaleBarCanvasProps>
     <Box>
       {showToolbar && (
         <Paper elevation={2} sx={{ p: 1, mb: 2 }}>
-          <Stack direction="row" spacing={1} alignItems="center">
+          <Stack direction="row" spacing={1} sx={{
+            alignItems: 'center'
+          }}>
             <Tooltip title="Pointer Tool (Pan/Zoom)">
               <IconButton
                 size="small"

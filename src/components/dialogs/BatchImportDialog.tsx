@@ -663,7 +663,9 @@ export const BatchImportDialog: React.FC<BatchImportDialogProps> = ({
             <Typography variant="h6">
               {isAssociated ? 'Batch Import Associated Micrographs' : 'Batch Import Reference Micrographs'}
             </Typography>
-            <Typography variant="body2" color="text.secondary">
+            <Typography variant="body2" sx={{
+              color: 'text.secondary'
+            }}>
               Import multiple micrographs at once. Select the fields that will be shared between micrographs.
             </Typography>
 
@@ -732,9 +734,11 @@ export const BatchImportDialog: React.FC<BatchImportDialogProps> = ({
                       <ListItemText
                         primary={file.name}
                         secondary={file.validationError || file.path}
-                        secondaryTypographyProps={{
-                          noWrap: !file.validationError,
-                          color: file.validationError ? 'error.light' : undefined,
+                        slotProps={{
+                          secondary: {
+                            noWrap: !file.validationError,
+                            color: file.validationError ? 'error.light' : undefined,
+                          }
                         }}
                       />
                       <ListItemSecondaryAction>
@@ -753,7 +757,9 @@ export const BatchImportDialog: React.FC<BatchImportDialogProps> = ({
             )}
 
             {selectedFiles.length > 0 && (
-              <Typography variant="body2" color="text.secondary">
+              <Typography variant="body2" sx={{
+                color: 'text.secondary'
+              }}>
                 {validFiles.length} of {selectedFiles.length} file{selectedFiles.length !== 1 ? 's' : ''} ready to import
                 {invalidFiles.length > 0 && ` (${invalidFiles.length} skipped — see warnings above)`}
               </Typography>
@@ -843,7 +849,9 @@ export const BatchImportDialog: React.FC<BatchImportDialogProps> = ({
                       <ListItemText
                         primary={file.name}
                         secondary={orientationLabel(orientation)}
-                        primaryTypographyProps={{ noWrap: true }}
+                        slotProps={{
+                          primary: { noWrap: true }
+                        }}
                       />
                       <IconButton
                         size="small"
@@ -900,13 +908,17 @@ export const BatchImportDialog: React.FC<BatchImportDialogProps> = ({
             </Typography>
 
             {includeInstrumentInfo && (
-              <Typography variant="body2" color="text.secondary">
+              <Typography variant="body2" sx={{
+                color: 'text.secondary'
+              }}>
                 Instrument info will be applied to all micrographs.
               </Typography>
             )}
 
             {includeOrientation && !isAssociated && (
-              <Typography variant="body2" color="text.secondary">
+              <Typography variant="body2" sx={{
+                color: 'text.secondary'
+              }}>
                 Orientation will be applied to all micrographs.
               </Typography>
             )}
@@ -959,7 +971,9 @@ export const BatchImportDialog: React.FC<BatchImportDialogProps> = ({
       onClose={handleClose}
       maxWidth="md"
       fullWidth
-      PaperProps={{ sx: { minHeight: '60vh' } }}
+      slotProps={{
+        paper: { sx: { minHeight: '60vh' } }
+      }}
     >
       <DialogTitle>
         {isAssociated ? 'Batch Import Associated Micrographs' : 'Batch Import Reference Micrographs'}

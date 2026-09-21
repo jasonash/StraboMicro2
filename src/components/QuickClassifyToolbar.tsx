@@ -1113,7 +1113,12 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
         {/* Preset chips row (Quick Edit mode only, when presets are configured) */}
         {quickEditMode && boundPresets.length > 0 && (
           <Box sx={{ display: 'flex', alignItems: 'center', mb: 1, gap: 0.5 }}>
-            <Typography variant="caption" color="text.secondary" sx={{ mr: 0.5 }}>
+            <Typography
+              variant="caption"
+              sx={{
+                color: 'text.secondary',
+                mr: 0.5
+              }}>
               Presets:
             </Typography>
             {boundPresets.map(({ key, preset }) => (
@@ -1213,22 +1218,23 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
           }}
         >
           {/* Progress text */}
-          <Typography variant="body2" color="text.secondary">
+          <Typography variant="body2" sx={{
+            color: 'text.secondary'
+          }}>
             {stats.classified}/{stats.total} classified ({stats.percentage}%)
           </Typography>
 
           {/* Current item indicator */}
           <Typography
             variant="body2"
-            color="text.primary"
             sx={{
+              color: 'text.primary',
               fontWeight: 500,
               transition: 'background-color 0.3s ease',
               bgcolor: flashId ? 'success.light' : (selectedPointIndices.length > 0 || selectedSpotIds.length > 0 ? 'info.dark' : 'transparent'),
               px: 1,
-              borderRadius: 1,
-            }}
-          >
+              borderRadius: 1
+            }}>
             {selectedPointIndices.length > 0 ? (
               `${selectedPointIndices.length} points selected`
             ) : selectedSpotIds.length > 0 ? (
@@ -1237,7 +1243,13 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
               <>
                 {currentName}
                 {currentMineral && (
-                  <Typography component="span" variant="body2" color="text.secondary" sx={{ ml: 1 }}>
+                  <Typography
+                    component="span"
+                    variant="body2"
+                    sx={{
+                      color: 'text.secondary',
+                      ml: 1
+                    }}>
                     ({formatMineralName(currentMineral)})
                   </Typography>
                 )}
@@ -1246,7 +1258,9 @@ export const QuickClassifyToolbar: React.FC<QuickClassifyToolbarProps> = ({
           </Typography>
 
           {/* Navigation hints */}
-          <Typography variant="caption" color="text.secondary">
+          <Typography variant="caption" sx={{
+            color: 'text.secondary'
+          }}>
             {quickEditMode && boundPresets.length > 0
               ? `1-${Math.min(9, boundPresets.length)}=Presets Enter=Next ⌫=Back`
               : 'Space=Skip ⌫=Back Del=Clear Esc=Exit'}

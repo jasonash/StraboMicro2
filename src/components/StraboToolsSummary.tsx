@@ -83,7 +83,9 @@ export function StraboToolsSummary({ micrographId }: StraboToolsSummaryProps) {
         </Typography>
         <Chip label={toolName} size="small" variant="outlined" />
         {timestamp && (
-          <Typography variant="caption" color="text.secondary">
+          <Typography variant="caption" sx={{
+            color: 'text.secondary'
+          }}>
             {timestamp}
           </Typography>
         )}
@@ -126,7 +128,9 @@ export function StraboToolsSummary({ micrographId }: StraboToolsSummaryProps) {
                     flexShrink: 0,
                   }}
                 />
-                <Typography variant="caption" color="text.secondary">
+                <Typography variant="caption" sx={{
+                  color: 'text.secondary'
+                }}>
                   {PHASE_NAMES[i]}: {pct.toFixed(1)}%
                 </Typography>
               </Box>
@@ -141,7 +145,9 @@ export function StraboToolsSummary({ micrographId }: StraboToolsSummaryProps) {
 function Row({ label, value }: { label: string; value: string }) {
   return (
     <Box sx={{ display: 'flex', justifyContent: 'space-between', px: 0.5 }}>
-      <Typography variant="caption" color="text.secondary">
+      <Typography variant="caption" sx={{
+        color: 'text.secondary'
+      }}>
         {label}
       </Typography>
       <Typography variant="caption" sx={{ fontWeight: 500 }}>

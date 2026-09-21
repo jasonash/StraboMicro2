@@ -422,7 +422,9 @@ export function AddSiblingDialog({
           <Alert severity="error">Source micrograph not found.</Alert>
         ) : (
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
-            <Typography variant="body2" color="text.secondary">
+            <Typography variant="body2" sx={{
+              color: 'text.secondary'
+            }}>
               Add a {siblingType} ({siblingLabel}) image to pair with &quot;{sourceMicrograph.name || sourceMicrograph.imageFilename}&quot;.
               The {siblingLabel} will inherit the position and settings from the {sourceLabel}.
             </Typography>
@@ -461,7 +463,9 @@ export function AddSiblingDialog({
             {/* Conversion Progress */}
             {conversionProgress && (
               <Box sx={{ width: '100%' }}>
-                <Typography variant="caption" color="text.secondary">
+                <Typography variant="caption" sx={{
+                  color: 'text.secondary'
+                }}>
                   {conversionProgress.stage}
                 </Typography>
                 <LinearProgress
@@ -511,7 +515,12 @@ export function AddSiblingDialog({
                     >
                       <RotateLeft fontSize="small" />
                     </IconButton>
-                    <Typography variant="caption" color="text.secondary" sx={{ mx: 0.5 }}>
+                    <Typography
+                      variant="caption"
+                      sx={{
+                        color: 'text.secondary',
+                        mx: 0.5
+                      }}>
                       {orientationLabel(orientation)}
                     </Typography>
                     <IconButton
@@ -542,16 +551,33 @@ export function AddSiblingDialog({
                     size="small"
                     disabled={loading}
                   />
-                  <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+                  <Typography
+                    variant="caption"
+                    sx={{
+                      color: 'text.secondary',
+                      mt: 1,
+                      display: 'block'
+                    }}>
                     {isQuarterTurn(orientation.rotation)
                       ? `${imageHeight} × ${imageWidth}`
                       : `${imageWidth} × ${imageHeight}`}{' '}
                     pixels
                   </Typography>
-                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                  <Typography
+                    variant="caption"
+                    sx={{
+                      color: 'text.secondary',
+                      display: 'block'
+                    }}>
                     {siblingFileName}
                   </Typography>
-                  <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+                  <Typography
+                    variant="caption"
+                    sx={{
+                      color: 'text.secondary',
+                      mt: 1,
+                      display: 'block'
+                    }}>
                     Rotation and flip are applied permanently to the image pixels when the image
                     is added and cannot be changed later. They do not affect placement.
                   </Typography>

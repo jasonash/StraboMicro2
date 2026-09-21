@@ -395,8 +395,10 @@ export function GrainSizeAnalysisDialog({ open, onClose }: GrainSizeAnalysisDial
       onClose={onClose}
       maxWidth="lg"
       fullWidth
-      PaperProps={{
-        sx: { height: '85vh', maxHeight: 800 },
+      slotProps={{
+        paper: {
+          sx: { height: '85vh', maxHeight: 800 },
+        }
       }}
     >
       <DialogTitle sx={{ pb: 1 }}>
@@ -410,7 +412,13 @@ export function GrainSizeAnalysisDialog({ open, onClose }: GrainSizeAnalysisDial
 
       <DialogContent dividers sx={{ p: 2 }}>
         {/* Controls Row */}
-        <Stack direction="row" spacing={4} sx={{ mb: 2 }} flexWrap="wrap">
+        <Stack
+          direction="row"
+          spacing={4}
+          sx={{
+            flexWrap: 'wrap',
+            mb: 2
+          }}>
           {/* Rock Type */}
           <FormControl component="fieldset" size="small">
             <FormLabel component="legend" sx={{ fontSize: '0.75rem' }}>Rock Type</FormLabel>
@@ -470,7 +478,9 @@ export function GrainSizeAnalysisDialog({ open, onClose }: GrainSizeAnalysisDial
             sx={{ mb: 2, maxHeight: 160, display: 'flex', flexDirection: 'column' }}
           >
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', px: 1.5, py: 0.5, borderBottom: '1px solid', borderColor: 'divider' }}>
-              <Typography variant="caption" color="text.secondary">
+              <Typography variant="caption" sx={{
+                color: 'text.secondary'
+              }}>
                 {selectedSpotIds.size} of {allPolygonSpots.length} polygon spots selected
               </Typography>
               <Stack direction="row" spacing={0.5}>
@@ -528,12 +538,24 @@ export function GrainSizeAnalysisDialog({ open, onClose }: GrainSizeAnalysisDial
                         <Typography variant="body2" noWrap>
                           {spot.name || spot.id.slice(0, 8)}
                           {mineral && (
-                            <Typography component="span" variant="caption" color="text.secondary" sx={{ ml: 1 }}>
+                            <Typography
+                              component="span"
+                              variant="caption"
+                              sx={{
+                                color: 'text.secondary',
+                                ml: 1
+                              }}>
                               {mineral}
                             </Typography>
                           )}
                           {scope === 'all' && (
-                            <Typography component="span" variant="caption" color="text.secondary" sx={{ ml: 1 }}>
+                            <Typography
+                              component="span"
+                              variant="caption"
+                              sx={{
+                                color: 'text.secondary',
+                                ml: 1
+                              }}>
                               — {micrograph.name}
                             </Typography>
                           )}
@@ -621,7 +643,9 @@ export function GrainSizeAnalysisDialog({ open, onClose }: GrainSizeAnalysisDial
 
                 <Stack spacing={1.5}>
                   <Box>
-                    <Typography variant="caption" color="text.secondary">SUMMARY</Typography>
+                    <Typography variant="caption" sx={{
+                      color: 'text.secondary'
+                    }}>SUMMARY</Typography>
                     <Typography variant="body2">
                       Grains: <strong>{analysisResults.sizeStats.count}</strong>
                     </Typography>
@@ -636,7 +660,9 @@ export function GrainSizeAnalysisDialog({ open, onClose }: GrainSizeAnalysisDial
                   <Divider />
 
                   <Box>
-                    <Typography variant="caption" color="text.secondary">SIZE (Equiv. Diameter)</Typography>
+                    <Typography variant="caption" sx={{
+                      color: 'text.secondary'
+                    }}>SIZE (Equiv. Diameter)</Typography>
                     <Typography variant="body2">
                       Mean: <strong>{formatSize(analysisResults.sizeStats.mean)}</strong>
                     </Typography>
@@ -668,7 +694,9 @@ export function GrainSizeAnalysisDialog({ open, onClose }: GrainSizeAnalysisDial
                   <Divider />
 
                   <Box>
-                    <Typography variant="caption" color="text.secondary">SHAPE</Typography>
+                    <Typography variant="caption" sx={{
+                      color: 'text.secondary'
+                    }}>SHAPE</Typography>
                     <Typography variant="body2">
                       Mean Aspect Ratio: <strong>{analysisResults.aspectRatioStats.mean.toFixed(2)}</strong>
                     </Typography>
@@ -711,7 +739,9 @@ export function GrainSizeAnalysisDialog({ open, onClose }: GrainSizeAnalysisDial
                             </Typography>
                           }
                           secondary={
-                            <Typography variant="caption" color="text.secondary">
+                            <Typography variant="caption" sx={{
+                              color: 'text.secondary'
+                            }}>
                               mean={formatSize(group.sizeStats.mean)}, AR={group.meanAspectRatio.toFixed(1)}
                               {group.meanAspectRatio > 1.2 && `, θ=${group.meanOrientation.toFixed(0)}°`}
                             </Typography>

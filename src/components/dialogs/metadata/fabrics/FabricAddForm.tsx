@@ -317,7 +317,9 @@ export function FabricAddForm({ onAdd, onCancel, initialData }: FabricAddFormPro
               <Box sx={{ ml: 4, mt: 1, p: 2, bgcolor: 'action.hover', borderRadius: 1 }}>
                 <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                   {/* Composition Layers */}
-                  <Typography variant="body2" fontWeight="bold">Layers</Typography>
+                  <Typography variant="body2" sx={{
+                    fontWeight: 'bold'
+                  }}>Layers</Typography>
                   {formData.fabricCompositionInfo.layers.map((layer, index) => (
                     <Box key={index} sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
                       <TextField
@@ -389,7 +391,9 @@ export function FabricAddForm({ onAdd, onCancel, initialData }: FabricAddFormPro
               <Box sx={{ ml: 4, mt: 1, p: 2, bgcolor: 'action.hover', borderRadius: 1 }}>
                 <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                   {/* Grain Size Layers */}
-                  <Typography variant="body2" fontWeight="bold">Layers</Typography>
+                  <Typography variant="body2" sx={{
+                    fontWeight: 'bold'
+                  }}>Layers</Typography>
                   {formData.fabricGrainSizeInfo.layers.map((layer, index) => (
                     <Box key={index} sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
                       <TextField

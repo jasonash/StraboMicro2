@@ -24,9 +24,14 @@ export function GroupsPanel({ project, allMicrographs, activeMicrographId, tileL
 
   if (groups.length === 0) {
     return (
-      <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic', p: 2 }}>
-        No groups
-      </Typography>
+      <Typography
+        variant="body2"
+        sx={{
+          color: 'text.secondary',
+          fontStyle: 'italic',
+          p: 2
+        }}>No groups
+              </Typography>
     );
   }
 
@@ -74,13 +79,23 @@ function GroupNode({ group, allMicrographs, activeMicrographId, tileLoader, onSe
         <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: 0.5, flex: 1, ml: 0.5 }}>
           {group.name}
         </Typography>
-        <Typography variant="caption" color="text.disabled">
+        <Typography variant="caption" sx={{
+          color: 'text.disabled'
+        }}>
           {groupMicrographs.length}
         </Typography>
       </Box>
       <Collapse in={isExpanded}>
         {groupMicrographs.length === 0 ? (
-          <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic', px: 2, py: 1, fontSize: '0.8rem' }}>
+          <Typography
+            variant="body2"
+            sx={{
+              color: 'text.secondary',
+              fontStyle: 'italic',
+              px: 2,
+              py: 1,
+              fontSize: '0.8rem'
+            }}>
             No micrographs in this group
           </Typography>
         ) : (

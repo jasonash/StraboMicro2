@@ -164,10 +164,14 @@ export function LinkStraboSampleDialog({
     if (samples.length === 0) {
       return (
         <Box sx={{ py: 2, textAlign: 'center' }}>
-          <Typography color="text.secondary" gutterBottom>
+          <Typography gutterBottom sx={{
+            color: 'text.secondary'
+          }}>
             No samples found in your StraboSamples account.
           </Typography>
-          <Typography variant="body2" color="text.secondary">
+          <Typography variant="body2" sx={{
+            color: 'text.secondary'
+          }}>
             Samples appear here after they are created in StraboField, StraboMicro,
             or StraboExperimental and uploaded to the server.
           </Typography>
@@ -177,9 +181,13 @@ export function LinkStraboSampleDialog({
 
     if (filteredSamples.length === 0) {
       return (
-        <Typography color="text.secondary" sx={{ py: 2, textAlign: 'center' }}>
-          No samples match your search.
-        </Typography>
+        <Typography
+          sx={{
+            color: 'text.secondary',
+            py: 2,
+            textAlign: 'center'
+          }}>No samples match your search.
+                  </Typography>
       );
     }
 
@@ -201,9 +209,9 @@ export function LinkStraboSampleDialog({
                   sampleDisplayName(sample) + (alreadyLinked ? ' (already linked)' : '')
                 }
                 secondary={isCollaborated ? COLLABORATED_HINT : sampleSecondaryText(sample)}
-                secondaryTypographyProps={
-                  isCollaborated ? { sx: { fontStyle: 'italic' } } : undefined
-                }
+                slotProps={{
+                  secondary: isCollaborated ? { sx: { fontStyle: 'italic' } } : undefined
+                }}
               />
               {selecting === sample.id && <CircularProgress size={20} />}
             </ListItemButton>
@@ -217,7 +225,12 @@ export function LinkStraboSampleDialog({
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
       <DialogTitle>Link Sample From StraboSamples</DialogTitle>
       <DialogContent>
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+        <Typography
+          variant="body2"
+          sx={{
+            color: 'text.secondary',
+            mb: 2
+          }}>
           Your samples across StraboField, StraboMicro, and StraboExperimental.
           Select one to link it to this project.
         </Typography>
@@ -229,12 +242,14 @@ export function LinkStraboSampleDialog({
           fullWidth
           autoFocus
           sx={{ mb: 1 }}
-          InputProps={{
-            startAdornment: (
-              <InputAdornment position="start">
-                <SearchIcon fontSize="small" />
-              </InputAdornment>
-            ),
+          slotProps={{
+            input: {
+              startAdornment: (
+                <InputAdornment position="start">
+                  <SearchIcon fontSize="small" />
+                </InputAdornment>
+              ),
+            }
           }}
         />
         {error && (

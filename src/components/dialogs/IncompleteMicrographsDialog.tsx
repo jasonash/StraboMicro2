@@ -54,7 +54,9 @@ export function IncompleteMicrographsDialog({
       aria-labelledby="incomplete-micrographs-dialog-title"
     >
       <DialogTitle id="incomplete-micrographs-dialog-title" sx={{ pb: 1 }}>
-        <Stack direction="row" alignItems="center" spacing={1}>
+        <Stack direction="row" spacing={1} sx={{
+          alignItems: 'center'
+        }}>
           <WarningIcon color="warning" />
           <span>Cannot {actionName} project</span>
         </Stack>
@@ -119,7 +121,9 @@ export function IncompleteMicrographsDialog({
           </List>
         </Box>
 
-        <Typography variant="body2" color="text.secondary">
+        <Typography variant="body2" sx={{
+          color: 'text.secondary'
+        }}>
           Click on each micrograph in the project tree to open the setup dialog.
         </Typography>
       </DialogContent>

@@ -42,10 +42,18 @@ export function SinglePhaseSelector({
         borderRadius: 1,
         bgcolor: 'background.paper'
       }}>
-        <Typography variant="body2" color="text.primary">
+        <Typography variant="body2" sx={{
+          color: 'text.primary'
+        }}>
           {label}
         </Typography>
-        <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic', mt: 1 }}>
+        <Typography
+          variant="body2"
+          sx={{
+            color: 'text.secondary',
+            fontStyle: 'italic',
+            mt: 1
+          }}>
           No mineralogy found. If you would like to set phases for Extinction Microstructures, please set mineralogy first.
         </Typography>
       </Box>
@@ -56,7 +64,13 @@ export function SinglePhaseSelector({
     <FormControl component="fieldset" fullWidth>
       <FormLabel component="legend">{label}</FormLabel>
       {helperText && (
-        <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, mb: 1 }}>
+        <Typography
+          variant="caption"
+          sx={{
+            color: 'text.secondary',
+            mt: 0.5,
+            mb: 1
+          }}>
           {helperText}
         </Typography>
       )}

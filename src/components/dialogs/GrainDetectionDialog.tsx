@@ -941,13 +941,22 @@ export function GrainDetectionDialog({
       onClose={onClose}
       maxWidth="md"
       fullWidth
-      PaperProps={{ sx: { maxHeight: '90vh' } }}
+      slotProps={{
+        paper: { sx: { maxHeight: '90vh' } }
+      }}
     >
       <DialogTitle>
-        <Stack direction="row" alignItems="center" justifyContent="space-between">
+        <Stack
+          direction="row"
+          sx={{
+            alignItems: 'center',
+            justifyContent: 'space-between'
+          }}>
           <Typography variant="h6">Grain Detection</Typography>
           {micrograph && (
-            <Typography variant="body2" color="text.secondary">
+            <Typography variant="body2" sx={{
+              color: 'text.secondary'
+            }}>
               {micrograph.name}
             </Typography>
           )}
@@ -1003,10 +1012,14 @@ export function GrainDetectionDialog({
                   }}
                 >
                   <CircularProgress size={48} sx={{ color: 'white' }} />
-                  <Typography variant="body1" color="white" fontWeight="medium">
+                  <Typography variant="body1" color="white" sx={{
+                    fontWeight: 'medium'
+                  }}>
                     Detecting grains...
                   </Typography>
-                  <Typography variant="body2" color="rgba(255,255,255,0.8)">
+                  <Typography variant="body2" sx={{
+                    color: 'rgba(255,255,255,0.8)'
+                  }}>
                     {detectionProgress.step || 'Preparing...'}
                   </Typography>
                   {detectionProgress.percent > 0 && (
@@ -1167,7 +1180,9 @@ export function GrainDetectionDialog({
               {/* Detection method selector */}
               <Box>
                 <FormLabel sx={{ mb: 0.5, fontSize: '0.875rem', display: 'block' }}>Method</FormLabel>
-                <Stack direction="row" spacing={1} alignItems="center">
+                <Stack direction="row" spacing={1} sx={{
+                  alignItems: 'center'
+                }}>
                   <ToggleButtonGroup
                     value={detectionMethod}
                     exclusive
@@ -1202,9 +1217,13 @@ export function GrainDetectionDialog({
                     </Button>
                   )}
                   {isDownloadingModel && (
-                    <Stack direction="row" spacing={1} alignItems="center">
+                    <Stack direction="row" spacing={1} sx={{
+                      alignItems: 'center'
+                    }}>
                       <CircularProgress size={16} />
-                      <Typography variant="caption" color="text.secondary">
+                      <Typography variant="caption" sx={{
+                        color: 'text.secondary'
+                      }}>
                         {downloadProgress.status || `${downloadProgress.percent}%`}
                       </Typography>
                     </Stack>
@@ -1225,16 +1244,27 @@ export function GrainDetectionDialog({
                 <>
                   {/* Confidence threshold slider */}
                   <Box>
-                    <Stack direction="row" justifyContent="space-between" alignItems="center">
+                    <Stack
+                      direction="row"
+                      sx={{
+                        justifyContent: 'space-between',
+                        alignItems: 'center'
+                      }}>
                       <FormLabel sx={{ fontSize: '0.875rem' }}>
                         Confidence Threshold
                       </FormLabel>
-                      <Typography variant="caption" color="text.secondary">
+                      <Typography variant="caption" sx={{
+                        color: 'text.secondary'
+                      }}>
                         {Math.round(fastsamSettings.confidenceThreshold * 100)}%
                       </Typography>
                     </Stack>
-                    <Stack direction="row" spacing={1} alignItems="center">
-                      <Typography variant="caption" color="text.secondary">Lower</Typography>
+                    <Stack direction="row" spacing={1} sx={{
+                      alignItems: 'center'
+                    }}>
+                      <Typography variant="caption" sx={{
+                        color: 'text.secondary'
+                      }}>Lower</Typography>
                       <Slider
                         value={fastsamSettings.confidenceThreshold}
                         onChange={(_, v) => setFastsamSettings(s => ({ ...s, confidenceThreshold: v as number }))}
@@ -1243,22 +1273,35 @@ export function GrainDetectionDialog({
                         step={0.05}
                         size="small"
                       />
-                      <Typography variant="caption" color="text.secondary">Higher</Typography>
+                      <Typography variant="caption" sx={{
+                        color: 'text.secondary'
+                      }}>Higher</Typography>
                     </Stack>
                   </Box>
 
                   {/* Min area slider */}
                   <Box>
-                    <Stack direction="row" justifyContent="space-between" alignItems="center">
+                    <Stack
+                      direction="row"
+                      sx={{
+                        justifyContent: 'space-between',
+                        alignItems: 'center'
+                      }}>
                       <FormLabel sx={{ fontSize: '0.875rem' }}>
                         Minimum Grain Size
                       </FormLabel>
-                      <Typography variant="caption" color="text.secondary">
+                      <Typography variant="caption" sx={{
+                        color: 'text.secondary'
+                      }}>
                         {fastsamSettings.minAreaPercent.toFixed(2)}% of image
                       </Typography>
                     </Stack>
-                    <Stack direction="row" spacing={1} alignItems="center">
-                      <Typography variant="caption" color="text.secondary">Smaller</Typography>
+                    <Stack direction="row" spacing={1} sx={{
+                      alignItems: 'center'
+                    }}>
+                      <Typography variant="caption" sx={{
+                        color: 'text.secondary'
+                      }}>Smaller</Typography>
                       <Slider
                         value={fastsamSettings.minAreaPercent}
                         onChange={(_, v) => setFastsamSettings(s => ({ ...s, minAreaPercent: v as number }))}
@@ -1267,22 +1310,35 @@ export function GrainDetectionDialog({
                         step={0.01}
                         size="small"
                       />
-                      <Typography variant="caption" color="text.secondary">Larger</Typography>
+                      <Typography variant="caption" sx={{
+                        color: 'text.secondary'
+                      }}>Larger</Typography>
                     </Stack>
                   </Box>
 
                   {/* IOU threshold slider */}
                   <Box>
-                    <Stack direction="row" justifyContent="space-between" alignItems="center">
+                    <Stack
+                      direction="row"
+                      sx={{
+                        justifyContent: 'space-between',
+                        alignItems: 'center'
+                      }}>
                       <FormLabel sx={{ fontSize: '0.875rem' }}>
                         Overlap Threshold (IOU)
                       </FormLabel>
-                      <Typography variant="caption" color="text.secondary">
+                      <Typography variant="caption" sx={{
+                        color: 'text.secondary'
+                      }}>
                         {Math.round(fastsamSettings.iouThreshold * 100)}%
                       </Typography>
                     </Stack>
-                    <Stack direction="row" spacing={1} alignItems="center">
-                      <Typography variant="caption" color="text.secondary">More overlap</Typography>
+                    <Stack direction="row" spacing={1} sx={{
+                      alignItems: 'center'
+                    }}>
+                      <Typography variant="caption" sx={{
+                        color: 'text.secondary'
+                      }}>More overlap</Typography>
                       <Slider
                         value={fastsamSettings.iouThreshold}
                         onChange={(_, v) => setFastsamSettings(s => ({ ...s, iouThreshold: v as number }))}
@@ -1291,7 +1347,9 @@ export function GrainDetectionDialog({
                         step={0.05}
                         size="small"
                       />
-                      <Typography variant="caption" color="text.secondary">Less overlap</Typography>
+                      <Typography variant="caption" sx={{
+                        color: 'text.secondary'
+                      }}>Less overlap</Typography>
                     </Stack>
                   </Box>
 
@@ -1335,16 +1393,27 @@ export function GrainDetectionDialog({
 
                   {/* Sensitivity slider */}
                   <Box>
-                    <Stack direction="row" justifyContent="space-between" alignItems="center">
+                    <Stack
+                      direction="row"
+                      sx={{
+                        justifyContent: 'space-between',
+                        alignItems: 'center'
+                      }}>
                       <FormLabel sx={{ fontSize: '0.875rem' }}>
                         Sensitivity
                       </FormLabel>
-                      <Typography variant="caption" color="text.secondary">
+                      <Typography variant="caption" sx={{
+                        color: 'text.secondary'
+                      }}>
                         {settings.sensitivity}%
                       </Typography>
                     </Stack>
-                    <Stack direction="row" spacing={1} alignItems="center">
-                      <Typography variant="caption" color="text.secondary">Fewer</Typography>
+                    <Stack direction="row" spacing={1} sx={{
+                      alignItems: 'center'
+                    }}>
+                      <Typography variant="caption" sx={{
+                        color: 'text.secondary'
+                      }}>Fewer</Typography>
                       <Slider
                         value={settings.sensitivity}
                         onChange={(_, v) => handleSettingChange('sensitivity', v as number)}
@@ -1352,22 +1421,35 @@ export function GrainDetectionDialog({
                         max={100}
                         size="small"
                       />
-                      <Typography variant="caption" color="text.secondary">More</Typography>
+                      <Typography variant="caption" sx={{
+                        color: 'text.secondary'
+                      }}>More</Typography>
                     </Stack>
                   </Box>
 
                   {/* Min grain size slider */}
                   <Box>
-                    <Stack direction="row" justifyContent="space-between" alignItems="center">
+                    <Stack
+                      direction="row"
+                      sx={{
+                        justifyContent: 'space-between',
+                        alignItems: 'center'
+                      }}>
                       <FormLabel sx={{ fontSize: '0.875rem' }}>
                         Minimum Grain Size
                       </FormLabel>
-                      <Typography variant="caption" color="text.secondary">
+                      <Typography variant="caption" sx={{
+                        color: 'text.secondary'
+                      }}>
                         {settings.minGrainSize} px²
                       </Typography>
                     </Stack>
-                    <Stack direction="row" spacing={1} alignItems="center">
-                      <Typography variant="caption" color="text.secondary">Small</Typography>
+                    <Stack direction="row" spacing={1} sx={{
+                      alignItems: 'center'
+                    }}>
+                      <Typography variant="caption" sx={{
+                        color: 'text.secondary'
+                      }}>Small</Typography>
                       <Slider
                         value={settings.minGrainSize}
                         onChange={(_, v) => handleSettingChange('minGrainSize', v as number)}
@@ -1375,22 +1457,35 @@ export function GrainDetectionDialog({
                         max={500}
                         size="small"
                       />
-                      <Typography variant="caption" color="text.secondary">Large</Typography>
+                      <Typography variant="caption" sx={{
+                        color: 'text.secondary'
+                      }}>Large</Typography>
                     </Stack>
                   </Box>
 
                   {/* Edge contrast slider */}
                   <Box>
-                    <Stack direction="row" justifyContent="space-between" alignItems="center">
+                    <Stack
+                      direction="row"
+                      sx={{
+                        justifyContent: 'space-between',
+                        alignItems: 'center'
+                      }}>
                       <FormLabel sx={{ fontSize: '0.875rem' }}>
                         Edge Contrast
                       </FormLabel>
-                      <Typography variant="caption" color="text.secondary">
+                      <Typography variant="caption" sx={{
+                        color: 'text.secondary'
+                      }}>
                         {settings.edgeContrast}%
                       </Typography>
                     </Stack>
-                    <Stack direction="row" spacing={1} alignItems="center">
-                      <Typography variant="caption" color="text.secondary">Soft</Typography>
+                    <Stack direction="row" spacing={1} sx={{
+                      alignItems: 'center'
+                    }}>
+                      <Typography variant="caption" sx={{
+                        color: 'text.secondary'
+                      }}>Soft</Typography>
                       <Slider
                         value={settings.edgeContrast}
                         onChange={(_, v) => handleSettingChange('edgeContrast', v as number)}
@@ -1398,7 +1493,9 @@ export function GrainDetectionDialog({
                         max={100}
                         size="small"
                       />
-                      <Typography variant="caption" color="text.secondary">Sharp</Typography>
+                      <Typography variant="caption" sx={{
+                        color: 'text.secondary'
+                      }}>Sharp</Typography>
                     </Stack>
                   </Box>
 
@@ -1442,7 +1539,9 @@ export function GrainDetectionDialog({
               />
 
               {/* Color picker */}
-              <Stack direction="row" spacing={2} alignItems="center">
+              <Stack direction="row" spacing={2} sx={{
+                alignItems: 'center'
+              }}>
                 <FormLabel sx={{ fontSize: '0.875rem', minWidth: 60 }}>Color</FormLabel>
                 <input
                   type="color"
@@ -1460,9 +1559,16 @@ export function GrainDetectionDialog({
 
               {/* Opacity slider */}
               <Box>
-                <Stack direction="row" justifyContent="space-between" alignItems="center">
+                <Stack
+                  direction="row"
+                  sx={{
+                    justifyContent: 'space-between',
+                    alignItems: 'center'
+                  }}>
                   <FormLabel sx={{ fontSize: '0.875rem' }}>Opacity</FormLabel>
-                  <Typography variant="caption" color="text.secondary">
+                  <Typography variant="caption" sx={{
+                    color: 'text.secondary'
+                  }}>
                     {Math.round(spotOpacity * 100)}%
                   </Typography>
                 </Stack>

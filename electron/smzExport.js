@@ -31,7 +31,7 @@ const fs = require('fs');
 const path = require('path');
 const log = require('electron-log');
 const sharp = require('sharp');
-const archiver = require('archiver');
+const { createZipArchive } = require('./zipArchive');
 const tileCache = require('./tileCache');
 const tileGenerator = require('./tileGenerator');
 
@@ -662,7 +662,7 @@ async function exportSmz(
 
     // Create ZIP archive
     const output = fs.createWriteStream(outputPath);
-    const archive = archiver('zip', { zlib: { level: 6 } });
+    const archive = await createZipArchive();
 
     // Handle errors
     archive.on('error', (err) => {

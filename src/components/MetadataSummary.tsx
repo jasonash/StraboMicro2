@@ -643,19 +643,25 @@ function SpotMeasurements({ spot, scale }: { spot: Spot; scale: number }) {
     <>
       {lineLength && (
         <Box>
-          <Typography variant="caption" color="text.secondary">Length: </Typography>
+          <Typography variant="caption" sx={{
+            color: 'text.secondary'
+          }}>Length: </Typography>
           <Typography variant="body2" component="span">{lineLength.formatted}</Typography>
         </Box>
       )}
       {polygonArea && (
         <Box>
-          <Typography variant="caption" color="text.secondary">Area: </Typography>
+          <Typography variant="caption" sx={{
+            color: 'text.secondary'
+          }}>Area: </Typography>
           <Typography variant="body2" component="span">{polygonArea.formatted}</Typography>
         </Box>
       )}
       {polygonPerimeter && (
         <Box>
-          <Typography variant="caption" color="text.secondary">Perimeter: </Typography>
+          <Typography variant="caption" sx={{
+            color: 'text.secondary'
+          }}>Perimeter: </Typography>
           <Typography variant="body2" component="span">{polygonPerimeter.formatted}</Typography>
         </Box>
       )}
@@ -727,9 +733,14 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
 
   if (!data) {
     return (
-      <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic', p: 2 }}>
-        No data available
-      </Typography>
+      <Typography
+        variant="body2"
+        sx={{
+          color: 'text.secondary',
+          fontStyle: 'italic',
+          p: 2
+        }}>No data available
+              </Typography>
     );
   }
 
@@ -871,37 +882,49 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
               )}
               {sample.sampleID && (
                 <Box>
-                  <Typography variant="caption" color="text.secondary">Sample ID: </Typography>
+                  <Typography variant="caption" sx={{
+                    color: 'text.secondary'
+                  }}>Sample ID: </Typography>
                   <Typography variant="body2" component="span">{sample.sampleID}</Typography>
                 </Box>
               )}
               {sample.igsn && (
                 <Box>
-                  <Typography variant="caption" color="text.secondary">IGSN: </Typography>
+                  <Typography variant="caption" sx={{
+                    color: 'text.secondary'
+                  }}>IGSN: </Typography>
                   <Typography variant="body2" component="span">{sample.igsn}</Typography>
                 </Box>
               )}
               {sample.longitude != null && sample.longitude !== 0 && (
                 <Box>
-                  <Typography variant="caption" color="text.secondary">Longitude: </Typography>
+                  <Typography variant="caption" sx={{
+                    color: 'text.secondary'
+                  }}>Longitude: </Typography>
                   <Typography variant="body2" component="span">{sample.longitude}</Typography>
                 </Box>
               )}
               {sample.latitude != null && sample.latitude !== 0 && (
                 <Box>
-                  <Typography variant="caption" color="text.secondary">Latitude: </Typography>
+                  <Typography variant="caption" sx={{
+                    color: 'text.secondary'
+                  }}>Latitude: </Typography>
                   <Typography variant="body2" component="span">{sample.latitude}</Typography>
                 </Box>
               )}
               {sample.sampleDescription && (
                 <Box>
-                  <Typography variant="caption" color="text.secondary">Description: </Typography>
+                  <Typography variant="caption" sx={{
+                    color: 'text.secondary'
+                  }}>Description: </Typography>
                   <Typography variant="body2" component="span">{sample.sampleDescription}</Typography>
                 </Box>
               )}
               {sample.materialType && (
                 <Box>
-                  <Typography variant="caption" color="text.secondary">Material Type: </Typography>
+                  <Typography variant="caption" sx={{
+                    color: 'text.secondary'
+                  }}>Material Type: </Typography>
                   <Typography variant="body2" component="span">
                     {sample.materialType === 'other' && sample.otherMaterialType
                       ? sample.otherMaterialType
@@ -911,12 +934,19 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
               )}
               {sample.sampleType && (
                 <Box>
-                  <Typography variant="caption" color="text.secondary">Sample Type: </Typography>
+                  <Typography variant="caption" sx={{
+                    color: 'text.secondary'
+                  }}>Sample Type: </Typography>
                   <Typography variant="body2" component="span">{sample.sampleType}</Typography>
                 </Box>
               )}
               {!sample.sampleID && (
-                <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+                <Typography
+                  variant="body2"
+                  sx={{
+                    color: 'text.secondary',
+                    fontStyle: 'italic'
+                  }}>
                   No sample metadata set
                 </Typography>
               )}
@@ -957,13 +987,17 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
           <Stack spacing={0.5}>
             {data.name && (
               <Box>
-                <Typography variant="caption" color="text.secondary">Name: </Typography>
+                <Typography variant="caption" sx={{
+                  color: 'text.secondary'
+                }}>Name: </Typography>
                 <Typography variant="body2" component="span">{data.name}</Typography>
               </Box>
             )}
             {micrograph && micrograph.polish !== null && micrograph.polish !== undefined && (
               <Box>
-                <Typography variant="caption" color="text.secondary">Polished: </Typography>
+                <Typography variant="caption" sx={{
+                  color: 'text.secondary'
+                }}>Polished: </Typography>
                 <Typography variant="body2" component="span">
                   {micrograph.polish ? 'Yes' : 'No'}
                   {micrograph.polish && micrograph.polishDescription && ` (${micrograph.polishDescription})`}
@@ -972,7 +1006,9 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
             )}
             {micrograph?.instrument?.instrumentType && (
               <Box>
-                <Typography variant="caption" color="text.secondary">Instrument: </Typography>
+                <Typography variant="caption" sx={{
+                  color: 'text.secondary'
+                }}>Instrument: </Typography>
                 <Typography variant="body2" component="span">
                   {micrograph.instrument.instrumentType}
                   {micrograph.instrument.instrumentType === 'Other' &&
@@ -983,14 +1019,18 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
             )}
             {micrograph?.imageType && (
               <Box>
-                <Typography variant="caption" color="text.secondary">Image Type: </Typography>
+                <Typography variant="caption" sx={{
+                  color: 'text.secondary'
+                }}>Image Type: </Typography>
                 <Typography variant="body2" component="span">{micrograph.imageType}</Typography>
               </Box>
             )}
             {micrograph?.orientationInfo?.orientationMethod && (
               <>
                 <Box>
-                  <Typography variant="caption" color="text.secondary">Orientation: </Typography>
+                  <Typography variant="caption" sx={{
+                    color: 'text.secondary'
+                  }}>Orientation: </Typography>
                   <Typography variant="body2" component="span">
                     {micrograph.orientationInfo.orientationMethod === 'trendPlunge'
                       ? 'Trend & Plunge'
@@ -1003,7 +1043,9 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
                   <>
                     {micrograph.orientationInfo.topTrend != null && micrograph.orientationInfo.topPlunge != null && (
                       <Box sx={{ pl: 1 }}>
-                        <Typography variant="caption" color="text.secondary">Top: </Typography>
+                        <Typography variant="caption" sx={{
+                          color: 'text.secondary'
+                        }}>Top: </Typography>
                         <Typography variant="body2" component="span">
                           {micrograph.orientationInfo.topTrend}° / {micrograph.orientationInfo.topPlunge}°
                           {micrograph.orientationInfo.topReferenceCorner && ` (${micrograph.orientationInfo.topReferenceCorner})`}
@@ -1012,7 +1054,9 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
                     )}
                     {micrograph.orientationInfo.sideTrend != null && micrograph.orientationInfo.sidePlunge != null && (
                       <Box sx={{ pl: 1 }}>
-                        <Typography variant="caption" color="text.secondary">Side: </Typography>
+                        <Typography variant="caption" sx={{
+                          color: 'text.secondary'
+                        }}>Side: </Typography>
                         <Typography variant="body2" component="span">
                           {micrograph.orientationInfo.sideTrend}° / {micrograph.orientationInfo.sidePlunge}°
                           {micrograph.orientationInfo.sideReferenceCorner && ` (${micrograph.orientationInfo.sideReferenceCorner})`}
@@ -1025,13 +1069,17 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
                   <>
                     {micrograph.orientationInfo.fabricReference && (
                       <Box sx={{ pl: 1 }}>
-                        <Typography variant="caption" color="text.secondary">Reference: </Typography>
+                        <Typography variant="caption" sx={{
+                          color: 'text.secondary'
+                        }}>Reference: </Typography>
                         <Typography variant="body2" component="span">{micrograph.orientationInfo.fabricReference}</Typography>
                       </Box>
                     )}
                     {micrograph.orientationInfo.fabricStrike != null && micrograph.orientationInfo.fabricDip != null && (
                       <Box sx={{ pl: 1 }}>
-                        <Typography variant="caption" color="text.secondary">Strike/Dip: </Typography>
+                        <Typography variant="caption" sx={{
+                          color: 'text.secondary'
+                        }}>Strike/Dip: </Typography>
                         <Typography variant="body2" component="span">
                           {micrograph.orientationInfo.fabricStrike}° / {micrograph.orientationInfo.fabricDip}°
                         </Typography>
@@ -1039,7 +1087,9 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
                     )}
                     {micrograph.orientationInfo.fabricTrend != null && micrograph.orientationInfo.fabricPlunge != null && (
                       <Box sx={{ pl: 1 }}>
-                        <Typography variant="caption" color="text.secondary">Trend/Plunge: </Typography>
+                        <Typography variant="caption" sx={{
+                          color: 'text.secondary'
+                        }}>Trend/Plunge: </Typography>
                         <Typography variant="body2" component="span">
                           {micrograph.orientationInfo.fabricTrend}° / {micrograph.orientationInfo.fabricPlunge}°
                         </Typography>
@@ -1047,19 +1097,25 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
                     )}
                     {micrograph.orientationInfo.fabricRake != null && (
                       <Box sx={{ pl: 1 }}>
-                        <Typography variant="caption" color="text.secondary">Rake: </Typography>
+                        <Typography variant="caption" sx={{
+                          color: 'text.secondary'
+                        }}>Rake: </Typography>
                         <Typography variant="body2" component="span">{micrograph.orientationInfo.fabricRake}°</Typography>
                       </Box>
                     )}
                     {micrograph.orientationInfo.lookDirection && (
                       <Box sx={{ pl: 1 }}>
-                        <Typography variant="caption" color="text.secondary">Look Direction: </Typography>
+                        <Typography variant="caption" sx={{
+                          color: 'text.secondary'
+                        }}>Look Direction: </Typography>
                         <Typography variant="body2" component="span">{micrograph.orientationInfo.lookDirection}</Typography>
                       </Box>
                     )}
                     {micrograph.orientationInfo.topCorner && (
                       <Box sx={{ pl: 1 }}>
-                        <Typography variant="caption" color="text.secondary">Top Corner: </Typography>
+                        <Typography variant="caption" sx={{
+                          color: 'text.secondary'
+                        }}>Top Corner: </Typography>
                         <Typography variant="body2" component="span">{micrograph.orientationInfo.topCorner}</Typography>
                       </Box>
                     )}
@@ -1072,7 +1128,12 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
               <SpotMeasurements spot={spot} scale={spotParentMicrograph.scalePixelsPerCentimeter} />
             )}
             {!data.name && !micrograph?.instrument && !spot && (
-              <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+              <Typography
+                variant="body2"
+                sx={{
+                  color: 'text.secondary',
+                  fontStyle: 'italic'
+                }}>
                 No metadata set
               </Typography>
             )}
@@ -1184,7 +1245,13 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
             <Stack spacing={1}>
               {data.mineralogy?.minerals && data.mineralogy.minerals.length > 0 && (
                 <Box>
-                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                  <Typography
+                    variant="caption"
+                    sx={{
+                      color: 'text.secondary',
+                      display: 'block',
+                      mb: 0.5
+                    }}>
                     Minerals:
                   </Typography>
                   {data.mineralogy.minerals.map((mineral, index) => (
@@ -1197,7 +1264,13 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
               )}
               {data.lithologyInfo?.lithologies && data.lithologyInfo.lithologies.length > 0 && (
                 <Box>
-                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                  <Typography
+                    variant="caption"
+                    sx={{
+                      color: 'text.secondary',
+                      display: 'block',
+                      mb: 0.5
+                    }}>
                     Lithology:
                   </Typography>
                   {data.lithologyInfo.lithologies.map((lithology, index) => (
@@ -1257,7 +1330,13 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
               {/* Grain Size */}
               {data.grainInfo?.grainSizeInfo && data.grainInfo.grainSizeInfo.length > 0 && (
                 <Box>
-                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                  <Typography
+                    variant="caption"
+                    sx={{
+                      color: 'text.secondary',
+                      display: 'block',
+                      mb: 0.5
+                    }}>
                     Grain Size:
                   </Typography>
                   {toArray(data.grainInfo.grainSizeInfo).map((size: GrainSizeType, index: number) => {
@@ -1277,7 +1356,13 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
               {/* Grain Shape */}
               {data.grainInfo?.grainShapeInfo && data.grainInfo.grainShapeInfo.length > 0 && (
                 <Box>
-                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                  <Typography
+                    variant="caption"
+                    sx={{
+                      color: 'text.secondary',
+                      display: 'block',
+                      mb: 0.5
+                    }}>
                     Grain Shape:
                   </Typography>
                   {toArray(data.grainInfo.grainShapeInfo).map((shape: GrainShapeType, index: number) => (
@@ -1291,7 +1376,13 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
               {/* Grain Orientation */}
               {data.grainInfo?.grainOrientationInfo && data.grainInfo.grainOrientationInfo.length > 0 && (
                 <Box>
-                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                  <Typography
+                    variant="caption"
+                    sx={{
+                      color: 'text.secondary',
+                      display: 'block',
+                      mb: 0.5
+                    }}>
                     Grain Orientation:
                   </Typography>
                   {toArray(data.grainInfo.grainOrientationInfo).map((orient: GrainOrientationType, index: number) => (
@@ -1777,7 +1868,12 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
           {data.notes ? (
             <Typography variant="body2">{data.notes}</Typography>
           ) : (
-            <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+            <Typography
+              variant="body2"
+              sx={{
+                color: 'text.secondary',
+                fontStyle: 'italic'
+              }}>
               No notes
             </Typography>
           )}
@@ -1851,7 +1947,12 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
               ))}
             </Stack>
           ) : (
-            <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+            <Typography
+              variant="body2"
+              sx={{
+                color: 'text.secondary',
+                fontStyle: 'italic'
+              }}>
               No associated files
             </Typography>
           )}
@@ -1891,7 +1992,9 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
             <Stack spacing={0.5}>
               {data.links?.map((link, index) => (
                 <Box key={index}>
-                  <Typography variant="body2" fontWeight="medium">• {link.label}</Typography>
+                  <Typography variant="body2" sx={{
+                    fontWeight: 'medium'
+                  }}>• {link.label}</Typography>
                   <Typography variant="caption" color="primary" sx={{ wordBreak: 'break-all', ml: 2 }}>
                     {link.url}
                   </Typography>

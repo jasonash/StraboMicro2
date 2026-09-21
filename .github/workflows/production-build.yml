@@ -109,7 +109,12 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: bash scripts/ci/notarize-dmgs.sh release
 
+      # The hand-off to the release job is a network call that can fail after a
+      # complete upload (dev build #123: 403 on FinalizeArtifact). Try once more
+      # before failing a build that took 15 minutes to sign and notarize.
       - name: Upload macOS ARM64 artifacts
+        id: upload_macos_arm64_artifacts
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: StraboMicro2-macOS-arm64-${{ inputs.version }}
@@ -120,6 +125,20 @@ jobs:
             release/*.blockmap
           if-no-files-found: error
           retention-days: 90
+
+      - name: Upload macOS ARM64 artifacts (retry)
+        if: steps.upload_macos_arm64_artifacts.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: StraboMicro2-macOS-arm64-${{ inputs.version }}
+          path: |
+            release/*.dmg
+            release/*.zip
+            release/*.yml
+            release/*.blockmap
+          if-no-files-found: error
+          retention-days: 90
+          overwrite: true
 
   # macOS x64 (Intel) - runs on macos-15-intel runner (free tier)
   build-macos-x64:
@@ -195,6 +214,8 @@ jobs:
         run: bash scripts/ci/notarize-dmgs.sh release
 
       - name: Upload macOS x64 artifacts
+        id: upload_macos_x64_artifacts
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: StraboMicro2-macOS-x64-${{ inputs.version }}
@@ -205,6 +226,20 @@ jobs:
             release/*.blockmap
           if-no-files-found: error
           retention-days: 90
+
+      - name: Upload macOS x64 artifacts (retry)
+        if: steps.upload_macos_x64_artifacts.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: StraboMicro2-macOS-x64-${{ inputs.version }}
+          path: |
+            release/*.dmg
+            release/*.zip
+            release/*.yml
+            release/*.blockmap
+          if-no-files-found: error
+          retention-days: 90
+          overwrite: true
 
   build-windows:
     needs: validate
@@ -258,6 +293,8 @@ jobs:
         run: npx electron-builder --win --publish never
 
       - name: Upload Windows artifacts
+        id: upload_windows_artifacts
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: StraboMicro2-Windows-${{ inputs.version }}
@@ -267,6 +304,19 @@ jobs:
             release/*.blockmap
           if-no-files-found: error
           retention-days: 90
+
+      - name: Upload Windows artifacts (retry)
+        if: steps.upload_windows_artifacts.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: StraboMicro2-Windows-${{ inputs.version }}
+          path: |
+            release/*.exe
+            release/*.yml
+            release/*.blockmap
+          if-no-files-found: error
+          retention-days: 90
+          overwrite: true
 
   build-linux:
     needs: validate
@@ -308,6 +358,8 @@ jobs:
         run: npx electron-builder --linux --publish never
 
       - name: Upload Linux artifacts
+        id: upload_linux_artifacts
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: StraboMicro2-Linux-${{ inputs.version }}
@@ -317,6 +369,19 @@ jobs:
             release/*.yml
           if-no-files-found: error
           retention-days: 90
+
+      - name: Upload Linux artifacts (retry)
+        if: steps.upload_linux_artifacts.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: StraboMicro2-Linux-${{ inputs.version }}
+          path: |
+            release/*.AppImage
+            release/*.deb
+            release/*.yml
+          if-no-files-found: error
+          retention-days: 90
+          overwrite: true
 
   # Create GitHub Release with all artifacts
   release:

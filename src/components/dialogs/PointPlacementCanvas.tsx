@@ -574,7 +574,9 @@ export const PointPlacementCanvas = ({
     <Box>
       {/* Toolbar */}
       <Paper elevation={2} sx={{ p: 1, mb: 2 }}>
-        <Stack direction="row" spacing={1} alignItems="center">
+        <Stack direction="row" spacing={1} sx={{
+          alignItems: 'center'
+        }}>
           <Tooltip title="Pan Tool">
             <IconButton
               size="small"
@@ -637,7 +639,9 @@ export const PointPlacementCanvas = ({
           <Typography variant="subtitle2" gutterBottom>
             Trace Scale Bar on Child Image
           </Typography>
-          <Grid container spacing={2} alignItems="flex-end">
+          <Grid container spacing={2} sx={{
+            alignItems: 'flex-end'
+          }}>
             <Grid size={4}>
               <TextField
                 label="Pixels"
@@ -646,7 +650,9 @@ export const PointPlacementCanvas = ({
                 onChange={(e) => setScaleBarPixelInput(e.target.value)}
                 fullWidth
                 size="small"
-                InputProps={{ readOnly: true }}
+                slotProps={{
+                  input: { readOnly: true }
+                }}
               />
             </Grid>
             <Grid size={4}>
@@ -676,7 +682,13 @@ export const PointPlacementCanvas = ({
               </FormControl>
             </Grid>
           </Grid>
-          <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+          <Typography
+            variant="caption"
+            sx={{
+              color: 'text.secondary',
+              mt: 1,
+              display: 'block'
+            }}>
             Use the line tool to trace a scale bar on the child image overlay. Enter the physical length.
           </Typography>
         </Paper>
@@ -688,7 +700,9 @@ export const PointPlacementCanvas = ({
           <Typography variant="subtitle2" gutterBottom>
             Pixel Conversion Factor
           </Typography>
-          <Grid container spacing={2} alignItems="flex-end">
+          <Grid container spacing={2} sx={{
+            alignItems: 'flex-end'
+          }}>
             <Grid size={4}>
               <TextField
                 label="Number of Pixels"
@@ -726,7 +740,13 @@ export const PointPlacementCanvas = ({
               </FormControl>
             </Grid>
           </Grid>
-          <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+          <Typography
+            variant="caption"
+            sx={{
+              color: 'text.secondary',
+              mt: 1,
+              display: 'block'
+            }}>
             Enter how many pixels correspond to a known physical length. Use the point tool to mark the location.
           </Typography>
         </Paper>
@@ -738,7 +758,9 @@ export const PointPlacementCanvas = ({
           <Typography variant="subtitle2" gutterBottom>
             Image Physical Dimensions
           </Typography>
-          <Grid container spacing={2} alignItems="flex-end">
+          <Grid container spacing={2} sx={{
+            alignItems: 'flex-end'
+          }}>
             <Grid size={4}>
               <TextField
                 label="Width"
@@ -776,7 +798,13 @@ export const PointPlacementCanvas = ({
               </FormControl>
             </Grid>
           </Grid>
-          <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+          <Typography
+            variant="caption"
+            sx={{
+              color: 'text.secondary',
+              mt: 1,
+              display: 'block'
+            }}>
             Enter width or height (the other will auto-populate). Use the point tool to mark the location.
           </Typography>
         </Paper>
@@ -865,7 +893,15 @@ export const PointPlacementCanvas = ({
         </Stage>
       </Box>
 
-      <Typography variant="caption" color="text.secondary" sx={{ width: CANVAS_WIDTH, textAlign: 'center', mt: 1, display: 'block' }}>
+      <Typography
+        variant="caption"
+        sx={{
+          color: 'text.secondary',
+          width: CANVAS_WIDTH,
+          textAlign: 'center',
+          mt: 1,
+          display: 'block'
+        }}>
         {pointPos
           ? `Point Location: (${pointPos.x.toFixed(1)}, ${pointPos.y.toFixed(1)}) | Zoom: ${(scale * 100).toFixed(0)}%`
           : `No point placed yet | Zoom: ${(scale * 100).toFixed(0)}%`

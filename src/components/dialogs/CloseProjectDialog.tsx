@@ -25,6 +25,7 @@ import {
 } from '@mui/material';
 import WarningIcon from '@mui/icons-material/Warning';
 import DeleteForeverIcon from '@mui/icons-material/DeleteForever';
+import { closeUnlessEscapeBlocked } from '@/utils/dialogClose';
 
 interface CloseProjectDialogProps {
   open: boolean;
@@ -75,10 +76,9 @@ export function CloseProjectDialog({
   return (
     <Dialog
       open={open}
-      onClose={handleClose}
+      onClose={closeUnlessEscapeBlocked(handleClose, isDeleting)}
       maxWidth="sm"
       fullWidth
-      disableEscapeKeyDown={isDeleting}
     >
       <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
         <DeleteForeverIcon color="error" />

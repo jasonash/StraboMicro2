@@ -325,7 +325,12 @@ export function GrainInfoDialog({
                 bgcolor: 'background.paper',
               }}
             >
-              <Typography variant="body2" color="text.primary" sx={{ fontStyle: 'italic' }}>
+              <Typography
+                variant="body2"
+                sx={{
+                  color: 'text.primary',
+                  fontStyle: 'italic'
+                }}>
                 No mineralogy data available. Please add minerals in the Mineralogy/Lithology
                 dialog first.
               </Typography>
@@ -391,7 +396,12 @@ export function GrainInfoDialog({
                 bgcolor: 'background.paper',
               }}
             >
-              <Typography variant="body2" color="text.primary" sx={{ fontStyle: 'italic' }}>
+              <Typography
+                variant="body2"
+                sx={{
+                  color: 'text.primary',
+                  fontStyle: 'italic'
+                }}>
                 No mineralogy data available. Please add minerals in the Mineralogy/Lithology
                 dialog first.
               </Typography>
@@ -454,7 +464,12 @@ export function GrainInfoDialog({
                 bgcolor: 'background.paper',
               }}
             >
-              <Typography variant="body2" color="text.primary" sx={{ fontStyle: 'italic' }}>
+              <Typography
+                variant="body2"
+                sx={{
+                  color: 'text.primary',
+                  fontStyle: 'italic'
+                }}>
                 No mineralogy data available. Please add minerals in the Mineralogy/Lithology
                 dialog first.
               </Typography>

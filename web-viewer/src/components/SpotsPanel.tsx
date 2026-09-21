@@ -24,7 +24,15 @@ export function SpotsPanel({ project, onSpotClick }: SpotsPanelProps) {
 
   return (
     <Box sx={{ py: 0.5 }}>
-      <Typography variant="caption" color="text.secondary" sx={{ px: 1.5, pb: 0.5, display: 'block', fontWeight: 600 }}>
+      <Typography
+        variant="caption"
+        sx={{
+          color: 'text.secondary',
+          px: 1.5,
+          pb: 0.5,
+          display: 'block',
+          fontWeight: 600
+        }}>
         All Spots
       </Typography>
       {(project.datasets || []).map(dataset =>
@@ -161,7 +169,14 @@ function MicrographSection({ micrograph, childMap, isReference, expanded, onTogg
               </Box>
             ))
           ) : (
-            <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic', py: 0.25, px: 1 }}>
+            <Typography
+              variant="body2"
+              sx={{
+                color: 'text.secondary',
+                fontStyle: 'italic',
+                py: 0.25,
+                px: 1
+              }}>
               No spots.
             </Typography>
           )}

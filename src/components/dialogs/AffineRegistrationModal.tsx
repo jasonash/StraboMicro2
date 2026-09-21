@@ -11,7 +11,7 @@
  * - Preview pane at bottom showing live composite
  */
 
-import React, { useEffect, useLayoutEffect, useState, useRef, useCallback, useMemo } from 'react';
+import React, { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import {
   Dialog,
   Box,
@@ -33,6 +33,7 @@ import { Stage, Layer, Image as KonvaImage, Circle, Line, Group, Text } from 're
 import Konva from 'konva';
 import { useAppStore } from '@/store';
 import { getEffectiveTheme } from '@/hooks/useTheme';
+import { useElementSize } from '@/hooks/useElementSize';
 import {
   computeAffineMatrix,
   arePointsCollinear,
@@ -104,17 +105,15 @@ export function AffineRegistrationModal({
   const [toolMode, setToolMode] = useState<ToolMode>('point');
 
   // Container refs
-  const parentContainerRef = useRef<HTMLDivElement>(null);
-  const overlayContainerRef = useRef<HTMLDivElement>(null);
-  const previewContainerRef = useRef<HTMLDivElement>(null);
   const parentStageRef = useRef<Konva.Stage>(null);
   const overlayStageRef = useRef<Konva.Stage>(null);
   const previewStageRef = useRef<Konva.Stage>(null);
 
   // Panel sizes - each panel needs its own size
-  const [parentPanelSize, setParentPanelSize] = useState({ width: 400, height: 300 });
-  const [overlayPanelSize, setOverlayPanelSize] = useState({ width: 400, height: 300 });
-  const [previewSize, setPreviewSize] = useState({ width: 800, height: 300 });
+  // Panel sizes follow their containers (see useElementSize for why this is a callback ref)
+  const [parentContainerRef, parentPanelSize, parentPanelMeasured] = useElementSize<HTMLDivElement>({ width: 400, height: 300 });
+  const [overlayContainerRef, overlayPanelSize, overlayPanelMeasured] = useElementSize<HTMLDivElement>({ width: 400, height: 300 });
+  const [previewContainerRef, previewSize, previewMeasured] = useElementSize<HTMLDivElement>({ width: 800, height: 300 });
 
   // Image data
   const [parentImageData, setParentImageData] = useState<{
@@ -268,84 +267,6 @@ export function AffineRegistrationModal({
     }
   }, [open, existingControlPoints]);
 
-  // Handle container resize with ResizeObserver
-  useLayoutEffect(() => {
-    if (!open) return;
-
-    let resizeObserver: ResizeObserver | null = null;
-    let frameId: number | null = null;
-
-    // Measure containers using offsetWidth/offsetHeight
-    const measureContainers = () => {
-      if (parentContainerRef.current) {
-        const w = parentContainerRef.current.offsetWidth;
-        const h = parentContainerRef.current.offsetHeight;
-        if (w > 50 && h > 50) {
-          setParentPanelSize((prev) => {
-            if (prev.width !== w || prev.height !== h) {
-              return { width: w, height: h };
-            }
-            return prev;
-          });
-        }
-      }
-      if (overlayContainerRef.current) {
-        const w = overlayContainerRef.current.offsetWidth;
-        const h = overlayContainerRef.current.offsetHeight;
-        if (w > 50 && h > 50) {
-          setOverlayPanelSize((prev) => {
-            if (prev.width !== w || prev.height !== h) {
-              return { width: w, height: h };
-            }
-            return prev;
-          });
-        }
-      }
-      if (previewContainerRef.current) {
-        const w = previewContainerRef.current.offsetWidth;
-        const h = previewContainerRef.current.offsetHeight;
-        if (w > 50 && h > 50) {
-          setPreviewSize((prev) => {
-            if (prev.width !== w || prev.height !== h) {
-              return { width: w, height: h };
-            }
-            return prev;
-          });
-        }
-      }
-    };
-
-    // Measure after a frame to ensure layout is complete
-    frameId = requestAnimationFrame(() => {
-      measureContainers();
-
-      // Set up ResizeObserver for subsequent changes
-      resizeObserver = new ResizeObserver(() => {
-        measureContainers();
-      });
-
-      if (parentContainerRef.current) {
-        resizeObserver.observe(parentContainerRef.current);
-      }
-      if (overlayContainerRef.current) {
-        resizeObserver.observe(overlayContainerRef.current);
-      }
-      if (previewContainerRef.current) {
-        resizeObserver.observe(previewContainerRef.current);
-      }
-    });
-
-    // Also listen for window resize
-    const handleResize = () => measureContainers();
-    window.addEventListener('resize', handleResize);
-
-    return () => {
-      if (frameId) cancelAnimationFrame(frameId);
-      if (resizeObserver) resizeObserver.disconnect();
-      window.removeEventListener('resize', handleResize);
-    };
-  }, [open]);
-
   // Load parent image
   useEffect(() => {
     if (!open || !project || !parentMicrographId) return;
@@ -404,7 +325,7 @@ export function AffineRegistrationModal({
   // Center parent image when panel size and image are available
   useEffect(() => {
     if (!parentImageData || !parentImage || parentCentered) return;
-    if (parentPanelSize.width < 100 || parentPanelSize.height < 100) return; // Wait for valid size
+    if (!parentPanelMeasured || parentPanelSize.width < 100 || parentPanelSize.height < 100) return; // Wait for the real panel size
 
     const scale = Math.min(
       parentPanelSize.width / parentImageData.width,
@@ -419,7 +340,7 @@ export function AffineRegistrationModal({
       },
     });
     setParentCentered(true);
-  }, [parentImageData, parentImage, parentPanelSize, parentCentered]);
+  }, [parentImageData, parentImage, parentPanelSize, parentPanelMeasured, parentCentered]);
 
   // Load overlay image
   useEffect(() => {
@@ -467,7 +388,7 @@ export function AffineRegistrationModal({
   // Center overlay image when panel size and image are available
   useEffect(() => {
     if (!overlayImageData || !overlayImage || overlayCentered) return;
-    if (overlayPanelSize.width < 100 || overlayPanelSize.height < 100) return; // Wait for valid size
+    if (!overlayPanelMeasured || overlayPanelSize.width < 100 || overlayPanelSize.height < 100) return; // Wait for the real panel size
 
     const scale = Math.min(
       overlayPanelSize.width / overlayImageData.width,
@@ -482,7 +403,7 @@ export function AffineRegistrationModal({
       },
     });
     setOverlayCentered(true);
-  }, [overlayImageData, overlayImage, overlayPanelSize, overlayCentered]);
+  }, [overlayImageData, overlayImage, overlayPanelSize, overlayPanelMeasured, overlayCentered]);
 
   // Generate preview composite image (offscreen)
   useEffect(() => {
@@ -532,7 +453,7 @@ export function AffineRegistrationModal({
   // Center preview when size and image are available
   useEffect(() => {
     if (!previewCompositeImage || !parentImageData || previewCentered) return;
-    if (previewSize.width < 100 || previewSize.height < 100) return;
+    if (!previewMeasured || previewSize.width < 100 || previewSize.height < 100) return;
 
     const scale = Math.min(
       previewSize.width / parentImageData.width,
@@ -547,7 +468,7 @@ export function AffineRegistrationModal({
       },
     });
     setPreviewCentered(true);
-  }, [previewCompositeImage, parentImageData, previewSize, previewCentered]);
+  }, [previewCompositeImage, parentImageData, previewSize, previewMeasured, previewCentered]);
 
   // Validate points when markers change
   useEffect(() => {
@@ -1004,8 +925,8 @@ export function AffineRegistrationModal({
   // Render an image panel
   const renderPanel = (
     panel: 'parent' | 'overlay',
-    containerRef: React.RefObject<HTMLDivElement>,
-    stageRef: React.RefObject<Konva.Stage>,
+    containerRef: (element: HTMLDivElement | null) => void,
+    stageRef: React.RefObject<Konva.Stage | null>,
     panelState: ImagePanelState,
     panelSizeState: { width: number; height: number },
     imageData: { width: number; height: number } | null,
@@ -1040,7 +961,9 @@ export function AffineRegistrationModal({
             borderColor: 'divider',
           }}
         >
-          <Typography variant="caption" fontWeight="bold">
+          <Typography variant="caption" sx={{
+            fontWeight: 'bold'
+          }}>
             {label}
             {isActive && ' ← Click here'}
           </Typography>
@@ -1103,8 +1026,10 @@ export function AffineRegistrationModal({
       open={open}
       onClose={onClose}
       fullScreen
-      PaperProps={{
-        sx: { bgcolor: 'background.default' },
+      slotProps={{
+        paper: {
+          sx: { bgcolor: 'background.default' },
+        }
       }}
     >
       {/* Toolbar */}
@@ -1151,7 +1076,9 @@ export function AffineRegistrationModal({
             </IconButton>
           </Tooltip>
 
-          <Typography variant="subtitle2" color="text.secondary">
+          <Typography variant="subtitle2" sx={{
+            color: 'text.secondary'
+          }}>
             3-Point Registration
           </Typography>
         </Box>
@@ -1248,11 +1175,18 @@ export function AffineRegistrationModal({
                   gap: 1,
                 }}
               >
-                <Typography variant="caption" fontWeight="bold">
+                <Typography variant="caption" sx={{
+                  fontWeight: 'bold'
+                }}>
                   PREVIEW
                   {canApply ? ' (3+ points)' : ` (need ${3 - completePairs} more point${3 - completePairs !== 1 ? 's' : ''})`}
                 </Typography>
-                <Typography variant="caption" color="text.secondary" sx={{ ml: 'auto' }}>
+                <Typography
+                  variant="caption"
+                  sx={{
+                    color: 'text.secondary',
+                    ml: 'auto'
+                  }}>
                   Scroll to zoom, drag to pan
                 </Typography>
               </Box>
@@ -1342,7 +1276,9 @@ export function AffineRegistrationModal({
                       justifyContent: 'center',
                     }}
                   >
-                    <Typography color="text.secondary">
+                    <Typography sx={{
+                      color: 'text.secondary'
+                    }}>
                       {isLoading ? 'Loading images...' : 'Add control points to see preview'}
                     </Typography>
                   </Box>

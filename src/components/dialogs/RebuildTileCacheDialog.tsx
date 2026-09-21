@@ -22,6 +22,7 @@ import {
 import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import ErrorIcon from '@mui/icons-material/Error';
+import { closeUnlessEscapeBlocked } from '@/utils/dialogClose';
 
 interface RebuildProgress {
   current: number;
@@ -115,25 +116,36 @@ export function RebuildTileCacheDialog({
   return (
     <Dialog
       open={open}
-      onClose={step === 'rebuilding' ? undefined : handleClose}
+      onClose={closeUnlessEscapeBlocked(step === 'rebuilding' ? undefined : handleClose, step === 'rebuilding')}
       maxWidth="sm"
       fullWidth
-      disableEscapeKeyDown={step === 'rebuilding'}
     >
       <DialogTitle>Rebuild Tile Cache</DialogTitle>
       <DialogContent>
         <Box sx={{ py: 2 }}>
           {step === 'warn' && (
             <Alert severity="warning" icon={<WarningAmberIcon fontSize="inherit" />}>
-              <Typography variant="body1" fontWeight={500} gutterBottom>
+              <Typography variant="body1" gutterBottom sx={{
+                fontWeight: 500
+              }}>
                 This will rebuild the tile cache for every micrograph in this project.
               </Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+              <Typography
+                variant="body2"
+                sx={{
+                  color: 'text.secondary',
+                  mt: 1
+                }}>
                 Use this if you're seeing visible seams between tiles on existing
                 micrographs. New caches use a halo-padded format that eliminates
                 subpixel-rendering gaps.
               </Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+              <Typography
+                variant="body2"
+                sx={{
+                  color: 'text.secondary',
+                  mt: 1
+                }}>
                 The operation may take several minutes for large projects. Tile
                 files are regenerated from the original images — no annotations or
                 metadata are affected. You can keep using the app afterwards as
@@ -145,15 +157,21 @@ export function RebuildTileCacheDialog({
           {step === 'rebuilding' && (
             <>
               <Box sx={{ mb: 2 }}>
-                <Typography variant="body2" color="text.secondary" gutterBottom>
+                <Typography variant="body2" gutterBottom sx={{
+                  color: 'text.secondary'
+                }}>
                   Rebuilding micrograph {progress?.current ?? '…'} of {progress?.total ?? '…'}
                   {progress?.phase === 'affine' ? ' (affine overlay)' : ''}
                 </Typography>
-                <Typography variant="body1" fontWeight={500} noWrap>
+                <Typography variant="body1" noWrap sx={{
+                  fontWeight: 500
+                }}>
                   {progress?.micrographName ?? 'Preparing…'}
                 </Typography>
               </Box>
-              <Typography variant="caption" color="text.secondary">Overall</Typography>
+              <Typography variant="caption" sx={{
+                color: 'text.secondary'
+              }}>Overall</Typography>
               <LinearProgress
                 variant="determinate"
                 value={overallPercent}
@@ -161,7 +179,9 @@ export function RebuildTileCacheDialog({
               />
               {progress && progress.totalTiles > 0 && (
                 <>
-                  <Typography variant="caption" color="text.secondary">
+                  <Typography variant="caption" sx={{
+                    color: 'text.secondary'
+                  }}>
                     Current micrograph — {progress.tilesGenerated} of {progress.totalTiles} tiles
                   </Typography>
                   <LinearProgress
@@ -176,10 +196,17 @@ export function RebuildTileCacheDialog({
 
           {step === 'done' && result?.success && (
             <Alert severity="success" icon={<CheckCircleIcon fontSize="inherit" />}>
-              <Typography variant="body1" fontWeight={500}>
+              <Typography variant="body1" sx={{
+                fontWeight: 500
+              }}>
                 Tile cache rebuilt
               </Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+              <Typography
+                variant="body2"
+                sx={{
+                  color: 'text.secondary',
+                  mt: 1
+                }}>
                 Rebuilt {result.succeeded ?? 0} of {result.total ?? 0} micrographs
                 {result.skipped ? ` (${result.skipped} skipped — no scale set)` : ''}.
               </Typography>
@@ -188,14 +215,21 @@ export function RebuildTileCacheDialog({
 
           {step === 'done' && result && !result.success && (
             <Alert severity="error" icon={<ErrorIcon fontSize="inherit" />}>
-              <Typography variant="body1" fontWeight={500}>
+              <Typography variant="body1" sx={{
+                fontWeight: 500
+              }}>
                 Rebuild finished with errors
               </Typography>
               {result.error && (
                 <Typography variant="body2" sx={{ mt: 1 }}>{result.error}</Typography>
               )}
               {result.errors && result.errors.length > 0 && (
-                <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                <Typography
+                  variant="body2"
+                  sx={{
+                    color: 'text.secondary',
+                    mt: 1
+                  }}>
                   {result.errors.length} micrograph(s) failed.
                   {result.succeeded != null && result.total != null && (
                     <> Succeeded: {result.succeeded} of {result.total}.</>

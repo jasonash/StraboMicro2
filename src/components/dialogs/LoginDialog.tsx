@@ -144,7 +144,13 @@ export function LoginDialog({ isOpen, onClose, message }: LoginDialogProps) {
             </Link>
           </Box>
 
-          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 2 }}>
+          <Typography
+            variant="caption"
+            sx={{
+              color: 'text.secondary',
+              display: 'block',
+              mt: 2
+            }}>
             Sign in with your StraboSpot account to sync projects and access cloud features.
           </Typography>
         </Box>

@@ -59,7 +59,12 @@ export function PhaseSelector({
         borderRadius: 1,
         bgcolor: 'background.paper'
       }}>
-        <Typography variant="body2" color="text.primary" sx={{ fontStyle: 'italic' }}>
+        <Typography
+          variant="body2"
+          sx={{
+            color: 'text.primary',
+            fontStyle: 'italic'
+          }}>
           No mineralogy data available for this micrograph.
           Please add minerals in the Mineralogy/Lithology dialog first.
         </Typography>
@@ -71,7 +76,13 @@ export function PhaseSelector({
     <FormControl component="fieldset" fullWidth>
       <FormLabel component="legend">{label}</FormLabel>
       {helperText && (
-        <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, mb: 1 }}>
+        <Typography
+          variant="caption"
+          sx={{
+            color: 'text.secondary',
+            mt: 0.5,
+            mb: 1
+          }}>
           {helperText}
         </Typography>
       )}

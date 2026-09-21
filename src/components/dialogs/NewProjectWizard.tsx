@@ -934,7 +934,9 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
     return (
       <Stack spacing={3}>
         <Typography variant="h6">Orientation of Reference Micrograph</Typography>
-        <Typography variant="body2" color="text.secondary">
+        <Typography variant="body2" sx={{
+          color: 'text.secondary'
+        }}>
           Thin Section Oriented by:
         </Typography>
 
@@ -966,7 +968,12 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
 
         {formData.orientationMethod === 'trendPlunge' && (
           <Stack spacing={3} sx={{ pl: 4 }}>
-            <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 600 }}>
+            <Typography
+              variant="body2"
+              sx={{
+                color: 'text.secondary',
+                maxWidth: 600
+              }}>
               Provide TWO of THREE: Select the arrow on each edge that represents a lower hemisphere
               plunge, and enter the trend and plunge information and/or provide the strike and dip
               of the thin section.
@@ -983,8 +990,10 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
                   type="number"
                   value={formData.sideTrend}
                   onChange={(e) => updateField('sideTrend', e.target.value)}
-                  InputProps={{ endAdornment: '°' }}
                   size="small"
+                  slotProps={{
+                    input: { endAdornment: '°' }
+                  }}
                 />
 
                 <Typography variant="subtitle2" sx={{ fontWeight: 'bold', mt: 2 }}>
@@ -994,8 +1003,10 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
                   type="number"
                   value={formData.sidePlunge}
                   onChange={(e) => updateField('sidePlunge', e.target.value)}
-                  InputProps={{ endAdornment: '°' }}
                   size="small"
+                  slotProps={{
+                    input: { endAdornment: '°' }
+                  }}
                 />
               </Stack>
 
@@ -1013,7 +1024,9 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
                     justifyContent: 'center',
                   }}
                 >
-                  <Stack direction="row" spacing={2} alignItems="center">
+                  <Stack direction="row" spacing={2} sx={{
+                    alignItems: 'center'
+                  }}>
                     <Typography variant="subtitle2" sx={{ fontWeight: 'bold', minWidth: 60 }}>
                       Trend:
                     </Typography>
@@ -1021,9 +1034,11 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
                       type="number"
                       value={formData.topTrend}
                       onChange={(e) => updateField('topTrend', e.target.value)}
-                      InputProps={{ endAdornment: '°' }}
                       size="small"
                       sx={{ width: 120 }}
+                      slotProps={{
+                        input: { endAdornment: '°' }
+                      }}
                     />
                     <Typography
                       variant="subtitle2"
@@ -1035,9 +1050,11 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
                       type="number"
                       value={formData.topPlunge}
                       onChange={(e) => updateField('topPlunge', e.target.value)}
-                      InputProps={{ endAdornment: '°' }}
                       size="small"
                       sx={{ width: 120 }}
+                      slotProps={{
+                        input: { endAdornment: '°' }
+                      }}
                     />
                   </Stack>
                 </Box>
@@ -1133,7 +1150,9 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
                     }}
                   >
                     <CircularProgress />
-                    <Typography variant="body2" color="text.secondary">
+                    <Typography variant="body2" sx={{
+                      color: 'text.secondary'
+                    }}>
                       Loading preview...
                     </Typography>
                   </Box>
@@ -1164,7 +1183,9 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
                       justifyContent: 'center',
                     }}
                   >
-                    <Typography variant="body2" color="text.secondary">
+                    <Typography variant="body2" sx={{
+                      color: 'text.secondary'
+                    }}>
                       No image loaded
                     </Typography>
                   </Box>
@@ -1179,7 +1200,9 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
 
               {/* Strike and Dip fields */}
               <Box sx={{ ml: '-20px' }}>
-                <Stack direction="row" spacing={2} alignItems="center">
+                <Stack direction="row" spacing={2} sx={{
+                  alignItems: 'center'
+                }}>
                   <Typography variant="subtitle2" sx={{ fontWeight: 'bold', minWidth: 60 }}>
                     Strike:
                   </Typography>
@@ -1187,9 +1210,11 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
                     type="number"
                     value={formData.trendPlungeStrike}
                     onChange={(e) => updateField('trendPlungeStrike', e.target.value)}
-                    InputProps={{ endAdornment: '°' }}
                     size="small"
                     sx={{ width: 120 }}
+                    slotProps={{
+                      input: { endAdornment: '°' }
+                    }}
                   />
                   <Typography variant="subtitle2" sx={{ fontWeight: 'bold', minWidth: 40, ml: 2 }}>
                     Dip:
@@ -1198,9 +1223,11 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
                     type="number"
                     value={formData.trendPlungeDip}
                     onChange={(e) => updateField('trendPlungeDip', e.target.value)}
-                    InputProps={{ endAdornment: '°' }}
                     size="small"
                     sx={{ width: 120 }}
+                    slotProps={{
+                      input: { endAdornment: '°' }
+                    }}
                   />
                 </Stack>
               </Box>
@@ -1215,9 +1242,10 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
               <Typography
                 component="span"
                 variant="body2"
-                color="text.secondary"
-                sx={{ fontWeight: 'normal' }}
-              >
+                sx={{
+                  color: 'text.secondary',
+                  fontWeight: 'normal'
+                }}>
                 (X - Lineation, Y - Perpendicular to lineation within the foliation plane, Z - Pole
                 to foliation)
               </Typography>
@@ -1241,40 +1269,50 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
                 type="number"
                 value={formData.fabricStrike}
                 onChange={(e) => updateField('fabricStrike', e.target.value)}
-                InputProps={{ endAdornment: '°' }}
                 sx={{ flex: 1 }}
+                slotProps={{
+                  input: { endAdornment: '°' }
+                }}
               />
               <TextField
                 label="Dip"
                 type="number"
                 value={formData.fabricDip}
                 onChange={(e) => updateField('fabricDip', e.target.value)}
-                InputProps={{ endAdornment: '°' }}
                 sx={{ flex: 1 }}
+                slotProps={{
+                  input: { endAdornment: '°' }
+                }}
               />
             </Stack>
 
             <Typography variant="subtitle2" sx={{ fontWeight: 'bold', mt: 1 }}>
               Lineation Orientation: (Geographic Coordinates)
             </Typography>
-            <Stack direction="row" spacing={2} alignItems="flex-start">
+            <Stack direction="row" spacing={2} sx={{
+              alignItems: 'flex-start'
+            }}>
               <TextField
                 label="Trend"
                 type="number"
                 value={formData.fabricTrend}
                 onChange={(e) => updateField('fabricTrend', e.target.value)}
-                InputProps={{ endAdornment: '°' }}
                 helperText=" "
                 sx={{ flex: 1 }}
+                slotProps={{
+                  input: { endAdornment: '°' }
+                }}
               />
               <TextField
                 label="Plunge"
                 type="number"
                 value={formData.fabricPlunge}
                 onChange={(e) => updateField('fabricPlunge', e.target.value)}
-                InputProps={{ endAdornment: '°' }}
                 helperText=" "
                 sx={{ flex: 1 }}
+                slotProps={{
+                  input: { endAdornment: '°' }
+                }}
               />
               <Typography variant="body2" sx={{ px: 1, pt: 2 }}>
                 OR
@@ -1284,16 +1322,23 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
                 type="number"
                 value={formData.fabricRake}
                 onChange={(e) => updateField('fabricRake', e.target.value)}
-                InputProps={{ endAdornment: '°' }}
                 helperText="(RHR, 0-180)"
                 sx={{ flex: 1 }}
+                slotProps={{
+                  input: { endAdornment: '°' }
+                }}
               />
             </Stack>
 
             <Typography variant="subtitle2" sx={{ fontWeight: 'bold', mt: 1 }}>
               Look Direction:
             </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+            <Typography
+              variant="body2"
+              sx={{
+                color: 'text.secondary',
+                fontStyle: 'italic'
+              }}>
               When looking at the Reference micrograph, are you looking toward the lower hemisphere
               or upper hemisphere in geographic coordinates?
             </Typography>
@@ -1324,7 +1369,9 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
     if (formData.scaleMethod === 'Trace Scale Bar') {
       return (
         <Stack spacing={2}>
-          <Typography variant="body2" color="text.secondary">
+          <Typography variant="body2" sx={{
+            color: 'text.secondary'
+          }}>
             Draw a line over the scale bar in the micrograph, then enter the physical length that line represents.
           </Typography>
 
@@ -1377,9 +1424,11 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
               required
               label="Line Length (pixels)"
               value={formData.scaleBarLineLengthPixels}
-              InputProps={{ readOnly: true }}
               size="small"
               sx={{ width: 180 }}
+              slotProps={{
+                input: { readOnly: true }
+              }}
             />
 
             <TextField
@@ -1449,7 +1498,9 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
     } else if (formData.scaleMethod === 'Pixel Conversion Factor') {
       return (
         <Stack spacing={2}>
-          <Typography variant="body2" color="text.secondary">
+          <Typography variant="body2" sx={{
+            color: 'text.secondary'
+          }}>
             Enter the number of pixels per unit directly.
           </Typography>
 
@@ -1479,7 +1530,9 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
           )}
 
           {/* Single-line input fields */}
-          <Stack direction="row" spacing={2} alignItems="flex-start">
+          <Stack direction="row" spacing={2} sx={{
+            alignItems: 'flex-start'
+          }}>
             <TextField
               required
               label="Pixels"
@@ -1517,7 +1570,9 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
             </TextField>
           </Stack>
 
-          <Typography variant="caption" color="text.secondary">
+          <Typography variant="caption" sx={{
+            color: 'text.secondary'
+          }}>
             Pixels per unit: {formData.pixels && formData.physicalLength
               ? (parseFloat(formData.pixels) / parseFloat(formData.physicalLength)).toFixed(4)
               : 'N/A'}
@@ -1554,7 +1609,9 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
 
       return (
         <Stack spacing={2}>
-          <Typography variant="body2" color="text.secondary">
+          <Typography variant="body2" sx={{
+            color: 'text.secondary'
+          }}>
             Enter either the physical width or height - the other will be auto-calculated.
           </Typography>
 
@@ -1583,12 +1640,16 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
             </Box>
           )}
 
-          <Typography variant="caption" color="text.secondary">
+          <Typography variant="caption" sx={{
+            color: 'text.secondary'
+          }}>
             Image: {formData.micrographWidth} x {formData.micrographHeight} pixels (aspect ratio: {aspectRatio.toFixed(3)})
           </Typography>
 
           {/* Single-line input fields */}
-          <Stack direction="row" spacing={2} alignItems="flex-start">
+          <Stack direction="row" spacing={2} sx={{
+            alignItems: 'flex-start'
+          }}>
             <TextField
               required
               label="Width"
@@ -1626,7 +1687,9 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
             </TextField>
           </Stack>
 
-          <Typography variant="caption" color="text.secondary">
+          <Typography variant="caption" sx={{
+            color: 'text.secondary'
+          }}>
             Pixels per unit: {formData.imageWidthPhysical
               ? (formData.micrographWidth / parseFloat(formData.imageWidthPhysical)).toFixed(4)
               : 'N/A'}
@@ -1659,12 +1722,8 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
                 fullWidth
                 type="date"
                 label="Start Date"
-                InputLabelProps={{ shrink: true }}
                 value={formData.startDate}
                 onChange={(e) => updateField('startDate', e.target.value)}
-                inputProps={{
-                  max: formData.endDate || '2100-12-31', // Date picker can't select after end date or year 2100
-                }}
                 helperText={
                   formData.endDate && formData.startDate && formData.startDate > formData.endDate
                     ? 'Start date must be before end date'
@@ -1677,18 +1736,19 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
                     formData.startDate > formData.endDate
                   )
                 }
-              />
+                slotProps={{
+                  htmlInput: {
+                    max: formData.endDate || '2100-12-31', // Date picker can't select after end date or year 2100
+                  },
+
+                  inputLabel: { shrink: true }
+                }} />
               <TextField
                 fullWidth
                 type="date"
                 label="End Date"
-                InputLabelProps={{ shrink: true }}
                 value={formData.endDate}
                 onChange={(e) => updateField('endDate', e.target.value)}
-                inputProps={{
-                  min: formData.startDate || undefined, // Date picker can't select before start date
-                  max: '2100-12-31', // Date picker can't select after year 2100
-                }}
                 helperText={
                   formData.startDate && formData.endDate && formData.endDate < formData.startDate
                     ? 'End date must be after start date'
@@ -1701,7 +1761,14 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
                     formData.endDate < formData.startDate
                   )
                 }
-              />
+                slotProps={{
+                  htmlInput: {
+                    min: formData.startDate || undefined, // Date picker can't select before start date
+                    max: '2100-12-31', // Date picker can't select after year 2100
+                  },
+
+                  inputLabel: { shrink: true }
+                }} />
             </Box>
             <TextField
               fullWidth
@@ -1867,7 +1934,9 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
       case 'load-micrograph':
         return (
           <Stack spacing={2}>
-            <Typography variant="body2" color="text.secondary">
+            <Typography variant="body2" sx={{
+              color: 'text.secondary'
+            }}>
               Select a reference micrograph image file to add to this sample. This will be the base
               image for your annotations and measurements.
             </Typography>
@@ -1877,8 +1946,10 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
                 required
                 label="Micrograph File Path"
                 value={formData.micrographFilePath}
-                InputProps={{ readOnly: true }}
                 helperText="Click 'Browse' to select an image file (TIFF, JPEG, PNG, BMP)"
+                slotProps={{
+                  input: { readOnly: true }
+                }}
               />
               <Button
                 variant="contained"
@@ -2263,7 +2334,12 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
               !['Electron Diffraction', 'Energy Dispersive X-ray Spectroscopy (EDS)'].includes(
                 formData.dataType
               ) && (
-                <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                <Typography
+                  variant="body2"
+                  sx={{
+                    color: 'text.secondary',
+                    mt: 1
+                  }}>
                   Image Type: {formData.dataType}
                 </Typography>
               )}
@@ -2273,7 +2349,12 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
               !['Energy Dispersive X-ray Spectroscopy (EDS)', 'Cathodoluminescence (CL)'].includes(
                 formData.dataType
               ) && (
-                <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                <Typography
+                  variant="body2"
+                  sx={{
+                    color: 'text.secondary',
+                    mt: 1
+                  }}>
                   Image Type: {formData.dataType}
                 </Typography>
               )}
@@ -2287,7 +2368,12 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
                 'Cathodoluminescence (CL)',
                 'Focused Ion Beam Scanning Electron Microscopy (FIB-SEM)',
               ].includes(formData.dataType) && (
-                <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                <Typography
+                  variant="body2"
+                  sx={{
+                    color: 'text.secondary',
+                    mt: 1
+                  }}>
                   Image Type: {formData.dataType}
                 </Typography>
               )}
@@ -2299,7 +2385,12 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
                 'Wavelength-dispersive X-ray spectroscopy (WDS)',
                 'Cathodoluminescence (CL)',
               ].includes(formData.dataType) && (
-                <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                <Typography
+                  variant="body2"
+                  sx={{
+                    color: 'text.secondary',
+                    mt: 1
+                  }}>
                   Image Type: {formData.dataType}
                 </Typography>
               )}
@@ -2314,8 +2405,10 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
                     required
                     label="Image Type(s)"
                     value={formData.imageType}
-                    InputProps={{ readOnly: true }}
                     helperText="Click 'Select Element(s) from Periodic Table' to choose elements"
+                    slotProps={{
+                      input: { readOnly: true }
+                    }}
                   />
                   <Button
                     variant="outlined"
@@ -2336,8 +2429,10 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
                     required
                     label="Image Type(s)"
                     value={formData.imageType}
-                    InputProps={{ readOnly: true }}
                     helperText="Click 'Select Element(s) from Periodic Table' to choose elements"
+                    slotProps={{
+                      input: { readOnly: true }
+                    }}
                   />
                   <Button
                     variant="outlined"
@@ -2359,8 +2454,10 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
                     required
                     label="Image Type(s)"
                     value={formData.imageType}
-                    InputProps={{ readOnly: true }}
                     helperText="Click 'Select Element(s) from Periodic Table' to choose elements"
+                    slotProps={{
+                      input: { readOnly: true }
+                    }}
                   />
                   <Button
                     variant="outlined"
@@ -2382,8 +2479,10 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
                     required
                     label="Image Type(s)"
                     value={formData.imageType}
-                    InputProps={{ readOnly: true }}
                     helperText="Click 'Select Element(s) from Periodic Table' to choose elements"
+                    slotProps={{
+                      input: { readOnly: true }
+                    }}
                   />
                   <Button
                     variant="outlined"
@@ -2407,7 +2506,9 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
 
         return (
           <Stack spacing={2}>
-            <Typography variant="body2" color="text.secondary">
+            <Typography variant="body2" sx={{
+              color: 'text.secondary'
+            }}>
               Instrument Type: {formData.instrumentType}
             </Typography>
 
@@ -2556,12 +2657,14 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
                     if (val === '' || /^\d*\.?\d*$/.test(val))
                       updateField('accelerationVoltage', val);
                   }}
-                  InputProps={{
-                    endAdornment: (
-                      <Typography variant="body2" sx={{ ml: 1 }}>
-                        kV
-                      </Typography>
-                    ),
+                  slotProps={{
+                    input: {
+                      endAdornment: (
+                        <Typography variant="body2" sx={{ ml: 1 }}>
+                          kV
+                        </Typography>
+                      ),
+                    }
                   }}
                 />
                 <TextField
@@ -2572,12 +2675,14 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
                     const val = e.target.value;
                     if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('beamCurrent', val);
                   }}
-                  InputProps={{
-                    endAdornment: (
-                      <Typography variant="body2" sx={{ ml: 1 }}>
-                        nA
-                      </Typography>
-                    ),
+                  slotProps={{
+                    input: {
+                      endAdornment: (
+                        <Typography variant="body2" sx={{ ml: 1 }}>
+                          nA
+                        </Typography>
+                      ),
+                    }
                   }}
                 />
                 <TextField
@@ -2588,12 +2693,14 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
                     const val = e.target.value;
                     if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('spotSize', val);
                   }}
-                  InputProps={{
-                    endAdornment: (
-                      <Typography variant="body2" sx={{ ml: 1 }}>
-                        um
-                      </Typography>
-                    ),
+                  slotProps={{
+                    input: {
+                      endAdornment: (
+                        <Typography variant="body2" sx={{ ml: 1 }}>
+                          um
+                        </Typography>
+                      ),
+                    }
                   }}
                 />
                 <TextField
@@ -2613,12 +2720,14 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
                     const val = e.target.value;
                     if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('cameraLength', val);
                   }}
-                  InputProps={{
-                    endAdornment: (
-                      <Typography variant="body2" sx={{ ml: 1 }}>
-                        mm
-                      </Typography>
-                    ),
+                  slotProps={{
+                    input: {
+                      endAdornment: (
+                        <Typography variant="body2" sx={{ ml: 1 }}>
+                          mm
+                        </Typography>
+                      ),
+                    }
                   }}
                 />
 
@@ -2635,12 +2744,14 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
                         const val = e.target.value;
                         if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('stepSize', val);
                       }}
-                      InputProps={{
-                        endAdornment: (
-                          <Typography variant="body2" sx={{ ml: 1 }}>
-                            um
-                          </Typography>
-                        ),
+                      slotProps={{
+                        input: {
+                          endAdornment: (
+                            <Typography variant="body2" sx={{ ml: 1 }}>
+                              um
+                            </Typography>
+                          ),
+                        }
                       }}
                     />
                     <TextField
@@ -2652,12 +2763,14 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
                         if (val === '' || /^\d*\.?\d*$/.test(val))
                           updateField('analysisDwellTime', val);
                       }}
-                      InputProps={{
-                        endAdornment: (
-                          <Typography variant="body2" sx={{ ml: 1 }}>
-                            ms
-                          </Typography>
-                        ),
+                      slotProps={{
+                        input: {
+                          endAdornment: (
+                            <Typography variant="body2" sx={{ ml: 1 }}>
+                              ms
+                            </Typography>
+                          ),
+                        }
                       }}
                     />
                     <TextField
@@ -2668,12 +2781,14 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
                         const val = e.target.value;
                         if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('deadTime', val);
                       }}
-                      InputProps={{
-                        endAdornment: (
-                          <Typography variant="body2" sx={{ ml: 1 }}>
-                            ms
-                          </Typography>
-                        ),
+                      slotProps={{
+                        input: {
+                          endAdornment: (
+                            <Typography variant="body2" sx={{ ml: 1 }}>
+                              ms
+                            </Typography>
+                          ),
+                        }
                       }}
                     />
                     <TextField
@@ -2772,12 +2887,14 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
                     if (val === '' || /^\d*\.?\d*$/.test(val))
                       updateField('accelerationVoltage', val);
                   }}
-                  InputProps={{
-                    endAdornment: (
-                      <Typography variant="body2" sx={{ ml: 1 }}>
-                        kV
-                      </Typography>
-                    ),
+                  slotProps={{
+                    input: {
+                      endAdornment: (
+                        <Typography variant="body2" sx={{ ml: 1 }}>
+                          kV
+                        </Typography>
+                      ),
+                    }
                   }}
                 />
                 <TextField
@@ -2788,12 +2905,14 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
                     const val = e.target.value;
                     if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('beamCurrent', val);
                   }}
-                  InputProps={{
-                    endAdornment: (
-                      <Typography variant="body2" sx={{ ml: 1 }}>
-                        nA
-                      </Typography>
-                    ),
+                  slotProps={{
+                    input: {
+                      endAdornment: (
+                        <Typography variant="body2" sx={{ ml: 1 }}>
+                          nA
+                        </Typography>
+                      ),
+                    }
                   }}
                 />
                 <TextField
@@ -2804,12 +2923,14 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
                     const val = e.target.value;
                     if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('spotSize', val);
                   }}
-                  InputProps={{
-                    endAdornment: (
-                      <Typography variant="body2" sx={{ ml: 1 }}>
-                        um
-                      </Typography>
-                    ),
+                  slotProps={{
+                    input: {
+                      endAdornment: (
+                        <Typography variant="body2" sx={{ ml: 1 }}>
+                          um
+                        </Typography>
+                      ),
+                    }
                   }}
                 />
                 <TextField
@@ -2829,12 +2950,14 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
                     const val = e.target.value;
                     if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('cameraLength', val);
                   }}
-                  InputProps={{
-                    endAdornment: (
-                      <Typography variant="body2" sx={{ ml: 1 }}>
-                        mm
-                      </Typography>
-                    ),
+                  slotProps={{
+                    input: {
+                      endAdornment: (
+                        <Typography variant="body2" sx={{ ml: 1 }}>
+                          mm
+                        </Typography>
+                      ),
+                    }
                   }}
                 />
                 <TextField
@@ -2851,12 +2974,14 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
                     const val = e.target.value;
                     if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('dwellTime', val);
                   }}
-                  InputProps={{
-                    endAdornment: (
-                      <Typography variant="body2" sx={{ ml: 1 }}>
-                        s
-                      </Typography>
-                    ),
+                  slotProps={{
+                    input: {
+                      endAdornment: (
+                        <Typography variant="body2" sx={{ ml: 1 }}>
+                          s
+                        </Typography>
+                      ),
+                    }
                   }}
                 />
 
@@ -2870,12 +2995,14 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
                       label="Energy Loss"
                       value={formData.energyLoss}
                       onChange={(e) => updateField('energyLoss', e.target.value)}
-                      InputProps={{
-                        endAdornment: (
-                          <Typography variant="body2" sx={{ ml: 1 }}>
-                            eV
-                          </Typography>
-                        ),
+                      slotProps={{
+                        input: {
+                          endAdornment: (
+                            <Typography variant="body2" sx={{ ml: 1 }}>
+                              eV
+                            </Typography>
+                          ),
+                        }
                       }}
                     />
                   </>
@@ -2894,12 +3021,14 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
                         const val = e.target.value;
                         if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('stepSize', val);
                       }}
-                      InputProps={{
-                        endAdornment: (
-                          <Typography variant="body2" sx={{ ml: 1 }}>
-                            um
-                          </Typography>
-                        ),
+                      slotProps={{
+                        input: {
+                          endAdornment: (
+                            <Typography variant="body2" sx={{ ml: 1 }}>
+                              um
+                            </Typography>
+                          ),
+                        }
                       }}
                     />
                     <TextField
@@ -2911,12 +3040,14 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
                         if (val === '' || /^\d*\.?\d*$/.test(val))
                           updateField('analysisDwellTime', val);
                       }}
-                      InputProps={{
-                        endAdornment: (
-                          <Typography variant="body2" sx={{ ml: 1 }}>
-                            ms
-                          </Typography>
-                        ),
+                      slotProps={{
+                        input: {
+                          endAdornment: (
+                            <Typography variant="body2" sx={{ ml: 1 }}>
+                              ms
+                            </Typography>
+                          ),
+                        }
                       }}
                     />
                     <TextField
@@ -2927,12 +3058,14 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
                         const val = e.target.value;
                         if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('deadTime', val);
                       }}
-                      InputProps={{
-                        endAdornment: (
-                          <Typography variant="body2" sx={{ ml: 1 }}>
-                            ms
-                          </Typography>
-                        ),
+                      slotProps={{
+                        input: {
+                          endAdornment: (
+                            <Typography variant="body2" sx={{ ml: 1 }}>
+                              ms
+                            </Typography>
+                          ),
+                        }
                       }}
                     />
                     <TextField
@@ -3031,12 +3164,14 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
                     if (val === '' || /^\d*\.?\d*$/.test(val))
                       updateField('accelerationVoltage', val);
                   }}
-                  InputProps={{
-                    endAdornment: (
-                      <Typography variant="body2" sx={{ ml: 1 }}>
-                        kV
-                      </Typography>
-                    ),
+                  slotProps={{
+                    input: {
+                      endAdornment: (
+                        <Typography variant="body2" sx={{ ml: 1 }}>
+                          kV
+                        </Typography>
+                      ),
+                    }
                   }}
                 />
                 <TextField
@@ -3047,12 +3182,14 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
                     const val = e.target.value;
                     if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('beamCurrent', val);
                   }}
-                  InputProps={{
-                    endAdornment: (
-                      <Typography variant="body2" sx={{ ml: 1 }}>
-                        nA
-                      </Typography>
-                    ),
+                  slotProps={{
+                    input: {
+                      endAdornment: (
+                        <Typography variant="body2" sx={{ ml: 1 }}>
+                          nA
+                        </Typography>
+                      ),
+                    }
                   }}
                 />
                 <TextField
@@ -3063,12 +3200,14 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
                     const val = e.target.value;
                     if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('spotSize', val);
                   }}
-                  InputProps={{
-                    endAdornment: (
-                      <Typography variant="body2" sx={{ ml: 1 }}>
-                        um
-                      </Typography>
-                    ),
+                  slotProps={{
+                    input: {
+                      endAdornment: (
+                        <Typography variant="body2" sx={{ ml: 1 }}>
+                          um
+                        </Typography>
+                      ),
+                    }
                   }}
                 />
                 <TextField
@@ -3079,12 +3218,14 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
                     const val = e.target.value;
                     if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('workingDistance', val);
                   }}
-                  InputProps={{
-                    endAdornment: (
-                      <Typography variant="body2" sx={{ ml: 1 }}>
-                        mm
-                      </Typography>
-                    ),
+                  slotProps={{
+                    input: {
+                      endAdornment: (
+                        <Typography variant="body2" sx={{ ml: 1 }}>
+                          mm
+                        </Typography>
+                      ),
+                    }
                   }}
                 />
 
@@ -3107,12 +3248,14 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
                         const val = e.target.value;
                         if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('stepSize', val);
                       }}
-                      InputProps={{
-                        endAdornment: (
-                          <Typography variant="body2" sx={{ ml: 1 }}>
-                            um
-                          </Typography>
-                        ),
+                      slotProps={{
+                        input: {
+                          endAdornment: (
+                            <Typography variant="body2" sx={{ ml: 1 }}>
+                              um
+                            </Typography>
+                          ),
+                        }
                       }}
                     />
                     <TextField
@@ -3124,12 +3267,14 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
                         if (val === '' || /^\d*\.?\d*$/.test(val))
                           updateField('analysisDwellTime', val);
                       }}
-                      InputProps={{
-                        endAdornment: (
-                          <Typography variant="body2" sx={{ ml: 1 }}>
-                            ms
-                          </Typography>
-                        ),
+                      slotProps={{
+                        input: {
+                          endAdornment: (
+                            <Typography variant="body2" sx={{ ml: 1 }}>
+                              ms
+                            </Typography>
+                          ),
+                        }
                       }}
                     />
                     <TextField
@@ -3140,12 +3285,14 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
                         const val = e.target.value;
                         if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('deadTime', val);
                       }}
-                      InputProps={{
-                        endAdornment: (
-                          <Typography variant="body2" sx={{ ml: 1 }}>
-                            ms
-                          </Typography>
-                        ),
+                      slotProps={{
+                        input: {
+                          endAdornment: (
+                            <Typography variant="body2" sx={{ ml: 1 }}>
+                              ms
+                            </Typography>
+                          ),
+                        }
                       }}
                     />
                     <TextField
@@ -3172,12 +3319,14 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
                         const val = e.target.value;
                         if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('stepSize', val);
                       }}
-                      InputProps={{
-                        endAdornment: (
-                          <Typography variant="body2" sx={{ ml: 1 }}>
-                            um
-                          </Typography>
-                        ),
+                      slotProps={{
+                        input: {
+                          endAdornment: (
+                            <Typography variant="body2" sx={{ ml: 1 }}>
+                              um
+                            </Typography>
+                          ),
+                        }
                       }}
                     />
                     <TextField
@@ -3206,12 +3355,14 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
                     if (val === '' || /^\d*\.?\d*$/.test(val))
                       updateField('accelerationVoltage', val);
                   }}
-                  InputProps={{
-                    endAdornment: (
-                      <Typography variant="body2" sx={{ ml: 1 }}>
-                        kV
-                      </Typography>
-                    ),
+                  slotProps={{
+                    input: {
+                      endAdornment: (
+                        <Typography variant="body2" sx={{ ml: 1 }}>
+                          kV
+                        </Typography>
+                      ),
+                    }
                   }}
                 />
                 <TextField
@@ -3222,12 +3373,14 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
                     const val = e.target.value;
                     if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('beamCurrent', val);
                   }}
-                  InputProps={{
-                    endAdornment: (
-                      <Typography variant="body2" sx={{ ml: 1 }}>
-                        nA
-                      </Typography>
-                    ),
+                  slotProps={{
+                    input: {
+                      endAdornment: (
+                        <Typography variant="body2" sx={{ ml: 1 }}>
+                          nA
+                        </Typography>
+                      ),
+                    }
                   }}
                 />
                 <TextField
@@ -3238,12 +3391,14 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
                     const val = e.target.value;
                     if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('spotSize', val);
                   }}
-                  InputProps={{
-                    endAdornment: (
-                      <Typography variant="body2" sx={{ ml: 1 }}>
-                        um
-                      </Typography>
-                    ),
+                  slotProps={{
+                    input: {
+                      endAdornment: (
+                        <Typography variant="body2" sx={{ ml: 1 }}>
+                          um
+                        </Typography>
+                      ),
+                    }
                   }}
                 />
 
@@ -3265,12 +3420,14 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
                         const val = e.target.value;
                         if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('stepSize', val);
                       }}
-                      InputProps={{
-                        endAdornment: (
-                          <Typography variant="body2" sx={{ ml: 1 }}>
-                            um
-                          </Typography>
-                        ),
+                      slotProps={{
+                        input: {
+                          endAdornment: (
+                            <Typography variant="body2" sx={{ ml: 1 }}>
+                              um
+                            </Typography>
+                          ),
+                        }
                       }}
                     />
                     <TextField
@@ -3295,12 +3452,14 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
                   label="Scan Time"
                   value={formData.scanTime}
                   onChange={(e) => updateField('scanTime', e.target.value)}
-                  InputProps={{
-                    endAdornment: (
-                      <Typography variant="body2" sx={{ ml: 1 }}>
-                        s
-                      </Typography>
-                    ),
+                  slotProps={{
+                    input: {
+                      endAdornment: (
+                        <Typography variant="body2" sx={{ ml: 1 }}>
+                          s
+                        </Typography>
+                      ),
+                    }
                   }}
                 />
                 <TextField
@@ -3308,12 +3467,14 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
                   label="Resolution"
                   value={formData.resolution}
                   onChange={(e) => updateField('resolution', e.target.value)}
-                  InputProps={{
-                    endAdornment: (
-                      <Typography variant="body2" sx={{ ml: 1 }}>
-                        cm⁻¹
-                      </Typography>
-                    ),
+                  slotProps={{
+                    input: {
+                      endAdornment: (
+                        <Typography variant="body2" sx={{ ml: 1 }}>
+                          cm⁻¹
+                        </Typography>
+                      ),
+                    }
                   }}
                 />
                 <TextField
@@ -3321,12 +3482,14 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
                   label="Spectral Resolution"
                   value={formData.spectralResolution}
                   onChange={(e) => updateField('spectralResolution', e.target.value)}
-                  InputProps={{
-                    endAdornment: (
-                      <Typography variant="body2" sx={{ ml: 1 }}>
-                        cm⁻¹
-                      </Typography>
-                    ),
+                  slotProps={{
+                    input: {
+                      endAdornment: (
+                        <Typography variant="body2" sx={{ ml: 1 }}>
+                          cm⁻¹
+                        </Typography>
+                      ),
+                    }
                   }}
                 />
                 <TextField
@@ -3335,12 +3498,14 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
                   value={formData.wavenumberRange}
                   onChange={(e) => updateField('wavenumberRange', e.target.value)}
                   placeholder="e.g., 4000-400"
-                  InputProps={{
-                    endAdornment: (
-                      <Typography variant="body2" sx={{ ml: 1 }}>
-                        cm⁻¹
-                      </Typography>
-                    ),
+                  slotProps={{
+                    input: {
+                      endAdornment: (
+                        <Typography variant="body2" sx={{ ml: 1 }}>
+                          cm⁻¹
+                        </Typography>
+                      ),
+                    }
                   }}
                 />
                 <TextField
@@ -3357,12 +3522,14 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
                   label="Spatial Resolution"
                   value={formData.spatialResolution}
                   onChange={(e) => updateField('spatialResolution', e.target.value)}
-                  InputProps={{
-                    endAdornment: (
-                      <Typography variant="body2" sx={{ ml: 1 }}>
-                        um
-                      </Typography>
-                    ),
+                  slotProps={{
+                    input: {
+                      endAdornment: (
+                        <Typography variant="body2" sx={{ ml: 1 }}>
+                          um
+                        </Typography>
+                      ),
+                    }
                   }}
                 />
                 <TextField
@@ -3387,12 +3554,14 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
                   label="Excitation Wavelength"
                   value={formData.excitationWavelength}
                   onChange={(e) => updateField('excitationWavelength', e.target.value)}
-                  InputProps={{
-                    endAdornment: (
-                      <Typography variant="body2" sx={{ ml: 1 }}>
-                        nm
-                      </Typography>
-                    ),
+                  slotProps={{
+                    input: {
+                      endAdornment: (
+                        <Typography variant="body2" sx={{ ml: 1 }}>
+                          nm
+                        </Typography>
+                      ),
+                    }
                   }}
                 />
                 <TextField
@@ -3400,12 +3569,14 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
                   label="Laser Power"
                   value={formData.laserPower}
                   onChange={(e) => updateField('laserPower', e.target.value)}
-                  InputProps={{
-                    endAdornment: (
-                      <Typography variant="body2" sx={{ ml: 1 }}>
-                        mW
-                      </Typography>
-                    ),
+                  slotProps={{
+                    input: {
+                      endAdornment: (
+                        <Typography variant="body2" sx={{ ml: 1 }}>
+                          mW
+                        </Typography>
+                      ),
+                    }
                   }}
                 />
                 <TextField
@@ -3420,12 +3591,14 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
                   label="Integration Time"
                   value={formData.integrationTime}
                   onChange={(e) => updateField('integrationTime', e.target.value)}
-                  InputProps={{
-                    endAdornment: (
-                      <Typography variant="body2" sx={{ ml: 1 }}>
-                        s
-                      </Typography>
-                    ),
+                  slotProps={{
+                    input: {
+                      endAdornment: (
+                        <Typography variant="body2" sx={{ ml: 1 }}>
+                          s
+                        </Typography>
+                      ),
+                    }
                   }}
                 />
                 <TextField
@@ -3440,12 +3613,14 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
                   label="Spatial Resolution"
                   value={formData.spatialResolution}
                   onChange={(e) => updateField('spatialResolution', e.target.value)}
-                  InputProps={{
-                    endAdornment: (
-                      <Typography variant="body2" sx={{ ml: 1 }}>
-                        um
-                      </Typography>
-                    ),
+                  slotProps={{
+                    input: {
+                      endAdornment: (
+                        <Typography variant="body2" sx={{ ml: 1 }}>
+                          um
+                        </Typography>
+                      ),
+                    }
                   }}
                 />
                 <TextField
@@ -3480,12 +3655,14 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
                   label="Cantilever Stiffness"
                   value={formData.cantileverStiffness}
                   onChange={(e) => updateField('cantileverStiffness', e.target.value)}
-                  InputProps={{
-                    endAdornment: (
-                      <Typography variant="body2" sx={{ ml: 1 }}>
-                        N/m
-                      </Typography>
-                    ),
+                  slotProps={{
+                    input: {
+                      endAdornment: (
+                        <Typography variant="body2" sx={{ ml: 1 }}>
+                          N/m
+                        </Typography>
+                      ),
+                    }
                   }}
                 />
                 <TextField
@@ -3493,12 +3670,14 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
                   label="Tip Diameter"
                   value={formData.tipDiameter}
                   onChange={(e) => updateField('tipDiameter', e.target.value)}
-                  InputProps={{
-                    endAdornment: (
-                      <Typography variant="body2" sx={{ ml: 1 }}>
-                        nm
-                      </Typography>
-                    ),
+                  slotProps={{
+                    input: {
+                      endAdornment: (
+                        <Typography variant="body2" sx={{ ml: 1 }}>
+                          nm
+                        </Typography>
+                      ),
+                    }
                   }}
                 />
                 <TextField
@@ -3506,12 +3685,14 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
                   label="Operating Frequency"
                   value={formData.operatingFrequency}
                   onChange={(e) => updateField('operatingFrequency', e.target.value)}
-                  InputProps={{
-                    endAdornment: (
-                      <Typography variant="body2" sx={{ ml: 1 }}>
-                        kHz
-                      </Typography>
-                    ),
+                  slotProps={{
+                    input: {
+                      endAdornment: (
+                        <Typography variant="body2" sx={{ ml: 1 }}>
+                          kHz
+                        </Typography>
+                      ),
+                    }
                   }}
                 />
                 <TextField
@@ -3526,12 +3707,14 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
                   label="Scan Area"
                   value={formData.scanArea}
                   onChange={(e) => updateField('scanArea', e.target.value)}
-                  InputProps={{
-                    endAdornment: (
-                      <Typography variant="body2" sx={{ ml: 1 }}>
-                        um²
-                      </Typography>
-                    ),
+                  slotProps={{
+                    input: {
+                      endAdornment: (
+                        <Typography variant="body2" sx={{ ml: 1 }}>
+                          um²
+                        </Typography>
+                      ),
+                    }
                   }}
                 />
                 <TextField
@@ -3539,12 +3722,14 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
                   label="Temperature of Room"
                   value={formData.temperatureOfRoom}
                   onChange={(e) => updateField('temperatureOfRoom', e.target.value)}
-                  InputProps={{
-                    endAdornment: (
-                      <Typography variant="body2" sx={{ ml: 1 }}>
-                        °C
-                      </Typography>
-                    ),
+                  slotProps={{
+                    input: {
+                      endAdornment: (
+                        <Typography variant="body2" sx={{ ml: 1 }}>
+                          °C
+                        </Typography>
+                      ),
+                    }
                   }}
                 />
                 <TextField
@@ -3552,12 +3737,14 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
                   label="Relative Humidity"
                   value={formData.relativeHumidity}
                   onChange={(e) => updateField('relativeHumidity', e.target.value)}
-                  InputProps={{
-                    endAdornment: (
-                      <Typography variant="body2" sx={{ ml: 1 }}>
-                        %
-                      </Typography>
-                    ),
+                  slotProps={{
+                    input: {
+                      endAdornment: (
+                        <Typography variant="body2" sx={{ ml: 1 }}>
+                          %
+                        </Typography>
+                      ),
+                    }
                   }}
                 />
               </>
@@ -3569,7 +3756,9 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
         // Micrograph Metadata - always shown
         return (
           <Stack spacing={2}>
-            <Typography variant="body2" color="text.secondary">
+            <Typography variant="body2" sx={{
+              color: 'text.secondary'
+            }}>
               Add descriptive information about this micrograph.
             </Typography>
             <TextField
@@ -3624,7 +3813,9 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
         // Scale Method Selection
         return (
           <Stack spacing={3}>
-            <Typography variant="body2" color="text.secondary">
+            <Typography variant="body2" sx={{
+              color: 'text.secondary'
+            }}>
               How do you wish to set the scale?
             </Typography>
             <RadioGroup
@@ -3636,7 +3827,14 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
                 control={<Radio />}
                 label="Trace Scale Bar"
               />
-              <Typography variant="caption" color="text.secondary" sx={{ ml: 4, mt: -1, mb: 2 }}>
+              <Typography
+                variant="caption"
+                sx={{
+                  color: 'text.secondary',
+                  ml: 4,
+                  mt: -1,
+                  mb: 2
+                }}>
                 Draw a line over the scale bar in the micrograph (most accurate)
               </Typography>
 
@@ -3645,7 +3843,14 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
                 control={<Radio />}
                 label="Pixel Conversion Factor"
               />
-              <Typography variant="caption" color="text.secondary" sx={{ ml: 4, mt: -1, mb: 2 }}>
+              <Typography
+                variant="caption"
+                sx={{
+                  color: 'text.secondary',
+                  ml: 4,
+                  mt: -1,
+                  mb: 2
+                }}>
                 Enter the number of pixels per unit directly
               </Typography>
 
@@ -3654,7 +3859,14 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
                 control={<Radio />}
                 label="Provide Width/Height of Image"
               />
-              <Typography variant="caption" color="text.secondary" sx={{ ml: 4, mt: -1, mb: 2 }}>
+              <Typography
+                variant="caption"
+                sx={{
+                  color: 'text.secondary',
+                  ml: 4,
+                  mt: -1,
+                  mb: 2
+                }}>
                 Enter the physical dimensions of the entire image
               </Typography>
             </RadioGroup>
@@ -3681,8 +3893,10 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
         }}
         maxWidth="md"
         fullWidth
-        TransitionComponent={Grow}
         transitionDuration={300}
+        slots={{
+          transition: Grow
+        }}
       >
         <DialogTitle>New Project</DialogTitle>
         <DialogContent>

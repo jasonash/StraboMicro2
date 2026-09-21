@@ -60,8 +60,10 @@ export function UnitInput({
         label={label}
         required={required}
         helperText={helperText}
-        inputProps={{ min, max, step }}
         sx={{ flex: 1 }}
+        slotProps={{
+          htmlInput: { min, max, step }
+        }}
       />
       <FormControl sx={{ minWidth: 100 }}>
         <InputLabel>Unit</InputLabel>
