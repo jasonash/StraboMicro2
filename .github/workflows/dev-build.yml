@@ -35,7 +35,15 @@ jobs:
           cache: 'npm'
 
       - name: Install dependencies
-        run: npm ci
+        shell: bash
+        run: |
+          # Retry: registry/network hiccups have failed release builds before
+          for attempt in 1 2 3; do
+            npm ci && exit 0
+            echo "npm ci failed (attempt $attempt/3), retrying in 30s..."
+            sleep 30
+          done
+          exit 1
         env:
           npm_config_sharp_libvips_local_prebuilds: 1
 
@@ -88,16 +96,7 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: |
-          for DMG in release/*.dmg; do
-            echo "Notarizing $DMG..."
-            xcrun notarytool submit "$DMG" \
-              --apple-id "$APPLE_ID" \
-              --password "$APPLE_ID_PASSWORD" \
-              --team-id "$APPLE_TEAM_ID" \
-              --wait
-            xcrun stapler staple "$DMG"
-          done
+        run: bash scripts/ci/notarize-dmgs.sh release
 
       - name: Upload macOS ARM64 artifacts
         uses: actions/upload-artifact@v4
@@ -126,7 +125,15 @@ jobs:
           cache: 'npm'
 
       - name: Install dependencies
-        run: npm ci
+        shell: bash
+        run: |
+          # Retry: registry/network hiccups have failed release builds before
+          for attempt in 1 2 3; do
+            npm ci && exit 0
+            echo "npm ci failed (attempt $attempt/3), retrying in 30s..."
+            sleep 30
+          done
+          exit 1
         env:
           npm_config_sharp_libvips_local_prebuilds: 1
 
@@ -179,16 +186,7 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: |
-          for DMG in release/*.dmg; do
-            echo "Notarizing $DMG..."
-            xcrun notarytool submit "$DMG" \
-              --apple-id "$APPLE_ID" \
-              --password "$APPLE_ID_PASSWORD" \
-              --team-id "$APPLE_TEAM_ID" \
-              --wait
-            xcrun stapler staple "$DMG"
-          done
+        run: bash scripts/ci/notarize-dmgs.sh release
 
       - name: Upload macOS x64 artifacts
         uses: actions/upload-artifact@v4
@@ -217,7 +215,15 @@ jobs:
           cache: 'npm'
 
       - name: Install dependencies
-        run: npm ci
+        shell: bash
+        run: |
+          # Retry: registry/network hiccups have failed release builds before
+          for attempt in 1 2 3; do
+            npm ci && exit 0
+            echo "npm ci failed (attempt $attempt/3), retrying in 30s..."
+            sleep 30
+          done
+          exit 1
 
       - name: Update version for dev build
         shell: bash
@@ -282,7 +288,15 @@ jobs:
           sudo apt-get install -y libfuse2
 
       - name: Install dependencies
-        run: npm ci
+        shell: bash
+        run: |
+          # Retry: registry/network hiccups have failed release builds before
+          for attempt in 1 2 3; do
+            npm ci && exit 0
+            echo "npm ci failed (attempt $attempt/3), retrying in 30s..."
+            sleep 30
+          done
+          exit 1
 
       - name: Update version for dev build
         shell: bash
@@ -349,50 +363,75 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Create dev-latest release
-        uses: softprops/action-gh-release@v1
-        with:
-          tag_name: dev-latest
-          name: "Development Build (v${{ steps.version.outputs.dev_version }})"
-          draft: false
-          prerelease: true
-          files: |
-            artifacts/**/*.dmg
-            artifacts/**/*.zip
-            artifacts/**/*.exe
-            artifacts/**/*.AppImage
-            artifacts/**/*.deb
-          body: |
-            ## Development Build
-
-            **Version:** ${{ steps.version.outputs.dev_version }}
-            **Branch:** ${{ inputs.branch }}
-            **Build:** #${{ github.run_number }}
-            **Date:** ${{ github.event.repository.updated_at }}
-
-            ⚠️ **This is a development build for testing purposes.**
-
-            ### Downloads
-
-            | Platform | File |
-            |----------|------|
-            | macOS (Apple Silicon) | `StraboMicro2-*-arm64.dmg` |
-            | macOS (Intel) | `StraboMicro2-*.dmg` (no arch suffix) |
-            | Windows | `StraboMicro2-Setup-*.exe` |
-            | Linux (AppImage) | `StraboMicro2-*.AppImage` |
-            | Linux (Debian) | `strabomicro2_*_amd64.deb` |
-
-            ### Installation
-
-            **macOS**: Download the DMG, open it, and drag StraboMicro2 to your Applications folder. The app is signed and notarized.
-
-            **Windows**: Download and run the installer. You may see a SmartScreen warning since the Windows build is not code-signed. Click "More info" then "Run anyway".
-
-            **Linux (AppImage)**: Download the AppImage, make it executable (`chmod +x`), and run with: `./StraboMicro2-*.AppImage --no-sandbox`
-
-            **Linux (Debian/Ubuntu)**: Install the .deb package: `sudo dpkg -i strabomicro2_*.deb`
+      - name: Write release notes
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DEV_VERSION: ${{ steps.version.outputs.dev_version }}
+          BRANCH: ${{ inputs.branch }}
+          BUILD_DATE: ${{ github.event.repository.updated_at }}
+        run: |
+          cat > release-notes.md <<EOF
+          ## Development Build
+
+          **Version:** $DEV_VERSION
+          **Branch:** $BRANCH
+          **Build:** #${{ github.run_number }}
+          **Date:** $BUILD_DATE
+
+          ⚠️ **This is a development build for testing purposes.**
+
+          ### Downloads
+
+          | Platform | File |
+          |----------|------|
+          | macOS (Apple Silicon) | \`StraboMicro2-*-arm64.dmg\` |
+          | macOS (Intel) | \`StraboMicro2-*.dmg\` (no arch suffix) |
+          | Windows | \`StraboMicro2-Setup-*.exe\` |
+          | Linux (AppImage) | \`StraboMicro2-*.AppImage\` |
+          | Linux (Debian) | \`strabomicro2_*_amd64.deb\` |
+
+          ### Installation
+
+          **macOS**: Download the DMG, open it, and drag StraboMicro2 to your Applications folder. The app is signed and notarized.
+
+          **Windows**: Download and run the installer. You may see a SmartScreen warning since the Windows build is not code-signed. Click "More info" then "Run anyway".
+
+          **Linux (AppImage)**: Download the AppImage, make it executable (\`chmod +x\`), and run with: \`./StraboMicro2-*.AppImage --no-sandbox\`
+
+          **Linux (Debian/Ubuntu)**: Install the .deb package: \`sudo dpkg -i strabomicro2_*.deb\`
+          EOF
+
+      # Same draft, upload, verify, publish sequence as the production workflow,
+      # so a dev build exercises the release logic before a production run relies on it.
+      - name: Create draft dev-latest release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create dev-latest --draft --prerelease \
+            --target "$(git rev-parse HEAD)" \
+            --title "Development Build (v${{ steps.version.outputs.dev_version }})" \
+            --notes-file release-notes.md
+
+      - name: Upload release assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          bash scripts/ci/upload-release-assets.sh dev-latest artifacts \
+            '*.dmg' '*.zip' '*.exe' '*.AppImage' '*.deb'
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          for attempt in 1 2 3; do
+            if gh release edit dev-latest --draft=false && \
+               [ "$(gh release view dev-latest --json isDraft --jq '.isDraft')" = "false" ]; then
+              echo "dev-latest published"
+              exit 0
+            fi
+            echo "Publish failed (attempt $attempt/3), retrying in 20s..."
+            sleep 20
+          done
+          exit 1
 
   # Update dev-releases.json for website consumption
   update-dev-releases-json:
