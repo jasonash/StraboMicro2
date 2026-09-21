@@ -74,7 +74,9 @@ function SampleNode({ sample, allMicrographs, activeMicrographId, tileLoader, on
         <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: 0.5, flex: 1, ml: 0.5 }}>
           {sample.label || sample.name}
         </Typography>
-        <Typography variant="caption" color="text.disabled">
+        <Typography variant="caption" sx={{
+          color: 'text.disabled'
+        }}>
           {(sample.micrographs || []).length}
         </Typography>
       </Box>
@@ -151,7 +153,9 @@ function MicrographNode({ micrograph, allMicrographs, depth, activeMicrographId,
             {micrograph.name}
           </Typography>
           {hasChildren && (
-            <Typography variant="caption" color="text.disabled">{children.length}</Typography>
+            <Typography variant="caption" sx={{
+              color: 'text.disabled'
+            }}>{children.length}</Typography>
           )}
         </Box>
 

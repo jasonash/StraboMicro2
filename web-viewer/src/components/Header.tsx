@@ -27,15 +27,26 @@ export function Header({ projectName, tileLoader }: HeaderProps) {
           <Typography
             variant="h5"
             component="h1"
-            color="text.primary"
-            sx={{ fontWeight: 300, letterSpacing: 0.5, fontSize: '1.75rem' }}
-          >
+            sx={{
+              color: 'text.primary',
+              fontWeight: 300,
+              letterSpacing: 0.5,
+              fontSize: '1.75rem'
+            }}>
             STRABOMICRO
           </Typography>
         </Box>
 
         {/* Center spacer + project name */}
-        <Typography variant="body2" color="text.secondary" sx={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        <Typography
+          variant="body2"
+          sx={{
+            color: 'text.secondary',
+            flex: 1,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap'
+          }}>
           {projectName}
         </Typography>
 

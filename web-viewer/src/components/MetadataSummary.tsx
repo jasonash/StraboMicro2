@@ -92,7 +92,9 @@ function Field({ label, value }: { label: string; value?: string | number | bool
   const display = typeof value === 'boolean' ? (value ? 'Yes' : 'No') : String(value);
   return (
     <Box>
-      <Typography variant="caption" color="text.secondary">{label}: </Typography>
+      <Typography variant="caption" sx={{
+        color: 'text.secondary'
+      }}>{label}: </Typography>
       <Typography variant="body2" component="span">{display}</Typography>
     </Box>
   );
@@ -110,9 +112,14 @@ export function MetadataSummary({ micrograph, spot, sample, isMicrograph }: Meta
 
   if (!data) {
     return (
-      <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic', p: 2 }}>
-        No data available
-      </Typography>
+      <Typography
+        variant="body2"
+        sx={{
+          color: 'text.secondary',
+          fontStyle: 'italic',
+          p: 2
+        }}>No data available
+              </Typography>
     );
   }
 
@@ -228,7 +235,13 @@ export function MetadataSummary({ micrograph, spot, sample, isMicrograph }: Meta
             <Stack spacing={1}>
               {data.mineralogy?.minerals && data.mineralogy.minerals.length > 0 && (
                 <Box>
-                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>Minerals:</Typography>
+                  <Typography
+                    variant="caption"
+                    sx={{
+                      color: 'text.secondary',
+                      display: 'block',
+                      mb: 0.5
+                    }}>Minerals:</Typography>
                   {data.mineralogy.minerals.map((mineral, i) => (
                     <Typography key={i} variant="body2">
                       &bull; {mineral.name}
@@ -239,7 +252,13 @@ export function MetadataSummary({ micrograph, spot, sample, isMicrograph }: Meta
               )}
               {data.lithologyInfo?.lithologies && data.lithologyInfo.lithologies.length > 0 && (
                 <Box>
-                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>Lithology:</Typography>
+                  <Typography
+                    variant="caption"
+                    sx={{
+                      color: 'text.secondary',
+                      display: 'block',
+                      mb: 0.5
+                    }}>Lithology:</Typography>
                   {data.lithologyInfo.lithologies.map((lith, i) => (
                     <Typography key={i} variant="body2">
                       &bull; {lith.level1}{lith.level2 && ` / ${lith.level2}`}{lith.level3 && ` / ${lith.level3}`}
@@ -263,7 +282,13 @@ export function MetadataSummary({ micrograph, spot, sample, isMicrograph }: Meta
             <Stack spacing={1.5}>
               {data.grainInfo?.grainSizeInfo && data.grainInfo.grainSizeInfo.length > 0 && (
                 <Box>
-                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>Grain Size:</Typography>
+                  <Typography
+                    variant="caption"
+                    sx={{
+                      color: 'text.secondary',
+                      display: 'block',
+                      mb: 0.5
+                    }}>Grain Size:</Typography>
                   {toArray(data.grainInfo.grainSizeInfo).map((size: GrainSizeType, i: number) => {
                     const sv = size.mean ?? size.median ?? size.mode;
                     return <Typography key={i} variant="body2">&bull; {implode(size.phases)} - {sv != null ? `${sv}${size.sizeUnit || ''}${size.standardDeviation != null ? ` \u00B1 ${size.standardDeviation}` : ''}` : ''}</Typography>;
@@ -272,7 +297,13 @@ export function MetadataSummary({ micrograph, spot, sample, isMicrograph }: Meta
               )}
               {data.grainInfo?.grainShapeInfo && data.grainInfo.grainShapeInfo.length > 0 && (
                 <Box>
-                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>Grain Shape:</Typography>
+                  <Typography
+                    variant="caption"
+                    sx={{
+                      color: 'text.secondary',
+                      display: 'block',
+                      mb: 0.5
+                    }}>Grain Shape:</Typography>
                   {toArray(data.grainInfo.grainShapeInfo).map((shape: GrainShapeType, i: number) => (
                     <Typography key={i} variant="body2">&bull; {implode(shape.phases)} - {shape.shape}</Typography>
                   ))}
@@ -280,7 +311,13 @@ export function MetadataSummary({ micrograph, spot, sample, isMicrograph }: Meta
               )}
               {data.grainInfo?.grainOrientationInfo && data.grainInfo.grainOrientationInfo.length > 0 && (
                 <Box>
-                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>Grain Orientation:</Typography>
+                  <Typography
+                    variant="caption"
+                    sx={{
+                      color: 'text.secondary',
+                      display: 'block',
+                      mb: 0.5
+                    }}>Grain Orientation:</Typography>
                   {toArray(data.grainInfo.grainOrientationInfo).map((orient: GrainOrientationType, i: number) => (
                     <Typography key={i} variant="body2">&bull; {implode(orient.phases)} - {orient.meanOrientation}\u00B0 from {orient.relativeTo}</Typography>
                   ))}
@@ -385,7 +422,9 @@ export function MetadataSummary({ micrograph, spot, sample, isMicrograph }: Meta
                   <Box key={i}>
                     <Typography variant="body2" sx={{ fontWeight: 'bold' }}>&bull; {fmt.label}</Typography>
                     {fmt.sections.map((s, j) => (
-                      <Box key={j} sx={{ ml: 2 }}><Typography variant="caption" color="text.secondary">{s.title}: </Typography><Typography variant="body2" component="span">{s.content}</Typography></Box>
+                      <Box key={j} sx={{ ml: 2 }}><Typography variant="caption" sx={{
+                        color: 'text.secondary'
+                      }}>{s.title}: </Typography><Typography variant="body2" component="span">{s.content}</Typography></Box>
                     ))}
                   </Box>
                 );

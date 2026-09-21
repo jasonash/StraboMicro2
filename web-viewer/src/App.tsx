@@ -180,7 +180,9 @@ export default function App() {
   if (error) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', bgcolor: 'background.default' }}>
-        <Typography color="text.secondary">{error}</Typography>
+        <Typography sx={{
+          color: 'text.secondary'
+        }}>{error}</Typography>
       </Box>
     );
   }
@@ -188,7 +190,9 @@ export default function App() {
   if (!project || !tileLoader) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', bgcolor: 'background.default' }}>
-        <Typography color="text.secondary">Loading project...</Typography>
+        <Typography sx={{
+          color: 'text.secondary'
+        }}>Loading project...</Typography>
       </Box>
     );
   }
@@ -280,12 +284,20 @@ export default function App() {
             {sidebarTab === 3 && (
               <Box sx={{ p: 1 }}>
                 {(project.tags || []).length === 0 ? (
-                  <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic', p: 1 }}>No tags</Typography>
+                  <Typography
+                    variant="body2"
+                    sx={{
+                      color: 'text.secondary',
+                      fontStyle: 'italic',
+                      p: 1
+                    }}>No tags</Typography>
                 ) : (
                   <List dense disablePadding>
                     {(project.tags || []).map(tag => (
                       <ListItemButton key={tag.id} sx={{ borderRadius: 1, py: 0.5 }}>
-                        <ListItemText primary={tag.name} primaryTypographyProps={{ variant: 'body2' }} />
+                        <ListItemText primary={tag.name} slotProps={{
+                          primary: { variant: 'body2' }
+                        }} />
                       </ListItemButton>
                     ))}
                   </List>
