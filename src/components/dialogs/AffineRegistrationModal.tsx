@@ -111,9 +111,9 @@ export function AffineRegistrationModal({
 
   // Panel sizes - each panel needs its own size
   // Panel sizes follow their containers (see useElementSize for why this is a callback ref)
-  const [parentContainerRef, parentPanelSize] = useElementSize<HTMLDivElement>({ width: 400, height: 300 });
-  const [overlayContainerRef, overlayPanelSize] = useElementSize<HTMLDivElement>({ width: 400, height: 300 });
-  const [previewContainerRef, previewSize] = useElementSize<HTMLDivElement>({ width: 800, height: 300 });
+  const [parentContainerRef, parentPanelSize, parentPanelMeasured] = useElementSize<HTMLDivElement>({ width: 400, height: 300 });
+  const [overlayContainerRef, overlayPanelSize, overlayPanelMeasured] = useElementSize<HTMLDivElement>({ width: 400, height: 300 });
+  const [previewContainerRef, previewSize, previewMeasured] = useElementSize<HTMLDivElement>({ width: 800, height: 300 });
 
   // Image data
   const [parentImageData, setParentImageData] = useState<{
@@ -325,7 +325,7 @@ export function AffineRegistrationModal({
   // Center parent image when panel size and image are available
   useEffect(() => {
     if (!parentImageData || !parentImage || parentCentered) return;
-    if (parentPanelSize.width < 100 || parentPanelSize.height < 100) return; // Wait for valid size
+    if (!parentPanelMeasured || parentPanelSize.width < 100 || parentPanelSize.height < 100) return; // Wait for the real panel size
 
     const scale = Math.min(
       parentPanelSize.width / parentImageData.width,
@@ -340,7 +340,7 @@ export function AffineRegistrationModal({
       },
     });
     setParentCentered(true);
-  }, [parentImageData, parentImage, parentPanelSize, parentCentered]);
+  }, [parentImageData, parentImage, parentPanelSize, parentPanelMeasured, parentCentered]);
 
   // Load overlay image
   useEffect(() => {
@@ -388,7 +388,7 @@ export function AffineRegistrationModal({
   // Center overlay image when panel size and image are available
   useEffect(() => {
     if (!overlayImageData || !overlayImage || overlayCentered) return;
-    if (overlayPanelSize.width < 100 || overlayPanelSize.height < 100) return; // Wait for valid size
+    if (!overlayPanelMeasured || overlayPanelSize.width < 100 || overlayPanelSize.height < 100) return; // Wait for the real panel size
 
     const scale = Math.min(
       overlayPanelSize.width / overlayImageData.width,
@@ -403,7 +403,7 @@ export function AffineRegistrationModal({
       },
     });
     setOverlayCentered(true);
-  }, [overlayImageData, overlayImage, overlayPanelSize, overlayCentered]);
+  }, [overlayImageData, overlayImage, overlayPanelSize, overlayPanelMeasured, overlayCentered]);
 
   // Generate preview composite image (offscreen)
   useEffect(() => {
@@ -453,7 +453,7 @@ export function AffineRegistrationModal({
   // Center preview when size and image are available
   useEffect(() => {
     if (!previewCompositeImage || !parentImageData || previewCentered) return;
-    if (previewSize.width < 100 || previewSize.height < 100) return;
+    if (!previewMeasured || previewSize.width < 100 || previewSize.height < 100) return;
 
     const scale = Math.min(
       previewSize.width / parentImageData.width,
@@ -468,7 +468,7 @@ export function AffineRegistrationModal({
       },
     });
     setPreviewCentered(true);
-  }, [previewCompositeImage, parentImageData, previewSize, previewCentered]);
+  }, [previewCompositeImage, parentImageData, previewSize, previewMeasured, previewCentered]);
 
   // Validate points when markers change
   useEffect(() => {

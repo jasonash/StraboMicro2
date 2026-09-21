@@ -7,6 +7,10 @@
  * portal, after the parent's own effects have already run). Measuring from an
  * effect or a requestAnimationFrame instead races that mount and can silently
  * leave the initial size in place.
+ *
+ * `isMeasured` is false while `size` is still the caller's placeholder, so
+ * one-shot work that depends on the real size (fit-to-panel, centering) can
+ * wait for it instead of running against the placeholder.
  */
 
 import { useCallback, useEffect, useState } from 'react';
@@ -21,22 +25,28 @@ const MIN_DIMENSION = 50;
 
 export function useElementSize<T extends HTMLElement>(
   initialSize: ElementSize
-): [(element: T | null) => void, ElementSize] {
+): [(element: T | null) => void, ElementSize, boolean] {
   const [element, setElement] = useState<T | null>(null);
   const [size, setSize] = useState<ElementSize>(initialSize);
+  const [isMeasured, setIsMeasured] = useState(false);
 
   const ref = useCallback((node: T | null) => {
     setElement(node);
   }, []);
 
   useEffect(() => {
-    if (!element) return;
+    if (!element) {
+      // Unmounted (dialog closed): the next mount must measure again before anyone trusts the size
+      setIsMeasured(false);
+      return;
+    }
 
     const measure = () => {
       const width = element.offsetWidth;
       const height = element.offsetHeight;
       if (width <= MIN_DIMENSION || height <= MIN_DIMENSION) return;
       setSize((prev) => (prev.width === width && prev.height === height ? prev : { width, height }));
+      setIsMeasured(true);
     };
 
     measure();
@@ -46,5 +56,5 @@ export function useElementSize<T extends HTMLElement>(
     return () => observer.disconnect();
   }, [element]);
 
-  return [ref, size];
+  return [ref, size, isMeasured];
 }
