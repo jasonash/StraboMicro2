@@ -112,6 +112,9 @@ jobs:
       # The hand-off to the release job is a network call that can fail after a
       # complete upload (dev build #123: 403 on FinalizeArtifact). Try once more
       # before failing a build that took 15 minutes to sign and notarize.
+      # The retry uses its own artifact name: a failed finalize leaves the first
+      # name taken (409 Conflict) and 'overwrite' cannot clear it (dev build #125).
+      # The release job downloads every artifact, so the name does not matter.
       - name: Upload macOS ARM64 artifacts
         id: upload_macos_arm64_artifacts
         continue-on-error: true
@@ -130,7 +133,7 @@ jobs:
         if: steps.upload_macos_arm64_artifacts.outcome == 'failure'
         uses: actions/upload-artifact@v4
         with:
-          name: StraboMicro2-macOS-arm64-${{ inputs.version }}
+          name: StraboMicro2-macOS-arm64-${{ inputs.version }}-retry
           path: |
             release/*.dmg
             release/*.zip
@@ -138,7 +141,6 @@ jobs:
             release/*.blockmap
           if-no-files-found: error
           retention-days: 90
-          overwrite: true
 
   # macOS x64 (Intel) - runs on macos-15-intel runner (free tier)
   build-macos-x64:
@@ -231,7 +233,7 @@ jobs:
         if: steps.upload_macos_x64_artifacts.outcome == 'failure'
         uses: actions/upload-artifact@v4
         with:
-          name: StraboMicro2-macOS-x64-${{ inputs.version }}
+          name: StraboMicro2-macOS-x64-${{ inputs.version }}-retry
           path: |
             release/*.dmg
             release/*.zip
@@ -239,7 +241,6 @@ jobs:
             release/*.blockmap
           if-no-files-found: error
           retention-days: 90
-          overwrite: true
 
   build-windows:
     needs: validate
@@ -309,14 +310,13 @@ jobs:
         if: steps.upload_windows_artifacts.outcome == 'failure'
         uses: actions/upload-artifact@v4
         with:
-          name: StraboMicro2-Windows-${{ inputs.version }}
+          name: StraboMicro2-Windows-${{ inputs.version }}-retry
           path: |
             release/*.exe
             release/*.yml
             release/*.blockmap
           if-no-files-found: error
           retention-days: 90
-          overwrite: true
 
   build-linux:
     needs: validate
@@ -374,14 +374,13 @@ jobs:
         if: steps.upload_linux_artifacts.outcome == 'failure'
         uses: actions/upload-artifact@v4
         with:
-          name: StraboMicro2-Linux-${{ inputs.version }}
+          name: StraboMicro2-Linux-${{ inputs.version }}-retry
           path: |
             release/*.AppImage
             release/*.deb
             release/*.yml
           if-no-files-found: error
           retention-days: 90
-          overwrite: true
 
   # Create GitHub Release with all artifacts
   release:
