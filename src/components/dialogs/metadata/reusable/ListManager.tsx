@@ -150,7 +150,12 @@ export function ListManager<T>({
               bgcolor: 'action.hover',
             }}
           >
-            <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+            <Typography
+              variant="body2"
+              sx={{
+                color: 'text.secondary',
+                fontStyle: 'italic'
+              }}>
               {emptyMessage}
             </Typography>
           </Paper>

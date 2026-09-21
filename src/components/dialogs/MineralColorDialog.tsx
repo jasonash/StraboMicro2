@@ -163,7 +163,9 @@ export function MineralColorDialog({ isOpen, onClose }: MineralColorDialogProps)
       onClose={handleSaveAndClose}
       maxWidth="sm"
       fullWidth
-      PaperProps={{ sx: { maxHeight: '80vh' } }}
+      slotProps={{
+        paper: { sx: { maxHeight: '80vh' } }
+      }}
     >
       <DialogTitle>Configure Mineral Colors</DialogTitle>
       <DialogContent dividers>
@@ -218,7 +220,13 @@ export function MineralColorDialog({ isOpen, onClose }: MineralColorDialogProps)
             </ListItem>
           ))}
           {activeColors.length === 0 && (
-            <Typography variant="body2" color="text.secondary" sx={{ py: 2, textAlign: 'center' }}>
+            <Typography
+              variant="body2"
+              sx={{
+                color: 'text.secondary',
+                py: 2,
+                textAlign: 'center'
+              }}>
               {activeTab === 0 ? 'No global colors configured.' : 'No project overrides. Global colors will be used.'}
             </Typography>
           )}

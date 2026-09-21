@@ -386,7 +386,9 @@ export const CompleteInstrumentInfoDialog: React.FC<CompleteInstrumentInfoDialog
       onClose={handleClose}
       maxWidth="md"
       fullWidth
-      PaperProps={{ sx: { minHeight: '60vh' } }}
+      slotProps={{
+        paper: { sx: { minHeight: '60vh' } }
+      }}
     >
       <DialogTitle>Complete Instrument & Image Info</DialogTitle>
 
@@ -441,7 +443,13 @@ export const CompleteInstrumentInfoDialog: React.FC<CompleteInstrumentInfoDialog
                   )}
                 </Box>
               </Box>
-              <Stack direction="row" spacing={2} alignItems="center" justifyContent="center">
+              <Stack
+                direction="row"
+                spacing={2}
+                sx={{
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}>
                 <Tooltip title="Rotate 90° counter-clockwise">
                   <span>
                     <IconButton
@@ -466,7 +474,9 @@ export const CompleteInstrumentInfoDialog: React.FC<CompleteInstrumentInfoDialog
                   </span>
                 </Tooltip>
               </Stack>
-              <Stack direction="row" justifyContent="center">
+              <Stack direction="row" sx={{
+                justifyContent: 'center'
+              }}>
                 <FormControlLabel
                   control={
                     <Checkbox
@@ -482,7 +492,12 @@ export const CompleteInstrumentInfoDialog: React.FC<CompleteInstrumentInfoDialog
                 />
               </Stack>
               {micrograph && (
-                <Typography variant="caption" color="text.secondary" sx={{ textAlign: 'center' }}>
+                <Typography
+                  variant="caption"
+                  sx={{
+                    color: 'text.secondary',
+                    textAlign: 'center'
+                  }}>
                   Resulting dimensions:{' '}
                   {isQuarterTurn(pendingOrientation.rotation)
                     ? `${micrograph.height ?? micrograph.imageHeight ?? 0} × ${micrograph.width ?? micrograph.imageWidth ?? 0}`

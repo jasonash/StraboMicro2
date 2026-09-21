@@ -85,7 +85,12 @@ export function EditAssociatedFileDialog({
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 2 }}>
           {/* File Name - Read-only */}
           <Box>
-            <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>
+            <Typography
+              variant="subtitle2"
+              sx={{
+                color: 'text.secondary',
+                mb: 1
+              }}>
               File:
             </Typography>
             <Typography variant="body1" sx={{ fontWeight: 500 }}>

@@ -495,7 +495,12 @@ export const InstrumentInfoForm: React.FC<InstrumentInfoFormProps> = ({
         !['Electron Diffraction', 'Energy Dispersive X-ray Spectroscopy (EDS)'].includes(
           formData.dataType
         ) && (
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+          <Typography
+            variant="body2"
+            sx={{
+              color: 'text.secondary',
+              mt: 1
+            }}>
             Image Type: {formData.dataType}
           </Typography>
         )}
@@ -505,7 +510,12 @@ export const InstrumentInfoForm: React.FC<InstrumentInfoFormProps> = ({
         !['Energy Dispersive X-ray Spectroscopy (EDS)', 'Cathodoluminescence (CL)'].includes(
           formData.dataType
         ) && (
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+          <Typography
+            variant="body2"
+            sx={{
+              color: 'text.secondary',
+              mt: 1
+            }}>
             Image Type: {formData.dataType}
           </Typography>
         )}
@@ -519,7 +529,12 @@ export const InstrumentInfoForm: React.FC<InstrumentInfoFormProps> = ({
           'Cathodoluminescence (CL)',
           'Focused Ion Beam Scanning Electron Microscopy (FIB-SEM)',
         ].includes(formData.dataType) && (
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+          <Typography
+            variant="body2"
+            sx={{
+              color: 'text.secondary',
+              mt: 1
+            }}>
             Image Type: {formData.dataType}
           </Typography>
         )}
@@ -531,7 +546,12 @@ export const InstrumentInfoForm: React.FC<InstrumentInfoFormProps> = ({
           'Wavelength-dispersive X-ray spectroscopy (WDS)',
           'Cathodoluminescence (CL)',
         ].includes(formData.dataType) && (
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+          <Typography
+            variant="body2"
+            sx={{
+              color: 'text.secondary',
+              mt: 1
+            }}>
             Image Type: {formData.dataType}
           </Typography>
         )}
@@ -553,8 +573,10 @@ export const InstrumentInfoForm: React.FC<InstrumentInfoFormProps> = ({
             required
             label="Image Type(s)"
             value={formData.imageType}
-            InputProps={{ readOnly: true }}
             helperText="Click 'Select Element(s) from Periodic Table' to choose elements"
+            slotProps={{
+              input: { readOnly: true }
+            }}
           />
           <Button
             variant="outlined"

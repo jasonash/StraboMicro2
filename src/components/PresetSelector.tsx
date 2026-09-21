@@ -84,17 +84,23 @@ export function PresetSelector({
                   {preset.name}
                 </Typography>
               </Box>
-              <Typography variant="caption" color="text.secondary" noWrap display="block">
+              <Typography
+                variant="caption"
+                noWrap
+                sx={{
+                  color: 'text.secondary',
+                  display: 'block'
+                }}>
                 {isApplied ? 'Already applied' : summary || 'No data'}
               </Typography>
             </Box>
           </Box>
         );
       }}
-      renderTags={(tagValue, getTagProps) =>
+      renderValue={(tagValue, getItemProps) =>
         tagValue.map((preset, index) => {
           const key = boundKey(preset.id);
-          const { key: tagKey, ...tagProps } = getTagProps({ index });
+          const { key: tagKey, ...tagProps } = getItemProps({ index });
           return (
             <Chip
               key={tagKey}

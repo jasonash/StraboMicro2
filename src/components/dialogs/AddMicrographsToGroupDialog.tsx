@@ -161,7 +161,12 @@ export function AddMicrographsToGroupDialog({
         {step === 0 && (
           <Box>
             {groups.length === 0 ? (
-              <Typography color="text.secondary" sx={{ py: 2, textAlign: 'center' }}>
+              <Typography
+                sx={{
+                  color: 'text.secondary',
+                  py: 2,
+                  textAlign: 'center'
+                }}>
                 No groups available. Create a group first.
               </Typography>
             ) : (
@@ -218,7 +223,12 @@ export function AddMicrographsToGroupDialog({
             )}
 
             {availableMicrographs.length === 0 ? (
-              <Typography color="text.secondary" sx={{ py: 2, textAlign: 'center' }}>
+              <Typography
+                sx={{
+                  color: 'text.secondary',
+                  py: 2,
+                  textAlign: 'center'
+                }}>
                 All micrographs are already in this group.
               </Typography>
             ) : (

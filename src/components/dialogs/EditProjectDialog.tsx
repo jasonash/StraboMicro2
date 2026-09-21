@@ -126,8 +126,10 @@ export const EditProjectDialog: React.FC<EditProjectDialogProps> = ({ isOpen, on
       }}
       maxWidth="md"
       fullWidth
-      TransitionComponent={Grow}
       transitionDuration={300}
+      slots={{
+        transition: Grow
+      }}
     >
       <DialogTitle>Edit Project</DialogTitle>
       <DialogContent>
@@ -144,29 +146,33 @@ export const EditProjectDialog: React.FC<EditProjectDialogProps> = ({ isOpen, on
               fullWidth
               type="date"
               label="Start Date"
-              InputLabelProps={{ shrink: true }}
               value={formData.startDate}
               onChange={(e) => updateField('startDate', e.target.value)}
-              inputProps={{
-                max: formData.endDate || '2100-12-31', // Date picker can't select after end date or year 2100
-              }}
               helperText={formData.endDate && formData.startDate && formData.startDate > formData.endDate ? 'Start date must be before end date' : ''}
               error={!!(formData.endDate && formData.startDate && formData.startDate > formData.endDate)}
-            />
+              slotProps={{
+                htmlInput: {
+                  max: formData.endDate || '2100-12-31', // Date picker can't select after end date or year 2100
+                },
+
+                inputLabel: { shrink: true }
+              }} />
             <TextField
               fullWidth
               type="date"
               label="End Date"
-              InputLabelProps={{ shrink: true }}
               value={formData.endDate}
               onChange={(e) => updateField('endDate', e.target.value)}
-              inputProps={{
-                min: formData.startDate || undefined, // Date picker can't select before start date
-                max: '2100-12-31', // Date picker can't select after year 2100
-              }}
               helperText={formData.startDate && formData.endDate && formData.endDate < formData.startDate ? 'End date must be after start date' : ''}
               error={!!(formData.startDate && formData.endDate && formData.endDate < formData.startDate)}
-            />
+              slotProps={{
+                htmlInput: {
+                  min: formData.startDate || undefined, // Date picker can't select before start date
+                  max: '2100-12-31', // Date picker can't select after year 2100
+                },
+
+                inputLabel: { shrink: true }
+              }} />
           </Box>
           <TextField
             fullWidth

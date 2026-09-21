@@ -408,7 +408,9 @@ export function CreateTagDialog({
 
           {/* Transparency Slider */}
           <Box>
-            <Typography variant="body2" color="text.secondary">
+            <Typography variant="body2" sx={{
+              color: 'text.secondary'
+            }}>
               Transparency: {transparency}%
             </Typography>
             <Slider
@@ -423,7 +425,9 @@ export function CreateTagDialog({
 
           {/* Size Slider */}
           <Box>
-            <Typography variant="body2" color="text.secondary">
+            <Typography variant="body2" sx={{
+              color: 'text.secondary'
+            }}>
               Size: {tagSize} px
             </Typography>
             <Slider
@@ -438,7 +442,12 @@ export function CreateTagDialog({
 
           {/* Preview */}
           <Box>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+            <Typography
+              variant="body2"
+              sx={{
+                color: 'text.secondary',
+                mb: 1
+              }}>
               Preview
             </Typography>
             <Box

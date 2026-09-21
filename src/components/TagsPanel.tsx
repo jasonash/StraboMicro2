@@ -195,7 +195,12 @@ function TagItem({
           {tag.name}
         </Typography>
 
-        <Typography variant="caption" color="text.secondary" sx={{ mr: 1 }}>
+        <Typography
+          variant="caption"
+          sx={{
+            color: 'text.secondary',
+            mr: 1
+          }}>
           ({spotCount} spot{spotCount !== 1 ? 's' : ''})
         </Typography>
 
@@ -237,7 +242,12 @@ function TagItem({
       <Collapse in={isExpanded}>
         <Box sx={{ pl: 4, py: 0.5 }}>
           {taggedSpots.length === 0 ? (
-            <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+            <Typography
+              variant="body2"
+              sx={{
+                color: 'text.secondary',
+                fontStyle: 'italic'
+              }}>
               No spots assigned
             </Typography>
           ) : (
@@ -346,7 +356,9 @@ export function TagsPanel() {
   if (!project) {
     return (
       <Box sx={{ p: 2 }}>
-        <Typography variant="body2" color="text.secondary">
+        <Typography variant="body2" sx={{
+          color: 'text.secondary'
+        }}>
           No project loaded
         </Typography>
       </Box>
@@ -378,7 +390,9 @@ export function TagsPanel() {
       {/* Tags List */}
       <Box sx={{ flex: 1, overflow: 'auto', p: 1 }}>
         {tagsWithCounts.length === 0 ? (
-          <Typography variant="body2" color="text.secondary">
+          <Typography variant="body2" sx={{
+            color: 'text.secondary'
+          }}>
             No tags defined.
           </Typography>
         ) : (

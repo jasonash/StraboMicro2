@@ -81,9 +81,14 @@ export function ProjectMetadataSection({ onEditProject }: ProjectMetadataSection
 
   if (!project) {
     return (
-      <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic', p: 2 }}>
-        No project open
-      </Typography>
+      <Typography
+        variant="body2"
+        sx={{
+          color: 'text.secondary',
+          fontStyle: 'italic',
+          p: 2
+        }}>No project open
+              </Typography>
     );
   }
 
@@ -119,31 +124,41 @@ export function ProjectMetadataSection({ onEditProject }: ProjectMetadataSection
           <Stack spacing={0.5}>
             {project?.name && (
               <Box>
-                <Typography variant="caption" color="text.secondary">Name: </Typography>
+                <Typography variant="caption" sx={{
+                  color: 'text.secondary'
+                }}>Name: </Typography>
                 <Typography variant="body2" component="span">{project.name}</Typography>
               </Box>
             )}
             {project?.description && (
               <Box>
-                <Typography variant="caption" color="text.secondary">Description: </Typography>
+                <Typography variant="caption" sx={{
+                  color: 'text.secondary'
+                }}>Description: </Typography>
                 <Typography variant="body2" component="span">{project.description}</Typography>
               </Box>
             )}
             {project?.purposeOfStudy && (
               <Box>
-                <Typography variant="caption" color="text.secondary">Purpose of Study: </Typography>
+                <Typography variant="caption" sx={{
+                  color: 'text.secondary'
+                }}>Purpose of Study: </Typography>
                 <Typography variant="body2" component="span">{project.purposeOfStudy}</Typography>
               </Box>
             )}
             {project?.areaOfInterest && (
               <Box>
-                <Typography variant="caption" color="text.secondary">Area of Interest: </Typography>
+                <Typography variant="caption" sx={{
+                  color: 'text.secondary'
+                }}>Area of Interest: </Typography>
                 <Typography variant="body2" component="span">{project.areaOfInterest}</Typography>
               </Box>
             )}
             {(project?.startDate || project?.endDate) && (
               <Box>
-                <Typography variant="caption" color="text.secondary">Date Range: </Typography>
+                <Typography variant="caption" sx={{
+                  color: 'text.secondary'
+                }}>Date Range: </Typography>
                 <Typography variant="body2" component="span">
                   {project?.startDate || '?'} - {project?.endDate || '?'}
                 </Typography>
@@ -151,7 +166,9 @@ export function ProjectMetadataSection({ onEditProject }: ProjectMetadataSection
             )}
             {project?.owner && (
               <Box>
-                <Typography variant="caption" color="text.secondary">Owner: </Typography>
+                <Typography variant="caption" sx={{
+                  color: 'text.secondary'
+                }}>Owner: </Typography>
                 <Typography variant="body2" component="span">
                   {project.owner}
                   {project.ownerAffiliation && ` (${project.ownerAffiliation})`}
@@ -160,7 +177,9 @@ export function ProjectMetadataSection({ onEditProject }: ProjectMetadataSection
             )}
             {project?.principalInvestigator && (
               <Box>
-                <Typography variant="caption" color="text.secondary">Principal Investigator: </Typography>
+                <Typography variant="caption" sx={{
+                  color: 'text.secondary'
+                }}>Principal Investigator: </Typography>
                 <Typography variant="body2" component="span">
                   {project.principalInvestigator}
                   {project.principalInvestigatorAffiliation && ` (${project.principalInvestigatorAffiliation})`}
@@ -169,13 +188,17 @@ export function ProjectMetadataSection({ onEditProject }: ProjectMetadataSection
             )}
             {project?.otherTeamMembers && (
               <Box>
-                <Typography variant="caption" color="text.secondary">Other Team Members: </Typography>
+                <Typography variant="caption" sx={{
+                  color: 'text.secondary'
+                }}>Other Team Members: </Typography>
                 <Typography variant="body2" component="span">{project.otherTeamMembers}</Typography>
               </Box>
             )}
             {(project?.grantNumber || project?.fundingSource) && (
               <Box>
-                <Typography variant="caption" color="text.secondary">Funding: </Typography>
+                <Typography variant="caption" sx={{
+                  color: 'text.secondary'
+                }}>Funding: </Typography>
                 <Typography variant="body2" component="span">
                   {[project.fundingSource, project.grantNumber].filter(Boolean).join(' - ')}
                 </Typography>
@@ -183,30 +206,43 @@ export function ProjectMetadataSection({ onEditProject }: ProjectMetadataSection
             )}
             {project?.instrumentsUsed && (
               <Box>
-                <Typography variant="caption" color="text.secondary">Instruments Used: </Typography>
+                <Typography variant="caption" sx={{
+                  color: 'text.secondary'
+                }}>Instruments Used: </Typography>
                 <Typography variant="body2" component="span">{project.instrumentsUsed}</Typography>
               </Box>
             )}
             {project?.gpsDatum && (
               <Box>
-                <Typography variant="caption" color="text.secondary">GPS Datum: </Typography>
+                <Typography variant="caption" sx={{
+                  color: 'text.secondary'
+                }}>GPS Datum: </Typography>
                 <Typography variant="body2" component="span">{project.gpsDatum}</Typography>
               </Box>
             )}
             {project?.magneticDeclination && (
               <Box>
-                <Typography variant="caption" color="text.secondary">Magnetic Declination: </Typography>
+                <Typography variant="caption" sx={{
+                  color: 'text.secondary'
+                }}>Magnetic Declination: </Typography>
                 <Typography variant="body2" component="span">{project.magneticDeclination}</Typography>
               </Box>
             )}
             {project?.notes && (
               <Box>
-                <Typography variant="caption" color="text.secondary">Notes: </Typography>
+                <Typography variant="caption" sx={{
+                  color: 'text.secondary'
+                }}>Notes: </Typography>
                 <Typography variant="body2" component="span">{project.notes}</Typography>
               </Box>
             )}
             {!project?.name && !project?.description && !project?.owner && !project?.principalInvestigator && (
-              <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+              <Typography
+                variant="body2"
+                sx={{
+                  color: 'text.secondary',
+                  fontStyle: 'italic'
+                }}>
                 No project metadata set
               </Typography>
             )}

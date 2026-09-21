@@ -55,20 +55,21 @@ export const TileQueueStatus: React.FC<TileQueueStatusProps> = ({
       >
         <CircularProgress size={20} thickness={4} />
         <Box sx={{ minWidth: 0 }}>
-          <Typography variant="body2" fontWeight="medium">
+          <Typography variant="body2" sx={{
+            fontWeight: 'medium'
+          }}>
             Generating tiles: {remainingImages} remaining
           </Typography>
           {currentImageName && (
             <Typography
               variant="caption"
-              color="text.secondary"
               sx={{
+                color: 'text.secondary',
                 display: 'block',
                 overflow: 'hidden',
                 textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap',
-              }}
-            >
+                whiteSpace: 'nowrap'
+              }}>
               {currentImageName}
             </Typography>
           )}

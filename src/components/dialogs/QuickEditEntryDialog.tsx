@@ -103,8 +103,10 @@ export function QuickEditEntryDialog({ isOpen, onClose }: QuickEditEntryDialogPr
       onClose={handleClose}
       maxWidth="xs"
       fullWidth
-      PaperProps={{
-        sx: { bgcolor: 'background.paper' },
+      slotProps={{
+        paper: {
+          sx: { bgcolor: 'background.paper' },
+        }
       }}
     >
       <DialogTitle>Quick Edit Spots</DialogTitle>
@@ -126,7 +128,9 @@ export function QuickEditEntryDialog({ isOpen, onClose }: QuickEditEntryDialogPr
                 label={
                   <Box>
                     <Typography variant="body2">All spots on this micrograph</Typography>
-                    <Typography variant="caption" color="text.secondary">
+                    <Typography variant="caption" sx={{
+                      color: 'text.secondary'
+                    }}>
                       {spots.length} spots total
                     </Typography>
                   </Box>
@@ -138,7 +142,9 @@ export function QuickEditEntryDialog({ isOpen, onClose }: QuickEditEntryDialogPr
                 label={
                   <Box>
                     <Typography variant="body2">Unclassified spots only</Typography>
-                    <Typography variant="caption" color="text.secondary">
+                    <Typography variant="caption" sx={{
+                      color: 'text.secondary'
+                    }}>
                       {spots.length - classifiedCount} of {spots.length} spots
                     </Typography>
                   </Box>
@@ -191,7 +197,9 @@ export function QuickEditEntryDialog({ isOpen, onClose }: QuickEditEntryDialogPr
               <Typography variant="body2">
                 <strong>{filteredSpotCount}</strong> spots will be included in this session.
               </Typography>
-              <Typography variant="caption" color="text.secondary">
+              <Typography variant="caption" sx={{
+                color: 'text.secondary'
+              }}>
                 Use arrow keys to navigate, letter keys to classify, Delete to remove.
               </Typography>
             </Alert>

@@ -353,7 +353,9 @@ export const NewSpotDialog: React.FC<NewSpotDialogProps> = ({
 
           {/* Opacity */}
           <Box>
-            <Typography variant="body2" color="text.secondary" gutterBottom>
+            <Typography variant="body2" gutterBottom sx={{
+              color: 'text.secondary'
+            }}>
               Opacity: {opacity}%
             </Typography>
             <Slider
@@ -379,7 +381,9 @@ export const NewSpotDialog: React.FC<NewSpotDialogProps> = ({
               />
               {enableCopy && (
                 <Box sx={{ ml: 4, mt: 1 }}>
-                  <Typography variant="caption" color="text.secondary">
+                  <Typography variant="caption" sx={{
+                    color: 'text.secondary'
+                  }}>
                     Copy feature available - select spot and fields in future version
                   </Typography>
                 </Box>

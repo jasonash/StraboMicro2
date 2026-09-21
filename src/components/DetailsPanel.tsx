@@ -46,7 +46,9 @@ const DetailsPanel: React.FC = () => {
           </AccordionSummary>
           <AccordionDetails>
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
-              <Typography variant="caption" color="text.secondary">
+              <Typography variant="caption" sx={{
+                color: 'text.secondary'
+              }}>
                 <strong>Experiment/Dataset Metadata</strong>
               </Typography>
             </Box>
@@ -62,58 +64,94 @@ const DetailsPanel: React.FC = () => {
           </AccordionSummary>
           <AccordionDetails>
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
-              <Typography variant="caption" color="text.secondary">
+              <Typography variant="caption" sx={{
+                color: 'text.secondary'
+              }}>
                 <strong>Label:</strong> Sample01/ChannelTwo
               </Typography>
-              <Typography variant="caption" color="text.secondary">
+              <Typography variant="caption" sx={{
+                color: 'text.secondary'
+              }}>
                 <strong>Sample ID:</strong> Sample01/ChannelTwo
               </Typography>
-              <Typography variant="caption" color="text.secondary">
+              <Typography variant="caption" sx={{
+                color: 'text.secondary'
+              }}>
                 <strong>Longitude:</strong> -67.2536271
               </Typography>
-              <Typography variant="caption" color="text.secondary">
+              <Typography variant="caption" sx={{
+                color: 'text.secondary'
+              }}>
                 <strong>Latitude:</strong> 44.9980031
               </Typography>
-              <Typography variant="caption" color="text.secondary">
+              <Typography variant="caption" sx={{
+                color: 'text.secondary'
+              }}>
                 <strong>Exists on Server:</strong> No
               </Typography>
-              <Typography variant="caption" color="text.secondary">
+              <Typography variant="caption" sx={{
+                color: 'text.secondary'
+              }}>
                 <strong>Main Sampling Purpose:</strong> field___micro
               </Typography>
-              <Typography variant="caption" color="text.secondary">
+              <Typography variant="caption" sx={{
+                color: 'text.secondary'
+              }}>
                 <strong>Sample Name:</strong> SampleChannelTwo/SamplesOne
               </Typography>
-              <Typography variant="caption" color="text.secondary">
+              <Typography variant="caption" sx={{
+                color: 'text.secondary'
+              }}>
                 <strong>Rock Type:</strong> UltraMaficRock
               </Typography>
-              <Typography variant="caption" color="text.secondary">
+              <Typography variant="caption" sx={{
+                color: 'text.secondary'
+              }}>
                 <strong>Instrument of Sample:</strong> 3
               </Typography>
-              <Typography variant="caption" color="text.secondary">
+              <Typography variant="caption" sx={{
+                color: 'text.secondary'
+              }}>
                 <strong>Oriented Sample:</strong> yes
               </Typography>
-              <Typography variant="caption" color="text.secondary">
+              <Typography variant="caption" sx={{
+                color: 'text.secondary'
+              }}>
                 <strong>Sample Description:</strong> I am Sample Start Here
               </Typography>
-              <Typography variant="caption" color="text.secondary">
+              <Typography variant="caption" sx={{
+                color: 'text.secondary'
+              }}>
                 <strong>Degree of Weathering:</strong> 3
               </Typography>
-              <Typography variant="caption" color="text.secondary">
+              <Typography variant="caption" sx={{
+                color: 'text.secondary'
+              }}>
                 <strong>Sample Notes:</strong> Sample Notes here
               </Typography>
-              <Typography variant="caption" color="text.secondary">
+              <Typography variant="caption" sx={{
+                color: 'text.secondary'
+              }}>
                 <strong>Sample Collection Date:</strong> 7/31/2019
               </Typography>
-              <Typography variant="caption" color="text.secondary">
+              <Typography variant="caption" sx={{
+                color: 'text.secondary'
+              }}>
                 <strong>Color:</strong> SampleColorWhite
               </Typography>
-              <Typography variant="caption" color="text.secondary">
+              <Typography variant="caption" sx={{
+                color: 'text.secondary'
+              }}>
                 <strong>Lithology:</strong> SamplesLithologyhere
               </Typography>
-              <Typography variant="caption" color="text.secondary">
+              <Typography variant="caption" sx={{
+                color: 'text.secondary'
+              }}>
                 <strong>Sample Surface Feature:</strong> SamplesLithologyhere
               </Typography>
-              <Typography variant="caption" color="text.secondary">
+              <Typography variant="caption" sx={{
+                color: 'text.secondary'
+              }}>
                 <strong>Sample Orientation Notes:</strong> Sample Orientation Notes
               </Typography>
             </Box>
@@ -128,7 +166,9 @@ const DetailsPanel: React.FC = () => {
             </Typography>
           </AccordionSummary>
           <AccordionDetails>
-            <Typography variant="caption" color="text.secondary">
+            <Typography variant="caption" sx={{
+              color: 'text.secondary'
+            }}>
               No spot selected
             </Typography>
           </AccordionDetails>
@@ -142,7 +182,9 @@ const DetailsPanel: React.FC = () => {
             </Typography>
           </AccordionSummary>
           <AccordionDetails>
-            <Typography variant="caption" color="text.secondary">
+            <Typography variant="caption" sx={{
+              color: 'text.secondary'
+            }}>
               No notes available
             </Typography>
           </AccordionDetails>
@@ -156,7 +198,9 @@ const DetailsPanel: React.FC = () => {
             </Typography>
           </AccordionSummary>
           <AccordionDetails>
-            <Typography variant="caption" color="text.secondary">
+            <Typography variant="caption" sx={{
+              color: 'text.secondary'
+            }}>
               No associated files
             </Typography>
           </AccordionDetails>
@@ -170,7 +214,9 @@ const DetailsPanel: React.FC = () => {
             </Typography>
           </AccordionSummary>
           <AccordionDetails>
-            <Typography variant="caption" color="text.secondary">
+            <Typography variant="caption" sx={{
+              color: 'text.secondary'
+            }}>
               No links
             </Typography>
           </AccordionDetails>
@@ -184,7 +230,9 @@ const DetailsPanel: React.FC = () => {
             </Typography>
           </AccordionSummary>
           <AccordionDetails>
-            <Typography variant="caption" color="text.secondary">
+            <Typography variant="caption" sx={{
+              color: 'text.secondary'
+            }}>
               No tags
             </Typography>
           </AccordionDetails>

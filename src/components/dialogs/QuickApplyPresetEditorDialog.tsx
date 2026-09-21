@@ -484,7 +484,9 @@ export function QuickApplyPresetEditorDialog({
             <Divider />
 
             {/* Preset Data Section */}
-            <Typography variant="subtitle2" color="text.secondary">
+            <Typography variant="subtitle2" sx={{
+              color: 'text.secondary'
+            }}>
               Preset Data
             </Typography>
 
@@ -524,7 +526,9 @@ export function QuickApplyPresetEditorDialog({
 
                   <Box>
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <Typography variant="body2" color="text.secondary">
+                      <Typography variant="body2" sx={{
+                        color: 'text.secondary'
+                      }}>
                         Opacity: {spotOpacity != null ? `${spotOpacity}%` : 'Not set'}
                       </Typography>
                       <Button
@@ -616,7 +620,9 @@ export function QuickApplyPresetEditorDialog({
                   )}
 
                   {configuredFeatures.length === 0 && (
-                    <Typography variant="body2" color="text.secondary">
+                    <Typography variant="body2" sx={{
+                      color: 'text.secondary'
+                    }}>
                       No geological data configured. Click "Add Data Type" to add mineralogy, grain info, fabrics, and more.
                     </Typography>
                   )}
@@ -633,7 +639,9 @@ export function QuickApplyPresetEditorDialog({
 
             {hasData && summaryItems.length > 0 && (
               <Box sx={{ mt: 1, p: 1, bgcolor: 'action.hover', borderRadius: 1 }}>
-                <Typography variant="caption" color="text.secondary">
+                <Typography variant="caption" sx={{
+                  color: 'text.secondary'
+                }}>
                   Preset will apply: {summaryItems.join(', ')}
                 </Typography>
               </Box>

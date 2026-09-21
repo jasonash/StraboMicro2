@@ -42,6 +42,7 @@ import {
   type ImageExportResult,
 } from '@/types/image-export-types';
 import { ImageExportOptionsPanel } from './ImageExportOptionsPanel';
+import { closeUnlessEscapeBlocked } from '@/utils/dialogClose';
 
 export type ExportImagesDialogMode =
   | { kind: 'batch' }
@@ -159,7 +160,9 @@ function MicrographSelectionTree({ tree, selected, onChange, disabled }: Microgr
                 indeterminate={ds.indeterminate}
                 onChange={(e) => setMany(datasetIds, e.target.checked)}
               />
-              <Typography variant="body2" fontWeight={600} noWrap>
+              <Typography variant="body2" noWrap sx={{
+                fontWeight: 600
+              }}>
                 {dataset.name}
               </Typography>
             </Box>
@@ -176,7 +179,9 @@ function MicrographSelectionTree({ tree, selected, onChange, disabled }: Microgr
                       indeterminate={ss.indeterminate}
                       onChange={(e) => setMany(sampleIds, e.target.checked)}
                     />
-                    <Typography variant="body2" fontWeight={500} noWrap>
+                    <Typography variant="body2" noWrap sx={{
+                      fontWeight: 500
+                    }}>
                       {sample.name}
                     </Typography>
                   </Box>
@@ -311,11 +316,13 @@ export function ExportImagesDialog({ open, onClose, mode }: ExportImagesDialogPr
   const title = single ? 'Export Micrograph' : 'Export Images';
 
   return (
-    <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth disableEscapeKeyDown={step === 'exporting'}>
+    <Dialog open={open} onClose={closeUnlessEscapeBlocked(handleClose, step === 'exporting')} maxWidth="sm" fullWidth>
       <DialogTitle>
         {title}
         {single && micrograph && (
-          <Typography variant="body2" color="text.secondary" noWrap>
+          <Typography variant="body2" noWrap sx={{
+            color: 'text.secondary'
+          }}>
             {micrograph.name || 'Unnamed Micrograph'}
           </Typography>
         )}
@@ -345,7 +352,9 @@ export function ExportImagesDialog({ open, onClose, mode }: ExportImagesDialogPr
                   <Box sx={{ mb: 1 }}>
                     <MicrographSelectionTree tree={tree} selected={selectedIds} onChange={setSelectedIds} />
                     <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mt: 0.5 }}>
-                      <Typography variant="caption" color="text.secondary">
+                      <Typography variant="caption" sx={{
+                        color: 'text.secondary'
+                      }}>
                         {selectedIds.size} of {allIds.length} selected
                       </Typography>
                       <Box>
@@ -376,10 +385,18 @@ export function ExportImagesDialog({ open, onClose, mode }: ExportImagesDialogPr
           <Box sx={{ py: 2 }}>
             {progress && !single ? (
               <>
-                <Typography variant="body2" color="text.secondary" gutterBottom>
+                <Typography variant="body2" gutterBottom sx={{
+                  color: 'text.secondary'
+                }}>
                   Exporting image {progress.current} of {progress.total}
                 </Typography>
-                <Typography variant="body1" fontWeight={500} noWrap sx={{ mb: 2 }}>
+                <Typography
+                  variant="body1"
+                  noWrap
+                  sx={{
+                    fontWeight: 500,
+                    mb: 2
+                  }}>
                   {progress.currentName}
                 </Typography>
                 <LinearProgress
@@ -387,13 +404,17 @@ export function ExportImagesDialog({ open, onClose, mode }: ExportImagesDialogPr
                   value={percentComplete}
                   sx={{ height: 10, borderRadius: 5, mb: 1, '& .MuiLinearProgress-bar': { borderRadius: 5 } }}
                 />
-                <Typography variant="body2" color="text.secondary" align="right">
+                <Typography variant="body2" align="right" sx={{
+                  color: 'text.secondary'
+                }}>
                   {percentComplete}%
                 </Typography>
               </>
             ) : (
               <Box sx={{ textAlign: 'center' }}>
-                <Typography variant="body1" color="text.secondary">
+                <Typography variant="body1" sx={{
+                  color: 'text.secondary'
+                }}>
                   {single ? 'Rendering full-resolution image...' : 'Preparing export...'}
                 </Typography>
                 <LinearProgress sx={{ mt: 2 }} />
@@ -404,16 +425,29 @@ export function ExportImagesDialog({ open, onClose, mode }: ExportImagesDialogPr
 
         {step === 'done' && result?.success && (
           <Alert severity="success" icon={<CheckCircleIcon fontSize="inherit" />} sx={{ my: 2 }}>
-            <Typography variant="body1" fontWeight={500}>
+            <Typography variant="body1" sx={{
+              fontWeight: 500
+            }}>
               Export Complete
             </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mt: 1, wordBreak: 'break-all' }}>
+            <Typography
+              variant="body2"
+              sx={{
+                color: 'text.secondary',
+                mt: 1,
+                wordBreak: 'break-all'
+              }}>
               {single
                 ? `Saved to ${result.filePath ?? 'the chosen location'}.`
                 : `${result.exported ?? 0} image${result.exported === 1 ? '' : 's'} exported to ${result.filePath ?? 'ZIP file'}.`}
             </Typography>
             {result.errors && result.errors.length > 0 && (
-              <Typography variant="body2" color="warning.main" sx={{ mt: 1 }}>
+              <Typography
+                variant="body2"
+                sx={{
+                  color: 'warning.main',
+                  mt: 1
+                }}>
                 {result.errors.length} image{result.errors.length === 1 ? '' : 's'} could not be exported:{' '}
                 {result.errors.map((e) => e.name).join(', ')}
               </Typography>
@@ -423,7 +457,9 @@ export function ExportImagesDialog({ open, onClose, mode }: ExportImagesDialogPr
 
         {step === 'done' && result && !result.success && (
           <Alert severity="error" icon={<ErrorIcon fontSize="inherit" />} sx={{ my: 2 }}>
-            <Typography variant="body1" fontWeight={500}>
+            <Typography variant="body1" sx={{
+              fontWeight: 500
+            }}>
               Export Failed
             </Typography>
             <Typography variant="body2" sx={{ mt: 1 }}>

@@ -94,7 +94,9 @@ export function GrainOrientationAddForm({
           onChange={(e) =>
             setMeanOrientation(e.target.value === '' ? '' : parseFloat(e.target.value))
           }
-          inputProps={{ step: 0.1 }}
+          slotProps={{
+            htmlInput: { step: 0.1 }
+          }}
         />
       </Box>
 

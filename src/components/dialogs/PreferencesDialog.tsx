@@ -107,7 +107,12 @@ export function PreferencesDialog({ isOpen, onClose }: PreferencesDialogProps) {
               <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>
                 REST Server
               </Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              <Typography
+                variant="body2"
+                sx={{
+                  color: 'text.secondary',
+                  mb: 2
+                }}>
                 The StraboSpot server URL for syncing projects and data.
               </Typography>
               <TextField
@@ -118,23 +123,31 @@ export function PreferencesDialog({ isOpen, onClose }: PreferencesDialogProps) {
                 error={!!error}
                 helperText={error || 'Must be a valid http:// or https:// URL'}
                 placeholder={DEFAULT_REST_SERVER}
-                InputProps={{
-                  endAdornment: (
-                    <InputAdornment position="end">
-                      <IconButton
-                        onClick={handleReset}
-                        disabled={!isModified}
-                        title="Reset to default"
-                        size="small"
-                      >
-                        <ResetIcon />
-                      </IconButton>
-                    </InputAdornment>
-                  ),
+                slotProps={{
+                  input: {
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <IconButton
+                          onClick={handleReset}
+                          disabled={!isModified}
+                          title="Reset to default"
+                          size="small"
+                        >
+                          <ResetIcon />
+                        </IconButton>
+                      </InputAdornment>
+                    ),
+                  }
                 }}
               />
               {isModified && (
-                <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+                <Typography
+                  variant="caption"
+                  sx={{
+                    color: 'text.secondary',
+                    mt: 0.5,
+                    display: 'block'
+                  }}>
                   Default: {DEFAULT_REST_SERVER}
                 </Typography>
               )}

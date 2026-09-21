@@ -350,8 +350,10 @@ export function MineralogyDialog({
                   const val = e.target.value.trim();
                   setCurrentPercentage(val === '' ? null : parseFloat(val) || 0);
                 }}
-                inputProps={{ min: 0, max: 100, step: 0.1 }}
                 sx={{ width: 120 }}
+                slotProps={{
+                  htmlInput: { min: 0, max: 100, step: 0.1 }
+                }}
               />
               <Button
                 variant="outlined"

@@ -267,7 +267,13 @@ function GroupItem({ group, projectId, onAddMicrograph, onEditName, onDelete }: 
       <Collapse in={isExpanded}>
         <Box sx={{ pl: 2, pt: 1 }}>
           {groupMicrographs.length === 0 ? (
-            <Typography variant="body2" color="text.secondary" sx={{ py: 1, fontStyle: 'italic' }}>
+            <Typography
+              variant="body2"
+              sx={{
+                color: 'text.secondary',
+                py: 1,
+                fontStyle: 'italic'
+              }}>
               No micrographs in this group
             </Typography>
           ) : (
@@ -438,7 +444,9 @@ export function GroupsPanel() {
   if (!project) {
     return (
       <Box sx={{ p: 2 }}>
-        <Typography variant="body2" color="text.secondary">
+        <Typography variant="body2" sx={{
+          color: 'text.secondary'
+        }}>
           No project loaded
         </Typography>
       </Box>
@@ -485,7 +493,13 @@ export function GroupsPanel() {
       {/* Groups list */}
       <Box sx={{ flex: 1, overflow: 'auto', p: 1 }}>
         {groups.length === 0 ? (
-          <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', py: 4 }}>
+          <Typography
+            variant="body2"
+            sx={{
+              color: 'text.secondary',
+              textAlign: 'center',
+              py: 4
+            }}>
             No groups yet. Click the + button to create one.
           </Typography>
         ) : (

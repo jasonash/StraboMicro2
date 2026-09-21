@@ -150,7 +150,12 @@ function SessionCard({ session, onContinue, onRename, onDelete, showActions = fa
             </Typography>
           )}
 
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+          <Typography
+            variant="body2"
+            sx={{
+              color: 'text.secondary',
+              mb: 1
+            }}>
             {session.classifiedCount}/{session.totalPoints} classified ({progress}%)
             {' • '}
             {formatDate(session.updatedAt)}
@@ -395,7 +400,9 @@ export function PointCountDialog({
         <DialogTitle>Point Count</DialogTitle>
         <DialogContent>
           <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
-            <Typography color="text.secondary">Loading sessions...</Typography>
+            <Typography sx={{
+              color: 'text.secondary'
+            }}>Loading sessions...</Typography>
           </Box>
         </DialogContent>
       </Dialog>
@@ -414,7 +421,12 @@ export function PointCountDialog({
           <Typography>
             Are you sure you want to delete "{deleteConfirmSession.name}"?
           </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+          <Typography
+            variant="body2"
+            sx={{
+              color: 'text.secondary',
+              mt: 1
+            }}>
             {deleteConfirmSession.totalPoints} points, {deleteConfirmSession.classifiedCount} classified
           </Typography>
         </DialogContent>
@@ -438,7 +450,12 @@ export function PointCountDialog({
       <Dialog open={isOpen} onClose={onClose} maxWidth="sm" fullWidth>
         <DialogTitle>Point Count</DialogTitle>
         <DialogContent>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          <Typography
+            variant="body2"
+            sx={{
+              color: 'text.secondary',
+              mb: 2
+            }}>
             Micrograph: {micrograph?.name || 'Unknown'}
           </Typography>
 
@@ -492,7 +509,12 @@ export function PointCountDialog({
       <Dialog open={isOpen} onClose={onClose} maxWidth="sm" fullWidth>
         <DialogTitle>Choose Point Count Session</DialogTitle>
         <DialogContent>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          <Typography
+            variant="body2"
+            sx={{
+              color: 'text.secondary',
+              mb: 2
+            }}>
             Micrograph: {micrograph?.name || 'Unknown'}
           </Typography>
 
@@ -577,7 +599,14 @@ export function PointCountDialog({
               <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>
                 • 500 points: ±{calculateConfidenceInterval(125, 500).toFixed(1)}% at 25%
               </Typography>
-              <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block', fontStyle: 'italic' }}>
+              <Typography
+                variant="caption"
+                sx={{
+                  color: 'text.secondary',
+                  mt: 1,
+                  display: 'block',
+                  fontStyle: 'italic'
+                }}>
                 (95% confidence interval)
               </Typography>
             </Paper>
@@ -602,7 +631,9 @@ export function PointCountDialog({
                 { value: 1000, label: '1000' },
               ]}
             />
-            <Typography variant="body2" color="text.secondary">
+            <Typography variant="body2" sx={{
+              color: 'text.secondary'
+            }}>
               Grid: {gridDimensions.rows}×{gridDimensions.cols} • {spacing}px spacing
             </Typography>
           </Box>
@@ -626,7 +657,13 @@ export function PointCountDialog({
                   height={375}
                 />
               </Box>
-              <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+              <Typography
+                variant="caption"
+                sx={{
+                  color: 'text.secondary',
+                  mt: 0.5,
+                  display: 'block'
+                }}>
                 Scroll to zoom • Drag to pan
               </Typography>
             </Box>

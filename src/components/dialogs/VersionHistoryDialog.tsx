@@ -314,8 +314,10 @@ export function VersionHistoryDialog({
         onClose={onClose}
         maxWidth="lg"
         fullWidth
-        PaperProps={{
-          sx: { height: '80vh', maxHeight: 700 },
+        slotProps={{
+          paper: {
+            sx: { height: '80vh', maxHeight: 700 },
+          }
         }}
       >
         <DialogTitle
@@ -361,7 +363,9 @@ export function VersionHistoryDialog({
             }}
           >
             <Box sx={{ p: 1.5, borderBottom: 1, borderColor: 'divider' }}>
-              <Typography variant="subtitle2" color="text.secondary">
+              <Typography variant="subtitle2" sx={{
+                color: 'text.secondary'
+              }}>
                 {versions.length} version{versions.length !== 1 ? 's' : ''}
               </Typography>
             </Box>
@@ -379,10 +383,17 @@ export function VersionHistoryDialog({
               </Box>
             ) : versions.length === 0 ? (
               <Box sx={{ p: 2, textAlign: 'center' }}>
-                <Typography color="text.secondary">
+                <Typography sx={{
+                  color: 'text.secondary'
+                }}>
                   No versions saved yet.
                 </Typography>
-                <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                <Typography
+                  variant="body2"
+                  sx={{
+                    color: 'text.secondary',
+                    mt: 1
+                  }}>
                   Save your project (Cmd+S) to create a version.
                 </Typography>
               </Box>
@@ -424,7 +435,9 @@ export function VersionHistoryDialog({
                             ) : (
                               <Typography
                                 variant="body2"
-                                color="text.secondary"
+                                sx={{
+                                  color: 'text.secondary'
+                                }}
                               >
                                 Auto-save
                               </Typography>
@@ -436,17 +449,20 @@ export function VersionHistoryDialog({
                             <Tooltip title={formatFullTime(version.timestamp)}>
                               <Typography
                                 variant="caption"
-                                color="text.secondary"
                                 component="span"
+                                sx={{
+                                  color: 'text.secondary'
+                                }}
                               >
                                 {formatRelativeTime(version.timestamp)}
                               </Typography>
                             </Tooltip>
                             <Typography
                               variant="caption"
-                              color="text.secondary"
-                              sx={{ ml: 1 }}
-                            >
+                              sx={{
+                                color: 'text.secondary',
+                                ml: 1
+                              }}>
                               {getChangeSummary(version.changeStats)}
                             </Typography>
                           </Box>
@@ -469,7 +485,9 @@ export function VersionHistoryDialog({
             }}
           >
             <Box sx={{ p: 1.5, borderBottom: 1, borderColor: 'divider' }}>
-              <Typography variant="subtitle2" color="text.secondary">
+              <Typography variant="subtitle2" sx={{
+                color: 'text.secondary'
+              }}>
                 Changes
                 {comparisonVersion !== null &&
                   selectedVersion !== null &&
@@ -483,13 +501,23 @@ export function VersionHistoryDialog({
                   <CircularProgress size={24} />
                 </Box>
               ) : diff === null ? (
-                <Typography color="text.secondary" sx={{ textAlign: 'center', py: 4 }}>
+                <Typography
+                  sx={{
+                    color: 'text.secondary',
+                    textAlign: 'center',
+                    py: 4
+                  }}>
                   {selectedVersion !== null && comparisonVersion === null
                     ? 'This is the oldest version'
                     : 'Select a version to see changes'}
                 </Typography>
               ) : diff.changes.length === 0 ? (
-                <Typography color="text.secondary" sx={{ textAlign: 'center', py: 4 }}>
+                <Typography
+                  sx={{
+                    color: 'text.secondary',
+                    textAlign: 'center',
+                    py: 4
+                  }}>
                   No changes between these versions
                 </Typography>
               ) : (
@@ -604,7 +632,9 @@ export function VersionHistoryDialog({
             }}
           >
             <Box sx={{ p: 1.5, borderBottom: 1, borderColor: 'divider' }}>
-              <Typography variant="subtitle2" color="text.secondary">
+              <Typography variant="subtitle2" sx={{
+                color: 'text.secondary'
+              }}>
                 Version Details
               </Typography>
             </Box>
@@ -618,13 +648,22 @@ export function VersionHistoryDialog({
                       {selectedVersionInfo.name}
                     </Typography>
                   )}
-                  <Typography variant="body2" color="text.secondary">
+                  <Typography variant="body2" sx={{
+                    color: 'text.secondary'
+                  }}>
                     {formatFullTime(selectedVersionInfo.timestamp)}
                   </Typography>
-                  <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                  <Typography
+                    variant="body2"
+                    sx={{
+                      color: 'text.secondary',
+                      mt: 1
+                    }}>
                     Version #{selectedVersionInfo.version}
                   </Typography>
-                  <Typography variant="body2" color="text.secondary">
+                  <Typography variant="body2" sx={{
+                    color: 'text.secondary'
+                  }}>
                     Size: {formatBytes(selectedVersionInfo.sizeBytes)}
                   </Typography>
                   {selectedVersionInfo.description && (
@@ -640,50 +679,68 @@ export function VersionHistoryDialog({
                 </Typography>
                 <Box sx={{ mb: 2 }}>
                   {selectedVersionInfo.changeStats.datasetsAdded > 0 && (
-                    <Typography variant="body2" color="text.secondary">
+                    <Typography variant="body2" sx={{
+                      color: 'text.secondary'
+                    }}>
                       +{selectedVersionInfo.changeStats.datasetsAdded} datasets
                     </Typography>
                   )}
                   {selectedVersionInfo.changeStats.datasetsRemoved > 0 && (
-                    <Typography variant="body2" color="text.secondary">
+                    <Typography variant="body2" sx={{
+                      color: 'text.secondary'
+                    }}>
                       -{selectedVersionInfo.changeStats.datasetsRemoved} datasets
                     </Typography>
                   )}
                   {selectedVersionInfo.changeStats.samplesAdded > 0 && (
-                    <Typography variant="body2" color="text.secondary">
+                    <Typography variant="body2" sx={{
+                      color: 'text.secondary'
+                    }}>
                       +{selectedVersionInfo.changeStats.samplesAdded} samples
                     </Typography>
                   )}
                   {selectedVersionInfo.changeStats.samplesRemoved > 0 && (
-                    <Typography variant="body2" color="text.secondary">
+                    <Typography variant="body2" sx={{
+                      color: 'text.secondary'
+                    }}>
                       -{selectedVersionInfo.changeStats.samplesRemoved} samples
                     </Typography>
                   )}
                   {selectedVersionInfo.changeStats.micrographsAdded > 0 && (
-                    <Typography variant="body2" color="text.secondary">
+                    <Typography variant="body2" sx={{
+                      color: 'text.secondary'
+                    }}>
                       +{selectedVersionInfo.changeStats.micrographsAdded}{' '}
                       micrographs
                     </Typography>
                   )}
                   {selectedVersionInfo.changeStats.micrographsRemoved > 0 && (
-                    <Typography variant="body2" color="text.secondary">
+                    <Typography variant="body2" sx={{
+                      color: 'text.secondary'
+                    }}>
                       -{selectedVersionInfo.changeStats.micrographsRemoved}{' '}
                       micrographs
                     </Typography>
                   )}
                   {selectedVersionInfo.changeStats.spotsAdded > 0 && (
-                    <Typography variant="body2" color="text.secondary">
+                    <Typography variant="body2" sx={{
+                      color: 'text.secondary'
+                    }}>
                       +{selectedVersionInfo.changeStats.spotsAdded} spots
                     </Typography>
                   )}
                   {selectedVersionInfo.changeStats.spotsRemoved > 0 && (
-                    <Typography variant="body2" color="text.secondary">
+                    <Typography variant="body2" sx={{
+                      color: 'text.secondary'
+                    }}>
                       -{selectedVersionInfo.changeStats.spotsRemoved} spots
                     </Typography>
                   )}
                   {getChangeSummary(selectedVersionInfo.changeStats) ===
                     'No changes' && (
-                    <Typography variant="body2" color="text.secondary">
+                    <Typography variant="body2" sx={{
+                      color: 'text.secondary'
+                    }}>
                       No structural changes
                     </Typography>
                   )}
@@ -715,7 +772,9 @@ export function VersionHistoryDialog({
               </Box>
             ) : (
               <Box sx={{ p: 2, textAlign: 'center' }}>
-                <Typography color="text.secondary">
+                <Typography sx={{
+                  color: 'text.secondary'
+                }}>
                   Select a version to see details
                 </Typography>
               </Box>
@@ -761,7 +820,12 @@ export function VersionHistoryDialog({
       >
         <DialogTitle>Create Named Version</DialogTitle>
         <DialogContent>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          <Typography
+            variant="body2"
+            sx={{
+              color: 'text.secondary',
+              mb: 2
+            }}>
             Named versions are permanent checkpoints that won&apos;t be automatically
             pruned.
           </Typography>

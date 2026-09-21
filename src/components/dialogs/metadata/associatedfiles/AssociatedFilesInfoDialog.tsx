@@ -259,8 +259,10 @@ export function AssociatedFilesInfoDialog({
       onClose={handleCancel}
       maxWidth="md"
       fullWidth
-      PaperProps={{
-        sx: { height: '90vh' }
+      slotProps={{
+        paper: {
+          sx: { height: '90vh' }
+        }
       }}
     >
       <DialogTitle>{title}</DialogTitle>
@@ -282,7 +284,12 @@ export function AssociatedFilesInfoDialog({
                 bgcolor: 'action.hover',
               }}
             >
-              <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+              <Typography
+                variant="body2"
+                sx={{
+                  color: 'text.secondary',
+                  fontStyle: 'italic'
+                }}>
                 No associated files added yet.
               </Typography>
             </Box>
@@ -391,7 +398,13 @@ export function AssociatedFilesInfoDialog({
               )}
 
               {selectedFilePaths.length > 0 && (
-                <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+                <Typography
+                  variant="caption"
+                  sx={{
+                    color: 'text.secondary',
+                    mt: 0.5,
+                    display: 'block'
+                  }}>
                   {selectedFilePaths.length} file{selectedFilePaths.length !== 1 ? 's' : ''} selected
                 </Typography>
               )}

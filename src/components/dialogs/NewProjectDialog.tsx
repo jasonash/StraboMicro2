@@ -179,27 +179,31 @@ export function NewProjectDialog({ isOpen, onClose }: NewProjectDialogProps) {
                 type="date"
                 value={formData.startDate}
                 onChange={(e) => updateField('startDate', e.target.value)}
-                InputLabelProps={{ shrink: true }}
-                inputProps={{
-                  max: getStartDateMax(),
-                }}
                 error={!!dateError}
                 helperText={dateError}
                 fullWidth
-              />
+                slotProps={{
+                  htmlInput: {
+                    max: getStartDateMax(),
+                  },
+
+                  inputLabel: { shrink: true }
+                }} />
               <TextField
                 label="End Date"
                 type="date"
                 value={formData.endDate}
                 onChange={(e) => updateField('endDate', e.target.value)}
-                InputLabelProps={{ shrink: true }}
-                inputProps={{
-                  min: getEndDateMin(),
-                  max: '2100-12-31',
-                }}
                 error={!!dateError}
                 fullWidth
-              />
+                slotProps={{
+                  htmlInput: {
+                    min: getEndDateMin(),
+                    max: '2100-12-31',
+                  },
+
+                  inputLabel: { shrink: true }
+                }} />
             </Stack>
 
             <TextField

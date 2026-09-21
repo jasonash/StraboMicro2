@@ -622,7 +622,9 @@ export function EditMicrographLocationDialog({
         {/* Step 0: Location Method Selection */}
         {step === 0 && (
           <Stack spacing={3}>
-            <Typography variant="body2" color="text.secondary">
+            <Typography variant="body2" sx={{
+              color: 'text.secondary'
+            }}>
               Choose how to locate this associated micrograph on its parent image.
             </Typography>
             <RadioGroup
@@ -634,7 +636,14 @@ export function EditMicrographLocationDialog({
                 control={<Radio />}
                 label="Locate as a scaled rectangle"
               />
-              <Typography variant="caption" color="text.secondary" sx={{ ml: 4, mt: -1, mb: 2 }}>
+              <Typography
+                variant="caption"
+                sx={{
+                  color: 'text.secondary',
+                  ml: 4,
+                  mt: -1,
+                  mb: 2
+                }}>
                 Interactively position, resize, and rotate the image on the parent (recommended)
               </Typography>
 
@@ -643,7 +652,14 @@ export function EditMicrographLocationDialog({
                 control={<Radio />}
                 label="Locate by an approximate point"
               />
-              <Typography variant="caption" color="text.secondary" sx={{ ml: 4, mt: -1, mb: 2 }}>
+              <Typography
+                variant="caption"
+                sx={{
+                  color: 'text.secondary',
+                  ml: 4,
+                  mt: -1,
+                  mb: 2
+                }}>
                 Mark a single point showing approximate location
               </Typography>
 
@@ -652,7 +668,13 @@ export function EditMicrographLocationDialog({
                 control={<Radio />}
                 label="3-Point Registration"
               />
-              <Typography variant="caption" color="text.secondary" sx={{ ml: 4, mt: -1 }}>
+              <Typography
+                variant="caption"
+                sx={{
+                  color: 'text.secondary',
+                  ml: 4,
+                  mt: -1
+                }}>
                 Match 3+ corresponding features to compute precise alignment (handles rotation, scale, and skew)
               </Typography>
             </RadioGroup>
@@ -662,7 +684,9 @@ export function EditMicrographLocationDialog({
         {/* Step 1: Scale Method Selection */}
         {step === 1 && (
           <Stack spacing={3}>
-            <Typography variant="body2" color="text.secondary">
+            <Typography variant="body2" sx={{
+              color: 'text.secondary'
+            }}>
               How do you wish to set the scale?
             </Typography>
             <RadioGroup
@@ -676,7 +700,14 @@ export function EditMicrographLocationDialog({
                     control={<Radio />}
                     label="Trace Scale Bar and Drag"
                   />
-                  <Typography variant="caption" color="text.secondary" sx={{ ml: 4, mt: -1, mb: 2 }}>
+                  <Typography
+                    variant="caption"
+                    sx={{
+                      color: 'text.secondary',
+                      ml: 4,
+                      mt: -1,
+                      mb: 2
+                    }}>
                     Interactive: trace scale bar, then drag/resize/rotate the image
                   </Typography>
 
@@ -685,7 +716,14 @@ export function EditMicrographLocationDialog({
                     control={<Radio />}
                     label="Stretch and Drag"
                   />
-                  <Typography variant="caption" color="text.secondary" sx={{ ml: 4, mt: -1, mb: 2 }}>
+                  <Typography
+                    variant="caption"
+                    sx={{
+                      color: 'text.secondary',
+                      ml: 4,
+                      mt: -1,
+                      mb: 2
+                    }}>
                     Interactive: stretch to fit, then drag/resize/rotate the image
                   </Typography>
                 </>
@@ -698,7 +736,14 @@ export function EditMicrographLocationDialog({
                     control={<Radio />}
                     label="Trace Scale Bar"
                   />
-                  <Typography variant="caption" color="text.secondary" sx={{ ml: 4, mt: -1, mb: 2 }}>
+                  <Typography
+                    variant="caption"
+                    sx={{
+                      color: 'text.secondary',
+                      ml: 4,
+                      mt: -1,
+                      mb: 2
+                    }}>
                     Trace a scale bar to set the scale
                   </Typography>
                 </>
@@ -709,7 +754,14 @@ export function EditMicrographLocationDialog({
                 control={<Radio />}
                 label="Pixel Conversion Factor"
               />
-              <Typography variant="caption" color="text.secondary" sx={{ ml: 4, mt: -1, mb: 2 }}>
+              <Typography
+                variant="caption"
+                sx={{
+                  color: 'text.secondary',
+                  ml: 4,
+                  mt: -1,
+                  mb: 2
+                }}>
                 Enter pixels per unit manually
               </Typography>
 
@@ -718,7 +770,14 @@ export function EditMicrographLocationDialog({
                 control={<Radio />}
                 label="Provide Width/Height of Image"
               />
-              <Typography variant="caption" color="text.secondary" sx={{ ml: 4, mt: -1, mb: 2 }}>
+              <Typography
+                variant="caption"
+                sx={{
+                  color: 'text.secondary',
+                  ml: 4,
+                  mt: -1,
+                  mb: 2
+                }}>
                 Specify the physical dimensions of the image
               </Typography>
 
@@ -729,7 +788,13 @@ export function EditMicrographLocationDialog({
                     control={<Radio />}
                     label="Copy Size and Location from Existing Micrograph"
                   />
-                  <Typography variant="caption" color="text.secondary" sx={{ ml: 4, mt: -1 }}>
+                  <Typography
+                    variant="caption"
+                    sx={{
+                      color: 'text.secondary',
+                      ml: 4,
+                      mt: -1
+                    }}>
                     Copy position and scale from a sibling micrograph
                   </Typography>
 
@@ -760,7 +825,9 @@ export function EditMicrographLocationDialog({
           <Box>
             {isAffine ? (
               <Stack spacing={2}>
-                <Typography variant="body2" color="text.secondary">
+                <Typography variant="body2" sx={{
+                  color: 'text.secondary'
+                }}>
                   Use 3-point registration to precisely align this micrograph on its parent by
                   matching corresponding features between both images.
                 </Typography>
@@ -782,11 +849,18 @@ export function EditMicrographLocationDialog({
                     <>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                         <CheckCircle color="success" />
-                        <Typography variant="subtitle1" color="success.dark" fontWeight="bold">
+                        <Typography
+                          variant="subtitle1"
+                          sx={{
+                            color: 'success.dark',
+                            fontWeight: 'bold'
+                          }}>
                           Registration Complete
                         </Typography>
                       </Box>
-                      <Typography variant="body2" color="text.primary">
+                      <Typography variant="body2" sx={{
+                        color: 'text.primary'
+                      }}>
                         {affineControlPoints?.length || 0} control points defined
                       </Typography>
                       <Button
@@ -798,7 +872,12 @@ export function EditMicrographLocationDialog({
                     </>
                   ) : (
                     <>
-                      <Typography variant="body2" color="text.secondary" textAlign="center">
+                      <Typography
+                        variant="body2"
+                        sx={{
+                          color: 'text.secondary',
+                          textAlign: 'center'
+                        }}>
                         Click the button below to open the registration interface where you can
                         click corresponding features on both images.
                       </Typography>
@@ -814,7 +893,9 @@ export function EditMicrographLocationDialog({
                 </Box>
 
                 {affineMatrix && (
-                  <Typography variant="caption" color="text.secondary">
+                  <Typography variant="caption" sx={{
+                    color: 'text.secondary'
+                  }}>
                     The overlay will be transformed using an affine matrix computed from your
                     control points. This handles translation, rotation, scale, and skew
                     corrections.

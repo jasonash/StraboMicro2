@@ -140,7 +140,12 @@ export const ConfigureShortcutsDialog: React.FC<ConfigureShortcutsDialogProps> =
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
       <DialogTitle>Configure Quick Classify Shortcuts</DialogTitle>
       <DialogContent>
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+        <Typography
+          variant="body2"
+          sx={{
+            color: 'text.secondary',
+            mb: 2
+          }}>
           Press the corresponding key to classify the selected spot with that mineral.
           Reserved keys: Space (skip), Backspace (back), Escape (exit), Tab (next unclassified).
         </Typography>
@@ -159,7 +164,9 @@ export const ConfigureShortcutsDialog: React.FC<ConfigureShortcutsDialogProps> =
             onChange={(e) => setNewKey(e.target.value.slice(0, 1))}
             size="small"
             sx={{ width: 60 }}
-            inputProps={{ maxLength: 1, style: { textTransform: 'uppercase' } }}
+            slotProps={{
+              htmlInput: { maxLength: 1, style: { textTransform: 'uppercase' } }
+            }}
           />
           <Box sx={{ flex: 1 }}>
             <AutocompleteMineralSearch
@@ -211,9 +218,11 @@ export const ConfigureShortcutsDialog: React.FC<ConfigureShortcutsDialogProps> =
           {sortedShortcuts.length === 0 && (
             <Typography
               variant="body2"
-              color="text.secondary"
-              sx={{ textAlign: 'center', py: 2 }}
-            >
+              sx={{
+                color: 'text.secondary',
+                textAlign: 'center',
+                py: 2
+              }}>
               No shortcuts configured. Add some above.
             </Typography>
           )}

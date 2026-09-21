@@ -45,7 +45,9 @@ export function GrainSizeListItem({ item, onEdit, onDelete }: GrainSizeListItemP
             ))}
           </Box>
         )}
-        <Typography variant="body2" color="text.secondary">
+        <Typography variant="body2" sx={{
+          color: 'text.secondary'
+        }}>
           {stats.length > 0 ? stats.join(' | ') : 'No statistics provided'}
         </Typography>
       </Box>

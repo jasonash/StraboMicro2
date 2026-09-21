@@ -85,12 +85,13 @@ export const ProjectPrepDialog: React.FC<ProjectPrepDialogProps> = ({
       open={open}
       maxWidth="sm"
       fullWidth
-      disableEscapeKeyDown
-      PaperProps={{
-        sx: {
-          borderRadius: 2,
-          p: 1,
-        },
+      slotProps={{
+        paper: {
+          sx: {
+            borderRadius: 2,
+            p: 1,
+          },
+        }
       }}
     >
       <DialogTitle sx={{ pb: 1 }}>
@@ -102,10 +103,17 @@ export const ProjectPrepDialog: React.FC<ProjectPrepDialogProps> = ({
 
       <DialogContent>
         <Box sx={{ mb: 3 }}>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+          <Typography
+            variant="body2"
+            sx={{
+              color: 'text.secondary',
+              mb: 1
+            }}>
             Generating preview images for fast browsing...
           </Typography>
-          <Typography variant="body2" color="text.secondary">
+          <Typography variant="body2" sx={{
+            color: 'text.secondary'
+          }}>
             Please don't close the app until this completes.
           </Typography>
         </Box>
@@ -113,10 +121,14 @@ export const ProjectPrepDialog: React.FC<ProjectPrepDialogProps> = ({
         {/* Overall image progress bar */}
         <Box sx={{ mb: 2 }}>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
-            <Typography variant="body2" fontWeight="medium">
+            <Typography variant="body2" sx={{
+              fontWeight: 'medium'
+            }}>
               Image {completedImages + 1} of {totalImages}
             </Typography>
-            <Typography variant="body2" color="text.secondary">
+            <Typography variant="body2" sx={{
+              color: 'text.secondary'
+            }}>
               {Math.round(imageProgress)}%
             </Typography>
           </Box>
@@ -137,10 +149,14 @@ export const ProjectPrepDialog: React.FC<ProjectPrepDialogProps> = ({
         {totalTiles > 0 && (
           <Box sx={{ mb: 2 }}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
-              <Typography variant="body2" color="text.secondary">
+              <Typography variant="body2" sx={{
+                color: 'text.secondary'
+              }}>
                 Generating tile {currentTile} of {totalTiles}
               </Typography>
-              <Typography variant="body2" color="text.secondary">
+              <Typography variant="body2" sx={{
+                color: 'text.secondary'
+              }}>
                 {Math.round(tileProgress)}%
               </Typography>
             </Box>
@@ -162,7 +178,12 @@ export const ProjectPrepDialog: React.FC<ProjectPrepDialogProps> = ({
         {/* Current file and time info */}
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
           <Box sx={{ flex: 1, minWidth: 0, mr: 2 }}>
-            <Typography variant="caption" color="text.secondary" display="block">
+            <Typography
+              variant="caption"
+              sx={{
+                color: 'text.secondary',
+                display: 'block'
+              }}>
               Current:
             </Typography>
             <Typography
@@ -177,11 +198,21 @@ export const ProjectPrepDialog: React.FC<ProjectPrepDialogProps> = ({
             </Typography>
           </Box>
           <Box sx={{ textAlign: 'right', flexShrink: 0 }}>
-            <Typography variant="caption" color="text.secondary" display="block">
+            <Typography
+              variant="caption"
+              sx={{
+                color: 'text.secondary',
+                display: 'block'
+              }}>
               Time elapsed: {formatTime(elapsedSeconds)}
             </Typography>
             {completedImages > 0 && completedImages < totalImages && (
-              <Typography variant="caption" color="text.secondary" display="block">
+              <Typography
+                variant="caption"
+                sx={{
+                  color: 'text.secondary',
+                  display: 'block'
+                }}>
                 Est. remaining: {estimateRemaining()}
               </Typography>
             )}

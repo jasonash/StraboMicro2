@@ -194,7 +194,9 @@ export const SketchLayersPanel: React.FC = () => {
   if (!activeMicrographId) {
     return (
       <Box sx={{ p: 2, textAlign: 'center' }}>
-        <Typography variant="body2" color="text.secondary">
+        <Typography variant="body2" sx={{
+          color: 'text.secondary'
+        }}>
           Select a micrograph to view or create sketch layers.
         </Typography>
       </Box>
@@ -205,7 +207,12 @@ export const SketchLayersPanel: React.FC = () => {
   if (layers.length === 0) {
     return (
       <Box sx={{ p: 2, textAlign: 'center' }}>
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+        <Typography
+          variant="body2"
+          sx={{
+            color: 'text.secondary',
+            mb: 2
+          }}>
           No sketch layers yet.
         </Typography>
         <Button
@@ -288,11 +295,13 @@ export const SketchLayersPanel: React.FC = () => {
                 ) : (
                   <ListItemText
                     primary={layer.name}
-                    primaryTypographyProps={{
-                      variant: 'body2',
-                      sx: {
-                        fontWeight: isActive ? 600 : 400,
-                      },
+                    slotProps={{
+                      primary: {
+                        variant: 'body2',
+                        sx: {
+                          fontWeight: isActive ? 600 : 400,
+                        },
+                      }
                     }}
                   />
                 )}

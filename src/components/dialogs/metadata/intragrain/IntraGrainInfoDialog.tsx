@@ -127,8 +127,10 @@ export function IntraGrainInfoDialog({
       onClose={handleCancel}
       maxWidth="md"
       fullWidth
-      PaperProps={{
-        sx: { height: '90vh' }
+      slotProps={{
+        paper: {
+          sx: { height: '90vh' }
+        }
       }}
     >
       <DialogTitle>{title}</DialogTitle>

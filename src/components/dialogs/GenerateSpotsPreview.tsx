@@ -306,7 +306,9 @@ export const GenerateSpotsPreview = ({
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
       {/* Toolbar */}
-      <Stack direction="row" spacing={1} alignItems="center">
+      <Stack direction="row" spacing={1} sx={{
+        alignItems: 'center'
+      }}>
         <Tooltip title="Pan (drag to move)">
           <IconButton
             size="small"
@@ -380,7 +382,9 @@ export const GenerateSpotsPreview = ({
               height: '100%',
             }}
           >
-            <Typography color="text.secondary">Loading image...</Typography>
+            <Typography sx={{
+              color: 'text.secondary'
+            }}>Loading image...</Typography>
           </Box>
         ) : (
           <Stage
@@ -502,15 +506,23 @@ export const GenerateSpotsPreview = ({
       </Box>
 
       {/* Status bar */}
-      <Stack direction="row" spacing={2} alignItems="center">
-        <Typography variant="caption" color="text.secondary">
+      <Stack direction="row" spacing={2} sx={{
+        alignItems: 'center'
+      }}>
+        <Typography variant="caption" sx={{
+          color: 'text.secondary'
+        }}>
           {imageSize.width > 0 && `Image: ${imageSize.width}×${imageSize.height}px`}
         </Typography>
-        <Typography variant="caption" color="text.secondary">
+        <Typography variant="caption" sx={{
+          color: 'text.secondary'
+        }}>
           Zoom: {Math.round(scale * 100)}%
         </Typography>
         <Box sx={{ flexGrow: 1 }} />
-        <Typography variant="caption" color="text.secondary">
+        <Typography variant="caption" sx={{
+          color: 'text.secondary'
+        }}>
           {visiblePoints.length} points{regionBounds && generatedPoints.length !== visiblePoints.length && ` (${generatedPoints.length} total)`}
         </Typography>
       </Stack>

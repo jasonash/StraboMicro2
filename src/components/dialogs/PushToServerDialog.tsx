@@ -23,6 +23,7 @@ import ErrorIcon from '@mui/icons-material/Error';
 import { ConfirmDialog } from './ConfirmDialog';
 import { useAuthStore } from '@/store/useAuthStore';
 import { invalidateSpineStatus } from '@/services/straboSamplesApi';
+import { closeUnlessEscapeBlocked } from '@/utils/dialogClose';
 
 interface PushProgress {
   phase: string;
@@ -183,10 +184,9 @@ export function PushToServerDialog({
     <>
       <Dialog
         open={open && !showOverwriteConfirm}
-        onClose={result ? handleClose : undefined}
+        onClose={closeUnlessEscapeBlocked(result ? handleClose : undefined, isPushing)}
         maxWidth="sm"
         fullWidth
-        disableEscapeKeyDown={isPushing}
       >
         <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
           <CloudUploadIcon color="primary" />
@@ -198,16 +198,22 @@ export function PushToServerDialog({
             {isPushing && progress && (
               <>
                 <Box sx={{ mb: 2 }}>
-                  <Typography variant="body2" color="text.secondary" gutterBottom>
+                  <Typography variant="body2" gutterBottom sx={{
+                    color: 'text.secondary'
+                  }}>
                     {progress.message}
                   </Typography>
                   {progress.itemName && (
-                    <Typography variant="body1" fontWeight={500} noWrap>
+                    <Typography variant="body1" noWrap sx={{
+                      fontWeight: 500
+                    }}>
                       {progress.itemName}
                     </Typography>
                   )}
                   {progress.bytesUploaded !== undefined && progress.bytesTotal !== undefined && (
-                    <Typography variant="caption" color="text.secondary">
+                    <Typography variant="caption" sx={{
+                      color: 'text.secondary'
+                    }}>
                       {formatBytes(progress.bytesUploaded)} MB / {formatBytes(progress.bytesTotal)} MB
                     </Typography>
                   )}
@@ -224,7 +230,9 @@ export function PushToServerDialog({
                     },
                   }}
                 />
-                <Typography variant="body2" color="text.secondary" align="right">
+                <Typography variant="body2" align="right" sx={{
+                  color: 'text.secondary'
+                }}>
                   {progress.percentage}%
                 </Typography>
               </>
@@ -233,7 +241,9 @@ export function PushToServerDialog({
             {/* Initializing state */}
             {isPushing && !progress && (
               <Box sx={{ textAlign: 'center', py: 2 }}>
-                <Typography variant="body1" color="text.secondary">
+                <Typography variant="body1" sx={{
+                  color: 'text.secondary'
+                }}>
                   Preparing upload...
                 </Typography>
                 <LinearProgress sx={{ mt: 2 }} />
@@ -247,10 +257,17 @@ export function PushToServerDialog({
                 icon={<CheckCircleIcon fontSize="inherit" />}
                 sx={{ mb: 2 }}
               >
-                <Typography variant="body1" fontWeight={500}>
+                <Typography variant="body1" sx={{
+                  fontWeight: 500
+                }}>
                   Upload Complete!
                 </Typography>
-                <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                <Typography
+                  variant="body2"
+                  sx={{
+                    color: 'text.secondary',
+                    mt: 1
+                  }}>
                   Your project has been pushed to the StraboSpot server.
                 </Typography>
               </Alert>
@@ -263,7 +280,9 @@ export function PushToServerDialog({
                 icon={<ErrorIcon fontSize="inherit" />}
                 sx={{ mb: 2 }}
               >
-                <Typography variant="body1" fontWeight={500}>
+                <Typography variant="body1" sx={{
+                  fontWeight: 500
+                }}>
                   Upload Failed
                 </Typography>
                 <Typography variant="body2" sx={{ mt: 1 }}>

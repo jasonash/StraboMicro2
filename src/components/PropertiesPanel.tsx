@@ -264,7 +264,12 @@ export function PropertiesPanel() {
       <TabPanel value={activeTab} index={0}>
         {!selectionType ? (
           <Box sx={{ p: 2, height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center' }}>
+            <Typography
+              variant="body2"
+              sx={{
+                color: 'text.secondary',
+                textAlign: 'center'
+              }}>
               Select a micrograph or spot to view and edit metadata
             </Typography>
           </Box>
@@ -333,9 +338,10 @@ export function PropertiesPanel() {
                             ? 'Already applied'
                             : getPresetSummary(preset).slice(0, 2).join(', ') || 'No data'
                         }
-                        primaryTypographyProps={{ variant: 'body2' }}
-                        secondaryTypographyProps={{ variant: 'caption' }}
-                      />
+                        slotProps={{
+                          primary: { variant: 'body2' },
+                          secondary: { variant: 'caption' }
+                        }} />
                     </MenuItem>
                   ))}
                   {globalPresets.length > 0 && projectPresets.length > 0 && <Divider />}
@@ -360,9 +366,10 @@ export function PropertiesPanel() {
                             ? 'Already applied'
                             : getPresetSummary(preset).slice(0, 2).join(', ') || 'No data'
                         }
-                        primaryTypographyProps={{ variant: 'body2' }}
-                        secondaryTypographyProps={{ variant: 'caption' }}
-                      />
+                        slotProps={{
+                          primary: { variant: 'body2' },
+                          secondary: { variant: 'caption' }
+                        }} />
                     </MenuItem>
                   ))}
                 </Menu>
@@ -412,7 +419,12 @@ export function PropertiesPanel() {
       <TabPanel value={activeTab} index={projectTabIndex}>
         {!project ? (
           <Box sx={{ p: 2, height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center' }}>
+            <Typography
+              variant="body2"
+              sx={{
+                color: 'text.secondary',
+                textAlign: 'center'
+              }}>
               No project open
             </Typography>
           </Box>

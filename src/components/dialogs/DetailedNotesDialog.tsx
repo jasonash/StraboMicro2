@@ -300,7 +300,12 @@ export function DetailedNotesDialog({ isOpen, onClose, micrographId, spotId, onE
           </Stack>
         ) : (
           <Box sx={{ py: 4, textAlign: 'center' }}>
-            <Typography variant="body1" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+            <Typography
+              variant="body1"
+              sx={{
+                color: 'text.secondary',
+                fontStyle: 'italic'
+              }}>
               No detailed notes recorded for this {entityType.toLowerCase()}
             </Typography>
           </Box>

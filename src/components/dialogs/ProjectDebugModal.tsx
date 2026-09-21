@@ -44,8 +44,10 @@ export const ProjectDebugModal: React.FC<ProjectDebugModalProps> = ({ isOpen, on
       onClose={onClose}
       maxWidth="md"
       fullWidth
-      TransitionComponent={Grow}
       transitionDuration={300}
+      slots={{
+        transition: Grow
+      }}
     >
       <DialogTitle>Project Structure (Debug)</DialogTitle>
       <DialogContent>
@@ -114,7 +116,9 @@ export const ProjectDebugModal: React.FC<ProjectDebugModalProps> = ({ isOpen, on
           </>
         ) : (
           <Box sx={{ textAlign: 'center', py: 4 }}>
-            <Typography color="text.secondary">No project currently loaded.</Typography>
+            <Typography sx={{
+              color: 'text.secondary'
+            }}>No project currently loaded.</Typography>
           </Box>
         )}
       </DialogContent>

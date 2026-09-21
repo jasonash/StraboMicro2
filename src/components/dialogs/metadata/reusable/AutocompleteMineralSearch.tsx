@@ -77,15 +77,19 @@ export function AutocompleteMineralSearch({
           helperText={helperText}
         />
       )}
-      renderTags={(value, getTagProps) =>
-        value.map((option, index) => (
-          <Chip
-            label={`${option.mineralname} (${option.abbrev})`}
-            {...getTagProps({ index })}
-            key={option.pkey}
-          />
-        ))
-      }
+      // Chips only in multiple mode; single mode keeps the plain input text
+      // (renderValue, unlike the old renderTags, is also called for single values)
+      renderValue={multiple ? (value, getItemProps) =>
+        Array.isArray(value)
+          ? value.map((option, index) => (
+              <Chip
+                label={`${option.mineralname} (${option.abbrev})`}
+                {...getItemProps({ index })}
+                key={option.pkey}
+              />
+            ))
+          : null
+      : undefined}
       renderOption={(props, option) => (
         <Box component="li" {...props} key={option.pkey}>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', width: '100%' }}>

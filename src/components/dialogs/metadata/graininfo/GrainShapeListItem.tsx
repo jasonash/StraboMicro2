@@ -38,7 +38,9 @@ export function GrainShapeListItem({ item, onEdit, onDelete }: GrainShapeListIte
             ))}
           </Box>
         )}
-        <Typography variant="body2" color="text.secondary">
+        <Typography variant="body2" sx={{
+          color: 'text.secondary'
+        }}>
           Shape: {item.shape || 'Not specified'}
         </Typography>
       </Box>

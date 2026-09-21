@@ -1040,7 +1040,9 @@ export function AffineRegistrationModal({
             borderColor: 'divider',
           }}
         >
-          <Typography variant="caption" fontWeight="bold">
+          <Typography variant="caption" sx={{
+            fontWeight: 'bold'
+          }}>
             {label}
             {isActive && ' ← Click here'}
           </Typography>
@@ -1103,8 +1105,10 @@ export function AffineRegistrationModal({
       open={open}
       onClose={onClose}
       fullScreen
-      PaperProps={{
-        sx: { bgcolor: 'background.default' },
+      slotProps={{
+        paper: {
+          sx: { bgcolor: 'background.default' },
+        }
       }}
     >
       {/* Toolbar */}
@@ -1151,7 +1155,9 @@ export function AffineRegistrationModal({
             </IconButton>
           </Tooltip>
 
-          <Typography variant="subtitle2" color="text.secondary">
+          <Typography variant="subtitle2" sx={{
+            color: 'text.secondary'
+          }}>
             3-Point Registration
           </Typography>
         </Box>
@@ -1248,11 +1254,18 @@ export function AffineRegistrationModal({
                   gap: 1,
                 }}
               >
-                <Typography variant="caption" fontWeight="bold">
+                <Typography variant="caption" sx={{
+                  fontWeight: 'bold'
+                }}>
                   PREVIEW
                   {canApply ? ' (3+ points)' : ` (need ${3 - completePairs} more point${3 - completePairs !== 1 ? 's' : ''})`}
                 </Typography>
-                <Typography variant="caption" color="text.secondary" sx={{ ml: 'auto' }}>
+                <Typography
+                  variant="caption"
+                  sx={{
+                    color: 'text.secondary',
+                    ml: 'auto'
+                  }}>
                   Scroll to zoom, drag to pan
                 </Typography>
               </Box>
@@ -1342,7 +1355,9 @@ export function AffineRegistrationModal({
                       justifyContent: 'center',
                     }}
                   >
-                    <Typography color="text.secondary">
+                    <Typography sx={{
+                      color: 'text.secondary'
+                    }}>
                       {isLoading ? 'Loading images...' : 'Add control points to see preview'}
                     </Typography>
                   </Box>

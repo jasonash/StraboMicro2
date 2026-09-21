@@ -258,8 +258,10 @@ export function GenerateSpotsDialog({
       onClose={onClose}
       maxWidth="lg"
       fullWidth
-      PaperProps={{
-        sx: { minHeight: '80vh', maxHeight: '90vh' },
+      slotProps={{
+        paper: {
+          sx: { minHeight: '80vh', maxHeight: '90vh' },
+        }
       }}
     >
       <DialogTitle>Generate Spots</DialogTitle>
@@ -278,7 +280,9 @@ export function GenerateSpotsDialog({
           >
             <CardActionArea onClick={() => handleMethodChange('point-count')}>
               <CardContent>
-                <Stack direction="row" spacing={2} alignItems="center">
+                <Stack direction="row" spacing={2} sx={{
+                  alignItems: 'center'
+                }}>
                   <Box
                     sx={{
                       p: 2,
@@ -293,7 +297,9 @@ export function GenerateSpotsDialog({
                     <Typography variant="h6" gutterBottom>
                       Point Counting
                     </Typography>
-                    <Typography variant="body2" color="text.secondary">
+                    <Typography variant="body2" sx={{
+                      color: 'text.secondary'
+                    }}>
                       Generate a grid of points for modal analysis with statistical precision.
                       Works on any image.
                     </Typography>
@@ -316,7 +322,9 @@ export function GenerateSpotsDialog({
           >
             <CardActionArea onClick={() => handleMethodChange('grain-detection')}>
               <CardContent>
-                <Stack direction="row" spacing={2} alignItems="center">
+                <Stack direction="row" spacing={2} sx={{
+                  alignItems: 'center'
+                }}>
                   <Box
                     sx={{
                       p: 2,
@@ -331,7 +339,9 @@ export function GenerateSpotsDialog({
                     <Typography variant="h6" gutterBottom>
                       Grain Detection
                     </Typography>
-                    <Typography variant="body2" color="text.secondary">
+                    <Typography variant="body2" sx={{
+                      color: 'text.secondary'
+                    }}>
                       Automatically detect grain boundaries. Best for grain size/shape analysis.
                       Requires clear boundaries (XPL best).
                     </Typography>
@@ -389,7 +399,9 @@ export function GenerateSpotsDialog({
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
           <Info fontSize="small" color="action" />
           {method === 'point-count' && gridDimensions && (
-            <Typography variant="body2" color="text.secondary">
+            <Typography variant="body2" sx={{
+              color: 'text.secondary'
+            }}>
               Grid: {gridDimensions.rows}×{gridDimensions.cols} •
               Spacing: {Math.round(gridDimensions.spacingX)}×{Math.round(gridDimensions.spacingY)} px •
               {regionBounds
@@ -398,7 +410,9 @@ export function GenerateSpotsDialog({
             </Typography>
           )}
           {method === 'grain-detection' && (
-            <Typography variant="body2" color="text.secondary">
+            <Typography variant="body2" sx={{
+              color: 'text.secondary'
+            }}>
               Grain detection will be implemented in Phase 5
             </Typography>
           )}
@@ -441,7 +455,9 @@ function PointCountOptionsPanel({
 }: PointCountOptionsPanelProps) {
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-      <Typography variant="subtitle2" color="text.secondary">
+      <Typography variant="subtitle2" sx={{
+        color: 'text.secondary'
+      }}>
         POINT COUNTING OPTIONS
       </Typography>
 
@@ -483,7 +499,12 @@ function PointCountOptionsPanel({
           </Box>
 
           {gridDimensions && (
-            <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+            <Typography
+              variant="body2"
+              sx={{
+                color: 'text.secondary',
+                mt: 1
+              }}>
               {gridDimensions.rows}×{gridDimensions.cols} grid •
               Spacing: {Math.round(gridDimensions.spacingX)}×{Math.round(gridDimensions.spacingY)} px
             </Typography>
@@ -507,16 +528,28 @@ function PointCountOptionsPanel({
           <Typography variant="subtitle2" gutterBottom>
             Recommended Points
           </Typography>
-          <Typography variant="body2" color="text.secondary">
+          <Typography variant="body2" sx={{
+            color: 'text.secondary'
+          }}>
             • 300 points: ±5.0% at 25%
           </Typography>
-          <Typography variant="body2" color="text.secondary">
+          <Typography variant="body2" sx={{
+            color: 'text.secondary'
+          }}>
             • 400 points: ±4.2% at 25%
           </Typography>
-          <Typography variant="body2" color="text.secondary">
+          <Typography variant="body2" sx={{
+            color: 'text.secondary'
+          }}>
             • 500 points: ±3.8% at 25%
           </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 1, fontStyle: 'italic' }}>
+          <Typography
+            variant="body2"
+            sx={{
+              color: 'text.secondary',
+              mt: 1,
+              fontStyle: 'italic'
+            }}>
             (95% confidence interval)
           </Typography>
         </Paper>
@@ -524,7 +557,9 @@ function PointCountOptionsPanel({
 
       <Divider />
 
-      <Typography variant="subtitle2" color="text.secondary">
+      <Typography variant="subtitle2" sx={{
+        color: 'text.secondary'
+      }}>
         SPOT APPEARANCE
       </Typography>
 
@@ -565,8 +600,10 @@ function PointCountOptionsPanel({
             onChange={(e) => onChange('color', e.target.value)}
             size="small"
             fullWidth
-            InputProps={{
-              sx: { '& input': { cursor: 'pointer' } },
+            slotProps={{
+              input: {
+                sx: { '& input': { cursor: 'pointer' } },
+              }
             }}
           />
         </Box>
@@ -603,7 +640,9 @@ function GrainDetectionOptionsPanel({
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-      <Typography variant="subtitle2" color="text.secondary">
+      <Typography variant="subtitle2" sx={{
+        color: 'text.secondary'
+      }}>
         GRAIN DETECTION OPTIONS
       </Typography>
 
@@ -617,12 +656,18 @@ function GrainDetectionOptionsPanel({
           bgcolor: 'action.hover',
         }}
       >
-        <Stack alignItems="center" spacing={1}>
+        <Stack spacing={1} sx={{
+          alignItems: 'center'
+        }}>
           <Grain sx={{ fontSize: 48, color: 'text.disabled' }} />
-          <Typography color="text.secondary">
+          <Typography sx={{
+            color: 'text.secondary'
+          }}>
             Grain detection will be implemented in Phase 5
           </Typography>
-          <Typography variant="body2" color="text.secondary">
+          <Typography variant="body2" sx={{
+            color: 'text.secondary'
+          }}>
             This feature uses OpenCV.js for edge detection and watershed segmentation.
           </Typography>
         </Stack>

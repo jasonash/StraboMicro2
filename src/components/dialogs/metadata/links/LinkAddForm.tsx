@@ -98,7 +98,14 @@ export function LinkAddForm({ onAdd, onCancel, initialData }: LinkAddFormProps) 
         />
 
         {/* Help text - LEGACY: lines 54-58 (FXML) */}
-        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1, textAlign: 'center' }}>
+        <Typography
+          variant="caption"
+          sx={{
+            color: 'text.secondary',
+            display: 'block',
+            mt: 1,
+            textAlign: 'center'
+          }}>
           Link URL must begin with http:// or https://
         </Typography>
       </Box>

@@ -92,11 +92,13 @@ export function LogViewerModal({ open, onClose }: LogViewerModalProps) {
         onClose={onClose}
         maxWidth="lg"
         fullWidth
-        PaperProps={{
-          sx: {
-            height: '80vh',
-            maxHeight: '80vh',
-          },
+        slotProps={{
+          paper: {
+            sx: {
+              height: '80vh',
+              maxHeight: '80vh',
+            },
+          }
         }}
       >
         <DialogTitle sx={{ m: 0, p: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -149,9 +151,11 @@ export function LogViewerModal({ open, onClose }: LogViewerModalProps) {
         <DialogActions sx={{ px: 2, py: 1.5, gap: 1 }}>
           <Typography
             variant="caption"
-            color="text.secondary"
-            sx={{ flexGrow: 1, mr: 2 }}
-          >
+            sx={{
+              color: 'text.secondary',
+              flexGrow: 1,
+              mr: 2
+            }}>
             Copy logs and paste into your email when reporting bugs
           </Typography>
 

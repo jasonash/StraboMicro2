@@ -52,7 +52,9 @@ export function GrainOrientationListItem({
             ))}
           </Box>
         )}
-        <Typography variant="body2" color="text.secondary">
+        <Typography variant="body2" sx={{
+          color: 'text.secondary'
+        }}>
           {details.length > 0 ? details.join(' | ') : 'No orientation data provided'}
         </Typography>
       </Box>

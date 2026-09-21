@@ -95,7 +95,9 @@ export function ImageExportOptionsPanel({
               label={
                 <Box>
                   <Typography variant="body2">{choice.label}</Typography>
-                  <Typography variant="caption" color="text.secondary">
+                  <Typography variant="caption" sx={{
+                    color: 'text.secondary'
+                  }}>
                     {choice.hint}
                   </Typography>
                 </Box>
@@ -174,7 +176,13 @@ export function ImageExportOptionsPanel({
 
         {singleMode ? (
           sketchLayers.length === 0 ? (
-            <Typography variant="body2" color="text.secondary" sx={{ ml: 2, mt: 0.5 }}>
+            <Typography
+              variant="body2"
+              sx={{
+                color: 'text.secondary',
+                ml: 2,
+                mt: 0.5
+              }}>
               No sketch layers on this micrograph
             </Typography>
           ) : (
@@ -193,7 +201,13 @@ export function ImageExportOptionsPanel({
                     <Typography variant="body2">
                       {layer.name}
                       {!layer.visible && (
-                        <Typography component="span" variant="caption" color="text.secondary" sx={{ ml: 1 }}>
+                        <Typography
+                          component="span"
+                          variant="caption"
+                          sx={{
+                            color: 'text.secondary',
+                            ml: 1
+                          }}>
                           (hidden)
                         </Typography>
                       )}
@@ -215,7 +229,9 @@ export function ImageExportOptionsPanel({
             label={
               <Box>
                 <Typography variant="body2">Visible sketch layers</Typography>
-                <Typography variant="caption" color="text.secondary">
+                <Typography variant="caption" sx={{
+                  color: 'text.secondary'
+                }}>
                   Each micrograph's currently visible layers
                 </Typography>
               </Box>
