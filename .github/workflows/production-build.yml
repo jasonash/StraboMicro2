@@ -52,12 +52,20 @@ jobs:
           cache: 'npm'
 
       - name: Install dependencies
-        run: npm ci
+        shell: bash
+        run: |
+          # Retry: registry/network hiccups have failed release builds before
+          for attempt in 1 2 3; do
+            npm ci && exit 0
+            echo "npm ci failed (attempt $attempt/3), retrying in 30s..."
+            sleep 30
+          done
+          exit 1
         env:
           npm_config_sharp_libvips_local_prebuilds: 1
 
       - name: Update version
-        run: npm version ${{ inputs.version }} --no-git-tag-version
+        run: npm version ${{ inputs.version }} --no-git-tag-version --allow-same-version
 
       - name: Build application
         run: npm run build
@@ -99,16 +107,7 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: |
-          for DMG in release/*.dmg; do
-            echo "Notarizing $DMG..."
-            xcrun notarytool submit "$DMG" \
-              --apple-id "$APPLE_ID" \
-              --password "$APPLE_ID_PASSWORD" \
-              --team-id "$APPLE_TEAM_ID" \
-              --wait
-            xcrun stapler staple "$DMG"
-          done
+        run: bash scripts/ci/notarize-dmgs.sh release
 
       - name: Upload macOS ARM64 artifacts
         uses: actions/upload-artifact@v4
@@ -138,12 +137,20 @@ jobs:
           cache: 'npm'
 
       - name: Install dependencies
-        run: npm ci
+        shell: bash
+        run: |
+          # Retry: registry/network hiccups have failed release builds before
+          for attempt in 1 2 3; do
+            npm ci && exit 0
+            echo "npm ci failed (attempt $attempt/3), retrying in 30s..."
+            sleep 30
+          done
+          exit 1
         env:
           npm_config_sharp_libvips_local_prebuilds: 1
 
       - name: Update version
-        run: npm version ${{ inputs.version }} --no-git-tag-version
+        run: npm version ${{ inputs.version }} --no-git-tag-version --allow-same-version
 
       - name: Build application
         run: npm run build
@@ -185,16 +192,7 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: |
-          for DMG in release/*.dmg; do
-            echo "Notarizing $DMG..."
-            xcrun notarytool submit "$DMG" \
-              --apple-id "$APPLE_ID" \
-              --password "$APPLE_ID_PASSWORD" \
-              --team-id "$APPLE_TEAM_ID" \
-              --wait
-            xcrun stapler staple "$DMG"
-          done
+        run: bash scripts/ci/notarize-dmgs.sh release
 
       - name: Upload macOS x64 artifacts
         uses: actions/upload-artifact@v4
@@ -223,10 +221,18 @@ jobs:
           cache: 'npm'
 
       - name: Install dependencies
-        run: npm ci
+        shell: bash
+        run: |
+          # Retry: registry/network hiccups have failed release builds before
+          for attempt in 1 2 3; do
+            npm ci && exit 0
+            echo "npm ci failed (attempt $attempt/3), retrying in 30s..."
+            sleep 30
+          done
+          exit 1
 
       - name: Update version
-        run: npm version ${{ inputs.version }} --no-git-tag-version
+        run: npm version ${{ inputs.version }} --no-git-tag-version --allow-same-version
 
       - name: Build application
         run: npm run build
@@ -282,10 +288,18 @@ jobs:
           sudo apt-get install -y libvips-dev libfuse2
 
       - name: Install dependencies
-        run: npm ci
+        shell: bash
+        run: |
+          # Retry: registry/network hiccups have failed release builds before
+          for attempt in 1 2 3; do
+            npm ci && exit 0
+            echo "npm ci failed (attempt $attempt/3), retrying in 30s..."
+            sleep 30
+          done
+          exit 1
 
       - name: Update version
-        run: npm version ${{ inputs.version }} --no-git-tag-version
+        run: npm version ${{ inputs.version }} --no-git-tag-version --allow-same-version
 
       - name: Build application
         run: npm run build
@@ -328,16 +342,34 @@ jobs:
 
       - name: Update package.json version
         run: |
-          npm version ${{ inputs.version }} --no-git-tag-version
+          npm version ${{ inputs.version }} --no-git-tag-version --allow-same-version
 
-      - name: Commit version bump
+      # Idempotent so a failed release job can be re-run (`gh run rerun --failed`):
+      # if the tag is already on the remote and points at this version, the bump
+      # was pushed by an earlier attempt and there is nothing to do.
+      - name: Commit version bump and tag
         run: |
+          VERSION="${{ inputs.version }}"
+          TAG="v$VERSION"
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
+
+          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" > /dev/null; then
+            git fetch --force origin "refs/tags/$TAG:refs/tags/$TAG"
+            TAG_VERSION=$(git show "$TAG:package.json" | jq -r '.version')
+            if [ "$TAG_VERSION" != "$VERSION" ]; then
+              echo "Error: tag $TAG exists but its package.json says $TAG_VERSION"
+              exit 1
+            fi
+            echo "Tag $TAG already exists at version $VERSION, skipping bump and tag"
+            exit 0
+          fi
+
           git add package.json package-lock.json
-          git commit -m "Release v${{ inputs.version }}" || echo "No changes to commit"
-          git tag -a "v${{ inputs.version }}" -m "Release v${{ inputs.version }}"
-          git push origin HEAD --tags
+          git commit -m "Release $TAG" || echo "No changes to commit"
+          git tag -a "$TAG" -m "Release $TAG"
+          # --atomic: the bump commit and the tag land together or not at all
+          git push --atomic origin HEAD "refs/tags/$TAG"
 
       - name: Determine if prerelease
         id: prerelease
@@ -457,49 +489,111 @@ jobs:
           echo "Files to upload:"
           find artifacts -type f | sort
 
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v1
-        with:
-          tag_name: v${{ inputs.version }}
-          name: StraboMicro2 v${{ inputs.version }}
-          draft: false
-          prerelease: ${{ steps.prerelease.outputs.is_prerelease }}
-          files: |
-            artifacts/**/*.dmg
-            artifacts/**/*.zip
-            artifacts/**/*.exe
-            artifacts/**/*.AppImage
-            artifacts/**/*.deb
-            artifacts/**/latest*.yml
-            artifacts/**/*.blockmap
-          body: |
-            ## StraboMicro2 v${{ inputs.version }}
+      # electron-updater downloads exactly the file names listed in latest*.yml,
+      # so a name mismatch means a 404 for every user on that platform
+      # (Windows, v2.0.36 to v2.0.42). Catch it before anything is uploaded.
+      - name: Check update manifests against built files
+        run: |
+          MISSING=0
+          for yml in artifacts/latest*.yml; do
+            URLS=$(yq '.files[].url' "$yml")
+            if [ -z "$URLS" ]; then
+              echo "Error: no files listed in $yml"
+              exit 1
+            fi
+            for url in $URLS; do
+              if [ -z "$(find artifacts -type f -name "$url")" ]; then
+                echo "Error: $yml references $url, which was not built"
+                MISSING=1
+              fi
+            done
+          done
+          exit $MISSING
 
-            ${{ steps.release_notes.outputs.RELEASE_NOTES }}
-
-            ---
-
-            ### Downloads
-
-            | Platform | Download |
-            |----------|----------|
-            | macOS (Apple Silicon) | `StraboMicro2-${{ inputs.version }}-arm64.dmg` |
-            | macOS (Intel) | `StraboMicro2-${{ inputs.version }}.dmg` |
-            | Windows | `StraboMicro2-Setup-${{ inputs.version }}.exe` |
-            | Linux (AppImage) | `StraboMicro2-${{ inputs.version }}.AppImage` |
-            | Linux (Debian) | `strabomicro2_${{ inputs.version }}_amd64.deb` |
-
-            ### Installation
-
-            **macOS**: Download the DMG, open it, and drag StraboMicro2 to your Applications folder.
-
-            **Windows**: Download and run the installer. If you see a SmartScreen warning, click "More info" then "Run anyway".
-
-            **Linux (AppImage)**: Download the AppImage, make it executable (`chmod +x`), and run with: `./StraboMicro2-*.AppImage --no-sandbox`
-
-            **Linux (Debian/Ubuntu)**: Install the .deb package: `sudo dpkg -i strabomicro2_*.deb`
+      - name: Write release notes
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ inputs.version }}
+          RELEASE_NOTES: ${{ steps.release_notes.outputs.RELEASE_NOTES }}
+        run: |
+          cat > release-notes.md <<EOF
+          ## StraboMicro2 v$VERSION
+
+          $RELEASE_NOTES
+
+          ---
+
+          ### Downloads
+
+          | Platform | Download |
+          |----------|----------|
+          | macOS (Apple Silicon) | \`StraboMicro2-$VERSION-arm64.dmg\` |
+          | macOS (Intel) | \`StraboMicro2-$VERSION.dmg\` |
+          | Windows | \`StraboMicro2-Setup-$VERSION.exe\` |
+          | Linux (AppImage) | \`StraboMicro2-$VERSION.AppImage\` |
+          | Linux (Debian) | \`strabomicro2_${VERSION}_amd64.deb\` |
+
+          ### Installation
+
+          **macOS**: Download the DMG, open it, and drag StraboMicro2 to your Applications folder.
+
+          **Windows**: Download and run the installer. If you see a SmartScreen warning, click "More info" then "Run anyway".
+
+          **Linux (AppImage)**: Download the AppImage, make it executable (\`chmod +x\`), and run with: \`./StraboMicro2-*.AppImage --no-sandbox\`
+
+          **Linux (Debian/Ubuntu)**: Install the .deb package: \`sudo dpkg -i strabomicro2_*.deb\`
+          EOF
+          cat release-notes.md
+
+      # The release stays a DRAFT until every asset is uploaded and verified.
+      # The updater follows the repo's latest PUBLISHED release, so a failed or
+      # slow upload can no longer leave a public half-release (v2.0.45 and
+      # v2.0.46, 2026-09-17).
+      - name: Create draft release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="v${{ inputs.version }}"
+          IS_DRAFT=$(gh release view "$TAG" --json isDraft --jq '.isDraft' 2>/dev/null || echo "missing")
+          case "$IS_DRAFT" in
+            missing)
+              PRERELEASE_FLAG=""
+              if [ "${{ steps.prerelease.outputs.is_prerelease }}" = "true" ]; then
+                PRERELEASE_FLAG="--prerelease"
+              fi
+              gh release create "$TAG" --draft --verify-tag $PRERELEASE_FLAG \
+                --title "StraboMicro2 $TAG" --notes-file release-notes.md
+              ;;
+            true)
+              echo "Draft release $TAG already exists (earlier attempt), reusing it"
+              ;;
+            *)
+              echo "Error: release $TAG is already published. Refusing to modify a public release."
+              exit 1
+              ;;
+          esac
+
+      - name: Upload release assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          bash scripts/ci/upload-release-assets.sh "v${{ inputs.version }}" artifacts \
+            '*.dmg' '*.zip' '*.exe' '*.AppImage' '*.deb' 'latest*.yml' '*.blockmap'
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="v${{ inputs.version }}"
+          for attempt in 1 2 3; do
+            if gh release edit "$TAG" --draft=false && \
+               [ "$(gh release view "$TAG" --json isDraft --jq '.isDraft')" = "false" ]; then
+              echo "Release $TAG published"
+              exit 0
+            fi
+            echo "Publish failed (attempt $attempt/3), retrying in 20s..."
+            sleep 20
+          done
+          exit 1
 
   # Update releases.json for website consumption
   update-releases-json:
