@@ -11,7 +11,7 @@
  * - Preview pane at bottom showing live composite
  */
 
-import React, { useEffect, useLayoutEffect, useState, useRef, useCallback, useMemo } from 'react';
+import React, { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import {
   Dialog,
   Box,
@@ -33,6 +33,7 @@ import { Stage, Layer, Image as KonvaImage, Circle, Line, Group, Text } from 're
 import Konva from 'konva';
 import { useAppStore } from '@/store';
 import { getEffectiveTheme } from '@/hooks/useTheme';
+import { useElementSize } from '@/hooks/useElementSize';
 import {
   computeAffineMatrix,
   arePointsCollinear,
@@ -104,17 +105,15 @@ export function AffineRegistrationModal({
   const [toolMode, setToolMode] = useState<ToolMode>('point');
 
   // Container refs
-  const parentContainerRef = useRef<HTMLDivElement>(null);
-  const overlayContainerRef = useRef<HTMLDivElement>(null);
-  const previewContainerRef = useRef<HTMLDivElement>(null);
   const parentStageRef = useRef<Konva.Stage>(null);
   const overlayStageRef = useRef<Konva.Stage>(null);
   const previewStageRef = useRef<Konva.Stage>(null);
 
   // Panel sizes - each panel needs its own size
-  const [parentPanelSize, setParentPanelSize] = useState({ width: 400, height: 300 });
-  const [overlayPanelSize, setOverlayPanelSize] = useState({ width: 400, height: 300 });
-  const [previewSize, setPreviewSize] = useState({ width: 800, height: 300 });
+  // Panel sizes follow their containers (see useElementSize for why this is a callback ref)
+  const [parentContainerRef, parentPanelSize] = useElementSize<HTMLDivElement>({ width: 400, height: 300 });
+  const [overlayContainerRef, overlayPanelSize] = useElementSize<HTMLDivElement>({ width: 400, height: 300 });
+  const [previewContainerRef, previewSize] = useElementSize<HTMLDivElement>({ width: 800, height: 300 });
 
   // Image data
   const [parentImageData, setParentImageData] = useState<{
@@ -267,84 +266,6 @@ export function AffineRegistrationModal({
       setPreviewCentered(false);
     }
   }, [open, existingControlPoints]);
-
-  // Handle container resize with ResizeObserver
-  useLayoutEffect(() => {
-    if (!open) return;
-
-    let resizeObserver: ResizeObserver | null = null;
-    let frameId: number | null = null;
-
-    // Measure containers using offsetWidth/offsetHeight
-    const measureContainers = () => {
-      if (parentContainerRef.current) {
-        const w = parentContainerRef.current.offsetWidth;
-        const h = parentContainerRef.current.offsetHeight;
-        if (w > 50 && h > 50) {
-          setParentPanelSize((prev) => {
-            if (prev.width !== w || prev.height !== h) {
-              return { width: w, height: h };
-            }
-            return prev;
-          });
-        }
-      }
-      if (overlayContainerRef.current) {
-        const w = overlayContainerRef.current.offsetWidth;
-        const h = overlayContainerRef.current.offsetHeight;
-        if (w > 50 && h > 50) {
-          setOverlayPanelSize((prev) => {
-            if (prev.width !== w || prev.height !== h) {
-              return { width: w, height: h };
-            }
-            return prev;
-          });
-        }
-      }
-      if (previewContainerRef.current) {
-        const w = previewContainerRef.current.offsetWidth;
-        const h = previewContainerRef.current.offsetHeight;
-        if (w > 50 && h > 50) {
-          setPreviewSize((prev) => {
-            if (prev.width !== w || prev.height !== h) {
-              return { width: w, height: h };
-            }
-            return prev;
-          });
-        }
-      }
-    };
-
-    // Measure after a frame to ensure layout is complete
-    frameId = requestAnimationFrame(() => {
-      measureContainers();
-
-      // Set up ResizeObserver for subsequent changes
-      resizeObserver = new ResizeObserver(() => {
-        measureContainers();
-      });
-
-      if (parentContainerRef.current) {
-        resizeObserver.observe(parentContainerRef.current);
-      }
-      if (overlayContainerRef.current) {
-        resizeObserver.observe(overlayContainerRef.current);
-      }
-      if (previewContainerRef.current) {
-        resizeObserver.observe(previewContainerRef.current);
-      }
-    });
-
-    // Also listen for window resize
-    const handleResize = () => measureContainers();
-    window.addEventListener('resize', handleResize);
-
-    return () => {
-      if (frameId) cancelAnimationFrame(frameId);
-      if (resizeObserver) resizeObserver.disconnect();
-      window.removeEventListener('resize', handleResize);
-    };
-  }, [open]);
 
   // Load parent image
   useEffect(() => {
@@ -1004,7 +925,7 @@ export function AffineRegistrationModal({
   // Render an image panel
   const renderPanel = (
     panel: 'parent' | 'overlay',
-    containerRef: React.RefObject<HTMLDivElement | null>,
+    containerRef: (element: HTMLDivElement | null) => void,
     stageRef: React.RefObject<Konva.Stage | null>,
     panelState: ImagePanelState,
     panelSizeState: { width: number; height: number },
