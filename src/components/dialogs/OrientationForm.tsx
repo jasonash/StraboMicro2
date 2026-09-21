@@ -76,7 +76,9 @@ export const OrientationForm: React.FC<OrientationFormProps> = ({
   return (
     <Stack spacing={3}>
       <Typography variant="h6">Orientation of Reference Micrograph</Typography>
-      <Typography variant="body2" color="text.secondary">
+      <Typography variant="body2" sx={{
+        color: 'text.secondary'
+      }}>
         Thin Section Oriented by:
       </Typography>
 
@@ -108,7 +110,12 @@ export const OrientationForm: React.FC<OrientationFormProps> = ({
 
       {formData.orientationMethod === 'trendPlunge' && (
         <Stack spacing={3} sx={{ pl: 4 }}>
-          <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 600 }}>
+          <Typography
+            variant="body2"
+            sx={{
+              color: 'text.secondary',
+              maxWidth: 600
+            }}>
             Provide TWO of THREE: Select the arrow on each edge that represents a lower hemisphere
             plunge, and enter the trend and plunge information and/or provide the strike and dip
             of the thin section.
@@ -125,8 +132,10 @@ export const OrientationForm: React.FC<OrientationFormProps> = ({
                 type="number"
                 value={formData.sideTrend}
                 onChange={(e) => onFormChange('sideTrend', e.target.value)}
-                InputProps={{ endAdornment: '°' }}
                 size="small"
+                slotProps={{
+                  input: { endAdornment: '°' }
+                }}
               />
 
               <Typography variant="subtitle2" sx={{ fontWeight: 'bold', mt: 2 }}>
@@ -136,8 +145,10 @@ export const OrientationForm: React.FC<OrientationFormProps> = ({
                 type="number"
                 value={formData.sidePlunge}
                 onChange={(e) => onFormChange('sidePlunge', e.target.value)}
-                InputProps={{ endAdornment: '°' }}
                 size="small"
+                slotProps={{
+                  input: { endAdornment: '°' }
+                }}
               />
             </Stack>
 
@@ -155,7 +166,9 @@ export const OrientationForm: React.FC<OrientationFormProps> = ({
                   justifyContent: 'center',
                 }}
               >
-                <Stack direction="row" spacing={2} alignItems="center">
+                <Stack direction="row" spacing={2} sx={{
+                  alignItems: 'center'
+                }}>
                   <Typography variant="subtitle2" sx={{ fontWeight: 'bold', minWidth: 60 }}>
                     Trend:
                   </Typography>
@@ -163,9 +176,11 @@ export const OrientationForm: React.FC<OrientationFormProps> = ({
                     type="number"
                     value={formData.topTrend}
                     onChange={(e) => onFormChange('topTrend', e.target.value)}
-                    InputProps={{ endAdornment: '°' }}
                     size="small"
                     sx={{ width: 120 }}
+                    slotProps={{
+                      input: { endAdornment: '°' }
+                    }}
                   />
                   <Typography
                     variant="subtitle2"
@@ -177,9 +192,11 @@ export const OrientationForm: React.FC<OrientationFormProps> = ({
                     type="number"
                     value={formData.topPlunge}
                     onChange={(e) => onFormChange('topPlunge', e.target.value)}
-                    InputProps={{ endAdornment: '°' }}
                     size="small"
                     sx={{ width: 120 }}
+                    slotProps={{
+                      input: { endAdornment: '°' }
+                    }}
                   />
                 </Stack>
               </Box>
@@ -275,13 +292,17 @@ export const OrientationForm: React.FC<OrientationFormProps> = ({
                   }}
                 >
                   <CircularProgress />
-                  <Typography variant="body2" color="text.secondary">
+                  <Typography variant="body2" sx={{
+                    color: 'text.secondary'
+                  }}>
                     {conversionProgress
                       ? `Converting image... ${conversionProgress.percent}%`
                       : 'Loading preview...'}
                   </Typography>
                   {conversionProgress && (
-                    <Typography variant="caption" color="text.secondary">
+                    <Typography variant="caption" sx={{
+                      color: 'text.secondary'
+                    }}>
                       {conversionProgress.stage === 'reading' && 'Reading image file...'}
                       {conversionProgress.stage === 'converting' && 'Converting to JPEG...'}
                       {conversionProgress.stage === 'complete' && 'Complete!'}
@@ -315,7 +336,9 @@ export const OrientationForm: React.FC<OrientationFormProps> = ({
                     justifyContent: 'center',
                   }}
                 >
-                  <Typography variant="body2" color="text.secondary">
+                  <Typography variant="body2" sx={{
+                    color: 'text.secondary'
+                  }}>
                     No image loaded
                   </Typography>
                 </Box>
@@ -330,7 +353,9 @@ export const OrientationForm: React.FC<OrientationFormProps> = ({
 
             {/* Strike and Dip fields */}
             <Box sx={{ ml: '-20px' }}>
-              <Stack direction="row" spacing={2} alignItems="center">
+              <Stack direction="row" spacing={2} sx={{
+                alignItems: 'center'
+              }}>
                 <Typography variant="subtitle2" sx={{ fontWeight: 'bold', minWidth: 60 }}>
                   Strike:
                 </Typography>
@@ -338,9 +363,11 @@ export const OrientationForm: React.FC<OrientationFormProps> = ({
                   type="number"
                   value={formData.trendPlungeStrike}
                   onChange={(e) => onFormChange('trendPlungeStrike', e.target.value)}
-                  InputProps={{ endAdornment: '°' }}
                   size="small"
                   sx={{ width: 120 }}
+                  slotProps={{
+                    input: { endAdornment: '°' }
+                  }}
                 />
                 <Typography variant="subtitle2" sx={{ fontWeight: 'bold', minWidth: 40, ml: 2 }}>
                   Dip:
@@ -349,9 +376,11 @@ export const OrientationForm: React.FC<OrientationFormProps> = ({
                   type="number"
                   value={formData.trendPlungeDip}
                   onChange={(e) => onFormChange('trendPlungeDip', e.target.value)}
-                  InputProps={{ endAdornment: '°' }}
                   size="small"
                   sx={{ width: 120 }}
+                  slotProps={{
+                    input: { endAdornment: '°' }
+                  }}
                 />
               </Stack>
             </Box>
@@ -366,9 +395,10 @@ export const OrientationForm: React.FC<OrientationFormProps> = ({
             <Typography
               component="span"
               variant="body2"
-              color="text.secondary"
-              sx={{ fontWeight: 'normal' }}
-            >
+              sx={{
+                color: 'text.secondary',
+                fontWeight: 'normal'
+              }}>
               (X - Lineation, Y - Perpendicular to lineation within the foliation plane, Z - Pole
               to foliation)
             </Typography>
@@ -392,40 +422,50 @@ export const OrientationForm: React.FC<OrientationFormProps> = ({
               type="number"
               value={formData.fabricStrike}
               onChange={(e) => onFormChange('fabricStrike', e.target.value)}
-              InputProps={{ endAdornment: '°' }}
               sx={{ flex: 1 }}
+              slotProps={{
+                input: { endAdornment: '°' }
+              }}
             />
             <TextField
               label="Dip"
               type="number"
               value={formData.fabricDip}
               onChange={(e) => onFormChange('fabricDip', e.target.value)}
-              InputProps={{ endAdornment: '°' }}
               sx={{ flex: 1 }}
+              slotProps={{
+                input: { endAdornment: '°' }
+              }}
             />
           </Stack>
 
           <Typography variant="subtitle2" sx={{ fontWeight: 'bold', mt: 1 }}>
             Lineation Orientation: (Geographic Coordinates)
           </Typography>
-          <Stack direction="row" spacing={2} alignItems="flex-start">
+          <Stack direction="row" spacing={2} sx={{
+            alignItems: 'flex-start'
+          }}>
             <TextField
               label="Trend"
               type="number"
               value={formData.fabricTrend}
               onChange={(e) => onFormChange('fabricTrend', e.target.value)}
-              InputProps={{ endAdornment: '°' }}
               helperText=" "
               sx={{ flex: 1 }}
+              slotProps={{
+                input: { endAdornment: '°' }
+              }}
             />
             <TextField
               label="Plunge"
               type="number"
               value={formData.fabricPlunge}
               onChange={(e) => onFormChange('fabricPlunge', e.target.value)}
-              InputProps={{ endAdornment: '°' }}
               helperText=" "
               sx={{ flex: 1 }}
+              slotProps={{
+                input: { endAdornment: '°' }
+              }}
             />
             <Typography variant="body2" sx={{ px: 1, pt: 2 }}>
               OR
@@ -435,16 +475,23 @@ export const OrientationForm: React.FC<OrientationFormProps> = ({
               type="number"
               value={formData.fabricRake}
               onChange={(e) => onFormChange('fabricRake', e.target.value)}
-              InputProps={{ endAdornment: '°' }}
               helperText="(RHR, 0-180)"
               sx={{ flex: 1 }}
+              slotProps={{
+                input: { endAdornment: '°' }
+              }}
             />
           </Stack>
 
           <Typography variant="subtitle2" sx={{ fontWeight: 'bold', mt: 1 }}>
             Look Direction:
           </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+          <Typography
+            variant="body2"
+            sx={{
+              color: 'text.secondary',
+              fontStyle: 'italic'
+            }}>
             When looking at the Reference micrograph, are you looking toward the lower hemisphere
             or upper hemisphere in geographic coordinates?
           </Typography>

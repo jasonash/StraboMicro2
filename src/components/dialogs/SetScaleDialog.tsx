@@ -191,7 +191,9 @@ export function SetScaleDialog({ open, onClose, micrographId }: SetScaleDialogPr
   const renderScaleMethodStep = () => (
     <Stack spacing={3}>
       <Typography variant="h6">Select Scale Method</Typography>
-      <Typography variant="body2" color="text.secondary">
+      <Typography variant="body2" sx={{
+        color: 'text.secondary'
+      }}>
         Choose how you want to define the scale for this micrograph.
       </Typography>
 
@@ -204,7 +206,13 @@ export function SetScaleDialog({ open, onClose, micrographId }: SetScaleDialogPr
           control={<Radio />}
           label="Trace Scale Bar"
         />
-        <Typography variant="body2" color="text.secondary" sx={{ ml: 4, mb: 2 }}>
+        <Typography
+          variant="body2"
+          sx={{
+            color: 'text.secondary',
+            ml: 4,
+            mb: 2
+          }}>
           Draw a line over the scale bar in the image and enter its physical length.
         </Typography>
 
@@ -213,7 +221,13 @@ export function SetScaleDialog({ open, onClose, micrographId }: SetScaleDialogPr
           control={<Radio />}
           label="Pixel Conversion Factor"
         />
-        <Typography variant="body2" color="text.secondary" sx={{ ml: 4, mb: 2 }}>
+        <Typography
+          variant="body2"
+          sx={{
+            color: 'text.secondary',
+            ml: 4,
+            mb: 2
+          }}>
           Enter a known pixel-to-physical conversion (e.g., 100 pixels = 10 μm).
         </Typography>
 
@@ -222,7 +236,13 @@ export function SetScaleDialog({ open, onClose, micrographId }: SetScaleDialogPr
           control={<Radio />}
           label="Provide Width/Height of Image"
         />
-        <Typography variant="body2" color="text.secondary" sx={{ ml: 4, mb: 2 }}>
+        <Typography
+          variant="body2"
+          sx={{
+            color: 'text.secondary',
+            ml: 4,
+            mb: 2
+          }}>
           Enter the physical dimensions of the entire image.
         </Typography>
       </RadioGroup>
@@ -234,7 +254,9 @@ export function SetScaleDialog({ open, onClose, micrographId }: SetScaleDialogPr
       return (
         <Stack spacing={2}>
           <Typography variant="h6">Trace Scale Bar</Typography>
-          <Typography variant="body2" color="text.secondary">
+          <Typography variant="body2" sx={{
+            color: 'text.secondary'
+          }}>
             Draw a line over the scale bar in the micrograph, then enter the physical length.
           </Typography>
 
@@ -285,9 +307,11 @@ export function SetScaleDialog({ open, onClose, micrographId }: SetScaleDialogPr
               required
               label="Line Length (pixels)"
               value={scaleBarLineLengthPixels}
-              InputProps={{ readOnly: true }}
               size="small"
               sx={{ width: 180 }}
+              slotProps={{
+                input: { readOnly: true }
+              }}
             />
 
             <TextField
@@ -346,7 +370,9 @@ export function SetScaleDialog({ open, onClose, micrographId }: SetScaleDialogPr
               {isLoadingPreview ? (
                 <CircularProgress />
               ) : (
-                <Typography color="text.secondary">Loading micrograph preview...</Typography>
+                <Typography sx={{
+                  color: 'text.secondary'
+                }}>Loading micrograph preview...</Typography>
               )}
             </Box>
           )}
@@ -381,7 +407,9 @@ export function SetScaleDialog({ open, onClose, micrographId }: SetScaleDialogPr
             </Box>
           )}
 
-          <Typography variant="body2" color="text.secondary">
+          <Typography variant="body2" sx={{
+            color: 'text.secondary'
+          }}>
             Enter the number of pixels that corresponds to a known physical length.
           </Typography>
 
@@ -448,7 +476,9 @@ export function SetScaleDialog({ open, onClose, micrographId }: SetScaleDialogPr
             </Box>
           )}
 
-          <Typography variant="body2" color="text.secondary">
+          <Typography variant="body2" sx={{
+            color: 'text.secondary'
+          }}>
             Enter the physical width and/or height of the entire micrograph image.
             At least one dimension is required.
           </Typography>
@@ -498,12 +528,19 @@ export function SetScaleDialog({ open, onClose, micrographId }: SetScaleDialogPr
       onClose={handleClose}
       maxWidth="md"
       fullWidth
-      PaperProps={{ sx: { minHeight: '50vh' } }}
+      slotProps={{
+        paper: { sx: { minHeight: '50vh' } }
+      }}
     >
       <DialogTitle>Set Micrograph Scale</DialogTitle>
 
       <DialogContent>
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+        <Typography
+          variant="body2"
+          sx={{
+            color: 'text.secondary',
+            mb: 2
+          }}>
           This micrograph was batch imported without scale information.
           Please set the scale to view it properly.
         </Typography>

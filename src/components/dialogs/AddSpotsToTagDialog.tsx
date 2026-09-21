@@ -174,7 +174,12 @@ export function AddSpotsToTagDialog({
       </DialogTitle>
 
       <DialogContent>
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+        <Typography
+          variant="body2"
+          sx={{
+            color: 'text.secondary',
+            mb: 2
+          }}>
           Check spots to add to this tag, uncheck to remove.
           {spotsWithTagCount > 0 && ` (${spotsWithTagCount} spot${spotsWithTagCount !== 1 ? 's' : ''} selected)`}
         </Typography>
@@ -197,7 +202,12 @@ export function AddSpotsToTagDialog({
 
           {/* Show message if no spots exist */}
           {allSpots.length === 0 && (
-            <Typography color="text.secondary" sx={{ py: 2, textAlign: 'center' }}>
+            <Typography
+              sx={{
+                color: 'text.secondary',
+                py: 2,
+                textAlign: 'center'
+              }}>
               No spots found in this project. Create spots first.
             </Typography>
           )}
@@ -273,7 +283,12 @@ function SampleSection({
         <Typography variant="body2" sx={{ fontWeight: 600 }}>
           {sample.sampleID || sample.name || 'Unnamed Sample'}
         </Typography>
-        <Typography variant="caption" color="text.secondary" sx={{ ml: 1 }}>
+        <Typography
+          variant="caption"
+          sx={{
+            color: 'text.secondary',
+            ml: 1
+          }}>
           ({totalSpots} spot{totalSpots !== 1 ? 's' : ''})
         </Typography>
       </Box>
@@ -346,7 +361,12 @@ function MicrographSection({
           {micrograph.name || 'Unnamed Micrograph'}
           {isReference && ' (Reference)'}
         </Typography>
-        <Typography variant="caption" color="text.secondary" sx={{ ml: 1 }}>
+        <Typography
+          variant="caption"
+          sx={{
+            color: 'text.secondary',
+            ml: 1
+          }}>
           ({spots.length} spot{spots.length !== 1 ? 's' : ''})
         </Typography>
       </Box>

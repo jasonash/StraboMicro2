@@ -320,7 +320,12 @@ const Viewer: React.FC = () => {
             <Typography variant="h6" sx={{ textAlign: 'center' }}>
               Layer is Hidden
             </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center' }}>
+            <Typography
+              variant="body2"
+              sx={{
+                color: 'text.secondary',
+                textAlign: 'center'
+              }}>
               The active sketch layer is hidden. Show it to continue drawing.
             </Typography>
             <Button
@@ -372,7 +377,12 @@ const Viewer: React.FC = () => {
           flexShrink: 0,
         }}
       >
-        <Typography variant="subtitle1" color="text.primary" sx={{ fontWeight: 500 }}>
+        <Typography
+          variant="subtitle1"
+          sx={{
+            color: 'text.primary',
+            fontWeight: 500
+          }}>
           {selectionCount > 1
             ? `${selectionCount} Spots Selected`
             : activeSpot
@@ -398,12 +408,16 @@ const Viewer: React.FC = () => {
           flexShrink: 0,
         }}
       >
-        <Typography variant="body2" color="text.secondary">
+        <Typography variant="body2" sx={{
+          color: 'text.secondary'
+        }}>
           {cursorCoords
             ? `X: ${cursorCoords.x.toFixed(cursorCoords.decimals)} ${cursorCoords.unit} × Y: ${cursorCoords.y.toFixed(cursorCoords.decimals)} ${cursorCoords.unit}`
             : 'X: 0.000 cm × Y: 0.000 cm'}
         </Typography>
-        <Typography variant="body2" color="text.secondary">
+        <Typography variant="body2" sx={{
+          color: 'text.secondary'
+        }}>
           Zoom: {(currentZoom * 100).toFixed(currentZoom < 1 ? 1 : 0)}%
         </Typography>
       </Box>

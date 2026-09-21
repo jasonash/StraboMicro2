@@ -1030,7 +1030,13 @@ export function ProjectTree() {
           }}
         >
           {/* Micrograph Name with Expand/Collapse */}
-          <Stack direction="row" alignItems="center" spacing={0.5} sx={{ mb: 0.5 }}>
+          <Stack
+            direction="row"
+            spacing={0.5}
+            sx={{
+              alignItems: 'center',
+              mb: 0.5
+            }}>
             {hasChildren ? (
               <IconButton
                 size="small"
@@ -1080,7 +1086,9 @@ export function ProjectTree() {
           </Stack>
 
           {/* Thumbnail + Button Column */}
-          <Stack direction="row" spacing={1} alignItems="flex-start">
+          <Stack direction="row" spacing={1} sx={{
+            alignItems: 'flex-start'
+          }}>
             {/* Thumbnail - uses flex to fill available space */}
             <Box
               sx={{
@@ -1390,7 +1398,14 @@ export function ProjectTree() {
         tabIndex={0}
         onKeyDown={(e) => handleSampleKeyDown(e, sample.id, datasetId, allSamples)}
       >
-        <Stack direction="row" alignItems="center" spacing={0.5} sx={{ py: 0.5, pr: 1 }}>
+        <Stack
+          direction="row"
+          spacing={0.5}
+          sx={{
+            alignItems: 'center',
+            py: 0.5,
+            pr: 1
+          }}>
           <IconButton size="small" onClick={() => toggleSample(sample.id)} sx={{ p: 0 }}>
             {isExpanded ? <ExpandMore fontSize="small" /> : <ChevronRight fontSize="small" />}
           </IconButton>
@@ -1541,7 +1556,14 @@ export function ProjectTree() {
         tabIndex={0}
         onKeyDown={(e) => handleDatasetKeyDown(e, dataset.id, allDatasets)}
       >
-        <Stack direction="row" alignItems="center" spacing={0.5} sx={{ py: 0.5, pr: 1 }}>
+        <Stack
+          direction="row"
+          spacing={0.5}
+          sx={{
+            alignItems: 'center',
+            py: 0.5,
+            pr: 1
+          }}>
           <IconButton size="small" onClick={() => toggleDataset(dataset.id)} sx={{ p: 0 }}>
             {isExpanded ? <ExpandMore fontSize="small" /> : <ChevronRight fontSize="small" />}
           </IconButton>
@@ -1663,7 +1685,9 @@ export function ProjectTree() {
   if (!project) {
     return (
       <Box sx={{ p: 2, textAlign: 'center' }}>
-        <Typography variant="body2" color="text.secondary">
+        <Typography variant="body2" sx={{
+          color: 'text.secondary'
+        }}>
           No project loaded. Create or open a new project to get started.
         </Typography>
       </Box>
@@ -1699,24 +1723,26 @@ export function ProjectTree() {
                 setSearchQuery('');
               }
             }}
-            InputProps={{
-              startAdornment: (
-                <InputAdornment position="start">
-                  <SearchIcon fontSize="small" />
-                </InputAdornment>
-              ),
-              endAdornment: searchQuery ? (
-                <InputAdornment position="end">
-                  <IconButton
-                    size="small"
-                    edge="end"
-                    onClick={() => setSearchQuery('')}
-                    aria-label="Clear search"
-                  >
-                    <CloseIcon fontSize="small" />
-                  </IconButton>
-                </InputAdornment>
-              ) : null,
+            slotProps={{
+              input: {
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <SearchIcon fontSize="small" />
+                  </InputAdornment>
+                ),
+                endAdornment: searchQuery ? (
+                  <InputAdornment position="end">
+                    <IconButton
+                      size="small"
+                      edge="end"
+                      onClick={() => setSearchQuery('')}
+                      aria-label="Clear search"
+                    >
+                      <CloseIcon fontSize="small" />
+                    </IconButton>
+                  </InputAdornment>
+                ) : null,
+              }
             }}
           />
         </Box>
@@ -1724,7 +1750,9 @@ export function ProjectTree() {
 
       {/* Project header */}
       <Box sx={{ px: 2, py: 1, borderBottom: 1, borderColor: 'divider' }}>
-        <Stack direction="row" alignItems="center" spacing={0.5}>
+        <Stack direction="row" spacing={0.5} sx={{
+          alignItems: 'center'
+        }}>
           <Typography variant="subtitle2" sx={{ flex: 1, fontWeight: 700, color: 'text.primary' }}>
             {project.name}
           </Typography>
@@ -1764,7 +1792,9 @@ export function ProjectTree() {
             if (visibleDatasetsList.length === 0 && searchFilter) {
               return (
                 <Box sx={{ p: 2, textAlign: 'center' }}>
-                  <Typography variant="body2" color="text.secondary">
+                  <Typography variant="body2" sx={{
+                    color: 'text.secondary'
+                  }}>
                     No matches for &ldquo;{searchQuery}&rdquo;
                   </Typography>
                 </Box>

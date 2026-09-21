@@ -63,26 +63,39 @@ export const SerializedJsonModal: React.FC<SerializedJsonModalProps> = ({ isOpen
       onClose={onClose}
       maxWidth="md"
       fullWidth
-      TransitionComponent={Grow}
       transitionDuration={300}
+      slots={{
+        transition: Grow
+      }}
     >
       <DialogTitle>Serialized Project JSON (for upload/export)</DialogTitle>
       <DialogContent>
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+        <Typography
+          variant="body2"
+          sx={{
+            color: 'text.secondary',
+            mb: 2
+          }}>
           This is the exact JSON that will be sent to the server or saved in .smz files.
           Numeric values are rounded and null values are removed for database compatibility.
         </Typography>
 
         {!project && (
           <Box sx={{ textAlign: 'center', py: 4 }}>
-            <Typography color="text.secondary">No project currently loaded.</Typography>
+            <Typography sx={{
+              color: 'text.secondary'
+            }}>No project currently loaded.</Typography>
           </Box>
         )}
 
         {project && isLoading && (
           <Box sx={{ textAlign: 'center', py: 4 }}>
             <CircularProgress size={40} />
-            <Typography color="text.secondary" sx={{ mt: 2 }}>Serializing project...</Typography>
+            <Typography
+              sx={{
+                color: 'text.secondary',
+                mt: 2
+              }}>Serializing project...</Typography>
           </Box>
         )}
 
@@ -95,7 +108,9 @@ export const SerializedJsonModal: React.FC<SerializedJsonModalProps> = ({ isOpen
         {project && serializedJson && (
           <>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
-              <Typography variant="subtitle2" color="text.secondary">
+              <Typography variant="subtitle2" sx={{
+                color: 'text.secondary'
+              }}>
                 {(serializedJson.length / 1024).toFixed(1)} KB
               </Typography>
               <Button

@@ -25,6 +25,7 @@ import ErrorIcon from '@mui/icons-material/Error';
 import FolderZipIcon from '@mui/icons-material/FolderZip';
 import { useAppStore } from '../../store/useAppStore';
 import type { QuickApplyPreset } from '../../types/preset-types';
+import { closeUnlessEscapeBlocked } from '@/utils/dialogClose';
 
 interface ExportProgress {
   phase: string;
@@ -200,10 +201,9 @@ export function ExportSmzDialog({
   return (
     <Dialog
       open={open}
-      onClose={result ? handleClose : undefined}
+      onClose={closeUnlessEscapeBlocked(result ? handleClose : undefined, isExporting)}
       maxWidth="sm"
       fullWidth
-      disableEscapeKeyDown={isExporting}
     >
       <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
         <FolderZipIcon color="primary" />
@@ -215,13 +215,19 @@ export function ExportSmzDialog({
           {isExporting && progress && (
             <>
               <Box sx={{ mb: 2 }}>
-                <Typography variant="body2" color="text.secondary" gutterBottom>
+                <Typography variant="body2" gutterBottom sx={{
+                  color: 'text.secondary'
+                }}>
                   {progress.phase}
                 </Typography>
-                <Typography variant="body1" fontWeight={500} noWrap>
+                <Typography variant="body1" noWrap sx={{
+                  fontWeight: 500
+                }}>
                   {progress.itemName}
                 </Typography>
-                <Typography variant="caption" color="text.secondary">
+                <Typography variant="caption" sx={{
+                  color: 'text.secondary'
+                }}>
                   Step {progress.current} of {progress.total}
                 </Typography>
               </Box>
@@ -237,7 +243,9 @@ export function ExportSmzDialog({
                   },
                 }}
               />
-              <Typography variant="body2" color="text.secondary" align="right">
+              <Typography variant="body2" align="right" sx={{
+                color: 'text.secondary'
+              }}>
                 {progress.percentage}%
               </Typography>
             </>
@@ -246,7 +254,9 @@ export function ExportSmzDialog({
           {/* Initializing state */}
           {isExporting && !progress && (
             <Box sx={{ textAlign: 'center', py: 2 }}>
-              <Typography variant="body1" color="text.secondary">
+              <Typography variant="body1" sx={{
+                color: 'text.secondary'
+              }}>
                 Preparing .smz export...
               </Typography>
               <LinearProgress sx={{ mt: 2 }} />
@@ -260,22 +270,28 @@ export function ExportSmzDialog({
               icon={<CheckCircleIcon fontSize="inherit" />}
               sx={{ mb: 2 }}
             >
-              <Typography variant="body1" fontWeight={500}>
+              <Typography variant="body1" sx={{
+                fontWeight: 500
+              }}>
                 Export Complete!
               </Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+              <Typography
+                variant="body2"
+                sx={{
+                  color: 'text.secondary',
+                  mt: 1
+                }}>
                 Your project has been saved as a .smz archive.
               </Typography>
               {result.filePath && (
                 <Typography
                   variant="caption"
-                  color="text.secondary"
                   sx={{
+                    color: 'text.secondary',
                     display: 'block',
                     mt: 1,
-                    wordBreak: 'break-all',
-                  }}
-                >
+                    wordBreak: 'break-all'
+                  }}>
                   {result.filePath}
                 </Typography>
               )}
@@ -289,7 +305,9 @@ export function ExportSmzDialog({
               icon={<ErrorIcon fontSize="inherit" />}
               sx={{ mb: 2 }}
             >
-              <Typography variant="body1" fontWeight={500}>
+              <Typography variant="body1" sx={{
+                fontWeight: 500
+              }}>
                 Export Failed
               </Typography>
               <Typography variant="body2" sx={{ mt: 1 }}>

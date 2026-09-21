@@ -57,7 +57,12 @@ export function PropertiesPanel({
   if (!micrograph) {
     return (
       <Box sx={{ p: 2 }}>
-        <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+        <Typography
+          variant="body2"
+          sx={{
+            color: 'text.secondary',
+            fontStyle: 'italic'
+          }}>
           Select a micrograph to view details
         </Typography>
       </Box>
@@ -106,7 +111,13 @@ export function PropertiesPanel({
 
             {/* Collected Data header */}
             <Box sx={{ px: 1.5, pt: 1.5, pb: 0.5 }}>
-              <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600, letterSpacing: 0.5 }}>
+              <Typography
+                variant="caption"
+                sx={{
+                  color: 'text.secondary',
+                  fontWeight: 600,
+                  letterSpacing: 0.5
+                }}>
                 Collected Data:
               </Typography>
             </Box>
@@ -127,7 +138,15 @@ export function PropertiesPanel({
         {/* ============ Sketches Tab ============ */}
         {tabLabels[activeTab] === 'SKETCHES' && micrograph?.sketchLayers && (
           <Box sx={{ p: 1 }}>
-            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1, fontWeight: 600, letterSpacing: 0.5 }}>
+            <Typography
+              variant="caption"
+              sx={{
+                color: 'text.secondary',
+                display: 'block',
+                mb: 1,
+                fontWeight: 600,
+                letterSpacing: 0.5
+              }}>
               Sketch Layers ({micrograph.sketchLayers.length})
             </Typography>
             <Stack spacing={0.5}>
@@ -176,7 +195,9 @@ export function PropertiesPanel({
                 ['Notes', project.notes],
               ].filter(([, v]) => v).map(([label, value]) => (
                 <Box key={label as string}>
-                  <Typography variant="caption" color="text.secondary">{label}: </Typography>
+                  <Typography variant="caption" sx={{
+                    color: 'text.secondary'
+                  }}>{label}: </Typography>
                   <Typography variant="body2" component="span">{value}</Typography>
                 </Box>
               ))}

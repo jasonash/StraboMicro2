@@ -113,7 +113,12 @@ const Sidebar: React.FC = () => {
             bgcolor: 'background.paper',
           }}
         >
-          <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+          <Typography
+            variant="caption"
+            sx={{
+              color: 'text.secondary',
+              display: 'block'
+            }}>
             Total Samples: {projectStats.totalSamples} &nbsp;•&nbsp; Total Micrographs: {projectStats.totalMicrographs}
           </Typography>
         </Box>

@@ -78,9 +78,12 @@ const Header: React.FC = () => {
           <Typography
             variant="h5"
             component="h1"
-            color="text.primary"
-            sx={{ fontWeight: 300, letterSpacing: 0.5, fontSize: '1.75rem' }}
-          >
+            sx={{
+              color: 'text.primary',
+              fontWeight: 300,
+              letterSpacing: 0.5,
+              fontSize: '1.75rem'
+            }}>
             STRABOMICRO
           </Typography>
         </Box>
@@ -131,14 +134,18 @@ const Header: React.FC = () => {
           }}
         >
           {isAuthenticated && user ? (
-            <Typography variant="body2" color="text.secondary">
+            <Typography variant="body2" sx={{
+              color: 'text.secondary'
+            }}>
               Logged in as{' '}
               <Box component="span" sx={{ color: 'text.primary', fontWeight: 500 }}>
                 {user.name ? `${user.name} (${user.email})` : user.email}
               </Box>
             </Typography>
           ) : (
-            <Typography variant="body2" color="text.secondary">
+            <Typography variant="body2" sx={{
+              color: 'text.secondary'
+            }}>
               Not logged in
             </Typography>
           )}

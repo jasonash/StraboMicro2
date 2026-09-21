@@ -30,6 +30,7 @@ import ErrorIcon from '@mui/icons-material/Error';
 import WarningIcon from '@mui/icons-material/Warning';
 import { useAppStore } from '../../store/useAppStore';
 import { unloadIfReplacingOpenProject, dedupeImportedPresets } from '../../utils/importUtils';
+import { closeUnlessEscapeBlocked } from '@/utils/dialogClose';
 
 interface ImportProgress {
   phase: string;
@@ -266,7 +267,12 @@ export function ImportSmzDialog({
               {inspectResult?.projectName || 'Untitled Project'}
             </Typography>
 
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            <Typography
+              variant="body2"
+              sx={{
+                color: 'text.secondary',
+                mb: 2
+              }}>
               Project ID: {inspectResult?.projectId}
             </Typography>
 
@@ -327,10 +333,14 @@ export function ImportSmzDialog({
               sx={{ mb: 1 }}
             />
             <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-              <Typography variant="body2" color="text.secondary">
+              <Typography variant="body2" sx={{
+                color: 'text.secondary'
+              }}>
                 {progress?.detail || ''}
               </Typography>
-              <Typography variant="body2" color="text.secondary">
+              <Typography variant="body2" sx={{
+                color: 'text.secondary'
+              }}>
                 {progress?.percentage || 0}%
               </Typography>
             </Box>
@@ -347,7 +357,9 @@ export function ImportSmzDialog({
             <Typography variant="h6" gutterBottom>
               Import Complete!
             </Typography>
-            <Typography variant="body2" color="text.secondary">
+            <Typography variant="body2" sx={{
+              color: 'text.secondary'
+            }}>
               Project "{inspectResult?.projectName}" has been imported successfully.
             </Typography>
           </Box>
@@ -363,7 +375,9 @@ export function ImportSmzDialog({
             <Typography variant="h6" gutterBottom color="error">
               Import Failed
             </Typography>
-            <Typography variant="body2" color="text.secondary">
+            <Typography variant="body2" sx={{
+              color: 'text.secondary'
+            }}>
               {errorMessage || 'An unknown error occurred.'}
             </Typography>
           </Box>
@@ -420,10 +434,9 @@ export function ImportSmzDialog({
   return (
     <Dialog
       open={open}
-      onClose={handleClose}
+      onClose={closeUnlessEscapeBlocked(handleClose, dialogState === 'importing')}
       maxWidth="sm"
       fullWidth
-      disableEscapeKeyDown={dialogState === 'importing'}
     >
       <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
         <FolderOpenIcon color="primary" />

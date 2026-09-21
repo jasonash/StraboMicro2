@@ -149,7 +149,7 @@ if (process.platform === 'win32' && app.isPackaged && _sharpDebugLog.length > 0)
   }
 }
 
-const archiver = require('archiver');
+const { createZipArchive } = require('./zipArchive');
 const projectFolders = require('./projectFolders');
 const imageConverter = require('./imageConverter');
 const projectSerializer = require('./projectSerializer');
@@ -4487,7 +4487,7 @@ ipcMain.handle('project:export-images', async (event, projectId, projectData, ex
     const folderPaths = await projectFolders.getProjectFolderPaths(projectId);
 
     const output = fs.createWriteStream(result.filePath);
-    const archive = archiver('zip', { zlib: { level: 6 } });
+    const archive = await createZipArchive();
     const archiveFailure = new Promise((_, reject) => archive.on('error', reject));
     archive.pipe(output);
 

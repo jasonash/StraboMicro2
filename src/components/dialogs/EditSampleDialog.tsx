@@ -417,7 +417,9 @@ export function EditSampleDialog({ isOpen, onClose, sample }: EditSampleDialogPr
 
                 {/* Subsystem badges: which Strabo systems reference this sample */}
                 {!shouldUnlink && spineStatus && spineStatus.subsystems.length > 0 && (
-                  <Stack direction="row" spacing={1} justifyContent="center">
+                  <Stack direction="row" spacing={1} sx={{
+                    justifyContent: 'center'
+                  }}>
                     {spineStatus.subsystems.map((subsystem) => (
                       <Chip key={subsystem} size="small" label={SUBSYSTEM_LABELS[subsystem]} />
                     ))}

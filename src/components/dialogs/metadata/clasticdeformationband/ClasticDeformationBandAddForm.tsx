@@ -318,10 +318,12 @@ export function ClasticDeformationBandAddForm({ onAdd, onCancel, initialData }: 
             value={cements}
             multiline
             rows={2}
-            InputProps={{
-              readOnly: true,
-            }}
             helperText="Comma-separated list of selected cements"
+            slotProps={{
+              input: {
+                readOnly: true,
+              }
+            }}
           />
           <Button
             variant="outlined"

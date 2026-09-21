@@ -76,7 +76,9 @@ function formatSize(microns: number): string {
 function StatRow({ label, value }: { label: string; value: string }) {
   return (
     <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-      <Typography variant="caption" color="text.secondary">{label}</Typography>
+      <Typography variant="caption" sx={{
+        color: 'text.secondary'
+      }}>{label}</Typography>
       <Typography variant="body2" sx={{ fontWeight: 500, ml: 1, textAlign: 'right' }}>{value}</Typography>
     </Box>
   );
@@ -228,9 +230,11 @@ export function GrainSizeSummary({ micrographId }: GrainSizeSummaryProps) {
             <Box>
               <Typography
                 variant="caption"
-                color="text.secondary"
-                sx={{ display: 'block', mb: 0.5 }}
-              >
+                sx={{
+                  color: 'text.secondary',
+                  display: 'block',
+                  mb: 0.5
+                }}>
                 By Mineral:
               </Typography>
               {mineralGroups.slice(0, 5).map((group) => (

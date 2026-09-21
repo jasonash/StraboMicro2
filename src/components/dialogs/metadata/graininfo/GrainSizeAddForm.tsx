@@ -81,8 +81,10 @@ export function GrainSizeAddForm({
               value={mean}
               onChange={(e) => setMean(e.target.value === '' ? '' : parseFloat(e.target.value))}
               label="Mean"
-              inputProps={{ min: 0, step: 'any' }}
               sx={{ flex: 1 }}
+              slotProps={{
+                htmlInput: { min: 0, step: 'any' }
+              }}
             />
             <FormControl sx={{ minWidth: 100 }}>
               <InputLabel>Unit</InputLabel>
@@ -106,8 +108,10 @@ export function GrainSizeAddForm({
               value={median}
               onChange={(e) => setMedian(e.target.value === '' ? '' : parseFloat(e.target.value))}
               label="Median"
-              inputProps={{ min: 0, step: 'any' }}
               sx={{ flex: 1 }}
+              slotProps={{
+                htmlInput: { min: 0, step: 'any' }
+              }}
             />
             <FormControl sx={{ minWidth: 100 }}>
               <InputLabel>Unit</InputLabel>
@@ -129,8 +133,10 @@ export function GrainSizeAddForm({
               value={mode}
               onChange={(e) => setMode(e.target.value === '' ? '' : parseFloat(e.target.value))}
               label="Mode"
-              inputProps={{ min: 0, step: 'any' }}
               sx={{ flex: 1 }}
+              slotProps={{
+                htmlInput: { min: 0, step: 'any' }
+              }}
             />
             <FormControl sx={{ minWidth: 100 }}>
               <InputLabel>Unit</InputLabel>
@@ -152,8 +158,10 @@ export function GrainSizeAddForm({
                 setStandardDeviation(e.target.value === '' ? '' : parseFloat(e.target.value))
               }
               label="Standard Deviation"
-              inputProps={{ min: 0, step: 'any' }}
               sx={{ flex: 1 }}
+              slotProps={{
+                htmlInput: { min: 0, step: 'any' }
+              }}
             />
             <FormControl sx={{ minWidth: 100 }}>
               <InputLabel>Unit</InputLabel>

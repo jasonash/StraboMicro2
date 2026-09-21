@@ -36,7 +36,9 @@ function MineralBar({ name, count, percentage, color }: MineralBarProps) {
         <Typography variant="body2" sx={{ fontWeight: 500 }}>
           {name}
         </Typography>
-        <Typography variant="body2" color="text.secondary">
+        <Typography variant="body2" sx={{
+          color: 'text.secondary'
+        }}>
           {count} ({percentage.toFixed(1)}%)
         </Typography>
       </Box>
@@ -85,7 +87,9 @@ function StatRow({ label, value, highlight = false }: StatRowProps) {
         borderRadius: 0.5,
       }}
     >
-      <Typography variant="body2" color="text.secondary">
+      <Typography variant="body2" sx={{
+        color: 'text.secondary'
+      }}>
         {label}
       </Typography>
       <Typography variant="body2" sx={{ fontWeight: highlight ? 600 : 400 }}>
@@ -200,7 +204,9 @@ export function QuickEditStatistics() {
       {/* Progress Section */}
       <Box sx={{ mb: 2 }}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
-          <Typography variant="body2" color="text.secondary">
+          <Typography variant="body2" sx={{
+            color: 'text.secondary'
+          }}>
             Progress
           </Typography>
           <Typography variant="body2" sx={{ fontWeight: 600 }}>
@@ -274,7 +280,13 @@ export function QuickEditStatistics() {
       {stats.minerals.length === 0 && stats.unclassifiedCount > 0 && (
         <>
           <Divider sx={{ my: 1.5 }} />
-          <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', py: 2 }}>
+          <Typography
+            variant="body2"
+            sx={{
+              color: 'text.secondary',
+              textAlign: 'center',
+              py: 2
+            }}>
             No spots classified yet.
             <br />
             Use letter keys to classify.

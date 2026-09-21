@@ -187,8 +187,10 @@ export function CombinedDataTypeSelector({ context, onSelectModal }: CombinedDat
             </Typography>
             <Typography
               variant="caption"
-              color="text.secondary"
               component="div"
+              sx={{
+                color: 'text.secondary'
+              }}
             >
               {option.data.path}
             </Typography>
@@ -232,20 +234,22 @@ export function CombinedDataTypeSelector({ context, onSelectModal }: CombinedDat
           }}
         />
       )}
-      ListboxProps={{
-        sx: {
-          maxHeight: 400,
-          '& .MuiAutocomplete-option': {
-            py: 1,
-          },
-        },
-      }}
       // Show dropdown arrow to indicate it's also a dropdown
       popupIcon={undefined}
       clearOnBlur
       selectOnFocus
       handleHomeEndKeys
       blurOnSelect
+      slotProps={{
+        listbox: {
+          sx: {
+            maxHeight: 400,
+            '& .MuiAutocomplete-option': {
+              py: 1,
+            },
+          },
+        }
+      }}
     />
   );
 }

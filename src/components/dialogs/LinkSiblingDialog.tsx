@@ -233,7 +233,12 @@ export function LinkSiblingDialog({
           </Alert>
         ) : (
           <Box>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            <Typography
+              variant="body2"
+              sx={{
+                color: 'text.secondary',
+                mb: 2
+              }}>
               Select a micrograph to link as the PPL/XPL sibling of "{sourceMicrograph.name || sourceMicrograph.imageFilename || 'Unnamed'}":
             </Typography>
 
@@ -277,10 +282,14 @@ export function LinkSiblingDialog({
                 <Typography variant="subtitle2" gutterBottom>
                   Selected: {selectedCandidate.name || selectedCandidate.imageFilename}
                 </Typography>
-                <Typography variant="body2" color="text.secondary">
+                <Typography variant="body2" sx={{
+                  color: 'text.secondary'
+                }}>
                   Image type: {selectedCandidate.imageType || 'Not specified'}
                 </Typography>
-                <Typography variant="body2" color="text.secondary">
+                <Typography variant="body2" sx={{
+                  color: 'text.secondary'
+                }}>
                   Dimensions: {selectedCandidate.width} × {selectedCandidate.height}
                 </Typography>
               </Box>

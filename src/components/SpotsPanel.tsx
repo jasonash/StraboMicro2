@@ -167,9 +167,12 @@ function MicrographSection({
           ) : (
             <Typography
               variant="body2"
-              color="text.secondary"
-              sx={{ fontStyle: 'italic', py: 0.25, px: 1 }}
-            >
+              sx={{
+                color: 'text.secondary',
+                fontStyle: 'italic',
+                py: 0.25,
+                px: 1
+              }}>
               No spots.
             </Typography>
           )}
@@ -260,9 +263,12 @@ function SampleSection({
           {referenceMicrographs.length === 0 ? (
             <Typography
               variant="body2"
-              color="text.secondary"
-              sx={{ fontStyle: 'italic', py: 0.25, px: 1 }}
-            >
+              sx={{
+                color: 'text.secondary',
+                fontStyle: 'italic',
+                py: 0.25,
+                px: 1
+              }}>
               No micrographs.
             </Typography>
           ) : (
@@ -348,7 +354,9 @@ export function SpotsPanel() {
   if (!project) {
     return (
       <Box sx={{ p: 2 }}>
-        <Typography variant="body2" color="text.secondary">
+        <Typography variant="body2" sx={{
+          color: 'text.secondary'
+        }}>
           No project loaded
         </Typography>
       </Box>
@@ -376,7 +384,9 @@ export function SpotsPanel() {
       {/* Spots List */}
       <Box sx={{ flex: 1, overflow: 'auto', p: 1 }}>
         {allSamples.length === 0 ? (
-          <Typography variant="body2" color="text.secondary">
+          <Typography variant="body2" sx={{
+            color: 'text.secondary'
+          }}>
             No samples in project.
           </Typography>
         ) : (

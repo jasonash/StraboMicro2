@@ -35,6 +35,7 @@ import WarningIcon from '@mui/icons-material/Warning';
 import SearchOffIcon from '@mui/icons-material/SearchOff';
 import { useAppStore } from '../../store/useAppStore';
 import { unloadIfReplacingOpenProject, dedupeImportedPresets } from '../../utils/importUtils';
+import { closeUnlessEscapeBlocked } from '@/utils/dialogClose';
 
 interface RemoteInspectResult {
   success: boolean;
@@ -306,11 +307,15 @@ export function DeepLinkOpenDialog({
                 size="small"
                 variant="outlined"
               />
-              <Typography variant="caption" color="text.secondary">
+              <Typography variant="caption" sx={{
+                color: 'text.secondary'
+              }}>
                 strabospot.org
               </Typography>
             </Box>
-            <Typography variant="body2" color="text.secondary">
+            <Typography variant="body2" sx={{
+              color: 'text.secondary'
+            }}>
               This link wants to download the project from strabospot.org and
               open it in StraboMicro. Nothing has been downloaded yet.
             </Typography>
@@ -324,7 +329,9 @@ export function DeepLinkOpenDialog({
             <Typography variant="h6" gutterBottom>
               Project Not Found
             </Typography>
-            <Typography variant="body2" color="text.secondary">
+            <Typography variant="body2" sx={{
+              color: 'text.secondary'
+            }}>
               The link points to a project that doesn't exist on the server
               (id {pkey}). It may have been deleted, or the link may be
               incorrect.
@@ -344,10 +351,14 @@ export function DeepLinkOpenDialog({
               sx={{ mb: 1 }}
             />
             <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-              <Typography variant="body2" color="text.secondary">
+              <Typography variant="body2" sx={{
+                color: 'text.secondary'
+              }}>
                 {downloadProgress?.message || 'Starting download...'}
               </Typography>
-              <Typography variant="body2" color="text.secondary">
+              <Typography variant="body2" sx={{
+                color: 'text.secondary'
+              }}>
                 {downloadProgress?.percentage || 0}%
               </Typography>
             </Box>
@@ -369,7 +380,12 @@ export function DeepLinkOpenDialog({
               {fileInspect?.projectName || projectName}
             </Typography>
 
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            <Typography
+              variant="body2"
+              sx={{
+                color: 'text.secondary',
+                mb: 2
+              }}>
               Project ID: {fileInspect?.projectId}
             </Typography>
 
@@ -419,10 +435,14 @@ export function DeepLinkOpenDialog({
               sx={{ mb: 1 }}
             />
             <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-              <Typography variant="body2" color="text.secondary">
+              <Typography variant="body2" sx={{
+                color: 'text.secondary'
+              }}>
                 {importProgress?.detail || ''}
               </Typography>
-              <Typography variant="body2" color="text.secondary">
+              <Typography variant="body2" sx={{
+                color: 'text.secondary'
+              }}>
                 {importProgress?.percentage || 0}%
               </Typography>
             </Box>
@@ -436,7 +456,9 @@ export function DeepLinkOpenDialog({
             <Typography variant="h6" gutterBottom>
               Download Complete!
             </Typography>
-            <Typography variant="body2" color="text.secondary">
+            <Typography variant="body2" sx={{
+              color: 'text.secondary'
+            }}>
               Project "{projectName}" has been downloaded and imported
               successfully.
             </Typography>
@@ -450,7 +472,9 @@ export function DeepLinkOpenDialog({
             <Typography variant="h6" gutterBottom color="error">
               Could Not Open Project
             </Typography>
-            <Typography variant="body2" color="text.secondary">
+            <Typography variant="body2" sx={{
+              color: 'text.secondary'
+            }}>
               {errorMessage || 'An unknown error occurred.'}
             </Typography>
           </Box>
@@ -527,10 +551,9 @@ export function DeepLinkOpenDialog({
   return (
     <Dialog
       open={open}
-      onClose={handleClose}
+      onClose={closeUnlessEscapeBlocked(handleClose, dialogState === 'downloading' || dialogState === 'importing')}
       maxWidth="sm"
       fullWidth
-      disableEscapeKeyDown={dialogState === 'downloading' || dialogState === 'importing'}
     >
       <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
         <CloudDownloadIcon color="primary" />

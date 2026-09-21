@@ -33,6 +33,7 @@ import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import ErrorIcon from '@mui/icons-material/Error';
 import WarningIcon from '@mui/icons-material/Warning';
 import { useAuthStore } from '@/store/useAuthStore';
+import { closeUnlessEscapeBlocked } from '@/utils/dialogClose';
 
 interface DownloadProgress {
   phase: string;
@@ -271,7 +272,12 @@ export function SharedProjectDialog({
       case 'input':
         return (
           <Box sx={{ py: 2 }}>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+            <Typography
+              variant="body2"
+              sx={{
+                color: 'text.secondary',
+                mb: 3
+              }}>
               Enter the 6-character share code to download a project shared by another user.
             </Typography>
             <TextField
@@ -282,17 +288,19 @@ export function SharedProjectDialog({
               fullWidth
               autoFocus
               placeholder="e.g., et6ppj"
-              inputProps={{
-                maxLength: 6,
-                style: {
-                  fontFamily: 'monospace',
-                  fontSize: '1.5rem',
-                  letterSpacing: '0.25rem',
-                  textAlign: 'center',
-                },
-              }}
               error={!!errorMessage}
               helperText={errorMessage || `${shareCode.length}/6 characters`}
+              slotProps={{
+                htmlInput: {
+                  maxLength: 6,
+                  style: {
+                    fontFamily: 'monospace',
+                    fontSize: '1.5rem',
+                    letterSpacing: '0.25rem',
+                    textAlign: 'center',
+                  },
+                }
+              }}
             />
           </Box>
         );
@@ -317,10 +325,14 @@ export function SharedProjectDialog({
               sx={{ mb: 1 }}
             />
             <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-              <Typography variant="body2" color="text.secondary">
+              <Typography variant="body2" sx={{
+                color: 'text.secondary'
+              }}>
                 {downloadProgress?.message || 'Starting download...'}
               </Typography>
-              <Typography variant="body2" color="text.secondary">
+              <Typography variant="body2" sx={{
+                color: 'text.secondary'
+              }}>
                 {downloadProgress?.percentage || 0}%
               </Typography>
             </Box>
@@ -342,7 +354,12 @@ export function SharedProjectDialog({
               {inspectResult?.projectName || 'Shared Project'}
             </Typography>
 
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            <Typography
+              variant="body2"
+              sx={{
+                color: 'text.secondary',
+                mb: 2
+              }}>
               Project ID: {inspectResult?.projectId}
             </Typography>
 
@@ -395,10 +412,14 @@ export function SharedProjectDialog({
               sx={{ mb: 1 }}
             />
             <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-              <Typography variant="body2" color="text.secondary">
+              <Typography variant="body2" sx={{
+                color: 'text.secondary'
+              }}>
                 {importProgress?.detail || ''}
               </Typography>
-              <Typography variant="body2" color="text.secondary">
+              <Typography variant="body2" sx={{
+                color: 'text.secondary'
+              }}>
                 {importProgress?.percentage || 0}%
               </Typography>
             </Box>
@@ -415,7 +436,9 @@ export function SharedProjectDialog({
             <Typography variant="h6" gutterBottom>
               Download Complete!
             </Typography>
-            <Typography variant="body2" color="text.secondary">
+            <Typography variant="body2" sx={{
+              color: 'text.secondary'
+            }}>
               The shared project has been downloaded and imported successfully.
             </Typography>
           </Box>
@@ -431,7 +454,9 @@ export function SharedProjectDialog({
             <Typography variant="h6" gutterBottom color="error">
               Error
             </Typography>
-            <Typography variant="body2" color="text.secondary">
+            <Typography variant="body2" sx={{
+              color: 'text.secondary'
+            }}>
               {errorMessage || 'An unknown error occurred.'}
             </Typography>
           </Box>
@@ -497,10 +522,9 @@ export function SharedProjectDialog({
   return (
     <Dialog
       open={open}
-      onClose={handleClose}
+      onClose={closeUnlessEscapeBlocked(handleClose, dialogState === 'validating' || dialogState === 'downloading' || dialogState === 'importing')}
       maxWidth="sm"
       fullWidth
-      disableEscapeKeyDown={dialogState === 'validating' || dialogState === 'downloading' || dialogState === 'importing'}
     >
       <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
         <ShareIcon color="primary" />

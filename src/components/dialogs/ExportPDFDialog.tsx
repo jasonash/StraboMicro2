@@ -20,6 +20,7 @@ import {
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import ErrorIcon from '@mui/icons-material/Error';
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
+import { closeUnlessEscapeBlocked } from '@/utils/dialogClose';
 
 interface ExportProgress {
   phase: string;
@@ -119,10 +120,9 @@ export function ExportPDFDialog({
   return (
     <Dialog
       open={open}
-      onClose={result ? handleClose : undefined}
+      onClose={closeUnlessEscapeBlocked(result ? handleClose : undefined, isExporting)}
       maxWidth="sm"
       fullWidth
-      disableEscapeKeyDown={isExporting}
     >
       <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
         <PictureAsPdfIcon color="error" />
@@ -134,13 +134,19 @@ export function ExportPDFDialog({
           {isExporting && progress && (
             <>
               <Box sx={{ mb: 2 }}>
-                <Typography variant="body2" color="text.secondary" gutterBottom>
+                <Typography variant="body2" gutterBottom sx={{
+                  color: 'text.secondary'
+                }}>
                   {progress.phase}
                 </Typography>
-                <Typography variant="body1" fontWeight={500} noWrap>
+                <Typography variant="body1" noWrap sx={{
+                  fontWeight: 500
+                }}>
                   {progress.itemName}
                 </Typography>
-                <Typography variant="caption" color="text.secondary">
+                <Typography variant="caption" sx={{
+                  color: 'text.secondary'
+                }}>
                   Step {progress.current} of {progress.total}
                 </Typography>
               </Box>
@@ -156,7 +162,9 @@ export function ExportPDFDialog({
                   },
                 }}
               />
-              <Typography variant="body2" color="text.secondary" align="right">
+              <Typography variant="body2" align="right" sx={{
+                color: 'text.secondary'
+              }}>
                 {progress.percentage}%
               </Typography>
             </>
@@ -165,7 +173,9 @@ export function ExportPDFDialog({
           {/* Initializing state */}
           {isExporting && !progress && (
             <Box sx={{ textAlign: 'center', py: 2 }}>
-              <Typography variant="body1" color="text.secondary">
+              <Typography variant="body1" sx={{
+                color: 'text.secondary'
+              }}>
                 Preparing PDF export...
               </Typography>
               <LinearProgress sx={{ mt: 2 }} />
@@ -179,22 +189,28 @@ export function ExportPDFDialog({
               icon={<CheckCircleIcon fontSize="inherit" />}
               sx={{ mb: 2 }}
             >
-              <Typography variant="body1" fontWeight={500}>
+              <Typography variant="body1" sx={{
+                fontWeight: 500
+              }}>
                 PDF Export Complete!
               </Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+              <Typography
+                variant="body2"
+                sx={{
+                  color: 'text.secondary',
+                  mt: 1
+                }}>
                 Your project report has been saved successfully.
               </Typography>
               {result.filePath && (
                 <Typography
                   variant="caption"
-                  color="text.secondary"
                   sx={{
+                    color: 'text.secondary',
                     display: 'block',
                     mt: 1,
-                    wordBreak: 'break-all',
-                  }}
-                >
+                    wordBreak: 'break-all'
+                  }}>
                   {result.filePath}
                 </Typography>
               )}
@@ -208,7 +224,9 @@ export function ExportPDFDialog({
               icon={<ErrorIcon fontSize="inherit" />}
               sx={{ mb: 2 }}
             >
-              <Typography variant="body1" fontWeight={500}>
+              <Typography variant="body1" sx={{
+                fontWeight: 500
+              }}>
                 Export Failed
               </Typography>
               <Typography variant="body2" sx={{ mt: 1 }}>

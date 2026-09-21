@@ -176,7 +176,9 @@ export function EditSpotDialog({ isOpen, onClose, spotId }: EditSpotDialogProps)
 
           {/* Opacity */}
           <Box>
-            <Typography variant="body2" color="text.secondary" gutterBottom>
+            <Typography variant="body2" gutterBottom sx={{
+              color: 'text.secondary'
+            }}>
               Opacity: {opacity}%
             </Typography>
             <Slider

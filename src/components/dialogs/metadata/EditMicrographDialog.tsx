@@ -1014,13 +1014,17 @@ export function EditMicrographDialog({ isOpen, onClose, micrographId }: EditMicr
             bgcolor: 'background.paper',
           }}
         >
-          <Typography variant="body2" color="text.secondary">
+          <Typography variant="body2" sx={{
+            color: 'text.secondary'
+          }}>
             Current scale:{' '}
             <strong>
               {currentScale != null ? `${currentScale.toFixed(2)} pixels/cm` : 'not set'}
             </strong>
           </Typography>
-          <Typography variant="caption" color="text.secondary">
+          <Typography variant="caption" sx={{
+            color: 'text.secondary'
+          }}>
             Leave the form below blank to keep the current scale. Entering a new scale will
             also rescale every non-point descendant micrograph by the same ratio so that
             existing placements continue to line up.
@@ -1279,7 +1283,12 @@ export function EditMicrographDialog({ isOpen, onClose, micrographId }: EditMicr
 
         {/* Image Type fields - conditional based on Data Type */}
         {formData.instrumentType === 'Optical Microscopy' && formData.dataType && (
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+          <Typography
+            variant="body2"
+            sx={{
+              color: 'text.secondary',
+              mt: 1
+            }}>
             Image Type: {formData.dataType}
           </Typography>
         )}
@@ -1474,7 +1483,12 @@ export function EditMicrographDialog({ isOpen, onClose, micrographId }: EditMicr
           !['Electron Diffraction', 'Energy Dispersive X-ray Spectroscopy (EDS)'].includes(
             formData.dataType
           ) && (
-            <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+            <Typography
+              variant="body2"
+              sx={{
+                color: 'text.secondary',
+                mt: 1
+              }}>
               Image Type: {formData.dataType}
             </Typography>
           )}
@@ -1484,7 +1498,12 @@ export function EditMicrographDialog({ isOpen, onClose, micrographId }: EditMicr
           !['Energy Dispersive X-ray Spectroscopy (EDS)', 'Cathodoluminescence (CL)'].includes(
             formData.dataType
           ) && (
-            <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+            <Typography
+              variant="body2"
+              sx={{
+                color: 'text.secondary',
+                mt: 1
+              }}>
               Image Type: {formData.dataType}
             </Typography>
           )}
@@ -1498,7 +1517,12 @@ export function EditMicrographDialog({ isOpen, onClose, micrographId }: EditMicr
             'Cathodoluminescence (CL)',
             'Focused Ion Beam Scanning Electron Microscopy (FIB-SEM)',
           ].includes(formData.dataType) && (
-            <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+            <Typography
+              variant="body2"
+              sx={{
+                color: 'text.secondary',
+                mt: 1
+              }}>
               Image Type: {formData.dataType}
             </Typography>
           )}
@@ -1510,7 +1534,12 @@ export function EditMicrographDialog({ isOpen, onClose, micrographId }: EditMicr
             'Wavelength-dispersive X-ray spectroscopy (WDS)',
             'Cathodoluminescence (CL)',
           ].includes(formData.dataType) && (
-            <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+            <Typography
+              variant="body2"
+              sx={{
+                color: 'text.secondary',
+                mt: 1
+              }}>
               Image Type: {formData.dataType}
             </Typography>
           )}
@@ -1532,8 +1561,10 @@ export function EditMicrographDialog({ isOpen, onClose, micrographId }: EditMicr
               required
               label="Image Type(s)"
               value={formData.imageType}
-              InputProps={{ readOnly: true }}
               helperText="Click 'Select Element(s) from Periodic Table' to choose elements"
+              slotProps={{
+                input: { readOnly: true }
+              }}
             />
             <Button
               variant="outlined"
@@ -1558,7 +1589,9 @@ export function EditMicrographDialog({ isOpen, onClose, micrographId }: EditMicr
 
     return (
       <Stack spacing={2}>
-        <Typography variant="body2" color="text.secondary">
+        <Typography variant="body2" sx={{
+          color: 'text.secondary'
+        }}>
           Instrument Type: {formData.instrumentType}
         </Typography>
 
@@ -1701,12 +1734,14 @@ export function EditMicrographDialog({ isOpen, onClose, micrographId }: EditMicr
                 const val = e.target.value;
                 if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('accelerationVoltage', val);
               }}
-              InputProps={{
-                endAdornment: (
-                  <Typography variant="body2" sx={{ ml: 1 }}>
-                    kV
-                  </Typography>
-                ),
+              slotProps={{
+                input: {
+                  endAdornment: (
+                    <Typography variant="body2" sx={{ ml: 1 }}>
+                      kV
+                    </Typography>
+                  ),
+                }
               }}
             />
             <TextField
@@ -1717,12 +1752,14 @@ export function EditMicrographDialog({ isOpen, onClose, micrographId }: EditMicr
                 const val = e.target.value;
                 if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('beamCurrent', val);
               }}
-              InputProps={{
-                endAdornment: (
-                  <Typography variant="body2" sx={{ ml: 1 }}>
-                    nA
-                  </Typography>
-                ),
+              slotProps={{
+                input: {
+                  endAdornment: (
+                    <Typography variant="body2" sx={{ ml: 1 }}>
+                      nA
+                    </Typography>
+                  ),
+                }
               }}
             />
             <TextField
@@ -1733,12 +1770,14 @@ export function EditMicrographDialog({ isOpen, onClose, micrographId }: EditMicr
                 const val = e.target.value;
                 if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('spotSize', val);
               }}
-              InputProps={{
-                endAdornment: (
-                  <Typography variant="body2" sx={{ ml: 1 }}>
-                    um
-                  </Typography>
-                ),
+              slotProps={{
+                input: {
+                  endAdornment: (
+                    <Typography variant="body2" sx={{ ml: 1 }}>
+                      um
+                    </Typography>
+                  ),
+                }
               }}
             />
             <TextField
@@ -1758,12 +1797,14 @@ export function EditMicrographDialog({ isOpen, onClose, micrographId }: EditMicr
                 const val = e.target.value;
                 if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('cameraLength', val);
               }}
-              InputProps={{
-                endAdornment: (
-                  <Typography variant="body2" sx={{ ml: 1 }}>
-                    mm
-                  </Typography>
-                ),
+              slotProps={{
+                input: {
+                  endAdornment: (
+                    <Typography variant="body2" sx={{ ml: 1 }}>
+                      mm
+                    </Typography>
+                  ),
+                }
               }}
             />
 
@@ -1780,12 +1821,14 @@ export function EditMicrographDialog({ isOpen, onClose, micrographId }: EditMicr
                     const val = e.target.value;
                     if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('stepSize', val);
                   }}
-                  InputProps={{
-                    endAdornment: (
-                      <Typography variant="body2" sx={{ ml: 1 }}>
-                        um
-                      </Typography>
-                    ),
+                  slotProps={{
+                    input: {
+                      endAdornment: (
+                        <Typography variant="body2" sx={{ ml: 1 }}>
+                          um
+                        </Typography>
+                      ),
+                    }
                   }}
                 />
                 <TextField
@@ -1796,12 +1839,14 @@ export function EditMicrographDialog({ isOpen, onClose, micrographId }: EditMicr
                     const val = e.target.value;
                     if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('analysisDwellTime', val);
                   }}
-                  InputProps={{
-                    endAdornment: (
-                      <Typography variant="body2" sx={{ ml: 1 }}>
-                        ms
-                      </Typography>
-                    ),
+                  slotProps={{
+                    input: {
+                      endAdornment: (
+                        <Typography variant="body2" sx={{ ml: 1 }}>
+                          ms
+                        </Typography>
+                      ),
+                    }
                   }}
                 />
                 <TextField
@@ -1812,12 +1857,14 @@ export function EditMicrographDialog({ isOpen, onClose, micrographId }: EditMicr
                     const val = e.target.value;
                     if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('deadTime', val);
                   }}
-                  InputProps={{
-                    endAdornment: (
-                      <Typography variant="body2" sx={{ ml: 1 }}>
-                        ms
-                      </Typography>
-                    ),
+                  slotProps={{
+                    input: {
+                      endAdornment: (
+                        <Typography variant="body2" sx={{ ml: 1 }}>
+                          ms
+                        </Typography>
+                      ),
+                    }
                   }}
                 />
                 <TextField
@@ -1915,12 +1962,14 @@ export function EditMicrographDialog({ isOpen, onClose, micrographId }: EditMicr
                 const val = e.target.value;
                 if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('accelerationVoltage', val);
               }}
-              InputProps={{
-                endAdornment: (
-                  <Typography variant="body2" sx={{ ml: 1 }}>
-                    kV
-                  </Typography>
-                ),
+              slotProps={{
+                input: {
+                  endAdornment: (
+                    <Typography variant="body2" sx={{ ml: 1 }}>
+                      kV
+                    </Typography>
+                  ),
+                }
               }}
             />
             <TextField
@@ -1931,12 +1980,14 @@ export function EditMicrographDialog({ isOpen, onClose, micrographId }: EditMicr
                 const val = e.target.value;
                 if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('beamCurrent', val);
               }}
-              InputProps={{
-                endAdornment: (
-                  <Typography variant="body2" sx={{ ml: 1 }}>
-                    nA
-                  </Typography>
-                ),
+              slotProps={{
+                input: {
+                  endAdornment: (
+                    <Typography variant="body2" sx={{ ml: 1 }}>
+                      nA
+                    </Typography>
+                  ),
+                }
               }}
             />
             <TextField
@@ -1947,12 +1998,14 @@ export function EditMicrographDialog({ isOpen, onClose, micrographId }: EditMicr
                 const val = e.target.value;
                 if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('spotSize', val);
               }}
-              InputProps={{
-                endAdornment: (
-                  <Typography variant="body2" sx={{ ml: 1 }}>
-                    um
-                  </Typography>
-                ),
+              slotProps={{
+                input: {
+                  endAdornment: (
+                    <Typography variant="body2" sx={{ ml: 1 }}>
+                      um
+                    </Typography>
+                  ),
+                }
               }}
             />
             <TextField
@@ -1972,12 +2025,14 @@ export function EditMicrographDialog({ isOpen, onClose, micrographId }: EditMicr
                 const val = e.target.value;
                 if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('cameraLength', val);
               }}
-              InputProps={{
-                endAdornment: (
-                  <Typography variant="body2" sx={{ ml: 1 }}>
-                    mm
-                  </Typography>
-                ),
+              slotProps={{
+                input: {
+                  endAdornment: (
+                    <Typography variant="body2" sx={{ ml: 1 }}>
+                      mm
+                    </Typography>
+                  ),
+                }
               }}
             />
             <TextField
@@ -1994,12 +2049,14 @@ export function EditMicrographDialog({ isOpen, onClose, micrographId }: EditMicr
                 const val = e.target.value;
                 if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('dwellTime', val);
               }}
-              InputProps={{
-                endAdornment: (
-                  <Typography variant="body2" sx={{ ml: 1 }}>
-                    s
-                  </Typography>
-                ),
+              slotProps={{
+                input: {
+                  endAdornment: (
+                    <Typography variant="body2" sx={{ ml: 1 }}>
+                      s
+                    </Typography>
+                  ),
+                }
               }}
             />
 
@@ -2013,12 +2070,14 @@ export function EditMicrographDialog({ isOpen, onClose, micrographId }: EditMicr
                   label="Energy Loss"
                   value={formData.energyLoss}
                   onChange={(e) => updateField('energyLoss', e.target.value)}
-                  InputProps={{
-                    endAdornment: (
-                      <Typography variant="body2" sx={{ ml: 1 }}>
-                        eV
-                      </Typography>
-                    ),
+                  slotProps={{
+                    input: {
+                      endAdornment: (
+                        <Typography variant="body2" sx={{ ml: 1 }}>
+                          eV
+                        </Typography>
+                      ),
+                    }
                   }}
                 />
               </>
@@ -2037,12 +2096,14 @@ export function EditMicrographDialog({ isOpen, onClose, micrographId }: EditMicr
                     const val = e.target.value;
                     if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('stepSize', val);
                   }}
-                  InputProps={{
-                    endAdornment: (
-                      <Typography variant="body2" sx={{ ml: 1 }}>
-                        um
-                      </Typography>
-                    ),
+                  slotProps={{
+                    input: {
+                      endAdornment: (
+                        <Typography variant="body2" sx={{ ml: 1 }}>
+                          um
+                        </Typography>
+                      ),
+                    }
                   }}
                 />
                 <TextField
@@ -2053,12 +2114,14 @@ export function EditMicrographDialog({ isOpen, onClose, micrographId }: EditMicr
                     const val = e.target.value;
                     if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('analysisDwellTime', val);
                   }}
-                  InputProps={{
-                    endAdornment: (
-                      <Typography variant="body2" sx={{ ml: 1 }}>
-                        ms
-                      </Typography>
-                    ),
+                  slotProps={{
+                    input: {
+                      endAdornment: (
+                        <Typography variant="body2" sx={{ ml: 1 }}>
+                          ms
+                        </Typography>
+                      ),
+                    }
                   }}
                 />
                 <TextField
@@ -2069,12 +2132,14 @@ export function EditMicrographDialog({ isOpen, onClose, micrographId }: EditMicr
                     const val = e.target.value;
                     if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('deadTime', val);
                   }}
-                  InputProps={{
-                    endAdornment: (
-                      <Typography variant="body2" sx={{ ml: 1 }}>
-                        ms
-                      </Typography>
-                    ),
+                  slotProps={{
+                    input: {
+                      endAdornment: (
+                        <Typography variant="body2" sx={{ ml: 1 }}>
+                          ms
+                        </Typography>
+                      ),
+                    }
                   }}
                 />
                 <TextField
@@ -2172,12 +2237,14 @@ export function EditMicrographDialog({ isOpen, onClose, micrographId }: EditMicr
                 const val = e.target.value;
                 if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('accelerationVoltage', val);
               }}
-              InputProps={{
-                endAdornment: (
-                  <Typography variant="body2" sx={{ ml: 1 }}>
-                    kV
-                  </Typography>
-                ),
+              slotProps={{
+                input: {
+                  endAdornment: (
+                    <Typography variant="body2" sx={{ ml: 1 }}>
+                      kV
+                    </Typography>
+                  ),
+                }
               }}
             />
             <TextField
@@ -2188,12 +2255,14 @@ export function EditMicrographDialog({ isOpen, onClose, micrographId }: EditMicr
                 const val = e.target.value;
                 if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('beamCurrent', val);
               }}
-              InputProps={{
-                endAdornment: (
-                  <Typography variant="body2" sx={{ ml: 1 }}>
-                    nA
-                  </Typography>
-                ),
+              slotProps={{
+                input: {
+                  endAdornment: (
+                    <Typography variant="body2" sx={{ ml: 1 }}>
+                      nA
+                    </Typography>
+                  ),
+                }
               }}
             />
             <TextField
@@ -2204,12 +2273,14 @@ export function EditMicrographDialog({ isOpen, onClose, micrographId }: EditMicr
                 const val = e.target.value;
                 if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('spotSize', val);
               }}
-              InputProps={{
-                endAdornment: (
-                  <Typography variant="body2" sx={{ ml: 1 }}>
-                    um
-                  </Typography>
-                ),
+              slotProps={{
+                input: {
+                  endAdornment: (
+                    <Typography variant="body2" sx={{ ml: 1 }}>
+                      um
+                    </Typography>
+                  ),
+                }
               }}
             />
             <TextField
@@ -2220,12 +2291,14 @@ export function EditMicrographDialog({ isOpen, onClose, micrographId }: EditMicr
                 const val = e.target.value;
                 if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('workingDistance', val);
               }}
-              InputProps={{
-                endAdornment: (
-                  <Typography variant="body2" sx={{ ml: 1 }}>
-                    mm
-                  </Typography>
-                ),
+              slotProps={{
+                input: {
+                  endAdornment: (
+                    <Typography variant="body2" sx={{ ml: 1 }}>
+                      mm
+                    </Typography>
+                  ),
+                }
               }}
             />
 
@@ -2245,12 +2318,14 @@ export function EditMicrographDialog({ isOpen, onClose, micrographId }: EditMicr
                     const val = e.target.value;
                     if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('stepSize', val);
                   }}
-                  InputProps={{
-                    endAdornment: (
-                      <Typography variant="body2" sx={{ ml: 1 }}>
-                        um
-                      </Typography>
-                    ),
+                  slotProps={{
+                    input: {
+                      endAdornment: (
+                        <Typography variant="body2" sx={{ ml: 1 }}>
+                          um
+                        </Typography>
+                      ),
+                    }
                   }}
                 />
                 <TextField
@@ -2261,12 +2336,14 @@ export function EditMicrographDialog({ isOpen, onClose, micrographId }: EditMicr
                     const val = e.target.value;
                     if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('analysisDwellTime', val);
                   }}
-                  InputProps={{
-                    endAdornment: (
-                      <Typography variant="body2" sx={{ ml: 1 }}>
-                        ms
-                      </Typography>
-                    ),
+                  slotProps={{
+                    input: {
+                      endAdornment: (
+                        <Typography variant="body2" sx={{ ml: 1 }}>
+                          ms
+                        </Typography>
+                      ),
+                    }
                   }}
                 />
                 <TextField
@@ -2277,12 +2354,14 @@ export function EditMicrographDialog({ isOpen, onClose, micrographId }: EditMicr
                     const val = e.target.value;
                     if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('deadTime', val);
                   }}
-                  InputProps={{
-                    endAdornment: (
-                      <Typography variant="body2" sx={{ ml: 1 }}>
-                        ms
-                      </Typography>
-                    ),
+                  slotProps={{
+                    input: {
+                      endAdornment: (
+                        <Typography variant="body2" sx={{ ml: 1 }}>
+                          ms
+                        </Typography>
+                      ),
+                    }
                   }}
                 />
                 <TextField
@@ -2309,12 +2388,14 @@ export function EditMicrographDialog({ isOpen, onClose, micrographId }: EditMicr
                     const val = e.target.value;
                     if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('stepSize', val);
                   }}
-                  InputProps={{
-                    endAdornment: (
-                      <Typography variant="body2" sx={{ ml: 1 }}>
-                        um
-                      </Typography>
-                    ),
+                  slotProps={{
+                    input: {
+                      endAdornment: (
+                        <Typography variant="body2" sx={{ ml: 1 }}>
+                          um
+                        </Typography>
+                      ),
+                    }
                   }}
                 />
                 <TextField
@@ -2342,12 +2423,14 @@ export function EditMicrographDialog({ isOpen, onClose, micrographId }: EditMicr
                 const val = e.target.value;
                 if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('accelerationVoltage', val);
               }}
-              InputProps={{
-                endAdornment: (
-                  <Typography variant="body2" sx={{ ml: 1 }}>
-                    kV
-                  </Typography>
-                ),
+              slotProps={{
+                input: {
+                  endAdornment: (
+                    <Typography variant="body2" sx={{ ml: 1 }}>
+                      kV
+                    </Typography>
+                  ),
+                }
               }}
             />
             <TextField
@@ -2358,12 +2441,14 @@ export function EditMicrographDialog({ isOpen, onClose, micrographId }: EditMicr
                 const val = e.target.value;
                 if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('beamCurrent', val);
               }}
-              InputProps={{
-                endAdornment: (
-                  <Typography variant="body2" sx={{ ml: 1 }}>
-                    nA
-                  </Typography>
-                ),
+              slotProps={{
+                input: {
+                  endAdornment: (
+                    <Typography variant="body2" sx={{ ml: 1 }}>
+                      nA
+                    </Typography>
+                  ),
+                }
               }}
             />
             <TextField
@@ -2374,12 +2459,14 @@ export function EditMicrographDialog({ isOpen, onClose, micrographId }: EditMicr
                 const val = e.target.value;
                 if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('spotSize', val);
               }}
-              InputProps={{
-                endAdornment: (
-                  <Typography variant="body2" sx={{ ml: 1 }}>
-                    um
-                  </Typography>
-                ),
+              slotProps={{
+                input: {
+                  endAdornment: (
+                    <Typography variant="body2" sx={{ ml: 1 }}>
+                      um
+                    </Typography>
+                  ),
+                }
               }}
             />
 
@@ -2398,12 +2485,14 @@ export function EditMicrographDialog({ isOpen, onClose, micrographId }: EditMicr
                     const val = e.target.value;
                     if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('stepSize', val);
                   }}
-                  InputProps={{
-                    endAdornment: (
-                      <Typography variant="body2" sx={{ ml: 1 }}>
-                        um
-                      </Typography>
-                    ),
+                  slotProps={{
+                    input: {
+                      endAdornment: (
+                        <Typography variant="body2" sx={{ ml: 1 }}>
+                          um
+                        </Typography>
+                      ),
+                    }
                   }}
                 />
                 <TextField
@@ -2428,12 +2517,14 @@ export function EditMicrographDialog({ isOpen, onClose, micrographId }: EditMicr
               label="Scan Time"
               value={formData.scanTime}
               onChange={(e) => updateField('scanTime', e.target.value)}
-              InputProps={{
-                endAdornment: (
-                  <Typography variant="body2" sx={{ ml: 1 }}>
-                    s
-                  </Typography>
-                ),
+              slotProps={{
+                input: {
+                  endAdornment: (
+                    <Typography variant="body2" sx={{ ml: 1 }}>
+                      s
+                    </Typography>
+                  ),
+                }
               }}
             />
             <TextField
@@ -2441,12 +2532,14 @@ export function EditMicrographDialog({ isOpen, onClose, micrographId }: EditMicr
               label="Resolution"
               value={formData.resolution}
               onChange={(e) => updateField('resolution', e.target.value)}
-              InputProps={{
-                endAdornment: (
-                  <Typography variant="body2" sx={{ ml: 1 }}>
-                    cm⁻¹
-                  </Typography>
-                ),
+              slotProps={{
+                input: {
+                  endAdornment: (
+                    <Typography variant="body2" sx={{ ml: 1 }}>
+                      cm⁻¹
+                    </Typography>
+                  ),
+                }
               }}
             />
             <TextField
@@ -2454,12 +2547,14 @@ export function EditMicrographDialog({ isOpen, onClose, micrographId }: EditMicr
               label="Spectral Resolution"
               value={formData.spectralResolution}
               onChange={(e) => updateField('spectralResolution', e.target.value)}
-              InputProps={{
-                endAdornment: (
-                  <Typography variant="body2" sx={{ ml: 1 }}>
-                    cm⁻¹
-                  </Typography>
-                ),
+              slotProps={{
+                input: {
+                  endAdornment: (
+                    <Typography variant="body2" sx={{ ml: 1 }}>
+                      cm⁻¹
+                    </Typography>
+                  ),
+                }
               }}
             />
             <TextField
@@ -2468,12 +2563,14 @@ export function EditMicrographDialog({ isOpen, onClose, micrographId }: EditMicr
               value={formData.wavenumberRange}
               onChange={(e) => updateField('wavenumberRange', e.target.value)}
               placeholder="e.g., 4000-400"
-              InputProps={{
-                endAdornment: (
-                  <Typography variant="body2" sx={{ ml: 1 }}>
-                    cm⁻¹
-                  </Typography>
-                ),
+              slotProps={{
+                input: {
+                  endAdornment: (
+                    <Typography variant="body2" sx={{ ml: 1 }}>
+                      cm⁻¹
+                    </Typography>
+                  ),
+                }
               }}
             />
             <TextField
@@ -2490,12 +2587,14 @@ export function EditMicrographDialog({ isOpen, onClose, micrographId }: EditMicr
               label="Spatial Resolution"
               value={formData.spatialResolution}
               onChange={(e) => updateField('spatialResolution', e.target.value)}
-              InputProps={{
-                endAdornment: (
-                  <Typography variant="body2" sx={{ ml: 1 }}>
-                    um
-                  </Typography>
-                ),
+              slotProps={{
+                input: {
+                  endAdornment: (
+                    <Typography variant="body2" sx={{ ml: 1 }}>
+                      um
+                    </Typography>
+                  ),
+                }
               }}
             />
             <TextField
@@ -2518,12 +2617,14 @@ export function EditMicrographDialog({ isOpen, onClose, micrographId }: EditMicr
               label="Excitation Wavelength"
               value={formData.excitationWavelength}
               onChange={(e) => updateField('excitationWavelength', e.target.value)}
-              InputProps={{
-                endAdornment: (
-                  <Typography variant="body2" sx={{ ml: 1 }}>
-                    nm
-                  </Typography>
-                ),
+              slotProps={{
+                input: {
+                  endAdornment: (
+                    <Typography variant="body2" sx={{ ml: 1 }}>
+                      nm
+                    </Typography>
+                  ),
+                }
               }}
             />
             <TextField
@@ -2531,12 +2632,14 @@ export function EditMicrographDialog({ isOpen, onClose, micrographId }: EditMicr
               label="Laser Power"
               value={formData.laserPower}
               onChange={(e) => updateField('laserPower', e.target.value)}
-              InputProps={{
-                endAdornment: (
-                  <Typography variant="body2" sx={{ ml: 1 }}>
-                    mW
-                  </Typography>
-                ),
+              slotProps={{
+                input: {
+                  endAdornment: (
+                    <Typography variant="body2" sx={{ ml: 1 }}>
+                      mW
+                    </Typography>
+                  ),
+                }
               }}
             />
             <TextField
@@ -2551,12 +2654,14 @@ export function EditMicrographDialog({ isOpen, onClose, micrographId }: EditMicr
               label="Integration Time"
               value={formData.integrationTime}
               onChange={(e) => updateField('integrationTime', e.target.value)}
-              InputProps={{
-                endAdornment: (
-                  <Typography variant="body2" sx={{ ml: 1 }}>
-                    s
-                  </Typography>
-                ),
+              slotProps={{
+                input: {
+                  endAdornment: (
+                    <Typography variant="body2" sx={{ ml: 1 }}>
+                      s
+                    </Typography>
+                  ),
+                }
               }}
             />
             <TextField
@@ -2571,12 +2676,14 @@ export function EditMicrographDialog({ isOpen, onClose, micrographId }: EditMicr
               label="Spatial Resolution"
               value={formData.spatialResolution}
               onChange={(e) => updateField('spatialResolution', e.target.value)}
-              InputProps={{
-                endAdornment: (
-                  <Typography variant="body2" sx={{ ml: 1 }}>
-                    um
-                  </Typography>
-                ),
+              slotProps={{
+                input: {
+                  endAdornment: (
+                    <Typography variant="body2" sx={{ ml: 1 }}>
+                      um
+                    </Typography>
+                  ),
+                }
               }}
             />
             <TextField
@@ -2611,12 +2718,14 @@ export function EditMicrographDialog({ isOpen, onClose, micrographId }: EditMicr
               label="Cantilever Stiffness"
               value={formData.cantileverStiffness}
               onChange={(e) => updateField('cantileverStiffness', e.target.value)}
-              InputProps={{
-                endAdornment: (
-                  <Typography variant="body2" sx={{ ml: 1 }}>
-                    N/m
-                  </Typography>
-                ),
+              slotProps={{
+                input: {
+                  endAdornment: (
+                    <Typography variant="body2" sx={{ ml: 1 }}>
+                      N/m
+                    </Typography>
+                  ),
+                }
               }}
             />
             <TextField
@@ -2624,12 +2733,14 @@ export function EditMicrographDialog({ isOpen, onClose, micrographId }: EditMicr
               label="Tip Diameter"
               value={formData.tipDiameter}
               onChange={(e) => updateField('tipDiameter', e.target.value)}
-              InputProps={{
-                endAdornment: (
-                  <Typography variant="body2" sx={{ ml: 1 }}>
-                    nm
-                  </Typography>
-                ),
+              slotProps={{
+                input: {
+                  endAdornment: (
+                    <Typography variant="body2" sx={{ ml: 1 }}>
+                      nm
+                    </Typography>
+                  ),
+                }
               }}
             />
             <TextField
@@ -2637,12 +2748,14 @@ export function EditMicrographDialog({ isOpen, onClose, micrographId }: EditMicr
               label="Operating Frequency"
               value={formData.operatingFrequency}
               onChange={(e) => updateField('operatingFrequency', e.target.value)}
-              InputProps={{
-                endAdornment: (
-                  <Typography variant="body2" sx={{ ml: 1 }}>
-                    kHz
-                  </Typography>
-                ),
+              slotProps={{
+                input: {
+                  endAdornment: (
+                    <Typography variant="body2" sx={{ ml: 1 }}>
+                      kHz
+                    </Typography>
+                  ),
+                }
               }}
             />
             <TextField
@@ -2657,12 +2770,14 @@ export function EditMicrographDialog({ isOpen, onClose, micrographId }: EditMicr
               label="Scan Area"
               value={formData.scanArea}
               onChange={(e) => updateField('scanArea', e.target.value)}
-              InputProps={{
-                endAdornment: (
-                  <Typography variant="body2" sx={{ ml: 1 }}>
-                    um²
-                  </Typography>
-                ),
+              slotProps={{
+                input: {
+                  endAdornment: (
+                    <Typography variant="body2" sx={{ ml: 1 }}>
+                      um²
+                    </Typography>
+                  ),
+                }
               }}
             />
             <TextField
@@ -2670,12 +2785,14 @@ export function EditMicrographDialog({ isOpen, onClose, micrographId }: EditMicr
               label="Temperature of Room"
               value={formData.temperatureOfRoom}
               onChange={(e) => updateField('temperatureOfRoom', e.target.value)}
-              InputProps={{
-                endAdornment: (
-                  <Typography variant="body2" sx={{ ml: 1 }}>
-                    °C
-                  </Typography>
-                ),
+              slotProps={{
+                input: {
+                  endAdornment: (
+                    <Typography variant="body2" sx={{ ml: 1 }}>
+                      °C
+                    </Typography>
+                  ),
+                }
               }}
             />
             <TextField
@@ -2683,12 +2800,14 @@ export function EditMicrographDialog({ isOpen, onClose, micrographId }: EditMicr
               label="Relative Humidity"
               value={formData.relativeHumidity}
               onChange={(e) => updateField('relativeHumidity', e.target.value)}
-              InputProps={{
-                endAdornment: (
-                  <Typography variant="body2" sx={{ ml: 1 }}>
-                    %
-                  </Typography>
-                ),
+              slotProps={{
+                input: {
+                  endAdornment: (
+                    <Typography variant="body2" sx={{ ml: 1 }}>
+                      %
+                    </Typography>
+                  ),
+                }
               }}
             />
           </>
@@ -2700,7 +2819,9 @@ export function EditMicrographDialog({ isOpen, onClose, micrographId }: EditMicr
   const renderMetadataStep = () => {
     return (
       <Stack spacing={2}>
-        <Typography variant="body2" color="text.secondary">
+        <Typography variant="body2" sx={{
+          color: 'text.secondary'
+        }}>
           Add descriptive information about this micrograph.
         </Typography>
         <TextField
@@ -2808,15 +2929,21 @@ export function EditMicrographDialog({ isOpen, onClose, micrographId }: EditMicr
           return (
             <Stack spacing={1.5}>
               <Box>
-                <Typography variant="body2" color="text.secondary">Current scale</Typography>
+                <Typography variant="body2" sx={{
+                  color: 'text.secondary'
+                }}>Current scale</Typography>
                 <Typography>{oldScale.toFixed(2)} pixels/cm</Typography>
               </Box>
               <Box>
-                <Typography variant="body2" color="text.secondary">New scale</Typography>
+                <Typography variant="body2" sx={{
+                  color: 'text.secondary'
+                }}>New scale</Typography>
                 <Typography>{newScale.toFixed(2)} pixels/cm</Typography>
               </Box>
               <Box>
-                <Typography variant="body2" color="text.secondary">Ratio</Typography>
+                <Typography variant="body2" sx={{
+                  color: 'text.secondary'
+                }}>Ratio</Typography>
                 <Typography>{ratio.toFixed(4)}×</Typography>
               </Box>
               <Divider />
@@ -2826,7 +2953,9 @@ export function EditMicrographDialog({ isOpen, onClose, micrographId }: EditMicr
                 by the same ratio so existing placements continue to line up. Point-placed
                 children render as markers and are not affected.
               </Typography>
-              <Typography variant="caption" color="text.secondary">
+              <Typography variant="caption" sx={{
+                color: 'text.secondary'
+              }}>
                 Spot measurements (length, area, grain metrics) inside the rescaled
                 descendants will display new real-world values. Undo (Cmd+Z) reverts the
                 whole change.

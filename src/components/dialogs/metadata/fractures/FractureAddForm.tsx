@@ -187,10 +187,12 @@ export function FractureAddForm({ onAdd, onCancel, initialData }: FractureAddFor
             value={mineralogy}
             multiline
             rows={2}
-            InputProps={{
-              readOnly: true,
-            }}
             helperText="Comma-separated list of selected minerals"
+            slotProps={{
+              input: {
+                readOnly: true,
+              }
+            }}
           />
           <Button
             variant="outlined"

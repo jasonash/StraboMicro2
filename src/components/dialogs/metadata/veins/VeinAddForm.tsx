@@ -263,10 +263,12 @@ export function VeinAddForm({ onAdd, onCancel, initialData }: VeinAddFormProps) 
             value={mineralogy}
             multiline
             rows={2}
-            InputProps={{
-              readOnly: true,
-            }}
             helperText="Comma-separated list of selected minerals"
+            slotProps={{
+              input: {
+                readOnly: true,
+              }
+            }}
           />
           <Button
             variant="outlined"

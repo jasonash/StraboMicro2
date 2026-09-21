@@ -961,8 +961,10 @@ export function StraboToolsDialog({ open, onClose, initialMicrographId }: Strabo
       open={open}
       onClose={onClose}
       fullScreen
-      PaperProps={{
-        sx: { bgcolor: 'background.default' },
+      slotProps={{
+        paper: {
+          sx: { bgcolor: 'background.default' },
+        }
       }}
     >
       {/* Header */}
@@ -1010,9 +1012,10 @@ export function StraboToolsDialog({ open, onClose, initialMicrographId }: Strabo
                 <ListItemText
                   primary={option.name}
                   secondary={option.sampleName}
-                  primaryTypographyProps={{ noWrap: true }}
-                  secondaryTypographyProps={{ noWrap: true }}
-                />
+                  slotProps={{
+                    primary: { noWrap: true },
+                    secondary: { noWrap: true }
+                  }} />
               </MenuItem>
             ))}
           </Select>
@@ -1135,7 +1138,9 @@ export function StraboToolsDialog({ open, onClose, initialMicrographId }: Strabo
           )}
 
           {!selectedMicrographId && !isLoading && (
-            <Typography variant="body1" color="text.secondary">
+            <Typography variant="body1" sx={{
+              color: 'text.secondary'
+            }}>
               Select a micrograph to begin analysis
             </Typography>
           )}
@@ -1164,7 +1169,12 @@ export function StraboToolsDialog({ open, onClose, initialMicrographId }: Strabo
           <Typography variant="h6" gutterBottom>
             Replace Original Image?
           </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+          <Typography
+            variant="body2"
+            sx={{
+              color: 'text.secondary',
+              mb: 3
+            }}>
             This will permanently replace the original micrograph image with the{' '}
             <strong>{TOOL_DISPLAY_NAMES[activeTab]}</strong> analysis result.
             This action cannot be undone. The original image data, cached tiles, and

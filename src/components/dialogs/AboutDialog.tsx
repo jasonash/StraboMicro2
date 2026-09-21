@@ -38,8 +38,10 @@ export function AboutDialog({ isOpen, onClose }: AboutDialogProps) {
       onClose={onClose}
       maxWidth="sm"
       fullWidth
-      PaperProps={{
-        sx: { maxHeight: '80vh' },
+      slotProps={{
+        paper: {
+          sx: { maxHeight: '80vh' },
+        }
       }}
     >
       <DialogContent sx={{ textAlign: 'center', py: 3 }}>

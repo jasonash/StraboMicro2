@@ -138,7 +138,9 @@ export function AddMicrographToGroupsDialog({
       <DialogContent>
         {groups.length === 0 ? (
           <Box sx={{ py: 2, textAlign: 'center' }}>
-            <Typography color="text.secondary">
+            <Typography sx={{
+              color: 'text.secondary'
+            }}>
               No groups available. Create a group first from the Groups tab.
             </Typography>
           </Box>
@@ -197,12 +199,14 @@ export function AddMicrographToGroupsDialog({
                               ? 'Will be added'
                               : `${(group.micrographs || []).length} micrograph(s)`
                         }
-                        secondaryTypographyProps={{
-                          color: !wasInitiallySelected && isSelected
-                            ? 'success.main'
-                            : wasInitiallySelected && !isSelected
-                              ? 'error.main'
-                              : 'text.secondary',
+                        slotProps={{
+                          secondary: {
+                            color: !wasInitiallySelected && isSelected
+                              ? 'success.main'
+                              : wasInitiallySelected && !isSelected
+                                ? 'error.main'
+                                : 'text.secondary',
+                          }
                         }}
                       />
                     </ListItemButton>

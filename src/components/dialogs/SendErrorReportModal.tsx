@@ -118,7 +118,9 @@ export function SendErrorReportModal({
           <Alert severity="success" sx={{ mb: 2 }}>
             Your error report has been sent successfully.
           </Alert>
-          <Typography variant="body2" color="text.secondary">
+          <Typography variant="body2" sx={{
+            color: 'text.secondary'
+          }}>
             Thank you for helping us improve StraboMicro. Our team will review your report
             and may follow up if we need more information.
           </Typography>
@@ -146,7 +148,12 @@ export function SendErrorReportModal({
       </DialogTitle>
 
       <DialogContent dividers>
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+        <Typography
+          variant="body2"
+          sx={{
+            color: 'text.secondary',
+            mb: 2
+          }}>
           Please describe the error you encountered. Your description and application logs
           will be sent to the StraboSpot team.
         </Typography>
@@ -188,7 +195,9 @@ export function SendErrorReportModal({
 
       <DialogActions sx={{ px: 2, py: 1.5 }}>
         <Box sx={{ flexGrow: 1 }}>
-          <Typography variant="caption" color="text.secondary">
+          <Typography variant="caption" sx={{
+            color: 'text.secondary'
+          }}>
             App version and logs will be included automatically
           </Typography>
         </Box>

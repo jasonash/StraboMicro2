@@ -67,7 +67,9 @@ function SimpleBarChart({ data, maxPercentage = 100 }: BarChartProps) {
             <Typography variant="body2" sx={{ fontWeight: 500 }}>
               {item.name}
             </Typography>
-            <Typography variant="body2" color="text.secondary">
+            <Typography variant="body2" sx={{
+              color: 'text.secondary'
+            }}>
               {item.percentage.toFixed(1)}%
             </Typography>
           </Box>
@@ -162,7 +164,9 @@ export function PointCountingStatistics({
   if (!stats || stats.totalPoints === 0) {
     return (
       <Paper variant="outlined" sx={{ p: 2 }}>
-        <Typography color="text.secondary" align="center">
+        <Typography align="center" sx={{
+          color: 'text.secondary'
+        }}>
           {pointCountMode
             ? 'No points in this session. Start a new session with Tools → Point Count.'
             : (
@@ -186,11 +190,15 @@ export function PointCountingStatistics({
             Classification Progress
           </Typography>
           <LinearProgress variant="determinate" value={0} sx={{ mb: 1 }} />
-          <Typography variant="body2" color="text.secondary">
+          <Typography variant="body2" sx={{
+            color: 'text.secondary'
+          }}>
             0 of {stats.totalPoints} points classified (0%)
           </Typography>
         </Box>
-        <Typography color="text.secondary" align="center">
+        <Typography align="center" sx={{
+          color: 'text.secondary'
+        }}>
           {pointCountMode
             ? 'Click on the canvas to create points, then classify using the toolbar.'
             : 'Classify points to see modal statistics using the Quick Classify toolbar.'}
@@ -211,7 +219,9 @@ export function PointCountingStatistics({
           value={stats.classificationProgress}
           sx={{ mb: 1, height: 8, borderRadius: 1 }}
         />
-        <Typography variant="body2" color="text.secondary">
+        <Typography variant="body2" sx={{
+          color: 'text.secondary'
+        }}>
           {stats.classifiedPoints} of {stats.totalPoints} points classified (
           {stats.classificationProgress.toFixed(1)}%)
         </Typography>
@@ -238,7 +248,13 @@ export function PointCountingStatistics({
         <>
           <Divider sx={{ my: 2 }} />
           <Box sx={{ mb: 2 }}>
-            <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
+            <Stack
+              direction="row"
+              sx={{
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                mb: 1
+              }}>
               <Typography variant="subtitle2">
                 Detailed Statistics
               </Typography>

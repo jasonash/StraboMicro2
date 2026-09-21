@@ -225,12 +225,14 @@ export function InstrumentDatabaseDialog({
             onChange={(e) => setSearchQuery(e.target.value)}
             size="small"
             sx={{ mb: 1 }}
-            InputProps={{
-              startAdornment: (
-                <InputAdornment position="start">
-                  <SearchIcon />
-                </InputAdornment>
-              ),
+            slotProps={{
+              input: {
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <SearchIcon />
+                  </InputAdornment>
+                ),
+              }
             }}
           />
 
@@ -251,9 +253,11 @@ export function InstrumentDatabaseDialog({
               {filteredInstruments.length === 0 ? (
                 <Typography
                   variant="body2"
-                  color="text.secondary"
-                  sx={{ p: 2, textAlign: 'center' }}
-                >
+                  sx={{
+                    color: 'text.secondary',
+                    p: 2,
+                    textAlign: 'center'
+                  }}>
                   {searchQuery ? 'No instruments match your search' : 'No instruments available'}
                 </Typography>
               ) : (
@@ -266,8 +270,10 @@ export function InstrumentDatabaseDialog({
                   >
                     <ListItemText
                       primary={inst.name}
-                      primaryTypographyProps={{
-                        variant: 'body2',
+                      slotProps={{
+                        primary: {
+                          variant: 'body2',
+                        }
                       }}
                     />
                   </ListItemButton>
@@ -276,7 +282,12 @@ export function InstrumentDatabaseDialog({
             </List>
           )}
 
-          <Typography variant="caption" color="text.secondary" sx={{ mt: 1 }}>
+          <Typography
+            variant="caption"
+            sx={{
+              color: 'text.secondary',
+              mt: 1
+            }}>
             {filteredInstruments.length} instrument{filteredInstruments.length !== 1 ? 's' : ''}
           </Typography>
         </Box>

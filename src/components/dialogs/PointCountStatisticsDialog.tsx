@@ -32,8 +32,10 @@ export function PointCountStatisticsDialog({
       onClose={onClose}
       maxWidth="sm"
       fullWidth
-      PaperProps={{
-        sx: { maxHeight: '80vh' },
+      slotProps={{
+        paper: {
+          sx: { maxHeight: '80vh' },
+        }
       }}
     >
       <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>

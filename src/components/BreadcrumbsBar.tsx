@@ -85,9 +85,10 @@ export function BreadcrumbsBar({
               {index > 0 && (
                 <Typography
                   variant="body2"
-                  color="text.secondary"
-                  sx={{ mx: 0.5 }}
-                >
+                  sx={{
+                    color: 'text.secondary',
+                    mx: 0.5
+                  }}>
                   {' -> '}
                 </Typography>
               )}
@@ -117,9 +118,10 @@ export function BreadcrumbsBar({
           <>
             <Typography
               variant="body2"
-              color="text.secondary"
-              sx={{ mx: 0.5 }}
-            >
+              sx={{
+                color: 'text.secondary',
+                mx: 0.5
+              }}>
               {' -> '}
             </Typography>
             <Typography

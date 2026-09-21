@@ -119,7 +119,9 @@ export const InstrumentDataForm: React.FC<InstrumentDataFormProps> = ({
       </Typography>
 
       {detectors.map((detector, index) => (
-        <Stack key={index} direction="row" spacing={2} alignItems="center">
+        <Stack key={index} direction="row" spacing={2} sx={{
+          alignItems: 'center'
+        }}>
           <TextField
             label="Detector Type"
             value={detector.type}

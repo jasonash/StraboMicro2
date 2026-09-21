@@ -60,9 +60,10 @@ export function WizardProgress({
       >
         <Typography
           variant="body2"
-          color="text.secondary"
-          sx={{ fontWeight: 500 }}
-        >
+          sx={{
+            color: 'text.secondary',
+            fontWeight: 500
+          }}>
           Step {displayStep} of {totalSteps}
         </Typography>
         <Typography

@@ -189,7 +189,13 @@ export default function UpdateNotification({
     return (
       <Box sx={{ width: '100%', mt: 1 }}>
         <LinearProgress variant="determinate" value={percent} />
-        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+        <Typography
+          variant="caption"
+          sx={{
+            color: 'text.secondary',
+            display: 'block',
+            mt: 0.5
+          }}>
           {transferred} / {total} ({speed})
         </Typography>
       </Box>

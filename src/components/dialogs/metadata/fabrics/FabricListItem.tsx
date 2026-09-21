@@ -31,7 +31,9 @@ export function FabricListItem({ fabric }: FabricListItemProps) {
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
       {/* Fabric Label (prominent) */}
-      <Typography variant="subtitle1" fontWeight="bold">
+      <Typography variant="subtitle1" sx={{
+        fontWeight: 'bold'
+      }}>
         {fabric.fabricLabel || 'Unlabeled Fabric'}
       </Typography>
 
@@ -49,24 +51,32 @@ export function FabricListItem({ fabric }: FabricListItemProps) {
       </Box>
 
       {/* Defined By */}
-      <Typography variant="body2" color="text.secondary">
+      <Typography variant="body2" sx={{
+        color: 'text.secondary'
+      }}>
         <strong>Defined by:</strong> {definedByText}
       </Typography>
 
       {/* Show layer counts if applicable */}
       <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
         {fabric.fabricCompositionInfo && fabric.fabricCompositionInfo.layers.length > 0 && (
-          <Typography variant="caption" color="text.secondary">
+          <Typography variant="caption" sx={{
+            color: 'text.secondary'
+          }}>
             {fabric.fabricCompositionInfo.layers.length} composition layer(s)
           </Typography>
         )}
         {fabric.fabricGrainSizeInfo && fabric.fabricGrainSizeInfo.layers.length > 0 && (
-          <Typography variant="caption" color="text.secondary">
+          <Typography variant="caption" sx={{
+            color: 'text.secondary'
+          }}>
             {fabric.fabricGrainSizeInfo.layers.length} grain size layer(s)
           </Typography>
         )}
         {fabric.fabricGrainShapeInfo && fabric.fabricGrainShapeInfo.phases.length > 0 && (
-          <Typography variant="caption" color="text.secondary">
+          <Typography variant="caption" sx={{
+            color: 'text.secondary'
+          }}>
             {fabric.fabricGrainShapeInfo.phases.length} phase(s)
           </Typography>
         )}

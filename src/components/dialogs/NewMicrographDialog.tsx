@@ -1881,7 +1881,9 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
     return (
       <Stack spacing={3}>
         <Typography variant="h6">Orientation of Reference Micrograph</Typography>
-        <Typography variant="body2" color="text.secondary">
+        <Typography variant="body2" sx={{
+          color: 'text.secondary'
+        }}>
           Thin Section Oriented by:
         </Typography>
 
@@ -1913,7 +1915,12 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
 
         {formData.orientationMethod === 'trendPlunge' && (
           <Stack spacing={3} sx={{ pl: 4 }}>
-            <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 600 }}>
+            <Typography
+              variant="body2"
+              sx={{
+                color: 'text.secondary',
+                maxWidth: 600
+              }}>
               Provide TWO of THREE: Select the arrow on each edge that represents a lower hemisphere
               plunge, and enter the trend and plunge information and/or provide the strike and dip
               of the thin section.
@@ -1930,8 +1937,10 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
                   type="number"
                   value={formData.sideTrend}
                   onChange={(e) => updateField('sideTrend', e.target.value)}
-                  InputProps={{ endAdornment: '°' }}
                   size="small"
+                  slotProps={{
+                    input: { endAdornment: '°' }
+                  }}
                 />
 
                 <Typography variant="subtitle2" sx={{ fontWeight: 'bold', mt: 2 }}>
@@ -1941,8 +1950,10 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
                   type="number"
                   value={formData.sidePlunge}
                   onChange={(e) => updateField('sidePlunge', e.target.value)}
-                  InputProps={{ endAdornment: '°' }}
                   size="small"
+                  slotProps={{
+                    input: { endAdornment: '°' }
+                  }}
                 />
               </Stack>
 
@@ -1960,7 +1971,9 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
                     justifyContent: 'center',
                   }}
                 >
-                  <Stack direction="row" spacing={2} alignItems="center">
+                  <Stack direction="row" spacing={2} sx={{
+                    alignItems: 'center'
+                  }}>
                     <Typography variant="subtitle2" sx={{ fontWeight: 'bold', minWidth: 60 }}>
                       Trend:
                     </Typography>
@@ -1968,9 +1981,11 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
                       type="number"
                       value={formData.topTrend}
                       onChange={(e) => updateField('topTrend', e.target.value)}
-                      InputProps={{ endAdornment: '°' }}
                       size="small"
                       sx={{ width: 120 }}
+                      slotProps={{
+                        input: { endAdornment: '°' }
+                      }}
                     />
                     <Typography
                       variant="subtitle2"
@@ -1982,9 +1997,11 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
                       type="number"
                       value={formData.topPlunge}
                       onChange={(e) => updateField('topPlunge', e.target.value)}
-                      InputProps={{ endAdornment: '°' }}
                       size="small"
                       sx={{ width: 120 }}
+                      slotProps={{
+                        input: { endAdornment: '°' }
+                      }}
                     />
                   </Stack>
                 </Box>
@@ -2080,13 +2097,17 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
                     }}
                   >
                     <CircularProgress />
-                    <Typography variant="body2" color="text.secondary">
+                    <Typography variant="body2" sx={{
+                      color: 'text.secondary'
+                    }}>
                       {conversionProgress
                         ? `Converting image... ${conversionProgress.percent}%`
                         : 'Loading preview...'}
                     </Typography>
                     {conversionProgress && (
-                      <Typography variant="caption" color="text.secondary">
+                      <Typography variant="caption" sx={{
+                        color: 'text.secondary'
+                      }}>
                         {conversionProgress.stage === 'reading' && 'Reading image file...'}
                         {conversionProgress.stage === 'converting' && 'Converting to JPEG...'}
                         {conversionProgress.stage === 'complete' && 'Complete!'}
@@ -2120,7 +2141,9 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
                       justifyContent: 'center',
                     }}
                   >
-                    <Typography variant="body2" color="text.secondary">
+                    <Typography variant="body2" sx={{
+                      color: 'text.secondary'
+                    }}>
                       No image loaded
                     </Typography>
                   </Box>
@@ -2135,7 +2158,9 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
 
               {/* Strike and Dip fields */}
               <Box sx={{ ml: '-20px' }}>
-                <Stack direction="row" spacing={2} alignItems="center">
+                <Stack direction="row" spacing={2} sx={{
+                  alignItems: 'center'
+                }}>
                   <Typography variant="subtitle2" sx={{ fontWeight: 'bold', minWidth: 60 }}>
                     Strike:
                   </Typography>
@@ -2143,9 +2168,11 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
                     type="number"
                     value={formData.trendPlungeStrike}
                     onChange={(e) => updateField('trendPlungeStrike', e.target.value)}
-                    InputProps={{ endAdornment: '°' }}
                     size="small"
                     sx={{ width: 120 }}
+                    slotProps={{
+                      input: { endAdornment: '°' }
+                    }}
                   />
                   <Typography variant="subtitle2" sx={{ fontWeight: 'bold', minWidth: 40, ml: 2 }}>
                     Dip:
@@ -2154,9 +2181,11 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
                     type="number"
                     value={formData.trendPlungeDip}
                     onChange={(e) => updateField('trendPlungeDip', e.target.value)}
-                    InputProps={{ endAdornment: '°' }}
                     size="small"
                     sx={{ width: 120 }}
+                    slotProps={{
+                      input: { endAdornment: '°' }
+                    }}
                   />
                 </Stack>
               </Box>
@@ -2171,9 +2200,10 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
               <Typography
                 component="span"
                 variant="body2"
-                color="text.secondary"
-                sx={{ fontWeight: 'normal' }}
-              >
+                sx={{
+                  color: 'text.secondary',
+                  fontWeight: 'normal'
+                }}>
                 (X - Lineation, Y - Perpendicular to lineation within the foliation plane, Z - Pole
                 to foliation)
               </Typography>
@@ -2197,40 +2227,50 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
                 type="number"
                 value={formData.fabricStrike}
                 onChange={(e) => updateField('fabricStrike', e.target.value)}
-                InputProps={{ endAdornment: '°' }}
                 sx={{ flex: 1 }}
+                slotProps={{
+                  input: { endAdornment: '°' }
+                }}
               />
               <TextField
                 label="Dip"
                 type="number"
                 value={formData.fabricDip}
                 onChange={(e) => updateField('fabricDip', e.target.value)}
-                InputProps={{ endAdornment: '°' }}
                 sx={{ flex: 1 }}
+                slotProps={{
+                  input: { endAdornment: '°' }
+                }}
               />
             </Stack>
 
             <Typography variant="subtitle2" sx={{ fontWeight: 'bold', mt: 1 }}>
               Lineation Orientation: (Geographic Coordinates)
             </Typography>
-            <Stack direction="row" spacing={2} alignItems="flex-start">
+            <Stack direction="row" spacing={2} sx={{
+              alignItems: 'flex-start'
+            }}>
               <TextField
                 label="Trend"
                 type="number"
                 value={formData.fabricTrend}
                 onChange={(e) => updateField('fabricTrend', e.target.value)}
-                InputProps={{ endAdornment: '°' }}
                 helperText=" "
                 sx={{ flex: 1 }}
+                slotProps={{
+                  input: { endAdornment: '°' }
+                }}
               />
               <TextField
                 label="Plunge"
                 type="number"
                 value={formData.fabricPlunge}
                 onChange={(e) => updateField('fabricPlunge', e.target.value)}
-                InputProps={{ endAdornment: '°' }}
                 helperText=" "
                 sx={{ flex: 1 }}
+                slotProps={{
+                  input: { endAdornment: '°' }
+                }}
               />
               <Typography variant="body2" sx={{ px: 1, pt: 2 }}>
                 OR
@@ -2240,16 +2280,23 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
                 type="number"
                 value={formData.fabricRake}
                 onChange={(e) => updateField('fabricRake', e.target.value)}
-                InputProps={{ endAdornment: '°' }}
                 helperText="(RHR, 0-180)"
                 sx={{ flex: 1 }}
+                slotProps={{
+                  input: { endAdornment: '°' }
+                }}
               />
             </Stack>
 
             <Typography variant="subtitle2" sx={{ fontWeight: 'bold', mt: 1 }}>
               Look Direction:
             </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+            <Typography
+              variant="body2"
+              sx={{
+                color: 'text.secondary',
+                fontStyle: 'italic'
+              }}>
               When looking at the Reference micrograph, are you looking toward the lower hemisphere
               or upper hemisphere in geographic coordinates?
             </Typography>
@@ -2280,7 +2327,9 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
     if (formData.scaleMethod === 'Trace Scale Bar') {
       return (
         <Stack spacing={2}>
-          <Typography variant="body2" color="text.secondary">
+          <Typography variant="body2" sx={{
+            color: 'text.secondary'
+          }}>
             Draw a line over the scale bar in the micrograph, then enter the physical length that
             line represents.
           </Typography>
@@ -2334,9 +2383,11 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
               required
               label="Line Length (pixels)"
               value={formData.scaleBarLineLengthPixels}
-              InputProps={{ readOnly: true }}
               size="small"
               sx={{ width: 180 }}
+              slotProps={{
+                input: { readOnly: true }
+              }}
             />
 
             <TextField
@@ -2402,7 +2453,9 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
               {isLoadingPreview ? (
                 <CircularProgress />
               ) : (
-                <Typography color="text.secondary">Loading micrograph preview...</Typography>
+                <Typography sx={{
+                  color: 'text.secondary'
+                }}>Loading micrograph preview...</Typography>
               )}
             </Box>
           )}
@@ -2436,7 +2489,9 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
               />
             </Box>
           )}
-          <Typography variant="body2" color="text.secondary">
+          <Typography variant="body2" sx={{
+            color: 'text.secondary'
+          }}>
             Enter the number of pixels that corresponds to a known physical length.
           </Typography>
           <Box sx={{ display: 'flex', gap: 2 }}>
@@ -2501,7 +2556,9 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
               />
             </Box>
           )}
-          <Typography variant="body2" color="text.secondary">
+          <Typography variant="body2" sx={{
+            color: 'text.secondary'
+          }}>
             Enter the physical width and/or height of the entire micrograph image. At least one
             dimension is required.
           </Typography>
@@ -2548,7 +2605,9 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
   const renderMetadataStep = () => {
     return (
       <Stack spacing={2}>
-        <Typography variant="body2" color="text.secondary">
+        <Typography variant="body2" sx={{
+          color: 'text.secondary'
+        }}>
           Add descriptive information about this micrograph.
         </Typography>
         <TextField
@@ -2600,7 +2659,9 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
   const renderLocationMethodStep = () => {
     return (
       <Stack spacing={3}>
-        <Typography variant="body2" color="text.secondary">
+        <Typography variant="body2" sx={{
+          color: 'text.secondary'
+        }}>
           Choose how to locate this associated micrograph on its parent image. The default method
           (scaled rectangle) allows you to interactively position, resize, and rotate the image.
         </Typography>
@@ -2621,7 +2682,14 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
             control={<Radio />}
             label="Locate as a scaled rectangle"
           />
-          <Typography variant="caption" color="text.secondary" sx={{ ml: 4, mt: -1, mb: 2 }}>
+          <Typography
+            variant="caption"
+            sx={{
+              color: 'text.secondary',
+              ml: 4,
+              mt: -1,
+              mb: 2
+            }}>
             Interactively position, resize, and rotate the image on the parent (recommended)
           </Typography>
 
@@ -2630,7 +2698,14 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
             control={<Radio />}
             label="Locate by an approximate point"
           />
-          <Typography variant="caption" color="text.secondary" sx={{ ml: 4, mt: -1, mb: 2 }}>
+          <Typography
+            variant="caption"
+            sx={{
+              color: 'text.secondary',
+              ml: 4,
+              mt: -1,
+              mb: 2
+            }}>
             Mark a single point showing approximate location
           </Typography>
 
@@ -2639,7 +2714,13 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
             control={<Radio />}
             label="3-Point Registration"
           />
-          <Typography variant="caption" color="text.secondary" sx={{ ml: 4, mt: -1 }}>
+          <Typography
+            variant="caption"
+            sx={{
+              color: 'text.secondary',
+              ml: 4,
+              mt: -1
+            }}>
             Match 3+ corresponding features to compute precise alignment (handles rotation, scale, and skew)
           </Typography>
 
@@ -2720,7 +2801,9 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
 
     return (
       <Stack spacing={3}>
-        <Typography variant="body2" color="text.secondary">
+        <Typography variant="body2" sx={{
+          color: 'text.secondary'
+        }}>
           How do you wish to set the scale?
         </Typography>
         <RadioGroup
@@ -2734,7 +2817,14 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
                 control={<Radio />}
                 label="Trace Scale Bar and Drag"
               />
-              <Typography variant="caption" color="text.secondary" sx={{ ml: 4, mt: -1, mb: 2 }}>
+              <Typography
+                variant="caption"
+                sx={{
+                  color: 'text.secondary',
+                  ml: 4,
+                  mt: -1,
+                  mb: 2
+                }}>
                 Interactive: trace scale bar, then drag/resize/rotate the image
               </Typography>
 
@@ -2743,7 +2833,14 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
                 control={<Radio />}
                 label="Stretch and Drag"
               />
-              <Typography variant="caption" color="text.secondary" sx={{ ml: 4, mt: -1, mb: 2 }}>
+              <Typography
+                variant="caption"
+                sx={{
+                  color: 'text.secondary',
+                  ml: 4,
+                  mt: -1,
+                  mb: 2
+                }}>
                 Interactive: stretch to fit, then drag/resize/rotate the image
               </Typography>
             </>
@@ -2756,7 +2853,14 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
                 control={<Radio />}
                 label="Trace Scale Bar"
               />
-              <Typography variant="caption" color="text.secondary" sx={{ ml: 4, mt: -1, mb: 2 }}>
+              <Typography
+                variant="caption"
+                sx={{
+                  color: 'text.secondary',
+                  ml: 4,
+                  mt: -1,
+                  mb: 2
+                }}>
                 Trace a scale bar to set the scale
               </Typography>
             </>
@@ -2767,7 +2871,14 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
             control={<Radio />}
             label="Pixel Conversion Factor"
           />
-          <Typography variant="caption" color="text.secondary" sx={{ ml: 4, mt: -1, mb: 2 }}>
+          <Typography
+            variant="caption"
+            sx={{
+              color: 'text.secondary',
+              ml: 4,
+              mt: -1,
+              mb: 2
+            }}>
             Enter pixels per unit manually
           </Typography>
 
@@ -2776,7 +2887,14 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
             control={<Radio />}
             label="Provide Width/Height of Image"
           />
-          <Typography variant="caption" color="text.secondary" sx={{ ml: 4, mt: -1, mb: 2 }}>
+          <Typography
+            variant="caption"
+            sx={{
+              color: 'text.secondary',
+              ml: 4,
+              mt: -1,
+              mb: 2
+            }}>
             Specify the physical dimensions of the image
           </Typography>
 
@@ -2787,7 +2905,13 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
                 control={<Radio />}
                 label="Copy Size and Location from Existing Micrograph"
               />
-              <Typography variant="caption" color="text.secondary" sx={{ ml: 4, mt: -1 }}>
+              <Typography
+                variant="caption"
+                sx={{
+                  color: 'text.secondary',
+                  ml: 4,
+                  mt: -1
+                }}>
                 Copy position and scale from a sibling micrograph
               </Typography>
 
@@ -2953,7 +3077,9 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
     if (formData.locationMethod === 'Locate by an approximate point') {
       return (
         <Stack spacing={2}>
-          <Typography variant="body2" color="text.secondary">
+          <Typography variant="body2" sx={{
+            color: 'text.secondary'
+          }}>
             Click on the parent micrograph to place the center point of the associated micrograph.
           </Typography>
           <PointPlacementCanvas
@@ -2985,7 +3111,9 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
 
       return (
         <Stack spacing={2}>
-          <Typography variant="body2" color="text.secondary">
+          <Typography variant="body2" sx={{
+            color: 'text.secondary'
+          }}>
             Use 3-point registration to precisely align this micrograph on its parent by matching
             corresponding features between both images.
           </Typography>
@@ -3005,11 +3133,18 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
               <>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                   <CheckCircle color="success" />
-                  <Typography variant="subtitle1" color="success.dark" fontWeight="bold">
+                  <Typography
+                    variant="subtitle1"
+                    sx={{
+                      color: 'success.dark',
+                      fontWeight: 'bold'
+                    }}>
                     Registration Complete
                   </Typography>
                 </Box>
-                <Typography variant="body2" color="text.primary">
+                <Typography variant="body2" sx={{
+                  color: 'text.primary'
+                }}>
                   {formData.affineControlPoints?.length || 0} control points defined
                 </Typography>
                 <Button
@@ -3021,7 +3156,12 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
               </>
             ) : (
               <>
-                <Typography variant="body2" color="text.secondary" textAlign="center">
+                <Typography
+                  variant="body2"
+                  sx={{
+                    color: 'text.secondary',
+                    textAlign: 'center'
+                  }}>
                   Click the button below to open the registration interface where you can
                   click corresponding features on both images.
                 </Typography>
@@ -3037,7 +3177,9 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
           </Box>
 
           {hasRegistration && (
-            <Typography variant="caption" color="text.secondary">
+            <Typography variant="caption" sx={{
+              color: 'text.secondary'
+            }}>
               The overlay will be transformed using an affine matrix computed from your control points.
               This handles translation, rotation, scale, and skew corrections.
             </Typography>
@@ -3062,7 +3204,9 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
       case 'load':
         return (
           <Stack spacing={2}>
-            <Typography variant="body2" color="text.secondary">
+            <Typography variant="body2" sx={{
+              color: 'text.secondary'
+            }}>
               {isAssociated
                 ? 'Select an associated micrograph image file to overlay on the parent micrograph. This image will be positioned and scaled relative to its parent.'
                 : 'Select a reference micrograph image file to add to this sample. This will be the base image for your annotations and measurements.'}
@@ -3073,8 +3217,10 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
                 required
                 label="Micrograph File"
                 value={formData.micrographFileName}
-                InputProps={{ readOnly: true }}
                 helperText="Click 'Browse' to select an image file (TIFF, JPEG, PNG, BMP)"
+                slotProps={{
+                  input: { readOnly: true }
+                }}
               />
               <Button
                 variant="contained"
@@ -3130,7 +3276,13 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
                 )}
               </Box>
             </Box>
-            <Stack direction="row" spacing={2} alignItems="center" justifyContent="center">
+            <Stack
+              direction="row"
+              spacing={2}
+              sx={{
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}>
               <Tooltip title="Rotate 90° counter-clockwise">
                 <span>
                   <IconButton
@@ -3155,7 +3307,9 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
                 </span>
               </Tooltip>
             </Stack>
-            <Stack direction="row" justifyContent="center">
+            <Stack direction="row" sx={{
+              justifyContent: 'center'
+            }}>
               <FormControlLabel
                 control={
                   <Checkbox
@@ -3168,7 +3322,12 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
                 label="Flip (mirror) the image left-right"
               />
             </Stack>
-            <Typography variant="caption" color="text.secondary" sx={{ textAlign: 'center' }}>
+            <Typography
+              variant="caption"
+              sx={{
+                color: 'text.secondary',
+                textAlign: 'center'
+              }}>
               Resulting dimensions:{' '}
               {isQuarterTurn(pendingOrientation.rotation)
                 ? `${formData.micrographHeight} × ${formData.micrographWidth}`
@@ -3622,7 +3781,12 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
               !['Electron Diffraction', 'Energy Dispersive X-ray Spectroscopy (EDS)'].includes(
                 formData.dataType
               ) && (
-                <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                <Typography
+                  variant="body2"
+                  sx={{
+                    color: 'text.secondary',
+                    mt: 1
+                  }}>
                   Image Type: {formData.dataType}
                 </Typography>
               )}
@@ -3632,7 +3796,12 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
               !['Energy Dispersive X-ray Spectroscopy (EDS)', 'Cathodoluminescence (CL)'].includes(
                 formData.dataType
               ) && (
-                <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                <Typography
+                  variant="body2"
+                  sx={{
+                    color: 'text.secondary',
+                    mt: 1
+                  }}>
                   Image Type: {formData.dataType}
                 </Typography>
               )}
@@ -3646,7 +3815,12 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
                 'Cathodoluminescence (CL)',
                 'Focused Ion Beam Scanning Electron Microscopy (FIB-SEM)',
               ].includes(formData.dataType) && (
-                <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                <Typography
+                  variant="body2"
+                  sx={{
+                    color: 'text.secondary',
+                    mt: 1
+                  }}>
                   Image Type: {formData.dataType}
                 </Typography>
               )}
@@ -3658,7 +3832,12 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
                 'Wavelength-dispersive X-ray spectroscopy (WDS)',
                 'Cathodoluminescence (CL)',
               ].includes(formData.dataType) && (
-                <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                <Typography
+                  variant="body2"
+                  sx={{
+                    color: 'text.secondary',
+                    mt: 1
+                  }}>
                   Image Type: {formData.dataType}
                 </Typography>
               )}
@@ -3673,8 +3852,10 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
                     required
                     label="Image Type(s)"
                     value={formData.imageType}
-                    InputProps={{ readOnly: true }}
                     helperText="Click 'Select Element(s) from Periodic Table' to choose elements"
+                    slotProps={{
+                      input: { readOnly: true }
+                    }}
                   />
                   <Button
                     variant="outlined"
@@ -3695,8 +3876,10 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
                     required
                     label="Image Type(s)"
                     value={formData.imageType}
-                    InputProps={{ readOnly: true }}
                     helperText="Click 'Select Element(s) from Periodic Table' to choose elements"
+                    slotProps={{
+                      input: { readOnly: true }
+                    }}
                   />
                   <Button
                     variant="outlined"
@@ -3718,8 +3901,10 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
                     required
                     label="Image Type(s)"
                     value={formData.imageType}
-                    InputProps={{ readOnly: true }}
                     helperText="Click 'Select Element(s) from Periodic Table' to choose elements"
+                    slotProps={{
+                      input: { readOnly: true }
+                    }}
                   />
                   <Button
                     variant="outlined"
@@ -3741,8 +3926,10 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
                     required
                     label="Image Type(s)"
                     value={formData.imageType}
-                    InputProps={{ readOnly: true }}
                     helperText="Click 'Select Element(s) from Periodic Table' to choose elements"
+                    slotProps={{
+                      input: { readOnly: true }
+                    }}
                   />
                   <Button
                     variant="outlined"
@@ -3766,7 +3953,9 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
 
         return (
           <Stack spacing={2}>
-            <Typography variant="body2" color="text.secondary">
+            <Typography variant="body2" sx={{
+              color: 'text.secondary'
+            }}>
               Instrument Type: {formData.instrumentType}
             </Typography>
 
@@ -3915,12 +4104,14 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
                     if (val === '' || /^\d*\.?\d*$/.test(val))
                       updateField('accelerationVoltage', val);
                   }}
-                  InputProps={{
-                    endAdornment: (
-                      <Typography variant="body2" sx={{ ml: 1 }}>
-                        kV
-                      </Typography>
-                    ),
+                  slotProps={{
+                    input: {
+                      endAdornment: (
+                        <Typography variant="body2" sx={{ ml: 1 }}>
+                          kV
+                        </Typography>
+                      ),
+                    }
                   }}
                 />
                 <TextField
@@ -3931,12 +4122,14 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
                     const val = e.target.value;
                     if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('beamCurrent', val);
                   }}
-                  InputProps={{
-                    endAdornment: (
-                      <Typography variant="body2" sx={{ ml: 1 }}>
-                        nA
-                      </Typography>
-                    ),
+                  slotProps={{
+                    input: {
+                      endAdornment: (
+                        <Typography variant="body2" sx={{ ml: 1 }}>
+                          nA
+                        </Typography>
+                      ),
+                    }
                   }}
                 />
                 <TextField
@@ -3947,12 +4140,14 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
                     const val = e.target.value;
                     if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('spotSize', val);
                   }}
-                  InputProps={{
-                    endAdornment: (
-                      <Typography variant="body2" sx={{ ml: 1 }}>
-                        um
-                      </Typography>
-                    ),
+                  slotProps={{
+                    input: {
+                      endAdornment: (
+                        <Typography variant="body2" sx={{ ml: 1 }}>
+                          um
+                        </Typography>
+                      ),
+                    }
                   }}
                 />
                 <TextField
@@ -3972,12 +4167,14 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
                     const val = e.target.value;
                     if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('cameraLength', val);
                   }}
-                  InputProps={{
-                    endAdornment: (
-                      <Typography variant="body2" sx={{ ml: 1 }}>
-                        mm
-                      </Typography>
-                    ),
+                  slotProps={{
+                    input: {
+                      endAdornment: (
+                        <Typography variant="body2" sx={{ ml: 1 }}>
+                          mm
+                        </Typography>
+                      ),
+                    }
                   }}
                 />
 
@@ -3994,12 +4191,14 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
                         const val = e.target.value;
                         if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('stepSize', val);
                       }}
-                      InputProps={{
-                        endAdornment: (
-                          <Typography variant="body2" sx={{ ml: 1 }}>
-                            um
-                          </Typography>
-                        ),
+                      slotProps={{
+                        input: {
+                          endAdornment: (
+                            <Typography variant="body2" sx={{ ml: 1 }}>
+                              um
+                            </Typography>
+                          ),
+                        }
                       }}
                     />
                     <TextField
@@ -4011,12 +4210,14 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
                         if (val === '' || /^\d*\.?\d*$/.test(val))
                           updateField('analysisDwellTime', val);
                       }}
-                      InputProps={{
-                        endAdornment: (
-                          <Typography variant="body2" sx={{ ml: 1 }}>
-                            ms
-                          </Typography>
-                        ),
+                      slotProps={{
+                        input: {
+                          endAdornment: (
+                            <Typography variant="body2" sx={{ ml: 1 }}>
+                              ms
+                            </Typography>
+                          ),
+                        }
                       }}
                     />
                     <TextField
@@ -4027,12 +4228,14 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
                         const val = e.target.value;
                         if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('deadTime', val);
                       }}
-                      InputProps={{
-                        endAdornment: (
-                          <Typography variant="body2" sx={{ ml: 1 }}>
-                            ms
-                          </Typography>
-                        ),
+                      slotProps={{
+                        input: {
+                          endAdornment: (
+                            <Typography variant="body2" sx={{ ml: 1 }}>
+                              ms
+                            </Typography>
+                          ),
+                        }
                       }}
                     />
                     <TextField
@@ -4131,12 +4334,14 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
                     if (val === '' || /^\d*\.?\d*$/.test(val))
                       updateField('accelerationVoltage', val);
                   }}
-                  InputProps={{
-                    endAdornment: (
-                      <Typography variant="body2" sx={{ ml: 1 }}>
-                        kV
-                      </Typography>
-                    ),
+                  slotProps={{
+                    input: {
+                      endAdornment: (
+                        <Typography variant="body2" sx={{ ml: 1 }}>
+                          kV
+                        </Typography>
+                      ),
+                    }
                   }}
                 />
                 <TextField
@@ -4147,12 +4352,14 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
                     const val = e.target.value;
                     if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('beamCurrent', val);
                   }}
-                  InputProps={{
-                    endAdornment: (
-                      <Typography variant="body2" sx={{ ml: 1 }}>
-                        nA
-                      </Typography>
-                    ),
+                  slotProps={{
+                    input: {
+                      endAdornment: (
+                        <Typography variant="body2" sx={{ ml: 1 }}>
+                          nA
+                        </Typography>
+                      ),
+                    }
                   }}
                 />
                 <TextField
@@ -4163,12 +4370,14 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
                     const val = e.target.value;
                     if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('spotSize', val);
                   }}
-                  InputProps={{
-                    endAdornment: (
-                      <Typography variant="body2" sx={{ ml: 1 }}>
-                        um
-                      </Typography>
-                    ),
+                  slotProps={{
+                    input: {
+                      endAdornment: (
+                        <Typography variant="body2" sx={{ ml: 1 }}>
+                          um
+                        </Typography>
+                      ),
+                    }
                   }}
                 />
                 <TextField
@@ -4188,12 +4397,14 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
                     const val = e.target.value;
                     if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('cameraLength', val);
                   }}
-                  InputProps={{
-                    endAdornment: (
-                      <Typography variant="body2" sx={{ ml: 1 }}>
-                        mm
-                      </Typography>
-                    ),
+                  slotProps={{
+                    input: {
+                      endAdornment: (
+                        <Typography variant="body2" sx={{ ml: 1 }}>
+                          mm
+                        </Typography>
+                      ),
+                    }
                   }}
                 />
                 <TextField
@@ -4210,12 +4421,14 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
                     const val = e.target.value;
                     if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('dwellTime', val);
                   }}
-                  InputProps={{
-                    endAdornment: (
-                      <Typography variant="body2" sx={{ ml: 1 }}>
-                        s
-                      </Typography>
-                    ),
+                  slotProps={{
+                    input: {
+                      endAdornment: (
+                        <Typography variant="body2" sx={{ ml: 1 }}>
+                          s
+                        </Typography>
+                      ),
+                    }
                   }}
                 />
 
@@ -4229,12 +4442,14 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
                       label="Energy Loss"
                       value={formData.energyLoss}
                       onChange={(e) => updateField('energyLoss', e.target.value)}
-                      InputProps={{
-                        endAdornment: (
-                          <Typography variant="body2" sx={{ ml: 1 }}>
-                            eV
-                          </Typography>
-                        ),
+                      slotProps={{
+                        input: {
+                          endAdornment: (
+                            <Typography variant="body2" sx={{ ml: 1 }}>
+                              eV
+                            </Typography>
+                          ),
+                        }
                       }}
                     />
                   </>
@@ -4253,12 +4468,14 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
                         const val = e.target.value;
                         if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('stepSize', val);
                       }}
-                      InputProps={{
-                        endAdornment: (
-                          <Typography variant="body2" sx={{ ml: 1 }}>
-                            um
-                          </Typography>
-                        ),
+                      slotProps={{
+                        input: {
+                          endAdornment: (
+                            <Typography variant="body2" sx={{ ml: 1 }}>
+                              um
+                            </Typography>
+                          ),
+                        }
                       }}
                     />
                     <TextField
@@ -4270,12 +4487,14 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
                         if (val === '' || /^\d*\.?\d*$/.test(val))
                           updateField('analysisDwellTime', val);
                       }}
-                      InputProps={{
-                        endAdornment: (
-                          <Typography variant="body2" sx={{ ml: 1 }}>
-                            ms
-                          </Typography>
-                        ),
+                      slotProps={{
+                        input: {
+                          endAdornment: (
+                            <Typography variant="body2" sx={{ ml: 1 }}>
+                              ms
+                            </Typography>
+                          ),
+                        }
                       }}
                     />
                     <TextField
@@ -4286,12 +4505,14 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
                         const val = e.target.value;
                         if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('deadTime', val);
                       }}
-                      InputProps={{
-                        endAdornment: (
-                          <Typography variant="body2" sx={{ ml: 1 }}>
-                            ms
-                          </Typography>
-                        ),
+                      slotProps={{
+                        input: {
+                          endAdornment: (
+                            <Typography variant="body2" sx={{ ml: 1 }}>
+                              ms
+                            </Typography>
+                          ),
+                        }
                       }}
                     />
                     <TextField
@@ -4390,12 +4611,14 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
                     if (val === '' || /^\d*\.?\d*$/.test(val))
                       updateField('accelerationVoltage', val);
                   }}
-                  InputProps={{
-                    endAdornment: (
-                      <Typography variant="body2" sx={{ ml: 1 }}>
-                        kV
-                      </Typography>
-                    ),
+                  slotProps={{
+                    input: {
+                      endAdornment: (
+                        <Typography variant="body2" sx={{ ml: 1 }}>
+                          kV
+                        </Typography>
+                      ),
+                    }
                   }}
                 />
                 <TextField
@@ -4406,12 +4629,14 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
                     const val = e.target.value;
                     if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('beamCurrent', val);
                   }}
-                  InputProps={{
-                    endAdornment: (
-                      <Typography variant="body2" sx={{ ml: 1 }}>
-                        nA
-                      </Typography>
-                    ),
+                  slotProps={{
+                    input: {
+                      endAdornment: (
+                        <Typography variant="body2" sx={{ ml: 1 }}>
+                          nA
+                        </Typography>
+                      ),
+                    }
                   }}
                 />
                 <TextField
@@ -4422,12 +4647,14 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
                     const val = e.target.value;
                     if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('spotSize', val);
                   }}
-                  InputProps={{
-                    endAdornment: (
-                      <Typography variant="body2" sx={{ ml: 1 }}>
-                        um
-                      </Typography>
-                    ),
+                  slotProps={{
+                    input: {
+                      endAdornment: (
+                        <Typography variant="body2" sx={{ ml: 1 }}>
+                          um
+                        </Typography>
+                      ),
+                    }
                   }}
                 />
                 <TextField
@@ -4438,12 +4665,14 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
                     const val = e.target.value;
                     if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('workingDistance', val);
                   }}
-                  InputProps={{
-                    endAdornment: (
-                      <Typography variant="body2" sx={{ ml: 1 }}>
-                        mm
-                      </Typography>
-                    ),
+                  slotProps={{
+                    input: {
+                      endAdornment: (
+                        <Typography variant="body2" sx={{ ml: 1 }}>
+                          mm
+                        </Typography>
+                      ),
+                    }
                   }}
                 />
 
@@ -4466,12 +4695,14 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
                         const val = e.target.value;
                         if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('stepSize', val);
                       }}
-                      InputProps={{
-                        endAdornment: (
-                          <Typography variant="body2" sx={{ ml: 1 }}>
-                            um
-                          </Typography>
-                        ),
+                      slotProps={{
+                        input: {
+                          endAdornment: (
+                            <Typography variant="body2" sx={{ ml: 1 }}>
+                              um
+                            </Typography>
+                          ),
+                        }
                       }}
                     />
                     <TextField
@@ -4483,12 +4714,14 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
                         if (val === '' || /^\d*\.?\d*$/.test(val))
                           updateField('analysisDwellTime', val);
                       }}
-                      InputProps={{
-                        endAdornment: (
-                          <Typography variant="body2" sx={{ ml: 1 }}>
-                            ms
-                          </Typography>
-                        ),
+                      slotProps={{
+                        input: {
+                          endAdornment: (
+                            <Typography variant="body2" sx={{ ml: 1 }}>
+                              ms
+                            </Typography>
+                          ),
+                        }
                       }}
                     />
                     <TextField
@@ -4499,12 +4732,14 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
                         const val = e.target.value;
                         if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('deadTime', val);
                       }}
-                      InputProps={{
-                        endAdornment: (
-                          <Typography variant="body2" sx={{ ml: 1 }}>
-                            ms
-                          </Typography>
-                        ),
+                      slotProps={{
+                        input: {
+                          endAdornment: (
+                            <Typography variant="body2" sx={{ ml: 1 }}>
+                              ms
+                            </Typography>
+                          ),
+                        }
                       }}
                     />
                     <TextField
@@ -4531,12 +4766,14 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
                         const val = e.target.value;
                         if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('stepSize', val);
                       }}
-                      InputProps={{
-                        endAdornment: (
-                          <Typography variant="body2" sx={{ ml: 1 }}>
-                            um
-                          </Typography>
-                        ),
+                      slotProps={{
+                        input: {
+                          endAdornment: (
+                            <Typography variant="body2" sx={{ ml: 1 }}>
+                              um
+                            </Typography>
+                          ),
+                        }
                       }}
                     />
                     <TextField
@@ -4565,12 +4802,14 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
                     if (val === '' || /^\d*\.?\d*$/.test(val))
                       updateField('accelerationVoltage', val);
                   }}
-                  InputProps={{
-                    endAdornment: (
-                      <Typography variant="body2" sx={{ ml: 1 }}>
-                        kV
-                      </Typography>
-                    ),
+                  slotProps={{
+                    input: {
+                      endAdornment: (
+                        <Typography variant="body2" sx={{ ml: 1 }}>
+                          kV
+                        </Typography>
+                      ),
+                    }
                   }}
                 />
                 <TextField
@@ -4581,12 +4820,14 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
                     const val = e.target.value;
                     if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('beamCurrent', val);
                   }}
-                  InputProps={{
-                    endAdornment: (
-                      <Typography variant="body2" sx={{ ml: 1 }}>
-                        nA
-                      </Typography>
-                    ),
+                  slotProps={{
+                    input: {
+                      endAdornment: (
+                        <Typography variant="body2" sx={{ ml: 1 }}>
+                          nA
+                        </Typography>
+                      ),
+                    }
                   }}
                 />
                 <TextField
@@ -4597,12 +4838,14 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
                     const val = e.target.value;
                     if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('spotSize', val);
                   }}
-                  InputProps={{
-                    endAdornment: (
-                      <Typography variant="body2" sx={{ ml: 1 }}>
-                        um
-                      </Typography>
-                    ),
+                  slotProps={{
+                    input: {
+                      endAdornment: (
+                        <Typography variant="body2" sx={{ ml: 1 }}>
+                          um
+                        </Typography>
+                      ),
+                    }
                   }}
                 />
 
@@ -4624,12 +4867,14 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
                         const val = e.target.value;
                         if (val === '' || /^\d*\.?\d*$/.test(val)) updateField('stepSize', val);
                       }}
-                      InputProps={{
-                        endAdornment: (
-                          <Typography variant="body2" sx={{ ml: 1 }}>
-                            um
-                          </Typography>
-                        ),
+                      slotProps={{
+                        input: {
+                          endAdornment: (
+                            <Typography variant="body2" sx={{ ml: 1 }}>
+                              um
+                            </Typography>
+                          ),
+                        }
                       }}
                     />
                     <TextField
@@ -4654,12 +4899,14 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
                   label="Scan Time"
                   value={formData.scanTime}
                   onChange={(e) => updateField('scanTime', e.target.value)}
-                  InputProps={{
-                    endAdornment: (
-                      <Typography variant="body2" sx={{ ml: 1 }}>
-                        s
-                      </Typography>
-                    ),
+                  slotProps={{
+                    input: {
+                      endAdornment: (
+                        <Typography variant="body2" sx={{ ml: 1 }}>
+                          s
+                        </Typography>
+                      ),
+                    }
                   }}
                 />
                 <TextField
@@ -4667,12 +4914,14 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
                   label="Resolution"
                   value={formData.resolution}
                   onChange={(e) => updateField('resolution', e.target.value)}
-                  InputProps={{
-                    endAdornment: (
-                      <Typography variant="body2" sx={{ ml: 1 }}>
-                        cm⁻¹
-                      </Typography>
-                    ),
+                  slotProps={{
+                    input: {
+                      endAdornment: (
+                        <Typography variant="body2" sx={{ ml: 1 }}>
+                          cm⁻¹
+                        </Typography>
+                      ),
+                    }
                   }}
                 />
                 <TextField
@@ -4680,12 +4929,14 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
                   label="Spectral Resolution"
                   value={formData.spectralResolution}
                   onChange={(e) => updateField('spectralResolution', e.target.value)}
-                  InputProps={{
-                    endAdornment: (
-                      <Typography variant="body2" sx={{ ml: 1 }}>
-                        cm⁻¹
-                      </Typography>
-                    ),
+                  slotProps={{
+                    input: {
+                      endAdornment: (
+                        <Typography variant="body2" sx={{ ml: 1 }}>
+                          cm⁻¹
+                        </Typography>
+                      ),
+                    }
                   }}
                 />
                 <TextField
@@ -4694,12 +4945,14 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
                   value={formData.wavenumberRange}
                   onChange={(e) => updateField('wavenumberRange', e.target.value)}
                   placeholder="e.g., 4000-400"
-                  InputProps={{
-                    endAdornment: (
-                      <Typography variant="body2" sx={{ ml: 1 }}>
-                        cm⁻¹
-                      </Typography>
-                    ),
+                  slotProps={{
+                    input: {
+                      endAdornment: (
+                        <Typography variant="body2" sx={{ ml: 1 }}>
+                          cm⁻¹
+                        </Typography>
+                      ),
+                    }
                   }}
                 />
                 <TextField
@@ -4716,12 +4969,14 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
                   label="Spatial Resolution"
                   value={formData.spatialResolution}
                   onChange={(e) => updateField('spatialResolution', e.target.value)}
-                  InputProps={{
-                    endAdornment: (
-                      <Typography variant="body2" sx={{ ml: 1 }}>
-                        um
-                      </Typography>
-                    ),
+                  slotProps={{
+                    input: {
+                      endAdornment: (
+                        <Typography variant="body2" sx={{ ml: 1 }}>
+                          um
+                        </Typography>
+                      ),
+                    }
                   }}
                 />
                 <TextField
@@ -4746,12 +5001,14 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
                   label="Excitation Wavelength"
                   value={formData.excitationWavelength}
                   onChange={(e) => updateField('excitationWavelength', e.target.value)}
-                  InputProps={{
-                    endAdornment: (
-                      <Typography variant="body2" sx={{ ml: 1 }}>
-                        nm
-                      </Typography>
-                    ),
+                  slotProps={{
+                    input: {
+                      endAdornment: (
+                        <Typography variant="body2" sx={{ ml: 1 }}>
+                          nm
+                        </Typography>
+                      ),
+                    }
                   }}
                 />
                 <TextField
@@ -4759,12 +5016,14 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
                   label="Laser Power"
                   value={formData.laserPower}
                   onChange={(e) => updateField('laserPower', e.target.value)}
-                  InputProps={{
-                    endAdornment: (
-                      <Typography variant="body2" sx={{ ml: 1 }}>
-                        mW
-                      </Typography>
-                    ),
+                  slotProps={{
+                    input: {
+                      endAdornment: (
+                        <Typography variant="body2" sx={{ ml: 1 }}>
+                          mW
+                        </Typography>
+                      ),
+                    }
                   }}
                 />
                 <TextField
@@ -4779,12 +5038,14 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
                   label="Integration Time"
                   value={formData.integrationTime}
                   onChange={(e) => updateField('integrationTime', e.target.value)}
-                  InputProps={{
-                    endAdornment: (
-                      <Typography variant="body2" sx={{ ml: 1 }}>
-                        s
-                      </Typography>
-                    ),
+                  slotProps={{
+                    input: {
+                      endAdornment: (
+                        <Typography variant="body2" sx={{ ml: 1 }}>
+                          s
+                        </Typography>
+                      ),
+                    }
                   }}
                 />
                 <TextField
@@ -4799,12 +5060,14 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
                   label="Spatial Resolution"
                   value={formData.spatialResolution}
                   onChange={(e) => updateField('spatialResolution', e.target.value)}
-                  InputProps={{
-                    endAdornment: (
-                      <Typography variant="body2" sx={{ ml: 1 }}>
-                        um
-                      </Typography>
-                    ),
+                  slotProps={{
+                    input: {
+                      endAdornment: (
+                        <Typography variant="body2" sx={{ ml: 1 }}>
+                          um
+                        </Typography>
+                      ),
+                    }
                   }}
                 />
                 <TextField
@@ -4839,12 +5102,14 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
                   label="Cantilever Stiffness"
                   value={formData.cantileverStiffness}
                   onChange={(e) => updateField('cantileverStiffness', e.target.value)}
-                  InputProps={{
-                    endAdornment: (
-                      <Typography variant="body2" sx={{ ml: 1 }}>
-                        N/m
-                      </Typography>
-                    ),
+                  slotProps={{
+                    input: {
+                      endAdornment: (
+                        <Typography variant="body2" sx={{ ml: 1 }}>
+                          N/m
+                        </Typography>
+                      ),
+                    }
                   }}
                 />
                 <TextField
@@ -4852,12 +5117,14 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
                   label="Tip Diameter"
                   value={formData.tipDiameter}
                   onChange={(e) => updateField('tipDiameter', e.target.value)}
-                  InputProps={{
-                    endAdornment: (
-                      <Typography variant="body2" sx={{ ml: 1 }}>
-                        nm
-                      </Typography>
-                    ),
+                  slotProps={{
+                    input: {
+                      endAdornment: (
+                        <Typography variant="body2" sx={{ ml: 1 }}>
+                          nm
+                        </Typography>
+                      ),
+                    }
                   }}
                 />
                 <TextField
@@ -4865,12 +5132,14 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
                   label="Operating Frequency"
                   value={formData.operatingFrequency}
                   onChange={(e) => updateField('operatingFrequency', e.target.value)}
-                  InputProps={{
-                    endAdornment: (
-                      <Typography variant="body2" sx={{ ml: 1 }}>
-                        kHz
-                      </Typography>
-                    ),
+                  slotProps={{
+                    input: {
+                      endAdornment: (
+                        <Typography variant="body2" sx={{ ml: 1 }}>
+                          kHz
+                        </Typography>
+                      ),
+                    }
                   }}
                 />
                 <TextField
@@ -4885,12 +5154,14 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
                   label="Scan Area"
                   value={formData.scanArea}
                   onChange={(e) => updateField('scanArea', e.target.value)}
-                  InputProps={{
-                    endAdornment: (
-                      <Typography variant="body2" sx={{ ml: 1 }}>
-                        um²
-                      </Typography>
-                    ),
+                  slotProps={{
+                    input: {
+                      endAdornment: (
+                        <Typography variant="body2" sx={{ ml: 1 }}>
+                          um²
+                        </Typography>
+                      ),
+                    }
                   }}
                 />
                 <TextField
@@ -4898,12 +5169,14 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
                   label="Temperature of Room"
                   value={formData.temperatureOfRoom}
                   onChange={(e) => updateField('temperatureOfRoom', e.target.value)}
-                  InputProps={{
-                    endAdornment: (
-                      <Typography variant="body2" sx={{ ml: 1 }}>
-                        °C
-                      </Typography>
-                    ),
+                  slotProps={{
+                    input: {
+                      endAdornment: (
+                        <Typography variant="body2" sx={{ ml: 1 }}>
+                          °C
+                        </Typography>
+                      ),
+                    }
                   }}
                 />
                 <TextField
@@ -4911,12 +5184,14 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
                   label="Relative Humidity"
                   value={formData.relativeHumidity}
                   onChange={(e) => updateField('relativeHumidity', e.target.value)}
-                  InputProps={{
-                    endAdornment: (
-                      <Typography variant="body2" sx={{ ml: 1 }}>
-                        %
-                      </Typography>
-                    ),
+                  slotProps={{
+                    input: {
+                      endAdornment: (
+                        <Typography variant="body2" sx={{ ml: 1 }}>
+                          %
+                        </Typography>
+                      ),
+                    }
                   }}
                 />
               </>
@@ -4936,7 +5211,9 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
         // Scale Method Selection - reference micrographs only
         return (
           <Stack spacing={3}>
-            <Typography variant="body2" color="text.secondary">
+            <Typography variant="body2" sx={{
+              color: 'text.secondary'
+            }}>
               How do you wish to set the scale?
             </Typography>
             <RadioGroup
@@ -4948,7 +5225,14 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
                 control={<Radio />}
                 label="Trace Scale Bar"
               />
-              <Typography variant="caption" color="text.secondary" sx={{ ml: 4, mt: -1, mb: 2 }}>
+              <Typography
+                variant="caption"
+                sx={{
+                  color: 'text.secondary',
+                  ml: 4,
+                  mt: -1,
+                  mb: 2
+                }}>
                 Draw a line over the scale bar in the micrograph (most accurate)
               </Typography>
 
@@ -4957,7 +5241,14 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
                 control={<Radio />}
                 label="Pixel Conversion Factor"
               />
-              <Typography variant="caption" color="text.secondary" sx={{ ml: 4, mt: -1, mb: 2 }}>
+              <Typography
+                variant="caption"
+                sx={{
+                  color: 'text.secondary',
+                  ml: 4,
+                  mt: -1,
+                  mb: 2
+                }}>
                 Enter the number of pixels per unit directly
               </Typography>
 
@@ -4966,7 +5257,14 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
                 control={<Radio />}
                 label="Provide Width/Height of Image"
               />
-              <Typography variant="caption" color="text.secondary" sx={{ ml: 4, mt: -1, mb: 2 }}>
+              <Typography
+                variant="caption"
+                sx={{
+                  color: 'text.secondary',
+                  ml: 4,
+                  mt: -1,
+                  mb: 2
+                }}>
                 Enter the physical dimensions of the entire image
               </Typography>
             </RadioGroup>
@@ -5005,8 +5303,10 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
         }}
         maxWidth="md"
         fullWidth
-        TransitionComponent={Grow}
         transitionDuration={300}
+        slots={{
+          transition: Grow
+        }}
       >
         <DialogTitle>
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
