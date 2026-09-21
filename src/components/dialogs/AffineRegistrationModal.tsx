@@ -1004,8 +1004,8 @@ export function AffineRegistrationModal({
   // Render an image panel
   const renderPanel = (
     panel: 'parent' | 'overlay',
-    containerRef: React.RefObject<HTMLDivElement>,
-    stageRef: React.RefObject<Konva.Stage>,
+    containerRef: React.RefObject<HTMLDivElement | null>,
+    stageRef: React.RefObject<Konva.Stage | null>,
     panelState: ImagePanelState,
     panelSizeState: { width: number; height: number },
     imageData: { width: number; height: number } | null,

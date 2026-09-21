@@ -443,7 +443,7 @@ export const GenerateSpotsPreview = ({
                 // Only show grid lines if there's a clear grid pattern
                 if (rows.size < 2 || cols.size < 2) return null;
 
-                const lines: JSX.Element[] = [];
+                const lines: React.JSX.Element[] = [];
 
                 // Group points by row and col to draw lines
                 const rowMap = new Map<number, GeneratedPoint[]>();

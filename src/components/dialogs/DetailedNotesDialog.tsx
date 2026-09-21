@@ -83,7 +83,7 @@ export function DetailedNotesDialog({ isOpen, onClose, micrographId, spotId, onE
   };
 
   // Collect all note sections
-  const noteSections: JSX.Element[] = [];
+  const noteSections: React.JSX.Element[] = [];
 
   // Project notes
   if (project?.notes) {
