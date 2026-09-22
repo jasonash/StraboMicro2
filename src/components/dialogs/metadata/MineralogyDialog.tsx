@@ -188,8 +188,14 @@ export function MineralogyDialog({
     setCurrentTab(newValue);
   };
 
+  // A percentage is a share of the whole: 0 to 100. Validate on entry only;
+  // values already stored (legacy data) are displayed as they are, never rewritten.
+  const isPercentageOutOfRange =
+    currentPercentage != null && (currentPercentage < 0 || currentPercentage > 100);
+
   // Add selected mineral with percentage to list
   const handleAddMineral = () => {
+    if (isPercentageOutOfRange) return;
     if (selectedMinerals.length > 0) {
       const newMineral: MineralWithPercentage = {
         name: selectedMinerals[0],
@@ -351,6 +357,8 @@ export function MineralogyDialog({
                   setCurrentPercentage(val === '' ? null : parseFloat(val) || 0);
                 }}
                 sx={{ width: 120 }}
+                error={isPercentageOutOfRange}
+                helperText={isPercentageOutOfRange ? 'Enter 0 to 100' : undefined}
                 slotProps={{
                   htmlInput: { min: 0, max: 100, step: 0.1 }
                 }}
@@ -358,7 +366,7 @@ export function MineralogyDialog({
               <Button
                 variant="outlined"
                 onClick={handleAddMineral}
-                disabled={selectedMinerals.length === 0}
+                disabled={selectedMinerals.length === 0 || isPercentageOutOfRange}
                 sx={{ height: 56 }}
               >
                 Add
