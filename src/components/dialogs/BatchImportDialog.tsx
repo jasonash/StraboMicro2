@@ -55,7 +55,7 @@ import {
 } from '@/utils/rotationUtils';
 import { useAppStore } from '@/store';
 import type { MicrographMetadata } from '@/types/project-types';
-import { InstrumentInfoForm, type InstrumentFormData } from './InstrumentInfoForm';
+import { InstrumentInfoForm, isInstrumentInfoComplete, type InstrumentFormData } from './InstrumentInfoForm';
 import { InstrumentDataForm, type InstrumentDataFormData, type Detector, initialInstrumentDataFormData } from './InstrumentDataForm';
 import { OrientationForm, type OrientationFormData, initialOrientationData, validateOrientationForm } from './OrientationForm';
 import type { InstrumentData } from './InstrumentDatabaseDialog';
@@ -356,11 +356,8 @@ export const BatchImportDialog: React.FC<BatchImportDialogProps> = ({
         return validFiles.length > 0;
 
       case 'Instrument & Image Info':
-        // Require instrumentType and imageType (matching legacy validation)
-        if (!instrumentInfoData.instrumentType) return false;
-        if (instrumentInfoData.instrumentType === 'Other' && !instrumentInfoData.otherInstrumentType) return false;
-        if (!instrumentInfoData.imageType) return false;
-        return true;
+        // Shared rule: instrument type + image type, or just the free-text name for "Other"
+        return isInstrumentInfoComplete(instrumentInfoData);
 
       case 'Instrument Data':
         // Instrument data step is always valid (all fields optional)
@@ -527,7 +524,8 @@ export const BatchImportDialog: React.FC<BatchImportDialogProps> = ({
 
         // Add instrument info if included (FULL data model)
         if (includeInstrumentInfo && instrumentInfoData.instrumentType) {
-          micrograph.imageType = instrumentInfoData.imageType;
+          // Absent rather than '' when no image type applies (e.g. "Other"), like the wizard
+          micrograph.imageType = instrumentInfoData.imageType || undefined;
           micrograph.instrument = {
             instrumentType: instrumentInfoData.instrumentType,
             otherInstrumentType: instrumentInfoData.otherInstrumentType || undefined,

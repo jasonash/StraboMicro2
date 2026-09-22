@@ -2,7 +2,7 @@
  * LogViewerModal - Display application logs with copy and email options
  *
  * Features:
- * - Scrollable view of the log file contents
+ * - Scrollable view of both log files (app.log + main.log), the same bundle Send Error Report uploads
  * - Copy to clipboard button
  * - Email support button (mailto: link)
  * - Auto-scroll to bottom on open
@@ -103,7 +103,7 @@ export function LogViewerModal({ open, onClose }: LogViewerModalProps) {
       >
         <DialogTitle sx={{ m: 0, p: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
           <Typography variant="h6" component="span" sx={{ flexGrow: 1 }}>
-            Error Logs
+            Application Logs
           </Typography>
           <IconButton
             onClick={loadLogs}

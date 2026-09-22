@@ -5611,10 +5611,36 @@ ipcMain.handle('server:download-shared-project', async (event, shareCode) => {
 // =============================================================================
 
 /**
- * Read the current log file contents
+ * Build the combined log document (app.log + main.log) used by both the
+ * Help > View Log File viewer and Help > Send Error Report, so what the user
+ * sees is exactly what gets sent. See electron/errorReportBundle.js.
+ * @returns {{ bundle: string, appLogPath: string, mainLogPath: string | null }}
+ */
+function buildCurrentLogBundle() {
+  const { buildErrorReportBundle } = require('./errorReportBundle');
+
+  const appLogPath = logService.getLogPath();
+  let mainLogPath = null;
+  try {
+    mainLogPath = log.transports.file.getFile().path;
+  } catch (pathError) {
+    log.warn('[Logs] Could not resolve main.log path:', pathError);
+  }
+
+  const bundle = buildErrorReportBundle({
+    appVersion: app.getVersion(),
+    appLogPath,
+    mainLogPath,
+  });
+
+  return { bundle, appLogPath, mainLogPath };
+}
+
+/**
+ * Read the combined log contents (app.log + main.log) for the log viewer
  */
 ipcMain.handle('logs:read', async () => {
-  return logService.readLog();
+  return buildCurrentLogBundle().bundle;
 });
 
 /**
@@ -5635,13 +5661,20 @@ ipcMain.handle('logs:write', async (event, level, message, source) => {
 
 /**
  * Send error report to StraboSpot server
- * Sends: notes (user description), appversion, log_file, and optionally email
- * Can be sent with or without authentication (email used for anonymous reports)
+ * Sends: notes (user description), appversion, log_file, and email
+ *
+ * The server stores exactly one file per report, so log_file is a single
+ * text document that concatenates app.log (renderer errors) and main.log
+ * (electron-log, main process). See electron/errorReportBundle.js.
+ *
+ * Can be sent with or without authentication. The email comes from the
+ * dialog; when it is blank but the user is logged in, the stored account
+ * email is used so the report is never anonymous by accident (the server
+ * does not derive the reporter from the token).
  */
 ipcMain.handle('logs:send-report', async (event, notes, email) => {
   const FormData = require('form-data');
   const https = require('https');
-  const fs = require('fs');
 
   try {
     log.info('[ErrorReport] Sending error report to server...');
@@ -5650,41 +5683,51 @@ ipcMain.handle('logs:send-report', async (event, notes, email) => {
     const tokenResult = await tokenService.getValidAccessToken();
     const hasAuth = tokenResult.success && tokenResult.accessToken;
 
+    // Fall back to the logged-in account's email when the dialog sent none
+    let reporterEmail = typeof email === 'string' ? email.trim() : '';
+    if (!reporterEmail) {
+      const tokens = await tokenService.getTokens();
+      if (tokens?.user?.email) {
+        reporterEmail = tokens.user.email;
+      }
+    }
+
     if (hasAuth) {
-      log.info('[ErrorReport] Sending authenticated report');
+      log.info('[ErrorReport] Sending authenticated report' + (reporterEmail ? ' with email' : ''));
     } else {
-      log.info('[ErrorReport] Sending anonymous report' + (email ? ' with email' : ''));
+      log.info('[ErrorReport] Sending anonymous report' + (reporterEmail ? ' with email' : ''));
     }
 
     // Get app version
     const appVersion = app.getVersion();
 
-    // Get log file path and read contents
-    const logPath = logService.getLogPath();
-    if (!fs.existsSync(logPath)) {
-      log.warn('[ErrorReport] Log file not found:', logPath);
-      return { success: false, error: 'Log file not found' };
-    }
+    // Build one text document from both log files (same content as the viewer)
+    const { bundle, appLogPath, mainLogPath } = buildCurrentLogBundle();
+    const bundleBuffer = Buffer.from(bundle, 'utf8');
+    log.info(
+      `[ErrorReport] Log bundle: ${bundleBuffer.length} bytes (app.log: ${appLogPath}, main.log: ${mainLogPath || 'n/a'})`
+    );
 
     // Create form data
     const form = new FormData();
     form.append('notes', notes);
     form.append('appversion', `v${appVersion}`);
-    form.append('log_file', fs.createReadStream(logPath), {
-      filename: 'app.log',
+    form.append('log_file', bundleBuffer, {
+      filename: 'strabomicro2-logs.txt',
       contentType: 'text/plain',
     });
 
-    // Include email if provided (for anonymous reports)
-    if (email) {
-      form.append('email', email);
+    if (reporterEmail) {
+      form.append('email', reporterEmail);
     }
 
     // Parse the upload URL
     const uploadUrl = new URL('https://strabospot.org/jwtmicrodb/logs');
 
     return new Promise((resolve) => {
-      const headers = { ...form.getHeaders() };
+      // Every part is in memory, so the exact length is known up front and the
+      // request can carry Content-Length instead of chunked transfer-encoding
+      const headers = { ...form.getHeaders(), 'Content-Length': form.getLengthSync() };
 
       // Add auth header only if we have a valid token
       if (hasAuth) {

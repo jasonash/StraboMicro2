@@ -28,7 +28,6 @@ interface PlacementCanvasProps {
   initialScaleX?: number;
   initialScaleY?: number;
   initialOpacity?: number; // Initial opacity (0-1), default 1
-  copySizePixelsPerCm?: number; // For "Copy Size from Existing" - the calculated px/cm for the new image
   onPlacementChange: (offsetX: number, offsetY: number, rotation: number, scaleX?: number, scaleY?: number) => void;
   onOpacityChange?: (opacity: number) => void; // Callback when opacity changes
   onScaleDataChange?: (data: {
@@ -56,7 +55,6 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
   initialScaleX = 1,
   initialScaleY = 1,
   initialOpacity = 1,
-  copySizePixelsPerCm,
   onPlacementChange,
   onOpacityChange,
   onScaleDataChange,
@@ -198,11 +196,9 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
   };
 
   // Determine if resize handles should be shown based on scale method
-  // "Copy Size from Existing" should NOT allow resize (keeps copied size intact)
   const enableResizeHandles = scaleMethod === 'Stretch and Drag';
 
   // For "Trace Scale Bar", disable drag when line tool is active
-  // For "Copy Size from Existing", allow drag and rotate (but not resize)
   const enableDrag = activeTool !== 'line';
   const enableRotate = true;
 
@@ -506,65 +502,6 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
     }));
   }, [scaleMethod, pixelInput, physicalLengthInput, unitInput, parentScale]);
 
-  // Auto-calculate child scale AND position for "Copy Size from Existing Micrograph" method
-  useEffect(() => {
-    if (scaleMethod !== 'Copy Size from Existing Micrograph') return;
-    if (!parentScale || !parentOriginalWidth || !parentImage || !copySizePixelsPerCm) return;
-
-    // Use the same formula as Pixel Conversion Factor
-    const childPixelsPerCm = copySizePixelsPerCm;
-
-    // Account for parent downsampling
-    const parentDownsampleRatio = parentImage.width / parentOriginalWidth;
-    const parentScaleInDisplayedImage = parentScale * parentDownsampleRatio;
-
-    // Calculate scale factor: parent scale / child scale
-    let scaleFactor = parentScaleInDisplayedImage / childPixelsPerCm;
-
-    // Sanity checks
-    const MIN_SCALE = 0.01;
-    const MAX_SCALE = 10;
-    if (scaleFactor > MAX_SCALE) scaleFactor = MAX_SCALE;
-    else if (scaleFactor < MIN_SCALE) scaleFactor = MIN_SCALE;
-
-    // Convert position from original parent coordinates to displayed coordinates
-    // initialOffsetX/Y are in original coordinates (top-left of child)
-    const positionScaleRatio = parentImage.width / parentOriginalWidth;
-    const displayedOffsetX = initialOffsetX * positionScaleRatio;
-    const displayedOffsetY = initialOffsetY * positionScaleRatio;
-
-    // Convert from top-left to center position
-    // The child is displayed at childWidth * scaleFactor size
-    const centerX = displayedOffsetX + (childWidth * scaleFactor) / 2;
-    const centerY = displayedOffsetY + (childHeight * scaleFactor) / 2;
-
-    console.log('[PlacementCanvas] Copy Size from Existing calculation:', {
-      copySizePixelsPerCm,
-      parentScale,
-      parentOriginalWidth,
-      parentDisplayedWidth: parentImage.width,
-      parentDownsampleRatio,
-      parentScaleInDisplayedImage,
-      scaleFactor,
-      initialOffsetX,
-      initialOffsetY,
-      positionScaleRatio,
-      displayedOffsetX,
-      displayedOffsetY,
-      centerX,
-      centerY,
-    });
-
-    // Update child scale AND position
-    setChildTransform(prev => ({
-      ...prev,
-      x: centerX,
-      y: centerY,
-      scaleX: scaleFactor,
-      scaleY: scaleFactor,
-    }));
-  }, [scaleMethod, copySizePixelsPerCm, parentScale, parentOriginalWidth, parentImage, initialOffsetX, initialOffsetY, childWidth, childHeight]);
-
   // Call onPlacementChange when scale changes automatically (for auto-scale methods)
   // Use a ref to track previous scale to avoid calling on every render
   const prevScaleRef = useRef({ scaleX: initialScaleX, scaleY: initialScaleY });
@@ -572,8 +509,7 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
     // Only for methods that auto-calculate scale
     if (scaleMethod !== 'Pixel Conversion Factor' &&
         scaleMethod !== 'Provide Width/Height of Image' &&
-        scaleMethod !== 'Trace Scale Bar and Drag' &&
-        scaleMethod !== 'Copy Size from Existing Micrograph') return;
+        scaleMethod !== 'Trace Scale Bar and Drag') return;
 
     // Only call if scale actually changed (not just position)
     if (childTransform.scaleX !== prevScaleRef.current.scaleX ||
