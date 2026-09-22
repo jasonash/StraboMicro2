@@ -5611,10 +5611,36 @@ ipcMain.handle('server:download-shared-project', async (event, shareCode) => {
 // =============================================================================
 
 /**
- * Read the current log file contents
+ * Build the combined log document (app.log + main.log) used by both the
+ * Help > View Log File viewer and Help > Send Error Report, so what the user
+ * sees is exactly what gets sent. See electron/errorReportBundle.js.
+ * @returns {{ bundle: string, appLogPath: string, mainLogPath: string | null }}
+ */
+function buildCurrentLogBundle() {
+  const { buildErrorReportBundle } = require('./errorReportBundle');
+
+  const appLogPath = logService.getLogPath();
+  let mainLogPath = null;
+  try {
+    mainLogPath = log.transports.file.getFile().path;
+  } catch (pathError) {
+    log.warn('[Logs] Could not resolve main.log path:', pathError);
+  }
+
+  const bundle = buildErrorReportBundle({
+    appVersion: app.getVersion(),
+    appLogPath,
+    mainLogPath,
+  });
+
+  return { bundle, appLogPath, mainLogPath };
+}
+
+/**
+ * Read the combined log contents (app.log + main.log) for the log viewer
  */
 ipcMain.handle('logs:read', async () => {
-  return logService.readLog();
+  return buildCurrentLogBundle().bundle;
 });
 
 /**
@@ -5649,7 +5675,6 @@ ipcMain.handle('logs:write', async (event, level, message, source) => {
 ipcMain.handle('logs:send-report', async (event, notes, email) => {
   const FormData = require('form-data');
   const https = require('https');
-  const { buildErrorReportBundle } = require('./errorReportBundle');
 
   try {
     log.info('[ErrorReport] Sending error report to server...');
@@ -5676,16 +5701,8 @@ ipcMain.handle('logs:send-report', async (event, notes, email) => {
     // Get app version
     const appVersion = app.getVersion();
 
-    // Build one text document from both log files
-    const appLogPath = logService.getLogPath();
-    let mainLogPath = null;
-    try {
-      mainLogPath = log.transports.file.getFile().path;
-    } catch (pathError) {
-      log.warn('[ErrorReport] Could not resolve main.log path:', pathError);
-    }
-
-    const bundle = buildErrorReportBundle({ appVersion, appLogPath, mainLogPath });
+    // Build one text document from both log files (same content as the viewer)
+    const { bundle, appLogPath, mainLogPath } = buildCurrentLogBundle();
     const bundleBuffer = Buffer.from(bundle, 'utf8');
     log.info(
       `[ErrorReport] Log bundle: ${bundleBuffer.length} bytes (app.log: ${appLogPath}, main.log: ${mainLogPath || 'n/a'})`

@@ -399,7 +399,7 @@ contextBridge.exposeInMainWorld('api', {
     return () => ipcRenderer.removeListener('help:send-error-report', handler);
   },
 
-  // Log service (persistent logging to file)
+  // Log service (persistent logging to file); read() returns app.log + main.log combined
   logs: {
     read: () => ipcRenderer.invoke('logs:read'),
     getPath: () => ipcRenderer.invoke('logs:get-path'),
