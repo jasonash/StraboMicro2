@@ -51,6 +51,7 @@ import { ScaleBarCanvas, type Tool, type ScaleBarCanvasRef } from '../ScaleBarCa
 import PlacementCanvas from './PlacementCanvas';
 import { PointPlacementCanvas } from './PointPlacementCanvas';
 import { AffineRegistrationModal } from './AffineRegistrationModal';
+import { isInstrumentInfoComplete } from './InstrumentInfoForm';
 import { PanTool, Timeline, RestartAlt, CheckCircle, Cancel, RotateLeft, RotateRight } from '@mui/icons-material';
 import type { AffineMatrix, ControlPoint } from '@/utils/affineTransform';
 import {
@@ -1744,16 +1745,8 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
         return true;
 
       case 'instrument-info':
-        // Legacy app requires both instrumentType AND imageType
-        if (!formData.instrumentType) return false;
-        // "Other" only collects a free-text instrument name — no dataType/imageType UI is shown,
-        // so otherInstrumentType is the only required field for it.
-        if (formData.instrumentType === 'Other') {
-          return !!formData.otherInstrumentType;
-        }
-        // imageType is required (matches legacy validation)
-        if (!formData.imageType) return false;
-        return true;
+        // Shared rule: instrument type + image type, or just the free-text name for "Other"
+        return isInstrumentInfoComplete(formData);
 
       case 'instrument-data':
         // No required fields, all optional

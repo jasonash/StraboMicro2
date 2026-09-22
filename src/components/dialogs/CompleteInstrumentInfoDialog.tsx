@@ -38,7 +38,7 @@ import {
 import { RotateLeft, RotateRight } from '@mui/icons-material';
 import { useAppStore } from '@/store';
 import type { InstrumentType, MicrographMetadata } from '@/types/project-types';
-import { InstrumentInfoForm, type InstrumentFormData } from './InstrumentInfoForm';
+import { InstrumentInfoForm, isInstrumentInfoComplete, type InstrumentFormData } from './InstrumentInfoForm';
 import {
   InstrumentDataForm,
   type InstrumentDataFormData,
@@ -252,19 +252,11 @@ export const CompleteInstrumentInfoDialog: React.FC<CompleteInstrumentInfoDialog
     }
   };
 
-  // Matches BatchImportDialog and NewMicrographDialog validation for the
-  // Instrument & Image Info step.
+  // Same rule as BatchImportDialog and NewMicrographDialog for the
+  // Instrument & Image Info step ("Other" needs only its free-text name).
   const canProceed = () => {
     if (STEPS[activeStep] === 'Instrument & Image Info') {
-      if (!instrumentInfoData.instrumentType) return false;
-      if (
-        instrumentInfoData.instrumentType === 'Other' &&
-        !instrumentInfoData.otherInstrumentType
-      ) {
-        return false;
-      }
-      if (!instrumentInfoData.imageType) return false;
-      return true;
+      return isInstrumentInfoComplete(instrumentInfoData);
     }
     return true;
   };
