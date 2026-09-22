@@ -14,7 +14,6 @@ interface PointPlacementCanvasProps {
   scaleMethod: string;
   initialOffsetX?: number;
   initialOffsetY?: number;
-  copySizePixelsPerCm?: number; // For "Copy Size from Existing" - calculated px/cm for new image
   onPlacementChange: (offsetX: number, offsetY: number) => void;
   onScaleDataChange?: (data: {
     scaleBarLineLengthPixels?: number;
@@ -37,7 +36,6 @@ export const PointPlacementCanvas = ({
   scaleMethod,
   initialOffsetX = 0,
   initialOffsetY = 0,
-  copySizePixelsPerCm, // For "Copy Size from Existing" - used to detect copy mode
   onPlacementChange,
   onScaleDataChange,
 }: PointPlacementCanvasProps) => {
@@ -113,16 +111,6 @@ export const PointPlacementCanvas = ({
   const [isDrawingLine, setIsDrawingLine] = useState(false);
 
   const stageRef = useRef<Konva.Stage>(null);
-
-  // For "Copy Size from Existing", immediately report the copied position to the parent
-  // This ensures the form data is updated even if the user doesn't drag the point
-  useEffect(() => {
-    if (scaleMethod === 'Copy Size from Existing Micrograph' && copySizePixelsPerCm &&
-        initialOffsetX !== 0 && initialOffsetY !== 0) {
-      console.log('[PointPlacementCanvas] Copy Size - reporting initial position:', { initialOffsetX, initialOffsetY });
-      onPlacementChange(initialOffsetX, initialOffsetY);
-    }
-  }, [scaleMethod, copySizePixelsPerCm, initialOffsetX, initialOffsetY, onPlacementChange]);
 
   // Load parent image
   useEffect(() => {
