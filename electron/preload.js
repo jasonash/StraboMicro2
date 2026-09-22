@@ -399,14 +399,14 @@ contextBridge.exposeInMainWorld('api', {
     return () => ipcRenderer.removeListener('help:send-error-report', handler);
   },
 
-  // Log service (persistent logging to file)
+  // Log service (persistent logging to file); read() returns app.log + main.log combined
   logs: {
     read: () => ipcRenderer.invoke('logs:read'),
     getPath: () => ipcRenderer.invoke('logs:get-path'),
     write: (level, message, source) => ipcRenderer.invoke('logs:write', level, message, source),
   },
 
-  // Send error report to server (email is optional, used when not logged in)
+  // Send error report to server (email is optional; a logged-in account email is used when blank)
   sendErrorReport: (notes, email) => ipcRenderer.invoke('logs:send-report', notes, email),
 
   // Auto-updater

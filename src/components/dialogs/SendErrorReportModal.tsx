@@ -4,7 +4,7 @@
  * Features:
  * - Description text field with 5K character limit
  * - Submit button only active when description is entered
- * - Automatic upload of error description + app version + log file
+ * - Automatic upload of error description + app version + both log files (app.log + main.log)
  * - Success message shown before closing
  */
 
