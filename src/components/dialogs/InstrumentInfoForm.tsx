@@ -30,6 +30,25 @@ export interface InstrumentFormData {
   imageType: string;
 }
 
+/**
+ * Whether the Instrument & Image Info step has everything it requires.
+ *
+ * The legacy app requires an instrument type AND an image type. "Other" is the
+ * exception: this form only collects a free-text instrument name for it (no
+ * data type or image type field is shown), so that name is the only required
+ * field. Shared by NewMicrographDialog, BatchImportDialog and
+ * CompleteInstrumentInfoDialog so the rule cannot drift between them again.
+ */
+export function isInstrumentInfoComplete(
+  data: Pick<InstrumentFormData, 'instrumentType' | 'otherInstrumentType' | 'imageType'>
+): boolean {
+  if (!data.instrumentType) return false;
+  if (data.instrumentType === 'Other') {
+    return data.otherInstrumentType.trim() !== '';
+  }
+  return data.imageType !== '';
+}
+
 interface InstrumentInfoFormProps {
   formData: InstrumentFormData;
   onFormChange: (field: keyof InstrumentFormData, value: string) => void;
