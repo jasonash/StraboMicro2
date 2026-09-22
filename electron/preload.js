@@ -406,7 +406,7 @@ contextBridge.exposeInMainWorld('api', {
     write: (level, message, source) => ipcRenderer.invoke('logs:write', level, message, source),
   },
 
-  // Send error report to server (email is optional, used when not logged in)
+  // Send error report to server (email is optional; a logged-in account email is used when blank)
   sendErrorReport: (notes, email) => ipcRenderer.invoke('logs:send-report', notes, email),
 
   // Auto-updater
