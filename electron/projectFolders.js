@@ -21,6 +21,7 @@ const fs = require('fs');
 const path = require('path');
 const { app } = require('electron');
 const os = require('os');
+const crypto = require('crypto');
 
 /**
  * Fallback Documents path derived purely from the home/profile directory.
@@ -297,11 +298,59 @@ async function listProjectFolders() {
 }
 
 /**
- * Copy a file to the project's associatedFiles folder
+ * Compute the SHA-256 hex digest of a file by streaming it
+ * @param {string} filePath - Full path to the file
+ * @returns {Promise<string>} Hex digest
+ */
+function hashFile(filePath) {
+  return new Promise((resolve, reject) => {
+    const hash = crypto.createHash('sha256');
+    fs.createReadStream(filePath)
+      .on('error', reject)
+      .on('data', (chunk) => hash.update(chunk))
+      .on('end', () => resolve(hash.digest('hex')));
+  });
+}
+
+/**
+ * Check whether two files have identical content (size first, then hash)
+ * @param {string} pathA - Full path to the first file
+ * @param {string} pathB - Full path to the second file
+ * @returns {Promise<boolean>} True if the contents are identical
+ */
+async function filesHaveSameContent(pathA, pathB) {
+  const [statA, statB] = await Promise.all([fs.promises.stat(pathA), fs.promises.stat(pathB)]);
+  if (statA.size !== statB.size) return false;
+  const [hashA, hashB] = await Promise.all([hashFile(pathA), hashFile(pathB)]);
+  return hashA === hashB;
+}
+
+/**
+ * Build a numbered variant of a filename: "EDS map.png" -> "EDS map (2).png"
+ * @param {string} fileName - Original filename
+ * @param {number} n - Number to insert
+ * @returns {string} Numbered filename
+ */
+function numberedFileName(fileName, n) {
+  const ext = path.extname(fileName);
+  const base = path.basename(fileName, ext);
+  return `${base} (${n})${ext}`;
+}
+
+/**
+ * Copy a file to the project's associatedFiles folder.
+ *
+ * The folder is flat and attachments reference files by name only, so a name
+ * must always mean one content. If the desired name is free, the file is copied
+ * under it. If a file with that name (compared case-insensitively, so macOS,
+ * Windows and Linux agree) already holds IDENTICAL content, it is reused. If it
+ * holds DIFFERENT content, the next free or identical numbered name is used
+ * ("EDS map (2).png"). Callers must store the returned fileName.
+ *
  * @param {string} sourcePath - Full path to the source file
  * @param {string} projectId - UUID of the project
  * @param {string} fileName - Desired filename in the associatedFiles folder
- * @returns {Promise<Object>} Object with destinationPath and fileName
+ * @returns {Promise<Object>} { destinationPath, fileName, renamed, reused, success }
  */
 async function copyFileToAssociatedFiles(sourcePath, projectId, fileName) {
   console.log(`[ProjectFolders] Copying file to associatedFiles for project: ${projectId}`);
@@ -309,93 +358,56 @@ async function copyFileToAssociatedFiles(sourcePath, projectId, fileName) {
   console.log(`[ProjectFolders] Filename: ${fileName}`);
 
   try {
+    // Check if source file exists
+    await fs.promises.access(sourcePath, fs.constants.R_OK);
+
     // Get project folder paths
     const paths = getProjectFolderPaths(projectId);
 
     // Ensure associatedFiles folder exists
     await fs.promises.mkdir(paths.associatedFiles, { recursive: true });
 
-    // Build destination path
-    const destinationPath = path.join(paths.associatedFiles, fileName);
-
-    // Check if file already exists in associatedFiles folder
-    try {
-      await fs.promises.access(destinationPath, fs.constants.F_OK);
-      // File already exists on disk — skip the copy (may be an orphan awaiting cleanup)
-      console.log(`[ProjectFolders] File already exists, skipping copy: ${destinationPath}`);
-      return {
-        destinationPath,
-        fileName,
-        success: true
-      };
-    } catch (error) {
-      // If error is not ENOENT (file not found), rethrow it
-      if (error.code !== 'ENOENT' && error.code !== undefined) {
-        throw error;
-      }
-      // File doesn't exist - proceed with copy
+    // Existing names, keyed case-insensitively
+    const existing = new Map();
+    for (const name of await fs.promises.readdir(paths.associatedFiles)) {
+      existing.set(name.toLowerCase(), name);
     }
 
-    // Check if source file exists
-    await fs.promises.access(sourcePath, fs.constants.R_OK);
+    for (let n = 1; n <= 9999; n++) {
+      const candidate = n === 1 ? fileName : numberedFileName(fileName, n);
+      const onDisk = existing.get(candidate.toLowerCase());
 
-    // Copy the file
-    await fs.promises.copyFile(sourcePath, destinationPath);
+      if (!onDisk) {
+        const destinationPath = path.join(paths.associatedFiles, candidate);
+        await fs.promises.copyFile(sourcePath, destinationPath);
+        console.log(`[ProjectFolders] Successfully copied file to: ${destinationPath}`);
+        return {
+          destinationPath,
+          fileName: candidate,
+          renamed: candidate !== fileName,
+          reused: false,
+          success: true
+        };
+      }
 
-    console.log(`[ProjectFolders] Successfully copied file to: ${destinationPath}`);
+      const destinationPath = path.join(paths.associatedFiles, onDisk);
+      if (await filesHaveSameContent(sourcePath, destinationPath)) {
+        // Same content already stored under this name: reuse it
+        console.log(`[ProjectFolders] Identical file already present, reusing: ${destinationPath}`);
+        return {
+          destinationPath,
+          fileName: onDisk,
+          renamed: onDisk !== fileName,
+          reused: true,
+          success: true
+        };
+      }
+      // Different content under this name: try the next numbered name
+    }
 
-    return {
-      destinationPath,
-      fileName,
-      success: true
-    };
+    throw new Error(`No free filename for ${fileName}`);
   } catch (error) {
     console.error(`[ProjectFolders] Error copying file:`, error);
-    throw error;
-  }
-}
-
-/**
- * Delete a file from the project's associatedFiles folder
- * @param {string} projectId - UUID of the project
- * @param {string} fileName - Filename to delete from associatedFiles folder
- * @returns {Promise<Object>} Object with success status
- */
-async function deleteFromAssociatedFiles(projectId, fileName) {
-  console.log(`[ProjectFolders] Deleting file from associatedFiles for project: ${projectId}`);
-  console.log(`[ProjectFolders] Filename: ${fileName}`);
-
-  try {
-    // Get project folder paths
-    const paths = getProjectFolderPaths(projectId);
-
-    // Build file path
-    const filePath = path.join(paths.associatedFiles, fileName);
-
-    // Check if file exists
-    try {
-      await fs.promises.access(filePath, fs.constants.F_OK);
-    } catch (error) {
-      // File doesn't exist, consider it already deleted
-      console.log(`[ProjectFolders] File does not exist (already deleted?): ${filePath}`);
-      return {
-        success: true,
-        fileName,
-        message: 'File does not exist'
-      };
-    }
-
-    // Delete the file
-    await fs.promises.unlink(filePath);
-
-    console.log(`[ProjectFolders] Successfully deleted file: ${filePath}`);
-
-    return {
-      success: true,
-      fileName
-    };
-  } catch (error) {
-    console.error(`[ProjectFolders] Error deleting file:`, error);
     throw error;
   }
 }
@@ -473,6 +485,5 @@ module.exports = {
   deleteProjectFolder,
   listProjectFolders,
   copyFileToAssociatedFiles,
-  deleteFromAssociatedFiles,
   cleanupOrphanedAssociatedFiles
 };
