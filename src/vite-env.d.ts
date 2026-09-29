@@ -296,12 +296,9 @@ interface Window {
     copyToAssociatedFiles: (sourcePath: string, projectId: string, fileName: string) => Promise<{
       destinationPath: string;
       fileName: string;
+      renamed: boolean;
+      reused: boolean;
       success: boolean;
-    }>;
-    deleteFromAssociatedFiles: (projectId: string, fileName: string) => Promise<{
-      success: boolean;
-      fileName: string;
-      message?: string;
     }>;
     cleanupOrphanedAssociatedFiles: (projectId: string, projectData: unknown) => Promise<{
       success: boolean;
