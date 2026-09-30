@@ -4410,18 +4410,6 @@ ipcMain.handle('auth:check-storage', async () => {
 // =============================================================================
 
 /**
- * Composite JPEG buffer for a micrograph (child overlays + spots + labels).
- * Used by the PDF report; delegates to the shared image export renderer.
- */
-async function generateCompositeBuffer(projectId, micrograph, projectData, folderPaths) {
-  const rendered = await imageExport.renderMicrographExport(projectId, micrograph, projectData, folderPaths, {
-    format: 'jpeg',
-    sketchLayers: 'none',
-  });
-  return rendered.buffer;
-}
-
-/**
  * Collect all micrographs from project (flattened list)
  */
 function collectAllMicrographs(projectData) {
@@ -4939,7 +4927,7 @@ ipcMain.handle('project:export-pdf', async (event, projectId, projectData) => {
       projectData,
       projectId,
       folderPaths,
-      generateCompositeBuffer, // Pass the existing composite generator
+      imageExport.renderPdfImage, // Micrograph images for the PDF (capped at 2000 px)
       progressCallback
     );
 
@@ -5029,7 +5017,7 @@ ipcMain.handle('project:export-smz', async (event, projectId, projectData) => {
         projData,
         projId,
         paths,
-        generateCompositeBuffer, // Use the existing composite generator (with spots) for PDF
+        imageExport.renderPdfImage, // Micrograph images for the PDF (capped at 2000 px)
         progressCb
       );
     };
@@ -5126,7 +5114,7 @@ ipcMain.handle('server:push-project', async (event, projectId, projectData, opti
         projData,
         projId,
         paths,
-        generateCompositeBuffer,
+        imageExport.renderPdfImage,
         progressCb
       );
     };

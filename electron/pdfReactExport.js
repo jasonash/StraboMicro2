@@ -723,6 +723,8 @@ async function generateProjectPDF(outputPath, projectData, projectId, folderPath
       React.createElement(Text, {
         key: 'page-num',
         style: styles.pageNumber,
+        // fixed: drawn at the bottom of every page, never pushed onto a page of its own
+        fixed: true,
         render: ({ pageNumber }) => `${pageNumber}`
       })
     );
@@ -753,6 +755,8 @@ async function generateProjectPDF(outputPath, projectData, projectId, folderPath
       ),
       React.createElement(Text, {
         style: styles.pageNumber,
+        // fixed: drawn at the bottom of every page, never pushed onto a page of its own
+        fixed: true,
         render: ({ pageNumber }) => `${pageNumber}`
       })
     )
@@ -774,6 +778,8 @@ async function generateProjectPDF(outputPath, projectData, projectId, folderPath
         ),
         React.createElement(Text, {
           style: styles.pageNumber,
+          // fixed: drawn at the bottom of every page, never pushed onto a page of its own
+          fixed: true,
           render: ({ pageNumber }) => `${pageNumber}`
         })
       )
@@ -812,6 +818,8 @@ async function generateProjectPDF(outputPath, projectData, projectId, folderPath
         ),
         React.createElement(Text, {
           style: styles.pageNumber,
+          // fixed: drawn at the bottom of every page, never pushed onto a page of its own
+          fixed: true,
           render: ({ pageNumber }) => `${pageNumber}`
         })
       )
@@ -824,7 +832,7 @@ async function generateProjectPDF(outputPath, projectData, projectId, folderPath
     const breadcrumb = `${dataset.name || 'Dataset'} > ${sample.name || sample.label || 'Sample'}`;
 
     // Convert buffer to base64 data URI for react-pdf
-    // Note: generateCompositeBuffer returns JPEG format
+    // Note: the composite generator (imageExport.renderPdfImage) returns JPEG
     let imageDataUri = null;
     const imageBuffer = micrographImages[index];
     if (imageBuffer) {
@@ -898,6 +906,8 @@ async function generateProjectPDF(outputPath, projectData, projectId, folderPath
       React.createElement(Text, {
         key: 'page-num',
         style: styles.pageNumber,
+        // fixed: drawn at the bottom of every page, never pushed onto a page of its own
+        fixed: true,
         render: ({ pageNumber }) => `${pageNumber}`
       })
     );
@@ -936,6 +946,8 @@ async function generateProjectPDF(outputPath, projectData, projectId, folderPath
       React.createElement(Text, {
         key: 'page-num',
         style: styles.pageNumber,
+        // fixed: drawn at the bottom of every page, never pushed onto a page of its own
+        fixed: true,
         render: ({ pageNumber }) => `${pageNumber}`
       })
     );
