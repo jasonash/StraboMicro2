@@ -21,6 +21,11 @@
  * In SVG output, spots, labels, markers and sketches are real vector elements
  * (editable in Illustrator / Inkscape); the base image and any child overlays
  * are embedded as a single raster layer.
+ *
+ * The PDF report uses renderPdfImage: the same rendering, shrunk to at most
+ * PDF_IMAGE_MAX_DIMENSION px on the long side (a page shows it a few inches
+ * wide, so native resolution only made reports hundreds of MB). The server
+ * renders PDFs with this same file (StraboBackend pdfservice/vendor).
  */
 
 const fs = require('fs');
@@ -31,6 +36,9 @@ const tileCache = require('./tileCache');
 
 // Konva's default Catmull-Rom tension used by SketchLayerRenderer for strokes.
 const SKETCH_STROKE_TENSION = 0.3;
+
+// Long side, in pixels, of micrograph images in the PDF report.
+const PDF_IMAGE_MAX_DIMENSION = 2000;
 
 // ---------------------------------------------------------------------------
 // Options
@@ -46,6 +54,9 @@ const FORMATS = ['jpeg', 'png', 'svg'];
  * @property {boolean} includeSpots     Spot shapes
  * @property {boolean} includeLabels    Spot name labels
  * @property {'visible'|'all'|'none'|string[]} sketchLayers  Which sketch layers to draw
+ * @property {number|null} maxDimension  Raster output only: shrink the finished
+ *   image (annotations included) so its long side is at most this many pixels;
+ *   null = native resolution
  */
 
 /**
@@ -71,6 +82,7 @@ function normalizeOptions(options = {}) {
     includeSpots: options.includeSpots !== false,
     includeLabels: options.includeLabels !== false,
     sketchLayers,
+    maxDimension: Number.isInteger(options.maxDimension) && options.maxDimension > 0 ? options.maxDimension : null,
   };
 }
 
@@ -750,17 +762,50 @@ async function renderMicrographExport(projectId, micrographOrId, projectData, fo
     inputs.push({ input: Buffer.from(svg), left: 0, top: 0 });
   }
 
-  const composed = inputs.length > 0 ? base.composite(inputs) : base;
+  let composed = inputs.length > 0 ? base.composite(inputs) : base;
+  let outWidth = width;
+  let outHeight = height;
+
+  if (opts.maxDimension && Math.max(width, height) > opts.maxDimension) {
+    // sharp resizes before it composites, so shrinking the composed image
+    // takes a second pass over its pixels (raw, so nothing is re-encoded).
+    if (inputs.length > 0) {
+      const { data, info } = await composed.raw().toBuffer({ resolveWithObject: true });
+      composed = sharp(data, { raw: { width: info.width, height: info.height, channels: info.channels } });
+    }
+    const scale = opts.maxDimension / Math.max(width, height);
+    outWidth = Math.max(1, Math.round(width * scale));
+    outHeight = Math.max(1, Math.round(height * scale));
+    composed = composed.resize(outWidth, outHeight, { fit: 'fill', kernel: sharp.kernel.lanczos3 });
+  }
+
   const buffer = opts.format === 'png'
     ? await composed.png().toBuffer()
     : await composed.jpeg({ quality: 95 }).toBuffer();
 
-  log.info(`[ImageExport] Rendered ${opts.format}: ${width}x${height}, ${buffer.length} bytes`);
-  return { ...common, buffer };
+  log.info(`[ImageExport] Rendered ${opts.format}: ${outWidth}x${outHeight}, ${buffer.length} bytes`);
+  return { ...common, width: outWidth, height: outHeight, buffer };
+}
+
+/**
+ * The micrograph image on its PDF report page: base image, child overlays,
+ * spots and labels (no sketch layers) as JPEG, at most
+ * PDF_IMAGE_MAX_DIMENSION px on the long side.
+ * @returns {Promise<Buffer>}
+ */
+async function renderPdfImage(projectId, micrograph, projectData, folderPaths) {
+  const rendered = await renderMicrographExport(projectId, micrograph, projectData, folderPaths, {
+    format: 'jpeg',
+    sketchLayers: 'none',
+    maxDimension: PDF_IMAGE_MAX_DIMENSION,
+  });
+  return rendered.buffer;
 }
 
 module.exports = {
   renderMicrographExport,
+  renderPdfImage,
+  PDF_IMAGE_MAX_DIMENSION,
   normalizeOptions,
   extensionForFormat,
   mimeTypeForFormat,

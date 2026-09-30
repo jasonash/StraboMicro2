@@ -824,7 +824,7 @@ async function generateProjectPDF(outputPath, projectData, projectId, folderPath
     const breadcrumb = `${dataset.name || 'Dataset'} > ${sample.name || sample.label || 'Sample'}`;
 
     // Convert buffer to base64 data URI for react-pdf
-    // Note: generateCompositeBuffer returns JPEG format
+    // Note: the composite generator (imageExport.renderPdfImage) returns JPEG
     let imageDataUri = null;
     const imageBuffer = micrographImages[index];
     if (imageBuffer) {
