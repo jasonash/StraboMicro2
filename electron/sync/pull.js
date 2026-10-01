@@ -310,52 +310,84 @@ async function commitPull({ folder, pending }) {
 }
 
 /**
- * Fetch files the server has and this copy lacks (one at a time; each one
- * is recorded as done, so an interrupted run resumes).
- * @param {{ folder: string, client: object, onProgress?: (p: object) => void }} options
+ * Fetch files the server has and this copy lacks. The transfers run outside
+ * exclusive (the project's sync queue, so pushes and pulls are not held up
+ * by big downloads); reading the list and recording each file run inside
+ * it, since state.json and images.json are written whole. Each file goes to
+ * a temp file and is renamed into place once verified; pushes leave an
+ * entity alone while any of its downloads is listed (pushProject), so a
+ * file arriving during a push is never mistaken for a local change. A file
+ * a pull replaced or dropped meanwhile is not recorded (the newer one comes
+ * next round). Rounds repeat until nothing is left, so files a pull added
+ * during the run are fetched too. Each file is recorded as done, so an
+ * interrupted run resumes.
+ * @param {{ folder: string, client: object, onProgress?: (p: object) => void,
+ *   exclusive?: <T>(fn: () => Promise<T>) => Promise<T> }} options
  * @returns {Promise<{ downloaded: number, images: string[], thumbnails: string[] }>} micrograph ids
  *   whose original or composite thumbnail arrived
  */
-async function downloadFiles({ folder, client, onProgress = () => {} }) {
-  const state = await sidecar.loadState(folder);
-  if (!state || !state.downloads) return { downloaded: 0, images: [], thumbnails: [] };
-  const hashes = await sidecar.createHashIndex(folder);
+async function downloadFiles({ folder, client, onProgress = () => {}, exclusive = (fn) => fn() }) {
   let downloaded = 0;
   const images = [];
   const thumbnails = [];
-  for (const [rk, sha] of Object.entries(state.downloads)) {
-    const [key, role] = [rk.slice(0, rk.indexOf('|')), rk.slice(rk.indexOf('|') + 1)];
-    const sep = key.indexOf(':');
-    const type = key.slice(0, sep);
-    const id = key.slice(sep + 1);
-    const dest = state.base[key] && state.refs[rk] === sha ? downloadTarget(folder, type, id, role) : null;
-    if (dest) {
-      const rel = path.relative(folder, dest);
-      let have = false;
-      try {
-        have = (await hashes.hash(rel)) === sha;
-      } catch (_) { /* missing */ }
-      if (!have) {
-        onProgress({ phase: 'download', item: role === 'image' ? id : path.basename(dest) });
-        if (role === 'image' && fs.existsSync(dest)) {
-          // A replaced original (rotated or edited elsewhere): its tiles are stale
-          try {
-            await tileCache.clearImageCache(await tileCache.generateImageHash(dest));
-          } catch (err) {
-            log.warn(`[Sync] Could not clear the tiles of ${id}: ${err.message}`);
+  for (let round = 0; round < 100; round++) {
+    const listed = await exclusive(async () => {
+      const state = await sidecar.loadState(folder);
+      if (!state || !state.downloads) return { pid: null, items: [] };
+      const items = Object.entries(state.downloads).map(([rk, sha]) => {
+        const key = rk.slice(0, rk.indexOf('|'));
+        const role = rk.slice(rk.indexOf('|') + 1);
+        const sep = key.indexOf(':');
+        const type = key.slice(0, sep);
+        const id = key.slice(sep + 1);
+        const dest = state.base[key] && state.refs[rk] === sha ? downloadTarget(folder, type, id, role) : null;
+        return { rk, sha, role, id, dest };
+      });
+      return { pid: state.binding.pid, items };
+    });
+    if (listed.items.length === 0) break;
+    const hashes = await sidecar.createHashIndex(folder); // read only here; recorded inside exclusive
+    for (const item of listed.items) {
+      let fetched = false;
+      if (item.dest) {
+        const rel = path.relative(folder, item.dest);
+        let have = false;
+        try {
+          have = (await hashes.hash(rel)) === item.sha;
+        } catch (_) { /* missing */ }
+        if (!have) {
+          onProgress({ phase: 'download', item: item.role === 'image' ? item.id : path.basename(item.dest) });
+          if (item.role === 'image' && fs.existsSync(item.dest)) {
+            // A replaced original (rotated or edited elsewhere): its tiles are stale
+            try {
+              await tileCache.clearImageCache(await tileCache.generateImageHash(item.dest));
+            } catch (err) {
+              log.warn(`[Sync] Could not clear the tiles of ${item.id}: ${err.message}`);
+            }
           }
+          await client.downloadFile(listed.pid, item.sha, item.dest);
+          fetched = true;
         }
-        await client.downloadFile(state.binding.pid, sha, dest);
+      }
+      await exclusive(async () => {
+        const state = await sidecar.loadState(folder);
+        if (!state || !state.downloads || state.downloads[item.rk] !== item.sha) return; // a pull changed it meanwhile
+        delete state.downloads[item.rk];
+        if (fetched) {
+          const index = await sidecar.createHashIndex(folder);
+          await index.record(path.relative(folder, item.dest), item.sha);
+          await index.save();
+        }
+        await sidecar.saveState(folder, state);
+      });
+      if (fetched) {
         downloaded++;
-        if (role === 'image') images.push(id);
-        if (role === 'thumbnail') thumbnails.push(id);
+        if (item.role === 'image') images.push(item.id);
+        if (item.role === 'thumbnail') thumbnails.push(item.id);
       }
     }
-    delete state.downloads[rk];
-    await sidecar.saveState(folder, state);
   }
-  await hashes.save();
-  return { downloaded, images, thumbnails };
+  return { downloaded, images: [...new Set(images)], thumbnails: [...new Set(thumbnails)] };
 }
 
 /**

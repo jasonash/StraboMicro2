@@ -49,6 +49,8 @@ const ZOOM_STEP = 1.1;
 
 interface TiledViewerProps {
   imagePath: string | null;
+  /** Changes when the file at imagePath was replaced (a sync download): reload, keeping the view */
+  imageRevision?: number;
   onCursorMove?: (coords: { x: number; y: number; unit: string; decimals: number } | null) => void;
   onZoomChange?: (zoom: number) => void;
 }
@@ -89,7 +91,7 @@ interface ThumbnailState {
 }
 
 export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
-  ({ imagePath, onCursorMove, onZoomChange }, ref) => {
+  ({ imagePath, imageRevision = 0, onCursorMove, onZoomChange }, ref) => {
     const stageRef = useRef<any>(null);
     const containerRef = useRef<HTMLDivElement>(null);
     const drawingLayerRef = useRef<any>(null);
@@ -107,6 +109,13 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
     const [visibleTiles, setVisibleTiles] = useState<string[]>([]);
     const [zoom, setZoom] = useState(1);
     const [position, setPosition] = useState({ x: 0, y: 0 });
+    // The view as of the last render, and the path last loaded: a reload of
+    // the same path (imageRevision) keeps the view when the size is unchanged
+    const viewRef = useRef({ zoom, position });
+    viewRef.current = { zoom, position };
+    const loadedPathRef = useRef<string | null>(null);
+    const imageMetadataRef = useRef(imageMetadata);
+    imageMetadataRef.current = imageMetadata;
     const [isLoading, setIsLoading] = useState(false);
     const [isLoadingTiles, setIsLoadingTiles] = useState(false);
     const [tileLoadingMessage, setTileLoadingMessage] = useState<string>('');
@@ -560,6 +569,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
      */
     useEffect(() => {
       if (!imagePath || !window.api) {
+        loadedPathRef.current = null;
         // Clear state when no image - use aggressive cleanup
         cleanupTileMemoryRef.current();
         setImageMetadata(null);
@@ -568,6 +578,13 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
 
       // Check if this is a sibling toggle (flag was set by siblingToggleInProgress effect)
       const isSiblingToggle = pendingSiblingToggleRef.current;
+      // The same file again, replaced on disk (imageRevision changed)
+      const isFileReload = !isSiblingToggle && loadedPathRef.current === imagePath;
+      const viewBefore = isFileReload ? viewRef.current : null;
+      const sizeBefore = isFileReload && imageMetadataRef.current
+        ? { width: imageMetadataRef.current.width, height: imageMetadataRef.current.height }
+        : null;
+      loadedPathRef.current = imagePath;
       // Clear the flag - we're now processing the toggle
       pendingSiblingToggleRef.current = false;
 
@@ -589,8 +606,8 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
         setImageMetadata(null);
         setRenderMode('thumbnail');
 
-        // Only reset zoom/position if NOT a sibling toggle
-        if (!isSiblingToggle) {
+        // Only reset zoom/position if NOT a sibling toggle or a file reload
+        if (!isSiblingToggle && !isFileReload) {
           setZoom(1);
           setPosition({ x: 0, y: 0 });
         }
@@ -664,6 +681,10 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
             setZoom(preservedViewStateRef.current.zoom);
             setPosition(preservedViewStateRef.current.position);
             preservedViewStateRef.current = null;
+          } else if (viewBefore && sizeBefore &&
+            sizeBefore.width === result.metadata.width && sizeBefore.height === result.metadata.height) {
+            setZoom(viewBefore.zoom);
+            setPosition(viewBefore.position);
           } else {
             // Fit thumbnail to screen
             fitToScreen(result.metadata.width, result.metadata.height);
@@ -698,7 +719,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
         // Aggressive cleanup
         cleanupTileMemoryRef.current();
       };
-    }, [imagePath, clearSiblingToggleInProgress]);
+    }, [imagePath, imageRevision, clearSiblingToggleInProgress]);
 
     /**
      * Handle keyboard events (e.g., Escape to cancel editing mode)

@@ -6,6 +6,7 @@ import SketchToolbar from './SketchToolbar';
 import BottomPanel from './BottomPanel';
 import { TiledViewer, TiledViewerRef } from './TiledViewer';
 import { useAppStore } from '../store';
+import { useSyncStore } from '../store/useSyncStore';
 import { findMicrographById, findSpotById } from '../store/helpers';
 
 const Viewer: React.FC = () => {
@@ -17,6 +18,8 @@ const Viewer: React.FC = () => {
   // Get active micrograph and spot from store
   const project = useAppStore((state) => state.project);
   const activeMicrographId = useAppStore((state) => state.activeMicrographId);
+  // Bumped when sync downloads a new original for it (same path, new file)
+  const imageRevision = useSyncStore((s) => (activeMicrographId ? s.imageArrivals[activeMicrographId] ?? 0 : 0));
   const activeSpotId = useAppStore((state) => state.activeSpotId);
   const selectedSpotIds = useAppStore((state) => state.selectedSpotIds);
   const setViewerRef = useAppStore((state) => state.setViewerRef);
@@ -292,7 +295,7 @@ const Viewer: React.FC = () => {
     >
       {/* Canvas area */}
       <Box sx={{ flex: 1, bgcolor: 'background.default', position: 'relative' }}>
-        <TiledViewer ref={tiledViewerRef} imagePath={activeMicrographPath} onCursorMove={setCursorCoords} onZoomChange={setCurrentZoom} />
+        <TiledViewer ref={tiledViewerRef} imagePath={activeMicrographPath} imageRevision={imageRevision} onCursorMove={setCursorCoords} onZoomChange={setCurrentZoom} />
         <DrawingToolbar />
         <SketchToolbar />
 

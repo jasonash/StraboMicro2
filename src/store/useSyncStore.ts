@@ -42,7 +42,14 @@ export interface SyncStoreState {
   noticeDismissedTotal: number;
   /** When the sync after the last answer finished with nothing left to decide */
   decisionsSettledAt: number | null;
-  update: (partial: Partial<Omit<SyncStoreState, 'update' | 'reset'>>) => void;
+  /**
+   * Micrograph id => count of originals a pull downloaded for it. The viewer
+   * and overlays reload when it changes (the file path stays the same).
+   */
+  imageArrivals: Record<string, number>;
+  /** Count one downloaded original per micrograph id */
+  imagesArrived: (micrographIds: string[]) => void;
+  update: (partial: Partial<Omit<SyncStoreState, 'update' | 'reset' | 'imagesArrived'>>) => void;
   reset: (projectId: string | null) => void;
 }
 
@@ -64,6 +71,7 @@ const initial = {
   decisionsOpen: false,
   noticeDismissedTotal: 0,
   decisionsSettledAt: null,
+  imageArrivals: {},
 };
 
 /** Items waiting for the user's decision (conflicted entities, delete questions, turned-down changes). */
@@ -75,5 +83,11 @@ export const useSyncStore = create<SyncStoreState>()((set) => ({
   projectId: null,
   ...initial,
   update: (partial) => set(partial),
+  imagesArrived: (micrographIds) => set((s) => {
+    if (micrographIds.length === 0) return s;
+    const imageArrivals = { ...s.imageArrivals };
+    for (const id of micrographIds) imageArrivals[id] = (imageArrivals[id] ?? 0) + 1;
+    return { imageArrivals };
+  }),
   reset: (projectId) => set({ projectId, ...initial }),
 }));

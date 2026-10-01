@@ -17,7 +17,9 @@
  * applies the result in one write (applyRemoteChanges), project.json is
  * saved, and main records the pull. If the user changed anything while the
  * merge ran, the pull is dropped and done again. Files the pull brought
- * download afterwards; the tree reloads their thumbnails.
+ * download afterwards, in the background (the next push does not wait for
+ * them); the tree reloads their thumbnails, and the viewer and overlays
+ * reload a micrograph whose original arrived (imageArrivals).
  * Decisions (16x to 16aa): decide() settles one item of the "Sync needs your
  * decision" dialog the same way (main works it out, the store applies it in
  * one write, project.json is saved, main records it); a full sync (push,
@@ -89,6 +91,9 @@ class ProjectSync {
   private applyingRemote = false;
   /** The next cycle pulls after pushing (the Sync click) */
   private pullRequested = false;
+  /** Background downloads of the files pulls brought */
+  private downloading: Promise<void> | null = null;
+  private downloadAgain = false;
   private stopped = false;
   private problem: Failure | null = null;
   private readonly unsubscribers: Array<() => void> = [];
@@ -162,7 +167,7 @@ class ProjectSync {
 
   /** Resolves when no cycle is running or queued. */
   async whenIdle(): Promise<void> {
-    while (!this.stopped && (this.running || this.rerun)) {
+    while (!this.stopped && (this.running || this.rerun || this.downloading)) {
       await new Promise((resolve) => setTimeout(resolve, IDLE_POLL_MS));
     }
   }
@@ -264,10 +269,7 @@ class ProjectSync {
           result = await api.sync.push(this.projectId, getRestServerUrl());
         }
       }
-      if (result.ok && (pulled || useSyncStore.getState().downloads > 0)) {
-        const d = await this.downloadFiles(api);
-        if (!d.ok) result = d;
-      }
+      if (result.ok && (pulled || useSyncStore.getState().downloads > 0)) this.startDownloads(api);
     } catch (error) {
       result = { ok: false, kind: 'error', message: error instanceof Error ? error.message : String(error) };
     } finally {
@@ -441,14 +443,44 @@ class ProjectSync {
     }, DECISION_SYNC_MS);
   }
 
-  /** Fetch files pulls brought; the tree reloads the thumbnails of micrographs that got one. */
+  /**
+   * Fetch the files pulls brought, beside the push cycles (a big download
+   * must not hold up the next push). A request while one runs makes it go
+   * round once more. A failure becomes the problem once no cycle is running
+   * (whose result would overwrite it); its retry runs a cycle, which starts
+   * the downloads again.
+   */
+  private startDownloads(api: Api): void {
+    if (this.downloading) {
+      this.downloadAgain = true;
+      return;
+    }
+    this.downloading = (async () => {
+      let d: { ok: true } | Failure;
+      do {
+        this.downloadAgain = false;
+        d = await this.downloadFiles(api);
+      } while (d.ok && this.downloadAgain && !this.stopped);
+      if (d.ok || this.stopped) return;
+      while (this.running && !this.stopped) {
+        await new Promise((resolve) => setTimeout(resolve, IDLE_POLL_MS));
+      }
+      if (!this.stopped && !this.retryTimer) this.failed(d);
+    })().finally(() => {
+      this.downloading = null;
+    });
+  }
+
+  /** One download run; the tree reloads thumbnails, the viewer reloads arrived originals. */
   private async downloadFiles(api: Api): Promise<{ ok: true } | Failure> {
     const d = await api.sync.download(this.projectId, getRestServerUrl());
+    if (this.stopped) return { ok: true };
     if (!d.ok) return d;
+    useSyncStore.getState().imagesArrived(d.images);
     for (const id of new Set([...d.images, ...d.thumbnails])) {
       window.dispatchEvent(new CustomEvent('thumbnail-generated', { detail: { micrographId: id } }));
     }
-    useSyncStore.getState().update({ downloads: 0 });
+    useSyncStore.getState().update({ downloads: 0, ...(this.running ? {} : { progress: null }) });
     return { ok: true };
   }
 

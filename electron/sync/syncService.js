@@ -12,7 +12,8 @@
  *   sync:pull-commit  after the app applied them and saved project.json:
  *                  record the pull (base, lastSeq, conflicts, downloads)
  *   sync:pull-discard drop a pending pull (the user edited meanwhile)
- *   sync:download  fetch files a pull brought (originals, thumbnails, attachments)
+ *   sync:download  fetch files a pull brought (originals, thumbnails, attachments);
+ *                  runs beside pushes and pulls, see download()
  *   sync:clone     make a synced copy of a server project on this computer
  *   sync:decisions what waits for the user (conflicts, delete questions,
  *                  changes the server turned down), for the dialog
@@ -318,11 +319,18 @@ function discardPull(projectId, pullId) {
  * @param {(p: object) => void} onProgress
  */
 function download(projectId, restServer, onProgress) {
-  return serialize(projectId, async () => {
+  // Its own queue: transfers do not hold up pushes and pulls; only reading
+  // and recording state.json join the sync queue (downloadFiles' exclusive)
+  return serialize(`download:${projectId}`, async () => {
     try {
       const opened = await openSynced(projectId, restServer);
       if (opened.failure) return opened.failure;
-      const r = await loadEngine().pull.downloadFiles({ folder: opened.folder, client: makeClient(restServer), onProgress });
+      const r = await loadEngine().pull.downloadFiles({
+        folder: opened.folder,
+        client: makeClient(restServer),
+        onProgress,
+        exclusive: (fn) => serialize(projectId, fn),
+      });
       if (r.downloaded > 0) log.info(`[Sync] Downloaded ${r.downloaded} files for ${projectId}`);
       return { ok: true, downloaded: r.downloaded, images: r.images, thumbnails: r.thumbnails };
     } catch (err) {

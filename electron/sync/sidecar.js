@@ -111,6 +111,12 @@ async function createHashIndex(projectFolder) {
       dirty = true;
       return sha256;
     },
+    /** A file whose SHA-256 is known (a download that was verified on arrival). */
+    async record(relPath, sha256) {
+      const st = await fs.promises.stat(path.join(projectFolder, relPath));
+      index[relPath] = { size: st.size, mtimeMs: st.mtimeMs, sha256 };
+      dirty = true;
+    },
     async save() {
       if (!dirty) return;
       await fs.promises.mkdir(syncDir(projectFolder), { recursive: true });

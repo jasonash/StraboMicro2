@@ -208,7 +208,28 @@ app.whenReady().then(async () => {
     const pushedMid = await svc.push(pid, SERVER, () => {});
     const refsMid = (await sidecar.loadState(folder)).refs;
     check('a push before the download keeps the server\'s image ref', pushedMid.ok && refsMid[`micrograph:${NEW_M}|image`] === sha);
-    const dl = await svc.download(pid, SERVER, () => {});
+    // The download runs beside pushes: hold the file transfer and push meanwhile
+    const realFetch = globalThis.fetch;
+    let release;
+    const gate = new Promise((resolve) => { release = resolve; });
+    let reached;
+    const atGate = new Promise((resolve) => { reached = resolve; });
+    globalThis.fetch = async (url, opts) => {
+      if (String(url).includes('/blobs/')) {
+        reached();
+        await gate;
+      }
+      return realFetch(url, opts);
+    };
+    const dlRun = svc.download(pid, SERVER, () => {});
+    await atGate;
+    await appEdit((p) => { p.datasets[0].samples[0].label = 'edited during the download'; });
+    const during = await Promise.race([svc.push(pid, SERVER, () => {}), new Promise((r) => setTimeout(() => r('blocked'), 10000))]);
+    check('a push runs while a download is in progress', during !== 'blocked' && during.ok && during.pushed === 1, JSON.stringify(during));
+    check('the entity being downloaded stays listed during the push', (await svc.getStatus(pid)).downloads >= 1);
+    release();
+    globalThis.fetch = realFetch;
+    const dl = await dlRun;
     const imgPath = path.join(folder, 'images', NEW_M);
     check('image downloaded and verified', dl.ok && dl.images.includes(NEW_M) && fs.existsSync(imgPath) && (await hashFile(imgPath)) === sha,
       JSON.stringify(dl));
