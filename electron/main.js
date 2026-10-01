@@ -151,6 +151,7 @@ if (process.platform === 'win32' && app.isPackaged && _sharpDebugLog.length > 0)
 
 const { createZipArchive } = require('./zipArchive');
 const projectFolders = require('./projectFolders');
+const { unlinkWithRetry, copyFileAtomic } = require('./atomicFile');
 const imageConverter = require('./imageConverter');
 const projectSerializer = require('./projectSerializer');
 const scratchSpace = require('./scratchSpace');
@@ -3270,26 +3271,6 @@ ipcMain.handle('image:rotate', async (event, imagePath, degrees, flip = false) =
 });
 
 /**
- * Unlink with retry on transient Windows file locks.
- * EPERM/EBUSY/EACCES on unlink usually means another process (AV scanner,
- * indexer) or a not-yet-released native handle has the file open. A short
- * backoff is enough to ride out almost all real-world cases.
- */
-async function unlinkWithRetry(filePath, { attempts = 6, baseDelayMs = 50 } = {}) {
-  const fsp = require('fs').promises;
-  for (let i = 0; i < attempts; i++) {
-    try {
-      await fsp.unlink(filePath);
-      return;
-    } catch (err) {
-      const retryable = err && (err.code === 'EPERM' || err.code === 'EBUSY' || err.code === 'EACCES');
-      if (!retryable || i === attempts - 1) throw err;
-      await new Promise(r => setTimeout(r, baseDelayMs * (i + 1)));
-    }
-  }
-}
-
-/**
  * ============================================================================
  * COMPOSITE THUMBNAIL GENERATION HANDLERS
  * ============================================================================
@@ -5915,7 +5896,10 @@ ipcMain.handle('strabo-tools:process-full-resolution', async (event, params) => 
 ipcMain.handle('strabo-tools:overwrite-image', async (event, { identifier, targetPath }) => {
   try {
     const scratchPath = scratchSpace.getScratchPath(identifier);
-    await fs.promises.copyFile(scratchPath, targetPath);
+    // Replace the image with a new file instead of writing into it: a crash
+    // cannot leave a half-written original, and a hard-linked copy of the
+    // file elsewhere is never changed along with it.
+    await copyFileAtomic(scratchPath, targetPath);
     try { await fs.promises.unlink(scratchPath); } catch { /* ignore cleanup failure */ }
     return { success: true };
   } catch (error) {
