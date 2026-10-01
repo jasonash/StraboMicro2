@@ -72,6 +72,19 @@ async function moveIntoPlace(tmpPath, targetPath) {
 }
 
 /**
+ * Flush a finished file's contents to disk
+ * @param {string} filePath
+ */
+async function syncFile(filePath) {
+  const handle = await fs.promises.open(filePath, 'r+');
+  try {
+    await handle.sync();
+  } finally {
+    await handle.close();
+  }
+}
+
+/**
  * Write data to a file atomically (temporary file, flush, rename)
  * @param {string} targetPath
  * @param {string | Buffer} data
@@ -104,12 +117,7 @@ async function copyFileAtomic(sourcePath, targetPath) {
   const tmpPath = tempPathFor(targetPath);
   try {
     await fs.promises.copyFile(sourcePath, tmpPath, fs.constants.COPYFILE_EXCL);
-    const handle = await fs.promises.open(tmpPath, 'r+');
-    try {
-      await handle.sync();
-    } finally {
-      await handle.close();
-    }
+    await syncFile(tmpPath);
   } catch (err) {
     await fs.promises.rm(tmpPath, { force: true }).catch(() => {});
     throw err;
@@ -122,4 +130,8 @@ module.exports = {
   unlinkWithRetry,
   writeFileAtomic,
   copyFileAtomic,
+  // For callers that stream into the temporary file themselves
+  tempPathFor,
+  syncFile,
+  moveIntoPlace,
 };
