@@ -6,8 +6,8 @@
  * fields changed on both sides, items deleted on one side and changed on the
  * other, and changes the server did not accept. Nothing is chosen for the
  * user; whatever is left open stays held (not pushed) and keeps the local
- * values. Each answer is settled through the sync controller and pushed like
- * an edit. Opened from the store's decisionsOpen flag (the notice, a Sync
+ * values. Each answer is settled through the sync controller, which syncs
+ * right after it (either mode); the last answer closes the dialog. Opened from the store's decisionsOpen flag (the notice, a Sync
  * click that left new items, the Debug menu). Sync keeps running while it is
  * open (data-sync-decisions tells the controller not to wait for it).
  */
@@ -206,16 +206,18 @@ export default function SyncDecisionsDialog() {
 
   const close = useCallback(() => useSyncStore.getState().update({ decisionsOpen: false }), []);
 
-  const load = useCallback(async () => {
-    if (!projectId || !window.api) return;
+  /** Returns how many items are waiting (null when the list could not be read). */
+  const load = useCallback(async (): Promise<number | null> => {
+    if (!projectId || !window.api) return null;
     const r = await window.api.sync.decisions(projectId);
-    if (r.ok) {
-      setLists({ conflicts: r.conflicts, questions: r.questions, refused: r.refused });
-      setError(null);
-    } else {
-      setError(r.message);
-    }
     setLoaded(true);
+    if (!r.ok) {
+      setError(r.message);
+      return null;
+    }
+    setLists({ conflicts: r.conflicts, questions: r.questions, refused: r.refused });
+    setError(null);
+    return r.conflicts.length + r.questions.length + r.refused.length;
   }, [projectId]);
 
   useEffect(() => {
@@ -238,8 +240,10 @@ export default function SyncDecisionsDialog() {
     try {
       const { decideSync } = await import('@/services/syncController');
       const r = await decideSync(decision);
+      const left = await load();
       if (!r.ok) setError(r.message);
-      await load();
+      // The last answer: the dialog closes and the sync after it runs (16ab)
+      else if (left === 0) close();
     } finally {
       setBusy(false);
     }

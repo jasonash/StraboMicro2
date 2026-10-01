@@ -40,6 +40,8 @@ export interface SyncStoreState {
   decisionsOpen: boolean;
   /** Items waiting when the user closed the notice; it shows again only above this */
   noticeDismissedTotal: number;
+  /** When the sync after the last answer finished with nothing left to decide */
+  decisionsSettledAt: number | null;
   update: (partial: Partial<Omit<SyncStoreState, 'update' | 'reset'>>) => void;
   reset: (projectId: string | null) => void;
 }
@@ -61,6 +63,7 @@ const initial = {
   lastSyncedAt: null,
   decisionsOpen: false,
   noticeDismissedTotal: 0,
+  decisionsSettledAt: null,
 };
 
 /** Items waiting for the user's decision (conflicted entities, delete questions, turned-down changes). */

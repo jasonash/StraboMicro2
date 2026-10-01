@@ -20,9 +20,11 @@
  * download afterwards; the tree reloads their thumbnails.
  * Decisions (16x to 16aa): decide() settles one item of the "Sync needs your
  * decision" dialog the same way (main works it out, the store applies it in
- * one write, project.json is saved, main records it); the answer is then
- * pushed like any edit. A Sync click that leaves new items opens the
- * dialog; a restore waiting for its pull makes every cycle pull.
+ * one write, project.json is saved, main records it); a full sync (push,
+ * pull) follows 1 s later in either mode, since an answer is part of the
+ * sync it interrupted (16ab). A Sync click or an answer that leaves new
+ * items opens the dialog; a restore waiting for its pull makes every cycle
+ * pull.
  *
  * A push cycle saves project.json first (16w: the base never gets ahead of
  * the file on disk), then asks main to push. It saves only when the store
@@ -55,6 +57,8 @@ const EDIT_POLL_MS = 1_000;
 const PULL_ATTEMPTS = 3;
 /** How often a decision waiting for a running cycle checks again */
 const IDLE_POLL_MS = 200;
+/** Pause after an answer before its sync (answers given in a row share one) */
+const DECISION_SYNC_MS = 1_000;
 
 type SyncedStatus = Extract<SyncStatusResult, { synced: true }>;
 type Failure = Extract<SyncPushResult, { ok: false }>;
@@ -69,6 +73,9 @@ class ProjectSync {
   private maxWaitTimer: ReturnType<typeof setTimeout> | null = null;
   private retryTimer: ReturnType<typeof setTimeout> | null = null;
   private recountTimer: ReturnType<typeof setTimeout> | null = null;
+  private decisionTimer: ReturnType<typeof setTimeout> | null = null;
+  /** The next cycle is the sync after an answer */
+  private decisionRun = false;
   private retryCount = 0;
   private running = false;
   private rerun = false;
@@ -142,6 +149,8 @@ class ProjectSync {
     this.recountTimer = null;
     if (this.retryTimer) clearTimeout(this.retryTimer);
     this.retryTimer = null;
+    if (this.decisionTimer) clearTimeout(this.decisionTimer);
+    this.decisionTimer = null;
     for (const off of this.unsubscribers.splice(0)) off();
   }
 
@@ -228,6 +237,8 @@ class ProjectSync {
     this.changedSinceRun = false;
     const wantPull = this.pullRequested;
     this.pullRequested = false;
+    const fromDecision = this.decisionRun;
+    this.decisionRun = false;
     const decisionsBefore = decisionsWaiting(useSyncStore.getState());
     useSyncStore.getState().update({ activity: 'syncing', progress: null });
 
@@ -279,8 +290,12 @@ class ProjectSync {
       if (result.notAccepted > 0 || pulled) {
         void this.refreshCounts().then(() => {
           // A Sync click that left new items to decide opens the dialog (16x)
-          if (wantPull && !this.stopped && decisionsWaiting(useSyncStore.getState()) > decisionsBefore) {
+          if (this.stopped) return;
+          const waiting = decisionsWaiting(useSyncStore.getState());
+          if (wantPull && waiting > decisionsBefore) {
             useSyncStore.getState().update({ decisionsOpen: true });
+          } else if (fromDecision && waiting === 0) {
+            useSyncStore.getState().update({ decisionsSettledAt: Date.now() });
           }
         });
       }
@@ -404,12 +419,26 @@ class ProjectSync {
     }
     if (this.stopped) return result;
     await this.refreshCounts();
-    if (result.ok) this.schedulePush();
+    if (result.ok) this.scheduleDecisionSync();
     if (this.rerun) {
       this.rerun = false;
       void this.run();
     }
     return result;
+  }
+
+  /** The sync after an answer: push and pull in either mode (16ab). */
+  private scheduleDecisionSync(): void {
+    if (this.stopped) return;
+    this.changedSinceRun = true;
+    if (!this.running) useSyncStore.getState().update({ activity: 'waiting' });
+    if (this.decisionTimer) clearTimeout(this.decisionTimer);
+    this.decisionTimer = setTimeout(() => {
+      this.decisionTimer = null;
+      this.pullRequested = true;
+      this.decisionRun = true;
+      void this.run();
+    }, DECISION_SYNC_MS);
   }
 
   /** Fetch files pulls brought; the tree reloads the thumbnails of micrographs that got one. */
