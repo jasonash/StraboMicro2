@@ -209,6 +209,10 @@ app.whenReady().then(async () => {
     const dropM2 = (p) => { p.datasets[0].samples[0].micrographs = p.datasets[0].samples[0].micrographs.filter((m) => m.id !== M2); };
     await appEdit(dropM2);
     await otherPush([{ op: 'update', type: 'spot', id: S2, baseVersion: await v('spot', S2), fields: { name: 'their spot name' } }]);
+    // Sync Now pushes before it pulls: the delete must not take their edit beneath away
+    const early = await push();
+    check('my delete pushed before pulling is turned down (their edit beneath)', early.ok && early.conflicts === 1 &&
+      (await onServer())[KM2] && (await onServer())[`spot:${S2}`].body.name === 'their spot name', JSON.stringify(early));
     await appPull();
     L = await svc.listDecisions(pid);
     const q1 = L.ok && L.questions[0];

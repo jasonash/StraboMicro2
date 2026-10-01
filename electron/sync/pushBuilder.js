@@ -173,16 +173,46 @@ function planPush(base, current, { skip = new Set() } = {}) {
     }
     return r;
   };
+  const roots = new Set(gone.map(rootOf));
+  // What the base has beneath each entity (structural and nested), so a
+  // delete tells the server every version it knows there: anything beneath
+  // that changed or was added since makes the delete a conflict, and the
+  // pull asks the user (spec v3 §4.5)
   /** @type {Map<string, string[]>} */
-  const byRoot = new Map();
-  for (const k of gone) {
-    const r = rootOf(k);
-    if (!byRoot.has(r)) byRoot.set(r, []);
-    if (k !== r) byRoot.get(r).push(k);
+  const baseBelow = new Map();
+  for (const [k, e] of Object.entries(base)) {
+    const ups = [];
+    if (e.parentType) ups.push(`${e.parentType}:${e.parentId}`);
+    if (e.type === 'micrograph' && e.body.parentID) ups.push(`micrograph:${e.body.parentID}`);
+    for (const u of ups) {
+      if (!baseBelow.has(u)) baseBelow.set(u, []);
+      baseBelow.get(u).push(k);
+    }
   }
-  for (const [root, cascade] of byRoot) {
+  const beneath = (root) => {
+    const out = [];
+    const seen = new Set([root]);
+    const queue = [...(baseBelow.get(root) || [])];
+    while (queue.length > 0) {
+      const k = queue.shift();
+      if (seen.has(k)) continue;
+      seen.add(k);
+      out.push(k);
+      queue.push(...(baseBelow.get(k) || []));
+    }
+    return out;
+  };
+  for (const root of roots) {
     const e = base[root];
-    deletes.push({ change: { op: 'delete', type: e.type, id: e.id, baseVersion: e.version }, key: root, kind: 'delete', cascade });
+    const below = beneath(root);
+    if (below.some((k) => skip.has(k))) continue; // something beneath is held: the delete waits too
+    /** @type {Record<string, number>} */
+    const cascadeVersions = {};
+    for (const k of below) cascadeVersions[k] = base[k].version;
+    deletes.push({
+      change: { op: 'delete', type: e.type, id: e.id, baseVersion: e.version, cascadeVersions },
+      key: root, kind: 'delete', cascade: below, // the server removes all of it
+    });
   }
 
   return [...creates, ...updates, ...deletes, ...orders];
