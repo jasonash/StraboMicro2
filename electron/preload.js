@@ -619,7 +619,7 @@ contextBridge.exposeInMainWorld('api', {
 
   // Sync of synced projects (collaboration); local-only projects only ever call status
   sync: {
-    status: (projectId) => ipcRenderer.invoke('sync:status', projectId),
+    status: (projectId, project) => ipcRenderer.invoke('sync:status', projectId, project),
     turnOn: (projectId, restServer, mode) => ipcRenderer.invoke('sync:turn-on', projectId, restServer, mode),
     push: (projectId, restServer) => ipcRenderer.invoke('sync:push', projectId, restServer),
     setMode: (projectId, mode) => ipcRenderer.invoke('sync:set-mode', projectId, mode),

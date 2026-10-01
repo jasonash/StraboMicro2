@@ -2,6 +2,7 @@
  * Sync service (main process): the IPC side of syncing
  *
  *   sync:status    is the project synced; mode, binding, changes waiting
+ *                  (counted in the app's current project when it is passed)
  *   sync:turn-on   create the server project and move the folder into the
  *                  account folder (the first upload runs as the first push)
  *   sync:push      push local changes of a synced project
@@ -129,10 +130,12 @@ function failure(err) {
 
 /**
  * @param {string} projectId
+ * @param {object | null} [project] - The app's current project, to count
+ *   changes not saved yet (else the saved project.json is counted)
  * @returns {Promise<{ synced: false } | { synced: true, mode: string, phase: string, server: string,
  *   email: string, pkey: string, pid: number, pending: number | null, refused: number }>}
  */
-async function getStatus(projectId) {
+async function getStatus(projectId, project = null) {
   const folder = projectFolders.getProjectFolderPath(projectId);
   if (!isSyncedFolder(folder)) return { synced: false };
   const { sidecar, syncEngine } = loadEngine();
@@ -140,7 +143,7 @@ async function getStatus(projectId) {
   if (!state) return { synced: false };
   let pending = null;
   try {
-    pending = await syncEngine.countPendingChanges(folder);
+    pending = await syncEngine.countPendingChanges(folder, project);
   } catch (err) {
     log.warn(`[Sync] Could not count pending changes for ${projectId}: ${err.message}`);
   }
@@ -270,9 +273,9 @@ function notifyLocalChange(projectId) {
  */
 function registerSyncIpc(ipcMain, getMainWindow) {
   getWindow = getMainWindow;
-  ipcMain.handle('sync:status', async (_event, projectId) => {
+  ipcMain.handle('sync:status', async (_event, projectId, project) => {
     try {
-      return await getStatus(projectId);
+      return await getStatus(projectId, project && typeof project === 'object' ? project : null);
     } catch (err) {
       log.error('[Sync] Status failed:', err);
       return { synced: false, error: err.message };

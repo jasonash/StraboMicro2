@@ -140,6 +140,10 @@ app.whenReady().then(async () => {
     // An edit is counted, then pushed
     const pj = JSON.parse(fs.readFileSync(path.join(folder, 'project.json'), 'utf8'));
     pj.datasets[0].samples[0].micrographs[0].notes = 'edited by the service test';
+    // Not saved yet (Manual mode): counted in the app's project, not in the file
+    check('unsaved edit counted when the app passes its project', (await svc.getStatus(pid, pj)).pending === 1 &&
+      (await svc.getStatus(pid)).pending === 0);
+    check('a project with another id is ignored for the count', (await svc.getStatus(pid, { ...pj, id: 'other' })).pending === 0);
     fs.writeFileSync(path.join(folder, 'project.json'), JSON.stringify(pj, null, 2));
     check('edit counted as one change waiting', (await svc.getStatus(pid)).pending === 1);
     const c = await svc.push(pid, SERVER, () => {});

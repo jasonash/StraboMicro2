@@ -235,15 +235,19 @@ async function pushProject({ folder, client, onProgress = () => {} }) {
 }
 
 /**
- * Entity changes in the saved project.json that the server does not have
- * yet. File uploads are not counted.
+ * Entity changes the server does not have yet, in the given project (the
+ * app's current one, which can be ahead of the file in Manual mode) or else
+ * in the saved project.json. File uploads are not counted.
  * @param {string} folder
+ * @param {object | null} [unsavedProject]
  * @returns {Promise<number>}
  */
-async function countPendingChanges(folder) {
+async function countPendingChanges(folder, unsavedProject = null) {
   const state = await sidecar.loadState(folder);
   if (!state) return 0;
-  const { project, pointCounts } = await readProjectFiles(folder);
+  const saved = await readProjectFiles(folder);
+  const project = unsavedProject && unsavedProject.id === saved.project.id ? unsavedProject : saved.project;
+  const { pointCounts } = saved;
   // A push in flight is still in the diff (the base takes it only once the
   // server answers), unless a later edit reverted it; it still has to be sent
   const inFlight = state.outgoingPush ? state.outgoingPush.planned.length : 0;

@@ -32,6 +32,8 @@ const DEBOUNCE_MS = 3_000;
 const MAX_WAIT_MS = 30_000;
 const RETRY_DELAYS_MS = [5_000, 15_000, 30_000, 60_000, 120_000, 300_000];
 const SLOW_RETRY_MS = 10 * 60_000;
+/** Manual mode: recount the changes waiting this long after editing pauses */
+const RECOUNT_MS = 1_000;
 
 type SyncedStatus = Extract<SyncStatusResult, { synced: true }>;
 type Failure = Extract<SyncPushResult, { ok: false }>;
@@ -44,6 +46,7 @@ class ProjectSync {
   private debounceTimer: ReturnType<typeof setTimeout> | null = null;
   private maxWaitTimer: ReturnType<typeof setTimeout> | null = null;
   private retryTimer: ReturnType<typeof setTimeout> | null = null;
+  private recountTimer: ReturnType<typeof setTimeout> | null = null;
   private retryCount = 0;
   private running = false;
   private rerun = false;
@@ -104,6 +107,8 @@ class ProjectSync {
   stop(): void {
     this.stopped = true;
     this.clearTimers();
+    if (this.recountTimer) clearTimeout(this.recountTimer);
+    this.recountTimer = null;
     if (this.retryTimer) clearTimeout(this.retryTimer);
     this.retryTimer = null;
     for (const off of this.unsubscribers.splice(0)) off();
@@ -134,7 +139,14 @@ class ProjectSync {
     this.changedSinceRun = true;
     this.needsSave = true;
     if (!this.running) useSyncStore.getState().update({ activity: 'waiting' });
-    if (this.mode !== 'automatic') return;
+    if (this.mode !== 'automatic') {
+      if (this.recountTimer) clearTimeout(this.recountTimer);
+      this.recountTimer = setTimeout(() => {
+        this.recountTimer = null;
+        void this.refreshCounts();
+      }, RECOUNT_MS);
+      return;
+    }
     if (this.debounceTimer) clearTimeout(this.debounceTimer);
     this.debounceTimer = setTimeout(() => void this.run(), DEBOUNCE_MS);
     if (!this.maxWaitTimer) this.maxWaitTimer = setTimeout(() => void this.run(), MAX_WAIT_MS);
@@ -234,11 +246,15 @@ class ProjectSync {
     }, delay);
   }
 
-  /** Changes waiting and refused, from main (diffs the saved project.json). */
+  /** Changes waiting (in the app's current project) and refused, from main. */
   private async refreshCounts(): Promise<void> {
-    const status = await window.api?.sync.status(this.projectId);
+    const project = useAppStore.getState().project;
+    const status = await window.api?.sync.status(this.projectId, project?.id === this.projectId ? project : undefined);
     if (this.stopped || !status?.synced) return;
     useSyncStore.getState().update({ pending: status.pending, refused: status.refused, phase: status.phase });
+    if (!this.running && status.pending === 0 && !this.debounceTimer) {
+      useSyncStore.getState().update({ activity: 'idle' });
+    }
   }
 }
 

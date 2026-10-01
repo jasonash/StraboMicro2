@@ -804,7 +804,8 @@ interface Window {
 
     // Sync of synced projects (electron/sync/syncService.js)
     sync: {
-      status: (projectId: string) => Promise<SyncStatusResult>;
+      /** Pass the current project to count changes not saved yet */
+      status: (projectId: string, project?: unknown) => Promise<SyncStatusResult>;
       /** Moves the project folder: the project must not be loaded */
       turnOn: (projectId: string, restServer: string, mode: SyncMode) => Promise<SyncCallResult & { folder?: string; pid?: number }>;
       /** Pushes the saved project.json (save first) */

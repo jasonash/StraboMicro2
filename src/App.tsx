@@ -1312,7 +1312,7 @@ function App() {
         alert('Open a project first.');
         return;
       }
-      const status = await window.api.sync.status(current.id);
+      const status = await window.api.sync.status(current.id, current);
       if (!status.synced) {
         alert('This project is local only (not synced).');
         return;
