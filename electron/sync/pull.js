@@ -24,7 +24,8 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const log = require('electron-log');
-const { explode, entityKey, CHILD_KEYS, diffProjects, applyEntityChanges, perUserFields } = require('../shared/entityModel.mjs');
+const { explode, assemble, entityKey, CHILD_KEYS, diffProjects, applyEntityChanges, perUserFields } = require('../shared/entityModel.mjs');
+const projectFolders = require('../projectFolders');
 const { deserializeFromLegacyFormat } = require('../projectSerializer');
 const { writeFileAtomic } = require('../atomicFile');
 const tileCache = require('../tileCache');
@@ -51,17 +52,6 @@ function stateFromEntry(e) {
   const s = { type: e.type, id: e.id, parentType: e.parentType ?? null, parentId: e.parentId ?? null, body: e.body || {} };
   if (Object.keys(CHILD_KEYS[e.type] || {}).length > 0) s.childOrder = e.childOrder || {};
   return s;
-}
-
-/**
- * Keys held from pushes: unresolved conflicts and delete questions.
- * @param {object} state
- * @returns {Set<string>}
- */
-function heldKeys(state) {
-  const out = new Set(Object.keys(state.conflicts || {}));
-  for (const q of state.questions || []) for (const k of q.keys) out.add(k);
-  return out;
 }
 
 /**
@@ -289,14 +279,16 @@ async function commitPull({ folder, pending }) {
  * Fetch files the server has and this copy lacks (one at a time; each one
  * is recorded as done, so an interrupted run resumes).
  * @param {{ folder: string, client: object, onProgress?: (p: object) => void }} options
- * @returns {Promise<{ downloaded: number, images: string[] }>} images: micrograph ids whose original arrived
+ * @returns {Promise<{ downloaded: number, images: string[], thumbnails: string[] }>} micrograph ids
+ *   whose original or composite thumbnail arrived
  */
 async function downloadFiles({ folder, client, onProgress = () => {} }) {
   const state = await sidecar.loadState(folder);
-  if (!state || !state.downloads) return { downloaded: 0, images: [] };
+  if (!state || !state.downloads) return { downloaded: 0, images: [], thumbnails: [] };
   const hashes = await sidecar.createHashIndex(folder);
   let downloaded = 0;
   const images = [];
+  const thumbnails = [];
   for (const [rk, sha] of Object.entries(state.downloads)) {
     const [key, role] = [rk.slice(0, rk.indexOf('|')), rk.slice(rk.indexOf('|') + 1)];
     const sep = key.indexOf(':');
@@ -322,13 +314,71 @@ async function downloadFiles({ folder, client, onProgress = () => {} }) {
         await client.downloadFile(state.binding.pid, sha, dest);
         downloaded++;
         if (role === 'image') images.push(id);
+        if (role === 'thumbnail') thumbnails.push(id);
       }
     }
     delete state.downloads[rk];
     await sidecar.saveState(folder, state);
   }
   await hashes.save();
-  return { downloaded, images };
+  return { downloaded, images, thumbnails };
 }
 
-module.exports = { preparePull, commitPull, downloadFiles, heldKeys, downloadTarget };
+/**
+ * Make a synced copy of a server project on this computer (a project synced
+ * from another computer): the snapshot becomes project.json, point count
+ * files and the base, then the files download. Tiles are generated locally
+ * when the project opens (16v).
+ * @param {{ pid: number, restServer: string, user: { pkey: number | string, email: string },
+ *   mode?: 'automatic' | 'manual', client: object, onProgress?: (p: object) => void }} options
+ * @returns {Promise<{ projectId: string, folder: string, downloaded: number }>}
+ */
+async function cloneProject({ pid, restServer, user, mode = 'automatic', client, onProgress = () => {} }) {
+  onProgress({ phase: 'pull', count: 0 });
+  const snap = await client.snapshot(pid);
+  const root = (snap.entities || []).find((e) => e.type === 'project');
+  if (!root) throw new Error('The server project has no project entity');
+  const projectId = root.id;
+  const folder = projectFolders.getAccountCopyPath(projectId, restServer, user.pkey);
+  if (fs.existsSync(path.join(folder, 'project.json'))) {
+    throw new Error('This computer already has a synced copy of this project for this account');
+  }
+
+  /** @type {Record<string, object>} */
+  const base = {};
+  for (const e of snap.entities) {
+    const s = stateFromEntry({ ...e, op: 'update' });
+    base[entityKey(e.type, e.id)] = { ...s, version: e.version };
+  }
+  const assembled = assemble(base, projectId);
+  if (!assembled) throw new Error('The server project could not be assembled');
+
+  projectFolders.useProjectCopy(projectId, folder);
+  await projectFolders.createProjectFolders(projectId);
+  for (const pc of assembled.pointCounts) {
+    const file = path.join(folder, 'point-counts', `${pc.id}.json`);
+    await fs.promises.mkdir(path.dirname(file), { recursive: true });
+    await writeFileAtomic(file, JSON.stringify(pc, null, 2));
+  }
+
+  const state = sidecar.newState({ server: restServer, pkey: Number(user.pkey), email: user.email, pid, straboId: projectId }, mode);
+  state.phase = 'ready';
+  state.lastSeq = snap.headSeq;
+  state.base = base;
+  state.downloads = {};
+  for (const r of snap.refs || []) {
+    const rk = `${entityKey(r.type, r.id)}|${r.role}`;
+    state.refs[rk] = r.sha256;
+    if (base[entityKey(r.type, r.id)] && downloadTarget(folder, r.type, r.id, r.role)) state.downloads[rk] = r.sha256;
+  }
+  await normalizeBaseOrder(state.base, folder);
+  // project.json last of the folder's files: a copy is usable once it exists
+  await sidecar.saveState(folder, state);
+  await writeFileAtomic(path.join(folder, 'project.json'), JSON.stringify(assembled.project, null, 2));
+  log.info(`[Sync] Made a synced copy of server project ${pid} (${projectId}) in ${folder}`);
+
+  const d = await downloadFiles({ folder, client, onProgress });
+  return { projectId, folder, downloaded: d.downloaded };
+}
+
+module.exports = { preparePull, commitPull, downloadFiles, downloadTarget, cloneProject };

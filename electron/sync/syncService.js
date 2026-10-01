@@ -13,6 +13,7 @@
  *                  record the pull (base, lastSeq, conflicts, downloads)
  *   sync:pull-discard drop a pending pull (the user edited meanwhile)
  *   sync:download  fetch files a pull brought (originals, thumbnails, attachments)
+ *   sync:clone     make a synced copy of a server project on this computer
  * Events to the renderer:
  *   sync:progress      { projectId, phase, ... } while pushing
  *   sync:local-change  projectId, after a file-only change (point counts,
@@ -312,7 +313,33 @@ function download(projectId, restServer, onProgress) {
       if (opened.failure) return opened.failure;
       const r = await loadEngine().pull.downloadFiles({ folder: opened.folder, client: makeClient(restServer), onProgress });
       if (r.downloaded > 0) log.info(`[Sync] Downloaded ${r.downloaded} files for ${projectId}`);
-      return { ok: true, downloaded: r.downloaded, images: r.images };
+      return { ok: true, downloaded: r.downloaded, images: r.images, thumbnails: r.thumbnails };
+    } catch (err) {
+      return failure(err);
+    }
+  });
+}
+
+/**
+ * Make a synced copy of a server project (synced from another computer).
+ * @param {number} pid - Server project id
+ * @param {string} restServer
+ * @param {'automatic' | 'manual'} mode
+ * @param {(p: object) => void} onProgress
+ */
+function clone(pid, restServer, mode, onProgress) {
+  return serialize(`clone:${pid}`, async () => {
+    try {
+      if (!Number.isInteger(pid) || pid <= 0) return { ok: false, kind: 'error', message: 'Not a server project number.' };
+      const tokens = await tokenService.getTokens();
+      if (!tokens || !tokens.user) return { ok: false, kind: 'auth', message: 'Log in to download a synced project.' };
+      const client = makeClient(restServer);
+      await client.ping();
+      const r = await loadEngine().pull.cloneProject({
+        pid, restServer, user: { pkey: tokens.user.pkey, email: tokens.user.email },
+        mode: mode === 'manual' ? 'manual' : 'automatic', client, onProgress,
+      });
+      return { ok: true, projectId: r.projectId, downloaded: r.downloaded };
     } catch (err) {
       return failure(err);
     }
@@ -383,8 +410,10 @@ function registerSyncIpc(ipcMain, getMainWindow) {
     pull(projectId, restServer, (p) => send('sync:progress', { projectId, ...p })));
   ipcMain.handle('sync:pull-commit', (_event, projectId, pullId) => commitPull(projectId, pullId));
   ipcMain.handle('sync:pull-discard', (_event, projectId, pullId) => discardPull(projectId, pullId));
+  ipcMain.handle('sync:clone', (_event, pid, restServer, mode) =>
+    clone(Number(pid), restServer, mode, (p) => send('sync:progress', { projectId: `server:${pid}`, ...p })));
   ipcMain.handle('sync:download', (_event, projectId, restServer) =>
     download(projectId, restServer, (p) => send('sync:progress', { projectId, ...p })));
 }
 
-module.exports = { registerSyncIpc, notifyLocalChange, getStatus, turnOn, push, setMode, pull, commitPull, discardPull, download };
+module.exports = { registerSyncIpc, notifyLocalChange, getStatus, turnOn, push, setMode, pull, commitPull, discardPull, download, clone };

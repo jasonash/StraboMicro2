@@ -37,6 +37,9 @@ function syncDir(projectFolder) {
  * @property {Record<string, string>} refs - 'type:id|role' => sha256 the server has
  * @property {{ pushId: string, changes: object[] } | null} outgoingPush
  * @property {object[]} refused - changes the server did not accept, with the reason
+ * @property {Record<string, object[]>} [conflicts] - 'type:id' => unresolved field conflicts (pull)
+ * @property {object[]} [questions] - delete-vs-edit questions waiting for the user (pull)
+ * @property {Record<string, string>} [downloads] - 'type:id|role' => sha256 to fetch (pull)
  */
 
 /**
@@ -114,4 +117,16 @@ async function createHashIndex(projectFolder) {
   };
 }
 
-module.exports = { syncDir, newState, loadState, saveState, createHashIndex, FORMAT_VERSION };
+/**
+ * Entities held from pushes: unresolved conflicts and delete questions
+ * (spec v3 §4.6); they keep the local values until the user decides.
+ * @param {SyncState} state
+ * @returns {Set<string>}
+ */
+function heldKeys(state) {
+  const out = new Set(Object.keys(state.conflicts || {}));
+  for (const q of state.questions || []) for (const k of q.keys) out.add(k);
+  return out;
+}
+
+module.exports = { syncDir, newState, loadState, saveState, createHashIndex, heldKeys, FORMAT_VERSION };

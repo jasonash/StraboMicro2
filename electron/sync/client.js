@@ -196,6 +196,11 @@ function createSyncClient({ restServer, getAccessToken, refreshAccessToken, fetc
       return { size: received };
     },
 
+    /** Every live entity (with version, normalized child order), blob and ref of a project. */
+    async snapshot(pid) {
+      return expect(await request('GET', `/projects/${pid}/snapshot`), 200);
+    },
+
     async getProject(pid) {
       return expect(await request('GET', `/projects/${pid}`), 200);
     },

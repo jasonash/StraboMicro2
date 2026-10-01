@@ -210,6 +210,28 @@ app.whenReady().then(async () => {
     check('image downloaded and verified', dl.ok && dl.images.includes(NEW_M) && fs.existsSync(imgPath) && (await hashFile(imgPath)) === sha,
       JSON.stringify(dl));
     check('download queue empty', (await svc.getStatus(pid)).downloads === 0);
+
+    // A second computer (another Documents folder) makes its own synced copy
+    app.setPath('documents', path.join(tmp, 'Documents2'));
+    fs.mkdirSync(path.join(tmp, 'Documents2'), { recursive: true });
+    const cl = await svc.clone(serverPid, SERVER, 'manual', () => {});
+    const cloneFolder = projectFolders.getAccountCopyPath(pid, SERVER, who.pkey);
+    check('clone made', cl.ok && cl.projectId === pid && cloneFolder.includes('Documents2') &&
+      fs.existsSync(path.join(cloneFolder, 'project.json')), JSON.stringify(cl));
+    const cp = JSON.parse(fs.readFileSync(path.join(cloneFolder, 'project.json'), 'utf8'));
+    check('clone has the server\'s state', micro(cp, M1).name === 'Renamed elsewhere' && micro(cp, M1).notes === 'their notes' &&
+      !micro(cp, M2) && micro(cp, NEW_M) && micro(cp, NEW_M).name === 'Micrograph from elsewhere');
+    check('clone downloaded the originals', fs.existsSync(path.join(cloneFolder, 'images', M1)) &&
+      (await hashFile(path.join(cloneFolder, 'images', NEW_M))) === sha && cl.downloaded >= 2, JSON.stringify(cl));
+    await ser.saveProjectJson(await ser.loadProjectJson(pid), pid); // the app opens and saves it
+    const cst = await svc.getStatus(pid);
+    check('clone opened and saved: nothing to push, nothing to pull', cst.synced && cst.pending === 0 && cst.downloads === 0 &&
+      cst.conflicts === 0, JSON.stringify(cst));
+    const cpull = await svc.pull(pid, SERVER, () => {});
+    check('clone pull finds nothing new', cpull.ok && cpull.changes.length === 0 && cpull.summary.received === 0, JSON.stringify(cpull.summary));
+    await svc.commitPull(pid, cpull.pullId);
+    const again2 = await svc.clone(serverPid, SERVER, 'manual', () => {});
+    check('a second clone for the same account is refused', !again2.ok, JSON.stringify(again2));
   } catch (e) {
     failures++;
     console.log('ERROR', e && e.stack);

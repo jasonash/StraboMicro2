@@ -155,8 +155,7 @@ async function pushProject({ folder, client, onProgress = () => {} }) {
   await hashes.save();
 
   // B. Entity changes (unresolved conflicts and delete questions wait, spec v3 §4.6)
-  for (const k of Object.keys(state.conflicts || {})) held.add(k);
-  for (const q of state.questions || []) for (const k of q.keys) held.add(k);
+  for (const k of sidecar.heldKeys(state)) held.add(k);
   const planned = planPush(state.base, current, { skip: held });
   const problems = [];
   let pushed = 0;
@@ -246,7 +245,8 @@ async function pushProject({ folder, client, onProgress = () => {} }) {
 }
 
 /**
- * Entity changes the server does not have yet, in the given project (the
+ * Entity changes the server does not have yet (entities held by a conflict
+ * or delete question are not counted), in the given project (the
  * app's current one, which can be ahead of the file in Manual mode) or else
  * in the saved project.json. File uploads are not counted.
  * @param {string} folder
@@ -266,7 +266,7 @@ async function countPendingChanges(folder, unsavedProject = null) {
   // A push in flight is still in the diff (the base takes it only once the
   // server answers), unless a later edit reverted it; it still has to be sent
   const inFlight = state.outgoingPush ? state.outgoingPush.planned.length : 0;
-  return Math.max(inFlight, planPush(state.base, explode(project, pointCounts)).length);
+  return Math.max(inFlight, planPush(state.base, explode(project, pointCounts), { skip: sidecar.heldKeys(state) }).length);
 }
 
 /**
