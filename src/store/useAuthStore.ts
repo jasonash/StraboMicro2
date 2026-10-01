@@ -18,6 +18,14 @@ import { getRestServerUrl } from '@/components/dialogs/PreferencesDialog';
 // TYPE DEFINITIONS
 // ============================================================================
 
+/**
+ * Result of a token refresh:
+ * - 'refreshed': new access token stored
+ * - 'expired': the server rejected the refresh token; tokens were cleared, user is logged out
+ * - 'unavailable': server unreachable or failing (tokens kept, user stays logged in)
+ */
+export type RefreshOutcome = 'refreshed' | 'expired' | 'unavailable';
+
 export interface AuthUser {
   pkey: string;
   email: string;
@@ -41,7 +49,7 @@ interface AuthState {
   login: (email: string, password: string) => Promise<boolean>;
   logout: () => Promise<void>;
   checkAuthStatus: () => Promise<void>;
-  refreshToken: () => Promise<boolean>;
+  refreshToken: () => Promise<RefreshOutcome>;
   clearError: () => void;
   /** Called by App.tsx when the login prompt dialog is dismissed (cancel) */
   dismissLoginPrompt: () => void;
@@ -175,11 +183,13 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
       } else if (result.needsRefresh) {
         // Token expired but we have refresh token - try to refresh
         console.log('[AuthStore] Token expired, attempting refresh...');
-        const refreshed = await get().refreshToken();
-        if (refreshed) {
+        const outcome = await get().refreshToken();
+        if (outcome !== 'expired') {
+          // 'unavailable' (offline or server trouble): the tokens are kept, so the
+          // user is still logged in; the next authenticated request retries the refresh
           set({
             isAuthenticated: true,
-            user: result.user,
+            user: result.user ?? null,
           });
           window.api.auth.notifyStateChanged(true);
         } else {
@@ -210,9 +220,9 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
    * Refresh the access token
    * Called automatically when token is about to expire
    */
-  refreshToken: async (): Promise<boolean> => {
+  refreshToken: async (): Promise<RefreshOutcome> => {
     if (!window.api?.auth) {
-      return false;
+      return 'unavailable';
     }
 
     try {
@@ -221,20 +231,24 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
 
       if (result.success) {
         console.log('[AuthStore] Token refreshed successfully');
-        return true;
-      } else {
-        console.warn('[AuthStore] Token refresh failed:', result.error);
-        // Session expired - clear auth state
+        return 'refreshed';
+      }
+      if (result.sessionExpired) {
+        console.warn('[AuthStore] Session expired:', result.error);
         set({
           isAuthenticated: false,
           user: null,
-          error: result.error,
+          error: result.error ?? null,
         });
-        return false;
+        window.api.auth.notifyStateChanged(false);
+        return 'expired';
       }
+      // Offline or server trouble: tokens were kept, stay logged in
+      console.warn('[AuthStore] Token refresh not possible right now:', result.error);
+      return 'unavailable';
     } catch (error) {
       console.error('[AuthStore] Token refresh error:', error);
-      return false;
+      return 'unavailable';
     }
   },
 
@@ -276,38 +290,48 @@ function requestLogin(message: string): Promise<void> {
 }
 
 /**
- * Get the current access token for making authenticated API calls
- * Returns null if not logged in or token expired
+ * Get the current access token, refreshing it if it has expired.
+ * unavailable is true when the refresh could not reach the server (or the
+ * server failed); the user is still logged in, so callers should report a
+ * connection problem rather than ask for a new login.
  */
-export async function getAccessToken(): Promise<string | null> {
+async function getAccessTokenWithStatus(): Promise<{ token: string | null; unavailable: boolean }> {
   if (!window.api?.auth) {
-    return null;
+    return { token: null, unavailable: false };
   }
 
   try {
     const result = await window.api.auth.getToken();
 
     if (result.token) {
-      return result.token;
+      return { token: result.token, unavailable: false };
     }
 
     // Token expired - try to refresh
     if (result.expired) {
-      const restServer = getRestServerUrl();
-      const refreshResult = await window.api.auth.refresh(restServer);
+      const outcome = await useAuthStore.getState().refreshToken();
 
-      if (refreshResult.success) {
+      if (outcome === 'refreshed') {
         // Get fresh token after refresh
         const freshResult = await window.api.auth.getToken();
-        return freshResult.token || null;
+        return { token: freshResult.token || null, unavailable: false };
       }
+      return { token: null, unavailable: outcome === 'unavailable' };
     }
 
-    return null;
+    return { token: null, unavailable: false };
   } catch (error) {
     console.error('[Auth] Error getting access token:', error);
-    return null;
+    return { token: null, unavailable: false };
   }
+}
+
+/**
+ * Get the current access token for making authenticated API calls
+ * Returns null if not logged in, or if the token expired and cannot be refreshed
+ */
+export async function getAccessToken(): Promise<string | null> {
+  return (await getAccessTokenWithStatus()).token;
 }
 
 /**
@@ -321,8 +345,14 @@ export async function authenticatedFetch(
 ): Promise<Response> {
   console.log('[authenticatedFetch] Fetching:', url);
 
-  let token = await getAccessToken();
+  const status = await getAccessTokenWithStatus();
+  let token = status.token;
   console.log('[authenticatedFetch] Token retrieved:', token ? `${token.substring(0, 20)}...` : 'null');
+
+  if (!token && status.unavailable) {
+    // Still logged in, but the server cannot be reached right now: a login prompt would not help
+    throw new Error('Could not reach the StraboSpot server. Check your connection and try again.');
+  }
 
   if (!token) {
     console.warn('[authenticatedFetch] No token available — prompting user to log in');
