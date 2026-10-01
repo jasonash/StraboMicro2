@@ -1294,20 +1294,22 @@ function createWindow() {
         {
           // Server project number (Show Status) copied in the other copy of the app
           label: 'Sync: Download Synced Project (Number from Clipboard)',
-          click: () => {
-            const text = (require('electron').clipboard.readText() || '').trim();
+          click: async () => {
+            // clipboard.readText() returns a Promise since Electron 44
+            const text = String((await require('electron').clipboard.readText()) || '').trim();
             mainWindow?.webContents.send('debug:sync', 'clone', text);
           },
         },
         { type: 'separator' },
         {
           label: 'Simulate Deep Link from Clipboard',
-          click: () => {
+          click: async () => {
             // macOS dev builds can't receive real protocol launches (the OS
             // needs an installed bundle), so this feeds a strabomicro:// URI
             // from the clipboard through the same handler for testing.
+            // clipboard.readText() returns a Promise since Electron 44.
             const { clipboard } = require('electron');
-            const text = (clipboard.readText() || '').trim();
+            const text = String((await clipboard.readText()) || '').trim();
             log.info('[Debug] Simulating deep link from clipboard');
             handleDeepLinkUrl(text);
           }
