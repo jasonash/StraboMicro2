@@ -1268,7 +1268,14 @@ function App() {
       }
       const status = await api.sync.status(current.id);
       if (status.synced) {
-        alert('This project is already synced.');
+        // Already synced: the item only sets the mode
+        if (status.mode === mode) {
+          alert(`This project is already synced (${mode}).`);
+          return;
+        }
+        const controller = await import('@/services/syncController');
+        const result = await controller.changeSyncMode(mode);
+        alert(result.ok ? `This project is already synced; sync mode is now ${mode}.` : result.message);
         return;
       }
       if (!useAuthStore.getState().isAuthenticated) {
