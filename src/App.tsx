@@ -1377,6 +1377,9 @@ function App() {
           await turnOn(action === 'turn-on-automatic' ? 'automatic' : 'manual');
         } else if (action === 'status') {
           await showStatus();
+        } else if (action.startsWith('test-')) {
+          const { runSyncTestScenario } = await import('@/services/syncTestScenarios');
+          await runSyncTestScenario(action);
         } else if (action === 'decisions') {
           if (!useSyncStore.getState().synced) alert('This project is not synced.');
           else useSyncStore.getState().update({ decisionsOpen: true });

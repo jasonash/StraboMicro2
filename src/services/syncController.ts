@@ -145,6 +145,19 @@ class ProjectSync {
     for (const off of this.unsubscribers.splice(0)) off();
   }
 
+  /** Dev test tools: one cycle now, as a Sync click or as an automatic cycle. */
+  runForTest(userClick: boolean): void {
+    if (userClick) this.pullRequested = true;
+    void this.run();
+  }
+
+  /** Resolves when no cycle is running or queued. */
+  async whenIdle(): Promise<void> {
+    while (!this.stopped && (this.running || this.rerun)) {
+      await new Promise((resolve) => setTimeout(resolve, IDLE_POLL_MS));
+    }
+  }
+
   /** The Sync click (any mode): save, push, pull. */
   syncNow(): void {
     this.pullRequested = true;
@@ -501,6 +514,20 @@ export function startProjectSync(projectId: string, status: SyncedStatus): () =>
 export function syncNow(): boolean {
   if (!current) return false;
   current.syncNow();
+  return true;
+}
+
+/**
+ * Dev test tools (Debug > Sync Test): run one cycle and wait for it to end.
+ * userClick: as the Sync click (pulls, may open the decisions dialog);
+ * otherwise as an automatic cycle (the notice instead of the dialog).
+ * False when the open project is not synced.
+ */
+export async function runCycleAndWait(userClick: boolean): Promise<boolean> {
+  if (!current) return false;
+  const sync = current;
+  sync.runForTest(userClick);
+  await sync.whenIdle();
   return true;
 }
 

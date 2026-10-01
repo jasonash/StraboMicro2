@@ -1296,6 +1296,19 @@ function createWindow() {
           click: () => mainWindow?.webContents.send('debug:sync', 'decisions'),
         },
         {
+          // One-window sync scenarios on the selected micrograph / spot (src/services/syncTestScenarios.ts)
+          label: 'Sync Test',
+          submenu: [
+            { label: 'Conflict on a Spot', click: () => mainWindow?.webContents.send('debug:sync', 'test-conflict') },
+            { label: 'They Delete the Micrograph, I Edit a Spot', click: () => mainWindow?.webContents.send('debug:sync', 'test-their-delete') },
+            { label: 'I Delete the Micrograph, They Edit a Spot', click: () => mainWindow?.webContents.send('debug:sync', 'test-my-delete') },
+            { label: 'Server Turns Down a Move', click: () => mainWindow?.webContents.send('debug:sync', 'test-refused') },
+            { label: 'Conflict in the Background (Notice)', click: () => mainWindow?.webContents.send('debug:sync', 'test-notice') },
+            { type: 'separator' },
+            { label: 'Compare with Server', click: () => mainWindow?.webContents.send('debug:sync', 'test-compare') },
+          ],
+        },
+        {
           // Server project number (Show Status) copied in the other copy of the app
           label: 'Sync: Download Synced Project (Number from Clipboard)',
           click: async () => {
@@ -4219,7 +4232,7 @@ const tokenService = require('./tokenService');
 
 // Sync IPC (sync:status, sync:turn-on, sync:push, sync:set-mode); the sync
 // engine itself loads only when a synced project uses it
-syncService.registerSyncIpc(ipcMain, () => mainWindow);
+syncService.registerSyncIpc(ipcMain, () => mainWindow, { devTools: !app.isPackaged || app.getVersion().includes('-dev.') });
 
 // Helper to get REST server URL from renderer's localStorage
 // We'll pass it from the renderer since preferences are stored there

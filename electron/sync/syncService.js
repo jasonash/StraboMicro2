@@ -19,6 +19,8 @@
  *   sync:decide    work out one answer; returns what the app must apply
  *   sync:decide-commit / sync:decide-discard   record it after the app
  *                  applied it and saved project.json, or drop it
+ *   sync:test-other / sync:test-compare   dev and -dev. builds only: push
+ *                  as another computer, compare with the server (testTools.js)
  * Events to the renderer:
  *   sync:progress      { projectId, phase, ... } while pushing
  *   sync:local-change  projectId, after a file-only change (point counts,
@@ -425,6 +427,45 @@ function decideDiscard(projectId, decisionId) {
 }
 
 /**
+ * Dev test tool: push changes as another computer of the same account.
+ * @param {string} projectId
+ * @param {string} restServer
+ * @param {object[]} changes
+ */
+function testOther(projectId, restServer, changes) {
+  return serialize(projectId, async () => {
+    try {
+      const opened = await openSynced(projectId, restServer);
+      if (opened.failure) return opened.failure;
+      const results = await require('./testTools').otherComputerPush({
+        folder: opened.folder, client: makeClient(restServer), changes: Array.isArray(changes) ? changes : [],
+      });
+      log.info(`[Sync] Test: other computer pushed ${results.length} changes: ${results.map((r) => r.status).join(', ')}`);
+      return { ok: true, results };
+    } catch (err) {
+      return failure(err);
+    }
+  });
+}
+
+/**
+ * Dev test tool: the saved project vs the server.
+ * @param {string} projectId
+ * @param {string} restServer
+ */
+function testCompare(projectId, restServer) {
+  return serialize(projectId, async () => {
+    try {
+      const opened = await openSynced(projectId, restServer);
+      if (opened.failure) return opened.failure;
+      return { ok: true, ...(await require('./testTools').compareWithServer({ folder: opened.folder, client: makeClient(restServer) })) };
+    } catch (err) {
+      return failure(err);
+    }
+  });
+}
+
+/**
  * @param {string} projectId
  * @param {'automatic' | 'manual'} mode
  */
@@ -469,8 +510,9 @@ function notifyLocalChange(projectId) {
 /**
  * @param {import('electron').IpcMain} ipcMain
  * @param {() => (import('electron').BrowserWindow | null)} getMainWindow
+ * @param {{ devTools?: boolean }} [options] - devTools: register the Sync Test handlers
  */
-function registerSyncIpc(ipcMain, getMainWindow) {
+function registerSyncIpc(ipcMain, getMainWindow, { devTools = false } = {}) {
   getWindow = getMainWindow;
   ipcMain.handle('sync:status', async (_event, projectId, project) => {
     try {
@@ -496,9 +538,13 @@ function registerSyncIpc(ipcMain, getMainWindow) {
   ipcMain.handle('sync:decide', (_event, projectId, decision) => decide(projectId, decision));
   ipcMain.handle('sync:decide-commit', (_event, projectId, decisionId) => decideCommit(projectId, decisionId));
   ipcMain.handle('sync:decide-discard', (_event, projectId, decisionId) => decideDiscard(projectId, decisionId));
+  if (devTools) {
+    ipcMain.handle('sync:test-other', (_event, projectId, restServer, changes) => testOther(projectId, restServer, changes));
+    ipcMain.handle('sync:test-compare', (_event, projectId, restServer) => testCompare(projectId, restServer));
+  }
 }
 
 module.exports = {
   registerSyncIpc, notifyLocalChange, getStatus, turnOn, push, setMode, pull, commitPull, discardPull, download, clone,
-  listDecisions, decide, decideCommit, decideDiscard,
+  listDecisions, decide, decideCommit, decideDiscard, testOther, testCompare,
 };

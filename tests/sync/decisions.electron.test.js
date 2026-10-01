@@ -278,6 +278,18 @@ app.whenReady().then(async () => {
     const pk = await push();
     check('keep deleted: the delete is pushed (with the sample\'s child order)', pk.ok && pk.pushed >= 1 && !(await onServer())[KM1] && (await status()).pending === 0,
       JSON.stringify(pk));
+
+    // --- Dev test tools (Debug > Sync Test) ----------------------------------------------------
+    const cmp1 = await svc.testCompare(pid, SERVER);
+    check('compare: in sync after the last push', cmp1.ok && cmp1.differences.length === 0 && cmp1.same > 0, JSON.stringify(cmp1));
+    const other1 = await svc.testOther(pid, SERVER, [{ op: 'update', type: 'sample', id: SAMPLE, fields: { label: 'relabeled by the other computer' } }]);
+    check('other computer: versions from the server, accepted', other1.ok && other1.results[0].status === 'accepted', JSON.stringify(other1));
+    const cmp2 = await svc.testCompare(pid, SERVER);
+    check('compare: their unpulled rename shows as one difference', cmp2.ok && cmp2.differences.length === 1 &&
+      cmp2.differences[0].startsWith('Different: sample') && cmp2.differences[0].includes('label'), JSON.stringify(cmp2));
+    await appPull();
+    const cmp3 = await svc.testCompare(pid, SERVER);
+    check('compare: in sync again after the pull', cmp3.ok && cmp3.differences.length === 0, JSON.stringify(cmp3));
   } catch (e) {
     failures++;
     console.log('ERROR', e && e.stack);

@@ -632,6 +632,8 @@ contextBridge.exposeInMainWorld('api', {
     decide: (projectId, decision) => ipcRenderer.invoke('sync:decide', projectId, decision),
     decideCommit: (projectId, decisionId) => ipcRenderer.invoke('sync:decide-commit', projectId, decisionId),
     decideDiscard: (projectId, decisionId) => ipcRenderer.invoke('sync:decide-discard', projectId, decisionId),
+    testOther: (projectId, restServer, changes) => ipcRenderer.invoke('sync:test-other', projectId, restServer, changes),
+    testCompare: (projectId, restServer) => ipcRenderer.invoke('sync:test-compare', projectId, restServer),
     onProgress: (callback) => {
       const handler = (event, progress) => callback(progress);
       ipcRenderer.on('sync:progress', handler);

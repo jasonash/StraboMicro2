@@ -119,7 +119,8 @@ type Unsubscribe = () => void;
 
 type SyncMode = 'automatic' | 'manual';
 
-type SyncDebugAction = 'turn-on-automatic' | 'turn-on-manual' | 'sync-now' | 'toggle-mode' | 'status' | 'clone' | 'decisions';
+type SyncDebugAction = 'turn-on-automatic' | 'turn-on-manual' | 'sync-now' | 'toggle-mode' | 'status' | 'clone' | 'decisions'
+  | 'test-conflict' | 'test-their-delete' | 'test-my-delete' | 'test-refused' | 'test-notice' | 'test-compare';
 
 /** Why a sync call did not run or failed (electron/sync/syncService.js) */
 type SyncFailureKind =
@@ -901,6 +902,14 @@ interface Window {
       decide: (projectId: string, decision: SyncDecision) => Promise<SyncDecideResult>;
       decideCommit: (projectId: string, decisionId: string) => Promise<SyncCallResult & { downloads?: number }>;
       decideDiscard: (projectId: string, decisionId: string) => Promise<{ ok: true }>;
+      /** Dev test tool (Debug > Sync Test): push changes as another computer; versions come from the server */
+      testOther: (projectId: string, restServer: string, changes: Array<Record<string, unknown>>) => Promise<
+        | { ok: true; results: Array<{ status: string; reason?: string }> }
+        | { ok: false; kind: SyncFailureKind; message: string }>;
+      /** Dev test tool: the saved project vs the server */
+      testCompare: (projectId: string, restServer: string) => Promise<
+        | { ok: true; same: number; differences: string[]; held: number }
+        | { ok: false; kind: SyncFailureKind; message: string }>;
       onProgress: (callback: (progress: SyncProgress) => void) => Unsubscribe;
       /** A synced project changed on disk without a store change (point counts, thumbnails) */
       onLocalChange: (callback: (projectId: string) => void) => Unsubscribe;
