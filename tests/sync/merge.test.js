@@ -241,5 +241,54 @@ const m = (body, extra) => st('micrograph', 'm1', body, extra);
   }
 }
 
+// --- Membership ids of deleted entities (§4.5) ------------------------------------------
+{
+  const T1 = st('tag', 't1', { name: 'T1' }, { parentType: 'project', parentId: 'P' });
+  const T2 = st('tag', 't2', { name: 'T2' }, { parentType: 'project', parentId: 'P' });
+  const G1 = st('group', 'g1', { name: 'G1', micrographs: ['m1', 'm2'] }, { parentType: 'project', parentId: 'P' });
+  const M1 = st('micrograph', 'm1', { name: 'M1', tags: ['t1'] }, { childOrder: { spots: ['p1'] } });
+  const M2 = st('micrograph', 'm2', { name: 'M2' }, { childOrder: { spots: [] } });
+  const P1 = st('spot', 'p1', { name: 'P1', tags: ['t2'] }, { parentType: 'micrograph', parentId: 'm1' });
+  const all = [T1, T2, G1, M1, M2, P1];
+  const key = (e) => `${e.type}:${e.id}`;
+  const baseOf = (list) => Object.fromEntries(list.map((e) => [key(e), { ...e, version: 1 }]));
+  const mineOf = (list) => ({ entities: Object.fromEntries(list.map((e) => [key(e), e])), order: list.map(key) });
+  const clone = (e, body = {}) => ({ ...JSON.parse(JSON.stringify(e)), body: { ...e.body, ...body } });
+  const after = (r, k) => (r.changes.find((c) => c.key === k) || {}).after;
+
+  // They deleted tag t2 (their copy stripped p1.tags too); I tagged m1 with t2 meanwhile
+  {
+    const r = mergeProject(baseOf(all), mineOf([T1, T2, G1, clone(M1, { tags: ['t1', 't2'] }), M2, P1]),
+      new Map([['tag:t2', null], ['spot:p1', clone(P1, { tags: [] })]]));
+    check('members: their deleted tag dropped from my new tagging', J(after(r, 'micrograph:m1')?.body.tags) === J(['t1']) &&
+      J(after(r, 'spot:p1')?.body.tags) === J([]) && r.changes.some((c) => c.key === 'tag:t2' && c.after === null), J(r));
+  }
+  // They deleted m2 (nothing local beneath); the group still lists it
+  {
+    const r = mergeProject(baseOf(all), mineOf(all), new Map([['micrograph:m2', null]]));
+    check('members: their deleted micrograph dropped from a group', J(after(r, 'group:g1')?.body.micrographs) === J(['m1']), J(r));
+  }
+  // I deleted m2 (they did not touch it); they added it to a new group
+  {
+    const G2 = st('group', 'g2', { name: 'G2', micrographs: ['m2', 'm1'] }, { parentType: 'project', parentId: 'P' });
+    const r = mergeProject(baseOf(all), mineOf([T1, T2, clone(G1, { micrographs: ['m1'] }), M1, P1]), new Map([['group:g2', G2]]));
+    check('members: my deleted micrograph dropped from their new group', J(after(r, 'group:g2')?.body.micrographs) === J(['m1']), J(r));
+  }
+  // A delete question keeps the ids (an answer may bring the entity back)
+  {
+    const r = mergeProject(baseOf(all), mineOf([T1, T2, G1, M1, P1]), new Map([['micrograph:m2', clone(M2, { name: 'theirs' })]]));
+    check('members: ids of a questioned delete stay', r.questions.length === 1 && !after(r, 'group:g1'), J(r));
+    const r2 = mergeProject(baseOf(all), mineOf([T1, T2, G1, M1, P1]), new Map([['tag:t1', clone(T1, { name: 'x' })]]),
+      { held: new Set(['micrograph:m2']) });
+    check('members: ids of an earlier unanswered question stay', !after(r2, 'group:g1'), J(r2));
+  }
+  // Ids of entities the base never had (old dangling ids) are left alone
+  {
+    const G3 = st('group', 'g3', { name: 'G3', micrographs: ['m1', 'zz'] }, { parentType: 'project', parentId: 'P' });
+    const r = mergeProject(baseOf([...all, G3]), mineOf([...all, G3]), new Map([['micrograph:m2', null]]));
+    check('members: unknown ids stay', !after(r, 'group:g3') && J(after(r, 'group:g1')?.body.micrographs) === J(['m1']), J(r));
+  }
+}
+
 console.log(failures ? `\n${failures} FAILED (${passes} passed)` : `\nALL PASSED (${passes} checks)`);
 process.exit(failures ? 1 : 0);

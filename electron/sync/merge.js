@@ -244,6 +244,8 @@ function upKeys(state) {
  * @param {Record<string, object>} base - 'type:id' => state (+ version)
  * @param {{ entities: Record<string, object>, order: string[] }} mine - explode() of the local project
  * @param {Map<string, object | null>} theirs - Changed entities only: 'type:id' => server state, null = deleted
+ * @param {{ held?: Set<string> }} [options] - held: entities of earlier unanswered
+ *   questions (their membership ids stay, an answer may bring them back)
  * @returns {{
  *   changes: Array<{ key: string, before: object | null, after: object | null }>,
  *   conflicts: Array<{ key: string, fields: FieldConflict[] }>,
@@ -252,7 +254,7 @@ function upKeys(state) {
  *   conflicts: entities whose merged state keeps mine in the listed fields;
  *   questions: deletions held until the user answers
  */
-function mergeProject(base, mine, theirs) {
+function mergeProject(base, mine, theirs, options = {}) {
   const changes = [];
   const conflicts = [];
   const questions = [];
@@ -352,10 +354,57 @@ function mergeProject(base, mine, theirs) {
     if (r.conflicts.length > 0) conflicts.push({ key: k, fields: r.conflicts });
     if (!sameState(r.state, m)) changes.push({ key: k, before: m, after: r.state });
   }
+  // Membership ids of entities deleted by them, or by me with no question
+  const held = new Set([...(options.held || []), ...questions.flatMap((q) => q.keys)]);
+  dropDeadMembers(local, changes, (k) => !held.has(k) && (Boolean(base[k]) || (theirs.has(k) && theirs.get(k) === null)));
+
   // Removals children first, then the rest parents first (creates need their parent)
   const removals = changes.filter((c) => c.after === null);
   const rest = changes.filter((c) => c.after !== null).sort((x, y) => DEPTH[x.after.type] - DEPTH[y.after.type]);
   return { changes: [...removals, ...rest], conflicts, questions };
+}
+
+/** Id set field => type of the entity its ids point at. */
+const MEMBER_TARGET = Object.freeze({
+  spot: Object.freeze({ tags: 'tag' }),
+  micrograph: Object.freeze({ tags: 'tag' }),
+  group: Object.freeze({ micrographs: 'micrograph', spotIDs: 'spot' }),
+  tag: Object.freeze({ spotIDs: 'spot' }),
+});
+
+/**
+ * Drop membership ids that point at an entity gone after these changes
+ * (§4.5): a tag deleted on a spot tagged meanwhile, a deleted micrograph
+ * still listed by a group. Only ids of entities isDead accepts are dropped,
+ * so old dangling ids (never synced entities) are left alone. Rewrites or
+ * adds to changes; the result is pushed like any local change.
+ * @param {Record<string, object>} local - Entity states before the changes
+ * @param {Array<{ key: string, before: object | null, after: object | null }>} changes - Mutated
+ * @param {(key: string) => boolean} isDead - For an entity absent after the changes
+ */
+function dropDeadMembers(local, changes, isDead) {
+  /** @type {Map<string, object | null>} */
+  const final = new Map(Object.entries(local));
+  for (const c of changes) final.set(c.key, c.after);
+  const dead = (k) => !final.get(k) && isDead(k);
+  const byKey = new Map(changes.map((c, i) => [c.key, i]));
+  for (const [k, s] of final) {
+    const fields = s && MEMBER_TARGET[s.type];
+    if (!fields) continue;
+    let body = null;
+    for (const [field, targetType] of Object.entries(fields)) {
+      const ids = s.body[field];
+      if (!Array.isArray(ids)) continue;
+      const kept = ids.filter((id) => !dead(entityKey(targetType, id)));
+      if (kept.length === ids.length) continue;
+      body = body || { ...s.body };
+      body[field] = kept;
+    }
+    if (!body) continue;
+    const after = { ...s, body };
+    if (byKey.has(k)) changes[byKey.get(k)].after = after;
+    else changes.push({ key: k, before: local[k] ?? null, after });
+  }
 }
 
 /**
@@ -406,4 +455,4 @@ function carryConflicts(previous, fresh, mineState, theirsState) {
   return out;
 }
 
-module.exports = { mergeValue, mergeEntity, mergeProject, mergeIdSet, sameState, sameContent, valueAt, carryConflicts };
+module.exports = { mergeValue, mergeEntity, mergeProject, dropDeadMembers, mergeIdSet, sameState, sameContent, valueAt, carryConflicts };

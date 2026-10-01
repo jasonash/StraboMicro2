@@ -119,7 +119,7 @@ async function preparePull({ folder, client, onProgress = () => {} }) {
     theirs.set(key, s);
   }
 
-  const merged = mergeProject(base, mine, theirs);
+  const merged = mergeProject(base, mine, theirs, { held: sidecar.heldKeys(state) });
 
   // Conflicts: fresh ones plus earlier unresolved ones that still differ
   const conflicts = { ...(state.conflicts || {}) };

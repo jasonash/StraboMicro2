@@ -256,8 +256,9 @@ async function prepareProjectJson(project, projectJsonPath) {
  * modifiedTimestamp of the project and of each dataset means "last changed":
  * compared with the project.json on disk, a project or dataset whose own
  * fields changed gets the current time, an unchanged one keeps the time on
- * disk. Children (datasets, samples) and per-user fields (tree expansion)
- * do not count. Stamping every save instead would make each save look like
+ * disk. Children (datasets, samples, and the project's tags, groups and
+ * presets, which sync as entities of their own) and per-user fields (tree
+ * expansion) do not count. Stamping every save instead would make each save look like
  * an edit to sync, and two collaborators' saves conflict.
  * @param {object} legacyJson - Serialized project, updated in place
  * @param {string} projectJsonPath - The file it is about to replace
@@ -271,27 +272,27 @@ async function stampModifiedTimestamps(legacyJson, projectJsonPath) {
   }
   // Required here: the server PDF service vendors this file and never saves
   const { deepEqual } = require('./deepEqual');
-  const { perUserFields } = require('./shared/entityModel.mjs');
+  const { perUserFields, CHILD_KEYS } = require('./shared/entityModel.mjs');
   const now = new Date().toISOString();
-  const own = (obj, type, childKey) => {
+  const own = (obj, type) => {
     const out = JSON.parse(JSON.stringify(obj));
-    delete out[childKey];
+    for (const k of Object.keys(CHILD_KEYS[type])) delete out[k];
     delete out.modifiedTimestamp;
     for (const f of perUserFields(type)) delete out[f];
     return out;
   };
-  const stamp = (next, prev, type, childKey) => {
+  const stamp = (next, prev, type) => {
     if (!prev) {
       next.modifiedTimestamp = now;
-    } else if (deepEqual(own(next, type, childKey), own(prev, type, childKey))) {
+    } else if (deepEqual(own(next, type), own(prev, type))) {
       next.modifiedTimestamp = prev.modifiedTimestamp || next.modifiedTimestamp;
     } else {
       next.modifiedTimestamp = now;
     }
   };
-  stamp(legacyJson, previous && previous.id === legacyJson.id ? previous : null, 'project', 'datasets');
+  stamp(legacyJson, previous && previous.id === legacyJson.id ? previous : null, 'project');
   const prevDatasets = new Map(((previous && previous.datasets) || []).map((d) => [d.id, d]));
-  for (const d of legacyJson.datasets || []) stamp(d, prevDatasets.get(d.id), 'dataset', 'samples');
+  for (const d of legacyJson.datasets || []) stamp(d, prevDatasets.get(d.id), 'dataset');
 }
 
 /**

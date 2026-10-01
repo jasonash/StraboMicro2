@@ -22,7 +22,7 @@ const crypto = require('crypto');
 const { explode, entityKey, DEPTH, diffProjects, applyEntityChanges } = require('../shared/entityModel.mjs');
 const { toAppProject } = require('../projectSerializer');
 const sidecar = require('./sidecar');
-const { valueAt, sameContent } = require('./merge');
+const { valueAt, sameContent, dropDeadMembers } = require('./merge');
 const { readProjectFiles } = require('./syncEngine');
 const { writePointCounts, downloadTarget } = require('./pull');
 
@@ -312,6 +312,12 @@ async function prepareDecision(folder, decision) {
   } else {
     throw new Error('Unknown kind of decision');
   }
+
+  // Membership ids of what this answer leaves deleted (§4.5)
+  const gone = decision.kind === 'question' && (decision.answer === 'delete' || decision.answer === 'keep_deleted')
+    ? new Set((state.questions || []).find((x) => x.key === key).keys)
+    : new Set(changes.filter((c) => c.after === null).map((c) => c.key));
+  if (gone.size > 0) dropDeadMembers(current.entities, changes, (k) => gone.has(k));
 
   const depth = (c) => DEPTH[(c.after ?? c.before).type];
   changes.sort((x, y) => depth(x) - depth(y));

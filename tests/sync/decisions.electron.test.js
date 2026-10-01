@@ -257,6 +257,25 @@ app.whenReady().then(async () => {
     check('discarded: nothing turned down, nothing waiting', rf4.ok && rf4.notAccepted === 0 && (await status()).refused === 0 &&
       (await status()).pending === 0, JSON.stringify({ rf4, st: await status() }));
 
+    // --- Membership ids: their deleted tag leaves my new tagging (§4.5) -----------------------
+    const TAG = crypto.randomUUID();
+    const GROUP = crypto.randomUUID();
+    await appEdit((p) => {
+      p.tags = [...(p.tags || []), { id: TAG, name: 'Test tag', tagType: 'other' }];
+      p.groups = [...(p.groups || []), { id: GROUP, name: 'Test group', micrographs: [M1, M2] }];
+    });
+    const pt = await push();
+    check('tag and group pushed', pt.ok && pt.pushed >= 2 && (await onServer())[`tag:${TAG}`] && (await onServer())[`group:${GROUP}`], JSON.stringify(pt));
+    await appEdit((p) => { micro(p, M2).spots.find((s) => s.id === S3).tags = [TAG]; });
+    await otherPush([{ op: 'delete', type: 'tag', id: TAG, baseVersion: await v('tag', TAG) }]);
+    await appPull();
+    const s3 = micro(disk(), M2).spots.find((s) => s.id === S3);
+    check('pull: their deleted tag is dropped from my spot', !(disk().tags || []).some((t) => t.id === TAG) && !(s3.tags || []).includes(TAG),
+      JSON.stringify(s3.tags));
+    const ptg = await push();
+    check('the spot pushes without the tag', ptg.ok && ptg.notAccepted === 0 && !((await onServer())[`spot:${S3}`].body.tags || []).includes(TAG) &&
+      (await status()).pending === 0, JSON.stringify(ptg));
+
     // --- Their delete vs my edit: delete it -----------------------------------------------------
     await appEdit((p) => { micro(p, M2).spots.find((s) => s.id === S2).name = 'mine again'; });
     await otherPush([{ op: 'delete', type: 'micrograph', id: M2, baseVersion: await v('micrograph', M2) }]);
@@ -264,9 +283,11 @@ app.whenReady().then(async () => {
     const dl = await appDecide({ kind: 'question', key: KM2, answer: 'delete' });
     check('delete it: the micrograph and its spots go locally', dl.ok && !micro(disk(), M2) &&
       dl.changes.filter((c) => c.after === null).length === 4, JSON.stringify(dl.changes && dl.changes.map((c) => c.key)));
+    check('delete it: the group no longer lists the micrograph', eq(disk().groups.find((g) => g.id === GROUP).micrographs, [M1]),
+      JSON.stringify(disk().groups));
     const pd = await push();
-    check('deleted: nothing to push, nothing waiting', pd.ok && pd.pushed === 0 && pd.notAccepted === 0 && (await status()).pending === 0 &&
-      !(await onServer())[KM2], JSON.stringify(pd));
+    check('deleted: only the group pushes, nothing waiting', pd.ok && pd.pushed === 1 && pd.notAccepted === 0 && (await status()).pending === 0 &&
+      !(await onServer())[KM2] && eq((await onServer())[`group:${GROUP}`].body.micrographs, [M1]), JSON.stringify(pd));
 
     // --- My delete vs their edit: keep deleted --------------------------------------------------
     await appEdit((p) => { p.datasets[0].samples[0].micrographs = p.datasets[0].samples[0].micrographs.filter((m) => m.id !== M1); });
@@ -274,7 +295,8 @@ app.whenReady().then(async () => {
     await appPull();
     check('my delete vs their rename: question', (await status()).questions === 1 && !micro(disk(), M1));
     const kd = await appDecide({ kind: 'question', key: KM1, answer: 'keep_deleted' });
-    check('keep deleted: nothing applied', kd.ok && kd.changes.length === 0);
+    check('keep deleted: only the group drops the micrograph', kd.ok && kd.changes.length === 1 &&
+      eq(disk().groups.find((g) => g.id === GROUP).micrographs, []), JSON.stringify(kd.changes));
     const pk = await push();
     check('keep deleted: the delete is pushed (with the sample\'s child order)', pk.ok && pk.pushed >= 1 && !(await onServer())[KM1] && (await status()).pending === 0,
       JSON.stringify(pk));
