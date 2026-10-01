@@ -1,4 +1,4 @@
-// Bundles the TypeScript sync tests for Node: npm run test:undo-history, test:geometry-preview
+// Bundles the TypeScript sync tests for Node: npm run test:undo-history, test:geometry-preview, test:composite-refresh
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -11,4 +11,4 @@ const bundle = (name) => ({
   output: { file: path.join(root, `node_modules/.cache/sync-tests/${name}.test.mjs`), format: 'esm' },
 });
 
-export default [bundle('undoHistory'), bundle('geometryPreview')];
+export default [bundle('undoHistory'), bundle('geometryPreview'), bundle('compositeRefresh')];

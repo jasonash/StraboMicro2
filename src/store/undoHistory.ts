@@ -24,6 +24,7 @@ import {
 } from '../../electron/shared/entityModel.mjs';
 import type { ProjectMetadata } from '@/types/project-types';
 import { buildMicrographIndex, buildSpotIndex, selectionAfterChange } from './helpers';
+import { compositesAffectedBy, regenerateComposites } from '@/utils/compositeRefresh';
 
 const LIMIT = 50;
 const QUIET_MS = 300;
@@ -169,6 +170,11 @@ async function applyStep(step: Step, direction: Direction): Promise<boolean> {
   } finally {
     applying = false;
   }
+
+  // Parents whose composite thumbnail shows what the step changed (and what it brought back)
+  const applied = direction === 'redo' ? step.changes : step.changes.map((c) => ({ ...c, before: c.after, after: c.before }));
+  const s = store;
+  regenerateComposites(compositesAffectedBy(applied, { withCreated: true }), () => s.getState().project);
 
   const target = focusTarget(step.changes, direction);
   if (target?.type === 'spot' && target.parentId) {

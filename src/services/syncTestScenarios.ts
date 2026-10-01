@@ -15,6 +15,7 @@ import { useSyncStore, decisionsWaiting } from '@/store/useSyncStore';
 import { getRestServerUrl } from '@/components/dialogs/PreferencesDialog';
 import { buildMicrographIndex, buildSpotIndex } from '@/store/helpers';
 import type { MicrographMetadata, ProjectMetadata, Spot } from '@/types/project-types';
+import { regenerateComposites } from '@/utils/compositeRefresh';
 
 export type SyncTestAction =
   | 'test-conflict' | 'test-shape' | 'test-placement' | 'test-their-delete' | 'test-my-delete' | 'test-refused'
@@ -171,7 +172,11 @@ export async function runSyncTestScenario(action: string): Promise<void> {
     // Each side rotates it, in opposite directions
     const r = micrograph.rotation || 0;
     error = await otherComputer([{ op: 'update', type: 'micrograph', id: micrograph.id, fields: { rotation: r + 15 } }]);
-    if (!error) store.updateMicrographMetadata(micrograph.id, { rotation: r - 15 });
+    if (!error) {
+      store.updateMicrographMetadata(micrograph.id, { rotation: r - 15 });
+      // As Edit Location does after placing
+      regenerateComposites([micrograph.parentID!], () => useAppStore.getState().project);
+    }
     expect = { read: conflicts, what: 'a placement conflict on the micrograph' };
   } else if (action === 'test-their-delete') {
     error = await otherComputer([{ op: 'delete', type: 'micrograph', id: micrograph.id }]);

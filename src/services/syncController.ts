@@ -46,6 +46,7 @@ import { useAuthStore } from '@/store/useAuthStore';
 import { useSyncStore, decisionsWaiting } from '@/store/useSyncStore';
 import { getRestServerUrl } from '@/components/dialogs/PreferencesDialog';
 import { applyRemoteChanges } from '@/store/remoteChanges';
+import { compositesAffectedBy, regenerateComposites } from '@/utils/compositeRefresh';
 
 const DEBOUNCE_MS = 3_000;
 const MAX_WAIT_MS = 30_000;
@@ -357,6 +358,7 @@ class ProjectSync {
           await api.sync.pullDiscard(this.projectId, r.pullId);
           return { ok: false, kind: 'error', message: 'The project could not be saved after pulling' };
         }
+        regenerateComposites(compositesAffectedBy(r.changes), () => useAppStore.getState().project);
       }
       const c = await api.sync.pullCommit(this.projectId, r.pullId);
       if (!c.ok) return c;
@@ -400,6 +402,7 @@ class ProjectSync {
           } finally {
             this.applyingRemote = false;
           }
+          regenerateComposites(compositesAffectedBy(r.changes, { withCreated: true }), () => useAppStore.getState().project);
           const project = useAppStore.getState().project;
           const s = project ? await api.saveProjectJson(project, this.projectId).catch(() => null) : null;
           saved = Boolean(s?.success);
