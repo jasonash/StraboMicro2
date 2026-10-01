@@ -1,0 +1,117 @@
+/**
+ * Sync sidecar: the sync/ folder inside a synced project copy
+ *
+ *   sync/state.json   binding (server, account, server project id), sync
+ *                     mode, last pulled seq, the base (entity states as the
+ *                     server last confirmed them, with versions), server
+ *                     file refs, the push in flight, refused changes.
+ *                     Always written whole (temp file + rename), so the base
+ *                     and the seq can never disagree.
+ *   sync/images.json  SHA-256 of local files, keyed by path relative to the
+ *                     project folder, reused while size and mtime match.
+ *   sync/tmp/         tile ZIPs waiting to upload.
+ *
+ * .smz export and version history never include sync/ (collaboration spec
+ * v3 §7.2). A local-only project has no sync/ folder.
+ */
+
+const fs = require('fs');
+const path = require('path');
+const { writeFileAtomic } = require('../atomicFile');
+const { hashFile } = require('./client');
+
+const FORMAT_VERSION = 1;
+
+function syncDir(projectFolder) {
+  return path.join(projectFolder, 'sync');
+}
+
+/**
+ * @typedef {Object} SyncState
+ * @property {number} formatVersion
+ * @property {{ server: string, pkey: number, email: string, pid: number, straboId: string }} binding
+ * @property {'automatic' | 'manual'} mode
+ * @property {'uploading' | 'ready'} phase - uploading until the first upload finished
+ * @property {number} lastSeq
+ * @property {Record<string, object>} base - 'type:id' => EntityState + { version }
+ * @property {Record<string, string>} refs - 'type:id|role' => sha256 the server has
+ * @property {{ pushId: string, changes: object[] } | null} outgoingPush
+ * @property {object[]} refused - changes the server did not accept, with the reason
+ */
+
+/**
+ * A fresh state for a project that is being turned on.
+ * @returns {SyncState}
+ */
+function newState(binding, mode) {
+  return {
+    formatVersion: FORMAT_VERSION,
+    binding,
+    mode,
+    phase: 'uploading',
+    lastSeq: 0,
+    base: {},
+    refs: {},
+    outgoingPush: null,
+    refused: [],
+  };
+}
+
+/**
+ * @param {string} projectFolder
+ * @returns {Promise<SyncState | null>} null for a local-only project
+ */
+async function loadState(projectFolder) {
+  try {
+    const state = JSON.parse(await fs.promises.readFile(path.join(syncDir(projectFolder), 'state.json'), 'utf8'));
+    if (!state || state.formatVersion !== FORMAT_VERSION) {
+      throw new Error(`Unsupported sync state format ${state && state.formatVersion}`);
+    }
+    return state;
+  } catch (err) {
+    if (err.code === 'ENOENT') return null;
+    throw err;
+  }
+}
+
+/** @param {string} projectFolder @param {SyncState} state */
+async function saveState(projectFolder, state) {
+  await fs.promises.mkdir(syncDir(projectFolder), { recursive: true });
+  await writeFileAtomic(path.join(syncDir(projectFolder), 'state.json'), JSON.stringify(state));
+}
+
+/**
+ * SHA-256 of files in a project folder, cached in sync/images.json while a
+ * file's size and modification time are unchanged (hashing is lazy: it
+ * happens at first sync, never at import; spec v3 §7.2).
+ */
+async function createHashIndex(projectFolder) {
+  const indexPath = path.join(syncDir(projectFolder), 'images.json');
+  /** @type {Record<string, { size: number, mtimeMs: number, sha256: string }>} */
+  let index = {};
+  try {
+    index = JSON.parse(await fs.promises.readFile(indexPath, 'utf8'));
+  } catch (_) { /* first use */ }
+  let dirty = false;
+  return {
+    /** @param {string} relPath - e.g. 'images/<micrographId>' */
+    async hash(relPath) {
+      const full = path.join(projectFolder, relPath);
+      const st = await fs.promises.stat(full);
+      const known = index[relPath];
+      if (known && known.size === st.size && known.mtimeMs === st.mtimeMs) return known.sha256;
+      const sha256 = await hashFile(full);
+      index[relPath] = { size: st.size, mtimeMs: st.mtimeMs, sha256 };
+      dirty = true;
+      return sha256;
+    },
+    async save() {
+      if (!dirty) return;
+      await fs.promises.mkdir(syncDir(projectFolder), { recursive: true });
+      await writeFileAtomic(indexPath, JSON.stringify(index));
+      dirty = false;
+    },
+  };
+}
+
+module.exports = { syncDir, newState, loadState, saveState, createHashIndex, FORMAT_VERSION };
