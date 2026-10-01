@@ -171,6 +171,36 @@ app.whenReady().then(async () => {
       s1[KM1].body.notes === 'their notes', JSON.stringify(p1));
     check('nothing waiting after the conflict', (await status()).pending === 0);
 
+    // --- Geometry conflicts carry a preview (one pick for the group) -----------------------------
+    const pts = (dx) => [{ X: 100 + dx, Y: 100 }, { X: 300 + dx, Y: 100 }, { X: 200 + dx, Y: 250 }];
+    await appEdit((p) => {
+      const sp = micro(p, M2).spots.find((s) => s.id === S1);
+      sp.geometryType = 'polygon';
+      sp.points = pts(0);
+      micro(p, M2).rotation = 10;
+    });
+    await otherPush([
+      { op: 'update', type: 'spot', id: S1, baseVersion: await v('spot', S1), fields: { geometryType: 'polygon', points: pts(50) } },
+      { op: 'update', type: 'micrograph', id: M2, baseVersion: await v('micrograph', M2), fields: { rotation: 20 } },
+    ]);
+    await push();
+    await appPull();
+    L = await svc.listDecisions(pid);
+    const shapeItem = L.ok && L.conflicts.find((c) => c.key === `spot:${S1}`);
+    const placeItem = L.ok && L.conflicts.find((c) => c.key === KM2);
+    check('shape conflict: preview with both shapes on the spot\'s micrograph', shapeItem && shapeItem.preview &&
+      shapeItem.preview.group === 'shape' && shapeItem.preview.micrographId === M2 && eq(shapeItem.preview.fieldIds, [field('points')]) &&
+      shapeItem.preview.mine.points[0].X === 100 && shapeItem.preview.theirs.points[0].X === 150, JSON.stringify(shapeItem));
+    check('placement conflict: preview on the parent micrograph', placeItem && placeItem.preview &&
+      placeItem.preview.group === 'placement' && placeItem.preview.micrographId === M1 && eq(placeItem.preview.fieldIds, [field('rotation')]) &&
+      placeItem.preview.mine.rotation === 10 && placeItem.preview.theirs.rotation === 20 && placeItem.preview.mine.width > 0,
+      JSON.stringify(placeItem && placeItem.preview));
+    await appDecide({ kind: 'conflict', key: `spot:${S1}`, choices: { [field('points')]: 'theirs' } });
+    await appDecide({ kind: 'conflict', key: KM2, choices: { [field('rotation')]: 'mine' } });
+    const pg = await push();
+    check('geometry conflicts settled and pushed', pg.ok && (await status()).conflicts === 0 && (await status()).pending === 0 &&
+      (await onServer())[KM2].body.rotation === 10, JSON.stringify(pg));
+
     // --- Their delete vs my edit: restore with my changes --------------------------------------
     await appEdit((p) => { micro(p, M2).spots.find((s) => s.id === S1).name = 'edited by me'; });
     await otherPush([{ op: 'delete', type: 'micrograph', id: M2, baseVersion: await v('micrograph', M2) }]);

@@ -17,11 +17,18 @@ import { buildMicrographIndex, buildSpotIndex } from '@/store/helpers';
 import type { MicrographMetadata, ProjectMetadata, Spot } from '@/types/project-types';
 
 export type SyncTestAction =
-  | 'test-conflict' | 'test-their-delete' | 'test-my-delete' | 'test-refused' | 'test-notice' | 'test-compare';
+  | 'test-conflict' | 'test-shape' | 'test-placement' | 'test-their-delete' | 'test-my-delete' | 'test-refused'
+  | 'test-notice' | 'test-compare';
 
 const ACTIONS: readonly SyncTestAction[] = [
-  'test-conflict', 'test-their-delete', 'test-my-delete', 'test-refused', 'test-notice', 'test-compare',
+  'test-conflict', 'test-shape', 'test-placement', 'test-their-delete', 'test-my-delete', 'test-refused', 'test-notice',
+  'test-compare',
 ];
+
+/** A spot's points moved by dx (image pixels), as stored. */
+function shiftedPoints(spot: Spot, dx: number): Array<{ X: number; Y: number }> {
+  return (spot.points || []).map((p) => ({ X: (p.X ?? p.x ?? 0) + dx, Y: p.Y ?? p.y ?? 0 }));
+}
 
 function isSyncTestAction(a: string): a is SyncTestAction {
   return ACTIONS.some((x) => x === a);
@@ -113,9 +120,18 @@ export async function runSyncTestScenario(action: string): Promise<void> {
     return;
   }
   const { micrograph, spot } = sel;
-  const needsSpot = action !== 'test-refused';
+  const needsSpot = action !== 'test-refused' && action !== 'test-placement';
   if (needsSpot && !spot) {
     alert('The selected micrograph needs at least one spot for this test.');
+    return;
+  }
+  if (action === 'test-shape' && (spot?.points || []).length === 0) {
+    alert('The spot has no points to move; select a spot with a shape.');
+    return;
+  }
+  if (action === 'test-placement' && (!micrograph.parentID || micrograph.placementType === 'affine')) {
+    // An affine overlay's picture is baked into tiles: a matrix change alone would leave them stale
+    alert('Select an associated micrograph placed as a rectangle or a point (not affine).');
     return;
   }
   const project = useAppStore.getState().project;
@@ -144,6 +160,19 @@ export async function runSyncTestScenario(action: string): Promise<void> {
       name: `${s.name} (theirs ${stamp})`, notes: `Notes from the other computer ${stamp}` } }]);
     if (!error) store.updateSpotData(s.id, { name: `${s.name} (mine ${stamp})`, notes: `Notes from this computer ${stamp}` });
     expect = { read: conflicts, what: 'a conflict on the spot' };
+  } else if (action === 'test-shape') {
+    // Each side moves the shape sideways by 5% of the image width, in opposite directions
+    const s = spot!;
+    const dx = Math.max(20, Math.round(0.05 * (micrograph.imageWidth || micrograph.width || 1000)));
+    error = await otherComputer([{ op: 'update', type: 'spot', id: s.id, fields: { points: shiftedPoints(s, dx) } }]);
+    if (!error) store.updateSpotData(s.id, { points: shiftedPoints(s, -dx) });
+    expect = { read: conflicts, what: 'a shape conflict on the spot' };
+  } else if (action === 'test-placement') {
+    // Each side rotates it, in opposite directions
+    const r = micrograph.rotation || 0;
+    error = await otherComputer([{ op: 'update', type: 'micrograph', id: micrograph.id, fields: { rotation: r + 15 } }]);
+    if (!error) store.updateMicrographMetadata(micrograph.id, { rotation: r - 15 });
+    expect = { read: conflicts, what: 'a placement conflict on the micrograph' };
   } else if (action === 'test-their-delete') {
     error = await otherComputer([{ op: 'delete', type: 'micrograph', id: micrograph.id }]);
     if (!error) store.updateSpotData(spot!.id, { name: `${spot!.name} (edited here ${stamp})` });

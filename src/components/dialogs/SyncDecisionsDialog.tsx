@@ -39,6 +39,7 @@ import {
   refusedReason,
   valueText,
 } from '@/utils/syncDecisionText';
+import SyncGeometryPreview from './SyncGeometryPreview';
 
 type Lists = { conflicts: SyncConflictItem[]; questions: SyncQuestionItem[]; refused: SyncRefusedItem[] };
 type Decide = (decision: SyncDecision) => Promise<void>;
@@ -70,10 +71,49 @@ function ValueBox({ path, value }: { path: string[]; value: unknown }) {
   );
 }
 
+/** Yours / Theirs radio columns of one row. */
+function SidePicker({ value, busy, onPick, render }: {
+  value: string;
+  busy: boolean;
+  onPick: (side: 'mine' | 'theirs') => void;
+  render: (side: 'mine' | 'theirs') => ReactNode;
+}) {
+  return (
+    <RadioGroup
+      value={value}
+      onChange={(e) => {
+        const v = e.target.value;
+        if (v === 'mine' || v === 'theirs') onPick(v);
+      }}
+      sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 1 }}
+    >
+      {(['mine', 'theirs'] as const).map((side) => (
+        <FormControlLabel
+          key={side}
+          value={side}
+          disabled={busy}
+          control={<Radio size="small" sx={{ alignSelf: 'flex-start', pt: 0.25 }} />}
+          sx={{ m: 0, alignItems: 'flex-start' }}
+          label={
+            <Box>
+              <Typography variant="caption" color="text.secondary">{side === 'mine' ? 'Yours' : 'Theirs'}</Typography>
+              {render(side)}
+            </Box>
+          }
+        />
+      ))}
+    </RadioGroup>
+  );
+}
+
 function ConflictItem({ item, busy, decide }: { item: SyncConflictItem; busy: boolean; decide: Decide }) {
   const [choices, setChoices] = useState<Record<string, 'mine' | 'theirs'>>({});
   const decided = Object.keys(choices).length;
   const all = (choice: 'mine' | 'theirs') => setChoices(Object.fromEntries(item.fields.map((f) => [f.id, choice])));
+  // Shape or placement fields: one picture and one pick for all of them
+  const preview = item.preview;
+  const grouped = new Set(preview?.fieldIds ?? []);
+  const groupChoice = preview ? choices[preview.fieldIds[0]] ?? '' : '';
   return (
     <Paper variant="outlined" sx={{ p: 2 }}>
       <Stack direction="row" spacing={1} sx={{ alignItems: 'center', mb: 1, flexWrap: 'wrap' }}>
@@ -82,35 +122,32 @@ function ConflictItem({ item, busy, decide }: { item: SyncConflictItem; busy: bo
         <Button size="small" onClick={() => all('theirs')} disabled={busy}>Keep all theirs</Button>
       </Stack>
       <Stack spacing={1.5} divider={<Divider flexItem />}>
-        {item.fields.map((f) => (
+        {preview && (
+          <Box>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
+              {preview.group === 'shape' ? 'Shape' : 'Placement'}
+            </Typography>
+            <SidePicker
+              value={groupChoice}
+              busy={busy}
+              onPick={(side) => setChoices({ ...choices, ...Object.fromEntries(preview.fieldIds.map((id) => [id, side])) })}
+              render={(side) => <SyncGeometryPreview preview={preview} side={side} />}
+            />
+          </Box>
+        )}
+        {item.fields.filter((f) => !grouped.has(f.id)).map((f) => (
           <Box key={f.id}>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>{fieldLabel(f.path)}</Typography>
-            <RadioGroup
+            <SidePicker
               value={choices[f.id] ?? ''}
-              onChange={(e) => {
-                const v = e.target.value;
-                if (v === 'mine' || v === 'theirs') setChoices({ ...choices, [f.id]: v });
-              }}
-              sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 1 }}
-            >
-              {(['mine', 'theirs'] as const).map((side) => (
-                <FormControlLabel
-                  key={side}
-                  value={side}
-                  disabled={busy}
-                  control={<Radio size="small" sx={{ alignSelf: 'flex-start', pt: 0.25 }} />}
-                  sx={{ m: 0, alignItems: 'flex-start' }}
-                  label={
-                    <Box>
-                      <Typography variant="caption" color="text.secondary">{side === 'mine' ? 'Yours' : 'Theirs'}</Typography>
-                      <Typography variant="body2" component="div">
-                        <ValueBox path={f.path} value={side === 'mine' ? f.mine : f.theirs} />
-                      </Typography>
-                    </Box>
-                  }
-                />
-              ))}
-            </RadioGroup>
+              busy={busy}
+              onPick={(side) => setChoices({ ...choices, [f.id]: side })}
+              render={(side) => (
+                <Typography variant="body2" component="div">
+                  <ValueBox path={f.path} value={side === 'mine' ? f.mine : f.theirs} />
+                </Typography>
+              )}
+            />
           </Box>
         ))}
       </Stack>

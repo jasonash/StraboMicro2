@@ -1300,6 +1300,8 @@ function createWindow() {
           label: 'Sync Test',
           submenu: [
             { label: 'Conflict on a Spot', click: () => mainWindow?.webContents.send('debug:sync', 'test-conflict') },
+            { label: 'Shape Conflict on a Spot', click: () => mainWindow?.webContents.send('debug:sync', 'test-shape') },
+            { label: 'Placement Conflict (Associated Micrograph)', click: () => mainWindow?.webContents.send('debug:sync', 'test-placement') },
             { label: 'They Delete the Micrograph, I Edit a Spot', click: () => mainWindow?.webContents.send('debug:sync', 'test-their-delete') },
             { label: 'I Delete the Micrograph, They Edit a Spot', click: () => mainWindow?.webContents.send('debug:sync', 'test-my-delete') },
             { label: 'Server Turns Down a Move', click: () => mainWindow?.webContents.send('debug:sync', 'test-refused') },

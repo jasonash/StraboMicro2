@@ -176,7 +176,47 @@ interface SyncItemRef {
   parentName: string;
 }
 
+/** A spot's shape as stored (legacy body fields) */
+interface SyncShapeSide {
+  geometryType?: string | null;
+  points?: Array<{ X?: number | null; Y?: number | null }> | null;
+  geometry?: { type?: string; coordinates?: unknown } | null;
+}
+
+/** A micrograph's placement on its parent as stored (legacy body fields) */
+interface SyncPlacementSide {
+  placementType?: string | null;
+  offsetInParent?: { X?: number | null; Y?: number | null } | null;
+  pointInParent?: { X?: number | null; Y?: number | null } | null;
+  xOffset?: number | null;
+  yOffset?: number | null;
+  rotation?: number | null;
+  affineMatrix?: number[] | null;
+  width?: number | null;
+  height?: number | null;
+  scalePixelsPerCentimeter?: number | null;
+}
+
+/**
+ * Fields of a conflict shown as one picture with one pick (electron/sync/
+ * decisions.js geometryPreview): a spot's shape over its micrograph, or a
+ * micrograph's placement over its parent. Yours = the local copy, theirs =
+ * the server's.
+ */
+type SyncGeometryPreview =
+  | { group: 'shape'; fieldIds: string[]; micrographId: string; mine: SyncShapeSide; theirs: SyncShapeSide }
+  | {
+    group: 'placement';
+    fieldIds: string[];
+    /** The parent micrograph the placement is drawn on, and its px/cm */
+    micrographId: string;
+    parentScalePixelsPerCentimeter: number | null;
+    mine: SyncPlacementSide;
+    theirs: SyncPlacementSide;
+  };
+
 interface SyncConflictItem extends SyncItemRef {
+  preview?: SyncGeometryPreview;
   fields: Array<{
     /** JSON of path; the key of a choice */
     id: string;

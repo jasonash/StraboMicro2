@@ -54,7 +54,7 @@ const FIELD_LABELS: Record<string, string> = {
   geometryType: 'Shape type',
 };
 
-/** Fields shown as "Shape changed" until geometry previews exist (16y). */
+/** Fields shown as "Shape changed" when the conflict has no picture (sketch, or a spot that also moved; 16y, 16ac). */
 const SHAPE_FIELDS = new Set(['geometry', 'points', 'sketchLayers']);
 
 const isItemSegment = (s: string) => s.startsWith('[') && s.endsWith(']');

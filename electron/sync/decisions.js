@@ -168,6 +168,43 @@ async function loadAll(folder) {
   return { state, project: files.project, current, lookup };
 }
 
+/** Body fields of a spot's shape, and of a micrograph's placement on its parent (one pick each). */
+const SHAPE_FIELDS = new Set(['geometryType', 'points', 'geometry']);
+const PLACEMENT_FIELDS = new Set(['placementType', 'offsetInParent', 'pointInParent', 'xOffset', 'yOffset', 'rotation',
+  'affineMatrix', 'affineControlPoints', 'affineBoundsOffset', 'affineTransformedWidth', 'affineTransformedHeight', 'affineTileHash']);
+const PLACEMENT_PICK = ['placementType', 'offsetInParent', 'pointInParent', 'xOffset', 'yOffset', 'rotation', 'affineMatrix',
+  'width', 'height', 'scalePixelsPerCentimeter'];
+
+/**
+ * A conflict's shape or placement fields, as one picture for the dialog
+ * (spec v3 §4.6): both versions drawn over the micrograph they sit on.
+ * None when the sides sit on different micrographs (a move is its own field).
+ * @param {object | null} local - The entity here
+ * @param {object | null} theirs - The server's (the base)
+ * @param {object[]} fields - Conflict fields ({ path })
+ * @param {(k: string) => object | null} lookup
+ */
+function geometryPreview(local, theirs, fields, lookup) {
+  if (!local || !theirs) return undefined;
+  const pick = (s, names) => Object.fromEntries(names.filter((n) => s.body[n] !== undefined).map((n) => [n, s.body[n]]));
+  if (local.type === 'spot') {
+    const ids = fields.filter((f) => SHAPE_FIELDS.has(f.path[0])).map((f) => JSON.stringify(f.path));
+    if (ids.length === 0 || local.parentId !== theirs.parentId) return undefined;
+    return { group: 'shape', fieldIds: ids, micrographId: local.parentId,
+      mine: pick(local, [...SHAPE_FIELDS]), theirs: pick(theirs, [...SHAPE_FIELDS]) };
+  }
+  if (local.type === 'micrograph') {
+    const ids = fields.filter((f) => PLACEMENT_FIELDS.has(f.path[0])).map((f) => JSON.stringify(f.path));
+    const parent = local.body.parentID;
+    if (ids.length === 0 || !parent || parent !== theirs.body.parentID) return undefined;
+    const p = lookup(entityKey('micrograph', parent));
+    return { group: 'placement', fieldIds: ids, micrographId: parent,
+      parentScalePixelsPerCentimeter: p ? p.body.scalePixelsPerCentimeter ?? null : null,
+      mine: pick(local, PLACEMENT_PICK), theirs: pick(theirs, PLACEMENT_PICK) };
+  }
+  return undefined;
+}
+
 /**
  * Everything waiting for the user, for the dialog.
  * @param {string} folder
@@ -179,8 +216,10 @@ async function listDecisions(folder) {
   for (const [key, fields] of Object.entries(state.conflicts || {})) {
     const local = current.entities[key] || null;
     const theirs = state.base[key] || null;
+    const preview = geometryPreview(local, theirs, fields, lookup);
     conflicts.push({
       ...describe(key, lookup),
+      ...(preview ? { preview } : {}),
       fields: fields.map((f) => ({
         id: JSON.stringify(f.path),
         path: f.path,

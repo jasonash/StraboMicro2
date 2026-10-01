@@ -20,6 +20,7 @@
     "test:decisions": "electron tests/sync/decisions.electron.test.js",
     "test:undo-patches": "node tests/sync/undoPatches.test.mjs",
     "test:undo-history": "rolldown -c tests/sync/rolldown.test.config.mjs && node node_modules/.cache/sync-tests/undoHistory.test.mjs",
+    "test:geometry-preview": "rolldown -c tests/sync/rolldown.test.config.mjs && node node_modules/.cache/sync-tests/geometryPreview.test.mjs",
     "typecheck:watch": "tsc --noEmit --watch --preserveWatchOutput",
     "build": "tsc && vite build",
     "preview": "vite preview",
