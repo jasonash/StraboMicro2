@@ -243,8 +243,8 @@ export default function SyncDecisionsDialog() {
 
   const close = useCallback(() => useSyncStore.getState().update({ decisionsOpen: false }), []);
 
-  /** Returns how many items are waiting (null when the list could not be read). */
-  const load = useCallback(async (): Promise<number | null> => {
+  /** Returns what is waiting (null when the list could not be read). */
+  const load = useCallback(async (): Promise<Lists | null> => {
     if (!projectId || !window.api) return null;
     const r = await window.api.sync.decisions(projectId);
     setLoaded(true);
@@ -252,9 +252,10 @@ export default function SyncDecisionsDialog() {
       setError(r.message);
       return null;
     }
-    setLists({ conflicts: r.conflicts, questions: r.questions, refused: r.refused });
+    const next = { conflicts: r.conflicts, questions: r.questions, refused: r.refused };
+    setLists(next);
     setError(null);
-    return r.conflicts.length + r.questions.length + r.refused.length;
+    return next;
   }, [projectId]);
 
   useEffect(() => {
@@ -278,9 +279,12 @@ export default function SyncDecisionsDialog() {
       const { decideSync } = await import('@/services/syncController');
       const r = await decideSync(decision);
       const left = await load();
-      if (!r.ok) setError(r.message);
+      const kind = { conflict: 'conflicts', question: 'questions', refused: 'refused' } as const;
+      const stillThere = left ? left[kind[decision.kind]].some((x) => x.key === decision.key) : true;
+      // An item that changed meanwhile (e.g. deleted here) is shown as it is now, no error
+      if (!r.ok && stillThere) setError(r.message);
       // The last answer: the dialog closes and the sync after it runs (16ab)
-      else if (left === 0) close();
+      else if (r.ok && left && left.conflicts.length + left.questions.length + left.refused.length === 0) close();
     } finally {
       setBusy(false);
     }

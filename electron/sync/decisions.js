@@ -164,6 +164,8 @@ async function loadAll(folder) {
   const files = await readProjectFiles(folder);
   if (files.project.id !== state.binding.straboId) throw new Error('project.json does not belong to this sync binding');
   const current = explode(files.project, files.pointCounts);
+  // Conflicts on what was deleted here since become delete questions
+  if (sidecar.reconcileDecisions(state, current)) await sidecar.saveState(folder, state);
   const lookup = (k) => current.entities[k] || state.base[k] || null;
   return { state, project: files.project, current, lookup };
 }

@@ -133,6 +133,7 @@ async function pushProject({ folder, client, onProgress = () => {} }) {
   const { project, pointCounts } = await readProjectFiles(folder);
   if (project.id !== state.binding.straboId) throw new Error('project.json does not belong to this sync binding');
   const current = explode(project, pointCounts);
+  if (sidecar.reconcileDecisions(state, current)) await sidecar.saveState(folder, state);
   let filesUploaded = 0;
 
   // A. Originals of micrographs the server does not have yet
@@ -299,6 +300,7 @@ async function countPendingChanges(folder, unsavedProject = null) {
   // server answers), unless a later edit reverted it; it still has to be sent
   const inFlight = state.outgoingPush ? state.outgoingPush.planned.length : 0;
   const current = explode(project, pointCounts);
+  sidecar.reconcileDecisions(state, current); // as the next push will see it (not saved here)
   const skip = sidecar.heldKeys(state);
   for (const p of sidecar.stillRefused(state, current)) skip.add(p.key);
   return Math.max(inFlight, planPush(state.base, current, { skip }).length);

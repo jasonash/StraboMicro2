@@ -201,6 +201,25 @@ app.whenReady().then(async () => {
     check('geometry conflicts settled and pushed', pg.ok && (await status()).conflicts === 0 && (await status()).pending === 0 &&
       (await onServer())[KM2].body.rotation === 10, JSON.stringify(pg));
 
+    // --- A conflict on something deleted here since: becomes "you deleted it" -----------------
+    await appEdit((p) => { micro(p, M2).rotation = 40; });
+    await otherPush([{ op: 'update', type: 'micrograph', id: M2, baseVersion: await v('micrograph', M2), fields: { rotation: 30 } }]);
+    await push();
+    await appPull();
+    check('rotation conflict waiting', (await status()).conflicts === 1);
+    await appEdit((p) => { p.datasets[0].samples[0].micrographs = p.datasets[0].samples[0].micrographs.filter((m) => m.id !== M2); });
+    L = await svc.listDecisions(pid);
+    const qd = L.ok && L.questions[0];
+    check('deleted here: the conflict became one "you deleted it" question', L.ok && L.conflicts.length === 0 && L.questions.length === 1 &&
+      qd.kind === 'mine_deleted' && qd.key === KM2 && qd.theirChanges === 1 && qd.contains.spot === 3, JSON.stringify(L));
+    const pq = await push();
+    check('the delete waits for the answer', pq.ok && (await onServer())[KM2], JSON.stringify(pq));
+    const bb = await appDecide({ kind: 'question', key: KM2, answer: 'bring_back' });
+    check('bring back: the micrograph returns with their rotation', bb.ok && micro(disk(), M2) && micro(disk(), M2).rotation === 30 &&
+      micro(disk(), M2).spots.length === 3, JSON.stringify(bb));
+    const pb = await push();
+    check('brought back: nothing waiting', pb.ok && (await status()).pending === 0 && (await status()).questions === 0, JSON.stringify(pb));
+
     // --- Their delete vs my edit: restore with my changes --------------------------------------
     await appEdit((p) => { micro(p, M2).spots.find((s) => s.id === S1).name = 'edited by me'; });
     await otherPush([{ op: 'delete', type: 'micrograph', id: M2, baseVersion: await v('micrograph', M2) }]);

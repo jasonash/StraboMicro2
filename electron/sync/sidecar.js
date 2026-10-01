@@ -153,4 +153,73 @@ function stillRefused(state, current) {
     sameContent(current.entities[p.key] ?? null, p.local));
 }
 
-module.exports = { syncDir, newState, loadState, saveState, createHashIndex, heldKeys, stillRefused, FORMAT_VERSION };
+/**
+ * Waiting decisions the user overtook by deleting locally (mutates state):
+ *   - a conflict on an entity deleted here becomes a "you deleted it, they
+ *     changed it" question (mine_deleted), one per topmost entity deleted
+ *     here, joining such a question when one is there; the answer is then
+ *     Keep deleted or Bring back with their changes (the base holds theirs)
+ *   - a "they deleted it" question whose entities are all deleted here too
+ *     is settled (both sides agree)
+ * @param {SyncState} state
+ * @param {{ entities: Record<string, object> }} current - explode() of the project
+ * @returns {boolean} whether state changed (the caller saves it)
+ */
+function reconcileDecisions(state, current) {
+  const { entityKey, DEPTH } = require('../shared/entityModel.mjs');
+  let changed = false;
+  const here = (k) => Boolean(current.entities[k]);
+
+  const before = (state.questions || []).length;
+  state.questions = (state.questions || []).filter((q) => q.kind !== 'theirs_deleted' || q.keys.some(here));
+  if (state.questions.length !== before) changed = true;
+
+  const stale = Object.keys(state.conflicts || {}).filter((k) => !here(k));
+  if (stale.length === 0) return changed;
+  const missing = (k) => !here(k) && Boolean(state.base[k]);
+  const ups = (k) => {
+    const s = state.base[k];
+    if (!s) return [];
+    const out = s.parentType ? [entityKey(s.parentType, s.parentId)] : [];
+    if (s.type === 'micrograph' && typeof s.body.parentID === 'string' && s.body.parentID) {
+      out.push(entityKey('micrograph', s.body.parentID));
+    }
+    return out;
+  };
+  const rootOf = (k) => {
+    let r = k;
+    for (let guard = 0; guard < 1000; guard++) {
+      const up = ups(r).find(missing);
+      if (!up) return r;
+      r = up;
+    }
+    return r;
+  };
+  /** @type {Map<string, number>} root => conflicts in it */
+  const roots = new Map();
+  for (const k of stale) {
+    delete state.conflicts[k];
+    if (!state.base[k]) continue; // never on the server: nothing of theirs to lose
+    const r = rootOf(k);
+    roots.set(r, (roots.get(r) || 0) + 1);
+  }
+  changed = true;
+  if (roots.size === 0) return changed;
+  const all = Object.keys(state.base).filter(missing);
+  for (const [root, n] of roots) {
+    const keys = all.filter((k) => rootOf(k) === root);
+    const q = state.questions.find((x) => x.key === root && x.kind === 'mine_deleted');
+    if (q) {
+      q.keys = [...new Set([...q.keys, ...keys])];
+      q.theirChanges = (q.theirChanges || 0) + n;
+    } else {
+      state.questions.push({ key: root, kind: 'mine_deleted', keys, localChanges: 0, theirChanges: n });
+    }
+  }
+  for (const q of state.questions) {
+    if (roots.has(q.key)) q.keys.sort((x, y) => DEPTH[state.base[x].type] - DEPTH[state.base[y].type]);
+  }
+  return changed;
+}
+
+module.exports = { syncDir, newState, loadState, saveState, createHashIndex, heldKeys, stillRefused, reconcileDecisions, FORMAT_VERSION };
