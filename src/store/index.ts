@@ -4,7 +4,8 @@
  * Barrel export for all store-related modules
  */
 
-export { useAppStore, useTemporalStore } from './useAppStore';
+export { useAppStore } from './useAppStore';
+export { undo, redo, setUndoBlockedHandler } from './undoHistory';
 export type { DrawingTool, SidebarTab } from './useAppStore';
 
 export {

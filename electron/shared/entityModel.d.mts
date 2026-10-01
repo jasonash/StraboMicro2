@@ -48,3 +48,21 @@ export function assemble(
   projectId: string,
   options?: { order?: string[]; perUser?: Map<string, Record<string, unknown>> }
 ): { project: Record<string, unknown>; pointCounts: Record<string, unknown>[] } | null;
+
+/** One entity's change between two versions of a project (null: absent). */
+export interface EntityChange {
+  key: string;
+  before: EntityState | null;
+  after: EntityState | null;
+}
+
+export function diffProjects(prev: unknown, next: unknown): EntityChange[];
+
+export function checkEntityChanges(
+  project: unknown,
+  changes: EntityChange[],
+  direction: 'undo' | 'redo'
+): { ok: true } | { ok: false; key: string };
+
+/** Mutates `project` (pass a copy). */
+export function applyEntityChanges(project: unknown, changes: EntityChange[], direction: 'undo' | 'redo'): void;

@@ -41,7 +41,7 @@ import {
   IncompleteMicrograph,
 } from './components/dialogs/IncompleteMicrographsDialog';
 import UpdateNotification from './components/UpdateNotification';
-import { useAppStore, useTemporalStore } from '@/store';
+import { useAppStore, undo, redo, setUndoBlockedHandler } from '@/store';
 import { useAuthStore } from '@/store/useAuthStore';
 import { useTheme } from './hooks/useTheme';
 import { useAutosave } from './hooks/useAutosave';
@@ -903,16 +903,14 @@ function App() {
     }));
 
     // Undo menu item
+    setUndoBlockedHandler((message) => alert(message));
     unsubscribers.push(window.api.onUndo(() => {
-      const temporalState = useTemporalStore.getState();
-      temporalState.undo();
+      void undo();
     }));
 
     // Redo menu item
     unsubscribers.push(window.api.onRedo(() => {
-      const temporalState = useTemporalStore.getState();
-      temporalState.redo();
-      console.log('Redo performed');
+      void redo();
     }));
 
     // Theme menu item

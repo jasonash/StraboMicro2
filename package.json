@@ -11,6 +11,8 @@
     "dev:typecheck": "concurrently \"npm run dev:vite\" \"npm run dev:electron\" \"npm run typecheck:watch\"",
     "typecheck": "tsc --noEmit",
     "test:entity-model": "node tests/sync/entityModel.test.mjs",
+    "test:undo-patches": "node tests/sync/undoPatches.test.mjs",
+    "test:undo-history": "rolldown -c tests/sync/rolldown.test.config.mjs && node node_modules/.cache/sync-tests/undoHistory.test.mjs",
     "typecheck:watch": "tsc --noEmit --watch --preserveWatchOutput",
     "build": "tsc && vite build",
     "preview": "vite preview",
@@ -81,7 +83,6 @@
     "tiff": "^7.1.2",
     "unzipper": "^0.12.3",
     "uuid": "^14.0.2",
-    "zundo": "^2.3.0",
     "zustand": "^5.0.8"
   },
   "overrides": {

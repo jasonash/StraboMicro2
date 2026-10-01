@@ -10,7 +10,7 @@
 
 import { create } from 'zustand';
 import { devtools, persist, createJSONStorage, StateStorage } from 'zustand/middleware';
-import { temporal } from 'zundo';
+import { installUndoHistory, resetUndoHistory } from './undoHistory';
 import { DEFAULT_IMAGE_EXPORT_PREFERENCES, type ImageExportPreferences } from '@/types/image-export-types';
 
 /**
@@ -594,7 +594,6 @@ interface AppState {
 export const useAppStore = create<AppState>()(
   devtools(
     persist(
-      temporal(
         (set, get) => ({
           // ========== INITIAL STATE ==========
           project: null,
@@ -741,6 +740,8 @@ export const useAppStore = create<AppState>()(
               micrographIndex,
               spotIndex,
             });
+            // A freshly loaded project starts with no undo history (even the same project reloaded)
+            resetUndoHistory();
 
             // Fire-and-forget: clean up orphaned associated files on disk
             window.api?.cleanupOrphanedAssociatedFiles(project.id, project).catch((error) => {
@@ -748,23 +749,26 @@ export const useAppStore = create<AppState>()(
             });
           },
 
-          closeProject: () => set({
-            project: null,
-            projectFilePath: null,
-            isDirty: false,
-            activeDatasetId: null,
-            activeSampleId: null,
-            activeMicrographId: null,
-            activeSpotId: null,
-            micrographNavigationStack: [],
-            selectedSpotIds: [],
-            spotLassoToolActive: false,
-            siblingViewActive: false,
-            siblingCachedZoom: null,
-            siblingCachedPosition: null,
-            micrographIndex: new Map(),
-            spotIndex: new Map(),
-          }),
+          closeProject: () => {
+            resetUndoHistory();
+            set({
+              project: null,
+              projectFilePath: null,
+              isDirty: false,
+              activeDatasetId: null,
+              activeSampleId: null,
+              activeMicrographId: null,
+              activeSpotId: null,
+              micrographNavigationStack: [],
+              selectedSpotIds: [],
+              spotLassoToolActive: false,
+              siblingViewActive: false,
+              siblingCachedZoom: null,
+              siblingCachedPosition: null,
+              micrographIndex: new Map(),
+              spotIndex: new Map(),
+            });
+          },
 
           saveProject: async () => {
             const { project, isDirty } = get();
@@ -3737,12 +3741,6 @@ export const useAppStore = create<AppState>()(
 
           setLastGrainDetectionSettings: (settings) => set({ lastGrainDetectionSettings: settings }),
         }),
-        {
-          // Temporal (undo/redo) configuration
-          limit: 50,
-          equality: (a, b) => a.project === b.project,
-        }
-      ),
       {
         // Persistence configuration
         name: 'strabomicro-storage',
@@ -3841,10 +3839,10 @@ export const useAppStore = create<AppState>()(
 );
 
 // ============================================================================
-// UNDO/REDO HOOKS (from zundo temporal middleware)
+// UNDO/REDO (patch-based, see undoHistory.ts)
 // ============================================================================
 
-export const useTemporalStore = useAppStore.temporal;
+installUndoHistory(useAppStore);
 
 // ============================================================================
 // DEBUG HELPERS (development only)

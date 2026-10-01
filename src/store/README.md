@@ -278,20 +278,22 @@ function MicrographOverlays({ parentId }: { parentId: string }) {
 
 ## Undo/Redo
 
+Undo is patch-based (`src/store/undoHistory.ts`, using `diffProjects` /
+`applyEntityChanges` from `electron/shared/entityModel.mjs`). Each step
+records only the entities an edit changed; a burst of edits (e.g. a slider
+drag) becomes one step after 300 ms of quiet; opening or closing a project
+clears the history; per-user fields (tree expansion) are not undone.
+Edit > Undo / Redo (Cmd+Z / Cmd+Shift+Z) call:
+
 ```typescript
-import { useTemporalStore } from '@/store';
+import { undo, redo } from '@/store';
 
-function UndoRedoButtons() {
-  const { undo, redo, canUndo, canRedo } = useTemporalStore();
-
-  return (
-    <>
-      <button onClick={undo} disabled={!canUndo}>Undo</button>
-      <button onClick={redo} disabled={!canRedo}>Redo</button>
-    </>
-  );
-}
+await undo();
+await redo();
 ```
+
+A project change that must not become an undo step (applying pulled sync
+changes) goes through `withoutUndoRecording(() => ...)` from `undoHistory.ts`.
 
 ## DevTools
 

@@ -367,3 +367,229 @@ export function assemble(entities, projectId, { order, perUser } = {}) {
 
   return { project: build('project', projectId), pointCounts };
 }
+
+// ---------------------------------------------------------------------------
+// Entity-level changes between two versions of a project (undo / redo)
+// ---------------------------------------------------------------------------
+//
+// diffProjects() compares two projects entity by entity without copying
+// them (the store treats project objects as immutable), and returns only
+// the entities that differ, each as a before/after EntityState. The same
+// changes applied backwards undo an edit and forwards redo it, touching
+// nothing else, so edits by others (pulled changes) survive an undo.
+
+/** Depth of a type in the tree: parents are created before children. */
+const DEPTH = Object.freeze({
+  project: 0, dataset: 1, tag: 1, group: 1, preset: 1, sample: 2, micrograph: 3, spot: 4, point_count: 4,
+});
+
+/**
+ * Live view of every entity in a project (first occurrence of an id wins):
+ * key => { type, id, parentType, parentId, obj, parentObj, parentKey }.
+ * obj is the object inside the project, not a copy.
+ */
+function entityViews(project) {
+  const views = new Map();
+  if (!project || typeof project !== 'object' || !isEntityId(project.id)) return views;
+  const visit = (obj, type, parentType, parentId, parentObj, parentKey) => {
+    const k = entityKey(type, obj.id);
+    if (views.has(k)) return;
+    views.set(k, { type, id: obj.id, parentType, parentId, obj, parentObj, parentKey });
+    for (const [key, childType] of Object.entries(CHILD_KEYS[type])) {
+      const list = obj[key];
+      if (!Array.isArray(list)) continue;
+      for (const child of list) {
+        if (child && typeof child === 'object' && !Array.isArray(child) && isEntityId(child.id)) {
+          visit(child, childType, type, obj.id, obj, key);
+        }
+      }
+    }
+  };
+  visit(project, 'project', null, null, null, null);
+  return views;
+}
+
+/** Body keys of an object: everything except child collections and per-user fields. */
+function bodyKeys(type, obj) {
+  const skip = new Set([...Object.keys(CHILD_KEYS[type]), ...perUserFields(type)]);
+  return Object.keys(obj).filter((k) => !skip.has(k) && obj[k] !== undefined && typeof obj[k] !== 'function');
+}
+
+/** Same entity body (child collections and per-user fields ignored). */
+function sameBody(type, a, b) {
+  const ka = bodyKeys(type, a);
+  const kb = bodyKeys(type, b);
+  if (ka.length !== kb.length) return false;
+  for (const k of ka) {
+    if (!Object.prototype.hasOwnProperty.call(b, k) || !deepEqual(a[k], b[k])) return false;
+  }
+  return true;
+}
+
+/** Child ids of a live object, per collection. */
+function childIdsOf(type, obj) {
+  /** @type {Record<string, string[]>} */
+  const out = {};
+  for (const key of Object.keys(CHILD_KEYS[type])) {
+    out[key] = Array.isArray(obj[key]) ? obj[key].filter((c) => c && isEntityId(c.id)).map((c) => c.id) : [];
+  }
+  return out;
+}
+
+/** EntityState (a JSON copy) of a live view. */
+function stateOfView(v) {
+  const body = {};
+  for (const k of bodyKeys(v.type, v.obj)) body[k] = v.obj[k];
+  /** @type {EntityState} */
+  const state = { type: v.type, id: v.id, parentType: v.parentType, parentId: v.parentId, body: jsonCopy(body) };
+  if (Object.keys(CHILD_KEYS[v.type]).length > 0) state.childOrder = childIdsOf(v.type, v.obj);
+  return state;
+}
+
+/**
+ * @typedef {Object} EntityChange
+ * @property {string} key
+ * @property {EntityState | null} before - null: the entity did not exist
+ * @property {EntityState | null} after - null: the entity was removed
+ */
+
+/**
+ * Entities that differ between two versions of a project (body, parent or
+ * child order). Per-user fields are ignored. Order: parents before children.
+ * @param {object | null} prev
+ * @param {object | null} next
+ * @returns {EntityChange[]}
+ */
+export function diffProjects(prev, next) {
+  const a = entityViews(prev);
+  const b = entityViews(next);
+  /** @type {EntityChange[]} */
+  const changes = [];
+  for (const [k, va] of a) {
+    const vb = b.get(k);
+    if (!vb) {
+      changes.push({ key: k, before: stateOfView(va), after: null });
+      continue;
+    }
+    if (va.obj === vb.obj) continue;
+    const same = va.parentType === vb.parentType && va.parentId === vb.parentId &&
+      sameBody(va.type, va.obj, vb.obj) && deepEqual(childIdsOf(va.type, va.obj), childIdsOf(vb.type, vb.obj));
+    if (!same) changes.push({ key: k, before: stateOfView(va), after: stateOfView(vb) });
+  }
+  for (const [k, vb] of b) {
+    if (!a.has(k)) changes.push({ key: k, before: null, after: stateOfView(vb) });
+  }
+  const depthOf = (c) => DEPTH[(c.after ?? c.before).type];
+  return changes.sort((x, y) => depthOf(x) - depthOf(y));
+}
+
+/**
+ * Whether changes can be applied to a project in a direction: every
+ * entity must still be as the changes left it (body and parent; child
+ * order is not checked, so others adding or removing siblings never block),
+ * and every entity to re-create must have a parent.
+ * @param {object} project
+ * @param {EntityChange[]} changes
+ * @param {'undo' | 'redo'} direction
+ * @returns {{ ok: true } | { ok: false, key: string }}
+ */
+export function checkEntityChanges(project, changes, direction) {
+  const views = entityViews(project);
+  const creating = new Set();
+  for (const c of changes) {
+    const expected = direction === 'undo' ? c.after : c.before;
+    const target = direction === 'undo' ? c.before : c.after;
+    const cur = views.get(c.key);
+    if (expected === null) {
+      if (cur) return { ok: false, key: c.key };
+    } else {
+      if (!cur || cur.parentType !== expected.parentType || cur.parentId !== expected.parentId ||
+        !sameBody(expected.type, cur.obj, expected.body)) {
+        return { ok: false, key: c.key };
+      }
+    }
+    if (target !== null && expected === null) creating.add(c.key);
+  }
+  for (const c of changes) {
+    const target = direction === 'undo' ? c.before : c.after;
+    if (target === null || target.parentType === null || !creating.has(c.key)) continue;
+    const pk = entityKey(target.parentType, target.parentId);
+    if (!views.has(pk) && !creating.has(pk)) return { ok: false, key: c.key };
+  }
+  return { ok: true };
+}
+
+/**
+ * Apply changes to a project in place (the caller passes a copy): undo
+ * restores each entity's `before`, redo its `after`. Entities not in the
+ * changes are untouched, and so are per-user fields of entities that stay.
+ * Call checkEntityChanges first.
+ * @param {object} project - Mutated
+ * @param {EntityChange[]} changes
+ * @param {'undo' | 'redo'} direction
+ */
+export function applyEntityChanges(project, changes, direction) {
+  const targetOf = (c) => (direction === 'undo' ? c.before : c.after);
+  const views = entityViews(project);
+  /** @type {Map<string, object>} */
+  const objs = new Map([...views].map(([k, v]) => [k, v.obj]));
+
+  const detach = (v) => {
+    const list = v.parentObj?.[v.parentKey];
+    if (Array.isArray(list)) {
+      const i = list.indexOf(v.obj);
+      if (i !== -1) list.splice(i, 1);
+    }
+  };
+  const attach = (obj, target) => {
+    const parent = objs.get(entityKey(target.parentType, target.parentId));
+    if (!parent) return;
+    const key = Object.entries(CHILD_KEYS[target.parentType]).find(([, t]) => t === target.type)?.[0];
+    if (!key) return;
+    if (!Array.isArray(parent[key])) parent[key] = [];
+    parent[key].push(obj);
+  };
+
+  // Removals: children first
+  for (const c of [...changes].reverse()) {
+    if (targetOf(c) !== null) continue;
+    const v = views.get(c.key);
+    if (v) {
+      detach(v);
+      objs.delete(c.key);
+    }
+  }
+  // Updates and re-creations: parents first
+  for (const c of changes) {
+    const target = targetOf(c);
+    if (target === null) continue;
+    const v = views.get(c.key);
+    if (v && objs.has(c.key)) {
+      for (const k of bodyKeys(target.type, v.obj)) delete v.obj[k];
+      Object.assign(v.obj, jsonCopy(target.body));
+      if (v.parentType !== target.parentType || v.parentId !== target.parentId) {
+        detach(v);
+        attach(v.obj, target);
+      }
+    } else if (target.parentType !== null) {
+      const obj = jsonCopy(target.body);
+      for (const key of Object.keys(CHILD_KEYS[target.type])) obj[key] = [];
+      objs.set(c.key, obj);
+      attach(obj, target);
+    }
+  }
+  // Child order: the target order first, then any others (added since) in their current order
+  for (const c of changes) {
+    const target = targetOf(c);
+    if (!target?.childOrder) continue;
+    const obj = objs.get(c.key);
+    if (!obj) continue;
+    for (const [key, ids] of Object.entries(target.childOrder)) {
+      if (!Array.isArray(obj[key])) continue;
+      const rank = new Map(ids.map((id, i) => [id, i]));
+      const listed = obj[key].filter((x) => rank.has(x?.id)).sort((x, y) => rank.get(x.id) - rank.get(y.id));
+      const others = obj[key].filter((x) => !rank.has(x?.id));
+      obj[key] = [...listed, ...others];
+    }
+  }
+}
