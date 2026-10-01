@@ -41,6 +41,8 @@ import {
   IncompleteMicrograph,
 } from './components/dialogs/IncompleteMicrographsDialog';
 import UpdateNotification from './components/UpdateNotification';
+import SyncDecisionsNotice from './components/SyncDecisionsNotice';
+import SyncDecisionsDialog from './components/dialogs/SyncDecisionsDialog';
 import { useAppStore, undo, redo, setUndoBlockedHandler } from '@/store';
 import { useAuthStore } from '@/store/useAuthStore';
 import { useSyncStore } from '@/store/useSyncStore';
@@ -1375,6 +1377,9 @@ function App() {
           await turnOn(action === 'turn-on-automatic' ? 'automatic' : 'manual');
         } else if (action === 'status') {
           await showStatus();
+        } else if (action === 'decisions') {
+          if (!useSyncStore.getState().synced) alert('This project is not synced.');
+          else useSyncStore.getState().update({ decisionsOpen: true });
         } else {
           const controller = await import('@/services/syncController');
           if (action === 'sync-now') {
@@ -1545,6 +1550,8 @@ function App() {
         manualCheck={isManualUpdateCheck}
         onManualCheckComplete={() => setIsManualUpdateCheck(false)}
       />
+      <SyncDecisionsNotice />
+      <SyncDecisionsDialog />
       <PointCountDialog
         isOpen={isPointCountDialogOpen}
         onClose={() => setIsPointCountDialogOpen(false)}

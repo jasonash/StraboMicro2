@@ -111,7 +111,7 @@ function plannedFiles(folder, current) {
  * @param {{ folder: string, client: ReturnType<import('./client').createSyncClient>, onProgress?: (p: object) => void }} options
  * @returns {Promise<{ pushed: number, problems: object[], conflicts: number, filesUploaded: number, ready: boolean, restored: number }>}
  *   conflicts: changes the server turned down because the entity changed or was deleted there (a pull merges them);
- *   restored: restores sent (a pull brings their states)
+ *   restored: restores sent and waiting for a pull to bring their states (the caller pulls)
  */
 async function pushProject({ folder, client, onProgress = () => {} }) {
   const state = await sidecar.loadState(folder);
@@ -158,7 +158,6 @@ async function pushProject({ folder, client, onProgress = () => {} }) {
   // Restores the user asked for (Restore with my changes): the server brings
   // the entities back as they were deleted; they stay held until a pull puts
   // those states into the base, and then my changes push as edits
-  let restored = 0;
   for (const r of state.restores || []) {
     if (r.sent) continue;
     const sep = r.key.indexOf(':');
@@ -167,7 +166,6 @@ async function pushProject({ folder, client, onProgress = () => {} }) {
     const result = (res.results || [])[0] || { status: 'missing' };
     if (result.status === 'accepted' || (result.status === 'invalid' && result.reason === 'not_deleted')) {
       r.sent = true;
-      restored++;
     } else {
       // Not restored: the entities stay as they are locally, turned down
       state.restores = state.restores.filter((x) => x !== r);
@@ -175,6 +173,7 @@ async function pushProject({ folder, client, onProgress = () => {} }) {
     }
     await sidecar.saveState(folder, state);
   }
+  const restored = (state.restores || []).filter((r) => r.sent).length;
 
   // B. Entity changes (unresolved conflicts, delete questions, restores
   // waiting for a pull, and turned-down changes not edited since wait, spec v3 §4.6)

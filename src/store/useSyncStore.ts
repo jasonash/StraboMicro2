@@ -36,6 +36,10 @@ export interface SyncStoreState {
   notice: string | null;
   progress: SyncProgress | null;
   lastSyncedAt: number | null;
+  /** The "Sync needs your decision" dialog is open */
+  decisionsOpen: boolean;
+  /** Items waiting when the user closed the notice; it shows again only above this */
+  noticeDismissedTotal: number;
   update: (partial: Partial<Omit<SyncStoreState, 'update' | 'reset'>>) => void;
   reset: (projectId: string | null) => void;
 }
@@ -55,7 +59,14 @@ const initial = {
   notice: null,
   progress: null,
   lastSyncedAt: null,
+  decisionsOpen: false,
+  noticeDismissedTotal: 0,
 };
+
+/** Items waiting for the user's decision (conflicted entities, delete questions, turned-down changes). */
+export function decisionsWaiting(s: Pick<SyncStoreState, 'conflicts' | 'questions' | 'refused'>): number {
+  return s.conflicts + s.questions + s.refused;
+}
 
 export const useSyncStore = create<SyncStoreState>()((set) => ({
   projectId: null,

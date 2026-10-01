@@ -18,6 +18,11 @@
  * saved, and main records the pull. If the user changed anything while the
  * merge ran, the pull is dropped and done again. Files the pull brought
  * download afterwards; the tree reloads their thumbnails.
+ * Decisions (16x to 16aa): decide() settles one item of the "Sync needs your
+ * decision" dialog the same way (main works it out, the store applies it in
+ * one write, project.json is saved, main records it); the answer is then
+ * pushed like any edit. A Sync click that leaves new items opens the
+ * dialog; a restore waiting for its pull makes every cycle pull.
  *
  * A push cycle saves project.json first (16w: the base never gets ahead of
  * the file on disk), then asks main to push. It saves only when the store
@@ -34,7 +39,7 @@
 
 import { useAppStore } from '@/store';
 import { useAuthStore } from '@/store/useAuthStore';
-import { useSyncStore } from '@/store/useSyncStore';
+import { useSyncStore, decisionsWaiting } from '@/store/useSyncStore';
 import { getRestServerUrl } from '@/components/dialogs/PreferencesDialog';
 import { applyRemoteChanges } from '@/store/remoteChanges';
 
@@ -48,6 +53,8 @@ const RECOUNT_MS = 1_000;
 const EDIT_POLL_MS = 1_000;
 /** Pulls dropped because the user kept editing, before giving up for this cycle */
 const PULL_ATTEMPTS = 3;
+/** How often a decision waiting for a running cycle checks again */
+const IDLE_POLL_MS = 200;
 
 type SyncedStatus = Extract<SyncStatusResult, { synced: true }>;
 type Failure = Extract<SyncPushResult, { ok: false }>;
@@ -162,8 +169,14 @@ class ProjectSync {
   private localChange(): void {
     if (this.stopped || this.applyingRemote) return;
     this.changeCount++;
-    this.changedSinceRun = true;
     this.needsSave = true;
+    this.schedulePush();
+  }
+
+  /** Something local needs pushing: Automatic pushes after the debounce, Manual recounts. */
+  private schedulePush(): void {
+    if (this.stopped) return;
+    this.changedSinceRun = true;
     if (!this.running) useSyncStore.getState().update({ activity: 'waiting' });
     if (this.mode !== 'automatic') {
       if (this.recountTimer) clearTimeout(this.recountTimer);
@@ -202,6 +215,7 @@ class ProjectSync {
     this.changedSinceRun = false;
     const wantPull = this.pullRequested;
     this.pullRequested = false;
+    const decisionsBefore = decisionsWaiting(useSyncStore.getState());
     useSyncStore.getState().update({ activity: 'syncing', progress: null });
 
     let result: SyncPushResult;
@@ -215,12 +229,12 @@ class ProjectSync {
       }
       await this.saveIfNeeded(api);
       result = await api.sync.push(this.projectId, getRestServerUrl());
-      if (result.ok && (wantPull || result.conflicts > 0)) {
+      if (result.ok && (wantPull || result.conflicts > 0 || result.restored > 0)) {
         const p = await this.pullAndApply(api);
         pulled = true;
         if (!p.ok) {
           result = p;
-        } else if (p.applied > 0 || result.conflicts > 0) {
+        } else if (p.applied > 0 || result.conflicts > 0 || result.restored > 0) {
           // Push what the merge left (merged entities, and edits made meanwhile)
           await this.saveIfNeeded(api);
           result = await api.sync.push(this.projectId, getRestServerUrl());
@@ -249,7 +263,14 @@ class ProjectSync {
         pending: this.changedSinceRun ? null : 0,
         ...(result.ready ? { phase: 'ready' as const } : {}),
       });
-      if (result.notAccepted > 0 || pulled) void this.refreshCounts();
+      if (result.notAccepted > 0 || pulled) {
+        void this.refreshCounts().then(() => {
+          // A Sync click that left new items to decide opens the dialog (16x)
+          if (wantPull && !this.stopped && decisionsWaiting(useSyncStore.getState()) > decisionsBefore) {
+            useSyncStore.getState().update({ decisionsOpen: true });
+          }
+        });
+      }
     } else {
       if (wantPull) this.pullRequested = true; // the next try pulls too
       this.failed(result);
@@ -320,6 +341,64 @@ class ProjectSync {
     return { ok: false, kind: 'error', message: 'The project kept changing while syncing; it will try again' };
   }
 
+  /**
+   * Settle one item of the decisions dialog: main works it out, the store
+   * applies it in one write (an undo step when it takes their value in a
+   * conflict, 16y), project.json is saved, main records it. Then it is
+   * pushed like any edit (Manual mode waits for the Sync click).
+   */
+  async decide(decision: SyncDecision): Promise<SyncCallResult> {
+    const api = window.api;
+    if (!api) return { ok: false, kind: 'error', message: 'Sync is not available' };
+    while (this.running && !this.stopped) {
+      await new Promise((resolve) => setTimeout(resolve, IDLE_POLL_MS));
+    }
+    if (this.stopped) return { ok: false, kind: 'error', message: 'The project was closed' };
+    this.running = true;
+    let result: SyncCallResult;
+    try {
+      await this.saveIfNeeded(api);
+      const r = await api.sync.decide(this.projectId, decision);
+      if (!r.ok) {
+        result = r;
+      } else {
+        let saved = true;
+        if (r.changes.length > 0) {
+          this.applyingRemote = true;
+          try {
+            applyRemoteChanges(r.changes, { undoable: r.undoable });
+          } finally {
+            this.applyingRemote = false;
+          }
+          const project = useAppStore.getState().project;
+          const s = project ? await api.saveProjectJson(project, this.projectId).catch(() => null) : null;
+          saved = Boolean(s?.success);
+        }
+        if (!saved) {
+          await api.sync.decideDiscard(this.projectId, r.decisionId);
+          this.needsSave = true;
+          result = { ok: false, kind: 'error', message: 'The project could not be saved' };
+        } else {
+          const c = await api.sync.decideCommit(this.projectId, r.decisionId);
+          result = c.ok ? { ok: true } : c;
+          if (c.ok && c.downloads) useSyncStore.getState().update({ downloads: c.downloads });
+        }
+      }
+    } catch (error) {
+      result = { ok: false, kind: 'error', message: error instanceof Error ? error.message : String(error) };
+    } finally {
+      this.running = false;
+    }
+    if (this.stopped) return result;
+    await this.refreshCounts();
+    if (result.ok) this.schedulePush();
+    if (this.rerun) {
+      this.rerun = false;
+      void this.run();
+    }
+    return result;
+  }
+
   /** Fetch files pulls brought; the tree reloads the thumbnails of micrographs that got one. */
   private async downloadFiles(api: Api): Promise<{ ok: true } | Failure> {
     const d = await api.sync.download(this.projectId, getRestServerUrl());
@@ -338,7 +417,8 @@ class ProjectSync {
       s.quickEditMode || s.sketchTextInputActive) {
       return true;
     }
-    if (document.querySelector('.MuiDialog-root')) return true;
+    // The decisions dialog does not hold sync up (everything else keeps syncing, 16aa)
+    if (document.querySelector('.MuiDialog-root:not([data-sync-decisions])')) return true;
     const el = document.activeElement;
     if (!(el instanceof HTMLElement)) return false;
     if (el.isContentEditable || el.tagName === 'TEXTAREA') return true;
@@ -422,6 +502,12 @@ export function syncNow(): boolean {
   if (!current) return false;
   current.syncNow();
   return true;
+}
+
+/** Settle one item of the decisions dialog for the open synced project. */
+export async function decideSync(decision: SyncDecision): Promise<SyncCallResult> {
+  if (!current) return { ok: false, kind: 'not_synced', message: 'This project is not synced.' };
+  return current.decide(decision);
 }
 
 /** Switch the open synced project between Automatic and Manual. */

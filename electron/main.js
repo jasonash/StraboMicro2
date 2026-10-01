@@ -1292,6 +1292,10 @@ function createWindow() {
           click: () => mainWindow?.webContents.send('debug:sync', 'status'),
         },
         {
+          label: 'Sync: Review Decisions...',
+          click: () => mainWindow?.webContents.send('debug:sync', 'decisions'),
+        },
+        {
           // Server project number (Show Status) copied in the other copy of the app
           label: 'Sync: Download Synced Project (Number from Clipboard)',
           click: async () => {
