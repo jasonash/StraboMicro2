@@ -232,8 +232,11 @@ function upKeys(state) {
  * @property {'theirs_deleted' | 'mine_deleted'} kind - theirs_deleted: they
  *   deleted it and you changed it or added beneath it; mine_deleted: you
  *   deleted it and they changed it
- * @property {string[]} keys - Every entity in the question (held locally)
+ * @property {string[]} keys - Every entity in the question (held locally),
+ *   parents first; mine_deleted: what I deleted with it and what they added
+ *   beneath it
  * @property {number} localChanges - theirs_deleted: your edits and additions in it
+ * @property {number} [theirChanges] - mine_deleted: their edits and additions in it
  */
 
 /**
@@ -303,17 +306,46 @@ function mergeProject(base, mine, theirs) {
   }
   for (const k of deleted) handled.add(k);
 
+  // My deletions, by topmost entity I deleted: one question when they
+  // changed anything in it or added beneath it, else my deletion stands
+  // (pushed next). Their entity state wins for the walk up (they may have
+  // moved it); an entity they deleted too is simply gone.
+  const stateOf = (k) => (theirs.has(k) ? theirs.get(k) : base[k]) || null;
+  const missing = (k) => !local[k] && stateOf(k) !== null;
+  const rootOfMissing = (k) => {
+    let r = k;
+    for (let guard = 0; guard < 1000; guard++) {
+      const up = upKeys(stateOf(r)).find((u) => missing(u));
+      if (!up) return r;
+      r = up;
+    }
+    return r;
+  };
+  /** @type {Map<string, { keys: string[], theirChanges: number }>} */
+  const myDeletes = new Map();
+  for (const k of new Set([...Object.keys(base), ...theirs.keys()])) {
+    if (handled.has(k) || !missing(k)) continue;
+    const root = rootOfMissing(k);
+    if (!myDeletes.has(root)) myDeletes.set(root, { keys: [], theirChanges: 0 });
+    const g = myDeletes.get(root);
+    g.keys.push(k);
+    const t = theirs.get(k);
+    if (t && (!base[k] || !sameContent(base[k], t))) g.theirChanges++;
+  }
+  for (const [root, g] of myDeletes) {
+    if (!base[root]) continue; // their new entities under something I still have: plain creates
+    for (const k of g.keys) handled.add(k);
+    if (g.theirChanges === 0) continue;
+    const keys = g.keys.sort((x, y) => DEPTH[stateOf(x).type] - DEPTH[stateOf(y).type]);
+    questions.push({ key: root, kind: 'mine_deleted', keys, localChanges: 0, theirChanges: g.theirChanges });
+  }
+
   for (const [k, t] of theirs) {
     if (handled.has(k) || t === null) continue;
     const b = base[k] || null;
     const m = local[k] || null;
     if (!m) {
-      if (!b) {
-        changes.push({ key: k, before: null, after: t }); // created by them
-      } else if (!sameContent(b, t)) {
-        questions.push({ key: k, kind: 'mine_deleted', keys: [k], localChanges: 0 });
-      }
-      // else: my deletion stands (pushed next)
+      changes.push({ key: k, before: null, after: t }); // created by them (missing ones were handled above)
       continue;
     }
     const r = mergeEntity(b, m, t);

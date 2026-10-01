@@ -208,6 +208,24 @@ const m = (body, extra) => st('micrograph', 'm1', body, extra);
     const r2 = mergeProject(baseOf(all), mineOf(mine), new Map([['micrograph:m3', clone(M3, {}, { childOrder: { spots: [] } })]]));
     check('project: my delete stands when they changed nothing', r2.changes.length === 0 && r2.questions.length === 0, J(r2));
   }
+  // I deleted m1 (with p1, p2 and nested m2): grouped under m1
+  {
+    const mine = [D, S, M3];
+    const r = mergeProject(baseOf(all), mineOf(mine), new Map([['spot:p2', clone(P2, { name: 'theirs' })]]));
+    const q = r.questions[0];
+    check('project: my delete vs their edit beneath = one question at the top', r.questions.length === 1 && q.key === 'micrograph:m1' &&
+      q.kind === 'mine_deleted' && q.theirChanges === 1 && ['micrograph:m1', 'micrograph:m2', 'spot:p1', 'spot:p2'].every((k) => q.keys.includes(k)) &&
+      q.keys.length === 4 && q.keys[0] === 'micrograph:m1' && r.changes.length === 0, J(r));
+    const P9 = st('spot', 'p9', { name: 'new' }, { parentType: 'micrograph', parentId: 'm2' });
+    const r2 = mergeProject(baseOf(all), mineOf(mine), new Map([['spot:p9', P9]]));
+    check('project: their new spot under my delete joins the question, not created', r2.questions.length === 1 &&
+      r2.questions[0].key === 'micrograph:m1' && r2.questions[0].keys.includes('spot:p9') && r2.changes.length === 0, J(r2));
+    const r3 = mergeProject(baseOf(all), mineOf(mine), new Map([['spot:p2', clone(P2)]]));
+    check('project: my delete stands when nothing beneath changed', r3.questions.length === 0 && r3.changes.length === 0, J(r3));
+    const r4 = mergeProject(baseOf(all), mineOf([D]), new Map([['micrograph:m3', clone(M3, { name: 'theirs' })], ['spot:p1', clone(P1, { name: 'x' })]]));
+    check('project: whole sample deleted = one question at the sample', r4.questions.length === 1 &&
+      r4.questions[0].key === 'sample:s1' && r4.questions[0].theirChanges === 2 && r4.questions[0].keys.length === 6, J(r4));
+  }
   // Conflict: same field
   {
     const r = mergeProject(baseOf(all), mineOf([D, S, clone(M1, { name: 'mine' }), M2, M3, P1, P2]),
