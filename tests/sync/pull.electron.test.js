@@ -143,6 +143,9 @@ app.whenReady().then(async () => {
     check('their rename, new spot and spot delete applied', micro(d1, M1).name === 'Renamed elsewhere' &&
       micro(d1, M2).spots.some((s) => s.id === NEW_SPOT && s.name === 'Spot from elsewhere') &&
       !micro(d1, M2).spots.some((s) => s.id === S3), JSON.stringify(p1.summary));
+    const m1Change = p1.changes.find((c) => c.key === `micrograph:${M1}`);
+    check('a pulled micrograph arrives as the app loads it (imagePath set)', m1Change && m1Change.after &&
+      m1Change.after.body.imagePath === M1, JSON.stringify(m1Change && m1Change.after && Object.keys(m1Change.after.body)));
     const st1 = await svc.getStatus(pid);
     check('after the pull nothing is waiting to push', st1.pending === 0 && st1.conflicts === 0, JSON.stringify(st1));
     const again = await appPull();

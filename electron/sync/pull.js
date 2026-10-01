@@ -26,7 +26,7 @@ const crypto = require('crypto');
 const log = require('electron-log');
 const { explode, assemble, entityKey, CHILD_KEYS, diffProjects, applyEntityChanges, perUserFields } = require('../shared/entityModel.mjs');
 const projectFolders = require('../projectFolders');
-const { deserializeFromLegacyFormat } = require('../projectSerializer');
+const { toAppProject } = require('../projectSerializer');
 const { writeFileAtomic } = require('../atomicFile');
 const tileCache = require('../tileCache');
 const sidecar = require('./sidecar');
@@ -123,13 +123,14 @@ async function preparePull({ folder, client, onProgress = () => {} }) {
   const questionKeys = new Set(merged.questions.map((q) => q.key));
   const questions = [...(state.questions || []).filter((q) => !questionKeys.has(q.key)), ...merged.questions];
 
-  // What the app applies: the merged project in the app's (deserialized) form
+  // What the app applies: the merged project in the app's form, exactly as a
+  // load would produce it (runtime fields such as imagePath included)
   const projectChanges = merged.changes.filter((c) => (c.after ?? c.before).type !== 'point_count');
   const mergedProject = JSON.parse(JSON.stringify(project));
   applyEntityChanges(mergedProject, projectChanges, 'redo');
   const storeChanges = projectChanges.length === 0
     ? []
-    : diffProjects(deserializeFromLegacyFormat(JSON.parse(JSON.stringify(project))), deserializeFromLegacyFormat(mergedProject));
+    : diffProjects(toAppProject(project), toAppProject(mergedProject));
 
   const pending = {
     id: crypto.randomUUID(),

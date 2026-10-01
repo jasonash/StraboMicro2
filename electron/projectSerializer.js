@@ -314,24 +314,7 @@ async function loadProjectJson(projectId) {
     const jsonContent = await fs.promises.readFile(projectJsonPath, 'utf8');
     const legacyJson = JSON.parse(jsonContent);
 
-    // Fix any corrupted arrays in the entire JSON structure before deserializing
-    // This repairs data that was incorrectly saved as objects with numeric keys
-    const fixedJson = fixCorruptedArraysDeep(legacyJson);
-
-    // Deserialize from legacy format
-    const project = deserializeFromLegacyFormat(fixedJson);
-
-    // Reconstruct imagePath for each micrograph (runtime field not stored in JSON)
-    // Images are stored as: images/<micrograph-id> (no extension)
-    for (const dataset of project.datasets || []) {
-      for (const sample of dataset.samples || []) {
-        for (const micrograph of sample.micrographs || []) {
-          // imagePath is the micrograph ID (images are stored by ID in the images folder)
-          micrograph.imagePath = micrograph.id;
-          log.debug(`[ProjectSerializer] Set imagePath for micrograph ${micrograph.name}: ${micrograph.imagePath}`);
-        }
-      }
-    }
+    const project = toAppProject(legacyJson);
 
     log.info(`[ProjectSerializer] Successfully loaded project.json from: ${projectJsonPath}`);
     return project;
@@ -339,6 +322,36 @@ async function loadProjectJson(projectId) {
     log.error('[ProjectSerializer] Error loading project.json:', error);
     throw error;
   }
+}
+
+/**
+ * project.json content as the app holds it: corrupted arrays repaired,
+ * deserialized, and each micrograph's imagePath (a runtime field, never
+ * stored) set. Used by loading and by sync pulls, so a pulled entity looks
+ * exactly like a loaded one.
+ * @param {Object} legacyJson - Parsed project.json (not modified)
+ * @returns {Object} Project for the store
+ */
+function toAppProject(legacyJson) {
+  // Fix any corrupted arrays in the entire JSON structure before deserializing
+  // This repairs data that was incorrectly saved as objects with numeric keys
+  const fixedJson = fixCorruptedArraysDeep(JSON.parse(JSON.stringify(legacyJson)));
+
+  // Deserialize from legacy format
+  const project = deserializeFromLegacyFormat(fixedJson);
+
+  // Reconstruct imagePath for each micrograph (runtime field not stored in JSON)
+  // Images are stored as: images/<micrograph-id> (no extension)
+  for (const dataset of project.datasets || []) {
+    for (const sample of dataset.samples || []) {
+      for (const micrograph of sample.micrographs || []) {
+        // imagePath is the micrograph ID (images are stored by ID in the images folder)
+        micrograph.imagePath = micrograph.id;
+        log.debug(`[ProjectSerializer] Set imagePath for micrograph ${micrograph.name}: ${micrograph.imagePath}`);
+      }
+    }
+  }
+  return project;
 }
 
 /**
@@ -754,4 +767,5 @@ module.exports = {
   serializeToLegacyFormat,
   deserializeFromLegacyFormat,
   prepareProjectJson,
+  toAppProject,
 };
