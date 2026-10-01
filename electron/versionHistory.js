@@ -18,6 +18,7 @@ const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
 const log = require('electron-log');
+const { deepEqual } = require('./deepEqual');
 
 class VersionHistoryService {
   constructor() {
@@ -669,11 +670,11 @@ class VersionHistoryService {
         });
       } else {
         const oldDataset = oldDatasets.get(dataset.id);
-        if (JSON.stringify(oldDataset) !== JSON.stringify(dataset)) {
+        if (!deepEqual(oldDataset, dataset)) {
           // Check if it's just nested changes or actual dataset changes
           const oldCopy = { ...oldDataset, samples: undefined };
           const newCopy = { ...dataset, samples: undefined };
-          if (JSON.stringify(oldCopy) !== JSON.stringify(newCopy)) {
+          if (!deepEqual(oldCopy, newCopy)) {
             changes.push({
               type: 'modified',
               entityType: 'dataset',
@@ -713,7 +714,7 @@ class VersionHistoryService {
           const oldData = oldSamples.get(sample.id);
           const oldCopy = { ...oldData.sample, micrographs: undefined };
           const newCopy = { ...sample, micrographs: undefined };
-          if (JSON.stringify(oldCopy) !== JSON.stringify(newCopy)) {
+          if (!deepEqual(oldCopy, newCopy)) {
             changes.push({
               type: 'modified',
               entityType: 'sample',
@@ -761,7 +762,7 @@ class VersionHistoryService {
             const oldData = oldMicrographs.get(micrograph.id);
             const oldCopy = { ...oldData.micrograph, spots: undefined };
             const newCopy = { ...micrograph, spots: undefined };
-            if (JSON.stringify(oldCopy) !== JSON.stringify(newCopy)) {
+            if (!deepEqual(oldCopy, newCopy)) {
               changes.push({
                 type: 'modified',
                 entityType: 'micrograph',
@@ -812,7 +813,7 @@ class VersionHistoryService {
               });
             } else {
               const oldSpot = oldSpots.get(spot.id).spot;
-              if (JSON.stringify(oldSpot) !== JSON.stringify(spot)) {
+              if (!deepEqual(oldSpot, spot)) {
                 changes.push({
                   type: 'modified',
                   entityType: 'spot',
@@ -864,7 +865,7 @@ class VersionHistoryService {
         });
       } else {
         const oldGroup = oldGroups.get(group.id);
-        if (JSON.stringify(oldGroup) !== JSON.stringify(group)) {
+        if (!deepEqual(oldGroup, group)) {
           changes.push({
             type: 'modified',
             entityType: 'group',
@@ -900,7 +901,7 @@ class VersionHistoryService {
         });
       } else {
         const oldTag = oldTags.get(tag.id);
-        if (JSON.stringify(oldTag) !== JSON.stringify(tag)) {
+        if (!deepEqual(oldTag, tag)) {
           changes.push({
             type: 'modified',
             entityType: 'tag',
