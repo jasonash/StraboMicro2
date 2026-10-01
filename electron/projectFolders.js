@@ -6,7 +6,8 @@
  *
  * Folder Structure:
  * ~/Documents/StraboMicro2Data/
- * └── <project-uuid>/
+ * ├── accounts/<serverHost>/<pkey>/<project-uuid>/   (synced copies, same layout as below)
+ * └── <project-uuid>/                                 (local-only projects)
  *     ├── associatedFiles/
  *     ├── compositeImages/        (2000px max, micrograph+overlays, JPEG)
  *     ├── compositeThumbnails/    (250px max, micrograph+overlays, JPEG)
@@ -125,13 +126,132 @@ async function ensureStraboMicro2DataDir() {
   return dataPath;
 }
 
+// ---------------------------------------------------------------------------
+// Project copies
+//
+// A local-only project lives at StraboMicro2Data/<projectId>. A synced copy
+// lives at StraboMicro2Data/accounts/<serverHost>/<pkey>/<projectId>: one
+// copy per StraboSpot account and server, so two people sharing a computer
+// never push under each other's name, and a dev-server copy is never mistaken
+// for a production one (collaboration spec v3 §11.4). Everything else in the
+// app addresses a project by id; getProjectFolderPath() resolves which copy.
+// ---------------------------------------------------------------------------
+
+const ACCOUNTS_DIR = 'accounts';
+
+/** Folder name for a server: its host (and port), safe on every platform. */
+function serverFolderName(serverUrl) {
+  let host = String(serverUrl || '').trim();
+  try {
+    host = new URL(host.includes('://') ? host : `https://${host}`).host;
+  } catch (_) { /* keep the raw text */ }
+  const safe = host.toLowerCase().replace(/[^a-z0-9.-]+/g, '_').replace(/^[._]+|[._]+$/g, '');
+  if (!safe) throw new Error(`Cannot make a folder name for server "${serverUrl}"`);
+  return safe;
+}
+
+/** StraboMicro2Data/accounts/<serverHost>/<pkey> */
+function getAccountFolderPath(serverUrl, pkey) {
+  const key = String(pkey);
+  if (!/^\d+$/.test(key)) throw new Error(`Invalid account key "${pkey}"`);
+  return path.join(getStraboMicro2DataPath(), ACCOUNTS_DIR, serverFolderName(serverUrl), key);
+}
+
+/** Where an account's synced copy of a project lives (whether or not it exists). */
+function getAccountCopyPath(projectId, serverUrl, pkey) {
+  return path.join(getAccountFolderPath(serverUrl, pkey), projectId);
+}
+
+/** projectId => folder of the copy in use (set when a copy is opened or moved). */
+const copiesInUse = new Map();
+
 /**
- * Get the path to a specific project folder
+ * Use this copy of a project from now on (the app opened it, or it moved).
+ * @param {string} projectId
+ * @param {string} folderPath
+ */
+function useProjectCopy(projectId, folderPath) {
+  copiesInUse.set(projectId, folderPath);
+}
+
+/** Stop pinning a copy (it was deleted); lookups fall back to the default rules. */
+function forgetProjectCopy(projectId) {
+  copiesInUse.delete(projectId);
+}
+
+/**
+ * Account copies of a project found on disk (synchronous; small folder tree).
+ * @param {string} projectId
+ * @returns {string[]}
+ */
+function findAccountCopies(projectId) {
+  const root = path.join(getStraboMicro2DataPath(), ACCOUNTS_DIR);
+  const out = [];
+  let servers = [];
+  try {
+    servers = fs.readdirSync(root, { withFileTypes: true }).filter((d) => d.isDirectory());
+  } catch (_) {
+    return out;
+  }
+  for (const server of servers) {
+    let accounts = [];
+    try {
+      accounts = fs.readdirSync(path.join(root, server.name), { withFileTypes: true }).filter((d) => d.isDirectory());
+    } catch (_) {
+      continue;
+    }
+    for (const account of accounts) {
+      const candidate = path.join(root, server.name, account.name, projectId);
+      if (fs.existsSync(path.join(candidate, 'project.json'))) out.push(candidate);
+    }
+  }
+  return out;
+}
+
+/**
+ * Get the path to a specific project folder: the copy in use if one was set,
+ * else the local-only folder if it exists, else the only account copy on
+ * disk, else the local-only location (new projects are created there).
  * @param {string} projectId - UUID of the project
  * @returns {string} Path to project folder
  */
 function getProjectFolderPath(projectId) {
-  return path.join(getStraboMicro2DataPath(), projectId);
+  const inUse = copiesInUse.get(projectId);
+  if (inUse) return inUse;
+  const local = path.join(getStraboMicro2DataPath(), projectId);
+  if (fs.existsSync(local)) return local;
+  const copies = findAccountCopies(projectId);
+  return copies.length === 1 ? copies[0] : local;
+}
+
+/**
+ * Every project copy on disk.
+ * @returns {Promise<Array<{projectId: string, folderPath: string, account: null | {server: string, pkey: string}}>>}
+ */
+async function listProjectCopies() {
+  const out = [];
+  for (const projectId of await listProjectFolders()) {
+    out.push({ projectId, folderPath: path.join(getStraboMicro2DataPath(), projectId), account: null });
+  }
+  const root = path.join(getStraboMicro2DataPath(), ACCOUNTS_DIR);
+  const dirs = async (p) => {
+    try {
+      return (await fs.promises.readdir(p, { withFileTypes: true })).filter((d) => d.isDirectory()).map((d) => d.name);
+    } catch (_) {
+      return [];
+    }
+  };
+  for (const server of await dirs(root)) {
+    for (const pkey of await dirs(path.join(root, server))) {
+      for (const projectId of await dirs(path.join(root, server, pkey))) {
+        const folderPath = path.join(root, server, pkey, projectId);
+        if (fs.existsSync(path.join(folderPath, 'project.json'))) {
+          out.push({ projectId, folderPath, account: { server, pkey } });
+        }
+      }
+    }
+  }
+  return out;
 }
 
 /**
@@ -247,6 +367,7 @@ async function deleteProjectFolder(projectId) {
       maxRetries: 5,
       retryDelay: 200
     });
+    forgetProjectCopy(projectId);
     console.log(`[ProjectFolders] Successfully deleted project folder: ${projectId}`);
   } catch (error) {
     console.error(`[ProjectFolders] Error deleting project folder:`, error);
@@ -267,7 +388,7 @@ async function deleteProjectFolder(projectId) {
 }
 
 /**
- * List all project folders in StraboMicro2Data
+ * List the local-only project folders in StraboMicro2Data (not account copies)
  * @returns {Promise<Array<string>>} Array of project UUIDs
  */
 async function listProjectFolders() {
@@ -280,9 +401,9 @@ async function listProjectFolders() {
     // Read directory contents
     const entries = await fs.promises.readdir(dataPath, { withFileTypes: true });
 
-    // Filter for directories only
+    // Filter for directories only (accounts/ holds synced copies, see listProjectCopies)
     const projectIds = entries
-      .filter(entry => entry.isDirectory())
+      .filter(entry => entry.isDirectory() && entry.name !== ACCOUNTS_DIR)
       .map(entry => entry.name);
 
     console.log(`[ProjectFolders] Found ${projectIds.length} project(s) in StraboMicro2Data`);
@@ -484,6 +605,12 @@ module.exports = {
   getProjectFolderPaths,
   deleteProjectFolder,
   listProjectFolders,
+  listProjectCopies,
+  serverFolderName,
+  getAccountFolderPath,
+  getAccountCopyPath,
+  useProjectCopy,
+  forgetProjectCopy,
   copyFileToAssociatedFiles,
   cleanupOrphanedAssociatedFiles
 };

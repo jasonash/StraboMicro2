@@ -3089,8 +3089,7 @@ ipcMain.handle('image:convert-to-scratch', async (event, sourcePath) => {
 ipcMain.handle('image:move-from-scratch', async (event, identifier, projectId, micrographId) => {
   try {
     log.info(`[IPC] Moving scratch image to project folder: ${identifier}`);
-    const dataPath = projectFolders.getStraboMicro2DataPath();
-    const destination = `${dataPath}/${projectId}/images/${micrographId}`;
+    const destination = path.join(projectFolders.getProjectFolderPath(projectId), 'images', micrographId);
 
     await scratchSpace.moveToFinal(identifier, destination);
 
@@ -3139,12 +3138,12 @@ ipcMain.handle('image:resize-scratch', async (event, identifier, targetWidth, ta
 ipcMain.handle('image:convert-and-save-micrograph', async (event, sourcePath, projectId, micrographId) => {
   try {
     log.info(`[IPC] Converting and saving micrograph image: ${sourcePath}`);
-    const dataPath = projectFolders.getStraboMicro2DataPath();
+    const projectPath = projectFolders.getProjectFolderPath(projectId);
     const result = await imageConverter.convertAndSaveMicrographImage(
       sourcePath,
       projectId,
       micrographId,
-      dataPath
+      projectPath
     );
     log.info('[IPC] Successfully converted and saved micrograph image');
     return result;
@@ -3160,12 +3159,12 @@ ipcMain.handle('image:convert-and-save-micrograph', async (event, sourcePath, pr
 ipcMain.handle('image:generate-variants', async (event, sourcePath, projectId, micrographId) => {
   try {
     log.info(`[IPC] Generating image variants for micrograph: ${micrographId}`);
-    const dataPath = projectFolders.getStraboMicro2DataPath();
+    const projectPath = projectFolders.getProjectFolderPath(projectId);
     const result = await imageConverter.generateImageVariants(
       sourcePath,
       projectId,
       micrographId,
-      dataPath
+      projectPath
     );
     log.info('[IPC] Successfully generated image variants');
     return result;

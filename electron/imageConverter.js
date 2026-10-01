@@ -562,15 +562,15 @@ async function convertToJPEG(inputPath, outputPath, options = {}) {
  * @param {string} sourcePath - Path to source image file
  * @param {string} projectId - UUID of the project
  * @param {string} micrographId - UUID of the micrograph
- * @param {string} projectFoldersBasePath - Base path to StraboMicro2Data folder
+ * @param {string} projectPath - The project's folder (projectFolders.getProjectFolderPath)
  * @returns {Promise<Object>} Conversion result with metadata
  */
-async function convertAndSaveMicrographImage(sourcePath, projectId, micrographId, projectFoldersBasePath) {
+async function convertAndSaveMicrographImage(sourcePath, projectId, micrographId, projectPath) {
   try {
     log.info(`[ImageConverter] Converting micrograph image for project ${projectId}, micrograph ${micrographId}`);
 
     // Build path to project's images folder
-    const imagesFolder = path.join(projectFoldersBasePath, projectId, 'images');
+    const imagesFolder = path.join(projectPath, 'images');
 
     // Ensure images folder exists
     await fs.promises.mkdir(imagesFolder, { recursive: true });
@@ -599,14 +599,13 @@ async function convertAndSaveMicrographImage(sourcePath, projectId, micrographId
  * @param {string} sourcePath - Path to source JPEG image
  * @param {string} projectId - UUID of the project
  * @param {string} micrographId - UUID of the micrograph
- * @param {string} projectFoldersBasePath - Base path to StraboMicro2Data folder
+ * @param {string} projectPath - The project's folder (projectFolders.getProjectFolderPath)
  * @returns {Promise<Object>} Paths to all generated images
  */
-async function generateImageVariants(sourcePath, projectId, micrographId, projectFoldersBasePath) {
+async function generateImageVariants(sourcePath, projectId, micrographId, projectPath) {
   try {
     log.info(`[ImageConverter] Generating image variants for micrograph ${micrographId}`);
 
-    const projectPath = path.join(projectFoldersBasePath, projectId);
 
     // Define output paths (all without extension)
     const variants = [

@@ -76,14 +76,15 @@ async function saveIndex(index) {
 /**
  * Read project name from a project.json file
  * @param {string} projectId - Project UUID
+ * @param {string} [folderPath] - The copy to read (default: the copy the app resolves)
  * @returns {Promise<Object|null>} Project info or null if invalid
  */
-async function readProjectInfo(projectId) {
-  const paths = projectFolders.getProjectFolderPaths(projectId);
+async function readProjectInfo(projectId, folderPath) {
+  const projectJson = path.join(folderPath || projectFolders.getProjectFolderPath(projectId), 'project.json');
 
   try {
-    await fs.promises.access(paths.projectJson, fs.constants.F_OK);
-    const content = await fs.promises.readFile(paths.projectJson, 'utf8');
+    await fs.promises.access(projectJson, fs.constants.F_OK);
+    const content = await fs.promises.readFile(projectJson, 'utf8');
     const projectData = JSON.parse(content);
 
     return {
@@ -113,21 +114,27 @@ async function rebuildIndex() {
     existingIndex.projects.map(p => [p.id, p])
   );
 
-  // Get all project folders
-  const projectIds = await projectFolders.listProjectFolders();
+  // Get all project copies: local-only folders first, then synced account copies.
+  // One entry per project id for now; listing each account's copy (spec v3
+  // §11.4, Recent Projects per account) comes with the sync UI.
+  const copies = await projectFolders.listProjectCopies();
 
-  log.info(`[ProjectsIndex] Found ${projectIds.length} project folder(s)`);
+  log.info(`[ProjectsIndex] Found ${copies.length} project folder(s)`);
 
   // Read info from each project (only those with valid project.json)
   const projects = [];
-  for (const projectId of projectIds) {
-    const info = await readProjectInfo(projectId);
+  const seen = new Set();
+  for (const copy of copies) {
+    if (seen.has(copy.projectId)) continue;
+    const info = await readProjectInfo(copy.projectId, copy.folderPath);
     if (info) {
+      seen.add(copy.projectId);
       // Preserve lastOpened from existing index, or use lastModified as initial value
-      const existing = existingProjects.get(projectId);
+      const existing = existingProjects.get(copy.projectId);
       projects.push({
         id: info.id,
         name: info.name,
+        account: copy.account,
         lastOpened: existing?.lastOpened || info.lastModified || new Date().toISOString(),
       });
     }
