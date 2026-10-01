@@ -3792,6 +3792,15 @@ export const useAppStore = create<AppState>()(
         // Rebuild indexes after rehydrating from file storage
         onRehydrateStorage: () => (state) => {
           if (state?.project) {
+            // imagePath is runtime-only (set on load as the micrograph id); a
+            // stored session missing it would show "No micrograph loaded"
+            for (const dataset of state.project.datasets || []) {
+              for (const sample of dataset.samples || []) {
+                for (const micrograph of sample.micrographs || []) {
+                  if (!micrograph.imagePath) micrograph.imagePath = micrograph.id;
+                }
+              }
+            }
             // Rebuild the micrograph and spot indexes from the project data
             state.micrographIndex = buildMicrographIndex(state.project);
             state.spotIndex = buildSpotIndex(state.project);
