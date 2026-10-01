@@ -34,6 +34,7 @@ import { findMicrographById, findSpotById } from '@/store/helpers';
 import { AssociatedFileData } from './AssociatedFileAddForm';
 import { AssociatedFileListItem } from './AssociatedFileListItem';
 import { EditAssociatedFileDialog } from './EditAssociatedFileDialog';
+import { deepEqual } from '@/utils/deepEqual';
 
 interface AssociatedFilesInfoDialogProps {
   isOpen: boolean;
@@ -243,7 +244,7 @@ export function AssociatedFilesInfoDialog({
   const hasChanges = (() => {
     if (files.length !== initialFiles.length) return true;
     // Deep compare files array
-    return JSON.stringify(files) !== JSON.stringify(initialFiles);
+    return !deepEqual(files, initialFiles);
   })();
 
   const title = micrographId
