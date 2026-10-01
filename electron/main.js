@@ -168,6 +168,7 @@ const serverDownload = require('./serverDownload');
 const autoUpdaterModule = require('./autoUpdater');
 const logService = require('./logService');
 const pointCountStorage = require('./pointCountStorage');
+const syncService = require('./sync/syncService');
 const fastsamService = require('./fastsamService');
 const straboToolsMain = require('./straboToolsMain');
 const dialogDirs = require('./dialogDirs');
@@ -1244,6 +1245,29 @@ function createWindow() {
             }
           }
         },
+        { type: 'separator' },
+        // Temporary sync triggers until the sync UI exists (collaboration Phase 1 step 8)
+        {
+          label: 'Sync: Turn On (Automatic)',
+          click: () => mainWindow?.webContents.send('debug:sync', 'turn-on-automatic'),
+        },
+        {
+          label: 'Sync: Turn On (Manual)',
+          click: () => mainWindow?.webContents.send('debug:sync', 'turn-on-manual'),
+        },
+        {
+          label: 'Sync: Sync Now',
+          click: () => mainWindow?.webContents.send('debug:sync', 'sync-now'),
+        },
+        {
+          label: 'Sync: Switch Automatic/Manual',
+          click: () => mainWindow?.webContents.send('debug:sync', 'toggle-mode'),
+        },
+        {
+          label: 'Sync: Show Status',
+          click: () => mainWindow?.webContents.send('debug:sync', 'status'),
+        },
+        { type: 'separator' },
         {
           label: 'Simulate Deep Link from Clipboard',
           click: () => {
@@ -3375,6 +3399,7 @@ ipcMain.handle('composite:generate-thumbnail', async (event, projectId, microgra
       const outputPath = path.join(folderPaths.compositeThumbnails, micrographId);
       await baseImage.jpeg({ quality: 85 }).toFile(outputPath);
 
+      syncService.notifyLocalChange(projectId);
       return {
         success: true,
         thumbnailPath: outputPath,
@@ -3677,6 +3702,7 @@ ipcMain.handle('composite:generate-thumbnail', async (event, projectId, microgra
     sharp.cache(false);
     sharp.cache({ memory: 256, files: 20, items: 100 });
 
+    syncService.notifyLocalChange(projectId);
     return {
       success: true,
       thumbnailPath: outputPath,
@@ -3973,6 +3999,7 @@ ipcMain.handle('composite:rebuild-all-thumbnails', async (event, projectId, proj
     }
 
     log.info(`[IPC] Rebuild complete: ${results.succeeded} succeeded, ${results.failed} failed`);
+    syncService.notifyLocalChange(projectId);
 
     return {
       success: true,
@@ -4151,6 +4178,10 @@ ipcMain.handle('debug:reset-everything', async () => {
  */
 
 const tokenService = require('./tokenService');
+
+// Sync IPC (sync:status, sync:turn-on, sync:push, sync:set-mode); the sync
+// engine itself loads only when a synced project uses it
+syncService.registerSyncIpc(ipcMain, () => mainWindow);
 
 // Helper to get REST server URL from renderer's localStorage
 // We'll pass it from the renderer since preferences are stored there
@@ -5201,7 +5232,9 @@ ipcMain.handle('version:prune', async (event, projectId) => {
  */
 ipcMain.handle('point-count:save-session', async (event, projectId, session) => {
   log.info('[PointCount] Saving session:', session.id, 'for project:', projectId);
-  return pointCountStorage.saveSession(projectId, session);
+  const result = await pointCountStorage.saveSession(projectId, session);
+  syncService.notifyLocalChange(projectId);
+  return result;
 });
 
 /**
@@ -5217,7 +5250,9 @@ ipcMain.handle('point-count:load-session', async (event, projectId, sessionId) =
  */
 ipcMain.handle('point-count:delete-session', async (event, projectId, sessionId) => {
   log.info('[PointCount] Deleting session:', sessionId, 'for project:', projectId);
-  return pointCountStorage.deleteSession(projectId, sessionId);
+  const result = await pointCountStorage.deleteSession(projectId, sessionId);
+  syncService.notifyLocalChange(projectId);
+  return result;
 });
 
 /**
@@ -5241,7 +5276,9 @@ ipcMain.handle('point-count:list-all-sessions', async (event, projectId) => {
  */
 ipcMain.handle('point-count:rename-session', async (event, projectId, sessionId, newName) => {
   log.info('[PointCount] Renaming session:', sessionId, 'to:', newName);
-  return pointCountStorage.renameSession(projectId, sessionId, newName);
+  const result = await pointCountStorage.renameSession(projectId, sessionId, newName);
+  syncService.notifyLocalChange(projectId);
+  return result;
 });
 
 // =============================================================================

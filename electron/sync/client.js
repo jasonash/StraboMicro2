@@ -42,9 +42,13 @@ function hashFile(filePath) {
 }
 
 /**
- * @param {{ restServer: string, getAccessToken: () => Promise<string | null>, fetchImpl?: typeof fetch }} options
+ * getAccessToken returns null when nobody is logged in (or may throw a
+ * SyncError, e.g. offline). refreshAccessToken, when given, is called once
+ * after a 401 and the request is retried with the new token (spec v3 §11.2).
+ * @param {{ restServer: string, getAccessToken: () => Promise<string | null>,
+ *   refreshAccessToken?: () => Promise<string | null>, fetchImpl?: typeof fetch }} options
  */
-function createSyncClient({ restServer, getAccessToken, fetchImpl = fetch }) {
+function createSyncClient({ restServer, getAccessToken, refreshAccessToken, fetchImpl = fetch }) {
   const base = `${String(restServer).replace(/\/+$/, '')}/microsync/v1`;
 
   /**
@@ -53,11 +57,11 @@ function createSyncClient({ restServer, getAccessToken, fetchImpl = fetch }) {
    * @param {{ json?: unknown, body?: Buffer, auth?: boolean }} [options]
    * @returns {Promise<{ status: number, data: any }>}
    */
-  async function request(method, path, { json, body, auth = true } = {}) {
+  async function request(method, path, { json, body, auth = true } = {}, retried = false) {
     /** @type {Record<string, string>} */
     const headers = {};
     if (auth) {
-      const token = await getAccessToken();
+      const token = retried && refreshAccessToken ? await refreshAccessToken() : await getAccessToken();
       if (!token) throw new SyncError('auth', 'Not logged in');
       headers.Authorization = `Bearer ${token}`;
     }
@@ -81,6 +85,9 @@ function createSyncClient({ restServer, getAccessToken, fetchImpl = fetch }) {
       data = text ? JSON.parse(text) : null;
     } catch (_) {
       data = text;
+    }
+    if (res.status === 401 && auth && !retried && refreshAccessToken) {
+      return request(method, path, { json, body, auth }, true);
     }
     if (res.status === 401) throw new SyncError('auth', 'The server did not accept the login', { status: 401, data });
     if (res.status === 503 && data && data.error === 'sync_disabled') {

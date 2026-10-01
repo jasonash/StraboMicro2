@@ -12,7 +12,9 @@
  *      tile ZIPs (rebuilt only when the original or the affine placement
  *      changed, 16u), attachments; remove refs whose files are gone
  * Turning sync on creates the server project, moves the folder into the
- * account folder, runs a push of everything, and marks the project ready.
+ * account folder, runs a push of everything, and marks the project ready
+ * (or leaves that push to the caller, push: false, so it can run in the
+ * background after the project reopens from its new folder).
  */
 
 const fs = require('fs');
@@ -233,20 +235,37 @@ async function pushProject({ folder, client, onProgress = () => {} }) {
 }
 
 /**
+ * Entity changes in the saved project.json that the server does not have
+ * yet. File uploads are not counted.
+ * @param {string} folder
+ * @returns {Promise<number>}
+ */
+async function countPendingChanges(folder) {
+  const state = await sidecar.loadState(folder);
+  if (!state) return 0;
+  const { project, pointCounts } = await readProjectFiles(folder);
+  // A push in flight is still in the diff (the base takes it only once the
+  // server answers), unless a later edit reverted it; it still has to be sent
+  const inFlight = state.outgoingPush ? state.outgoingPush.planned.length : 0;
+  return Math.max(inFlight, planPush(state.base, explode(project, pointCounts)).length);
+}
+
+/**
  * Turn sync on for a local-only project: create the server project, move
  * the folder into the account's folder, upload everything, mark it ready.
  * Resumes an interrupted first upload (the server project already exists
  * in state initializing and is ours).
  * @param {{ projectId: string, restServer: string, user: { pkey: number, email: string },
- *   mode?: 'automatic' | 'manual', client: object, onProgress?: (p: object) => void }} options
+ *   mode?: 'automatic' | 'manual', client: object, push?: boolean, onProgress?: (p: object) => void }} options
+ *   push: false leaves the first upload to a later pushProject
  * @returns {Promise<{ status: 'synced', pid: number, folder: string } | { status: 'exists', pid: number, syncFormat: string, syncState: string }>}
  */
-async function turnSyncOn({ projectId, restServer, user, mode = 'automatic', client, onProgress = () => {} }) {
+async function turnSyncOn({ projectId, restServer, user, mode = 'automatic', client, push = true, onProgress = () => {} }) {
   const accountFolder = projectFolders.getAccountCopyPath(projectId, restServer, user.pkey);
   const existingState = await sidecar.loadState(accountFolder).catch(() => null);
   if (existingState) {
     projectFolders.useProjectCopy(projectId, accountFolder);
-    await pushProject({ folder: accountFolder, client, onProgress });
+    if (push) await pushProject({ folder: accountFolder, client, onProgress });
     return { status: 'synced', pid: existingState.binding.pid, folder: accountFolder };
   }
 
@@ -273,8 +292,8 @@ async function turnSyncOn({ projectId, restServer, user, mode = 'automatic', cli
   const state = sidecar.newState({ server: restServer, pkey: user.pkey, email: user.email, pid, straboId: project.id }, mode);
   await sidecar.saveState(folder, state);
   log.info(`[Sync] Turning sync on for ${projectId} (server project ${pid})`);
-  await pushProject({ folder, client, onProgress });
+  if (push) await pushProject({ folder, client, onProgress });
   return { status: 'synced', pid, folder };
 }
 
-module.exports = { pushProject, turnSyncOn, readProjectFiles, plannedFiles, getClientId };
+module.exports = { pushProject, turnSyncOn, countPendingChanges, readProjectFiles, plannedFiles, getClientId };

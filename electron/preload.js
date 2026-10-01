@@ -617,6 +617,29 @@ contextBridge.exposeInMainWorld('api', {
     return () => ipcRenderer.removeListener('debug:toggle-memory-monitor', handler);
   },
 
+  // Sync of synced projects (collaboration); local-only projects only ever call status
+  sync: {
+    status: (projectId) => ipcRenderer.invoke('sync:status', projectId),
+    turnOn: (projectId, restServer, mode) => ipcRenderer.invoke('sync:turn-on', projectId, restServer, mode),
+    push: (projectId, restServer) => ipcRenderer.invoke('sync:push', projectId, restServer),
+    setMode: (projectId, mode) => ipcRenderer.invoke('sync:set-mode', projectId, mode),
+    onProgress: (callback) => {
+      const handler = (event, progress) => callback(progress);
+      ipcRenderer.on('sync:progress', handler);
+      return () => ipcRenderer.removeListener('sync:progress', handler);
+    },
+    onLocalChange: (callback) => {
+      const handler = (event, projectId) => callback(projectId);
+      ipcRenderer.on('sync:local-change', handler);
+      return () => ipcRenderer.removeListener('sync:local-change', handler);
+    },
+  },
+  onDebugSync: (callback) => {
+    const handler = (event, action) => callback(action);
+    ipcRenderer.on('debug:sync', handler);
+    return () => ipcRenderer.removeListener('debug:sync', handler);
+  },
+
   // Point Count storage (separate from Spot system)
   pointCount: {
     // Save a point count session to disk

@@ -13,6 +13,7 @@
     "test:entity-model": "node tests/sync/entityModel.test.mjs",
     "test:sync-engine": "electron tests/sync/syncEngine.electron.test.js",
     "test:project-copies": "electron tests/sync/projectCopies.electron.test.js",
+    "test:sync-service": "electron tests/sync/syncService.electron.test.js",
     "test:undo-patches": "node tests/sync/undoPatches.test.mjs",
     "test:undo-history": "rolldown -c tests/sync/rolldown.test.config.mjs && node node_modules/.cache/sync-tests/undoHistory.test.mjs",
     "typecheck:watch": "tsc --noEmit --watch --preserveWatchOutput",
