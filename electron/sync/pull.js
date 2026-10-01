@@ -81,6 +81,24 @@ async function preparePull({ folder, client, onProgress = () => {} }) {
   const last = new Map();
   for (const e of entries) last.set(entityKey(e.type, e.id), e);
 
+  // Restores this copy sent (Restore with my changes): the restored states
+  // are the server's starting point for my edits, so they join the base
+  // rather than being merged as their changes
+  const restoring = new Set();
+  for (const r of state.restores || []) if (r.sent) for (const k of r.keys) restoring.add(k);
+  /** @type {Record<string, object>} */
+  const restoredBase = {};
+  /** @type {Map<string, object>} */
+  const restoreEntries = new Map();
+  for (const e of entries) {
+    const key = entityKey(e.type, e.id);
+    if (e.op === 'restore' && restoring.has(key)) {
+      restoredBase[key] = { ...stateFromEntry(e), version: e.version };
+      restoreEntries.set(key, e);
+    }
+  }
+  const base = { ...state.base, ...restoredBase };
+
   const { project, pointCounts } = await readProjectFiles(folder);
   if (project.id !== state.binding.straboId) throw new Error('project.json does not belong to this sync binding');
   const mine = explode(project, pointCounts);
@@ -95,12 +113,13 @@ async function preparePull({ folder, client, onProgress = () => {} }) {
     const s = stateFromEntry(e);
     refs[key] = s === null ? null : (e.refs && typeof e.refs === 'object' ? e.refs : {});
     if (s !== null) versions[key] = e.version;
-    if (s === null && !state.base[key] && !mine.entities[key]) continue; // created and deleted elsewhere
-    if (s !== null && state.base[key] && sameState(state.base[key], s)) continue; // mine (already in the base) or no change
+    if (s === null && !base[key] && !mine.entities[key]) continue; // created and deleted elsewhere
+    if (s !== null && base[key] && sameState(base[key], s)) continue; // mine (already in the base) or no change
+    if (restoreEntries.get(key) === e) continue; // my restore, now in the base
     theirs.set(key, s);
   }
 
-  const merged = mergeProject(state.base, mine, theirs);
+  const merged = mergeProject(base, mine, theirs);
 
   // Conflicts: fresh ones plus earlier unresolved ones that still differ
   const conflicts = { ...(state.conflicts || {}) };
@@ -142,6 +161,7 @@ async function preparePull({ folder, client, onProgress = () => {} }) {
     conflicts,
     questions,
     pointCountChanges: merged.changes.filter((c) => (c.after ?? c.before).type === 'point_count'),
+    restoredBase,
   };
   return {
     pending,
@@ -208,17 +228,13 @@ async function normalizeBaseOrder(base, folder) {
 }
 
 /**
- * Record a prepared pull, after the app saved project.json with its changes.
- * @param {{ folder: string, pending: object }} options
- * @returns {Promise<{ downloads: number }>}
+ * Write point count session changes (files beside project.json; per-user
+ * fields of an existing session kept).
+ * @param {string} folder
+ * @param {Array<{ before: object | null, after: object | null }>} changes - point_count entity changes
  */
-async function commitPull({ folder, pending }) {
-  const state = await sidecar.loadState(folder);
-  if (!state) throw new Error('This project is not synced');
-  if ((state.lastSeq || 0) !== pending.since) throw new Error('The project was pulled again in the meantime');
-
-  // Point count sessions (files beside project.json; per-user fields kept)
-  for (const c of pending.pointCountChanges) {
+async function writePointCounts(folder, changes) {
+  for (const c of changes) {
     const id = (c.after ?? c.before).id;
     const file = path.join(folder, 'point-counts', `${id}.json`);
     if (c.after === null) {
@@ -233,8 +249,25 @@ async function commitPull({ folder, pending }) {
     await fs.promises.mkdir(path.dirname(file), { recursive: true });
     await writeFileAtomic(file, JSON.stringify({ ...c.after.body, ...keep }, null, 2));
   }
+}
 
-  // The base takes the server's states
+/**
+ * Record a prepared pull, after the app saved project.json with its changes.
+ * @param {{ folder: string, pending: object }} options
+ * @returns {Promise<{ downloads: number }>}
+ */
+async function commitPull({ folder, pending }) {
+  const state = await sidecar.loadState(folder);
+  if (!state) throw new Error('This project is not synced');
+  if ((state.lastSeq || 0) !== pending.since) throw new Error('The project was pulled again in the meantime');
+
+  await writePointCounts(folder, pending.pointCountChanges);
+
+  // The base takes my restored states, then the server's changes
+  for (const [key, s] of Object.entries(pending.restoredBase || {})) state.base[key] = s;
+  if (state.restores) {
+    state.restores = state.restores.filter((r) => !(r.sent && pending.restoredBase && r.key in pending.restoredBase));
+  }
   const theirKeys = new Set(pending.theirs.map(([k]) => k));
   for (const [key, s] of pending.theirs) {
     if (s === null) delete state.base[key];
@@ -382,4 +415,4 @@ async function cloneProject({ pid, restServer, user, mode = 'automatic', client,
   return { projectId, folder, downloaded: d.downloaded };
 }
 
-module.exports = { preparePull, commitPull, downloadFiles, downloadTarget, cloneProject };
+module.exports = { preparePull, commitPull, downloadFiles, downloadTarget, cloneProject, writePointCounts, stateFromEntry };

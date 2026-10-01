@@ -109,8 +109,9 @@ function plannedFiles(folder, current) {
 /**
  * Push local changes of a synced copy (and finish its first upload).
  * @param {{ folder: string, client: ReturnType<import('./client').createSyncClient>, onProgress?: (p: object) => void }} options
- * @returns {Promise<{ pushed: number, problems: object[], conflicts: number, filesUploaded: number, ready: boolean }>}
- *   conflicts: changes the server turned down because the entity changed or was deleted there (a pull merges them)
+ * @returns {Promise<{ pushed: number, problems: object[], conflicts: number, filesUploaded: number, ready: boolean, restored: number }>}
+ *   conflicts: changes the server turned down because the entity changed or was deleted there (a pull merges them);
+ *   restored: restores sent (a pull brings their states)
  */
 async function pushProject({ folder, client, onProgress = () => {} }) {
   const state = await sidecar.loadState(folder);
@@ -154,8 +155,32 @@ async function pushProject({ folder, client, onProgress = () => {} }) {
   }
   await hashes.save();
 
-  // B. Entity changes (unresolved conflicts and delete questions wait, spec v3 §4.6)
+  // Restores the user asked for (Restore with my changes): the server brings
+  // the entities back as they were deleted; they stay held until a pull puts
+  // those states into the base, and then my changes push as edits
+  let restored = 0;
+  for (const r of state.restores || []) {
+    if (r.sent) continue;
+    const sep = r.key.indexOf(':');
+    const change = { op: 'restore', type: r.key.slice(0, sep), id: r.key.slice(sep + 1), cascade: true };
+    const res = await client.push(pid, crypto.randomUUID(), clientId, [change]);
+    const result = (res.results || [])[0] || { status: 'missing' };
+    if (result.status === 'accepted' || (result.status === 'invalid' && result.reason === 'not_deleted')) {
+      r.sent = true;
+      restored++;
+    } else {
+      // Not restored: the entities stay as they are locally, turned down
+      state.restores = state.restores.filter((x) => x !== r);
+      state.refused = [...(state.refused || []), { key: r.key, change, result, local: current.entities[r.key] ?? null }];
+    }
+    await sidecar.saveState(folder, state);
+  }
+
+  // B. Entity changes (unresolved conflicts, delete questions, restores
+  // waiting for a pull, and turned-down changes not edited since wait, spec v3 §4.6)
   for (const k of sidecar.heldKeys(state)) held.add(k);
+  const keptRefused = sidecar.stillRefused(state, current);
+  for (const p of keptRefused) held.add(p.key);
   const planned = planPush(state.base, current, { skip: held });
   const problems = [];
   let pushed = 0;
@@ -171,7 +196,15 @@ async function pushProject({ folder, client, onProgress = () => {} }) {
     state.outgoingPush = null;
     await sidecar.saveState(folder, state);
   }
-  state.refused = problems.filter((p) => p.result.status === 'invalid' || p.result.status === 'forbidden');
+  state.refused = [
+    ...keptRefused,
+    ...problems
+      .filter((p) => p.result.status === 'invalid' || p.result.status === 'forbidden')
+      .map((p) => {
+        const key = `${p.change.type}:${p.change.id}`;
+        return { key, change: p.change, result: p.result, local: current.entities[key] ?? null };
+      }),
+  ];
 
   // C. Files and refs, for entities the server has. A file waiting to be
   // downloaded (a pull brought a newer one) is neither uploaded nor unref'd,
@@ -241,7 +274,7 @@ async function pushProject({ folder, client, onProgress = () => {} }) {
   }
   await sidecar.saveState(folder, state);
   const conflicts = problems.filter((p) => p.result.status === 'conflict' || p.result.status === 'deleted').length;
-  return { pushed, problems, conflicts, filesUploaded, ready };
+  return { pushed, problems, conflicts, filesUploaded, ready, restored };
 }
 
 /**
@@ -266,7 +299,10 @@ async function countPendingChanges(folder, unsavedProject = null) {
   // A push in flight is still in the diff (the base takes it only once the
   // server answers), unless a later edit reverted it; it still has to be sent
   const inFlight = state.outgoingPush ? state.outgoingPush.planned.length : 0;
-  return Math.max(inFlight, planPush(state.base, explode(project, pointCounts), { skip: sidecar.heldKeys(state) }).length);
+  const current = explode(project, pointCounts);
+  const skip = sidecar.heldKeys(state);
+  for (const p of sidecar.stillRefused(state, current)) skip.add(p.key);
+  return Math.max(inFlight, planPush(state.base, current, { skip }).length);
 }
 
 /**

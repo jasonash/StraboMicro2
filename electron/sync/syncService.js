@@ -14,6 +14,11 @@
  *   sync:pull-discard drop a pending pull (the user edited meanwhile)
  *   sync:download  fetch files a pull brought (originals, thumbnails, attachments)
  *   sync:clone     make a synced copy of a server project on this computer
+ *   sync:decisions what waits for the user (conflicts, delete questions,
+ *                  changes the server turned down), for the dialog
+ *   sync:decide    work out one answer; returns what the app must apply
+ *   sync:decide-commit / sync:decide-discard   record it after the app
+ *                  applied it and saved project.json, or drop it
  * Events to the renderer:
  *   sync:progress      { projectId, phase, ... } while pushing
  *   sync:local-change  projectId, after a file-only change (point counts,
@@ -34,7 +39,7 @@ const log = require('electron-log');
 const projectFolders = require('../projectFolders');
 const tokenService = require('../tokenService');
 
-/** @type {null | { syncEngine: typeof import('./syncEngine'), sidecar: typeof import('./sidecar'), client: typeof import('./client'), pull: typeof import('./pull') }} */
+/** @type {null | { syncEngine: typeof import('./syncEngine'), sidecar: typeof import('./sidecar'), client: typeof import('./client'), pull: typeof import('./pull'), decisions: typeof import('./decisions') }} */
 let engine = null;
 
 /** The sync modules, loaded on first use by a synced project. */
@@ -45,6 +50,7 @@ function loadEngine() {
       sidecar: require('./sidecar'),
       client: require('./client'),
       pull: require('./pull'),
+      decisions: require('./decisions'),
     };
   }
   return engine;
@@ -229,7 +235,10 @@ function push(projectId, restServer, onProgress) {
         log.info(`[Sync] Pushed ${projectId}: ${r.pushed} changes, ${r.filesUploaded} files, ` +
           `${r.problems.length} not accepted (${Date.now() - started} ms)`);
       }
-      return { ok: true, pushed: r.pushed, filesUploaded: r.filesUploaded, notAccepted: r.problems.length, conflicts: r.conflicts, ready: r.ready };
+      return {
+        ok: true, pushed: r.pushed, filesUploaded: r.filesUploaded, notAccepted: r.problems.length,
+        conflicts: r.conflicts, restored: r.restored, ready: r.ready,
+      };
     } catch (err) {
       return failure(err);
     }
@@ -346,6 +355,75 @@ function clone(pid, restServer, mode, onProgress) {
   });
 }
 
+/** The folder of a synced project, or a failure result. */
+function syncedFolder(projectId) {
+  const folder = projectFolders.getProjectFolderPath(projectId);
+  if (!isSyncedFolder(folder)) return { failure: { ok: false, kind: 'not_synced', message: 'This project is not synced.' } };
+  return { folder };
+}
+
+/** @param {string} projectId */
+function listDecisions(projectId) {
+  return serialize(projectId, async () => {
+    const opened = syncedFolder(projectId);
+    if (opened.failure) return opened.failure;
+    try {
+      return { ok: true, ...(await loadEngine().decisions.listDecisions(opened.folder)) };
+    } catch (err) {
+      return failure(err);
+    }
+  });
+}
+
+/** projectId => the answer waiting for the app to apply it */
+const pendingDecisions = new Map();
+
+/**
+ * Work out one answer (nothing is written until decideCommit).
+ * @param {string} projectId
+ * @param {object} decision
+ */
+function decide(projectId, decision) {
+  return serialize(projectId, async () => {
+    const opened = syncedFolder(projectId);
+    if (opened.failure) return opened.failure;
+    if (!decision || typeof decision !== 'object') return { ok: false, kind: 'error', message: 'No decision given' };
+    try {
+      const r = await loadEngine().decisions.prepareDecision(opened.folder, decision);
+      pendingDecisions.set(projectId, { folder: opened.folder, pending: r.pending });
+      return { ok: true, decisionId: r.id, changes: r.storeChanges, undoable: r.undoable };
+    } catch (err) {
+      return failure(err);
+    }
+  });
+}
+
+/** @param {string} projectId @param {string} decisionId */
+function decideCommit(projectId, decisionId) {
+  return serialize(projectId, async () => {
+    const entry = pendingDecisions.get(projectId);
+    if (!entry || entry.pending.id !== decisionId) {
+      return { ok: false, kind: 'error', message: 'No such decision to finish (it was replaced or discarded).' };
+    }
+    pendingDecisions.delete(projectId);
+    try {
+      const r = await loadEngine().decisions.commitDecision(entry.folder, entry.pending);
+      const d = entry.pending.decision;
+      log.info(`[Sync] Decided ${projectId}: ${d.kind} ${d.key} ${d.answer || Object.values(d.choices || {}).join(',')}`);
+      return { ok: true, downloads: r.downloads };
+    } catch (err) {
+      return failure(err);
+    }
+  });
+}
+
+/** @param {string} projectId @param {string} decisionId */
+function decideDiscard(projectId, decisionId) {
+  const entry = pendingDecisions.get(projectId);
+  if (entry && entry.pending.id === decisionId) pendingDecisions.delete(projectId);
+  return { ok: true };
+}
+
 /**
  * @param {string} projectId
  * @param {'automatic' | 'manual'} mode
@@ -414,6 +492,13 @@ function registerSyncIpc(ipcMain, getMainWindow) {
     clone(Number(pid), restServer, mode, (p) => send('sync:progress', { projectId: `server:${pid}`, ...p })));
   ipcMain.handle('sync:download', (_event, projectId, restServer) =>
     download(projectId, restServer, (p) => send('sync:progress', { projectId, ...p })));
+  ipcMain.handle('sync:decisions', (_event, projectId) => listDecisions(projectId));
+  ipcMain.handle('sync:decide', (_event, projectId, decision) => decide(projectId, decision));
+  ipcMain.handle('sync:decide-commit', (_event, projectId, decisionId) => decideCommit(projectId, decisionId));
+  ipcMain.handle('sync:decide-discard', (_event, projectId, decisionId) => decideDiscard(projectId, decisionId));
 }
 
-module.exports = { registerSyncIpc, notifyLocalChange, getStatus, turnOn, push, setMode, pull, commitPull, discardPull, download, clone };
+module.exports = {
+  registerSyncIpc, notifyLocalChange, getStatus, turnOn, push, setMode, pull, commitPull, discardPull, download, clone,
+  listDecisions, decide, decideCommit, decideDiscard,
+};

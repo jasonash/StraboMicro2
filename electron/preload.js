@@ -628,6 +628,10 @@ contextBridge.exposeInMainWorld('api', {
     pullDiscard: (projectId, pullId) => ipcRenderer.invoke('sync:pull-discard', projectId, pullId),
     download: (projectId, restServer) => ipcRenderer.invoke('sync:download', projectId, restServer),
     clone: (pid, restServer, mode) => ipcRenderer.invoke('sync:clone', pid, restServer, mode),
+    decisions: (projectId) => ipcRenderer.invoke('sync:decisions', projectId),
+    decide: (projectId, decision) => ipcRenderer.invoke('sync:decide', projectId, decision),
+    decideCommit: (projectId, decisionId) => ipcRenderer.invoke('sync:decide-commit', projectId, decisionId),
+    decideDiscard: (projectId, decisionId) => ipcRenderer.invoke('sync:decide-discard', projectId, decisionId),
     onProgress: (callback) => {
       const handler = (event, progress) => callback(progress);
       ipcRenderer.on('sync:progress', handler);

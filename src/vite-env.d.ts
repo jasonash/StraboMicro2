@@ -119,7 +119,7 @@ type Unsubscribe = () => void;
 
 type SyncMode = 'automatic' | 'manual';
 
-type SyncDebugAction = 'turn-on-automatic' | 'turn-on-manual' | 'sync-now' | 'toggle-mode' | 'status' | 'clone';
+type SyncDebugAction = 'turn-on-automatic' | 'turn-on-manual' | 'sync-now' | 'toggle-mode' | 'status' | 'clone' | 'decisions';
 
 /** Why a sync call did not run or failed (electron/sync/syncService.js) */
 type SyncFailureKind =
@@ -129,7 +129,7 @@ type SyncFailureKind =
 type SyncCallResult = { ok: true } | { ok: false; kind: SyncFailureKind; message: string };
 
 type SyncPushResult =
-  | { ok: true; pushed: number; filesUploaded: number; notAccepted: number; conflicts: number; ready: boolean }
+  | { ok: true; pushed: number; filesUploaded: number; notAccepted: number; conflicts: number; restored: number; ready: boolean }
   | { ok: false; kind: SyncFailureKind; message: string };
 
 type SyncStatusResult =
@@ -162,6 +162,62 @@ type SyncPullResult =
     /** Entity changes in the app's form (electron/shared/entityModel.mjs EntityChange) */
     changes: import('../electron/shared/entityModel.mjs').EntityChange[];
     summary: { received: number; applied: number; conflicts: number; questions: number; pointCounts: number };
+  }
+  | { ok: false; kind: SyncFailureKind; message: string };
+
+/** How the decisions dialog names an entity (electron/sync/decisions.js describe) */
+interface SyncItemRef {
+  key: string;
+  type: string;
+  name: string;
+  /** Containing entity (null for top-level ones) */
+  parentType: string | null;
+  parentName: string;
+}
+
+interface SyncConflictItem extends SyncItemRef {
+  fields: Array<{
+    /** JSON of path; the key of a choice */
+    id: string;
+    /** Body path; '[<id>]' items of id-keyed lists; ['@parent'] the parent */
+    path: string[];
+    /** Values now (theirs = the server's); a parent is { parentType, parentId, name } */
+    mine: unknown;
+    theirs: unknown;
+  }>;
+}
+
+interface SyncQuestionItem extends SyncItemRef {
+  kind: 'theirs_deleted' | 'mine_deleted';
+  /** What is beneath it, by entity type */
+  contains: Record<string, number>;
+  localChanges: number;
+  theirChanges: number;
+}
+
+interface SyncRefusedItem extends SyncItemRef {
+  op: string;
+  status: string;
+  reason: string;
+  message: string;
+}
+
+type SyncDecisionsResult =
+  | { ok: true; conflicts: SyncConflictItem[]; questions: SyncQuestionItem[]; refused: SyncRefusedItem[] }
+  | { ok: false; kind: SyncFailureKind; message: string };
+
+type SyncDecision =
+  | { kind: 'conflict'; key: string; choices: Record<string, 'mine' | 'theirs'> }
+  | { kind: 'question'; key: string; answer: 'restore' | 'delete' | 'keep_deleted' | 'bring_back' }
+  | { kind: 'refused'; key: string; answer: 'discard' };
+
+type SyncDecideResult =
+  | {
+    ok: true;
+    decisionId: string;
+    changes: import('../electron/shared/entityModel.mjs').EntityChange[];
+    /** Taking theirs in a conflict is an ordinary edit (undo); other answers are not */
+    undoable: boolean;
   }
   | { ok: false; kind: SyncFailureKind; message: string };
 
@@ -839,6 +895,12 @@ interface Window {
       download: (projectId: string, restServer: string) => Promise<
         | { ok: true; downloaded: number; images: string[]; thumbnails: string[] }
         | { ok: false; kind: SyncFailureKind; message: string }>;
+      /** What waits for the user's decision */
+      decisions: (projectId: string) => Promise<SyncDecisionsResult>;
+      /** Work out one answer (save first); apply result.changes, save, then decideCommit */
+      decide: (projectId: string, decision: SyncDecision) => Promise<SyncDecideResult>;
+      decideCommit: (projectId: string, decisionId: string) => Promise<SyncCallResult & { downloads?: number }>;
+      decideDiscard: (projectId: string, decisionId: string) => Promise<{ ok: true }>;
       onProgress: (callback: (progress: SyncProgress) => void) => Unsubscribe;
       /** A synced project changed on disk without a store change (point counts, thumbnails) */
       onLocalChange: (callback: (projectId: string) => void) => Unsubscribe;

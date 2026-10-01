@@ -36,7 +36,10 @@ function syncDir(projectFolder) {
  * @property {Record<string, object>} base - 'type:id' => EntityState + { version }
  * @property {Record<string, string>} refs - 'type:id|role' => sha256 the server has
  * @property {{ pushId: string, changes: object[] } | null} outgoingPush
- * @property {object[]} refused - changes the server did not accept, with the reason
+ * @property {object[]} refused - changes the server did not accept: { key, change, result, local }
+ *   (local = the entity as it was when turned down, null if absent; held until it changes)
+ * @property {object[]} [restores] - Restore with my changes: { key, keys, sent } (restore op
+ *   for key, keys held until a pull brings the restored states into the base)
  * @property {Record<string, object[]>} [conflicts] - 'type:id' => unresolved field conflicts (pull)
  * @property {object[]} [questions] - delete-vs-edit questions waiting for the user (pull)
  * @property {Record<string, string>} [downloads] - 'type:id|role' => sha256 to fetch (pull)
@@ -126,7 +129,22 @@ async function createHashIndex(projectFolder) {
 function heldKeys(state) {
   const out = new Set(Object.keys(state.conflicts || {}));
   for (const q of state.questions || []) for (const k of q.keys) out.add(k);
+  for (const r of state.restores || []) for (const k of r.keys) out.add(k);
   return out;
 }
 
-module.exports = { syncDir, newState, loadState, saveState, createHashIndex, heldKeys, FORMAT_VERSION };
+/**
+ * Turned-down changes that stay held: the entity is still as it was when
+ * the server turned it down (an edit since then sends it again). Entries
+ * written before this rule (no local) are sent again once.
+ * @param {SyncState} state
+ * @param {{ entities: Record<string, object> }} current - explode() of the project
+ * @returns {object[]}
+ */
+function stillRefused(state, current) {
+  const { sameContent } = require('./merge');
+  return (state.refused || []).filter((p) => p && typeof p.key === 'string' && p.local !== undefined &&
+    sameContent(current.entities[p.key] ?? null, p.local));
+}
+
+module.exports = { syncDir, newState, loadState, saveState, createHashIndex, heldKeys, stillRefused, FORMAT_VERSION };
