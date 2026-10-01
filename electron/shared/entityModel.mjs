@@ -1,0 +1,369 @@
+/**
+ * Entity model for sync: project.json <-> entity states
+ *
+ * Sync works on entities (project, dataset, sample, micrograph, spot, tag,
+ * group, preset, point count), each stored on the server as
+ * { parentType, parentId, body, childOrder }. A body is the entity's JSON
+ * minus its child collections; children are separate entities that point at
+ * their parent, and the parent keeps their order.
+ *
+ * explode() turns a project (plus its point count sessions) into that map;
+ * assemble() builds the project back. Both follow the server exactly
+ * (StraboBackend microsync/lib/MsModel.php, MsConvert::normalize and
+ * ::decompose, MsWorker::assemble), so the client's base snapshot, diff and
+ * pushes agree with what the server stores. Per-user fields (tree expansion,
+ * preset key bindings, grain analysis selection) never enter an entity;
+ * assemble() takes them from the local project instead.
+ *
+ * Single source for both processes (see deepEqual.mjs for how each loads it).
+ */
+
+import { deepEqual } from './deepEqual.mjs';
+
+/** Entity type => type of its structural parent (null: none). */
+export const PARENT = Object.freeze({
+  project: null,
+  dataset: 'project',
+  sample: 'dataset',
+  micrograph: 'sample',
+  spot: 'micrograph',
+  tag: 'project',
+  group: 'project',
+  preset: 'project',
+  point_count: 'micrograph', // point-counts/<id>.json, not project.json
+});
+
+/**
+ * Entity type => child collection key => child entity type. These keys hold
+ * separate entities and never appear in a body. Id lists with the same names
+ * on other types (group.micrographs, micrograph.tags) are ordinary fields.
+ * Key order matters: it is the server's order.
+ */
+export const CHILD_KEYS = Object.freeze({
+  project: Object.freeze({ datasets: 'dataset', tags: 'tag', groups: 'group', presets: 'preset' }),
+  dataset: Object.freeze({ samples: 'sample' }),
+  sample: Object.freeze({ micrographs: 'micrograph' }),
+  micrograph: Object.freeze({ spots: 'spot' }),
+  spot: Object.freeze({}),
+  tag: Object.freeze({}),
+  group: Object.freeze({}),
+  preset: Object.freeze({}),
+  point_count: Object.freeze({}),
+});
+
+const PROJECT_PER_USER = Object.freeze(['presetKeyBindings', 'grainAnalysisSpotFilter', 'grainAnalysisSelectedSpotIds']);
+const ENTITY_PER_USER = Object.freeze(['isExpanded', 'isSpotExpanded']);
+
+/** Per-user fields of a type: stay in the local project.json, never synced. */
+export function perUserFields(type) {
+  return type === 'project' ? PROJECT_PER_USER : ENTITY_PER_USER;
+}
+
+/** Entity map key, e.g. 'micrograph:<id>'. */
+export function entityKey(type, id) {
+  return `${type}:${id}`;
+}
+
+/** A usable entity id (server rule: non-empty, at most 200 chars, no control characters). */
+export function isEntityId(id) {
+  // eslint-disable-next-line no-control-regex
+  return typeof id === 'string' && id !== '' && id.length <= 200 && !/[\x00-\x1f\x7f]/.test(id);
+}
+
+/** Why a project cannot be turned into entities (the server stops on the same cases). */
+export class ExplodeError extends Error {
+  /**
+   * @param {'bad_json' | 'bad_id' | 'duplicate_differs'} reason
+   * @param {string} message
+   * @param {object} [details]
+   */
+  constructor(reason, message, details = {}) {
+    super(message);
+    this.name = 'ExplodeError';
+    this.reason = reason;
+    this.details = details;
+  }
+}
+
+/** JSON copy: drops undefined values and functions the way saving to disk does. */
+function jsonCopy(value) {
+  return JSON.parse(JSON.stringify(value));
+}
+
+/**
+ * Normalized copy of a project: per-user fields removed, every child
+ * collection a list (missing or null becomes []), identical duplicates of
+ * an entity under the same parent collapsed. Throws ExplodeError where the
+ * server's converter stops.
+ * @param {object} project
+ * @returns {{ project: object, duplicatesCollapsed: number }}
+ */
+export function normalizeProject(project) {
+  if (project === null || typeof project !== 'object' || Array.isArray(project) || !isEntityId(project.id)) {
+    throw new ExplodeError('bad_id', 'the project has no usable id');
+  }
+  const root = jsonCopy(project);
+  /** @type {Map<string, { parent: string, obj: object }>} */
+  const seen = new Map();
+  let duplicatesCollapsed = 0;
+
+  const walk = (obj, type) => {
+    for (const f of perUserFields(type)) delete obj[f];
+    const me = entityKey(type, obj.id);
+    for (const [key, childType] of Object.entries(CHILD_KEYS[type])) {
+      const value = obj[key];
+      if (!Array.isArray(value)) {
+        if (value !== undefined && value !== null) {
+          throw new ExplodeError('bad_json', `"${key}" of ${type} ${obj.id} is not a list`);
+        }
+        obj[key] = [];
+        continue;
+      }
+      const list = [];
+      for (const child of value) {
+        if (child === null || typeof child !== 'object' || Array.isArray(child) || !isEntityId(child.id)) {
+          throw new ExplodeError('bad_id', `a ${childType} under ${type} ${obj.id} has no usable id`);
+        }
+        const k = entityKey(childType, child.id);
+        const prior = seen.get(k);
+        if (prior) {
+          if (prior.parent === me && deepEqual(prior.obj, child)) {
+            duplicatesCollapsed++;
+            continue;
+          }
+          throw new ExplodeError('duplicate_differs', `${childType} ${child.id} appears twice with different content`,
+            { first: prior.parent, second: me });
+        }
+        seen.set(k, { parent: me, obj: jsonCopy(child) });
+        walk(child, childType);
+        list.push(child);
+      }
+      obj[key] = list;
+    }
+  };
+  walk(root, 'project');
+  return { project: root, duplicatesCollapsed };
+}
+
+/**
+ * @typedef {Object} EntityState
+ * @property {string} type
+ * @property {string} id
+ * @property {string | null} parentType
+ * @property {string | null} parentId
+ * @property {object} body - Entity JSON without child collections or per-user fields
+ * @property {Record<string, string[]>} [childOrder] - Child ids per collection (types with children only)
+ */
+
+/**
+ * Split a project into entity states.
+ *
+ * `order` lists entity keys in the order the server's decompose emits them,
+ * which is a valid create order: parents before children, a nested
+ * micrograph after the micrograph it sits on (a parentID loop is emitted
+ * anyway; the server rejects it), point counts last.
+ *
+ * @param {object} project - The project as saved to project.json
+ * @param {object[]} [pointCounts] - Point count sessions (point-counts/<id>.json)
+ * @returns {{ entities: Record<string, EntityState>, order: string[], duplicatesCollapsed: number }}
+ */
+export function explode(project, pointCounts = []) {
+  const { project: j, duplicatesCollapsed } = normalizeProject(project);
+  /** @type {Record<string, EntityState>} */
+  const entities = {};
+  const order = [];
+
+  const emit = (type, obj, parentType, parentId) => {
+    const body = { ...obj };
+    /** @type {Record<string, string[]>} */
+    const childOrder = {};
+    const keys = Object.keys(CHILD_KEYS[type]);
+    for (const key of keys) {
+      childOrder[key] = obj[key].map((c) => c.id);
+      delete body[key];
+    }
+    const k = entityKey(type, obj.id);
+    /** @type {EntityState} */
+    const state = { type, id: obj.id, parentType, parentId, body };
+    if (keys.length > 0) state.childOrder = childOrder;
+    entities[k] = state;
+    order.push(k);
+  };
+
+  emit('project', j, null, null);
+  for (const [key, type] of [['tags', 'tag'], ['groups', 'group'], ['presets', 'preset']]) {
+    for (const x of j[key]) emit(type, x, 'project', j.id);
+  }
+  for (const d of j.datasets) {
+    emit('dataset', d, 'project', j.id);
+    for (const s of d.samples) {
+      emit('sample', s, 'dataset', d.id);
+      const inSample = new Set(s.micrographs.map((m) => m.id));
+      const emitMicrograph = (m) => {
+        emit('micrograph', m, 'sample', s.id);
+        for (const p of m.spots) emit('spot', p, 'micrograph', m.id);
+      };
+      let pending = s.micrographs;
+      const done = new Set();
+      for (let guard = 0; pending.length > 0 && guard < 10000; guard++) {
+        const next = [];
+        for (const m of pending) {
+          const nest = typeof m.parentID === 'string' && m.parentID !== '' ? m.parentID : null;
+          if (nest === null || done.has(nest) || !inSample.has(nest)) {
+            emitMicrograph(m);
+            done.add(m.id);
+          } else {
+            next.push(m);
+          }
+        }
+        if (next.length === pending.length) {
+          // A parentID loop: emit anyway, the server rejects it
+          for (const m of next) emitMicrograph(m);
+          break;
+        }
+        pending = next;
+      }
+    }
+  }
+
+  for (const raw of pointCounts) {
+    if (raw === null || typeof raw !== 'object' || !isEntityId(raw.id)) {
+      throw new ExplodeError('bad_id', 'a point count session has no usable id');
+    }
+    const body = jsonCopy(raw);
+    for (const f of perUserFields('point_count')) delete body[f];
+    const k = entityKey('point_count', body.id);
+    if (entities[k]) {
+      throw new ExplodeError('duplicate_differs', `point count ${body.id} appears twice`);
+    }
+    entities[k] = { type: 'point_count', id: body.id, parentType: 'micrograph', parentId: body.micrographId ?? null, body };
+    order.push(k);
+  }
+
+  return { entities, order, duplicatesCollapsed };
+}
+
+/**
+ * Child order as the server reads it: stored ids that are live children
+ * (first occurrence), then live children the stored order lacks, in the
+ * order given.
+ * @param {string} type
+ * @param {Record<string, string[]> | undefined} stored
+ * @param {Record<string, string[]>} liveByType - child type => live child ids
+ * @returns {Record<string, string[]>}
+ */
+export function normalizeChildOrder(type, stored, liveByType) {
+  /** @type {Record<string, string[]>} */
+  const out = {};
+  for (const [key, childType] of Object.entries(CHILD_KEYS[type])) {
+    const live = liveByType[childType] ?? [];
+    const liveSet = new Set(live);
+    const seen = new Set();
+    const list = [];
+    const storedList = stored?.[key];
+    if (Array.isArray(storedList)) {
+      for (const id of storedList) {
+        if (liveSet.has(id) && !seen.has(id)) {
+          list.push(id);
+          seen.add(id);
+        }
+      }
+    }
+    for (const id of live) {
+      if (!seen.has(id)) {
+        list.push(id);
+        seen.add(id);
+      }
+    }
+    out[key] = list;
+  }
+  return out;
+}
+
+/**
+ * Per-user fields of every entity in a project, to carry over into an
+ * assembled one: key => { field: value }.
+ * @param {object | null | undefined} project
+ * @returns {Map<string, Record<string, unknown>>}
+ */
+export function collectPerUserFields(project) {
+  /** @type {Map<string, Record<string, unknown>>} */
+  const out = new Map();
+  if (!project || typeof project !== 'object') return out;
+  const visit = (obj, type) => {
+    if (!obj || typeof obj !== 'object' || !isEntityId(obj.id)) return;
+    /** @type {Record<string, unknown>} */
+    const fields = {};
+    let any = false;
+    for (const f of perUserFields(type)) {
+      if (obj[f] !== undefined) {
+        fields[f] = obj[f];
+        any = true;
+      }
+    }
+    if (any) out.set(entityKey(type, obj.id), fields);
+    for (const [key, childType] of Object.entries(CHILD_KEYS[type])) {
+      if (Array.isArray(obj[key])) for (const c of obj[key]) visit(c, childType);
+    }
+  };
+  visit(project, 'project');
+  return out;
+}
+
+/**
+ * Build the project back from entity states.
+ *
+ * Children come in the parent's child order (normalized as the server does);
+ * among entities missing from that order, `order` (creation order) decides.
+ * Point counts are returned separately. Per-user fields are copied from
+ * `perUser` (see collectPerUserFields), so a pulled or rebuilt project keeps
+ * this user's tree expansion and key bindings.
+ *
+ * @param {Record<string, EntityState>} entities
+ * @param {string} projectId
+ * @param {{ order?: string[], perUser?: Map<string, Record<string, unknown>> }} [options]
+ * @returns {{ project: object, pointCounts: object[] } | null} null when the project entity is missing
+ */
+export function assemble(entities, projectId, { order, perUser } = {}) {
+  const rootKey = entityKey('project', projectId);
+  if (!entities[rootKey]) return null;
+
+  // Live children per parent, in creation order
+  let keys = Object.keys(entities);
+  if (order) {
+    const listed = new Set(order);
+    keys = [...order.filter((k) => entities[k]), ...keys.filter((k) => !listed.has(k))];
+  }
+  /** @type {Map<string, Record<string, string[]>>} */
+  const children = new Map();
+  for (const k of keys) {
+    const e = entities[k];
+    if (e.parentType === null || e.parentId === null) continue;
+    const pk = entityKey(e.parentType, e.parentId);
+    const byType = children.get(pk) ?? {};
+    (byType[e.type] ??= []).push(e.id);
+    children.set(pk, byType);
+  }
+
+  const pointCounts = [];
+  const build = (type, id) => {
+    const k = entityKey(type, id);
+    const e = entities[k];
+    const obj = jsonCopy(e.body);
+    const extra = perUser?.get(k);
+    if (extra) Object.assign(obj, jsonCopy(extra));
+    const liveByType = children.get(k) ?? {};
+    const childOrder = normalizeChildOrder(type, e.childOrder, liveByType);
+    for (const [key, childType] of Object.entries(CHILD_KEYS[type])) {
+      obj[key] = childOrder[key].map((cid) => build(childType, cid));
+    }
+    if (type === 'micrograph') {
+      for (const pcId of liveByType.point_count ?? []) {
+        pointCounts.push(jsonCopy(entities[entityKey('point_count', pcId)].body));
+      }
+    }
+    return obj;
+  };
+
+  return { project: build('project', projectId), pointCounts };
+}

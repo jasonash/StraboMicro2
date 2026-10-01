@@ -10,6 +10,7 @@
     "dev:electron": "wait-on http://localhost:5173 && electron .",
     "dev:typecheck": "concurrently \"npm run dev:vite\" \"npm run dev:electron\" \"npm run typecheck:watch\"",
     "typecheck": "tsc --noEmit",
+    "test:entity-model": "node tests/sync/entityModel.test.mjs",
     "typecheck:watch": "tsc --noEmit --watch --preserveWatchOutput",
     "build": "tsc && vite build",
     "preview": "vite preview",
