@@ -99,6 +99,39 @@ app.whenReady().then(async () => {
     }
     fs.writeFileSync(path.join(local, 'project.json'), JSON.stringify(p0, null, 2));
 
+    // The app opens and saves it (the serializer's form from now on)
+    const ser = require(`${E}/projectSerializer`);
+    await ser.saveProjectJson(await ser.loadProjectJson(pid), pid);
+
+    // modifiedTimestamp means "last changed": unchanged saves and tree
+    // expansion keep it; a change to the project's own fields stamps it
+    {
+      const disk = () => JSON.parse(fs.readFileSync(path.join(local, 'project.json'), 'utf8'));
+      const before = disk();
+      await new Promise((r) => setTimeout(r, 20));
+      const app1 = await ser.loadProjectJson(pid);
+      await ser.saveProjectJson(app1, pid);
+      app1.datasets[0].isExpanded = !app1.datasets[0].isExpanded;
+      await ser.saveProjectJson(app1, pid);
+      const same = disk();
+      check('unchanged save and tree expansion keep modifiedTimestamp',
+        same.modifiedTimestamp === before.modifiedTimestamp &&
+        same.datasets[0].modifiedTimestamp === before.datasets[0].modifiedTimestamp,
+        `${before.modifiedTimestamp} -> ${same.modifiedTimestamp}`);
+      app1.name = 'Sync service test (renamed)';
+      await ser.saveProjectJson(app1, pid);
+      const renamed = disk();
+      check('project rename stamps the project only',
+        renamed.modifiedTimestamp > before.modifiedTimestamp &&
+        renamed.datasets[0].modifiedTimestamp === before.datasets[0].modifiedTimestamp);
+      app1.datasets[0].name = 'Renamed dataset';
+      await ser.saveProjectJson(app1, pid);
+      const dsRenamed = disk();
+      check('dataset rename stamps that dataset, project keeps its time',
+        dsRenamed.datasets[0].modifiedTimestamp > before.datasets[0].modifiedTimestamp &&
+        dsRenamed.modifiedTimestamp === renamed.modifiedTimestamp);
+    }
+
     const st0 = await svc.getStatus(pid);
     check('local-only project: status not synced', st0.synced === false);
     const lp = await svc.push(pid, SERVER, () => {});
@@ -137,15 +170,18 @@ app.whenReady().then(async () => {
     const st2 = await svc.getStatus(pid);
     check('status after push: ready, nothing waiting', st2.phase === 'ready' && st2.pending === 0, JSON.stringify(st2));
 
-    // An edit is counted, then pushed
-    const pj = JSON.parse(fs.readFileSync(path.join(folder, 'project.json'), 'utf8'));
+    // Counting the app's project (Manual mode: edits are not saved until Sync)
+    const asLoaded = await ser.loadProjectJson(pid);
+    const loadedCount = (await svc.getStatus(pid, asLoaded)).pending;
+    check('unchanged project as the app holds it counts 0', loadedCount === 0, `counted ${loadedCount}`);
+    const pj = JSON.parse(JSON.stringify(asLoaded));
     pj.datasets[0].samples[0].micrographs[0].notes = 'edited by the service test';
-    // Not saved yet (Manual mode): counted in the app's project, not in the file
     check('unsaved edit counted when the app passes its project', (await svc.getStatus(pid, pj)).pending === 1 &&
       (await svc.getStatus(pid)).pending === 0);
     check('a project with another id is ignored for the count', (await svc.getStatus(pid, { ...pj, id: 'other' })).pending === 0);
-    fs.writeFileSync(path.join(folder, 'project.json'), JSON.stringify(pj, null, 2));
+    await ser.saveProjectJson(pj, pid);
     check('edit counted as one change waiting', (await svc.getStatus(pid)).pending === 1);
+    check('after the save the app\'s project still counts 1', (await svc.getStatus(pid, pj)).pending === 1);
     const c = await svc.push(pid, SERVER, () => {});
     check('edit pushed', c.ok && c.pushed === 1, JSON.stringify(c));
 
@@ -156,7 +192,7 @@ app.whenReady().then(async () => {
     // Expired access token, refresh token rejected by the server -> logged out
     // (an edit, so the push has to reach the server; with nothing to send it makes no request)
     pj.datasets[0].samples[0].micrographs[0].notes = 'edited again';
-    fs.writeFileSync(path.join(folder, 'project.json'), JSON.stringify(pj, null, 2));
+    await ser.saveProjectJson(pj, pid);
     await tokenService.saveTokens(who.token, 'not-a-real-refresh-token', 60, user); // inside the 5 min expiry buffer
     const expired = await svc.push(pid, SERVER, () => {});
     check('rejected refresh -> auth, tokens cleared', expired.kind === 'auth' && stored === null, JSON.stringify(expired));

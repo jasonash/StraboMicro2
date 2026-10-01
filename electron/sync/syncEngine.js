@@ -24,6 +24,7 @@ const { app } = require('electron');
 const log = require('electron-log');
 const { explode } = require('../shared/entityModel.mjs');
 const projectFolders = require('../projectFolders');
+const { prepareProjectJson } = require('../projectSerializer');
 const { moveProjectToAccount } = require('../projectCopies');
 const tileGenerator = require('../tileGenerator');
 const tileArchive = require('../tileArchive');
@@ -246,7 +247,11 @@ async function countPendingChanges(folder, unsavedProject = null) {
   const state = await sidecar.loadState(folder);
   if (!state) return 0;
   const saved = await readProjectFiles(folder);
-  const project = unsavedProject && unsavedProject.id === saved.project.id ? unsavedProject : saved.project;
+  // The app's project is counted as a save would write it (rounded, cleaned,
+  // modifiedTimestamp kept unless changed), else save-time differences count
+  const project = unsavedProject && unsavedProject.id === saved.project.id
+    ? await prepareProjectJson(unsavedProject, path.join(folder, 'project.json'))
+    : saved.project;
   const { pointCounts } = saved;
   // A push in flight is still in the diff (the base takes it only once the
   // server answers), unless a later edit reverted it; it still has to be sent

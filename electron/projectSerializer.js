@@ -222,7 +222,7 @@ async function saveProjectJson(project, projectId) {
     await fs.promises.mkdir(parentDir, { recursive: true });
 
     // Serialize project to legacy format
-    const legacyJson = serializeToLegacyFormat(project);
+    const legacyJson = await prepareProjectJson(project, projectJsonPath);
 
     // Write to disk with pretty printing. Atomic (temp file + rename), so a
     // crash mid-save leaves the previous project.json intact. Required here,
@@ -237,6 +237,61 @@ async function saveProjectJson(project, projectId) {
     log.error('[ProjectSerializer] Error saving project.json:', error);
     throw error;
   }
+}
+
+/**
+ * The project as saveProjectJson would write it over projectJsonPath
+ * (sync counts unsaved changes with it, so it must match the save exactly).
+ * @param {object} project - The app's project
+ * @param {string} projectJsonPath
+ * @returns {Promise<object>} Plain JSON (no undefined values)
+ */
+async function prepareProjectJson(project, projectJsonPath) {
+  const legacyJson = JSON.parse(JSON.stringify(serializeToLegacyFormat(project)));
+  await stampModifiedTimestamps(legacyJson, projectJsonPath);
+  return legacyJson;
+}
+
+/**
+ * modifiedTimestamp of the project and of each dataset means "last changed":
+ * compared with the project.json on disk, a project or dataset whose own
+ * fields changed gets the current time, an unchanged one keeps the time on
+ * disk. Children (datasets, samples) and per-user fields (tree expansion)
+ * do not count. Stamping every save instead would make each save look like
+ * an edit to sync, and two collaborators' saves conflict.
+ * @param {object} legacyJson - Serialized project, updated in place
+ * @param {string} projectJsonPath - The file it is about to replace
+ */
+async function stampModifiedTimestamps(legacyJson, projectJsonPath) {
+  let previous = null;
+  try {
+    previous = JSON.parse(await fs.promises.readFile(projectJsonPath, 'utf8'));
+  } catch (_) {
+    return; // new project (or unreadable file): keep the values given
+  }
+  // Required here: the server PDF service vendors this file and never saves
+  const { deepEqual } = require('./deepEqual');
+  const { perUserFields } = require('./shared/entityModel.mjs');
+  const now = new Date().toISOString();
+  const own = (obj, type, childKey) => {
+    const out = JSON.parse(JSON.stringify(obj));
+    delete out[childKey];
+    delete out.modifiedTimestamp;
+    for (const f of perUserFields(type)) delete out[f];
+    return out;
+  };
+  const stamp = (next, prev, type, childKey) => {
+    if (!prev) {
+      next.modifiedTimestamp = now;
+    } else if (deepEqual(own(next, type, childKey), own(prev, type, childKey))) {
+      next.modifiedTimestamp = prev.modifiedTimestamp || next.modifiedTimestamp;
+    } else {
+      next.modifiedTimestamp = now;
+    }
+  };
+  stamp(legacyJson, previous && previous.id === legacyJson.id ? previous : null, 'project', 'datasets');
+  const prevDatasets = new Map(((previous && previous.datasets) || []).map((d) => [d.id, d]));
+  for (const d of legacyJson.datasets || []) stamp(d, prevDatasets.get(d.id), 'dataset', 'samples');
 }
 
 /**
@@ -305,7 +360,7 @@ function serializeToLegacyFormat(project) {
     magneticDeclination: project.magneticDeclination || '',
     notes: project.notes || '',
     date: project.date || new Date().toISOString(),
-    modifiedTimestamp: new Date().toISOString(),
+    modifiedTimestamp: project.modifiedTimestamp || new Date().toISOString(), // see stampModifiedTimestamps
     projectLocation: '', // Not used in new folder structure
     datasets: (project.datasets || []).map(serializeDataset),
     groups: project.groups || [], // Not implemented yet
@@ -329,7 +384,7 @@ function serializeDataset(dataset) {
     id: dataset.id,
     name: dataset.name || '',
     date: dataset.date || new Date().toISOString(),
-    modifiedTimestamp: new Date().toISOString(),
+    modifiedTimestamp: dataset.modifiedTimestamp || new Date().toISOString(), // see stampModifiedTimestamps
     samples: (dataset.samples || []).map(serializeSample),
   };
 }
@@ -698,4 +753,5 @@ module.exports = {
   loadProjectJson,
   serializeToLegacyFormat,
   deserializeFromLegacyFormat,
+  prepareProjectJson,
 };
