@@ -4263,97 +4263,18 @@ ipcMain.handle('auth:logout', async (event, restServer) => {
   }
 });
 
-// Waits between refresh attempts when the server cannot be reached or answers 5xx
-const AUTH_REFRESH_RETRY_DELAYS_MS = [1000, 3000];
-
 /**
  * Refresh the access token using the refresh token.
- * Tokens are cleared only when the server rejects the refresh token (401).
- * Network errors and server errors keep the tokens (the user stays logged in)
- * and are retried with backoff; if they persist, the result has unreachable: true.
+ * Tokens are cleared only when the server rejects the refresh token (401);
+ * see tokenService.refreshAccessToken.
  * @param {string} restServer - REST server URL from preferences
  * @returns {object} { success, sessionExpired?, unreachable?, error? }
  */
 ipcMain.handle('auth:refresh', async (event, restServer) => {
   try {
-    const tokens = await tokenService.getTokens();
-
-    if (!tokens || !tokens.refreshToken) {
-      log.warn('[Auth] No refresh token available');
-      return { success: false, sessionExpired: true, error: 'No refresh token' };
-    }
-
-    const baseUrl = getRestServerFromPreferences(restServer);
-    let lastProblem = '';
-
-    for (let attempt = 0; attempt <= AUTH_REFRESH_RETRY_DELAYS_MS.length; attempt++) {
-      if (attempt > 0) {
-        await new Promise((resolve) => setTimeout(resolve, AUTH_REFRESH_RETRY_DELAYS_MS[attempt - 1]));
-      }
-
-      let response;
-      try {
-        response = await fetch(`${baseUrl}/jwtauth/refresh`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ refresh_token: tokens.refreshToken }),
-        });
-      } catch (networkError) {
-        lastProblem = networkError.message || 'network error';
-        log.warn(`[Auth] Token refresh attempt ${attempt + 1} could not reach the server: ${lastProblem}`);
-        continue;
-      }
-
-      if (response.status === 401) {
-        log.warn('[Auth] Refresh token rejected by the server (401), session expired');
-        await tokenService.clearTokens();
-        return {
-          success: false,
-          sessionExpired: true,
-          error: 'Session expired. Please log in again.',
-        };
-      }
-
-      if (response.status >= 500) {
-        lastProblem = `HTTP ${response.status}`;
-        log.warn(`[Auth] Token refresh attempt ${attempt + 1} failed with ${lastProblem}`);
-        continue;
-      }
-
-      if (!response.ok) {
-        // Other 4xx: a request problem, not proof that the session is gone; keep the tokens
-        log.error(`[Auth] Token refresh failed with HTTP ${response.status}; tokens kept`);
-        return { success: false, error: 'Failed to refresh session' };
-      }
-
-      let data;
-      try {
-        data = await response.json();
-      } catch (parseError) {
-        lastProblem = 'unreadable server response';
-        log.warn(`[Auth] Token refresh attempt ${attempt + 1}: ${lastProblem}`);
-        continue;
-      }
-
-      if (!data || !data.access_token) {
-        lastProblem = 'server response without an access token';
-        log.warn(`[Auth] Token refresh attempt ${attempt + 1}: ${lastProblem}`);
-        continue;
-      }
-
-      await tokenService.updateAccessToken(data.access_token, data.expires_in);
-      log.info('[Auth] Token refreshed successfully');
-      return { success: true };
-    }
-
-    log.warn(`[Auth] Token refresh gave up (${lastProblem}); tokens kept`);
-    return {
-      success: false,
-      unreachable: true,
-      error: 'Could not reach the StraboSpot server. Check your connection and try again.',
-    };
+    const result = await tokenService.refreshAccessToken(getRestServerFromPreferences(restServer));
+    const { accessToken, user, ...rest } = result;
+    return rest;
   } catch (error) {
     log.error('[Auth] Token refresh error:', error);
     return {

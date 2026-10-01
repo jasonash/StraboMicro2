@@ -24,6 +24,9 @@ const log = require('electron-log');
 //   user: { pkey: string, email: string, name: string }
 // }
 
+// Waits between refresh attempts when the server cannot be reached or answers 5xx
+const REFRESH_RETRY_DELAYS_MS = [1000, 3000];
+
 // Store instance - lazily initialized
 let store = null;
 
@@ -259,10 +262,15 @@ const tokenService = {
    * @returns {object} { success, accessToken, user, error, sessionExpired }
    *   - sessionExpired: true if refresh token is invalid (user needs to log in again)
    */
+  /**
+   * Get a usable access token, refreshing it first if it has expired.
+   * @param {string} restServer
+   * @returns {Promise<{ success: boolean, accessToken?: string, user?: object,
+   *   sessionExpired?: boolean, unreachable?: boolean, error?: string }>}
+   */
   async getValidAccessToken(restServer) {
     const tokens = await this.getTokens();
 
-    // No tokens at all
     if (!tokens || !tokens.accessToken) {
       return {
         success: false,
@@ -271,69 +279,98 @@ const tokenService = {
       };
     }
 
-    // Token is still valid
     if (!this.isTokenExpired(tokens)) {
-      return {
-        success: true,
-        accessToken: tokens.accessToken,
-        user: tokens.user,
-      };
+      return { success: true, accessToken: tokens.accessToken, user: tokens.user };
     }
 
-    // Token expired - try to refresh
     log.info('[TokenService] Access token expired, attempting refresh...');
+    return this.refreshAccessToken(restServer);
+  },
 
-    if (!tokens.refreshToken) {
+  /**
+   * Get a new access token with the stored refresh token.
+   * Tokens are cleared only when the server rejects the refresh token (401).
+   * Network errors and server errors keep the tokens (the user stays logged
+   * in) and are retried with backoff; if they persist, the result has
+   * unreachable: true.
+   * @param {string} restServer
+   * @param {{ retryDelaysMs?: number[] }} [options]
+   * @returns {Promise<{ success: boolean, accessToken?: string, user?: object,
+   *   sessionExpired?: boolean, unreachable?: boolean, error?: string }>}
+   */
+  async refreshAccessToken(restServer, { retryDelaysMs = REFRESH_RETRY_DELAYS_MS } = {}) {
+    const tokens = await this.getTokens();
+    if (!tokens || !tokens.refreshToken) {
       log.warn('[TokenService] No refresh token available');
-      await this.clearTokens();
-      return {
-        success: false,
-        error: 'Session expired. Please log in again.',
-        sessionExpired: true,
-      };
+      return { success: false, sessionExpired: true, error: 'Session expired. Please log in again.' };
     }
 
-    try {
-      const baseUrl = restServer || 'https://strabospot.org';
-      const response = await fetch(`${baseUrl}/jwtauth/refresh`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ refresh_token: tokens.refreshToken }),
-      });
+    const baseUrl = restServer || 'https://strabospot.org';
+    let lastProblem = '';
 
-      if (!response.ok) {
-        log.error('[TokenService] Token refresh failed - refresh token expired or invalid');
-        await this.clearTokens();
-        return {
-          success: false,
-          error: 'Session expired. Please log in again.',
-          sessionExpired: true,
-        };
+    for (let attempt = 0; attempt <= retryDelaysMs.length; attempt++) {
+      if (attempt > 0) {
+        await new Promise((resolve) => setTimeout(resolve, retryDelaysMs[attempt - 1]));
       }
 
-      const data = await response.json();
+      let response;
+      try {
+        response = await fetch(`${baseUrl}/jwtauth/refresh`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refresh_token: tokens.refreshToken }),
+        });
+      } catch (networkError) {
+        lastProblem = networkError.message || 'network error';
+        log.warn(`[TokenService] Refresh attempt ${attempt + 1} could not reach the server: ${lastProblem}`);
+        continue;
+      }
 
-      // Update the access token
+      if (response.status === 401) {
+        log.warn('[TokenService] Refresh token rejected by the server (401), session expired');
+        await this.clearTokens();
+        return { success: false, sessionExpired: true, error: 'Session expired. Please log in again.' };
+      }
+
+      if (response.status >= 500) {
+        lastProblem = `HTTP ${response.status}`;
+        log.warn(`[TokenService] Refresh attempt ${attempt + 1} failed with ${lastProblem}`);
+        continue;
+      }
+
+      if (!response.ok) {
+        // Other 4xx: a request problem, not proof that the session is gone; keep the tokens
+        log.error(`[TokenService] Refresh failed with HTTP ${response.status}; tokens kept`);
+        return { success: false, error: 'Failed to refresh session' };
+      }
+
+      let data;
+      try {
+        data = await response.json();
+      } catch (parseError) {
+        lastProblem = 'unreadable server response';
+        log.warn(`[TokenService] Refresh attempt ${attempt + 1}: ${lastProblem}`);
+        continue;
+      }
+
+      if (!data || !data.access_token) {
+        lastProblem = 'server response without an access token';
+        log.warn(`[TokenService] Refresh attempt ${attempt + 1}: ${lastProblem}`);
+        continue;
+      }
+
       await this.updateAccessToken(data.access_token, data.expires_in);
-
       log.info('[TokenService] Token refreshed successfully');
-
-      return {
-        success: true,
-        accessToken: data.access_token,
-        user: tokens.user,
-      };
-    } catch (error) {
-      log.error('[TokenService] Token refresh error:', error);
-      return {
-        success: false,
-        error: error.message || 'Failed to refresh session',
-        sessionExpired: false, // Network error, not necessarily expired
-      };
+      return { success: true, accessToken: data.access_token, user: tokens.user };
     }
-  }
+
+    log.warn(`[TokenService] Refresh gave up (${lastProblem}); tokens kept`);
+    return {
+      success: false,
+      unreachable: true,
+      error: 'Could not reach the StraboSpot server. Check your connection and try again.',
+    };
+  },
 };
 
 module.exports = tokenService;
