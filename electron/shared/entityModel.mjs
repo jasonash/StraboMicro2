@@ -379,7 +379,8 @@ export function assemble(entities, projectId, { order, perUser } = {}) {
 // nothing else, so edits by others (pulled changes) survive an undo.
 
 /** Depth of a type in the tree: parents are created before children. */
-const DEPTH = Object.freeze({
+/** Entity type => depth in the tree (parents before children when sorted). */
+export const DEPTH = Object.freeze({
   project: 0, dataset: 1, tag: 1, group: 1, preset: 1, sample: 2, micrograph: 3, spot: 4, point_count: 4,
 });
 

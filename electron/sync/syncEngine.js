@@ -109,7 +109,8 @@ function plannedFiles(folder, current) {
 /**
  * Push local changes of a synced copy (and finish its first upload).
  * @param {{ folder: string, client: ReturnType<import('./client').createSyncClient>, onProgress?: (p: object) => void }} options
- * @returns {Promise<{ pushed: number, problems: object[], filesUploaded: number, ready: boolean }>}
+ * @returns {Promise<{ pushed: number, problems: object[], conflicts: number, filesUploaded: number, ready: boolean }>}
+ *   conflicts: changes the server turned down because the entity changed or was deleted there (a pull merges them)
  */
 async function pushProject({ folder, client, onProgress = () => {} }) {
   const state = await sidecar.loadState(folder);
@@ -153,7 +154,9 @@ async function pushProject({ folder, client, onProgress = () => {} }) {
   }
   await hashes.save();
 
-  // B. Entity changes
+  // B. Entity changes (unresolved conflicts and delete questions wait, spec v3 §4.6)
+  for (const k of Object.keys(state.conflicts || {})) held.add(k);
+  for (const q of state.questions || []) for (const k of q.keys) held.add(k);
   const planned = planPush(state.base, current, { skip: held });
   const problems = [];
   let pushed = 0;
@@ -171,7 +174,11 @@ async function pushProject({ folder, client, onProgress = () => {} }) {
   }
   state.refused = problems.filter((p) => p.result.status === 'invalid' || p.result.status === 'forbidden');
 
-  // C. Files and refs, for entities the server has
+  // C. Files and refs, for entities the server has. A file waiting to be
+  // downloaded (a pull brought a newer one) is neither uploaded nor unref'd,
+  // and nor are the other files of its entity (tiles of a missing original)
+  const downloads = state.downloads || {};
+  const downloading = new Set(Object.keys(downloads).map((rk) => rk.slice(0, rk.indexOf('|'))));
   const tmpDir = path.join(sidecar.syncDir(folder), 'tmp');
   const wanted = new Set();
   for (const f of plannedFiles(folder, current)) {
@@ -179,6 +186,7 @@ async function pushProject({ folder, client, onProgress = () => {} }) {
     if (!state.base[ek]) continue;
     const rk = refKey(f.type, f.id, f.role);
     wanted.add(rk);
+    if (downloads[rk] || downloading.has(ek)) continue;
     let filePath = f.rel ? path.join(folder, f.rel) : null;
     let sha256;
     try {
@@ -216,6 +224,7 @@ async function pushProject({ folder, client, onProgress = () => {} }) {
   for (const rk of Object.keys(state.refs)) {
     if (wanted.has(rk)) continue;
     const [ek, role] = rk.split('|');
+    if (downloading.has(ek)) continue;
     const sep = ek.indexOf(':');
     const type = ek.slice(0, sep);
     const id = ek.slice(sep + 1);
@@ -232,7 +241,8 @@ async function pushProject({ folder, client, onProgress = () => {} }) {
     ready = true;
   }
   await sidecar.saveState(folder, state);
-  return { pushed, problems, filesUploaded, ready };
+  const conflicts = problems.filter((p) => p.result.status === 'conflict' || p.result.status === 'deleted').length;
+  return { pushed, problems, conflicts, filesUploaded, ready };
 }
 
 /**

@@ -7,6 +7,12 @@
  *                  account folder (the first upload runs as the first push)
  *   sync:push      push local changes of a synced project
  *   sync:set-mode  automatic or manual
+ *   sync:pull      fetch and merge the server's changes; returns what the
+ *                  app must apply to its store (kept pending in memory)
+ *   sync:pull-commit  after the app applied them and saved project.json:
+ *                  record the pull (base, lastSeq, conflicts, downloads)
+ *   sync:pull-discard drop a pending pull (the user edited meanwhile)
+ *   sync:download  fetch files a pull brought (originals, thumbnails, attachments)
  * Events to the renderer:
  *   sync:progress      { projectId, phase, ... } while pushing
  *   sync:local-change  projectId, after a file-only change (point counts,
@@ -27,7 +33,7 @@ const log = require('electron-log');
 const projectFolders = require('../projectFolders');
 const tokenService = require('../tokenService');
 
-/** @type {null | { syncEngine: typeof import('./syncEngine'), sidecar: typeof import('./sidecar'), client: typeof import('./client') }} */
+/** @type {null | { syncEngine: typeof import('./syncEngine'), sidecar: typeof import('./sidecar'), client: typeof import('./client'), pull: typeof import('./pull') }} */
 let engine = null;
 
 /** The sync modules, loaded on first use by a synced project. */
@@ -37,6 +43,7 @@ function loadEngine() {
       syncEngine: require('./syncEngine'),
       sidecar: require('./sidecar'),
       client: require('./client'),
+      pull: require('./pull'),
     };
   }
   return engine;
@@ -157,6 +164,9 @@ async function getStatus(projectId, project = null) {
     pid: state.binding.pid,
     pending,
     refused: Array.isArray(state.refused) ? state.refused.length : 0,
+    conflicts: Object.keys(state.conflicts || {}).length,
+    questions: (state.questions || []).length,
+    downloads: Object.keys(state.downloads || {}).length,
   };
 }
 
@@ -218,7 +228,91 @@ function push(projectId, restServer, onProgress) {
         log.info(`[Sync] Pushed ${projectId}: ${r.pushed} changes, ${r.filesUploaded} files, ` +
           `${r.problems.length} not accepted (${Date.now() - started} ms)`);
       }
-      return { ok: true, pushed: r.pushed, filesUploaded: r.filesUploaded, notAccepted: r.problems.length, ready: r.ready };
+      return { ok: true, pushed: r.pushed, filesUploaded: r.filesUploaded, notAccepted: r.problems.length, conflicts: r.conflicts, ready: r.ready };
+    } catch (err) {
+      return failure(err);
+    }
+  });
+}
+
+/** projectId => the pull waiting for the app to apply it */
+const pendingPulls = new Map();
+
+/** Shared checks of pull and download: synced folder, state, binding. */
+async function openSynced(projectId, restServer) {
+  const folder = projectFolders.getProjectFolderPath(projectId);
+  if (!isSyncedFolder(folder)) return { failure: { ok: false, kind: 'not_synced', message: 'This project is not synced.' } };
+  const state = await loadEngine().sidecar.loadState(folder);
+  if (!state) return { failure: { ok: false, kind: 'not_synced', message: 'This project is not synced.' } };
+  const problem = await bindingProblem(state.binding, restServer);
+  if (problem) return { failure: { ok: false, ...problem } };
+  return { folder, state };
+}
+
+/**
+ * Fetch and merge the server's changes. The result's changes are entity
+ * changes in the app's form, for the store's applyRemoteChanges.
+ * @param {string} projectId
+ * @param {string} restServer
+ * @param {(p: object) => void} onProgress
+ */
+function pull(projectId, restServer, onProgress) {
+  return serialize(projectId, async () => {
+    try {
+      const opened = await openSynced(projectId, restServer);
+      if (opened.failure) return opened.failure;
+      const r = await loadEngine().pull.preparePull({ folder: opened.folder, client: makeClient(restServer), onProgress });
+      pendingPulls.set(projectId, { folder: opened.folder, pending: r.pending });
+      return { ok: true, pullId: r.pending.id, changes: r.storeChanges, summary: r.summary };
+    } catch (err) {
+      return failure(err);
+    }
+  });
+}
+
+/**
+ * @param {string} projectId
+ * @param {string} pullId
+ */
+function commitPull(projectId, pullId) {
+  return serialize(projectId, async () => {
+    const entry = pendingPulls.get(projectId);
+    if (!entry || entry.pending.id !== pullId) {
+      return { ok: false, kind: 'error', message: 'No such pull to finish (it was replaced or discarded).' };
+    }
+    pendingPulls.delete(projectId);
+    try {
+      const r = await loadEngine().pull.commitPull({ folder: entry.folder, pending: entry.pending });
+      const s = entry.pending;
+      log.info(`[Sync] Pulled ${projectId}: ${s.theirs.length} changes received, seq ${s.since} -> ${s.headSeq}, ` +
+        `${Object.keys(s.conflicts).length} conflicts, ${s.questions.length} delete questions, ${r.downloads} files to download`);
+      return { ok: true, downloads: r.downloads };
+    } catch (err) {
+      return failure(err);
+    }
+  });
+}
+
+/** @param {string} projectId @param {string} pullId */
+function discardPull(projectId, pullId) {
+  const entry = pendingPulls.get(projectId);
+  if (entry && entry.pending.id === pullId) pendingPulls.delete(projectId);
+  return { ok: true };
+}
+
+/**
+ * @param {string} projectId
+ * @param {string} restServer
+ * @param {(p: object) => void} onProgress
+ */
+function download(projectId, restServer, onProgress) {
+  return serialize(projectId, async () => {
+    try {
+      const opened = await openSynced(projectId, restServer);
+      if (opened.failure) return opened.failure;
+      const r = await loadEngine().pull.downloadFiles({ folder: opened.folder, client: makeClient(restServer), onProgress });
+      if (r.downloaded > 0) log.info(`[Sync] Downloaded ${r.downloaded} files for ${projectId}`);
+      return { ok: true, downloaded: r.downloaded, images: r.images };
     } catch (err) {
       return failure(err);
     }
@@ -285,6 +379,12 @@ function registerSyncIpc(ipcMain, getMainWindow) {
   ipcMain.handle('sync:push', (_event, projectId, restServer) =>
     push(projectId, restServer, (p) => send('sync:progress', { projectId, ...p })));
   ipcMain.handle('sync:set-mode', (_event, projectId, mode) => setMode(projectId, mode));
+  ipcMain.handle('sync:pull', (_event, projectId, restServer) =>
+    pull(projectId, restServer, (p) => send('sync:progress', { projectId, ...p })));
+  ipcMain.handle('sync:pull-commit', (_event, projectId, pullId) => commitPull(projectId, pullId));
+  ipcMain.handle('sync:pull-discard', (_event, projectId, pullId) => discardPull(projectId, pullId));
+  ipcMain.handle('sync:download', (_event, projectId, restServer) =>
+    download(projectId, restServer, (p) => send('sync:progress', { projectId, ...p })));
 }
 
-module.exports = { registerSyncIpc, notifyLocalChange, getStatus, turnOn, push, setMode };
+module.exports = { registerSyncIpc, notifyLocalChange, getStatus, turnOn, push, setMode, pull, commitPull, discardPull, download };

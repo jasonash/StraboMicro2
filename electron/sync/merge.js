@@ -29,7 +29,7 @@
  */
 
 const { deepEqual } = require('../shared/deepEqual.mjs');
-const { entityKey } = require('../shared/entityModel.mjs');
+const { entityKey, DEPTH } = require('../shared/entityModel.mjs');
 
 /**
  * @typedef {Object} FieldConflict
@@ -320,7 +320,58 @@ function mergeProject(base, mine, theirs) {
     if (r.conflicts.length > 0) conflicts.push({ key: k, fields: r.conflicts });
     if (!sameState(r.state, m)) changes.push({ key: k, before: m, after: r.state });
   }
-  return { changes, conflicts, questions };
+  // Removals children first, then the rest parents first (creates need their parent)
+  const removals = changes.filter((c) => c.after === null);
+  const rest = changes.filter((c) => c.after !== null).sort((x, y) => DEPTH[x.after.type] - DEPTH[y.after.type]);
+  return { changes: [...removals, ...rest], conflicts, questions };
 }
 
-module.exports = { mergeValue, mergeEntity, mergeProject, mergeIdSet, sameState, sameContent };
+/**
+ * The value at a conflict path in an entity state (undefined if absent).
+ * @param {object | null} state
+ * @param {string[]} path
+ */
+function valueAt(state, path) {
+  if (!state) return undefined;
+  if (path[0] === '@parent') return { parentType: state.parentType, parentId: state.parentId };
+  let v = state.body;
+  for (const seg of path) {
+    if (v === null || v === undefined) return undefined;
+    if (isItemSegment(seg)) {
+      const id = seg.slice(1, -1);
+      v = Array.isArray(v) ? v.find((x) => x && x.id === id) : undefined;
+    } else {
+      v = typeof v === 'object' ? v[seg] : undefined;
+    }
+  }
+  return norm(v);
+}
+
+/**
+ * Conflicts of an entity after a new merge: the new ones, plus earlier
+ * unresolved ones that still differ (mine kept vs their latest value), so a
+ * later pull that does not touch a conflicted field cannot drop the conflict
+ * and let mine be pushed over theirs.
+ * @param {FieldConflict[]} previous - Stored, unresolved
+ * @param {FieldConflict[]} fresh - From this merge
+ * @param {object} mineState - The entity as merged locally
+ * @param {object} theirsState - Their latest
+ * @returns {FieldConflict[]}
+ */
+function carryConflicts(previous, fresh, mineState, theirsState) {
+  const out = [...fresh];
+  const seen = new Set(fresh.map((c) => JSON.stringify(c.path)));
+  for (const c of previous) {
+    const id = JSON.stringify(c.path);
+    if (seen.has(id)) continue;
+    const mine = valueAt(mineState, c.path);
+    const theirs = valueAt(theirsState, c.path);
+    if (!same(mine, theirs)) {
+      out.push({ path: c.path, base: c.base, mine, theirs });
+      seen.add(id);
+    }
+  }
+  return out;
+}
+
+module.exports = { mergeValue, mergeEntity, mergeProject, mergeIdSet, sameState, sameContent, valueAt, carryConflicts };

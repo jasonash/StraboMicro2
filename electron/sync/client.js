@@ -140,6 +140,62 @@ function createSyncClient({ restServer, getAccessToken, refreshAccessToken, fetc
       return expect(await request('POST', `/projects/${pid}/ready`), 200);
     },
 
+    /**
+     * Download a blob to destPath: streamed to a temporary file next to it,
+     * checked against its SHA-256, then renamed into place (an existing file
+     * is replaced only by a complete, verified one).
+     * @param {number} pid
+     * @param {string} sha256
+     * @param {string} destPath
+     * @param {{ onProgress?: (received: number, total: number) => void }} [options]
+     * @returns {Promise<{ size: number }>}
+     */
+    async downloadFile(pid, sha256, destPath, { onProgress } = {}, retried = false) {
+      const token = retried && refreshAccessToken ? await refreshAccessToken() : await getAccessToken();
+      if (!token) throw new SyncError('auth', 'Not logged in');
+      let res;
+      try {
+        res = await fetchImpl(`${base}/projects/${pid}/blobs/${sha256}`, { headers: { Authorization: `Bearer ${token}` } });
+      } catch (err) {
+        throw new SyncError('offline', `Could not reach the StraboSpot server (${err.message})`);
+      }
+      if (res.status === 401 && !retried && refreshAccessToken) {
+        if (res.body) await res.body.cancel().catch(() => {});
+        return this.downloadFile(pid, sha256, destPath, { onProgress }, true);
+      }
+      if (res.status === 401) throw new SyncError('auth', 'The server did not accept the login', { status: 401 });
+      if (res.status === 503) throw new SyncError('disabled', 'Sync is not enabled on this server', { status: 503 });
+      if (res.status >= 500) throw new SyncError('server', `Server error ${res.status}`, { status: res.status });
+      if (res.status !== 200 || !res.body) {
+        throw new SyncError('server', `File ${sha256.slice(0, 12)} could not be downloaded (${res.status})`, { status: res.status });
+      }
+      const total = Number(res.headers.get('content-length')) || 0;
+      const tmp = `${destPath}.download-${crypto.randomUUID()}`;
+      await fs.promises.mkdir(require('path').dirname(destPath), { recursive: true });
+      const hash = crypto.createHash('sha256');
+      let received = 0;
+      const out = fs.createWriteStream(tmp);
+      try {
+        for await (const chunk of res.body) {
+          hash.update(chunk);
+          received += chunk.length;
+          if (!out.write(chunk)) await new Promise((r) => out.once('drain', r));
+          if (onProgress) onProgress(received, total);
+        }
+        await new Promise((resolve, reject) => out.end((err) => (err ? reject(err) : resolve())));
+        const got = hash.digest('hex');
+        if (got !== sha256) throw new SyncError('server', `Downloaded file does not match (${got.slice(0, 12)} instead of ${sha256.slice(0, 12)})`);
+        await require('../atomicFile').withRetry(() => fs.promises.rename(tmp, destPath));
+      } catch (err) {
+        out.destroy();
+        await fs.promises.rm(tmp, { force: true });
+        // File system errors (disk full, permissions) are not connection problems
+        if (err instanceof SyncError || (err && typeof err.code === 'string' && err.code.startsWith('E'))) throw err;
+        throw new SyncError('offline', `Download interrupted (${err.message})`);
+      }
+      return { size: received };
+    },
+
     async getProject(pid) {
       return expect(await request('GET', `/projects/${pid}`), 200);
     },

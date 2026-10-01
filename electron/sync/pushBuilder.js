@@ -91,7 +91,8 @@ function applyFields(body, fields) {
  * Plan the push from base to current.
  * @param {Record<string, object>} base - 'type:id' => state + version
  * @param {{ entities: Record<string, object>, order: string[] }} current - explode() of the project
- * @param {{ skip?: Set<string> }} [options] - keys to hold back (e.g. micrographs whose image is not uploaded yet)
+ * @param {{ skip?: Set<string> }} [options] - keys to hold back (micrographs whose image is not uploaded
+ *   yet, entities with an unresolved conflict or delete question); their creates, updates and deletes wait
  * @returns {PlannedChange[]}
  */
 function planPush(base, current, { skip = new Set() } = {}) {
@@ -138,14 +139,18 @@ function planPush(base, current, { skip = new Set() } = {}) {
         target: { ...was, parentType: cur.parentType, parentId: cur.parentId, body: applyFields(was.body, fields) },
       });
     }
-    if (cur.childOrder && !deepEqual(cur.childOrder, was.childOrder ?? {})) {
-      // The base records only children that exist on the server, so the
-      // order is sent again once held-back children are created
-      /** @type {Record<string, string[]>} */
-      const sentOrder = {};
-      for (const [k, ids] of Object.entries(cur.childOrder)) {
-        sentOrder[k] = ids.filter((id) => !skipped.has(`${CHILD_KEYS[cur.type][k]}:${id}`));
-      }
+    // Held-back children the server does not have are left out of the
+    // comparison (the base records only children that exist on the server),
+    // so the order is sent again once they are created
+    /** @type {Record<string, string[]>} */
+    const sentOrder = {};
+    for (const [k, ids] of Object.entries(cur.childOrder || {})) {
+      sentOrder[k] = ids.filter((id) => {
+        const ck = `${CHILD_KEYS[cur.type][k]}:${id}`;
+        return !skipped.has(ck) || Boolean(base[ck]);
+      });
+    }
+    if (cur.childOrder && !deepEqual(sentOrder, was.childOrder ?? {})) {
       orders.push({
         change: { op: 'update', type: cur.type, id: cur.id, childOrder: cur.childOrder },
         key, kind: 'order', target: { childOrder: sentOrder },
@@ -154,7 +159,7 @@ function planPush(base, current, { skip = new Set() } = {}) {
   }
 
   // Deletes: only entities whose parent (and nesting micrograph) stay
-  const gone = Object.keys(base).filter((k) => !current.entities[k]);
+  const gone = Object.keys(base).filter((k) => !current.entities[k] && !skip.has(k));
   const goneSet = new Set(gone);
   const rootOf = (k) => {
     let r = k;
