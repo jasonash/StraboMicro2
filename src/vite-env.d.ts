@@ -119,7 +119,7 @@ type Unsubscribe = () => void;
 
 type SyncMode = 'automatic' | 'manual';
 
-type SyncDebugAction = 'turn-on-automatic' | 'turn-on-manual' | 'sync-now' | 'toggle-mode' | 'status';
+type SyncDebugAction = 'turn-on-automatic' | 'turn-on-manual' | 'sync-now' | 'toggle-mode' | 'status' | 'clone';
 
 /** Why a sync call did not run or failed (electron/sync/syncService.js) */
 type SyncFailureKind =
@@ -129,7 +129,7 @@ type SyncFailureKind =
 type SyncCallResult = { ok: true } | { ok: false; kind: SyncFailureKind; message: string };
 
 type SyncPushResult =
-  | { ok: true; pushed: number; filesUploaded: number; notAccepted: number; ready: boolean }
+  | { ok: true; pushed: number; filesUploaded: number; notAccepted: number; conflicts: number; ready: boolean }
   | { ok: false; kind: SyncFailureKind; message: string };
 
 type SyncStatusResult =
@@ -147,11 +147,27 @@ type SyncStatusResult =
     pending: number | null;
     /** Changes the server refused */
     refused: number;
+    /** Entities with unresolved field conflicts */
+    conflicts: number;
+    /** Delete-vs-edit questions waiting */
+    questions: number;
+    /** Files a pull brought that are not downloaded yet */
+    downloads: number;
   };
+
+type SyncPullResult =
+  | {
+    ok: true;
+    pullId: string;
+    /** Entity changes in the app's form (electron/shared/entityModel.mjs EntityChange) */
+    changes: import('../electron/shared/entityModel.mjs').EntityChange[];
+    summary: { received: number; applied: number; conflicts: number; questions: number; pointCounts: number };
+  }
+  | { ok: false; kind: SyncFailureKind; message: string };
 
 interface SyncProgress {
   projectId: string;
-  phase: 'images' | 'push' | 'tiles' | 'files';
+  phase: 'images' | 'push' | 'tiles' | 'files' | 'pull' | 'download';
   item?: string;
   count?: number;
 }
@@ -800,7 +816,7 @@ interface Window {
     onDebugClearAllSpots: (callback: () => void) => Unsubscribe;
     onDebugToggleMemoryMonitor: (callback: () => void) => Unsubscribe;
     /** Temporary sync triggers in the Debug menu (until the sync UI exists) */
-    onDebugSync: (callback: (action: SyncDebugAction) => void) => Unsubscribe;
+    onDebugSync: (callback: (action: SyncDebugAction, arg?: string) => void) => Unsubscribe;
 
     // Sync of synced projects (electron/sync/syncService.js)
     sync: {
@@ -811,6 +827,18 @@ interface Window {
       /** Pushes the saved project.json (save first) */
       push: (projectId: string, restServer: string) => Promise<SyncPushResult>;
       setMode: (projectId: string, mode: SyncMode) => Promise<SyncCallResult>;
+      /** Fetch and merge; apply result.changes to the store, save, then pullCommit */
+      pull: (projectId: string, restServer: string) => Promise<SyncPullResult>;
+      pullCommit: (projectId: string, pullId: string) => Promise<SyncCallResult & { downloads?: number }>;
+      pullDiscard: (projectId: string, pullId: string) => Promise<{ ok: true }>;
+      /** Make a synced copy of server project pid on this computer (then open it with projects.load) */
+      clone: (pid: number, restServer: string, mode: SyncMode) => Promise<
+        | { ok: true; projectId: string; downloaded: number }
+        | { ok: false; kind: SyncFailureKind; message: string }>;
+      /** Fetch files a pull brought; ids of micrographs whose image or thumbnail arrived */
+      download: (projectId: string, restServer: string) => Promise<
+        | { ok: true; downloaded: number; images: string[]; thumbnails: string[] }
+        | { ok: false; kind: SyncFailureKind; message: string }>;
       onProgress: (callback: (progress: SyncProgress) => void) => Unsubscribe;
       /** A synced project changed on disk without a store change (point counts, thumbnails) */
       onLocalChange: (callback: (projectId: string) => void) => Unsubscribe;

@@ -1,5 +1,6 @@
 /**
  * Sync controller (renderer): decides when the open synced project pushes
+ * and pulls
  *
  * Loaded only when the open project is synced (src/hooks/useProjectSync.ts),
  * so local-only projects never run any of this (spec v3 §3.4).
@@ -9,6 +10,14 @@
  * 30 s after the first unpushed change while editing continues (§6.1, 16i).
  * Queued changes push when the project opens.
  * Manual mode: nothing runs until syncNow() (the Sync click).
+ * Pull (§6.2): syncNow() in either mode is save, push, pull; a push that
+ * the server turned down (the entity changed there) also pulls, so the
+ * merge runs and the merged result is pushed. A pull waits until no edit is
+ * open (16l), then: main merges with the saved project.json, the store
+ * applies the result in one write (applyRemoteChanges), project.json is
+ * saved, and main records the pull. If the user changed anything while the
+ * merge ran, the pull is dropped and done again. Files the pull brought
+ * download afterwards; the tree reloads their thumbnails.
  *
  * A push cycle saves project.json first (16w: the base never gets ahead of
  * the file on disk), then asks main to push. It saves only when the store
@@ -27,6 +36,7 @@ import { useAppStore } from '@/store';
 import { useAuthStore } from '@/store/useAuthStore';
 import { useSyncStore } from '@/store/useSyncStore';
 import { getRestServerUrl } from '@/components/dialogs/PreferencesDialog';
+import { applyRemoteChanges } from '@/store/remoteChanges';
 
 const DEBOUNCE_MS = 3_000;
 const MAX_WAIT_MS = 30_000;
@@ -34,9 +44,14 @@ const RETRY_DELAYS_MS = [5_000, 15_000, 30_000, 60_000, 120_000, 300_000];
 const SLOW_RETRY_MS = 10 * 60_000;
 /** Manual mode: recount the changes waiting this long after editing pauses */
 const RECOUNT_MS = 1_000;
+/** How often a pull waiting for an open edit checks again */
+const EDIT_POLL_MS = 1_000;
+/** Pulls dropped because the user kept editing, before giving up for this cycle */
+const PULL_ATTEMPTS = 3;
 
 type SyncedStatus = Extract<SyncStatusResult, { synced: true }>;
 type Failure = Extract<SyncPushResult, { ok: false }>;
+type Api = NonNullable<Window['api']>;
 
 const WAITS_FOR_LOGIN: SyncFailureKind[] = ['auth', 'account', 'wrong_server'];
 const RETRIES_SLOWLY: SyncFailureKind[] = ['disabled', 'old_server', 'exists'];
@@ -54,6 +69,12 @@ class ProjectSync {
   private changedSinceRun = false;
   /** The store has a change that the next cycle must save first */
   private needsSave = false;
+  /** Counts local changes, to notice edits made while a pull was merging */
+  private changeCount = 0;
+  /** Set while pulled changes are written to the store (not local changes) */
+  private applyingRemote = false;
+  /** The next cycle pulls after pushing (the Sync click) */
+  private pullRequested = false;
   private stopped = false;
   private problem: Failure | null = null;
   private readonly unsubscribers: Array<() => void> = [];
@@ -68,6 +89,9 @@ class ProjectSync {
       email: status.email,
       pending: status.pending,
       refused: status.refused,
+      conflicts: status.conflicts,
+      questions: status.questions,
+      downloads: status.downloads,
       activity: status.pending ? 'waiting' : 'idle',
     });
   }
@@ -114,8 +138,9 @@ class ProjectSync {
     for (const off of this.unsubscribers.splice(0)) off();
   }
 
-  /** The Sync click (any mode). */
+  /** The Sync click (any mode): save, push, pull. */
   syncNow(): void {
+    this.pullRequested = true;
     void this.run();
   }
 
@@ -135,7 +160,8 @@ class ProjectSync {
   }
 
   private localChange(): void {
-    if (this.stopped) return;
+    if (this.stopped || this.applyingRemote) return;
+    this.changeCount++;
     this.changedSinceRun = true;
     this.needsSave = true;
     if (!this.running) useSyncStore.getState().update({ activity: 'waiting' });
@@ -159,7 +185,10 @@ class ProjectSync {
     this.maxWaitTimer = null;
   }
 
-  /** One push cycle: save project.json, then push. */
+  /**
+   * One cycle: save (when needed), push; with a pull requested or a push
+   * turned down: pull, apply, push what the merge left; then fetch files.
+   */
   private async run(): Promise<void> {
     if (this.stopped) return;
     if (this.running) {
@@ -171,9 +200,12 @@ class ProjectSync {
     this.retryTimer = null;
     this.running = true;
     this.changedSinceRun = false;
+    const wantPull = this.pullRequested;
+    this.pullRequested = false;
     useSyncStore.getState().update({ activity: 'syncing', progress: null });
 
     let result: SyncPushResult;
+    let pulled = false;
     try {
       const api = window.api;
       const project = useAppStore.getState().project;
@@ -181,17 +213,23 @@ class ProjectSync {
         useSyncStore.getState().update({ activity: 'idle' });
         return;
       }
-      // Save only when the store is ahead of the file (an edit, or unsaved
-      // edits restored with the session); otherwise push the file as it is
-      if (this.needsSave || useAppStore.getState().isDirty) {
-        this.needsSave = false;
-        const saved = await api.saveProjectJson(project, this.projectId).catch(() => null);
-        if (!saved?.success) {
-          this.needsSave = true;
-          throw new Error('The project could not be saved before syncing');
+      await this.saveIfNeeded(api);
+      result = await api.sync.push(this.projectId, getRestServerUrl());
+      if (result.ok && (wantPull || result.conflicts > 0)) {
+        const p = await this.pullAndApply(api);
+        pulled = true;
+        if (!p.ok) {
+          result = p;
+        } else if (p.applied > 0 || result.conflicts > 0) {
+          // Push what the merge left (merged entities, and edits made meanwhile)
+          await this.saveIfNeeded(api);
+          result = await api.sync.push(this.projectId, getRestServerUrl());
         }
       }
-      result = await api.sync.push(this.projectId, getRestServerUrl());
+      if (result.ok && (pulled || useSyncStore.getState().downloads > 0)) {
+        const d = await this.downloadFiles(api);
+        if (!d.ok) result = d;
+      }
     } catch (error) {
       result = { ok: false, kind: 'error', message: error instanceof Error ? error.message : String(error) };
     } finally {
@@ -205,13 +243,15 @@ class ProjectSync {
       useSyncStore.getState().update({
         problem: null,
         progress: null,
+        notice: null,
         lastSyncedAt: Date.now(),
         activity: this.changedSinceRun ? 'waiting' : 'idle',
         pending: this.changedSinceRun ? null : 0,
         ...(result.ready ? { phase: 'ready' as const } : {}),
       });
-      if (result.notAccepted > 0) void this.refreshCounts();
+      if (result.notAccepted > 0 || pulled) void this.refreshCounts();
     } else {
+      if (wantPull) this.pullRequested = true; // the next try pulls too
       this.failed(result);
     }
 
@@ -219,6 +259,99 @@ class ProjectSync {
       this.rerun = false;
       void this.run();
     }
+  }
+
+  /** Save project.json when the store is ahead of it (an edit, or unsaved edits restored with the session). */
+  private async saveIfNeeded(api: Api): Promise<void> {
+    if (!this.needsSave && !useAppStore.getState().isDirty) return;
+    const project = useAppStore.getState().project;
+    if (!project || project.id !== this.projectId) return;
+    this.needsSave = false;
+    const saved = await api.saveProjectJson(project, this.projectId).catch(() => null);
+    if (!saved?.success) {
+      this.needsSave = true;
+      throw new Error('The project could not be saved before syncing');
+    }
+  }
+
+  /**
+   * Pull, apply to the store, save, record. Dropped and done again if the
+   * user changed something while main merged (the merge read the file as it
+   * was before that change).
+   */
+  private async pullAndApply(api: Api): Promise<{ ok: true; applied: number } | Failure> {
+    for (let attempt = 0; attempt < PULL_ATTEMPTS; attempt++) {
+      await this.waitUntilNotEditing();
+      if (this.stopped) return { ok: false, kind: 'error', message: 'The project was closed' };
+      await this.saveIfNeeded(api);
+      const before = this.changeCount;
+      const r = await api.sync.pull(this.projectId, getRestServerUrl());
+      if (!r.ok) return r;
+      if (this.stopped) return { ok: false, kind: 'error', message: 'The project was closed' };
+      if (this.changeCount !== before || this.isEditing()) {
+        await api.sync.pullDiscard(this.projectId, r.pullId);
+        continue;
+      }
+      if (r.changes.length > 0) {
+        this.applyingRemote = true;
+        try {
+          applyRemoteChanges(r.changes);
+        } finally {
+          this.applyingRemote = false;
+        }
+        const project = useAppStore.getState().project;
+        const saved = project ? await api.saveProjectJson(project, this.projectId).catch(() => null) : null;
+        if (!saved?.success) {
+          // The store has the changes; the next pull finds them applied and records it
+          await api.sync.pullDiscard(this.projectId, r.pullId);
+          return { ok: false, kind: 'error', message: 'The project could not be saved after pulling' };
+        }
+      }
+      const c = await api.sync.pullCommit(this.projectId, r.pullId);
+      if (!c.ok) return c;
+      const s = r.summary;
+      if (s.received > 0) {
+        console.log(`[Sync] Pulled ${s.received} changes (${s.applied} applied, ${s.conflicts} conflicts, ` +
+          `${s.questions} delete questions, ${c.downloads ?? 0} files to download)`);
+      }
+      useSyncStore.getState().update({ downloads: c.downloads ?? 0 });
+      return { ok: true, applied: r.changes.length };
+    }
+    return { ok: false, kind: 'error', message: 'The project kept changing while syncing; it will try again' };
+  }
+
+  /** Fetch files pulls brought; the tree reloads the thumbnails of micrographs that got one. */
+  private async downloadFiles(api: Api): Promise<{ ok: true } | Failure> {
+    const d = await api.sync.download(this.projectId, getRestServerUrl());
+    if (!d.ok) return d;
+    for (const id of new Set([...d.images, ...d.thumbnails])) {
+      window.dispatchEvent(new CustomEvent('thumbnail-generated', { detail: { micrographId: id } }));
+    }
+    useSyncStore.getState().update({ downloads: 0 });
+    return { ok: true };
+  }
+
+  /** An edit is open: a pull now could be reverted when it is saved (16l). */
+  private isEditing(): boolean {
+    const s = useAppStore.getState();
+    if (s.editingSpotId || s.editingGeometry || s.batchEditDialogOpen || s.pointCountMode ||
+      s.quickEditMode || s.sketchTextInputActive) {
+      return true;
+    }
+    if (document.querySelector('.MuiDialog-root')) return true;
+    const el = document.activeElement;
+    if (!(el instanceof HTMLElement)) return false;
+    if (el.isContentEditable || el.tagName === 'TEXTAREA') return true;
+    return el instanceof HTMLInputElement && ['text', 'search', 'number', 'email', 'url', ''].includes(el.type);
+  }
+
+  private async waitUntilNotEditing(): Promise<void> {
+    if (!this.isEditing()) return;
+    useSyncStore.getState().update({ notice: 'Sync will run when you finish editing' });
+    while (!this.stopped && this.isEditing()) {
+      await new Promise((resolve) => setTimeout(resolve, EDIT_POLL_MS));
+    }
+    useSyncStore.getState().update({ notice: null });
   }
 
   private failed(failure: Failure): void {
@@ -251,7 +384,14 @@ class ProjectSync {
     const project = useAppStore.getState().project;
     const status = await window.api?.sync.status(this.projectId, project?.id === this.projectId ? project : undefined);
     if (this.stopped || !status?.synced) return;
-    useSyncStore.getState().update({ pending: status.pending, refused: status.refused, phase: status.phase });
+    useSyncStore.getState().update({
+      pending: status.pending,
+      refused: status.refused,
+      phase: status.phase,
+      conflicts: status.conflicts,
+      questions: status.questions,
+      downloads: status.downloads,
+    });
     if (!this.running && status.pending === 0 && !this.debounceTimer) {
       useSyncStore.getState().update({ activity: 'idle' });
     }

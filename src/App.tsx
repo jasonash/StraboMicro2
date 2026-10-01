@@ -1322,14 +1322,56 @@ function App() {
         `Synced with ${status.server} as ${status.email} (server project ${status.pid})`,
         `Mode: ${status.mode}${status.phase === 'uploading' ? ', first upload not finished' : ''}`,
         `Changes not on the server: ${status.pending ?? 'unknown'}${status.refused ? `, refused: ${status.refused}` : ''}`,
-        `Now: ${live.activity}${live.problem ? ` (${live.problem.kind}: ${live.problem.message})` : ''}`,
+        `Conflicts: ${status.conflicts}, delete questions: ${status.questions}, files to download: ${status.downloads}`,
+        `Now: ${live.activity}${live.notice ? ` (${live.notice})` : ''}${live.problem ? ` (${live.problem.kind}: ${live.problem.message})` : ''}`,
         `Last synced: ${live.lastSyncedAt ? new Date(live.lastSyncedAt).toLocaleTimeString() : 'not in this session'}`,
       ].join('\n'));
     };
 
-    return window.api.onDebugSync((action) => {
+    // Make a synced copy of a server project here, then open it
+    const cloneFromServer = async (text: string | undefined) => {
+      const api = window.api;
+      const pid = Number((text ?? '').trim());
+      if (!api || !Number.isInteger(pid) || pid <= 0) {
+        alert('Copy a server project number (Sync: Show Status in the other copy) first.');
+        return;
+      }
+      if (!useAuthStore.getState().isAuthenticated) {
+        alert('Log in first.');
+        return;
+      }
+      setLoadingProjectName(`server project ${pid}`);
+      setIsLoadingProject(true);
+      try {
+        const result = await api.sync.clone(pid, getRestServerUrl(), 'automatic');
+        if (!result.ok) {
+          alert(`The synced project could not be downloaded (${result.kind}): ${result.message}`);
+          return;
+        }
+        if (useAppStore.getState().project) {
+          const saved = await manualSave();
+          if (!saved.success) {
+            alert(`The open project could not be saved: ${saved.error ?? 'unknown error'}`);
+            return;
+          }
+          closeProject();
+        }
+        const loaded = await api.projects.load(result.projectId);
+        if (loaded?.success && loaded.project) {
+          await loadProjectWithPreparation(loaded.project, null);
+        } else {
+          alert(`Failed to load project: ${loaded?.error || 'Unknown error'}`);
+        }
+      } finally {
+        setIsLoadingProject(false);
+      }
+    };
+
+    return window.api.onDebugSync((action, arg) => {
       void (async () => {
-        if (action === 'turn-on-automatic' || action === 'turn-on-manual') {
+        if (action === 'clone') {
+          await cloneFromServer(arg);
+        } else if (action === 'turn-on-automatic' || action === 'turn-on-manual') {
           await turnOn(action === 'turn-on-automatic' ? 'automatic' : 'manual');
         } else if (action === 'status') {
           await showStatus();

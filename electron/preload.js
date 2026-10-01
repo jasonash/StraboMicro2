@@ -623,6 +623,11 @@ contextBridge.exposeInMainWorld('api', {
     turnOn: (projectId, restServer, mode) => ipcRenderer.invoke('sync:turn-on', projectId, restServer, mode),
     push: (projectId, restServer) => ipcRenderer.invoke('sync:push', projectId, restServer),
     setMode: (projectId, mode) => ipcRenderer.invoke('sync:set-mode', projectId, mode),
+    pull: (projectId, restServer) => ipcRenderer.invoke('sync:pull', projectId, restServer),
+    pullCommit: (projectId, pullId) => ipcRenderer.invoke('sync:pull-commit', projectId, pullId),
+    pullDiscard: (projectId, pullId) => ipcRenderer.invoke('sync:pull-discard', projectId, pullId),
+    download: (projectId, restServer) => ipcRenderer.invoke('sync:download', projectId, restServer),
+    clone: (pid, restServer, mode) => ipcRenderer.invoke('sync:clone', pid, restServer, mode),
     onProgress: (callback) => {
       const handler = (event, progress) => callback(progress);
       ipcRenderer.on('sync:progress', handler);
@@ -635,7 +640,7 @@ contextBridge.exposeInMainWorld('api', {
     },
   },
   onDebugSync: (callback) => {
-    const handler = (event, action) => callback(action);
+    const handler = (event, action, arg) => callback(action, arg);
     ipcRenderer.on('debug:sync', handler);
     return () => ipcRenderer.removeListener('debug:sync', handler);
   },

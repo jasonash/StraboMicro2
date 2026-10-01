@@ -178,6 +178,31 @@ export function buildMicrographIndex(
 /**
  * Build an index of all spots in the project for fast lookups
  */
+/** The selection fields that can point at entities. */
+export interface SelectionState {
+  activeMicrographId: string | null;
+  micrographNavigationStack: string[];
+  activeSpotId: string | null;
+  selectedSpotIds: string[];
+}
+
+/**
+ * The selection after entities were removed by a change the user did not
+ * make here (undo, a pull): anything pointing at a removed entity is cleared.
+ */
+export function selectionAfterChange(
+  state: SelectionState,
+  micrographIndex: Map<string, MicrographMetadata>,
+  spotIndex: Map<string, Spot>
+): SelectionState {
+  return {
+    activeMicrographId: state.activeMicrographId && micrographIndex.has(state.activeMicrographId) ? state.activeMicrographId : null,
+    micrographNavigationStack: state.micrographNavigationStack.every((id) => micrographIndex.has(id)) ? state.micrographNavigationStack : [],
+    activeSpotId: state.activeSpotId && spotIndex.has(state.activeSpotId) ? state.activeSpotId : null,
+    selectedSpotIds: state.selectedSpotIds.filter((id) => spotIndex.has(id)),
+  };
+}
+
 export function buildSpotIndex(
   project: ProjectMetadata | null
 ): Map<string, Spot> {

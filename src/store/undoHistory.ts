@@ -23,7 +23,7 @@ import {
   type EntityState,
 } from '../../electron/shared/entityModel.mjs';
 import type { ProjectMetadata } from '@/types/project-types';
-import { buildMicrographIndex, buildSpotIndex } from './helpers';
+import { buildMicrographIndex, buildSpotIndex, selectionAfterChange } from './helpers';
 
 const LIMIT = 50;
 const QUIET_MS = 300;
@@ -164,10 +164,7 @@ async function applyStep(step: Step, direction: Direction): Promise<boolean> {
       micrographIndex,
       spotIndex,
       // Selection must not point at entities the step removed
-      activeMicrographId: state.activeMicrographId && micrographIndex.has(state.activeMicrographId) ? state.activeMicrographId : null,
-      micrographNavigationStack: state.micrographNavigationStack.every((id) => micrographIndex.has(id)) ? state.micrographNavigationStack : [],
-      activeSpotId: state.activeSpotId && spotIndex.has(state.activeSpotId) ? state.activeSpotId : null,
-      selectedSpotIds: state.selectedSpotIds.filter((id) => spotIndex.has(id)),
+      ...selectionAfterChange(state, micrographIndex, spotIndex),
     });
   } finally {
     applying = false;

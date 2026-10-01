@@ -13,6 +13,23 @@ const fs = require('fs');
 const { pathToFileURL } = require('url');
 const log = require('electron-log');
 
+// Development only: STRABO_PROFILE=<name> runs a second, independent copy of
+// the app on this computer (its own settings, login, sync installation id,
+// tile cache, log and StraboMicro2Data folder in ~/Documents/StraboMicro2-<name>),
+// for testing sync between two "machines". Set before anything reads these
+// paths (tileCache resolves its folder when it loads). Electron's
+// single-instance lock follows userData, so both copies can run at once.
+const DEV_PROFILE = !app.isPackaged && /^[a-z0-9_-]{1,32}$/i.test(process.env.STRABO_PROFILE || '')
+  ? process.env.STRABO_PROFILE
+  : null;
+if (DEV_PROFILE) {
+  const userData = `${app.getPath('userData')}-${DEV_PROFILE}`;
+  app.setPath('userData', userData);
+  app.setPath('documents', path.join(app.getPath('documents'), `StraboMicro2-${DEV_PROFILE}`));
+  fs.mkdirSync(app.getPath('documents'), { recursive: true });
+  log.transports.file.resolvePathFn = () => path.join(userData, 'logs', 'main.log');
+}
+
 // Fix sharp native module resolution in Windows packaged builds.
 // sharp loads its binary via require('@img/sharp-win32-x64/sharp.node'), a
 // package.json exports-map entry that failed to resolve inside Electron's
@@ -537,6 +554,13 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.js'),
     },
   });
+  if (DEV_PROFILE) {
+    // Show which copy this is (STRABO_PROFILE, development only)
+    mainWindow.on('page-title-updated', (event, title) => {
+      event.preventDefault();
+      mainWindow.setTitle(`${title} [${DEV_PROFILE}]`);
+    });
+  }
 
   // Restore maximized state if needed
   if (savedState.isMaximized) {
@@ -1266,6 +1290,14 @@ function createWindow() {
         {
           label: 'Sync: Show Status',
           click: () => mainWindow?.webContents.send('debug:sync', 'status'),
+        },
+        {
+          // Server project number (Show Status) copied in the other copy of the app
+          label: 'Sync: Download Synced Project (Number from Clipboard)',
+          click: () => {
+            const text = (require('electron').clipboard.readText() || '').trim();
+            mainWindow?.webContents.send('debug:sync', 'clone', text);
+          },
         },
         { type: 'separator' },
         {

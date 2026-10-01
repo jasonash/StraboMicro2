@@ -28,6 +28,12 @@ export interface SyncStoreState {
   /** Entity changes not on the server, as of the last count (null = unknown) */
   pending: number | null;
   refused: number;
+  /** Entities with unresolved conflicts; delete-vs-edit questions; files to download */
+  conflicts: number;
+  questions: number;
+  downloads: number;
+  /** A short message about what sync is waiting for (e.g. an open edit) */
+  notice: string | null;
   progress: SyncProgress | null;
   lastSyncedAt: number | null;
   update: (partial: Partial<Omit<SyncStoreState, 'update' | 'reset'>>) => void;
@@ -43,6 +49,10 @@ const initial = {
   problem: null,
   pending: null,
   refused: 0,
+  conflicts: 0,
+  questions: 0,
+  downloads: 0,
+  notice: null,
   progress: null,
   lastSyncedAt: null,
 };
