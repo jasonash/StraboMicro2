@@ -1246,12 +1246,13 @@ function createWindow() {
         },
         {
           label: 'Simulate Deep Link from Clipboard',
-          click: () => {
+          click: async () => {
             // macOS dev builds can't receive real protocol launches (the OS
             // needs an installed bundle), so this feeds a strabomicro:// URI
             // from the clipboard through the same handler for testing.
+            // clipboard.readText() returns a Promise since Electron 44.
             const { clipboard } = require('electron');
-            const text = (clipboard.readText() || '').trim();
+            const text = String((await clipboard.readText()) || '').trim();
             log.info('[Debug] Simulating deep link from clipboard');
             handleDeepLinkUrl(text);
           }
