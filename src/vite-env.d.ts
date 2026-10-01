@@ -117,6 +117,45 @@ interface Window {
 // Unsubscribe function type for IPC event listeners
 type Unsubscribe = () => void;
 
+type SyncMode = 'automatic' | 'manual';
+
+type SyncDebugAction = 'turn-on-automatic' | 'turn-on-manual' | 'sync-now' | 'toggle-mode' | 'status';
+
+/** Why a sync call did not run or failed (electron/sync/syncService.js) */
+type SyncFailureKind =
+  | 'offline' | 'server' | 'auth' | 'disabled' | 'old_server'
+  | 'account' | 'wrong_server' | 'exists' | 'not_synced' | 'error';
+
+type SyncCallResult = { ok: true } | { ok: false; kind: SyncFailureKind; message: string };
+
+type SyncPushResult =
+  | { ok: true; pushed: number; filesUploaded: number; notAccepted: number; ready: boolean }
+  | { ok: false; kind: SyncFailureKind; message: string };
+
+type SyncStatusResult =
+  | { synced: false; error?: string }
+  | {
+    synced: true;
+    mode: SyncMode;
+    /** uploading until the first upload finished */
+    phase: 'uploading' | 'ready';
+    server: string;
+    email: string;
+    pkey: string;
+    pid: number;
+    /** Entity changes not yet on the server; null if they could not be counted */
+    pending: number | null;
+    /** Changes the server refused */
+    refused: number;
+  };
+
+interface SyncProgress {
+  projectId: string;
+  phase: 'images' | 'push' | 'tiles' | 'files';
+  item?: string;
+  count?: number;
+}
+
 // Electron API declarations
 interface Window {
   api?: {
@@ -760,6 +799,21 @@ interface Window {
     onDebugGenerateTestSpots: (callback: () => void) => Unsubscribe;
     onDebugClearAllSpots: (callback: () => void) => Unsubscribe;
     onDebugToggleMemoryMonitor: (callback: () => void) => Unsubscribe;
+    /** Temporary sync triggers in the Debug menu (until the sync UI exists) */
+    onDebugSync: (callback: (action: SyncDebugAction) => void) => Unsubscribe;
+
+    // Sync of synced projects (electron/sync/syncService.js)
+    sync: {
+      status: (projectId: string) => Promise<SyncStatusResult>;
+      /** Moves the project folder: the project must not be loaded */
+      turnOn: (projectId: string, restServer: string, mode: SyncMode) => Promise<SyncCallResult & { folder?: string; pid?: number }>;
+      /** Pushes the saved project.json (save first) */
+      push: (projectId: string, restServer: string) => Promise<SyncPushResult>;
+      setMode: (projectId: string, mode: SyncMode) => Promise<SyncCallResult>;
+      onProgress: (callback: (progress: SyncProgress) => void) => Unsubscribe;
+      /** A synced project changed on disk without a store change (point counts, thumbnails) */
+      onLocalChange: (callback: (projectId: string) => void) => Unsubscribe;
+    };
 
     // Point Count storage (separate from Spot system)
     pointCount: {

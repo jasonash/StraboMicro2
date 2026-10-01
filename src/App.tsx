@@ -6,7 +6,7 @@ import { NewProjectDialog } from './components/dialogs/NewProjectDialog';
 import { EditProjectDialog } from './components/dialogs/EditProjectDialog';
 import { ProjectDebugModal } from './components/dialogs/ProjectDebugModal';
 import { SerializedJsonModal } from './components/dialogs/SerializedJsonModal';
-import { PreferencesDialog } from './components/dialogs/PreferencesDialog';
+import { PreferencesDialog, getRestServerUrl } from './components/dialogs/PreferencesDialog';
 import { LoginDialog } from './components/dialogs/LoginDialog';
 import { AboutDialog } from './components/dialogs/AboutDialog';
 import { LogViewerModal } from './components/dialogs/LogViewerModal';
@@ -43,8 +43,10 @@ import {
 import UpdateNotification from './components/UpdateNotification';
 import { useAppStore, undo, redo, setUndoBlockedHandler } from '@/store';
 import { useAuthStore } from '@/store/useAuthStore';
+import { useSyncStore } from '@/store/useSyncStore';
 import { useTheme } from './hooks/useTheme';
 import { useAutosave } from './hooks/useAutosave';
+import { useProjectSync } from './hooks/useProjectSync';
 import { useProjectPreparation } from './hooks/useProjectPreparation';
 import { ProjectMetadata, Spot } from '@/types/project-types';
 import './App.css';
@@ -227,6 +229,9 @@ function App() {
 
   // Initialize autosave (5-minute timer when dirty)
   const { manualSave, saveBeforeClose, saveBeforeSwitch } = useAutosave();
+
+  // Push changes of a synced project (does nothing for local-only projects)
+  useProjectSync();
 
   // Initialize project preparation hook (for caching thumbnails on project load)
   const { prepareProject, isPreparingProject, preparationProgress } = useProjectPreparation();
@@ -1248,6 +1253,92 @@ function App() {
       unsubscribers.forEach(unsub => unsub?.());
     };
   }, [closeProject, setTheme, setShowRulers, setSpotLabelMode, setShowMicrographOutlines, logout, project, manualSave, saveBeforeSwitch, loadProjectWithPreparation, activeMicrographId, micrographIndex, addSpot, updateMicrographMetadata]);
+
+  // Debug menu sync triggers (temporary, until the sync UI of collaboration
+  // Phase 1 step 8 exists)
+  useEffect(() => {
+    if (!window.api?.onDebugSync) return;
+
+    const turnOn = async (mode: SyncMode) => {
+      const api = window.api;
+      const current = useAppStore.getState().project;
+      if (!api || !current) {
+        alert('Open a project first.');
+        return;
+      }
+      const status = await api.sync.status(current.id);
+      if (status.synced) {
+        alert('This project is already synced.');
+        return;
+      }
+      if (!useAuthStore.getState().isAuthenticated) {
+        alert('Log in first.');
+        return;
+      }
+      // Turning sync on moves the project folder, so the project is saved and
+      // unloaded first, then opened again from its new folder
+      const saved = await manualSave();
+      if (!saved.success) {
+        alert(`The project could not be saved: ${saved.error ?? 'unknown error'}`);
+        return;
+      }
+      closeProject();
+      setLoadingProjectName(current.name || '');
+      setIsLoadingProject(true);
+      try {
+        const result = await api.sync.turnOn(current.id, getRestServerUrl(), mode);
+        if (!result.ok) alert(`Sync could not be turned on (${result.kind}): ${result.message}`);
+        const loaded = await api.projects.load(current.id);
+        if (loaded?.success && loaded.project) {
+          await loadProjectWithPreparation(loaded.project, null);
+        } else {
+          alert(`Failed to load project: ${loaded?.error || 'Unknown error'}`);
+        }
+      } finally {
+        setIsLoadingProject(false);
+      }
+    };
+
+    const showStatus = async () => {
+      const current = useAppStore.getState().project;
+      if (!window.api || !current) {
+        alert('Open a project first.');
+        return;
+      }
+      const status = await window.api.sync.status(current.id);
+      if (!status.synced) {
+        alert('This project is local only (not synced).');
+        return;
+      }
+      const live = useSyncStore.getState();
+      alert([
+        `Synced with ${status.server} as ${status.email} (server project ${status.pid})`,
+        `Mode: ${status.mode}${status.phase === 'uploading' ? ', first upload not finished' : ''}`,
+        `Changes not on the server: ${status.pending ?? 'unknown'}${status.refused ? `, refused: ${status.refused}` : ''}`,
+        `Now: ${live.activity}${live.problem ? ` (${live.problem.kind}: ${live.problem.message})` : ''}`,
+        `Last synced: ${live.lastSyncedAt ? new Date(live.lastSyncedAt).toLocaleTimeString() : 'not in this session'}`,
+      ].join('\n'));
+    };
+
+    return window.api.onDebugSync((action) => {
+      void (async () => {
+        if (action === 'turn-on-automatic' || action === 'turn-on-manual') {
+          await turnOn(action === 'turn-on-automatic' ? 'automatic' : 'manual');
+        } else if (action === 'status') {
+          await showStatus();
+        } else {
+          const controller = await import('@/services/syncController');
+          if (action === 'sync-now') {
+            if (!controller.syncNow()) alert('This project is not synced.');
+          } else {
+            const mode = useSyncStore.getState().mode;
+            const result = await controller.changeSyncMode(mode === 'automatic' ? 'manual' : 'automatic');
+            alert(result.ok ? `Sync mode is now ${useSyncStore.getState().mode}.` : result.message);
+          }
+        }
+      })();
+    });
+  }, [closeProject, manualSave, loadProjectWithPreparation]);
 
   return (
     <>
