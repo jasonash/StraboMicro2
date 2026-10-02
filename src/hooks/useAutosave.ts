@@ -7,6 +7,7 @@
 
 import { useEffect, useRef, useCallback } from 'react';
 import { useAppStore } from '@/store';
+import { useSyncStore } from '@/store/useSyncStore';
 
 // Autosave interval in milliseconds (5 minutes)
 const AUTOSAVE_INTERVAL_MS = 5 * 60 * 1000;
@@ -117,6 +118,14 @@ export function useAutosave() {
 
     if (!currentIsDirty || !currentProject) {
       return true; // Nothing to save, proceed with switch
+    }
+
+    // A synced project saves without asking: sync keeps saving it anyway
+    // (its saves leave isDirty set so this save still makes the version
+    // snapshot), and the question only offered to cancel the switch
+    if (useSyncStore.getState().synced) {
+      const result = await performSave(false);
+      return result.success;
     }
 
     // Show confirmation dialog. OK = save and proceed, Cancel = abort the switch
