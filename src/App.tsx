@@ -50,6 +50,7 @@ import { CopyOwnerDialog, type CopyOwnerPrompt } from './components/dialogs/Copy
 import { SyncIntroDialog, type SyncIntroProject } from './components/dialogs/SyncIntroDialog';
 import { CollaboratorsDialog } from './components/dialogs/CollaboratorsDialog';
 import { InvitationsDialog } from './components/dialogs/InvitationsDialog';
+import { useInvitationsStore, INVITES_RECHECK_MS } from '@/store/useInvitationsStore';
 import { SyncIntroNotice } from './components/SyncIntroNotice';
 import { useAppStore, undo, redo, setUndoBlockedHandler } from '@/store';
 import { useAuthStore, promptLogin } from '@/store/useAuthStore';
@@ -192,7 +193,7 @@ function App() {
   const [isCollaboratorsOpen, setIsCollaboratorsOpen] = useState(false);
   // Collaborate... on a local-only project turns sync on first (17d), then opens Collaborators
   const collaborateAfterTurnOn = useRef(false);
-  const [pendingInvitations, setPendingInvitations] = useState<SyncInvitation[] | null>(null);
+
   // Another account's copy (16at opening it, 16ax it is open)
   const [ownerPrompt, setOwnerPrompt] = useState<CopyOwnerPrompt | null>(null);
   // "What's new: sync" (16aq): the projects it offers, null = not showing
@@ -1480,23 +1481,38 @@ function App() {
     return () => window.removeEventListener(COLLABORATE_EVENT, open);
   }, []);
 
-  // Invitations waiting for this account (17f): asked once per login (and at
-  // startup when logged in), after the startup dialogs and the sync intro
+  // Invitations waiting for this account (17f): the dialog at launch and
+  // after each login, once the startup dialogs and the sync intro are done;
+  // then every 30 minutes and on window focus, the header indicator only
   const invitesCheckedFor = useRef<string | null>(null);
   useEffect(() => {
-    const api = window.api;
-    if (!api || !isAuthenticated || !authPkey || !startupValidationComplete) return;
+    if (!window.api || !isAuthenticated || !authPkey || !startupValidationComplete) return;
     if (introProjects !== null || introBlocked) return;
     if (invitesCheckedFor.current === String(authPkey)) return;
     invitesCheckedFor.current = String(authPkey);
-    void api.sync.invites(getRestServerUrl()).then((r) => {
-      if (r.ok && r.invitations.length > 0) setPendingInvitations(r.invitations);
-    }).catch(() => {});
+    void useInvitationsStore.getState().refresh(true);
   }, [isAuthenticated, authPkey, startupValidationComplete, introProjects, introBlocked]);
   useEffect(() => {
-    if (!isAuthenticated) invitesCheckedFor.current = null;
+    if (isAuthenticated) return;
+    invitesCheckedFor.current = null;
+    useInvitationsStore.getState().clear();
   }, [isAuthenticated]);
-  const closeInvitations = useCallback(() => setPendingInvitations(null), []);
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    const recheck = () => {
+      if (Date.now() - useInvitationsStore.getState().lastCheckedAt >= INVITES_RECHECK_MS) {
+        void useInvitationsStore.getState().refresh(false);
+      }
+    };
+    const timer = setInterval(recheck, INVITES_RECHECK_MS);
+    window.addEventListener('focus', recheck);
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener('focus', recheck);
+    };
+  }, [isAuthenticated]);
+  const invitationsOpen = useInvitationsStore((s) => s.dialogOpen);
+  const invitations = useInvitationsStore((s) => s.invitations);
 
   // Debug > Sync: Download Synced Project (until Open Remote Project does
   // it, step 8 stage 4) and Debug > Sync Test
@@ -1736,8 +1752,9 @@ function App() {
         onClose={() => setIsCollaboratorsOpen(false)}
       />
       <InvitationsDialog
-        invitations={introBlocked ? null : pendingInvitations}
-        onClose={closeInvitations}
+        invitations={introBlocked || !invitationsOpen ? null : invitations}
+        onClose={() => useInvitationsStore.getState().closeDialog()}
+        onAnswered={(pid) => useInvitationsStore.getState().remove(pid)}
         onOpenProject={(projectId) => void openProjectById(projectId)}
       />
       <SyncDecisionsDialog />

@@ -33,6 +33,7 @@ import { getRestServerUrl } from './PreferencesDialog';
 import { formatSyncDate } from '@/utils/formatSyncDate';
 import { openRemoteHere, downloadRemote, type RemoteProject } from '@/services/remoteProjects';
 import { InvitationList } from './InvitationList';
+import { useInvitationsStore } from '@/store/useInvitationsStore';
 
 interface OpenRemoteProjectDialogProps {
   open: boolean;
@@ -99,7 +100,11 @@ export function OpenRemoteProjectDialog({ open, onClose, onOpenProject }: OpenRe
               <Typography variant="subtitle2">Invitations</Typography>
               <InvitationList
                 invitations={invitations}
-                onAnswered={(pid) => setInvitations((list) => list.filter((i) => i.pid !== pid))}
+                onAnswered={(pid) => {
+                  setInvitations((list) => list.filter((i) => i.pid !== pid));
+                  useInvitationsStore.getState().remove(pid);
+                }}
+                onAccepted={(pid) => useInvitationsStore.getState().remove(pid)}
                 onOpenProject={(projectId) => {
                   onClose();
                   void onOpenProject(projectId);

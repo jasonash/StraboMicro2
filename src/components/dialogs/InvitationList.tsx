@@ -21,13 +21,15 @@ interface InvitationListProps {
   invitations: SyncInvitation[];
   /** An invitation was declined (or is gone): drop it from the list */
   onAnswered: (pid: number) => void;
+  /** An invitation was accepted (its row stays, to download and open) */
+  onAccepted?: (pid: number) => void;
   /** Open a downloaded project (the caller closes its dialog first) */
   onOpenProject: (projectId: string) => void;
   /** Something is running (callers keep their dialog open meanwhile) */
   onBusyChange?: (busy: boolean) => void;
 }
 
-export function InvitationList({ invitations, onAnswered, onOpenProject, onBusyChange }: InvitationListProps) {
+export function InvitationList({ invitations, onAnswered, onAccepted, onOpenProject, onBusyChange }: InvitationListProps) {
   const [rows, setRows] = useState<Record<number, RowState>>({});
   const setRow = (pid: number, state: RowState | null) =>
     setRows((prev) => {
@@ -56,6 +58,7 @@ export function InvitationList({ invitations, onAnswered, onOpenProject, onBusyC
       setRow(inv.pid, { kind: 'error', message: r.message });
       return;
     }
+    onAccepted?.(inv.pid);
     const d = await downloadRemote(
       { pid: inv.pid, straboId: inv.straboId, name: inv.name, role: inv.role, syncFormat: 'entity', syncState: 'ready',
         updatedAt: null, owner: inv.owner, here: null },

@@ -8,6 +8,7 @@ import {
   Tooltip,
   Popover,
   Button,
+  Chip,
 } from '@mui/material';
 import {
   Navigation as PointerIcon,
@@ -15,12 +16,14 @@ import {
   ZoomOut as ZoomOutIcon,
   MyLocation as CrosshairIcon,
   Logout as LogoutIcon,
+  MailOutlined as MailOutlineIcon,
 } from '@mui/icons-material';
 import appIcon from '../assets/app-icon.png';
 import { useAppStore } from '@/store';
 import { useAuthStore } from '@/store/useAuthStore';
 import { LoginDialog } from '@/components/dialogs/LoginDialog';
 import { SyncStatusChip } from '@/components/SyncStatusChip';
+import { useInvitationsStore } from '@/store/useInvitationsStore';
 import { LogoutSyncDialog } from '@/components/dialogs/LogoutSyncDialog';
 import { checkBeforeLogout, queuedUploadsText, type LogoutCheck } from '@/services/syncActions';
 
@@ -29,6 +32,8 @@ const Header: React.FC = () => {
   const activeTool = useAppStore((state) => state.activeTool);
   const setActiveTool = useAppStore((state) => state.setActiveTool);
   const { isAuthenticated, user, offline, logout } = useAuthStore();
+  const invitationCount = useInvitationsStore((s) => s.invitations.length);
+  const openInvitations = useInvitationsStore((s) => s.openDialog);
 
   const [loginDialogOpen, setLoginDialogOpen] = useState(false);
   const [logoutAnchorEl, setLogoutAnchorEl] = useState<HTMLElement | null>(null);
@@ -136,6 +141,18 @@ const Header: React.FC = () => {
 
         {/* Right: sync status of the open project, then the account */}
         <SyncStatusChip />
+
+        {/* Invitations waiting for an answer (17f): stays until each is answered */}
+        {isAuthenticated && invitationCount > 0 && (
+          <Chip
+            size="small"
+            color="primary"
+            icon={<MailOutlineIcon />}
+            label={invitationCount === 1 ? '1 invitation' : `${invitationCount} invitations`}
+            onClick={openInvitations}
+            sx={{ ml: 1, '& .MuiChip-icon': { fontSize: 16 } }}
+          />
+        )}
 
         {/* Right: User info - clickable */}
         <Box
