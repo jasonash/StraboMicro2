@@ -14,8 +14,11 @@
  * On open (§6.4, 16ah): Automatic pushes and pulls; Manual asks the server
  * what is waiting and, if anything is, offers [Sync Now] [Work Offline].
  * While open, the activity poll (every 30 s focused, 2 min otherwise)
- * counts the changes waiting on the server for the chip; Sync Now pulls
- * them (pulling them by itself is Phase 4).
+ * counts the changes waiting on the server for the chip. Automatic mode
+ * pulls them by itself when nothing is being edited (basic auto-pull,
+ * 16av; an edit in progress waits for a later poll); Manual mode waits for
+ * Sync Now. Phase 4 refines it (hold only the items being edited, faster
+ * transport).
  * Pull (§6.2): syncNow() in either mode is save, push, pull; a push that
  * the server turned down (the entity changed there) also pulls, so the
  * merge runs and the merged result is pushed. A pull waits until no edit is
@@ -174,8 +177,7 @@ class ProjectSync {
       this.schedulePoll();
     } else if (this.mode === 'automatic') {
       // Opening: push what waits, pull what arrived (16ah)
-      this.quietPull = true;
-      void this.run();
+      this.pullQuietly();
       this.schedulePoll();
     } else {
       // Manual: ask what is waiting; the prompt offers Sync Now
@@ -216,13 +218,20 @@ class ProjectSync {
     void this.run();
   }
 
+  /** A pull that is not a Sync click (opening, auto-pull): the notice instead of the dialog */
+  private pullQuietly(): void {
+    this.quietPull = true;
+    void this.run();
+  }
+
   async setMode(mode: SyncMode): Promise<SyncCallResult> {
     if (!window.api) return { ok: false, kind: 'error', message: 'Sync is not available' };
     const result = await window.api.sync.setMode(this.projectId, mode);
     if (!result.ok || this.stopped) return result;
     this.mode = mode;
     useSyncStore.getState().update({ mode });
-    if (mode === 'automatic' && useSyncStore.getState().activity === 'waiting') void this.run();
+    if (mode === 'automatic' && useSyncStore.getState().incoming > 0) this.pullQuietly();
+    else if (mode === 'automatic' && useSyncStore.getState().activity === 'waiting') void this.run();
     if (mode === 'manual') {
       this.clearTimers();
       if (this.retryTimer) clearTimeout(this.retryTimer);
@@ -638,6 +647,8 @@ class ProjectSync {
         if (onOpen && r.incoming > 0 && this.mode === 'manual') {
           useSyncStore.getState().update({ openPrompt: { incoming: r.incoming, others: r.others } });
         }
+        // Basic auto-pull (16av): only when nothing is being edited right now
+        if (r.incoming > 0 && this.mode === 'automatic' && !this.isEditing()) this.pullQuietly();
       }
     }
     this.schedulePoll();
