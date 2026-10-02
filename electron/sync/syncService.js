@@ -511,7 +511,12 @@ async function importLegacyUpload(projectId, restServer, onProgress, { setAside 
   // The old door finds a project by its id (strabo_id), not the server project number
   const dl = await serverDownload.downloadProject(projectId, token.accessToken,
     (p) => onProgress({ phase: 'download', item: p.message }), restServer);
-  if (!dl.success) throw new Error(dl.error || 'The StraboSpot copy could not be downloaded.');
+  if (!dl.success) {
+    // The old door answers 404 when the project has no upload file on the server
+    throw new Error(dl.error === 'Project not found on server.'
+      ? 'StraboSpot has no file for this project, so it cannot be downloaded. Its upload may never have finished.'
+      : dl.error || 'The StraboSpot copy could not be downloaded.');
+  }
   try {
     const inspect = await smzImport.inspectSmz(dl.zipPath);
     if (!inspect.success || inspect.projectId !== projectId) throw new Error('The StraboSpot copy is a different project.');

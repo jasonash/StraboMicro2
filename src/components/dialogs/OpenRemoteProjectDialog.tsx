@@ -55,7 +55,8 @@ export function OpenRemoteProjectDialog({ open, onClose, onOpenProject }: OpenRe
     setProjects(null);
     setError(null);
     const r = await window.api.sync.serverProjects(getRestServerUrl());
-    if (r.ok) setProjects(r.projects);
+    // Most recently changed first (the server lists them by project number)
+    if (r.ok) setProjects([...r.projects].sort((a, b) => (Date.parse(b.updatedAt ?? '') || 0) - (Date.parse(a.updatedAt ?? '') || 0)));
     else setError(r.message);
   }, []);
 
