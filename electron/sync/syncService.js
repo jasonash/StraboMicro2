@@ -482,7 +482,7 @@ function link(projectId, restServer, pid, mode, use, onProgress) {
       const { link: linker } = loadEngine();
       let folder;
       if (row.syncFormat === 'legacy') {
-        if (use === 'theirs') await importLegacyUpload(projectId, restServer, pid, onProgress, { setAside: true });
+        if (use === 'theirs') await importLegacyUpload(projectId, restServer, onProgress, { setAside: true });
         folder = (await linker.adoptLegacy({ projectId, pid, restServer, user, mode, client })).folder;
       } else {
         folder = (await linker.linkToServer({
@@ -503,12 +503,13 @@ function link(projectId, restServer, pid, mode, use, onProgress) {
  * as a local-only copy. setAside: "Use the server copy", the local folder is
  * set aside first (renamed into StraboMicro2Data/_replaced, nothing deleted).
  */
-async function importLegacyUpload(projectId, restServer, pid, onProgress, { setAside = false } = {}) {
+async function importLegacyUpload(projectId, restServer, onProgress, { setAside = false } = {}) {
   const serverDownload = require('../serverDownload');
   const smzImport = require('../smzImport');
   const token = await tokenService.getValidAccessToken(restServer);
   if (!token.success) throw new Error(token.error || 'Log in to download the StraboSpot copy.');
-  const dl = await serverDownload.downloadProject(pid, token.accessToken,
+  // The old door finds a project by its id (strabo_id), not the server project number
+  const dl = await serverDownload.downloadProject(projectId, token.accessToken,
     (p) => onProgress({ phase: 'download', item: p.message }), restServer);
   if (!dl.success) throw new Error(dl.error || 'The StraboSpot copy could not be downloaded.');
   try {
@@ -675,7 +676,7 @@ async function openRemote(pid, restServer, mode, onProgress) {
       const r = await clone(pid, restServer, mode, onProgress);
       return r.ok ? { ok: true, projectId: r.projectId, adopted: false } : r;
     }
-    await importLegacyUpload(row.straboId, restServer, pid, onProgress);
+    await importLegacyUpload(row.straboId, restServer, onProgress);
     const linked = await link(row.straboId, restServer, pid, mode, 'mine', onProgress);
     return linked.ok ? { ok: true, projectId: row.straboId, adopted: true } : linked;
   } catch (err) {
