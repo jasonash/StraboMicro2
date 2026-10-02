@@ -26,7 +26,7 @@ const Header: React.FC = () => {
   const viewerRef = useAppStore((state) => state.viewerRef);
   const activeTool = useAppStore((state) => state.activeTool);
   const setActiveTool = useAppStore((state) => state.setActiveTool);
-  const { isAuthenticated, user, logout } = useAuthStore();
+  const { isAuthenticated, user, offline, logout } = useAuthStore();
 
   const [loginDialogOpen, setLoginDialogOpen] = useState(false);
   const [logoutAnchorEl, setLogoutAnchorEl] = useState<HTMLElement | null>(null);
@@ -138,14 +138,22 @@ const Header: React.FC = () => {
           }}
         >
           {isAuthenticated && user ? (
-            <Typography variant="body2" sx={{
-              color: 'text.secondary'
-            }}>
-              Logged in as{' '}
-              <Box component="span" sx={{ color: 'text.primary', fontWeight: 500 }}>
-                {user.name ? `${user.name} (${user.email})` : user.email}
-              </Box>
-            </Typography>
+            // Spec v3 16ar: the name (email in the tooltip), "· offline" without a connection
+            <Tooltip
+              placement="bottom-end"
+              title={offline
+                ? `${user.email}. StraboSpot cannot be reached right now; your work is kept on this computer and syncs when the connection returns.`
+                : user.email}
+            >
+              <Typography variant="body2" sx={{ color: 'text.primary', fontWeight: 500 }}>
+                {user.name || user.email}
+                {offline && (
+                  <Box component="span" sx={{ color: 'text.secondary', fontWeight: 400 }}>
+                    {' · offline'}
+                  </Box>
+                )}
+              </Typography>
+            </Tooltip>
           ) : (
             <Typography variant="body2" sx={{
               color: 'text.secondary'

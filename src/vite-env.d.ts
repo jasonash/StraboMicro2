@@ -675,6 +675,8 @@ interface Window {
         sessionExpired?: boolean;
         /** Network error or 5xx after retries; tokens were kept */
         unreachable?: boolean;
+        /** With unreachable: the last attempt had no connection (not a server error) */
+        offline?: boolean;
         error?: string;
       }>;
       check: () => Promise<{

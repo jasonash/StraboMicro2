@@ -7,6 +7,7 @@
  *
  * This store only tracks:
  * - Whether user is logged in (for UI updates)
+ * - Whether the server could not be reached (logged in, offline)
  * - User profile info (for display)
  * - Loading/error states (for UI feedback)
  */
@@ -38,6 +39,12 @@ interface AuthState {
   user: AuthUser | null;
   isLoading: boolean;
   error: string | null;
+  /**
+   * Logged in, but the last token refresh or sync request found no
+   * connection (spec v3 16ar); cleared by the next one that reaches the
+   * server. Server errors do not set it (16ba).
+   */
+  offline: boolean;
 
   // ========== LOGIN PROMPT STATE ==========
   /** When true, the login dialog should be shown for re-authentication */
@@ -51,6 +58,7 @@ interface AuthState {
   checkAuthStatus: () => Promise<void>;
   refreshToken: () => Promise<RefreshOutcome>;
   clearError: () => void;
+  setOffline: (offline: boolean) => void;
   /** Called by App.tsx when the login prompt dialog is dismissed (cancel) */
   dismissLoginPrompt: () => void;
 }
@@ -69,6 +77,7 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
   user: null,
   isLoading: false,
   error: null,
+  offline: false,
   loginPromptActive: false,
   loginPromptMessage: null,
 
@@ -96,6 +105,7 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
           user: result.user,
           isLoading: false,
           error: null,
+          offline: false,
           loginPromptActive: false,
           loginPromptMessage: null,
         });
@@ -154,6 +164,7 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
       user: null,
       isLoading: false,
       error: null,
+      offline: false,
     });
 
     // Notify main process to update menu
@@ -231,6 +242,7 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
 
       if (result.success) {
         console.log('[AuthStore] Token refreshed successfully');
+        set({ offline: false });
         return 'refreshed';
       }
       if (result.sessionExpired) {
@@ -245,6 +257,7 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
       }
       // Offline or server trouble: tokens were kept, stay logged in
       console.warn('[AuthStore] Token refresh not possible right now:', result.error);
+      set({ offline: result.offline === true });
       return 'unavailable';
     } catch (error) {
       console.error('[AuthStore] Token refresh error:', error);
@@ -257,6 +270,10 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
    */
   clearError: () => set({ error: null }),
 
+  setOffline: (offline: boolean) => {
+    if (get().offline !== offline) set({ offline });
+  },
+
   /**
    * Dismiss the login prompt (user cancelled)
    * Rejects all pending auth requests so callers get an error
@@ -268,6 +285,15 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
     resolvers.forEach(({ reject }) => reject(new Error('Login cancelled')));
   },
 }));
+
+// The connection is back: if the header says offline, check with the server
+// (a refresh) so it clears without waiting for the next sync.
+if (typeof window !== 'undefined') {
+  window.addEventListener('online', () => {
+    const { isAuthenticated, offline, refreshToken } = useAuthStore.getState();
+    if (isAuthenticated && offline) void refreshToken();
+  });
+}
 
 // ============================================================================
 // HELPER FUNCTIONS

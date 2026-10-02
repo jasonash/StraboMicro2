@@ -266,7 +266,7 @@ const tokenService = {
    * Get a usable access token, refreshing it first if it has expired.
    * @param {string} restServer
    * @returns {Promise<{ success: boolean, accessToken?: string, user?: object,
-   *   sessionExpired?: boolean, unreachable?: boolean, error?: string }>}
+   *   sessionExpired?: boolean, unreachable?: boolean, offline?: boolean, error?: string }>}
    */
   async getValidAccessToken(restServer) {
     const tokens = await this.getTokens();
@@ -296,7 +296,7 @@ const tokenService = {
    * @param {string} restServer
    * @param {{ retryDelaysMs?: number[] }} [options]
    * @returns {Promise<{ success: boolean, accessToken?: string, user?: object,
-   *   sessionExpired?: boolean, unreachable?: boolean, error?: string }>}
+   *   sessionExpired?: boolean, unreachable?: boolean, offline?: boolean, error?: string }>}
    */
   async refreshAccessToken(restServer, { retryDelaysMs = REFRESH_RETRY_DELAYS_MS } = {}) {
     const tokens = await this.getTokens();
@@ -307,6 +307,9 @@ const tokenService = {
 
     const baseUrl = restServer || 'https://strabospot.org';
     let lastProblem = '';
+    // The last attempt could not reach the server at all (no connection), as
+    // opposed to a server error; the header shows "offline" only then
+    let lastWasNetwork = false;
 
     for (let attempt = 0; attempt <= retryDelaysMs.length; attempt++) {
       if (attempt > 0) {
@@ -322,6 +325,7 @@ const tokenService = {
         });
       } catch (networkError) {
         lastProblem = networkError.message || 'network error';
+        lastWasNetwork = true;
         log.warn(`[TokenService] Refresh attempt ${attempt + 1} could not reach the server: ${lastProblem}`);
         continue;
       }
@@ -332,6 +336,7 @@ const tokenService = {
         return { success: false, sessionExpired: true, error: 'Session expired. Please log in again.' };
       }
 
+      lastWasNetwork = false;
       if (response.status >= 500) {
         lastProblem = `HTTP ${response.status}`;
         log.warn(`[TokenService] Refresh attempt ${attempt + 1} failed with ${lastProblem}`);
@@ -368,6 +373,7 @@ const tokenService = {
     return {
       success: false,
       unreachable: true,
+      offline: lastWasNetwork,
       error: 'Could not reach the StraboSpot server. Check your connection and try again.',
     };
   },

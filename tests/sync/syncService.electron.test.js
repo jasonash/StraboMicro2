@@ -178,6 +178,19 @@ app.whenReady().then(async () => {
       JSON.stringify(pfOut));
     await tokenService.saveTokens(who.token, 'not-a-real-refresh-token', 3600, user);
     {
+      // Header offline state (16ar, 16ba): no connection is offline, a server error is not
+      const noConn = await tokenService.refreshAccessToken('http://127.0.0.1:9', { retryDelaysMs: [] });
+      check('refresh without a connection: unreachable and offline, tokens kept', noConn.unreachable === true &&
+        noConn.offline === true && (await tokenService.getTokens()) !== null, JSON.stringify(noConn));
+      const http = require('http');
+      const down = http.createServer((req, res) => { res.writeHead(503); res.end(); });
+      await new Promise((resolve) => down.listen(0, '127.0.0.1', resolve));
+      const serverErr = await tokenService.refreshAccessToken(`http://127.0.0.1:${down.address().port}`, { retryDelaysMs: [] });
+      down.close();
+      check('refresh with a server error: unreachable, not offline', serverErr.unreachable === true &&
+        serverErr.offline === false, JSON.stringify(serverErr));
+    }
+    {
       // A local-only project whose id the server already has (linking, stage 4)
       const pid2 = `mscli-${crypto.randomUUID()}`;
       const local2 = path.join(projectFolders.getStraboMicro2DataPath(), pid2);

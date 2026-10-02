@@ -329,6 +329,7 @@ class ProjectSync {
     if (result.ok) {
       this.problem = null;
       this.retryCount = 0;
+      useAuthStore.getState().setOffline(false);
       useSyncStore.getState().update({
         problem: null,
         progress: null,
@@ -594,6 +595,7 @@ class ProjectSync {
 
   private failed(failure: Failure): void {
     this.problem = failure;
+    if (failure.kind === 'offline') useAuthStore.getState().setOffline(true);
     console.warn(`[Sync] Not synced (${failure.kind}): ${failure.message}`);
     useSyncStore.getState().update({
       problem: { kind: failure.kind, message: failure.message },
@@ -642,6 +644,9 @@ class ProjectSync {
       const r = await api.sync.activity(this.projectId, getRestServerUrl(), document.hasFocus() ? 'active' : 'away')
         .catch(() => null);
       if (this.stopped) return;
+      // The header's offline state (16ar); other failures (login, account) say nothing about the connection
+      if (r?.ok) useAuthStore.getState().setOffline(false);
+      else if (r?.kind === 'offline') useAuthStore.getState().setOffline(true);
       if (r?.ok && !this.running) {
         useSyncStore.getState().update({ incoming: r.incoming, incomingFrom: r.others });
         if (onOpen && r.incoming > 0 && this.mode === 'manual') {
