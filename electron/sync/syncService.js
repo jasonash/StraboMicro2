@@ -578,6 +578,41 @@ async function importLegacyUpload(projectId, restServer, onProgress, { setAside 
   }
 }
 
+/** How long a set-aside copy (_replaced) is kept for rescue by hand */
+const REPLACED_KEEP_DAYS = 30;
+
+/**
+ * Remove copies set aside by "Use the StraboSpot copy" (StraboMicro2Data/
+ * _replaced/<projectId>-<time>) once they are older than REPLACED_KEEP_DAYS.
+ * The age comes from the time in the folder name; folders without one are
+ * left alone. Runs at startup.
+ * @returns {Promise<string[]>} Removed folder names
+ */
+async function cleanupReplaced(now = Date.now()) {
+  const dir = path.join(projectFolders.getStraboMicro2DataPath(), '_replaced');
+  let names;
+  try {
+    names = await fs.promises.readdir(dir);
+  } catch (_) {
+    return []; // nothing set aside
+  }
+  const removed = [];
+  for (const name of names) {
+    const m = /(\d{4}-\d{2}-\d{2})T(\d{2})-(\d{2})-(\d{2})-(\d{3})Z$/.exec(name);
+    if (!m) continue;
+    const at = Date.parse(`${m[1]}T${m[2]}:${m[3]}:${m[4]}.${m[5]}Z`);
+    if (!Number.isFinite(at) || now - at < REPLACED_KEEP_DAYS * 24 * 3600 * 1000) continue;
+    try {
+      await fs.promises.rm(path.join(dir, name), { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+      removed.push(name);
+      log.info(`[Sync] Removed ${name} from _replaced (set aside more than ${REPLACED_KEEP_DAYS} days ago)`);
+    } catch (err) {
+      log.warn(`[Sync] Could not remove ${name} from _replaced: ${err.message}`);
+    }
+  }
+  return removed;
+}
+
 /** projectId => the pull waiting for the app to apply it */
 const pendingPulls = new Map();
 
@@ -923,5 +958,5 @@ function registerSyncIpc(ipcMain, getMainWindow, { devTools = false } = {}) {
 
 module.exports = {
   registerSyncIpc, notifyLocalChange, getStatus, preflight, activity, serverProject, listServerProjects, introCandidates, setPromptAnswer, compare, link, openRemote, turnOn, push, setMode, pull, commitPull, discardPull, download, clone,
-  listDecisions, decide, decideCommit, decideDiscard, testOther, testCompare,
+  listDecisions, decide, decideCommit, decideDiscard, testOther, testCompare, cleanupReplaced,
 };

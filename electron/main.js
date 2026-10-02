@@ -1725,6 +1725,9 @@ app.whenReady().then(async () => {
     log.error('[App] Error rebuilding projects index:', error);
   }
 
+  // Copies set aside by "Use the StraboSpot copy", after 30 days (not awaited)
+  syncService.cleanupReplaced().catch((err) => log.warn('[App] _replaced cleanup failed:', err));
+
   // Install React DevTools in development mode
   if (isDev) {
     try {

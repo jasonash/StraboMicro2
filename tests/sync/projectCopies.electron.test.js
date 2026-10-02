@@ -208,6 +208,18 @@ app.whenReady().then(async () => {
     const all = await projectsIndex.getAllProjects();
     check('removeProject drops only copies gone from disk', !all.some((p) => p.id === pid && p.account?.pkey === '7') &&
       all.some((p) => p.id === pid && p.account?.pkey === '5'), JSON.stringify(all));
+
+    // Copies set aside by "Use the StraboSpot copy" go after 30 days
+    const { cleanupReplaced } = require(`${E}/sync/syncService`);
+    const replaced = path.join(projectFolders.getStraboMicro2DataPath(), '_replaced');
+    const now = Date.parse('2026-10-02T12:00:00.000Z');
+    for (const n of ['p1-2026-08-01T10-00-00-000Z', 'p2-2026-09-30T10-00-00-000Z', 'notes']) {
+      fs.mkdirSync(path.join(replaced, n, 'images'), { recursive: true });
+    }
+    const gone = await cleanupReplaced(now);
+    check('_replaced: only the copy set aside over 30 days ago is removed',
+      gone.length === 1 && gone[0].startsWith('p1-') && fs.readdirSync(replaced).sort().join() === 'notes,p2-2026-09-30T10-00-00-000Z',
+      JSON.stringify({ gone, left: fs.readdirSync(replaced) }));
   } catch (e) {
     failures++;
     console.log('ERROR', e && e.stack);
