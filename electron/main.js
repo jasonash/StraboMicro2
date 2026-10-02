@@ -5341,6 +5341,13 @@ ipcMain.handle('projects:load', async (event, projectId) => {
     }
     projectFolders.useProjectCopy(projectId, folder);
     const project = await projectSerializer.loadProjectJson(projectId);
+    // Point counts of micrographs deleted earlier (kept for undo until now)
+    try {
+      const removed = await pointCountStorage.removeOrphanedSessions(projectId, project);
+      if (removed.length) log.info(`[PointCountStorage] Removed ${removed.length} point count(s) of deleted micrographs: ${removed.join(', ')}`);
+    } catch (err) {
+      log.warn('[PointCountStorage] Orphaned point count cleanup failed:', err);
+    }
     // Update lastOpened in index
     await projectsIndex.updateProjectOpened(projectId, project.name);
     // Refresh menu to show updated recent projects

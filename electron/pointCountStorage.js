@@ -382,6 +382,44 @@ async function renameSession(projectId, sessionId, newName) {
   }
 }
 
+/**
+ * Remove session files whose micrograph is no longer in the project.
+ * Deleting a micrograph leaves its sessions on disk so an undo can bring
+ * them back; sync already ignores them (syncEngine readProjectFiles), so
+ * they are removed when the project opens, which clears the undo history.
+ * Files that cannot be read or name no micrograph are left alone.
+ * @param {string} projectId - Project UUID
+ * @param {Object} project - The project as loaded from project.json
+ * @returns {Promise<string[]>} Removed session file names
+ */
+async function removeOrphanedSessions(projectId, project) {
+  const micrographIds = new Set();
+  for (const dataset of project?.datasets || []) {
+    for (const sample of dataset.samples || []) {
+      for (const micrograph of sample.micrographs || []) micrographIds.add(micrograph.id);
+    }
+  }
+  const folderPath = getPointCountsFolder(projectId);
+  let names;
+  try {
+    names = (await fs.promises.readdir(folderPath)).filter((n) => n.endsWith('.json'));
+  } catch (_) {
+    return []; // no point-counts folder
+  }
+  const removed = [];
+  for (const name of names) {
+    const filePath = path.join(folderPath, name);
+    try {
+      const session = JSON.parse(await fs.promises.readFile(filePath, 'utf8'));
+      const micrographId = session && session.micrographId;
+      if (typeof micrographId !== 'string' || !micrographId || micrographIds.has(micrographId)) continue;
+      await fs.promises.unlink(filePath);
+      removed.push(name);
+    } catch (_) { /* unreadable or locked: leave it */ }
+  }
+  return removed;
+}
+
 module.exports = {
   getPointCountsFolder,
   getSessionFilePath,
@@ -392,4 +430,5 @@ module.exports = {
   listSessions,
   listAllSessions,
   renameSession,
+  removeOrphanedSessions,
 };
