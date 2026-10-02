@@ -219,6 +219,34 @@ function createSyncClient({ restServer, getAccessToken, refreshAccessToken, fetc
       return expect(await request('POST', `/projects/${pid}/activity`, { json: { since, clientId, viewing, state, presenceHash } }), 200);
     },
 
+    /** Members, my role and a pending transfer (Phase 2). */
+    async members(pid) {
+      return expect(await request('GET', `/projects/${pid}/members`), 200);
+    },
+
+    /** Invite by email (owner). 200/201, or a 4xx whose data.error says why (no_account, already_member, ...). */
+    async invite(pid, email, role) {
+      return request('POST', `/projects/${pid}/members`, { json: { email, role } });
+    },
+
+    async setMemberRole(pid, pkey, role) {
+      return request('PATCH', `/projects/${pid}/members/${pkey}`, { json: { role } });
+    },
+
+    /** Remove a member or withdraw an invitation (owner), or leave (my own pkey). */
+    async removeMember(pid, pkey) {
+      return request('DELETE', `/projects/${pid}/members/${pkey}`);
+    },
+
+    /** { invitations: [...], transfers: [...] } waiting for me */
+    async invites() {
+      return expect(await request('GET', '/invites'), 200);
+    },
+
+    async answerInvite(pid, accept) {
+      return request('POST', `/invites/${pid}/${accept ? 'accept' : 'decline'}`);
+    },
+
     async changes(pid, since, limit = 1000) {
       return expect(await request('GET', `/projects/${pid}/changes?since=${since}&limit=${limit}`), 200);
     },

@@ -13,6 +13,9 @@ import { sameServer } from '@/utils/syncChipState';
 /** Window event: the user asked to turn sync on for the open local-only project (App.tsx handles it) */
 export const TURN_ON_SYNC_EVENT = 'strabo:turn-on-sync';
 
+/** Window event: the user asked for the Collaborators dialog of the open project (App.tsx handles it) */
+export const COLLABORATE_EVENT = 'strabo:collaborate';
+
 /**
  * The Sync click: save, push, pull. Logged out, it asks for the login first
  * (Manual mode does not warn about it beforehand, 16af).
@@ -37,6 +40,11 @@ export async function changeModeFromUser(mode: SyncMode): Promise<SyncCallResult
 /** Ask App to open the turn-on dialog for the open project (16aj). */
 export function requestTurnOnSync(): void {
   window.dispatchEvent(new CustomEvent(TURN_ON_SYNC_EVENT));
+}
+
+/** Ask App to open the Collaborators dialog (17a); a local-only project turns sync on first (17d). */
+export function requestCollaborate(): void {
+  window.dispatchEvent(new CustomEvent(COLLABORATE_EVENT));
 }
 
 /** Projects whose first upload starts as soon as their sync starts, in either mode */

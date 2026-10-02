@@ -760,6 +760,16 @@ function createWindow() {
           }
         },
         {
+          // Members, roles and invitations (Phase 2, 17a); a local-only project
+          // turns sync on first (17d)
+          label: 'Collaborate...',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('menu:collaborate');
+            }
+          }
+        },
+        {
           label: 'View Version History...',
           click: () => {
             if (mainWindow) {

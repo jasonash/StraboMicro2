@@ -154,6 +154,43 @@ type SyncFailureKind =
 
 type SyncCallResult = { ok: true } | { ok: false; kind: SyncFailureKind; message: string };
 
+/** A person as the sync API names them */
+interface SyncUser {
+  pkey: number;
+  name: string;
+  email?: string;
+}
+
+type SyncRole = 'owner' | 'editor' | 'contributor' | 'viewer';
+
+/** One row of a project's member list (Phase 2) */
+interface SyncMember {
+  user: SyncUser;
+  role: SyncRole;
+  state: 'active' | 'invited' | 'declined';
+  invitedBy: SyncUser | null;
+  invitedAt: string | null;
+  respondedAt: string | null;
+}
+
+/** An invitation waiting for me (17f) */
+interface SyncInvitation {
+  pid: number;
+  straboId: string;
+  name: string;
+  role: SyncRole;
+  invitedBy: SyncUser | null;
+  owner: SyncUser | null;
+  invitedAt: string | null;
+}
+
+/**
+ * A refused member change: kind is the server's reason (no_account,
+ * already_member, invitee_has_copy, not_ready, forbidden, ...) or a
+ * connection kind; message is ready to show.
+ */
+type SyncMemberFailure = { ok: false; kind: SyncFailureKind | string; message: string };
+
 type SyncPushResult =
   | { ok: true; pushed: number; filesUploaded: number; notAccepted: number; conflicts: number; restored: number; ready: boolean }
   | { ok: false; kind: SyncFailureKind; message: string };
@@ -774,6 +811,7 @@ interface Window {
 
     // Push to Server
     onPushToServer: (callback: () => void) => Unsubscribe;
+    onCollaborate: (callback: () => void) => Unsubscribe;
     // Open Remote Project
     onOpenRemoteProject: (callback: () => void) => Unsubscribe;
     server: {
@@ -969,6 +1007,25 @@ interface Window {
       download: (projectId: string, restServer: string) => Promise<
         | { ok: true; downloaded: number; images: string[]; thumbnails: string[] }
         | { ok: false; kind: SyncFailureKind; message: string }>;
+      /** Collaborators of the open synced project (Phase 2) */
+      members: (projectId: string, restServer: string) => Promise<
+        | { ok: true; pid: number; myRole: SyncRole; members: SyncMember[]; transferTo: SyncUser | null }
+        | SyncMemberFailure>;
+      /** Invite by email, change a role, or remove someone (owner) */
+      changeMembers: (projectId: string, restServer: string, change:
+        | { action: 'invite'; email: string; role: SyncRole }
+        | { action: 'role'; pkey: number; role: SyncRole }
+        | { action: 'remove'; pkey: number }) => Promise<
+        | { ok: true; status?: string; emailed?: boolean; member?: { user: SyncUser; role: SyncRole; state: string } }
+        | SyncMemberFailure>;
+      /** Invitations waiting for the logged-in account */
+      invites: (restServer: string) => Promise<
+        | { ok: true; invitations: SyncInvitation[]; transfers: Array<{ pid: number; straboId: string; name: string; from: SyncUser | null }> }
+        | SyncMemberFailure>;
+      /** Accept (then download it with openRemote) or decline an invitation */
+      answerInvite: (restServer: string, pid: number, accept: boolean) => Promise<
+        | { ok: true; pid?: number; straboId?: string; name?: string; role?: SyncRole; status?: string }
+        | SyncMemberFailure>;
       /** What waits for the user's decision */
       decisions: (projectId: string) => Promise<SyncDecisionsResult>;
       /** Work out one answer (save first); apply result.changes, save, then decideCommit */

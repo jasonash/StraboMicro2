@@ -449,6 +449,10 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('menu:push-to-server', callback);
     return () => ipcRenderer.removeListener('menu:push-to-server', callback);
   },
+  onCollaborate: (callback) => {
+    ipcRenderer.on('menu:collaborate', callback);
+    return () => ipcRenderer.removeListener('menu:collaborate', callback);
+  },
   server: {
     cleanupDownload: (zipPath) => ipcRenderer.invoke('server:cleanup-download', zipPath),
     onDownloadProgress: (callback) => {
@@ -643,6 +647,11 @@ contextBridge.exposeInMainWorld('api', {
     pullDiscard: (projectId, pullId) => ipcRenderer.invoke('sync:pull-discard', projectId, pullId),
     download: (projectId, restServer) => ipcRenderer.invoke('sync:download', projectId, restServer),
     clone: (pid, restServer, mode) => ipcRenderer.invoke('sync:clone', pid, restServer, mode),
+    // Collaborators (Phase 2)
+    members: (projectId, restServer) => ipcRenderer.invoke('sync:members', projectId, restServer),
+    changeMembers: (projectId, restServer, change) => ipcRenderer.invoke('sync:change-members', projectId, restServer, change),
+    invites: (restServer) => ipcRenderer.invoke('sync:invites', restServer),
+    answerInvite: (restServer, pid, accept) => ipcRenderer.invoke('sync:answer-invite', restServer, pid, accept),
     decisions: (projectId) => ipcRenderer.invoke('sync:decisions', projectId),
     decide: (projectId, decision) => ipcRenderer.invoke('sync:decide', projectId, decision),
     decideCommit: (projectId, decisionId) => ipcRenderer.invoke('sync:decide-commit', projectId, decisionId),

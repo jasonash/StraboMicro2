@@ -48,10 +48,12 @@ import SyncDecisionsDialog from './components/dialogs/SyncDecisionsDialog';
 import { SyncOpenPrompt } from './components/dialogs/SyncOpenPrompt';
 import { CopyOwnerDialog, type CopyOwnerPrompt } from './components/dialogs/CopyOwnerDialog';
 import { SyncIntroDialog, type SyncIntroProject } from './components/dialogs/SyncIntroDialog';
+import { CollaboratorsDialog } from './components/dialogs/CollaboratorsDialog';
+import { InvitationsDialog } from './components/dialogs/InvitationsDialog';
 import { SyncIntroNotice } from './components/SyncIntroNotice';
 import { useAppStore, undo, redo, setUndoBlockedHandler } from '@/store';
 import { useAuthStore, promptLogin } from '@/store/useAuthStore';
-import { syncNowFromUser, requestFirstSync, TURN_ON_SYNC_EVENT } from '@/services/syncActions';
+import { syncNowFromUser, requestFirstSync, TURN_ON_SYNC_EVENT, COLLABORATE_EVENT } from '@/services/syncActions';
 import { beginLinking, LINK_SYNC_EVENT, type LinkRequest } from '@/services/syncLinking';
 import { useSyncStore } from '@/store/useSyncStore';
 import { useTheme } from './hooks/useTheme';
@@ -187,6 +189,10 @@ function App() {
   const [isExportPDFOpen, setIsExportPDFOpen] = useState(false);
   const [isExportSmzOpen, setIsExportSmzOpen] = useState(false);
   const [isTurnOnSyncOpen, setIsTurnOnSyncOpen] = useState(false);
+  const [isCollaboratorsOpen, setIsCollaboratorsOpen] = useState(false);
+  // Collaborate... on a local-only project turns sync on first (17d), then opens Collaborators
+  const collaborateAfterTurnOn = useRef(false);
+  const [pendingInvitations, setPendingInvitations] = useState<SyncInvitation[] | null>(null);
   // Another account's copy (16at opening it, 16ax it is open)
   const [ownerPrompt, setOwnerPrompt] = useState<CopyOwnerPrompt | null>(null);
   // "What's new: sync" (16aq): the projects it offers, null = not showing
@@ -1208,7 +1214,17 @@ function App() {
         void syncNowFromUser();
         return;
       }
+      collaborateAfterTurnOn.current = false;
       setIsTurnOnSyncOpen(true);
+    }));
+
+    // File: Collaborate... (17a, 17d)
+    unsubscribers.push(window.api?.onCollaborate(() => {
+      if (!project) {
+        alert('No project loaded. Please load a project first.');
+        return;
+      }
+      window.dispatchEvent(new CustomEvent(COLLABORATE_EVENT));
     }));
 
     // File: Open Remote Project menu item
@@ -1318,11 +1334,11 @@ function App() {
   const turnOnSync = useCallback(async (mode: SyncMode) => {
     const api = window.api;
     const current = useAppStore.getState().project;
-    if (!api || !current) return;
+    if (!api || !current) return false;
     const saved = await ensureSaved();
     if (!saved.success) {
       alert(`The project could not be saved, so sync was not turned on.\n\n${saved.error ?? 'Unknown error'}`);
-      return;
+      return false;
     }
     closeProject();
     setLoadingProjectName(current.name || '');
@@ -1337,6 +1353,7 @@ function App() {
         alert(`Failed to load project: ${loaded?.error || 'Unknown error'}`);
       }
       if (!result.ok) alert(`Sync could not be turned on. The project stays on this computer only.\n\n${result.message}`);
+      return result.ok && Boolean(loaded?.success);
     } finally {
       setIsLoadingProject(false);
     }
@@ -1439,10 +1456,47 @@ function App() {
 
   // The chip's "Sync this project…" opens the turn-on dialog
   useEffect(() => {
-    const open = () => setIsTurnOnSyncOpen(true);
+    const open = () => {
+      collaborateAfterTurnOn.current = false;
+      setIsTurnOnSyncOpen(true);
+    };
     window.addEventListener(TURN_ON_SYNC_EVENT, open);
     return () => window.removeEventListener(TURN_ON_SYNC_EVENT, open);
   }, []);
+
+  // Collaborate... (menu, chip): a synced project opens Collaborators; a
+  // local-only one turns sync on first, then continues there (17d)
+  useEffect(() => {
+    const open = () => {
+      if (!useAppStore.getState().project) return;
+      if (useSyncStore.getState().synced) {
+        setIsCollaboratorsOpen(true);
+        return;
+      }
+      collaborateAfterTurnOn.current = true;
+      setIsTurnOnSyncOpen(true);
+    };
+    window.addEventListener(COLLABORATE_EVENT, open);
+    return () => window.removeEventListener(COLLABORATE_EVENT, open);
+  }, []);
+
+  // Invitations waiting for this account (17f): asked once per login (and at
+  // startup when logged in), after the startup dialogs and the sync intro
+  const invitesCheckedFor = useRef<string | null>(null);
+  useEffect(() => {
+    const api = window.api;
+    if (!api || !isAuthenticated || !authPkey || !startupValidationComplete) return;
+    if (introProjects !== null || introBlocked) return;
+    if (invitesCheckedFor.current === String(authPkey)) return;
+    invitesCheckedFor.current = String(authPkey);
+    void api.sync.invites(getRestServerUrl()).then((r) => {
+      if (r.ok && r.invitations.length > 0) setPendingInvitations(r.invitations);
+    }).catch(() => {});
+  }, [isAuthenticated, authPkey, startupValidationComplete, introProjects, introBlocked]);
+  useEffect(() => {
+    if (!isAuthenticated) invitesCheckedFor.current = null;
+  }, [isAuthenticated]);
+  const closeInvitations = useCallback(() => setPendingInvitations(null), []);
 
   // Debug > Sync: Download Synced Project (until Open Remote Project does
   // it, step 8 stage 4) and Debug > Sync Test
@@ -1576,10 +1630,14 @@ function App() {
         onClose={() => setIsTurnOnSyncOpen(false)}
         onStart={(mode, onServer) => {
           const id = useAppStore.getState().project?.id;
+          const thenCollaborate = collaborateAfterTurnOn.current;
+          collaborateAfterTurnOn.current = false;
           if (onServer && id) {
             void beginLinking({ projectId: id, pid: onServer.pid, syncFormat: onServer.syncFormat, updatedAt: onServer.updatedAt }, mode);
           } else {
-            void turnOnSync(mode);
+            void turnOnSync(mode).then((ok) => {
+              if (ok && thenCollaborate) setIsCollaboratorsOpen(true);
+            });
           }
         }}
       />
@@ -1671,6 +1729,16 @@ function App() {
         openProjectId={project?.id ?? null}
         onSyncSelected={(ids, mode) => void syncIntroSelected(ids, mode)}
         onNotNow={syncIntroNotNow}
+      />
+      <CollaboratorsDialog
+        open={isCollaboratorsOpen}
+        projectId={project?.id ?? null}
+        onClose={() => setIsCollaboratorsOpen(false)}
+      />
+      <InvitationsDialog
+        invitations={introBlocked ? null : pendingInvitations}
+        onClose={closeInvitations}
+        onOpenProject={(projectId) => void openProjectById(projectId)}
       />
       <SyncDecisionsDialog />
       <SyncOpenPrompt />

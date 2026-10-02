@@ -32,6 +32,7 @@ import {
 import { getRestServerUrl } from './PreferencesDialog';
 import { formatSyncDate } from '@/utils/formatSyncDate';
 import { openRemoteHere, downloadRemote, type RemoteProject } from '@/services/remoteProjects';
+import { InvitationList } from './InvitationList';
 
 interface OpenRemoteProjectDialogProps {
   open: boolean;
@@ -45,11 +46,15 @@ export function OpenRemoteProjectDialog({ open, onClose, onOpenProject }: OpenRe
   const [error, setError] = useState<string | null>(null);
   const [mode, setMode] = useState<SyncMode>('automatic');
   const [busy, setBusy] = useState<{ pid: number; status: string } | null>(null);
+  const [invitations, setInvitations] = useState<SyncInvitation[]>([]);
+  const [inviteBusy, setInviteBusy] = useState(false);
 
   const load = useCallback(async () => {
     if (!window.api) return;
     setProjects(null);
     setError(null);
+    // Invitations waiting for me (17f); a failure here leaves only the list
+    void window.api.sync.invites(getRestServerUrl()).then((i) => setInvitations(i.ok ? i.invitations : []));
     const r = await window.api.sync.serverProjects(getRestServerUrl());
     // Most recently changed first (the server lists them by project number)
     if (r.ok) setProjects([...r.projects].sort((a, b) => (Date.parse(b.updatedAt ?? '') || 0) - (Date.parse(a.updatedAt ?? '') || 0)));
@@ -85,10 +90,25 @@ export function OpenRemoteProjectDialog({ open, onClose, onOpenProject }: OpenRe
   };
 
   return (
-    <Dialog open={open} onClose={busy ? undefined : onClose} maxWidth="sm" fullWidth>
+    <Dialog open={open} onClose={busy || inviteBusy ? undefined : onClose} maxWidth="sm" fullWidth>
       <DialogTitle>Open Remote Project</DialogTitle>
       <DialogContent>
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+          {invitations.length > 0 && (
+            <>
+              <Typography variant="subtitle2">Invitations</Typography>
+              <InvitationList
+                invitations={invitations}
+                onAnswered={(pid) => setInvitations((list) => list.filter((i) => i.pid !== pid))}
+                onOpenProject={(projectId) => {
+                  onClose();
+                  void onOpenProject(projectId);
+                }}
+                onBusyChange={setInviteBusy}
+              />
+              <Typography variant="subtitle2" sx={{ mt: 1 }}>Your projects</Typography>
+            </>
+          )}
           <Typography variant="body2" sx={{ color: 'text.secondary' }}>
             Your projects on StraboSpot. A downloaded project stays synced with StraboSpot.
           </Typography>
@@ -140,8 +160,8 @@ export function OpenRemoteProjectDialog({ open, onClose, onOpenProject }: OpenRe
         </Box>
       </DialogContent>
       <DialogActions>
-        <Button onClick={() => void load()} disabled={busy !== null}>Refresh</Button>
-        <Button onClick={onClose} disabled={busy !== null}>Close</Button>
+        <Button onClick={() => void load()} disabled={busy !== null || inviteBusy}>Refresh</Button>
+        <Button onClick={onClose} disabled={busy !== null || inviteBusy}>Close</Button>
       </DialogActions>
     </Dialog>
   );

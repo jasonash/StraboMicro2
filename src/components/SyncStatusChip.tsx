@@ -29,7 +29,7 @@ import { useAuthStore, promptLogin } from '@/store/useAuthStore';
 import { useSyncStore, decisionsWaiting } from '@/store/useSyncStore';
 import { getRestServerUrl } from '@/components/dialogs/PreferencesDialog';
 import { syncChipState, lastSyncedText, type SyncChipTone } from '@/utils/syncChipState';
-import { syncNowFromUser, changeModeFromUser, requestTurnOnSync } from '@/services/syncActions';
+import { syncNowFromUser, changeModeFromUser, requestTurnOnSync, requestCollaborate } from '@/services/syncActions';
 
 const CHIP_COLOR: Record<SyncChipTone, 'warning' | 'info' | 'default' | 'success'> = {
   attention: 'warning',
@@ -146,6 +146,15 @@ export function SyncStatusChip() {
                     Log in
                   </Button>
                 )}
+                <Button
+                  size="small"
+                  onClick={() => {
+                    close();
+                    requestCollaborate();
+                  }}
+                >
+                  Collaborators…
+                </Button>
                 {waiting > 0 && (
                   <Button
                     size="small"

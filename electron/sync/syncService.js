@@ -19,6 +19,9 @@
  *   sync:download  fetch files a pull brought (originals, thumbnails, attachments);
  *                  runs beside pushes and pulls, see download()
  *   sync:clone     make a synced copy of a server project on this computer
+ *   sync:members / sync:change-members   the open synced project's
+ *                  collaborators: list, invite, role, remove (Phase 2, 17a)
+ *   sync:invites / sync:answer-invite   invitations waiting for me (17f)
  *   sync:decisions what waits for the user (conflicts, delete questions,
  *                  changes the server turned down), for the dialog
  *   sync:decide    work out one answer; returns what the app must apply
@@ -392,7 +395,9 @@ async function serverProject(projectId, restServer) {
     const answer = (await readPrompts())[projectId] || null;
     if (isSyncedFolder(projectFolders.getProjectFolderPath(projectId))) return { ok: true, row: null, answer };
     const rows = await myServerProjects(restServer);
-    const row = rows && rows.find((r) => r && r.straboId === projectId);
+    // Only my own server project can be this local copy's: a project shared
+    // with me under the same id is someone else's (a share-code copy, 17b)
+    const row = rows && rows.find((r) => r && r.straboId === projectId && r.role === 'owner');
     return { ok: true, row: row ? serverRow(row) : null, answer };
   } catch (err) {
     return failure(err);
@@ -412,8 +417,10 @@ async function listServerProjects(restServer) {
     const pkey = tokens && tokens.user ? tokens.user.pkey : null;
     const projects = rows.filter(Boolean).map((r) => {
       const mine = projectFolders.getAccountCopyPath(r.straboId, restServer, pkey);
+      // A local-only copy counts only for my own projects (17b): never offer
+      // to connect it to a project someone shared with me
       const here = fs.existsSync(path.join(mine, 'project.json')) ? 'synced'
-        : fs.existsSync(path.join(projectFolders.getStraboMicro2DataPath(), r.straboId, 'project.json')) ? 'local' : null;
+        : r.role === 'owner' && fs.existsSync(path.join(projectFolders.getStraboMicro2DataPath(), r.straboId, 'project.json')) ? 'local' : null;
       return { ...serverRow(r), here };
     });
     return { ok: true, projects };
@@ -758,6 +765,84 @@ async function openRemote(pid, restServer, mode, onProgress) {
   }
 }
 
+/**
+ * The server project number of a synced project whose binding matches the
+ * login and server, or a failure result.
+ * @param {string} projectId
+ * @param {string} restServer
+ * @returns {Promise<{ ok: true, pid: number } | { ok: false, kind: string, message: string }>}
+ */
+async function boundPid(projectId, restServer) {
+  const folder = projectFolders.getProjectFolderPath(projectId);
+  const state = isSyncedFolder(folder) ? await loadEngine().sidecar.loadState(folder) : null;
+  if (!state) return { ok: false, kind: 'not_synced', message: 'This project is not synced with StraboSpot.' };
+  const problem = await bindingProblem(state.binding, restServer);
+  if (problem) return { ok: false, ...problem };
+  return { ok: true, pid: Number(state.binding.pid) };
+}
+
+/** A members answer as an IPC result: 2xx data, or the server's reason for a 4xx. */
+function memberResult(r) {
+  if (r.status >= 200 && r.status < 300) return { ok: true, ...(r.data || {}) };
+  const data = r.data && typeof r.data === 'object' ? r.data : {};
+  return { ok: false, kind: data.error || 'refused', message: data.message || `The server refused this (${r.status}).` };
+}
+
+/** Collaborators of the open synced project (Phase 2, 17a). */
+async function members(projectId, restServer) {
+  try {
+    const b = await boundPid(projectId, restServer);
+    if (!b.ok) return b;
+    return { ok: true, ...(await makeClient(restServer).members(b.pid)) };
+  } catch (err) {
+    return failure(err);
+  }
+}
+
+/**
+ * Change the collaborators of the open synced project (owner):
+ * action invite {email, role}, role {pkey, role}, remove {pkey}.
+ * @param {string} projectId
+ * @param {string} restServer
+ * @param {{ action: 'invite' | 'role' | 'remove', email?: string, role?: string, pkey?: number }} change
+ */
+async function changeMembers(projectId, restServer, change) {
+  try {
+    const b = await boundPid(projectId, restServer);
+    if (!b.ok) return b;
+    const client = makeClient(restServer);
+    if (change.action === 'invite') return memberResult(await client.invite(b.pid, String(change.email || ''), change.role));
+    if (change.action === 'role') return memberResult(await client.setMemberRole(b.pid, Number(change.pkey), change.role));
+    if (change.action === 'remove') return memberResult(await client.removeMember(b.pid, Number(change.pkey)));
+    return { ok: false, kind: 'error', message: 'Unknown change.' };
+  } catch (err) {
+    return failure(err);
+  }
+}
+
+/** Invitations (and ownership offers) waiting for the logged-in account (17f). */
+async function invites(restServer) {
+  try {
+    const tokens = await tokenService.getTokens();
+    if (!tokens || !tokens.user) return { ok: false, kind: 'auth', message: 'Log in to see your invitations.' };
+    const r = await makeClient(restServer).invites();
+    return { ok: true, invitations: r.invitations || [], transfers: r.transfers || [] };
+  } catch (err) {
+    return failure(err);
+  }
+}
+
+/** Accept or decline an invitation; accepting answers { pid, straboId, name, role }. */
+async function answerInvite(restServer, pid, accept) {
+  try {
+    const r = memberResult(await makeClient(restServer).answerInvite(Number(pid), Boolean(accept)));
+    if (r.ok) serverListCache = null; // the project list changed
+    return r;
+  } catch (err) {
+    return failure(err);
+  }
+}
+
 /** The folder of a synced project, or a failure result. */
 function syncedFolder(projectId) {
   const folder = projectFolders.getProjectFolderPath(projectId);
@@ -946,6 +1031,10 @@ function registerSyncIpc(ipcMain, getMainWindow, { devTools = false } = {}) {
     clone(Number(pid), restServer, mode, (p) => send('sync:progress', { projectId: `server:${pid}`, ...p })));
   ipcMain.handle('sync:download', (_event, projectId, restServer) =>
     download(projectId, restServer, (p) => send('sync:progress', { projectId, ...p })));
+  ipcMain.handle('sync:members', (_event, projectId, restServer) => members(projectId, restServer));
+  ipcMain.handle('sync:change-members', (_event, projectId, restServer, change) => changeMembers(projectId, restServer, change));
+  ipcMain.handle('sync:invites', (_event, restServer) => invites(restServer));
+  ipcMain.handle('sync:answer-invite', (_event, restServer, pid, accept) => answerInvite(restServer, pid, accept));
   ipcMain.handle('sync:decisions', (_event, projectId) => listDecisions(projectId));
   ipcMain.handle('sync:decide', (_event, projectId, decision) => decide(projectId, decision));
   ipcMain.handle('sync:decide-commit', (_event, projectId, decisionId) => decideCommit(projectId, decisionId));
@@ -959,4 +1048,5 @@ function registerSyncIpc(ipcMain, getMainWindow, { devTools = false } = {}) {
 module.exports = {
   registerSyncIpc, notifyLocalChange, getStatus, preflight, activity, serverProject, listServerProjects, introCandidates, setPromptAnswer, compare, link, openRemote, turnOn, push, setMode, pull, commitPull, discardPull, download, clone,
   listDecisions, decide, decideCommit, decideDiscard, testOther, testCompare, cleanupReplaced,
+  members, changeMembers, invites, answerInvite,
 };
