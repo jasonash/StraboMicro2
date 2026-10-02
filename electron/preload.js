@@ -635,6 +635,16 @@ contextBridge.exposeInMainWorld('api', {
     activity: (projectId, restServer, presence) => ipcRenderer.invoke('sync:activity', projectId, restServer, presence),
     serverProject: (projectId, restServer) => ipcRenderer.invoke('sync:server-project', projectId, restServer),
     serverProjects: (restServer) => ipcRenderer.invoke('sync:server-projects', restServer),
+    // The "What's new: sync" intro and its background uploads (16aq, 16ay)
+    introStatus: () => ipcRenderer.invoke('sync:intro-status'),
+    introCandidates: (restServer) => ipcRenderer.invoke('sync:intro-candidates', restServer),
+    introShown: () => ipcRenderer.invoke('sync:intro-shown'),
+    introEnqueue: (projectIds, mode, restServer) => ipcRenderer.invoke('sync:intro-enqueue', projectIds, mode, restServer),
+    onIntroStatus: (callback) => {
+      const handler = (event, status) => callback(status);
+      ipcRenderer.on('sync:intro-status', handler);
+      return () => ipcRenderer.removeListener('sync:intro-status', handler);
+    },
     promptAnswer: (projectId, answer) => ipcRenderer.invoke('sync:prompt-answer', projectId, answer),
     compare: (projectId, restServer, pid) => ipcRenderer.invoke('sync:compare', projectId, restServer, pid),
     link: (projectId, restServer, pid, mode, use) => ipcRenderer.invoke('sync:link', projectId, restServer, pid, mode, use),

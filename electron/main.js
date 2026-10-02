@@ -180,6 +180,7 @@ const serverUpload = require('./serverUpload');
 const versionHistory = require('./versionHistory');
 const projectsIndex = require('./projectsIndex');
 const accounts = require('./accounts');
+const introQueue = require('./sync/introQueue');
 const imageExport = require('./imageExport');
 const smzImport = require('./smzImport');
 const serverDownload = require('./serverDownload');
@@ -1434,12 +1435,16 @@ function createWindow() {
     buildMenu();
     // The renderer checks the open copy's owner again (16ax)
     if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('accounts:changed');
+    // The intro's background uploads run while their account is logged in (16ay)
+    introQueue.kick();
   });
 
   // IPC handler to update current project and rebuild menu
   ipcMain.on('project:current-changed', (event, projectId) => {
     currentProjectId = projectId;
     buildMenu();
+    // The intro queue moves a folder only while its project is closed (16ay)
+    introQueue.setOpenProject(projectId);
   });
 
   // The open project is synced or not: File menu reads Upload or Sync (spec v3 14t)
@@ -4236,6 +4241,7 @@ const tokenService = require('./tokenService');
 // Sync IPC (sync:status, sync:turn-on, sync:push, sync:set-mode); the sync
 // engine itself loads only when a synced project uses it
 syncService.registerSyncIpc(ipcMain, () => mainWindow, { devTools: !app.isPackaged || app.getVersion().includes('-dev.') });
+introQueue.registerIntroIpc(ipcMain, () => mainWindow);
 
 // Helper to get REST server URL from renderer's localStorage
 // We'll pass it from the renderer since preferences are stored there
@@ -5421,7 +5427,9 @@ ipcMain.handle('projects:load', async (event, projectId) => {
   log.info('[ProjectsIndex] Loading project:', projectId);
   try {
     // Which copy: the logged-in (else last) account's, else local-only (16ba);
-    // another account's copy does not open (16at)
+    // another account's copy does not open (16at). The intro queue may be
+    // moving this project's folder right now (16ay): wait for it.
+    await introQueue.awaitMove(projectId);
     const folder = projectFolders.resolveProjectCopy(projectId);
     const owner = accounts.checkCopyOwner(folder);
     if (!owner.ok) {

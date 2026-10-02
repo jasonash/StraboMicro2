@@ -119,6 +119,14 @@ export function decisionsWaiting(s: Pick<SyncStoreState, 'conflicts' | 'question
   return s.conflicts + s.questions + s.refused;
 }
 
+/** The bottom-left "Sync needs your decision" notice is showing (other notices make room for it). */
+export function decisionsNoticeVisible(
+  s: Pick<SyncStoreState, 'synced' | 'conflicts' | 'questions' | 'refused' | 'noticeDismissedTotal' | 'decisionsOpen'>,
+): boolean {
+  const total = decisionsWaiting(s);
+  return s.synced && total > 0 && total > s.noticeDismissedTotal && !s.decisionsOpen;
+}
+
 export const useSyncStore = create<SyncStoreState>()((set) => ({
   projectId: null,
   ...initial,

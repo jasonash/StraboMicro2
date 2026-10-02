@@ -978,6 +978,16 @@ interface Window {
       serverProjects: (restServer: string) => Promise<
         | { ok: true; projects: Array<SyncServerProject & { here: 'synced' | 'local' | null }> }
         | { ok: false; kind: SyncFailureKind; message: string }>;
+      /** The intro (16aq): shown yet, and the background uploads (16ay) */
+      introStatus: () => Promise<SyncIntroStatus>;
+      /** Local-only projects not on the server, with upload sizes (fails: wait, do not mark shown) */
+      introCandidates: (restServer: string) => Promise<
+        | { ok: true; projects: Array<{ id: string; name: string; bytes: number | null }> }
+        | { ok: false; kind: SyncFailureKind; message: string }>;
+      introShown: () => Promise<void>;
+      /** Queue the first uploads of these closed projects */
+      introEnqueue: (projectIds: string[], mode: SyncMode, restServer: string) => Promise<SyncCallResult>;
+      onIntroStatus: (callback: (status: SyncIntroStatus) => void) => Unsubscribe;
       promptAnswer: (projectId: string, answer: 'automatic' | 'manual' | 'local') => Promise<SyncCallResult>;
       /** The local-only copy vs the converted server project (progress: phase 'compare', bytes) */
       compare: (projectId: string, restServer: string, pid: number) => Promise<
@@ -1216,6 +1226,20 @@ interface ProjectIndexEntry {
   account?: { server: string; pkey: string } | null;
   /** Logged out, the last account's copies: "Jason's copy" (16d) */
   ownerLabel?: string | null;
+}
+
+/** The intro (16aq) and its background first uploads (16ay) */
+interface SyncIntroStatus {
+  shown: boolean;
+  /** Projects still waiting (including the one uploading) */
+  queued: number;
+  total: number;
+  done: number;
+  /** The projects still waiting, in upload order */
+  items: Array<{ projectId: string; name: string }>;
+  current: { projectId: string; name: string } | null;
+  /** Why the queue is not moving */
+  waiting: 'login' | 'offline' | 'server' | 'open' | null;
 }
 
 /** The account a synced copy belongs to (name '' when it never logged in here) */

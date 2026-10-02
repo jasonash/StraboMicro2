@@ -423,6 +423,40 @@ async function listServerProjects(restServer) {
 }
 
 /**
+ * Local-only projects the intro dialog offers to sync (16aq): those whose id
+ * the server does not have (projects it has get the one-time prompt when
+ * opened, 16an), with their upload size. Fails (logged out, offline, sync
+ * switched off on the server) rather than guessing, so the intro waits.
+ * @param {string} restServer
+ */
+async function introCandidates(restServer) {
+  try {
+    const rows = await myServerProjects(restServer, { refresh: true });
+    if (rows === null) return { ok: false, kind: 'auth', message: 'Log in to sync projects.' };
+    const onServer = new Set(rows.filter(Boolean).map((r) => r.straboId));
+    const projects = [];
+    for (const id of await projectFolders.listProjectFolders()) {
+      if (onServer.has(id)) continue;
+      const folder = path.join(projectFolders.getStraboMicro2DataPath(), id);
+      let name;
+      try {
+        const project = JSON.parse(await fs.promises.readFile(path.join(folder, 'project.json'), 'utf8'));
+        if (!project || project.id !== id) continue;
+        name = project.name || 'Untitled Project';
+      } catch (_) {
+        continue; // not a project folder (e.g. _replaced)
+      }
+      const bytes = await loadEngine().syncEngine.estimateUploadBytes(folder).catch(() => null);
+      projects.push({ id, name, bytes });
+    }
+    projects.sort((a, b) => a.name.localeCompare(b.name));
+    return { ok: true, projects };
+  } catch (err) {
+    return failure(err);
+  }
+}
+
+/**
  * The local-only copy vs the converted server project (read-only, 16s).
  * @param {string} projectId
  * @param {string} restServer
@@ -888,6 +922,6 @@ function registerSyncIpc(ipcMain, getMainWindow, { devTools = false } = {}) {
 }
 
 module.exports = {
-  registerSyncIpc, notifyLocalChange, getStatus, preflight, activity, serverProject, listServerProjects, setPromptAnswer, compare, link, openRemote, turnOn, push, setMode, pull, commitPull, discardPull, download, clone,
+  registerSyncIpc, notifyLocalChange, getStatus, preflight, activity, serverProject, listServerProjects, introCandidates, setPromptAnswer, compare, link, openRemote, turnOn, push, setMode, pull, commitPull, discardPull, download, clone,
   listDecisions, decide, decideCommit, decideDiscard, testOther, testCompare,
 };

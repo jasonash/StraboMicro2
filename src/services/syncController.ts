@@ -171,8 +171,11 @@ class ProjectSync {
     window.addEventListener('focus', onFocus);
     this.unsubscribers.push(() => window.removeEventListener('focus', onFocus));
 
-    if (takeFirstSyncRequest(this.projectId)) {
-      // Sync just turned on: the first upload runs now, in either mode
+    // takeFirstSyncRequest first: it clears the request either way
+    if (takeFirstSyncRequest(this.projectId) || useSyncStore.getState().phase === 'uploading') {
+      // Sync just turned on, or its first upload has not finished (stopped
+      // at quit, or handed over by the intro queue, 16ay): the first upload
+      // runs now, in either mode
       this.syncNow();
       this.schedulePoll();
     } else if (this.mode === 'automatic') {

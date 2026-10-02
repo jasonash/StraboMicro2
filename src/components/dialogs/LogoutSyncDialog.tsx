@@ -24,7 +24,7 @@ import { useAuthStore } from '@/store/useAuthStore';
 import { useSyncStore } from '@/store/useSyncStore';
 import { uploadPercent } from '@/utils/syncChipState';
 import { firstName } from '@/utils/accountNames';
-import { syncBeforeLogout, type LogoutCheck } from '@/services/syncActions';
+import { syncBeforeLogout, queuedUploadsText, type LogoutCheck } from '@/services/syncActions';
 
 interface LogoutSyncDialogProps {
   /** What waits (null = closed); never 'plain' */
@@ -93,6 +93,11 @@ export function LogoutSyncDialog({ check, onClose, onLogout }: LogoutSyncDialogP
             <CircularProgress size={20} />
             <Typography variant="body2">Syncing {changes}…</Typography>
           </Box>
+        )}
+        {check && queuedUploadsText(check.queued) && !syncing && (
+          <Typography variant="body2" sx={{ color: 'text.secondary', mt: 1.5 }}>
+            {queuedUploadsText(check.queued)}
+          </Typography>
         )}
         {step.kind === 'failed' && (
           <>

@@ -47,6 +47,8 @@ import SyncDecisionsNotice from './components/SyncDecisionsNotice';
 import SyncDecisionsDialog from './components/dialogs/SyncDecisionsDialog';
 import { SyncOpenPrompt } from './components/dialogs/SyncOpenPrompt';
 import { CopyOwnerDialog, type CopyOwnerPrompt } from './components/dialogs/CopyOwnerDialog';
+import { SyncIntroDialog, type SyncIntroProject } from './components/dialogs/SyncIntroDialog';
+import { SyncIntroNotice } from './components/SyncIntroNotice';
 import { useAppStore, undo, redo, setUndoBlockedHandler } from '@/store';
 import { useAuthStore, promptLogin } from '@/store/useAuthStore';
 import { syncNowFromUser, requestFirstSync, TURN_ON_SYNC_EVENT } from '@/services/syncActions';
@@ -187,6 +189,8 @@ function App() {
   const [isTurnOnSyncOpen, setIsTurnOnSyncOpen] = useState(false);
   // Another account's copy (16at opening it, 16ax it is open)
   const [ownerPrompt, setOwnerPrompt] = useState<CopyOwnerPrompt | null>(null);
+  // "What's new: sync" (16aq): the projects it offers, null = not showing
+  const [introProjects, setIntroProjects] = useState<SyncIntroProject[] | null>(null);
   const [isVersionHistoryOpen, setIsVersionHistoryOpen] = useState(false);
   const [isIncompleteMicrographsOpen, setIsIncompleteMicrographsOpen] = useState(false);
   const [incompleteMicrographs, setIncompleteMicrographs] = useState<IncompleteMicrograph[]>([]);
@@ -1338,6 +1342,62 @@ function App() {
     }
   }, [manualSave, closeProject, loadProjectWithPreparation]);
 
+  // "What's new: sync" (16aq, 16ba): once per computer, when logged in (at
+  // the first launch after the update, else at the first login after it).
+  // Nothing to offer marks it shown; a failure (offline, sync switched off
+  // on the server) leaves it for the next launch or login
+  const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
+  const authPkey = useAuthStore((state) => state.user?.pkey ?? null);
+  const startupValidationComplete = useAppStore((state) => state.startupValidationComplete);
+  const introCheckedFor = useRef<string | null>(null);
+  useEffect(() => {
+    const api = window.api;
+    if (!api || !isAuthenticated || !authPkey || !startupValidationComplete) return;
+    if (introCheckedFor.current === String(authPkey)) return;
+    introCheckedFor.current = String(authPkey);
+    void (async () => {
+      const state = await api.sync.introStatus().catch(() => null);
+      if (!state || state.shown) return;
+      const r = await api.sync.introCandidates(getRestServerUrl()).catch(() => null);
+      if (!r || !r.ok) {
+        console.log('[App] Sync intro waits:', r && !r.ok ? r.message : 'no answer');
+        return;
+      }
+      if (r.projects.length === 0) {
+        await api.sync.introShown();
+        return;
+      }
+      setIntroProjects(r.projects);
+    })();
+  }, [isAuthenticated, authPkey, startupValidationComplete]);
+
+  const syncIntroSelected = useCallback(async (projectIds: string[], mode: SyncMode) => {
+    const api = window.api;
+    setIntroProjects(null);
+    if (!api) return;
+    await api.sync.introShown();
+    const openId = useAppStore.getState().project?.id ?? null;
+    const closed = projectIds.filter((id) => id !== openId);
+    if (closed.length > 0) {
+      const r = await api.sync.introEnqueue(closed, mode, getRestServerUrl());
+      if (!r.ok) alert(`The projects could not be queued for syncing.\n\n${r.message}`);
+    }
+    // The open project goes through the normal turn-on path (its chip shows the upload)
+    if (openId && projectIds.includes(openId)) await turnOnSync(mode);
+  }, [turnOnSync]);
+
+  const syncIntroNotNow = useCallback(() => {
+    setIntroProjects(null);
+    void window.api?.sync.introShown();
+  }, []);
+
+  // The intro waits while another dialog that appears at startup is up
+  const linkOffer = useSyncStore((state) => state.linkOffer);
+  const linkChoice = useSyncStore((state) => state.linkChoice);
+  const syncOpenPrompt = useSyncStore((state) => state.openPrompt);
+  const introBlocked = isStartupMessageOpen || ownerPrompt !== null || loginPromptActive || isLoadingProject ||
+    linkOffer !== null || linkChoice !== null || syncOpenPrompt !== null;
+
   // Link the open local-only project to the same project on StraboSpot
   // (16an, 16am): saved and unloaded first (the folder moves), linked, the
   // first sync pushes my differences (or an adopted project's first upload),
@@ -1601,6 +1661,13 @@ function App() {
         onManualCheckComplete={() => setIsManualUpdateCheck(false)}
       />
       <SyncDecisionsNotice />
+      <SyncIntroNotice />
+      <SyncIntroDialog
+        projects={introBlocked ? null : introProjects}
+        openProjectId={project?.id ?? null}
+        onSyncSelected={(ids, mode) => void syncIntroSelected(ids, mode)}
+        onNotNow={syncIntroNotNow}
+      />
       <SyncDecisionsDialog />
       <SyncOpenPrompt />
       <CopyOwnerDialog

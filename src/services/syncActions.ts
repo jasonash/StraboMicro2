@@ -60,23 +60,34 @@ export function takeFirstSyncRequest(projectId: string): boolean {
  * 'plain' = nothing (local-only, nothing waiting, or a copy of another
  * account or server, which this login could not sync anyway);
  * 'changes' = changes not yet synced; 'uploading' = its first upload runs.
+ * queued: projects the intro queue has not uploaded yet (16ay); they wait
+ * for the next login.
  */
 export type LogoutCheck =
-  | { kind: 'plain' }
-  | { kind: 'changes'; count: number }
-  | { kind: 'uploading' };
+  | { kind: 'plain'; queued: number }
+  | { kind: 'changes'; count: number; queued: number }
+  | { kind: 'uploading'; queued: number };
 
 export async function checkBeforeLogout(): Promise<LogoutCheck> {
+  const intro = await window.api?.sync.introStatus().catch(() => null);
+  const queued = intro?.queued ?? 0;
   const s = useSyncStore.getState();
   const user = useAuthStore.getState().user;
   const project = useAppStore.getState().project;
-  if (!s.synced || !user || !project || project.id !== s.projectId) return { kind: 'plain' };
-  if (s.pkey !== String(user.pkey) || !sameServer(s.server, getRestServerUrl())) return { kind: 'plain' };
-  if (s.phase === 'uploading') return { kind: 'uploading' };
+  if (!s.synced || !user || !project || project.id !== s.projectId) return { kind: 'plain', queued };
+  if (s.pkey !== String(user.pkey) || !sameServer(s.server, getRestServerUrl())) return { kind: 'plain', queued };
+  if (s.phase === 'uploading') return { kind: 'uploading', queued };
   // Count now: the store's count can be a few seconds old (debounce)
   const status = await window.api?.sync.status(project.id, project).catch(() => null);
   const count = status?.synced ? status.pending : s.pending;
-  return count !== null && count > 0 ? { kind: 'changes', count } : { kind: 'plain' };
+  return count !== null && count > 0 ? { kind: 'changes', count, queued } : { kind: 'plain', queued };
+}
+
+/** "3 more projects wait to upload to StraboSpot; they continue the next time you log in." */
+export function queuedUploadsText(queued: number): string | null {
+  if (queued <= 0) return null;
+  return `${queued} ${queued === 1 ? 'project waits' : 'projects wait'} to upload to StraboSpot; ` +
+    'the uploads continue the next time you log in.';
 }
 
 /** "Sync and log out": push the open project now and wait for the result. */

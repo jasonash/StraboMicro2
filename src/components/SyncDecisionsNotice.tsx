@@ -12,13 +12,11 @@ const SETTLED_MS = 4_000;
 import { useEffect, useState } from 'react';
 import { IconButton, Snackbar, SnackbarContent, Button } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
-import { useSyncStore, decisionsWaiting } from '@/store/useSyncStore';
+import { useSyncStore, decisionsWaiting, decisionsNoticeVisible } from '@/store/useSyncStore';
 
 export default function SyncDecisionsNotice() {
-  const synced = useSyncStore((s) => s.synced);
   const total = useSyncStore((s) => decisionsWaiting(s));
   const dismissed = useSyncStore((s) => s.noticeDismissedTotal);
-  const dialogOpen = useSyncStore((s) => s.decisionsOpen);
   const settledAt = useSyncStore((s) => s.decisionsSettledAt);
   const [settledShown, setSettledShown] = useState<number | null>(null);
   useEffect(() => {
@@ -30,7 +28,7 @@ export default function SyncDecisionsNotice() {
     if (total < dismissed) useSyncStore.getState().update({ noticeDismissedTotal: total });
   }, [total, dismissed]);
 
-  const open = synced && total > 0 && total > dismissed && !dialogOpen;
+  const open = useSyncStore(decisionsNoticeVisible);
   if (!open && settledShown !== null && total === 0) {
     return (
       <Snackbar

@@ -22,7 +22,7 @@ import { useAuthStore } from '@/store/useAuthStore';
 import { LoginDialog } from '@/components/dialogs/LoginDialog';
 import { SyncStatusChip } from '@/components/SyncStatusChip';
 import { LogoutSyncDialog } from '@/components/dialogs/LogoutSyncDialog';
-import { checkBeforeLogout, type LogoutCheck } from '@/services/syncActions';
+import { checkBeforeLogout, queuedUploadsText, type LogoutCheck } from '@/services/syncActions';
 
 const Header: React.FC = () => {
   const viewerRef = useAppStore((state) => state.viewerRef);
@@ -32,6 +32,8 @@ const Header: React.FC = () => {
 
   const [loginDialogOpen, setLoginDialogOpen] = useState(false);
   const [logoutAnchorEl, setLogoutAnchorEl] = useState<HTMLElement | null>(null);
+  // Intro uploads still queued, for the plain logout confirmation (16az)
+  const [logoutQueued, setLogoutQueued] = useState(0);
   // Logout with the open project not fully synced (16as, 16az)
   const [logoutCheck, setLogoutCheck] = useState<Exclude<LogoutCheck, { kind: 'plain' }> | null>(null);
 
@@ -61,8 +63,12 @@ const Header: React.FC = () => {
     if (isAuthenticated) {
       const anchor = event.currentTarget;
       const check = await checkBeforeLogout();
-      if (check.kind === 'plain') setLogoutAnchorEl(anchor);
-      else setLogoutCheck(check);
+      if (check.kind === 'plain') {
+        setLogoutQueued(check.queued);
+        setLogoutAnchorEl(anchor);
+      } else {
+        setLogoutCheck(check);
+      }
     } else {
       setLoginDialogOpen(true);
     }
@@ -182,6 +188,11 @@ const Header: React.FC = () => {
             <Typography variant="body2">
               Log out of StraboSpot?
             </Typography>
+            {queuedUploadsText(logoutQueued) && (
+              <Typography variant="body2" sx={{ color: 'text.secondary', maxWidth: 280 }}>
+                {queuedUploadsText(logoutQueued)}
+              </Typography>
+            )}
             <Box sx={{ display: 'flex', gap: 1, justifyContent: 'flex-end' }}>
               <Button
                 size="small"
