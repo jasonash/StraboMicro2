@@ -216,6 +216,38 @@ export function NewProjectDialog({ isOpen, onClose }: NewProjectDialogProps) {
       <DialogContent>
         <Box sx={{ pt: 2 }}>
           <Stack spacing={3}>
+            <Box>
+              <Typography variant="subtitle2" sx={{ mb: 0.5 }}>
+                Where to keep this project <Box component="span" sx={{ color: 'error.main' }}>*</Box>
+              </Typography>
+              {keep === '' && (
+                <Typography variant="body2" sx={{ color: 'warning.main', mb: 0.5 }}>
+                  Choose one to create the project.
+                </Typography>
+              )}
+              <RadioGroup value={keep} onChange={(e) => setKeep(e.target.value === 'sync' ? 'sync' : 'local')}>
+                <FormControlLabel value="local" control={<Radio size="small" />} label="On this computer only" />
+                <FormControlLabel
+                  value="sync"
+                  control={<Radio size="small" />}
+                  label="On this computer and synced to StraboSpot (backup, use on other computers, share with collaborators)"
+                />
+              </RadioGroup>
+              {keep === 'sync' && !loggedIn && (
+                <Alert
+                  severity="info"
+                  sx={{ mt: 1 }}
+                  action={
+                    <Button color="inherit" size="small" onClick={() => void promptLogin('Log in to sync this project to StraboSpot.')}>
+                      Log in
+                    </Button>
+                  }
+                >
+                  Log in to StraboSpot to sync this project.
+                </Alert>
+              )}
+            </Box>
+
             <TextField
               label="Project Name"
               value={formData.name}
@@ -305,31 +337,6 @@ export function NewProjectDialog({ isOpen, onClose }: NewProjectDialogProps) {
               rows={3}
               fullWidth
             />
-
-            <Box>
-              <Typography variant="subtitle2" sx={{ mb: 0.5 }}>Where to keep this project</Typography>
-              <RadioGroup value={keep} onChange={(e) => setKeep(e.target.value === 'sync' ? 'sync' : 'local')}>
-                <FormControlLabel value="local" control={<Radio size="small" />} label="On this computer only" />
-                <FormControlLabel
-                  value="sync"
-                  control={<Radio size="small" />}
-                  label="On this computer and synced to StraboSpot (backup, use on other computers, share with collaborators)"
-                />
-              </RadioGroup>
-              {keep === 'sync' && !loggedIn && (
-                <Alert
-                  severity="info"
-                  sx={{ mt: 1 }}
-                  action={
-                    <Button color="inherit" size="small" onClick={() => void promptLogin('Log in to sync this project to StraboSpot.')}>
-                      Log in
-                    </Button>
-                  }
-                >
-                  Log in to StraboSpot to sync this project.
-                </Alert>
-              )}
-            </Box>
           </Stack>
         </Box>
       </DialogContent>
