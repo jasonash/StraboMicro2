@@ -44,7 +44,8 @@ import UpdateNotification from './components/UpdateNotification';
 import SyncDecisionsNotice from './components/SyncDecisionsNotice';
 import SyncDecisionsDialog from './components/dialogs/SyncDecisionsDialog';
 import { useAppStore, undo, redo, setUndoBlockedHandler } from '@/store';
-import { useAuthStore } from '@/store/useAuthStore';
+import { useAuthStore, promptLogin } from '@/store/useAuthStore';
+import { syncNowFromUser, TURN_ON_SYNC_EVENT } from '@/services/syncActions';
 import { useSyncStore } from '@/store/useSyncStore';
 import { useTheme } from './hooks/useTheme';
 import { useAutosave } from './hooks/useAutosave';
@@ -1157,10 +1158,14 @@ function App() {
       setIsExportSmzOpen(true);
     }));
 
-    // File: Push to Server menu item
+    // File: Upload to Strabo Server... (local only) / Sync to Strabo Server... (synced: Sync Now, spec v3 16ai)
     unsubscribers.push(window.api?.onPushToServer(() => {
       if (!project) {
         alert('No project loaded. Please load a project first.');
+        return;
+      }
+      if (useSyncStore.getState().synced) {
+        void syncNowFromUser();
         return;
       }
       // Check for incomplete micrographs before allowing upload
@@ -1256,8 +1261,9 @@ function App() {
     };
   }, [closeProject, setTheme, setShowRulers, setSpotLabelMode, setShowMicrographOutlines, logout, project, manualSave, saveBeforeSwitch, loadProjectWithPreparation, activeMicrographId, micrographIndex, addSpot, updateMicrographMetadata]);
 
-  // Debug menu sync triggers (temporary, until the sync UI of collaboration
-  // Phase 1 step 8 exists)
+  // Turning sync on (Debug menu, and the chip's "Sync this project…" until
+  // the turn-on dialog of step 8 stage 2 replaces both) and Debug > Sync:
+  // Download Synced Project (until Open Remote Project does it, stage 4)
   useEffect(() => {
     if (!window.api?.onDebugSync) return;
 
@@ -1308,34 +1314,12 @@ function App() {
       }
     };
 
-    const showStatus = async () => {
-      const current = useAppStore.getState().project;
-      if (!window.api || !current) {
-        alert('Open a project first.');
-        return;
-      }
-      const status = await window.api.sync.status(current.id, current);
-      if (!status.synced) {
-        alert('This project is local only (not synced).');
-        return;
-      }
-      const live = useSyncStore.getState();
-      alert([
-        `Synced with ${status.server} as ${status.email} (server project ${status.pid})`,
-        `Mode: ${status.mode}${status.phase === 'uploading' ? ', first upload not finished' : ''}`,
-        `Changes not on the server: ${status.pending ?? 'unknown'}${status.refused ? `, refused: ${status.refused}` : ''}`,
-        `Conflicts: ${status.conflicts}, delete questions: ${status.questions}, files to download: ${status.downloads}`,
-        `Now: ${live.activity}${live.notice ? ` (${live.notice})` : ''}${live.problem ? ` (${live.problem.kind}: ${live.problem.message})` : ''}`,
-        `Last synced: ${live.lastSyncedAt ? new Date(live.lastSyncedAt).toLocaleTimeString() : 'not in this session'}`,
-      ].join('\n'));
-    };
-
     // Make a synced copy of a server project here, then open it
     const cloneFromServer = async (text: string | undefined) => {
       const api = window.api;
       const pid = Number((text ?? '').trim());
       if (!api || !Number.isInteger(pid) || pid <= 0) {
-        alert('Copy a server project number (Sync: Show Status in the other copy) first.');
+        alert('Copy a server project number (shown in the sync chip\'s popover in the other copy) first.');
         return;
       }
       if (!useAuthStore.getState().isAuthenticated) {
@@ -1369,32 +1353,31 @@ function App() {
       }
     };
 
-    return window.api.onDebugSync((action, arg) => {
+    // The chip's "Sync this project…" (Sync automatically, 16ag); asks for the login first
+    const onTurnOnRequest = () => {
+      void (async () => {
+        if (!useAuthStore.getState().isAuthenticated && !(await promptLogin('Log in to sync this project to StraboSpot.'))) return;
+        await turnOn('automatic');
+      })();
+    };
+    window.addEventListener(TURN_ON_SYNC_EVENT, onTurnOnRequest);
+
+    const offDebug = window.api.onDebugSync((action, arg) => {
       void (async () => {
         if (action === 'clone') {
           await cloneFromServer(arg);
         } else if (action === 'turn-on-automatic' || action === 'turn-on-manual') {
           await turnOn(action === 'turn-on-automatic' ? 'automatic' : 'manual');
-        } else if (action === 'status') {
-          await showStatus();
         } else if (action.startsWith('test-')) {
           const { runSyncTestScenario } = await import('@/services/syncTestScenarios');
           await runSyncTestScenario(action);
-        } else if (action === 'decisions') {
-          if (!useSyncStore.getState().synced) alert('This project is not synced.');
-          else useSyncStore.getState().update({ decisionsOpen: true });
-        } else {
-          const controller = await import('@/services/syncController');
-          if (action === 'sync-now') {
-            if (!controller.syncNow()) alert('This project is not synced.');
-          } else {
-            const mode = useSyncStore.getState().mode;
-            const result = await controller.changeSyncMode(mode === 'automatic' ? 'manual' : 'automatic');
-            alert(result.ok ? `Sync mode is now ${useSyncStore.getState().mode}.` : result.message);
-          }
         }
       })();
     });
+    return () => {
+      window.removeEventListener(TURN_ON_SYNC_EVENT, onTurnOnRequest);
+      offDebug();
+    };
   }, [closeProject, manualSave, loadProjectWithPreparation]);
 
   return (

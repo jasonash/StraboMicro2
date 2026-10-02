@@ -20,6 +20,7 @@ import appIcon from '../assets/app-icon.png';
 import { useAppStore } from '@/store';
 import { useAuthStore } from '@/store/useAuthStore';
 import { LoginDialog } from '@/components/dialogs/LoginDialog';
+import { SyncStatusChip } from '@/components/SyncStatusChip';
 
 const Header: React.FC = () => {
   const viewerRef = useAppStore((state) => state.viewerRef);
@@ -119,6 +120,9 @@ const Header: React.FC = () => {
             </IconButton>
           </Tooltip>
         </Box>
+
+        {/* Right: sync status of the open project, then the account */}
+        <SyncStatusChip />
 
         {/* Right: User info - clickable */}
         <Box

@@ -290,6 +290,19 @@ function requestLogin(message: string): Promise<void> {
 }
 
 /**
+ * Show the login dialog with a message; true once logged in, false if the
+ * user cancelled. Used by user actions that need a login (e.g. Sync Now).
+ */
+export async function promptLogin(message: string): Promise<boolean> {
+  try {
+    await requestLogin(message);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Get the current access token, refreshing it if it has expired.
  * unavailable is true when the refresh could not reach the server (or the
  * server failed); the user is still logged in, so callers should report a

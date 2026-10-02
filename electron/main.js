@@ -581,6 +581,7 @@ function createWindow() {
 
   // Track auth state for menu
   let isLoggedIn = false;
+  let currentProjectSynced = false;
 
   // Track current project ID for menu
   let currentProjectId = null;
@@ -745,9 +746,10 @@ function createWindow() {
           }
         },
         {
-          label: 'Upload to Strabo Server...',
+          // A synced project: runs Sync Now (asks for a login first if needed)
+          label: currentProjectSynced ? 'Sync to Strabo Server...' : 'Upload to Strabo Server...',
           accelerator: 'CmdOrCtrl+Shift+U',
-          enabled: isLoggedIn,
+          enabled: currentProjectSynced || isLoggedIn,
           click: () => {
             if (mainWindow) {
               mainWindow.webContents.send('menu:push-to-server');
@@ -1270,7 +1272,8 @@ function createWindow() {
           }
         },
         { type: 'separator' },
-        // Temporary sync triggers until the sync UI exists (collaboration Phase 1 step 8)
+        // Temporary sync triggers until the turn-on dialog (step 8 stage 2) and Open Remote
+        // Project (stage 4) exist; Sync Now, the mode and decisions are on the header chip
         {
           label: 'Sync: Turn On (Automatic)',
           click: () => mainWindow?.webContents.send('debug:sync', 'turn-on-automatic'),
@@ -1278,22 +1281,6 @@ function createWindow() {
         {
           label: 'Sync: Turn On (Manual)',
           click: () => mainWindow?.webContents.send('debug:sync', 'turn-on-manual'),
-        },
-        {
-          label: 'Sync: Sync Now',
-          click: () => mainWindow?.webContents.send('debug:sync', 'sync-now'),
-        },
-        {
-          label: 'Sync: Switch Automatic/Manual',
-          click: () => mainWindow?.webContents.send('debug:sync', 'toggle-mode'),
-        },
-        {
-          label: 'Sync: Show Status',
-          click: () => mainWindow?.webContents.send('debug:sync', 'status'),
-        },
-        {
-          label: 'Sync: Review Decisions...',
-          click: () => mainWindow?.webContents.send('debug:sync', 'decisions'),
         },
         {
           // One-window sync scenarios on the selected micrograph / spot (src/services/syncTestScenarios.ts)
@@ -1311,7 +1298,7 @@ function createWindow() {
           ],
         },
         {
-          // Server project number (Show Status) copied in the other copy of the app
+          // Server project number (the chip's popover) copied in the other copy of the app
           label: 'Sync: Download Synced Project (Number from Clipboard)',
           click: async () => {
             // clipboard.readText() returns a Promise since Electron 44
@@ -1448,6 +1435,13 @@ function createWindow() {
   // IPC handler to update current project and rebuild menu
   ipcMain.on('project:current-changed', (event, projectId) => {
     currentProjectId = projectId;
+    buildMenu();
+  });
+
+  // The open project is synced or not: File menu reads Upload or Sync (spec v3 14t)
+  ipcMain.on('sync:menu-state', (event, synced) => {
+    if (currentProjectSynced === Boolean(synced)) return;
+    currentProjectSynced = Boolean(synced);
     buildMenu();
   });
 

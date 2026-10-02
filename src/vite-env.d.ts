@@ -119,7 +119,7 @@ type Unsubscribe = () => void;
 
 type SyncMode = 'automatic' | 'manual';
 
-type SyncDebugAction = 'turn-on-automatic' | 'turn-on-manual' | 'sync-now' | 'toggle-mode' | 'status' | 'clone' | 'decisions'
+type SyncDebugAction = 'turn-on-automatic' | 'turn-on-manual' | 'clone'
   | 'test-conflict' | 'test-their-delete' | 'test-my-delete' | 'test-refused' | 'test-notice' | 'test-compare';
 
 /** Why a sync call did not run or failed (electron/sync/syncService.js) */
@@ -267,6 +267,9 @@ interface SyncProgress {
   phase: 'images' | 'push' | 'tiles' | 'files' | 'pull' | 'download';
   item?: string;
   count?: number;
+  /** images phase: bytes of originals uploaded so far, out of bytesTotal (this push) */
+  bytesDone?: number;
+  bytesTotal?: number;
 }
 
 // Electron API declarations
@@ -953,6 +956,8 @@ interface Window {
       onProgress: (callback: (progress: SyncProgress) => void) => Unsubscribe;
       /** A synced project changed on disk without a store change (point counts, thumbnails) */
       onLocalChange: (callback: (projectId: string) => void) => Unsubscribe;
+      /** Tells main whether the open project is synced (File menu wording, spec v3 14t) */
+      notifyMenuState: (synced: boolean) => void;
     };
 
     // Point Count storage (separate from Spot system)

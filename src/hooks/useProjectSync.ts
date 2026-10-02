@@ -4,14 +4,21 @@
  * When a project opens, asks main whether it is synced; only then loads and
  * starts the sync controller (src/services/syncController.ts). A local-only
  * project costs one status call per open and nothing else (spec v3 §3.4).
- * Closing or switching the project stops the controller.
+ * Closing or switching the project stops the controller. Main hears whether
+ * the open project is synced, for the File menu wording (spec v3 14t).
  */
 
 import { useEffect } from 'react';
 import { useAppStore } from '@/store';
+import { useSyncStore } from '@/store/useSyncStore';
 
 export function useProjectSync(): void {
   const projectId = useAppStore((state) => state.project?.id ?? null);
+  const synced = useSyncStore((state) => state.synced);
+
+  useEffect(() => {
+    window.api?.sync?.notifyMenuState?.(synced);
+  }, [synced]);
 
   useEffect(() => {
     if (!projectId || !window.api?.sync) return;

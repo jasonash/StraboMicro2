@@ -22,6 +22,7 @@
     "test:undo-history": "rolldown -c tests/sync/rolldown.test.config.mjs && node node_modules/.cache/sync-tests/undoHistory.test.mjs",
     "test:geometry-preview": "rolldown -c tests/sync/rolldown.test.config.mjs && node node_modules/.cache/sync-tests/geometryPreview.test.mjs",
     "test:composite-refresh": "rolldown -c tests/sync/rolldown.test.config.mjs && node node_modules/.cache/sync-tests/compositeRefresh.test.mjs",
+    "test:sync-chip": "rolldown -c tests/sync/rolldown.test.config.mjs && node node_modules/.cache/sync-tests/syncChipState.test.mjs",
     "typecheck:watch": "tsc --noEmit --watch --preserveWatchOutput",
     "build": "tsc && vite build",
     "preview": "vite preview",

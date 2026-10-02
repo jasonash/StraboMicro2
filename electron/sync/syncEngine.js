@@ -136,18 +136,30 @@ async function pushProject({ folder, client, onProgress = () => {} }) {
   if (sidecar.reconcileDecisions(state, current)) await sidecar.saveState(folder, state);
   let filesUploaded = 0;
 
-  // A. Originals of micrographs the server does not have yet
+  // A. Originals of micrographs the server does not have yet (byte progress:
+  // these are most of a first upload, and the status chip shows a percentage)
   const held = new Set();
+  const originals = [];
   for (const key of current.order) {
     const e = current.entities[key];
     if (e.type !== 'micrograph' || state.base[key]) continue;
     const rel = path.join('images', e.id);
-    if (!fs.existsSync(path.join(folder, rel))) continue;
+    const size = await fs.promises.stat(path.join(folder, rel)).then((st) => st.size, () => null);
+    if (size !== null) originals.push({ key, e, rel, size });
+  }
+  const bytesTotal = originals.reduce((sum, o) => sum + o.size, 0);
+  let bytesDone = 0;
+  for (const { key, e, rel, size } of originals) {
+    const item = e.body.name || e.id;
     try {
       const sha256 = await hashes.hash(rel);
-      onProgress({ phase: 'images', item: e.body.name || e.id });
-      const up = await client.uploadFile(pid, path.join(folder, rel), 'image', { sha256 });
+      onProgress({ phase: 'images', item, bytesDone, bytesTotal });
+      const up = await client.uploadFile(pid, path.join(folder, rel), 'image', {
+        sha256,
+        onProgress: (sent) => onProgress({ phase: 'images', item, bytesDone: bytesDone + sent, bytesTotal }),
+      });
       if (up.uploaded) filesUploaded++;
+      bytesDone += size;
     } catch (err) {
       if (err instanceof SyncError) throw err;
       log.warn(`[Sync] Image of ${e.id} not uploaded yet: ${err.message}`);

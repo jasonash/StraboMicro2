@@ -644,6 +644,7 @@ contextBridge.exposeInMainWorld('api', {
       ipcRenderer.on('sync:local-change', handler);
       return () => ipcRenderer.removeListener('sync:local-change', handler);
     },
+    notifyMenuState: (synced) => ipcRenderer.send('sync:menu-state', synced),
   },
   onDebugSync: (callback) => {
     const handler = (event, action, arg) => callback(action, arg);

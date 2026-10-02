@@ -1,7 +1,8 @@
 /**
  * Sync Store (Renderer Process)
  *
- * Sync state of the open project, for display (the header status chip).
+ * Sync state of the open project, for display (the header status chip,
+ * src/components/SyncStatusChip.tsx).
  * Written only by src/services/syncController.ts; a local-only project
  * leaves it at synced: false.
  */
@@ -19,8 +20,11 @@ export interface SyncStoreState {
   mode: SyncMode | null;
   /** uploading until the first upload finished */
   phase: 'uploading' | 'ready' | null;
-  /** The account the copy is bound to */
+  /** The account and server the copy is bound to, and its server project number */
   email: string | null;
+  pkey: string | null;
+  server: string | null;
+  pid: number | null;
   /** waiting: local changes not pushed yet (debounce running, or Manual mode) */
   activity: 'idle' | 'waiting' | 'syncing';
   /** Why the last push did not run or failed; cleared by the next success */
@@ -58,6 +62,9 @@ const initial = {
   mode: null,
   phase: null,
   email: null,
+  pkey: null,
+  server: null,
+  pid: null,
   activity: 'idle' as const,
   problem: null,
   pending: null,

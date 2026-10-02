@@ -109,7 +109,8 @@ app.whenReady().then(async () => {
 
     // Turn sync on
     const progress = [];
-    const on = await turnSyncOn({ projectId: pid, restServer: SERVER, user: { pkey: who.pkey, email: who.email }, client, onProgress: (x) => progress.push(x.phase) });
+    const imageBytes = [];
+    const on = await turnSyncOn({ projectId: pid, restServer: SERVER, user: { pkey: who.pkey, email: who.email }, client, onProgress: (x) => { progress.push(x.phase); if (x.phase === 'images') imageBytes.push(x); } });
     check('turn sync on', on.status === 'synced' && on.pid > 0, JSON.stringify(on));
     const accountFolder = projectFolders.getAccountCopyPath(pid, SERVER, who.pkey);
     check('folder moved into the account folder', on.folder === accountFolder && !fs.existsSync(local) && fs.existsSync(path.join(accountFolder, 'project.json')));
@@ -117,6 +118,11 @@ app.whenReady().then(async () => {
     check('sidecar written: binding, ready, base, refs', state && state.binding.pid === on.pid && state.phase === 'ready' &&
       Object.keys(state.base).length > 40 && Object.keys(state.refs).length >= 27, JSON.stringify(state && { phase: state.phase, base: Object.keys(state.base).length, refs: Object.keys(state.refs).length }));
     check('progress reported for images, push, tiles, files', ['images', 'push', 'tiles', 'files'].every((ph) => progress.includes(ph)));
+    const lastBytes = imageBytes[imageBytes.length - 1];
+    check('image progress counts bytes up to the total (status chip percentage)',
+      imageBytes.length > 0 && lastBytes.bytesTotal > 0 && lastBytes.bytesDone === lastBytes.bytesTotal &&
+      imageBytes.every((x, i) => x.bytesDone <= x.bytesTotal && (i === 0 || x.bytesDone >= imageBytes[i - 1].bytesDone)),
+      JSON.stringify(imageBytes.slice(-3)));
     const meta = await client.getProject(on.pid);
     check('server project is ready', meta.syncState === 'ready');
     const first = compare('first upload', on.pid);
