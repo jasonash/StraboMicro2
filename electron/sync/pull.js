@@ -447,4 +447,4 @@ async function cloneProject({ pid, restServer, user, mode = 'automatic', client,
   return { projectId, folder, downloaded: d.downloaded };
 }
 
-module.exports = { preparePull, commitPull, downloadFiles, downloadTarget, cloneProject, writePointCounts, stateFromEntry };
+module.exports = { preparePull, commitPull, downloadFiles, downloadTarget, cloneProject, writePointCounts, stateFromEntry, normalizeBaseOrder };

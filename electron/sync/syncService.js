@@ -9,6 +9,8 @@
  *   sync:set-mode  automatic or manual
  *   sync:preflight upload size + is the project on the server (turn-on dialog)
  *   sync:activity  changes waiting on the server for this copy (chip count, sync on open)
+ *   sync:server-project / sync:server-projects / sync:prompt-answer / sync:compare / sync:link
+ *                  projects already on the server: one-time prompt, Open Remote Project, linking
  *   sync:pull      fetch and merge the server's changes; returns what the
  *                  app must apply to its store (kept pending in memory)
  *   sync:pull-commit  after the app applied them and saved project.json:
@@ -44,7 +46,7 @@ const log = require('electron-log');
 const projectFolders = require('../projectFolders');
 const tokenService = require('../tokenService');
 
-/** @type {null | { syncEngine: typeof import('./syncEngine'), sidecar: typeof import('./sidecar'), client: typeof import('./client'), pull: typeof import('./pull'), decisions: typeof import('./decisions') }} */
+/** @type {null | { syncEngine: typeof import('./syncEngine'), sidecar: typeof import('./sidecar'), client: typeof import('./client'), pull: typeof import('./pull'), decisions: typeof import('./decisions'), link: typeof import('./link') }} */
 let engine = null;
 
 /** The sync modules, loaded on first use by a synced project. */
@@ -56,6 +58,7 @@ function loadEngine() {
       client: require('./client'),
       pull: require('./pull'),
       decisions: require('./decisions'),
+      link: require('./link'),
     };
   }
   return engine;
@@ -220,6 +223,7 @@ async function preflight(projectId, restServer) {
  */
 function turnOn(projectId, restServer, mode) {
   return serialize(projectId, async () => {
+    serverListCache = null; // the server is about to have this project
     try {
       const tokens = await tokenService.getTokens();
       if (!tokens || !tokens.user) return { ok: false, kind: 'auth', message: 'Log in to sync this project.' };
@@ -310,6 +314,220 @@ async function activity(projectId, restServer, presence = 'active') {
     return { ok: true, incoming, others };
   } catch (err) {
     return failure(err);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Projects already on the server (spec v3 §3.5, 16an to 16ao)
+// ---------------------------------------------------------------------------
+
+/** How long the list of my server projects is reused (16q) */
+const SERVER_LIST_MAX_AGE_MS = 5 * 60_000;
+/** @type {{ key: string, at: number, rows: object[] } | null} */
+let serverListCache = null;
+
+/** userData/sync-prompts.json: projectId => the one-time prompt's answer (16r) */
+function promptsFile() {
+  return path.join(require('electron').app.getPath('userData'), 'sync-prompts.json');
+}
+
+async function readPrompts() {
+  try {
+    const data = JSON.parse(await fs.promises.readFile(promptsFile(), 'utf8'));
+    return data && typeof data === 'object' ? data : {};
+  } catch (_) {
+    return {};
+  }
+}
+
+/**
+ * Record the one-time prompt's answer for a project ('automatic' | 'manual' | 'local').
+ * @param {string} projectId
+ * @param {string} answer
+ */
+async function setPromptAnswer(projectId, answer) {
+  if (!['automatic', 'manual', 'local'].includes(answer)) return { ok: false, kind: 'error', message: 'Unknown answer' };
+  const prompts = await readPrompts();
+  prompts[projectId] = answer;
+  const { writeFileAtomic } = require('../atomicFile');
+  await writeFileAtomic(promptsFile(), JSON.stringify(prompts, null, 2));
+  return { ok: true };
+}
+
+/**
+ * My server projects (all formats), from the cache unless older than
+ * SERVER_LIST_MAX_AGE_MS or refresh is asked for. Null when logged out.
+ * @param {string} restServer
+ * @param {{ refresh?: boolean }} [options]
+ */
+async function myServerProjects(restServer, { refresh = false } = {}) {
+  const tokens = await tokenService.getTokens();
+  if (!tokens || !tokens.user) return null;
+  const key = `${String(restServer).trim().replace(/\/+$/, '').toLowerCase()}|${tokens.user.pkey}`;
+  if (!refresh && serverListCache && serverListCache.key === key && Date.now() - serverListCache.at < SERVER_LIST_MAX_AGE_MS) {
+    return serverListCache.rows;
+  }
+  const rows = await makeClient(restServer).listProjects({ includeLegacy: true });
+  serverListCache = { key, at: Date.now(), rows: Array.isArray(rows) ? rows : [] };
+  return serverListCache.rows;
+}
+
+/** A server row as the app sees it */
+function serverRow(r) {
+  return {
+    pid: r.pid, straboId: r.straboId, name: r.name, role: r.role, syncFormat: r.syncFormat,
+    syncState: r.syncState, updatedAt: r.updatedAt || null, owner: r.owner || null,
+  };
+}
+
+/**
+ * The server project with this local-only project's id, and the one-time
+ * prompt's answer, for the prompt on open (16an). row is null when the
+ * server has none, the project is synced already, or the user is logged out.
+ * @param {string} projectId
+ * @param {string} restServer
+ */
+async function serverProject(projectId, restServer) {
+  try {
+    const answer = (await readPrompts())[projectId] || null;
+    if (isSyncedFolder(projectFolders.getProjectFolderPath(projectId))) return { ok: true, row: null, answer };
+    const rows = await myServerProjects(restServer);
+    const row = rows && rows.find((r) => r && r.straboId === projectId);
+    return { ok: true, row: row ? serverRow(row) : null, answer };
+  } catch (err) {
+    return failure(err);
+  }
+}
+
+/**
+ * My server projects for Open Remote Project (16ao), each with what this
+ * computer has: 'synced' (my synced copy), 'local' (a local-only copy) or null.
+ * @param {string} restServer
+ */
+async function listServerProjects(restServer) {
+  try {
+    const rows = await myServerProjects(restServer, { refresh: true });
+    if (rows === null) return { ok: false, kind: 'auth', message: 'Log in to see your projects on StraboSpot.' };
+    const tokens = await tokenService.getTokens();
+    const pkey = tokens && tokens.user ? tokens.user.pkey : null;
+    const projects = rows.filter(Boolean).map((r) => {
+      const mine = projectFolders.getAccountCopyPath(r.straboId, restServer, pkey);
+      const here = fs.existsSync(path.join(mine, 'project.json')) ? 'synced'
+        : fs.existsSync(path.join(projectFolders.getStraboMicro2DataPath(), r.straboId, 'project.json')) ? 'local' : null;
+      return { ...serverRow(r), here };
+    });
+    return { ok: true, projects };
+  } catch (err) {
+    return failure(err);
+  }
+}
+
+/**
+ * The local-only copy vs the converted server project (read-only, 16s).
+ * @param {string} projectId
+ * @param {string} restServer
+ * @param {number} pid
+ * @param {(p: object) => void} onProgress
+ */
+async function compare(projectId, restServer, pid, onProgress) {
+  try {
+    const r = await loadEngine().link.compareWithServer({ projectId, pid, client: makeClient(restServer), onProgress });
+    return { ok: true, ...r };
+  } catch (err) {
+    return failure(err);
+  }
+}
+
+/** The signed-in user, or an auth failure */
+async function signedInUser() {
+  const tokens = await tokenService.getTokens();
+  if (!tokens || !tokens.user) return { failure: { ok: false, kind: 'auth', message: 'Log in to sync this project.' } };
+  return { user: tokens.user };
+}
+
+/** The local project into version history (before the server's copy replaces it) */
+async function saveLocalVersion(projectId, label) {
+  const versionHistory = require('../versionHistory');
+  const { loadProjectJson } = require('../projectSerializer');
+  await versionHistory.createVersion(projectId, await loadProjectJson(projectId), label, null);
+}
+
+/**
+ * Link a local-only copy (not loaded) to the server project pid (16an, 16am):
+ * converted rows link with mine or theirs; legacy rows are adopted, theirs
+ * first replacing the local copy with the server's upload (the local folder
+ * is set aside in StraboMicro2Data/_replaced, since the import clears
+ * version history).
+ * @param {string} projectId
+ * @param {string} restServer
+ * @param {number} pid
+ * @param {'automatic' | 'manual'} mode
+ * @param {'mine' | 'theirs'} use
+ * @param {(p: object) => void} onProgress
+ */
+function link(projectId, restServer, pid, mode, use, onProgress) {
+  return serialize(projectId, async () => {
+    try {
+      if (mode !== 'automatic' && mode !== 'manual') return { ok: false, kind: 'error', message: 'Unknown sync mode' };
+      if (use !== 'mine' && use !== 'theirs') return { ok: false, kind: 'error', message: 'Unknown choice' };
+      if (isSyncedFolder(projectFolders.getProjectFolderPath(projectId))) {
+        return { ok: false, kind: 'exists', message: 'This project is already synced.' };
+      }
+      const { user, failure: noUser } = await signedInUser();
+      if (noUser) return noUser;
+      const client = makeClient(restServer);
+      const rows = await myServerProjects(restServer, { refresh: true });
+      const row = (rows || []).find((r) => r && r.pid === pid && r.straboId === projectId);
+      if (!row) return { ok: false, kind: 'error', message: 'This project is not on StraboSpot any more.' };
+      const { link: linker } = loadEngine();
+      let folder;
+      if (row.syncFormat === 'legacy') {
+        if (use === 'theirs') await replaceWithLegacyUpload(projectId, restServer, pid, onProgress);
+        folder = (await linker.adoptLegacy({ projectId, pid, restServer, user, mode, client })).folder;
+      } else {
+        folder = (await linker.linkToServer({
+          projectId, pid, restServer, user, mode, use, client, onProgress,
+          saveVersion: saveLocalVersion,
+        })).folder;
+      }
+      serverListCache = null;
+      return { ok: true, folder, adopted: row.syncFormat === 'legacy' };
+    } catch (err) {
+      return failure(err);
+    }
+  });
+}
+
+/**
+ * Legacy row, "Use the server copy": download its upload (the old door,
+ * on the configured server) and import it in place of the local copy,
+ * whose folder is set aside first (renamed, nothing deleted).
+ */
+async function replaceWithLegacyUpload(projectId, restServer, pid, onProgress) {
+  const serverDownload = require('../serverDownload');
+  const smzImport = require('../smzImport');
+  const token = await tokenService.getValidAccessToken(restServer);
+  if (!token.success) throw new Error(token.error || 'Log in to download the StraboSpot copy.');
+  const dl = await serverDownload.downloadProject(pid, token.accessToken,
+    (p) => onProgress({ phase: 'download', item: p.message }), restServer);
+  if (!dl.success) throw new Error(dl.error || 'The StraboSpot copy could not be downloaded.');
+  try {
+    const inspect = await smzImport.inspectSmz(dl.zipPath);
+    if (!inspect.success || inspect.projectId !== projectId) throw new Error('The StraboSpot copy is a different project.');
+    const local = path.join(projectFolders.getStraboMicro2DataPath(), projectId);
+    const aside = path.join(projectFolders.getStraboMicro2DataPath(), '_replaced', `${projectId}-${new Date().toISOString().replace(/[:.]/g, '-')}`);
+    await fs.promises.mkdir(path.dirname(aside), { recursive: true });
+    await fs.promises.rename(local, aside);
+    log.info(`[Sync] Local copy of ${projectId} set aside in ${aside} before using the StraboSpot copy`);
+    const imp = await smzImport.importSmz(dl.zipPath, (p) => onProgress({ phase: 'download', item: p.detail }));
+    if (!imp.success) {
+      // Put the local copy back
+      await fs.promises.rm(local, { recursive: true, force: true }).catch(() => {});
+      await fs.promises.rename(aside, local);
+      throw new Error(imp.error || 'The StraboSpot copy could not be imported.');
+    }
+  } finally {
+    await serverDownload.cleanupDownload(dl.zipPath).catch(() => {});
   }
 }
 
@@ -599,6 +817,13 @@ function registerSyncIpc(ipcMain, getMainWindow, { devTools = false } = {}) {
   ipcMain.handle('sync:push', (_event, projectId, restServer) =>
     push(projectId, restServer, (p) => send('sync:progress', { projectId, ...p })));
   ipcMain.handle('sync:activity', (_event, projectId, restServer, presence) => activity(projectId, restServer, presence));
+  ipcMain.handle('sync:server-project', (_event, projectId, restServer) => serverProject(projectId, restServer));
+  ipcMain.handle('sync:server-projects', (_event, restServer) => listServerProjects(restServer));
+  ipcMain.handle('sync:prompt-answer', (_event, projectId, answer) => setPromptAnswer(projectId, answer));
+  ipcMain.handle('sync:compare', (_event, projectId, restServer, pid) =>
+    compare(projectId, restServer, pid, (p) => send('sync:progress', { projectId, ...p })));
+  ipcMain.handle('sync:link', (_event, projectId, restServer, pid, mode, use) =>
+    link(projectId, restServer, pid, mode, use, (p) => send('sync:progress', { projectId, ...p })));
   ipcMain.handle('sync:preflight', (_event, projectId, restServer) => preflight(projectId, restServer));
   ipcMain.handle('sync:set-mode', (_event, projectId, mode) => setMode(projectId, mode));
   ipcMain.handle('sync:pull', (_event, projectId, restServer) =>
@@ -620,6 +845,6 @@ function registerSyncIpc(ipcMain, getMainWindow, { devTools = false } = {}) {
 }
 
 module.exports = {
-  registerSyncIpc, notifyLocalChange, getStatus, preflight, activity, turnOn, push, setMode, pull, commitPull, discardPull, download, clone,
+  registerSyncIpc, notifyLocalChange, getStatus, preflight, activity, serverProject, listServerProjects, setPromptAnswer, compare, link, turnOn, push, setMode, pull, commitPull, discardPull, download, clone,
   listDecisions, decide, decideCommit, decideDiscard, testOther, testCompare,
 };

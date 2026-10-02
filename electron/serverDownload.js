@@ -113,14 +113,15 @@ async function listProjects(accessToken) {
  * @param {string} accessToken - JWT access token
  * @returns {Promise<{success: boolean, url?: string, bytes?: number, micrographCount?: string, error?: string}>}
  */
-async function getProjectUrl(projectId, accessToken) {
+async function getProjectUrl(projectId, accessToken, serverBase = ENDPOINTS.BASE_URL) {
   try {
     log.info(`[ServerDownload] Getting download URL for project: ${projectId}`);
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 15000);
 
-    const response = await fetch(`${ENDPOINTS.PROJECT_URL}/${projectId}`, {
+    const projectUrlEndpoint = serverBase === ENDPOINTS.BASE_URL ? ENDPOINTS.PROJECT_URL : `${String(serverBase).replace(/\/+$/, '')}/jwtmicrodb/projectURL`;
+    const response = await fetch(`${projectUrlEndpoint}/${projectId}`, {
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${accessToken}`,
@@ -145,7 +146,7 @@ async function getProjectUrl(projectId, accessToken) {
     // Construct full URL (the response gives a relative path)
     const fullUrl = data.url.startsWith('http')
       ? data.url
-      : `${ENDPOINTS.BASE_URL}${data.url}`;
+      : `${String(serverBase).replace(/\/+$/, '')}${data.url}`;
 
     log.info(`[ServerDownload] Download URL: ${fullUrl}`);
     log.info(`[ServerDownload] File size: ${formatBytes(data.bytes)}`);
@@ -259,7 +260,7 @@ function downloadFile(url, destPath, progressCallback) {
  * @param {Function} progressCallback - Progress callback
  * @returns {Promise<{success: boolean, zipPath?: string, error?: string}>}
  */
-async function downloadProject(projectId, accessToken, progressCallback) {
+async function downloadProject(projectId, accessToken, progressCallback, serverBase = ENDPOINTS.BASE_URL) {
   let tempZipPath = null;
 
   try {
@@ -275,7 +276,7 @@ async function downloadProject(projectId, accessToken, progressCallback) {
     // --- Step 1: Get download URL ---
     sendProgress(DownloadPhase.FETCHING_URL, 5, 'Getting download link...');
 
-    const urlResult = await getProjectUrl(projectId, accessToken);
+    const urlResult = await getProjectUrl(projectId, accessToken, serverBase);
     if (!urlResult.success) {
       return { success: false, error: urlResult.error };
     }
