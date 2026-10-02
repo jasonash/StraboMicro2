@@ -1600,6 +1600,7 @@ function App() {
           setImportSmzFilePath(null); // Clear the file path when closing
         }}
         initialFilePath={importSmzFilePath}
+        onOpenProject={openProjectById}
         onImportComplete={(importedProject) => {
           // Load the imported project with image preparation
           loadProjectWithPreparation(importedProject, null);
@@ -1614,6 +1615,7 @@ function App() {
         open={deepLinkPkey !== null}
         pkey={deepLinkPkey ?? ''}
         onClose={() => setDeepLinkPkey(null)}
+        onOpenProject={openProjectById}
         onImportComplete={(importedProject: any) => {
           // Load the imported project with image preparation
           loadProjectWithPreparation(importedProject, null);
@@ -1622,6 +1624,7 @@ function App() {
       <SharedProjectDialog
         open={isSharedProjectOpen}
         onClose={() => setIsSharedProjectOpen(false)}
+        onOpenProject={openProjectById}
         onImportComplete={(importedProject: any) => {
           // Load the imported project with image preparation
           loadProjectWithPreparation(importedProject, null);

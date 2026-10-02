@@ -854,15 +854,10 @@ interface Window {
         filePath?: string;
       }>;
       // Inspect an .smz file (get project info without importing)
-      inspect: (smzPath: string) => Promise<{
-        success: boolean;
-        projectId?: string;
-        projectName?: string;
-        projectExists?: boolean;
-        error?: string;
-      }>;
-      // Import an .smz file (DESTRUCTIVE - replaces existing project)
-      import: (smzPath: string) => Promise<{
+      inspect: (smzPath: string) => Promise<SmzInspectResult>;
+      // Import an .smz file (DESTRUCTIVE - replaces a local-only project with the same id;
+      // asCopy: under a new id, next to my synced copy)
+      import: (smzPath: string, options?: { asCopy?: boolean }) => Promise<{
         success: boolean;
         projectId?: string;
         projectData?: any;
@@ -1251,6 +1246,18 @@ interface DiffEntry {
   entityId: string;
   entityName: string;
   parentPath: string | null;
+}
+
+/** What an .smz file holds and what this computer has of that project */
+interface SmzInspectResult {
+  success: boolean;
+  projectId?: string;
+  projectName?: string;
+  /** A local-only copy with this id exists (an import replaces it) */
+  projectExists?: boolean;
+  /** The logged-in (else last) account has a synced copy (never replaced) */
+  syncedCopy?: boolean;
+  error?: string;
 }
 
 interface VersionStats {

@@ -10,8 +10,13 @@
  *    trigger the protocol, so nothing happens without explicit consent)
  * 3. Download the .smz to a temp file with progress
  * 4. Inspect the archive; if the project exists locally, show the same
- *    replace warning as the other import flows
+ *    replace warning as the other import flows (my synced copy is never
+ *    replaced: open it or import a separate copy)
  * 5. Import and hand the project data to the app
+ *
+ * One of my own projects (logged in, app set to strabospot.org) skips the
+ * download and opens like Open Remote Project: my copy here, else a synced
+ * copy is downloaded (spec v3 16ao).
  */
 
 import { useEffect, useState, useCallback } from 'react';
@@ -24,18 +29,19 @@ import {
   Box,
   Typography,
   LinearProgress,
-  Alert,
   Chip,
   CircularProgress,
 } from '@mui/material';
 import CloudDownloadIcon from '@mui/icons-material/CloudDownload';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import ErrorIcon from '@mui/icons-material/Error';
-import WarningIcon from '@mui/icons-material/Warning';
 import SearchOffIcon from '@mui/icons-material/SearchOff';
 import { useAppStore } from '../../store/useAppStore';
 import { unloadIfReplacingOpenProject, dedupeImportedPresets } from '../../utils/importUtils';
 import { closeUnlessEscapeBlocked } from '@/utils/dialogClose';
+import { useAuthStore } from '@/store/useAuthStore';
+import { ImportTargetNotice, ImportTargetActions, importNeedsAnswer } from './ImportTargetNotice';
+import { findMyRemoteProject, openRemoteHere, downloadRemote, type RemoteProject } from '@/services/remoteProjects';
 
 interface RemoteInspectResult {
   success: boolean;
@@ -60,14 +66,6 @@ interface ImportProgress {
   detail: string;
 }
 
-interface FileInspectResult {
-  success: boolean;
-  projectId?: string;
-  projectName?: string;
-  projectExists?: boolean;
-  error?: string;
-}
-
 interface ImportResult {
   success: boolean;
   projectId?: string;
@@ -78,6 +76,8 @@ interface ImportResult {
 type DialogState =
   | 'inspecting'        // Resolving project name/size from the server
   | 'confirm'           // Ask before downloading
+  | 'mine'              // One of my StraboSpot projects: open or download a synced copy
+  | 'opening-mine'      // Downloading my project as a synced copy
   | 'not-found'         // Server has no project with this pkey
   | 'downloading'       // Download in progress
   | 'inspecting-file'   // Inspecting the downloaded archive
@@ -92,6 +92,8 @@ interface DeepLinkOpenDialogProps {
   pkey: string;
   onClose: () => void;
   onImportComplete: (projectData: any) => void;
+  /** Open a project that is on disk */
+  onOpenProject: (projectId: string) => Promise<void> | void;
 }
 
 export function DeepLinkOpenDialog({
@@ -99,13 +101,17 @@ export function DeepLinkOpenDialog({
   pkey,
   onClose,
   onImportComplete,
+  onOpenProject,
 }: DeepLinkOpenDialogProps) {
   const globalPresets = useAppStore((state) => state.globalPresets);
+  const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
+  const [myProject, setMyProject] = useState<RemoteProject | null>(null);
+  const [mineStatus, setMineStatus] = useState<string | null>(null);
 
   const [dialogState, setDialogState] = useState<DialogState>('inspecting');
   const [remoteInfo, setRemoteInfo] = useState<RemoteInspectResult | null>(null);
   const [downloadedZipPath, setDownloadedZipPath] = useState<string | null>(null);
-  const [fileInspect, setFileInspect] = useState<FileInspectResult | null>(null);
+  const [fileInspect, setFileInspect] = useState<SmzInspectResult | null>(null);
   const [downloadProgress, setDownloadProgress] = useState<DownloadProgress | null>(null);
   const [importProgress, setImportProgress] = useState<ImportProgress | null>(null);
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
@@ -153,12 +159,15 @@ export function DeepLinkOpenDialog({
       }
 
       setRemoteInfo(result);
-      setDialogState('confirm');
+      // One of mine: open it the way Open Remote Project does
+      const mine = isAuthenticated ? await findMyRemoteProject(pkey).catch(() => null) : null;
+      setMyProject(mine);
+      setDialogState(mine ? 'mine' : 'confirm');
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'Could not reach the server');
       setDialogState('error');
     }
-  }, [pkey]);
+  }, [pkey, isAuthenticated]);
 
   // Start resolving as soon as the dialog opens
   useEffect(() => {
@@ -184,10 +193,31 @@ export function DeepLinkOpenDialog({
       setImportProgress(null);
       setImportResult(null);
       setErrorMessage(null);
+      setMyProject(null);
+      setMineStatus(null);
     }
   }, [open, downloadedZipPath]);
 
-  const startImport = useCallback(async (zipPath: string, inspect: FileInspectResult) => {
+  const openMine = useCallback(async () => {
+    if (!myProject) return;
+    if (myProject.here) {
+      onClose();
+      await openRemoteHere(myProject, onOpenProject);
+      return;
+    }
+    setDialogState('opening-mine');
+    setMineStatus('Starting the download…');
+    const r = await downloadRemote(myProject, 'automatic', setMineStatus);
+    if (!r.ok) {
+      setErrorMessage(r.message);
+      setDialogState('error');
+      return;
+    }
+    onClose();
+    await onOpenProject(r.projectId);
+  }, [myProject, onClose, onOpenProject]);
+
+  const startImport = useCallback(async (zipPath: string, inspect: SmzInspectResult, asCopy: boolean) => {
     if (!window.api?.smzImport?.import) {
       setErrorMessage('SMZ import API not available');
       setDialogState('error');
@@ -200,12 +230,12 @@ export function DeepLinkOpenDialog({
     // If we're replacing the currently open project, unload it first so the
     // viewer doesn't read files the import is deleting (shared with the
     // other import flows).
-    if (inspect.projectExists) {
+    if (inspect.projectExists && !asCopy) {
       unloadIfReplacingOpenProject(inspect.projectId);
     }
 
     try {
-      const result = await window.api.smzImport.import(zipPath);
+      const result = await window.api.smzImport.import(zipPath, { asCopy });
 
       if (result.success) {
         setImportResult(result);
@@ -258,10 +288,10 @@ export function DeepLinkOpenDialog({
 
       setFileInspect(inspect);
 
-      if (inspect.projectExists) {
+      if (importNeedsAnswer(inspect)) {
         setDialogState('confirm-replace');
       } else {
-        await startImport(result.zipPath, inspect);
+        await startImport(result.zipPath, inspect, false);
       }
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'Download failed');
@@ -271,7 +301,7 @@ export function DeepLinkOpenDialog({
 
   const handleClose = () => {
     // Don't allow closing during download or import
-    if (dialogState === 'downloading' || dialogState === 'importing') return;
+    if (dialogState === 'downloading' || dialogState === 'importing' || dialogState === 'opening-mine') return;
     onClose();
   };
 
@@ -319,6 +349,30 @@ export function DeepLinkOpenDialog({
               This link wants to download the project from strabospot.org and
               open it in StraboMicro. Nothing has been downloaded yet.
             </Typography>
+          </Box>
+        );
+
+      case 'mine':
+        return (
+          <Box sx={{ py: 1 }}>
+            <Typography variant="h6" gutterBottom>
+              {myProject?.name || projectName}
+            </Typography>
+            <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+              {myProject?.here === 'synced'
+                ? 'This is your project on StraboSpot, and your synced copy is on this computer.'
+                : myProject?.here === 'local'
+                  ? 'This is your project on StraboSpot, and a copy of it is on this computer.'
+                  : 'This is your project on StraboSpot. Download it as a synced copy: changes sync with StraboSpot automatically.'}
+            </Typography>
+          </Box>
+        );
+
+      case 'opening-mine':
+        return (
+          <Box sx={{ py: 2, textAlign: 'center' }}>
+            <CircularProgress sx={{ mb: 2 }} />
+            <Typography>{mineStatus || 'Downloading…'}</Typography>
           </Box>
         );
 
@@ -389,37 +443,7 @@ export function DeepLinkOpenDialog({
               Project ID: {fileInspect?.projectId}
             </Typography>
 
-            <Alert severity="warning" icon={<WarningIcon />} sx={{ mb: 2 }}>
-              <Typography variant="subtitle2" sx={{ fontWeight: 'bold', mb: 1 }}>
-                This will replace your local project!
-              </Typography>
-              <Typography variant="body2" sx={{ mb: 1 }}>
-                A project with this ID already exists on your computer.
-                Continuing will:
-              </Typography>
-              <ul style={{ margin: '8px 0', paddingLeft: '20px' }}>
-                <li><Typography variant="body2">
-                  <strong>Delete all local data</strong> for this project
-                </Typography></li>
-                <li><Typography variant="body2">
-                  <strong>Clear version history</strong> (all previous versions will be lost)
-                </Typography></li>
-                <li><Typography variant="body2">
-                  Replace with the version from strabospot.org
-                </Typography></li>
-              </ul>
-              <Typography variant="body2" sx={{ mt: 1, fontWeight: 'bold' }}>
-                Before continuing, consider:
-              </Typography>
-              <ul style={{ margin: '8px 0', paddingLeft: '20px' }}>
-                <li><Typography variant="body2">
-                  Exporting your local project as .smz (File → Export as .smz)
-                </Typography></li>
-                <li><Typography variant="body2">
-                  Pushing local changes to server first (File → Push to Server)
-                </Typography></li>
-              </ul>
-            </Alert>
+            <ImportTargetNotice inspect={fileInspect} source="the version from strabospot.org" />
           </Box>
         );
 
@@ -506,27 +530,38 @@ export function DeepLinkOpenDialog({
           </>
         );
 
+      case 'mine':
+        return (
+          <>
+            <Button onClick={handleClose}>Cancel</Button>
+            <Button variant="contained" onClick={() => void openMine()}>
+              {myProject?.here ? 'Open' : 'Download'}
+            </Button>
+          </>
+        );
+
       case 'downloading':
       case 'inspecting-file':
       case 'importing':
+      case 'opening-mine':
         return null; // No actions during these states
 
       case 'confirm-replace':
         return (
-          <>
-            <Button onClick={handleClose}>Cancel</Button>
-            <Button
-              variant="contained"
-              color="warning"
-              onClick={() => {
-                if (downloadedZipPath && fileInspect) {
-                  startImport(downloadedZipPath, fileInspect);
-                }
-              }}
-            >
-              Replace & Import
-            </Button>
-          </>
+          <ImportTargetActions
+            inspect={fileInspect}
+            onCancel={handleClose}
+            onImport={(asCopy) => {
+              if (downloadedZipPath && fileInspect) {
+                void startImport(downloadedZipPath, fileInspect, asCopy);
+              }
+            }}
+            onOpenMine={() => {
+              const id = fileInspect?.projectId;
+              onClose();
+              if (id) void onOpenProject(id);
+            }}
+          />
         );
 
       case 'success':
@@ -551,7 +586,7 @@ export function DeepLinkOpenDialog({
   return (
     <Dialog
       open={open}
-      onClose={closeUnlessEscapeBlocked(handleClose, dialogState === 'downloading' || dialogState === 'importing')}
+      onClose={closeUnlessEscapeBlocked(handleClose, dialogState === 'downloading' || dialogState === 'importing' || dialogState === 'opening-mine')}
       maxWidth="sm"
       fullWidth
     >

@@ -7,7 +7,8 @@
  * Flow:
  * 1. User selects .smz file via file dialog
  * 2. System inspects the archive to get project info
- * 3. If project exists locally, show warning about data replacement
+ * 3. If project exists locally, show warning about data replacement; if my
+ *    synced copy is here, offer to open it or import a separate copy
  * 4. User confirms import (or cancels)
  * 5. Import proceeds with progress display
  */
@@ -27,23 +28,15 @@ import {
 import FolderOpenIcon from '@mui/icons-material/FolderOpen';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import ErrorIcon from '@mui/icons-material/Error';
-import WarningIcon from '@mui/icons-material/Warning';
 import { useAppStore } from '../../store/useAppStore';
 import { unloadIfReplacingOpenProject, dedupeImportedPresets } from '../../utils/importUtils';
 import { closeUnlessEscapeBlocked } from '@/utils/dialogClose';
+import { ImportTargetNotice, ImportTargetActions } from './ImportTargetNotice';
 
 interface ImportProgress {
   phase: string;
   percentage: number;
   detail: string;
-}
-
-interface InspectResult {
-  success: boolean;
-  projectId?: string;
-  projectName?: string;
-  projectExists?: boolean;
-  error?: string;
 }
 
 interface ImportResult {
@@ -65,6 +58,8 @@ interface ImportSmzDialogProps {
   open: boolean;
   onClose: () => void;
   onImportComplete: (projectData: any) => void;
+  /** Open a project that is on disk (my synced copy) */
+  onOpenProject: (projectId: string) => Promise<void> | void;
   /** Optional file path to import directly (skips file selection dialog) */
   initialFilePath?: string | null;
 }
@@ -73,6 +68,7 @@ export function ImportSmzDialog({
   open,
   onClose,
   onImportComplete,
+  onOpenProject,
   initialFilePath,
 }: ImportSmzDialogProps) {
   // Get global presets for deduplication during import
@@ -80,7 +76,7 @@ export function ImportSmzDialog({
 
   const [dialogState, setDialogState] = useState<DialogState>('selecting');
   const [filePath, setFilePath] = useState<string | null>(null);
-  const [inspectResult, setInspectResult] = useState<InspectResult | null>(null);
+  const [inspectResult, setInspectResult] = useState<SmzInspectResult | null>(null);
   const [progress, setProgress] = useState<ImportProgress | null>(null);
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -189,7 +185,7 @@ export function ImportSmzDialog({
     }
   }, [open]);
 
-  const startImport = useCallback(async () => {
+  const startImport = useCallback(async (asCopy: boolean) => {
     if (!filePath || !window.api?.smzImport?.import) return;
 
     setDialogState('importing');
@@ -199,12 +195,12 @@ export function ImportSmzDialog({
     // the viewer doesn't keep reading image files while the import deletes and
     // rewrites them. The user has already confirmed the local data will be
     // replaced, so there's nothing worth saving.
-    if (inspectResult?.projectExists) {
+    if (inspectResult?.projectExists && !asCopy) {
       unloadIfReplacingOpenProject(inspectResult.projectId);
     }
 
     try {
-      const result = await window.api.smzImport.import(filePath);
+      const result = await window.api.smzImport.import(filePath, { asCopy });
 
       if (result.success) {
         setImportResult(result);
@@ -276,42 +272,8 @@ export function ImportSmzDialog({
               Project ID: {inspectResult?.projectId}
             </Typography>
 
-            {inspectResult?.projectExists ? (
-              <Alert
-                severity="warning"
-                icon={<WarningIcon />}
-                sx={{ mb: 2 }}
-              >
-                <Typography variant="subtitle2" sx={{ fontWeight: 'bold', mb: 1 }}>
-                  This will replace your local project!
-                </Typography>
-                <Typography variant="body2" sx={{ mb: 1 }}>
-                  A project with this ID already exists on your computer. Importing this file will:
-                </Typography>
-                <ul style={{ margin: '8px 0', paddingLeft: '20px' }}>
-                  <li><Typography variant="body2">
-                    <strong>Delete all local data</strong> for this project
-                  </Typography></li>
-                  <li><Typography variant="body2">
-                    <strong>Clear version history</strong> (all previous versions will be lost)
-                  </Typography></li>
-                  <li><Typography variant="body2">
-                    Replace with the contents of the .smz file
-                  </Typography></li>
-                </ul>
-                <Typography variant="body2" sx={{ mt: 1, fontWeight: 'bold' }}>
-                  Before continuing, consider:
-                </Typography>
-                <ul style={{ margin: '8px 0', paddingLeft: '20px' }}>
-                  <li><Typography variant="body2">
-                    Exporting your local project as .smz (File → Export as .smz)
-                  </Typography></li>
-                  <li><Typography variant="body2">
-                    Pushing to the server (File → Push to Server)
-                  </Typography></li>
-                </ul>
-              </Alert>
-            ) : (
+            <ImportTargetNotice inspect={inspectResult} source="the contents of the .smz file" />
+            {!inspectResult?.projectExists && !inspectResult?.syncedCopy && (
               <Alert severity="info" sx={{ mb: 2 }}>
                 <Typography variant="body2">
                   This project will be imported to your local projects folder.
@@ -360,7 +322,7 @@ export function ImportSmzDialog({
             <Typography variant="body2" sx={{
               color: 'text.secondary'
             }}>
-              Project "{inspectResult?.projectName}" has been imported successfully.
+              Project "{importResult?.projectData?.name ?? inspectResult?.projectName}" has been imported successfully.
             </Typography>
           </Box>
         );
@@ -397,16 +359,16 @@ export function ImportSmzDialog({
 
       case 'confirm-import':
         return (
-          <>
-            <Button onClick={handleClose}>Cancel</Button>
-            <Button
-              variant="contained"
-              color={inspectResult?.projectExists ? 'warning' : 'primary'}
-              onClick={startImport}
-            >
-              {inspectResult?.projectExists ? 'Replace & Import' : 'Import'}
-            </Button>
-          </>
+          <ImportTargetActions
+            inspect={inspectResult}
+            onCancel={handleClose}
+            onImport={(asCopy) => void startImport(asCopy)}
+            onOpenMine={() => {
+              const id = inspectResult?.projectId;
+              onClose();
+              if (id) void onOpenProject(id);
+            }}
+          />
         );
 
       case 'importing':

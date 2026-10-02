@@ -31,11 +31,7 @@ import {
 } from '@mui/material';
 import { getRestServerUrl } from './PreferencesDialog';
 import { formatSyncDate } from '@/utils/formatSyncDate';
-import { describeProgress } from '@/utils/syncChipState';
-import { offerLink } from '@/services/syncLinking';
-import { requestFirstSync } from '@/services/syncActions';
-
-type RemoteProject = SyncServerProject & { here: 'synced' | 'local' | null };
+import { openRemoteHere, downloadRemote, type RemoteProject } from '@/services/remoteProjects';
 
 interface OpenRemoteProjectDialogProps {
   open: boolean;
@@ -69,31 +65,21 @@ export function OpenRemoteProjectDialog({ open, onClose, onOpenProject }: OpenRe
 
   const openHere = async (p: RemoteProject) => {
     onClose();
-    await onOpenProject(p.straboId);
-    if (p.here === 'local') offerLink({ projectId: p.straboId, pid: p.pid, syncFormat: p.syncFormat, updatedAt: p.updatedAt });
+    await openRemoteHere(p, onOpenProject);
   };
 
   const download = async (p: RemoteProject) => {
-    const api = window.api;
-    if (!api) return;
     setBusy({ pid: p.pid, status: 'Starting the download…' });
     setError(null);
-    const off = api.sync.onProgress((progress) => {
-      if (progress.projectId !== `remote:${p.pid}`) return;
-      setBusy({ pid: p.pid, status: describeProgress(progress) ?? 'Downloading…' });
-    });
     try {
-      const r = await api.sync.openRemote(p.pid, getRestServerUrl(), mode);
+      const r = await downloadRemote(p, mode, (status) => setBusy({ pid: p.pid, status }));
       if (!r.ok) {
         setError(r.message);
         return;
       }
-      // An older upload was adopted: its first upload into the same project runs now
-      if (r.adopted) requestFirstSync(r.projectId);
       onClose();
       await onOpenProject(r.projectId);
     } finally {
-      off();
       setBusy(null);
     }
   };
