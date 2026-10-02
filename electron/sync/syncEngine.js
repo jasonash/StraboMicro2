@@ -364,4 +364,21 @@ async function turnSyncOn({ projectId, restServer, user, mode = 'automatic', cli
   return { status: 'synced', pid, folder };
 }
 
-module.exports = { pushProject, turnSyncOn, countPendingChanges, readProjectFiles, plannedFiles, getClientId };
+/**
+ * Bytes a first upload of this folder sends, for the turn-on dialog: the
+ * originals and the other files (thumbnails, attachments). Tile ZIPs are
+ * built during the upload and not counted, so this is a lower estimate.
+ * @param {string} folder
+ * @returns {Promise<number>}
+ */
+async function estimateUploadBytes(folder) {
+  const { project, pointCounts } = await readProjectFiles(folder);
+  let bytes = 0;
+  for (const f of plannedFiles(folder, explode(project, pointCounts))) {
+    if (!f.rel) continue;
+    bytes += await fs.promises.stat(path.join(folder, f.rel)).then((st) => st.size, () => 0);
+  }
+  return bytes;
+}
+
+module.exports = { pushProject, turnSyncOn, countPendingChanges, estimateUploadBytes, readProjectFiles, plannedFiles, getClientId };

@@ -31,7 +31,23 @@ export async function changeModeFromUser(mode: SyncMode): Promise<SyncCallResult
   return changeSyncMode(mode);
 }
 
-/** Ask App to turn sync on for the open project (step 8 stage 2 replaces this with the turn-on dialog). */
+/** Ask App to open the turn-on dialog for the open project (16aj). */
 export function requestTurnOnSync(): void {
   window.dispatchEvent(new CustomEvent(TURN_ON_SYNC_EVENT));
+}
+
+/** Projects whose first upload starts as soon as their sync starts, in either mode */
+const firstSyncRequests = new Set<string>();
+
+/**
+ * Sync was just turned on for this project: its first upload runs when the
+ * controller starts, also in Manual mode (the user just asked for it, 16aj).
+ */
+export function requestFirstSync(projectId: string): void {
+  firstSyncRequests.add(projectId);
+}
+
+/** Read once by the controller when it starts */
+export function takeFirstSyncRequest(projectId: string): boolean {
+  return firstSyncRequests.delete(projectId);
 }

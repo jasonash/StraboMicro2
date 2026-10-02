@@ -9,7 +9,8 @@
  * by main, e.g. point counts) pushes 3 s after editing pauses, and at most
  * 30 s after the first unpushed change while editing continues (§6.1, 16i).
  * Queued changes push when the project opens.
- * Manual mode: nothing runs until syncNow() (the Sync click).
+ * Manual mode: nothing runs until syncNow() (the Sync click), except the
+ * first upload right after sync is turned on (requestFirstSync).
  * Pull (§6.2): syncNow() in either mode is save, push, pull; a push that
  * the server turned down (the entity changed there) also pulls, so the
  * merge runs and the merged result is pushed. A pull waits until no edit is
@@ -47,6 +48,7 @@ import { useSyncStore, decisionsWaiting } from '@/store/useSyncStore';
 import { getRestServerUrl } from '@/components/dialogs/PreferencesDialog';
 import { applyRemoteChanges } from '@/store/remoteChanges';
 import { compositesAffectedBy, regenerateComposites } from '@/utils/compositeRefresh';
+import { takeFirstSyncRequest } from '@/services/syncActions';
 
 const DEBOUNCE_MS = 3_000;
 const MAX_WAIT_MS = 30_000;
@@ -148,7 +150,9 @@ class ProjectSync {
     window.addEventListener('online', onOnline);
     this.unsubscribers.push(() => window.removeEventListener('online', onOnline));
 
-    if (this.mode === 'automatic') void this.run();
+    // Sync just turned on: the first upload runs now, in either mode
+    if (takeFirstSyncRequest(this.projectId)) this.syncNow();
+    else if (this.mode === 'automatic') void this.run();
   }
 
   stop(): void {

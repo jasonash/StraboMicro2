@@ -4,6 +4,7 @@
  * Application-wide preferences and settings.
  * Currently includes:
  * - REST Server URL configuration
+ * - Sync: "Sync new projects to StraboSpot when I'm logged in" (spec v3 16al)
  */
 
 import { useState, useEffect } from 'react';
@@ -19,6 +20,8 @@ import {
   Stack,
   IconButton,
   InputAdornment,
+  FormControlLabel,
+  Checkbox,
 } from '@mui/material';
 import { Refresh as ResetIcon } from '@mui/icons-material';
 
@@ -29,6 +32,7 @@ interface PreferencesDialogProps {
 
 const DEFAULT_REST_SERVER = 'https://strabospot.org';
 const STORAGE_KEY_REST_SERVER = 'preferences:restServer';
+const STORAGE_KEY_SYNC_NEW_PROJECTS = 'preferences:syncNewProjects';
 
 /**
  * Validate URL - must be http or https
@@ -46,6 +50,9 @@ function isValidUrl(url: string): boolean {
 export function PreferencesDialog({ isOpen, onClose }: PreferencesDialogProps) {
   const [restServer, setRestServer] = useState(DEFAULT_REST_SERVER);
   const [error, setError] = useState<string | null>(null);
+  /** null = never chosen (New Project then asks); saved only when changed here */
+  const [syncNewProjects, setSyncNewProjects] = useState<boolean | null>(null);
+  const [syncNewProjectsChanged, setSyncNewProjectsChanged] = useState(false);
 
   // Load saved preferences when dialog opens
   useEffect(() => {
@@ -58,6 +65,8 @@ export function PreferencesDialog({ isOpen, onClose }: PreferencesDialogProps) {
       setRestServer(DEFAULT_REST_SERVER);
     }
     setError(null);
+    setSyncNewProjects(getSyncNewProjectsPreference());
+    setSyncNewProjectsChanged(false);
   }, [isOpen]);
 
   const handleRestServerChange = (value: string) => {
@@ -85,6 +94,7 @@ export function PreferencesDialog({ isOpen, onClose }: PreferencesDialogProps) {
 
     // Save to localStorage
     localStorage.setItem(STORAGE_KEY_REST_SERVER, restServer);
+    if (syncNewProjectsChanged && syncNewProjects !== null) setSyncNewProjectsPreference(syncNewProjects);
 
     console.log('[Preferences] Saved REST server:', restServer);
     onClose();
@@ -152,6 +162,28 @@ export function PreferencesDialog({ isOpen, onClose }: PreferencesDialogProps) {
                 </Typography>
               )}
             </Box>
+
+            {/* Sync Section */}
+            <Box>
+              <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>
+                Sync
+              </Typography>
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={syncNewProjects === true}
+                    onChange={(e) => {
+                      setSyncNewProjects(e.target.checked);
+                      setSyncNewProjectsChanged(true);
+                    }}
+                  />
+                }
+                label="Sync new projects to StraboSpot when I'm logged in"
+              />
+              <Typography variant="body2" sx={{ color: 'text.secondary', ml: 4 }}>
+                New Project preselects this choice. Each project's sync can be changed from the sync status in the header.
+              </Typography>
+            </Box>
           </Stack>
         </Box>
       </DialogContent>
@@ -172,4 +204,17 @@ export function PreferencesDialog({ isOpen, onClose }: PreferencesDialogProps) {
 export function getRestServerUrl(): string {
   const saved = localStorage.getItem(STORAGE_KEY_REST_SERVER);
   return saved || DEFAULT_REST_SERVER;
+}
+
+/**
+ * "Sync new projects to StraboSpot when I'm logged in" (spec v3 16al):
+ * null until chosen once (the first New Project choice sets it).
+ */
+export function getSyncNewProjectsPreference(): boolean | null {
+  const saved = localStorage.getItem(STORAGE_KEY_SYNC_NEW_PROJECTS);
+  return saved === 'true' ? true : saved === 'false' ? false : null;
+}
+
+export function setSyncNewProjectsPreference(value: boolean): void {
+  localStorage.setItem(STORAGE_KEY_SYNC_NEW_PROJECTS, value ? 'true' : 'false');
 }

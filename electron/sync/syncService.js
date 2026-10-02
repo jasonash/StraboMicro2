@@ -7,6 +7,7 @@
  *                  account folder (the first upload runs as the first push)
  *   sync:push      push local changes of a synced project
  *   sync:set-mode  automatic or manual
+ *   sync:preflight upload size + is the project on the server (turn-on dialog)
  *   sync:pull      fetch and merge the server's changes; returns what the
  *                  app must apply to its store (kept pending in memory)
  *   sync:pull-commit  after the app applied them and saved project.json:
@@ -178,6 +179,35 @@ async function getStatus(projectId, project = null) {
     questions: (state.questions || []).length,
     downloads: Object.keys(state.downloads || {}).length,
   };
+}
+
+/**
+ * What the turn-on dialog needs before sync is turned on (spec v3 16aj):
+ * the upload size, and, when logged in, whether the server can sync and
+ * already has this project (then linking is needed, step 8 stage 4).
+ * Not queued with the project's sync calls: it only reads.
+ * @param {string} projectId
+ * @param {string} restServer
+ */
+async function preflight(projectId, restServer) {
+  try {
+    const folder = projectFolders.getProjectFolderPath(projectId);
+    if (isSyncedFolder(folder)) return { ok: false, kind: 'exists', message: 'This project is already synced.' };
+    const bytes = await loadEngine().syncEngine.estimateUploadBytes(folder);
+    const tokens = await tokenService.getTokens();
+    if (!tokens || !tokens.user) return { ok: true, bytes, loggedIn: false, problem: null, onServer: null };
+    try {
+      const list = await makeClient(restServer).listProjects({ includeLegacy: true });
+      const row = (Array.isArray(list) ? list : []).find((p) => p && p.straboId === projectId);
+      const onServer = row ? { pid: row.pid, syncFormat: row.syncFormat, syncState: row.syncState, updatedAt: row.updatedAt } : null;
+      return { ok: true, bytes, loggedIn: true, problem: null, onServer };
+    } catch (err) {
+      const f = failure(err);
+      return { ok: true, bytes, loggedIn: true, problem: { kind: f.kind, message: f.message }, onServer: null };
+    }
+  } catch (err) {
+    return failure(err);
+  }
 }
 
 /**
@@ -533,6 +563,7 @@ function registerSyncIpc(ipcMain, getMainWindow, { devTools = false } = {}) {
   ipcMain.handle('sync:turn-on', (_event, projectId, restServer, mode) => turnOn(projectId, restServer, mode));
   ipcMain.handle('sync:push', (_event, projectId, restServer) =>
     push(projectId, restServer, (p) => send('sync:progress', { projectId, ...p })));
+  ipcMain.handle('sync:preflight', (_event, projectId, restServer) => preflight(projectId, restServer));
   ipcMain.handle('sync:set-mode', (_event, projectId, mode) => setMode(projectId, mode));
   ipcMain.handle('sync:pull', (_event, projectId, restServer) =>
     pull(projectId, restServer, (p) => send('sync:progress', { projectId, ...p })));
@@ -553,6 +584,6 @@ function registerSyncIpc(ipcMain, getMainWindow, { devTools = false } = {}) {
 }
 
 module.exports = {
-  registerSyncIpc, notifyLocalChange, getStatus, turnOn, push, setMode, pull, commitPull, discardPull, download, clone,
+  registerSyncIpc, notifyLocalChange, getStatus, preflight, turnOn, push, setMode, pull, commitPull, discardPull, download, clone,
   listDecisions, decide, decideCommit, decideDiscard, testOther, testCompare,
 };

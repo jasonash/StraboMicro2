@@ -749,7 +749,7 @@ function createWindow() {
           // A synced project: runs Sync Now (asks for a login first if needed)
           label: currentProjectSynced ? 'Sync to Strabo Server...' : 'Upload to Strabo Server...',
           accelerator: 'CmdOrCtrl+Shift+U',
-          enabled: currentProjectSynced || isLoggedIn,
+          enabled: true, // the turn-on dialog offers the login
           click: () => {
             if (mainWindow) {
               mainWindow.webContents.send('menu:push-to-server');
@@ -1272,16 +1272,7 @@ function createWindow() {
           }
         },
         { type: 'separator' },
-        // Temporary sync triggers until the turn-on dialog (step 8 stage 2) and Open Remote
-        // Project (stage 4) exist; Sync Now, the mode and decisions are on the header chip
-        {
-          label: 'Sync: Turn On (Automatic)',
-          click: () => mainWindow?.webContents.send('debug:sync', 'turn-on-automatic'),
-        },
-        {
-          label: 'Sync: Turn On (Manual)',
-          click: () => mainWindow?.webContents.send('debug:sync', 'turn-on-manual'),
-        },
+        // Sync dev tools; the sync UI itself is the header chip, the turn-on dialog and the File menu
         {
           // One-window sync scenarios on the selected micrograph / spot (src/services/syncTestScenarios.ts)
           label: 'Sync Test',

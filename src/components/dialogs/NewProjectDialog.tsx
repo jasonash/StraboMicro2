@@ -3,10 +3,21 @@
  *
  * Simple dialog for creating a new project with metadata only.
  * After creation, user can add datasets via the tree view.
+ *
+ * "Where to keep this project" (collaboration spec v3, 16ak): on this
+ * computer only, or also synced to StraboSpot (Sync automatically). Logged
+ * in, it follows the preference (16al), and the first choice sets it.
+ * Logged out, syncing needs the inline login first. A synced project is
+ * saved and turned on before it loads (turning sync on moves the folder).
  */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
+  Alert,
+  FormControlLabel,
+  Radio,
+  RadioGroup,
+  Typography,
   Dialog,
   DialogTitle,
   DialogContent,
@@ -17,6 +28,9 @@ import {
   Stack,
 } from '@mui/material';
 import { useAppStore } from '@/store';
+import { useAuthStore, promptLogin } from '@/store/useAuthStore';
+import { requestFirstSync } from '@/services/syncActions';
+import { getRestServerUrl, getSyncNewProjectsPreference, setSyncNewProjectsPreference } from './PreferencesDialog';
 import type { ProjectMetadata } from '@/types/project-types';
 
 interface NewProjectDialogProps {
@@ -52,6 +66,18 @@ export function NewProjectDialog({ isOpen, onClose }: NewProjectDialogProps) {
   const [formData, setFormData] = useState<ProjectFormData>(initialFormData);
   const [dateError, setDateError] = useState<string>('');
   const loadProject = useAppStore((state) => state.loadProject);
+  const loggedIn = useAuthStore((state) => state.isAuthenticated);
+  /** '' = not chosen yet (logged in, preference never set: the user must pick) */
+  const [keep, setKeep] = useState<'' | 'local' | 'sync'>('local');
+  const [creating, setCreating] = useState(false);
+
+  // Preselect when the dialog opens: the preference when logged in, this computer when logged out
+  useEffect(() => {
+    if (!isOpen) return;
+    const pref = getSyncNewProjectsPreference();
+    const loggedInNow = useAuthStore.getState().isAuthenticated;
+    setKeep(!loggedInNow ? 'local' : pref === true ? 'sync' : pref === false ? 'local' : '');
+  }, [isOpen]);
 
   const updateField = (field: keyof ProjectFormData, value: string) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
@@ -83,9 +109,11 @@ export function NewProjectDialog({ isOpen, onClose }: NewProjectDialogProps) {
   };
 
   const handleCreate = async () => {
-    if (!validateForm()) {
+    if (!validateForm() || keep === '' || (keep === 'sync' && !loggedIn)) {
       return;
     }
+    // The first choice made while logged in sets the preference (16ak)
+    if (getSyncNewProjectsPreference() === null) setSyncNewProjectsPreference(keep === 'sync');
 
     // Create project structure
     const projectId = crypto.randomUUID();
@@ -111,8 +139,31 @@ export function NewProjectDialog({ isOpen, onClose }: NewProjectDialogProps) {
         console.log('[NewProjectDialog] Successfully created project folders:', folderPaths);
       }
 
+      // Synced: save it and turn sync on before it loads (the folder moves).
+      // If that fails, the project stays on this computer only.
+      let syncProblem: string | null = null;
+      if (keep === 'sync' && window.api) {
+        setCreating(true);
+        try {
+          const saved = await window.api.saveProjectJson(project, projectId);
+          if (!saved?.success) {
+            syncProblem = 'The project could not be saved.';
+          } else {
+            const result = await window.api.sync.turnOn(projectId, getRestServerUrl(), 'automatic');
+            if (result.ok) requestFirstSync(projectId);
+            else syncProblem = result.message;
+          }
+        } finally {
+          setCreating(false);
+        }
+      }
+
       // Load project into store (null filePath = unsaved project)
       loadProject(project, null);
+      if (syncProblem) {
+        alert(`The project was created on this computer only, because sync could not be turned on.\n\n${syncProblem}\n\n` +
+          'You can turn sync on later from the sync status in the header.');
+      }
 
       // Clear any existing version history for this project ID
       // (shouldn't exist, but just in case of ID collision)
@@ -254,6 +305,31 @@ export function NewProjectDialog({ isOpen, onClose }: NewProjectDialogProps) {
               rows={3}
               fullWidth
             />
+
+            <Box>
+              <Typography variant="subtitle2" sx={{ mb: 0.5 }}>Where to keep this project</Typography>
+              <RadioGroup value={keep} onChange={(e) => setKeep(e.target.value === 'sync' ? 'sync' : 'local')}>
+                <FormControlLabel value="local" control={<Radio size="small" />} label="On this computer only" />
+                <FormControlLabel
+                  value="sync"
+                  control={<Radio size="small" />}
+                  label="On this computer and synced to StraboSpot (backup, use on other computers, share with collaborators)"
+                />
+              </RadioGroup>
+              {keep === 'sync' && !loggedIn && (
+                <Alert
+                  severity="info"
+                  sx={{ mt: 1 }}
+                  action={
+                    <Button color="inherit" size="small" onClick={() => void promptLogin('Log in to sync this project to StraboSpot.')}>
+                      Log in
+                    </Button>
+                  }
+                >
+                  Log in to StraboSpot to sync this project.
+                </Alert>
+              )}
+            </Box>
           </Stack>
         </Box>
       </DialogContent>
@@ -262,7 +338,7 @@ export function NewProjectDialog({ isOpen, onClose }: NewProjectDialogProps) {
         <Button
           onClick={handleCreate}
           variant="contained"
-          disabled={!formData.name.trim()}
+          disabled={!formData.name.trim() || keep === '' || (keep === 'sync' && !loggedIn) || creating}
         >
           Create Project
         </Button>

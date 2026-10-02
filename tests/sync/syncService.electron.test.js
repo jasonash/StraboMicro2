@@ -138,11 +138,38 @@ app.whenReady().then(async () => {
     check('local-only project: push refused as not_synced', lp.ok === false && lp.kind === 'not_synced');
     check('local-only project never loaded the sync engine', !engineLoaded());
 
+    // Turn-on dialog preflight (16aj): upload size, logged in, already on the server
+    const pf = await svc.preflight(pid, SERVER);
+    const imageBytes = fs.statSync(path.join(local, 'images', keep.id)).size;
+    check('preflight: size counts the original; logged in; not on the server', pf.ok && pf.bytes >= imageBytes &&
+      pf.loggedIn === true && pf.onServer === null && pf.problem === null, JSON.stringify(pf));
+    const pfFar = await svc.preflight(pid, 'http://127.0.0.1:9');
+    check('preflight: unreachable server is a problem, not a failure', pfFar.ok && pfFar.problem && pfFar.problem.kind === 'offline' &&
+      pfFar.bytes === pf.bytes, JSON.stringify(pfFar));
+    await tokenService.clearTokens();
+    const pfOut = await svc.preflight(pid, SERVER);
+    check('preflight logged out: size only', pfOut.ok && pfOut.loggedIn === false && pfOut.bytes === pf.bytes && pfOut.onServer === null,
+      JSON.stringify(pfOut));
+    await tokenService.saveTokens(who.token, 'not-a-real-refresh-token', 3600, user);
+    {
+      // A local-only project whose id the server already has (linking, stage 4)
+      const pid2 = `mscli-${crypto.randomUUID()}`;
+      const local2 = path.join(projectFolders.getStraboMicro2DataPath(), pid2);
+      fs.mkdirSync(local2, { recursive: true });
+      fs.writeFileSync(path.join(local2, 'project.json'), JSON.stringify({ id: pid2, name: 'Already there', datasets: [] }));
+      const created = await createSyncClient({ restServer: SERVER, getAccessToken: async () => who.token }).createProject(pid2, 'Already there');
+      const pf2 = await svc.preflight(pid2, SERVER);
+      check('preflight: a project the server has is reported', created.status === 201 && pf2.ok && pf2.onServer &&
+        pf2.onServer.pid === created.data.pid, JSON.stringify({ created: created.status, pf2 }));
+    }
+
     // Turning sync on moves the folder and leaves the upload to the first push
     const on = await svc.turnOn(pid, SERVER, 'automatic');
     check('turn on', on.ok === true && on.pid > 0, JSON.stringify(on));
     const folder = projectFolders.getAccountCopyPath(pid, SERVER, who.pkey);
     check('folder moved into the account folder', on.folder === folder && !fs.existsSync(local));
+    const pfSynced = await svc.preflight(pid, SERVER);
+    check('preflight of a synced project: already synced', pfSynced.ok === false && pfSynced.kind === 'exists', JSON.stringify(pfSynced));
     const st1 = await svc.getStatus(pid);
     check('status after turn on: synced, uploading, changes waiting', st1.synced && st1.phase === 'uploading' &&
       st1.mode === 'automatic' && st1.pending > 1 && st1.email === who.email, JSON.stringify(st1));

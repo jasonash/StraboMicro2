@@ -119,7 +119,20 @@ type Unsubscribe = () => void;
 
 type SyncMode = 'automatic' | 'manual';
 
-type SyncDebugAction = 'turn-on-automatic' | 'turn-on-manual' | 'clone'
+type SyncPreflightResult =
+  | {
+    ok: true;
+    /** Originals and other files (tiles not counted) */
+    bytes: number;
+    loggedIn: boolean;
+    /** Why the server cannot take it now (offline, disabled, ...) */
+    problem: { kind: SyncFailureKind; message: string } | null;
+    /** The server already has a project with this id (linking, step 8 stage 4) */
+    onServer: { pid: number; syncFormat: string; syncState: string; updatedAt: string | null } | null;
+  }
+  | { ok: false; kind: SyncFailureKind; message: string };
+
+type SyncDebugAction = 'clone'
   | 'test-conflict' | 'test-their-delete' | 'test-my-delete' | 'test-refused' | 'test-notice' | 'test-compare';
 
 /** Why a sync call did not run or failed (electron/sync/syncService.js) */
@@ -927,6 +940,8 @@ interface Window {
       /** Pushes the saved project.json (save first) */
       push: (projectId: string, restServer: string) => Promise<SyncPushResult>;
       setMode: (projectId: string, mode: SyncMode) => Promise<SyncCallResult>;
+      /** Turn-on dialog: upload size; logged in: can the server sync, is the project on it already */
+      preflight: (projectId: string, restServer: string) => Promise<SyncPreflightResult>;
       /** Fetch and merge; apply result.changes to the store, save, then pullCommit */
       pull: (projectId: string, restServer: string) => Promise<SyncPullResult>;
       pullCommit: (projectId: string, pullId: string) => Promise<SyncCallResult & { downloads?: number }>;

@@ -15,7 +15,7 @@ import { ExportImagesDialog } from './components/dialogs/ExportImagesDialog';
 import { RebuildTileCacheDialog } from './components/dialogs/RebuildTileCacheDialog';
 import { ExportPDFDialog } from './components/dialogs/ExportPDFDialog';
 import { ExportSmzDialog } from './components/dialogs/ExportSmzDialog';
-import { PushToServerDialog } from './components/dialogs/PushToServerDialog';
+import { TurnOnSyncDialog } from './components/dialogs/TurnOnSyncDialog';
 import { VersionHistoryDialog } from './components/dialogs/VersionHistoryDialog';
 import { StatisticsPanel } from './components/StatisticsPanel';
 import { QuickClassifyToolbar } from './components/QuickClassifyToolbar';
@@ -44,8 +44,8 @@ import UpdateNotification from './components/UpdateNotification';
 import SyncDecisionsNotice from './components/SyncDecisionsNotice';
 import SyncDecisionsDialog from './components/dialogs/SyncDecisionsDialog';
 import { useAppStore, undo, redo, setUndoBlockedHandler } from '@/store';
-import { useAuthStore, promptLogin } from '@/store/useAuthStore';
-import { syncNowFromUser, TURN_ON_SYNC_EVENT } from '@/services/syncActions';
+import { useAuthStore } from '@/store/useAuthStore';
+import { syncNowFromUser, requestFirstSync, TURN_ON_SYNC_EVENT } from '@/services/syncActions';
 import { useSyncStore } from '@/store/useSyncStore';
 import { useTheme } from './hooks/useTheme';
 import { useAutosave } from './hooks/useAutosave';
@@ -179,7 +179,7 @@ function App() {
   const [isRebuildTileCacheOpen, setIsRebuildTileCacheOpen] = useState(false);
   const [isExportPDFOpen, setIsExportPDFOpen] = useState(false);
   const [isExportSmzOpen, setIsExportSmzOpen] = useState(false);
-  const [isPushToServerOpen, setIsPushToServerOpen] = useState(false);
+  const [isTurnOnSyncOpen, setIsTurnOnSyncOpen] = useState(false);
   const [isVersionHistoryOpen, setIsVersionHistoryOpen] = useState(false);
   const [isIncompleteMicrographsOpen, setIsIncompleteMicrographsOpen] = useState(false);
   const [incompleteMicrographs, setIncompleteMicrographs] = useState<IncompleteMicrograph[]>([]);
@@ -1168,15 +1168,7 @@ function App() {
         void syncNowFromUser();
         return;
       }
-      // Check for incomplete micrographs before allowing upload
-      const incomplete = findIncompleteMicrographs(project);
-      if (incomplete.length > 0) {
-        setIncompleteMicrographs(incomplete);
-        setIncompleteActionName('upload');
-        setIsIncompleteMicrographsOpen(true);
-        return;
-      }
-      setIsPushToServerOpen(true);
+      setIsTurnOnSyncOpen(true);
     }));
 
     // File: Open Remote Project menu item
@@ -1261,58 +1253,48 @@ function App() {
     };
   }, [closeProject, setTheme, setShowRulers, setSpotLabelMode, setShowMicrographOutlines, logout, project, manualSave, saveBeforeSwitch, loadProjectWithPreparation, activeMicrographId, micrographIndex, addSpot, updateMicrographMetadata]);
 
-  // Turning sync on (Debug menu, and the chip's "Sync this project…" until
-  // the turn-on dialog of step 8 stage 2 replaces both) and Debug > Sync:
-  // Download Synced Project (until Open Remote Project does it, stage 4)
+  // Turn sync on for the open project (the turn-on dialog's Start Syncing,
+  // 16aj). The folder moves, so the project is saved and unloaded first,
+  // then opened again from its new folder; the first upload starts when its
+  // sync starts, in either mode, and shows on the chip.
+  const turnOnSync = useCallback(async (mode: SyncMode) => {
+    const api = window.api;
+    const current = useAppStore.getState().project;
+    if (!api || !current) return;
+    const saved = await manualSave();
+    if (!saved.success) {
+      alert(`The project could not be saved, so sync was not turned on.\n\n${saved.error ?? 'Unknown error'}`);
+      return;
+    }
+    closeProject();
+    setLoadingProjectName(current.name || '');
+    setIsLoadingProject(true);
+    try {
+      const result = await api.sync.turnOn(current.id, getRestServerUrl(), mode);
+      if (result.ok) requestFirstSync(current.id);
+      const loaded = await api.projects.load(current.id);
+      if (loaded?.success && loaded.project) {
+        await loadProjectWithPreparation(loaded.project, null);
+      } else {
+        alert(`Failed to load project: ${loaded?.error || 'Unknown error'}`);
+      }
+      if (!result.ok) alert(`Sync could not be turned on. The project stays on this computer only.\n\n${result.message}`);
+    } finally {
+      setIsLoadingProject(false);
+    }
+  }, [manualSave, closeProject, loadProjectWithPreparation]);
+
+  // The chip's "Sync this project…" opens the turn-on dialog
+  useEffect(() => {
+    const open = () => setIsTurnOnSyncOpen(true);
+    window.addEventListener(TURN_ON_SYNC_EVENT, open);
+    return () => window.removeEventListener(TURN_ON_SYNC_EVENT, open);
+  }, []);
+
+  // Debug > Sync: Download Synced Project (until Open Remote Project does
+  // it, step 8 stage 4) and Debug > Sync Test
   useEffect(() => {
     if (!window.api?.onDebugSync) return;
-
-    const turnOn = async (mode: SyncMode) => {
-      const api = window.api;
-      const current = useAppStore.getState().project;
-      if (!api || !current) {
-        alert('Open a project first.');
-        return;
-      }
-      const status = await api.sync.status(current.id);
-      if (status.synced) {
-        // Already synced: the item only sets the mode
-        if (status.mode === mode) {
-          alert(`This project is already synced (${mode}).`);
-          return;
-        }
-        const controller = await import('@/services/syncController');
-        const result = await controller.changeSyncMode(mode);
-        alert(result.ok ? `This project is already synced; sync mode is now ${mode}.` : result.message);
-        return;
-      }
-      if (!useAuthStore.getState().isAuthenticated) {
-        alert('Log in first.');
-        return;
-      }
-      // Turning sync on moves the project folder, so the project is saved and
-      // unloaded first, then opened again from its new folder
-      const saved = await manualSave();
-      if (!saved.success) {
-        alert(`The project could not be saved: ${saved.error ?? 'unknown error'}`);
-        return;
-      }
-      closeProject();
-      setLoadingProjectName(current.name || '');
-      setIsLoadingProject(true);
-      try {
-        const result = await api.sync.turnOn(current.id, getRestServerUrl(), mode);
-        if (!result.ok) alert(`Sync could not be turned on (${result.kind}): ${result.message}`);
-        const loaded = await api.projects.load(current.id);
-        if (loaded?.success && loaded.project) {
-          await loadProjectWithPreparation(loaded.project, null);
-        } else {
-          alert(`Failed to load project: ${loaded?.error || 'Unknown error'}`);
-        }
-      } finally {
-        setIsLoadingProject(false);
-      }
-    };
 
     // Make a synced copy of a server project here, then open it
     const cloneFromServer = async (text: string | undefined) => {
@@ -1353,31 +1335,16 @@ function App() {
       }
     };
 
-    // The chip's "Sync this project…" (Sync automatically, 16ag); asks for the login first
-    const onTurnOnRequest = () => {
-      void (async () => {
-        if (!useAuthStore.getState().isAuthenticated && !(await promptLogin('Log in to sync this project to StraboSpot.'))) return;
-        await turnOn('automatic');
-      })();
-    };
-    window.addEventListener(TURN_ON_SYNC_EVENT, onTurnOnRequest);
-
-    const offDebug = window.api.onDebugSync((action, arg) => {
+    return window.api.onDebugSync((action, arg) => {
       void (async () => {
         if (action === 'clone') {
           await cloneFromServer(arg);
-        } else if (action === 'turn-on-automatic' || action === 'turn-on-manual') {
-          await turnOn(action === 'turn-on-automatic' ? 'automatic' : 'manual');
         } else if (action.startsWith('test-')) {
           const { runSyncTestScenario } = await import('@/services/syncTestScenarios');
           await runSyncTestScenario(action);
         }
       })();
     });
-    return () => {
-      window.removeEventListener(TURN_ON_SYNC_EVENT, onTurnOnRequest);
-      offDebug();
-    };
   }, [closeProject, manualSave, loadProjectWithPreparation]);
 
   return (
@@ -1449,11 +1416,11 @@ function App() {
         projectId={project?.id ?? null}
         projectData={project}
       />
-      <PushToServerDialog
-        open={isPushToServerOpen}
-        onClose={() => setIsPushToServerOpen(false)}
+      <TurnOnSyncDialog
+        open={isTurnOnSyncOpen}
         projectId={project?.id ?? null}
-        projectData={project}
+        onClose={() => setIsTurnOnSyncOpen(false)}
+        onStart={(mode) => void turnOnSync(mode)}
       />
       <IncompleteMicrographsDialog
         open={isIncompleteMicrographsOpen}
