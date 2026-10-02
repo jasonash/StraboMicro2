@@ -43,6 +43,10 @@ function syncDir(projectFolder) {
  * @property {Record<string, object[]>} [conflicts] - 'type:id' => unresolved field conflicts (pull)
  * @property {object[]} [questions] - delete-vs-edit questions waiting for the user (pull)
  * @property {Record<string, string>} [downloads] - 'type:id|role' => sha256 to fetch (pull)
+ * @property {Record<string, number>} [authors] - 'type:id' => pkey of who created it, from the
+ *   snapshot (clone) and create entries (pull); an entity missing here was created on this
+ *   computer (Phase 2 role checks, 17i)
+ * @property {'owner' | 'editor' | 'contributor' | 'viewer'} [role] - my role, last known (activity poll)
  */
 
 /**

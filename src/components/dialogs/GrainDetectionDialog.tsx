@@ -40,6 +40,7 @@ import {
   ToggleButtonGroup,
   Chip,
 } from '@mui/material';
+import { useReadOnly } from '../ReadOnlyScope';
 import {
   ZoomIn,
   ZoomOut,
@@ -111,6 +112,7 @@ export function GrainDetectionDialog({
   onClose,
   micrographId,
 }: GrainDetectionDialogProps) {
+  const readOnlyScope = useReadOnly().readOnly;
   // Refs
   const stageRef = useRef<any>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -1545,6 +1547,7 @@ export function GrainDetectionDialog({
                 <FormLabel sx={{ fontSize: '0.875rem', minWidth: 60 }}>Color</FormLabel>
                 <input
                   type="color"
+                disabled={readOnlyScope}
                   value={spotColor}
                   onChange={(e) => setSpotColor(e.target.value)}
                   style={{ width: 40, height: 30, border: 'none', cursor: 'pointer' }}

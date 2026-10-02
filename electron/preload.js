@@ -648,6 +648,7 @@ contextBridge.exposeInMainWorld('api', {
     download: (projectId, restServer) => ipcRenderer.invoke('sync:download', projectId, restServer),
     clone: (pid, restServer, mode) => ipcRenderer.invoke('sync:clone', pid, restServer, mode),
     // Collaborators (Phase 2)
+    permissions: (projectId) => ipcRenderer.invoke('sync:permissions', projectId),
     members: (projectId, restServer) => ipcRenderer.invoke('sync:members', projectId, restServer),
     changeMembers: (projectId, restServer, change) => ipcRenderer.invoke('sync:change-members', projectId, restServer, change),
     invites: (restServer) => ipcRenderer.invoke('sync:invites', restServer),

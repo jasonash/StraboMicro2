@@ -52,7 +52,9 @@ import { CollaboratorsDialog } from './components/dialogs/CollaboratorsDialog';
 import { InvitationsDialog } from './components/dialogs/InvitationsDialog';
 import { useInvitationsStore, INVITES_RECHECK_MS } from '@/store/useInvitationsStore';
 import { SyncIntroNotice } from './components/SyncIntroNotice';
-import { useAppStore, undo, redo, setUndoBlockedHandler } from '@/store';
+import { useAppStore, undo, redo, setUndoBlockedHandler, setChangeGuard } from '@/store';
+import { currentPermissions } from '@/hooks/usePermissions';
+import { isRestricted, splitChanges, refusalMessage } from '@/utils/permissions';
 import { useAuthStore, promptLogin } from '@/store/useAuthStore';
 import { syncNowFromUser, requestFirstSync, TURN_ON_SYNC_EVENT, COLLABORATE_EVENT } from '@/services/syncActions';
 import { beginLinking, LINK_SYNC_EVENT, type LinkRequest } from '@/services/syncLinking';
@@ -959,6 +961,13 @@ function App() {
 
     // Undo menu item
     setUndoBlockedHandler((message) => alert(message));
+    // Role checks of a shared project (17h, 17i): what the screens miss is put back here
+    setChangeGuard((changes) => {
+      const p = currentPermissions();
+      if (!isRestricted(p)) return null;
+      const { refused } = splitChanges(p, changes);
+      return refused.length > 0 ? refusalMessage(refused[0].problem) : null;
+    });
     unsubscribers.push(window.api.onUndo(() => {
       void undo();
     }));

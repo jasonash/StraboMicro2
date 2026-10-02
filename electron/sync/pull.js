@@ -151,6 +151,13 @@ async function preparePull({ folder, client, onProgress = () => {} }) {
     ? []
     : diffProjects(toAppProject(project), toAppProject(mergedProject));
 
+  // Who created what arrives with create entries (Phase 2 role checks, 17i)
+  /** @type {Record<string, number>} */
+  const authors = {};
+  for (const e of entries) {
+    if (e.op === 'create' && e.user && Number(e.user.pkey) > 0) authors[entityKey(e.type, e.id)] = Number(e.user.pkey);
+  }
+
   const pending = {
     id: crypto.randomUUID(),
     since: state.lastSeq || 0,
@@ -162,6 +169,7 @@ async function preparePull({ folder, client, onProgress = () => {} }) {
     questions,
     pointCountChanges: merged.changes.filter((c) => (c.after ?? c.before).type === 'point_count'),
     restoredBase,
+    authors,
   };
   return {
     pending,
@@ -302,6 +310,8 @@ async function commitPull({ folder, pending }) {
     }
   }
 
+  state.authors = { ...(state.authors || {}), ...(pending.authors || {}) };
+  for (const [key, s] of pending.theirs) if (s === null) delete state.authors[key];
   state.lastSeq = pending.headSeq;
   state.conflicts = pending.conflicts;
   state.questions = pending.questions;
@@ -423,9 +433,12 @@ async function cloneProject({ pid, restServer, user, mode = 'automatic', client,
 
   /** @type {Record<string, object>} */
   const base = {};
+  /** @type {Record<string, number>} */
+  const authors = {};
   for (const e of snap.entities) {
     const s = stateFromEntry({ ...e, op: 'update' });
     base[entityKey(e.type, e.id)] = { ...s, version: e.version };
+    if (Number(e.createdBy) > 0) authors[entityKey(e.type, e.id)] = Number(e.createdBy);
   }
   const assembled = assemble(base, projectId);
   if (!assembled) throw new Error('The server project could not be assembled');
@@ -442,6 +455,7 @@ async function cloneProject({ pid, restServer, user, mode = 'automatic', client,
   state.phase = 'ready';
   state.lastSeq = snap.headSeq;
   state.base = base;
+  state.authors = authors;
   state.downloads = {};
   for (const r of snap.refs || []) {
     const rk = `${entityKey(r.type, r.id)}|${r.role}`;

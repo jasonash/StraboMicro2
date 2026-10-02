@@ -20,6 +20,7 @@ const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
 const { execFileSync } = require('child_process');
+const { applyEntityChanges } = require('../../electron/shared/entityModel.mjs');
 
 const SERVER = 'http://localhost';
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'smcollab-'));
@@ -139,6 +140,37 @@ app.whenReady().then(async () => {
     check('invitee: member list from my synced copy, I am an Editor', m.ok && m.myRole === 'editor' && m.members.length === 2, JSON.stringify(m));
     r = await svc.changeMembers(straboId, SERVER, { action: 'invite', email: people.maya.email, role: 'viewer' });
     check('invitee: an Editor cannot invite', !r.ok && r.kind === 'forbidden', JSON.stringify(r));
+
+    // Role checks need my role and who created what (17h, 17i)
+    let perms = await svc.permissions(straboId);
+    check('invitee: creators from the snapshot (the owner made the project)', perms.ok &&
+      perms.authors[`project:${straboId}`] === people.owner.pkey && perms.me === people.editor.pkey, JSON.stringify(perms));
+    const act = await svc.activity(straboId, SERVER);
+    check('invitee: the activity poll tells my role', act.ok && act.role === 'editor', JSON.stringify(act));
+    perms = await svc.permissions(straboId);
+    check('invitee: my role is kept for opening offline', perms.ok && perms.role === 'editor', JSON.stringify(perms));
+
+    // The owner adds a dataset; the invitee's pull records who made it
+    const editorCopy2 = projectFolders.getAccountCopyPath(straboId, SERVER, people.editor.pkey);
+    await loginAs('owner');
+    projectFolders.useProjectCopy(straboId, ownerCopy);
+    const ownerProject = await ser.loadProjectJson(straboId);
+    ownerProject.datasets = [...(ownerProject.datasets || []), { id: 'D-owner', name: 'Owner dataset', samples: [] }];
+    await ser.saveProjectJson(ownerProject, straboId);
+    const ownerPush = await svc.push(straboId, SERVER, () => {});
+    check('owner: dataset pushed', ownerPush.ok && ownerPush.pushed >= 1, JSON.stringify(ownerPush));
+    await loginAs('editor');
+    projectFolders.useProjectCopy(straboId, editorCopy2);
+    const pulled = await svc.pull(straboId, SERVER, () => {});
+    if (pulled.ok) {
+      const appProject = await ser.loadProjectJson(straboId);
+      applyEntityChanges(appProject, pulled.changes, 'redo');
+      await ser.saveProjectJson(appProject, straboId);
+      await svc.commitPull(straboId, pulled.pullId);
+    }
+    perms = await svc.permissions(straboId);
+    check('invitee: a pulled create records its creator', pulled.ok && perms.ok && perms.authors['dataset:D-owner'] === people.owner.pkey,
+      JSON.stringify({ pulled: pulled.ok, authors: perms.authors }));
 
     // Decline, and the owner's role change and removal
     await loginAs('owner');

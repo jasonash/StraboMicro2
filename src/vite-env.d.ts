@@ -962,7 +962,7 @@ interface Window {
       preflight: (projectId: string, restServer: string) => Promise<SyncPreflightResult>;
       /** Changes waiting on the server for this copy (others: per person other than me) */
       activity: (projectId: string, restServer: string, presence?: 'active' | 'away') => Promise<
-        | { ok: true; incoming: number; others: Array<{ name: string; count: number }> }
+        | { ok: true; incoming: number; others: Array<{ name: string; count: number }>; role: SyncRole | null }
         | { ok: false; kind: SyncFailureKind; message: string }>;
       /** The server project with this local-only project's id (row null if none) and the one-time prompt's answer */
       serverProject: (projectId: string, restServer: string) => Promise<
@@ -1007,6 +1007,10 @@ interface Window {
       download: (projectId: string, restServer: string) => Promise<
         | { ok: true; downloaded: number; images: string[]; thumbnails: string[] }
         | { ok: false; kind: SyncFailureKind; message: string }>;
+      /** My pkey, last known role (null if not known yet) and who created what ('type:id' => pkey; missing = created here) */
+      permissions: (projectId: string) => Promise<
+        | { ok: true; me: number; role: SyncRole | null; authors: Record<string, number> }
+        | SyncMemberFailure>;
       /** Collaborators of the open synced project (Phase 2) */
       members: (projectId: string, restServer: string) => Promise<
         | { ok: true; pid: number; myRole: SyncRole; members: SyncMember[]; transferTo: SyncUser | null }

@@ -8,7 +8,7 @@
 
 import { create } from 'zustand';
 import {
-  installUndoHistory, resetUndoHistory, undo, redo, withoutUndoRecording, setUndoBlockedHandler,
+  installUndoHistory, resetUndoHistory, undo, redo, withoutUndoRecording, setUndoBlockedHandler, setChangeGuard,
 } from '../../src/store/undoHistory';
 import { buildMicrographIndex, buildSpotIndex } from '../../src/store/helpers';
 import type { ProjectMetadata } from '../../src/types/project-types';
@@ -172,6 +172,35 @@ const S = () => store.getState();
   await undo();
   check('history cleared when the project is replaced directly',
     S().project!.id === 'R' && S().project!.name === 'Project' && m(0).name === 'only in R', `${S().project!.name} / ${m(0).name}`);
+
+  // Role checks (17h, 17i): a refused burst is put back whole and never recorded
+  S().load(project());
+  setChangeGuard((changes) => (changes.some((c) => (c.before ?? c.after)?.id === 'X1') ? 'Not yours.' : null));
+  blocked.length = 0;
+  S().edit((p) => { p.datasets[0].samples[0].micrographs[0].spots![0].name = 'changed by someone not allowed'; p.name = 'also changed'; });
+  await sleep(QUIET);
+  check('refused burst put back whole (the allowed part too)', m(0).spots![0].name === 'a' && S().project!.name === 'Project',
+    `${m(0).spots![0].name} / ${S().project!.name}`);
+  check('refusal message shown', blocked.length === 1 && blocked[0] === 'Not yours.', JSON.stringify(blocked));
+  await undo();
+  check('nothing recorded for a refused burst', S().project!.name === 'Project' && m(0).spots![0].name === 'a');
+  S().edit((p) => { p.name = 'allowed edit'; });
+  await sleep(QUIET);
+  check('an allowed burst is kept', S().project!.name === 'allowed edit');
+  // A step recorded before the role changed: undo is checked again
+  setChangeGuard(null);
+  S().edit((p) => { p.datasets[0].samples[0].micrographs[0].spots![0].name = 'edited while allowed'; });
+  await sleep(QUIET);
+  setChangeGuard((changes) => (changes.some((c) => (c.before ?? c.after)?.id === 'X1') ? 'Not yours now.' : null));
+  blocked.length = 0;
+  await undo();
+  check('undo the guard refuses is skipped', m(0).spots![0].name === 'edited while allowed' && blocked.length === 1 &&
+    blocked[0].includes('Not yours now.'), JSON.stringify(blocked));
+  setChangeGuard(null);
+  await undo();
+  check('a refused undo is dropped like any skipped step (the next undo goes further back)',
+    m(0).spots![0].name === 'edited while allowed' && S().project!.name === 'Project', `${m(0).spots![0].name} / ${S().project!.name}`);
+  blocked.length = 0;
 
   // Limit 50
   for (let i = 0; i < 55; i++) { S().edit((p) => { p.name = `v${i}`; }); await undo(); await redo(); }

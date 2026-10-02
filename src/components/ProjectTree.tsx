@@ -57,6 +57,8 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { useAppStore } from '@/store';
+import { usePermissions } from '@/hooks/usePermissions';
+import { canEditEntity, canCreate, othersBeneath, othersBeneathMessage } from '@/utils/permissions';
 import { NewDatasetDialog } from './dialogs/NewDatasetDialog';
 import { NewSampleDialog } from './dialogs/NewSampleDialog';
 import { NewMicrographDialog } from './dialogs/NewMicrographDialog';
@@ -300,6 +302,16 @@ function SortableItemWrapper({ id, children }: SortableItemWrapperProps) {
 
 export function ProjectTree() {
   const project = useAppStore((state) => state.project);
+  // Role checks of a shared project (17h, 17i): edit actions only for what I may change
+  const perms = usePermissions();
+  const may = (type: string, id: string) => canEditEntity(perms, type, id);
+  const mayCreate = canCreate(perms);
+  /** False (after saying why) when a Contributor's delete would take other people's items along */
+  const mayDeleteWithin = (type: string, id: string, what: string): boolean => {
+    const others = othersBeneath(perms, project, type, id);
+    if (others > 0) alert(othersBeneathMessage(what, others));
+    return others === 0;
+  };
   const selectMicrograph = useAppStore((state) => state.selectMicrograph);
   const activeMicrographId = useAppStore((state) => state.activeMicrographId);
   const deleteDataset = useAppStore((state) => state.deleteDataset);
@@ -1220,6 +1232,7 @@ export function ProjectTree() {
             Add to Group(s)
           </MenuItem>
           <MenuItem
+            disabled={!may('micrograph', micrograph.id)}
             onClick={() => {
               setEditingMicrographId(micrograph.id);
               setShowEditMicrograph(true);
@@ -1229,6 +1242,7 @@ export function ProjectTree() {
             Edit Micrograph Metadata
           </MenuItem>
           <MenuItem
+            disabled={!may('micrograph', micrograph.id)}
             onClick={() => {
               window.dispatchEvent(new CustomEvent('open-strabo-tools', { detail: micrograph.id }));
               setMicrographOptionsAnchor({ ...micrographOptionsAnchor, [micrograph.id]: null });
@@ -1239,6 +1253,7 @@ export function ProjectTree() {
           {!isReference && (
             <>
               <MenuItem
+            disabled={!may('micrograph', micrograph.id)}
                 onClick={() => {
                   setEditLocationMicrographId(micrograph.id);
                   setShowEditLocation(true);
@@ -1248,6 +1263,7 @@ export function ProjectTree() {
                 Edit Micrograph Location
               </MenuItem>
               <MenuItem
+            disabled={!may('micrograph', micrograph.id)}
                 onClick={(event) => {
                   // Open opacity popover - capture position before menu closes
                   const rect = event.currentTarget.getBoundingClientRect();
@@ -1262,7 +1278,9 @@ export function ProjectTree() {
             </>
           )}
           <MenuItem
+            disabled={!may('micrograph', micrograph.id)}
             onClick={() => {
+              if (!mayDeleteWithin('micrograph', micrograph.id, 'micrograph')) return;
               setDeletingMicrograph(micrograph);
               setShowDeleteMicrographConfirm(true);
               setMicrographOptionsAnchor({ ...micrographOptionsAnchor, [micrograph.id]: null });
@@ -1274,6 +1292,7 @@ export function ProjectTree() {
           {(micrograph.imageType === 'Plane Polarized Light' || micrograph.imageType === 'Cross Polarized Light') && (
             !micrograph.siblingImageId ? (
               <MenuItem
+            disabled={!may('micrograph', micrograph.id)}
                 onClick={() => {
                   setLinkSiblingMicrographId(micrograph.id);
                   setShowLinkSibling(true);
@@ -1284,6 +1303,7 @@ export function ProjectTree() {
               </MenuItem>
             ) : (
               <MenuItem
+            disabled={!may('micrograph', micrograph.id)}
                 onClick={() => {
                   unlinkSiblingImages(micrograph.id);
                   setMicrographOptionsAnchor({ ...micrographOptionsAnchor, [micrograph.id]: null });
@@ -1297,6 +1317,7 @@ export function ProjectTree() {
           {hasChildren && (
             <>
               <MenuItem
+            disabled={!children.every((child) => may('micrograph', child.id))}
                 onClick={() => {
                   // Set isMicroVisible: true on all direct children
                   children.forEach((child) => {
@@ -1308,6 +1329,7 @@ export function ProjectTree() {
                 Show All Associated Micrographs
               </MenuItem>
               <MenuItem
+            disabled={!children.every((child) => may('micrograph', child.id))}
                 onClick={() => {
                   // Set isMicroVisible: false on all direct children
                   children.forEach((child) => {
@@ -1323,6 +1345,7 @@ export function ProjectTree() {
           {/* Edit All Associated Micrographs Opacity - only if has overlay children */}
           {children.some((child) => child.offsetInParent) && (
             <MenuItem
+            disabled={!children.every((child) => may('micrograph', child.id))}
               onClick={(event) => {
                 // Get average opacity of all overlay children for initial value
                 const overlayChildren = children.filter((child) => child.offsetInParent);
@@ -1348,6 +1371,7 @@ export function ProjectTree() {
           onClose={() => setMicrographAddAnchor({ ...micrographAddAnchor, [micrograph.id]: null })}
         >
           <MenuItem
+            disabled={!mayCreate}
             onClick={() => {
               handleAddAssociatedMicrograph(micrograph.id);
               setMicrographAddAnchor({ ...micrographAddAnchor, [micrograph.id]: null });
@@ -1356,6 +1380,7 @@ export function ProjectTree() {
             Add Associated Micrograph
           </MenuItem>
           <MenuItem
+            disabled={!mayCreate}
             onClick={() => {
               setBatchImportSampleId(null);
               setBatchImportParentMicrographId(micrograph.id);
@@ -1369,6 +1394,7 @@ export function ProjectTree() {
           {!micrograph.siblingImageId &&
             (micrograph.imageType === 'Plane Polarized Light' || micrograph.imageType === 'Cross Polarized Light') && (
             <MenuItem
+              disabled={!mayCreate}
               onClick={() => {
                 setAddSiblingMicrographId(micrograph.id);
                 setShowAddSibling(true);
@@ -1494,6 +1520,7 @@ export function ProjectTree() {
           onClose={() => setSampleMenuAnchor({ ...sampleMenuAnchor, [sample.id]: null })}
         >
           <MenuItem
+            disabled={!may('sample', sample.id)}
             onClick={() => {
               setEditingSample(sample);
               setShowEditSample(true);
@@ -1503,7 +1530,9 @@ export function ProjectTree() {
             Edit Sample Metadata
           </MenuItem>
           <MenuItem
+            disabled={!may('sample', sample.id)}
             onClick={() => {
+              if (!mayDeleteWithin('sample', sample.id, 'sample')) return;
               setDeletingSample(sample);
               setShowDeleteSampleConfirm(true);
               setSampleMenuAnchor({ ...sampleMenuAnchor, [sample.id]: null });
@@ -1520,6 +1549,7 @@ export function ProjectTree() {
           onClose={() => setSampleAddAnchor({ ...sampleAddAnchor, [sample.id]: null })}
         >
           <MenuItem
+            disabled={!mayCreate}
             onClick={() => {
               handleAddReferenceMicrograph(sample.id);
               setSampleAddAnchor({ ...sampleAddAnchor, [sample.id]: null });
@@ -1528,6 +1558,7 @@ export function ProjectTree() {
             Add New Reference Micrograph
           </MenuItem>
           <MenuItem
+            disabled={!mayCreate}
             onClick={() => {
               setBatchImportSampleId(sample.id);
               setBatchImportParentMicrographId(null);
@@ -1644,6 +1675,7 @@ export function ProjectTree() {
           onClose={() => setDatasetMenuAnchor({ ...datasetMenuAnchor, [dataset.id]: null })}
         >
           <MenuItem
+            disabled={!may('dataset', dataset.id)}
             onClick={() => {
               setEditingDatasetId(dataset.id);
               setShowEditDataset(true);
@@ -1653,7 +1685,9 @@ export function ProjectTree() {
             Edit Dataset Metadata
           </MenuItem>
           <MenuItem
+            disabled={!may('dataset', dataset.id)}
             onClick={() => {
+              if (!mayDeleteWithin('dataset', dataset.id, 'dataset')) return;
               setDeletingDataset(dataset);
               setShowDeleteDatasetConfirm(true);
               setDatasetMenuAnchor({ ...datasetMenuAnchor, [dataset.id]: null });
@@ -1670,6 +1704,7 @@ export function ProjectTree() {
           onClose={() => setDatasetAddAnchor({ ...datasetAddAnchor, [dataset.id]: null })}
         >
           <MenuItem
+            disabled={!mayCreate}
             onClick={() => {
               handleAddSample(dataset.id);
               setDatasetAddAnchor({ ...datasetAddAnchor, [dataset.id]: null });
@@ -1829,6 +1864,7 @@ export function ProjectTree() {
         onClose={() => setProjectMenuAnchor(null)}
       >
         <MenuItem
+            disabled={!project || !may('project', project.id)}
           onClick={() => {
             setShowEditProject(true);
             setProjectMenuAnchor(null);
@@ -1845,6 +1881,7 @@ export function ProjectTree() {
         onClose={() => setProjectAddAnchor(null)}
       >
         <MenuItem
+            disabled={!mayCreate}
           onClick={() => {
             handleAddDataset();
             setProjectAddAnchor(null);

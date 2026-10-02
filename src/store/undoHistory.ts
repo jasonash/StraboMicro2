@@ -13,6 +13,10 @@
  * - Per-user fields (tree expansion, key bindings) are not undone.
  * - Undo marks the project as changed and reselects the affected spot or
  *   micrograph; zoom, pan and the active tool are left alone.
+ * - Role checks (collaboration 17h, 17i): when a change guard is set, a
+ *   burst with any change the user's role does not allow is put back whole
+ *   (never recorded), and an undo or redo it would refuse is skipped. The
+ *   screens prevent such edits; this catches whatever they miss.
  */
 
 import {
@@ -64,6 +68,8 @@ let burstTimer: ReturnType<typeof setTimeout> | null = null;
 /** Set while undo/redo writes the project, so the write is not recorded. */
 let applying = false;
 let onBlocked: (message: string) => void = (message) => console.warn(`[Undo] ${message}`);
+/** Role check: why these changes are not allowed (a message), or null */
+let guard: ((changes: EntityChange[]) => string | null) | null = null;
 
 /** Close the current burst of edits into a step. */
 function flush(): void {
@@ -77,9 +83,37 @@ function flush(): void {
   if (!base || !current) return;
   const changes = diffProjects(base, current);
   if (changes.length === 0) return;
+  const refused = guard ? guard(changes) : null;
+  if (refused !== null) {
+    putBack(current, changes);
+    onBlocked(refused);
+    return;
+  }
   past.push({ changes });
   if (past.length > LIMIT) past.shift();
   future = [];
+}
+
+/** Put a refused burst back as it was before it (not an undo step). */
+function putBack(current: ProjectMetadata, changes: EntityChange[]): void {
+  if (!store) return;
+  const state = store.getState();
+  if (state.project !== current) return; // changed again meanwhile: the next flush sees it
+  const next = structuredClone(current);
+  applyEntityChanges(next, changes, 'undo');
+  const micrographIndex = buildMicrographIndex(next);
+  const spotIndex = buildSpotIndex(next);
+  applying = true;
+  try {
+    store.setState({ project: next, micrographIndex, spotIndex, ...selectionAfterChange(state, micrographIndex, spotIndex) });
+  } finally {
+    applying = false;
+  }
+}
+
+/** Set (or clear) the role check run on every burst, undo and redo. */
+export function setChangeGuard(check: ((changes: EntityChange[]) => string | null) | null): void {
+  guard = check;
 }
 
 /** Forget all undo and redo steps (project opened, switched or closed). */
@@ -149,6 +183,13 @@ async function applyStep(step: Step, direction: Direction): Promise<boolean> {
   if (!check.ok) {
     const what = describe(step.changes, check.key);
     onBlocked(`Can't ${direction} this change: the ${what} it affects has changed since. It was skipped.`);
+    return false;
+  }
+  // What the step does now, as changes from the current project (the role may have changed since)
+  const effective = direction === 'redo' ? step.changes : step.changes.map((c) => ({ ...c, before: c.after, after: c.before }));
+  const refused = guard ? guard(effective) : null;
+  if (refused !== null) {
+    onBlocked(`Can't ${direction} this change. ${refused}`);
     return false;
   }
 

@@ -5,7 +5,7 @@
  */
 
 export { useAppStore } from './useAppStore';
-export { undo, redo, setUndoBlockedHandler } from './undoHistory';
+export { undo, redo, setUndoBlockedHandler, setChangeGuard } from './undoHistory';
 export type { DrawingTool, SidebarTab } from './useAppStore';
 
 export {

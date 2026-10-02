@@ -22,6 +22,7 @@
  *   sync:members / sync:change-members   the open synced project's
  *                  collaborators: list, invite, role, remove (Phase 2, 17a)
  *   sync:invites / sync:answer-invite   invitations waiting for me (17f)
+ *   sync:permissions  my pkey, role and who created what (role checks, 17h/17i)
  *   sync:decisions what waits for the user (conflicts, delete questions,
  *                  changes the server turned down), for the dialog
  *   sync:decide    work out one answer; returns what the app must apply
@@ -314,7 +315,15 @@ async function activity(projectId, restServer, presence = 'active') {
       .filter((p) => p && p.user && String(p.user.pkey) !== me)
       .map((p) => ({ name: (p.user && p.user.name) || 'Someone', count: Number(p.count) || 0 }));
     const incoming = pending.reduce((sum, p) => sum + (Number(p && p.count) || 0), 0);
-    return { ok: true, incoming, others };
+    // My role, kept for opening offline (Phase 2 role checks, 17h)
+    const role = r && ['owner', 'editor', 'contributor', 'viewer'].includes(r.role) ? r.role : null;
+    if (role && state.role !== role) {
+      await serialize(projectId, async () => {
+        const fresh = await sidecar.loadState(folder);
+        if (fresh) await sidecar.saveState(folder, { ...fresh, role });
+      });
+    }
+    return { ok: true, incoming, others, role: role ?? state.role ?? null };
   } catch (err) {
     return failure(err);
   }
@@ -788,6 +797,23 @@ function memberResult(r) {
   return { ok: false, kind: data.error || 'refused', message: data.message || `The server refused this (${r.status}).` };
 }
 
+/**
+ * What the role checks of the open synced project need (17h, 17i): my pkey,
+ * my last known role (null before the first activity poll of an old copy),
+ * and who created each entity ('type:id' => pkey; missing = created here).
+ * @param {string} projectId
+ */
+async function permissions(projectId) {
+  try {
+    const folder = projectFolders.getProjectFolderPath(projectId);
+    const state = isSyncedFolder(folder) ? await loadEngine().sidecar.loadState(folder) : null;
+    if (!state) return { ok: false, kind: 'not_synced', message: 'This project is not synced with StraboSpot.' };
+    return { ok: true, me: Number(state.binding.pkey), role: state.role ?? null, authors: state.authors || {} };
+  } catch (err) {
+    return failure(err);
+  }
+}
+
 /** Collaborators of the open synced project (Phase 2, 17a). */
 async function members(projectId, restServer) {
   try {
@@ -1031,6 +1057,7 @@ function registerSyncIpc(ipcMain, getMainWindow, { devTools = false } = {}) {
     clone(Number(pid), restServer, mode, (p) => send('sync:progress', { projectId: `server:${pid}`, ...p })));
   ipcMain.handle('sync:download', (_event, projectId, restServer) =>
     download(projectId, restServer, (p) => send('sync:progress', { projectId, ...p })));
+  ipcMain.handle('sync:permissions', (_event, projectId) => permissions(projectId));
   ipcMain.handle('sync:members', (_event, projectId, restServer) => members(projectId, restServer));
   ipcMain.handle('sync:change-members', (_event, projectId, restServer, change) => changeMembers(projectId, restServer, change));
   ipcMain.handle('sync:invites', (_event, restServer) => invites(restServer));
@@ -1048,5 +1075,5 @@ function registerSyncIpc(ipcMain, getMainWindow, { devTools = false } = {}) {
 module.exports = {
   registerSyncIpc, notifyLocalChange, getStatus, preflight, activity, serverProject, listServerProjects, introCandidates, setPromptAnswer, compare, link, openRemote, turnOn, push, setMode, pull, commitPull, discardPull, download, clone,
   listDecisions, decide, decideCommit, decideDiscard, testOther, testCompare, cleanupReplaced,
-  members, changeMembers, invites, answerInvite,
+  members, changeMembers, invites, answerInvite, permissions,
 };

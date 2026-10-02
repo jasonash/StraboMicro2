@@ -1,4 +1,5 @@
 import React, { useState, useRef } from 'react';
+import { ViewerScope } from './ReadOnlyScope';
 import { Box, IconButton, Tooltip } from '@mui/material';
 import { ChevronLeft, ChevronRight } from '@mui/icons-material';
 import Header from './Header';
@@ -138,7 +139,7 @@ const MainLayout: React.FC = () => {
             transition: isTransitionEnabled ? 'width 0.3s ease-in-out' : 'none',
           }}
         >
-          <Sidebar />
+          <ViewerScope><Sidebar /></ViewerScope>
         </Box>
 
         {/* Resize handle for left panel - outside sidebar to avoid scrollbar overlap */}
@@ -202,7 +203,7 @@ const MainLayout: React.FC = () => {
 
         {/* Center Viewer */}
         <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-          <Viewer />
+          <ViewerScope><Viewer /></ViewerScope>
         </Box>
 
         {/* Resize handle for right panel - outside panel to avoid overflow clipping */}
@@ -277,7 +278,7 @@ const MainLayout: React.FC = () => {
             transition: isTransitionEnabled ? 'width 0.3s ease-in-out' : 'none',
           }}
         >
-          <PropertiesPanel />
+          <ViewerScope><PropertiesPanel /></ViewerScope>
         </Box>
 
         {/* Floating toggle button when panel is collapsed */}

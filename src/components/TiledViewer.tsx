@@ -18,6 +18,9 @@ import { Box, CircularProgress, Typography, IconButton, Tooltip } from '@mui/mat
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
 import { useAppStore } from '@/store';
+import { currentPermissions, useReadOnlyReason } from '@/hooks/usePermissions';
+import { editRefusal } from '@/utils/permissions';
+import { ReadOnlyScope } from './ReadOnlyScope';
 import { getChildMicrographs } from '@/store/helpers';
 import { AssociatedImageRenderer } from './AssociatedImageRenderer';
 import { ChildSpotsRenderer } from './ChildSpotsRenderer';
@@ -133,6 +136,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
     // Edit Spot Dialog state
     const [editSpotDialogOpen, setEditSpotDialogOpen] = useState(false);
     const [editingSpot, setEditingSpot] = useState<Spot | null>(null);
+    const editingSpotReason = useReadOnlyReason('spot', editingSpot?.id);
 
     // Batch Edit Dialog state (from store for global access)
     const batchEditDialogOpen = useAppStore((state) => state.batchEditDialogOpen);
@@ -1787,6 +1791,12 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
      */
     const handleEditGeometry = useCallback(
       (spot: Spot) => {
+        // Role checks of a shared project (17i): only what I may change
+        const refusal = editRefusal(currentPermissions(), 'spot', spot.id);
+        if (refusal) {
+          alert(refusal);
+          return;
+        }
         console.log('Edit geometry for spot:', spot.name);
 
         // Enter imperative edit mode, passing current zoom for correct handle sizes
@@ -1819,6 +1829,11 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
      */
     const handleDeleteSpot = useCallback(
       (spot: Spot) => {
+        const refusal = editRefusal(currentPermissions(), 'spot', spot.id);
+        if (refusal) {
+          alert(refusal);
+          return;
+        }
         if (window.confirm(`Delete spot "${spot.name}"?`)) {
           deleteSpot(spot.id);
           console.log('Spot deleted:', spot.name);
@@ -1837,6 +1852,13 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
         : [...selectedSpotIds];
 
       if (allIds.length === 0) return;
+
+      const perms = currentPermissions();
+      const refused = allIds.map((id) => editRefusal(perms, 'spot', id)).find((r) => r !== null);
+      if (refused) {
+        alert(`Some of the selected spots can't be deleted here. ${refused}`);
+        return;
+      }
 
       const count = allIds.length;
       if (window.confirm(`Delete ${count} selected spots?`)) {
@@ -2566,16 +2588,18 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
           />
         )}
 
-        {/* Edit Spot Dialog */}
+        {/* Edit Spot Dialog (view only when I may not change the spot, 17h/17i) */}
         {editingSpot && (
-          <EditSpotDialog
-            isOpen={editSpotDialogOpen}
-            onClose={() => {
-              setEditSpotDialogOpen(false);
-              setEditingSpot(null);
-            }}
-            spotId={editingSpot.id}
-          />
+          <ReadOnlyScope readOnly={editingSpotReason !== null} reason={editingSpotReason}>
+            <EditSpotDialog
+              isOpen={editSpotDialogOpen}
+              onClose={() => {
+                setEditSpotDialogOpen(false);
+                setEditingSpot(null);
+              }}
+              spotId={editingSpot.id}
+            />
+          </ReadOnlyScope>
         )}
 
         {/* Spot Context Menu */}

@@ -27,6 +27,8 @@ import {
 } from '@mui/material';
 import EditIcon from '@mui/icons-material/Edit';
 import { useAppStore } from '@/store';
+import { currentPermissions } from '@/hooks/usePermissions';
+import { editRefusal } from '@/utils/permissions';
 import { findMicrographById, findSpotById, getMicrographParentSample } from '@/store/helpers';
 
 interface DetailedNotesPanelProps {
@@ -144,6 +146,17 @@ export function DetailedNotesPanel({ micrographId, spotId, onEditSection, onView
 
   // Start editing a section
   const startEditing = (sectionId: InlineEditableSectionId, currentValue: string) => {
+    // Role checks of a shared project (17h, 17i): each section belongs to its own entity
+    const target: [string, string | undefined] =
+      sectionId === 'project-notes' ? ['project', project?.id]
+        : sectionId === 'sample-notes' ? ['sample', sample?.id]
+          : sectionId === 'micrograph-notes' ? ['micrograph', micrographId]
+            : ['spot', spotId];
+    const refusal = target[1] ? editRefusal(currentPermissions(), target[0], target[1]) : null;
+    if (refusal) {
+      alert(refusal);
+      return;
+    }
     checkUnsavedAndProceed(() => {
       setEditing({
         sectionId,

@@ -137,6 +137,7 @@ class ProjectSync {
   }
 
   start(): void {
+    void this.loadPermissions();
     this.unsubscribers.push(useAppStore.subscribe((state, prev) => {
       if (state.project && state.project !== prev.project && state.project.id === this.projectId) {
         this.localChange();
@@ -430,6 +431,7 @@ class ProjectSync {
       }
       const c = await api.sync.pullCommit(this.projectId, r.pullId);
       if (!c.ok) return c;
+      if (r.changes.length > 0) void this.loadPermissions(); // new entities: who created them
       const s = r.summary;
       if (s.received > 0) {
         console.log(`[Sync] Pulled ${s.received} changes (${s.applied} applied, ${s.conflicts} conflicts, ` +
@@ -663,6 +665,8 @@ class ProjectSync {
       // The header's offline state (16ar); other failures (login, account) say nothing about the connection
       if (r?.ok) useAuthStore.getState().setOffline(false);
       else if (r?.kind === 'offline') useAuthStore.getState().setOffline(true);
+      // My role follows the server (the owner may have changed it, 17h)
+      if (r?.ok && r.role && r.role !== useSyncStore.getState().role) useSyncStore.getState().update({ role: r.role });
       if (r?.ok && !this.running) {
         useSyncStore.getState().update({ incoming: r.incoming, incomingFrom: r.others });
         if (onOpen && r.incoming > 0 && this.mode === 'manual') {
@@ -673,6 +677,20 @@ class ProjectSync {
       }
     }
     this.schedulePoll();
+  }
+
+  /** My role and who created what, for the role checks (17h, 17i). */
+  private async loadPermissions(): Promise<void> {
+    const r = await window.api?.sync.permissions(this.projectId).catch(() => null);
+    if (this.stopped || !r?.ok) return;
+    useSyncStore.getState().update({ role: r.role, authors: r.authors });
+    // Names for "Added by …" (once; offline leaves them out)
+    if (Object.keys(useSyncStore.getState().memberNames).length > 0) return;
+    const m = await window.api?.sync.members(this.projectId, getRestServerUrl()).catch(() => null);
+    if (this.stopped || !m?.ok) return;
+    const names: Record<number, string> = {};
+    for (const x of m.members) names[x.user.pkey] = x.user.name || x.user.email || '';
+    useSyncStore.getState().update({ memberNames: names, ...(r.role === null ? { role: m.myRole } : {}) });
   }
 
   /** Changes waiting (in the app's current project) and refused, from main. */

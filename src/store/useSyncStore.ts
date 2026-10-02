@@ -69,6 +69,12 @@ export interface SyncStoreState {
   lastSyncedAt: number | null;
   /** The "Sync needs your decision" dialog is open */
   decisionsOpen: boolean;
+  /** My role in the open synced project, last known (null: local-only, or not known yet) */
+  role: SyncRole | null;
+  /** Who created what ('type:id' => pkey); an entity missing here was created on this computer */
+  authors: Record<string, number>;
+  /** Names of the project's members (pkey => name), for "Added by …" (empty offline) */
+  memberNames: Record<number, string>;
   /** Items waiting when the user closed the notice; it shows again only above this */
   noticeDismissedTotal: number;
   /** When the sync after the last answer finished with nothing left to decide */
@@ -85,6 +91,9 @@ export interface SyncStoreState {
 }
 
 const initial = {
+  role: null,
+  authors: {},
+  memberNames: {},
   synced: false,
   mode: null,
   phase: null,

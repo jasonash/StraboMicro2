@@ -24,6 +24,7 @@ import {
   Typography,
   Slider,
 } from '@mui/material';
+import { useReadOnly } from '../ReadOnlyScope';
 import { useAppStore } from '@/store';
 import { AutocompleteMineralSearch } from './metadata/reusable/AutocompleteMineralSearch';
 
@@ -58,6 +59,7 @@ function saveLastUsedColor(color: string): void {
 }
 
 export function BatchEditSpotsDialog({ isOpen, onClose }: BatchEditSpotsDialogProps) {
+  const readOnlyScope = useReadOnly().readOnly;
   const selectedSpotIds = useAppStore((state) => state.selectedSpotIds);
   const spotIndex = useAppStore((state) => state.spotIndex);
   const updateSpotData = useAppStore((state) => state.updateSpotData);
@@ -190,6 +192,7 @@ export function BatchEditSpotsDialog({ isOpen, onClose }: BatchEditSpotsDialogPr
             <Box sx={{ ml: 4, mt: 1, display: 'flex', alignItems: 'center', gap: 2 }}>
               <input
                 type="color"
+                disabled={readOnlyScope}
                 value={color.value}
                 onChange={(e) => setColor((prev) => ({ ...prev, value: e.target.value }))}
                 style={{
