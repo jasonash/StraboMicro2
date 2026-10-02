@@ -777,45 +777,6 @@ interface Window {
     // Open Remote Project
     onOpenRemoteProject: (callback: () => void) => Unsubscribe;
     server: {
-      checkConnectivity: () => Promise<{
-        online: boolean;
-        error?: string;
-      }>;
-      checkProjectExists: (projectId: string) => Promise<{
-        exists: boolean;
-        error?: string;
-      }>;
-      pushProject: (
-        projectId: string,
-        projectData: any,
-        options?: { overwrite?: boolean }
-      ) => Promise<{
-        success: boolean;
-        needsOverwriteConfirm?: boolean;
-        error?: string;
-      }>;
-      onPushProgress: (callback: (progress: {
-        phase: string;
-        percentage: number;
-        message: string;
-        itemName?: string;
-        bytesUploaded?: number;
-        bytesTotal?: number;
-      }) => void) => void;
-      removePushProgressListener: () => void;
-      // Remote project download (Open Remote Project)
-      listProjects: () => Promise<{
-        success: boolean;
-        projects?: RemoteProject[];
-        error?: string;
-        sessionExpired?: boolean;
-      }>;
-      downloadProject: (projectId: string) => Promise<{
-        success: boolean;
-        zipPath?: string;
-        error?: string;
-        sessionExpired?: boolean;
-      }>;
       cleanupDownload: (zipPath: string) => Promise<{
         success: boolean;
       }>;
@@ -1297,16 +1258,6 @@ interface VersionStats {
   totalSizeBytes: number;
   oldestTimestamp: string | null;
   newestTimestamp: string | null;
-}
-
-// Remote Project Types (Server Download)
-interface RemoteProject {
-  id: string;
-  name: string;
-  uploadDate: string;
-  modifiedTimestamp: number;
-  bytes: number;
-  bytesFormatted: string;
 }
 
 // Point Count Types

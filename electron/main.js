@@ -176,7 +176,6 @@ const pdfExport = require('./pdfExport');
 // Use React-PDF for better layout and working internal links
 const pdfProjectExport = require('./pdfReactExport');
 const smzExport = require('./smzExport');
-const serverUpload = require('./serverUpload');
 const versionHistory = require('./versionHistory');
 const projectsIndex = require('./projectsIndex');
 const accounts = require('./accounts');
@@ -5099,103 +5098,6 @@ ipcMain.handle('project:export-smz', async (event, projectId, projectData) => {
 });
 
 // =============================================================================
-// PUSH PROJECT TO SERVER
-// =============================================================================
-
-/**
- * Check server connectivity
- */
-ipcMain.handle('server:check-connectivity', async () => {
-  return serverUpload.checkConnectivity();
-});
-
-/**
- * Check if project exists on server
- */
-ipcMain.handle('server:check-project-exists', async (event, projectId) => {
-  try {
-    // Get valid token with auto-refresh
-    const tokenResult = await tokenService.getValidAccessToken();
-    if (!tokenResult.success) {
-      return { exists: false, error: tokenResult.error, sessionExpired: tokenResult.sessionExpired };
-    }
-    return serverUpload.checkProjectExists(projectId, tokenResult.accessToken);
-  } catch (error) {
-    log.error('[ServerUpload] Check project exists failed:', error);
-    return { exists: false, error: error.message };
-  }
-});
-
-/**
- * Push project to server
- * Main handler that orchestrates the entire upload process
- */
-ipcMain.handle('server:push-project', async (event, projectId, projectData, options) => {
-  try {
-    log.info('[ServerUpload] Starting push-to-server for project:', projectId);
-
-    const { overwrite = false } = options || {};
-
-    // Get valid token with auto-refresh
-    const tokenResult = await tokenService.getValidAccessToken();
-    if (!tokenResult.success) {
-      return { success: false, error: tokenResult.error, sessionExpired: tokenResult.sessionExpired };
-    }
-
-    // Get project folder paths
-    const folderPaths = await projectFolders.getProjectFolderPaths(projectId);
-
-    // Progress callback to send updates to renderer
-    const progressCallback = (progress) => {
-      event.sender.send('server:push-progress', progress);
-    };
-
-    // PDF generator wrapper (same as export-smz)
-    const pdfGenerator = async (outputPath, projData, projId, paths, progressCb) => {
-      await pdfProjectExport.generateProjectPDF(
-        outputPath,
-        projData,
-        projId,
-        paths,
-        imageExport.renderPdfImage,
-        progressCb
-      );
-    };
-
-    // Execute the push
-    const result = await serverUpload.pushProject({
-      projectId,
-      projectData,
-      folderPaths,
-      accessToken: tokenResult.accessToken,
-      overwrite,
-      progressCallback,
-      pdfGenerator,
-      projectSerializer,
-    });
-
-    if (result.success) {
-      log.info('[ServerUpload] Push completed successfully');
-    } else if (result.needsOverwriteConfirm) {
-      log.info('[ServerUpload] Project exists, awaiting overwrite confirmation');
-    } else {
-      log.error('[ServerUpload] Push failed:', result.error);
-    }
-
-    return result;
-
-  } catch (error) {
-    log.error('[ServerUpload] Push failed with exception:', error);
-    event.sender.send('server:push-progress', {
-      phase: serverUpload.UploadPhase.ERROR,
-      percentage: 0,
-      message: error.message,
-    });
-    return { success: false, error: error.message };
-  }
-});
-
-// =============================================================================
 // VERSION HISTORY
 // =============================================================================
 
@@ -5553,54 +5455,9 @@ ipcMain.handle('smz:import', async (event, smzPath) => {
 
 /**
  * ============================================================================
- * SERVER DOWNLOAD HANDLERS (Open Remote Project)
+ * SERVER DOWNLOAD HANDLERS (Open Shared Project, deep links)
  * ============================================================================
  */
-
-/**
- * List user's remote projects from the server
- * Requires authentication (JWT token)
- */
-ipcMain.handle('server:list-projects', async () => {
-  log.info('[ServerDownload] Listing remote projects...');
-
-  // Get valid token with auto-refresh
-  const tokenResult = await tokenService.getValidAccessToken();
-  if (!tokenResult.success) {
-    log.warn('[ServerDownload] Not authenticated or session expired');
-    return { success: false, error: tokenResult.error, sessionExpired: tokenResult.sessionExpired };
-  }
-
-  return serverDownload.listProjects(tokenResult.accessToken);
-});
-
-/**
- * Download a project from the server
- * Returns the path to the downloaded .zip file for inspection/import
- */
-ipcMain.handle('server:download-project', async (event, projectId) => {
-  log.info('[ServerDownload] Downloading project:', projectId);
-
-  // Get valid token with auto-refresh
-  const tokenResult = await tokenService.getValidAccessToken();
-  if (!tokenResult.success) {
-    log.warn('[ServerDownload] Not authenticated or session expired');
-    return { success: false, error: tokenResult.error, sessionExpired: tokenResult.sessionExpired };
-  }
-
-  const result = await serverDownload.downloadProject(
-    projectId,
-    tokenResult.accessToken,
-    (progress) => {
-      // Send progress updates to renderer
-      if (mainWindow) {
-        mainWindow.webContents.send('server:download-progress', progress);
-      }
-    }
-  );
-
-  return result;
-});
 
 /**
  * Deep link: resolve project name and size for a pkey (HEAD request).

@@ -450,17 +450,6 @@ contextBridge.exposeInMainWorld('api', {
     return () => ipcRenderer.removeListener('menu:push-to-server', callback);
   },
   server: {
-    checkConnectivity: () => ipcRenderer.invoke('server:check-connectivity'),
-    checkProjectExists: (projectId) => ipcRenderer.invoke('server:check-project-exists', projectId),
-    pushProject: (projectId, projectData, options) =>
-      ipcRenderer.invoke('server:push-project', projectId, projectData, options),
-    onPushProgress: (callback) =>
-      ipcRenderer.on('server:push-progress', (event, progress) => callback(progress)),
-    removePushProgressListener: () =>
-      ipcRenderer.removeAllListeners('server:push-progress'),
-    // Remote project download (Open Remote Project)
-    listProjects: () => ipcRenderer.invoke('server:list-projects'),
-    downloadProject: (projectId) => ipcRenderer.invoke('server:download-project', projectId),
     cleanupDownload: (zipPath) => ipcRenderer.invoke('server:cleanup-download', zipPath),
     onDownloadProgress: (callback) => {
       const handler = (event, progress) => callback(progress);
