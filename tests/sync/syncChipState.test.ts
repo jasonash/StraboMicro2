@@ -79,6 +79,18 @@ is('downloads', label({ downloads: 2 }), 'Downloading…');
 is('syncing notice is the detail', syncChipState({ ...synced, activity: 'syncing', notice: 'Sync will run when you finish editing' }, auth).detail,
   'Sync will run when you finish editing');
 
+// Icons: the slashed cloud only for connection trouble, never for Manual waiting
+const icon = (s: Partial<SyncChipInput>) => syncChipState({ ...synced, ...s }, auth).icon;
+is('icon: manual with changes', icon({ mode: 'manual', pending: 1, activity: 'waiting' }), 'waiting');
+is('icon: manual, first upload waiting', icon({ mode: 'manual', phase: 'uploading' }), 'waiting');
+is('icon: offline', icon({ problem: { kind: 'offline', message: '' } }), 'offline');
+is('icon: server trouble', icon({ mode: 'manual', problem: { kind: 'server', message: '' } }), 'offline');
+is('icon: sync unavailable', icon({ problem: { kind: 'disabled', message: '' } }), 'offline');
+is('icon: synced', icon({}), 'ok');
+is('icon: local only', icon({ synced: false }), 'local');
+is('icon: syncing', icon({ activity: 'syncing' }), 'busy');
+is('icon: decisions', icon({ conflicts: 1 }), 'attention');
+
 // Last synced
 const now = Date.parse('2026-10-02T12:00:00Z');
 is('last synced: never', lastSyncedText(null, now), 'Not synced yet since the project opened');

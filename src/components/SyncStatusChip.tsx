@@ -20,6 +20,7 @@ import {
 } from '@mui/material';
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutlineOutlined';
 import CloudOffOutlinedIcon from '@mui/icons-material/CloudOffOutlined';
+import CloudUploadOutlinedIcon from '@mui/icons-material/CloudUploadOutlined';
 import ComputerOutlinedIcon from '@mui/icons-material/ComputerOutlined';
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutlineOutlined';
 import { useAppStore } from '@/store';
@@ -66,12 +67,14 @@ export function SyncStatusChip() {
     setModeError(null);
   };
 
-  const icon = state.busy
-    ? <CircularProgress size={12} color="inherit" />
-    : state.tone === 'ok' ? <CheckCircleOutlineIcon />
-      : state.tone === 'attention' ? <ErrorOutlineIcon />
-        : state.tone === 'muted' ? <ComputerOutlinedIcon />
-          : <CloudOffOutlinedIcon />;
+  const icon = {
+    busy: <CircularProgress size={12} color="inherit" />,
+    ok: <CheckCircleOutlineIcon />,
+    attention: <ErrorOutlineIcon />,
+    local: <ComputerOutlinedIcon />,
+    offline: <CloudOffOutlinedIcon />,
+    waiting: <CloudUploadOutlinedIcon />,
+  }[state.icon];
 
   const changeMode = async (mode: SyncMode) => {
     setModeError(null);

@@ -15,6 +15,8 @@ import type { SyncStoreState } from '@/store/useSyncStore';
 import { decisionsWaiting } from '@/store/useSyncStore';
 
 export type SyncChipTone = 'attention' | 'active' | 'quiet' | 'ok' | 'muted';
+/** offline: no connection or the server is not answering; waiting: Manual mode, changes go up on the click */
+export type SyncChipIcon = 'busy' | 'ok' | 'attention' | 'local' | 'offline' | 'waiting';
 
 export interface SyncChipState {
   label: string;
@@ -27,6 +29,7 @@ export interface SyncChipState {
   detail: string;
   /** The popover offers Log in */
   needsLogin: boolean;
+  icon: SyncChipIcon;
 }
 
 export type SyncChipInput = Pick<SyncStoreState,
@@ -63,6 +66,20 @@ export function describeProgress(progress: SyncProgress | null): string | null {
 }
 
 export function syncChipState(s: SyncChipInput, auth: SyncChipAuth): SyncChipState {
+  const state = chipState(s, auth);
+  return { ...state, icon: iconFor(state, s) };
+}
+
+function iconFor(state: Omit<SyncChipState, 'icon'>, s: SyncChipInput): SyncChipIcon {
+  if (state.busy) return 'busy';
+  if (state.tone === 'ok') return 'ok';
+  if (state.tone === 'attention') return 'attention';
+  if (state.tone === 'muted') return 'local';
+  // Quiet: a connection problem (the only quiet states with a problem), or Manual mode waiting for the click
+  return s.problem ? 'offline' : 'waiting';
+}
+
+function chipState(s: SyncChipInput, auth: SyncChipAuth): Omit<SyncChipState, 'icon'> {
   const base = { busy: false, percent: null, needsLogin: false };
   if (!s.synced) {
     return {
