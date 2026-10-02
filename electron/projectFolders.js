@@ -283,13 +283,26 @@ function getProjectFolderPath(projectId) {
   return defaultProjectCopy(projectId);
 }
 
+/** Where a project's local-only copy lives (whether or not it exists). */
+function getLocalProjectPath(projectId) {
+  return path.join(getStraboMicro2DataPath(), projectId);
+}
+
+/**
+ * The preferred account's (logged in, else the last account's) synced copy
+ * of a project, or null when it has none on this computer.
+ */
+function ownProjectCopy(projectId) {
+  if (!preferredAccount) return null;
+  const own = path.join(getStraboMicro2DataPath(), ACCOUNTS_DIR, preferredAccount.server, preferredAccount.pkey, projectId);
+  return fs.existsSync(path.join(own, 'project.json')) ? own : null;
+}
+
 /** The default rules of getProjectFolderPath, ignoring the pinned copy (nothing changes). */
 function defaultProjectCopy(projectId) {
-  if (preferredAccount) {
-    const own = path.join(getStraboMicro2DataPath(), ACCOUNTS_DIR, preferredAccount.server, preferredAccount.pkey, projectId);
-    if (fs.existsSync(path.join(own, 'project.json'))) return own;
-  }
-  const local = path.join(getStraboMicro2DataPath(), projectId);
+  const own = ownProjectCopy(projectId);
+  if (own) return own;
+  const local = getLocalProjectPath(projectId);
   if (fs.existsSync(local)) return local;
   const copies = findAccountCopies(projectId);
   return copies.length === 1 ? copies[0] : local;
@@ -685,6 +698,9 @@ module.exports = {
   getStraboMicro2DataPath,
   ensureStraboMicro2DataDir,
   getProjectFolderPath,
+  getLocalProjectPath,
+  ownProjectCopy,
+  findAccountCopies,
   createProjectFolders,
   projectFolderExists,
   getProjectFolderPaths,

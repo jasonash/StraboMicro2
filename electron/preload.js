@@ -575,8 +575,8 @@ contextBridge.exposeInMainWorld('api', {
     selectFile: () => ipcRenderer.invoke('smz:select-file'),
     // Inspect an .smz file (get project info without importing)
     inspect: (smzPath) => ipcRenderer.invoke('smz:inspect', smzPath),
-    // Import an .smz file (DESTRUCTIVE - replaces existing project)
-    import: (smzPath) => ipcRenderer.invoke('smz:import', smzPath),
+    // Import an .smz file (DESTRUCTIVE - replaces a local-only project with the same id)
+    import: (smzPath, options) => ipcRenderer.invoke('smz:import', smzPath, options),
     // Progress updates during import
     onImportProgress: (callback) => {
       const handler = (event, progress) => callback(progress);

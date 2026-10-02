@@ -5437,18 +5437,19 @@ ipcMain.handle('smz:inspect', async (event, smzPath) => {
 });
 
 /**
- * Import an .smz file (DESTRUCTIVE - replaces existing project)
+ * Import an .smz file (DESTRUCTIVE - replaces a local-only project with the
+ * same id; asCopy imports it under a new id next to my synced copy)
  * Progress updates are sent via 'smz:import-progress' event
  */
-ipcMain.handle('smz:import', async (event, smzPath) => {
-  log.info('[SmzImport] Starting import of:', smzPath);
+ipcMain.handle('smz:import', async (event, smzPath, options) => {
+  log.info('[SmzImport] Starting import of:', smzPath, options?.asCopy ? '(as a separate copy)' : '');
 
   const result = await smzImport.importSmz(smzPath, (progress) => {
     // Send progress updates to renderer
     if (mainWindow) {
       mainWindow.webContents.send('smz:import-progress', progress);
     }
-  });
+  }, { asCopy: options?.asCopy === true });
 
   // If successful, update projects index and refresh menu
   if (result.success && result.projectId) {
