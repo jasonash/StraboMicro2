@@ -763,6 +763,23 @@ async function openRemote(pid, restServer, mode, onProgress) {
     const row = rows.find((r) => r && r.pid === pid);
     if (!row) return { ok: false, kind: 'error', message: 'This project is not on StraboSpot any more.' };
     if (row.syncFormat !== 'legacy') {
+      // A synced copy of this server project is here already (for example
+      // kept after being removed and invited again): use it; opening it
+      // syncs it up
+      const tokens = await tokenService.getTokens();
+      const mine = tokens && tokens.user ? projectFolders.getAccountCopyPath(row.straboId, restServer, tokens.user.pkey) : null;
+      if (mine && fs.existsSync(path.join(mine, 'project.json'))) {
+        const state = await loadEngine().sidecar.loadState(mine);
+        if (!state || Number(state.binding.pid) !== pid) {
+          return {
+            ok: false,
+            kind: 'exists',
+            message: 'This computer already has a different copy of this project in your account. Open it from Recent Projects.',
+          };
+        }
+        projectFolders.useProjectCopy(row.straboId, mine);
+        return { ok: true, projectId: row.straboId, adopted: false, existing: true };
+      }
       const r = await clone(pid, restServer, mode, onProgress);
       return r.ok ? { ok: true, projectId: r.projectId, adopted: false } : r;
     }

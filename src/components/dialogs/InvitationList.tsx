@@ -14,8 +14,8 @@ import { withArticle } from '@/utils/collaboratorRoles';
 
 type RowState =
   | { kind: 'busy'; status: string }
-  | { kind: 'downloaded'; projectId: string }
-  | { kind: 'error'; message: string };
+  | { kind: 'downloaded'; projectId: string; existing: boolean }
+  | { kind: 'error'; message: string; joined: boolean };
 
 interface InvitationListProps {
   invitations: SyncInvitation[];
@@ -55,7 +55,13 @@ export function InvitationList({ invitations, onAnswered, onAccepted, onOpenProj
     setRow(inv.pid, { kind: 'busy', status: 'Joining the project…' });
     const r = await api.sync.answerInvite(getRestServerUrl(), inv.pid, true);
     if (!r.ok) {
-      setRow(inv.pid, { kind: 'error', message: r.message });
+      // Answered already (here, on the website or on another computer): nothing left to do
+      if (r.kind === 'not_found') {
+        setRow(inv.pid, null);
+        onAnswered(inv.pid);
+        return;
+      }
+      setRow(inv.pid, { kind: 'error', message: r.message, joined: false });
       return;
     }
     onAccepted?.(inv.pid);
@@ -66,8 +72,8 @@ export function InvitationList({ invitations, onAnswered, onAccepted, onOpenProj
       (status) => setRow(inv.pid, { kind: 'busy', status })
     );
     setRow(inv.pid, d.ok
-      ? { kind: 'downloaded', projectId: d.projectId }
-      : { kind: 'error', message: `You joined the project, but the download failed: ${d.message} You can download it from File > Open Remote Project.` });
+      ? { kind: 'downloaded', projectId: d.projectId, existing: d.existing }
+      : { kind: 'error', message: `You joined the project, but the download failed: ${d.message} You can download it from File > Open Remote Project.`, joined: true });
   });
 
   const decline = (inv: SyncInvitation) => run(async () => {
@@ -76,7 +82,7 @@ export function InvitationList({ invitations, onAnswered, onAccepted, onOpenProj
     setRow(inv.pid, { kind: 'busy', status: 'Declining…' });
     const r = await api.sync.answerInvite(getRestServerUrl(), inv.pid, false);
     if (!r.ok && r.kind !== 'not_found') {
-      setRow(inv.pid, { kind: 'error', message: r.message });
+      setRow(inv.pid, { kind: 'error', message: r.message, joined: false });
       return;
     }
     setRow(inv.pid, null);
@@ -94,7 +100,8 @@ export function InvitationList({ invitations, onAnswered, onAccepted, onOpenProj
               primary={inv.name || 'Untitled Project'}
               secondary={
                 row?.kind === 'busy' ? row.status
-                  : row?.kind === 'downloaded' ? 'Downloaded. It stays synced with the other collaborators.'
+                  : row?.kind === 'downloaded'
+                    ? (row.existing ? 'Already on this computer. Opening it brings it up to date.' : 'Downloaded. It stays synced with the other collaborators.')
                     : `${from} invited you as ${withArticle(inv.role)}.`
               }
               sx={{ flex: '1 1 220px', minWidth: 0 }}
@@ -104,7 +111,7 @@ export function InvitationList({ invitations, onAnswered, onAccepted, onOpenProj
               {row?.kind === 'downloaded' && (
                 <Button size="small" variant="contained" onClick={() => onOpenProject(row.projectId)}>Open</Button>
               )}
-              {(!row || row.kind === 'error') && (
+              {(!row || (row.kind === 'error' && !row.joined)) && (
                 <>
                   <Button size="small" disabled={anyBusy} onClick={() => void decline(inv)}>Decline</Button>
                   <Button size="small" variant="contained" disabled={anyBusy} onClick={() => void accept(inv)}>Accept</Button>

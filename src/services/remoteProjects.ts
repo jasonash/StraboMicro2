@@ -21,14 +21,15 @@ export async function openRemoteHere(p: RemoteProject, onOpenProject: (projectId
 }
 
 /**
- * Download a server project as a synced copy. Reports progress as text;
- * returns the project id to open, or the reason it failed.
+ * Download a server project as a synced copy (or use the synced copy of it
+ * already here, existing). Reports progress as text; returns the project id
+ * to open, or the reason it failed.
  */
 export async function downloadRemote(
   p: RemoteProject,
   mode: SyncMode,
   onStatus: (status: string) => void
-): Promise<{ ok: true; projectId: string } | { ok: false; message: string }> {
+): Promise<{ ok: true; projectId: string; existing: boolean } | { ok: false; message: string }> {
   const api = window.api;
   if (!api) return { ok: false, message: 'The app is not ready.' };
   const off = api.sync.onProgress((progress) => {
@@ -40,7 +41,7 @@ export async function downloadRemote(
     if (!r.ok) return { ok: false, message: r.message };
     // An older upload was adopted: its first upload into the same project runs now
     if (r.adopted) requestFirstSync(r.projectId);
-    return { ok: true, projectId: r.projectId };
+    return { ok: true, projectId: r.projectId, existing: r.existing === true };
   } finally {
     off();
   }

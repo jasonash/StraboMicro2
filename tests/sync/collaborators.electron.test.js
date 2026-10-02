@@ -191,6 +191,18 @@ app.whenReady().then(async () => {
     check('owner: remove the member', r.ok && r.status === 'removed', JSON.stringify(r));
     m = await svc.members(straboId, SERVER);
     check('owner: removed member gone from the list', m.ok && !m.members.some((x) => x.user.pkey === people.editor.pkey), JSON.stringify(m));
+
+    // Removed, invited again, accepted: the synced copy still on that computer is used, not refused
+    r = await svc.changeMembers(straboId, SERVER, { action: 'invite', email: people.editor.email, role: 'viewer' });
+    check('owner: the removed member invited again', r.ok && r.status === 'invited', JSON.stringify(r));
+    await loginAs('editor');
+    r = await svc.answerInvite(SERVER, serverPid, true);
+    check('invitee: accepts again', r.ok && r.role === 'viewer', JSON.stringify(r));
+    const again = await svc.openRemote(serverPid, SERVER, 'automatic', () => {});
+    check('invitee: the synced copy already here is used (no "already has a synced copy" error)',
+      again.ok && again.existing === true && again.projectId === straboId, JSON.stringify(again));
+    check('invitee: the id now resolves to that copy', projectFolders.getProjectFolderPath(straboId) === editorCopy2);
+    await loginAs('owner');
   } catch (err) {
     failures++;
     console.log(`  FAIL  unexpected error: ${err && err.stack ? err.stack : err}`);
