@@ -693,7 +693,8 @@ interface Window {
         available: boolean;
         backend: string;
       }>;
-      notifyStateChanged: (isLoggedIn: boolean) => void;
+      /** restServer: the configured server, so main knows whose copies to list (16d) */
+      notifyStateChanged: (isLoggedIn: boolean, restServer: string) => void;
     };
 
     // Auth menu events
@@ -859,7 +860,16 @@ interface Window {
         success: boolean;
         project?: any;
         error?: string;
+        /** The copy belongs to another account and was not opened (16at) */
+        belongsTo?: CopyOwner;
       }>;
+      /**
+       * Whose copy the open project is (16ax), or with forOpen the copy opening it
+       * would use (16at): owner null when this login may use it
+       */
+      copyOwner: (projectId: string, forOpen?: boolean) => Promise<{ owner: CopyOwner | null; ownCopy: boolean }>;
+      /** Main recorded a login state change */
+      onAccountsChanged: (callback: () => void) => Unsubscribe;
       // Refresh the Recent Projects menu
       refreshMenu: () => Promise<void>;
       // Close (delete) a project completely - removes from disk, index, and version history
@@ -1202,6 +1212,21 @@ interface ProjectIndexEntry {
   id: string;
   name: string;
   lastOpened: string;
+  /** The account of a synced copy (server folder name, pkey); null for local-only */
+  account?: { server: string; pkey: string } | null;
+  /** Logged out, the last account's copies: "Jason's copy" (16d) */
+  ownerLabel?: string | null;
+}
+
+/** The account a synced copy belongs to (name '' when it never logged in here) */
+interface CopyOwner {
+  name: string;
+  email: string;
+  /** Server folder name, e.g. strabospot.org */
+  server: string;
+  pkey: string;
+  /** The copy syncs with a server other than the one the app is set to */
+  otherServer: boolean;
 }
 
 // Version History Types

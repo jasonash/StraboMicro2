@@ -179,6 +179,7 @@ const smzExport = require('./smzExport');
 const serverUpload = require('./serverUpload');
 const versionHistory = require('./versionHistory');
 const projectsIndex = require('./projectsIndex');
+const accounts = require('./accounts');
 const imageExport = require('./imageExport');
 const smzImport = require('./smzImport');
 const serverDownload = require('./serverDownload');
@@ -645,8 +646,10 @@ function createWindow() {
           ...recentProjectsCache.map((proj) => {
             const isCurrentProject = proj.id === currentProjectId;
             const dateStr = formatRelativeDate(proj.lastOpened);
-            const label = dateStr
-              ? `${proj.name || 'Untitled Project'}  (${dateStr})`
+            // Logged out, the last account's copies say whose they are (16d)
+            const notes = [proj.ownerLabel, dateStr].filter(Boolean).join(', ');
+            const label = notes
+              ? `${proj.name || 'Untitled Project'}  (${notes})`
               : proj.name || 'Untitled Project';
 
             return {
@@ -1418,9 +1421,19 @@ function createWindow() {
   buildMenu();
 
   // IPC handler to update auth state and rebuild menu
-  ipcMain.on('auth:state-changed', (event, loggedIn) => {
+  // Every login state change (login, logout, startup check, expiry): which
+  // account's copies Recent Projects lists and a project id opens (16d, 16ba)
+  ipcMain.on('auth:state-changed', async (event, loggedIn, restServer) => {
     isLoggedIn = loggedIn;
+    try {
+      const tokens = loggedIn ? await tokenService.getTokens() : null;
+      accounts.setLoggedIn(tokens && tokens.user ? tokens.user : null, restServer);
+    } catch (error) {
+      log.warn('[Accounts] Could not read the logged-in account:', error.message);
+    }
     buildMenu();
+    // The renderer checks the open copy's owner again (16ax)
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('accounts:changed');
   });
 
   // IPC handler to update current project and rebuild menu
@@ -1695,6 +1708,9 @@ app.whenReady().then(async () => {
 
   // Clean up scratch space on startup
   await scratchSpace.cleanupAll();
+
+  // Until the renderer reports the login: the last account's copies (16d)
+  accounts.applyPreference();
 
   // Rebuild projects index on startup
   log.info('[App] Rebuilding projects index on startup...');
@@ -5404,6 +5420,16 @@ ipcMain.handle('projects:close', async (event, projectId) => {
 ipcMain.handle('projects:load', async (event, projectId) => {
   log.info('[ProjectsIndex] Loading project:', projectId);
   try {
+    // Which copy: the logged-in (else last) account's, else local-only (16ba);
+    // another account's copy does not open (16at)
+    const folder = projectFolders.resolveProjectCopy(projectId);
+    const owner = accounts.checkCopyOwner(folder);
+    if (!owner.ok) {
+      const who = owner.owner.name || owner.owner.email || 'another account';
+      log.info(`[ProjectsIndex] Not opening ${folder}: it belongs to ${who}`);
+      return { success: false, error: `This copy belongs to ${who}.`, belongsTo: owner.owner };
+    }
+    projectFolders.useProjectCopy(projectId, folder);
     const project = await projectSerializer.loadProjectJson(projectId);
     // Update lastOpened in index
     await projectsIndex.updateProjectOpened(projectId, project.name);
@@ -5416,6 +5442,25 @@ ipcMain.handle('projects:load', async (event, projectId) => {
     log.error('[ProjectsIndex] Error loading project:', error);
     return { success: false, error: error.message };
   }
+});
+
+/**
+ * Whose copy the open project is (16ax), or with forOpen the copy opening
+ * this project id would use (16at, checked before the open project closes):
+ * owner null when this login may use it; ownCopy when the logged-in account
+ * has its own copy of it.
+ */
+ipcMain.handle('projects:copy-owner', async (event, projectId, forOpen) => {
+  const folder = forOpen ? projectFolders.defaultProjectCopy(projectId) : projectFolders.getProjectFolderPath(projectId);
+  const check = accounts.checkCopyOwner(folder);
+  const active = accounts.getActive();
+  let ownCopy = false;
+  if (active) {
+    try {
+      ownCopy = fs.existsSync(path.join(projectFolders.getAccountCopyPath(projectId, active.server, active.pkey), 'project.json'));
+    } catch (_) { /* invalid account key */ }
+  }
+  return { owner: check.ok ? null : check.owner, ownCopy };
 });
 
 /**

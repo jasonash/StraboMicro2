@@ -162,8 +162,41 @@ function getAccountCopyPath(projectId, serverUrl, pkey) {
   return path.join(getAccountFolderPath(serverUrl, pkey), projectId);
 }
 
-/** projectId => folder of the copy in use (set when a copy is opened or moved). */
-const copiesInUse = new Map();
+/**
+ * projectId => folder of the copy in use (set when a copy is opened or
+ * moved). Saved in userData so a project restored at startup keeps using the
+ * same copy, whoever logs in meanwhile (spec v3 16ax).
+ * @type {Map<string, string> | null}
+ */
+let copiesInUse = null;
+const COPIES_IN_USE_FILE = 'copies-in-use.json';
+
+function copiesInUseFile() {
+  return path.join(app.getPath('userData'), COPIES_IN_USE_FILE);
+}
+
+/** The pins, loaded once; pins whose folder is gone are dropped. */
+function pins() {
+  if (copiesInUse) return copiesInUse;
+  copiesInUse = new Map();
+  try {
+    const saved = JSON.parse(fs.readFileSync(copiesInUseFile(), 'utf8'));
+    for (const [projectId, folder] of Object.entries(saved || {})) {
+      if (typeof folder === 'string' && fs.existsSync(path.join(folder, 'project.json'))) copiesInUse.set(projectId, folder);
+    }
+  } catch (_) { /* none saved yet */ }
+  return copiesInUse;
+}
+
+function savePins() {
+  try {
+    const target = copiesInUseFile();
+    fs.writeFileSync(`${target}.tmp`, JSON.stringify(Object.fromEntries(pins()), null, 2), 'utf8');
+    fs.renameSync(`${target}.tmp`, target);
+  } catch (err) {
+    console.warn(`[ProjectFolders] Could not save ${COPIES_IN_USE_FILE}: ${err.message}`);
+  }
+}
 
 /**
  * Use this copy of a project from now on (the app opened it, or it moved).
@@ -171,12 +204,40 @@ const copiesInUse = new Map();
  * @param {string} folderPath
  */
 function useProjectCopy(projectId, folderPath) {
-  copiesInUse.set(projectId, folderPath);
+  if (pins().get(projectId) === folderPath) return;
+  pins().set(projectId, folderPath);
+  savePins();
 }
 
 /** Stop pinning a copy (it was deleted); lookups fall back to the default rules. */
 function forgetProjectCopy(projectId) {
-  copiesInUse.delete(projectId);
+  if (pins().delete(projectId)) savePins();
+}
+
+/**
+ * The account whose copies a project id means when no copy is pinned: the
+ * logged-in account, else the last one (set by electron/accounts.js).
+ * @type {{ server: string, pkey: string } | null}
+ */
+let preferredAccount = null;
+
+/** @param {{ server: string, pkey: string | number } | null} account - server is a URL */
+function setPreferredAccount(account) {
+  preferredAccount = account && /^\d+$/.test(String(account.pkey))
+    ? { server: serverFolderName(account.server), pkey: String(account.pkey) }
+    : null;
+}
+
+/**
+ * The account an account copy's folder belongs to ({ server: folder name, pkey }),
+ * or null for a local-only folder.
+ * @param {string} folderPath
+ */
+function accountOfFolder(folderPath) {
+  const rel = path.relative(path.join(getStraboMicro2DataPath(), ACCOUNTS_DIR), folderPath);
+  if (!rel || rel.startsWith('..') || path.isAbsolute(rel)) return null;
+  const [server, pkey, projectId] = rel.split(path.sep);
+  return server && pkey && projectId ? { server, pkey } : null;
 }
 
 /**
@@ -210,18 +271,42 @@ function findAccountCopies(projectId) {
 
 /**
  * Get the path to a specific project folder: the copy in use if one was set,
- * else the local-only folder if it exists, else the only account copy on
- * disk, else the local-only location (new projects are created there).
+ * else the preferred account's copy (logged in, else the last account) if it
+ * exists, else the local-only folder if it exists, else the only account copy
+ * on disk, else the local-only location (new projects are created there).
  * @param {string} projectId - UUID of the project
  * @returns {string} Path to project folder
  */
 function getProjectFolderPath(projectId) {
-  const inUse = copiesInUse.get(projectId);
+  const inUse = pins().get(projectId);
   if (inUse) return inUse;
+  return defaultProjectCopy(projectId);
+}
+
+/** The default rules of getProjectFolderPath, ignoring the pinned copy (nothing changes). */
+function defaultProjectCopy(projectId) {
+  if (preferredAccount) {
+    const own = path.join(getStraboMicro2DataPath(), ACCOUNTS_DIR, preferredAccount.server, preferredAccount.pkey, projectId);
+    if (fs.existsSync(path.join(own, 'project.json'))) return own;
+  }
   const local = path.join(getStraboMicro2DataPath(), projectId);
   if (fs.existsSync(local)) return local;
   const copies = findAccountCopies(projectId);
   return copies.length === 1 ? copies[0] : local;
+}
+
+/**
+ * Which copy opening a project by id means (spec v3 16ba): the default rules
+ * above, ignoring the copy used before, which is then pinned by the caller.
+ * @param {string} projectId
+ * @returns {string}
+ */
+function resolveProjectCopy(projectId) {
+  if (pins().has(projectId)) {
+    pins().delete(projectId);
+    savePins();
+  }
+  return defaultProjectCopy(projectId);
 }
 
 /**
@@ -611,6 +696,10 @@ module.exports = {
   getAccountCopyPath,
   useProjectCopy,
   forgetProjectCopy,
+  resolveProjectCopy,
+  defaultProjectCopy,
+  setPreferredAccount,
+  accountOfFolder,
   copyFileToAssociatedFiles,
   cleanupOrphanedAssociatedFiles
 };

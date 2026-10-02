@@ -46,8 +46,9 @@ import UpdateNotification from './components/UpdateNotification';
 import SyncDecisionsNotice from './components/SyncDecisionsNotice';
 import SyncDecisionsDialog from './components/dialogs/SyncDecisionsDialog';
 import { SyncOpenPrompt } from './components/dialogs/SyncOpenPrompt';
+import { CopyOwnerDialog, type CopyOwnerPrompt } from './components/dialogs/CopyOwnerDialog';
 import { useAppStore, undo, redo, setUndoBlockedHandler } from '@/store';
-import { useAuthStore } from '@/store/useAuthStore';
+import { useAuthStore, promptLogin } from '@/store/useAuthStore';
 import { syncNowFromUser, requestFirstSync, TURN_ON_SYNC_EVENT } from '@/services/syncActions';
 import { beginLinking, LINK_SYNC_EVENT, type LinkRequest } from '@/services/syncLinking';
 import { useSyncStore } from '@/store/useSyncStore';
@@ -184,6 +185,8 @@ function App() {
   const [isExportPDFOpen, setIsExportPDFOpen] = useState(false);
   const [isExportSmzOpen, setIsExportSmzOpen] = useState(false);
   const [isTurnOnSyncOpen, setIsTurnOnSyncOpen] = useState(false);
+  // Another account's copy (16at opening it, 16ax it is open)
+  const [ownerPrompt, setOwnerPrompt] = useState<CopyOwnerPrompt | null>(null);
   const [isVersionHistoryOpen, setIsVersionHistoryOpen] = useState(false);
   const [isIncompleteMicrographsOpen, setIsIncompleteMicrographsOpen] = useState(false);
   const [incompleteMicrographs, setIncompleteMicrographs] = useState<IncompleteMicrograph[]>([]);
@@ -283,6 +286,13 @@ function App() {
    * Used by Open Remote Project; the Recent Projects menu does the same.
    */
   const openProjectById = useCallback(async (projectId: string) => {
+    // Another account's copy does not open (16at); asked before the open project closes
+    const check = await window.api?.projects.copyOwner(projectId, true);
+    if (check?.owner) {
+      const name = (await window.api?.projects.getAll())?.find((p) => p.id === projectId)?.name ?? null;
+      setOwnerPrompt({ mode: 'open', projectId, projectName: name, owner: check.owner, ownCopy: false });
+      return;
+    }
     if (!(await saveBeforeSwitch())) return;
     closeProject();
     setLoadingProjectName('');
@@ -1238,46 +1248,64 @@ function App() {
     }));
 
     // File: Switch Project (from Recent Projects menu)
-    unsubscribers.push(window.api?.onSwitchProject(async (_event, projectId) => {
+    unsubscribers.push(window.api?.onSwitchProject((_event, projectId) => {
       console.log('[App] Switching to project:', projectId);
-
-      // Check for unsaved changes
-      const canSwitch = await saveBeforeSwitch();
-      if (!canSwitch) {
-        console.log('[App] Switch cancelled - save failed');
-        return;
-      }
-
-      // Close current project and show loading indicator
-      closeProject();
-      setLoadingProjectName('');
-      setIsLoadingProject(true);
-
-      // Load the new project
-      try {
-        const result = await window.api?.projects.load(projectId);
-        if (result?.success && result.project) {
-          setLoadingProjectName(result.project.name || '');
-          // Load with preparation (prepares image cache before loading into store)
-          await loadProjectWithPreparation(result.project, null);
-          console.log('[App] Project loaded successfully:', result.project.name);
-        } else {
-          console.error('[App] Failed to load project:', result?.error);
-          alert(`Failed to load project: ${result?.error || 'Unknown error'}`);
-        }
-      } catch (error) {
-        console.error('[App] Error loading project:', error);
-        alert(`Error loading project: ${error}`);
-      } finally {
-        setIsLoadingProject(false);
-      }
+      void openProjectById(projectId);
     }));
 
     // Cleanup: remove all listeners when dependencies change or component unmounts
     return () => {
       unsubscribers.forEach(unsub => unsub?.());
     };
-  }, [closeProject, setTheme, setShowRulers, setSpotLabelMode, setShowMicrographOutlines, logout, project, manualSave, saveBeforeSwitch, loadProjectWithPreparation, activeMicrographId, micrographIndex, addSpot, updateMicrographMetadata]);
+  }, [closeProject, setTheme, setShowRulers, setSpotLabelMode, setShowMicrographOutlines, logout, project, manualSave, saveBeforeSwitch, loadProjectWithPreparation, activeMicrographId, micrographIndex, addSpot, updateMicrographMetadata, openProjectById]);
+
+  // The open copy belongs to another account (16ax): checked when a project
+  // opens and after every login change main has recorded (a login, or the
+  // startup check after a restored session)
+  const openProjectId = useAppStore((state) => state.project?.id ?? null);
+  const ownerLoginRunning = useRef(false);
+  const checkOpenCopyOwner = useCallback(async () => {
+    if (ownerLoginRunning.current) return;
+    const current = useAppStore.getState().project;
+    if (!current?.id || !window.api) {
+      setOwnerPrompt((p) => (p?.mode === 'opened' ? null : p));
+      return;
+    }
+    const r = await window.api.projects.copyOwner(current.id);
+    if (useAppStore.getState().project?.id !== current.id) return;
+    setOwnerPrompt((p) => {
+      if (p?.mode === 'open') return p;
+      return r.owner
+        ? { mode: 'opened', projectId: current.id, projectName: current.name ?? null, owner: r.owner, ownCopy: r.ownCopy }
+        : null;
+    });
+  }, []);
+  useEffect(() => {
+    void checkOpenCopyOwner();
+  }, [openProjectId, checkOpenCopyOwner]);
+  useEffect(() => window.api?.projects.onAccountsChanged(() => void checkOpenCopyOwner()), [checkOpenCopyOwner]);
+
+  const logInAsCopyOwner = useCallback(async (p: CopyOwnerPrompt) => {
+    setOwnerPrompt(null);
+    ownerLoginRunning.current = true;
+    let ok = false;
+    try {
+      if (useAuthStore.getState().isAuthenticated) await logout();
+      const who = p.owner.email || p.owner.name || 'the owner of this copy';
+      ok = await promptLogin(`Log in as ${who} to use this copy.`);
+    } finally {
+      ownerLoginRunning.current = false;
+    }
+    if (ok && p.mode === 'open') await openProjectById(p.projectId);
+    else void checkOpenCopyOwner();
+  }, [logout, openProjectById, checkOpenCopyOwner]);
+
+  const dismissCopyOwner = useCallback(async (p: CopyOwnerPrompt) => {
+    setOwnerPrompt(null);
+    if (p.mode !== 'opened') return;
+    if (!(await saveBeforeSwitch())) return;
+    closeProject();
+  }, [saveBeforeSwitch, closeProject]);
 
   // Turn sync on for the open project (the turn-on dialog's Start Syncing,
   // 16aj). The folder moves, so the project is saved and unloaded first,
@@ -1575,6 +1603,15 @@ function App() {
       <SyncDecisionsNotice />
       <SyncDecisionsDialog />
       <SyncOpenPrompt />
+      <CopyOwnerDialog
+        prompt={ownerPrompt}
+        onLogInAsOwner={(p) => void logInAsCopyOwner(p)}
+        onOpenOwnCopy={(p) => {
+          setOwnerPrompt(null);
+          void openProjectById(p.projectId);
+        }}
+        onDismiss={(p) => void dismissCopyOwner(p)}
+      />
       <SyncLinkPrompt />
       <SyncLinkChoiceDialog />
       <PointCountDialog

@@ -18,6 +18,24 @@ const path = require('path');
 const { app } = require('electron');
 const log = require('electron-log');
 const projectFolders = require('./projectFolders');
+const accounts = require('./accounts');
+
+/**
+ * One entry per project copy: a local-only project (account null) or an
+ * account's synced copy ({ server: folder name, pkey }). Recent Projects
+ * shows the copies of the logged-in account (else the last one) plus
+ * local-only projects (spec v3 §11.4, 16d).
+ */
+function entryKey(id, account) {
+  return account ? `${id}|${account.server}/${account.pkey}` : `${id}|`;
+}
+
+/** The folder of an index entry's copy */
+function entryFolder(entry) {
+  return entry.account
+    ? path.join(projectFolders.getStraboMicro2DataPath(), 'accounts', entry.account.server, entry.account.pkey, entry.id)
+    : path.join(projectFolders.getStraboMicro2DataPath(), entry.id);
+}
 
 // Index file location (inside app userData folder)
 const INDEX_FILENAME = 'projects-index.json';
@@ -108,29 +126,24 @@ async function readProjectInfo(projectId, folderPath) {
 async function rebuildIndex() {
   log.info('[ProjectsIndex] Rebuilding index from disk...');
 
-  // Load existing index to preserve lastOpened timestamps
+  // Load existing index to preserve lastOpened timestamps (by copy; an
+  // entry from before copies were listed separately matches by id)
   const existingIndex = await loadIndex();
-  const existingProjects = new Map(
-    existingIndex.projects.map(p => [p.id, p])
-  );
+  const existingByKey = new Map(existingIndex.projects.map(p => [entryKey(p.id, p.account), p]));
+  const existingById = new Map(existingIndex.projects.map(p => [p.id, p]));
 
-  // Get all project copies: local-only folders first, then synced account copies.
-  // One entry per project id for now; listing each account's copy (spec v3
-  // §11.4, Recent Projects per account) comes with the sync UI.
+  // Every project copy: local-only folders, then synced account copies
   const copies = await projectFolders.listProjectCopies();
 
   log.info(`[ProjectsIndex] Found ${copies.length} project folder(s)`);
 
   // Read info from each project (only those with valid project.json)
   const projects = [];
-  const seen = new Set();
   for (const copy of copies) {
-    if (seen.has(copy.projectId)) continue;
     const info = await readProjectInfo(copy.projectId, copy.folderPath);
     if (info) {
-      seen.add(copy.projectId);
       // Preserve lastOpened from existing index, or use lastModified as initial value
-      const existing = existingProjects.get(copy.projectId);
+      const existing = existingByKey.get(entryKey(copy.projectId, copy.account)) || existingById.get(copy.projectId);
       projects.push({
         id: info.id,
         name: info.name,
@@ -166,9 +179,12 @@ async function updateProjectOpened(projectId, projectName) {
 
   const index = await loadIndex();
   const now = new Date().toISOString();
+  // The copy the app uses now
+  const account = projectFolders.accountOfFolder(projectFolders.getProjectFolderPath(projectId));
+  const key = entryKey(projectId, account);
 
   // Find existing entry or create new one
-  const existingIdx = index.projects.findIndex(p => p.id === projectId);
+  const existingIdx = index.projects.findIndex(p => entryKey(p.id, p.account) === key);
   if (existingIdx >= 0) {
     // Update existing entry
     index.projects[existingIdx].lastOpened = now;
@@ -178,6 +194,7 @@ async function updateProjectOpened(projectId, projectName) {
     index.projects.push({
       id: projectId,
       name: projectName,
+      account,
       lastOpened: now,
     });
   }
@@ -194,7 +211,8 @@ async function updateProjectOpened(projectId, projectName) {
 
 /**
  * Remove a project from the index
- * Call this when a project is deleted
+ * Call this when a project is deleted: the entries of its copies that are
+ * no longer on disk go (other accounts' copies stay)
  * @param {string} projectId - Project UUID
  * @returns {Promise<void>}
  */
@@ -202,18 +220,34 @@ async function removeProject(projectId) {
   log.info(`[ProjectsIndex] Removing project from index: ${projectId}`);
 
   const index = await loadIndex();
-  index.projects = index.projects.filter(p => p.id !== projectId);
+  index.projects = index.projects.filter(
+    p => p.id !== projectId || fs.existsSync(path.join(entryFolder(p), 'project.json'))
+  );
   await saveIndex(index);
 }
 
 /**
- * Get the list of recent projects
+ * Get the list of recent projects: local-only projects plus the copies of
+ * the logged-in account, or, logged out, of the last account, labeled with
+ * its owner ("Jason's copy", spec v3 16d). One entry per project id: the
+ * account's copy when there is also a local-only one (as opening does).
  * @param {number} limit - Maximum number of projects to return (default 10)
- * @returns {Promise<Array>} Array of project entries sorted by lastOpened
+ * @returns {Promise<Array>} Array of project entries sorted by lastOpened,
+ *   each with ownerLabel (null unless it is the last account's copy, logged out)
  */
 async function getRecentProjects(limit = 10) {
   const index = await loadIndex();
-  return index.projects.slice(0, limit);
+  const active = accounts.getActive();
+  const own = active || accounts.getLast();
+  const ownServer = own ? projectFolders.serverFolderName(own.server) : null;
+  const isOwn = (p) => Boolean(own && p.account && p.account.server === ownServer && String(p.account.pkey) === own.pkey);
+  const visible = index.projects.filter(p => !p.account || isOwn(p));
+  const withOwnCopy = new Set(visible.filter(isOwn).map(p => p.id));
+  const { copyLabel } = require('./shared/accountNames.mjs');
+  return visible
+    .filter(p => p.account || !withOwnCopy.has(p.id))
+    .slice(0, limit)
+    .map(p => ({ ...p, ownerLabel: !active && p.account && own ? copyLabel(own.name, own.email) : null }));
 }
 
 /**

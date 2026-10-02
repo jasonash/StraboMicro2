@@ -110,7 +110,7 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
           loginPromptMessage: null,
         });
         // Notify main process to update menu
-        window.api.auth.notifyStateChanged(true);
+        window.api.auth.notifyStateChanged(true, getRestServerUrl());
         console.log('[AuthStore] Login successful for:', result.user?.email);
         // Resolve any pending auth requests that were waiting for re-login
         const resolvers = pendingLoginResolvers;
@@ -168,7 +168,7 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
     });
 
     // Notify main process to update menu
-    window.api?.auth?.notifyStateChanged(false);
+    window.api?.auth?.notifyStateChanged(false, getRestServerUrl());
     console.log('[AuthStore] Logged out');
   },
 
@@ -189,7 +189,7 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
           isAuthenticated: true,
           user: result.user,
         });
-        window.api.auth.notifyStateChanged(true);
+        window.api.auth.notifyStateChanged(true, getRestServerUrl());
         console.log('[AuthStore] User is logged in:', result.user?.email);
       } else if (result.needsRefresh) {
         // Token expired but we have refresh token - try to refresh
@@ -202,20 +202,20 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
             isAuthenticated: true,
             user: result.user ?? null,
           });
-          window.api.auth.notifyStateChanged(true);
+          window.api.auth.notifyStateChanged(true, getRestServerUrl());
         } else {
           set({
             isAuthenticated: false,
             user: null,
           });
-          window.api.auth.notifyStateChanged(false);
+          window.api.auth.notifyStateChanged(false, getRestServerUrl());
         }
       } else {
         set({
           isAuthenticated: false,
           user: null,
         });
-        window.api.auth.notifyStateChanged(false);
+        window.api.auth.notifyStateChanged(false, getRestServerUrl());
       }
     } catch (error) {
       console.error('[AuthStore] Auth check error:', error);
@@ -223,7 +223,7 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
         isAuthenticated: false,
         user: null,
       });
-      window.api?.auth?.notifyStateChanged(false);
+      window.api?.auth?.notifyStateChanged(false, getRestServerUrl());
     }
   },
 
@@ -252,7 +252,7 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
           user: null,
           error: result.error ?? null,
         });
-        window.api.auth.notifyStateChanged(false);
+        window.api.auth.notifyStateChanged(false, getRestServerUrl());
         return 'expired';
       }
       // Offline or server trouble: tokens were kept, stay logged in

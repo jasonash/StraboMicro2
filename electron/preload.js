@@ -367,7 +367,7 @@ contextBridge.exposeInMainWorld('api', {
     check: () => ipcRenderer.invoke('auth:check'),
     getToken: () => ipcRenderer.invoke('auth:get-token'),
     checkStorage: () => ipcRenderer.invoke('auth:check-storage'),
-    notifyStateChanged: (isLoggedIn) => ipcRenderer.send('auth:state-changed', isLoggedIn),
+    notifyStateChanged: (isLoggedIn, restServer) => ipcRenderer.send('auth:state-changed', isLoggedIn, restServer),
   },
 
   // Auth menu events
@@ -539,6 +539,14 @@ contextBridge.exposeInMainWorld('api', {
     remove: (projectId) => ipcRenderer.invoke('projects:remove', projectId),
     // Load a project by ID
     load: (projectId) => ipcRenderer.invoke('projects:load', projectId),
+    // Whose copy the open project is (another account's copy, 16ax)
+    copyOwner: (projectId, forOpen) => ipcRenderer.invoke('projects:copy-owner', projectId, forOpen),
+    // Main recorded a login state change (the open copy's owner may differ now)
+    onAccountsChanged: (callback) => {
+      const listener = () => callback();
+      ipcRenderer.on('accounts:changed', listener);
+      return () => ipcRenderer.removeListener('accounts:changed', listener);
+    },
     // Refresh the Recent Projects menu
     refreshMenu: () => ipcRenderer.invoke('projects:refresh-menu'),
     // Close (delete) a project completely - removes from disk, index, and version history
