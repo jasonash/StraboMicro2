@@ -203,6 +203,49 @@ export function selectionAfterChange(
   };
 }
 
+/**
+ * Drop membership ids that point at something no longer in the project
+ * (micrograph and spot tags, group micrographs and spotIDs, tag spotIDs).
+ * Call on the cloned project after a delete; lists without a dead id are
+ * left as they are. A pull does the same for synced projects (merge.js
+ * dropDeadMembers).
+ */
+export function dropDeadMemberIds(project: ProjectMetadata): void {
+  const micrographIds = new Set<string>();
+  const spotIds = new Set<string>();
+  const tagIds = new Set((project.tags || []).map((t) => t.id));
+  const owners: Array<{ tags?: string[] | null }> = [];
+  for (const dataset of project.datasets || []) {
+    for (const sample of dataset.samples || []) {
+      for (const micrograph of sample.micrographs || []) {
+        micrographIds.add(micrograph.id);
+        owners.push(micrograph);
+        for (const spot of micrograph.spots || []) {
+          spotIds.add(spot.id);
+          owners.push(spot);
+        }
+      }
+    }
+  }
+  // null when nothing is dead, so untouched lists keep their exact value
+  const kept = (ids: string[] | null | undefined, live: Set<string>) =>
+    Array.isArray(ids) && ids.some((id) => !live.has(id)) ? ids.filter((id) => live.has(id)) : null;
+  for (const owner of owners) {
+    const tags = kept(owner.tags, tagIds);
+    if (tags) owner.tags = tags;
+  }
+  for (const group of project.groups || []) {
+    const micrographs = kept(group.micrographs, micrographIds);
+    if (micrographs) group.micrographs = micrographs;
+    const spots = kept(group.spotIDs, spotIds);
+    if (spots) group.spotIDs = spots;
+  }
+  for (const tag of project.tags || []) {
+    const spots = kept(tag.spotIDs, spotIds);
+    if (spots) tag.spotIDs = spots;
+  }
+}
+
 export function buildSpotIndex(
   project: ProjectMetadata | null
 ): Map<string, Spot> {

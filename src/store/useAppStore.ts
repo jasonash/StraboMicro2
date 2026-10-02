@@ -125,6 +125,7 @@ import {
   getDescendantMicrographs,
   isPointPlacedMicrograph,
   mergePresetIntoSpot,
+  dropDeadMemberIds,
 } from './helpers';
 import type { TiledViewerRef } from '@/components/TiledViewer';
 
@@ -1457,6 +1458,7 @@ export const useAppStore = create<AppState>()(
 
             const newProject = structuredClone(state.project);
             newProject.datasets = newProject.datasets?.filter(d => d.id !== id) || [];
+            dropDeadMemberIds(newProject);
 
             return {
               project: newProject,
@@ -1540,6 +1542,7 @@ export const useAppStore = create<AppState>()(
             for (const dataset of newProject.datasets || []) {
               dataset.samples = dataset.samples?.filter(s => s.id !== id) || [];
             }
+            dropDeadMemberIds(newProject);
 
             return {
               project: newProject,
@@ -1752,6 +1755,7 @@ export const useAppStore = create<AppState>()(
                 sample.micrographs = sample.micrographs.filter(m => !idsToDelete.has(m.id));
               }
             }
+            dropDeadMemberIds(newProject);
 
             return {
               project: newProject,
@@ -1945,6 +1949,7 @@ export const useAppStore = create<AppState>()(
                 }
               }
             }
+            dropDeadMemberIds(newProject);
 
             return {
               project: newProject,
@@ -1967,6 +1972,7 @@ export const useAppStore = create<AppState>()(
                 }
               }
             }
+            dropDeadMemberIds(newProject);
 
             // Handle Quick Edit mode state updates
             let quickEditUpdates: Partial<AppState> = {};
@@ -2025,6 +2031,7 @@ export const useAppStore = create<AppState>()(
               micrograph.spots = [];
               return deletedSpotIds;
             });
+            dropDeadMemberIds(newProject);
 
             // Get the deleted spot IDs from the old project
             const oldMicrograph = state.micrographIndex.get(micrographId);
@@ -2176,6 +2183,7 @@ export const useAppStore = create<AppState>()(
                   }
                 }
               }
+              dropDeadMemberIds(newProject);
 
               set({
                 project: newProject,
@@ -2403,6 +2411,7 @@ export const useAppStore = create<AppState>()(
                   }
                 }
               }
+              dropDeadMemberIds(newProject);
 
               set({
                 project: newProject,
@@ -2543,22 +2552,8 @@ export const useAppStore = create<AppState>()(
             // Remove tag from project.tags array
             newProject.tags = (newProject.tags || []).filter(t => t.id !== id);
 
-            // Also remove tag ID from any spots that have it
-            const datasets = newProject.datasets || [];
-            for (const dataset of datasets) {
-              const samples = dataset.samples || [];
-              for (const sample of samples) {
-                const micrographs = sample.micrographs || [];
-                for (const micrograph of micrographs) {
-                  const spots = micrograph.spots || [];
-                  for (const spot of spots) {
-                    if (spot.tags && spot.tags.includes(id)) {
-                      spot.tags = spot.tags.filter(tagId => tagId !== id);
-                    }
-                  }
-                }
-              }
-            }
+            // Also drop the tag id from micrographs and spots
+            dropDeadMemberIds(newProject);
 
             return {
               project: newProject,
