@@ -341,7 +341,7 @@ async function downloadFiles({ folder, client, onProgress = () => {}, exclusive 
         const type = key.slice(0, sep);
         const id = key.slice(sep + 1);
         const dest = state.base[key] && state.refs[rk] === sha ? downloadTarget(folder, type, id, role) : null;
-        return { rk, sha, role, id, dest };
+        return { rk, sha, role, key, id, dest };
       });
       return { pid: state.binding.pid, items };
     });
@@ -349,6 +349,7 @@ async function downloadFiles({ folder, client, onProgress = () => {}, exclusive 
     const hashes = await sidecar.createHashIndex(folder); // read only here; recorded inside exclusive
     for (const item of listed.items) {
       let fetched = false;
+      let created = false; // nothing was at dest before this download
       if (item.dest) {
         const rel = path.relative(folder, item.dest);
         let have = false;
@@ -365,13 +366,23 @@ async function downloadFiles({ folder, client, onProgress = () => {}, exclusive 
               log.warn(`[Sync] Could not clear the tiles of ${item.id}: ${err.message}`);
             }
           }
+          created = !fs.existsSync(item.dest);
           await client.downloadFile(listed.pid, item.sha, item.dest);
           fetched = true;
         }
       }
       await exclusive(async () => {
         const state = await sidecar.loadState(folder);
-        if (!state || !state.downloads || state.downloads[item.rk] !== item.sha) return; // a pull changed it meanwhile
+        if (!state || !state.downloads || state.downloads[item.rk] !== item.sha) {
+          // A pull changed it meanwhile. If it deleted the micrograph, drop the
+          // image or thumbnail this download created (paths are per micrograph;
+          // associated files are named by file name and may be shared)
+          if (created && state && !state.base[item.key] && (item.role === 'image' || item.role === 'thumbnail')) {
+            await fs.promises.rm(item.dest, { force: true });
+            log.info(`[Sync] Removed the ${item.role} of ${item.id}, deleted while it downloaded`);
+          }
+          return;
+        }
         delete state.downloads[item.rk];
         if (fetched) {
           const index = await sidecar.createHashIndex(folder);

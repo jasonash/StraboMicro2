@@ -256,6 +256,33 @@ app.whenReady().then(async () => {
     await svc.commitPull(pid, cpull.pullId);
     const again2 = await svc.clone(serverPid, SERVER, 'manual', () => {});
     check('a second clone for the same account is refused', !again2.ok, JSON.stringify(again2));
+
+    // A pull deletes micrographs while their files download (stub client, no server):
+    // the image this download created goes; one that was there before stays
+    const { downloadFiles } = require(`${E}/sync/pull`);
+    const raceFolder = path.join(tmp, 'race');
+    fs.mkdirSync(path.join(raceFolder, 'images'), { recursive: true });
+    fs.writeFileSync(path.join(raceFolder, 'images', 'OLD'), 'old bytes');
+    const raceState = sidecar.newState({ pid: 1 }, 'automatic');
+    for (const id of ['NEW', 'OLD']) {
+      raceState.base[`micrograph:${id}`] = { type: 'micrograph', id, body: {} };
+      raceState.refs[`micrograph:${id}|image`] = 'sha-' + id;
+    }
+    raceState.downloads = { 'micrograph:NEW|image': 'sha-NEW', 'micrograph:OLD|image': 'sha-OLD' };
+    await sidecar.saveState(raceFolder, raceState);
+    const raceClient = {
+      async downloadFile(_pid, _sha, dest) {
+        fs.writeFileSync(dest, 'downloaded');
+        const st = await sidecar.loadState(raceFolder); // the pull lands meanwhile
+        const id = path.basename(dest);
+        delete st.base[`micrograph:${id}`];
+        delete st.downloads[`micrograph:${id}|image`];
+        await sidecar.saveState(raceFolder, st);
+      },
+    };
+    await downloadFiles({ folder: raceFolder, client: raceClient });
+    check('image of a micrograph deleted mid-download removed', !fs.existsSync(path.join(raceFolder, 'images', 'NEW')));
+    check('a file that was there before the download stays', fs.existsSync(path.join(raceFolder, 'images', 'OLD')));
   } catch (e) {
     failures++;
     console.log('ERROR', e && e.stack);
