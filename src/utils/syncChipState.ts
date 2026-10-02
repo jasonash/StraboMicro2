@@ -4,7 +4,9 @@
  * One state at a time, first match wins: decisions waiting, the first
  * upload, a login / account / server mismatch, offline, server trouble,
  * other problems, syncing, Manual with changes waiting, downloading, synced.
- * A local-only project reads "Local only". Pure, so the order is testable
+ * The Manual and synced states add "· N incoming" when the activity poll
+ * reports changes waiting on the server (16ah). A local-only project reads
+ * "Local only". Pure, so the order is testable
  * (npm run test:sync-chip).
  *
  * Manual mode never warns about a missing login by itself (16af): only a
@@ -16,7 +18,7 @@ import { decisionsWaiting } from '@/store/useSyncStore';
 
 export type SyncChipTone = 'attention' | 'active' | 'quiet' | 'ok' | 'muted';
 /** offline: no connection or the server is not answering; waiting: Manual mode, changes go up on the click */
-export type SyncChipIcon = 'busy' | 'ok' | 'attention' | 'local' | 'offline' | 'waiting';
+export type SyncChipIcon = 'busy' | 'ok' | 'attention' | 'local' | 'offline' | 'waiting' | 'incoming';
 
 export interface SyncChipState {
   label: string;
@@ -34,7 +36,7 @@ export interface SyncChipState {
 
 export type SyncChipInput = Pick<SyncStoreState,
   'synced' | 'mode' | 'phase' | 'email' | 'pkey' | 'server' | 'activity' | 'problem' | 'pending' |
-  'refused' | 'conflicts' | 'questions' | 'downloads' | 'notice' | 'progress'>;
+  'refused' | 'conflicts' | 'questions' | 'downloads' | 'notice' | 'progress' | 'incoming' | 'incomingFrom'>;
 
 export interface SyncChipAuth {
   loggedIn: boolean;
@@ -65,9 +67,34 @@ export function describeProgress(progress: SyncProgress | null): string | null {
   }
 }
 
+/**
+ * Who the changes waiting on the server come from, as a sentence:
+ * "5 changes from your other computer are waiting on StraboSpot." or
+ * "5 changes are waiting on StraboSpot: Jane Doe (3), your other computer (2)."
+ */
+export function incomingText(incoming: number, others: Array<{ name: string; count: number }>): string {
+  const n = `${incoming} ${plural(incoming, 'change', 'changes')}`;
+  const fromOthers = others.reduce((sum, o) => sum + o.count, 0);
+  const mine = Math.max(0, incoming - fromOthers);
+  if (others.length === 0) return `${n} from your other computer ${plural(incoming, 'is', 'are')} waiting on StraboSpot.`;
+  const parts = others.map((o) => `${o.name} (${o.count})`);
+  if (mine > 0) parts.push(`your other computer (${mine})`);
+  return `${n} ${plural(incoming, 'is', 'are')} waiting on StraboSpot: ${parts.join(', ')}.`;
+}
+
 export function syncChipState(s: SyncChipInput, auth: SyncChipAuth): SyncChipState {
-  const state = chipState(s, auth);
-  return { ...state, icon: iconFor(state, s) };
+  let state = chipState(s, auth);
+  // Changes waiting on the server, on the states where nothing more urgent shows
+  const incomingShown = s.synced && s.incoming > 0 && (state.tone === 'ok' || (state.tone === 'quiet' && !s.problem));
+  if (incomingShown) {
+    state = {
+      ...state,
+      label: `${state.label} · ${s.incoming} incoming`,
+      tone: 'quiet',
+      detail: `${state.detail} ${incomingText(s.incoming, s.incomingFrom)} Sync Now brings them in.`,
+    };
+  }
+  return { ...state, icon: incomingShown ? 'incoming' : iconFor(state, s) };
 }
 
 function iconFor(state: Omit<SyncChipState, 'icon'>, s: SyncChipInput): SyncChipIcon {

@@ -238,6 +238,26 @@ app.whenReady().then(async () => {
     const c = await svc.push(pid, SERVER, () => {});
     check('edit pushed', c.ok && c.pushed === 1, JSON.stringify(c));
 
+    // Activity (16ah): my own pushes are not incoming; another computer's are, until pulled
+    const act0 = await svc.activity(pid, SERVER);
+    check('activity: my own pushes are not incoming', act0.ok && act0.incoming === 0, JSON.stringify(act0));
+    {
+      const state = JSON.parse(fs.readFileSync(path.join(folder, 'sync', 'state.json'), 'utf8'));
+      const other = createSyncClient({ restServer: SERVER, getAccessToken: async () => who.token });
+      const res = await other.push(state.binding.pid, crypto.randomUUID(), `other-${crypto.randomUUID()}`, [
+        { op: 'update', type: 'project', id: pid, baseVersion: state.base[`project:${pid}`].version, fields: { notes: 'from the other computer' } },
+      ]);
+      check('other computer pushed', res.results && res.results[0] && res.results[0].status === 'accepted', JSON.stringify(res));
+    }
+    const act1 = await svc.activity(pid, SERVER);
+    check('activity: the other computer\'s change is incoming, from my own account', act1.ok && act1.incoming === 1 &&
+      act1.others.length === 0, JSON.stringify(act1));
+    const pulled = await svc.pull(pid, SERVER, () => {});
+    const committed = pulled.ok ? await svc.commitPull(pid, pulled.pullId) : pulled;
+    const act2 = await svc.activity(pid, SERVER);
+    check('activity after the pull: nothing incoming', committed.ok && act2.ok && act2.incoming === 0, JSON.stringify({ committed, act2 }));
+    check('activity of a local-only project: not synced', (await svc.activity('no-such-project', SERVER)).kind === 'not_synced');
+
     // Mode
     check('switch to manual', (await svc.setMode(pid, 'manual')).ok && (await svc.getStatus(pid)).mode === 'manual');
     check('unknown mode refused', (await svc.setMode(pid, 'sometimes')).ok === false);

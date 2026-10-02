@@ -210,6 +210,15 @@ function createSyncClient({ restServer, getAccessToken, refreshAccessToken, fetc
       return expect(await request('POST', `/projects/${pid}/push`, { json: { pushId, clientId, changes } }), 200);
     },
 
+    /**
+     * Activity poll (spec v3 §6.3): changes others pushed since `since`, per user
+     * (this client's own pushes left out), presence, parked pushes.
+     * @returns {Promise<{ changed: false } | { changed: true, headSeq: number, pending: Array<{ user: { pkey: number, name?: string }, count: number }>, presence: object[], presenceHash: string, parkedCount: number }>}
+     */
+    async activity(pid, { since, clientId, viewing = null, state = 'active', presenceHash } = {}) {
+      return expect(await request('POST', `/projects/${pid}/activity`, { json: { since, clientId, viewing, state, presenceHash } }), 200);
+    },
+
     async changes(pid, since, limit = 1000) {
       return expect(await request('GET', `/projects/${pid}/changes?since=${since}&limit=${limit}`), 200);
     },

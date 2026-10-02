@@ -8,6 +8,7 @@
  *   sync:push      push local changes of a synced project
  *   sync:set-mode  automatic or manual
  *   sync:preflight upload size + is the project on the server (turn-on dialog)
+ *   sync:activity  changes waiting on the server for this copy (chip count, sync on open)
  *   sync:pull      fetch and merge the server's changes; returns what the
  *                  app must apply to its store (kept pending in memory)
  *   sync:pull-commit  after the app applied them and saved project.json:
@@ -276,6 +277,40 @@ function push(projectId, restServer, onProgress) {
       return failure(err);
     }
   });
+}
+
+/**
+ * Changes waiting on the server for this copy (spec v3 16ah): the activity
+ * poll since the last pull, without this computer's own pushes. Read-only,
+ * so not queued with the project's sync calls. Phase 1 uses the count only.
+ * @param {string} projectId
+ * @param {string} restServer
+ * @param {'active' | 'away'} [presence]
+ */
+async function activity(projectId, restServer, presence = 'active') {
+  const folder = projectFolders.getProjectFolderPath(projectId);
+  if (!isSyncedFolder(folder)) return { ok: false, kind: 'not_synced', message: 'This project is not synced.' };
+  try {
+    const { sidecar, syncEngine } = loadEngine();
+    const state = await sidecar.loadState(folder);
+    if (!state) return { ok: false, kind: 'not_synced', message: 'This project is not synced.' };
+    const problem = await bindingProblem(state.binding, restServer);
+    if (problem) return { ok: false, ...problem };
+    const r = await makeClient(restServer).activity(state.binding.pid, {
+      since: state.lastSeq || 0,
+      clientId: syncEngine.getClientId(),
+      state: presence === 'away' ? 'away' : 'active',
+    });
+    const pending = r && Array.isArray(r.pending) ? r.pending : [];
+    const me = String(state.binding.pkey);
+    const others = pending
+      .filter((p) => p && p.user && String(p.user.pkey) !== me)
+      .map((p) => ({ name: (p.user && p.user.name) || 'Someone', count: Number(p.count) || 0 }));
+    const incoming = pending.reduce((sum, p) => sum + (Number(p && p.count) || 0), 0);
+    return { ok: true, incoming, others };
+  } catch (err) {
+    return failure(err);
+  }
 }
 
 /** projectId => the pull waiting for the app to apply it */
@@ -563,6 +598,7 @@ function registerSyncIpc(ipcMain, getMainWindow, { devTools = false } = {}) {
   ipcMain.handle('sync:turn-on', (_event, projectId, restServer, mode) => turnOn(projectId, restServer, mode));
   ipcMain.handle('sync:push', (_event, projectId, restServer) =>
     push(projectId, restServer, (p) => send('sync:progress', { projectId, ...p })));
+  ipcMain.handle('sync:activity', (_event, projectId, restServer, presence) => activity(projectId, restServer, presence));
   ipcMain.handle('sync:preflight', (_event, projectId, restServer) => preflight(projectId, restServer));
   ipcMain.handle('sync:set-mode', (_event, projectId, mode) => setMode(projectId, mode));
   ipcMain.handle('sync:pull', (_event, projectId, restServer) =>
@@ -584,6 +620,6 @@ function registerSyncIpc(ipcMain, getMainWindow, { devTools = false } = {}) {
 }
 
 module.exports = {
-  registerSyncIpc, notifyLocalChange, getStatus, preflight, turnOn, push, setMode, pull, commitPull, discardPull, download, clone,
+  registerSyncIpc, notifyLocalChange, getStatus, preflight, activity, turnOn, push, setMode, pull, commitPull, discardPull, download, clone,
   listDecisions, decide, decideCommit, decideDiscard, testOther, testCompare,
 };

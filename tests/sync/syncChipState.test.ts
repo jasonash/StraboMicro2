@@ -4,7 +4,7 @@
  *   npm run test:sync-chip
  */
 
-import { syncChipState, lastSyncedText, type SyncChipInput, type SyncChipAuth } from '@/utils/syncChipState';
+import { syncChipState, lastSyncedText, incomingText, type SyncChipInput, type SyncChipAuth } from '@/utils/syncChipState';
 
 let failures = 0;
 let passes = 0;
@@ -20,7 +20,7 @@ const SERVER = 'https://strabospot.org';
 const synced: SyncChipInput = {
   synced: true, mode: 'automatic', phase: 'ready', email: 'a@b.org', pkey: '5', server: SERVER,
   activity: 'idle', problem: null, pending: 0, refused: 0, conflicts: 0, questions: 0, downloads: 0,
-  notice: null, progress: null,
+  notice: null, progress: null, incoming: 0, incomingFrom: [],
 };
 const auth: SyncChipAuth = { loggedIn: true, pkey: '5', restServer: SERVER };
 const label = (s: Partial<SyncChipInput>, a: Partial<SyncChipAuth> = {}) =>
@@ -90,6 +90,20 @@ is('icon: synced', icon({}), 'ok');
 is('icon: local only', icon({ synced: false }), 'local');
 is('icon: syncing', icon({ activity: 'syncing' }), 'busy');
 is('icon: decisions', icon({ conflicts: 1 }), 'attention');
+
+// Incoming (16ah)
+is('synced with incoming', label({ incoming: 3 }), 'Synced · 3 incoming');
+is('manual with changes and incoming', label({ mode: 'manual', pending: 2, activity: 'waiting', incoming: 3 }), 'Manual · 2 to sync · 3 incoming');
+is('incoming icon', icon({ incoming: 3 }), 'incoming');
+is('incoming not shown over decisions', label({ incoming: 3, conflicts: 1 }), '1 needs your decision');
+is('incoming not shown while syncing', label({ incoming: 3, activity: 'syncing' }), 'Syncing…');
+is('incoming not shown when offline', label({ incoming: 3, problem: { kind: 'offline', message: '' } }), 'Offline');
+is('incoming not shown on a local-only project', label({ synced: false, incoming: 3 }), 'Local only');
+is('incoming text: my other computer', incomingText(5, []), '5 changes from your other computer are waiting on StraboSpot.');
+is('incoming text: one change', incomingText(1, []), '1 change from your other computer is waiting on StraboSpot.');
+is('incoming text: people and my computer', incomingText(5, [{ name: 'Jane Doe', count: 3 }]),
+  '5 changes are waiting on StraboSpot: Jane Doe (3), your other computer (2).');
+is('incoming text: people only', incomingText(3, [{ name: 'Jane Doe', count: 3 }]), '3 changes are waiting on StraboSpot: Jane Doe (3).');
 
 // Last synced
 const now = Date.parse('2026-10-02T12:00:00Z');

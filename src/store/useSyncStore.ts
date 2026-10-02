@@ -32,6 +32,11 @@ export interface SyncStoreState {
   /** Entity changes not on the server, as of the last count (null = unknown) */
   pending: number | null;
   refused: number;
+  /** Changes waiting on the server (activity poll, 16ah); others: per person other than me */
+  incoming: number;
+  incomingFrom: Array<{ name: string; count: number }>;
+  /** Manual mode, project just opened with changes waiting: the [Sync Now] [Work Offline] prompt (§6.4) */
+  openPrompt: { incoming: number; others: Array<{ name: string; count: number }> } | null;
   /** Entities with unresolved conflicts; delete-vs-edit questions; files to download */
   conflicts: number;
   questions: number;
@@ -69,6 +74,9 @@ const initial = {
   problem: null,
   pending: null,
   refused: 0,
+  incoming: 0,
+  incomingFrom: [],
+  openPrompt: null,
   conflicts: 0,
   questions: 0,
   downloads: 0,

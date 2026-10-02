@@ -942,6 +942,10 @@ interface Window {
       setMode: (projectId: string, mode: SyncMode) => Promise<SyncCallResult>;
       /** Turn-on dialog: upload size; logged in: can the server sync, is the project on it already */
       preflight: (projectId: string, restServer: string) => Promise<SyncPreflightResult>;
+      /** Changes waiting on the server for this copy (others: per person other than me) */
+      activity: (projectId: string, restServer: string, presence?: 'active' | 'away') => Promise<
+        | { ok: true; incoming: number; others: Array<{ name: string; count: number }> }
+        | { ok: false; kind: SyncFailureKind; message: string }>;
       /** Fetch and merge; apply result.changes to the store, save, then pullCommit */
       pull: (projectId: string, restServer: string) => Promise<SyncPullResult>;
       pullCommit: (projectId: string, pullId: string) => Promise<SyncCallResult & { downloads?: number }>;

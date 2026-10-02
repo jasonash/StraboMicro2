@@ -43,6 +43,7 @@ import {
 import UpdateNotification from './components/UpdateNotification';
 import SyncDecisionsNotice from './components/SyncDecisionsNotice';
 import SyncDecisionsDialog from './components/dialogs/SyncDecisionsDialog';
+import { SyncOpenPrompt } from './components/dialogs/SyncOpenPrompt';
 import { useAppStore, undo, redo, setUndoBlockedHandler } from '@/store';
 import { useAuthStore } from '@/store/useAuthStore';
 import { syncNowFromUser, requestFirstSync, TURN_ON_SYNC_EVENT } from '@/services/syncActions';
@@ -1505,6 +1506,7 @@ function App() {
       />
       <SyncDecisionsNotice />
       <SyncDecisionsDialog />
+      <SyncOpenPrompt />
       <PointCountDialog
         isOpen={isPointCountDialogOpen}
         onClose={() => setIsPointCountDialogOpen(false)}

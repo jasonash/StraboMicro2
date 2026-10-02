@@ -624,6 +624,7 @@ contextBridge.exposeInMainWorld('api', {
     push: (projectId, restServer) => ipcRenderer.invoke('sync:push', projectId, restServer),
     setMode: (projectId, mode) => ipcRenderer.invoke('sync:set-mode', projectId, mode),
     preflight: (projectId, restServer) => ipcRenderer.invoke('sync:preflight', projectId, restServer),
+    activity: (projectId, restServer, presence) => ipcRenderer.invoke('sync:activity', projectId, restServer, presence),
     pull: (projectId, restServer) => ipcRenderer.invoke('sync:pull', projectId, restServer),
     pullCommit: (projectId, pullId) => ipcRenderer.invoke('sync:pull-commit', projectId, pullId),
     pullDiscard: (projectId, pullId) => ipcRenderer.invoke('sync:pull-discard', projectId, pullId),

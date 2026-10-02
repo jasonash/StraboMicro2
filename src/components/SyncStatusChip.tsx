@@ -21,6 +21,7 @@ import {
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutlineOutlined';
 import CloudOffOutlinedIcon from '@mui/icons-material/CloudOffOutlined';
 import CloudUploadOutlinedIcon from '@mui/icons-material/CloudUploadOutlined';
+import CloudDownloadOutlinedIcon from '@mui/icons-material/CloudDownloadOutlined';
 import ComputerOutlinedIcon from '@mui/icons-material/ComputerOutlined';
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutlineOutlined';
 import { useAppStore } from '@/store';
@@ -74,6 +75,7 @@ export function SyncStatusChip() {
     local: <ComputerOutlinedIcon />,
     offline: <CloudOffOutlinedIcon />,
     waiting: <CloudUploadOutlinedIcon />,
+    incoming: <CloudDownloadOutlinedIcon />,
   }[state.icon];
 
   const changeMode = async (mode: SyncMode) => {

@@ -11,6 +11,11 @@
  * Queued changes push when the project opens.
  * Manual mode: nothing runs until syncNow() (the Sync click), except the
  * first upload right after sync is turned on (requestFirstSync).
+ * On open (§6.4, 16ah): Automatic pushes and pulls; Manual asks the server
+ * what is waiting and, if anything is, offers [Sync Now] [Work Offline].
+ * While open, the activity poll (every 30 s focused, 2 min otherwise)
+ * counts the changes waiting on the server for the chip; Sync Now pulls
+ * them (pulling them by itself is Phase 4).
  * Pull (§6.2): syncNow() in either mode is save, push, pull; a push that
  * the server turned down (the entity changed there) also pulls, so the
  * merge runs and the merged result is pushed. A pull waits until no edit is
@@ -64,6 +69,9 @@ const PULL_ATTEMPTS = 3;
 const IDLE_POLL_MS = 200;
 /** Pause after an answer before its sync (answers given in a row share one) */
 const DECISION_SYNC_MS = 1_000;
+/** Activity poll: while the window is focused, and otherwise (16ah) */
+const POLL_FOCUSED_MS = 30_000;
+const POLL_AWAY_MS = 120_000;
 
 type SyncedStatus = Extract<SyncStatusResult, { synced: true }>;
 type Failure = Extract<SyncPushResult, { ok: false }>;
@@ -94,6 +102,10 @@ class ProjectSync {
   private applyingRemote = false;
   /** The next cycle pulls after pushing (the Sync click) */
   private pullRequested = false;
+  /** The next cycle pulls without being a Sync click (opening the project) */
+  private quietPull = false;
+  private pollTimer: ReturnType<typeof setTimeout> | null = null;
+  private lastPollAt = 0;
   /** Background downloads of the files pulls brought */
   private downloading: Promise<void> | null = null;
   private downloadAgain = false;
@@ -149,15 +161,33 @@ class ProjectSync {
     };
     window.addEventListener('online', onOnline);
     this.unsubscribers.push(() => window.removeEventListener('online', onOnline));
+    // Back to the window: count again if the last count is older than the focused interval
+    const onFocus = () => {
+      if (Date.now() - this.lastPollAt >= POLL_FOCUSED_MS) this.schedulePoll(0);
+    };
+    window.addEventListener('focus', onFocus);
+    this.unsubscribers.push(() => window.removeEventListener('focus', onFocus));
 
-    // Sync just turned on: the first upload runs now, in either mode
-    if (takeFirstSyncRequest(this.projectId)) this.syncNow();
-    else if (this.mode === 'automatic') void this.run();
+    if (takeFirstSyncRequest(this.projectId)) {
+      // Sync just turned on: the first upload runs now, in either mode
+      this.syncNow();
+      this.schedulePoll();
+    } else if (this.mode === 'automatic') {
+      // Opening: push what waits, pull what arrived (16ah)
+      this.quietPull = true;
+      void this.run();
+      this.schedulePoll();
+    } else {
+      // Manual: ask what is waiting; the prompt offers Sync Now
+      void this.poll(true);
+    }
   }
 
   stop(): void {
     this.stopped = true;
     this.clearTimers();
+    if (this.pollTimer) clearTimeout(this.pollTimer);
+    this.pollTimer = null;
     if (this.recountTimer) clearTimeout(this.recountTimer);
     this.recountTimer = null;
     if (this.retryTimer) clearTimeout(this.retryTimer);
@@ -248,8 +278,10 @@ class ProjectSync {
     this.retryTimer = null;
     this.running = true;
     this.changedSinceRun = false;
-    const wantPull = this.pullRequested;
+    const userClick = this.pullRequested;
+    const wantPull = userClick || this.quietPull;
     this.pullRequested = false;
+    this.quietPull = false;
     const fromDecision = this.decisionRun;
     this.decisionRun = false;
     const decisionsBefore = decisionsWaiting(useSyncStore.getState());
@@ -293,6 +325,7 @@ class ProjectSync {
         progress: null,
         notice: null,
         lastSyncedAt: Date.now(),
+        ...(pulled ? { incoming: 0, incomingFrom: [], openPrompt: null } : {}),
         activity: this.changedSinceRun ? 'waiting' : 'idle',
         pending: this.changedSinceRun ? null : 0,
         ...(result.ready ? { phase: 'ready' as const } : {}),
@@ -302,7 +335,7 @@ class ProjectSync {
           // A Sync click that left new items to decide opens the dialog (16x)
           if (this.stopped) return;
           const waiting = decisionsWaiting(useSyncStore.getState());
-          if (wantPull && waiting > decisionsBefore) {
+          if (userClick && waiting > decisionsBefore) {
             useSyncStore.getState().update({ decisionsOpen: true });
           } else if (fromDecision && waiting === 0) {
             useSyncStore.getState().update({ decisionsSettledAt: Date.now() });
@@ -310,7 +343,9 @@ class ProjectSync {
         });
       }
     } else {
-      if (wantPull) this.pullRequested = true; // the next try pulls too
+      // The next try pulls too
+      if (userClick) this.pullRequested = true;
+      else if (wantPull) this.quietPull = true;
       this.failed(result);
     }
 
@@ -571,6 +606,41 @@ class ProjectSync {
       this.retryTimer = null;
       void this.run();
     }, delay);
+  }
+
+  /** The next activity poll, after delayMs (default: by window focus) */
+  private schedulePoll(delayMs?: number): void {
+    if (this.stopped) return;
+    if (this.pollTimer) clearTimeout(this.pollTimer);
+    const ms = delayMs ?? (document.hasFocus() ? POLL_FOCUSED_MS : POLL_AWAY_MS);
+    this.pollTimer = setTimeout(() => {
+      this.pollTimer = null;
+      void this.poll(false);
+    }, ms);
+  }
+
+  /**
+   * Count the changes waiting on the server (16ah). Skipped while a cycle
+   * runs (its pull brings them) and while logged out; failures are left to
+   * the push and pull, which report them. onOpen: Manual mode's check when
+   * the project opens, which offers Sync Now if anything waits (§6.4).
+   */
+  private async poll(onOpen: boolean): Promise<void> {
+    const api = window.api;
+    if (this.stopped || !api) return;
+    if (!this.running && useAuthStore.getState().isAuthenticated) {
+      this.lastPollAt = Date.now();
+      const r = await api.sync.activity(this.projectId, getRestServerUrl(), document.hasFocus() ? 'active' : 'away')
+        .catch(() => null);
+      if (this.stopped) return;
+      if (r?.ok && !this.running) {
+        useSyncStore.getState().update({ incoming: r.incoming, incomingFrom: r.others });
+        if (onOpen && r.incoming > 0 && this.mode === 'manual') {
+          useSyncStore.getState().update({ openPrompt: { incoming: r.incoming, others: r.others } });
+        }
+      }
+    }
+    this.schedulePoll();
   }
 
   /** Changes waiting (in the app's current project) and refused, from main. */
