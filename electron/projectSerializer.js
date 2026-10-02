@@ -248,7 +248,7 @@ async function saveProjectJson(project, projectId) {
  */
 async function prepareProjectJson(project, projectJsonPath) {
   const legacyJson = JSON.parse(JSON.stringify(serializeToLegacyFormat(project)));
-  await stampModifiedTimestamps(legacyJson, projectJsonPath);
+  await stampModifiedTimestamps(legacyJson, projectJsonPath, project);
   return legacyJson;
 }
 
@@ -260,10 +260,17 @@ async function prepareProjectJson(project, projectJsonPath) {
  * presets, which sync as entities of their own) and per-user fields (tree
  * expansion) do not count. Stamping every save instead would make each save look like
  * an edit to sync, and two collaborators' saves conflict.
+ *
+ * Fields the serializer fills with the current time when the app's object
+ * lacks them (project and dataset date, spot modifiedTimestamp; e.g. a
+ * project or dataset created in the app and not reloaded since) keep the
+ * value already on disk. Otherwise every save changes them, and a synced
+ * project always has changes waiting.
  * @param {object} legacyJson - Serialized project, updated in place
  * @param {string} projectJsonPath - The file it is about to replace
+ * @param {object} [source] - The app's project legacyJson was made from
  */
-async function stampModifiedTimestamps(legacyJson, projectJsonPath) {
+async function stampModifiedTimestamps(legacyJson, projectJsonPath, source = null) {
   let previous = null;
   try {
     previous = JSON.parse(await fs.promises.readFile(projectJsonPath, 'utf8'));
@@ -290,9 +297,37 @@ async function stampModifiedTimestamps(legacyJson, projectJsonPath) {
       next.modifiedTimestamp = now;
     }
   };
-  stamp(legacyJson, previous && previous.id === legacyJson.id ? previous : null, 'project');
-  const prevDatasets = new Map(((previous && previous.datasets) || []).map((d) => [d.id, d]));
+  const prevProject = previous && previous.id === legacyJson.id ? previous : null;
+  const prevDatasets = new Map(((prevProject && prevProject.datasets) || []).map((d) => [d.id, d]));
+  if (source && prevProject) {
+    if (!source.date && prevProject.date) legacyJson.date = prevProject.date;
+    const srcDatasets = new Map((source.datasets || []).map((d) => [d.id, d]));
+    for (const d of legacyJson.datasets || []) {
+      const prev = prevDatasets.get(d.id);
+      const src = srcDatasets.get(d.id);
+      if (prev && prev.date && !(src && src.date)) d.date = prev.date;
+    }
+    const prevSpots = new Map();
+    eachSpot(prevProject, (spot) => prevSpots.set(spot.id, spot));
+    const srcSpots = new Map();
+    eachSpot(source, (spot) => srcSpots.set(spot.id, spot));
+    eachSpot(legacyJson, (spot) => {
+      const prev = prevSpots.get(spot.id);
+      const src = srcSpots.get(spot.id);
+      if (prev && prev.modifiedTimestamp && !(src && src.modifiedTimestamp)) spot.modifiedTimestamp = prev.modifiedTimestamp;
+    });
+  }
+  stamp(legacyJson, prevProject, 'project');
   for (const d of legacyJson.datasets || []) stamp(d, prevDatasets.get(d.id), 'dataset');
+}
+
+/** Every spot of a project (app or legacy shape: datasets > samples > micrographs > spots) */
+function eachSpot(project, fn) {
+  for (const d of project.datasets || []) {
+    for (const s of d.samples || []) {
+      for (const m of s.micrographs || []) for (const spot of m.spots || []) fn(spot);
+    }
+  }
 }
 
 /**

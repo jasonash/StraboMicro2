@@ -130,6 +130,32 @@ app.whenReady().then(async () => {
       check('dataset rename stamps that dataset, project keeps its time',
         dsRenamed.datasets[0].modifiedTimestamp > before.datasets[0].modifiedTimestamp &&
         dsRenamed.modifiedTimestamp === renamed.modifiedTimestamp);
+
+      // Created in the app and not reloaded since: no date on the project or
+      // dataset, no modifiedTimestamp on a spot. Saves keep what is on disk
+      // (they used to take the current time, so a synced project always had 2 changes)
+      const m0 = app1.datasets[0].samples[0].micrographs[0];
+      m0.spots = [...(m0.spots || []), { id: crypto.randomUUID(), name: 'Dated spot', geometryType: 'point', points: [{ X: 5, Y: 5 }], modifiedTimestamp: 1700000000000 }];
+      await ser.saveProjectJson(app1, pid);
+      const settled = disk();
+      await new Promise((r) => setTimeout(r, 20));
+      const fresh = JSON.parse(JSON.stringify(app1));
+      delete fresh.date;
+      delete fresh.modifiedTimestamp;
+      delete fresh.datasets[0].date;
+      delete fresh.datasets[0].modifiedTimestamp;
+      const spotOf = (proj) => proj.datasets[0].samples[0].micrographs[0].spots.find((x) => x.name === 'Dated spot');
+      delete spotOf(fresh).modifiedTimestamp;
+      await ser.saveProjectJson(fresh, pid);
+      await new Promise((r) => setTimeout(r, 20));
+      await ser.saveProjectJson(fresh, pid);
+      const kept = disk();
+      check('a project, dataset and spot the app holds without dates keep the dates on disk',
+        kept.date === settled.date && kept.modifiedTimestamp === settled.modifiedTimestamp &&
+        kept.datasets[0].date === settled.datasets[0].date &&
+        kept.datasets[0].modifiedTimestamp === settled.datasets[0].modifiedTimestamp &&
+        spotOf(settled).modifiedTimestamp === 1700000000000 && spotOf(kept).modifiedTimestamp === 1700000000000,
+        JSON.stringify({ before: [settled.date, settled.modifiedTimestamp], after: [kept.date, kept.modifiedTimestamp], spot: spotOf(kept).modifiedTimestamp }));
     }
 
     const st0 = await svc.getStatus(pid);
