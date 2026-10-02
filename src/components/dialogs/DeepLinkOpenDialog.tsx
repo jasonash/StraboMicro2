@@ -78,7 +78,7 @@ type DialogState =
   | 'confirm'           // Ask before downloading
   | 'mine'              // One of my StraboSpot projects: open or download a synced copy
   | 'opening-mine'      // Downloading my project as a synced copy
-  | 'not-found'         // Server has no project with this pkey
+  | 'not-found'         // Server has no downloadable project with this pkey
   | 'downloading'       // Download in progress
   | 'inspecting-file'   // Inspecting the downloaded archive
   | 'confirm-replace'   // Project exists locally; confirm overwrite
@@ -381,14 +381,14 @@ export function DeepLinkOpenDialog({
           <Box sx={{ py: 2, textAlign: 'center' }}>
             <SearchOffIcon sx={{ fontSize: 60, color: 'text.secondary', mb: 2 }} />
             <Typography variant="h6" gutterBottom>
-              Project Not Found
+              Project Not Available
             </Typography>
             <Typography variant="body2" sx={{
               color: 'text.secondary'
             }}>
-              The link points to a project that doesn't exist on the server
-              (id {pkey}). It may have been deleted, or the link may be
-              incorrect.
+              This project isn't available on strabospot.org (id {pkey}). It may
+              have been deleted, its upload may not have finished, or the link
+              may be incorrect.
             </Typography>
           </Box>
         );
