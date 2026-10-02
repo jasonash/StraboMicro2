@@ -246,7 +246,8 @@ export default function SyncDecisionsDialog() {
   /** Returns what is waiting (null when the list could not be read). */
   const load = useCallback(async (): Promise<Lists | null> => {
     if (!projectId || !window.api) return null;
-    const r = await window.api.sync.decisions(projectId);
+    const { listSyncDecisions } = await import('@/services/syncController');
+    const r = await listSyncDecisions();
     setLoaded(true);
     if (!r.ok) {
       setError(r.message);

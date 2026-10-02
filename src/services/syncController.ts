@@ -432,6 +432,36 @@ class ProjectSync {
     return result;
   }
 
+  /**
+   * What waits for a decision, as of the project now: an edit not saved yet
+   * (e.g. deleting an item that has a conflict) is saved first, since main
+   * reads project.json and settles waiting items the user overtook.
+   */
+  async listDecisions(): Promise<SyncDecisionsResult> {
+    const api = window.api;
+    if (!api) return { ok: false, kind: 'error', message: 'Sync is not available' };
+    while (this.running && !this.stopped) {
+      await new Promise((resolve) => setTimeout(resolve, IDLE_POLL_MS));
+    }
+    if (this.stopped) return { ok: false, kind: 'error', message: 'The project was closed' };
+    this.running = true;
+    try {
+      await this.saveIfNeeded(api);
+      const r = await api.sync.decisions(this.projectId);
+      // Listing may have turned a conflict into a question: the notice's counts follow
+      if (r.ok) void this.refreshCounts();
+      return r;
+    } catch (error) {
+      return { ok: false, kind: 'error', message: error instanceof Error ? error.message : String(error) };
+    } finally {
+      this.running = false;
+      if (this.rerun && !this.stopped) {
+        this.rerun = false;
+        void this.run();
+      }
+    }
+  }
+
   /** The sync after an answer: push and pull in either mode (16ab). */
   private scheduleDecisionSync(): void {
     if (this.stopped) return;
@@ -593,6 +623,12 @@ export async function runCycleAndWait(userClick: boolean): Promise<boolean> {
   sync.runForTest(userClick);
   await sync.whenIdle();
   return true;
+}
+
+/** What waits for a decision in the open synced project (unsaved edits saved first). */
+export async function listSyncDecisions(): Promise<SyncDecisionsResult> {
+  if (!current) return { ok: false, kind: 'not_synced', message: 'This project is not synced.' };
+  return current.listDecisions();
 }
 
 /** Settle one item of the decisions dialog for the open synced project. */
