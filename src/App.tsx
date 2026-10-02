@@ -242,7 +242,7 @@ function App() {
   useTheme();
 
   // Initialize autosave (5-minute timer when dirty)
-  const { manualSave, saveBeforeClose, saveBeforeSwitch } = useAutosave();
+  const { manualSave, ensureSaved, saveBeforeClose, saveBeforeSwitch } = useAutosave();
 
   // Push changes of a synced project (does nothing for local-only projects)
   useProjectSync();
@@ -1319,7 +1319,7 @@ function App() {
     const api = window.api;
     const current = useAppStore.getState().project;
     if (!api || !current) return;
-    const saved = await manualSave();
+    const saved = await ensureSaved();
     if (!saved.success) {
       alert(`The project could not be saved, so sync was not turned on.\n\n${saved.error ?? 'Unknown error'}`);
       return;
@@ -1340,7 +1340,7 @@ function App() {
     } finally {
       setIsLoadingProject(false);
     }
-  }, [manualSave, closeProject, loadProjectWithPreparation]);
+  }, [ensureSaved, closeProject, loadProjectWithPreparation]);
 
   // "What's new: sync" (16aq, 16ba): once per computer, when logged in (at
   // the first launch after the update, else at the first login after it).
@@ -1572,6 +1572,7 @@ function App() {
       <TurnOnSyncDialog
         open={isTurnOnSyncOpen}
         projectId={project?.id ?? null}
+        saveProject={ensureSaved}
         onClose={() => setIsTurnOnSyncOpen(false)}
         onStart={(mode, onServer) => {
           const id = useAppStore.getState().project?.id;

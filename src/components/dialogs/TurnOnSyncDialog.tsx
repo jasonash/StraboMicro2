@@ -10,7 +10,7 @@
  * still shows, and Start Syncing compares and links.
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Alert,
   Box,
@@ -32,6 +32,8 @@ import { formatBytes } from '@/utils/formatBytes';
 interface TurnOnSyncDialogProps {
   open: boolean;
   projectId: string | null;
+  /** Saves the open project first: the check reads the folder (a new project has no project.json yet) */
+  saveProject: () => Promise<{ success: boolean; error?: string }>;
   onClose: () => void;
   /** onServer: the server has this project already, so Start Syncing links to it (16an) */
   onStart: (mode: SyncMode, onServer: Preflight['onServer']) => void;
@@ -53,18 +55,27 @@ function blocker(p: Preflight): string | null {
   }
 }
 
-export function TurnOnSyncDialog({ open, projectId, onClose, onStart }: TurnOnSyncDialogProps) {
+export function TurnOnSyncDialog({ open, projectId, saveProject, onClose, onStart }: TurnOnSyncDialogProps) {
   const loggedIn = useAuthStore((s) => s.isAuthenticated);
   const [mode, setMode] = useState<SyncMode>('automatic');
   const [preflight, setPreflight] = useState<Preflight | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [checking, setChecking] = useState(false);
+  // A ref: a new save function must not start another check
+  const saveProjectRef = useRef(saveProject);
+  saveProjectRef.current = saveProject;
 
   const check = useCallback(async () => {
     if (!projectId || !window.api) return;
     setChecking(true);
     setError(null);
     try {
+      const saved = await saveProjectRef.current();
+      if (!saved.success) {
+        setPreflight(null);
+        setError(`The project could not be saved, so it can't be synced yet. ${saved.error ?? ''}`.trim());
+        return;
+      }
       const r = await window.api.sync.preflight(projectId, getRestServerUrl());
       if (r.ok) setPreflight(r);
       else {

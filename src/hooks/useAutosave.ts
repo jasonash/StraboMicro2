@@ -174,11 +174,30 @@ export function useAutosave() {
     return result;
   }, [clearTimer, performSave, startTimer]);
 
+  /**
+   * Make sure project.json on disk matches the open project, for code that
+   * reads the folder (turning sync on). Unsaved changes are saved like
+   * Ctrl+S; a clean project is written without a new version, which also
+   * creates project.json for a new project that was never saved.
+   */
+  const ensureSaved = useCallback(async (): Promise<{ success: boolean; error?: string }> => {
+    if (useAppStore.getState().isDirty) return manualSave();
+    const currentProject = useAppStore.getState().project;
+    if (!currentProject) return { success: false, error: 'No project is open.' };
+    try {
+      const result = await window.api?.saveProjectJson(currentProject, currentProject.id);
+      return result?.success ? { success: true } : { success: false, error: 'Save failed' };
+    } catch (error) {
+      return { success: false, error: String(error) };
+    }
+  }, [manualSave]);
+
   return {
     performSave,
     saveBeforeSwitch,
     saveBeforeClose,
     manualSave,
+    ensureSaved,
     clearTimer,
   };
 }
