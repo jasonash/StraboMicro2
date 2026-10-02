@@ -6,6 +6,9 @@
 
 import { useAuthStore, promptLogin } from '@/store/useAuthStore';
 import { useSyncStore } from '@/store/useSyncStore';
+import { useAppStore } from '@/store';
+import { getRestServerUrl } from '@/components/dialogs/PreferencesDialog';
+import { sameServer } from '@/utils/syncChipState';
 
 /** Window event: the user asked to turn sync on for the open local-only project (App.tsx handles it) */
 export const TURN_ON_SYNC_EVENT = 'strabo:turn-on-sync';
@@ -50,4 +53,34 @@ export function requestFirstSync(projectId: string): void {
 /** Read once by the controller when it starts */
 export function takeFirstSyncRequest(projectId: string): boolean {
   return firstSyncRequests.delete(projectId);
+}
+
+/**
+ * What logging out would leave behind in the open project (16as, 16az):
+ * 'plain' = nothing (local-only, nothing waiting, or a copy of another
+ * account or server, which this login could not sync anyway);
+ * 'changes' = changes not yet synced; 'uploading' = its first upload runs.
+ */
+export type LogoutCheck =
+  | { kind: 'plain' }
+  | { kind: 'changes'; count: number }
+  | { kind: 'uploading' };
+
+export async function checkBeforeLogout(): Promise<LogoutCheck> {
+  const s = useSyncStore.getState();
+  const user = useAuthStore.getState().user;
+  const project = useAppStore.getState().project;
+  if (!s.synced || !user || !project || project.id !== s.projectId) return { kind: 'plain' };
+  if (s.pkey !== String(user.pkey) || !sameServer(s.server, getRestServerUrl())) return { kind: 'plain' };
+  if (s.phase === 'uploading') return { kind: 'uploading' };
+  // Count now: the store's count can be a few seconds old (debounce)
+  const status = await window.api?.sync.status(project.id, project).catch(() => null);
+  const count = status?.synced ? status.pending : s.pending;
+  return count !== null && count > 0 ? { kind: 'changes', count } : { kind: 'plain' };
+}
+
+/** "Sync and log out": push the open project now and wait for the result. */
+export async function syncBeforeLogout(): Promise<SyncCallResult> {
+  const { pushAndWait } = await import('@/services/syncController');
+  return pushAndWait();
 }

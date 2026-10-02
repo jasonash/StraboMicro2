@@ -212,6 +212,19 @@ class ProjectSync {
     }
   }
 
+  /**
+   * Save and push now (no pull) and wait for the cycle to end: "Sync and
+   * log out" (16as, 16az). The result is the cycle's problem, if any.
+   */
+  async pushAndWait(): Promise<SyncCallResult> {
+    void this.run();
+    while (!this.stopped && (this.running || this.rerun)) {
+      await new Promise((resolve) => setTimeout(resolve, IDLE_POLL_MS));
+    }
+    if (this.stopped) return { ok: false, kind: 'error', message: 'The project was closed.' };
+    return this.problem ? { ok: false, kind: this.problem.kind, message: this.problem.message } : { ok: true };
+  }
+
   /** The Sync click (any mode): save, push, pull. */
   syncNow(): void {
     this.pullRequested = true;
@@ -702,6 +715,12 @@ export function syncNow(): boolean {
   if (!current) return false;
   current.syncNow();
   return true;
+}
+
+/** Save and push the open synced project now and wait (Sync and log out). */
+export async function pushAndWait(): Promise<SyncCallResult> {
+  if (!current) return { ok: false, kind: 'not_synced', message: 'This project is not synced.' };
+  return current.pushAndWait();
 }
 
 /**

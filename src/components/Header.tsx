@@ -21,6 +21,8 @@ import { useAppStore } from '@/store';
 import { useAuthStore } from '@/store/useAuthStore';
 import { LoginDialog } from '@/components/dialogs/LoginDialog';
 import { SyncStatusChip } from '@/components/SyncStatusChip';
+import { LogoutSyncDialog } from '@/components/dialogs/LogoutSyncDialog';
+import { checkBeforeLogout, type LogoutCheck } from '@/services/syncActions';
 
 const Header: React.FC = () => {
   const viewerRef = useAppStore((state) => state.viewerRef);
@@ -30,6 +32,8 @@ const Header: React.FC = () => {
 
   const [loginDialogOpen, setLoginDialogOpen] = useState(false);
   const [logoutAnchorEl, setLogoutAnchorEl] = useState<HTMLElement | null>(null);
+  // Logout with the open project not fully synced (16as, 16az)
+  const [logoutCheck, setLogoutCheck] = useState<Exclude<LogoutCheck, { kind: 'plain' }> | null>(null);
 
   const handleRecenter = () => {
     if (viewerRef?.current) {
@@ -53,9 +57,12 @@ const Header: React.FC = () => {
     setActiveTool(null); // Reset to pan/select mode
   };
 
-  const handleAuthClick = (event: React.MouseEvent<HTMLElement>) => {
+  const handleAuthClick = async (event: React.MouseEvent<HTMLElement>) => {
     if (isAuthenticated) {
-      setLogoutAnchorEl(event.currentTarget);
+      const anchor = event.currentTarget;
+      const check = await checkBeforeLogout();
+      if (check.kind === 'plain') setLogoutAnchorEl(anchor);
+      else setLogoutCheck(check);
     } else {
       setLoginDialogOpen(true);
     }
@@ -195,6 +202,12 @@ const Header: React.FC = () => {
           </Box>
         </Popover>
       </Toolbar>
+
+      <LogoutSyncDialog
+        check={logoutCheck}
+        onClose={() => setLogoutCheck(null)}
+        onLogout={logout}
+      />
 
       {/* Login dialog - opened when clicking "Not logged in" */}
       <LoginDialog

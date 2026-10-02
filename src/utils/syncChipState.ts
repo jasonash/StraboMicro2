@@ -46,7 +46,7 @@ export interface SyncChipAuth {
 }
 
 /** Same rule as main's sameServer (electron/sync/syncService.js) */
-function sameServer(a: string | null, b: string): boolean {
+export function sameServer(a: string | null, b: string): boolean {
   const norm = (u: string | null) => String(u ?? '').trim().replace(/\/+$/, '').toLowerCase();
   return norm(a) === norm(b);
 }
@@ -66,6 +66,12 @@ export function describeProgress(progress: SyncProgress | null): string | null {
     case 'compare': return 'Comparing with StraboSpot';
     default: return null;
   }
+}
+
+/** First upload: the share of original image bytes sent, as a whole percent (null when not known) */
+export function uploadPercent(progress: SyncProgress | null): number | null {
+  if (progress?.phase !== 'images' || !progress.bytesTotal) return null;
+  return Math.floor(Math.min(1, (progress.bytesDone ?? 0) / progress.bytesTotal) * 100);
 }
 
 /**
@@ -149,8 +155,7 @@ function chipState(s: SyncChipInput, auth: SyncChipAuth): Omit<SyncChipState, 'i
   // First upload, while it runs (a problem that stopped it shows instead)
   if (s.phase === 'uploading' && syncing) {
     const p = s.progress;
-    const bytes = p?.phase === 'images' && p.bytesTotal ? Math.min(1, (p.bytesDone ?? 0) / p.bytesTotal) : null;
-    const percent = bytes === null ? null : Math.floor(bytes * 100);
+    const percent = uploadPercent(p);
     const afterImages = p !== null && p.phase !== 'images';
     return {
       ...base,
