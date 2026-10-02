@@ -4,6 +4,8 @@
  * When a project opens, asks main whether it is synced; only then loads and
  * starts the sync controller (src/services/syncController.ts). A local-only
  * project costs one status call per open and nothing else (spec v3 §3.4).
+ * A local-only project that is also on the server brings up the one-time
+ * prompt (src/services/syncLinking.ts).
  * Closing or switching the project stops the controller. Main hears whether
  * the open project is synced, for the File menu wording (spec v3 14t).
  */
@@ -28,7 +30,13 @@ export function useProjectSync(): void {
     void (async () => {
       try {
         const status = await window.api?.sync.status(projectId);
-        if (cancelled || !status?.synced) return;
+        if (cancelled || !status) return;
+        if (!status.synced) {
+          // On the server already? The one-time prompt (16an)
+          const { offerLinkOnOpen } = await import('@/services/syncLinking');
+          if (!cancelled) await offerLinkOnOpen(projectId);
+          return;
+        }
         const { startProjectSync } = await import('@/services/syncController');
         if (cancelled) return;
         stop = startProjectSync(projectId, status);
@@ -40,6 +48,7 @@ export function useProjectSync(): void {
     return () => {
       cancelled = true;
       stop?.();
+      useSyncStore.getState().update({ linkOffer: null, linkChoice: null, linking: null });
     };
   }, [projectId]);
 }

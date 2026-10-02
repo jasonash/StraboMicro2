@@ -6,8 +6,8 @@
  *
  * Start Syncing closes the dialog at once; App turns sync on (the folder
  * moves, the project reopens) and the first upload shows on the chip.
- * A project the server already has needs linking (step 8 stage 4), so it
- * cannot be started here yet.
+ * A project the server already has is linked instead (16an): the size line
+ * still shows, and Start Syncing compares and links.
  */
 
 import { useCallback, useEffect, useState } from 'react';
@@ -33,16 +33,14 @@ interface TurnOnSyncDialogProps {
   open: boolean;
   projectId: string | null;
   onClose: () => void;
-  onStart: (mode: SyncMode) => void;
+  /** onServer: the server has this project already, so Start Syncing links to it (16an) */
+  onStart: (mode: SyncMode, onServer: Preflight['onServer']) => void;
 }
 
 type Preflight = Extract<SyncPreflightResult, { ok: true }>;
 
 /** What keeps Start Syncing disabled, in words; null when it can start */
 function blocker(p: Preflight): string | null {
-  if (p.onServer) {
-    return "This project is already on StraboSpot. Connecting this copy to it isn't available yet.";
-  }
   if (!p.problem) return null;
   switch (p.problem.kind) {
     case 'disabled':
@@ -161,6 +159,12 @@ export function TurnOnSyncDialog({ open, projectId, onClose, onStart }: TurnOnSy
               {why}
             </Alert>
           )}
+          {preflight?.onServer && !why && (
+            <Alert severity="info">
+              This project is already on StraboSpot. Start Syncing connects this copy to it; if the two differ,
+              you choose which one to keep.
+            </Alert>
+          )}
           {error && <Alert severity="error">{error}</Alert>}
         </Box>
       </DialogContent>
@@ -172,7 +176,7 @@ export function TurnOnSyncDialog({ open, projectId, onClose, onStart }: TurnOnSy
           disabled={!canStart}
           onClick={() => {
             onClose();
-            onStart(mode);
+            onStart(mode, preflight?.onServer ?? null);
           }}
         >
           Start Syncing

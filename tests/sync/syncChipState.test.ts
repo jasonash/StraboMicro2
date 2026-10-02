@@ -4,6 +4,7 @@
  *   npm run test:sync-chip
  */
 
+import { describeDifferences } from '@/utils/describeDifferences';
 import { syncChipState, lastSyncedText, incomingText, type SyncChipInput, type SyncChipAuth } from '@/utils/syncChipState';
 
 let failures = 0;
@@ -20,7 +21,7 @@ const SERVER = 'https://strabospot.org';
 const synced: SyncChipInput = {
   synced: true, mode: 'automatic', phase: 'ready', email: 'a@b.org', pkey: '5', server: SERVER,
   activity: 'idle', problem: null, pending: 0, refused: 0, conflicts: 0, questions: 0, downloads: 0,
-  notice: null, progress: null, incoming: 0, incomingFrom: [],
+  notice: null, progress: null, incoming: 0, incomingFrom: [], linking: null,
 };
 const auth: SyncChipAuth = { loggedIn: true, pkey: '5', restServer: SERVER };
 const label = (s: Partial<SyncChipInput>, a: Partial<SyncChipAuth> = {}) =>
@@ -104,6 +105,14 @@ is('incoming text: one change', incomingText(1, []), '1 change from your other c
 is('incoming text: people and my computer', incomingText(5, [{ name: 'Jane Doe', count: 3 }]),
   '5 changes are waiting on StraboSpot: Jane Doe (3), your other computer (2).');
 is('incoming text: people only', incomingText(3, [{ name: 'Jane Doe', count: 3 }]), '3 changes are waiting on StraboSpot: Jane Doe (3).');
+
+// Linking a local-only copy (16an)
+is('comparing, percent', label({ synced: false, linking: { percent: 40 } }), 'Comparing with StraboSpot 40%');
+is('comparing, not started', label({ synced: false, linking: { percent: null } }), 'Comparing with StraboSpot…');
+is('comparing icon', icon({ synced: false, linking: { percent: 40 } }), 'busy');
+is('differences, ordered and plural', describeDifferences({ spot: 12, micrograph: 2 }), '2 micrographs, 12 spots');
+is('differences, one each and project details', describeDifferences({ project: 1, sample: 1 }), 'project details, 1 sample');
+is('differences, unknown type', describeDifferences({ point_count: 2, preset_thing: 1 }), '2 point counts, 1 preset thing');
 
 // Last synced
 const now = Date.parse('2026-10-02T12:00:00Z');

@@ -14,6 +14,15 @@ export interface SyncProblem {
   message: string;
 }
 
+/** The server project a local-only copy links to */
+export interface SyncLinkTarget {
+  projectId: string;
+  pid: number;
+  syncFormat: string;
+  /** When the server copy was last uploaded or changed */
+  updatedAt: string | null;
+}
+
 export interface SyncStoreState {
   projectId: string | null;
   synced: boolean;
@@ -37,6 +46,19 @@ export interface SyncStoreState {
   incomingFrom: Array<{ name: string; count: number }>;
   /** Manual mode, project just opened with changes waiting: the [Sync Now] [Work Offline] prompt (§6.4) */
   openPrompt: { incoming: number; others: Array<{ name: string; count: number }> } | null;
+  /** Local-only project that is on the server: the one-time prompt (16an) */
+  linkOffer: SyncLinkTarget | null;
+  /** Linking under way: comparing (percent of originals hashed, null = not known yet) */
+  linking: { percent: number | null } | null;
+  /** The copies differ: which one to keep (16am) */
+  linkChoice: (SyncLinkTarget & {
+    mode: SyncMode;
+    /** Converted rows: items that differ (null for legacy rows, which compare dates only) */
+    total: number | null;
+    byType: Record<string, number>;
+    localChanged: string | null;
+    serverChanged: string | null;
+  }) | null;
   /** Entities with unresolved conflicts; delete-vs-edit questions; files to download */
   conflicts: number;
   questions: number;
@@ -77,6 +99,9 @@ const initial = {
   incoming: 0,
   incomingFrom: [],
   openPrompt: null,
+  linkOffer: null,
+  linking: null,
+  linkChoice: null,
   conflicts: 0,
   questions: 0,
   downloads: 0,

@@ -119,6 +119,18 @@ type Unsubscribe = () => void;
 
 type SyncMode = 'automatic' | 'manual';
 
+/** A project of mine on the server (any format) */
+interface SyncServerProject {
+  pid: number;
+  straboId: string;
+  name: string;
+  role: string;
+  syncFormat: 'entity' | 'legacy' | string;
+  syncState: string;
+  updatedAt: string | null;
+  owner: { pkey: number; name?: string } | null;
+}
+
 type SyncPreflightResult =
   | {
     ok: true;
@@ -277,7 +289,7 @@ type SyncDecideResult =
 
 interface SyncProgress {
   projectId: string;
-  phase: 'images' | 'push' | 'tiles' | 'files' | 'pull' | 'download';
+  phase: 'images' | 'push' | 'tiles' | 'files' | 'pull' | 'download' | 'compare';
   item?: string;
   count?: number;
   /** images phase: bytes of originals uploaded so far, out of bytesTotal (this push) */
@@ -945,6 +957,27 @@ interface Window {
       /** Changes waiting on the server for this copy (others: per person other than me) */
       activity: (projectId: string, restServer: string, presence?: 'active' | 'away') => Promise<
         | { ok: true; incoming: number; others: Array<{ name: string; count: number }> }
+        | { ok: false; kind: SyncFailureKind; message: string }>;
+      /** The server project with this local-only project's id (row null if none) and the one-time prompt's answer */
+      serverProject: (projectId: string, restServer: string) => Promise<
+        | { ok: true; row: SyncServerProject | null; answer: 'automatic' | 'manual' | 'local' | null }
+        | { ok: false; kind: SyncFailureKind; message: string }>;
+      /** My server projects for Open Remote Project, each with what this computer has */
+      serverProjects: (restServer: string) => Promise<
+        | { ok: true; projects: Array<SyncServerProject & { here: 'synced' | 'local' | null }> }
+        | { ok: false; kind: SyncFailureKind; message: string }>;
+      promptAnswer: (projectId: string, answer: 'automatic' | 'manual' | 'local') => Promise<SyncCallResult>;
+      /** The local-only copy vs the converted server project (progress: phase 'compare', bytes) */
+      compare: (projectId: string, restServer: string, pid: number) => Promise<
+        | { ok: true; identical: boolean; total: number; byType: Record<string, number>; localChanged: string | null; serverChanged: string | null }
+        | { ok: false; kind: SyncFailureKind; message: string }>;
+      /** Link the local-only copy (not loaded; the folder moves) */
+      link: (projectId: string, restServer: string, pid: number, mode: SyncMode, use: 'mine' | 'theirs') => Promise<
+        | { ok: true; folder: string; adopted: boolean }
+        | { ok: false; kind: SyncFailureKind; message: string }>;
+      /** Open Remote Project for a project this computer has no copy of (progress projectId: remote:<pid>) */
+      openRemote: (pid: number, restServer: string, mode: SyncMode) => Promise<
+        | { ok: true; projectId: string; adopted: boolean }
         | { ok: false; kind: SyncFailureKind; message: string }>;
       /** Fetch and merge; apply result.changes to the store, save, then pullCommit */
       pull: (projectId: string, restServer: string) => Promise<SyncPullResult>;

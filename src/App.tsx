@@ -22,7 +22,9 @@ import { QuickClassifyToolbar } from './components/QuickClassifyToolbar';
 import { ConfigureShortcutsDialog } from './components/dialogs/ConfigureShortcutsDialog';
 import { ImportSmzDialog } from './components/dialogs/ImportSmzDialog';
 import { DeepLinkOpenDialog } from './components/dialogs/DeepLinkOpenDialog';
-import { RemoteProjectsDialog } from './components/dialogs/RemoteProjectsDialog';
+import { OpenRemoteProjectDialog } from './components/dialogs/OpenRemoteProjectDialog';
+import { SyncLinkPrompt } from './components/dialogs/SyncLinkPrompt';
+import { SyncLinkChoiceDialog } from './components/dialogs/SyncLinkChoiceDialog';
 import { SharedProjectDialog } from './components/dialogs/SharedProjectDialog';
 import { CloseProjectDialog } from './components/dialogs/CloseProjectDialog';
 import { ProjectPrepDialog } from './components/dialogs/ProjectPrepDialog';
@@ -47,6 +49,7 @@ import { SyncOpenPrompt } from './components/dialogs/SyncOpenPrompt';
 import { useAppStore, undo, redo, setUndoBlockedHandler } from '@/store';
 import { useAuthStore } from '@/store/useAuthStore';
 import { syncNowFromUser, requestFirstSync, TURN_ON_SYNC_EVENT } from '@/services/syncActions';
+import { beginLinking, LINK_SYNC_EVENT, type LinkRequest } from '@/services/syncLinking';
 import { useSyncStore } from '@/store/useSyncStore';
 import { useTheme } from './hooks/useTheme';
 import { useAutosave } from './hooks/useAutosave';
@@ -274,6 +277,28 @@ function App() {
       }
     }
   }, [prepareProject]);
+
+  /**
+   * Close the open project (saving it first) and open this one from disk.
+   * Used by Open Remote Project; the Recent Projects menu does the same.
+   */
+  const openProjectById = useCallback(async (projectId: string) => {
+    if (!(await saveBeforeSwitch())) return;
+    closeProject();
+    setLoadingProjectName('');
+    setIsLoadingProject(true);
+    try {
+      const result = await window.api?.projects.load(projectId);
+      if (result?.success && result.project) {
+        setLoadingProjectName(result.project.name || '');
+        await loadProjectWithPreparation(result.project, null);
+      } else {
+        alert(`Failed to load project: ${result?.error || 'Unknown error'}`);
+      }
+    } finally {
+      setIsLoadingProject(false);
+    }
+  }, [saveBeforeSwitch, closeProject, loadProjectWithPreparation]);
 
   // Check auth status on app startup
   useEffect(() => {
@@ -1285,6 +1310,45 @@ function App() {
     }
   }, [manualSave, closeProject, loadProjectWithPreparation]);
 
+  // Link the open local-only project to the same project on StraboSpot
+  // (16an, 16am): saved and unloaded first (the folder moves), linked, the
+  // first sync pushes my differences (or an adopted project's first upload),
+  // then opened again
+  const linkSync = useCallback(async ({ projectId, pid, mode, use }: LinkRequest) => {
+    const api = window.api;
+    const current = useAppStore.getState().project;
+    if (!api || !current || current.id !== projectId) return;
+    const saved = await manualSave();
+    if (!saved.success) {
+      alert(`The project could not be saved, so it was not connected to StraboSpot.\n\n${saved.error ?? 'Unknown error'}`);
+      return;
+    }
+    closeProject();
+    setLoadingProjectName(current.name || '');
+    setIsLoadingProject(true);
+    try {
+      const result = await api.sync.link(projectId, getRestServerUrl(), pid, mode, use);
+      if (result.ok) requestFirstSync(projectId);
+      const loaded = await api.projects.load(projectId);
+      if (loaded?.success && loaded.project) {
+        await loadProjectWithPreparation(loaded.project, null);
+      } else {
+        alert(`Failed to load project: ${loaded?.error || 'Unknown error'}`);
+      }
+      if (!result.ok) alert(`This copy could not be connected to StraboSpot. It stays on this computer only.\n\n${result.message}`);
+    } finally {
+      setIsLoadingProject(false);
+    }
+  }, [manualSave, closeProject, loadProjectWithPreparation]);
+
+  useEffect(() => {
+    const onLink = (e: Event) => {
+      if (e instanceof CustomEvent) void linkSync(e.detail as LinkRequest);
+    };
+    window.addEventListener(LINK_SYNC_EVENT, onLink);
+    return () => window.removeEventListener(LINK_SYNC_EVENT, onLink);
+  }, [linkSync]);
+
   // The chip's "Sync this project…" opens the turn-on dialog
   useEffect(() => {
     const open = () => setIsTurnOnSyncOpen(true);
@@ -1421,7 +1485,14 @@ function App() {
         open={isTurnOnSyncOpen}
         projectId={project?.id ?? null}
         onClose={() => setIsTurnOnSyncOpen(false)}
-        onStart={(mode) => void turnOnSync(mode)}
+        onStart={(mode, onServer) => {
+          const id = useAppStore.getState().project?.id;
+          if (onServer && id) {
+            void beginLinking({ projectId: id, pid: onServer.pid, syncFormat: onServer.syncFormat, updatedAt: onServer.updatedAt }, mode);
+          } else {
+            void turnOnSync(mode);
+          }
+        }}
       />
       <IncompleteMicrographsDialog
         open={isIncompleteMicrographsOpen}
@@ -1446,13 +1517,10 @@ function App() {
           loadProjectWithPreparation(importedProject, null);
         }}
       />
-      <RemoteProjectsDialog
+      <OpenRemoteProjectDialog
         open={isRemoteProjectsOpen}
         onClose={() => setIsRemoteProjectsOpen(false)}
-        onImportComplete={(importedProject: any) => {
-          // Load the imported project with image preparation
-          loadProjectWithPreparation(importedProject, null);
-        }}
+        onOpenProject={openProjectById}
       />
       <DeepLinkOpenDialog
         open={deepLinkPkey !== null}
@@ -1507,6 +1575,8 @@ function App() {
       <SyncDecisionsNotice />
       <SyncDecisionsDialog />
       <SyncOpenPrompt />
+      <SyncLinkPrompt />
+      <SyncLinkChoiceDialog />
       <PointCountDialog
         isOpen={isPointCountDialogOpen}
         onClose={() => setIsPointCountDialogOpen(false)}

@@ -164,6 +164,14 @@ app.whenReady().then(async () => {
 
     const listed2 = (await svc.listServerProjects(SERVER)).projects.find((p) => p.straboId === pid);
     check('Open Remote list: here as a synced copy', listed2 && listed2.here === 'synced', JSON.stringify(listed2));
+
+    // Open Remote Project with no copy here: a converted project downloads as a synced copy
+    fs.rmSync(account, { recursive: true, force: true });
+    projectFolders.forgetProjectCopy(pid);
+    const opened = await svc.openRemote(serverPid, SERVER, 'automatic', () => {});
+    check('Open Remote: downloaded as a synced copy', opened.ok && opened.projectId === pid && opened.adopted === false &&
+      fs.existsSync(path.join(account, 'sync', 'state.json')) && fs.existsSync(path.join(account, 'images', keep.id)), JSON.stringify(opened));
+    check('Open Remote: unknown project refused', (await svc.openRemote(999999999, SERVER, 'automatic', () => {})).ok === false);
   } catch (e) {
     failures++;
     console.log('ERROR', e && e.stack);

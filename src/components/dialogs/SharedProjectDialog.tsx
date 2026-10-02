@@ -279,6 +279,7 @@ export function SharedProjectDialog({
                 mb: 3
               }}>
               Enter the 6-character share code to download a project shared by another user.
+              This is your own copy. Changes you make won't reach the owner.
             </Typography>
             <TextField
               label="Share Code"
@@ -440,6 +441,7 @@ export function SharedProjectDialog({
               color: 'text.secondary'
             }}>
               The shared project has been downloaded and imported successfully.
+              This is your own copy. Changes you make won't reach the owner.
             </Typography>
           </Box>
         );

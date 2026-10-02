@@ -36,7 +36,7 @@ export interface SyncChipState {
 
 export type SyncChipInput = Pick<SyncStoreState,
   'synced' | 'mode' | 'phase' | 'email' | 'pkey' | 'server' | 'activity' | 'problem' | 'pending' |
-  'refused' | 'conflicts' | 'questions' | 'downloads' | 'notice' | 'progress' | 'incoming' | 'incomingFrom'>;
+  'refused' | 'conflicts' | 'questions' | 'downloads' | 'notice' | 'progress' | 'incoming' | 'incomingFrom' | 'linking'>;
 
 export interface SyncChipAuth {
   loggedIn: boolean;
@@ -63,6 +63,7 @@ export function describeProgress(progress: SyncProgress | null): string | null {
     case 'files': return 'Uploading files';
     case 'pull': return 'Getting changes';
     case 'download': return progress.item ? `Downloading ${progress.item}` : 'Downloading files';
+    case 'compare': return 'Comparing with StraboSpot';
     default: return null;
   }
 }
@@ -108,6 +109,17 @@ function iconFor(state: Omit<SyncChipState, 'icon'>, s: SyncChipInput): SyncChip
 
 function chipState(s: SyncChipInput, auth: SyncChipAuth): Omit<SyncChipState, 'icon'> {
   const base = { busy: false, percent: null, needsLogin: false };
+  if (!s.synced && s.linking) {
+    const percent = s.linking.percent;
+    return {
+      ...base,
+      busy: true,
+      percent,
+      label: percent !== null ? `Comparing with StraboSpot ${percent}%` : 'Comparing with StraboSpot…',
+      tone: 'active',
+      detail: 'This copy is being compared with the one on StraboSpot (a one-time check of the original images). You can keep working.',
+    };
+  }
   if (!s.synced) {
     return {
       ...base,

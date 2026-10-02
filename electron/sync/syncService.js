@@ -9,7 +9,7 @@
  *   sync:set-mode  automatic or manual
  *   sync:preflight upload size + is the project on the server (turn-on dialog)
  *   sync:activity  changes waiting on the server for this copy (chip count, sync on open)
- *   sync:server-project / sync:server-projects / sync:prompt-answer / sync:compare / sync:link
+ *   sync:server-project / sync:server-projects / sync:prompt-answer / sync:compare / sync:link / sync:open-remote
  *                  projects already on the server: one-time prompt, Open Remote Project, linking
  *   sync:pull      fetch and merge the server's changes; returns what the
  *                  app must apply to its store (kept pending in memory)
@@ -482,7 +482,7 @@ function link(projectId, restServer, pid, mode, use, onProgress) {
       const { link: linker } = loadEngine();
       let folder;
       if (row.syncFormat === 'legacy') {
-        if (use === 'theirs') await replaceWithLegacyUpload(projectId, restServer, pid, onProgress);
+        if (use === 'theirs') await importLegacyUpload(projectId, restServer, pid, onProgress, { setAside: true });
         folder = (await linker.adoptLegacy({ projectId, pid, restServer, user, mode, client })).folder;
       } else {
         folder = (await linker.linkToServer({
@@ -499,11 +499,11 @@ function link(projectId, restServer, pid, mode, use, onProgress) {
 }
 
 /**
- * Legacy row, "Use the server copy": download its upload (the old door,
- * on the configured server) and import it in place of the local copy,
- * whose folder is set aside first (renamed, nothing deleted).
+ * A legacy row's upload (the old door, on the configured server), imported
+ * as a local-only copy. setAside: "Use the server copy", the local folder is
+ * set aside first (renamed into StraboMicro2Data/_replaced, nothing deleted).
  */
-async function replaceWithLegacyUpload(projectId, restServer, pid, onProgress) {
+async function importLegacyUpload(projectId, restServer, pid, onProgress, { setAside = false } = {}) {
   const serverDownload = require('../serverDownload');
   const smzImport = require('../smzImport');
   const token = await tokenService.getValidAccessToken(restServer);
@@ -515,15 +515,22 @@ async function replaceWithLegacyUpload(projectId, restServer, pid, onProgress) {
     const inspect = await smzImport.inspectSmz(dl.zipPath);
     if (!inspect.success || inspect.projectId !== projectId) throw new Error('The StraboSpot copy is a different project.');
     const local = path.join(projectFolders.getStraboMicro2DataPath(), projectId);
-    const aside = path.join(projectFolders.getStraboMicro2DataPath(), '_replaced', `${projectId}-${new Date().toISOString().replace(/[:.]/g, '-')}`);
-    await fs.promises.mkdir(path.dirname(aside), { recursive: true });
-    await fs.promises.rename(local, aside);
-    log.info(`[Sync] Local copy of ${projectId} set aside in ${aside} before using the StraboSpot copy`);
+    let aside = null;
+    if (setAside) {
+      aside = path.join(projectFolders.getStraboMicro2DataPath(), '_replaced', `${projectId}-${new Date().toISOString().replace(/[:.]/g, '-')}`);
+      await fs.promises.mkdir(path.dirname(aside), { recursive: true });
+      await fs.promises.rename(local, aside);
+      log.info(`[Sync] Local copy of ${projectId} set aside in ${aside} before using the StraboSpot copy`);
+    } else if (fs.existsSync(local)) {
+      throw new Error('This computer already has a copy of this project.');
+    }
     const imp = await smzImport.importSmz(dl.zipPath, (p) => onProgress({ phase: 'download', item: p.detail }));
     if (!imp.success) {
-      // Put the local copy back
-      await fs.promises.rm(local, { recursive: true, force: true }).catch(() => {});
-      await fs.promises.rename(aside, local);
+      if (aside) {
+        // Put the local copy back
+        await fs.promises.rm(local, { recursive: true, force: true }).catch(() => {});
+        await fs.promises.rename(aside, local);
+      }
       throw new Error(imp.error || 'The StraboSpot copy could not be imported.');
     }
   } finally {
@@ -646,6 +653,34 @@ function clone(pid, restServer, mode, onProgress) {
       return failure(err);
     }
   });
+}
+
+/**
+ * Open Remote Project (16ao) for a project this computer has no copy of:
+ * a converted project becomes a synced copy (clone); a legacy one is
+ * downloaded, imported and adopted (P1-1), its first upload left to the
+ * first sync.
+ * @param {number} pid
+ * @param {string} restServer
+ * @param {'automatic' | 'manual'} mode
+ * @param {(p: object) => void} onProgress
+ */
+async function openRemote(pid, restServer, mode, onProgress) {
+  try {
+    const rows = await myServerProjects(restServer, { refresh: true });
+    if (rows === null) return { ok: false, kind: 'auth', message: 'Log in to download projects from StraboSpot.' };
+    const row = rows.find((r) => r && r.pid === pid);
+    if (!row) return { ok: false, kind: 'error', message: 'This project is not on StraboSpot any more.' };
+    if (row.syncFormat !== 'legacy') {
+      const r = await clone(pid, restServer, mode, onProgress);
+      return r.ok ? { ok: true, projectId: r.projectId, adopted: false } : r;
+    }
+    await importLegacyUpload(row.straboId, restServer, pid, onProgress);
+    const linked = await link(row.straboId, restServer, pid, mode, 'mine', onProgress);
+    return linked.ok ? { ok: true, projectId: row.straboId, adopted: true } : linked;
+  } catch (err) {
+    return failure(err);
+  }
 }
 
 /** The folder of a synced project, or a failure result. */
@@ -822,6 +857,8 @@ function registerSyncIpc(ipcMain, getMainWindow, { devTools = false } = {}) {
   ipcMain.handle('sync:prompt-answer', (_event, projectId, answer) => setPromptAnswer(projectId, answer));
   ipcMain.handle('sync:compare', (_event, projectId, restServer, pid) =>
     compare(projectId, restServer, pid, (p) => send('sync:progress', { projectId, ...p })));
+  ipcMain.handle('sync:open-remote', (_event, pid, restServer, mode) =>
+    openRemote(pid, restServer, mode, (p) => send('sync:progress', { projectId: `remote:${pid}`, ...p })));
   ipcMain.handle('sync:link', (_event, projectId, restServer, pid, mode, use) =>
     link(projectId, restServer, pid, mode, use, (p) => send('sync:progress', { projectId, ...p })));
   ipcMain.handle('sync:preflight', (_event, projectId, restServer) => preflight(projectId, restServer));
@@ -845,6 +882,6 @@ function registerSyncIpc(ipcMain, getMainWindow, { devTools = false } = {}) {
 }
 
 module.exports = {
-  registerSyncIpc, notifyLocalChange, getStatus, preflight, activity, serverProject, listServerProjects, setPromptAnswer, compare, link, turnOn, push, setMode, pull, commitPull, discardPull, download, clone,
+  registerSyncIpc, notifyLocalChange, getStatus, preflight, activity, serverProject, listServerProjects, setPromptAnswer, compare, link, openRemote, turnOn, push, setMode, pull, commitPull, discardPull, download, clone,
   listDecisions, decide, decideCommit, decideDiscard, testOther, testCompare,
 };
