@@ -1819,7 +1819,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
      */
     const handleDeleteSpot = useCallback(
       (spot: Spot) => {
-        if (window.confirm(`Delete spot "${spot.name}"?\n\nThis action cannot be undone.`)) {
+        if (window.confirm(`Delete spot "${spot.name}"?`)) {
           deleteSpot(spot.id);
           console.log('Spot deleted:', spot.name);
         }
@@ -1839,7 +1839,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
       if (allIds.length === 0) return;
 
       const count = allIds.length;
-      if (window.confirm(`Delete ${count} selected spots?\n\nThis action cannot be undone.`)) {
+      if (window.confirm(`Delete ${count} selected spots?`)) {
         // Delete each spot
         for (const spotId of allIds) {
           deleteSpot(spotId);

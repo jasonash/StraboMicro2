@@ -599,7 +599,7 @@ function App() {
         return;
       }
 
-      if (!confirm(`Are you sure you want to delete all ${spotCount} spots on this micrograph?\n\nThis action cannot be undone.`)) {
+      if (!confirm(`Are you sure you want to delete all ${spotCount} spots on this micrograph?`)) {
         return;
       }
 

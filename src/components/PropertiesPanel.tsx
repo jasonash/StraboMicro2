@@ -620,8 +620,8 @@ export function PropertiesPanel() {
         title={confirmDelete === 'micrograph' ? 'Delete Micrograph' : 'Delete Spot'}
         message={
           confirmDelete === 'micrograph'
-            ? 'Are you sure you want to delete this micrograph? This action cannot be undone.'
-            : 'Are you sure you want to delete this spot? This action cannot be undone.'
+            ? 'Are you sure you want to delete this micrograph?'
+            : 'Are you sure you want to delete this spot?'
         }
         confirmLabel="Delete"
         confirmColor="error"
