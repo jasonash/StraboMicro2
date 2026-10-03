@@ -149,6 +149,9 @@ async function pushProject({ folder, client, onProgress = () => {} }) {
   }
   const bytesTotal = originals.reduce((sum, o) => sum + o.size, 0);
   let bytesDone = 0;
+  // Removed from the project (17k): the entity changes still go up, the
+  // server parks them for the owner's review and answers access_removed
+  let removed = null;
   for (const { key, e, rel, size } of originals) {
     const item = e.body.name || e.id;
     try {
@@ -161,6 +164,10 @@ async function pushProject({ folder, client, onProgress = () => {} }) {
       if (up.uploaded) filesUploaded++;
       bytesDone += size;
     } catch (err) {
+      if (err instanceof SyncError && err.kind === 'access_removed') {
+        removed = err;
+        break;
+      }
       if (err instanceof SyncError) throw err;
       log.warn(`[Sync] Image of ${e.id} not uploaded yet: ${err.message}`);
       held.add(key);
@@ -171,7 +178,7 @@ async function pushProject({ folder, client, onProgress = () => {} }) {
   // Restores the user asked for (Restore with my changes): the server brings
   // the entities back as they were deleted; they stay held until a pull puts
   // those states into the base, and then my changes push as edits
-  for (const r of state.restores || []) {
+  for (const r of removed ? [] : state.restores || []) {
     if (r.sent) continue;
     const sep = r.key.indexOf(':');
     const change = { op: 'restore', type: r.key.slice(0, sep), id: r.key.slice(sep + 1), cascade: true };
@@ -211,6 +218,7 @@ async function pushProject({ folder, client, onProgress = () => {} }) {
     state.outgoingPush = null;
     await sidecar.saveState(folder, state);
   }
+  if (removed) throw removed;
   // Marks stay for changes still waiting to go up; one not planned yet (the
   // accepted change was not saved when this push started) for up to an hour
   if (state.onBehalf) {

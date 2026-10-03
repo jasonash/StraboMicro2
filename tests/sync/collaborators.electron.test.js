@@ -249,8 +249,14 @@ app.whenReady().then(async () => {
     await loginAs('editor');
     projectFolders.useProjectCopy(straboId, editorCopy2);
     const appProject4 = await ser.loadProjectJson(straboId);
-    appProject4.datasets = [...appProject4.datasets, { id: 'D-mine', name: 'Mine', samples: [] }];
+    // With a new micrograph: its image goes up first and is refused (access_removed),
+    // the entity changes must still go up to be parked (found in stage 5c testing)
+    appProject4.datasets = [...appProject4.datasets, { id: 'D-mine', name: 'Mine', samples: [
+      { id: 'S-mine', name: 'My sample', micrographs: [{ id: 'M-mine', name: 'My micrograph', imageWidth: 10, imageHeight: 10 }] },
+    ] }];
     await ser.saveProjectJson(appProject4, straboId);
+    fs.mkdirSync(path.join(editorCopy2, 'images'), { recursive: true });
+    fs.writeFileSync(path.join(editorCopy2, 'images', 'M-mine'), crypto.randomBytes(2048));
     p4 = await svc.push(straboId, SERVER, () => {});
     check('removed: the push is parked for the owner (access_removed, parked, removed by the owner)', !p4.ok &&
       p4.kind === 'access_removed' && p4.removal && p4.removal.parked === true && p4.removal.left === false &&
@@ -294,7 +300,8 @@ app.whenReady().then(async () => {
     const removedParked = pk.ok && pk.parked.find((x) => x.reason === 'removed' && x.user.pkey === people.editor.pkey);
     check('owner: both parked pushes listed (role change: the rename; removal: the new dataset)', roleParked && removedParked &&
       roleParked.changes.some((c) => c.id === 'D-owner' && c.fields && c.fields.name === 'Renamed by a Contributor') &&
-      removedParked.changes.some((c) => c.op === 'create' && c.id === 'D-mine'), JSON.stringify(pk).slice(0, 600));
+      removedParked.changes.some((c) => c.op === 'create' && c.id === 'D-mine') &&
+      removedParked.changes.some((c) => c.op === 'create' && c.type === 'micrograph' && c.id === 'M-mine'), JSON.stringify(pk).slice(0, 600));
     // Accept the rename as the app does: apply it to my project, mark it, push
     let own = await ser.loadProjectJson(straboId);
     own.datasets.find((d) => d.id === 'D-owner').name = 'Renamed by a Contributor';
