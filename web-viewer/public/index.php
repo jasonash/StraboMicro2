@@ -31,6 +31,13 @@ if($m !== ''){
 
 $row = $db->get_row_prepared("select * from micro_projectmetadata where id = $1 and (ispublic or userpkey=$2)", array($id, $userpkey));
 
+// Deleted by its owner (synced projects, collaboration spec v3 17ad): say
+// so, also after the purge (www: microdb/lib/sync_guard.php)
+require_once(__DIR__ . '/../microdb/lib/sync_guard.php');
+if(($row && $row->id != "") ? micro_sync_is_deleted($db, (int)$row->id) : micro_sync_viewer_deleted($db, $id, $m)){
+	micro_sync_deleted_page_exit();
+}
+
 if($row->id == ""){
 	echo "Error! Project not found.";
 	exit();
