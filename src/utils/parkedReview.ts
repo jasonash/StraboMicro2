@@ -11,7 +11,8 @@
  *   is blocked with the reason; accepting never brings deleted items back.
  *   New micrographs and point count sessions are blocked too: their files
  *   (the image, the session) are not part of the parked change.
- * - Child-order-only updates are not shown; they are decided with the rest.
+ * - Child-order-only and timestamp-only updates are not shown; they are
+ *   decided with the rest.
  */
 
 import { explode, PARENT, type EntityChange, type EntityState, type EntityType } from '../../electron/shared/entityModel.mjs';
@@ -42,7 +43,7 @@ export interface ParkedUnit {
 
 export interface ParkedReview {
   units: ParkedUnit[];
-  /** Child-order-only items, decided along with the rest */
+  /** Child-order-only and timestamp-only items, decided along with the rest */
   silentKeys: string[];
 }
 
@@ -132,8 +133,13 @@ function counts(keys: string[]): Record<string, number> {
   return out;
 }
 
+/** Fields a save stamps by itself (never someone's edit) */
+const BOOKKEEPING = new Set(['modifiedTimestamp', 'date']);
+
+/** An update with nothing to review: child order or a save's timestamps only */
 const isOrderOnly = (c: SyncParkedChange) =>
-  c.op === 'update' && (!c.fields || Object.keys(c.fields).length === 0) && c.parentId === undefined;
+  c.op === 'update' && c.parentId === undefined &&
+  Object.keys(c.fields ?? {}).every((f) => BOOKKEEPING.has(f));
 
 /** The current project as entity states */
 export function currentEntities(project: unknown): Entities {

@@ -39,3 +39,38 @@ export function applyRemoteChanges(changes: EntityChange[], { undoable = false }
   else withoutUndoRecording(write);
   return true;
 }
+
+let applyingStamps = false;
+
+/** True while the times a save stamped are being taken back (not an edit: sync ignores it) */
+export function isApplyingSavedStamps(): boolean {
+  return applyingStamps;
+}
+
+/**
+ * Take back the modifiedTimestamp values a save wrote, so the project in the
+ * store matches project.json (the save keeps a time the store set that
+ * differs from the file, e.g. one a pull brought). No undo step, not an
+ * unsaved change.
+ */
+export function applySavedStamps(projectId: string, stamps: SavedStamps): void {
+  const project = useAppStore.getState().project;
+  if (!project || project.id !== projectId) return;
+  const projectTs = stamps.project ?? project.modifiedTimestamp;
+  let changed = projectTs !== project.modifiedTimestamp;
+  const datasets = (project.datasets ?? []).map((d) => {
+    const ts = stamps.datasets[d.id];
+    if (!ts || ts === d.modifiedTimestamp) return d;
+    changed = true;
+    return { ...d, modifiedTimestamp: ts };
+  });
+  if (!changed) return;
+  withoutUndoRecording(() => {
+    applyingStamps = true;
+    try {
+      useAppStore.setState({ project: { ...project, modifiedTimestamp: projectTs, datasets } });
+    } finally {
+      applyingStamps = false;
+    }
+  });
+}

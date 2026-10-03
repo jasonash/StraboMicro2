@@ -4105,9 +4105,10 @@ ipcMain.handle('composite:rebuild-all-thumbnails', async (event, projectId, proj
 ipcMain.handle('project:save-json', async (event, project, projectId) => {
   try {
     log.info(`[IPC] Saving project.json for: ${projectId}`);
-    const savedPath = await projectSerializer.saveProjectJson(project, projectId);
+    const saved = await projectSerializer.saveProjectJsonStamped(project, projectId);
     log.info('[IPC] Successfully saved project.json');
-    return { success: true, path: savedPath };
+    // stamps: the times the save gave the project and datasets (the app takes them back)
+    return { success: true, path: saved.path, stamps: saved.stamps };
   } catch (error) {
     log.error('[IPC] Error saving project.json:', error);
     throw error;

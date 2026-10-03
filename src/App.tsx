@@ -51,6 +51,7 @@ import { SyncIntroDialog, type SyncIntroProject } from './components/dialogs/Syn
 import { CollaboratorsDialog } from './components/dialogs/CollaboratorsDialog';
 import { SeparateCopyDialog, type SeparateCopyNotice } from './components/dialogs/SeparateCopyDialog';
 import { ParkedReviewDialog } from './components/dialogs/ParkedReviewDialog';
+import { applySavedStamps } from './store/remoteChanges';
 import { InvitationsDialog } from './components/dialogs/InvitationsDialog';
 import { useInvitationsStore, INVITES_RECHECK_MS } from '@/store/useInvitationsStore';
 import { SyncIntroNotice } from './components/SyncIntroNotice';
@@ -1403,6 +1404,9 @@ function App() {
       setIsLoadingProject(false);
     }
   }, [ensureSaved, closeProject, loadProjectWithPreparation]);
+
+  // The times each save stamped go back into the store, so it matches project.json
+  useEffect(() => window.api?.onProjectStamped((id, stamps) => applySavedStamps(id, stamps)), []);
 
   // Removed from the open project (17k): it becomes a separate copy and a
   // notice says why. Leaving is handled by leaveProject.

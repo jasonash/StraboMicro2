@@ -184,6 +184,9 @@ app.whenReady().then(async () => {
     hist = await svc.history(straboId, SERVER);
     theirs = hist.ok && hist.changes.find((c) => c.type === 'dataset' && c.id === 'D-owner');
     check('activity (member): after the pull it is in my copy', theirs && theirs.pending === false, JSON.stringify(theirs));
+    const afterPull = await svc.getStatus(straboId);
+    check('a pulled dataset saved here is not a new edit (its time is kept, nothing to push)', afterPull.synced && afterPull.pending === 0,
+      JSON.stringify(afterPull));
 
     // Decline, and the owner's role change and removal
     await loginAs('owner');

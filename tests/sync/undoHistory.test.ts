@@ -208,6 +208,20 @@ const S = () => store.getState();
   for (let i = 0; i < 60; i++) { const before2 = S().project!.name; await undo(); if (S().project!.name !== before2) count++; }
   check('at most 50 undo steps', count === 50, String(count));
 
+  // A save writes its stamped time back into the store (applySavedStamps):
+  // undo still works on the dataset afterwards (the time is bookkeeping)
+  resetUndoHistory();
+  S().edit((p) => { p.datasets![0].name = 'dataset renamed'; });
+  await sleep(QUIET);
+  withoutUndoRecording(() => {
+    const p = structuredClone(S().project!);
+    p.datasets![0].modifiedTimestamp = '2026-10-03T15:00:00.000Z';
+    store.setState({ project: p });
+  });
+  undo();
+  check('undo after a save stamped the dataset\'s time', S().project!.datasets![0].name !== 'dataset renamed',
+    S().project!.datasets![0].name);
+
   console.log(failures ? `\n${failures} FAILED (${passes} passed)` : `\nALL PASSED (${passes} checks)`);
   process.exit(failures ? 1 : 0);
 })();

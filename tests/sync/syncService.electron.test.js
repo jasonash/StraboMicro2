@@ -107,36 +107,61 @@ app.whenReady().then(async () => {
     // expansion keep it; a change to the project's own fields stamps it
     {
       const disk = () => JSON.parse(fs.readFileSync(path.join(local, 'project.json'), 'utf8'));
+      // As the app saves: the stamped times go back into its project (applySavedStamps)
+      const save = async (app) => {
+        const { stamps } = await ser.saveProjectJsonStamped(app, pid);
+        if (stamps.project) app.modifiedTimestamp = stamps.project;
+        for (const d of app.datasets || []) if (stamps.datasets[d.id]) d.modifiedTimestamp = stamps.datasets[d.id];
+      };
       const before = disk();
       await new Promise((r) => setTimeout(r, 20));
       const app1 = await ser.loadProjectJson(pid);
-      await ser.saveProjectJson(app1, pid);
+      await save(app1);
       app1.datasets[0].isExpanded = !app1.datasets[0].isExpanded;
-      await ser.saveProjectJson(app1, pid);
+      await save(app1);
       const same = disk();
       check('unchanged save and tree expansion keep modifiedTimestamp',
         same.modifiedTimestamp === before.modifiedTimestamp &&
         same.datasets[0].modifiedTimestamp === before.datasets[0].modifiedTimestamp,
         `${before.modifiedTimestamp} -> ${same.modifiedTimestamp}`);
       app1.name = 'Sync service test (renamed)';
-      await ser.saveProjectJson(app1, pid);
+      await save(app1);
       const renamed = disk();
       check('project rename stamps the project only',
         renamed.modifiedTimestamp > before.modifiedTimestamp &&
         renamed.datasets[0].modifiedTimestamp === before.datasets[0].modifiedTimestamp);
       app1.datasets[0].name = 'Renamed dataset';
-      await ser.saveProjectJson(app1, pid);
+      await save(app1);
       const dsRenamed = disk();
       check('dataset rename stamps that dataset, project keeps its time',
         dsRenamed.datasets[0].modifiedTimestamp > before.datasets[0].modifiedTimestamp &&
         dsRenamed.modifiedTimestamp === renamed.modifiedTimestamp);
+      check('the stamped times are answered by the save', app1.modifiedTimestamp === dsRenamed.modifiedTimestamp &&
+        app1.datasets[0].modifiedTimestamp === dsRenamed.datasets[0].modifiedTimestamp);
+
+      // A time that came with a change (a pull) is kept, not restamped as a new edit here
+      app1.datasets[0].name = 'Pulled name';
+      app1.datasets[0].modifiedTimestamp = '2026-01-02T03:04:05.006Z';
+      await save(app1);
+      check('a pulled change keeps its time', disk().datasets[0].modifiedTimestamp === '2026-01-02T03:04:05.006Z',
+        disk().datasets[0].modifiedTimestamp);
+      // Discarding a turned-down change puts the server's (older) time back: kept too
+      app1.datasets[0].modifiedTimestamp = '2025-12-31T00:00:00.000Z';
+      await save(app1);
+      check('an older time put back (Discard) is kept', disk().datasets[0].modifiedTimestamp === '2025-12-31T00:00:00.000Z',
+        disk().datasets[0].modifiedTimestamp);
+      // And a plain edit after that stamps now again
+      app1.datasets[0].name = 'Edited here';
+      await save(app1);
+      check('a plain edit stamps the current time', disk().datasets[0].modifiedTimestamp > '2026-10-01',
+        disk().datasets[0].modifiedTimestamp);
 
       // Created in the app and not reloaded since: no date on the project or
       // dataset, no modifiedTimestamp on a spot. Saves keep what is on disk
       // (they used to take the current time, so a synced project always had 2 changes)
       const m0 = app1.datasets[0].samples[0].micrographs[0];
       m0.spots = [...(m0.spots || []), { id: crypto.randomUUID(), name: 'Dated spot', geometryType: 'point', points: [{ X: 5, Y: 5 }], modifiedTimestamp: 1700000000000 }];
-      await ser.saveProjectJson(app1, pid);
+      await save(app1);
       const settled = disk();
       await new Promise((r) => setTimeout(r, 20));
       const fresh = JSON.parse(JSON.stringify(app1));

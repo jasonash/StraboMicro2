@@ -416,10 +416,14 @@ function bodyKeys(type, obj) {
   return Object.keys(obj).filter((k) => !skip.has(k) && obj[k] !== undefined && typeof obj[k] !== 'function');
 }
 
-/** Same entity body (child collections and per-user fields ignored). */
+/**
+ * Same entity body (child collections, per-user fields and modifiedTimestamp
+ * ignored: the time is bookkeeping the save stamps, never an edit of its own,
+ * so undo and the role checks do not see it change).
+ */
 function sameBody(type, a, b) {
-  const ka = bodyKeys(type, a);
-  const kb = bodyKeys(type, b);
+  const ka = bodyKeys(type, a).filter((k) => k !== 'modifiedTimestamp');
+  const kb = bodyKeys(type, b).filter((k) => k !== 'modifiedTimestamp');
   if (ka.length !== kb.length) return false;
   for (const k of ka) {
     if (!Object.prototype.hasOwnProperty.call(b, k) || !deepEqual(a[k], b[k])) return false;

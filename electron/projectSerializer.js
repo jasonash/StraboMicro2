@@ -202,6 +202,32 @@ function cleanObjectForDb(obj) {
  * @param {string} projectId - UUID of the project
  * @returns {Promise<string>} Path to saved project.json
  */
+/**
+ * The times a save stamped (savedStamps), for the app to take back so its
+ * project never lags behind the file (see stampModifiedTimestamps).
+ * @param {object} legacyJson
+ * @returns {{ project: string | null, datasets: Record<string, string> }}
+ */
+function stampsOf(legacyJson) {
+  const datasets = {};
+  for (const d of legacyJson.datasets || []) if (d && d.id && d.modifiedTimestamp) datasets[d.id] = d.modifiedTimestamp;
+  return { project: legacyJson.modifiedTimestamp || null, datasets };
+}
+
+/**
+ * Save project.json and answer the times it stamped.
+ * @param {object} project
+ * @param {string} projectId
+ * @returns {Promise<{ path: string, stamps: { project: string | null, datasets: Record<string, string> } }>}
+ */
+async function saveProjectJsonStamped(project, projectId) {
+  const savedPath = await saveProjectJson(project, projectId);
+  return { path: savedPath, stamps: lastStamps.get(savedPath) || { project: null, datasets: {} } };
+}
+
+/** project.json path => the times its last save stamped */
+const lastStamps = new Map();
+
 async function saveProjectJson(project, projectId) {
   try {
     log.info(`[ProjectSerializer] Serializing project: ${projectId}`);
@@ -230,6 +256,7 @@ async function saveProjectJson(project, projectId) {
     // for its top-level requires only, and never saves.
     const { writeFileAtomic } = require('./atomicFile');
     await writeFileAtomic(projectJsonPath, JSON.stringify(legacyJson, null, 2), 'utf8');
+    lastStamps.set(projectJsonPath, stampsOf(legacyJson));
 
     log.info(`[ProjectSerializer] Successfully saved project.json to: ${projectJsonPath}`);
     return projectJsonPath;
@@ -256,7 +283,8 @@ async function prepareProjectJson(project, projectJsonPath) {
  * modifiedTimestamp of the project and of each dataset means "last changed":
  * compared with the project.json on disk, a project or dataset whose own
  * fields changed gets the current time, an unchanged one keeps the time on
- * disk. Children (datasets, samples, and the project's tags, groups and
+ * disk, and a time the app set that differs from the disk (it came with a
+ * pulled or decided change) is kept. Children (datasets, samples, and the project's tags, groups and
  * presets, which sync as entities of their own) and per-user fields (tree
  * expansion) do not count. Stamping every save instead would make each save look like
  * an edit to sync, and two collaborators' saves conflict.
@@ -288,9 +316,17 @@ async function stampModifiedTimestamps(legacyJson, projectJsonPath, source = nul
     for (const f of perUserFields(type)) delete out[f];
     return out;
   };
-  const stamp = (next, prev, type) => {
+  // The app's time differs from the file's only when it was set with a
+  // change (a pull, a sync decision, an accepted parked change): kept, or a
+  // pulled change would look like a new edit here (the store takes the
+  // stamped times back after each save, so it never lags behind the file)
+  // given: the app's own time (loading leaves it out; the serializer fills
+  // a missing one with the current time, so legacyJson cannot tell)
+  const stamp = (next, prev, type, given) => {
     if (!prev) {
-      next.modifiedTimestamp = now;
+      next.modifiedTimestamp = given || now;
+    } else if (given && given !== prev.modifiedTimestamp) {
+      next.modifiedTimestamp = given;
     } else if (deepEqual(own(next, type), own(prev, type))) {
       next.modifiedTimestamp = prev.modifiedTimestamp || next.modifiedTimestamp;
     } else {
@@ -317,8 +353,9 @@ async function stampModifiedTimestamps(legacyJson, projectJsonPath, source = nul
       if (prev && prev.modifiedTimestamp && !(src && src.modifiedTimestamp)) spot.modifiedTimestamp = prev.modifiedTimestamp;
     });
   }
-  stamp(legacyJson, prevProject, 'project');
-  for (const d of legacyJson.datasets || []) stamp(d, prevDatasets.get(d.id), 'dataset');
+  const givenDatasets = new Map(((source && source.datasets) || []).map((d) => [d.id, d.modifiedTimestamp]));
+  stamp(legacyJson, prevProject, 'project', source ? source.modifiedTimestamp : undefined);
+  for (const d of legacyJson.datasets || []) stamp(d, prevDatasets.get(d.id), 'dataset', givenDatasets.get(d.id));
 }
 
 /** Every spot of a project (app or legacy shape: datasets > samples > micrographs > spots) */
@@ -623,6 +660,8 @@ function deserializeFromLegacyFormat(legacyJson) {
     magneticDeclination: legacyJson.magneticDeclination || undefined,
     notes: legacyJson.notes || undefined,
     date: legacyJson.date,
+    // Kept so a save (and a pulled change) keeps the time (see stampModifiedTimestamps)
+    modifiedTimestamp: legacyJson.modifiedTimestamp || undefined,
     datasets: (legacyJson.datasets || []).map(deserializeDataset),
     groups: legacyJson.groups || [],
     tags: legacyJson.tags || [],
@@ -645,6 +684,7 @@ function deserializeDataset(dataset) {
     id: dataset.id,
     name: dataset.name,
     date: dataset.date,
+    modifiedTimestamp: dataset.modifiedTimestamp || undefined,
     samples: (dataset.samples || []).map(deserializeSample),
   };
 }
@@ -799,6 +839,7 @@ function deserializeSpot(spot) {
 
 module.exports = {
   saveProjectJson,
+  saveProjectJsonStamped,
   loadProjectJson,
   serializeToLegacyFormat,
   deserializeFromLegacyFormat,

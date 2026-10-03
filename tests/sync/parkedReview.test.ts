@@ -49,8 +49,9 @@ const push: SyncParkedPush = {
     { op: 'create', type: 'spot', id: 'SN3', parentType: 'micrograph', parentId: 'M1', body: { id: 'SN3', name: 'Garnet 3' } },
     // Renamed an existing spot
     { op: 'update', type: 'spot', id: 'SP1', baseVersion: 1, fields: { name: 'Garnet 1b' } },
-    // The sample's new child order (not shown)
+    // The sample's new child order and a save's timestamp (not shown)
     { op: 'update', type: 'sample', id: 'S1', childOrder: { micrographs: ['M1', 'M2', 'MN'] } },
+    { op: 'update', type: 'dataset', id: 'D1', baseVersion: 2, fields: { modifiedTimestamp: '2026-10-03T14:57:39.355Z' } },
     // Deleted a micrograph with a nested micrograph
     { op: 'delete', type: 'micrograph', id: 'M1', baseVersion: 3 },
   ],
@@ -59,8 +60,8 @@ const push: SyncParkedPush = {
 let cur = currentEntities(project());
 let review = buildReview(push, cur);
 const byKey = (k: string) => review.units.find((u) => u.key === k)!;
-check('units: new micrograph with its spots is one, the rest one each; child order silent',
-  review.units.length === 4 && byKey('micrograph:MN').keys.length === 3 && review.silentKeys.join() === 'sample:S1',
+check('units: new micrograph with its spots is one, the rest one each; child order and timestamps silent',
+  review.units.length === 4 && byKey('micrograph:MN').keys.length === 3 && review.silentKeys.join() === 'sample:S1,dataset:D1',
   review.units.map((u) => [u.key, u.keys.length]));
 check('create text names it, its parent and what it holds',
   byKey('micrograph:MN').text === "Added micrograph 'Dan scan' to sample 'Basalt' (2 spots)", byKey('micrograph:MN').text);

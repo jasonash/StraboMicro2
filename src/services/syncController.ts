@@ -54,7 +54,7 @@ import { useAppStore } from '@/store';
 import { useAuthStore } from '@/store/useAuthStore';
 import { useSyncStore, decisionsWaiting } from '@/store/useSyncStore';
 import { getRestServerUrl } from '@/components/dialogs/PreferencesDialog';
-import { applyRemoteChanges } from '@/store/remoteChanges';
+import { applyRemoteChanges, isApplyingSavedStamps } from '@/store/remoteChanges';
 import { compositesAffectedBy, regenerateComposites } from '@/utils/compositeRefresh';
 import { takeFirstSyncRequest } from '@/services/syncActions';
 
@@ -139,7 +139,7 @@ class ProjectSync {
   start(): void {
     void this.loadPermissions();
     this.unsubscribers.push(useAppStore.subscribe((state, prev) => {
-      if (state.project && state.project !== prev.project && state.project.id === this.projectId) {
+      if (state.project && state.project !== prev.project && state.project.id === this.projectId && !isApplyingSavedStamps()) {
         this.localChange();
       }
     }));

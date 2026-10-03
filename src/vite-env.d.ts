@@ -185,6 +185,12 @@ interface SyncMember {
   respondedAt: string | null;
 }
 
+/** modifiedTimestamp of the project and of each dataset as a save wrote them */
+interface SavedStamps {
+  project: string | null;
+  datasets: Record<string, string>;
+}
+
 /** One row of the activity panel's list (server brief history, 17v) */
 interface SyncHistoryRow {
   seq: number;
@@ -665,7 +671,11 @@ interface Window {
     saveProjectJson: (project: any, projectId: string) => Promise<{
       success: boolean;
       path: string;
+      /** The times the save gave the project and its datasets */
+      stamps?: SavedStamps;
     }>;
+    /** After each save: the stamped times, for the store to take back */
+    onProjectStamped: (callback: (projectId: string, stamps: SavedStamps) => void) => Unsubscribe;
     loadProjectJson: (projectId: string) => Promise<any>;
 
     // Debug utilities

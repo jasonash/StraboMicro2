@@ -1,5 +1,8 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
+/** The app's handler for the times a save stamped (saveProjectJson) */
+let projectStampListener = null;
+
 // Expose protected methods that allow the renderer process to use
 // the ipcRenderer without exposing the entire object
 contextBridge.exposeInMainWorld('api', {
@@ -289,7 +292,18 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('composite:rebuild-all-thumbnails', projectId, projectData),
 
   // Project serialization
-  saveProjectJson: (project, projectId) => ipcRenderer.invoke('project:save-json', project, projectId),
+  // The times a save stamped go to the app (onProjectStamped), so its project matches the file
+  saveProjectJson: async (project, projectId) => {
+    const result = await ipcRenderer.invoke('project:save-json', project, projectId);
+    if (result && result.stamps && projectStampListener) projectStampListener(projectId, result.stamps);
+    return result;
+  },
+  onProjectStamped: (callback) => {
+    projectStampListener = callback;
+    return () => {
+      if (projectStampListener === callback) projectStampListener = null;
+    };
+  },
   loadProjectJson: (projectId) => ipcRenderer.invoke('project:load-json', projectId),
 
   // Debug utilities
