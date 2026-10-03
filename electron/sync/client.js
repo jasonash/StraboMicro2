@@ -269,8 +269,16 @@ function createSyncClient({ restServer, getAccessToken, refreshAccessToken, fetc
       return expect(await request('GET', `/projects/${pid}/changes?since=${since}&limit=${limit}`), 200);
     },
 
+    /**
+     * Point an entity's file role at an uploaded file. { skipped: 'deleted' }
+     * when the entity is not live on the server (deleted there, not pulled
+     * yet); { skipped: 'forbidden' } when my role may not change it.
+     */
     async setRef(pid, entityType, entityId, role, sha256) {
-      return expect(await request('PUT', `/projects/${pid}/refs`, { json: { entityType, entityId, role, sha256 } }), 200, 201);
+      const r = await request('PUT', `/projects/${pid}/refs`, { json: { entityType, entityId, role, sha256 } });
+      if (r.status === 404 && r.data && r.data.error === 'not_found') return { skipped: 'deleted' };
+      if (r.status === 403 && r.data && r.data.error === 'forbidden') return { skipped: 'forbidden', reason: r.data.reason || '' };
+      return expect(r, 200, 201);
     },
 
     async deleteRef(pid, entityType, entityId, role) {

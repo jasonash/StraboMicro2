@@ -191,6 +191,25 @@ app.whenReady().then(async () => {
       !Object.values(st.base).some((e) => e.type === 'spot' && deletedIds.includes(e.parentId)));
     compare('after cascade delete', on.pid);
 
+    // A file ref for a micrograph deleted on the server meanwhile (not pulled yet) is skipped, not retried forever
+    const st2 = await sidecar.loadState(accountFolder);
+    const doomed = st2.base[`micrograph:${newId}`];
+    const gone = await client.push(on.pid, crypto.randomUUID(), 'another-computer',
+      [{ op: 'delete', type: 'micrograph', id: newId, baseVersion: doomed.version }]);
+    check('another computer deletes the new micrograph', gone.results[0].status === 'accepted', JSON.stringify(gone.results));
+    const thumbRk = `micrograph:${newId}|thumbnail`;
+    const oldThumb = st2.refs[thumbRk];
+    fs.appendFileSync(path.join(accountFolder, 'compositeThumbnails', newId), Buffer.from([1, 2, 3]));
+    let skipped;
+    try {
+      skipped = await pushProject({ folder: accountFolder, client });
+    } catch (err) {
+      skipped = { error: err.message };
+    }
+    const st3 = await sidecar.loadState(accountFolder);
+    check('a thumbnail for a micrograph deleted on the server does not stop the push', skipped && !skipped.error &&
+      st3.refs[thumbRk] === oldThumb, JSON.stringify(skipped).slice(0, 300));
+
     // Turning sync on again resumes (no new server project, nothing to send)
     const again = await turnSyncOn({ projectId: pid, restServer: SERVER, user: { pkey: who.pkey, email: who.email }, client });
     check('turning sync on again resumes the same project', again.status === 'synced' && again.pid === on.pid);

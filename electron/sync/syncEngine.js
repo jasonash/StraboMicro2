@@ -257,7 +257,13 @@ async function pushProject({ folder, client, onProgress = () => {} }) {
       onProgress({ phase: 'files', item: `${f.id} ${f.role}` });
       const up = await client.uploadFile(pid, filePath, f.kind, { sha256 });
       if (up.uploaded) filesUploaded++;
-      await client.setRef(pid, f.type, f.id, f.role, sha256);
+      const set = await client.setRef(pid, f.type, f.id, f.role, sha256);
+      if (set && set.skipped) {
+        // Deleted on the server (the next pull brings that), or my role may
+        // not change it: not recorded, so it is offered again only if still wanted
+        log.warn(`[Sync] File ${f.role} of ${f.type} ${f.id} not set (${set.skipped}${set.reason ? `: ${set.reason}` : ''})`);
+        continue;
+      }
       state.refs[rk] = sha256;
       await sidecar.saveState(folder, state);
     } finally {
