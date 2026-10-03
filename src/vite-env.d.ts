@@ -1078,6 +1078,10 @@ interface Window {
       history: (projectId: string, restServer: string, before?: number) => Promise<
         | { ok: true; changes: SyncHistoryRow[]; more: boolean; me: number }
         | { ok: false; kind: SyncFailureKind; message: string; removal?: SyncRemoval }>;
+      /** Restore deleted items with what was deleted with them (17n); a pull brings them into this copy */
+      restoreDeleted: (projectId: string, restServer: string, items: Array<{ type: string; id: string }>) => Promise<
+        | { ok: true; results: Array<{ type: string; id: string; ok: boolean; status: string; reason: string }> }
+        | { ok: false; kind: SyncFailureKind; message: string; removal?: SyncRemoval }>;
       /** A synced copy that is not loaded becomes a separate local-only copy with a new id (open it with projects.load) */
       separate: (projectId: string) => Promise<
         | { ok: true; projectId: string; name: string }

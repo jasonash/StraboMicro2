@@ -223,3 +223,30 @@ export function whenText(iso: string, now: Date = new Date()): string {
   });
   return `${date}, ${hm}`;
 }
+
+/**
+ * May I offer Restore on this line (17n, 17w): Owners and Editors for any
+ * deletion; a Contributor for their own (the server also checks that they
+ * created everything in it).
+ */
+export function canRestore(g: Pick<ActivityGroup, 'deleted' | 'you'>, role: SyncRole | null): boolean {
+  if (g.deleted.length === 0) return false;
+  if (role === 'owner' || role === 'editor') return true;
+  return role === 'contributor' && g.you;
+}
+
+/** Why a restore was turned down, in plain words */
+export function restoreFailureText(reason: string): string {
+  switch (reason) {
+    case 'parent_deleted':
+      return 'What it was in is deleted too. Restore that first.';
+    case 'editor_required':
+      return 'Only owners and editors can restore what someone else deleted.';
+    case 'cascade_includes_others':
+      return 'It holds items other people created, which your role cannot restore.';
+    case 'viewer':
+      return 'Your role in this project does not allow changes.';
+    default:
+      return 'It could not be restored.';
+  }
+}

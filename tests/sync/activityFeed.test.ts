@@ -5,7 +5,7 @@
  *   npm run test:activity-feed
  */
 
-import { groupActivity, lineText, whenText, type ActivityLookup } from '@/utils/activityFeed';
+import { groupActivity, lineText, whenText, canRestore, restoreFailureText, type ActivityLookup } from '@/utils/activityFeed';
 
 let failures = 0;
 let passes = 0;
@@ -116,6 +116,17 @@ check('replace project', lineText(g[0]) === 'Maya Chen replaced the whole projec
 // An accepted parked change names both people (17y)
 g = groupActivity([row({ id: 'S1', op: 'update', changedPaths: ['name'], user: YOU, onBehalfOf: { pkey: 9, name: 'Dan' }, name: 'Garnet 1' })], look);
 check('accepted parked change', lineText(g[0]) === "You accepted Dan's change: changed Name of spot 'Garnet 1'", lineText(g[0]));
+
+// Restore (17n, 17w)
+const del = groupActivity([row({ type: 'micrograph', id: 'MX', op: 'delete', name: 'Old scan', parentType: 'sample', parentId: 'SA' })], look)[0];
+const myDel = groupActivity([row({ type: 'micrograph', id: 'MX', op: 'delete', user: YOU, parentType: 'sample', parentId: 'SA' })], look)[0];
+const gone = groupActivity([row({ type: 'micrograph', id: 'M1', op: 'delete', parentType: 'sample', parentId: 'SA' })], look)[0];
+check('restore: owners and editors on any deletion', canRestore(del, 'owner') && canRestore(del, 'editor'));
+check('restore: a contributor only on their own', !canRestore(del, 'contributor') && canRestore(myDel, 'contributor'));
+check('restore: never for viewers or unknown roles', !canRestore(myDel, 'viewer') && !canRestore(myDel, null));
+check('restore: not when the item is back in my copy', gone.deleted.length === 0 && !canRestore(gone, 'owner'));
+check('restore failure wording', restoreFailureText('parent_deleted').includes('Restore that first') &&
+  restoreFailureText('whatever') === 'It could not be restored.');
 
 // Times
 const now = new Date(T0);

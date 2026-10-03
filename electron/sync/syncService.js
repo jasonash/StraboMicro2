@@ -24,6 +24,7 @@
  *   sync:invites / sync:answer-invite   invitations waiting for me (17f)
  *   sync:leave     leave the open synced project (17j; the app pushes first)
  *   sync:history   the activity panel's list of changes, newest first (17v)
+ *   sync:restore-deleted  Restore in the activity panel (17n, 17w)
  *   sync:separate  a synced copy (not loaded) becomes a separate copy with a
  *                  new id (17j keep, 17k removed)
  *   sync:permissions  my pkey, role and who created what (role checks, 17h/17i)
@@ -879,6 +880,40 @@ async function history(projectId, restServer, before = 0) {
   }
 }
 
+/**
+ * Restore deleted items from the activity panel (17n, 17w): one restore
+ * op per item, with what was deleted with it. The items come back into
+ * this copy with the next pull (the app syncs right after).
+ * @param {string} projectId
+ * @param {string} restServer
+ * @param {Array<{ type: string, id: string }>} items
+ */
+function restoreDeleted(projectId, restServer, items) {
+  return serialize(projectId, async () => {
+    try {
+      const b = await boundPid(projectId, restServer);
+      if (!b.ok) return b;
+      const list = (Array.isArray(items) ? items : [])
+        .filter((i) => i && typeof i.type === 'string' && typeof i.id === 'string')
+        .map((i) => ({ op: 'restore', type: i.type, id: i.id, cascade: true }));
+      if (list.length === 0) return { ok: true, results: [] };
+      const { syncEngine } = loadEngine();
+      const r = await makeClient(restServer).push(b.pid, require('crypto').randomUUID(), syncEngine.getClientId(), list);
+      const results = (r.results || []).map((x, i) => ({
+        type: list[i].type,
+        id: list[i].id,
+        // Restored meanwhile counts as restored
+        ok: x.status === 'accepted' || (x.status === 'invalid' && x.reason === 'not_deleted'),
+        status: x.status,
+        reason: typeof x.reason === 'string' ? x.reason : '',
+      }));
+      return { ok: true, results };
+    } catch (err) {
+      return failure(err);
+    }
+  });
+}
+
 /** Collaborators of the open synced project (Phase 2, 17a). */
 async function members(projectId, restServer) {
   try {
@@ -1169,6 +1204,7 @@ function registerSyncIpc(ipcMain, getMainWindow, { devTools = false } = {}) {
   ipcMain.handle('sync:answer-invite', (_event, restServer, pid, accept) => answerInvite(restServer, pid, accept));
   ipcMain.handle('sync:leave', (_event, projectId, restServer) => leave(projectId, restServer));
   ipcMain.handle('sync:history', (_event, projectId, restServer, before) => history(projectId, restServer, before));
+  ipcMain.handle('sync:restore-deleted', (_event, projectId, restServer, items) => restoreDeleted(projectId, restServer, items));
   ipcMain.handle('sync:separate', (_event, projectId) => separate(projectId));
   ipcMain.handle('sync:decisions', (_event, projectId) => listDecisions(projectId));
   ipcMain.handle('sync:decide', (_event, projectId, decision) => decide(projectId, decision));
@@ -1183,5 +1219,5 @@ function registerSyncIpc(ipcMain, getMainWindow, { devTools = false } = {}) {
 module.exports = {
   registerSyncIpc, notifyLocalChange, getStatus, preflight, activity, serverProject, listServerProjects, introCandidates, setPromptAnswer, compare, link, openRemote, turnOn, push, setMode, pull, commitPull, discardPull, download, clone,
   listDecisions, decide, decideCommit, decideDiscard, testOther, testCompare, cleanupReplaced,
-  members, changeMembers, invites, answerInvite, permissions, leave, separate, history,
+  members, changeMembers, invites, answerInvite, permissions, leave, separate, history, restoreDeleted,
 };

@@ -660,6 +660,7 @@ contextBridge.exposeInMainWorld('api', {
     leave: (projectId, restServer) => ipcRenderer.invoke('sync:leave', projectId, restServer),
     separate: (projectId) => ipcRenderer.invoke('sync:separate', projectId),
     history: (projectId, restServer, before) => ipcRenderer.invoke('sync:history', projectId, restServer, before),
+    restoreDeleted: (projectId, restServer, items) => ipcRenderer.invoke('sync:restore-deleted', projectId, restServer, items),
     decisions: (projectId) => ipcRenderer.invoke('sync:decisions', projectId),
     decide: (projectId, decision) => ipcRenderer.invoke('sync:decide', projectId, decision),
     decideCommit: (projectId, decisionId) => ipcRenderer.invoke('sync:decide-commit', projectId, decisionId),

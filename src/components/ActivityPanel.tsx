@@ -4,6 +4,8 @@
  * A non-modal drawer over the right pane, opened from the sync chip's
  * "Activity..." or View > Activity. A click on a line selects its spot or
  * micrograph. Changes not in this copy yet are marked, with Sync Now.
+ * Deleted items offer Restore (17n, 17w): the restore goes to the server,
+ * then Sync Now brings the items back into this copy.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -13,7 +15,9 @@ import { useSyncStore } from '@/store/useSyncStore';
 import { useAppStore } from '@/store/useAppStore';
 import { useAuthStore } from '@/store/useAuthStore';
 import { getRestServerUrl } from './dialogs/PreferencesDialog';
-import { groupActivity, lineText, whenText, type ActivityGroup, type ActivityLookup } from '@/utils/activityFeed';
+import {
+  groupActivity, lineText, whenText, canRestore, restoreFailureText, type ActivityGroup, type ActivityLookup,
+} from '@/utils/activityFeed';
 import { syncNowFromUser } from '@/services/syncActions';
 import type { ProjectMetadata } from '@/types/project-types';
 
@@ -48,6 +52,7 @@ export function ActivityPanel() {
   const incoming = useSyncStore((s) => s.incoming);
   const lastSyncedAt = useSyncStore((s) => s.lastSyncedAt);
   const loggedIn = useAuthStore((s) => s.isAuthenticated);
+  const role = useSyncStore((s) => s.role);
   const project = useAppStore((s) => s.project);
 
   const [rows, setRows] = useState<SyncHistoryRow[]>([]);
@@ -56,6 +61,9 @@ export function ActivityPanel() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [now, setNow] = useState(() => new Date());
+  /** Restore under way (group key) and the outcome per group */
+  const [restoring, setRestoring] = useState<string | null>(null);
+  const [restoreError, setRestoreError] = useState<Record<string, string>>({});
   const loadSeq = useRef(0);
   const rowsRef = useRef<SyncHistoryRow[]>([]);
   rowsRef.current = rows;
@@ -128,6 +136,24 @@ export function ActivityPanel() {
 
   const close = () => useSyncStore.getState().update({ activityOpen: false });
 
+  const restore = async (g: ActivityGroup) => {
+    if (!projectId || !window.api) return;
+    setRestoring(g.key);
+    setRestoreError((e) => ({ ...e, [g.key]: '' }));
+    try {
+      const r = await window.api.sync.restoreDeleted(projectId, getRestServerUrl(), g.deleted.map((d) => ({ type: d.type, id: d.id })));
+      if (!r.ok) {
+        setRestoreError((e) => ({ ...e, [g.key]: r.message }));
+        return;
+      }
+      const failed = r.results.find((x) => !x.ok);
+      if (failed) setRestoreError((e) => ({ ...e, [g.key]: restoreFailureText(failed.reason) }));
+      if (r.results.some((x) => x.ok)) await syncNowFromUser();
+    } finally {
+      setRestoring(null);
+    }
+  };
+
   const show = (g: ActivityGroup) => {
     const t = g.target;
     if (!t) return;
@@ -189,7 +215,23 @@ export function ActivityPanel() {
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                   <Typography variant="caption" sx={{ color: 'text.secondary' }}>{whenText(g.at, now)}</Typography>
                   {g.pending && <Chip size="small" variant="outlined" color="info" label="Not in your copy yet" sx={{ height: 18 }} />}
+                  {!g.pending && canRestore(g, role) && (
+                    <Button
+                      size="small"
+                      disabled={restoring !== null}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void restore(g);
+                      }}
+                      sx={{ ml: 'auto', py: 0, minWidth: 0 }}
+                    >
+                      {restoring === g.key ? 'Restoring…' : 'Restore'}
+                    </Button>
+                  )}
                 </Box>
+                {restoreError[g.key] && (
+                  <Typography variant="caption" sx={{ color: 'error.main', display: 'block' }}>{restoreError[g.key]}</Typography>
+                )}
               </Box>
             ))}
             {more && (

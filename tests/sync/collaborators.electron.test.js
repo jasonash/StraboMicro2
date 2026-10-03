@@ -284,6 +284,37 @@ app.whenReady().then(async () => {
     projectFolders.useProjectCopy(straboId, ownerCopy);
     r = await svc.leave(straboId, SERVER);
     check('owner: cannot leave (transfer first)', !r.ok && r.kind === 'owner_must_transfer', JSON.stringify(r));
+
+    // Restore from the activity panel (17n): the restore goes up, the next pull brings the items back
+    const pullApply = async () => {
+      const pl = await svc.pull(straboId, SERVER, () => {});
+      if (!pl.ok) return pl;
+      const proj = await ser.loadProjectJson(straboId);
+      applyEntityChanges(proj, pl.changes, 'redo');
+      await ser.saveProjectJson(proj, straboId);
+      return svc.commitPull(straboId, pl.pullId);
+    };
+    let op = await ser.loadProjectJson(straboId);
+    op.datasets = [...op.datasets, { id: 'D-gone', name: 'Soon gone', samples: [{ id: 'SMP-gone', name: 'Inside', micrographs: [] }] }];
+    await ser.saveProjectJson(op, straboId);
+    r = await svc.push(straboId, SERVER, () => {});
+    op = await ser.loadProjectJson(straboId);
+    op.datasets = op.datasets.filter((d) => d.id !== 'D-gone');
+    await ser.saveProjectJson(op, straboId);
+    r = r.ok ? await svc.push(straboId, SERVER, () => {}) : r;
+    check('owner: a dataset with a sample made and deleted', r.ok, JSON.stringify(r));
+    hist = await svc.history(straboId, SERVER);
+    const delRow = hist.ok && hist.changes.find((c) => c.op === 'delete' && c.id === 'D-gone');
+    check('activity: the delete is listed with its name', delRow && delRow.name === 'Soon gone', JSON.stringify(delRow));
+    r = await svc.restoreDeleted(straboId, SERVER, [{ type: 'dataset', id: 'D-gone' }]);
+    check('restore: accepted', r.ok && r.results.length === 1 && r.results[0].ok === true, JSON.stringify(r));
+    r = await pullApply();
+    op = await ser.loadProjectJson(straboId);
+    const back = op.datasets.find((d) => d.id === 'D-gone');
+    check('restore: the next pull brings the dataset back with its sample', r.ok && back && back.samples.some((x) => x.id === 'SMP-gone'),
+      JSON.stringify({ r, back }));
+    r = await svc.restoreDeleted(straboId, SERVER, [{ type: 'dataset', id: 'D-gone' }]);
+    check('restore again: counts as restored (not_deleted)', r.ok && r.results[0].ok === true && r.results[0].reason === 'not_deleted', JSON.stringify(r));
   } catch (err) {
     failures++;
     console.log(`  FAIL  unexpected error: ${err && err.stack ? err.stack : err}`);
