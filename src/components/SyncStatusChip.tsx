@@ -31,7 +31,7 @@ import { useSyncStore, decisionsWaiting } from '@/store/useSyncStore';
 import { getRestServerUrl } from '@/components/dialogs/PreferencesDialog';
 import { syncChipState, lastSyncedText, type SyncChipTone } from '@/utils/syncChipState';
 import { syncNowFromUser, changeModeFromUser, requestTurnOnSync, requestCollaborate } from '@/services/syncActions';
-import { waitingText } from '@/utils/parkedReview';
+import { reviewCount, waitingText } from '@/utils/parkedReview';
 
 const CHIP_COLOR: Record<SyncChipTone, 'warning' | 'info' | 'default' | 'success'> = {
   attention: 'warning',
@@ -87,7 +87,7 @@ export function SyncStatusChip() {
   };
 
   // Owner: parked changes waiting for review (17aa)
-  const toReview = sync.role === 'owner' ? sync.parked.length : 0;
+  const toReview = sync.role === 'owner' ? reviewCount(sync.parked) : 0;
 
   return (
     <>

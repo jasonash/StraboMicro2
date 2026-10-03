@@ -26,6 +26,7 @@ import { applyRemoteChanges } from '@/store/remoteChanges';
 import { getRestServerUrl } from './PreferencesDialog';
 import { acceptChanges, buildReview, currentEntities, type ParkedUnit } from '@/utils/parkedReview';
 import { whenText } from '@/utils/activityFeed';
+import { loadParked } from '@/services/syncController';
 import { roleLabel } from '@/utils/collaboratorRoles';
 
 export function ParkedReviewDialog() {
@@ -39,13 +40,12 @@ export function ParkedReviewDialog() {
   const load = useCallback(async () => {
     if (!projectId || !window.api) return;
     setError(null);
-    const r = await window.api.sync.parked(projectId, getRestServerUrl()).catch(() => null);
-    if (!r || !r.ok) {
-      setError(r?.message ?? 'The changes waiting for review could not be loaded.');
+    const r = await loadParked(projectId);
+    if (!r.ok) {
+      setError(r.message);
       return;
     }
     setPushes(r.parked);
-    useSyncStore.getState().update({ parkedCount: r.parked.length, parked: r.parked });
   }, [projectId]);
 
   useEffect(() => {

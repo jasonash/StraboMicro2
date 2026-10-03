@@ -291,6 +291,25 @@ export function acceptChanges(push: SyncParkedPush, unit: ParkedUnit, cur: Entit
   return [];
 }
 
+/**
+ * A parked push with nothing to show: only child-order and timestamp-only
+ * updates (a Viewer's copy before 4697d0b parked a stray time on every
+ * sync). It has no row to decide, so the app settles it as discarded.
+ */
+export function hasNothingToReview(push: Pick<SyncParkedPush, 'changes'>): boolean {
+  return push.changes.every(isOrderOnly);
+}
+
+/** Every change of a push decided one way (keys as the server expects them) */
+export function decideAll(push: Pick<SyncParkedPush, 'changes'>, decision: 'accepted' | 'discarded'): Record<string, 'accepted' | 'discarded'> {
+  return Object.fromEntries(push.changes.map((c) => [keyOf(c), decision]));
+}
+
+/** How many changes are waiting for review (what waitingText counts; the chip's badge) */
+export function reviewCount(pushes: Array<Pick<SyncParkedPush, 'changes'>>): number {
+  return pushes.reduce((n, p) => n + p.changes.filter((c) => !isOrderOnly(c)).length, 0);
+}
+
 /** "Dan Smith's 4 unsynced changes are waiting for your review" */
 export function waitingText(pushes: Array<Pick<SyncParkedPush, 'user' | 'changes'>>): string {
   const per = new Map<string, number>();

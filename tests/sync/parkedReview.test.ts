@@ -7,7 +7,7 @@
  */
 
 import { applyEntityChanges } from '../../electron/shared/entityModel.mjs';
-import { buildReview, acceptChanges, currentEntities, waitingText } from '@/utils/parkedReview';
+import { buildReview, acceptChanges, currentEntities, waitingText, hasNothingToReview, reviewCount, decideAll } from '@/utils/parkedReview';
 
 let failures = 0;
 let passes = 0;
@@ -130,6 +130,17 @@ check('waiting text, one person', waitingText([push]) === "Dan Smith's 6 unsynce
 check('waiting text, one change', waitingText([{ user: DAN, changes: [push.changes[4]] }]) === "Dan Smith's 1 unsynced change is waiting for your review");
 check('waiting text, two people', waitingText([push, { user: { pkey: 3, name: 'Maya' }, changes: [push.changes[4]] }]) ===
   "Dan Smith's 6 unsynced changes and Maya's 1 unsynced change are waiting for your review");
+
+// A push of timestamps only has nothing to review: settled as discarded by the app, not counted
+const timeOnly = { user: DAN, changes: [
+  { op: 'update' as const, type: 'dataset', id: 'D1', fields: { modifiedTimestamp: '2026-10-03T14:57:39.355Z' } },
+  { op: 'update' as const, type: 'project', id: 'P', fields: { modifiedTimestamp: '2026-10-03T14:57:39.355Z' } },
+] };
+check('a timestamp-only push has nothing to review', hasNothingToReview(timeOnly) && !hasNothingToReview(push));
+check('review count: changes to review, not pushes', reviewCount([push, timeOnly]) === 6 && reviewCount([timeOnly]) === 0,
+  reviewCount([push, timeOnly]));
+check('decide all: every item of the push, by type:id', JSON.stringify(decideAll(timeOnly, 'discarded')) ===
+  JSON.stringify({ 'dataset:D1': 'discarded', 'project:P': 'discarded' }), decideAll(timeOnly, 'discarded'));
 
 console.log(failures ? `\n${failures} FAILED (${passes} passed)` : `\nALL PASSED (${passes} checks)`);
 process.exit(failures ? 1 : 0);

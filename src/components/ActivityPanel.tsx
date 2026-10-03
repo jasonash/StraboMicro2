@@ -19,7 +19,7 @@ import {
   groupActivity, lineText, whenText, canRestore, restoreFailureText, type ActivityGroup, type ActivityLookup,
 } from '@/utils/activityFeed';
 import { syncNowFromUser } from '@/services/syncActions';
-import { waitingText } from '@/utils/parkedReview';
+import { reviewCount, waitingText } from '@/utils/parkedReview';
 import type { ProjectMetadata } from '@/types/project-types';
 
 export const ACTIVITY_PANEL_WIDTH = 360;
@@ -187,7 +187,7 @@ export function ActivityPanel() {
           <Typography variant="body2" sx={{ color: 'text.secondary' }}>Log in to see project activity.</Typography>
         ) : (
           <>
-            {role === 'owner' && parked.length > 0 && (
+            {role === 'owner' && reviewCount(parked) > 0 && (
               <Alert
                 severity="warning"
                 action={<Button size="small" onClick={() => useSyncStore.getState().update({ reviewOpen: true })}>Review…</Button>}
