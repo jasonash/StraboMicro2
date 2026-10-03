@@ -653,6 +653,8 @@ contextBridge.exposeInMainWorld('api', {
     changeMembers: (projectId, restServer, change) => ipcRenderer.invoke('sync:change-members', projectId, restServer, change),
     invites: (restServer) => ipcRenderer.invoke('sync:invites', restServer),
     answerInvite: (restServer, pid, accept) => ipcRenderer.invoke('sync:answer-invite', restServer, pid, accept),
+    leave: (projectId, restServer) => ipcRenderer.invoke('sync:leave', projectId, restServer),
+    separate: (projectId) => ipcRenderer.invoke('sync:separate', projectId),
     decisions: (projectId) => ipcRenderer.invoke('sync:decisions', projectId),
     decide: (projectId, decision) => ipcRenderer.invoke('sync:decide', projectId, decision),
     decideCommit: (projectId, decisionId) => ipcRenderer.invoke('sync:decide-commit', projectId, decisionId),

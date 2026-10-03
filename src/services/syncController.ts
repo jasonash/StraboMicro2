@@ -612,6 +612,18 @@ class ProjectSync {
   }
 
   private failed(failure: Failure): void {
+    if (failure.kind === 'access_removed') {
+      // Removed from the project, or left it (17k): this copy stops syncing; App makes it separate
+      console.warn(`[Sync] ${failure.message}`);
+      this.stop();
+      useSyncStore.getState().update({
+        accessRemoved: {
+          projectId: this.projectId,
+          ...(failure.removal ?? { left: false, removedBy: null, parked: false, projectName: null }),
+        },
+      });
+      return;
+    }
     this.problem = failure;
     if (failure.kind === 'offline') useAuthStore.getState().setOffline(true);
     console.warn(`[Sync] Not synced (${failure.kind}): ${failure.message}`);
@@ -665,6 +677,10 @@ class ProjectSync {
       // The header's offline state (16ar); other failures (login, account) say nothing about the connection
       if (r?.ok) useAuthStore.getState().setOffline(false);
       else if (r?.kind === 'offline') useAuthStore.getState().setOffline(true);
+      else if (r?.kind === 'access_removed') {
+        this.failed(r);
+        return;
+      }
       // My role follows the server (the owner may have changed it, 17h)
       if (r?.ok && r.role && r.role !== useSyncStore.getState().role) useSyncStore.getState().update({ role: r.role });
       if (r?.ok && !this.running) {

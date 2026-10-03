@@ -10,6 +10,9 @@
  *   disabled    - sync is switched off on the server (503 sync_disabled)
  *   old_server  - the server has no sync API (404 on ping)
  *   server      - any other 5xx
+ *   access_removed - I was removed from the project or left it (403
+ *                 access_removed, or access_changed when this push was
+ *                 parked for the owner); data: left, removedBy, parked, project
  */
 
 const fs = require('fs');
@@ -17,7 +20,7 @@ const crypto = require('crypto');
 
 class SyncError extends Error {
   /**
-   * @param {'offline' | 'auth' | 'disabled' | 'old_server' | 'server'} kind
+   * @param {'offline' | 'auth' | 'disabled' | 'old_server' | 'server' | 'access_removed'} kind
    * @param {string} message
    * @param {{ status?: number, data?: unknown }} [details]
    */
@@ -95,6 +98,9 @@ function createSyncClient({ restServer, getAccessToken, refreshAccessToken, fetc
     }
     if (res.status >= 500) {
       throw new SyncError('server', `Server error ${res.status}${data && data.error ? ` (${data.error})` : ''}`, { status: res.status, data });
+    }
+    if (res.status === 403 && data && (data.error === 'access_removed' || data.error === 'access_changed')) {
+      throw new SyncError('access_removed', data.message || 'You no longer have access to this project', { status: 403, data });
     }
     return { status: res.status, data };
   }

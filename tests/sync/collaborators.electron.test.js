@@ -202,7 +202,75 @@ app.whenReady().then(async () => {
     check('invitee: the synced copy already here is used (no "already has a synced copy" error)',
       again.ok && again.existing === true && again.projectId === straboId, JSON.stringify(again));
     check('invitee: the id now resolves to that copy', projectFolders.getProjectFolderPath(straboId) === editorCopy2);
+
+    // Stage 4 (17j, 17k). Edit the owner's dataset in the editor's copy and push
+    const editDataset = async (name) => {
+      const p = await ser.loadProjectJson(straboId);
+      const d = (p.datasets || []).find((x) => x.id === 'D-owner');
+      d.name = name;
+      await ser.saveProjectJson(p, straboId);
+      return svc.push(straboId, SERVER, () => {});
+    };
+    // A downgrade parks what the new role refuses (owner: viewer -> contributor counts as a role change)
     await loginAs('owner');
+    projectFolders.useProjectCopy(straboId, ownerCopy);
+    r = await svc.changeMembers(straboId, SERVER, { action: 'role', pkey: people.editor.pkey, role: 'contributor' });
+    check('owner: the member becomes a Contributor', r.ok && r.member.role === 'contributor', JSON.stringify(r));
+    await loginAs('editor');
+    projectFolders.useProjectCopy(straboId, editorCopy2);
+    let p4 = await editDataset('Renamed by a Contributor');
+    check('member: an edit of someone else\'s item is turned down', p4.ok && p4.notAccepted === 1, JSON.stringify(p4));
+    let dec = await svc.listDecisions(straboId);
+    const parkedItem = dec.ok && dec.refused.find((x) => x.reason === 'contributor_not_creator');
+    check('member: the turned-down change says it was sent to the owner (parked)', parkedItem && parkedItem.parked === true,
+      JSON.stringify(dec));
+
+    // Removed with unsynced work: the next push is parked, the poll says removed, by whom
+    await loginAs('owner');
+    projectFolders.useProjectCopy(straboId, ownerCopy);
+    r = await svc.changeMembers(straboId, SERVER, { action: 'remove', pkey: people.editor.pkey });
+    check('owner: remove the member again', r.ok, JSON.stringify(r));
+    await loginAs('editor');
+    projectFolders.useProjectCopy(straboId, editorCopy2);
+    const appProject4 = await ser.loadProjectJson(straboId);
+    appProject4.datasets = [...appProject4.datasets, { id: 'D-mine', name: 'Mine', samples: [] }];
+    await ser.saveProjectJson(appProject4, straboId);
+    p4 = await svc.push(straboId, SERVER, () => {});
+    check('removed: the push is parked for the owner (access_removed, parked, removed by the owner)', !p4.ok &&
+      p4.kind === 'access_removed' && p4.removal && p4.removal.parked === true && p4.removal.left === false &&
+      p4.removal.removedBy && p4.removal.removedBy.pkey === people.owner.pkey && p4.removal.removedBy.name !== '' &&
+      p4.removal.projectName === 'Collaborators test', JSON.stringify(p4));
+    const act4 = await svc.activity(straboId, SERVER);
+    check('removed: the activity poll says removed (not a plain failure)', !act4.ok && act4.kind === 'access_removed' &&
+      act4.removal.parked === false && act4.removal.left === false, JSON.stringify(act4));
+    const sep = await svc.separate(straboId);
+    const sepFolder = sep.ok ? path.join(projectFolders.getStraboMicro2DataPath(), sep.projectId) : '';
+    const sepJson = sep.ok ? JSON.parse(fs.readFileSync(path.join(sepFolder, 'project.json'), 'utf8')) : null;
+    check('removed: the copy becomes separate (new id, my unsynced dataset kept, no sync state)', sep.ok &&
+      sep.projectId !== straboId && !fs.existsSync(editorCopy2) && !fs.existsSync(path.join(sepFolder, 'sync')) &&
+      sepJson.id === sep.projectId && sepJson.datasets.some((d) => d.id === 'D-mine'), JSON.stringify(sep));
+    check('removed: a separate copy is not synced', (await svc.separate(sep.projectId)).kind === 'not_synced');
+
+    // Leaving (17j): a member leaves; the server answers as left
+    await loginAs('owner');
+    projectFolders.useProjectCopy(straboId, ownerCopy);
+    r = await svc.changeMembers(straboId, SERVER, { action: 'invite', email: people.maya.email, role: 'contributor' });
+    check('owner: invite someone who will leave', r.ok, JSON.stringify(r));
+    await loginAs('maya');
+    r = await svc.answerInvite(SERVER, serverPid, true);
+    const mayaOpen = r.ok ? await svc.openRemote(serverPid, SERVER, 'automatic', () => {}) : r;
+    const mayaCopy = projectFolders.getAccountCopyPath(straboId, SERVER, people.maya.pkey);
+    check('member: joined with a synced copy', mayaOpen.ok && fs.existsSync(path.join(mayaCopy, 'sync', 'state.json')), JSON.stringify(mayaOpen));
+    projectFolders.useProjectCopy(straboId, mayaCopy);
+    r = await svc.leave(straboId, SERVER);
+    check('member: leave -> left', r.ok && r.status === 'left', JSON.stringify(r));
+    const act5 = await svc.activity(straboId, SERVER);
+    check('member: afterwards the poll says I left (no one named)', !act5.ok && act5.kind === 'access_removed' &&
+      act5.removal.left === true && act5.removal.removedBy === null, JSON.stringify(act5));
+    await loginAs('owner');
+    projectFolders.useProjectCopy(straboId, ownerCopy);
+    r = await svc.leave(straboId, SERVER);
+    check('owner: cannot leave (transfer first)', !r.ok && r.kind === 'owner_must_transfer', JSON.stringify(r));
   } catch (err) {
     failures++;
     console.log(`  FAIL  unexpected error: ${err && err.stack ? err.stack : err}`);

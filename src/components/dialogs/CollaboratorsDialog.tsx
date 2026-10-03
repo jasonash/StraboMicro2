@@ -7,6 +7,8 @@
  * changes roles, removes people and withdraws invitations. Every change goes
  * to the server at once; the list is read back after each one.
  * A local-only project never gets here: App turns sync on first (17d).
+ * Members other than the owner can leave (17j): unsynced changes are pushed
+ * first, then they choose to keep a separate copy (default) or remove it.
  */
 
 import { useCallback, useEffect, useState } from 'react';
@@ -21,26 +23,32 @@ import {
   DialogContent,
   DialogTitle,
   Divider,
+  FormControlLabel,
   List,
   ListItem,
   ListItemText,
   MenuItem,
+  Radio,
+  RadioGroup,
   Select,
   TextField,
   Typography,
 } from '@mui/material';
 import { getRestServerUrl } from './PreferencesDialog';
 import { ASSIGNABLE_ROLES, ROLE_DESCRIPTION, ROLE_FOR_ME, roleLabel, withArticle } from '@/utils/collaboratorRoles';
+import { useAppStore } from '@/store/useAppStore';
 
 interface CollaboratorsDialogProps {
   open: boolean;
   projectId: string | null;
   onClose: () => void;
+  /** Leave the project (after the push); keep = a separate copy stays here. Returns an error to show, or null */
+  onLeave: (keep: boolean) => Promise<string | null>;
 }
 
 type MemberList = { myRole: SyncRole; members: SyncMember[] };
 
-export function CollaboratorsDialog({ open, projectId, onClose }: CollaboratorsDialogProps) {
+export function CollaboratorsDialog({ open, projectId, onClose, onLeave }: CollaboratorsDialogProps) {
   const [list, setList] = useState<MemberList | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [email, setEmail] = useState('');
@@ -48,6 +56,8 @@ export function CollaboratorsDialog({ open, projectId, onClose }: CollaboratorsD
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
   const [confirmRemove, setConfirmRemove] = useState<number | null>(null);
+  /** Leaving: after the push, how many of my changes did not reach StraboSpot, and keep or remove */
+  const [leaving, setLeaving] = useState<{ notAccepted: number; keep: boolean } | null>(null);
 
   const load = useCallback(async () => {
     if (!projectId || !window.api) return;
@@ -67,6 +77,7 @@ export function CollaboratorsDialog({ open, projectId, onClose }: CollaboratorsD
     setRole('contributor');
     setMessage(null);
     setConfirmRemove(null);
+    setLeaving(null);
     void load();
   }, [open, load]);
 
@@ -113,6 +124,41 @@ export function CollaboratorsDialog({ open, projectId, onClose }: CollaboratorsD
   };
 
   const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+
+  /** Leave Project…: send my unsynced changes first, then ask (17j) */
+  const startLeaving = async () => {
+    if (!projectId || !window.api) return;
+    setBusy(true);
+    setMessage(null);
+    try {
+      const { pushAndWait } = await import('@/services/syncController');
+      const pushed = await pushAndWait();
+      if (!pushed.ok) {
+        setMessage({ ok: false, text: `Your changes could not be sent to StraboSpot, so you cannot leave yet. ${pushed.message}` });
+        return;
+      }
+      const project = useAppStore.getState().project;
+      const status = await window.api.sync.status(projectId, project?.id === projectId ? project : undefined);
+      const notAccepted = status.synced
+        ? (status.pending ?? 0) + status.refused + (status.conflicts ?? 0) + (status.questions ?? 0)
+        : 0;
+      setLeaving({ notAccepted, keep: true });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const confirmLeaving = async () => {
+    if (!leaving) return;
+    setBusy(true);
+    setMessage(null);
+    try {
+      const error = await onLeave(leaving.keep);
+      if (error) setMessage({ ok: false, text: error });
+    } finally {
+      setBusy(false);
+    }
+  };
 
   return (
     <Dialog open={open} onClose={busy ? undefined : onClose} maxWidth="sm" fullWidth>
@@ -239,11 +285,57 @@ export function CollaboratorsDialog({ open, projectId, onClose }: CollaboratorsD
               You are {withArticle(list.myRole)}. {ROLE_FOR_ME[list.myRole]}
             </Typography>
           )}
+
+          {list && !isOwner && leaving && (
+            <>
+              <Divider />
+              <Typography variant="subtitle2">Leave this project</Typography>
+              {leaving.notAccepted > 0 ? (
+                <Alert severity="warning">
+                  {leaving.notAccepted === 1 ? '1 of your changes was' : `${leaving.notAccepted} of your changes were`} not
+                  accepted by StraboSpot. {leaving.notAccepted === 1 ? 'It stays' : 'They stay'} only in a copy you keep.
+                </Alert>
+              ) : (
+                <Typography variant="body2">Your changes are synced. After you leave, you no longer see this project&apos;s updates.</Typography>
+              )}
+              <RadioGroup
+                value={leaving.keep ? 'keep' : 'remove'}
+                onChange={(e) => setLeaving({ ...leaving, keep: e.target.value === 'keep' })}
+              >
+                <FormControlLabel
+                  value="keep"
+                  disabled={busy}
+                  control={<Radio size="small" />}
+                  label="Keep a separate copy on this computer (it no longer syncs)"
+                />
+                <FormControlLabel
+                  value="remove"
+                  disabled={busy}
+                  control={<Radio size="small" />}
+                  label="Remove it from this computer"
+                />
+              </RadioGroup>
+            </>
+          )}
         </Box>
       </DialogContent>
       <DialogActions>
         {busy && <CircularProgress size={18} sx={{ mr: 'auto', ml: 2 }} />}
-        <Button onClick={onClose} disabled={busy}>Close</Button>
+        {list && !isOwner && !leaving && (
+          <Button color="error" disabled={busy} onClick={() => void startLeaving()} sx={busy ? undefined : { mr: 'auto' }}>
+            Leave Project…
+          </Button>
+        )}
+        {leaving ? (
+          <>
+            <Button onClick={() => setLeaving(null)} disabled={busy}>Cancel</Button>
+            <Button variant="contained" color="error" onClick={() => void confirmLeaving()} disabled={busy}>
+              Leave Project
+            </Button>
+          </>
+        ) : (
+          <Button onClick={onClose} disabled={busy}>Close</Button>
+        )}
       </DialogActions>
     </Dialog>
   );

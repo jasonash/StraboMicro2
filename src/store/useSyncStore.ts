@@ -84,6 +84,11 @@ export interface SyncStoreState {
    * and overlays reload when it changes (the file path stays the same).
    */
   imageArrivals: Record<string, number>;
+  /**
+   * I was removed from this synced project or left it (17k): the app makes
+   * the copy separate. Not reset with the project (it outlives the close).
+   */
+  accessRemoved: (SyncRemoval & { projectId: string }) | null;
   /** Count one downloaded original per micrograph id */
   imagesArrived: (micrographIds: string[]) => void;
   update: (partial: Partial<Omit<SyncStoreState, 'update' | 'reset' | 'imagesArrived'>>) => void;
@@ -137,6 +142,7 @@ export function decisionsNoticeVisible(
 }
 
 export const useSyncStore = create<SyncStoreState>()((set) => ({
+  accessRemoved: null,
   projectId: null,
   ...initial,
   update: (partial) => set(partial),

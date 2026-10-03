@@ -22,6 +22,9 @@
  *   sync:members / sync:change-members   the open synced project's
  *                  collaborators: list, invite, role, remove (Phase 2, 17a)
  *   sync:invites / sync:answer-invite   invitations waiting for me (17f)
+ *   sync:leave     leave the open synced project (17j; the app pushes first)
+ *   sync:separate  a synced copy (not loaded) becomes a separate copy with a
+ *                  new id (17j keep, 17k removed)
  *   sync:permissions  my pkey, role and who created what (role checks, 17h/17i)
  *   sync:decisions what waits for the user (conflicts, delete questions,
  *                  changes the server turned down), for the dialog
@@ -41,7 +44,7 @@
  * account and the configured server match the copy's binding (§11.3).
  * Failures come back as { ok: false, kind, message } (no exceptions over
  * IPC); kinds: offline, server, auth, disabled, old_server, account,
- * wrong_server, exists, not_synced, error.
+ * wrong_server, exists, not_synced, access_removed (with removal), error.
  */
 
 const fs = require('fs');
@@ -143,11 +146,30 @@ async function bindingProblem(binding, restServer) {
   return null;
 }
 
+/**
+ * What the app needs when I was removed from a project or left it (17k):
+ * who removed me, whether my last push was parked for the owner.
+ * @param {any} data - The server's 403 answer
+ */
+function removalOf(data) {
+  const d = data && typeof data === 'object' ? data : {};
+  const by = d.removedBy && typeof d.removedBy === 'object' ? d.removedBy : null;
+  return {
+    left: d.left === true,
+    removedBy: by ? { pkey: Number(by.pkey), name: String(by.name || '') } : null,
+    parked: d.parked === true,
+    projectName: d.project && typeof d.project.name === 'string' ? d.project.name : null,
+  };
+}
+
 /** A thrown error as an IPC failure result. */
 function failure(err) {
   const { SyncError } = loadEngine().client;
   if (err instanceof SyncError) {
     log.warn(`[Sync] ${err.kind}: ${err.message}`);
+    if (err.kind === 'access_removed') {
+      return { ok: false, kind: err.kind, message: err.message, removal: removalOf(err.data) };
+    }
     return { ok: false, kind: err.kind, message: err.message };
   }
   log.error('[Sync] Unexpected error:', err);
@@ -863,6 +885,46 @@ async function changeMembers(projectId, restServer, change) {
   }
 }
 
+/**
+ * Leave the open synced project (17j): the server removes my membership.
+ * The app pushes first and afterwards keeps a separate copy or deletes it.
+ * @param {string} projectId
+ * @param {string} restServer
+ */
+async function leave(projectId, restServer) {
+  try {
+    const b = await boundPid(projectId, restServer);
+    if (!b.ok) return b;
+    const folder = projectFolders.getProjectFolderPath(projectId);
+    const state = await loadEngine().sidecar.loadState(folder);
+    const r = memberResult(await makeClient(restServer).removeMember(b.pid, Number(state.binding.pkey)));
+    if (r.ok) serverListCache = null;
+    return r;
+  } catch (err) {
+    return failure(err);
+  }
+}
+
+/**
+ * Turn a synced copy that is not loaded into a separate local-only copy
+ * with a new id (17j keep, 17k removed): projectCopies.makeSeparateCopy.
+ * @param {string} projectId
+ * @returns {Promise<{ ok: true, projectId: string, name: string } | { ok: false, kind: string, message: string }>}
+ */
+function separate(projectId) {
+  return serialize(projectId, async () => {
+    try {
+      const folder = projectFolders.getProjectFolderPath(projectId);
+      if (!isSyncedFolder(folder)) return { ok: false, kind: 'not_synced', message: 'This project is not synced.' };
+      const r = await require('../projectCopies').makeSeparateCopy(projectId);
+      serverListCache = null;
+      return { ok: true, projectId: r.projectId, name: r.name };
+    } catch (err) {
+      return failure(err);
+    }
+  });
+}
+
 /** Invitations (and ownership offers) waiting for the logged-in account (17f). */
 async function invites(restServer) {
   try {
@@ -1079,6 +1141,8 @@ function registerSyncIpc(ipcMain, getMainWindow, { devTools = false } = {}) {
   ipcMain.handle('sync:change-members', (_event, projectId, restServer, change) => changeMembers(projectId, restServer, change));
   ipcMain.handle('sync:invites', (_event, restServer) => invites(restServer));
   ipcMain.handle('sync:answer-invite', (_event, restServer, pid, accept) => answerInvite(restServer, pid, accept));
+  ipcMain.handle('sync:leave', (_event, projectId, restServer) => leave(projectId, restServer));
+  ipcMain.handle('sync:separate', (_event, projectId) => separate(projectId));
   ipcMain.handle('sync:decisions', (_event, projectId) => listDecisions(projectId));
   ipcMain.handle('sync:decide', (_event, projectId, decision) => decide(projectId, decision));
   ipcMain.handle('sync:decide-commit', (_event, projectId, decisionId) => decideCommit(projectId, decisionId));
@@ -1092,5 +1156,5 @@ function registerSyncIpc(ipcMain, getMainWindow, { devTools = false } = {}) {
 module.exports = {
   registerSyncIpc, notifyLocalChange, getStatus, preflight, activity, serverProject, listServerProjects, introCandidates, setPromptAnswer, compare, link, openRemote, turnOn, push, setMode, pull, commitPull, discardPull, download, clone,
   listDecisions, decide, decideCommit, decideDiscard, testOther, testCompare, cleanupReplaced,
-  members, changeMembers, invites, answerInvite, permissions,
+  members, changeMembers, invites, answerInvite, permissions, leave, separate,
 };

@@ -256,6 +256,8 @@ async function listDecisions(folder) {
       status: p.result ? p.result.status : 'invalid',
       reason: p.result && typeof p.result.reason === 'string' ? p.result.reason : '',
       message: p.result && typeof p.result.message === 'string' ? p.result.message : '',
+      // Sent to the owner for review after my role changed (17k)
+      parked: Boolean(p.result && p.result.parked === true),
     };
   });
 

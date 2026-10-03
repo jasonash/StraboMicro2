@@ -150,7 +150,19 @@ type SyncDebugAction = 'clone'
 /** Why a sync call did not run or failed (electron/sync/syncService.js) */
 type SyncFailureKind =
   | 'offline' | 'server' | 'auth' | 'disabled' | 'old_server'
-  | 'account' | 'wrong_server' | 'exists' | 'not_synced' | 'error';
+  | 'account' | 'wrong_server' | 'exists' | 'not_synced' | 'access_removed' | 'error';
+
+/**
+ * I was removed from a synced project or left it (17k; failures of kind
+ * access_removed carry it): who removed me (null when I left or it is not
+ * known), and whether my last push was sent to the owner for review.
+ */
+interface SyncRemoval {
+  left: boolean;
+  removedBy: { pkey: number; name: string } | null;
+  parked: boolean;
+  projectName: string | null;
+}
 
 type SyncCallResult = { ok: true } | { ok: false; kind: SyncFailureKind; message: string };
 
@@ -193,7 +205,7 @@ type SyncMemberFailure = { ok: false; kind: SyncFailureKind | string; message: s
 
 type SyncPushResult =
   | { ok: true; pushed: number; filesUploaded: number; notAccepted: number; conflicts: number; restored: number; ready: boolean }
-  | { ok: false; kind: SyncFailureKind; message: string };
+  | { ok: false; kind: SyncFailureKind; message: string; removal?: SyncRemoval };
 
 type SyncStatusResult =
   | { synced: false; error?: string }
@@ -226,7 +238,7 @@ type SyncPullResult =
     changes: import('../electron/shared/entityModel.mjs').EntityChange[];
     summary: { received: number; applied: number; conflicts: number; questions: number; pointCounts: number };
   }
-  | { ok: false; kind: SyncFailureKind; message: string };
+  | { ok: false; kind: SyncFailureKind; message: string; removal?: SyncRemoval };
 
 /** How the decisions dialog names an entity (electron/sync/decisions.js describe) */
 interface SyncItemRef {
@@ -303,6 +315,8 @@ interface SyncRefusedItem extends SyncItemRef {
   status: string;
   reason: string;
   message: string;
+  /** My role changed: the server sent it to the project owner for review (17k) */
+  parked?: boolean;
 }
 
 type SyncDecisionsResult =
@@ -963,7 +977,7 @@ interface Window {
       /** Changes waiting on the server for this copy (others: per person other than me) */
       activity: (projectId: string, restServer: string, presence?: 'active' | 'away') => Promise<
         | { ok: true; incoming: number; others: Array<{ name: string; count: number }>; role: SyncRole | null }
-        | { ok: false; kind: SyncFailureKind; message: string }>;
+        | { ok: false; kind: SyncFailureKind; message: string; removal?: SyncRemoval }>;
       /** The server project with this local-only project's id (row null if none) and the one-time prompt's answer */
       serverProject: (projectId: string, restServer: string) => Promise<
         | { ok: true; row: SyncServerProject | null; answer: 'automatic' | 'manual' | 'local' | null }
@@ -1030,6 +1044,12 @@ interface Window {
       answerInvite: (restServer: string, pid: number, accept: boolean) => Promise<
         | { ok: true; pid?: number; straboId?: string; name?: string; role?: SyncRole; status?: string }
         | SyncMemberFailure>;
+      /** Leave the open synced project (17j): push first; afterwards keep a separate copy (separate) or delete it */
+      leave: (projectId: string, restServer: string) => Promise<{ ok: true; status?: string } | SyncMemberFailure>;
+      /** A synced copy that is not loaded becomes a separate local-only copy with a new id (open it with projects.load) */
+      separate: (projectId: string) => Promise<
+        | { ok: true; projectId: string; name: string }
+        | { ok: false; kind: SyncFailureKind; message: string }>;
       /** What waits for the user's decision */
       decisions: (projectId: string) => Promise<SyncDecisionsResult>;
       /** Work out one answer (save first); apply result.changes, save, then decideCommit */

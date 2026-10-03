@@ -190,6 +190,7 @@ const REASONS: Record<string, string> = {
 
 /** Why the server turned a change down, in plain words (16aa). */
 export function refusedReason(item: SyncRefusedItem): string {
+  if (item.parked) return 'Your role in this project changed, so it was sent to the project owner for review.';
   if (REASONS[item.reason]) return REASONS[item.reason];
   if (item.message) return `${capitalize(item.message.replace(/\.$/, ''))}.`;
   return 'The server did not accept it.';

@@ -49,6 +49,7 @@ import { SyncOpenPrompt } from './components/dialogs/SyncOpenPrompt';
 import { CopyOwnerDialog, type CopyOwnerPrompt } from './components/dialogs/CopyOwnerDialog';
 import { SyncIntroDialog, type SyncIntroProject } from './components/dialogs/SyncIntroDialog';
 import { CollaboratorsDialog } from './components/dialogs/CollaboratorsDialog';
+import { SeparateCopyDialog, type SeparateCopyNotice } from './components/dialogs/SeparateCopyDialog';
 import { InvitationsDialog } from './components/dialogs/InvitationsDialog';
 import { useInvitationsStore, INVITES_RECHECK_MS } from '@/store/useInvitationsStore';
 import { SyncIntroNotice } from './components/SyncIntroNotice';
@@ -193,6 +194,7 @@ function App() {
   const [isExportSmzOpen, setIsExportSmzOpen] = useState(false);
   const [isTurnOnSyncOpen, setIsTurnOnSyncOpen] = useState(false);
   const [isCollaboratorsOpen, setIsCollaboratorsOpen] = useState(false);
+  const [separateNotice, setSeparateNotice] = useState<SeparateCopyNotice | null>(null);
   // Collaborate... on a local-only project turns sync on first (17d), then opens Collaborators
   const collaborateAfterTurnOn = useRef(false);
 
@@ -1369,6 +1371,80 @@ function App() {
     }
   }, [ensureSaved, closeProject, loadProjectWithPreparation]);
 
+  // The open synced copy becomes a separate copy with a new id (17j leave
+  // and keep, 17k removed): saved (unsynced work stays in it), unloaded
+  // (the folder moves), then opened again under its new id
+  const makeOpenCopySeparate = useCallback(async (projectId: string): Promise<
+    { ok: true; projectId: string; name: string } | { ok: false; message: string }> => {
+    const api = window.api;
+    if (!api) return { ok: false, message: 'Not available.' };
+    const current = useAppStore.getState().project;
+    if (current?.id === projectId) {
+      const saved = await ensureSaved();
+      if (!saved.success) return { ok: false, message: `The project could not be saved. ${saved.error ?? ''}`.trim() };
+      closeProject();
+    }
+    setLoadingProjectName(current?.name || '');
+    setIsLoadingProject(true);
+    try {
+      const r = await api.sync.separate(projectId);
+      if (!r.ok) return { ok: false, message: r.message };
+      const loaded = await api.projects.load(r.projectId);
+      if (loaded?.success && loaded.project) await loadProjectWithPreparation(loaded.project, null);
+      else alert(`Failed to load project: ${loaded?.error || 'Unknown error'}`);
+      return r;
+    } finally {
+      setIsLoadingProject(false);
+    }
+  }, [ensureSaved, closeProject, loadProjectWithPreparation]);
+
+  // Removed from the open project (17k): it becomes a separate copy and a
+  // notice says why. Leaving is handled by leaveProject.
+  const accessRemoved = useSyncStore((state) => state.accessRemoved);
+  useEffect(() => {
+    if (!accessRemoved) return;
+    useSyncStore.getState().update({ accessRemoved: null });
+    if (accessRemoved.left || useAppStore.getState().project?.id !== accessRemoved.projectId) return;
+    void (async () => {
+      const r = await makeOpenCopySeparate(accessRemoved.projectId);
+      if (!r.ok) {
+        alert(`You no longer have access to this project on StraboSpot, and this copy could not be made separate.\n\n${r.message}`);
+        return;
+      }
+      setSeparateNotice({
+        kind: 'removed',
+        name: r.name || accessRemoved.projectName || '',
+        removedBy: accessRemoved.removedBy?.name || null,
+        parked: accessRemoved.parked,
+      });
+    })();
+  }, [accessRemoved, makeOpenCopySeparate]);
+
+  // Leave Project (17j), after the Collaborators dialog pushed and the
+  // person confirmed: the server removes me, then the copy becomes separate
+  // (keep) or is deleted. Returns an error to show, or null.
+  const leaveProject = useCallback(async (keep: boolean): Promise<string | null> => {
+    const api = window.api;
+    const current = useAppStore.getState().project;
+    if (!api || !current) return 'No project is open.';
+    const r = await api.sync.leave(current.id, getRestServerUrl());
+    if (!r.ok) return r.message;
+    setIsCollaboratorsOpen(false);
+    if (keep) {
+      const s = await makeOpenCopySeparate(current.id);
+      if (!s.ok) {
+        alert(`You left the project, but this copy could not be made separate.\n\n${s.message}`);
+        return null;
+      }
+      setSeparateNotice({ kind: 'left', name: s.name || current.name || '', removedBy: null, parked: false });
+      return null;
+    }
+    const closed = await api.projects.close(current.id);
+    if (closed?.success) closeProject();
+    else alert(`You left the project, but this copy could not be removed.\n\n${closed?.error || 'Unknown error'}`);
+    return null;
+  }, [makeOpenCopySeparate, closeProject]);
+
   // "What's new: sync" (16aq, 16ba): once per computer, when logged in (at
   // the first launch after the update, else at the first login after it).
   // Nothing to offer marks it shown; a failure (offline, sync switched off
@@ -1759,6 +1835,15 @@ function App() {
         open={isCollaboratorsOpen}
         projectId={project?.id ?? null}
         onClose={() => setIsCollaboratorsOpen(false)}
+        onLeave={leaveProject}
+      />
+      <SeparateCopyDialog
+        notice={separateNotice}
+        onClose={() => setSeparateNotice(null)}
+        onDelete={() => {
+          setSeparateNotice(null);
+          setIsCloseProjectOpen(true);
+        }}
       />
       <InvitationsDialog
         invitations={introBlocked || !invitationsOpen ? null : invitations}
