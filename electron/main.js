@@ -5310,13 +5310,18 @@ ipcMain.handle('projects:close', async (event, projectId) => {
   log.info('[Projects] Closing (deleting) project:', projectId);
 
   try {
-    // 1. Clear version history
-    await versionHistory.clearHistory(projectId);
-    log.info('[Projects] Cleared version history');
-
-    // 2. Delete project folder from disk
+    // 1. Delete the project folder (the copy in use) from disk
     await projectFolders.deleteProjectFolder(projectId);
     log.info('[Projects] Deleted project folder');
+
+    // 2. Clear version history, unless another copy of this id is still
+    // here (history is kept per project id, shared by its copies)
+    const otherCopy = projectFolders.findAccountCopies(projectId).length > 0 ||
+      fs.existsSync(path.join(projectFolders.getLocalProjectPath(projectId), 'project.json'));
+    if (!otherCopy) {
+      await versionHistory.clearHistory(projectId);
+      log.info('[Projects] Cleared version history');
+    }
 
     // 3. Remove from projects index
     await projectsIndex.removeProject(projectId);
