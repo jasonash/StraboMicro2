@@ -26,7 +26,7 @@ import { applyRemoteChanges } from '@/store/remoteChanges';
 import { getRestServerUrl } from './PreferencesDialog';
 import { acceptChanges, buildReview, currentEntities, type ParkedUnit } from '@/utils/parkedReview';
 import { whenText } from '@/utils/activityFeed';
-import { loadParked } from '@/services/syncController';
+import { loadParked } from '@/services/parkedLoad';
 import { roleLabel } from '@/utils/collaboratorRoles';
 
 export function ParkedReviewDialog() {
