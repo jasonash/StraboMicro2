@@ -25,6 +25,7 @@
  *   sync:leave     leave the open synced project (17j; the app pushes first)
  *   sync:history   the activity panel's list of changes, newest first (17v)
  *   sync:restore-deleted  Restore in the activity panel (17n, 17w)
+ *   sync:parked / sync:review-parked  the owner's review of parked changes (17o, 17x)
  *   sync:separate  a synced copy (not loaded) becomes a separate copy with a
  *                  new id (17j keep, 17k removed)
  *   sync:permissions  my pkey, role and who created what (role checks, 17h/17i)
@@ -347,7 +348,8 @@ async function activity(projectId, restServer, presence = 'active') {
         if (fresh) await sidecar.saveState(folder, { ...fresh, role });
       });
     }
-    return { ok: true, incoming, others, role: role ?? state.role ?? null };
+    const parkedCount = Number(r && r.parkedCount) || 0;
+    return { ok: true, incoming, others, role: role ?? state.role ?? null, parkedCount };
   } catch (err) {
     return failure(err);
   }
@@ -914,6 +916,50 @@ function restoreDeleted(projectId, restServer, items) {
   });
 }
 
+/** Parked pushes waiting for my review as the owner (17o). */
+async function parked(projectId, restServer) {
+  try {
+    const b = await boundPid(projectId, restServer);
+    if (!b.ok) return b;
+    const r = await makeClient(restServer).parked(b.pid);
+    return { ok: true, parked: r.parked || [] };
+  } catch (err) {
+    return failure(err);
+  }
+}
+
+/**
+ * Record decisions on a parked push (17x). Accepted keys are first marked
+ * so their next push carries onBehalfOf (17y); the app has applied them to
+ * the project as my own edits.
+ * @param {string} projectId
+ * @param {string} restServer
+ * @param {number} parkedId
+ * @param {Record<string, 'accepted' | 'discarded'>} decisions
+ * @param {number} memberPkey - whose parked changes these are
+ */
+function reviewParked(projectId, restServer, parkedId, decisions, memberPkey) {
+  return serialize(projectId, async () => {
+    try {
+      const b = await boundPid(projectId, restServer);
+      if (!b.ok) return b;
+      const accepted = Object.entries(decisions || {}).filter(([, d]) => d === 'accepted').map(([k]) => k);
+      if (accepted.length > 0 && Number(memberPkey) > 0) {
+        const { sidecar } = loadEngine();
+        const folder = projectFolders.getProjectFolderPath(projectId);
+        const state = await sidecar.loadState(folder);
+        state.onBehalf = { ...(state.onBehalf || {}) };
+        for (const k of accepted) state.onBehalf[k] = { pkey: Number(memberPkey), at: Date.now() };
+        await sidecar.saveState(folder, state);
+      }
+      const r = await makeClient(restServer).reviewParked(b.pid, Number(parkedId), decisions);
+      return { ok: true, status: r.status, left: r.left };
+    } catch (err) {
+      return failure(err);
+    }
+  });
+}
+
 /** Collaborators of the open synced project (Phase 2, 17a). */
 async function members(projectId, restServer) {
   try {
@@ -1205,6 +1251,9 @@ function registerSyncIpc(ipcMain, getMainWindow, { devTools = false } = {}) {
   ipcMain.handle('sync:leave', (_event, projectId, restServer) => leave(projectId, restServer));
   ipcMain.handle('sync:history', (_event, projectId, restServer, before) => history(projectId, restServer, before));
   ipcMain.handle('sync:restore-deleted', (_event, projectId, restServer, items) => restoreDeleted(projectId, restServer, items));
+  ipcMain.handle('sync:parked', (_event, projectId, restServer) => parked(projectId, restServer));
+  ipcMain.handle('sync:review-parked', (_event, projectId, restServer, parkedId, decisions, memberPkey) =>
+    reviewParked(projectId, restServer, parkedId, decisions, memberPkey));
   ipcMain.handle('sync:separate', (_event, projectId) => separate(projectId));
   ipcMain.handle('sync:decisions', (_event, projectId) => listDecisions(projectId));
   ipcMain.handle('sync:decide', (_event, projectId, decision) => decide(projectId, decision));
@@ -1219,5 +1268,5 @@ function registerSyncIpc(ipcMain, getMainWindow, { devTools = false } = {}) {
 module.exports = {
   registerSyncIpc, notifyLocalChange, getStatus, preflight, activity, serverProject, listServerProjects, introCandidates, setPromptAnswer, compare, link, openRemote, turnOn, push, setMode, pull, commitPull, discardPull, download, clone,
   listDecisions, decide, decideCommit, decideDiscard, testOther, testCompare, cleanupReplaced,
-  members, changeMembers, invites, answerInvite, permissions, leave, separate, history, restoreDeleted,
+  members, changeMembers, invites, answerInvite, permissions, leave, separate, history, restoreDeleted, parked, reviewParked,
 };

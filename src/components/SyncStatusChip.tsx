@@ -7,6 +7,7 @@
 
 import { useEffect, useState } from 'react';
 import {
+  Badge,
   Box,
   Button,
   Chip,
@@ -30,6 +31,7 @@ import { useSyncStore, decisionsWaiting } from '@/store/useSyncStore';
 import { getRestServerUrl } from '@/components/dialogs/PreferencesDialog';
 import { syncChipState, lastSyncedText, type SyncChipTone } from '@/utils/syncChipState';
 import { syncNowFromUser, changeModeFromUser, requestTurnOnSync, requestCollaborate } from '@/services/syncActions';
+import { waitingText } from '@/utils/parkedReview';
 
 const CHIP_COLOR: Record<SyncChipTone, 'warning' | 'info' | 'default' | 'success'> = {
   attention: 'warning',
@@ -84,8 +86,12 @@ export function SyncStatusChip() {
     if (!result.ok) setModeError(result.message);
   };
 
+  // Owner: parked changes waiting for review (17aa)
+  const toReview = sync.role === 'owner' ? sync.parked.length : 0;
+
   return (
     <>
+      <Badge badgeContent={toReview} color="warning" invisible={toReview === 0} title={toReview ? waitingText(sync.parked) : undefined}>
       <Chip
         size="small"
         variant="outlined"
@@ -99,6 +105,7 @@ export function SyncStatusChip() {
           '& .MuiChip-icon': { ml: 0.75, fontSize: 16 },
         }}
       />
+      </Badge>
       <Popover
         open={Boolean(anchor)}
         anchorEl={anchor}
@@ -134,6 +141,20 @@ export function SyncStatusChip() {
                 {sync.pid !== null ? ` · StraboSpot project ${sync.pid}` : ''}
               </Typography>
 
+              {toReview > 0 && (
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Typography variant="body2" sx={{ flex: 1 }}>{waitingText(sync.parked)}.</Typography>
+                  <Button
+                    size="small"
+                    onClick={() => {
+                      close();
+                      useSyncStore.getState().update({ reviewOpen: true });
+                    }}
+                  >
+                    Review…
+                  </Button>
+                </Box>
+              )}
               <Box sx={{ display: 'flex', gap: 1, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
                 {state.needsLogin && !loggedIn && (
                   <Button

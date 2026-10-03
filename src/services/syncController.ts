@@ -683,6 +683,8 @@ class ProjectSync {
       }
       // My role follows the server (the owner may have changed it, 17h)
       if (r?.ok && r.role && r.role !== useSyncStore.getState().role) useSyncStore.getState().update({ role: r.role });
+      // Owner: parked changes waiting for review (17aa)
+      if (r?.ok && r.parkedCount !== useSyncStore.getState().parkedCount) void this.refreshParked(r.parkedCount);
       if (r?.ok && !this.running) {
         useSyncStore.getState().update({ incoming: r.incoming, incomingFrom: r.others });
         if (onOpen && r.incoming > 0 && this.mode === 'manual') {
@@ -693,6 +695,19 @@ class ProjectSync {
       }
     }
     this.schedulePoll();
+  }
+
+  /** The owner's list of parked pushes, after the count changed (17aa). */
+  async refreshParked(count?: number): Promise<void> {
+    const api = window.api;
+    if (!api || this.stopped) return;
+    if (count === 0) {
+      useSyncStore.getState().update({ parkedCount: 0, parked: [] });
+      return;
+    }
+    const r = await api.sync.parked(this.projectId, getRestServerUrl()).catch(() => null);
+    if (this.stopped || !r?.ok) return;
+    useSyncStore.getState().update({ parkedCount: r.parked.length, parked: r.parked });
   }
 
   /** My role and who created what, for the role checks (17h, 17i). */
@@ -752,6 +767,11 @@ export function syncNow(): boolean {
   if (!current) return false;
   current.syncNow();
   return true;
+}
+
+/** Fetch the owner's parked pushes again (after a review). */
+export async function refreshParked(): Promise<void> {
+  await current?.refreshParked();
 }
 
 /** Save and push the open synced project now and wait (Sync and log out). */

@@ -194,6 +194,9 @@ async function pushProject({ folder, client, onProgress = () => {} }) {
   const keptRefused = sidecar.stillRefused(state, current);
   for (const p of keptRefused) held.add(p.key);
   const planned = planPush(state.base, current, { skip: held });
+  // Parked changes the owner accepted go up on behalf of their member (17y)
+  const onBehalf = state.onBehalf || {};
+  for (const p of planned) if (onBehalf[p.key]) p.change.onBehalfOf = onBehalf[p.key].pkey;
   const problems = [];
   let pushed = 0;
   for (const batch of batchPush(planned)) {
@@ -207,6 +210,15 @@ async function pushProject({ folder, client, onProgress = () => {} }) {
     problems.push(...r.problems.map((x) => ({ change: x.planned.change, result: x.result })));
     state.outgoingPush = null;
     await sidecar.saveState(folder, state);
+  }
+  // Marks stay for changes still waiting to go up; one not planned yet (the
+  // accepted change was not saved when this push started) for up to an hour
+  if (state.onBehalf) {
+    const sent = new Set(planned.map((p) => p.key));
+    const waiting = new Set([...held, ...problems.map((p) => `${p.change.type}:${p.change.id}`)]);
+    const hourAgo = Date.now() - 3600_000;
+    state.onBehalf = Object.fromEntries(Object.entries(state.onBehalf).filter(([k, v]) =>
+      waiting.has(k) || (!sent.has(k) && v && v.at > hourAgo)));
   }
   state.refused = [
     ...keptRefused,

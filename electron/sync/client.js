@@ -265,6 +265,16 @@ function createSyncClient({ restServer, getAccessToken, refreshAccessToken, fetc
       return expect(await request('GET', `/projects/${pid}/history?${q}`), 200);
     },
 
+    /** Parked pushes waiting for the owner's review (17o). */
+    async parked(pid) {
+      return expect(await request('GET', `/projects/${pid}/parked`), 200);
+    },
+
+    /** Record the owner's decisions on a parked push: { 'type:id': 'accepted' | 'discarded' }. */
+    async reviewParked(pid, parkedId, decisions) {
+      return expect(await request('POST', `/projects/${pid}/parked/${parkedId}/review`, { json: { decisions } }), 200);
+    },
+
     async changes(pid, since, limit = 1000) {
       return expect(await request('GET', `/projects/${pid}/changes?since=${since}&limit=${limit}`), 200);
     },

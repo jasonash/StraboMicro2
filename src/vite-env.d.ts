@@ -210,6 +210,32 @@ interface SyncHistoryRow {
   pending: boolean;
 }
 
+/** One change in a parked push, as the member's app sent it */
+interface SyncParkedChange {
+  op: 'create' | 'update' | 'delete' | 'restore';
+  type: string;
+  id: string;
+  parentType?: string | null;
+  parentId?: string | null;
+  body?: Record<string, unknown>;
+  childOrder?: Record<string, string[]>;
+  /** Changed fields by dotted path (null removes) */
+  fields?: Record<string, unknown>;
+  baseVersion?: number;
+}
+
+/** Changes waiting for the owner's review (17o): a removed member's push, or what a new role refused */
+interface SyncParkedPush {
+  id: number;
+  user: SyncUser;
+  parkedAt: string;
+  reason: 'removed' | 'role_changed';
+  role: SyncRole | null;
+  changes: SyncParkedChange[];
+  /** Items decided so far ('type:id' => decision) */
+  decided: Record<string, 'accepted' | 'discarded'>;
+}
+
 /** An invitation waiting for me (17f) */
 interface SyncInvitation {
   pid: number;
@@ -1004,7 +1030,7 @@ interface Window {
       preflight: (projectId: string, restServer: string) => Promise<SyncPreflightResult>;
       /** Changes waiting on the server for this copy (others: per person other than me) */
       activity: (projectId: string, restServer: string, presence?: 'active' | 'away') => Promise<
-        | { ok: true; incoming: number; others: Array<{ name: string; count: number }>; role: SyncRole | null }
+        | { ok: true; incoming: number; others: Array<{ name: string; count: number }>; role: SyncRole | null; parkedCount: number }
         | { ok: false; kind: SyncFailureKind; message: string; removal?: SyncRemoval }>;
       /** The server project with this local-only project's id (row null if none) and the one-time prompt's answer */
       serverProject: (projectId: string, restServer: string) => Promise<
@@ -1082,6 +1108,15 @@ interface Window {
       restoreDeleted: (projectId: string, restServer: string, items: Array<{ type: string; id: string }>) => Promise<
         | { ok: true; results: Array<{ type: string; id: string; ok: boolean; status: string; reason: string }> }
         | { ok: false; kind: SyncFailureKind; message: string; removal?: SyncRemoval }>;
+      /** Parked changes waiting for my review (owner, 17o) */
+      parked: (projectId: string, restServer: string) => Promise<
+        | { ok: true; parked: SyncParkedPush[] }
+        | { ok: false; kind: SyncFailureKind | string; message: string; removal?: SyncRemoval }>;
+      /** Record decisions on a parked push; accepted keys go up on behalf of memberPkey (17y) */
+      reviewParked: (projectId: string, restServer: string, parkedId: number,
+        decisions: Record<string, 'accepted' | 'discarded'>, memberPkey: number) => Promise<
+        | { ok: true; status: string; left: number }
+        | { ok: false; kind: SyncFailureKind | string; message: string; removal?: SyncRemoval }>;
       /** A synced copy that is not loaded becomes a separate local-only copy with a new id (open it with projects.load) */
       separate: (projectId: string) => Promise<
         | { ok: true; projectId: string; name: string }

@@ -47,6 +47,8 @@ function syncDir(projectFolder) {
  *   snapshot (clone) and create entries (pull); an entity missing here was created on this
  *   computer (Phase 2 role checks, 17i)
  * @property {'owner' | 'editor' | 'contributor' | 'viewer'} [role] - my role, last known (activity poll)
+ * @property {Record<string, { pkey: number, at: number }>} [onBehalf] - 'type:id' => whose parked
+ *   change the owner accepted (and when): pushed with onBehalfOf until it is up (17y)
  */
 
 /**

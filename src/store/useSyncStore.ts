@@ -71,6 +71,11 @@ export interface SyncStoreState {
   decisionsOpen: boolean;
   /** The activity panel is open (17u) */
   activityOpen: boolean;
+  /** Owner: parked pushes waiting for review (count from the activity poll, list fetched when it changes; 17aa) */
+  parkedCount: number;
+  parked: SyncParkedPush[];
+  /** The review dialog for parked changes is open */
+  reviewOpen: boolean;
   /** My role in the open synced project, last known (null: local-only, or not known yet) */
   role: SyncRole | null;
   /** Who created what ('type:id' => pkey); an entity missing here was created on this computer */
@@ -126,6 +131,9 @@ const initial = {
   lastSyncedAt: null,
   decisionsOpen: false,
   activityOpen: false,
+  parkedCount: 0,
+  parked: [],
+  reviewOpen: false,
   noticeDismissedTotal: 0,
   decisionsSettledAt: null,
   imageArrivals: {},

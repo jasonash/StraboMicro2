@@ -50,6 +50,7 @@ import { CopyOwnerDialog, type CopyOwnerPrompt } from './components/dialogs/Copy
 import { SyncIntroDialog, type SyncIntroProject } from './components/dialogs/SyncIntroDialog';
 import { CollaboratorsDialog } from './components/dialogs/CollaboratorsDialog';
 import { SeparateCopyDialog, type SeparateCopyNotice } from './components/dialogs/SeparateCopyDialog';
+import { ParkedReviewDialog } from './components/dialogs/ParkedReviewDialog';
 import { InvitationsDialog } from './components/dialogs/InvitationsDialog';
 import { useInvitationsStore, INVITES_RECHECK_MS } from '@/store/useInvitationsStore';
 import { SyncIntroNotice } from './components/SyncIntroNotice';
@@ -1842,6 +1843,7 @@ function App() {
         onClose={() => setIsCollaboratorsOpen(false)}
         onLeave={leaveProject}
       />
+      <ParkedReviewDialog />
       <SeparateCopyDialog
         notice={separateNotice}
         onClose={() => setSeparateNotice(null)}

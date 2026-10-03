@@ -285,6 +285,35 @@ app.whenReady().then(async () => {
     r = await svc.leave(straboId, SERVER);
     check('owner: cannot leave (transfer first)', !r.ok && r.kind === 'owner_must_transfer', JSON.stringify(r));
 
+    // The owner's review of parked changes (17o, 17x, 17y)
+    const pk = await svc.parked(straboId, SERVER);
+    const roleParked = pk.ok && pk.parked.find((x) => x.reason === 'role_changed' && x.user.pkey === people.editor.pkey);
+    const removedParked = pk.ok && pk.parked.find((x) => x.reason === 'removed' && x.user.pkey === people.editor.pkey);
+    check('owner: both parked pushes listed (role change: the rename; removal: the new dataset)', roleParked && removedParked &&
+      roleParked.changes.some((c) => c.id === 'D-owner' && c.fields && c.fields.name === 'Renamed by a Contributor') &&
+      removedParked.changes.some((c) => c.op === 'create' && c.id === 'D-mine'), JSON.stringify(pk).slice(0, 600));
+    // Accept the rename as the app does: apply it to my project, mark it, push
+    let own = await ser.loadProjectJson(straboId);
+    own.datasets.find((d) => d.id === 'D-owner').name = 'Renamed by a Contributor';
+    await ser.saveProjectJson(own, straboId);
+    r = await svc.reviewParked(straboId, SERVER, roleParked.id, { 'dataset:D-owner': 'accepted' }, people.editor.pkey);
+    check('owner: accepting the only item settles it', r.ok && r.status === 'accepted' && r.left === 0, JSON.stringify(r));
+    r = await svc.push(straboId, SERVER, () => {});
+    hist = await svc.history(straboId, SERVER);
+    const accepted = hist.ok && hist.changes.find((c) => c.id === 'D-owner' && c.op === 'update');
+    check('owner: the accepted change is logged as mine, on behalf of the member', r.ok && accepted &&
+      accepted.user.pkey === people.owner.pkey && accepted.onBehalfOf && accepted.onBehalfOf.pkey === people.editor.pkey,
+      JSON.stringify(accepted));
+    const st5 = await require(`${E}/sync/sidecar`).loadState(ownerCopy);
+    check('owner: the on-behalf mark is gone once it is up', !st5.onBehalf || !st5.onBehalf['dataset:D-owner'], JSON.stringify(st5.onBehalf));
+    const decisions = Object.fromEntries(removedParked.changes.map((c) => [`${c.type}:${c.id}`, 'discarded']));
+    r = await svc.reviewParked(straboId, SERVER, removedParked.id, decisions, people.editor.pkey);
+    check('owner: discarding everything settles the removal', r.ok && r.status === 'discarded', JSON.stringify(r));
+    const pk2 = await svc.parked(straboId, SERVER);
+    check('owner: nothing left to review', pk2.ok && pk2.parked.length === 0, JSON.stringify(pk2).slice(0, 300));
+    const act6 = await svc.activity(straboId, SERVER);
+    check('owner: the poll counts none waiting', act6.ok && act6.parkedCount === 0, JSON.stringify(act6));
+
     // Restore from the activity panel (17n): the restore goes up, the next pull brings the items back
     const pullApply = async () => {
       const pl = await svc.pull(straboId, SERVER, () => {});
