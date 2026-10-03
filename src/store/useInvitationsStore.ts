@@ -4,15 +4,19 @@
  * Open Remote Project.
  *
  * App asks the server at launch and after each login (opening the dialog
- * when any wait), and again every 30 minutes and when the window regains
- * focus (indicator only, never a dialog mid-session).
+ * when any wait), and again every 5 minutes and when the window regains
+ * focus, at most once a minute (indicator only, never a dialog mid-session):
+ * someone who reads the invitation email and switches to the app sees it.
  */
 
 import { create } from 'zustand';
 import { getRestServerUrl } from '@/components/dialogs/PreferencesDialog';
 
-/** Minimum time between background checks */
-export const INVITES_RECHECK_MS = 30 * 60 * 1000;
+/** Time between background checks */
+export const INVITES_RECHECK_MS = 5 * 60 * 1000;
+
+/** Minimum time between checks when the window regains focus */
+export const INVITES_FOCUS_MIN_MS = 60 * 1000;
 
 interface InvitationsState {
   invitations: SyncInvitation[];

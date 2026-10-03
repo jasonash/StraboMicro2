@@ -53,7 +53,7 @@ import { SeparateCopyDialog, type SeparateCopyNotice } from './components/dialog
 import { ParkedReviewDialog } from './components/dialogs/ParkedReviewDialog';
 import { applySavedStamps } from './store/remoteChanges';
 import { InvitationsDialog } from './components/dialogs/InvitationsDialog';
-import { useInvitationsStore, INVITES_RECHECK_MS } from '@/store/useInvitationsStore';
+import { useInvitationsStore, INVITES_RECHECK_MS, INVITES_FOCUS_MIN_MS } from '@/store/useInvitationsStore';
 import { SyncIntroNotice } from './components/SyncIntroNotice';
 import { useAppStore, undo, redo, setUndoBlockedHandler, setChangeGuard } from '@/store';
 import { currentPermissions } from '@/hooks/usePermissions';
@@ -1578,7 +1578,7 @@ function App() {
 
   // Invitations waiting for this account (17f): the dialog at launch and
   // after each login, once the startup dialogs and the sync intro are done;
-  // then every 30 minutes and on window focus, the header indicator only
+  // then every 5 minutes and on window focus (at most once a minute), the header indicator only
   const invitesCheckedFor = useRef<string | null>(null);
   useEffect(() => {
     if (!window.api || !isAuthenticated || !authPkey || !startupValidationComplete) return;
@@ -1595,7 +1595,7 @@ function App() {
   useEffect(() => {
     if (!isAuthenticated) return;
     const recheck = () => {
-      if (Date.now() - useInvitationsStore.getState().lastCheckedAt >= INVITES_RECHECK_MS) {
+      if (Date.now() - useInvitationsStore.getState().lastCheckedAt >= INVITES_FOCUS_MIN_MS) {
         void useInvitationsStore.getState().refresh(false);
       }
     };
