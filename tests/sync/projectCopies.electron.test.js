@@ -209,6 +209,41 @@ app.whenReady().then(async () => {
     check('removeProject drops only copies gone from disk', !all.some((p) => p.id === pid && p.account?.pkey === '7') &&
       all.some((p) => p.id === pid && p.account?.pkey === '5'), JSON.stringify(all));
 
+    // A synced copy becomes a separate copy with a new id (17j leave and keep, 17k removed)
+    const versionHistory = require(`${E}/versionHistory`);
+    const pid3 = 'proj-3';
+    const synced3 = projectFolders.getAccountCopyPath(pid3, PROD, 5);
+    fs.mkdirSync(path.join(synced3, 'sync'), { recursive: true });
+    fs.mkdirSync(path.join(synced3, 'images'), { recursive: true });
+    fs.writeFileSync(path.join(synced3, 'project.json'), JSON.stringify({ id: pid3, name: 'Shared Work', datasets: [] }));
+    fs.writeFileSync(path.join(synced3, 'sync', 'state.json'), JSON.stringify({ binding: { email: 'jason@example.org' } }));
+    const img3 = path.join(synced3, 'images', 'mic-3');
+    await sharp({ create: { width: 300, height: 200, channels: 3, background: { r: 9, g: 90, b: 9 } } }).jpeg().toFile(img3);
+    await tileGenerator.processImageComplete(img3);
+    projectFolders.useProjectCopy(pid3, synced3);
+    await projectsIndex.updateProjectOpened(pid3, 'Shared Work');
+    await versionHistory.createVersion(pid3, { id: pid3, name: 'Shared Work', datasets: [] }, 'old', null);
+
+    const sep = await projectCopies.makeSeparateCopy(pid3);
+    const sepJson = JSON.parse(fs.readFileSync(path.join(sep.folder, 'project.json'), 'utf8'));
+    check('separate copy: new id, local-only folder, name kept', sep.projectId !== pid3 &&
+      sep.folder === path.join(data, sep.projectId) && sepJson.id === sep.projectId && sepJson.name === 'Shared Work' &&
+      sep.name === 'Shared Work', JSON.stringify({ sep, id: sepJson.id, name: sepJson.name }));
+    check('separate copy: synced folder gone, no sync state', !fs.existsSync(synced3) &&
+      !fs.existsSync(path.join(sep.folder, 'sync')) && fs.existsSync(path.join(sep.folder, 'images', 'mic-3')));
+    check('separate copy: resolver finds the new id, not the old', projectFolders.getProjectFolderPath(sep.projectId) === sep.folder &&
+      projectFolders.getProjectFolderPath(pid3) !== synced3 && projectFolders.findAccountCopies(pid3).length === 0);
+    check('separate copy: tiles kept', (await tileCache.isCacheValid(path.join(sep.folder, 'images', 'mic-3'))).exists);
+    const sepVersions = await versionHistory.listVersions(sep.projectId);
+    check('separate copy: history starts with one version; the old id keeps its own', sepVersions.length === 1 &&
+      (await versionHistory.listVersions(pid3)).length === 1, JSON.stringify(sepVersions).slice(0, 300));
+    const all3 = await projectsIndex.getAllProjects();
+    check('separate copy: Recent Projects has the new local-only entry, not the old synced one',
+      all3.some((p) => p.id === sep.projectId && !p.account) && !all3.some((p) => p.id === pid3), JSON.stringify(all3));
+    threw = false;
+    try { await projectCopies.makeSeparateCopy(sep.projectId); } catch { threw = true; }
+    check('separate copy: a local-only project is refused', threw && fs.existsSync(sep.folder));
+
     // Copies set aside by "Use the StraboSpot copy" go after 30 days
     const { cleanupReplaced } = require(`${E}/sync/syncService`);
     const replaced = path.join(projectFolders.getStraboMicro2DataPath(), '_replaced');

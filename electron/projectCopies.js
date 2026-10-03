@@ -69,7 +69,60 @@ async function moveProjectToAccount(projectId, serverUrl, pkey) {
   return to;
 }
 
+/**
+ * Turn a synced copy (not loaded) into a separate local-only project with a
+ * NEW id that never syncs (17j leave and keep, 17k removed, later 17p
+ * shared project deleted). The folder moves to StraboMicro2Data/<new id>,
+ * its sync state goes, project.json gets the new id (name unchanged), and
+ * version history starts with one version of the copy as it was: the old
+ * id's versions stay with that id (they carry the old id, so restoring one
+ * here would bring it back).
+ * @param {string} projectId - The synced copy's id
+ * @param {string} [versionLabel] - Name of the first version
+ * @returns {Promise<{ projectId: string, folder: string, name: string }>}
+ */
+async function makeSeparateCopy(projectId, versionLabel = 'Separate copy made') {
+  const crypto = require('crypto');
+  const projectSerializer = require('./projectSerializer');
+  const versionHistory = require('./versionHistory');
+  const projectsIndex = require('./projectsIndex');
+  const from = projectFolders.getProjectFolderPath(projectId);
+  if (!projectFolders.accountOfFolder(from) || !fs.existsSync(path.join(from, 'project.json'))) {
+    throw new Error(`Project ${projectId} has no synced copy on this computer`);
+  }
+  const newId = crypto.randomUUID();
+  const to = projectFolders.getLocalProjectPath(newId);
+  await withRetry(() => fs.promises.rename(from, to));
+  projectFolders.useProjectCopy(newId, to);
+  let project;
+  try {
+    project = await projectSerializer.loadProjectJson(newId);
+    if (!project) throw new Error('project.json could not be read');
+    project.id = newId;
+    await projectSerializer.saveProjectJson(project, newId);
+  } catch (err) {
+    // Put the synced copy back as it was
+    projectFolders.forgetProjectCopy(newId);
+    await withRetry(() => fs.promises.rename(to, from));
+    projectFolders.useProjectCopy(projectId, from);
+    throw err;
+  }
+  projectFolders.forgetProjectCopy(projectId);
+  await fs.promises.rm(path.join(to, 'sync'), { recursive: true, force: true });
+  const tiles = await rekeyTileCaches(from, to);
+  try {
+    await versionHistory.createVersion(newId, project, versionLabel, null);
+  } catch (err) {
+    log.warn(`[ProjectCopies] First version of the separate copy failed: ${err.message}`);
+  }
+  await projectsIndex.removeProject(projectId);
+  await projectsIndex.updateProjectOpened(newId, project.name || 'Untitled Project');
+  log.info(`[ProjectCopies] Synced copy ${projectId} is now the separate copy ${newId} (${tiles} tile caches kept)`);
+  return { projectId: newId, folder: to, name: project.name || '' };
+}
+
 module.exports = {
   moveProjectToAccount,
+  makeSeparateCopy,
   rekeyTileCaches,
 };
