@@ -5441,14 +5441,15 @@ ipcMain.handle('smz:select-file', async () => {
  * Inspect an .smz file to get project info without importing
  * Used to check if project exists locally and show confirmation dialog
  */
-ipcMain.handle('smz:inspect', async (event, smzPath) => {
+ipcMain.handle('smz:inspect', async (event, smzPath, options) => {
   log.info('[SmzImport] Inspecting .smz file:', smzPath);
-  return smzImport.inspectSmz(smzPath);
+  return smzImport.inspectSmz(smzPath, { shareCode: typeof options?.shareCode === 'string' ? options.shareCode : undefined });
 });
 
 /**
  * Import an .smz file (DESTRUCTIVE - replaces a local-only project with the
- * same id; asCopy imports it under a new id next to my synced copy)
+ * same id; asCopy imports it under a new id next to my synced copy;
+ * shareCode: Open Shared Project, own id per code, see smzImport.inspectSmz)
  * Progress updates are sent via 'smz:import-progress' event
  */
 ipcMain.handle('smz:import', async (event, smzPath, options) => {
@@ -5459,7 +5460,7 @@ ipcMain.handle('smz:import', async (event, smzPath, options) => {
     if (mainWindow) {
       mainWindow.webContents.send('smz:import-progress', progress);
     }
-  }, { asCopy: options?.asCopy === true });
+  }, { asCopy: options?.asCopy === true, shareCode: typeof options?.shareCode === 'string' ? options.shareCode : '' });
 
   // If successful, update projects index and refresh menu
   if (result.success && result.projectId) {

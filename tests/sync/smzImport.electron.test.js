@@ -97,6 +97,44 @@ app.whenReady().then(async () => {
     check('the import is the copy in use now', projectFolders.getProjectFolderPath(P) === local);
     check('the account copy and the shared version history stay',
       readJson(path.join(mine, 'project.json')).name === 'Basalt (mine)' && fs.existsSync(path.join(history, 'manifest.json')));
+
+    // Share codes (17b): own id per code, name kept; the same code replaces that copy
+    const Q = 'f0a1b2c3-0000-4000-8000-000000000002';
+    const smzQ = path.join(tmp, 'granite.smz');
+    await makeSmz(smzQ, { id: Q, name: 'Granite', datasets: [] });
+    let si = await smzImport.inspectSmz(smzQ, { shareCode: 'abc123' });
+    check('share code: first time, nothing to replace', si.success && si.projectExists === false && si.syncedCopy === false, JSON.stringify(si));
+    const s1 = await smzImport.importSmz(smzQ, () => {}, { shareCode: 'abc123' });
+    const s1Folder = s1.projectId ? projectFolders.getLocalProjectPath(s1.projectId) : '';
+    check('share code: new id, name kept, local-only', s1.success && s1.projectId !== Q &&
+      readJson(path.join(s1Folder, 'project.json')).id === s1.projectId && s1.projectData.name === 'Granite' &&
+      !fs.existsSync(projectFolders.getLocalProjectPath(Q)), JSON.stringify({ success: s1.success, id: s1.projectId, error: s1.error }));
+    const codesFile = path.join(app.getPath('userData'), 'share-codes.json');
+    check('share code: recorded in userData, not in project.json', readJson(codesFile).abc123 === s1.projectId &&
+      !JSON.stringify(readJson(path.join(s1Folder, 'project.json'))).includes('abc123'));
+    fs.writeFileSync(path.join(s1Folder, 'project.json'), JSON.stringify({ id: s1.projectId, name: 'Granite (edited)', datasets: [] }));
+    si = await smzImport.inspectSmz(smzQ, { shareCode: 'ABC123' });
+    check('share code again: offers to replace the copy it made', si.success && si.projectExists === true && si.projectId === s1.projectId,
+      JSON.stringify(si));
+    const s2 = await smzImport.importSmz(smzQ, () => {}, { shareCode: 'abc123' });
+    check('share code again: replaces that copy (same id)', s2.success && s2.projectId === s1.projectId &&
+      readJson(path.join(s1Folder, 'project.json')).name === 'Granite', JSON.stringify({ success: s2.success, id: s2.projectId }));
+    const another = await smzImport.importSmz(smzQ, () => {}, { shareCode: 'zzz999' });
+    check('another code for the same project: its own copy', another.success && another.projectId !== s1.projectId && another.projectId !== Q);
+
+    // A copy made before 17b kept the original id: the code replaces it, as before
+    si = await smzImport.inspectSmz(smz, { shareCode: 'old111' });
+    check('pre-17b share-code copy: replaced in place', si.success && si.projectExists === true && si.projectId === P, JSON.stringify(si));
+    const s3 = await smzImport.importSmz(smz, () => {}, { shareCode: 'old111' });
+    check('pre-17b share-code copy: same id, recorded', s3.success && s3.projectId === P && readJson(codesFile).old111 === P);
+
+    // My synced copy of the shared project's id is no obstacle (and untouched)
+    fs.rmSync(local, { recursive: true, force: true });
+    projectFolders.setPreferredAccount({ server: 'https://strabospot.org', pkey: 5 });
+    const s4 = await smzImport.importSmz(smz, () => {}, { shareCode: 'new222' });
+    check('share code next to my synced copy: a new copy, synced copy untouched', s4.success && s4.projectId !== P &&
+      readJson(path.join(mine, 'project.json')).name === 'Basalt (mine)' && fs.existsSync(path.join(mine, 'sync', 'state.json')),
+      JSON.stringify({ success: s4.success, id: s4.projectId, error: s4.error }));
   } catch (e) {
     failures++;
     console.log('ERROR', e && e.stack);

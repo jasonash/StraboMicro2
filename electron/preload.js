@@ -578,7 +578,7 @@ contextBridge.exposeInMainWorld('api', {
     // Open file selection dialog for .smz files
     selectFile: () => ipcRenderer.invoke('smz:select-file'),
     // Inspect an .smz file (get project info without importing)
-    inspect: (smzPath) => ipcRenderer.invoke('smz:inspect', smzPath),
+    inspect: (smzPath, options) => ipcRenderer.invoke('smz:inspect', smzPath, options),
     // Import an .smz file (DESTRUCTIVE - replaces a local-only project with the same id)
     import: (smzPath, options) => ipcRenderer.invoke('smz:import', smzPath, options),
     // Progress updates during import

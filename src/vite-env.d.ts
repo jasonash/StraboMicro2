@@ -906,10 +906,11 @@ interface Window {
         filePath?: string;
       }>;
       // Inspect an .smz file (get project info without importing)
-      inspect: (smzPath: string) => Promise<SmzInspectResult>;
+      /** shareCode: Open Shared Project (projectId = the copy that code would replace) */
+      inspect: (smzPath: string, options?: { shareCode?: string }) => Promise<SmzInspectResult>;
       // Import an .smz file (DESTRUCTIVE - replaces a local-only project with the same id;
       // asCopy: under a new id, next to my synced copy)
-      import: (smzPath: string, options?: { asCopy?: boolean }) => Promise<{
+      import: (smzPath: string, options?: { asCopy?: boolean; shareCode?: string }) => Promise<{
         success: boolean;
         projectId?: string;
         projectData?: any;

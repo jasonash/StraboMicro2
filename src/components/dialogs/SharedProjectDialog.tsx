@@ -171,7 +171,7 @@ export function SharedProjectDialog({
 
       // Inspect the downloaded file
       setDialogState('inspecting');
-      const inspect = await window.api.smzImport.inspect(result.zipPath!);
+      const inspect = await window.api.smzImport.inspect(result.zipPath!, { shareCode });
 
       if (!inspect.success) {
         setErrorMessage(inspect.error || 'Failed to read downloaded file');
@@ -209,7 +209,7 @@ export function SharedProjectDialog({
     }
 
     try {
-      const result = await window.api.smzImport.import(pathToImport, { asCopy });
+      const result = await window.api.smzImport.import(pathToImport, { asCopy, shareCode });
 
       if (result.success) {
         setImportResult(result);
@@ -228,7 +228,7 @@ export function SharedProjectDialog({
       setErrorMessage(error instanceof Error ? error.message : 'Import failed');
       setDialogState('error');
     }
-  }, [downloadedZipPath, inspectResult]);
+  }, [downloadedZipPath, inspectResult, shareCode]);
 
   const handleClose = () => {
     // Don't allow closing during download or import
