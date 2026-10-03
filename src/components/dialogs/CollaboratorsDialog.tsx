@@ -9,6 +9,9 @@
  * A local-only project never gets here: App turns sync on first (17d).
  * Members other than the owner can leave (17j): unsynced changes are pushed
  * first, then they choose to keep a separate copy (default) or remove it.
+ * The owner can delete the project from StraboSpot (17p, 17ac) the same
+ * way, confirming by typing its name: StraboSpot keeps it 30 days
+ * (restorable on the website) and members' copies become separate.
  */
 
 import { useCallback, useEffect, useState } from 'react';
@@ -44,11 +47,13 @@ interface CollaboratorsDialogProps {
   onClose: () => void;
   /** Leave the project (after the push); keep = a separate copy stays here. Returns an error to show, or null */
   onLeave: (keep: boolean) => Promise<string | null>;
+  /** Owner: delete the project from StraboSpot (after the push); keep = a separate copy stays here. Returns an error to show, or null */
+  onDeleteProject: (keep: boolean) => Promise<string | null>;
 }
 
 type MemberList = { myRole: SyncRole; members: SyncMember[] };
 
-export function CollaboratorsDialog({ open, projectId, onClose, onLeave }: CollaboratorsDialogProps) {
+export function CollaboratorsDialog({ open, projectId, onClose, onLeave, onDeleteProject }: CollaboratorsDialogProps) {
   const [list, setList] = useState<MemberList | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [email, setEmail] = useState('');
@@ -58,6 +63,9 @@ export function CollaboratorsDialog({ open, projectId, onClose, onLeave }: Colla
   const [confirmRemove, setConfirmRemove] = useState<number | null>(null);
   /** Leaving: after the push, how many of my changes did not reach StraboSpot, and keep or remove */
   const [leaving, setLeaving] = useState<{ notAccepted: number; keep: boolean } | null>(null);
+  /** Deleting from StraboSpot (owner): after the push, the same, plus the name typed to confirm */
+  const [deleting, setDeleting] = useState<{ notAccepted: number; keep: boolean; typed: string } | null>(null);
+  const projectName = useAppStore((s) => (s.project?.id === projectId ? s.project.name : null)) ?? '';
 
   const load = useCallback(async () => {
     if (!projectId || !window.api) return;
@@ -78,11 +86,14 @@ export function CollaboratorsDialog({ open, projectId, onClose, onLeave }: Colla
     setMessage(null);
     setConfirmRemove(null);
     setLeaving(null);
+    setDeleting(null);
     void load();
   }, [open, load]);
 
   const isOwner = list?.myRole === 'owner';
   const owner = list?.members.find((m) => m.role === 'owner') ?? null;
+  /** Other people with a copy of the project (active members) */
+  const otherMembers = list?.members.filter((m) => m.role !== 'owner' && m.state === 'active').length ?? 0;
 
   /** Run one change, show its outcome, read the list back */
   const change = async (
@@ -125,6 +136,44 @@ export function CollaboratorsDialog({ open, projectId, onClose, onLeave }: Colla
 
   const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
 
+  /** My changes that did not reach StraboSpot, after the push (pending, turned down, waiting for a decision) */
+  const changesNotOnServer = async (): Promise<number> => {
+    if (!projectId || !window.api) return 0;
+    const project = useAppStore.getState().project;
+    const status = await window.api.sync.status(projectId, project?.id === projectId ? project : undefined);
+    return status.synced ? (status.pending ?? 0) + status.refused + (status.conflicts ?? 0) + (status.questions ?? 0) : 0;
+  };
+
+  /** Delete from StraboSpot…: send my unsynced changes first (the restorable project has them), then ask (17ac) */
+  const startDeleting = async () => {
+    if (!projectId || !window.api) return;
+    setBusy(true);
+    setMessage(null);
+    try {
+      const { pushAndWait } = await import('@/services/syncController');
+      const pushed = await pushAndWait();
+      if (!pushed.ok) {
+        setMessage({ ok: false, text: `Your changes could not be sent to StraboSpot, so the project cannot be deleted yet. ${pushed.message}` });
+        return;
+      }
+      setDeleting({ notAccepted: await changesNotOnServer(), keep: true, typed: '' });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const confirmDeleting = async () => {
+    if (!deleting) return;
+    setBusy(true);
+    setMessage(null);
+    try {
+      const error = await onDeleteProject(deleting.keep);
+      if (error) setMessage({ ok: false, text: error });
+    } finally {
+      setBusy(false);
+    }
+  };
+
   /** Leave Project…: send my unsynced changes first, then ask (17j) */
   const startLeaving = async () => {
     if (!projectId || !window.api) return;
@@ -137,12 +186,7 @@ export function CollaboratorsDialog({ open, projectId, onClose, onLeave }: Colla
         setMessage({ ok: false, text: `Your changes could not be sent to StraboSpot, so you cannot leave yet. ${pushed.message}` });
         return;
       }
-      const project = useAppStore.getState().project;
-      const status = await window.api.sync.status(projectId, project?.id === projectId ? project : undefined);
-      const notAccepted = status.synced
-        ? (status.pending ?? 0) + status.refused + (status.conflicts ?? 0) + (status.questions ?? 0)
-        : 0;
-      setLeaving({ notAccepted, keep: true });
+      setLeaving({ notAccepted: await changesNotOnServer(), keep: true });
     } finally {
       setBusy(false);
     }
@@ -317,6 +361,50 @@ export function CollaboratorsDialog({ open, projectId, onClose, onLeave }: Colla
               </RadioGroup>
             </>
           )}
+
+          {list && isOwner && deleting && (
+            <>
+              <Divider />
+              <Typography variant="subtitle2">Delete this project from StraboSpot</Typography>
+              <Typography variant="body2">
+                {otherMembers > 0
+                  ? `It is deleted for everyone: the copies of the ${otherMembers === 1 ? 'other member' : `${otherMembers} other members`} become separate copies on their computers and no longer sync.`
+                  : 'It is deleted from StraboSpot, and copies on your other computers become separate copies.'}{' '}
+                StraboSpot keeps it for 30 days: until then you can restore it from My StraboMicro Data on the StraboSpot website.
+              </Typography>
+              {deleting.notAccepted > 0 && (
+                <Alert severity="warning">
+                  {deleting.notAccepted === 1 ? '1 of your changes was' : `${deleting.notAccepted} of your changes were`} not
+                  accepted by StraboSpot. {deleting.notAccepted === 1 ? 'It stays' : 'They stay'} only in a copy you keep.
+                </Alert>
+              )}
+              <RadioGroup
+                value={deleting.keep ? 'keep' : 'remove'}
+                onChange={(e) => setDeleting({ ...deleting, keep: e.target.value === 'keep' })}
+              >
+                <FormControlLabel
+                  value="keep"
+                  disabled={busy}
+                  control={<Radio size="small" />}
+                  label="Keep a copy on this computer (it no longer syncs)"
+                />
+                <FormControlLabel
+                  value="remove"
+                  disabled={busy}
+                  control={<Radio size="small" />}
+                  label="Remove it from this computer too"
+                />
+              </RadioGroup>
+              <TextField
+                size="small"
+                fullWidth
+                disabled={busy}
+                label={`Type "${projectName}" to confirm`}
+                value={deleting.typed}
+                onChange={(e) => setDeleting({ ...deleting, typed: e.target.value })}
+              />
+            </>
+          )}
         </Box>
       </DialogContent>
       <DialogActions>
@@ -326,11 +414,28 @@ export function CollaboratorsDialog({ open, projectId, onClose, onLeave }: Colla
             Leave Project…
           </Button>
         )}
+        {list && isOwner && !deleting && (
+          <Button color="error" disabled={busy} onClick={() => void startDeleting()} sx={busy ? undefined : { mr: 'auto' }}>
+            Delete from StraboSpot…
+          </Button>
+        )}
         {leaving ? (
           <>
             <Button onClick={() => setLeaving(null)} disabled={busy}>Cancel</Button>
             <Button variant="contained" color="error" onClick={() => void confirmLeaving()} disabled={busy}>
               Leave Project
+            </Button>
+          </>
+        ) : deleting ? (
+          <>
+            <Button onClick={() => setDeleting(null)} disabled={busy}>Cancel</Button>
+            <Button
+              variant="contained"
+              color="error"
+              onClick={() => void confirmDeleting()}
+              disabled={busy || projectName === '' || deleting.typed.trim() !== projectName.trim()}
+            >
+              Delete from StraboSpot
             </Button>
           </>
         ) : (

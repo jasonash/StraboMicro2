@@ -672,6 +672,7 @@ contextBridge.exposeInMainWorld('api', {
     invites: (restServer) => ipcRenderer.invoke('sync:invites', restServer),
     answerInvite: (restServer, pid, accept) => ipcRenderer.invoke('sync:answer-invite', restServer, pid, accept),
     leave: (projectId, restServer) => ipcRenderer.invoke('sync:leave', projectId, restServer),
+    deleteProject: (projectId, restServer) => ipcRenderer.invoke('sync:delete-project', projectId, restServer),
     separate: (projectId) => ipcRenderer.invoke('sync:separate', projectId),
     history: (projectId, restServer, before) => ipcRenderer.invoke('sync:history', projectId, restServer, before),
     restoreDeleted: (projectId, restServer, items) => ipcRenderer.invoke('sync:restore-deleted', projectId, restServer, items),

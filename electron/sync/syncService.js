@@ -23,6 +23,8 @@
  *                  collaborators: list, invite, role, remove (Phase 2, 17a)
  *   sync:invites / sync:answer-invite   invitations waiting for me (17f)
  *   sync:leave     leave the open synced project (17j; the app pushes first)
+ *   sync:delete-project  the owner deletes the open synced project from
+ *                  StraboSpot (17ac; the app pushes first)
  *   sync:history   the activity panel's list of changes, newest first (17v)
  *   sync:restore-deleted  Restore in the activity panel (17n, 17w)
  *   sync:parked / sync:review-parked  the owner's review of parked changes (17o, 17x)
@@ -151,17 +153,27 @@ async function bindingProblem(binding, restServer) {
 
 /**
  * What the app needs when I was removed from a project or left it (17k):
- * who removed me, whether my last push was parked for the owner.
- * @param {any} data - The server's 403 answer
+ * who removed me, whether my last push was parked for the owner; or when
+ * the owner deleted it from StraboSpot (17ac): who, whether it was me
+ * (another of my computers), and until when it can be restored.
+ * @param {any} data - The server's 403 or 410 answer
  */
 function removalOf(data) {
   const d = data && typeof data === 'object' ? data : {};
   const by = d.removedBy && typeof d.removedBy === 'object' ? d.removedBy : null;
+  const delBy = d.deletedBy && typeof d.deletedBy === 'object' ? d.deletedBy : null;
   return {
     left: d.left === true,
     removedBy: by ? { pkey: Number(by.pkey), name: String(by.name || '') } : null,
     parked: d.parked === true,
     projectName: d.project && typeof d.project.name === 'string' ? d.project.name : null,
+    deleted: d.error === 'project_deleted'
+      ? {
+        byMe: d.byMe === true,
+        deletedBy: delBy ? { pkey: Number(delBy.pkey), name: String(delBy.name || '') } : null,
+        restorableUntil: typeof d.restorableUntil === 'string' ? d.restorableUntil : null,
+      }
+      : null,
   };
 }
 
@@ -1013,6 +1025,31 @@ async function leave(projectId, restServer) {
 }
 
 /**
+ * Delete the open synced project from StraboSpot (owner, 17p, 17ac): the
+ * server keeps it 30 days, restorable from the website; members' copies
+ * become separate on their next call. The app pushes first and afterwards
+ * keeps this copy as a separate one or removes it.
+ * @param {string} projectId
+ * @param {string} restServer
+ * @returns {Promise<{ ok: true, restorableUntil: string | null } | { ok: false, kind: string, message: string }>}
+ */
+async function deleteProject(projectId, restServer) {
+  try {
+    const b = await boundPid(projectId, restServer);
+    if (!b.ok) return b;
+    const r = memberResult(await makeClient(restServer).deleteProject(b.pid));
+    if (r.ok) {
+      serverListCache = null;
+      log.info(`[Sync] Deleted ${projectId} (pid ${b.pid}) from StraboSpot; restorable until ${r.restorableUntil}`);
+      return { ok: true, restorableUntil: typeof r.restorableUntil === 'string' ? r.restorableUntil : null };
+    }
+    return r;
+  } catch (err) {
+    return failure(err);
+  }
+}
+
+/**
  * Turn a synced copy that is not loaded into a separate local-only copy
  * with a new id (17j keep, 17k removed): projectCopies.makeSeparateCopy.
  * @param {string} projectId
@@ -1249,6 +1286,7 @@ function registerSyncIpc(ipcMain, getMainWindow, { devTools = false } = {}) {
   ipcMain.handle('sync:invites', (_event, restServer) => invites(restServer));
   ipcMain.handle('sync:answer-invite', (_event, restServer, pid, accept) => answerInvite(restServer, pid, accept));
   ipcMain.handle('sync:leave', (_event, projectId, restServer) => leave(projectId, restServer));
+  ipcMain.handle('sync:delete-project', (_event, projectId, restServer) => deleteProject(projectId, restServer));
   ipcMain.handle('sync:history', (_event, projectId, restServer, before) => history(projectId, restServer, before));
   ipcMain.handle('sync:restore-deleted', (_event, projectId, restServer, items) => restoreDeleted(projectId, restServer, items));
   ipcMain.handle('sync:parked', (_event, projectId, restServer) => parked(projectId, restServer));
@@ -1268,5 +1306,5 @@ function registerSyncIpc(ipcMain, getMainWindow, { devTools = false } = {}) {
 module.exports = {
   registerSyncIpc, notifyLocalChange, getStatus, preflight, activity, serverProject, listServerProjects, introCandidates, setPromptAnswer, compare, link, openRemote, turnOn, push, setMode, pull, commitPull, discardPull, download, clone,
   listDecisions, decide, decideCommit, decideDiscard, testOther, testCompare, cleanupReplaced,
-  members, changeMembers, invites, answerInvite, permissions, leave, separate, history, restoreDeleted, parked, reviewParked,
+  members, changeMembers, invites, answerInvite, permissions, leave, deleteProject, separate, history, restoreDeleted, parked, reviewParked,
 };

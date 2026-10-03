@@ -1408,27 +1408,84 @@ function App() {
   // The times each save stamped go back into the store, so it matches project.json
   useEffect(() => window.api?.onProjectStamped((id, stamps) => applySavedStamps(id, stamps)), []);
 
-  // Removed from the open project (17k): it becomes a separate copy and a
-  // notice says why. Leaving is handled by leaveProject.
+  /** The project this computer is deleting from StraboSpot (its own answer is handled by deleteFromStraboSpot) */
+  const deletingHere = useRef<string | null>(null);
+
+  // Removed from the open project (17k), or the owner deleted it from
+  // StraboSpot (17ac): it becomes a separate copy and a notice says why.
+  // Leaving is handled by leaveProject, deleting here by deleteFromStraboSpot.
   const accessRemoved = useSyncStore((state) => state.accessRemoved);
   useEffect(() => {
     if (!accessRemoved) return;
     useSyncStore.getState().update({ accessRemoved: null });
     if (accessRemoved.left || useAppStore.getState().project?.id !== accessRemoved.projectId) return;
+    if (deletingHere.current === accessRemoved.projectId) return;
+    const deleted = accessRemoved.deleted ?? null;
     void (async () => {
+      // Changes that had not synced stay in the separate copy (nothing is parked for a deleted project)
+      let keptChanges = false;
+      if (deleted) {
+        const project = useAppStore.getState().project;
+        const st = await window.api?.sync.status(accessRemoved.projectId, project ?? undefined).catch(() => null);
+        keptChanges = Boolean(st?.synced && (st.pending ?? 0) + st.refused + (st.conflicts ?? 0) + (st.questions ?? 0) > 0);
+      }
       const r = await makeOpenCopySeparate(accessRemoved.projectId);
       if (!r.ok) {
-        alert(`You no longer have access to this project on StraboSpot, and this copy could not be made separate.\n\n${r.message}`);
+        alert(`${deleted ? 'This project was deleted from StraboSpot' : 'You no longer have access to this project on StraboSpot'}, and this copy could not be made separate.\n\n${r.message}`);
         return;
       }
-      setSeparateNotice({
-        kind: 'removed',
-        name: r.name || accessRemoved.projectName || '',
-        removedBy: accessRemoved.removedBy?.name || null,
-        parked: accessRemoved.parked,
-      });
+      setSeparateNotice(deleted
+        ? {
+          kind: 'deleted',
+          name: r.name || accessRemoved.projectName || '',
+          removedBy: deleted.deletedBy?.name || null,
+          parked: false,
+          deletedByMe: deleted.byMe,
+          keptChanges,
+          restorableUntil: deleted.restorableUntil,
+        }
+        : {
+          kind: 'removed',
+          name: r.name || accessRemoved.projectName || '',
+          removedBy: accessRemoved.removedBy?.name || null,
+          parked: accessRemoved.parked,
+        });
     })();
   }, [accessRemoved, makeOpenCopySeparate]);
+
+  // Delete from StraboSpot (17ac), after the Collaborators dialog pushed and
+  // the owner typed the name: the server keeps it 30 days (restorable on the
+  // website), then this copy becomes separate (keep) or is removed.
+  // Returns an error to show, or null.
+  const deleteFromStraboSpot = useCallback(async (keep: boolean): Promise<string | null> => {
+    const api = window.api;
+    const current = useAppStore.getState().project;
+    if (!api || !current) return 'No project is open.';
+    deletingHere.current = current.id;
+    try {
+      const r = await api.sync.deleteProject(current.id, getRestServerUrl());
+      if (!r.ok) return r.message;
+      setIsCollaboratorsOpen(false);
+      if (keep) {
+        const s = await makeOpenCopySeparate(current.id);
+        if (!s.ok) {
+          alert(`The project was deleted from StraboSpot, but this copy could not be made separate.\n\n${s.message}`);
+          return null;
+        }
+        setSeparateNotice({
+          kind: 'deleted', name: s.name || current.name || '', removedBy: null, parked: false,
+          deletedByMe: true, keptChanges: false, restorableUntil: r.restorableUntil,
+        });
+        return null;
+      }
+      const closed = await api.projects.close(current.id);
+      if (closed?.success) closeProject();
+      else alert(`The project was deleted from StraboSpot, but this copy could not be removed.\n\n${closed?.error || 'Unknown error'}`);
+      return null;
+    } finally {
+      deletingHere.current = null;
+    }
+  }, [makeOpenCopySeparate, closeProject]);
 
   // Leave Project (17j), after the Collaborators dialog pushed and the
   // person confirmed: the server removes me, then the copy becomes separate
@@ -1846,6 +1903,7 @@ function App() {
         projectId={project?.id ?? null}
         onClose={() => setIsCollaboratorsOpen(false)}
         onLeave={leaveProject}
+        onDeleteProject={deleteFromStraboSpot}
       />
       <ParkedReviewDialog />
       <SeparateCopyDialog

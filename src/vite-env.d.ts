@@ -162,6 +162,12 @@ interface SyncRemoval {
   removedBy: { pkey: number; name: string } | null;
   parked: boolean;
   projectName: string | null;
+  /**
+   * Set when the owner deleted the project from StraboSpot (410
+   * project_deleted, 17ac) instead: byMe = I did, on another computer;
+   * restorableUntil = null once it can no longer be restored
+   */
+  deleted?: { byMe: boolean; deletedBy: { pkey: number; name: string } | null; restorableUntil: string | null } | null;
 }
 
 type SyncCallResult = { ok: true } | { ok: false; kind: SyncFailureKind; message: string };
@@ -1110,6 +1116,8 @@ interface Window {
         | SyncMemberFailure>;
       /** Leave the open synced project (17j): push first; afterwards keep a separate copy (separate) or delete it */
       leave: (projectId: string, restServer: string) => Promise<{ ok: true; status?: string } | SyncMemberFailure>;
+      /** The owner deletes the open synced project from StraboSpot (17ac): kept 30 days, restorable on the website */
+      deleteProject: (projectId: string, restServer: string) => Promise<{ ok: true; restorableUntil: string | null } | SyncMemberFailure>;
       /** The activity panel's list: newest first; before = seq of the last row shown (0 = newest) */
       history: (projectId: string, restServer: string, before?: number) => Promise<
         | { ok: true; changes: SyncHistoryRow[]; more: boolean; me: number }

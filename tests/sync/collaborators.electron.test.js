@@ -354,6 +354,51 @@ app.whenReady().then(async () => {
       JSON.stringify({ r, back }));
     r = await svc.restoreDeleted(straboId, SERVER, [{ type: 'dataset', id: 'D-gone' }]);
     check('restore again: counts as restored (not_deleted)', r.ok && r.results[0].ok === true && r.results[0].reason === 'not_deleted', JSON.stringify(r));
+
+    // Deleting the project from StraboSpot (stage 6, 17ac): owner only; members' copies are told on their next call
+    r = await svc.changeMembers(straboId, SERVER, { action: 'invite', email: people.editor.email, role: 'editor' });
+    check('owner: the editor invited again before the delete', r.ok, JSON.stringify(r));
+    await loginAs('editor');
+    r = await svc.answerInvite(SERVER, serverPid, true);
+    const editorOpen = r.ok ? await svc.openRemote(serverPid, SERVER, 'manual', () => {}) : r;
+    const editorCopy3 = projectFolders.getAccountCopyPath(straboId, SERVER, people.editor.pkey);
+    check('member: back with a synced copy', editorOpen.ok && fs.existsSync(path.join(editorCopy3, 'sync', 'state.json')), JSON.stringify(editorOpen));
+    projectFolders.useProjectCopy(straboId, editorCopy3);
+    r = await svc.deleteProject(straboId, SERVER);
+    check('member: may not delete it (only the owner)', !r.ok && r.kind === 'forbidden', JSON.stringify(r));
+    const ep = await ser.loadProjectJson(straboId);
+    ep.datasets = [...ep.datasets, { id: 'D-unsynced', name: 'Not synced yet', samples: [] }];
+    await ser.saveProjectJson(ep, straboId);
+
+    await loginAs('owner');
+    projectFolders.useProjectCopy(straboId, ownerCopy);
+    r = await svc.deleteProject(straboId, SERVER);
+    const until = r.ok && r.restorableUntil ? Date.parse(r.restorableUntil) : 0;
+    check('owner: deleted from StraboSpot, restorable for 30 days', r.ok && Math.abs(until - (Date.now() + 30 * 86400000)) < 120000,
+      JSON.stringify(r));
+    const actOwner = await svc.activity(straboId, SERVER);
+    check('owner (another computer): told it was me', !actOwner.ok && actOwner.kind === 'access_removed' && actOwner.removal &&
+      actOwner.removal.deleted && actOwner.removal.deleted.byMe === true && actOwner.removal.deleted.restorableUntil !== null,
+      JSON.stringify(actOwner));
+    list = await svc.listServerProjects(SERVER);
+    check('owner: gone from Open Remote Project', list.ok && !list.projects.some((x) => x.pid === serverPid), JSON.stringify(list).slice(0, 300));
+
+    await loginAs('editor');
+    projectFolders.useProjectCopy(straboId, editorCopy3);
+    const pDel = await svc.push(straboId, SERVER, () => {});
+    check('member: the next sync says deleted, by the owner, with the name', !pDel.ok && pDel.kind === 'access_removed' &&
+      pDel.removal && pDel.removal.deleted && pDel.removal.deleted.byMe === false &&
+      pDel.removal.deleted.deletedBy && pDel.removal.deleted.deletedBy.pkey === people.owner.pkey &&
+      pDel.removal.projectName === 'Collaborators test' && pDel.removal.left === false, JSON.stringify(pDel));
+    const actDel = await svc.activity(straboId, SERVER);
+    check('member: the activity poll says deleted too', !actDel.ok && actDel.kind === 'access_removed' && actDel.removal.deleted !== null,
+      JSON.stringify(actDel));
+    const stDel = await svc.getStatus(straboId);
+    check('member: the unsynced dataset is still counted (kept in the copy)', stDel.synced && (stDel.pending ?? 0) > 0, JSON.stringify(stDel));
+    const sepDel = await svc.separate(straboId);
+    const sepDelJson = sepDel.ok ? JSON.parse(fs.readFileSync(path.join(projectFolders.getStraboMicro2DataPath(), sepDel.projectId, 'project.json'), 'utf8')) : null;
+    check('member: the copy becomes separate with the unsynced dataset', sepDel.ok && sepDelJson.datasets.some((d) => d.id === 'D-unsynced'),
+      JSON.stringify(sepDel));
   } catch (err) {
     failures++;
     console.log(`  FAIL  unexpected error: ${err && err.stack ? err.stack : err}`);

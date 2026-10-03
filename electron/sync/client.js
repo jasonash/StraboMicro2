@@ -12,7 +12,11 @@
  *   server      - any other 5xx
  *   access_removed - I was removed from the project or left it (403
  *                 access_removed, or access_changed when this push was
- *                 parked for the owner); data: left, removedBy, parked, project
+ *                 parked for the owner); data: left, removedBy, parked, project.
+ *                 Also when the owner deleted the project from StraboSpot
+ *                 (410 project_deleted, 17ac): this copy stops and becomes
+ *                 separate the same way; data: error 'project_deleted', byMe,
+ *                 deletedBy, deletedAt, restorableUntil, project
  */
 
 const fs = require('fs');
@@ -101,6 +105,9 @@ function createSyncClient({ restServer, getAccessToken, refreshAccessToken, fetc
     }
     if (res.status === 403 && data && (data.error === 'access_removed' || data.error === 'access_changed')) {
       throw new SyncError('access_removed', data.message || 'You no longer have access to this project', { status: 403, data });
+    }
+    if (res.status === 410 && data && data.error === 'project_deleted') {
+      throw new SyncError('access_removed', data.message || 'This project was deleted from StraboSpot', { status: 410, data });
     }
     return { status: res.status, data };
   }
@@ -237,6 +244,11 @@ function createSyncClient({ restServer, getAccessToken, refreshAccessToken, fetc
 
     async setMemberRole(pid, pkey, role) {
       return request('PATCH', `/projects/${pid}/members/${pkey}`, { json: { role } });
+    },
+
+    /** Delete the project from StraboSpot (owner, 17ac): kept 30 days, restorable from the website. */
+    async deleteProject(pid) {
+      return request('DELETE', `/projects/${pid}`);
     },
 
     /** Remove a member or withdraw an invitation (owner), or leave (my own pkey). */
