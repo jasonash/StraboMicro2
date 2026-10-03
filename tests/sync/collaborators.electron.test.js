@@ -159,8 +159,18 @@ app.whenReady().then(async () => {
     await ser.saveProjectJson(ownerProject, straboId);
     const ownerPush = await svc.push(straboId, SERVER, () => {});
     check('owner: dataset pushed', ownerPush.ok && ownerPush.pushed >= 1, JSON.stringify(ownerPush));
+    let hist = await svc.history(straboId, SERVER);
+    const mineHere = hist.ok && hist.changes.find((c) => c.type === 'dataset' && c.id === 'D-owner');
+    check('activity (owner): my own change from here is not pending, newest first', mineHere && mineHere.here === true &&
+      mineHere.pending === false && hist.changes[0].seq >= mineHere.seq && hist.me === people.owner.pkey,
+      JSON.stringify(hist).slice(0, 400));
     await loginAs('editor');
     projectFolders.useProjectCopy(straboId, editorCopy2);
+    hist = await svc.history(straboId, SERVER);
+    let theirs = hist.ok && hist.changes.find((c) => c.type === 'dataset' && c.id === 'D-owner');
+    check('activity (member): the owner\'s new dataset is listed as not in my copy yet, with name and who', theirs &&
+      theirs.pending === true && theirs.here === false && theirs.op === 'create' && theirs.name === 'Owner dataset' &&
+      theirs.user.pkey === people.owner.pkey && !('body' in theirs), JSON.stringify(theirs));
     const pulled = await svc.pull(straboId, SERVER, () => {});
     if (pulled.ok) {
       const appProject = await ser.loadProjectJson(straboId);
@@ -171,6 +181,9 @@ app.whenReady().then(async () => {
     perms = await svc.permissions(straboId);
     check('invitee: a pulled create records its creator', pulled.ok && perms.ok && perms.authors['dataset:D-owner'] === people.owner.pkey,
       JSON.stringify({ pulled: pulled.ok, authors: perms.authors }));
+    hist = await svc.history(straboId, SERVER);
+    theirs = hist.ok && hist.changes.find((c) => c.type === 'dataset' && c.id === 'D-owner');
+    check('activity (member): after the pull it is in my copy', theirs && theirs.pending === false, JSON.stringify(theirs));
 
     // Decline, and the owner's role change and removal
     await loginAs('owner');

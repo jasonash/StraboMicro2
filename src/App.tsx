@@ -1230,6 +1230,11 @@ function App() {
       setIsTurnOnSyncOpen(true);
     }));
 
+    // View: Activity (17u; the menu item is enabled only for a synced project)
+    unsubscribers.push(window.api?.onActivity(() => {
+      useSyncStore.getState().update({ activityOpen: true });
+    }));
+
     // File: Collaborate... (17a, 17d)
     unsubscribers.push(window.api?.onCollaborate(() => {
       if (!project) {

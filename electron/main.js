@@ -1114,6 +1114,17 @@ function createWindow() {
         },
         { type: 'separator' },
         {
+          // Who changed what in a synced project (collaboration 17u)
+          label: 'Activity',
+          enabled: currentProjectSynced,
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('menu:activity');
+            }
+          }
+        },
+        { type: 'separator' },
+        {
           label: 'Theme',
           submenu: [
             {

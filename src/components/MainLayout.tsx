@@ -6,6 +6,7 @@ import Header from './Header';
 import Sidebar from './Sidebar';
 import Viewer from './Viewer';
 import { PropertiesPanel } from './PropertiesPanel';
+import { ActivityPanel } from './ActivityPanel';
 import { MemoryMonitor } from './MemoryMonitor';
 
 const MainLayout: React.FC = () => {
@@ -101,7 +102,7 @@ const MainLayout: React.FC = () => {
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
       <Header />
-      <Box sx={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+      <Box sx={{ display: 'flex', flex: 1, overflow: 'hidden', position: 'relative' }}>
         {/* Floating toggle button when left panel is collapsed */}
         {isLeftPanelCollapsed && (
           <Tooltip title="Show Panel" placement="right">
@@ -304,6 +305,9 @@ const MainLayout: React.FC = () => {
             </IconButton>
           </Tooltip>
         )}
+
+        {/* Who changed what (synced projects, 17u) */}
+        <ActivityPanel />
       </Box>
 
       {/* Memory Monitor - toggleable via Debug menu (Cmd+Shift+M) */}

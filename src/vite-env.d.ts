@@ -185,6 +185,31 @@ interface SyncMember {
   respondedAt: string | null;
 }
 
+/** One row of the activity panel's list (server brief history, 17v) */
+interface SyncHistoryRow {
+  seq: number;
+  pushId: string | null;
+  type: string;
+  id: string;
+  op: 'create' | 'update' | 'delete' | 'restore' | 'import' | 'replace_project';
+  /** The entity's name from its body (null: none) */
+  name: string | null;
+  parentType: string | null;
+  parentId: string | null;
+  /** A move: the old parent's id */
+  movedFrom: string | null;
+  /** Fields an update changed (bookkeeping left out); null for other ops */
+  changedPaths: string[] | null;
+  user: SyncUser;
+  /** An accepted parked change: whose change it was (17y) */
+  onBehalfOf: SyncUser | null;
+  at: string;
+  /** My own change from this computer */
+  here: boolean;
+  /** Not in this copy yet */
+  pending: boolean;
+}
+
 /** An invitation waiting for me (17f) */
 interface SyncInvitation {
   pid: number;
@@ -826,6 +851,8 @@ interface Window {
     // Push to Server
     onPushToServer: (callback: () => void) => Unsubscribe;
     onCollaborate: (callback: () => void) => Unsubscribe;
+    /** View > Activity (synced projects) */
+    onActivity: (callback: () => void) => Unsubscribe;
     // Open Remote Project
     onOpenRemoteProject: (callback: () => void) => Unsubscribe;
     server: {
@@ -1047,6 +1074,10 @@ interface Window {
         | SyncMemberFailure>;
       /** Leave the open synced project (17j): push first; afterwards keep a separate copy (separate) or delete it */
       leave: (projectId: string, restServer: string) => Promise<{ ok: true; status?: string } | SyncMemberFailure>;
+      /** The activity panel's list: newest first; before = seq of the last row shown (0 = newest) */
+      history: (projectId: string, restServer: string, before?: number) => Promise<
+        | { ok: true; changes: SyncHistoryRow[]; more: boolean; me: number }
+        | { ok: false; kind: SyncFailureKind; message: string; removal?: SyncRemoval }>;
       /** A synced copy that is not loaded becomes a separate local-only copy with a new id (open it with projects.load) */
       separate: (projectId: string) => Promise<
         | { ok: true; projectId: string; name: string }

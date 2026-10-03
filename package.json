@@ -29,6 +29,7 @@
     "test:sync-chip": "rolldown -c tests/sync/rolldown.test.config.mjs && node node_modules/.cache/sync-tests/syncChipState.test.mjs",
     "test:member-cleanup": "rolldown -c tests/sync/rolldown.test.config.mjs && node node_modules/.cache/sync-tests/memberCleanup.test.mjs",
     "test:permissions": "rolldown -c tests/sync/rolldown.test.config.mjs && node node_modules/.cache/sync-tests/permissions.test.mjs",
+    "test:activity-feed": "rolldown -c tests/sync/rolldown.test.config.mjs && node node_modules/.cache/sync-tests/activityFeed.test.mjs",
     "typecheck:watch": "tsc --noEmit --watch --preserveWatchOutput",
     "build": "tsc && vite build",
     "preview": "vite preview",

@@ -155,6 +155,15 @@ export function SyncStatusChip() {
                 >
                   Collaborators…
                 </Button>
+                <Button
+                  size="small"
+                  onClick={() => {
+                    close();
+                    useSyncStore.getState().update({ activityOpen: true });
+                  }}
+                >
+                  Activity…
+                </Button>
                 {waiting > 0 && (
                   <Button
                     size="small"

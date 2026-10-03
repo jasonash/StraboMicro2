@@ -23,6 +23,7 @@
  *                  collaborators: list, invite, role, remove (Phase 2, 17a)
  *   sync:invites / sync:answer-invite   invitations waiting for me (17f)
  *   sync:leave     leave the open synced project (17j; the app pushes first)
+ *   sync:history   the activity panel's list of changes, newest first (17v)
  *   sync:separate  a synced copy (not loaded) becomes a separate copy with a
  *                  new id (17j keep, 17k removed)
  *   sync:permissions  my pkey, role and who created what (role checks, 17h/17i)
@@ -853,6 +854,31 @@ async function permissions(projectId) {
   }
 }
 
+/**
+ * The activity panel's page of changes (17v), newest first, before = the
+ * seq of the last row shown (0 = the newest). Each row says pending: not in
+ * this copy yet (after my last pull and not my own change from here).
+ * @param {string} projectId
+ * @param {string} restServer
+ * @param {number} [before]
+ */
+async function history(projectId, restServer, before = 0) {
+  try {
+    const b = await boundPid(projectId, restServer);
+    if (!b.ok) return b;
+    const { sidecar, syncEngine } = loadEngine();
+    const state = await sidecar.loadState(projectFolders.getProjectFolderPath(projectId));
+    const r = await makeClient(restServer).briefHistory(b.pid, {
+      before: Number(before) || 0, limit: 200, clientId: syncEngine.getClientId(),
+    });
+    const lastSeq = (state && state.lastSeq) || 0;
+    const changes = (r.changes || []).map((c) => ({ ...c, pending: !c.here && c.seq > lastSeq }));
+    return { ok: true, changes, more: Boolean(r.more), me: Number(state.binding.pkey) };
+  } catch (err) {
+    return failure(err);
+  }
+}
+
 /** Collaborators of the open synced project (Phase 2, 17a). */
 async function members(projectId, restServer) {
   try {
@@ -1142,6 +1168,7 @@ function registerSyncIpc(ipcMain, getMainWindow, { devTools = false } = {}) {
   ipcMain.handle('sync:invites', (_event, restServer) => invites(restServer));
   ipcMain.handle('sync:answer-invite', (_event, restServer, pid, accept) => answerInvite(restServer, pid, accept));
   ipcMain.handle('sync:leave', (_event, projectId, restServer) => leave(projectId, restServer));
+  ipcMain.handle('sync:history', (_event, projectId, restServer, before) => history(projectId, restServer, before));
   ipcMain.handle('sync:separate', (_event, projectId) => separate(projectId));
   ipcMain.handle('sync:decisions', (_event, projectId) => listDecisions(projectId));
   ipcMain.handle('sync:decide', (_event, projectId, decision) => decide(projectId, decision));
@@ -1156,5 +1183,5 @@ function registerSyncIpc(ipcMain, getMainWindow, { devTools = false } = {}) {
 module.exports = {
   registerSyncIpc, notifyLocalChange, getStatus, preflight, activity, serverProject, listServerProjects, introCandidates, setPromptAnswer, compare, link, openRemote, turnOn, push, setMode, pull, commitPull, discardPull, download, clone,
   listDecisions, decide, decideCommit, decideDiscard, testOther, testCompare, cleanupReplaced,
-  members, changeMembers, invites, answerInvite, permissions, leave, separate,
+  members, changeMembers, invites, answerInvite, permissions, leave, separate, history,
 };

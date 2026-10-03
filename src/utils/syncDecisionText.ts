@@ -63,6 +63,11 @@ export function typeLabel(type: string): string {
   return TYPE_LABELS[type] ?? type.replace(/_/g, ' ');
 }
 
+/** "spots", "point count sessions" */
+export function typePlural(type: string): string {
+  return TYPE_PLURALS[type] ?? `${typeLabel(type)}s`;
+}
+
 function capitalize(s: string): string {
   return s ? s[0].toUpperCase() + s.slice(1) : s;
 }
@@ -82,7 +87,7 @@ export function containsLabel(contains: Record<string, number>): string {
   const parts = Object.entries(contains)
     .filter(([, n]) => n > 0)
     .sort(([a], [b]) => a.localeCompare(b))
-    .map(([type, n]) => `${n} ${n === 1 ? typeLabel(type) : TYPE_PLURALS[type] ?? `${typeLabel(type)}s`}`);
+    .map(([type, n]) => `${n} ${n === 1 ? typeLabel(type) : typePlural(type)}`);
   return parts.length > 0 ? ` (${parts.join(', ')})` : '';
 }
 

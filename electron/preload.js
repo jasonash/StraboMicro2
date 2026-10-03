@@ -449,6 +449,10 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('menu:push-to-server', callback);
     return () => ipcRenderer.removeListener('menu:push-to-server', callback);
   },
+  onActivity: (callback) => {
+    ipcRenderer.on('menu:activity', callback);
+    return () => ipcRenderer.removeListener('menu:activity', callback);
+  },
   onCollaborate: (callback) => {
     ipcRenderer.on('menu:collaborate', callback);
     return () => ipcRenderer.removeListener('menu:collaborate', callback);
@@ -655,6 +659,7 @@ contextBridge.exposeInMainWorld('api', {
     answerInvite: (restServer, pid, accept) => ipcRenderer.invoke('sync:answer-invite', restServer, pid, accept),
     leave: (projectId, restServer) => ipcRenderer.invoke('sync:leave', projectId, restServer),
     separate: (projectId) => ipcRenderer.invoke('sync:separate', projectId),
+    history: (projectId, restServer, before) => ipcRenderer.invoke('sync:history', projectId, restServer, before),
     decisions: (projectId) => ipcRenderer.invoke('sync:decisions', projectId),
     decide: (projectId, decision) => ipcRenderer.invoke('sync:decide', projectId, decision),
     decideCommit: (projectId, decisionId) => ipcRenderer.invoke('sync:decide-commit', projectId, decisionId),

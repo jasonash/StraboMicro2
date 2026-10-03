@@ -253,6 +253,18 @@ function createSyncClient({ restServer, getAccessToken, refreshAccessToken, fetc
       return request('POST', `/invites/${pid}/${accept ? 'accept' : 'decline'}`);
     },
 
+    /**
+     * The activity panel's list (17v): newest first, no bookkeeping updates,
+     * paged back with before (the seq of the last row); here = my own change
+     * from this computer (clientId).
+     * @returns {Promise<{ headSeq: number, more: boolean, changes: object[] }>}
+     */
+    async briefHistory(pid, { before = 0, limit = 200, clientId = '' } = {}) {
+      const q = new URLSearchParams({ brief: '1', limit: String(limit), clientId });
+      if (before > 0) q.set('before', String(before));
+      return expect(await request('GET', `/projects/${pid}/history?${q}`), 200);
+    },
+
     async changes(pid, since, limit = 1000) {
       return expect(await request('GET', `/projects/${pid}/changes?since=${since}&limit=${limit}`), 200);
     },
