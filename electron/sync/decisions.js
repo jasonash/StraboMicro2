@@ -370,7 +370,7 @@ async function prepareDecision(folder, decision) {
   if (projectChanges.length > 0) {
     const next = JSON.parse(JSON.stringify(project));
     applyEntityChanges(next, projectChanges, 'redo');
-    storeChanges = diffProjects(toAppProject(project), toAppProject(next));
+    storeChanges = diffProjects(toAppProject(project), toAppProject(next), { withTimestamps: true });
   }
   return { id: pending.id, storeChanges, undoable: decision.kind === 'conflict', pending };
 }

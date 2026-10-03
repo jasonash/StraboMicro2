@@ -419,11 +419,14 @@ function bodyKeys(type, obj) {
 /**
  * Same entity body (child collections, per-user fields and modifiedTimestamp
  * ignored: the time is bookkeeping the save stamps, never an edit of its own,
- * so undo and the role checks do not see it change).
+ * so undo and the role checks do not see it change). withTimestamps counts
+ * the time too, for changes that carry another copy's values into the store
+ * (pulls, sync decisions): a time-only change must still reach it.
  */
-function sameBody(type, a, b) {
-  const ka = bodyKeys(type, a).filter((k) => k !== 'modifiedTimestamp');
-  const kb = bodyKeys(type, b).filter((k) => k !== 'modifiedTimestamp');
+function sameBody(type, a, b, withTimestamps = false) {
+  const keep = (k) => withTimestamps || k !== 'modifiedTimestamp';
+  const ka = bodyKeys(type, a).filter(keep);
+  const kb = bodyKeys(type, b).filter(keep);
   if (ka.length !== kb.length) return false;
   for (const k of ka) {
     if (!Object.prototype.hasOwnProperty.call(b, k) || !deepEqual(a[k], b[k])) return false;
@@ -465,7 +468,7 @@ function stateOfView(v) {
  * @param {object | null} next
  * @returns {EntityChange[]}
  */
-export function diffProjects(prev, next) {
+export function diffProjects(prev, next, { withTimestamps = false } = {}) {
   const a = entityViews(prev);
   const b = entityViews(next);
   /** @type {EntityChange[]} */
@@ -478,7 +481,7 @@ export function diffProjects(prev, next) {
     }
     if (va.obj === vb.obj) continue;
     const same = va.parentType === vb.parentType && va.parentId === vb.parentId &&
-      sameBody(va.type, va.obj, vb.obj) && deepEqual(childIdsOf(va.type, va.obj), childIdsOf(vb.type, vb.obj));
+      sameBody(va.type, va.obj, vb.obj, withTimestamps) && deepEqual(childIdsOf(va.type, va.obj), childIdsOf(vb.type, vb.obj));
     if (!same) changes.push({ key: k, before: stateOfView(va), after: stateOfView(vb) });
   }
   for (const [k, vb] of b) {

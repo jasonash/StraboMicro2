@@ -149,7 +149,7 @@ async function preparePull({ folder, client, onProgress = () => {} }) {
   applyEntityChanges(mergedProject, projectChanges, 'redo');
   const storeChanges = projectChanges.length === 0
     ? []
-    : diffProjects(toAppProject(project), toAppProject(mergedProject));
+    : diffProjects(toAppProject(project), toAppProject(mergedProject), { withTimestamps: true });
 
   // Who created what arrives with create entries (Phase 2 role checks, 17i)
   /** @type {Record<string, number>} */

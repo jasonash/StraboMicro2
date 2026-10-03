@@ -56,7 +56,7 @@ export interface EntityChange {
   after: EntityState | null;
 }
 
-export function diffProjects(prev: unknown, next: unknown): EntityChange[];
+export function diffProjects(prev: unknown, next: unknown, options?: { withTimestamps?: boolean }): EntityChange[];
 
 export function checkEntityChanges(
   project: unknown,

@@ -92,6 +92,14 @@ check('no change -> no entity changes', diffProjects(base(), base()).length === 
 check('per-user field change only -> no entity changes', diffProjects(base(), { ...base(), presetKeyBindings: { 2: 'y' } }).length === 0);
 {
   const after = base();
+  after.datasets[0].modifiedTimestamp = '2026-01-02T03:04:05.000Z';
+  check('time-only change -> no entity changes for undo', diffProjects(base(), after).length === 0);
+  const withTs = diffProjects(base(), after, { withTimestamps: true });
+  check('time-only change -> one dataset change withTimestamps (pulls, decisions)', withTs.length === 1 && withTs[0].key === 'dataset:D1' &&
+    withTs[0].after.body.modifiedTimestamp === '2026-01-02T03:04:05.000Z');
+}
+{
+  const after = base();
   after.datasets[0].isExpanded = false;
   check('tree expansion change -> no entity changes', diffProjects(base(), after).length === 0);
 }

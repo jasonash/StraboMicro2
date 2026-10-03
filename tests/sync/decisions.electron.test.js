@@ -306,6 +306,32 @@ app.whenReady().then(async () => {
     check('discarded: nothing turned down, nothing waiting', rf4.ok && rf4.notAccepted === 0 && (await status()).refused === 0 &&
       (await status()).pending === 0, JSON.stringify({ rf4, st: await status() }));
 
+    // --- Turned down, time only: Discard puts the server's time back (stage 5c) ----------------
+    // A dataset whose only difference is modifiedTimestamp (a Viewer's copy before 4697d0b):
+    // the store diff ignores the time for undo, so the answer must still carry it
+    const DS = disk().datasets[0].id;
+    const KDS = `dataset:${DS}`;
+    const serverTime = (await base())[KDS].body.modifiedTimestamp;
+    const strayTime = '2026-01-02T03:04:05.000Z';
+    await appEdit((p) => { p.datasets[0].modifiedTimestamp = strayTime; });
+    check('setup: only the dataset time differs from the server', disk().datasets[0].modifiedTimestamp === strayTime &&
+      serverTime && serverTime !== strayTime, JSON.stringify({ serverTime, disk: disk().datasets[0].modifiedTimestamp }));
+    {
+      const st = await sidecar.loadState(folder);
+      const local = { ...(await base())[KDS] };
+      delete local.version;
+      st.refused = [{ key: KDS, change: { op: 'update', type: 'dataset', id: DS, baseVersion: (await base())[KDS].version,
+        fields: { modifiedTimestamp: strayTime } }, result: { type: 'dataset', id: DS, status: 'forbidden', reason: 'viewer', parked: true },
+        local: { ...local, body: { ...local.body, modifiedTimestamp: strayTime } } }];
+      await sidecar.saveState(folder, st);
+    }
+    const tdsc = await appDecide({ kind: 'refused', key: KDS, answer: 'discard' });
+    check('time-only discard: the answer carries the server\'s time', tdsc.ok && tdsc.changes.length === 1 && tdsc.changes[0].key === KDS &&
+      disk().datasets[0].modifiedTimestamp === serverTime, JSON.stringify({ changes: tdsc.ok && tdsc.changes, disk: disk().datasets[0].modifiedTimestamp }));
+    const tpush = await push();
+    check('time-only discard: settled, nothing sent, nothing turned down', tpush.ok && tpush.pushed === 0 && tpush.notAccepted === 0 &&
+      (await status()).refused === 0 && (await status()).pending === 0, JSON.stringify({ tpush, st: await status() }));
+
     // --- Membership ids: their deleted tag leaves my new tagging (§4.5) -----------------------
     const TAG = crypto.randomUUID();
     const GROUP = crypto.randomUUID();
