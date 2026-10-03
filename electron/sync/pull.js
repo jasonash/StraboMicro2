@@ -315,6 +315,11 @@ async function commitPull({ folder, pending }) {
   state.lastSeq = pending.headSeq;
   state.conflicts = pending.conflicts;
   state.questions = pending.questions;
+  // The app saved the pulled project first: turned-down changes the pull
+  // brought as well (the owner accepted them) are settled now
+  const { readProjectFiles } = require('./syncEngine');
+  const files = await readProjectFiles(folder);
+  sidecar.reconcileDecisions(state, explode(files.project, files.pointCounts));
   await sidecar.saveState(folder, state);
   return { downloads: Object.keys(state.downloads).length };
 }

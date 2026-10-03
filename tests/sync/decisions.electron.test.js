@@ -61,7 +61,7 @@ app.whenReady().then(async () => {
     const sidecar = require(`${E}/sync/sidecar`);
     const ser = require(`${E}/projectSerializer`);
     const projectFolders = require(`${E}/projectFolders`);
-    const { applyEntityChanges } = require(`${E}/shared/entityModel.mjs`);
+    const { applyEntityChanges, explode } = require(`${E}/shared/entityModel.mjs`);
 
     fixture('cleanup');
     const who = fixture('token');
@@ -331,6 +331,29 @@ app.whenReady().then(async () => {
     const tpush = await push();
     check('time-only discard: settled, nothing sent, nothing turned down', tpush.ok && tpush.pushed === 0 && tpush.notAccepted === 0 &&
       (await status()).refused === 0 && (await status()).pending === 0, JSON.stringify({ tpush, st: await status() }));
+
+    // --- Turned down, then the owner accepted it: the pull settles it (stage 5c) ----------------
+    await appEdit((p) => { p.datasets[0].name = 'renamed while refused'; });
+    {
+      const st = await sidecar.loadState(folder);
+      const files = await require(`${E}/sync/syncEngine`).readProjectFiles(folder);
+      const local = explode(files.project, files.pointCounts).entities[KDS];
+      st.refused = [{ key: KDS, change: { op: 'update', type: 'dataset', id: DS, baseVersion: (await base())[KDS].version,
+        fields: { name: local.body.name, modifiedTimestamp: local.body.modifiedTimestamp } },
+        result: { type: 'dataset', id: DS, status: 'forbidden', reason: 'viewer', parked: true }, local }];
+      await sidecar.saveState(folder, st);
+      check('setup: one turned-down rename', (await status()).refused === 1, JSON.stringify(await status()));
+      // The owner's Accept pushes the member's fields as its own edit
+      await otherPush([{ op: 'update', type: 'dataset', id: DS, baseVersion: await v('dataset', DS),
+        fields: { name: local.body.name, modifiedTimestamp: local.body.modifiedTimestamp } }]);
+    }
+    const acc = await appPull();
+    const accSt = await status(); // before listDecisions, which settles on its own
+    const accList = await svc.listDecisions(pid);
+    check('accepted by the owner: the pull settles the turned-down row', acc.ok && accSt.conflicts === 0 && accSt.refused === 0 &&
+      accList.ok && accList.refused.length === 0, JSON.stringify({ accSt, refused: accList.ok && accList.refused }));
+    const accPush = await push();
+    check('accepted by the owner: nothing to send', accPush.ok && accPush.pushed === 0 && accPush.notAccepted === 0, JSON.stringify(accPush));
 
     // --- Membership ids: their deleted tag leaves my new tagging (§4.5) -----------------------
     const TAG = crypto.randomUUID();

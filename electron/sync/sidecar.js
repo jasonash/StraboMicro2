@@ -167,6 +167,9 @@ function stillRefused(state, current) {
  *     Keep deleted or Bring back with their changes (the base holds theirs)
  *   - a "they deleted it" question whose entities are all deleted here too
  *     is settled (both sides agree)
+ *   - a turned-down change the server now has as well is settled (the
+ *     owner accepted it from the parked push, or someone made the same
+ *     change): my copy and the base agree, nothing is left to send
  * @param {SyncState} state
  * @param {{ entities: Record<string, object> }} current - explode() of the project
  * @returns {boolean} whether state changed (the caller saves it)
@@ -175,6 +178,12 @@ function reconcileDecisions(state, current) {
   const { entityKey, DEPTH } = require('../shared/entityModel.mjs');
   let changed = false;
   const here = (k) => Boolean(current.entities[k]);
+
+  const { sameContent } = require('./merge');
+  const refusedBefore = (state.refused || []).length;
+  state.refused = (state.refused || []).filter((p) => !p || typeof p.key !== 'string' ||
+    !sameContent(current.entities[p.key] ?? null, state.base[p.key] ?? null));
+  if (state.refused.length !== refusedBefore) changed = true;
 
   const before = (state.questions || []).length;
   state.questions = (state.questions || []).filter((q) => q.kind !== 'theirs_deleted' || q.keys.some(here));
