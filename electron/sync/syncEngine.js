@@ -237,7 +237,9 @@ async function pushProject({ folder, client, onProgress = () => {} }) {
   const downloading = new Set(Object.keys(downloads).map((rk) => rk.slice(0, rk.indexOf('|'))));
   const tmpDir = path.join(sidecar.syncDir(folder), 'tmp');
   const wanted = new Set();
-  for (const f of plannedFiles(folder, current)) {
+  // A Viewer may not change files: no uploads, no ref changes (17h)
+  const filesAllowed = state.role !== 'viewer';
+  for (const f of filesAllowed ? plannedFiles(folder, current) : []) {
     const ek = `${f.type}:${f.id}`;
     if (!state.base[ek]) continue;
     const rk = refKey(f.type, f.id, f.role);
@@ -268,6 +270,10 @@ async function pushProject({ folder, client, onProgress = () => {} }) {
       if (state.refs[rk] === sha256) continue;
       onProgress({ phase: 'files', item: `${f.id} ${f.role}` });
       const up = await client.uploadFile(pid, filePath, f.kind, { sha256 });
+      if (up.skipped) {
+        log.warn(`[Sync] File ${f.role} of ${f.type} ${f.id} not uploaded (${up.skipped})`);
+        continue;
+      }
       if (up.uploaded) filesUploaded++;
       const set = await client.setRef(pid, f.type, f.id, f.role, sha256);
       if (set && set.skipped) {
@@ -283,14 +289,20 @@ async function pushProject({ folder, client, onProgress = () => {} }) {
     }
   }
   // Refs of live entities whose file is gone (an attachment was removed)
-  for (const rk of Object.keys(state.refs)) {
+  for (const rk of filesAllowed ? Object.keys(state.refs) : []) {
     if (wanted.has(rk)) continue;
     const [ek, role] = rk.split('|');
     if (downloading.has(ek)) continue;
     const sep = ek.indexOf(':');
     const type = ek.slice(0, sep);
     const id = ek.slice(sep + 1);
-    if (state.base[ek]) await client.deleteRef(pid, type, id, role);
+    if (state.base[ek]) {
+      const del = await client.deleteRef(pid, type, id, role);
+      if (del && del.skipped) {
+        log.warn(`[Sync] File ${role} of ${type} ${id} not removed (${del.skipped})`);
+        continue;
+      }
+    }
     delete state.refs[rk];
     delete state.tileSources[rk];
   }

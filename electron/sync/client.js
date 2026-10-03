@@ -293,7 +293,9 @@ function createSyncClient({ restServer, getAccessToken, refreshAccessToken, fetc
 
     async deleteRef(pid, entityType, entityId, role) {
       const q = `entityType=${encodeURIComponent(entityType)}&entityId=${encodeURIComponent(entityId)}&role=${encodeURIComponent(role)}`;
-      return expect(await request('DELETE', `/projects/${pid}/refs?${q}`), 200, 404);
+      const r = await request('DELETE', `/projects/${pid}/refs?${q}`);
+      if (r.status === 403 && r.data && r.data.error === 'forbidden') return { skipped: 'forbidden' };
+      return expect(r, 200, 404);
     },
 
     /**
@@ -308,7 +310,10 @@ function createSyncClient({ restServer, getAccessToken, refreshAccessToken, fetc
     async uploadFile(pid, filePath, kind, { sha256, onProgress } = {}) {
       const size = (await fs.promises.stat(filePath)).size;
       const sha = sha256 || await hashFile(filePath);
-      const start = expect(await request('POST', `/projects/${pid}/uploads`, { json: { sha256: sha, size, kind } }), 200, 201);
+      const begin = await request('POST', `/projects/${pid}/uploads`, { json: { sha256: sha, size, kind } });
+      // My role may not upload files (a Viewer): nothing sent, the caller skips it
+      if (begin.status === 403 && begin.data && begin.data.error === 'forbidden') return { sha256: sha, size, uploaded: false, skipped: 'forbidden' };
+      const start = expect(begin, 200, 201);
       if (start.complete) return { sha256: sha, size, uploaded: false };
       const chunkSize = Number(start.chunkSize);
       if (!start.uploadId || !(chunkSize > 0)) throw new SyncError('server', 'Upload could not start', { data: start });

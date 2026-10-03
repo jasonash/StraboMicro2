@@ -210,6 +210,38 @@ app.whenReady().then(async () => {
     check('a thumbnail for a micrograph deleted on the server does not stop the push', skipped && !skipped.error &&
       st3.refs[thumbRk] === oldThumb, JSON.stringify(skipped).slice(0, 300));
 
+    // A role that may not change files (a Viewer, 403 forbidden on upload and refs) does not stop the push
+    let uploadCalls = 0;
+    const forbidding = createSyncClient({
+      restServer: SERVER,
+      getAccessToken: async () => who.token,
+      fetchImpl: async (url, init) => {
+        if (/\/(uploads|refs)/.test(String(url))) {
+          uploadCalls++;
+          return new Response(JSON.stringify({ error: 'forbidden', message: 'Viewers cannot upload' }), { status: 403 });
+        }
+        return fetch(url, init);
+      },
+    });
+    const liveMic = Object.keys((await sidecar.loadState(accountFolder)).base).find((k) => k.startsWith('micrograph:'));
+    const liveId = liveMic.slice(liveMic.indexOf(':') + 1);
+    fs.appendFileSync(path.join(accountFolder, 'compositeThumbnails', liveId), Buffer.from([4, 5, 6]));
+    let refusedFiles;
+    try {
+      refusedFiles = await pushProject({ folder: accountFolder, client: forbidding });
+    } catch (err) {
+      refusedFiles = { error: err.message };
+    }
+    check('a file my role may not upload (403) does not stop the push', refusedFiles && !refusedFiles.error && uploadCalls > 0,
+      JSON.stringify(refusedFiles).slice(0, 300));
+    // A copy that knows it is a Viewer does not try files at all
+    const vs = await sidecar.loadState(accountFolder);
+    await sidecar.saveState(accountFolder, { ...vs, role: 'viewer' });
+    uploadCalls = 0;
+    const asViewer = await pushProject({ folder: accountFolder, client: forbidding });
+    check('a Viewer\'s copy sends no files', asViewer && uploadCalls === 0, `calls ${uploadCalls}`);
+    await sidecar.saveState(accountFolder, { ...(await sidecar.loadState(accountFolder)), role: 'owner' });
+
     // Turning sync on again resumes (no new server project, nothing to send)
     const again = await turnSyncOn({ projectId: pid, restServer: SERVER, user: { pkey: who.pkey, email: who.email }, client });
     check('turning sync on again resumes the same project', again.status === 'synced' && again.pid === on.pid);
