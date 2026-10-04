@@ -5,18 +5,19 @@
  * "Activity..." or View > Activity. A click on a line selects its spot or
  * micrograph. Changes not in this copy yet are marked, with Sync Now.
  * Deleted items offer Restore (17n, 17w): the restore goes to the server,
- * then Sync Now brings the items back into this copy.
+ * then Sync Now brings the items back into this copy. At the bottom,
+ * "Full history on StraboSpot..." opens the website history page (17ae).
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Box, Button, Chip, CircularProgress, Divider, IconButton, Paper, Typography } from '@mui/material';
+import { Alert, Box, Button, Chip, CircularProgress, Divider, IconButton, Link, Paper, Typography } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import { useSyncStore } from '@/store/useSyncStore';
 import { useAppStore } from '@/store/useAppStore';
 import { useAuthStore } from '@/store/useAuthStore';
 import { getRestServerUrl } from './dialogs/PreferencesDialog';
 import {
-  groupActivity, lineText, whenText, canRestore, restoreFailureText, type ActivityGroup, type ActivityLookup,
+  groupActivity, lineText, whenText, canRestore, restoreFailureText, historyPageUrl, type ActivityGroup, type ActivityLookup,
 } from '@/utils/activityFeed';
 import { syncNowFromUser } from '@/services/syncActions';
 import { reviewCount, waitingText } from '@/utils/parkedReview';
@@ -56,6 +57,8 @@ export function ActivityPanel() {
   const role = useSyncStore((s) => s.role);
   const parked = useSyncStore((s) => s.parked);
   const project = useAppStore((s) => s.project);
+  const server = useSyncStore((s) => s.server);
+  const pid = useSyncStore((s) => s.pid);
 
   const [rows, setRows] = useState<SyncHistoryRow[]>([]);
   const [me, setMe] = useState(0);
@@ -167,6 +170,8 @@ export function ActivityPanel() {
 
   if (!visible) return null;
 
+  const historyUrl = historyPageUrl(server, pid);
+
   return (
     <Paper
       elevation={6}
@@ -252,6 +257,21 @@ export function ActivityPanel() {
           </>
         )}
       </Box>
+      {historyUrl && (
+        <>
+          <Divider />
+          <Box sx={{ px: 2, py: 1 }}>
+            <Link
+              component="button"
+              variant="body2"
+              underline="hover"
+              onClick={() => void window.api?.openExternalLink(historyUrl)}
+            >
+              Full history on StraboSpot…
+            </Link>
+          </Box>
+        </>
+      )}
     </Paper>
   );
 }

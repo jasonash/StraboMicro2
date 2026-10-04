@@ -250,3 +250,16 @@ export function restoreFailureText(reason: string): string {
       return 'It could not be restored.';
   }
 }
+
+/**
+ * The website history page of a synced project (17ae): on the server the
+ * copy is bound to, where its project number means something. The website
+ * asks for a login when needed and comes back to the page. Null without a
+ * server or project number.
+ */
+export function historyPageUrl(server: string | null, pid: number | string | null): string | null {
+  const base = String(server ?? '').trim().replace(/\/+$/, '');
+  const n = pid === null || pid === '' ? NaN : Number(pid);
+  if (!base || !Number.isInteger(n) || n <= 0) return null;
+  return `${base}/micro_history?project_id=${n}`;
+}

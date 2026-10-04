@@ -5,7 +5,7 @@
  *   npm run test:activity-feed
  */
 
-import { groupActivity, lineText, whenText, canRestore, restoreFailureText, type ActivityLookup } from '@/utils/activityFeed';
+import { groupActivity, lineText, whenText, canRestore, restoreFailureText, historyPageUrl, type ActivityLookup } from '@/utils/activityFeed';
 
 let failures = 0;
 let passes = 0;
@@ -136,6 +136,17 @@ check('yesterday', whenText(new Date(T0 - 26 * 3_600_000).toISOString(), now).st
   whenText(new Date(T0 - 26 * 3_600_000).toISOString(), now).includes(','), whenText(new Date(T0 - 26 * 3_600_000).toISOString(), now));
 check('older dates have a day', /\d/.test(whenText(new Date(T0 - 9 * 86_400_000).toISOString(), now)) &&
   whenText(new Date(T0 - 9 * 86_400_000).toISOString(), now).includes(','));
+
+// Website history page link (17ae)
+check('history page url', historyPageUrl('https://strabospot.org', 812) === 'https://strabospot.org/micro_history?project_id=812',
+  historyPageUrl('https://strabospot.org', 812));
+check('history page url: trailing slashes trimmed', historyPageUrl(' http://localhost:8080// ', 5) === 'http://localhost:8080/micro_history?project_id=5',
+  historyPageUrl(' http://localhost:8080// ', 5));
+check('history page url: none without a server or project number',
+  historyPageUrl(null, 812) === null && historyPageUrl('', 812) === null && historyPageUrl('https://strabospot.org', null) === null &&
+  historyPageUrl('https://strabospot.org', 0) === null && historyPageUrl('https://strabospot.org', 1.5) === null &&
+  historyPageUrl('https://strabospot.org', '') === null && historyPageUrl('https://strabospot.org', 'abc') === null);
+check('history page url: a project number kept as text', historyPageUrl('https://strabospot.org', '812') === 'https://strabospot.org/micro_history?project_id=812');
 
 console.log(failures ? `\n${failures} FAILED (${passes} passed)` : `\nALL PASSED (${passes} checks)`);
 process.exit(failures ? 1 : 0);
