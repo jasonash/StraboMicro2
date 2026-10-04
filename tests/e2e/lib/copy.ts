@@ -41,6 +41,8 @@ export class Copy {
   readonly consoleErrors: string[] = [];
   /** Every console line of the page, oldest first (the last 5000) */
   readonly consoleLines: string[] = [];
+  /** Messages of browser alert() / confirm() the page showed (accepted), oldest first */
+  readonly alerts: string[] = [];
 
   constructor(
     readonly label: string,
@@ -207,6 +209,10 @@ export async function launchCopy(label: string, account: Account, slot: number, 
     if (copy.consoleLines.length > 5000) copy.consoleLines.shift();
   });
   page.on('pageerror', (err) => copy.consoleErrors.push(`pageerror: ${err.message}`));
+  page.on('dialog', (d) => {
+    copy.alerts.push(d.message());
+    void d.accept().catch(() => undefined);
+  });
   return copy;
 }
 

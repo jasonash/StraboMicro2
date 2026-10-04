@@ -53,6 +53,11 @@ export async function acceptInvitationFromChip(copy: Copy, projectName: string):
   await expect(chip).toBeVisible({ timeout: 30_000 });
   await copy.caption('sees the invitation in the header');
   await chip.click();
+  await acceptInDialog(copy, projectName);
+}
+
+/** The invitation dialog (opened at login, or from the chip): Accept, then Open */
+export async function acceptInDialog(copy: Copy, projectName: string): Promise<void> {
   const dialog = copy.page.getByRole('dialog', { name: /You have (an invitation|invitations)/ });
   const row = dialog.getByRole('listitem').filter({ hasText: projectName });
   await row.getByRole('button', { name: 'Accept' }).click();
@@ -267,4 +272,41 @@ export async function releaseDownloads(copy: Copy): Promise<void> {
     g.__e2eHeld = undefined;
     if (g.__e2eHoldFetch) g.fetch = g.__e2eHoldFetch;
   });
+}
+
+/** Add a polygon spot the way the drawing tools do (store action addSpot); returns its id */
+export async function addSpot(copy: Copy, micrographId: string, name: string): Promise<string> {
+  await copy.caption(`adds spot '${name}'`);
+  const id = crypto.randomUUID();
+  const now = new Date().toISOString();
+  const spot = {
+    id, name, labelColor: '0xffffffff', showLabel: true, color: '0x00ff00ff', opacity: 50, date: now, time: now, notes: '',
+    modifiedTimestamp: Date.now(), geometryType: 'polygon', points: [{ X: 200, Y: 200 }, { X: 400, Y: 180 }, { X: 330, Y: 380 }],
+    associatedFiles: [], links: [], tags: [],
+  };
+  await copy.state(new Function('e', `e.app.getState().addSpot(${JSON.stringify(micrographId)}, ${JSON.stringify(spot)})`) as never);
+  return id;
+}
+
+/** Rename the project the way the Edit Project dialog saves it */
+export async function renameProject(copy: Copy, name: string): Promise<void> {
+  await copy.caption(`renames the project to '${name}'`);
+  await copy.state(new Function('e', `e.app.setState((s) => ({ project: s.project ? { ...s.project, name: ${JSON.stringify(name)} } : s.project }))`) as never);
+}
+
+/** The newest alert() since `from`, waiting for one to appear */
+export async function nextAlert(copy: Copy, from: number): Promise<string> {
+  await expect.poll(() => copy.alerts.length, { timeout: 15_000 }).toBeGreaterThan(from);
+  return copy.alerts[copy.alerts.length - 1];
+}
+
+/** Is the tree's 'Add New Reference Micrograph' item enabled on this sample */
+export async function canAddMicrograph(copy: Copy, sampleName: string): Promise<boolean> {
+  await treeAddButton(copy, sampleName).click();
+  const item = copy.page.getByRole('menuitem', { name: 'Add New Reference Micrograph' });
+  await expect(item).toBeVisible();
+  const enabled = !(await item.getAttribute('aria-disabled'));
+  await copy.page.keyboard.press('Escape');
+  await expect(item).toBeHidden();
+  return enabled;
 }

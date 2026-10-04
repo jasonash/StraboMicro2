@@ -36,6 +36,7 @@ export const test = base.extend<Fixtures>({
         const shot = await copy.page.screenshot().catch(() => null);
         if (shot) await testInfo.attach(`${copy.label} screen`, { body: shot, contentType: 'image/png' });
         if (fs.existsSync(copy.logFile)) await testInfo.attach(`${copy.label} main.log`, { path: copy.logFile, contentType: 'text/plain' });
+        if (copy.alerts.length) await testInfo.attach(`${copy.label} alerts`, { body: copy.alerts.join('\n'), contentType: 'text/plain' });
         if (copy.consoleErrors.length) await testInfo.attach(`${copy.label} console errors`, { body: copy.consoleErrors.join('\n'), contentType: 'text/plain' });
         const unanswered = await copy.unansweredDialogs().catch(() => []);
         if (unanswered.length) await testInfo.attach(`${copy.label} unanswered dialogs`, { body: unanswered.join('\n'), contentType: 'text/plain' });
