@@ -681,7 +681,7 @@ class ProjectSync {
       if (r?.ok) useAuthStore.getState().setOffline(false);
       else if (r?.kind === 'offline') useAuthStore.getState().setOffline(true);
       else if (r?.kind === 'access_removed') {
-        this.failed(r);
+        void this.removedOnPoll(r);
         return;
       }
       // My role follows the server (the owner may have changed it, 17h)
@@ -698,6 +698,38 @@ class ProjectSync {
       }
     }
     this.schedulePoll();
+  }
+
+  /**
+   * A poll learned I was removed (17k) before any push did: send what this
+   * copy has not synced first, so the server parks it for the owner's
+   * review, then stop. Otherwise the copy turned separate with that work
+   * never sent (found by the e2e tests: the poll after coming back online
+   * beat the push). Leaving pushed before it left, and a deleted project
+   * parks nothing, so those stop right away.
+   */
+  private async removedOnPoll(r: Failure): Promise<void> {
+    const api = window.api;
+    if (!api || r.removal?.left || r.removal?.deleted) {
+      this.failed(r);
+      return;
+    }
+    // A cycle already under way meets the removal itself
+    while (this.running && !this.stopped) await new Promise((resolve) => setTimeout(resolve, 200));
+    if (this.stopped) return;
+    this.clearTimers();
+    this.running = true;
+    let pushed: SyncPushResult | null = null;
+    try {
+      await this.saveIfNeeded(api);
+      pushed = await api.sync.push(this.projectId, getRestServerUrl());
+    } catch {
+      pushed = null;
+    } finally {
+      this.running = false;
+    }
+    if (this.stopped) return;
+    this.failed(pushed && !pushed.ok && pushed.kind === 'access_removed' ? pushed : r);
   }
 
   /** The owner's list of parked pushes, after the count changed (17aa). */
