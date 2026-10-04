@@ -236,3 +236,35 @@ export function micrograph(copy: Copy, micrographId: string): Promise<{ name: st
     return null;
   `) as (e: NonNullable<Window['__e2e']>) => { name: string; imagePath: string | null } | null);
 }
+
+/**
+ * Hold this copy's file downloads (originals, thumbnails, attachments) until
+ * releaseDownloads: a slow connection, so the test can act while they are
+ * on the way. Other requests go through.
+ */
+export async function holdDownloads(copy: Copy): Promise<void> {
+  await copy.caption('has a slow connection (downloads held)');
+  await copy.app.evaluate(() => {
+    const g = globalThis as unknown as { __e2eHeld?: { release: () => void; gate: Promise<void> }; __e2eHoldFetch?: typeof fetch; fetch: typeof fetch };
+    let release = () => {};
+    const gate = new Promise<void>((r) => { release = r; });
+    g.__e2eHeld = { release, gate };
+    const real = g.fetch;
+    g.__e2eHoldFetch = real;
+    g.fetch = (async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      if (/\/blobs\//.test(url) && g.__e2eHeld) await g.__e2eHeld.gate;
+      return real(input, init);
+    }) as typeof fetch;
+  });
+}
+
+export async function releaseDownloads(copy: Copy): Promise<void> {
+  await copy.caption('downloads continue');
+  await copy.app.evaluate(() => {
+    const g = globalThis as unknown as { __e2eHeld?: { release: () => void }; __e2eHoldFetch?: typeof fetch; fetch: typeof fetch };
+    g.__e2eHeld?.release();
+    g.__e2eHeld = undefined;
+    if (g.__e2eHoldFetch) g.fetch = g.__e2eHoldFetch;
+  });
+}

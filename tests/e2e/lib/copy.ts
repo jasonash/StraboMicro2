@@ -39,6 +39,8 @@ export type DialogAnswer =
 export class Copy {
   /** console.error lines of the page, oldest first */
   readonly consoleErrors: string[] = [];
+  /** Every console line of the page, oldest first (the last 5000) */
+  readonly consoleLines: string[] = [];
 
   constructor(
     readonly label: string,
@@ -199,7 +201,10 @@ export async function launchCopy(label: string, account: Account, slot: number, 
 
   const copy = new Copy(label, account, app, page, dir);
   page.on('console', (msg) => {
-    if (msg.type() === 'error') copy.consoleErrors.push(msg.text().slice(0, 1000));
+    const text = msg.text().slice(0, 1000);
+    if (msg.type() === 'error') copy.consoleErrors.push(text);
+    copy.consoleLines.push(text);
+    if (copy.consoleLines.length > 5000) copy.consoleLines.shift();
   });
   page.on('pageerror', (err) => copy.consoleErrors.push(`pageerror: ${err.message}`));
   return copy;
