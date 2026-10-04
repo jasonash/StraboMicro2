@@ -111,22 +111,26 @@ export async function setMode(copy: Copy, mode: 'Sync automatically' | 'Sync whe
 /**
  * Take this copy off the network (or back): its main process cannot reach
  * the server, the way a laptop without Wi-Fi cannot. The sync client reads
- * the global fetch on every call.
+ * the global fetch on every call. 'dropped': the connection breaks while a
+ * request is on its way (the server may have it), so an interrupted push
+ * is kept and sent again first.
  */
-export async function setOffline(copy: Copy, offline: boolean): Promise<void> {
-  await copy.caption(offline ? 'goes offline' : 'comes back online');
-  await copy.app.evaluate((_electron, [offline, server]) => {
+export async function setOffline(copy: Copy, offline: boolean, how: 'no-network' | 'dropped' = 'no-network'): Promise<void> {
+  await copy.caption(offline ? (how === 'dropped' ? 'loses the connection mid-request' : 'goes offline') : 'comes back online');
+  const code = how === 'dropped' ? 'ECONNRESET' : 'ECONNREFUSED';
+  await copy.app.evaluate((_electron, [offline, server, code]) => {
     const g = globalThis as unknown as { __e2eFetch?: typeof fetch; fetch: typeof fetch };
     if (!g.__e2eFetch) g.__e2eFetch = g.fetch;
     const real = g.__e2eFetch;
     g.fetch = offline
       ? (async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
         const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
-        if (url.startsWith(server)) throw new TypeError('fetch failed');
+        // As Node's fetch fails with no network: before anything is sent
+        if (url.startsWith(server)) throw Object.assign(new TypeError('fetch failed'), { cause: Object.assign(new Error(code), { code }) });
         return real(input, init);
       }) as typeof fetch
       : real;
-  }, [offline, SERVER_URL] as const);
+  }, [offline, SERVER_URL, code] as const);
 }
 
 /** The notice 'N sync changes need your decision' > Review: the decisions dialog */

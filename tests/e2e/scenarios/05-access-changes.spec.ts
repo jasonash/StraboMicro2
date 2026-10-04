@@ -44,10 +44,6 @@ test('a member leaves and removes the copy from their computer', async ({ launch
 });
 
 test('a removed member\'s unsynced work, a new micrograph included, goes to the owner for review', async ({ launch, project, runDir }) => {
-  // KNOWN BUG (found 2026-10-04): an interrupted push (outgoingPush) is
-  // resent first, the server parks it alone (a removed member's first push)
-  // and the rest (the new micrograph) is never sent. Remove when fixed.
-  test.fail();
   const p = await project('E2E Removed With Work');
   const spot = p.spots[1];
   const img = await writeImage(`${runDir}/images/unsent.jpg`);
@@ -70,9 +66,7 @@ test('a removed member\'s unsynced work, a new micrograph included, goes to the 
   expect((await micrograph(ben, m))?.name).toBe('Unsent micrograph');
 
   const review = await openParkedReview(ana);
-  const micrographUnit = review.locator('div').filter({ hasText: /^Added micrograph/ }).filter({ hasText: 'did not reach StraboSpot' }).last();
   await expect(review.getByText(`A new micrograph's image did not reach StraboSpot with it. Ask ${ACCOUNTS.ben.name} to send it as a .smz file.`)).toBeVisible();
-  void micrographUnit;
   await ana.caption('accepts what can be accepted');
   await review.getByRole('button', { name: 'Accept all' }).click();
   await expect.poll(() => spotField(ana, spot.id, 'notes'), { timeout: 30_000 }).toBe('Undulose extinction');
@@ -85,19 +79,15 @@ test('a removed member\'s unsynced work, a new micrograph included, goes to the 
   await waitSettled(ana);
 });
 
-for (const ownerChoice of ['Accept', 'Discard'] as const) {
-  test(`an Editor turned Viewer with unsynced work: parked, the owner chooses ${ownerChoice}, both copies settle`, async ({ launch, project }) => {
-    // KNOWN BUG (found 2026-10-04): the resent interrupted push is parked,
-    // its results are dropped, and the same change is parked again by the
-    // push that follows (the owner sees it twice). Remove when fixed.
-    test.fail();
-    const p = await project(`E2E Downgrade ${ownerChoice}`);
+for (const [ownerChoice, how] of [['Accept', 'no-network'], ['Discard', 'no-network'], ['Accept', 'dropped']] as const) {
+  test(`an Editor turned Viewer with unsynced work (${how}): parked once, the owner chooses ${ownerChoice}, both copies settle`, async ({ launch, project }) => {
+    const p = await project(`E2E Downgrade ${ownerChoice} ${how}`);
     const spot = p.spots[0];
     const ana = await launch('Ana', ACCOUNTS.ana);
     const ben = await launch('Ben', ACCOUNTS.ben);
     await share(ana, ben, p.smzPath, p.id, p.name);
 
-    await setOffline(ben, true);
+    await setOffline(ben, true, how);
     await editSpot(ben, spot.id, { name: 'Garnet (Ben offline)' });
     await changeRole(ana, ben, 'Viewer');
     await setOffline(ben, false);
@@ -111,6 +101,9 @@ for (const ownerChoice of ['Accept', 'Discard'] as const) {
 
     const review = await openParkedReview(ana);
     await expect(review.getByText('Garnet (Ben offline)').first()).toBeVisible();
+    // Once, even when the interrupted push was sent again first
+    await expect(review.getByRole('button', { name: `${ownerChoice} all` })).toHaveCount(1);
+    expect(await ana.state((e) => e.sync.getState().parkedCount)).toBe(1);
     await review.getByRole('button', { name: `${ownerChoice} all` }).click();
     await expect(review.getByText('Nothing is waiting for your review.')).toBeVisible({ timeout: 30_000 });
     await review.getByRole('button', { name: 'Close' }).click();
@@ -118,8 +111,17 @@ for (const ownerChoice of ['Accept', 'Discard'] as const) {
     const expected = ownerChoice === 'Accept' ? 'Garnet (Ben offline)' : 'Garnet 1';
     await expect.poll(() => spotField(ana, spot.id, 'name'), { timeout: 30_000 }).toBe(expected);
     await waitSettled(ana);
-    // Ben's copy settles: no turned-down item left (60b7d91), the owner's outcome in place
+    // Ben's copy settles. Accepted: the turned-down row clears once his copy
+    // matches (60b7d91). Discarded: the row stays until he discards it too (17aa)
     await syncNow(ben);
+    if (ownerChoice === 'Discard') {
+      await ben.page.waitForTimeout(2_000);
+      expect(await ben.state((e) => e.sync.getState().refused)).toBe(1);
+      const own = await reviewDecisions(ben);
+      await ben.caption('Discard my change');
+      await own.getByRole('button', { name: 'Discard my change' }).click();
+      if (await own.isVisible()) await own.getByRole('button', { name: 'Close' }).click();
+    }
     await expect.poll(() => ben.state((e) => e.sync.getState().refused), { timeout: 30_000 }).toBe(0);
     await expect.poll(() => spotField(ben, spot.id, 'name'), { timeout: 30_000 }).toBe(expected);
     await waitSettled(ben);
