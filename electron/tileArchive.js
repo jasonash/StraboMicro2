@@ -58,6 +58,20 @@ async function listTileFiles(dir, keep) {
 }
 
 /**
+ * Tile metadata as it goes into an archive: without the fields that differ
+ * from one computer to the next (where the original is on this disk, when
+ * the tiles were made), so the same image gives the same archive and the
+ * same SHA-256 everywhere (spec v3 16v; a member's copy no longer uploads
+ * its own tiles for every micrograph). smzImport sets originalPath again.
+ * @param {object} raw
+ * @returns {object}
+ */
+function portableMetadata(raw) {
+  const { originalPath: _path, createdAt: _created, ...rest } = raw;
+  return rest;
+}
+
+/**
  * Entries of a micrograph's original (untransformed) pyramid
  * @param {string} sourceImagePath - The micrograph's original image
  * @param {string} label - Name for log messages
@@ -70,7 +84,8 @@ async function collectTileEntries(sourceImagePath, label) {
 
   const metadataPath = path.join(cacheDir, 'metadata.json');
   if (fs.existsSync(metadataPath)) {
-    entries.push({ name: 'metadata.json', filePath: metadataPath });
+    const raw = JSON.parse(await fs.promises.readFile(metadataPath, 'utf-8'));
+    entries.push({ name: 'metadata.json', data: JSON.stringify(portableMetadata(raw), null, 2) });
   } else {
     log.warn(`[TileArchive] Tile metadata not found for ${label}`);
   }
@@ -110,7 +125,7 @@ async function collectAffineTileEntries(affineHash, label) {
   if (fs.existsSync(metadataPath)) {
     const raw = JSON.parse(await fs.promises.readFile(metadataPath, 'utf-8'));
     const normalized = {
-      ...raw,
+      ...portableMetadata(raw),
       width: raw.transformedWidth ?? raw.width,
       height: raw.transformedHeight ?? raw.height,
     };
@@ -222,6 +237,7 @@ async function writeTileZip(entries, outputPath) {
 }
 
 module.exports = {
+  portableMetadata,
   collectTileEntries,
   collectAffineTileEntries,
   appendTileEntries,

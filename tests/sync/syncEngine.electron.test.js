@@ -113,6 +113,18 @@ app.whenReady().then(async () => {
     const on = await turnSyncOn({ projectId: pid, restServer: SERVER, user: { pkey: who.pkey, email: who.email }, client, onProgress: (x) => { progress.push(x.phase); if (x.phase === 'images') imageBytes.push(x); } });
     check('turn sync on', on.status === 'synced' && on.pid > 0, JSON.stringify(on));
     const accountFolder = projectFolders.getAccountCopyPath(pid, SERVER, who.pkey);
+
+    // Tile archives carry no path or time of this computer (16v): the same
+    // image gives the same archive, wherever it was tiled
+    {
+      const tileArchive = require(`${E}/tileArchive`);
+      const firstImage = fs.readdirSync(path.join(accountFolder, 'images'))[0];
+      const entries = await tileArchive.collectTileEntries(path.join(accountFolder, 'images', firstImage), 'test');
+      const meta = entries.find((e) => e.name === 'metadata.json');
+      const parsed = meta && meta.data ? JSON.parse(meta.data) : null;
+      check('tile archive metadata has no originalPath or createdAt', parsed !== null && !('originalPath' in parsed) &&
+        !('createdAt' in parsed) && parsed.width > 0, JSON.stringify(meta).slice(0, 400));
+    }
     check('folder moved into the account folder', on.folder === accountFolder && !fs.existsSync(local) && fs.existsSync(path.join(accountFolder, 'project.json')));
     const state = await sidecar.loadState(accountFolder);
     check('sidecar written: binding, ready, base, refs', state && state.binding.pid === on.pid && state.phase === 'ready' &&
@@ -169,8 +181,13 @@ app.whenReady().then(async () => {
       p.datasets[0].samples[0].micrographs.push(m);
     });
     const added = await pushProject({ folder: accountFolder, client });
-    check('new micrograph pushed', added.pushed >= 3 && added.filesUploaded >= 2 && added.problems.length === 0, JSON.stringify(added));
-    compare('after new micrograph', on.pid);
+    // The image is new; its tiles equal the source micrograph's (same pixels)
+    // and tile archives are the same everywhere (16v), so the server already
+    // has that blob: the ref is set without a second upload
+    check('new micrograph pushed', added.pushed >= 3 && added.filesUploaded >= 1 && added.problems.length === 0, JSON.stringify(added));
+    const afterNew = compare('after new micrograph', on.pid);
+    check('new micrograph has image and tiles refs', Boolean(afterNew && (afterNew.refs.image || {})[`micrograph:${newId}`] &&
+      (afterNew.refs.tiles || {})[`micrograph:${newId}`]), JSON.stringify(afterNew && afterNew.refs.tiles));
 
     // Delete a micrograph that has nested children: one delete, the server cascades
     let deletedIds = [];

@@ -261,6 +261,15 @@ async function pushProject({ folder, client, onProgress = () => {} }) {
         const source = f.tiles === 'affine' ? `${imageSha}|${f.affineTileHash}` : imageSha;
         const known = state.tileSources[rk];
         if (known && known.source === source && state.refs[rk] === known.sha256) continue;
+        // Tiles this copy did not make (a download, or someone else's
+        // upload) of the same original the server has: the server's tiles
+        // are those, nothing to make or send (16v). Tiles go up again only
+        // when this copy changes the original (rotate, flip) or placement.
+        if (!known && state.refs[rk] && state.refs[refKey(f.type, f.id, 'image')] === imageSha) {
+          state.tileSources[rk] = { source, sha256: state.refs[rk] };
+          await sidecar.saveState(folder, state);
+          continue;
+        }
         const imagePath = path.join(folder, 'images', f.id);
         onProgress({ phase: 'tiles', item: f.id });
         await tileGenerator.processImageComplete(imagePath);
@@ -291,6 +300,11 @@ async function pushProject({ folder, client, onProgress = () => {} }) {
         continue;
       }
       state.refs[rk] = sha256;
+      if (f.role === 'image') {
+        // This copy sent a new original: its tiles are owed, never taken
+        // from the server (whose tiles are of the old original)
+        for (const role of ['tiles', 'tiles_affine']) state.tileSources[refKey(f.type, f.id, role)] = { source: null, sha256: null };
+      }
       await sidecar.saveState(folder, state);
     } finally {
       if (f.tiles && filePath) await fs.promises.rm(filePath, { force: true });

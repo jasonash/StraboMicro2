@@ -254,6 +254,43 @@ app.whenReady().then(async () => {
     const cpull = await svc.pull(pid, SERVER, () => {});
     check('clone pull finds nothing new', cpull.ok && cpull.changes.length === 0 && cpull.summary.received === 0, JSON.stringify(cpull.summary));
     await svc.commitPull(pid, cpull.pullId);
+    // The clone's first push makes no tiles and sends no files: the server's
+    // tiles are of the same originals (16v; before, every member made and
+    // uploaded its own tile archives, which differed by path and time)
+    // (the fake other machine above sent NEW_M's original without tiles:
+    // those the clone makes and sends, as any copy would)
+    const before = (await sidecar.loadState(cloneFolder)).refs;
+    const onDisk = (rk) => fs.existsSync(path.join(cloneFolder, 'images', rk.slice(rk.indexOf(':') + 1, rk.indexOf('|'))));
+    const hadTiles = Object.keys(before).filter((rk) => rk.endsWith('|tiles') && onDisk(rk));
+    const lacked = Object.keys(before).filter((rk) => rk.endsWith('|image') && !before[rk.replace('|image', '|tiles')]);
+    const tiled = [];
+    const cpush = await svc.push(pid, SERVER, (x) => { if (x.phase === 'tiles') tiled.push(x.item); });
+    const cstate = await sidecar.loadState(cloneFolder);
+    check('clone push keeps the server\'s tiles, makes only the missing ones', cpush.ok && hadTiles.length > 0 &&
+      hadTiles.every((rk) => cstate.refs[rk] === before[rk] && cstate.tileSources[rk] && cstate.tileSources[rk].sha256 === before[rk]) &&
+      cpush.filesUploaded === lacked.length && !hadTiles.some((rk) => tiled.includes(rk.slice(rk.indexOf(':') + 1, rk.indexOf('|')))),
+    JSON.stringify({ cpush, hadTiles, lacked, tiled, tileSources: cstate.tileSources }).slice(0, 1500));
+    // The clone replaces an original (a rotate does): its tiles are made
+    // and sent, never taken from the server (whose tiles are of the old one)
+    {
+      const [first, other] = hadTiles.map((rk) => rk.slice(rk.indexOf(':') + 1, rk.indexOf('|')));
+      const otherImage = other ? path.join(cloneFolder, 'images', other) : lacked.length
+        ? path.join(cloneFolder, 'images', lacked[0].slice(lacked[0].indexOf(':') + 1, lacked[0].indexOf('|'))) : null;
+      fs.copyFileSync(otherImage, path.join(cloneFolder, 'images', first));
+      const rk = `micrograph:${first}|tiles`;
+      // As right after a download, before this copy's first push: it has
+      // not looked at the server's tiles yet (no tileSources entry)
+      const fresh = await sidecar.loadState(cloneFolder);
+      delete fresh.tileSources[rk];
+      await sidecar.saveState(cloneFolder, fresh);
+      const oldTiles = fresh.refs[rk];
+      const retiled = [];
+      const rpush = await svc.push(pid, SERVER, (x) => { if (x.phase === 'tiles') retiled.push(x.item); });
+      const rstate = await sidecar.loadState(cloneFolder);
+      check('a replaced original gets new tiles from this copy', rpush.ok && retiled.includes(first) &&
+        rstate.refs[rk] && rstate.refs[rk] !== oldTiles && rstate.tileSources[rk].sha256 === rstate.refs[rk],
+      JSON.stringify({ rpush, retiled, oldTiles, now: rstate.refs[rk] }));
+    }
     const again2 = await svc.clone(serverPid, SERVER, 'manual', () => {});
     check('a second clone for the same account is refused', !again2.ok, JSON.stringify(again2));
 
