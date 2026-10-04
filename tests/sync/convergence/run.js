@@ -66,6 +66,19 @@ function stable(v) {
   return JSON.stringify(v ?? null);
 }
 
+/** Did the server ever record this value for the field (micro_changes)? */
+function reachedServer(pid, key, field, value) {
+  const sep = key.indexOf(':');
+  const type = key.slice(0, sep);
+  const id = key.slice(sep + 1);
+  if (!/^[a-z_]+$/.test(type) || !/^[0-9a-f-]{36}$/i.test(id) || !/^\w+$/.test(field)) return false;
+  const v = String(value).replace(/'/g, "''");
+  const out = execFileSync('docker', ['exec', 'strabo-postgres', 'psql', '-U', 'strabodbuser', '-d', 'strabospot', '-tAc',
+    `SELECT count(*) FROM strabomicro.micro_changes WHERE project_id = ${Number(pid)} AND entity_type = '${type}' AND entity_id = '${id}'
+     AND after->'body'->>'${field}' = '${v}'`]).toString().trim();
+  return Number(out) > 0;
+}
+
 /** Which parts of two entity states differ, with both values */
 function whatDiffers(x, y) {
   if (!x || !y) return x ? 'missing on this copy' : 'only on this copy';
@@ -102,9 +115,12 @@ class Agent {
       stdio: ['pipe', 'pipe', 'pipe'],
     });
     this.net = 'online';
+    if (!this.logFile) this.logFile = fs.createWriteStream(`${this.dir}.log`, { flags: 'a' });
+    this.logFile.write(`=== started\n`);
     const keep = (line) => {
       this.tail.push(line);
       if (this.tail.length > 300) this.tail.shift();
+      this.logFile.write(`${line}\n`);
     };
     const ready = new Promise((resolve, reject) => {
       readline.createInterface({ input: this.proc.stdout }).on('line', (line) => {
@@ -139,6 +155,7 @@ class Agent {
         resolve: (v) => { clearTimeout(timer); resolve(v); },
         reject: (e) => { clearTimeout(timer); reject(e); },
       });
+      this.logFile?.write(`>>> ${Agent.step ?? ''} ${cmd} ${JSON.stringify(args).slice(0, 200)}\n`);
       this.proc.stdin.write(`${JSON.stringify({ id, cmd, args })}\n`);
     });
   }
@@ -190,11 +207,15 @@ async function main() {
   const writes = new Map();
   const created = new Set();
   const deletedBy = new Map();
+  /** key => steps it was deleted at (with everything beneath it) */
+  const deletedAt = new Map();
+  let serverPidOf = 0;
 
   try {
     // Setup: Ana's project, Ben and Cleo invited as Editors, Ana's laptop downloads it
     const straboId = crypto.randomUUID();
     const { pid } = await ana.call('create', { straboId, name: `Convergence ${SEED}` });
+    serverPidOf = pid;
     for (const a of agents) a.projectId = straboId;
     for (const who of [ben, cleo]) {
       const inv = await ana.call('invite', { email: who.token.email, role: 'editor' });
@@ -218,6 +239,7 @@ async function main() {
 
     // ------------------------------------------------------------ the run
     for (let step = 1; step <= STEPS; step++) {
+      Agent.step = step;
       const roll = R();
       const a = pick(agents);
       if (roll < 0.5) {
@@ -229,7 +251,10 @@ async function main() {
           writes.get(k).push({ agent: a.name, value: w.value, step });
         }
         for (const k of e.created ?? []) created.add(k);
-        for (const k of e.deleted ?? []) deletedBy.set(k, a.name);
+        for (const k of e.deleted ?? []) {
+          deletedBy.set(k, a.name);
+          deletedAt.set(k, [...(deletedAt.get(k) ?? []), step]);
+        }
         log.push({ step, agent: a.name, edit: e.kind, writes: e.writes, created: e.created, deleted: e.deleted });
       } else if (roll < 0.74) {
         const r = await doSync(a, step);
@@ -242,7 +267,7 @@ async function main() {
       } else if (roll < 0.85) {
         const d = await a.call('decide', { seed: nextSeed() });
         countAnswers(d);
-        if (!d.ok) problems.push(`step ${step}: ${a.name} decide failed: ${JSON.stringify(d).slice(0, 500)}`);
+        if (!d.ok) problems.push(`step ${step}: ${a.name} decide failed: ${JSON.stringify((d.answers ?? []).filter((x) => !x.ok)).slice(0, 600)}`);
         log.push({ step, agent: a.name, decide: d.answers?.map((x) => x.decision) });
       } else if (roll < 0.94) {
         const mode = a.net === 'online' ? pick(['no-network', 'dropped', 'lost-reply']) : 'online';
@@ -268,6 +293,7 @@ async function main() {
       if (a.net !== 'online') await a.call('net', { mode: 'online' });
       a.net = 'online';
     }
+    Agent.step = 'settle';
     let settled = false;
     for (let round = 1; round <= 12 && !settled; round++) {
       let moved = 0;
@@ -276,7 +302,7 @@ async function main() {
         if (r.ok) moved += r.received;
         const d = await a.call('decide', { seed: nextSeed() });
         countAnswers(d);
-        if (!d.ok) problems.push(`settle ${round}: ${a.name} decide failed: ${JSON.stringify(d).slice(0, 500)}`);
+        if (!d.ok) problems.push(`settle ${round}: ${a.name} decide failed: ${JSON.stringify((d.answers ?? []).filter((x) => !x.ok)).slice(0, 600)}`);
         if ((d.answers ?? []).length > 0) {
           moved += d.answers.length;
           log.push({ step: `settle ${round}`, agent: a.name, decide: d.answers.map((x) => x.decision) });
@@ -313,11 +339,16 @@ async function main() {
       const e = final[key];
       if (!e || list[0].value === null) continue;
       const value = e.body[field] ?? null;
-      const allowed = new Set([start[key]?.body[field] ?? null, ...list.map((w) => w.value)]);
+      // A spot made during the run starts with empty notes (newSpot)
+      const allowed = new Set([start[key]?.body[field] ?? null, ...(created.has(key) ? [''] : []), ...list.map((w) => w.value)]);
       if (!allowed.has(value)) problems.push(`${key} ${field} = ${JSON.stringify(value)}: nobody wrote that (writes: ${JSON.stringify(list)})`);
       const writers = new Set(list.map((w) => w.agent));
       const last = list[list.length - 1];
-      if (writers.size === 1 && value !== last.value) {
+      // Deleted after the write (and brought back): a write that never reached
+      // StraboSpot went with the delete, which is how a delete works; one the
+      // server had must come back with a restore
+      const deletedLater = (deletedAt.get(key) ?? []).some((st) => st >= last.step) && !reachedServer(serverPidOf, key, field, last.value);
+      if (writers.size === 1 && value !== last.value && !deletedLater) {
         problems.push(`${key} ${field}: only ${last.agent} wrote it, last ${JSON.stringify(last.value)} (step ${last.step}), but it is ${JSON.stringify(value)}`);
       }
     }
@@ -355,7 +386,7 @@ async function main() {
   if (problems.length > 0) {
     console.log(`\nFAILED: ${problems.length} problem(s)`);
     for (const p of problems.slice(0, 40)) console.log(`  - ${p}`);
-    console.log(`\nSteps: ${path.join(tmp, 'steps.json')}; agent output alongside.`);
+    console.log(`\nSteps: ${path.join(tmp, 'steps.json')}; each computer's full output in <name>.log beside its folder.`);
     console.log(`Replay: SEED=${SEED} STEPS=${STEPS} npm run test:convergence`);
     process.exit(1);
   }

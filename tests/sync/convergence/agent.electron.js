@@ -298,7 +298,7 @@ app.whenReady().then(async () => {
           if (!child) continue;
           s.micrographs = s.micrographs.filter((m) => m.id !== child.id);
           for (const g of p.groups ?? []) g.micrographs = (g.micrographs ?? []).filter((x) => x !== child.id);
-          deleted.push(`micrograph:${child.id}`);
+          deleted.push(`micrograph:${child.id}`, ...(child.spots ?? []).map((sp) => `spot:${sp.id}`));
           await save(p);
           return { kind, writes, created, deleted };
         }
@@ -332,11 +332,13 @@ app.whenReady().then(async () => {
     return { ok: true, received: r.summary?.received ?? r.changes.length, applied: r.changes.length };
   }
 
-  /** Answer every waiting decision as the dialog would, choices from the seed */
+  /**
+   * Answer every waiting decision as the dialog would, choices from the
+   * seed: one answer at a time, the list read again after each (an answer
+   * can settle other rows, as the dialog shows)
+   */
   async function decide({ seed }) {
     const r = rng(seed);
-    const L = await svc.listDecisions(projectId);
-    if (!L.ok) return { ok: false, message: L.message };
     const answers = [];
     const one = async (decision) => {
       const d = await svc.decide(projectId, decision);
@@ -350,17 +352,28 @@ app.whenReady().then(async () => {
       if (!c.ok) return { ok: false, decision, message: c.message };
       return { ok: true, decision };
     };
-    for (const cf of L.conflicts) {
-      const choices = {};
-      for (const f of cf.fields) choices[f.id] = r() < 0.5 ? 'mine' : 'theirs';
-      answers.push(await one({ kind: 'conflict', key: cf.key, choices }));
+    for (let i = 0; i < 100; i++) {
+      const L = await svc.listDecisions(projectId);
+      if (!L.ok) return { ok: false, message: L.message, answers };
+      let decision = null;
+      if (L.conflicts.length > 0) {
+        const cf = L.conflicts[0];
+        const choices = {};
+        for (const f of cf.fields) choices[f.id] = r() < 0.5 ? 'mine' : 'theirs';
+        decision = { kind: 'conflict', key: cf.key, choices };
+      } else if (L.questions.length > 0) {
+        // They deleted what I changed: restore or delete; I deleted what they changed: keep deleted or bring back
+        const q = L.questions[0];
+        const fits = q.kind === 'theirs_deleted' ? ['restore', 'delete'] : ['keep_deleted', 'bring_back'];
+        decision = { kind: 'question', key: q.key, answer: r() < 0.5 ? fits[0] : fits[1] };
+      } else if (L.refused.length > 0) {
+        decision = { kind: 'refused', key: L.refused[0].key, answer: 'discard' };
+      }
+      if (!decision) break;
+      const a = await one(decision);
+      answers.push(a);
+      if (!a.ok) break;
     }
-    // They deleted what I changed: restore or delete; I deleted what they changed: keep deleted or bring back
-    for (const q of L.questions) {
-      const fits = q.kind === 'theirs_deleted' ? ['restore', 'delete'] : ['keep_deleted', 'bring_back'];
-      answers.push(await one({ kind: 'question', key: q.key, answer: r() < 0.5 ? fits[0] : fits[1] }));
-    }
-    for (const x of L.refused) answers.push(await one({ kind: 'refused', key: x.key, answer: 'discard' }));
     return { ok: answers.every((x) => x.ok), answers };
   }
 
