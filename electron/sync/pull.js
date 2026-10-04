@@ -82,10 +82,21 @@ async function preparePull({ folder, client, onProgress = () => {} }) {
   for (const e of entries) last.set(entityKey(e.type, e.id), e);
 
   // Restores this copy sent (Restore with my changes): the restored states
-  // are the server's starting point for my edits, so they join the base
-  // rather than being merged as their changes
+  // are the server's starting point for my edits. When the question kept
+  // what this copy knew before the delete (bases), the restored state is
+  // merged against that, so only fields I changed stay mine and the rest
+  // take the restored values (others' edits made before the delete). Older
+  // questions without bases: the restored state joins the base as it is.
   const restoring = new Set();
-  for (const r of state.restores || []) if (r.sent) for (const k of r.keys) restoring.add(k);
+  /** @type {Record<string, object>} */
+  const knownBefore = {};
+  for (const r of state.restores || []) {
+    if (!r.sent) continue;
+    for (const k of r.keys) {
+      restoring.add(k);
+      if (r.bases && r.bases[k]) knownBefore[k] = r.bases[k];
+    }
+  }
   /** @type {Record<string, object>} */
   const restoredBase = {};
   /** @type {Map<string, object>} */
@@ -94,10 +105,11 @@ async function preparePull({ folder, client, onProgress = () => {} }) {
     const key = entityKey(e.type, e.id);
     if (e.op === 'restore' && restoring.has(key)) {
       restoredBase[key] = { ...stateFromEntry(e), version: e.version };
-      restoreEntries.set(key, e);
+      if (!knownBefore[key]) restoreEntries.set(key, e);
     }
   }
   const base = { ...state.base, ...restoredBase };
+  for (const [key, b] of Object.entries(knownBefore)) if (restoredBase[key]) base[key] = b;
 
   const { project, pointCounts } = await readProjectFiles(folder);
   if (project.id !== state.binding.straboId) throw new Error('project.json does not belong to this sync binding');
@@ -138,6 +150,12 @@ async function preparePull({ folder, client, onProgress = () => {} }) {
     const fields = carryConflicts(conflicts[key] || [], fresh.get(key) || [], local, t);
     if (fields.length > 0) conflicts[key] = fields;
     else delete conflicts[key];
+  }
+  // They deleted what I changed: keep what this copy knew before the delete,
+  // so Restore with my changes can tell my edits from stale fields
+  for (const q of merged.questions) {
+    if (q.kind !== 'theirs_deleted') continue;
+    q.bases = Object.fromEntries(q.keys.filter((k) => base[k]).map((k) => [k, base[k]]));
   }
   const questionKeys = new Set(merged.questions.map((q) => q.key));
   const questions = [...(state.questions || []).filter((q) => !questionKeys.has(q.key)), ...merged.questions];

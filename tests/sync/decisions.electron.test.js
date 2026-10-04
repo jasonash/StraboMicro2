@@ -222,7 +222,14 @@ app.whenReady().then(async () => {
 
     // --- Their delete vs my edit: restore with my changes --------------------------------------
     await appEdit((p) => { micro(p, M2).spots.find((s) => s.id === S1).name = 'edited by me'; });
-    await otherPush([{ op: 'delete', type: 'micrograph', id: M2, baseVersion: await v('micrograph', M2) }]);
+    // Before deleting, they change fields I did not touch (this copy never pulls those versions)
+    const before = await otherPush([
+      { op: 'update', type: 'spot', id: S1, baseVersion: await v('spot', S1), fields: { notes: 'their notes before the delete' } },
+      { op: 'update', type: 'micrograph', id: M2, baseVersion: await v('micrograph', M2), fields: { notes: 'their micrograph notes' } },
+    ]);
+    check('other machine edits before deleting', before.every((x) => x.status === 'accepted'), JSON.stringify(before));
+    const m2v = (await onServer())[KM2].version;
+    await otherPush([{ op: 'delete', type: 'micrograph', id: M2, baseVersion: m2v }]);
     await appPull();
     L = await svc.listDecisions(pid);
     const q0 = L.ok && L.questions[0];
@@ -246,12 +253,20 @@ app.whenReady().then(async () => {
     check('their edit after the restore applies without a conflict', (await status()).conflicts === 0 &&
       micro(disk(), M2).spots.find((s) => s.id === S2).name === 'theirs after restore', JSON.stringify(pl.summary));
     const stR2 = await sidecar.loadState(folder);
-    check('the pull takes the restored states into the base', pl.changes.length === 1 &&
+    // Restore with my changes keeps my edits, not my stale copy: fields I did
+    // not change take the restored values (found by the convergence test)
+    const restoredS1 = micro(disk(), M2).spots.find((x) => x.id === S1);
+    check('restored: my edit stays, their earlier edits are not undone', restoredS1.name === 'edited by me' &&
+      restoredS1.notes === 'their notes before the delete' && micro(disk(), M2).notes === 'their micrograph notes',
+    JSON.stringify({ name: restoredS1.name, notes: restoredS1.notes, m2: micro(disk(), M2).notes }));
+    check('the pull takes the restored states into the base', pl.changes.length >= 1 &&
       stR2.restores.length === 0 && stR2.base[KM2] && stR2.base[`spot:${S1}`] && stR2.questions.length === 0, JSON.stringify(pl.summary));
     const pr2 = await push();
     const s2 = await onServer();
     check('then my edit pushes on the restored spot', pr2.ok && pr2.pushed === 1 && s2[KM2] && s2[`spot:${S1}`].body.name === 'edited by me',
       JSON.stringify(pr2));
+    check('the server keeps their earlier edits after my restore', s2[`spot:${S1}`].body.notes === 'their notes before the delete' &&
+      s2[KM2].body.notes === 'their micrograph notes', JSON.stringify({ s1: s2[`spot:${S1}`].body.notes, m2: s2[KM2].body.notes }));
     check('nothing waiting after the restore', (await status()).pending === 0 && (await status()).questions === 0);
 
     // --- My delete vs their edit: bring back with their changes --------------------------------

@@ -38,8 +38,9 @@ function syncDir(projectFolder) {
  * @property {{ pushId: string, changes: object[] } | null} outgoingPush
  * @property {object[]} refused - changes the server did not accept: { key, change, result, local }
  *   (local = the entity as it was when turned down, null if absent; held until it changes)
- * @property {object[]} [restores] - Restore with my changes: { key, keys, sent } (restore op
- *   for key, keys held until a pull brings the restored states into the base)
+ * @property {object[]} [restores] - Restore with my changes: { key, keys, sent, bases } (restore op
+ *   for key, keys held until a pull brings the restored states into the base; bases = what this
+ *   copy knew before the delete, from the question, so the pull merges against it)
  * @property {Record<string, object[]>} [conflicts] - 'type:id' => unresolved field conflicts (pull)
  * @property {object[]} [questions] - delete-vs-edit questions waiting for the user (pull)
  * @property {Record<string, string>} [downloads] - 'type:id|role' => sha256 to fetch (pull)

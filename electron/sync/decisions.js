@@ -401,7 +401,7 @@ async function commitDecision(folder, pending) {
     const q = (state.questions || []).find((x) => x.key === key);
     state.questions = (state.questions || []).filter((x) => x.key !== key);
     if (q && decision.answer === 'restore') {
-      state.restores = [...(state.restores || []).filter((r) => r.key !== key), { key, keys: q.keys, sent: false }];
+      state.restores = [...(state.restores || []).filter((r) => r.key !== key), { key, keys: q.keys, sent: false, bases: q.bases || null }];
     }
   } else if (decision.kind === 'refused') {
     state.refused = (state.refused || []).filter((p) => p && (p.key || `${p.change.type}:${p.change.id}`) !== key);
