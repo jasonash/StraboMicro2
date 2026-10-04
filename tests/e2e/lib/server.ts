@@ -36,3 +36,11 @@ export function serverField(projectId: string, type: string, entityId: string, f
     WHERE project_id = ${pid} AND entity_type = '${type}' AND entity_id = '${entityId}' ORDER BY seq DESC LIMIT 1`);
   return out || null;
 }
+
+/** How many changes the server recorded for an entity with this op */
+export function changeCount(projectId: string, type: string, entityId: string, op: string): number {
+  const pid = serverPid(projectId);
+  if (pid === null || !/^[a-z_]+$/.test(type + op) || !/^[0-9a-f-]{36}$/i.test(entityId)) return 0;
+  return Number(sql(`SELECT count(*) FROM strabomicro.micro_changes
+    WHERE project_id = ${pid} AND entity_type = '${type}' AND entity_id = '${entityId}' AND op = '${op}'`));
+}

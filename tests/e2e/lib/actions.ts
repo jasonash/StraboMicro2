@@ -5,6 +5,8 @@
  */
 
 import { expect } from '@playwright/test';
+import fs from 'fs';
+import path from 'path';
 import { SERVER as SERVER_URL, type Copy } from './copy';
 
 /** File > Open Local Project (.smz): Import, then Open Project */
@@ -113,24 +115,35 @@ export async function setMode(copy: Copy, mode: 'Sync automatically' | 'Sync whe
  * the server, the way a laptop without Wi-Fi cannot. The sync client reads
  * the global fetch on every call. 'dropped': the connection breaks while a
  * request is on its way (the server may have it), so an interrupted push
- * is kept and sent again first.
+ * is kept and sent again first. 'lost-reply': every request reaches the
+ * server and is done there, but the answer never comes back (ECONNRESET).
  */
-export async function setOffline(copy: Copy, offline: boolean, how: 'no-network' | 'dropped' = 'no-network'): Promise<void> {
-  await copy.caption(offline ? (how === 'dropped' ? 'loses the connection mid-request' : 'goes offline') : 'comes back online');
-  const code = how === 'dropped' ? 'ECONNRESET' : 'ECONNREFUSED';
-  await copy.app.evaluate((_electron, [offline, server, code]) => {
+export async function setOffline(copy: Copy, offline: boolean, how: 'no-network' | 'dropped' | 'lost-reply' = 'no-network'): Promise<void> {
+  await copy.caption(offline
+    ? (how === 'dropped' ? 'loses the connection mid-request' : how === 'lost-reply' ? 'loses every answer from the server' : 'goes offline')
+    : 'comes back online');
+  const code = how === 'no-network' ? 'ECONNREFUSED' : 'ECONNRESET';
+  const afterSending = how === 'lost-reply';
+  await copy.app.evaluate((_electron, [offline, server, code, afterSending]) => {
     const g = globalThis as unknown as { __e2eFetch?: typeof fetch; fetch: typeof fetch };
     if (!g.__e2eFetch) g.__e2eFetch = g.fetch;
     const real = g.__e2eFetch;
     g.fetch = offline
       ? (async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
         const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+        if (!url.startsWith(server)) return real(input, init);
+        const fail = () => Object.assign(new TypeError('fetch failed'), { cause: Object.assign(new Error(code), { code }) });
+        // The server has the request and does it; only its answer is lost
+        if (afterSending) {
+          const res = await real(input, init);
+          await res.arrayBuffer().catch(() => undefined);
+          throw fail();
+        }
         // As Node's fetch fails with no network: before anything is sent
-        if (url.startsWith(server)) throw Object.assign(new TypeError('fetch failed'), { cause: Object.assign(new Error(code), { code }) });
-        return real(input, init);
+        throw fail();
       }) as typeof fetch
       : real;
-  }, [offline, SERVER_URL, code] as const);
+  }, [offline, SERVER_URL, code, afterSending] as const);
 }
 
 /** The notice 'N sync changes need your decision' > Review: the decisions dialog */
@@ -463,4 +476,48 @@ export async function downloadRemote(copy: Copy, projectName: string, projectId:
   await expect(dialog).toBeHidden({ timeout: 120_000 });
   await expect.poll(() => copy.state((e) => e.app.getState().project?.id ?? null), { timeout: 60_000 }).toBe(projectId);
   await waitSettled(copy, 120_000);
+}
+
+/** File > Export as .smz...: saved to `filePath`, then Done */
+export async function exportSmz(copy: Copy, filePath: string): Promise<void> {
+  // A save dialog only offers folders that exist
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  await copy.answerDialog({ kind: 'save', filePath });
+  await copy.menu('File', 'Export as .smz...');
+  const dialog = copy.page.getByRole('dialog', { name: 'Export Project as .smz' });
+  await dialog.getByRole('button', { name: 'Done' }).click({ timeout: 120_000 });
+  await expect(dialog).toBeHidden();
+}
+
+/** The header's account name: the logout check (a popover, or 'Log out of StraboSpot?' with unsynced changes) */
+export async function clickAccount(copy: Copy): Promise<void> {
+  await copy.caption('clicks their name in the header');
+  await copy.page.getByRole('banner').getByText(copy.account.name, { exact: true }).click();
+}
+
+/** 'Log out of StraboSpot?' (unsynced changes in the open project) */
+export function logoutDialog(copy: Copy) {
+  return copy.page.getByRole('dialog', { name: 'Log out of StraboSpot?' });
+}
+
+export async function waitLoggedOut(copy: Copy): Promise<void> {
+  await expect.poll(() => copy.state((e) => e.auth.getState().isAuthenticated), { timeout: 30_000 }).toBe(false);
+}
+
+/** The one-time prompt 'This project is also on StraboSpot' (a local-only copy of my project opened): answer it */
+export async function answerAlsoOnStraboSpot(copy: Copy, answer: 'Sync automatically' | 'Sync when I click' | 'Keep on this computer only'): Promise<void> {
+  const dialog = copy.page.getByRole('dialog', { name: 'This project is also on StraboSpot' });
+  await expect(dialog).toBeVisible({ timeout: 30_000 });
+  await copy.caption(`answers '${answer}'`);
+  await dialog.getByRole('button', { name: answer, exact: true }).click();
+  await expect(dialog).toBeHidden();
+}
+
+/** Wait until the open project is a synced copy, ready and settled */
+export async function waitSynced(copy: Copy, projectId: string, timeout = 120_000): Promise<void> {
+  await expect.poll(() => copy.state((e) => {
+    const s = e.sync.getState();
+    return Boolean(s.synced && s.phase === 'ready' && e.app.getState().project?.id === s.projectId) ? e.app.getState().project?.id ?? null : null;
+  }), { timeout }).toBe(projectId);
+  await waitSettled(copy, timeout);
 }

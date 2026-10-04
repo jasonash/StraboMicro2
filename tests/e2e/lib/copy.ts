@@ -179,8 +179,13 @@ export async function launchCopy(label: string, account: Account, slot: number, 
     timeout: 60_000,
   }).catch(async () => {
     const found = app.windows().find((p) => p.url().startsWith('http://localhost:5173'));
-    if (!found) throw new Error(`${label}: the main window did not open`);
-    return found;
+    if (found) return found;
+    // What there is to go on: the windows that did open, and the end of the main log
+    const windows = app.windows().map((p) => p.url()).join(', ') || 'none';
+    const logFile = path.join(dir, 'userData', 'logs', 'main.log');
+    const tail = fs.existsSync(logFile) ? fs.readFileSync(logFile, 'utf8').split('\n').slice(-25).join('\n') : '(no main.log)';
+    await app.close().catch(() => undefined);
+    throw new Error(`${label}: the main window did not open (windows: ${windows})\n--- main.log tail ---\n${tail}`);
   });
   await page.waitForFunction(() => Boolean(window.__e2e), undefined, { timeout: 60_000 });
 
