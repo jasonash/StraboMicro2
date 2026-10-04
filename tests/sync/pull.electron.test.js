@@ -136,8 +136,11 @@ app.whenReady().then(async () => {
       { op: 'create', type: 'spot', id: NEW_SPOT, parentType: 'micrograph', parentId: M2,
         body: spotBody },
       { op: 'delete', type: 'spot', id: S3, baseVersion: await v('spot', S3) },
+      // As the app sends it: the micrograph's new spot order with the new spot
+      { op: 'update', type: 'micrograph', id: M2,
+        childOrder: { spots: [...micro(disk(), M2).spots.map((x) => x.id).filter((id) => id !== S3), NEW_SPOT] } },
     ]);
-    check('other machine pushed 3 changes', res1.every((x) => x.status === 'accepted'), JSON.stringify(res1));
+    check('other machine pushed 4 changes', res1.every((x) => x.status === 'accepted'), JSON.stringify(res1));
     const p1 = await appPull();
     const d1 = disk();
     check('their rename, new spot and spot delete applied', micro(d1, M1).name === 'Renamed elsewhere' &&

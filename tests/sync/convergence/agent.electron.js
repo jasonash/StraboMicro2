@@ -412,8 +412,27 @@ app.whenReady().then(async () => {
     return out;
   }
 
+  /** A named spot on the reference micrograph (fixed scenarios) */
+  async function addSpotNamed({ name }) {
+    const p = await load();
+    const ref = all(p).micrographs.find((m) => !m.parentID);
+    const sp = newSpot(name, 100, 100);
+    ref.spots = [...(ref.spots ?? []), sp];
+    await save(p);
+    return { id: sp.id, micrograph: ref.id };
+  }
+
+  /** Spot names of a micrograph in this copy's order */
+  async function spotOrder({ micrograph }) {
+    const p = await load();
+    const m = all(p).micrographs.find((x) => x.id === micrograph);
+    return m ? (m.spots ?? []).map((x) => x.name) : null;
+  }
+
   const commands = {
     create,
+    addSpotNamed,
+    spotOrder,
     invite: ({ email, role }) => svc.changeMembers(projectId, SERVER, { action: 'invite', email, role }),
     role: ({ pkey, role }) => svc.changeMembers(projectId, SERVER, { action: 'role', pkey, role }),
     accept: async ({ pid }) => {

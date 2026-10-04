@@ -35,7 +35,6 @@ const electron = require('electron');
 
 const SEED = Number(process.env.SEED || Math.floor(Math.random() * 2 ** 31));
 const STEPS = Number(process.env.STEPS || 150);
-const STRICT_ORDER = process.env.STRICT_ORDER === '1';
 const SERVER = process.env.STRABO_E2E_SERVER || 'http://localhost';
 const AGENT = path.join(__dirname, 'agent.electron.js');
 const REPO = path.resolve(__dirname, '../../..');
@@ -199,7 +198,6 @@ async function main() {
 
   const log = [];
   const problems = [];
-  const orderWarnings = [];
   const counts = {};
   const count = (k) => { counts[k] = (counts[k] || 0) + 1; };
   const countAnswers = (d, step) => {
@@ -337,12 +335,7 @@ async function main() {
       const mine = finals[a.name];
       const keys = new Set([...Object.keys(ref), ...Object.keys(mine)]);
       for (const k of keys) {
-        if (stable(ref[k]) === stable(mine[k])) continue;
-        // Only the order of children differs: known (concurrent additions are
-        // appended in a different order per copy), reported apart unless STRICT_ORDER=1
-        const orderOnly = ref[k] && mine[k] && stable({ ...ref[k], childOrder: null }) === stable({ ...mine[k], childOrder: null });
-        if (orderOnly && !STRICT_ORDER) orderWarnings.push(`${a.name} vs Ana: order of children of ${k}`);
-        else problems.push(`${a.name} differs from Ana on ${k}: ${whatDiffers(ref[k], mine[k])}`);
+        if (stable(ref[k]) !== stable(mine[k])) problems.push(`${a.name} differs from Ana on ${k}: ${whatDiffers(ref[k], mine[k])}`);
       }
     }
 
@@ -396,10 +389,6 @@ async function main() {
     await Promise.all(agents.map((a) => a.stop().catch(() => undefined)));
   }
 
-  if (orderWarnings.length > 0) {
-    console.log(`\nKnown issue, child order differs (${orderWarnings.length}; STRICT_ORDER=1 fails on it):`);
-    for (const w of orderWarnings.slice(0, 5)) console.log(`  ~ ${w}`);
-  }
   if (problems.length > 0) {
     console.log(`\nFAILED: ${problems.length} problem(s)`);
     for (const p of problems.slice(0, 40)) console.log(`  - ${p}`);
@@ -410,7 +399,11 @@ async function main() {
   console.log(`\nPASSED (SEED=${SEED}, ${STEPS} steps)`);
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
+}
+
+module.exports = { Agent, fixture };

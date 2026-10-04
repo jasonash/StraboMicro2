@@ -218,11 +218,11 @@ async function preparePull({ folder, client, onProgress = () => {} }) {
 }
 
 /**
- * Child order in the base as the server applies it: the server keeps a
- * parent's stored order when children are created or deleted beneath it and
- * fixes it up when reading (deleted ids dropped, new children appended). The
- * base does the same, appending in the local order, so that an order which
- * differs only by those children does not look like a local reorder.
+ * Child order in the base as the server stores it: deleted ids dropped. A
+ * stored list missing live children (added on two computers at once) stays
+ * incomplete, so this copy sends its full order and the server stores a
+ * complete one; only a parent with no stored list gets its children
+ * appended in the local order (so they do not look like a local reorder).
  * @param {Record<string, object>} base - Mutated
  * @param {string} folder
  */
@@ -252,9 +252,20 @@ async function normalizeBaseOrder(base, folder) {
     for (const listKey of listKeys) {
       const ids = (live.get(key) && live.get(key).get(listKey)) || [];
       const liveSet = new Set(ids);
-      const stored = Array.isArray(s.childOrder?.[listKey]) ? s.childOrder[listKey] : [];
+      const hasStored = Array.isArray(s.childOrder?.[listKey]);
+      const stored = hasStored ? s.childOrder[listKey] : [];
       const out = stored.filter((id) => liveSet.has(id));
       const listed = new Set(out);
+      // A stored order that leaves live children out (added elsewhere at the
+      // same time) is kept as it is: this copy's full order then differs and
+      // is sent, so StraboSpot stores a complete list and every copy takes
+      // it. Appending them here in this copy's own order made each copy keep
+      // its own order for good (found by the convergence test). Only a list
+      // the server never stored is filled in as before.
+      if (hasStored) {
+        order[listKey] = out;
+        continue;
+      }
       const local = (localOrder[key] && localOrder[key].childOrder && localOrder[key].childOrder[listKey]) || [];
       for (const id of [...local, ...ids]) {
         if (liveSet.has(id) && !listed.has(id)) {

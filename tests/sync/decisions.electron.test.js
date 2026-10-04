@@ -263,7 +263,8 @@ app.whenReady().then(async () => {
       stR2.restores.length === 0 && stR2.base[KM2] && stR2.base[`spot:${S1}`] && stR2.questions.length === 0, JSON.stringify(pl.summary));
     const pr2 = await push();
     const s2 = await onServer();
-    check('then my edit pushes on the restored spot', pr2.ok && pr2.pushed === 1 && s2[KM2] && s2[`spot:${S1}`].body.name === 'edited by me',
+    // (plus the order of what the micrograph was restored into: its stored list no longer had it)
+    check('then my edit pushes on the restored spot', pr2.ok && pr2.pushed >= 1 && pr2.pushed <= 2 && s2[KM2] && s2[`spot:${S1}`].body.name === 'edited by me',
       JSON.stringify(pr2));
     check('the server keeps their earlier edits after my restore', s2[`spot:${S1}`].body.notes === 'their notes before the delete' &&
       s2[KM2].body.notes === 'their micrograph notes', JSON.stringify({ s1: s2[`spot:${S1}`].body.notes, m2: s2[KM2].body.notes }));
@@ -286,8 +287,10 @@ app.whenReady().then(async () => {
     const m2back = micro(disk(), M2);
     check('bring back: the micrograph returns with their change', b1.ok && m2back && m2back.spots.length === 3 &&
       m2back.spots.find((s) => s.id === S2).name === 'their spot name', JSON.stringify(b1.changes.map((c) => c.key)));
-    check('brought back: nothing waiting, no question', (await status()).pending === 0 && (await status()).questions === 0,
-      JSON.stringify(await status()));
+    // What it was brought back into: its stored order no longer listed it, so that order is sent once
+    const bo = await push();
+    check('brought back: only the order goes up, then nothing waiting, no question', bo.ok && bo.pushed <= 1 && bo.notAccepted === 0 &&
+      (await status()).pending === 0 && (await status()).questions === 0, JSON.stringify({ bo, status: await status() }));
 
     // --- Turned down: held until edited, then discarded ---------------------------------------
     // M1 has M2 nested in it; moving it to another sample is not allowed

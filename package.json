@@ -21,6 +21,7 @@
     "test:link": "electron tests/sync/link.electron.test.js",
     "test:collaborators": "electron tests/sync/collaborators.electron.test.js",
     "test:convergence": "node tests/sync/convergence/run.js",
+    "test:order": "node tests/sync/convergence/order.js",
     "test:intro-queue": "electron tests/sync/introQueue.electron.test.js",
     "test:smz-import": "electron tests/sync/smzImport.electron.test.js",
     "test:undo-patches": "node tests/sync/undoPatches.test.mjs",
