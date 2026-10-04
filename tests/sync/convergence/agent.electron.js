@@ -366,6 +366,9 @@ app.whenReady().then(async () => {
         const q = L.questions[0];
         const fits = q.kind === 'theirs_deleted' ? ['restore', 'delete'] : ['keep_deleted', 'bring_back'];
         decision = { kind: 'question', key: q.key, answer: r() < 0.5 ? fits[0] : fits[1] };
+        // What the answer deletes (the question's entities), for the driver's checks
+        const raw = await readQuestionKeys(q.key);
+        if (raw) decision.keys = raw;
       } else if (L.refused.length > 0) {
         decision = { kind: 'refused', key: L.refused[0].key, answer: 'discard' };
       }
@@ -375,6 +378,18 @@ app.whenReady().then(async () => {
       if (!a.ok) break;
     }
     return { ok: answers.every((x) => x.ok), answers };
+  }
+
+  /** The entity keys a waiting question covers (sync/state.json) */
+  async function readQuestionKeys(key) {
+    const folder = projectFolders.getProjectFolderPath(projectId);
+    try {
+      const st = JSON.parse(fs.readFileSync(path.join(folder, 'sync', 'state.json'), 'utf8'));
+      const q = (st.questions || []).find((x) => x.key === key);
+      return q ? q.keys : null;
+    } catch {
+      return null;
+    }
   }
 
   async function status() {
