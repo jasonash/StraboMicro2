@@ -1,0 +1,9 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "types": ["node"],
+    "esModuleInterop": true
+  },
+  "include": ["./**/*.ts", "../../src/vite-env.d.ts", "../../src/services/e2eHooks.ts"]
+}
