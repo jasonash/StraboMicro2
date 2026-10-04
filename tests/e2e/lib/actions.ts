@@ -382,3 +382,53 @@ export async function openParkedReview(owner: Copy) {
   await expect(dialog).toBeVisible();
   return dialog;
 }
+
+/** View > Activity: the activity panel (a drawer over the right pane) */
+export async function openActivity(copy: Copy) {
+  await copy.menu('View', 'Activity');
+  const panel = activityPanel(copy);
+  await expect(panel).toBeVisible();
+  return panel;
+}
+
+export function activityPanel(copy: Copy) {
+  return copy.page.locator('.MuiPaper-root').filter({ has: copy.page.getByRole('button', { name: 'Close activity' }) });
+}
+
+/** One line of the activity panel by its full text ("Ana Ruiz deleted spot 'Quartz 1'"), with its time, chip and Restore */
+export function activityLine(copy: Copy, text: string) {
+  return activityPanel(copy).getByText(text, { exact: true }).locator('xpath=..');
+}
+
+/** The tree's three-dot menu of a micrograph > Delete Micrograph, then Delete */
+export async function deleteMicrographFromTree(copy: Copy, rowText: string): Promise<void> {
+  await copy.caption(`deletes micrograph '${rowText}'`);
+  const row = copy.page.getByText(rowText, { exact: true }).locator('xpath=../..');
+  await row.locator('button:has([data-testid="MoreVertIcon"])').first().click();
+  await copy.page.getByRole('menuitem', { name: 'Delete Micrograph' }).click();
+  const dialog = copy.page.getByRole('dialog', { name: 'Delete Micrograph' });
+  await dialog.getByRole('button', { name: 'Delete', exact: true }).click();
+  await expect(dialog).toBeHidden();
+}
+
+/** Record the links this copy opens in the browser instead of opening them */
+export async function catchExternalLinks(copy: Copy): Promise<() => Promise<string[]>> {
+  await copy.app.evaluate(({ shell }) => {
+    const g = globalThis as unknown as { __e2eLinks: string[] };
+    g.__e2eLinks = [];
+    shell.openExternal = async (url: string) => {
+      g.__e2eLinks.push(url);
+    };
+  });
+  return () => copy.app.evaluate(() => (globalThis as unknown as { __e2eLinks: string[] }).__e2eLinks.slice());
+}
+
+/** The ids of every spot on a micrograph in this copy (null: no such micrograph) */
+export function spotIds(copy: Copy, micrographId: string): Promise<string[] | null> {
+  return copy.state(new Function('e', `
+    for (const d of e.app.getState().project?.datasets ?? [])
+      for (const s of d.samples ?? [])
+        for (const m of s.micrographs ?? []) if (m.id === ${JSON.stringify(micrographId)}) return (m.spots ?? []).map((sp) => sp.id).sort();
+    return null;
+  `) as (e: NonNullable<Window['__e2e']>) => string[] | null);
+}
