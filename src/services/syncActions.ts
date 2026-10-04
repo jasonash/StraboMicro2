@@ -76,6 +76,9 @@ export type LogoutCheck =
   | { kind: 'changes'; count: number; queued: number }
   | { kind: 'uploading'; queued: number };
 
+/** Window event: Account > Logout; the Header asks first, as for its own logout (16as) */
+export const LOGOUT_REQUEST_EVENT = 'strabo:logout-request';
+
 export async function checkBeforeLogout(): Promise<LogoutCheck> {
   const intro = await window.api?.sync.introStatus().catch(() => null);
   const queued = intro?.queued ?? 0;

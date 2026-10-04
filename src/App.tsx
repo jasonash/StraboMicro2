@@ -59,7 +59,7 @@ import { useAppStore, undo, redo, setUndoBlockedHandler, setChangeGuard } from '
 import { currentPermissions } from '@/hooks/usePermissions';
 import { isRestricted, splitChanges, refusalMessage } from '@/utils/permissions';
 import { useAuthStore, promptLogin } from '@/store/useAuthStore';
-import { syncNowFromUser, requestFirstSync, TURN_ON_SYNC_EVENT, COLLABORATE_EVENT } from '@/services/syncActions';
+import { syncNowFromUser, requestFirstSync, TURN_ON_SYNC_EVENT, COLLABORATE_EVENT, LOGOUT_REQUEST_EVENT } from '@/services/syncActions';
 import { beginLinking, LINK_SYNC_EVENT, type LinkRequest } from '@/services/syncLinking';
 import { useSyncStore } from '@/store/useSyncStore';
 import { useTheme } from './hooks/useTheme';
@@ -1034,8 +1034,9 @@ function App() {
     }));
 
     // Account: Logout menu item
-    unsubscribers.push(window.api.onLogoutRequest(async () => {
-      await logout();
+    // The Header asks about unsynced changes first (16as), as for its own logout
+    unsubscribers.push(window.api.onLogoutRequest(() => {
+      window.dispatchEvent(new Event(LOGOUT_REQUEST_EVENT));
     }));
 
     // Help: About menu item

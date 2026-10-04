@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   AppBar,
   Toolbar,
@@ -25,7 +25,7 @@ import { LoginDialog } from '@/components/dialogs/LoginDialog';
 import { SyncStatusChip } from '@/components/SyncStatusChip';
 import { useInvitationsStore } from '@/store/useInvitationsStore';
 import { LogoutSyncDialog } from '@/components/dialogs/LogoutSyncDialog';
-import { checkBeforeLogout, queuedUploadsText, type LogoutCheck } from '@/services/syncActions';
+import { checkBeforeLogout, queuedUploadsText, LOGOUT_REQUEST_EVENT, type LogoutCheck } from '@/services/syncActions';
 
 const Header: React.FC = () => {
   const viewerRef = useAppStore((state) => state.viewerRef);
@@ -41,6 +41,21 @@ const Header: React.FC = () => {
   const [logoutQueued, setLogoutQueued] = useState(0);
   // Logout with the open project not fully synced (16as, 16az)
   const [logoutCheck, setLogoutCheck] = useState<Exclude<LogoutCheck, { kind: 'plain' }> | null>(null);
+
+  // Account > Logout: unsynced changes in the open project ask first (16as);
+  // otherwise it logs out at once, as the menu always did
+  useEffect(() => {
+    const onRequest = () => {
+      void (async () => {
+        if (!useAuthStore.getState().isAuthenticated) return;
+        const check = await checkBeforeLogout();
+        if (check.kind === 'plain') await useAuthStore.getState().logout();
+        else setLogoutCheck(check);
+      })();
+    };
+    window.addEventListener(LOGOUT_REQUEST_EVENT, onRequest);
+    return () => window.removeEventListener(LOGOUT_REQUEST_EVENT, onRequest);
+  }, []);
 
   const handleRecenter = () => {
     if (viewerRef?.current) {
