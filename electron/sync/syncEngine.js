@@ -224,7 +224,13 @@ async function pushProject({ folder, client, onProgress = () => {} }) {
     const change = { op: 'restore', type: r.key.slice(0, sep), id: r.key.slice(sep + 1), cascade: true };
     const res = await client.push(pid, crypto.randomUUID(), clientId, [change]);
     const result = (res.results || [])[0] || { status: 'missing' };
-    if (result.status === 'accepted' || (result.status === 'invalid' && result.reason === 'not_deleted')) {
+    if (result.status === 'invalid' && result.reason === 'not_deleted' && state.base[r.key]) {
+      // Someone restored it already and a pull brought it here: no restore
+      // of mine is coming, so nothing is held; my changes push as edits
+      // (found by the convergence test: the keys stayed held for good)
+      state.restores = state.restores.filter((x) => x !== r);
+    } else if (result.status === 'accepted' || (result.status === 'invalid' && result.reason === 'not_deleted')) {
+      // Mine (or mine sent before, answer lost): a pull brings the restored states
       r.sent = true;
     } else {
       // Not restored: the entities stay as they are locally, turned down

@@ -115,6 +115,16 @@ async function preparePull({ folder, client, onProgress = () => {} }) {
   if (project.id !== state.binding.straboId) throw new Error('project.json does not belong to this sync binding');
   const mine = explode(project, pointCounts);
 
+  // Someone else brought back what a waiting "they deleted it" question is
+  // about: merge it against what this copy knew before the delete (the
+  // question's bases), so only fields both changed are conflicts
+  /** @type {Record<string, object>} */
+  const questionBases = {};
+  for (const q of state.questions || []) {
+    if (q.kind !== 'theirs_deleted' || !q.bases) continue;
+    for (const [k, b] of Object.entries(q.bases)) if (!base[k]) questionBases[k] = b;
+  }
+
   /** @type {Map<string, object | null>} */
   const theirs = new Map();
   /** @type {Record<string, number>} */
@@ -125,6 +135,11 @@ async function preparePull({ folder, client, onProgress = () => {} }) {
     const s = stateFromEntry(e);
     refs[key] = s === null ? null : (e.refs && typeof e.refs === 'object' ? e.refs : {});
     if (s !== null) versions[key] = e.version;
+    if (s !== null && !base[key] && questionBases[key]) {
+      base[key] = questionBases[key];
+      theirs.set(key, s);
+      continue;
+    }
     if (s === null && !base[key] && !mine.entities[key]) continue; // created and deleted elsewhere
     if (s !== null && base[key] && sameState(base[key], s)) continue; // mine (already in the base) or no change
     if (restoreEntries.get(key) === e) continue; // my restore, now in the base

@@ -389,6 +389,25 @@ app.whenReady().then(async () => {
     check('the spot pushes without the tag', ptg.ok && ptg.notAccepted === 0 && !((await onServer())[`spot:${S3}`].body.tags || []).includes(TAG) &&
       (await status()).pending === 0, JSON.stringify(ptg));
 
+    // --- Their delete vs my edit, and they restore it themselves before I answer ---------------
+    // (found by the convergence test: my restore was answered not_deleted and
+    // its keys stayed held for good, so my edit never went up)
+    await appEdit((p) => { micro(p, M2).spots.find((s) => s.id === S1).notes = 'my notes, they restored it'; });
+    await otherPush([{ op: 'delete', type: 'spot', id: S1, baseVersion: await v('spot', S1) }]);
+    await appPull();
+    check('their delete of my edited spot: a question', (await status()).questions === 1, JSON.stringify(await status()));
+    const theirRestore = await otherPush([{ op: 'restore', type: 'spot', id: S1, cascade: true }]);
+    check('they restore it themselves', theirRestore[0] && theirRestore[0].status === 'accepted', JSON.stringify(theirRestore));
+    await appPull();
+    if ((await status()).questions > 0) await appDecide({ kind: 'question', key: `spot:${S1}`, answer: 'restore' });
+    await push();
+    await appPull();
+    await push();
+    const stTR = await sidecar.loadState(folder);
+    check('already restored: nothing stays held, my edit is on the server', !(stTR.restores || []).length && (await status()).pending === 0 &&
+      (await onServer())[`spot:${S1}`] && (await onServer())[`spot:${S1}`].body.notes === 'my notes, they restored it',
+    JSON.stringify({ restores: stTR.restores, status: await status(), server: (await onServer())[`spot:${S1}`]?.body?.notes }));
+
     // --- Their delete vs my edit: delete it -----------------------------------------------------
     await appEdit((p) => { micro(p, M2).spots.find((s) => s.id === S2).name = 'mine again'; });
     await otherPush([{ op: 'delete', type: 'micrograph', id: M2, baseVersion: await v('micrograph', M2) }]);
