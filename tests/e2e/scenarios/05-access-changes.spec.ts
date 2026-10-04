@@ -9,7 +9,7 @@ import { ACCOUNTS } from '../lib/copy';
 import { writeImage } from '../lib/fixtures';
 import {
   share, waitSettled, spotField, editSpot, setOffline, syncNow, leaveProject, separateCopyNotice, removeMember,
-  changeRole, openParkedReview, addReferenceMicrograph, micrograph, reviewDecisions, syncChip,
+  changeRole, openParkedReview, setMode, addReferenceMicrograph, micrograph, reviewDecisions, syncChip,
 } from '../lib/actions';
 
 test('a member leaves and keeps a separate copy that no longer syncs', async ({ launch, project }) => {
@@ -43,20 +43,24 @@ test('a member leaves and removes the copy from their computer', async ({ launch
   await expect.poll(() => ben.state((e) => e.app.getState().project?.id ?? null), { timeout: 30_000 }).toBeNull();
 });
 
-test('a removed member\'s unsynced work, a new micrograph included, goes to the owner for review', async ({ launch, project, runDir }) => {
-  const p = await project('E2E Removed With Work');
+// Back online, whichever request meets the removal first (the push, or
+// the activity poll; in 'Sync when I click' only the poll runs) must still
+// send Ben's work to the owner before his copy turns separate
+for (const mode of ['Sync automatically', 'Sync when I click'] as const) {
+test(`a removed member's unsynced work, a new micrograph included, goes to the owner for review (${mode})`, async ({ launch, project, runDir }) => {
+  const p = await project(`E2E Removed With Work ${mode === 'Sync automatically' ? 'Auto' : 'Manual'}`);
   const spot = p.spots[1];
   const img = await writeImage(`${runDir}/images/unsent.jpg`);
   const ana = await launch('Ana', ACCOUNTS.ana);
   const ben = await launch('Ben', ACCOUNTS.ben);
   await share(ana, ben, p.smzPath, p.id, p.name);
+  if (mode === 'Sync when I click') await setMode(ben, mode);
 
   await setOffline(ben, true);
   await editSpot(ben, spot.id, { notes: 'Undulose extinction' });
   const m = await addReferenceMicrograph(ben, 'TX-01', img, 'Unsent micrograph');
   await removeMember(ana, ben);
   await setOffline(ben, false);
-  await syncNow(ben);
 
   const text = await separateCopyNotice(ben, 'Removed From the Project');
   expect(text).toContain(`${ACCOUNTS.ana.name} removed you from "${p.name}".`);
@@ -78,6 +82,7 @@ test('a removed member\'s unsynced work, a new micrograph included, goes to the 
   await expect.poll(() => ana.state((e) => e.sync.getState().parkedCount), { timeout: 30_000 }).toBe(0);
   await waitSettled(ana);
 });
+}
 
 for (const [ownerChoice, how] of [['Accept', 'no-network'], ['Discard', 'no-network'], ['Accept', 'dropped']] as const) {
   test(`an Editor turned Viewer with unsynced work (${how}): parked once, the owner chooses ${ownerChoice}, both copies settle`, async ({ launch, project }) => {
