@@ -8,6 +8,7 @@
 import { test, expect } from '../lib/test';
 import { ACCOUNTS } from '../lib/copy';
 import { openSmz, turnOnSync, invite, acceptInvitationFromChip, waitSettled, spotField } from '../lib/actions';
+import { refChanges } from '../lib/server';
 
 test('invite an editor while their app is open, edit both ways', async ({ launch, project }) => {
   const p = await project('E2E Invite and Edit');
@@ -41,6 +42,11 @@ test('invite an editor while their app is open, edit both ways', async ({ launch
 
   await waitSettled(ana);
   await waitSettled(ben);
+  // Files went up once, by Ana; joining and editing sent none (the tile
+  // archives of the two copies used to differ, so each re-sent its own)
+  const refs = refChanges(p.id);
+  expect(refs.filter((r) => r.email !== ACCOUNTS.ana.email)).toEqual([]);
+  expect(refs.filter((r) => r.role === 'tiles')).toHaveLength(1);
   expect(await ana.unansweredDialogs()).toEqual([]);
   expect(await ben.unansweredDialogs()).toEqual([]);
 });

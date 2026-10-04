@@ -50,6 +50,13 @@ function spot(id: string, name: string, x: number, y: number) {
   };
 }
 
+/** Write a micrograph image file (JPEG) for the New Micrograph dialog */
+export async function writeImage(filePath: string): Promise<string> {
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.writeFileSync(filePath, await micrographImage());
+  return filePath;
+}
+
 /** Write a new project .smz into `dir` */
 export async function makeProject(dir: string, name: string, spotNames: string[] = ['Garnet 1', 'Quartz 1']): Promise<FixtureProject> {
   const id = randomUUID();

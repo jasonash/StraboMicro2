@@ -63,12 +63,12 @@ export async function acceptInvitationFromChip(copy: Copy, projectName: string):
   }), { timeout: 60_000 }).toBe(true);
 }
 
-/** Nothing waiting either way: no local changes to push, none to pull, not syncing */
+/** Nothing waiting either way: no local changes to push, none to pull, no file downloads, not syncing */
 export async function waitSettled(copy: Copy, timeout = 60_000): Promise<void> {
   await expect.poll(() => copy.state((e) => {
     const s = e.sync.getState();
-    return { activity: s.activity, pending: s.pending ?? 0, incoming: s.incoming, problem: s.problem?.message ?? null };
-  }), { timeout }).toEqual({ activity: 'idle', pending: 0, incoming: 0, problem: null });
+    return { activity: s.activity, pending: s.pending ?? 0, incoming: s.incoming, downloads: s.downloads, problem: s.problem?.message ?? null };
+  }), { timeout }).toEqual({ activity: 'idle', pending: 0, incoming: 0, downloads: 0, problem: null });
 }
 
 /** A spot's field as this copy has it */
@@ -159,4 +159,80 @@ export async function share(owner: Copy, member: Copy, smzPath: string, projectI
   await acceptInvitationFromChip(member, projectName);
   await waitSettled(owner);
   await waitSettled(member);
+}
+
+/** The tree's + button on a row (dataset, sample or micrograph) by its name */
+function treeAddButton(copy: Copy, rowName: string) {
+  return copy.page.getByText(rowName, { exact: true }).locator('xpath=..').locator('button:has([data-testid="AddIcon"])');
+}
+
+/**
+ * Sample + > Add New Reference Micrograph, through all eight steps of the
+ * New Reference Micrograph dialog (Optical Microscopy, Plane Polarized
+ * Light, unoriented, scale by Pixel Conversion Factor). Returns its id.
+ */
+export async function addReferenceMicrograph(copy: Copy, sampleName: string, imagePath: string, name: string): Promise<string> {
+  const before = await copy.state((e) => {
+    const ids: string[] = [];
+    for (const d of e.app.getState().project?.datasets ?? []) for (const s of d.samples ?? []) for (const m of s.micrographs ?? []) ids.push(m.id);
+    return ids;
+  });
+  await copy.caption(`adds micrograph '${name}' to ${sampleName}`);
+  await treeAddButton(copy, sampleName).click();
+  await copy.page.getByRole('menuitem', { name: 'Add New Reference Micrograph' }).click();
+  const dialog = copy.page.getByRole('dialog', { name: 'New Reference Micrograph' });
+  const next = dialog.getByRole('button', { name: 'Next' });
+  const pick = async (combo: string, option: string) => {
+    await dialog.getByRole('combobox', { name: new RegExp(`^${combo}`) }).click();
+    await copy.page.getByRole('option', { name: option, exact: true }).click();
+  };
+
+  await copy.answerDialog({ kind: 'open', filePaths: [imagePath] });
+  await dialog.getByRole('button', { name: 'Browse...' }).click();
+  await next.click(); // 1 Load Reference Micrograph
+  await next.click(); // 2 Image Rotation
+  await pick('Instrument Type', 'Optical Microscopy');
+  await pick('Image Type', 'Plane Polarized Light');
+  await next.click(); // 3 Instrument & Image Information
+  await next.click(); // 4 Instrument Data
+  await dialog.getByLabel(/^Name/).fill(name);
+  await next.click(); // 5 Micrograph Metadata
+  await next.click(); // 6 Micrograph Orientation (unoriented)
+  await dialog.getByText('Pixel Conversion Factor', { exact: true }).click();
+  await next.click(); // 7 Set Micrograph Scale
+  await dialog.getByLabel(/^Number of Pixels/).fill('1000');
+  await dialog.getByLabel(/^Physical Length/).fill('1');
+  await copy.caption('Finish');
+  await dialog.getByRole('button', { name: 'Finish' }).click();
+  await expect(dialog).toBeHidden({ timeout: 60_000 });
+
+  let id = '';
+  await expect.poll(async () => {
+    const all = await copy.state((e) => {
+      const out: Array<{ id: string; name: string }> = [];
+      for (const d of e.app.getState().project?.datasets ?? []) for (const s of d.samples ?? []) for (const m of s.micrographs ?? []) out.push({ id: m.id, name: m.name ?? '' });
+      return out;
+    });
+    id = all.find((m) => !before.includes(m.id) && m.name === name)?.id ?? '';
+    return id;
+  }, { timeout: 30_000 }).not.toBe('');
+  return id;
+}
+
+/** Select a micrograph in the tree by name; wait until the viewer shows its image */
+export async function viewMicrograph(copy: Copy, micrographId: string): Promise<void> {
+  await copy.state(new Function('e', `return e.app.getState().selectMicrograph(${JSON.stringify(micrographId)})`) as never);
+  await expect(copy.page.getByText('No micrograph loaded')).toHaveCount(0);
+  await expect(copy.page.getByText('Loading image...')).toHaveCount(0, { timeout: 60_000 });
+  expect(copy.consoleErrors.filter((l) => /Failed to load image|load-tiles|ENOENT/.test(l))).toEqual([]);
+}
+
+/** A micrograph as this copy has it (null when missing) */
+export function micrograph(copy: Copy, micrographId: string): Promise<{ name: string; imagePath: string | null } | null> {
+  return copy.state(new Function('e', `
+    for (const d of e.app.getState().project?.datasets ?? [])
+      for (const s of d.samples ?? [])
+        for (const m of s.micrographs ?? []) if (m.id === ${JSON.stringify(micrographId)}) return { name: m.name ?? '', imagePath: m.imagePath ?? null };
+    return null;
+  `) as (e: NonNullable<Window['__e2e']>) => { name: string; imagePath: string | null } | null);
 }

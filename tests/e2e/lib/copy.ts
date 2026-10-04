@@ -37,6 +37,9 @@ export type DialogAnswer =
   | { kind: 'message'; response: number };
 
 export class Copy {
+  /** console.error lines of the page, oldest first */
+  readonly consoleErrors: string[] = [];
+
   constructor(
     readonly label: string,
     readonly account: Account,
@@ -194,7 +197,12 @@ export async function launchCopy(label: string, account: Account, slot: number, 
     });
   }, [label, slot] as const);
 
-  return new Copy(label, account, app, page, dir);
+  const copy = new Copy(label, account, app, page, dir);
+  page.on('console', (msg) => {
+    if (msg.type() === 'error') copy.consoleErrors.push(msg.text().slice(0, 1000));
+  });
+  page.on('pageerror', (err) => copy.consoleErrors.push(`pageerror: ${err.message}`));
+  return copy;
 }
 
 export function newRunDir(): string {
