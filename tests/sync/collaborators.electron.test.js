@@ -241,6 +241,30 @@ app.whenReady().then(async () => {
     check('member: the turned-down change says it was sent to the owner (parked)', parkedItem && parkedItem.parked === true,
       JSON.stringify(dec));
 
+    // An interrupted push (offline): one that never left this computer is
+    // forgotten (the next sync sends everything as one push); one that may
+    // have reached the server is kept and sent again first, same pushId
+    const sidecarMod = require(`${E}/sync/sidecar`);
+    const offlineFetch = (code) => async () => {
+      throw Object.assign(new TypeError('fetch failed'), { cause: Object.assign(new Error(code), { code }) });
+    };
+    const realFetch = globalThis.fetch;
+    const early = await ser.loadProjectJson(straboId);
+    early.datasets = [...early.datasets, { id: 'D-early', name: 'Made before the removal', samples: [] }];
+    await ser.saveProjectJson(early, straboId);
+    globalThis.fetch = offlineFetch('ECONNREFUSED');
+    let off = await svc.push(straboId, SERVER, () => {});
+    globalThis.fetch = realFetch;
+    let stOff = await sidecarMod.loadState(editorCopy2);
+    check('offline before connecting: the push is forgotten, not kept to send again', !off.ok && off.kind === 'offline' &&
+      !stOff.outgoingPush, JSON.stringify({ off, outgoing: stOff.outgoingPush }));
+    globalThis.fetch = offlineFetch('ECONNRESET');
+    off = await svc.push(straboId, SERVER, () => {});
+    globalThis.fetch = realFetch;
+    stOff = await sidecarMod.loadState(editorCopy2);
+    check('connection lost on the way: the push is kept to send again', !off.ok && off.kind === 'offline' && stOff.outgoingPush &&
+      stOff.outgoingPush.planned.some((x) => x.key === 'dataset:D-early'), JSON.stringify({ off, outgoing: stOff.outgoingPush }).slice(0, 400));
+
     // Removed with unsynced work: the next push is parked, the poll says removed, by whom
     await loginAs('owner');
     projectFolders.useProjectCopy(straboId, ownerCopy);
@@ -302,6 +326,11 @@ app.whenReady().then(async () => {
       roleParked.changes.some((c) => c.id === 'D-owner' && c.fields && c.fields.name === 'Renamed by a Contributor') &&
       removedParked.changes.some((c) => c.op === 'create' && c.id === 'D-mine') &&
       removedParked.changes.some((c) => c.op === 'create' && c.type === 'micrograph' && c.id === 'M-mine'), JSON.stringify(pk).slice(0, 600));
+    // The interrupted push went first and was parked; the rest joined it, nothing twice
+    const removedIds = removedParked ? removedParked.changes.map((c) => `${c.type}:${c.id}`) : [];
+    check('owner: the removal is one parked push with the interrupted push\'s change too, each change once',
+      pk.ok && pk.parked.filter((x) => x.reason === 'removed' && x.user.pkey === people.editor.pkey).length === 1 &&
+      removedIds.includes('dataset:D-early') && new Set(removedIds).size === removedIds.length, JSON.stringify(removedIds));
     // Accept the rename as the app does: apply it to my project, mark it, push
     let own = await ser.loadProjectJson(straboId);
     own.datasets.find((d) => d.id === 'D-owner').name = 'Renamed by a Contributor';

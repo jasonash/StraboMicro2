@@ -72,6 +72,21 @@ async function readProjectFiles(folder) {
 
 const refKey = (type, id, role) => `${type}:${id}|${role}`;
 
+/** An access_removed answer that says my changes were parked for the owner */
+const isParked = (err) => Boolean(err && err.data && err.data.parked === true);
+
+/**
+ * A push that never left this computer (offline before connecting) is not
+ * in flight: forget it, so the next sync plans all my changes into one push
+ * instead of sending this one again on its own first.
+ */
+async function forgetUnsentPush(folder, state, err) {
+  if (err instanceof SyncError && err.kind === 'offline' && err.notSent && state.outgoingPush) {
+    state.outgoingPush = null;
+    await sidecar.saveState(folder, state);
+  }
+}
+
 /**
  * Files the server should have for the current project: one entry per ref.
  * Tile ZIPs are described, not built (built in phase C when needed).
@@ -121,11 +136,34 @@ async function pushProject({ folder, client, onProgress = () => {} }) {
   const hashes = await sidecar.createHashIndex(folder);
   state.tileSources = state.tileSources || {};
 
-  // A push that was in flight when the app stopped: send it again (same pushId)
+  // Removed from the project (17k): the entity changes still go up, the
+  // server parks them for the owner's review and answers access_removed
+  let removed = null;
+  const problems = [];
+  let pushed = 0;
+  /** Changes of the push sent again below that did not go through: not planned again now */
+  const resent = new Set();
+
+  // A push that was in flight when the app stopped or the connection went:
+  // send it again (same pushId: the server may have it already). Its results
+  // count like any batch's, so a refused or parked change is not sent twice
   if (state.outgoingPush) {
-    const { pushId, planned } = state.outgoingPush;
-    const res = await client.push(pid, pushId, clientId, planned.map((p) => p.change));
-    applyPushResults(state.base, planned, res.results);
+    const { pushId, planned: again } = state.outgoingPush;
+    try {
+      const res = await client.push(pid, pushId, clientId, again.map((p) => p.change));
+      const r = applyPushResults(state.base, again, res.results);
+      pushed += r.accepted;
+      for (const x of r.problems) {
+        problems.push({ change: x.planned.change, result: x.result });
+        resent.add(x.planned.key);
+      }
+    } catch (err) {
+      await forgetUnsentPush(folder, state, err);
+      if (!(err instanceof SyncError && err.kind === 'access_removed')) throw err;
+      // Parked for the owner (or refused): the rest of my work goes up too
+      removed = err;
+      for (const p of again) resent.add(p.key);
+    }
     state.outgoingPush = null;
     await sidecar.saveState(folder, state);
   }
@@ -149,10 +187,8 @@ async function pushProject({ folder, client, onProgress = () => {} }) {
   }
   const bytesTotal = originals.reduce((sum, o) => sum + o.size, 0);
   let bytesDone = 0;
-  // Removed from the project (17k): the entity changes still go up, the
-  // server parks them for the owner's review and answers access_removed
-  let removed = null;
-  for (const { key, e, rel, size } of originals) {
+  // Removed: uploads are refused, so none is tried
+  for (const { key, e, rel, size } of removed ? [] : originals) {
     const item = e.body.name || e.id;
     try {
       const sha256 = await hashes.hash(rel);
@@ -200,25 +236,39 @@ async function pushProject({ folder, client, onProgress = () => {} }) {
   for (const k of sidecar.heldKeys(state)) held.add(k);
   const keptRefused = sidecar.stillRefused(state, current);
   for (const p of keptRefused) held.add(p.key);
-  const planned = planPush(state.base, current, { skip: held });
+  // The push sent again above already carried these: not a second time (not
+  // a hold either, which would also hold back what was created beneath them)
+  const planned = planPush(state.base, current, { skip: held }).filter((p) => !resent.has(p.key));
   // Parked changes the owner accepted go up on behalf of their member (17y)
   const onBehalf = state.onBehalf || {};
   for (const p of planned) if (onBehalf[p.key]) p.change.onBehalfOf = onBehalf[p.key].pkey;
-  const problems = [];
-  let pushed = 0;
+  // What the server answered a removed member's entity changes: parked for
+  // the owner (added to one parked push), or refused once the owner reviewed
+  let entityRemoval = null;
   for (const batch of batchPush(planned)) {
     const pushId = crypto.randomUUID();
     state.outgoingPush = { pushId, planned: batch };
     await sidecar.saveState(folder, state);
     onProgress({ phase: 'push', count: batch.length });
-    const res = await client.push(pid, pushId, clientId, batch.map((p) => p.change));
+    let res;
+    try {
+      res = await client.push(pid, pushId, clientId, batch.map((p) => p.change));
+    } catch (err) {
+      await forgetUnsentPush(folder, state, err);
+      if (!(err instanceof SyncError && err.kind === 'access_removed')) throw err;
+      // The next batches go too; a refusal wins (the notice must not say it all went to the owner)
+      if (!entityRemoval || (isParked(entityRemoval) && !isParked(err))) entityRemoval = err;
+      state.outgoingPush = null;
+      await sidecar.saveState(folder, state);
+      continue;
+    }
     const r = applyPushResults(state.base, batch, res.results);
     pushed += r.accepted;
     problems.push(...r.problems.map((x) => ({ change: x.planned.change, result: x.result })));
     state.outgoingPush = null;
     await sidecar.saveState(folder, state);
   }
-  if (removed) throw removed;
+  if (entityRemoval || removed) throw entityRemoval || removed;
   // Marks stay for changes still waiting to go up; one not planned yet (the
   // accepted change was not saved when this push started) for up to an hour
   if (state.onBehalf) {

@@ -26,7 +26,9 @@ class SyncError extends Error {
   /**
    * @param {'offline' | 'auth' | 'disabled' | 'old_server' | 'server' | 'access_removed'} kind
    * @param {string} message
-   * @param {{ status?: number, data?: unknown }} [details]
+   * @param {{ status?: number, data?: unknown, notSent?: boolean }} [details]
+   *   notSent: offline, and the request never left this computer (no network,
+   *   no such host, connection refused), so the server cannot have it
    */
   constructor(kind, message, details = {}) {
     super(message);
@@ -34,7 +36,20 @@ class SyncError extends Error {
     this.kind = kind;
     this.status = details.status;
     this.data = details.data;
+    this.notSent = details.notSent === true;
   }
+}
+
+/** Network errors raised before a request is on its way */
+const NOT_SENT_CODES = new Set([
+  'ENOTFOUND', 'EAI_AGAIN', 'ECONNREFUSED', 'ENETUNREACH', 'EHOSTUNREACH', 'ENETDOWN', 'UND_ERR_CONNECT_TIMEOUT',
+]);
+
+/** fetch's error (TypeError 'fetch failed' with the cause): was nothing sent? */
+function neverSent(err) {
+  const cause = err && err.cause;
+  const code = cause && (cause.code || (cause.errors && cause.errors[0] && cause.errors[0].code));
+  return typeof code === 'string' && NOT_SENT_CODES.has(code);
 }
 
 /** SHA-256 of a file, streamed. */
@@ -84,7 +99,7 @@ function createSyncClient({ restServer, getAccessToken, refreshAccessToken, fetc
     try {
       res = await fetchImpl(base + path, { method, headers, body: payload });
     } catch (err) {
-      throw new SyncError('offline', `Could not reach the StraboSpot server (${err.message})`);
+      throw new SyncError('offline', `Could not reach the StraboSpot server (${err.message})`, { notSent: neverSent(err) });
     }
     const text = await res.text();
     let data = null;
