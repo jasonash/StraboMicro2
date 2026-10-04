@@ -131,11 +131,15 @@ export async function setOffline(copy: Copy, offline: boolean): Promise<void> {
 
 /** The notice 'N sync changes need your decision' > Review: the decisions dialog */
 export async function reviewDecisions(copy: Copy) {
-  const notice = copy.page.getByText(/sync (change needs|changes need) your decision/);
-  await expect(notice).toBeVisible({ timeout: 30_000 });
-  await copy.caption('reviews the decisions');
-  await copy.page.getByRole('button', { name: 'Review', exact: true }).click();
+  // A Sync Now that leaves something to decide opens the dialog by itself
+  // (16x); otherwise the notice offers Review
   const dialog = copy.page.getByRole('dialog', { name: 'Sync needs your decision' });
+  const notice = copy.page.getByText(/sync (change needs|changes need) your decision/);
+  await expect(dialog.or(notice).first()).toBeVisible({ timeout: 30_000 });
+  if (!(await dialog.isVisible())) {
+    await copy.caption('reviews the decisions');
+    await copy.page.getByRole('button', { name: 'Review', exact: true }).click();
+  }
   await expect(dialog).toBeVisible();
   return dialog;
 }
@@ -309,4 +313,68 @@ export async function canAddMicrograph(copy: Copy, sampleName: string): Promise<
   await copy.page.keyboard.press('Escape');
   await expect(item).toBeHidden();
   return enabled;
+}
+
+/** File > Collaborate...: the Collaborators dialog, members loaded */
+async function collaborators(copy: Copy) {
+  await copy.menu('File', 'Collaborate...');
+  const dialog = copy.page.getByRole('dialog', { name: 'Collaborators' });
+  await expect(dialog.getByRole('list')).toBeVisible({ timeout: 30_000 });
+  return dialog;
+}
+
+/** The owner changes a member's role in the Collaborators dialog */
+export async function changeRole(owner: Copy, member: Copy, role: 'Editor' | 'Contributor' | 'Viewer'): Promise<void> {
+  const dialog = await collaborators(owner);
+  const row = dialog.getByRole('listitem').filter({ hasText: member.account.email });
+  await row.getByRole('combobox').click();
+  await owner.caption(`makes ${member.account.name} ${role === 'Editor' ? 'an' : 'a'} ${role}`);
+  await owner.page.getByRole('option', { name: role, exact: true }).click();
+  await expect(dialog.getByText(`${member.account.name} is now ${role === 'Editor' ? 'an' : 'a'} ${role}.`)).toBeVisible();
+  await dialog.getByRole('button', { name: 'Close' }).click();
+  await expect(dialog).toBeHidden();
+}
+
+/** The owner removes a member: Remove..., then Remove */
+export async function removeMember(owner: Copy, member: Copy): Promise<void> {
+  const dialog = await collaborators(owner);
+  const row = dialog.getByRole('listitem').filter({ hasText: member.account.email });
+  await row.getByRole('button', { name: 'Remove…' }).click();
+  await owner.caption(`removes ${member.account.name}`);
+  await row.getByRole('button', { name: 'Remove', exact: true }).click();
+  await expect(dialog.getByText(`${member.account.name} was removed from the project.`)).toBeVisible();
+  await dialog.getByRole('button', { name: 'Close' }).click();
+  await expect(dialog).toBeHidden();
+}
+
+/** A member leaves: Leave Project..., keep a separate copy or remove it, Leave Project */
+export async function leaveProject(copy: Copy, keepCopy: boolean): Promise<void> {
+  const dialog = await collaborators(copy);
+  await dialog.getByRole('button', { name: 'Leave Project…' }).click();
+  await dialog.getByLabel(keepCopy ? 'Keep a separate copy on this computer (it no longer syncs)' : 'Remove it from this computer').check();
+  await copy.caption(keepCopy ? 'leaves, keeping a copy' : 'leaves and removes the copy');
+  await dialog.getByRole('button', { name: 'Leave Project', exact: true }).click();
+  await expect(dialog).toBeHidden({ timeout: 30_000 });
+}
+
+/** The notice a member gets when their copy became separate: its title and text, then OK */
+export async function separateCopyNotice(copy: Copy, title: 'You Left the Project' | 'Removed From the Project' | 'Deleted From StraboSpot'): Promise<string> {
+  const dialog = copy.page.getByRole('dialog', { name: title });
+  await expect(dialog).toBeVisible({ timeout: 60_000 });
+  const text = await dialog.innerText();
+  await copy.caption(`sees '${title}'`);
+  await dialog.getByRole('button', { name: 'OK' }).click();
+  await expect(dialog).toBeHidden();
+  return text;
+}
+
+/** The owner opens 'Changes waiting for your review' from the sync chip (Review...) */
+export async function openParkedReview(owner: Copy) {
+  await expect.poll(() => owner.state((e) => e.sync.getState().parkedCount), { timeout: 60_000 }).toBeGreaterThan(0);
+  await syncChip(owner).click();
+  await owner.caption('reviews the changes sent to them');
+  await owner.page.getByRole('button', { name: 'Review…' }).click();
+  const dialog = owner.page.getByRole('dialog', { name: 'Changes waiting for your review' });
+  await expect(dialog).toBeVisible();
+  return dialog;
 }

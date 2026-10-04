@@ -33,8 +33,9 @@ export const test = base.extend<Fixtures>({
     for (const copy of copies) {
       const failed = testInfo.status !== testInfo.expectedStatus;
       if (failed) {
-        const shot = await copy.page.screenshot().catch(() => null);
-        if (shot) await testInfo.attach(`${copy.label} screen`, { body: shot, contentType: 'image/png' });
+        const shotPath = testInfo.outputPath(`${copy.label}-screen.png`);
+        const shot = await copy.page.screenshot({ path: shotPath }).catch(() => null);
+        if (shot) await testInfo.attach(`${copy.label} screen`, { path: shotPath, contentType: 'image/png' });
         if (fs.existsSync(copy.logFile)) await testInfo.attach(`${copy.label} main.log`, { path: copy.logFile, contentType: 'text/plain' });
         if (copy.alerts.length) await testInfo.attach(`${copy.label} alerts`, { body: copy.alerts.join('\n'), contentType: 'text/plain' });
         if (copy.consoleErrors.length) await testInfo.attach(`${copy.label} console errors`, { body: copy.consoleErrors.join('\n'), contentType: 'text/plain' });

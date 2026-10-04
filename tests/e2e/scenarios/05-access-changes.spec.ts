@@ -1,0 +1,129 @@
+/**
+ * Access changes (stage 4, 5c): leaving, removal, a role taken down while
+ * the member had work not synced yet (parked for the owner), and the
+ * owner's review of it, with both copies settling afterwards.
+ */
+
+import { test, expect } from '../lib/test';
+import { ACCOUNTS } from '../lib/copy';
+import { writeImage } from '../lib/fixtures';
+import {
+  share, waitSettled, spotField, editSpot, setOffline, syncNow, leaveProject, separateCopyNotice, removeMember,
+  changeRole, openParkedReview, addReferenceMicrograph, micrograph, reviewDecisions, syncChip,
+} from '../lib/actions';
+
+test('a member leaves and keeps a separate copy that no longer syncs', async ({ launch, project }) => {
+  const p = await project('E2E Leave Keep');
+  const spot = p.spots[0];
+  const ana = await launch('Ana', ACCOUNTS.ana);
+  const ben = await launch('Ben', ACCOUNTS.ben);
+  await share(ana, ben, p.smzPath, p.id, p.name);
+
+  await leaveProject(ben, true);
+  const text = await separateCopyNotice(ben, 'You Left the Project');
+  expect(text).toContain(`You left "${p.name}".`);
+  expect(await ben.state((e) => e.sync.getState().synced)).toBe(false);
+  expect(await spotField(ben, spot.id, 'name')).toBe('Garnet 1');
+
+  // Ana's later work does not reach Ben's separate copy
+  await editSpot(ana, spot.id, { name: 'After Ben left' });
+  await waitSettled(ana);
+  await ben.page.waitForTimeout(4_000);
+  expect(await spotField(ben, spot.id, 'name')).toBe('Garnet 1');
+  expect(await ben.state((e) => e.app.getState().project?.id)).not.toBe(p.id);
+});
+
+test('a member leaves and removes the copy from their computer', async ({ launch, project }) => {
+  const p = await project('E2E Leave Remove');
+  const ana = await launch('Ana', ACCOUNTS.ana);
+  const ben = await launch('Ben', ACCOUNTS.ben);
+  await share(ana, ben, p.smzPath, p.id, p.name);
+
+  await leaveProject(ben, false);
+  await expect.poll(() => ben.state((e) => e.app.getState().project?.id ?? null), { timeout: 30_000 }).toBeNull();
+});
+
+test('a removed member\'s unsynced work, a new micrograph included, goes to the owner for review', async ({ launch, project, runDir }) => {
+  // KNOWN BUG (found 2026-10-04): an interrupted push (outgoingPush) is
+  // resent first, the server parks it alone (a removed member's first push)
+  // and the rest (the new micrograph) is never sent. Remove when fixed.
+  test.fail();
+  const p = await project('E2E Removed With Work');
+  const spot = p.spots[1];
+  const img = await writeImage(`${runDir}/images/unsent.jpg`);
+  const ana = await launch('Ana', ACCOUNTS.ana);
+  const ben = await launch('Ben', ACCOUNTS.ben);
+  await share(ana, ben, p.smzPath, p.id, p.name);
+
+  await setOffline(ben, true);
+  await editSpot(ben, spot.id, { notes: 'Undulose extinction' });
+  const m = await addReferenceMicrograph(ben, 'TX-01', img, 'Unsent micrograph');
+  await removeMember(ana, ben);
+  await setOffline(ben, false);
+  await syncNow(ben);
+
+  const text = await separateCopyNotice(ben, 'Removed From the Project');
+  expect(text).toContain(`${ACCOUNTS.ana.name} removed you from "${p.name}".`);
+  expect(text).toContain('Your unsynced changes were sent to the project owner for review.');
+  // Ben keeps his work in his own copy
+  expect(await spotField(ben, spot.id, 'notes')).toBe('Undulose extinction');
+  expect((await micrograph(ben, m))?.name).toBe('Unsent micrograph');
+
+  const review = await openParkedReview(ana);
+  const micrographUnit = review.locator('div').filter({ hasText: /^Added micrograph/ }).filter({ hasText: 'did not reach StraboSpot' }).last();
+  await expect(review.getByText(`A new micrograph's image did not reach StraboSpot with it. Ask ${ACCOUNTS.ben.name} to send it as a .smz file.`)).toBeVisible();
+  void micrographUnit;
+  await ana.caption('accepts what can be accepted');
+  await review.getByRole('button', { name: 'Accept all' }).click();
+  await expect.poll(() => spotField(ana, spot.id, 'notes'), { timeout: 30_000 }).toBe('Undulose extinction');
+  await ana.caption('discards the rest');
+  await review.getByRole('button', { name: 'Discard all' }).click();
+  await expect(review.getByText('Nothing is waiting for your review.')).toBeVisible({ timeout: 30_000 });
+  await review.getByRole('button', { name: 'Close' }).click();
+  expect(await micrograph(ana, m)).toBeNull();
+  await expect.poll(() => ana.state((e) => e.sync.getState().parkedCount), { timeout: 30_000 }).toBe(0);
+  await waitSettled(ana);
+});
+
+for (const ownerChoice of ['Accept', 'Discard'] as const) {
+  test(`an Editor turned Viewer with unsynced work: parked, the owner chooses ${ownerChoice}, both copies settle`, async ({ launch, project }) => {
+    // KNOWN BUG (found 2026-10-04): the resent interrupted push is parked,
+    // its results are dropped, and the same change is parked again by the
+    // push that follows (the owner sees it twice). Remove when fixed.
+    test.fail();
+    const p = await project(`E2E Downgrade ${ownerChoice}`);
+    const spot = p.spots[0];
+    const ana = await launch('Ana', ACCOUNTS.ana);
+    const ben = await launch('Ben', ACCOUNTS.ben);
+    await share(ana, ben, p.smzPath, p.id, p.name);
+
+    await setOffline(ben, true);
+    await editSpot(ben, spot.id, { name: 'Garnet (Ben offline)' });
+    await changeRole(ana, ben, 'Viewer');
+    await setOffline(ben, false);
+    await syncNow(ben);
+
+    // Ben is told where it went
+    const decisions = await reviewDecisions(ben);
+    await expect(decisions.getByText('Your role in this project changed, so it was sent to the project owner for review.')).toBeVisible();
+    await decisions.getByRole('button', { name: 'Close' }).click();
+    await expect.poll(() => ben.state((e) => e.sync.getState().role), { timeout: 30_000 }).toBe('viewer');
+
+    const review = await openParkedReview(ana);
+    await expect(review.getByText('Garnet (Ben offline)').first()).toBeVisible();
+    await review.getByRole('button', { name: `${ownerChoice} all` }).click();
+    await expect(review.getByText('Nothing is waiting for your review.')).toBeVisible({ timeout: 30_000 });
+    await review.getByRole('button', { name: 'Close' }).click();
+
+    const expected = ownerChoice === 'Accept' ? 'Garnet (Ben offline)' : 'Garnet 1';
+    await expect.poll(() => spotField(ana, spot.id, 'name'), { timeout: 30_000 }).toBe(expected);
+    await waitSettled(ana);
+    // Ben's copy settles: no turned-down item left (60b7d91), the owner's outcome in place
+    await syncNow(ben);
+    await expect.poll(() => ben.state((e) => e.sync.getState().refused), { timeout: 30_000 }).toBe(0);
+    await expect.poll(() => spotField(ben, spot.id, 'name'), { timeout: 30_000 }).toBe(expected);
+    await waitSettled(ben);
+    await expect(syncChip(ben)).toHaveText('Synced');
+    expect(await ana.state((e) => e.sync.getState().parkedCount)).toBe(0);
+  });
+}
