@@ -216,6 +216,11 @@ async function main() {
   /** key => steps it was deleted at (with everything beneath it) */
   const deletedAt = new Map();
   let serverPidOf = 0;
+  /** agent name => the last step it had a role below Editor (Infinity: still has) */
+  const restrictedUntil = new Map();
+  const roles = new Map([['Ben', 'editor'], ['Cleo', 'editor']]);
+  /** stroke id => { micrograph key, agent, step } */
+  const strokes = new Map();
 
   try {
     // Setup: Ana's project, Ben and Cleo invited as Editors, Ana's laptop downloads it
@@ -256,15 +261,47 @@ async function main() {
           if (!writes.has(k)) writes.set(k, []);
           writes.get(k).push({ agent: a.name, value: w.value, step });
         }
-        for (const k of e.created ?? []) created.add(k);
+        for (const k of e.created ?? []) {
+          if (k.startsWith('stroke:')) {
+            const mk = (e.writes ?? []).find((w) => w.field === 'sketchLayers')?.key ?? null;
+            strokes.set(k.slice(7), { micrograph: mk, agent: a.name, step });
+          } else created.add(k);
+        }
         for (const k of e.deleted ?? []) {
-          deletedBy.set(k, a.name);
+          if (!k.startsWith('stroke:')) deletedBy.set(k, a.name);
           deletedAt.set(k, [...(deletedAt.get(k) ?? []), step]);
         }
         log.push({ step, agent: a.name, edit: e.kind, writes: e.writes, created: e.created, deleted: e.deleted });
-      } else if (roll < 0.74) {
+      } else if (roll < 0.71) {
         const r = await doSync(a, step);
         log.push({ step, agent: a.name, sync: r.ok ? 'ok' : r.kind });
+      } else if (roll < 0.73) {
+        // The owner changes a member's role (File > Collaborate...)
+        const who = pick([ben, cleo]);
+        const role = pick(['editor', 'contributor', 'viewer']);
+        const r = await ana.call('role', { pkey: who.token.pkey, role });
+        if (!r.ok && r.kind === 'offline' && ana.net !== 'online') {
+          // With the answer lost (lost-reply, dropped) it may have happened anyway
+          count('role change unsure (owner offline)');
+          if (ana.net !== 'no-network') {
+            restrictedUntil.set(who.name, Infinity);
+            roles.set(who.name, 'unknown');
+          }
+        }
+        else if (!r.ok) problems.push(`step ${step}: role change for ${who.name} failed: ${JSON.stringify(r).slice(0, 300)}`);
+        else {
+          if (roles.get(who.name) !== 'editor' || role !== 'editor') restrictedUntil.set(who.name, role === 'editor' ? step : Infinity);
+          roles.set(who.name, role);
+        }
+        count(`role ${role}`);
+        log.push({ step, agent: 'Ana', role: { who: who.name, role } });
+      } else if (roll < 0.75) {
+        // The owner reviews what was parked: Discard all
+        const r = await ana.call('discardParked');
+        if (!r.ok && r.kind === 'offline' && ana.net !== 'online') count('review skipped (owner offline)');
+        else if (!r.ok) problems.push(`step ${step}: discarding parked changes failed: ${JSON.stringify(r).slice(0, 300)}`);
+        if (r.discarded) count('parked pushes discarded');
+        log.push({ step, agent: 'Ana', discardParked: r.discarded ?? 0 });
       } else if (roll < 0.79) {
         const b = pick(agents.filter((x) => x !== a));
         count('two syncs at once');
@@ -300,6 +337,14 @@ async function main() {
       a.net = 'online';
     }
     Agent.step = 'settle';
+    // Everyone Editor again, and nothing left parked, so the copies can settle
+    for (const who of [ben, cleo]) {
+      const r = await ana.call('role', { pkey: who.token.pkey, role: 'editor' });
+      if (!r.ok) problems.push(`settle: making ${who.name} an Editor again failed: ${JSON.stringify(r).slice(0, 300)}`);
+      if (roles.get(who.name) !== 'editor') restrictedUntil.set(who.name, STEPS + 1);
+      roles.set(who.name, 'editor');
+    }
+    await ana.call('discardParked');
     let settled = false;
     for (let round = 1; round <= 12 && !settled; round++) {
       let moved = 0;
@@ -339,6 +384,20 @@ async function main() {
       }
     }
 
+    // Every copy has every micrograph's image
+    for (const a of agents) {
+      const missing = await a.call('missingImages');
+      if (missing.length > 0) problems.push(`${a.name} lacks the image of ${missing.length} micrograph(s): ${missing.slice(0, 3).join(', ')}`);
+    }
+    // A sketch stroke nobody deleted is still there (unless its micrograph went, or its maker was turned down)
+    const finalStrokes = new Set(await ana.call('strokeIds'));
+    for (const [id, st] of strokes) {
+      if (finalStrokes.has(id) || (deletedAt.get(`stroke:${id}`) ?? []).length > 0) continue;
+      if (st.micrograph && ((deletedAt.get(st.micrograph) ?? []).length > 0 || !ref[st.micrograph])) continue;
+      if ((restrictedUntil.get(st.agent) ?? -1) >= st.step) continue;
+      problems.push(`stroke ${id} (${st.agent}, step ${st.step}) was never deleted but is gone`);
+    }
+
     const final = ref;
     for (const [k, list] of writes) {
       const [key, field] = k.split('|');
@@ -354,7 +413,9 @@ async function main() {
       // StraboSpot went with the delete, which is how a delete works; one the
       // server had must come back with a restore
       const deletedLater = (deletedAt.get(key) ?? []).some((st) => st >= last.step) && !reachedServer(serverPidOf, key, field, last.value);
-      if (writers.size === 1 && value !== last.value && !deletedLater) {
+      // Written by someone below Editor then or later: it may be turned down
+      const restricted = (restrictedUntil.get(last.agent) ?? -1) >= last.step;
+      if (writers.size === 1 && value !== last.value && !deletedLater && !restricted) {
         problems.push(`${key} ${field}: only ${last.agent} wrote it, last ${JSON.stringify(last.value)} (step ${last.step}), but it is ${JSON.stringify(value)}`);
       }
     }

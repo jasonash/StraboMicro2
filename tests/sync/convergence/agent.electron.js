@@ -118,17 +118,21 @@ app.whenReady().then(async () => {
     };
   }
 
-  /** The owner's starting project: a reference micrograph with a child on it, spots on both, tags, a group */
-  async function create({ straboId, name }) {
-    projectId = straboId;
-    const now = new Date().toISOString();
-    const micro = (id, mname, parentID) => ({
+  function newMicrograph(id, mname, parentID) {
+    return {
       id, name: mname, imageType: 'Plane Polarized Light', width: 800, height: 600, imageWidth: 800, imageHeight: 600,
       opacity: 1, scale: '', polish: false, polishDescription: '', description: '', notes: '', scalePixelsPerCentimeter: 20000,
       rotation: 0, spots: [], orientationInfo: { orientationMethod: 'unoriented' }, associatedFiles: [], links: [],
       isMicroVisible: true, isExpanded: false, isSpotExpanded: false, isFlipped: false, tags: [],
       ...(parentID ? { parentID, offsetInParent: { X: 100, Y: 80 }, scaleX: 0.4, scaleY: 0.4, pointInParent: null } : {}),
-    });
+    };
+  }
+
+  /** The owner's starting project: a reference micrograph with a child on it, spots on both, tags, a group */
+  async function create({ straboId, name }) {
+    projectId = straboId;
+    const now = new Date().toISOString();
+    const micro = (id, mname, parentID) => newMicrograph(id, mname, parentID);
     const ref = micro(crypto.randomUUID(), 'Reference', null);
     const child = micro(crypto.randomUUID(), 'Detail', ref.id);
     ref.spots = ['Garnet', 'Quartz', 'Biotite', 'Plagioclase'].map((n, i) => newSpot(n, 60 + i * 150, 120 + i * 90));
@@ -147,6 +151,12 @@ app.whenReady().then(async () => {
           sampleSize: '', degreeOfWeathering: '', sampleNotes: '', sampleType: '', color: '', lithology: '', sampleUnit: '',
           otherMaterialType: '', sampleOrientationNotes: '', otherSamplingPurpose: '',
           micrographs: [ref, child], isExpanded: false, isSpotExpanded: false,
+        }, {
+          id: crypto.randomUUID(), existsOnServer: false, label: 'CV-02', sampleID: 'CV-02', igsn: '', longitude: 0, latitude: 0,
+          mainSamplingPurpose: '', sampleDescription: '', materialType: '', inplacenessOfSample: '', orientedSample: '',
+          sampleSize: '', degreeOfWeathering: '', sampleNotes: '', sampleType: '', color: '', lithology: '', sampleUnit: '',
+          otherMaterialType: '', sampleOrientationNotes: '', otherSamplingPurpose: '',
+          micrographs: [], isExpanded: false, isSpotExpanded: false,
         }],
       }],
       groups: [{ id: crypto.randomUUID(), name: 'Overview set', micrographs: [ref.id], spotIDs: [] }],
@@ -173,6 +183,7 @@ app.whenReady().then(async () => {
     ['spotField', 30], ['micrographField', 10], ['sampleField', 5], ['datasetName', 3], ['projectNotes', 3],
     ['addSpot', 12], ['deleteSpot', 7], ['moveSpot', 6], ['tagSpot', 8], ['untagSpot', 4], ['groupMicrograph', 4],
     ['addTag', 3], ['deleteTag', 2], ['deleteChildMicrograph', 1],
+    ['addMicrograph', 3], ['reparentSpot', 4], ['moveMicrograph', 2], ['addStroke', 5], ['deleteStroke', 2],
   ];
   const TOTAL = WEIGHTS.reduce((n, [, w]) => n + w, 0);
 
@@ -304,11 +315,100 @@ app.whenReady().then(async () => {
         }
         return { kind: 'none' };
       }
+      case 'addMicrograph': {
+        // A new reference micrograph with its own image, in a random sample
+        const s0 = pick(r, a.samples);
+        const m = newMicrograph(crypto.randomUUID(), value, null);
+        const folder = projectFolders.getProjectFolderPath(projectId);
+        fs.mkdirSync(path.join(folder, 'images'), { recursive: true });
+        fs.writeFileSync(path.join(folder, 'images', m.id), await image(seed));
+        s0.micrographs = [...(s0.micrographs ?? []), m];
+        created.push(`micrograph:${m.id}`);
+        writes.push({ key: `micrograph:${m.id}`, field: 'name', value });
+        break;
+      }
+      case 'reparentSpot': {
+        if (a.spots.length === 0 || a.micrographs.length < 2) return { kind: 'none' };
+        const { spot, micrograph } = pick(r, a.spots);
+        const to = pick(r, a.micrographs.filter((m) => m.id !== micrograph.id));
+        micrograph.spots = micrograph.spots.filter((x) => x.id !== spot.id);
+        to.spots = [...(to.spots ?? []), spot];
+        touchSpot(spot);
+        writes.push({ key: `spot:${spot.id}`, field: 'parent', value: null });
+        break;
+      }
+      case 'moveMicrograph': {
+        // A reference micrograph nothing is nested in, to another sample
+        const free = [];
+        for (const s0 of a.samples) {
+          for (const m of s0.micrographs ?? []) {
+            if (!m.parentID && !a.micrographs.some((x) => x.parentID === m.id)) free.push({ m, s0 });
+          }
+        }
+        if (free.length === 0 || a.samples.length < 2) return { kind: 'none' };
+        const { m, s0 } = pick(r, free);
+        const to = pick(r, a.samples.filter((x) => x.id !== s0.id));
+        s0.micrographs = s0.micrographs.filter((x) => x.id !== m.id);
+        to.micrographs = [...(to.micrographs ?? []), m];
+        writes.push({ key: `micrograph:${m.id}`, field: 'parent', value: null });
+        break;
+      }
+      case 'addStroke': {
+        const m = pick(r, a.micrographs);
+        if (!m) return { kind: 'none' };
+        if (!Array.isArray(m.sketchLayers) || m.sketchLayers.length === 0) {
+          m.sketchLayers = [{ id: crypto.randomUUID(), name: value, visible: true, createdAt: new Date().toISOString(), strokes: [], textItems: [] }];
+        }
+        const layer = pick(r, m.sketchLayers);
+        const stroke = { id: crypto.randomUUID(), points: [10, 10, 50 + Math.floor(r() * 300), 60], color: '#ff0000', strokeWidth: 3, opacity: 1, tool: 'pen' };
+        layer.strokes = [...(layer.strokes ?? []), stroke];
+        created.push(`stroke:${stroke.id}`);
+        writes.push({ key: `micrograph:${m.id}`, field: 'sketchLayers', value: null });
+        break;
+      }
+      case 'deleteStroke': {
+        const all2 = [];
+        for (const m of a.micrographs) for (const l of m.sketchLayers ?? []) for (const st of l.strokes ?? []) all2.push({ l, st });
+        if (all2.length === 0) return { kind: 'none' };
+        const { l, st } = pick(r, all2);
+        l.strokes = l.strokes.filter((x) => x.id !== st.id);
+        deleted.push(`stroke:${st.id}`);
+        break;
+      }
       default:
         return { kind: 'none' };
     }
     await save(p);
     return { kind, writes, created, deleted };
+  }
+
+  /** The owner discards every parked push (Changes waiting for your review > Discard all) */
+  async function discardParked() {
+    const r = await svc.parked(projectId, SERVER);
+    if (!r.ok) return { ok: false, kind: r.kind, message: r.message };
+    let n = 0;
+    for (const push of r.parked) {
+      const decisions = Object.fromEntries(push.changes.map((c) => [`${c.type}:${c.id}`, 'discarded']));
+      const d = await svc.reviewParked(projectId, SERVER, push.id, decisions, push.user.pkey);
+      if (!d.ok) return { ok: false, kind: d.kind, message: d.message, push: push.id };
+      n++;
+    }
+    return { ok: true, discarded: n };
+  }
+
+  /** Micrographs whose original image is not in this copy (after downloads) */
+  async function missingImages() {
+    const p = await load();
+    const folder = projectFolders.getProjectFolderPath(projectId);
+    return all(p).micrographs.filter((m) => !fs.existsSync(path.join(folder, 'images', m.id))).map((m) => m.id);
+  }
+
+  /** Every sketch stroke id in this copy */
+  async function strokeIds() {
+    const p = await load();
+    const out = [];
+    for (const m of all(p).micrographs) for (const l of m.sketchLayers ?? []) for (const st of l.strokes ?? []) out.push(st.id);
+    return out;
   }
 
   // ------------------------------------------------------------------- sync
@@ -325,6 +425,11 @@ app.whenReady().then(async () => {
     }
     const c = await svc.commitPull(projectId, r.pullId);
     if (!c.ok) return { ok: false, kind: c.kind, message: c.message };
+    // Images and other files the pull says this copy lacks (the app's startDownloads)
+    if ((c.downloads ?? 0) > 0) {
+      const d = await svc.download(projectId, SERVER, () => {});
+      if (d && d.ok === false) return { ok: false, kind: d.kind, message: d.message };
+    }
     if (r.changes.length > 0 || result.conflicts > 0 || result.restored > 0) {
       result = await svc.push(projectId, SERVER, () => {});
       if (!result.ok) return { ok: false, kind: result.kind, message: result.message };
@@ -422,6 +527,19 @@ app.whenReady().then(async () => {
     return { id: sp.id, micrograph: ref.id };
   }
 
+  /** A stroke on the reference micrograph's first sketch layer (made when there is none) */
+  async function addStrokeNamed() {
+    const p = await load();
+    const ref = all(p).micrographs.find((m) => !m.parentID);
+    if (!Array.isArray(ref.sketchLayers) || ref.sketchLayers.length === 0) {
+      ref.sketchLayers = [{ id: `layer-${ref.id}`, name: 'Sketch', visible: true, createdAt: new Date().toISOString(), strokes: [], textItems: [] }];
+    }
+    const stroke = { id: crypto.randomUUID(), points: [10, 10, 90, 60], color: '#ff0000', strokeWidth: 3, opacity: 1, tool: 'pen' };
+    ref.sketchLayers[0].strokes = [...(ref.sketchLayers[0].strokes ?? []), stroke];
+    await save(p);
+    return { id: stroke.id };
+  }
+
   /** Spot names of a micrograph in this copy's order */
   async function spotOrder({ micrograph }) {
     const p = await load();
@@ -432,7 +550,11 @@ app.whenReady().then(async () => {
   const commands = {
     create,
     addSpotNamed,
+    addStrokeNamed,
     spotOrder,
+    discardParked,
+    missingImages,
+    strokeIds,
     invite: ({ email, role }) => svc.changeMembers(projectId, SERVER, { action: 'invite', email, role }),
     role: ({ pkey, role }) => svc.changeMembers(projectId, SERVER, { action: 'role', pkey, role }),
     accept: async ({ pid }) => {

@@ -1,8 +1,9 @@
 /**
- * Child order of concurrent additions (bug A, found by the convergence
- * test): two computers each add a spot to the same micrograph before either
- * syncs; after syncing back and forth every copy and StraboSpot must list
- * the spots in the same order.
+ * Fixed scenarios of concurrent additions the random convergence test
+ * rarely lines up: (1) child order (bug A): two or three computers each add
+ * a spot to the same micrograph before syncing; every copy and StraboSpot
+ * must list the spots in the same order; (2) sketch strokes merge per item:
+ * two computers each draw a stroke on the same layer; both stay everywhere.
  *
  *   npm run test:order
  */
@@ -76,6 +77,19 @@ async function main() {
     await ben.call('sync');
     await settle();
     await same('interleaved additions: one order everywhere', a1.micrograph);
+
+    // Sketch strokes drawn on the same layer at once: both kept (per-item merge)
+    await ana.call('addStrokeNamed');
+    await settle();
+    const sA = await ana.call('addStrokeNamed');
+    const sB = await ben.call('addStrokeNamed');
+    await ana.call('sync');
+    await ben.call('sync');
+    await settle();
+    for (const a of agents) {
+      const ids = await a.call('strokeIds');
+      check(`${a.name}: both strokes drawn at once are kept`, ids.includes(sA.id) && ids.includes(sB.id), JSON.stringify(ids));
+    }
   } catch (err) {
     failures++;
     console.log(`  FAIL  stopped: ${err.stack || err.message}`);
