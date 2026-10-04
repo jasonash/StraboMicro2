@@ -93,6 +93,7 @@ export function SyncStatusChip() {
     <>
       <Badge badgeContent={toReview} color="warning" invisible={toReview === 0} title={toReview ? waitingText(sync.parked) : undefined}>
       <Chip
+        data-testid="sync-chip"
         size="small"
         variant="outlined"
         color={CHIP_COLOR[state.tone]}
