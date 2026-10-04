@@ -76,9 +76,11 @@ const refKey = (type, id, role) => `${type}:${id}|${role}`;
 const isParked = (err) => Boolean(err && err.data && err.data.parked === true);
 
 /**
- * A push that never left this computer (offline before connecting) is not
- * in flight: forget it, so the next sync plans all my changes into one push
- * instead of sending this one again on its own first.
+ * A push sent for the first time that never left this computer (offline
+ * before connecting) is not in flight: forget it, so the next sync plans all
+ * my changes into one push instead of sending this one again on its own
+ * first. Never for a resend: an earlier attempt may have reached the server
+ * (answer lost, or the app stopped), whatever this attempt did.
  */
 async function forgetUnsentPush(folder, state, err) {
   if (err instanceof SyncError && err.kind === 'offline' && err.notSent && state.outgoingPush) {
@@ -158,7 +160,9 @@ async function pushProject({ folder, client, onProgress = () => {} }) {
         resent.add(x.planned.key);
       }
     } catch (err) {
-      await forgetUnsentPush(folder, state, err);
+      // Kept for the next sync even when this attempt never left the
+      // computer: the earlier one may be on the server (found by the
+      // convergence test: forgetting it re-planned creates the server had)
       if (!(err instanceof SyncError && err.kind === 'access_removed')) throw err;
       // Parked for the owner (or refused): the rest of my work goes up too
       removed = err;

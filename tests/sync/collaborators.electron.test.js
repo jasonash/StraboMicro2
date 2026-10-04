@@ -264,6 +264,15 @@ app.whenReady().then(async () => {
     stOff = await sidecarMod.loadState(editorCopy2);
     check('connection lost on the way: the push is kept to send again', !off.ok && off.kind === 'offline' && stOff.outgoingPush &&
       stOff.outgoingPush.planned.some((x) => x.key === 'dataset:D-early'), JSON.stringify({ off, outgoing: stOff.outgoingPush }).slice(0, 400));
+    // Then no network at all: this resend never left, but the earlier attempt may
+    // be on the server, so the push stays, same pushId (found by the convergence test)
+    const keptId = stOff.outgoingPush && stOff.outgoingPush.pushId;
+    globalThis.fetch = offlineFetch('ECONNREFUSED');
+    off = await svc.push(straboId, SERVER, () => {});
+    globalThis.fetch = realFetch;
+    stOff = await sidecarMod.loadState(editorCopy2);
+    check('a resend that never left keeps the interrupted push (same pushId)', !off.ok && off.kind === 'offline' && stOff.outgoingPush &&
+      stOff.outgoingPush.pushId === keptId, JSON.stringify({ off, keptId, outgoing: stOff.outgoingPush && stOff.outgoingPush.pushId }));
 
     // Removed with unsynced work: the next push is parked, the poll says removed, by whom
     await loginAs('owner');
