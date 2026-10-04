@@ -7,6 +7,11 @@ let projectStampListener = null;
 // the ipcRenderer without exposing the entire object
 contextBridge.exposeInMainWorld('api', {
   version: process.versions.electron,
+  /** An end-to-end test run (STRABO_E2E_DIR, development only; tests/e2e) */
+  e2e: (() => {
+    const arg = process.argv.find((a) => a.startsWith('--strabo-e2e='));
+    return arg ? { server: arg.slice('--strabo-e2e='.length) } : null;
+  })(),
 
   // Session state persistence (for zustand store - replaces localStorage)
   session: {

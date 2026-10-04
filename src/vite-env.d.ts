@@ -415,6 +415,8 @@ interface SyncProgress {
 interface Window {
   api?: {
     version: string;
+    /** An end-to-end test run (development only; src/services/e2eMode.ts) */
+    e2e: { server: string } | null;
 
     // Session state persistence (replaces localStorage for packaged builds)
     session: {

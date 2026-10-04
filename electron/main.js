@@ -30,6 +30,21 @@ if (DEV_PROFILE) {
   log.transports.file.resolvePathFn = () => path.join(userData, 'logs', 'main.log');
 }
 
+// Development only: STRABO_E2E_DIR=<absolute folder> is one copy of the app
+// in an end-to-end test run (tests/e2e). Its userData and Documents live in
+// that folder, and the page learns it is under test (shorter sync timers,
+// stores reachable by the test; src/services/e2eMode.ts).
+const E2E_DIR = !app.isPackaged && !DEV_PROFILE && path.isAbsolute(process.env.STRABO_E2E_DIR || '')
+  ? process.env.STRABO_E2E_DIR
+  : null;
+if (E2E_DIR) {
+  const userData = path.join(E2E_DIR, 'userData');
+  app.setPath('userData', userData);
+  app.setPath('documents', path.join(E2E_DIR, 'Documents'));
+  fs.mkdirSync(app.getPath('documents'), { recursive: true });
+  log.transports.file.resolvePathFn = () => path.join(userData, 'logs', 'main.log');
+}
+
 // Fix sharp native module resolution in Windows packaged builds.
 // sharp loads its binary via require('@img/sharp-win32-x64/sharp.node'), a
 // package.json exports-map entry that failed to resolve inside Electron's
@@ -553,6 +568,7 @@ function createWindow() {
       nodeIntegration: false,
       contextIsolation: true,
       preload: path.join(__dirname, 'preload.js'),
+      ...(E2E_DIR ? { additionalArguments: [`--strabo-e2e=${process.env.STRABO_E2E_SERVER || 'http://localhost'}`] } : {}),
     },
   });
   if (DEV_PROFILE) {

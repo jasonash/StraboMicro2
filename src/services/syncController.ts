@@ -58,11 +58,13 @@ import { applyRemoteChanges, isApplyingSavedStamps } from '@/store/remoteChanges
 import { compositesAffectedBy, regenerateComposites } from '@/utils/compositeRefresh';
 import { takeFirstSyncRequest } from '@/services/syncActions';
 import { loadParked } from '@/services/parkedLoad';
+import { e2eMs } from '@/services/e2eMode';
 
-const DEBOUNCE_MS = 3_000;
-const MAX_WAIT_MS = 30_000;
-const RETRY_DELAYS_MS = [5_000, 15_000, 30_000, 60_000, 120_000, 300_000];
-const SLOW_RETRY_MS = 10 * 60_000;
+// Under an end-to-end test (e2eMode.ts) the waits are short
+const DEBOUNCE_MS = e2eMs(3_000, 300);
+const MAX_WAIT_MS = e2eMs(30_000, 3_000);
+const RETRY_DELAYS_MS = [5_000, 15_000, 30_000, 60_000, 120_000, 300_000].map((ms) => e2eMs(ms, ms / 10));
+const SLOW_RETRY_MS = e2eMs(10 * 60_000, 10_000);
 /** Manual mode: recount the changes waiting this long after editing pauses */
 const RECOUNT_MS = 1_000;
 /** How often a pull waiting for an open edit checks again */
@@ -74,8 +76,8 @@ const IDLE_POLL_MS = 200;
 /** Pause after an answer before its sync (answers given in a row share one) */
 const DECISION_SYNC_MS = 1_000;
 /** Activity poll: while the window is focused, and otherwise (16ah) */
-const POLL_FOCUSED_MS = 30_000;
-const POLL_AWAY_MS = 120_000;
+const POLL_FOCUSED_MS = e2eMs(30_000, 1_500);
+const POLL_AWAY_MS = e2eMs(120_000, 3_000);
 
 type SyncedStatus = Extract<SyncStatusResult, { synced: true }>;
 type Failure = Extract<SyncPushResult, { ok: false }>;

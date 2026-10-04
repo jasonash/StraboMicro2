@@ -11,12 +11,13 @@
 
 import { create } from 'zustand';
 import { getRestServerUrl } from '@/components/dialogs/PreferencesDialog';
+import { e2eMs } from '@/services/e2eMode';
 
 /** Time between background checks */
-export const INVITES_RECHECK_MS = 5 * 60 * 1000;
+export const INVITES_RECHECK_MS = e2eMs(5 * 60 * 1000, 2_000);
 
 /** Minimum time between checks when the window regains focus */
-export const INVITES_FOCUS_MIN_MS = 60 * 1000;
+export const INVITES_FOCUS_MIN_MS = e2eMs(60 * 1000, 1_000);
 
 interface InvitationsState {
   invitations: SyncInvitation[];

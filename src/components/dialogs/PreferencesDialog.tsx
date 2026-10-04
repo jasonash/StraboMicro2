@@ -31,7 +31,7 @@ interface PreferencesDialogProps {
 }
 
 const DEFAULT_REST_SERVER = 'https://strabospot.org';
-const STORAGE_KEY_REST_SERVER = 'preferences:restServer';
+export const STORAGE_KEY_REST_SERVER = 'preferences:restServer';
 const STORAGE_KEY_SYNC_NEW_PROJECTS = 'preferences:syncNewProjects';
 
 /**

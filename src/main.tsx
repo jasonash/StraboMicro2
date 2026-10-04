@@ -6,6 +6,15 @@ import * as Sentry from '@sentry/electron/renderer';
 import App from './App';
 import './index.css';
 import { useTheme } from './hooks/useTheme';
+import { E2E } from './services/e2eMode';
+import { STORAGE_KEY_REST_SERVER } from './components/dialogs/PreferencesDialog';
+
+// End-to-end test run (tests/e2e): this copy talks to the test's server, and
+// the test can reach the stores. Before anything reads the preference.
+if (E2E) {
+  localStorage.setItem(STORAGE_KEY_REST_SERVER, E2E.server);
+  void import('./services/e2eHooks');
+}
 
 // Initialize Sentry for renderer process error tracking
 // Only enabled in production (main process controls this via IPC)
