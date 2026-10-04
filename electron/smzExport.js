@@ -661,8 +661,19 @@ async function exportSmz(
       });
     };
 
-    // Create ZIP archive
+    // Create ZIP archive. The file must open before any work starts: a
+    // failure here (folder gone, no permission) used to fire with no
+    // listener and leave the export waiting forever
     const output = fs.createWriteStream(outputPath);
+    const written = new Promise((resolve, reject) => {
+      output.on('close', resolve);
+      output.on('error', reject);
+    });
+    written.catch(() => undefined); // awaited below; a failure before then is reported by the open check or there
+    await new Promise((resolve, reject) => {
+      output.once('open', resolve);
+      output.once('error', reject);
+    });
     const archive = await createZipArchive();
 
     // Handle errors
@@ -875,10 +886,7 @@ async function exportSmz(
     await archive.finalize();
 
     // Wait for output stream to finish
-    await new Promise((resolve, reject) => {
-      output.on('close', resolve);
-      output.on('error', reject);
-    });
+    await written;
 
     log.info(`[SmzExport] Export complete: ${outputPath}`);
 
