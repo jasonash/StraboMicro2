@@ -27,3 +27,12 @@ export function refChanges(projectId: string): Array<{ role: string; entity: str
     return paths.replace(/[{}]/g, '').split(',').filter((p) => p.startsWith('refs.')).map((p) => ({ role: p.slice(5), entity, email }));
   }) : [];
 }
+
+/** A field of an entity as the server last recorded it (its newest change), or null */
+export function serverField(projectId: string, type: string, entityId: string, field: string): string | null {
+  const pid = serverPid(projectId);
+  if (pid === null || !/^[a-z]+$/.test(type) || !/^[0-9a-f-]{36}$/i.test(entityId) || !/^\w+$/.test(field)) return null;
+  const out = sql(`SELECT after->'body'->>'${field}' FROM strabomicro.micro_changes
+    WHERE project_id = ${pid} AND entity_type = '${type}' AND entity_id = '${entityId}' ORDER BY seq DESC LIMIT 1`);
+  return out || null;
+}

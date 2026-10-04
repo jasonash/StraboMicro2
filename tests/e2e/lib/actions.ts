@@ -432,3 +432,35 @@ export function spotIds(copy: Copy, micrographId: string): Promise<string[] | nu
     return null;
   `) as (e: NonNullable<Window['__e2e']>) => string[] | null);
 }
+
+/**
+ * The owner: File > Collaborate... > Delete from StraboSpot… (sends their
+ * changes first), keep or remove the copy, type the name, Delete from
+ * StraboSpot. The confirm button stays disabled until the name is typed.
+ */
+export async function deleteFromStraboSpot(owner: Copy, projectName: string, keepCopy: boolean): Promise<void> {
+  const dialog = await collaborators(owner);
+  await dialog.getByRole('button', { name: 'Delete from StraboSpot…' }).click();
+  const confirm = dialog.getByRole('button', { name: 'Delete from StraboSpot', exact: true });
+  await expect(confirm).toBeVisible({ timeout: 60_000 });
+  await dialog.getByLabel(keepCopy ? 'Keep a copy on this computer (it no longer syncs)' : 'Remove it from this computer too').check();
+  const typed = dialog.getByLabel(`Type "${projectName}" to confirm`);
+  await typed.fill(projectName.slice(0, -1));
+  await expect(confirm).toBeDisabled();
+  await typed.fill(projectName);
+  await owner.caption(keepCopy ? 'deletes it from StraboSpot, keeping a copy' : 'deletes it from StraboSpot and from this computer');
+  await confirm.click();
+  await expect(dialog).toBeHidden({ timeout: 60_000 });
+}
+
+/** File > Open Remote Project...: Download a project by name (synced automatically); waits until it is open and settled */
+export async function downloadRemote(copy: Copy, projectName: string, projectId: string): Promise<void> {
+  await copy.menu('File', 'Open Remote Project...');
+  const dialog = copy.page.getByRole('dialog', { name: 'Open Remote Project' });
+  const row = dialog.getByRole('listitem').filter({ hasText: projectName });
+  await copy.caption(`downloads '${projectName}'`);
+  await row.getByRole('button', { name: 'Download' }).click({ timeout: 30_000 });
+  await expect(dialog).toBeHidden({ timeout: 120_000 });
+  await expect.poll(() => copy.state((e) => e.app.getState().project?.id ?? null), { timeout: 60_000 }).toBe(projectId);
+  await waitSettled(copy, 120_000);
+}
