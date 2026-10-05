@@ -822,7 +822,7 @@ interface Window {
         offline?: boolean;
         error?: string;
       }>;
-      check: () => Promise<{
+      check: (restServer: string) => Promise<{
         isLoggedIn: boolean;
         user?: { pkey: string; email: string; name: string } | null;
         needsRefresh?: boolean;

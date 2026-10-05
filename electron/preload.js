@@ -391,7 +391,7 @@ contextBridge.exposeInMainWorld('api', {
     login: (email, password, restServer) => ipcRenderer.invoke('auth:login', email, password, restServer),
     logout: (restServer) => ipcRenderer.invoke('auth:logout', restServer),
     refresh: (restServer) => ipcRenderer.invoke('auth:refresh', restServer),
-    check: () => ipcRenderer.invoke('auth:check'),
+    check: (restServer) => ipcRenderer.invoke('auth:check', restServer),
     getToken: () => ipcRenderer.invoke('auth:get-token'),
     checkStorage: () => ipcRenderer.invoke('auth:check-storage'),
     notifyStateChanged: (isLoggedIn, restServer) => ipcRenderer.send('auth:state-changed', isLoggedIn, restServer),

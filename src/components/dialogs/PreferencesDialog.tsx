@@ -3,7 +3,8 @@
  *
  * Application-wide preferences and settings.
  * Currently includes:
- * - REST Server URL configuration
+ * - REST Server URL configuration (a new server logs out of the old one,
+ *   then offers a login for the new one: tokens belong to one server)
  * - Sync: "Sync new projects to StraboSpot when I'm logged in" (spec v3 16al)
  */
 
@@ -22,8 +23,11 @@ import {
   InputAdornment,
   FormControlLabel,
   Checkbox,
+  Alert,
 } from '@mui/material';
 import { Refresh as ResetIcon } from '@mui/icons-material';
+import { useAuthStore, promptLogin } from '@/store/useAuthStore';
+import { sameServer } from '@/utils/syncChipState';
 
 interface PreferencesDialogProps {
   isOpen: boolean;
@@ -49,6 +53,10 @@ function isValidUrl(url: string): boolean {
 
 export function PreferencesDialog({ isOpen, onClose }: PreferencesDialogProps) {
   const [restServer, setRestServer] = useState(DEFAULT_REST_SERVER);
+  /** The server saved when the dialog opened */
+  const [savedServer, setSavedServer] = useState(DEFAULT_REST_SERVER);
+  const [saving, setSaving] = useState(false);
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const [error, setError] = useState<string | null>(null);
   /** null = never chosen (New Project then asks); saved only when changed here */
   const [syncNewProjects, setSyncNewProjects] = useState<boolean | null>(null);
@@ -64,6 +72,8 @@ export function PreferencesDialog({ isOpen, onClose }: PreferencesDialogProps) {
     } else {
       setRestServer(DEFAULT_REST_SERVER);
     }
+    setSavedServer(getRestServerUrl());
+    setSaving(false);
     setError(null);
     setSyncNewProjects(getSyncNewProjectsPreference());
     setSyncNewProjectsChanged(false);
@@ -85,19 +95,33 @@ export function PreferencesDialog({ isOpen, onClose }: PreferencesDialogProps) {
     setError(null);
   };
 
-  const handleSave = () => {
+  const serverChanges = isValidUrl(restServer) && !sameServer(savedServer, restServer);
+
+  const handleSave = async () => {
     // Final validation
     if (!isValidUrl(restServer)) {
       setError('Please enter a valid URL (http:// or https://)');
       return;
     }
 
+    // A login belongs to one server: log out of the old one first (it is
+    // still the saved server, so the logout goes there)
+    const loggedOut = serverChanges && useAuthStore.getState().isAuthenticated;
+    if (loggedOut) {
+      setSaving(true);
+      await useAuthStore.getState().logout();
+    }
+
     // Save to localStorage
     localStorage.setItem(STORAGE_KEY_REST_SERVER, restServer);
     if (syncNewProjectsChanged && syncNewProjects !== null) setSyncNewProjectsPreference(syncNewProjects);
+    // Main learns the server (which account's copies a project id means, 16d)
+    if (serverChanges) window.api?.auth?.notifyStateChanged(false, restServer);
 
     console.log('[Preferences] Saved REST server:', restServer);
+    setSaving(false);
     onClose();
+    if (loggedOut) void promptLogin(`Log in to ${restServer}.`);
   };
 
   const handleCancel = () => {
@@ -161,6 +185,11 @@ export function PreferencesDialog({ isOpen, onClose }: PreferencesDialogProps) {
                   Default: {DEFAULT_REST_SERVER}
                 </Typography>
               )}
+              {serverChanges && isAuthenticated && (
+                <Alert severity="info" sx={{ mt: 1.5 }}>
+                  Saving logs you out of {savedServer}. You can then log in to {restServer}.
+                </Alert>
+              )}
             </Box>
 
             {/* Sync Section */}
@@ -188,8 +217,8 @@ export function PreferencesDialog({ isOpen, onClose }: PreferencesDialogProps) {
         </Box>
       </DialogContent>
       <DialogActions>
-        <Button onClick={handleCancel}>Cancel</Button>
-        <Button onClick={handleSave} variant="contained" disabled={!!error}>
+        <Button onClick={handleCancel} disabled={saving}>Cancel</Button>
+        <Button onClick={() => void handleSave()} variant="contained" disabled={!!error || saving}>
           Save
         </Button>
       </DialogActions>

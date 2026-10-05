@@ -182,7 +182,8 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
     }
 
     try {
-      const result = await window.api.auth.check();
+      // Tokens of another server count as logged out (main clears them)
+      const result = await window.api.auth.check(getRestServerUrl());
 
       if (result.isLoggedIn) {
         set({

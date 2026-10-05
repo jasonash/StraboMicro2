@@ -4242,7 +4242,8 @@ ipcMain.handle('auth:login', async (event, email, password, restServer) => {
       data.access_token,
       data.refresh_token,
       data.expires_in,
-      data.user
+      data.user,
+      baseUrl
     );
 
     log.info('[Auth] Login successful for:', data.user.email);
@@ -4334,13 +4335,22 @@ ipcMain.handle('auth:refresh', async (event, restServer) => {
 
 /**
  * Check if user is currently logged in with valid tokens
+ * @param {string} restServer - The configured REST server; tokens of another server are cleared
  * @returns {object} { isLoggedIn, user }
  */
-ipcMain.handle('auth:check', async () => {
+ipcMain.handle('auth:check', async (event, restServer) => {
   try {
     const tokens = await tokenService.getTokens();
 
     if (!tokens) {
+      return { isLoggedIn: false, user: null };
+    }
+
+    // Tokens of another server (the app was set to a new one): logged out.
+    // Tokens saved before they recorded their server are taken as they are.
+    if (tokens.server && restServer && !syncService.sameServer(tokens.server, restServer)) {
+      log.info(`[Auth] The saved login is for ${tokens.server}, the app is set to ${restServer}: logged out`);
+      await tokenService.clearTokens();
       return { isLoggedIn: false, user: null };
     }
 

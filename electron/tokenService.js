@@ -124,13 +124,16 @@ const tokenService = {
    * @param {string} refreshToken - Refresh token for getting new access tokens
    * @param {number} expiresIn - Seconds until access token expires
    * @param {object} user - User info { pkey, email, name }
+   * @param {string} [server] - REST server the tokens are from (tokens saved
+   *   before 2026-10-05 have none); auth:check refuses them for another one
    */
-  async saveTokens(accessToken, refreshToken, expiresIn, user) {
+  async saveTokens(accessToken, refreshToken, expiresIn, user, server) {
     const tokenData = {
       accessToken,
       refreshToken,
       expiresAt: Date.now() + (expiresIn * 1000),
       user,
+      ...(server ? { server } : {}),
     };
 
     try {
@@ -249,7 +252,8 @@ const tokenService = {
       newAccessToken,
       currentTokens.refreshToken,
       expiresIn,
-      currentTokens.user
+      currentTokens.user,
+      currentTokens.server
     );
 
     log.info('[TokenService] Access token updated');

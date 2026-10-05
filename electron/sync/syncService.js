@@ -1394,5 +1394,5 @@ module.exports = {
   registerSyncIpc, notifyLocalChange, getStatus, preflight, activity, serverProject, listServerProjects, introCandidates, setPromptAnswer, compare, link, openRemote, turnOn, push, setMode, pull, commitPull, discardPull, download, clone,
   listDecisions, decide, decideCommit, decideDiscard, testOther, testCompare, cleanupReplaced,
   members, changeMembers, invites, answerInvite, permissions, leave, deleteProject, separate, history, restoreDeleted, parked, reviewParked,
-  liveFollow, liveUnfollow, livePresence, liveLoginChanged,
+  liveFollow, liveUnfollow, livePresence, liveLoginChanged, sameServer,
 };

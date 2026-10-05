@@ -4,11 +4,15 @@
  * on two computers (also a new micrograph's image: its file refs once
  * counted as the other computer's own, found on prod 2026-10-05), and a
  * local-only copy (an exported .smz) opened on a
- * computer while the project is on StraboSpot (linking, 16an, 16am).
+ * computer while the project is on StraboSpot (linking, 16an, 16am). And
+ * changing the server in Preferences: a login belongs to one server (found
+ * 2026-10-05: main kept the old server's account, so the new server's copy
+ * would not open until a restart).
  */
 
 import { test, expect } from '../lib/test';
-import { ACCOUNTS, type Account, type Copy } from '../lib/copy';
+import fs from 'fs';
+import { ACCOUNTS, PASSWORD, SERVER, type Account, type Copy } from '../lib/copy';
 import { writeImage } from '../lib/fixtures';
 import {
   share, waitSettled, spotField, editSpot, addSpot, setOffline, setMode, openSmz, turnOnSync, downloadRemote, syncChip,
@@ -250,3 +254,47 @@ for (const use of ['Use the StraboSpot copy', 'Use my copy'] as const) {
     expect(serverField(p.id, 'spot', spot.id, 'name')).toBe(expected);
   });
 }
+
+test("changing the server in Preferences logs out of the old one; the new server's copy opens and syncs", async ({ launch, project }) => {
+  // The dev server under another name: another server to the app
+  const other = SERVER.replace('://localhost', '://127.0.0.1');
+  test.skip(other === SERVER, 'needs STRABO_E2E_SERVER on localhost');
+  const p = await project('E2E Change Server');
+  const spot = p.spots[0];
+  const ana = await launch('Ana', ACCOUNTS.ana);
+  await openSmz(ana, p.smzPath, p.id);
+  await turnOnSync(ana);
+  await waitSettled(ana);
+
+  await ana.menu('File', 'Preferences...');
+  const prefs = ana.page.getByRole('dialog', { name: 'Preferences' });
+  await prefs.getByLabel('Server URL').fill(other);
+  await expect(prefs.getByText(`Saving logs you out of ${SERVER}. You can then log in to ${other}.`)).toBeVisible();
+  await ana.caption(`sets the server to ${other}`);
+  await prefs.getByRole('button', { name: 'Save' }).click();
+  const login = ana.page.getByRole('dialog', { name: 'Sign in to StraboSpot' });
+  await expect(login.getByText(`Log in to ${other}.`)).toBeVisible({ timeout: 30_000 });
+  expect(await ana.state((e) => e.auth.getState().isAuthenticated)).toBe(false);
+  await login.getByLabel('Email').fill(ACCOUNTS.ana.email);
+  await login.getByLabel('Password').fill(PASSWORD);
+  await ana.caption(`signs in to ${other}`);
+  await login.getByRole('button', { name: 'Sign In' }).click();
+  await expect(login).toBeHidden({ timeout: 30_000 });
+
+  // The open copy is the old server's (16ax), the new server's copy opens and syncs
+  const owner = ana.page.getByRole('dialog', { name: 'This copy syncs with another server' });
+  await expect(owner).toBeVisible({ timeout: 30_000 });
+  await owner.getByRole('button', { name: 'Close project' }).click();
+  await downloadRemote(ana, p.name, p.id);
+  await editSpot(ana, spot.id, { notes: `Through ${other}` });
+  await waitSettled(ana);
+  expect(serverField(p.id, 'spot', spot.id, 'notes')).toBe(`Through ${other}`);
+
+  // Started again, the app is set to the old server (e2e launch) and the
+  // saved login is the new server's: logged out
+  await ana.caption('quits the app');
+  await ana.close();
+  const again = await launch('Ana', ACCOUNTS.ana, { login: false });
+  await expect.poll(() => fs.readFileSync(again.logFile, 'utf8').includes(`The saved login is for ${other}`), { timeout: 30_000 }).toBe(true);
+  expect(await again.state((e) => e.auth.getState().isAuthenticated)).toBe(false);
+});
