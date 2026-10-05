@@ -604,7 +604,7 @@ async function importLegacyUpload(projectId, restServer, onProgress, { setAside 
   if (!token.success) throw new Error(token.error || 'Log in to download the StraboSpot copy.');
   // The old door finds a project by its id (strabo_id), not the server project number
   const dl = await serverDownload.downloadProject(projectId, token.accessToken,
-    (p) => onProgress({ phase: 'download', item: p.message }), restServer);
+    (p) => onProgress({ phase: 'download', item: p.bytesTotalFormatted ? `Downloading the project (${p.bytesDownloadedFormatted} of ${p.bytesTotalFormatted})` : 'Downloading the project' }), restServer);
   if (!dl.success) {
     // The old door answers 404 when the project has no upload file on the server
     throw new Error(dl.error === 'Project not found on server.'
@@ -786,7 +786,7 @@ function clone(pid, restServer, mode, onProgress) {
         pid, restServer, user: { pkey: tokens.user.pkey, email: tokens.user.email },
         mode: mode === 'manual' ? 'manual' : 'automatic', client, onProgress,
       });
-      return { ok: true, projectId: r.projectId, downloaded: r.downloaded };
+      return { ok: true, projectId: r.projectId, downloaded: r.downloaded, interrupted: r.interrupted === true, remaining: r.remaining || 0 };
     } catch (err) {
       return failure(err);
     }
@@ -828,7 +828,7 @@ async function openRemote(pid, restServer, mode, onProgress) {
         return { ok: true, projectId: row.straboId, adopted: false, existing: true };
       }
       const r = await clone(pid, restServer, mode, onProgress);
-      return r.ok ? { ok: true, projectId: r.projectId, adopted: false } : r;
+      return r.ok ? { ok: true, projectId: r.projectId, adopted: false, interrupted: r.interrupted, remaining: r.remaining } : r;
     }
     await importLegacyUpload(row.straboId, restServer, onProgress);
     const linked = await link(row.straboId, restServer, pid, mode, 'mine', onProgress);

@@ -117,7 +117,7 @@ function createSyncClient({ restServer, getAccessToken, refreshAccessToken, fetc
 
   /** The body of an answer, aborted when no data comes for T.stallMs */
   async function readBody(res, dog) {
-    if (!res.body) return Buffer.alloc(0);
+    if (!res.body) return Buffer.from(typeof res.text === 'function' ? await res.text() : ''); // test doubles
     const parts = [];
     dog.feed(T.stallMs);
     for await (const chunk of res.body) {

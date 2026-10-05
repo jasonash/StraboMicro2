@@ -427,6 +427,9 @@ interface SyncProgress {
   phase: 'images' | 'push' | 'tiles' | 'files' | 'pull' | 'download' | 'compare';
   item?: string;
   count?: number;
+  /** download phase: the file being downloaded (1-based) out of total */
+  done?: number;
+  total?: number;
   /** images phase: bytes of originals uploaded so far, out of bytesTotal (this push) */
   bytesDone?: number;
   bytesTotal?: number;
@@ -1101,7 +1104,7 @@ interface Window {
         | { ok: false; kind: SyncFailureKind; message: string }>;
       /** Open Remote Project for a project this computer has no copy of (progress projectId: remote:<pid>) */
       openRemote: (pid: number, restServer: string, mode: SyncMode) => Promise<
-        | { ok: true; projectId: string; adopted: boolean; existing?: boolean }
+        | { ok: true; projectId: string; adopted: boolean; existing?: boolean; interrupted?: boolean; remaining?: number }
         | { ok: false; kind: SyncFailureKind; message: string }>;
       /** Fetch and merge; apply result.changes to the store, save, then pullCommit */
       pull: (projectId: string, restServer: string) => Promise<SyncPullResult>;

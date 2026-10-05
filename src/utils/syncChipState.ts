@@ -62,7 +62,10 @@ export function describeProgress(progress: SyncProgress | null): string | null {
     case 'tiles': return 'Preparing image tiles';
     case 'files': return 'Uploading files';
     case 'pull': return 'Getting changes';
-    case 'download': return progress.item ? `Downloading ${progress.item}` : 'Downloading files';
+    case 'download':
+      if (progress.total) return `Downloading files (${Math.min(progress.done ?? 0, progress.total)} of ${progress.total})`;
+      // Older uploads: the step in words ("Downloading the project (12 MB of 80 MB)", "Converting a.tif...")
+      return progress.item || 'Downloading files';
     case 'compare': return 'Comparing with StraboSpot';
     default: return null;
   }

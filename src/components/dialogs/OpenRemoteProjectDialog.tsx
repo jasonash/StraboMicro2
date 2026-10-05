@@ -11,7 +11,7 @@
  * download and File > Import cover that.
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Alert,
   Box,
@@ -49,6 +49,10 @@ export function OpenRemoteProjectDialog({ open, onClose, onOpenProject }: OpenRe
   const [busy, setBusy] = useState<{ pid: number; status: string } | null>(null);
   const [invitations, setInvitations] = useState<SyncInvitation[]>([]);
   const [inviteBusy, setInviteBusy] = useState(false);
+  // The download whose end opens its project; closing the window while it
+  // runs clears it: the download goes on, but the project does not open by
+  // itself later (it is in Recent Projects and in this list)
+  const opensWhenDone = useRef<symbol | null>(null);
 
   const load = useCallback(async () => {
     if (!window.api) return;
@@ -77,21 +81,31 @@ export function OpenRemoteProjectDialog({ open, onClose, onOpenProject }: OpenRe
   const download = async (p: RemoteProject) => {
     setBusy({ pid: p.pid, status: 'Starting the download…' });
     setError(null);
+    const me = Symbol('download');
+    opensWhenDone.current = me;
     try {
-      const r = await downloadRemote(p, mode, (status) => setBusy({ pid: p.pid, status }));
+      const r = await downloadRemote(p, mode, (status) => setBusy((b) => (opensWhenDone.current === me ? { pid: p.pid, status } : b)));
+      if (opensWhenDone.current !== me) return;
+      opensWhenDone.current = null;
       if (!r.ok) {
         setError(r.message);
         return;
       }
+      // Also when its files were interrupted: the open project fetches the rest
       onClose();
       await onOpenProject(r.projectId);
     } finally {
-      setBusy(null);
+      setBusy((b) => (b?.pid === p.pid ? null : b));
     }
   };
 
+  const close = () => {
+    opensWhenDone.current = null;
+    onClose();
+  };
+
   return (
-    <Dialog open={open} onClose={busy || inviteBusy ? undefined : onClose} maxWidth="sm" fullWidth>
+    <Dialog open={open} onClose={inviteBusy ? undefined : close} maxWidth="sm" fullWidth>
       <DialogTitle>Open Remote Project</DialogTitle>
       <DialogContent>
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
@@ -150,7 +164,15 @@ export function OpenRemoteProjectDialog({ open, onClose, onOpenProject }: OpenRe
                   <ListItemText
                     primary={p.name || 'Untitled Project'}
                     secondary={
-                      busy?.pid === p.pid ? busy.status : remoteRowText(p, projects)
+                      busy?.pid === p.pid
+                        ? (
+                          <>
+                            {busy.status}
+                            <br />
+                            You can close this window: the download goes on, and the project will be in Recent Projects.
+                          </>
+                        )
+                        : remoteRowText(p, projects)
                     }
                     sx={{ pr: 10 }}
                   />
@@ -162,7 +184,7 @@ export function OpenRemoteProjectDialog({ open, onClose, onOpenProject }: OpenRe
       </DialogContent>
       <DialogActions>
         <Button onClick={() => void load()} disabled={busy !== null || inviteBusy}>Refresh</Button>
-        <Button onClick={onClose} disabled={busy !== null || inviteBusy}>Close</Button>
+        <Button onClick={close} disabled={inviteBusy}>Close</Button>
       </DialogActions>
     </Dialog>
   );

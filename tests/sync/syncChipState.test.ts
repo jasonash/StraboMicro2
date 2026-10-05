@@ -6,7 +6,7 @@
 
 import { describeDifferences } from '@/utils/describeDifferences';
 import {
-  syncChipState, lastSyncedText, incomingText, editWaitText, liveNote, type SyncChipInput, type SyncChipAuth,
+  syncChipState, lastSyncedText, incomingText, editWaitText, liveNote, describeProgress, type SyncChipInput, type SyncChipAuth,
 } from '@/utils/syncChipState';
 
 let failures = 0;
@@ -79,6 +79,8 @@ is('manual, changes not counted yet', label({ mode: 'manual', pending: null, act
 is('manual, first upload waiting', label({ mode: 'manual', phase: 'uploading' }), 'Manual · upload waiting');
 is('manual, syncing', label({ mode: 'manual', activity: 'syncing', pending: 5 }), 'Syncing…');
 is('downloads', label({ downloads: 2 }), 'Downloading…');
+is('download progress: n of total, no file ids', describeProgress({ projectId: 'p', phase: 'download', done: 12, total: 128 }), 'Downloading files (12 of 128)');
+is('download progress: a step in words (older uploads) as it is', describeProgress({ projectId: 'p', phase: 'download', item: 'Converting a.tif...' }), 'Converting a.tif...');
 is('syncing notice is the detail', syncChipState({ ...synced, activity: 'syncing', notice: 'Sync will run when you finish editing' }, auth).detail,
   'Sync will run when you finish editing');
 

@@ -30,6 +30,7 @@ const { toAppProject } = require('../projectSerializer');
 const { writeFileAtomic } = require('../atomicFile');
 const tileCache = require('../tileCache');
 const sidecar = require('./sidecar');
+const { SyncError } = require('./client');
 const { mergeProject, sameState, carryConflicts } = require('./merge');
 const { readProjectFiles } = require('./syncEngine');
 
@@ -387,6 +388,7 @@ async function commitPull({ folder, pending }) {
  */
 async function downloadFiles({ folder, client, onProgress = () => {}, exclusive = (fn) => fn() }) {
   let downloaded = 0;
+  let done = 0; // files dealt with, for 'n of total' progress
   const images = [];
   const thumbnails = [];
   for (let round = 0; round < 100; round++) {
@@ -405,6 +407,7 @@ async function downloadFiles({ folder, client, onProgress = () => {}, exclusive 
       return { pid: state.binding.pid, items };
     });
     if (listed.items.length === 0) break;
+    const total = done + listed.items.length;
     const hashes = await sidecar.createHashIndex(folder); // read only here; recorded inside exclusive
     for (const item of listed.items) {
       let fetched = false;
@@ -416,7 +419,7 @@ async function downloadFiles({ folder, client, onProgress = () => {}, exclusive 
           have = (await hashes.hash(rel)) === item.sha;
         } catch (_) { /* missing */ }
         if (!have) {
-          onProgress({ phase: 'download', item: item.role === 'image' ? item.id : path.basename(item.dest) });
+          onProgress({ phase: 'download', done: done + 1, total });
           if (item.role === 'image' && fs.existsSync(item.dest)) {
             // A replaced original (rotated or edited elsewhere): its tiles are stale
             try {
@@ -450,6 +453,7 @@ async function downloadFiles({ folder, client, onProgress = () => {}, exclusive 
         }
         await sidecar.saveState(folder, state);
       });
+      done++;
       if (fetched) {
         downloaded++;
         if (item.role === 'image') images.push(item.id);
@@ -467,7 +471,7 @@ async function downloadFiles({ folder, client, onProgress = () => {}, exclusive 
  * when the project opens (16v).
  * @param {{ pid: number, restServer: string, user: { pkey: number | string, email: string },
  *   mode?: 'automatic' | 'manual', client: object, onProgress?: (p: object) => void }} options
- * @returns {Promise<{ projectId: string, folder: string, downloaded: number }>}
+ * @returns {Promise<{ projectId: string, folder: string, downloaded: number, interrupted?: boolean, remaining?: number }>}
  */
 async function cloneProject({ pid, restServer, user, mode = 'automatic', client, onProgress = () => {} }) {
   onProgress({ phase: 'pull', count: 0 });
@@ -517,8 +521,20 @@ async function cloneProject({ pid, restServer, user, mode = 'automatic', client,
   await writeFileAtomic(path.join(folder, 'project.json'), JSON.stringify(assembled.project, null, 2));
   log.info(`[Sync] Made a synced copy of server project ${pid} (${projectId}) in ${folder}`);
 
-  const d = await downloadFiles({ folder, client, onProgress });
-  return { projectId, folder, downloaded: d.downloaded };
+  // The copy is usable now: a lost connection (or a server hiccup) while its
+  // files download leaves the rest to the open project, which fetches them
+  // as the connection allows (found in the gap 4 test, 2026-10-05: the
+  // dialog said 'failed' with half the project already here)
+  try {
+    const d = await downloadFiles({ folder, client, onProgress });
+    return { projectId, folder, downloaded: d.downloaded };
+  } catch (err) {
+    if (!(err instanceof SyncError) || (err.kind !== 'offline' && err.kind !== 'server')) throw err;
+    const left = await sidecar.loadState(folder);
+    const remaining = left && left.downloads ? Object.keys(left.downloads).length : 0;
+    log.info(`[Sync] Download of ${projectId} interrupted (${err.message}); ${remaining} files left for the open project`);
+    return { projectId, folder, downloaded: 0, interrupted: true, remaining };
+  }
 }
 
 module.exports = { preparePull, commitPull, downloadFiles, downloadTarget, cloneProject, writePointCounts, stateFromEntry, normalizeBaseOrder };

@@ -121,6 +121,9 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
     const imageMetadataRef = useRef(imageMetadata);
     imageMetadataRef.current = imageMetadata;
     const [isLoading, setIsLoading] = useState(false);
+    // The original is not on this computer yet (a synced project still
+    // downloading): said in words, and loaded again when it arrives
+    const [imageMissing, setImageMissing] = useState(false);
     const [isLoadingTiles, setIsLoadingTiles] = useState(false);
     const [tileLoadingMessage, setTileLoadingMessage] = useState<string>('');
     const [isPanning, setIsPanning] = useState(false);
@@ -598,6 +601,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
 
       const loadImage = async () => {
         setIsLoading(true);
+        setImageMissing(false);
 
         // CRITICAL: Aggressively clean up previous image memory BEFORE loading new one
         // This prevents OOM crashes when rapidly switching between large micrographs
@@ -709,7 +713,13 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
             currentSession
           );
         } catch (error) {
-          console.error('Failed to load image:', error);
+          if (/ENOENT/.test(String(error))) {
+            // Not an error worth a report: sync brings it, and imageRevision reloads it
+            console.warn('[TiledViewer] The image is not on this computer yet:', imagePath);
+            setImageMissing(true);
+          } else {
+            console.error('Failed to load image:', error);
+          }
           setIsLoading(false);
           clearSiblingToggleInProgress(); // Clear the flag even on error
         }
@@ -2040,6 +2050,13 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
           <div className="tiled-viewer-loading">
             <div className="spinner" />
             <p>Loading image...</p>
+          </div>
+        )}
+
+        {imagePath && imageMissing && !isLoading && (
+          <div className="tiled-viewer-loading">
+            <div className="spinner" />
+            <p>This micrograph&apos;s image is still downloading…</p>
           </div>
         )}
 

@@ -281,29 +281,43 @@ export function micrograph(copy: Copy, micrographId: string): Promise<{ name: st
 async function holdRequests(copy: Copy, pattern: string, caption: string): Promise<void> {
   await copy.caption(caption);
   await copy.app.evaluate((_electron, source) => {
-    const g = globalThis as unknown as { __e2eHeld?: { release: () => void; gate: Promise<void> }; __e2eHoldFetch?: typeof fetch; fetch: typeof fetch };
-    let release = () => {};
-    const gate = new Promise<void>((r) => { release = r; });
+    const g = globalThis as unknown as {
+      __e2eHeld?: { release: (how: 'go' | 'drop') => void; gate: Promise<'go' | 'drop'> }; __e2eHoldFetch?: typeof fetch; fetch: typeof fetch;
+    };
+    let release: (how: 'go' | 'drop') => void = () => {};
+    const gate = new Promise<'go' | 'drop'>((r) => { release = r; });
     g.__e2eHeld = { release, gate };
     const real = g.fetch;
     g.__e2eHoldFetch = real;
     const re = new RegExp(source);
     g.fetch = (async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
-      if (re.test(url) && g.__e2eHeld) await g.__e2eHeld.gate;
+      if (re.test(url) && g.__e2eHeld && (await g.__e2eHeld.gate) === 'drop') {
+        // The connection is lost while the request waits, as Node's fetch reports it
+        throw Object.assign(new TypeError('fetch failed'), { cause: Object.assign(new Error('ECONNRESET'), { code: 'ECONNRESET' }) });
+      }
       return real(input, init);
     }) as typeof fetch;
   }, pattern);
 }
 
-async function releaseRequests(copy: Copy, caption: string): Promise<void> {
+async function releaseRequests(copy: Copy, caption: string, how: 'go' | 'drop' = 'go'): Promise<void> {
   await copy.caption(caption);
-  await copy.app.evaluate(() => {
-    const g = globalThis as unknown as { __e2eHeld?: { release: () => void }; __e2eHoldFetch?: typeof fetch; fetch: typeof fetch };
-    g.__e2eHeld?.release();
+  await copy.app.evaluate((_electron, how) => {
+    const g = globalThis as unknown as { __e2eHeld?: { release: (how: 'go' | 'drop') => void }; __e2eHoldFetch?: typeof fetch; fetch: typeof fetch };
+    g.__e2eHeld?.release(how);
     g.__e2eHeld = undefined;
-    if (g.__e2eHoldFetch) g.fetch = g.__e2eHoldFetch;
-  });
+    if (g.__e2eHoldFetch && how === 'go') g.fetch = g.__e2eHoldFetch;
+  }, how);
+}
+
+/**
+ * The held downloads fail as if the connection broke under them (call
+ * setOffline first so the retries fail too; coming back online then
+ * restores the plain fetch)
+ */
+export function dropHeldDownloads(copy: Copy): Promise<void> {
+  return releaseRequests(copy, 'loses the connection in the middle of the download', 'drop');
 }
 
 /**

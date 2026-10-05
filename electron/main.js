@@ -4324,15 +4324,30 @@ ipcMain.handle('auth:login', async (event, email, password, restServer) => {
     log.info('[Auth] Using REST server:', baseUrl);
     log.info('[Auth] Full login URL:', `${baseUrl}/jwtauth/login`);
 
-    const response = await fetch(`${baseUrl}/jwtauth/login`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ email, password }),
-    });
+    // No connection (or no answer within 30 s) reads as such, not as the
+    // raw "fetch failed" (found offline in the gap 4 test, 2026-10-05)
+    let response;
+    try {
+      response = await fetch(`${baseUrl}/jwtauth/login`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email, password }),
+        signal: AbortSignal.timeout(30_000),
+      });
+    } catch (error) {
+      log.warn('[Auth] Login: could not reach the server:', error.message);
+      return { success: false, error: "Can't reach StraboSpot. Check your connection and try again." };
+    }
 
-    const data = await response.json();
+    let data;
+    try {
+      data = await response.json();
+    } catch (error) {
+      log.warn('[Auth] Login: the answer was not JSON (HTTP ' + response.status + '):', error.message);
+      return { success: false, error: 'StraboSpot did not answer as expected. Please try again later.' };
+    }
 
     if (!response.ok) {
       log.warn('[Auth] Login failed:', data.message || 'Unknown error');

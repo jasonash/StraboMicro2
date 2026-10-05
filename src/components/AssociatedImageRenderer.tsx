@@ -580,7 +580,9 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
       } catch (error) {
         // Only log error on final retry attempt to avoid console noise
         if (imageState.retryCount >= MAX_RETRIES - 1) {
-          console.error('[AssociatedImageRenderer] Failed to load image after retries:', error);
+          // A synced project's image still downloading: imageArrivals loads it again
+          if (/ENOENT/.test(String(error))) console.warn('[AssociatedImageRenderer] The image is not on this computer yet:', micrograph.id);
+          else console.error('[AssociatedImageRenderer] Failed to load image after retries:', error);
         }
         // Reset loading state and schedule retry after delay
         // This handles race conditions during initial project load
