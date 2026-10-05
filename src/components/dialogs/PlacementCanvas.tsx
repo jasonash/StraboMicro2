@@ -9,12 +9,13 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Stage, Layer, Image as KonvaImage, Rect, Transformer, Group, Line } from 'react-konva';
 import {
   Box, Typography, Stack, IconButton, Tooltip, Paper,
-  TextField, Select, MenuItem, FormControl, InputLabel, Grid, Slider
+  TextField, Select, MenuItem, FormControl, InputLabel, Grid, Slider, Alert
 } from '@mui/material';
 import { PanTool, RestartAlt, Timeline } from '@mui/icons-material';
 import Konva from 'konva';
 import { useAppStore } from '@/store';
 import { releaseImage } from '@/utils/imageUtils';
+import { tracedLinePixels, scaleFromTracedBar, traceScaleNote } from '@/utils/traceScaleBar';
 
 interface PlacementCanvasProps {
   parentMicrographId: string;
@@ -132,6 +133,10 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
   const [activeTool, setActiveTool] = useState<'pan' | 'line'>('pan');
   const [isDrawingLine, setIsDrawingLine] = useState(false);
   const [currentLine, setCurrentLine] = useState<{ x1: number; y1: number; x2: number; y2: number } | null>(null);
+  // The child's scale when the current line was started (its length is in that display)
+  const lineScaleRef = useRef(1);
+  // Said under the inputs when the traced bar gives a scale outside the limits
+  const [scaleNote, setScaleNote] = useState<string | null>(null);
 
   // Parent micrograph metadata (for scale calculations)
   const [parentScale, setParentScale] = useState<number | null>(null);
@@ -623,115 +628,42 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
   // Auto-calculate child scale for Trace Scale Bar method
   useEffect(() => {
     if (scaleMethod !== 'Trace Scale Bar and Drag') return;
-    if (!parentScale || !parentOriginalWidth || !parentImage || !scaleBarPixelInput || !scaleBarPhysicalInput) return;
-
-    const pixels = parseFloat(scaleBarPixelInput);
-    const physicalLength = parseFloat(scaleBarPhysicalInput);
-
-    if (isNaN(pixels) || isNaN(physicalLength) || physicalLength === 0) return;
-
-    // Calculate child's pixels per unit from the traced scale bar
-    const childPixelsPerUnit = pixels / physicalLength;
-
-    // Convert to pixels per centimeter
-    const conversionToCm: { [key: string]: number } = {
-      'μm': 10000,
-      'mm': 10,
-      'cm': 1,
-      'm': 0.01,
-      'inches': 0.393701
-    };
-    const childPixelsPerCm = childPixelsPerUnit * (conversionToCm[scaleBarUnitInput] || 1);
-
-    // Account for parent downsampling
-    // The parent scale (px/cm) is for the original image, but we're displaying a downsampled version
-    const parentDownsampleRatio = parentImage.width / parentOriginalWidth;
-    const parentScaleInDisplayedImage = parentScale * parentDownsampleRatio;
-
-    // Calculate scale factor: parent scale / child scale
-    // If child is more zoomed in (higher px/cm), it should appear smaller on parent (scale < 1)
-    // If child is more zoomed out (lower px/cm), it should appear larger on parent (scale > 1)
-    let scaleFactor = parentScaleInDisplayedImage / childPixelsPerCm;
-
-    // Sanity checks: prevent wildly large or small scales
-    const MIN_SCALE = 0.01;
-    const MAX_SCALE = 10;
-
-    if (scaleFactor > MAX_SCALE) {
-      console.warn('[PlacementCanvas] Scale factor too large, clamping to', MAX_SCALE);
-      scaleFactor = MAX_SCALE;
-    } else if (scaleFactor < MIN_SCALE) {
-      console.warn('[PlacementCanvas] Scale factor too small, clamping to', MIN_SCALE);
-      scaleFactor = MIN_SCALE;
+    if (!parentScale || !parentOriginalWidth || !parentImage || !scaleBarPixelInput || !scaleBarPhysicalInput) {
+      setScaleNote(null);
+      return;
     }
 
-    console.log('[PlacementCanvas] Trace Scale Bar calculation:', {
-      pixels,
-      physicalLength,
+    const result = scaleFromTracedBar({
+      pixels: parseFloat(scaleBarPixelInput),
+      physicalLength: parseFloat(scaleBarPhysicalInput),
       unit: scaleBarUnitInput,
-      childPixelsPerCm,
       parentScale,
-      parentOriginalWidth,
       parentDisplayedWidth: parentImage.width,
-      parentDownsampleRatio,
-      parentScaleInDisplayedImage,
-      scaleFactor,
-      oldFormula: parentScale / childPixelsPerCm,
-      newFormula: parentScaleInDisplayedImage / childPixelsPerCm,
-      clamped: scaleFactor !== parentScaleInDisplayedImage / childPixelsPerCm,
+      parentOriginalWidth,
     });
+    setScaleNote(traceScaleNote(result));
+    if (!result) return;
 
-    // Update child scale (without calling onPlacementChange during render)
-    setChildTransform(prev => ({
-      ...prev,
-      scaleX: scaleFactor,
-      scaleY: scaleFactor,
-    }));
+    // Update child scale (without calling onPlacementChange during render);
+    // the same scale again is no change, so nothing re-renders
+    setChildTransform((prev) => (prev.scaleX === result.scale && prev.scaleY === result.scale
+      ? prev
+      : { ...prev, scaleX: result.scale, scaleY: result.scale }));
   }, [scaleMethod, scaleBarPixelInput, scaleBarPhysicalInput, scaleBarUnitInput, parentScale, parentOriginalWidth, parentImage]);
 
-  // Auto-populate pixel count from line length
+  // Auto-populate pixel count from line length. The line is measured against
+  // the child's scale when it was drawn (lineScaleRef), never the scale it
+  // leads to: that fed the scale back into itself (src/utils/traceScaleBar.ts)
   useEffect(() => {
     if (scaleMethod !== 'Trace Scale Bar and Drag') return;
     if (!currentLine || !childImage) return;
 
-    // The line is drawn in parent image coordinate space
-    // But we need the length in the child's ORIGINAL image pixel space
-
-    // Calculate line length in parent image space
-    const dx = currentLine.x2 - currentLine.x1;
-    const dy = currentLine.y2 - currentLine.y1;
-    const lineLengthInParentSpace = Math.sqrt(dx * dx + dy * dy);
-
-    // The child Group is rendered at original dimensions (childWidth x childHeight)
-    // but the actual loaded image might be downsampled (childImage.width x childImage.height)
-    // Konva stretches the loaded image to fit childWidth x childHeight
-
-    // Step 1: Convert from parent space to child's rendered space
-    // The child is scaled by childTransform.scaleX in parent space
-    const lengthInChildRenderedSpace = lineLengthInParentSpace / childTransform.scaleX;
-
-    // Step 2: The child is rendered at childWidth (original size),
-    // but we drew on the actual pixels of the loaded image (childImage.width)
-    // We need to scale DOWN by the ratio to get the actual pixels in the loaded image
-    const loadedToOriginalRatio = childImage.width / childWidth;
-    const lengthInLoadedImagePixels = lengthInChildRenderedSpace * loadedToOriginalRatio;
-
-    // Step 3: Now scale back UP to original image dimensions
-    const lengthInOriginalChildPixels = lengthInLoadedImagePixels * (childWidth / childImage.width);
-
-    console.log('[PlacementCanvas] Trace Scale Bar calculation:', {
-      'Line coords': { x1: currentLine.x1, y1: currentLine.y1, x2: currentLine.x2, y2: currentLine.y2 },
-      'Line length in parent space': lineLengthInParentSpace,
-      'Child transform scale': childTransform.scaleX,
-      'Division result': lineLengthInParentSpace / childTransform.scaleX,
-      'Loaded child image size': { width: childImage.width, height: childImage.height },
-      'Original child size': { width: childWidth, height: childHeight },
-      'Final length in original child pixels': lengthInOriginalChildPixels
-    });
+    const pixels = tracedLinePixels(currentLine, lineScaleRef.current);
+    if (pixels === null) return;
 
     // Round to 1 decimal place
-    setScaleBarPixelInput(lengthInOriginalChildPixels.toFixed(1));
-  }, [scaleMethod, currentLine, childTransform.scaleX, childImage, childWidth]);
+    setScaleBarPixelInput(pixels.toFixed(1));
+  }, [scaleMethod, currentLine, childImage]);
 
   // Notify parent of scale data changes for "Trace Scale Bar and Drag"
   useEffect(() => {
@@ -790,6 +722,8 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
         const y = (pointerPos.y - stagePos.y) / scale;
 
         setIsDrawingLine(true);
+        // The traced bar is measured against the child as it is shown now
+        lineScaleRef.current = childTransform.scaleX;
         setCurrentLine({ x1: x, y1: y, x2: x, y2: y });
       }
       return;
@@ -1269,6 +1203,9 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
             }}>
             Use the line tool to trace a scale bar on the child micrograph. Enter the physical length it represents.
           </Typography>
+          {scaleNote && (
+            <Alert severity="warning" sx={{ mt: 1, py: 0 }}>{scaleNote}</Alert>
+          )}
         </Paper>
       )}
 
@@ -1490,7 +1427,7 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
         <Typography variant="caption" sx={{
           color: 'text.secondary'
         }}>
-          Scale: {childTransform.scaleX.toFixed(2)}x | Zoom: {(scale * 100).toFixed(0)}%
+          Scale: {childTransform.scaleX >= 0.01 ? childTransform.scaleX.toFixed(2) : childTransform.scaleX.toPrecision(2)}x | Zoom: {(scale * 100).toFixed(0)}%
         </Typography>
       </Stack>
     </Box>
