@@ -1050,6 +1050,7 @@ interface Window {
 
     // Debug menu events (only used in development)
     onDebugTriggerTestError: (callback: () => void) => Unsubscribe;
+    onDebugImportSmzCopy: (callback: () => void) => Unsubscribe;
     onDebugGenerateTestSpots: (callback: () => void) => Unsubscribe;
     onDebugClearAllSpots: (callback: () => void) => Unsubscribe;
     onDebugToggleMemoryMonitor: (callback: () => void) => Unsubscribe;

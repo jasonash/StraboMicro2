@@ -1417,6 +1417,17 @@ function createWindow() {
         },
         { type: 'separator' },
         {
+          // A copy of someone's real project under a new id, for sync tests
+          // that must not link to (or convert) the original on StraboSpot
+          label: 'Open .smz as a Separate Copy...',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('debug:import-smz-copy');
+            }
+          }
+        },
+        { type: 'separator' },
+        {
           label: 'Generate 100 Test Spots',
           click: () => {
             if (mainWindow) {

@@ -633,6 +633,11 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('debug:trigger-test-error', handler);
     return () => ipcRenderer.removeListener('debug:trigger-test-error', handler);
   },
+  onDebugImportSmzCopy: (callback) => {
+    const handler = () => callback();
+    ipcRenderer.on('debug:import-smz-copy', handler);
+    return () => ipcRenderer.removeListener('debug:import-smz-copy', handler);
+  },
   onDebugGenerateTestSpots: (callback) => {
     const handler = () => callback();
     ipcRenderer.on('debug:generate-test-spots', handler);

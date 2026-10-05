@@ -210,6 +210,7 @@ function App() {
   const [incompleteMicrographs, setIncompleteMicrographs] = useState<IncompleteMicrograph[]>([]);
   const [incompleteActionName, setIncompleteActionName] = useState('export');
   const [isImportSmzOpen, setIsImportSmzOpen] = useState(false);
+  const [importSmzAsCopy, setImportSmzAsCopy] = useState(false);
   const [importSmzFilePath, setImportSmzFilePath] = useState<string | null>(null);
   const [deepLinkPkey, setDeepLinkPkey] = useState<string | null>(null);
   const [isRemoteProjectsOpen, setIsRemoteProjectsOpen] = useState(false);
@@ -489,6 +490,18 @@ function App() {
       }
 
       setImportSmzFilePath(null); // Clear any previous file path
+      setImportSmzAsCopy(false);
+      setIsImportSmzOpen(true);
+    }));
+
+    // Debug: Open .smz as a Separate Copy (new project id, for sync tests)
+    unsubscribers.push(window.api.onDebugImportSmzCopy(async () => {
+      const proceed = await saveBeforeSwitch();
+      if (!proceed) {
+        return;
+      }
+      setImportSmzFilePath(null);
+      setImportSmzAsCopy(true);
       setIsImportSmzOpen(true);
     }));
 
@@ -504,6 +517,7 @@ function App() {
 
       // Set the file path and open the import dialog
       setImportSmzFilePath(filePath);
+      setImportSmzAsCopy(false);
       setIsImportSmzOpen(true);
     }));
 
@@ -1831,6 +1845,7 @@ function App() {
           setImportSmzFilePath(null); // Clear the file path when closing
         }}
         initialFilePath={importSmzFilePath}
+        asSeparateCopy={importSmzAsCopy}
         onOpenProject={openProjectById}
         onImportComplete={(importedProject) => {
           // Load the imported project with image preparation

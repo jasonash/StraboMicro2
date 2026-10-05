@@ -62,6 +62,12 @@ interface ImportSmzDialogProps {
   onOpenProject: (projectId: string) => Promise<void> | void;
   /** Optional file path to import directly (skips file selection dialog) */
   initialFilePath?: string | null;
+  /**
+   * Debug > Open .smz as a Separate Copy: always import under a new project
+   * id (name + " (copy)"), so nothing here or on StraboSpot is replaced or
+   * linked to the original
+   */
+  asSeparateCopy?: boolean;
 }
 
 export function ImportSmzDialog({
@@ -70,6 +76,7 @@ export function ImportSmzDialog({
   onImportComplete,
   onOpenProject,
   initialFilePath,
+  asSeparateCopy = false,
 }: ImportSmzDialogProps) {
   // Get global presets for deduplication during import
   const globalPresets = useAppStore((state) => state.globalPresets);
@@ -272,8 +279,17 @@ export function ImportSmzDialog({
               Project ID: {inspectResult?.projectId}
             </Typography>
 
-            <ImportTargetNotice inspect={inspectResult} source="the contents of the .smz file" />
-            {!inspectResult?.projectExists && !inspectResult?.syncedCopy && (
+            {asSeparateCopy ? (
+              <Alert severity="info" sx={{ mb: 2 }}>
+                <Typography variant="body2">
+                  This imports the file as a separate copy named "{inspectResult?.projectName || 'Untitled Project'} (copy)",
+                  under a new project ID. Nothing on this computer or on StraboSpot is replaced or linked to the original.
+                </Typography>
+              </Alert>
+            ) : (
+              <ImportTargetNotice inspect={inspectResult} source="the contents of the .smz file" />
+            )}
+            {!asSeparateCopy && !inspectResult?.projectExists && !inspectResult?.syncedCopy && (
               <Alert severity="info" sx={{ mb: 2 }}>
                 <Typography variant="body2">
                   This project will be imported to your local projects folder.
@@ -358,6 +374,14 @@ export function ImportSmzDialog({
         );
 
       case 'confirm-import':
+        if (asSeparateCopy) {
+          return (
+            <>
+              <Button onClick={handleClose}>Cancel</Button>
+              <Button variant="contained" onClick={() => void startImport(true)}>Import as a Separate Copy</Button>
+            </>
+          );
+        }
         return (
           <ImportTargetActions
             inspect={inspectResult}
@@ -402,7 +426,7 @@ export function ImportSmzDialog({
     >
       <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
         <FolderOpenIcon color="primary" />
-        Open Project
+        {asSeparateCopy ? 'Open Project as a Separate Copy' : 'Open Project'}
       </DialogTitle>
       <DialogContent>{renderContent()}</DialogContent>
       <DialogActions>{renderActions()}</DialogActions>
