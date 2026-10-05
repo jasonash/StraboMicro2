@@ -63,6 +63,8 @@ export interface SyncStoreState {
   conflicts: number;
   questions: number;
   downloads: number;
+  /** Following the project on the live channel (17ao): false = changes are polled for */
+  live: boolean;
   /** A short message about what sync is waiting for (e.g. an open edit) */
   notice: string | null;
   progress: SyncProgress | null;
@@ -126,6 +128,7 @@ const initial = {
   conflicts: 0,
   questions: 0,
   downloads: 0,
+  live: false,
   notice: null,
   progress: null,
   lastSyncedAt: null,

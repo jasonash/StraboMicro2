@@ -29,7 +29,7 @@ import { useAppStore } from '@/store';
 import { useAuthStore, promptLogin } from '@/store/useAuthStore';
 import { useSyncStore, decisionsWaiting } from '@/store/useSyncStore';
 import { getRestServerUrl } from '@/components/dialogs/PreferencesDialog';
-import { syncChipState, lastSyncedText, type SyncChipTone } from '@/utils/syncChipState';
+import { syncChipState, lastSyncedText, liveNote, type SyncChipTone } from '@/utils/syncChipState';
 import { syncNowFromUser, changeModeFromUser, requestTurnOnSync, requestCollaborate } from '@/services/syncActions';
 import { reviewCount, waitingText } from '@/utils/parkedReview';
 
@@ -63,6 +63,7 @@ export function SyncStatusChip() {
   if (!projectOpen) return null;
 
   const state = syncChipState(sync, { loggedIn, pkey: userPkey, restServer: getRestServerUrl() });
+  const liveLine = liveNote(sync, state);
   const waiting = decisionsWaiting(sync);
   const syncing = sync.activity === 'syncing';
   const close = () => {
@@ -135,6 +136,9 @@ export function SyncStatusChip() {
             <>
               {sync.notice && state.label !== 'Syncing…' && (
                 <Typography variant="body2" sx={{ color: 'text.secondary' }}>{sync.notice}</Typography>
+              )}
+              {liveLine && (
+                <Typography variant="body2" sx={{ color: 'text.secondary' }}>{liveLine}</Typography>
               )}
               <Typography variant="caption" sx={{ color: 'text.secondary' }}>
                 {lastSyncedText(sync.lastSyncedAt, now)}
@@ -222,7 +226,7 @@ export function SyncStatusChip() {
                     <Box>
                       <Typography variant="body2">Sync automatically</Typography>
                       <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                        Changes go up a few seconds after you stop editing.
+                        Changes go up about a second after you finish an edit.
                       </Typography>
                     </Box>
                   }

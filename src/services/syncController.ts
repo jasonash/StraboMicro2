@@ -6,19 +6,24 @@
  * so local-only projects never run any of this (spec v3 §3.4).
  *
  * Automatic mode: a change to the project (or a file-only change reported
- * by main, e.g. point counts) pushes 3 s after editing pauses, and at most
- * 30 s after the first unpushed change while editing continues (§6.1, 16i).
- * Queued changes push when the project opens.
+ * by main, e.g. point counts) pushes about 1 s after the edit is finished
+ * (17aj: a dialog saved, a spot drawn, a field left; while an edit is open
+ * it waits), and at most 30 s after the first unpushed change while
+ * editing continues (§6.1, 16i). Queued changes push when the project opens.
  * Manual mode: nothing runs until syncNow() (the Sync click), except the
  * first upload right after sync is turned on (requestFirstSync).
  * On open (§6.4, 16ah): Automatic pushes and pulls; Manual asks the server
  * what is waiting and, if anything is, offers [Sync Now] [Work Offline].
- * While open, the activity poll (every 30 s focused, 2 min otherwise)
- * counts the changes waiting on the server for the chip. Automatic mode
- * pulls them by itself when nothing is being edited (basic auto-pull,
- * 16av; an edit in progress waits for a later poll); Manual mode waits for
- * Sync Now. Phase 4 refines it (hold only the items being edited, faster
- * transport).
+ * While open, the project is followed on the live channel (main
+ * electron/sync/live.js, 17ah-17ay): a notice that someone else changed it
+ * runs the activity poll at once, which counts the changes waiting on the
+ * server for the chip. Automatic mode pulls them by itself (basic
+ * auto-pull, 16av); an edit in progress holds the pull until it closes,
+ * with "Ben made 3 changes; they'll appear when you close this dialog"
+ * (17ap). Manual mode only counts (17aq). While the live channel is down
+ * the poll runs every 30 s focused, 2 min otherwise (17ao); when it is up,
+ * only every 5 min as a safety net, and at once after a reconnect (catch
+ * up). Phase 4 refines it (hold only the items being edited).
  * Pull (§6.2): syncNow() in either mode is save, push, pull; a push that
  * the server turned down (the entity changed there) also pulls, so the
  * merge runs and the merged result is pushed. A pull waits until no edit is
@@ -58,10 +63,12 @@ import { applyRemoteChanges, isApplyingSavedStamps } from '@/store/remoteChanges
 import { compositesAffectedBy, regenerateComposites } from '@/utils/compositeRefresh';
 import { takeFirstSyncRequest } from '@/services/syncActions';
 import { loadParked } from '@/services/parkedLoad';
-import { e2eMs } from '@/services/e2eMode';
+import { E2E, e2eMs } from '@/services/e2eMode';
+import { editWaitText } from '@/utils/syncChipState';
 
 // Under an end-to-end test (e2eMode.ts) the waits are short
-const DEBOUNCE_MS = e2eMs(3_000, 300);
+/** Push this long after the last change once no edit is open (17aj) */
+const DEBOUNCE_MS = e2eMs(1_000, 300);
 const MAX_WAIT_MS = e2eMs(30_000, 3_000);
 const RETRY_DELAYS_MS = [5_000, 15_000, 30_000, 60_000, 120_000, 300_000].map((ms) => e2eMs(ms, ms / 10));
 const SLOW_RETRY_MS = e2eMs(10 * 60_000, 10_000);
@@ -76,8 +83,10 @@ const IDLE_POLL_MS = 200;
 /** Pause after an answer before its sync (answers given in a row share one) */
 const DECISION_SYNC_MS = 1_000;
 /** Activity poll: while the window is focused, and otherwise (16ah) */
-const POLL_FOCUSED_MS = e2eMs(30_000, 1_500);
-const POLL_AWAY_MS = e2eMs(120_000, 3_000);
+const POLL_FOCUSED_MS = E2E?.pollMs ?? e2eMs(30_000, 1_500);
+const POLL_AWAY_MS = E2E?.pollMs ?? e2eMs(120_000, 3_000);
+/** Activity poll while the live channel is up: a safety net only */
+const POLL_LIVE_MS = E2E?.pollMs ?? e2eMs(5 * 60_000, 3_000);
 
 type SyncedStatus = Extract<SyncStatusResult, { synced: true }>;
 type Failure = Extract<SyncPushResult, { ok: false }>;
@@ -112,6 +121,14 @@ class ProjectSync {
   private quietPull = false;
   private pollTimer: ReturnType<typeof setTimeout> | null = null;
   private lastPollAt = 0;
+  /** An activity poll is waiting for the running cycle, or for the one in flight, to end */
+  private pollQueued = false;
+  private polling = false;
+  private pollAgain = false;
+  /** Following the project on the live channel (main live.js): polls only as a safety net */
+  private live = false;
+  /** Changes waiting on the server are held until the open edit closes (17ap) */
+  private holdingForEdit = false;
   /** Background downloads of the files pulls brought */
   private downloading: Promise<void> | null = null;
   private downloadAgain = false;
@@ -154,14 +171,21 @@ class ProjectSync {
       if (p.projectId === this.projectId && !this.stopped) useSyncStore.getState().update({ progress: p });
     });
     if (offProgress) this.unsubscribers.push(offProgress);
+    const offLive = window.api?.sync.onLive((e) => {
+      if (e.projectId === this.projectId) this.onLive(e);
+    });
+    if (offLive) this.unsubscribers.push(offLive);
     this.unsubscribers.push(useAuthStore.subscribe((state, prev) => {
       const changed = state.isAuthenticated !== prev.isAuthenticated || state.user?.pkey !== prev.user?.pkey;
+      if (changed && state.isAuthenticated) this.followLive();
       if (changed && state.isAuthenticated && this.mode === 'automatic' && this.problem &&
         WAITS_FOR_LOGIN.includes(this.problem.kind)) {
         void this.run();
       }
     }));
     const onOnline = () => {
+      // Back online: the live channel tries again now instead of after its backoff
+      this.followLive();
       if (this.mode === 'automatic' && this.problem && (this.problem.kind === 'offline' || this.problem.kind === 'server')) {
         void this.run();
       }
@@ -170,10 +194,12 @@ class ProjectSync {
     this.unsubscribers.push(() => window.removeEventListener('online', onOnline));
     // Back to the window: count again if the last count is older than the focused interval
     const onFocus = () => {
-      if (Date.now() - this.lastPollAt >= POLL_FOCUSED_MS) this.schedulePoll(0);
+      if (!this.live && Date.now() - this.lastPollAt >= POLL_FOCUSED_MS) this.schedulePoll(0);
     };
     window.addEventListener('focus', onFocus);
     this.unsubscribers.push(() => window.removeEventListener('focus', onFocus));
+
+    this.followLive();
 
     // takeFirstSyncRequest first: it clears the request either way
     if (takeFirstSyncRequest(this.projectId) || useSyncStore.getState().phase === 'uploading') {
@@ -204,6 +230,60 @@ class ProjectSync {
     if (this.decisionTimer) clearTimeout(this.decisionTimer);
     this.decisionTimer = null;
     for (const off of this.unsubscribers.splice(0)) off();
+    void window.api?.sync.liveUnfollow(this.projectId);
+  }
+
+  /** Follow the project on the live channel (main checks the account and server; logged out = later). */
+  private followLive(): void {
+    if (this.stopped || !window.api) return;
+    void window.api.sync.liveFollow(this.projectId, getRestServerUrl()).catch(() => null);
+  }
+
+  /** An event of the live channel for this project. */
+  private onLive(e: SyncLiveEvent): void {
+    if (this.stopped) return;
+    switch (e.kind) {
+      case 'status':
+        if (e.live === this.live) return;
+        this.live = e.live;
+        useSyncStore.getState().update({ live: e.live });
+        // Up (again): catch up on notices missed meanwhile (17ao). Down: poll on the normal timers
+        if (e.live) this.pollWhenIdle();
+        else this.schedulePoll();
+        return;
+      case 'changed':
+        // My own push needs no pull
+        if (!e.mine) this.pollWhenIdle();
+        return;
+      case 'access':
+      case 'parked':
+        // Role, removal, parked pushes: the poll's normal checks (17h, 17k, 17aa)
+        this.pollWhenIdle();
+        return;
+      default:
+    }
+  }
+
+  /**
+   * Poll as soon as no cycle runs (a running cycle skips polls). A notice
+   * during a poll in flight polls once more after it: the answer may
+   * predate the change.
+   */
+  private pollWhenIdle(): void {
+    if (this.stopped) return;
+    if (this.polling) {
+      this.pollAgain = true;
+      return;
+    }
+    if (this.pollQueued) return;
+    this.pollQueued = true;
+    void (async () => {
+      while (!this.stopped && this.running) {
+        await new Promise((resolve) => setTimeout(resolve, IDLE_POLL_MS));
+      }
+      this.pollQueued = false;
+      if (!this.stopped) await this.poll(false);
+    })();
   }
 
   /** Dev test tools: one cycle now, as a Sync click or as an automatic cycle. */
@@ -281,8 +361,19 @@ class ProjectSync {
       return;
     }
     if (this.debounceTimer) clearTimeout(this.debounceTimer);
-    this.debounceTimer = setTimeout(() => void this.run(), DEBOUNCE_MS);
+    this.debounceTimer = setTimeout(() => this.pushWhenEditDone(), DEBOUNCE_MS);
     if (!this.maxWaitTimer) this.maxWaitTimer = setTimeout(() => void this.run(), MAX_WAIT_MS);
+  }
+
+  /** The debounce ran out: push, unless an edit is still open (17aj; the 30 s cap still pushes). */
+  private pushWhenEditDone(): void {
+    if (this.stopped) return;
+    if (this.isEditing()) {
+      this.debounceTimer = setTimeout(() => this.pushWhenEditDone(), EDIT_POLL_MS);
+      return;
+    }
+    this.debounceTimer = null;
+    void this.run();
   }
 
   private clearTimers(): void {
@@ -605,6 +696,35 @@ class ProjectSync {
     return el instanceof HTMLInputElement && ['text', 'search', 'number', 'email', 'url', ''].includes(el.type);
   }
 
+  private inDialog(): boolean {
+    return document.querySelector('.MuiDialog-root:not([data-sync-decisions])') !== null;
+  }
+
+  /**
+   * Changes are waiting but an edit is open (17ap): say who made them, and
+   * pull once the edit closes.
+   */
+  private pullAfterEditing(): void {
+    if (this.holdingForEdit || this.stopped) return;
+    this.holdingForEdit = true;
+    void (async () => {
+      let shown: string | null = null;
+      while (!this.stopped && this.isEditing()) {
+        const s = useSyncStore.getState();
+        const text = editWaitText(s.incoming, s.incomingFrom, this.inDialog());
+        if (text !== shown) {
+          shown = text;
+          s.update({ notice: text });
+        }
+        await new Promise((resolve) => setTimeout(resolve, EDIT_POLL_MS));
+      }
+      this.holdingForEdit = false;
+      if (this.stopped) return;
+      if (useSyncStore.getState().notice === shown) useSyncStore.getState().update({ notice: null });
+      if (this.mode === 'automatic' && useSyncStore.getState().incoming > 0) this.pullQuietly();
+    })();
+  }
+
   private async waitUntilNotEditing(): Promise<void> {
     if (!this.isEditing()) return;
     useSyncStore.getState().update({ notice: 'Sync will run when you finish editing' });
@@ -656,7 +776,7 @@ class ProjectSync {
   private schedulePoll(delayMs?: number): void {
     if (this.stopped) return;
     if (this.pollTimer) clearTimeout(this.pollTimer);
-    const ms = delayMs ?? (document.hasFocus() ? POLL_FOCUSED_MS : POLL_AWAY_MS);
+    const ms = delayMs ?? (this.live ? POLL_LIVE_MS : document.hasFocus() ? POLL_FOCUSED_MS : POLL_AWAY_MS);
     this.pollTimer = setTimeout(() => {
       this.pollTimer = null;
       void this.poll(false);
@@ -670,8 +790,27 @@ class ProjectSync {
    * the project opens, which offers Sync Now if anything waits (§6.4).
    */
   private async poll(onOpen: boolean): Promise<void> {
+    if (this.polling) {
+      this.pollAgain = true;
+      return;
+    }
+    this.polling = true;
+    try {
+      await this.pollOnce(onOpen);
+    } finally {
+      this.polling = false;
+    }
+    if (this.pollAgain && !this.stopped) {
+      this.pollAgain = false;
+      this.pollWhenIdle();
+    }
+  }
+
+  private async pollOnce(onOpen: boolean): Promise<void> {
     const api = window.api;
     if (this.stopped || !api) return;
+    // A running cycle skips the poll; on the live channel nothing else would come back for it
+    if (this.running && this.live) this.pollAgain = true;
     if (!this.running && useAuthStore.getState().isAuthenticated) {
       this.lastPollAt = Date.now();
       const r = await api.sync.activity(this.projectId, getRestServerUrl(), document.hasFocus() ? 'active' : 'away')
@@ -688,13 +827,18 @@ class ProjectSync {
       if (r?.ok && r.role && r.role !== useSyncStore.getState().role) useSyncStore.getState().update({ role: r.role });
       // Owner: parked changes waiting for review (17aa)
       if (r?.ok && r.parkedCount !== useSyncStore.getState().parkedCount) void this.refreshParked(r.parkedCount);
+      // A cycle that started meanwhile may have pulled already: count again after it
+      if (r?.ok && this.running) this.pollAgain = true;
       if (r?.ok && !this.running) {
         useSyncStore.getState().update({ incoming: r.incoming, incomingFrom: r.others });
         if (onOpen && r.incoming > 0 && this.mode === 'manual') {
           useSyncStore.getState().update({ openPrompt: { incoming: r.incoming, others: r.others } });
         }
-        // Basic auto-pull (16av): only when nothing is being edited right now
-        if (r.incoming > 0 && this.mode === 'automatic' && !this.isEditing()) this.pullQuietly();
+        // Basic auto-pull (16av); an open edit holds it until it closes (17ap)
+        if (r.incoming > 0 && this.mode === 'automatic') {
+          if (this.isEditing()) this.pullAfterEditing();
+          else this.pullQuietly();
+        }
       }
     }
     this.schedulePoll();

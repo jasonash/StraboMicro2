@@ -172,6 +172,25 @@ interface SyncRemoval {
 
 type SyncCallResult = { ok: true } | { ok: false; kind: SyncFailureKind; message: string };
 
+/** Someone following a project on the live channel (17al-17an; R3 shows them) */
+interface SyncLivePerson {
+  conn: string;
+  user: number;
+  state: 'here' | 'away';
+  viewing: { type: string; id: string } | null;
+  editing: { type: string; id: string } | null;
+  since: string;
+}
+
+/** An event of the live channel (electron/sync/live.js) */
+type SyncLiveEvent = { projectId: string } & (
+  | { kind: 'status'; live: boolean }
+  | { kind: 'changed'; seq: number; mine: boolean }
+  | { kind: 'access'; role?: SyncRole; removed?: true }
+  | { kind: 'parked' }
+  | { kind: 'presence'; people: SyncLivePerson[] }
+);
+
 /** A person as the sync API names them */
 interface SyncUser {
   pkey: number;
@@ -416,7 +435,7 @@ interface Window {
   api?: {
     version: string;
     /** An end-to-end test run (development only; src/services/e2eMode.ts) */
-    e2e: { server: string } | null;
+    e2e: { server: string; pollMs?: number } | null;
 
     // Session state persistence (replaces localStorage for packaged builds)
     session: {
@@ -1160,6 +1179,12 @@ interface Window {
       onLocalChange: (callback: (projectId: string) => void) => Unsubscribe;
       /** Tells main whether the open project is synced (File menu wording, spec v3 14t) */
       notifyMenuState: (synced: boolean) => void;
+      /** Follow the open synced project on the live channel (again after a login change or reconnect) */
+      liveFollow: (projectId: string, restServer: string) => Promise<
+        | { ok: true; live: boolean }
+        | { ok: false; kind: SyncFailureKind; message: string }>;
+      liveUnfollow: (projectId: string) => Promise<{ ok: true }>;
+      onLive: (callback: (event: SyncLiveEvent) => void) => Unsubscribe;
     };
 
     // Point Count storage (separate from Spot system)

@@ -38,10 +38,13 @@
  *                  applied it and saved project.json, or drop it
  *   sync:test-other / sync:test-compare   dev and -dev. builds only: push
  *                  as another computer, compare with the server (testTools.js)
+ *   sync:live-follow / sync:live-unfollow   the open synced project on the
+ *                  live channel (live.js, 17ah-17ay): notices instead of polls
  * Events to the renderer:
  *   sync:progress      { projectId, phase, ... } while pushing
  *   sync:local-change  projectId, after a file-only change (point counts,
  *                      composite thumbnails) the renderer cannot see
+ *   sync:live          { projectId, kind, ... } from the live channel (live.js)
  *
  * A local-only project is recognized by the missing sync/state.json and
  * never loads the sync engine (spec v3 §3.4). Work on one project runs one
@@ -718,6 +721,9 @@ function commitPull(projectId, pullId) {
       const s = entry.pending;
       log.info(`[Sync] Pulled ${projectId}: ${s.theirs.length} changes received, seq ${s.since} -> ${s.headSeq}, ` +
         `${Object.keys(s.conflicts).length} conflicts, ${s.questions.length} delete questions, ${r.downloads} files to download`);
+      // Notice to pull (17av): how long a change took to arrive once announced
+      const age = live && s.theirs.length > 0 ? live.takeNoticeAge(projectId) : null;
+      if (age !== null) log.info(`[Live] ${projectId}: notice to pull ${age} ms`);
       return { ok: true, downloads: r.downloads };
     } catch (err) {
       return failure(err);
@@ -1226,6 +1232,65 @@ function setMode(projectId, mode) {
 /** @type {() => (import('electron').BrowserWindow | null)} */
 let getWindow = () => null;
 
+// ---------------------------------------------------------------------------
+// Live channel (17ah-17ay)
+// ---------------------------------------------------------------------------
+
+/** @type {null | ReturnType<typeof import('./live').createLiveChannel>} */
+let live = null;
+
+/** The app's one live channel, made on the first follow (local-only users never open it). */
+function liveChannel() {
+  if (!live) {
+    live = require('./live').createLiveChannel({
+      getToken: async (server, { refresh }) => {
+        const r = refresh ? await tokenService.refreshAccessToken(server) : await tokenService.getValidAccessToken(server);
+        if (r.success && r.accessToken) return r.accessToken;
+        if (r.sessionExpired) return null;
+        throw new Error(r.error || 'Could not get a login token');
+      },
+      clientId: () => loadEngine().syncEngine.getClientId(),
+      emit: (projectId, event) => send('sync:live', { projectId, ...event }),
+    });
+  }
+  return live;
+}
+
+/**
+ * Follow the open synced project on the live channel. Again after a login
+ * change or when the connection is back (cuts a reconnect wait short).
+ * @returns {Promise<{ ok: true, live: boolean } | { ok: false, kind: string, message: string }>}
+ */
+async function liveFollow(projectId, restServer) {
+  try {
+    const folder = projectFolders.getProjectFolderPath(projectId);
+    const state = isSyncedFolder(folder) ? await loadEngine().sidecar.loadState(folder) : null;
+    if (!state) return { ok: false, kind: 'not_synced', message: 'This project is not synced.' };
+    const problem = await bindingProblem(state.binding, restServer);
+    if (problem) return { ok: false, ...problem };
+    liveChannel().follow(projectId, { server: restServer, pid: Number(state.binding.pid), pkey: state.binding.pkey });
+    return { ok: true, live: liveChannel().isLive(projectId) };
+  } catch (err) {
+    return failure(err);
+  }
+}
+
+function liveUnfollow(projectId) {
+  if (live) live.unfollow(projectId);
+  return { ok: true };
+}
+
+/**
+ * Login state changed (main.js auth handlers): logout closes the channel at
+ * once (17as); a login connects with that account.
+ * @param {{ pkey: string | number } | null} user - The logged-in account, null = logged out
+ */
+function liveLoginChanged(user) {
+  if (!live) return;
+  if (user) live.accountChanged(user.pkey);
+  else live.loggedOut();
+}
+
 function send(channel, payload) {
   const win = getWindow();
   if (win && !win.isDestroyed()) win.webContents.send(channel, payload);
@@ -1297,6 +1362,8 @@ function registerSyncIpc(ipcMain, getMainWindow, { devTools = false } = {}) {
   ipcMain.handle('sync:decide', (_event, projectId, decision) => decide(projectId, decision));
   ipcMain.handle('sync:decide-commit', (_event, projectId, decisionId) => decideCommit(projectId, decisionId));
   ipcMain.handle('sync:decide-discard', (_event, projectId, decisionId) => decideDiscard(projectId, decisionId));
+  ipcMain.handle('sync:live-follow', (_event, projectId, restServer) => liveFollow(projectId, restServer));
+  ipcMain.handle('sync:live-unfollow', (_event, projectId) => liveUnfollow(projectId));
   if (devTools) {
     ipcMain.handle('sync:test-other', (_event, projectId, restServer, changes) => testOther(projectId, restServer, changes));
     ipcMain.handle('sync:test-compare', (_event, projectId, restServer) => testCompare(projectId, restServer));
@@ -1307,4 +1374,5 @@ module.exports = {
   registerSyncIpc, notifyLocalChange, getStatus, preflight, activity, serverProject, listServerProjects, introCandidates, setPromptAnswer, compare, link, openRemote, turnOn, push, setMode, pull, commitPull, discardPull, download, clone,
   listDecisions, decide, decideCommit, decideDiscard, testOther, testCompare, cleanupReplaced,
   members, changeMembers, invites, answerInvite, permissions, leave, deleteProject, separate, history, restoreDeleted, parked, reviewParked,
+  liveFollow, liveUnfollow, liveLoginChanged,
 };

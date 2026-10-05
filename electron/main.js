@@ -568,7 +568,13 @@ function createWindow() {
       nodeIntegration: false,
       contextIsolation: true,
       preload: path.join(__dirname, 'preload.js'),
-      ...(E2E_DIR ? { additionalArguments: [`--strabo-e2e=${process.env.STRABO_E2E_SERVER || 'http://localhost'}`] } : {}),
+      ...(E2E_DIR ? {
+        additionalArguments: [
+          `--strabo-e2e=${process.env.STRABO_E2E_SERVER || 'http://localhost'}`,
+          // A scenario may set the activity poll (e.g. 10 min, to prove the live channel)
+          ...(Number(process.env.STRABO_E2E_POLL_MS) > 0 ? [`--strabo-e2e-poll=${Number(process.env.STRABO_E2E_POLL_MS)}`] : []),
+        ],
+      } : {}),
     },
   });
   if (DEV_PROFILE) {
@@ -1465,6 +1471,7 @@ function createWindow() {
     try {
       const tokens = loggedIn ? await tokenService.getTokens() : null;
       accounts.setLoggedIn(tokens && tokens.user ? tokens.user : null, restServer);
+      syncService.liveLoginChanged(tokens && tokens.user ? tokens.user : null);
     } catch (error) {
       log.warn('[Accounts] Could not read the logged-in account:', error.message);
     }
@@ -4351,6 +4358,8 @@ ipcMain.handle('auth:login', async (event, email, password, restServer) => {
  * @returns {object} { success }
  */
 ipcMain.handle('auth:logout', async (event, restServer) => {
+  // The live channel closes at once (17as)
+  syncService.liveLoginChanged(null);
   try {
     const tokens = await tokenService.getTokens();
 

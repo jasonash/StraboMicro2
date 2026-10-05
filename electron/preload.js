@@ -10,7 +10,10 @@ contextBridge.exposeInMainWorld('api', {
   /** An end-to-end test run (STRABO_E2E_DIR, development only; tests/e2e) */
   e2e: (() => {
     const arg = process.argv.find((a) => a.startsWith('--strabo-e2e='));
-    return arg ? { server: arg.slice('--strabo-e2e='.length) } : null;
+    if (!arg) return null;
+    const poll = process.argv.find((a) => a.startsWith('--strabo-e2e-poll='));
+    const pollMs = poll ? Number(poll.slice('--strabo-e2e-poll='.length)) : 0;
+    return { server: arg.slice('--strabo-e2e='.length), ...(pollMs > 0 ? { pollMs } : {}) };
   })(),
 
   // Session state persistence (for zustand store - replaces localStorage)
@@ -699,6 +702,13 @@ contextBridge.exposeInMainWorld('api', {
       const handler = (event, projectId) => callback(projectId);
       ipcRenderer.on('sync:local-change', handler);
       return () => ipcRenderer.removeListener('sync:local-change', handler);
+    },
+    liveFollow: (projectId, restServer) => ipcRenderer.invoke('sync:live-follow', projectId, restServer),
+    liveUnfollow: (projectId) => ipcRenderer.invoke('sync:live-unfollow', projectId),
+    onLive: (callback) => {
+      const handler = (event, liveEvent) => callback(liveEvent);
+      ipcRenderer.on('sync:live', handler);
+      return () => ipcRenderer.removeListener('sync:live', handler);
     },
     notifyMenuState: (synced) => ipcRenderer.send('sync:menu-state', synced),
   },

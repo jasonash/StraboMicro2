@@ -125,7 +125,7 @@ export function TurnOnSyncDialog({ open, projectId, saveProject, onClose, onStar
                 <Box>
                   <Typography variant="body2">Sync automatically</Typography>
                   <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                    Changes go up a few seconds after you stop editing.
+                    Changes go up about a second after you finish an edit.
                   </Typography>
                 </Box>
               }

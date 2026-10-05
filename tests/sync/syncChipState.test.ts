@@ -5,7 +5,9 @@
  */
 
 import { describeDifferences } from '@/utils/describeDifferences';
-import { syncChipState, lastSyncedText, incomingText, type SyncChipInput, type SyncChipAuth } from '@/utils/syncChipState';
+import {
+  syncChipState, lastSyncedText, incomingText, editWaitText, liveNote, type SyncChipInput, type SyncChipAuth,
+} from '@/utils/syncChipState';
 
 let failures = 0;
 let passes = 0;
@@ -21,7 +23,7 @@ const SERVER = 'https://strabospot.org';
 const synced: SyncChipInput = {
   synced: true, mode: 'automatic', phase: 'ready', email: 'a@b.org', pkey: '5', server: SERVER,
   activity: 'idle', problem: null, pending: 0, refused: 0, conflicts: 0, questions: 0, downloads: 0,
-  notice: null, progress: null, incoming: 0, incomingFrom: [], linking: null,
+  notice: null, progress: null, incoming: 0, incomingFrom: [], linking: null, live: true,
 };
 const auth: SyncChipAuth = { loggedIn: true, pkey: '5', restServer: SERVER };
 const label = (s: Partial<SyncChipInput>, a: Partial<SyncChipAuth> = {}) =>
@@ -113,6 +115,28 @@ is('comparing icon', icon({ synced: false, linking: { percent: 40 } }), 'busy');
 is('differences, ordered and plural', describeDifferences({ spot: 12, micrograph: 2 }), '2 micrographs, 12 spots');
 is('differences, one each and project details', describeDifferences({ project: 1, sample: 1 }), 'project details, 1 sample');
 is('differences, unknown type', describeDifferences({ point_count: 2, preset_thing: 1 }), '2 point counts, 1 preset thing');
+
+// Changes held by an open edit (17ap)
+is('edit wait: one person, dialog', editWaitText(3, [{ name: 'Ben', count: 3 }], true),
+  "Ben made 3 changes; they'll appear when you close this dialog.");
+is('edit wait: one change, field', editWaitText(1, [{ name: 'Ben', count: 1 }], false),
+  "Ben made 1 change; it'll appear when you finish editing.");
+is('edit wait: two people', editWaitText(5, [{ name: 'Ben', count: 2 }, { name: 'Cleo', count: 3 }], true),
+  "Ben and Cleo made 5 changes; they'll appear when you close this dialog.");
+is('edit wait: three people and my other computer', editWaitText(7, [{ name: 'Ben', count: 2 }, { name: 'Cleo', count: 3 }], true),
+  "Ben, Cleo and your other computer made 7 changes; they'll appear when you close this dialog.");
+is('edit wait: only my other computer', editWaitText(2, [], false),
+  "Your other computer made 2 changes; they'll appear when you finish editing.");
+
+// Live channel down (17ao): a popover line, the chip unchanged
+const st = (s: Partial<SyncChipInput>, a: Partial<SyncChipAuth> = {}) => syncChipState({ ...synced, ...s }, { ...auth, ...a });
+const note = (s: Partial<SyncChipInput>, a: Partial<SyncChipAuth> = {}) => liveNote({ ...synced, ...s }, st(s, a));
+is('live: no note', String(note({})), 'null');
+is('live down: the note', String(note({ live: false })), 'Live updates paused, checking every 30 s.');
+is('live down: chip unchanged', st({ live: false }).label, 'Synced');
+is('live down, offline: the problem says it', String(note({ live: false, problem: { kind: 'offline', message: '' } })), 'null');
+is('live down, logged out: the login says it', String(note({ live: false }, { loggedIn: false })), 'null');
+is('local only: no note', String(note({ synced: false, live: false })), 'null');
 
 // Last synced
 const now = Date.parse('2026-10-02T12:00:00Z');

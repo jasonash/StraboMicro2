@@ -36,7 +36,7 @@ export interface SyncChipState {
 
 export type SyncChipInput = Pick<SyncStoreState,
   'synced' | 'mode' | 'phase' | 'email' | 'pkey' | 'server' | 'activity' | 'problem' | 'pending' |
-  'refused' | 'conflicts' | 'questions' | 'downloads' | 'notice' | 'progress' | 'incoming' | 'incomingFrom' | 'linking'>;
+  'refused' | 'conflicts' | 'questions' | 'downloads' | 'notice' | 'progress' | 'incoming' | 'incomingFrom' | 'linking' | 'live'>;
 
 export interface SyncChipAuth {
   loggedIn: boolean;
@@ -87,6 +87,33 @@ export function incomingText(incoming: number, others: Array<{ name: string; cou
   const parts = others.map((o) => `${o.name} (${o.count})`);
   if (mine > 0) parts.push(`your other computer (${mine})`);
   return `${n} ${plural(incoming, 'is', 'are')} waiting on StraboSpot: ${parts.join(', ')}.`;
+}
+
+/**
+ * Changes that arrived while an edit is open wait for it (17ap):
+ * "Ben made 3 changes; they'll appear when you close this dialog."
+ * inDialog: a dialog is open (otherwise a field, shape editing, point counting).
+ */
+export function editWaitText(incoming: number, others: Array<{ name: string; count: number }>, inDialog: boolean): string {
+  const people = others.filter((o) => o.count > 0).map((o) => o.name);
+  const fromOthers = others.reduce((sum, o) => sum + o.count, 0);
+  if (incoming > fromOthers) people.push(people.length === 0 ? 'Your other computer' : 'your other computer');
+  const who = people.length === 0 ? 'Someone'
+    : people.length === 1 ? people[0]
+      : `${people.slice(0, -1).join(', ')} and ${people[people.length - 1]}`;
+  const n = Math.max(incoming, 1);
+  const when = inDialog ? 'when you close this dialog' : 'when you finish editing';
+  return `${who} made ${n} ${plural(n, 'change', 'changes')}; ${plural(n, "it'll", "they'll")} appear ${when}.`;
+}
+
+/**
+ * The popover's line while the live channel is down (17ao): the chip itself
+ * is unchanged, and nothing is said when a problem or the login already
+ * explains why nothing arrives.
+ */
+export function liveNote(s: Pick<SyncChipInput, 'synced' | 'live' | 'problem'>, state: Pick<SyncChipState, 'needsLogin' | 'tone'>): string | null {
+  if (!s.synced || s.live || s.problem || state.needsLogin || state.tone === 'muted') return null;
+  return 'Live updates paused, checking every 30 s.';
 }
 
 export function syncChipState(s: SyncChipInput, auth: SyncChipAuth): SyncChipState {
@@ -278,7 +305,7 @@ function chipState(s: SyncChipInput, auth: SyncChipAuth): Omit<SyncChipState, 'i
     label: 'Synced',
     tone: 'ok',
     detail: automatic
-      ? 'Your changes sync a few seconds after you stop editing.'
+      ? 'Your changes sync about a second after you finish an edit.'
       : 'Nothing is waiting. Changes sync when you click Sync Now.',
   };
 }
