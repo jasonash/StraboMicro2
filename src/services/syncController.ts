@@ -60,7 +60,7 @@ import { useAuthStore } from '@/store/useAuthStore';
 import { useSyncStore, decisionsWaiting } from '@/store/useSyncStore';
 import { getRestServerUrl } from '@/components/dialogs/PreferencesDialog';
 import { applyRemoteChanges, isApplyingSavedStamps } from '@/store/remoteChanges';
-import { compositesAffectedBy, regenerateComposites } from '@/utils/compositeRefresh';
+import { compositesAffectedBy, compositesShowing, regenerateComposites } from '@/utils/compositeRefresh';
 import { takeFirstSyncRequest } from '@/services/syncActions';
 import { loadParked } from '@/services/parkedLoad';
 import { E2E, e2eMs, LEGACY_SYNC } from '@/services/e2eMode';
@@ -761,6 +761,7 @@ class ProjectSync {
     if (this.stopped) return { ok: true };
     if (!d.ok) return d;
     useSyncStore.getState().imagesArrived(d.images);
+    regenerateComposites(compositesShowing(useAppStore.getState().project, d.images), () => useAppStore.getState().project);
     for (const id of new Set([...d.images, ...d.thumbnails])) {
       window.dispatchEvent(new CustomEvent('thumbnail-generated', { detail: { micrographId: id } }));
     }

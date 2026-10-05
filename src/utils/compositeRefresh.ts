@@ -6,8 +6,10 @@
  * a child is created, removed, moved to another parent, placed differently,
  * hidden or shown. The dialogs that do such edits regenerate it themselves;
  * changes applied as a whole (undo/redo, sync pulls, sync decisions) come
- * here. Regeneration runs one at a time in the background; the tree and the
- * groups panel reload a thumbnail on 'thumbnail-generated'.
+ * here, and so do images a pull downloaded (main leaves a synced copy's
+ * composite as it was while an image it shows is missing). Regeneration
+ * runs one at a time in the background; the tree and the groups panel
+ * reload a thumbnail on 'thumbnail-generated'.
  */
 
 import type { EntityChange } from '../../electron/shared/entityModel.mjs';
@@ -53,6 +55,26 @@ export function compositesAffectedBy(changes: EntityChange[], { withCreated = fa
   return [...out];
 }
 
+/**
+ * Micrographs whose composite shows these micrographs' images: their parents,
+ * and each one itself when it has children (a composite left as it was while
+ * an image downloaded is made when the image arrives).
+ */
+export function compositesShowing(project: ProjectMetadata | null, micrographIds: string[]): string[] {
+  if (!project || micrographIds.length === 0) return [];
+  const ids = new Set(micrographIds);
+  const out = new Set<string>();
+  for (const dataset of project.datasets ?? []) {
+    for (const sample of dataset.samples ?? []) {
+      for (const m of sample.micrographs ?? []) {
+        if (ids.has(m.id) && m.parentID) out.add(m.parentID);
+        if (m.parentID && ids.has(m.parentID)) out.add(m.parentID);
+      }
+    }
+  }
+  return [...out];
+}
+
 let queue: Promise<void> = Promise.resolve();
 const waiting = new Set<string>();
 
@@ -70,8 +92,9 @@ export function regenerateComposites(micrographIds: string[], getProject: () => 
       const project = getProject();
       if (!project || !window.api || !findMicrographById(project, id)) return;
       try {
-        await window.api.generateCompositeThumbnail(project.id, id, project);
-        window.dispatchEvent(new CustomEvent('thumbnail-generated', { detail: { micrographId: id } }));
+        const r = await window.api.generateCompositeThumbnail(project.id, id, project);
+        // Not made while an image is still downloading: compositesShowing redoes it on arrival
+        if (r.success) window.dispatchEvent(new CustomEvent('thumbnail-generated', { detail: { micrographId: id } }));
       } catch (err) {
         console.warn(`[Thumbnails] Could not regenerate the composite of ${id}:`, err);
       }

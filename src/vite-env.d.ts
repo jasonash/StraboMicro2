@@ -681,12 +681,11 @@ interface Window {
     }>;
 
     // Composite thumbnail generation
-    generateCompositeThumbnail: (projectId: string, micrographId: string, projectData: any) => Promise<{
-      success: boolean;
-      thumbnailPath: string;
-      width: number;
-      height: number;
-    }>;
+    // waitingFor: a synced copy's micrographs whose image has not arrived yet (nothing written)
+    generateCompositeThumbnail: (projectId: string, micrographId: string, projectData: any) => Promise<
+      | { success: true; changed: boolean; thumbnailPath: string; width: number; height: number }
+      | { success: false; waitingFor: string[] }
+    >;
     getCompositeThumbnailPath: (projectId: string, micrographId: string) => Promise<string>;
     loadCompositeThumbnail: (projectId: string, micrographId: string) => Promise<string | null>;
     rebuildAllThumbnails: (projectId: string, projectData: any) => Promise<{

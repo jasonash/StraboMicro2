@@ -5,6 +5,7 @@
  */
 
 import { expect } from '@playwright/test';
+import { createHash } from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import { SERVER as SERVER_URL, type Copy } from './copy';
@@ -344,6 +345,50 @@ export function holdFileRefs(copy: Copy): Promise<void> {
 
 export function releaseFileRefs(copy: Copy): Promise<void> {
   return releaseRequests(copy, 'file uploads continue');
+}
+
+/**
+ * Place a new micrograph on a parent the way New Associated Micrograph saves
+ * it: the image into the project folder, the micrograph into the store, then
+ * the parent's composite thumbnail. 'offset' places it by position and scale,
+ * 'affine' by a 3-point registration matrix (the composite makes the warped
+ * image itself). Either way it covers 400 x 300 px at (400, 300) of a
+ * 1600 x 1200 parent at 40000 px/cm. Returns its id.
+ */
+export async function addOverlayMicrograph(copy: Copy, sampleId: string, parentId: string, imagePath: string,
+  name: string, placement: 'offset' | 'affine'): Promise<string> {
+  await copy.caption(`places micrograph '${name}' on the overview (${placement})`);
+  const id = crypto.randomUUID();
+  const placed = placement === 'affine'
+    ? { placementType: 'affine', affineMatrix: [0.25, 0, 400, 0, 0.25, 300], affineTileHash: id,
+      affineBoundsOffset: { x: 400, y: 300 }, affineTransformedWidth: 400, affineTransformedHeight: 300 }
+    : { offsetInParent: { X: 400, Y: 300 }, rotation: 0 };
+  const micrograph = {
+    id, name, imagePath: id, imageWidth: 1600, imageHeight: 1200, width: 1600, height: 1200, opacity: 1,
+    imageType: 'Plane Polarized Light', scalePixelsPerCentimeter: 160000, parentID: parentId, ...placed,
+    orientationInfo: { orientationMethod: 'unoriented' }, spots: [], associatedFiles: [], links: [], tags: [],
+    isMicroVisible: true, isExpanded: false, isSpotExpanded: false, isFlipped: false,
+  };
+  await copy.state(new Function('e', `return (async () => {
+    const project = e.app.getState().project;
+    const scratch = await window.api.convertToScratchJPEG(${JSON.stringify(imagePath)});
+    await window.api.moveFromScratch(scratch.identifier, project.id, ${JSON.stringify(id)});
+    e.app.getState().addMicrograph(${JSON.stringify(sampleId)}, ${JSON.stringify(micrograph)});
+    const after = e.app.getState().project;
+    await window.api.generateCompositeThumbnail(after.id, ${JSON.stringify(parentId)}, after);
+  })()`) as never);
+  return id;
+}
+
+/** SHA-256 of a micrograph's composite thumbnail in this copy (null when there is none) */
+export async function compositeSha(copy: Copy, projectId: string, micrographId: string): Promise<string | null> {
+  const folder = await copy.state(new Function('e', `return window.api.getProjectFolderPaths(${JSON.stringify(projectId)})
+    .then((f) => f.compositeThumbnails)`) as never) as string;
+  try {
+    return createHash('sha256').update(fs.readFileSync(path.join(folder, micrographId))).digest('hex');
+  } catch {
+    return null;
+  }
 }
 
 /** Add a polygon spot the way the drawing tools do (store action addSpot); returns its id */

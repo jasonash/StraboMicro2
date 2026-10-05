@@ -202,6 +202,7 @@ const autoUpdaterModule = require('./autoUpdater');
 const logService = require('./logService');
 const pointCountStorage = require('./pointCountStorage');
 const syncService = require('./sync/syncService');
+const syncSidecar = require('./sync/sidecar');
 const fastsamService = require('./fastsamService');
 const straboToolsMain = require('./straboToolsMain');
 const dialogDirs = require('./dialogDirs');
@@ -2625,32 +2626,33 @@ const affineGenerationInFlight = new Map();
  * overlay failed to render with "Affine thumbnail not found". This rebuilds them
  * under the SAME hash the renderer reads from (the micrograph's affineTileHash).
  */
+async function ensureAffineTiles(imagePath, imageHash, affineMatrix) {
+  // Fast path: tiles already baked with a matching matrix, nothing to do.
+  if (await affineTileGenerator.hasMatchingAffineTiles(imageHash, affineMatrix)) return false;
+
+  // Coalesce concurrent regeneration of the same overlay onto one promise.
+  let pending = affineGenerationInFlight.get(imageHash);
+  if (!pending) {
+    pending = (async () => {
+      const resolvedPath = await resolveImagePathWithLegacyFallback(imagePath);
+      log.info(`[Affine] Regenerating missing affine tiles for ${imageHash} from ${resolvedPath}`);
+      // Drop any stale/partial affine subdir before re-baking under this hash.
+      await tileCache.deleteAffineTiles(imageHash);
+      await affineTileGenerator.generateAffineTiles(resolvedPath, imageHash, affineMatrix);
+    })().finally(() => affineGenerationInFlight.delete(imageHash));
+    affineGenerationInFlight.set(imageHash, pending);
+  }
+  await pending;
+  return true;
+}
+
 ipcMain.handle('tiles:ensure-affine-tiles', async (event, imagePath, imageHash, affineMatrix) => {
   try {
     if (!imageHash || !Array.isArray(affineMatrix) || affineMatrix.length !== 6) {
       return { success: false, error: 'Missing image hash or affine matrix' };
     }
-
-    // Fast path: tiles already baked with a matching matrix — nothing to do.
-    if (await affineTileGenerator.hasMatchingAffineTiles(imageHash, affineMatrix)) {
-      return { success: true, regenerated: false };
-    }
-
-    // Coalesce concurrent regeneration of the same overlay onto one promise.
-    let pending = affineGenerationInFlight.get(imageHash);
-    if (!pending) {
-      pending = (async () => {
-        const resolvedPath = await resolveImagePathWithLegacyFallback(imagePath);
-        log.info(`[Affine] Regenerating missing affine tiles for ${imageHash} from ${resolvedPath}`);
-        // Drop any stale/partial affine subdir before re-baking under this hash.
-        await tileCache.deleteAffineTiles(imageHash);
-        await affineTileGenerator.generateAffineTiles(resolvedPath, imageHash, affineMatrix);
-      })().finally(() => affineGenerationInFlight.delete(imageHash));
-      affineGenerationInFlight.set(imageHash, pending);
-    }
-    await pending;
-
-    return { success: true, regenerated: true };
+    const regenerated = await ensureAffineTiles(imagePath, imageHash, affineMatrix);
+    return { success: true, regenerated };
   } catch (error) {
     log.error('[Affine] Failed to ensure affine tiles:', error);
     return { success: false, error: error.message };
@@ -3427,415 +3429,472 @@ ipcMain.handle('image:rotate', async (event, imagePath, degrees, flip = false) =
  */
 ipcMain.handle('composite:generate-thumbnail', async (event, projectId, micrographId, projectData) => {
   try {
-    log.info(`[IPC] Generating composite thumbnail for micrograph: ${micrographId}`);
-
-    // Get project folder paths
-    const folderPaths = await projectFolders.getProjectFolderPaths(projectId);
-
-    // Use provided project data instead of loading from disk (may be stale).
-    // Guard against a missing snapshot so the failure below is a diagnosable
-    // "not found" error rather than an opaque TypeError.
-    const project = projectData || {};
-
-    // Find the micrograph in the project hierarchy
-    let micrograph = null;
-    let childMicrographs = [];
-
-    for (const dataset of project.datasets || []) {
-      for (const sample of dataset.samples || []) {
-        for (const micro of sample.micrographs || []) {
-          if (micro.id === micrographId) {
-            micrograph = micro;
-
-            // Find immediate children (associated micrographs)
-            // Exclude secondary siblings (XPL) - they share same view area as primary (PPL)
-            childMicrographs = (sample.micrographs || []).filter(
-              m => m.parentID === micrographId && m.isPrimarySibling !== false
-            );
-
-            log.info(`[IPC] Found parent micrograph ${micrographId} with ${childMicrographs.length} children`);
-            log.info(`[IPC] Children IDs:`, childMicrographs.map(c => ({ id: c.id, name: c.name, imagePath: c.imagePath })));
-
-            break;
-          }
-        }
-        if (micrograph) break;
-      }
-      if (micrograph) break;
-    }
-
-    if (!micrograph) {
-      const availableIds = project.datasets?.flatMap(d => d.samples?.flatMap(s => s.micrographs?.map(m => m.id)) || []) || [];
-      const datasetCount = project.datasets?.length ?? 0;
-      const sampleCount = project.datasets?.reduce((n, d) => n + (d.samples?.length || 0), 0) ?? 0;
-      log.error(`[IPC] Micrograph ${micrographId} not found in project. Available micrographs:`, availableIds);
-      // Include snapshot shape in the message so remote error reports (Sentry) are
-      // self-diagnosing — distinguishes "empty/stale snapshot" from "wrong id".
-      throw new Error(
-        `Micrograph ${micrographId} not found in project ` +
-        `(snapshot: ${datasetCount} datasets, ${sampleCount} samples, ${availableIds.length} micrographs)`
-      );
-    }
-
-    // Load base micrograph image (with fallback to uiImages for legacy projects)
-    const basePath = await resolveImagePathWithLegacyFallback(
-      path.join(folderPaths.images, micrograph.imagePath)
-    );
-    log.info(`[IPC] Loading base image: ${basePath}`);
-
-    let baseImage = sharp(basePath);
-    const baseMetadata = await baseImage.metadata();
-
-    log.info(`[IPC] Parent micrograph: ${micrograph.id}`);
-    log.info(`[IPC]   imageWidth (stored): ${micrograph.imageWidth}, imageHeight (stored): ${micrograph.imageHeight}`);
-    log.info(`[IPC]   Actual file dimensions: ${baseMetadata.width}x${baseMetadata.height}`);
-    log.info(`[IPC]   Parent px/cm: ${micrograph.scalePixelsPerCentimeter}`);
-
-    // Calculate thumbnail dimensions maintaining aspect ratio
-    const maxDimension = 250;
-    const aspectRatio = baseMetadata.width / baseMetadata.height;
-    let thumbWidth, thumbHeight;
-
-    if (baseMetadata.width > baseMetadata.height) {
-      thumbWidth = maxDimension;
-      thumbHeight = Math.round(maxDimension / aspectRatio);
-    } else {
-      thumbHeight = maxDimension;
-      thumbWidth = Math.round(maxDimension * aspectRatio);
-    }
-
-    // Resize base image to thumbnail size
-    baseImage = baseImage.resize(thumbWidth, thumbHeight, {
-      fit: 'fill',
-      kernel: sharp.kernel.lanczos3
-    });
-
-    // If there are no children, just save the base thumbnail
-    if (childMicrographs.length === 0) {
-      log.info(`[IPC] No child micrographs, saving base thumbnail only`);
-
-      const outputPath = path.join(folderPaths.compositeThumbnails, micrographId);
-      await baseImage.jpeg({ quality: 85 }).toFile(outputPath);
-
-      syncService.notifyLocalChange(projectId);
-      return {
-        success: true,
-        thumbnailPath: outputPath,
-        width: thumbWidth,
-        height: thumbHeight
-      };
-    }
-
-    // Composite children onto base
-    log.info(`[IPC] Compositing ${childMicrographs.length} child micrographs`);
-
-    // Convert base image to buffer for compositing
-    const baseBuffer = await baseImage.toBuffer();
-
-    // Calculate scale factor from original to thumbnail
-    const thumbnailScale = thumbWidth / baseMetadata.width;
-
-    // Build composite layers
-    const compositeInputs = [];
-
-    for (const child of childMicrographs) {
-      try {
-        // Skip point-located micrographs - they should be rendered as point markers, not overlays
-        if (child.pointInParent) {
-          log.info(`[IPC] Skipping point-located child ${child.id} (${child.name}) - not rendered as overlay`);
-          continue;
-        }
-
-        // Handle affine-transformed overlays specially - load pre-transformed image from cache
-        if (child.placementType === 'affine' && child.affineTileHash) {
-          log.info(`[IPC] Loading affine overlay ${child.id} for thumbnail from cache`);
-          const tileCache = require('./tileCache');
-          const affineBuffer = await tileCache.loadAffineMedium(child.affineTileHash);
-
-          if (affineBuffer) {
-            // Use bounds and dimensions from micrograph data (not cache metadata)
-            const boundsOffset = child.affineBoundsOffset || { x: 0, y: 0 };
-            const transformedWidth = child.affineTransformedWidth || 0;
-            const transformedHeight = child.affineTransformedHeight || 0;
-
-            // Scale position and size to thumbnail coordinates
-            const thumbX = Math.round(boundsOffset.x * thumbnailScale);
-            const thumbY = Math.round(boundsOffset.y * thumbnailScale);
-            const thumbAffineWidth = Math.round(transformedWidth * thumbnailScale);
-            const thumbAffineHeight = Math.round(transformedHeight * thumbnailScale);
-
-            log.info(`[IPC] Affine thumbnail ${child.id}: bounds=(${thumbX}, ${thumbY}), size=${thumbAffineWidth}x${thumbAffineHeight}`);
-
-            // Resize and apply opacity
-            let affineImage = sharp(affineBuffer)
-              .resize(thumbAffineWidth, thumbAffineHeight, { fit: 'fill', kernel: sharp.kernel.lanczos3 })
-              .ensureAlpha();
-
-            const childOpacity = child.opacity ?? 1.0;
-            let finalBuffer;
-            if (childOpacity < 1.0) {
-              const { data, info } = await affineImage.raw().toBuffer({ resolveWithObject: true });
-              for (let i = 3; i < data.length; i += 4) {
-                data[i] = Math.round(data[i] * childOpacity);
-              }
-              finalBuffer = await sharp(data, {
-                raw: { width: info.width, height: info.height, channels: info.channels }
-              }).png().toBuffer();
-            } else {
-              finalBuffer = await affineImage.png().toBuffer();
-            }
-
-            // Bounds checking and cropping
-            if (thumbX + thumbAffineWidth > 0 && thumbY + thumbAffineHeight > 0 && thumbX < thumbWidth && thumbY < thumbHeight) {
-              let cropX = 0, cropY = 0, cropW = thumbAffineWidth, cropH = thumbAffineHeight;
-              let finalX = thumbX, finalY = thumbY;
-
-              if (thumbX < 0) { cropX = -thumbX; cropW -= cropX; finalX = 0; }
-              if (thumbY < 0) { cropY = -thumbY; cropH -= cropY; finalY = 0; }
-              if (finalX + cropW > thumbWidth) { cropW = thumbWidth - finalX; }
-              if (finalY + cropH > thumbHeight) { cropH = thumbHeight - finalY; }
-
-              if (cropW > 0 && cropH > 0) {
-                let compositeBuffer = finalBuffer;
-                if (cropX > 0 || cropY > 0 || cropW !== thumbAffineWidth || cropH !== thumbAffineHeight) {
-                  compositeBuffer = await sharp(finalBuffer)
-                    .extract({ left: Math.round(cropX), top: Math.round(cropY), width: Math.round(cropW), height: Math.round(cropH) })
-                    .toBuffer();
-                }
-                compositeInputs.push({ input: compositeBuffer, left: Math.round(finalX), top: Math.round(finalY) });
-                log.info(`[IPC] Added affine overlay to thumbnail at (${finalX}, ${finalY})`);
-              }
-            }
-          } else {
-            log.warn(`[IPC] No cached affine data for ${child.id}, skipping in thumbnail`);
-          }
-          continue;
-        }
-
-        // Skip children that haven't been located yet (no position data)
-        // This is critical for batch-imported micrographs which don't have position until user sets it
-        // Without this check, ALL children would be loaded from disk causing massive memory spike
-        if (!child.offsetInParent && child.xOffset === undefined) {
-          log.info(`[IPC] Skipping unlocated child ${child.id} (${child.name}) - no position data yet`);
-          continue;
-        }
-
-        log.info(`[IPC] Processing child ${child.id} (${child.name})`);
-
-        // Load child image (with fallback to uiImages for legacy projects)
-        const childPath = await resolveImagePathWithLegacyFallback(
-          path.join(folderPaths.images, child.imagePath)
-        );
-        let childImage = sharp(childPath);
-        const childMetadata = await childImage.metadata();
-
-        // IMPORTANT: Use stored imageWidth/imageHeight (original dimensions), NOT actual file dimensions
-        // This matches how AssociatedImageRenderer works in the main viewer
-        const childImageWidth = child.imageWidth || child.width || childMetadata.width;
-        const childImageHeight = child.imageHeight || child.height || childMetadata.height;
-
-        // Calculate child's display scale based on pixels per centimeter
-        const childPxPerCm = child.scalePixelsPerCentimeter || 100;
-        const parentPxPerCm = micrograph.scalePixelsPerCentimeter || 100;
-        const displayScale = parentPxPerCm / childPxPerCm;
-
-        log.info(`[IPC]   Child px/cm: ${childPxPerCm}, Parent px/cm: ${parentPxPerCm}, Display scale: ${displayScale}`);
-        log.info(`[IPC]   Child stored dimensions: ${childImageWidth}x${childImageHeight}, actual file: ${childMetadata.width}x${childMetadata.height}`);
-
-        // Calculate child dimensions in parent's coordinate space using STORED dimensions
-        const childDisplayWidth = childImageWidth * displayScale;
-        const childDisplayHeight = childImageHeight * displayScale;
-
-        // Get child position (top-left)
-        let topLeftX = 0;
-        let topLeftY = 0;
-
-        if (child.offsetInParent) {
-          topLeftX = child.offsetInParent.X;
-          topLeftY = child.offsetInParent.Y;
-          log.info(`[IPC]   Using offsetInParent: (${topLeftX}, ${topLeftY})`);
-        } else if (child.pointInParent) {
-          topLeftX = child.pointInParent.x - childDisplayWidth / 2;
-          topLeftY = child.pointInParent.y - childDisplayHeight / 2;
-          log.info(`[IPC]   Using pointInParent: (${child.pointInParent.x}, ${child.pointInParent.y}) -> topLeft: (${topLeftX}, ${topLeftY})`);
-        } else if (child.xOffset !== undefined && child.yOffset !== undefined) {
-          topLeftX = child.xOffset;
-          topLeftY = child.yOffset;
-          log.info(`[IPC]   Using legacy offset: (${topLeftX}, ${topLeftY})`);
-        }
-
-        // Scale position to thumbnail coordinates
-        const thumbX = Math.round(topLeftX * thumbnailScale);
-        const thumbY = Math.round(topLeftY * thumbnailScale);
-
-        // Scale child dimensions to thumbnail coordinates
-        const thumbChildWidth = Math.round(childDisplayWidth * thumbnailScale);
-        const thumbChildHeight = Math.round(childDisplayHeight * thumbnailScale);
-
-        log.info(`[IPC]   Original position: (${topLeftX}, ${topLeftY}), Thumbnail position: (${thumbX}, ${thumbY})`);
-        log.info(`[IPC]   Original size: ${childMetadata.width}x${childMetadata.height}, Display size: ${childDisplayWidth}x${childDisplayHeight}, Thumb size: ${thumbChildWidth}x${thumbChildHeight}`);
-
-        // Resize child image
-        childImage = childImage.resize(thumbChildWidth, thumbChildHeight, {
-          fit: 'fill',
-          kernel: sharp.kernel.lanczos3
-        });
-
-        // Get child opacity (default to 1 if not set)
-        const childOpacity = child.opacity ?? 1.0;
-        log.info(`[IPC]   Child opacity: ${childOpacity}`);
-
-        // Ensure we have alpha channel for opacity support
-        childImage = childImage.ensureAlpha();
-
-        // Apply opacity by multiplying the alpha channel
-        // We need to get the buffer, modify alpha values, then create new sharp instance
-        if (childOpacity < 1.0) {
-          const { data, info } = await childImage.raw().toBuffer({ resolveWithObject: true });
-
-          // Modify alpha channel (every 4th byte starting at index 3)
-          for (let i = 3; i < data.length; i += 4) {
-            data[i] = Math.round(data[i] * childOpacity);
-          }
-
-          // Recreate sharp instance with modified data
-          childImage = sharp(data, {
-            raw: {
-              width: info.width,
-              height: info.height,
-              channels: info.channels
-            }
-          });
-        }
-
-        // Apply rotation if needed
-        let finalX, finalY, finalBuffer;
-        if (child.rotation) {
-          // Calculate center position for rotation
-          const centerX = thumbX + thumbChildWidth / 2;
-          const centerY = thumbY + thumbChildHeight / 2;
-
-          // Rotate with transparent background
-          childImage = childImage.rotate(child.rotation, {
-            background: { r: 0, g: 0, b: 0, alpha: 0 }
-          });
-
-          // Calculate rotated bounding box dimensions mathematically
-          // Sharp's metadata() on a pipeline returns input metadata, not post-transform
-          const radians = (child.rotation * Math.PI) / 180;
-          const cos = Math.abs(Math.cos(radians));
-          const sin = Math.abs(Math.sin(radians));
-          const rotatedWidth = thumbChildWidth * cos + thumbChildHeight * sin;
-          const rotatedHeight = thumbChildWidth * sin + thumbChildHeight * cos;
-
-          // Adjust position to account for rotation
-          finalX = Math.round(centerX - rotatedWidth / 2);
-          finalY = Math.round(centerY - rotatedHeight / 2);
-          finalBuffer = await childImage.png().toBuffer();
-
-          log.info(`[IPC]   Rotation: ${child.rotation}°, Rotated size: ${Math.round(rotatedWidth)}x${Math.round(rotatedHeight)}`);
-        } else {
-          finalX = thumbX;
-          finalY = thumbY;
-          finalBuffer = await childImage.png().toBuffer();
-        }
-
-        // Validate that the composite position is within bounds
-        // Sharp requires: left >= 0, top >= 0, and image fits within base
-        const childBufferMeta = await sharp(finalBuffer).metadata();
-        const childW = childBufferMeta.width;
-        const childH = childBufferMeta.height;
-
-        // Skip children that would be entirely outside the base image
-        if (finalX + childW <= 0 || finalY + childH <= 0 || finalX >= thumbWidth || finalY >= thumbHeight) {
-          log.info(`[IPC]   Skipping child ${child.id} - entirely outside base image bounds`);
-          continue;
-        }
-
-        // Crop child image if it extends outside base bounds
-        let cropX = 0, cropY = 0, cropW = childW, cropH = childH;
-        let compositeX = finalX, compositeY = finalY;
-
-        // Handle negative X (child extends past left edge)
-        if (finalX < 0) {
-          cropX = -finalX;
-          cropW -= cropX;
-          compositeX = 0;
-        }
-
-        // Handle negative Y (child extends past top edge)
-        if (finalY < 0) {
-          cropY = -finalY;
-          cropH -= cropY;
-          compositeY = 0;
-        }
-
-        // Handle overflow on right
-        if (compositeX + cropW > thumbWidth) {
-          cropW = thumbWidth - compositeX;
-        }
-
-        // Handle overflow on bottom
-        if (compositeY + cropH > thumbHeight) {
-          cropH = thumbHeight - compositeY;
-        }
-
-        // Validate crop dimensions are positive
-        if (cropW <= 0 || cropH <= 0) {
-          log.info(`[IPC]   Skipping child ${child.id} - crop dimensions invalid after bounds check`);
-          continue;
-        }
-
-        // If we need to crop, extract the visible region
-        let compositeBuffer = finalBuffer;
-        if (cropX > 0 || cropY > 0 || cropW !== childW || cropH !== childH) {
-          log.info(`[IPC]   Cropping child to visible region: extract(${cropX}, ${cropY}, ${cropW}, ${cropH})`);
-          compositeBuffer = await sharp(finalBuffer)
-            .extract({ left: cropX, top: cropY, width: cropW, height: cropH })
-            .toBuffer();
-        }
-
-        compositeInputs.push({
-          input: compositeBuffer,
-          left: compositeX,
-          top: compositeY
-        });
-      } catch (error) {
-        log.error(`[IPC] Failed to composite child ${child.id}:`, error);
-        // Continue with other children
-      }
-    }
-
-    // Apply composites to base image
-    const compositeImage = sharp(baseBuffer).composite(compositeInputs);
-
-    // Save to compositeThumbnails folder (JPEG with no extension)
-    const outputPath = path.join(folderPaths.compositeThumbnails, micrographId);
-    await compositeImage.jpeg({ quality: 85 }).toFile(outputPath);
-
-    log.info(`[IPC] Successfully generated composite thumbnail: ${outputPath}`);
-
+    const result = await makeCompositeThumbnail(projectId, micrographId, projectData);
+    if (result.success && result.changed) syncService.notifyLocalChange(projectId);
+    return result;
+  } catch (error) {
+    log.error('[IPC] Error generating composite thumbnail:', error);
+    throw error;
+  } finally {
     // Release Sharp memory after thumbnail generation
     // This prevents memory accumulation when generating multiple thumbnails
     sharp.cache(false);
     sharp.cache({ memory: 256, files: 20, items: 100 });
+  }
+});
 
-    syncService.notifyLocalChange(projectId);
+/**
+ * Write a micrograph's composite thumbnail (its image with its placed
+ * children on it) to compositeThumbnails/<id>.
+ * @param {object} projectData - The project as the renderer has it (the file may be stale)
+ * @returns {Promise<{ success: true, changed: boolean, thumbnailPath: string, width: number, height: number }
+ *   | { success: false, waitingFor: string[] }>} changed: the file was written (it
+ *   differed); waitingFor: micrographs of a synced copy whose image has not
+ *   arrived yet, nothing was written
+ */
+async function makeCompositeThumbnail(projectId, micrographId, projectData) {
+  log.info(`[IPC] Generating composite thumbnail for micrograph: ${micrographId}`);
+
+  // Get project folder paths
+  const folderPaths = await projectFolders.getProjectFolderPaths(projectId);
+
+  // Use provided project data instead of loading from disk (may be stale).
+  // Guard against a missing snapshot so the failure below is a diagnosable
+  // "not found" error rather than an opaque TypeError.
+  const project = projectData || {};
+
+  // Find the micrograph in the project hierarchy
+  let micrograph = null;
+  let childMicrographs = [];
+
+  for (const dataset of project.datasets || []) {
+    for (const sample of dataset.samples || []) {
+      for (const micro of sample.micrographs || []) {
+        if (micro.id === micrographId) {
+          micrograph = micro;
+
+          // Find immediate children (associated micrographs)
+          // Exclude secondary siblings (XPL) - they share same view area as primary (PPL)
+          childMicrographs = (sample.micrographs || []).filter(
+            m => m.parentID === micrographId && m.isPrimarySibling !== false
+          );
+
+          log.info(`[IPC] Found parent micrograph ${micrographId} with ${childMicrographs.length} children`);
+          log.info(`[IPC] Children IDs:`, childMicrographs.map(c => ({ id: c.id, name: c.name, imagePath: c.imagePath })));
+
+          break;
+        }
+      }
+      if (micrograph) break;
+    }
+    if (micrograph) break;
+  }
+
+  if (!micrograph) {
+    const availableIds = project.datasets?.flatMap(d => d.samples?.flatMap(s => s.micrographs?.map(m => m.id)) || []) || [];
+    const datasetCount = project.datasets?.length ?? 0;
+    const sampleCount = project.datasets?.reduce((n, d) => n + (d.samples?.length || 0), 0) ?? 0;
+    log.error(`[IPC] Micrograph ${micrographId} not found in project. Available micrographs:`, availableIds);
+    // Include snapshot shape in the message so remote error reports (Sentry) are
+    // self-diagnosing — distinguishes "empty/stale snapshot" from "wrong id".
+    throw new Error(
+      `Micrograph ${micrographId} not found in project ` +
+      `(snapshot: ${datasetCount} datasets, ${sampleCount} samples, ${availableIds.length} micrographs)`
+    );
+  }
+
+  // A synced copy waits for an image that has not arrived yet (a pull brings
+  // a micrograph before its files): the composite is left as it was and made
+  // again when the image arrives, so one without the overlay is never
+  // written, and pushed to everyone (2026-10-05). A local project keeps
+  // making it without a missing image.
+  const synced = fs.existsSync(path.join(syncSidecar.syncDir(folderPaths.projectPath), 'state.json'));
+  const waitingFor = [];
+
+  // Load base micrograph image (with fallback to uiImages for legacy projects)
+  const basePath = await resolveImagePathWithLegacyFallback(
+    path.join(folderPaths.images, micrograph.imagePath)
+  );
+  if (synced && !fs.existsSync(basePath)) {
+    log.info(`[IPC] Composite of ${micrographId} left as it was: its image has not arrived yet`);
+    return { success: false, waitingFor: [micrographId] };
+  }
+  log.info(`[IPC] Loading base image: ${basePath}`);
+
+  let baseImage = sharp(basePath);
+  const baseMetadata = await baseImage.metadata();
+
+  log.info(`[IPC] Parent micrograph: ${micrograph.id}`);
+  log.info(`[IPC]   imageWidth (stored): ${micrograph.imageWidth}, imageHeight (stored): ${micrograph.imageHeight}`);
+  log.info(`[IPC]   Actual file dimensions: ${baseMetadata.width}x${baseMetadata.height}`);
+  log.info(`[IPC]   Parent px/cm: ${micrograph.scalePixelsPerCentimeter}`);
+
+  // Calculate thumbnail dimensions maintaining aspect ratio
+  const maxDimension = 250;
+  const aspectRatio = baseMetadata.width / baseMetadata.height;
+  let thumbWidth, thumbHeight;
+
+  if (baseMetadata.width > baseMetadata.height) {
+    thumbWidth = maxDimension;
+    thumbHeight = Math.round(maxDimension / aspectRatio);
+  } else {
+    thumbHeight = maxDimension;
+    thumbWidth = Math.round(maxDimension * aspectRatio);
+  }
+
+  // Resize base image to thumbnail size
+  baseImage = baseImage.resize(thumbWidth, thumbHeight, {
+    fit: 'fill',
+    kernel: sharp.kernel.lanczos3
+  });
+
+  // If there are no children, just save the base thumbnail
+  if (childMicrographs.length === 0) {
+    log.info(`[IPC] No child micrographs, saving base thumbnail only`);
+
+    const outputPath = path.join(folderPaths.compositeThumbnails, micrographId);
+    const changed = await writeIfChanged(outputPath, await baseImage.jpeg({ quality: 85 }).toBuffer());
+
     return {
       success: true,
+      changed,
       thumbnailPath: outputPath,
       width: thumbWidth,
       height: thumbHeight
     };
-
-  } catch (error) {
-    log.error('[IPC] Error generating composite thumbnail:', error);
-    // Still try to release memory on error
-    sharp.cache(false);
-    sharp.cache({ memory: 256, files: 20, items: 100 });
-    throw error;
   }
-});
+
+  // Composite children onto base
+  log.info(`[IPC] Compositing ${childMicrographs.length} child micrographs`);
+
+  // Convert base image to buffer for compositing
+  const baseBuffer = await baseImage.toBuffer();
+
+  // Calculate scale factor from original to thumbnail
+  const thumbnailScale = thumbWidth / baseMetadata.width;
+
+  // Build composite layers
+  const compositeInputs = [];
+
+  for (const child of childMicrographs) {
+    try {
+      // Skip point-located micrographs - they should be rendered as point markers, not overlays
+      if (child.pointInParent) {
+        log.info(`[IPC] Skipping point-located child ${child.id} (${child.name}) - not rendered as overlay`);
+        continue;
+      }
+
+      // Handle affine-transformed overlays specially - load pre-transformed image from cache
+      if (child.placementType === 'affine' && child.affineTileHash) {
+        log.info(`[IPC] Loading affine overlay ${child.id} for thumbnail from cache`);
+        const childPath = await resolveImagePathWithLegacyFallback(
+          path.join(folderPaths.images, child.imagePath)
+        );
+        const haveImage = fs.existsSync(childPath);
+        if (synced && !haveImage) {
+          waitingFor.push(child.id);
+          continue;
+        }
+        // The warped image is cached only where someone viewed the overlay (not
+        // on a computer that pulled it): make it, or remake it for a new matrix
+        if (haveImage && Array.isArray(child.affineMatrix) && child.affineMatrix.length === 6) {
+          await ensureAffineTiles(childPath, child.affineTileHash, child.affineMatrix);
+        }
+        const tileCache = require('./tileCache');
+        const affineBuffer = await tileCache.loadAffineMedium(child.affineTileHash);
+
+        if (affineBuffer) {
+          // Use bounds and dimensions from micrograph data (not cache metadata)
+          const boundsOffset = child.affineBoundsOffset || { x: 0, y: 0 };
+          const transformedWidth = child.affineTransformedWidth || 0;
+          const transformedHeight = child.affineTransformedHeight || 0;
+
+          // Scale position and size to thumbnail coordinates
+          const thumbX = Math.round(boundsOffset.x * thumbnailScale);
+          const thumbY = Math.round(boundsOffset.y * thumbnailScale);
+          const thumbAffineWidth = Math.round(transformedWidth * thumbnailScale);
+          const thumbAffineHeight = Math.round(transformedHeight * thumbnailScale);
+
+          log.info(`[IPC] Affine thumbnail ${child.id}: bounds=(${thumbX}, ${thumbY}), size=${thumbAffineWidth}x${thumbAffineHeight}`);
+
+          // Resize and apply opacity
+          let affineImage = sharp(affineBuffer)
+            .resize(thumbAffineWidth, thumbAffineHeight, { fit: 'fill', kernel: sharp.kernel.lanczos3 })
+            .ensureAlpha();
+
+          const childOpacity = child.opacity ?? 1.0;
+          let finalBuffer;
+          if (childOpacity < 1.0) {
+            const { data, info } = await affineImage.raw().toBuffer({ resolveWithObject: true });
+            for (let i = 3; i < data.length; i += 4) {
+              data[i] = Math.round(data[i] * childOpacity);
+            }
+            finalBuffer = await sharp(data, {
+              raw: { width: info.width, height: info.height, channels: info.channels }
+            }).png().toBuffer();
+          } else {
+            finalBuffer = await affineImage.png().toBuffer();
+          }
+
+          // Bounds checking and cropping
+          if (thumbX + thumbAffineWidth > 0 && thumbY + thumbAffineHeight > 0 && thumbX < thumbWidth && thumbY < thumbHeight) {
+            let cropX = 0, cropY = 0, cropW = thumbAffineWidth, cropH = thumbAffineHeight;
+            let finalX = thumbX, finalY = thumbY;
+
+            if (thumbX < 0) { cropX = -thumbX; cropW -= cropX; finalX = 0; }
+            if (thumbY < 0) { cropY = -thumbY; cropH -= cropY; finalY = 0; }
+            if (finalX + cropW > thumbWidth) { cropW = thumbWidth - finalX; }
+            if (finalY + cropH > thumbHeight) { cropH = thumbHeight - finalY; }
+
+            if (cropW > 0 && cropH > 0) {
+              let compositeBuffer = finalBuffer;
+              if (cropX > 0 || cropY > 0 || cropW !== thumbAffineWidth || cropH !== thumbAffineHeight) {
+                compositeBuffer = await sharp(finalBuffer)
+                  .extract({ left: Math.round(cropX), top: Math.round(cropY), width: Math.round(cropW), height: Math.round(cropH) })
+                  .toBuffer();
+              }
+              compositeInputs.push({ input: compositeBuffer, left: Math.round(finalX), top: Math.round(finalY) });
+              log.info(`[IPC] Added affine overlay to thumbnail at (${finalX}, ${finalY})`);
+            }
+          }
+        } else {
+          log.warn(`[IPC] No cached affine data for ${child.id}, skipping in thumbnail`);
+        }
+        continue;
+      }
+
+      // Skip children that haven't been located yet (no position data)
+      // This is critical for batch-imported micrographs which don't have position until user sets it
+      // Without this check, ALL children would be loaded from disk causing massive memory spike
+      if (!child.offsetInParent && child.xOffset === undefined) {
+        log.info(`[IPC] Skipping unlocated child ${child.id} (${child.name}) - no position data yet`);
+        continue;
+      }
+
+      log.info(`[IPC] Processing child ${child.id} (${child.name})`);
+
+      // Load child image (with fallback to uiImages for legacy projects)
+      const childPath = await resolveImagePathWithLegacyFallback(
+        path.join(folderPaths.images, child.imagePath)
+      );
+      if (synced && !fs.existsSync(childPath)) {
+        waitingFor.push(child.id);
+        continue;
+      }
+      let childImage = sharp(childPath);
+      const childMetadata = await childImage.metadata();
+
+      // IMPORTANT: Use stored imageWidth/imageHeight (original dimensions), NOT actual file dimensions
+      // This matches how AssociatedImageRenderer works in the main viewer
+      const childImageWidth = child.imageWidth || child.width || childMetadata.width;
+      const childImageHeight = child.imageHeight || child.height || childMetadata.height;
+
+      // Calculate child's display scale based on pixels per centimeter
+      const childPxPerCm = child.scalePixelsPerCentimeter || 100;
+      const parentPxPerCm = micrograph.scalePixelsPerCentimeter || 100;
+      const displayScale = parentPxPerCm / childPxPerCm;
+
+      log.info(`[IPC]   Child px/cm: ${childPxPerCm}, Parent px/cm: ${parentPxPerCm}, Display scale: ${displayScale}`);
+      log.info(`[IPC]   Child stored dimensions: ${childImageWidth}x${childImageHeight}, actual file: ${childMetadata.width}x${childMetadata.height}`);
+
+      // Calculate child dimensions in parent's coordinate space using STORED dimensions
+      const childDisplayWidth = childImageWidth * displayScale;
+      const childDisplayHeight = childImageHeight * displayScale;
+
+      // Get child position (top-left)
+      let topLeftX = 0;
+      let topLeftY = 0;
+
+      if (child.offsetInParent) {
+        topLeftX = child.offsetInParent.X;
+        topLeftY = child.offsetInParent.Y;
+        log.info(`[IPC]   Using offsetInParent: (${topLeftX}, ${topLeftY})`);
+      } else if (child.pointInParent) {
+        topLeftX = child.pointInParent.x - childDisplayWidth / 2;
+        topLeftY = child.pointInParent.y - childDisplayHeight / 2;
+        log.info(`[IPC]   Using pointInParent: (${child.pointInParent.x}, ${child.pointInParent.y}) -> topLeft: (${topLeftX}, ${topLeftY})`);
+      } else if (child.xOffset !== undefined && child.yOffset !== undefined) {
+        topLeftX = child.xOffset;
+        topLeftY = child.yOffset;
+        log.info(`[IPC]   Using legacy offset: (${topLeftX}, ${topLeftY})`);
+      }
+
+      // Scale position to thumbnail coordinates
+      const thumbX = Math.round(topLeftX * thumbnailScale);
+      const thumbY = Math.round(topLeftY * thumbnailScale);
+
+      // Scale child dimensions to thumbnail coordinates
+      const thumbChildWidth = Math.round(childDisplayWidth * thumbnailScale);
+      const thumbChildHeight = Math.round(childDisplayHeight * thumbnailScale);
+
+      log.info(`[IPC]   Original position: (${topLeftX}, ${topLeftY}), Thumbnail position: (${thumbX}, ${thumbY})`);
+      log.info(`[IPC]   Original size: ${childMetadata.width}x${childMetadata.height}, Display size: ${childDisplayWidth}x${childDisplayHeight}, Thumb size: ${thumbChildWidth}x${thumbChildHeight}`);
+
+      // Resize child image
+      childImage = childImage.resize(thumbChildWidth, thumbChildHeight, {
+        fit: 'fill',
+        kernel: sharp.kernel.lanczos3
+      });
+
+      // Get child opacity (default to 1 if not set)
+      const childOpacity = child.opacity ?? 1.0;
+      log.info(`[IPC]   Child opacity: ${childOpacity}`);
+
+      // Ensure we have alpha channel for opacity support
+      childImage = childImage.ensureAlpha();
+
+      // Apply opacity by multiplying the alpha channel
+      // We need to get the buffer, modify alpha values, then create new sharp instance
+      if (childOpacity < 1.0) {
+        const { data, info } = await childImage.raw().toBuffer({ resolveWithObject: true });
+
+        // Modify alpha channel (every 4th byte starting at index 3)
+        for (let i = 3; i < data.length; i += 4) {
+          data[i] = Math.round(data[i] * childOpacity);
+        }
+
+        // Recreate sharp instance with modified data
+        childImage = sharp(data, {
+          raw: {
+            width: info.width,
+            height: info.height,
+            channels: info.channels
+          }
+        });
+      }
+
+      // Apply rotation if needed
+      let finalX, finalY, finalBuffer;
+      if (child.rotation) {
+        // Calculate center position for rotation
+        const centerX = thumbX + thumbChildWidth / 2;
+        const centerY = thumbY + thumbChildHeight / 2;
+
+        // Rotate with transparent background
+        childImage = childImage.rotate(child.rotation, {
+          background: { r: 0, g: 0, b: 0, alpha: 0 }
+        });
+
+        // Calculate rotated bounding box dimensions mathematically
+        // Sharp's metadata() on a pipeline returns input metadata, not post-transform
+        const radians = (child.rotation * Math.PI) / 180;
+        const cos = Math.abs(Math.cos(radians));
+        const sin = Math.abs(Math.sin(radians));
+        const rotatedWidth = thumbChildWidth * cos + thumbChildHeight * sin;
+        const rotatedHeight = thumbChildWidth * sin + thumbChildHeight * cos;
+
+        // Adjust position to account for rotation
+        finalX = Math.round(centerX - rotatedWidth / 2);
+        finalY = Math.round(centerY - rotatedHeight / 2);
+        finalBuffer = await childImage.png().toBuffer();
+
+        log.info(`[IPC]   Rotation: ${child.rotation}°, Rotated size: ${Math.round(rotatedWidth)}x${Math.round(rotatedHeight)}`);
+      } else {
+        finalX = thumbX;
+        finalY = thumbY;
+        finalBuffer = await childImage.png().toBuffer();
+      }
+
+      // Validate that the composite position is within bounds
+      // Sharp requires: left >= 0, top >= 0, and image fits within base
+      const childBufferMeta = await sharp(finalBuffer).metadata();
+      const childW = childBufferMeta.width;
+      const childH = childBufferMeta.height;
+
+      // Skip children that would be entirely outside the base image
+      if (finalX + childW <= 0 || finalY + childH <= 0 || finalX >= thumbWidth || finalY >= thumbHeight) {
+        log.info(`[IPC]   Skipping child ${child.id} - entirely outside base image bounds`);
+        continue;
+      }
+
+      // Crop child image if it extends outside base bounds
+      let cropX = 0, cropY = 0, cropW = childW, cropH = childH;
+      let compositeX = finalX, compositeY = finalY;
+
+      // Handle negative X (child extends past left edge)
+      if (finalX < 0) {
+        cropX = -finalX;
+        cropW -= cropX;
+        compositeX = 0;
+      }
+
+      // Handle negative Y (child extends past top edge)
+      if (finalY < 0) {
+        cropY = -finalY;
+        cropH -= cropY;
+        compositeY = 0;
+      }
+
+      // Handle overflow on right
+      if (compositeX + cropW > thumbWidth) {
+        cropW = thumbWidth - compositeX;
+      }
+
+      // Handle overflow on bottom
+      if (compositeY + cropH > thumbHeight) {
+        cropH = thumbHeight - compositeY;
+      }
+
+      // Validate crop dimensions are positive
+      if (cropW <= 0 || cropH <= 0) {
+        log.info(`[IPC]   Skipping child ${child.id} - crop dimensions invalid after bounds check`);
+        continue;
+      }
+
+      // If we need to crop, extract the visible region
+      let compositeBuffer = finalBuffer;
+      if (cropX > 0 || cropY > 0 || cropW !== childW || cropH !== childH) {
+        log.info(`[IPC]   Cropping child to visible region: extract(${cropX}, ${cropY}, ${cropW}, ${cropH})`);
+        compositeBuffer = await sharp(finalBuffer)
+          .extract({ left: cropX, top: cropY, width: cropW, height: cropH })
+          .toBuffer();
+      }
+
+      compositeInputs.push({
+        input: compositeBuffer,
+        left: compositeX,
+        top: compositeY
+      });
+    } catch (error) {
+      log.error(`[IPC] Failed to composite child ${child.id}:`, error);
+      // Continue with other children
+    }
+  }
+
+  if (waitingFor.length > 0) {
+    log.info(`[IPC] Composite of ${micrographId} left as it was: waiting for the image of ${waitingFor.join(', ')}`);
+    return { success: false, waitingFor };
+  }
+
+  // Apply composites to base image
+  const compositeImage = sharp(baseBuffer).composite(compositeInputs);
+
+  // Save to compositeThumbnails folder (JPEG with no extension)
+  const outputPath = path.join(folderPaths.compositeThumbnails, micrographId);
+  const changed = await writeIfChanged(outputPath, await compositeImage.jpeg({ quality: 85 }).toBuffer());
+
+  log.info(`[IPC] Successfully generated composite thumbnail: ${outputPath}${changed ? '' : ' (unchanged)'}`);
+
+  return {
+    success: true,
+    changed,
+    thumbnailPath: outputPath,
+    width: thumbWidth,
+    height: thumbHeight
+  };
+}
+
+/**
+ * Write a file unless it already holds these bytes (a composite made again
+ * the same, e.g. on a computer that also downloaded it, is no change to sync).
+ * @returns {Promise<boolean>} whether it was written
+ */
+async function writeIfChanged(filePath, buffer) {
+  const old = await fs.promises.readFile(filePath).catch(() => null);
+  if (old && old.equals(buffer)) return false;
+  await fs.promises.writeFile(filePath, buffer);
+  return true;
+}
 
 /**
  * Get path to composite thumbnail (returns empty string if doesn't exist)
@@ -3919,200 +3978,21 @@ ipcMain.handle('composite:rebuild-all-thumbnails', async (event, projectId, proj
     // Generate thumbnail for each micrograph
     for (const micrographId of micrographIds) {
       try {
-        // Reuse the existing generate-thumbnail handler logic
-        // Find the micrograph in the project hierarchy
-        let micrograph = null;
-        let childMicrographs = [];
-
-        for (const dataset of project.datasets || []) {
-          for (const sample of dataset.samples || []) {
-            for (const micro of sample.micrographs || []) {
-              if (micro.id === micrographId) {
-                micrograph = micro;
-                // Exclude secondary siblings (XPL) - they share same view area as primary (PPL)
-                childMicrographs = (sample.micrographs || []).filter(
-                  m => m.parentID === micrographId && m.isPrimarySibling !== false
-                );
-                break;
-              }
-            }
-            if (micrograph) break;
-          }
-          if (micrograph) break;
-        }
-
-        if (!micrograph || !micrograph.imagePath) {
-          log.warn(`[IPC] Skipping micrograph ${micrographId} - no image path`);
-          continue;
-        }
-
-        // Get project folder paths
-        const folderPaths = await projectFolders.getProjectFolderPaths(projectId);
-
-        // Load base micrograph image (with fallback to uiImages for legacy projects)
-        const basePath = await resolveImagePathWithLegacyFallback(
-          path.join(folderPaths.images, micrograph.imagePath)
-        );
-
-        // Check if image file exists
-        const fs = require('fs').promises;
-        try {
-          await fs.access(basePath);
-        } catch {
-          log.warn(`[IPC] Skipping micrograph ${micrographId} - image file not found: ${basePath}`);
-          continue;
-        }
-
-        let baseImage = sharp(basePath);
-        const baseMetadata = await baseImage.metadata();
-
-        // Calculate thumbnail dimensions maintaining aspect ratio
-        const maxDimension = 250;
-        const aspectRatio = baseMetadata.width / baseMetadata.height;
-        let thumbWidth, thumbHeight;
-
-        if (baseMetadata.width > baseMetadata.height) {
-          thumbWidth = maxDimension;
-          thumbHeight = Math.round(maxDimension / aspectRatio);
-        } else {
-          thumbHeight = maxDimension;
-          thumbWidth = Math.round(maxDimension * aspectRatio);
-        }
-
-        // Resize base image to thumbnail size
-        baseImage = baseImage.resize(thumbWidth, thumbHeight, {
-          fit: 'fill',
-          kernel: sharp.kernel.lanczos3
-        });
-
-        // If there are no children, just save the base thumbnail
-        if (childMicrographs.length === 0) {
-          const outputPath = path.join(folderPaths.compositeThumbnails, micrographId);
-          await baseImage.jpeg({ quality: 85 }).toFile(outputPath);
+        const result = await makeCompositeThumbnail(projectId, micrographId, project);
+        if (result.success) {
           results.succeeded++;
-          continue;
+        } else {
+          // A synced copy whose images are still downloading: made when they arrive
+          results.failed++;
+          results.errors.push({ micrographId, error: 'Waiting for images that are still downloading' });
         }
-
-        // Composite children onto base
-        const baseBuffer = await baseImage.toBuffer();
-        const thumbnailScale = thumbWidth / baseMetadata.width;
-        const compositeInputs = [];
-
-        for (const child of childMicrographs) {
-          try {
-            if (!child.imagePath) continue;
-
-            // Skip point-located micrographs - they should be rendered as point markers, not overlays
-            if (child.pointInParent) {
-              log.info(`[IPC] Rebuild: Skipping point-located child ${child.id} - not rendered as overlay`);
-              continue;
-            }
-
-            // Skip children that haven't been located yet (no position data)
-            // This prevents loading ALL child images when only some have position data
-            if (!child.offsetInParent && child.xOffset === undefined) {
-              log.info(`[IPC] Rebuild: Skipping unlocated child ${child.id} - no position data yet`);
-              continue;
-            }
-
-            // Load child image (with fallback to uiImages for legacy projects)
-            const childPath = await resolveImagePathWithLegacyFallback(
-              path.join(folderPaths.images, child.imagePath)
-            );
-
-            // Check if child image exists
-            try {
-              await fs.access(childPath);
-            } catch {
-              log.warn(`[IPC] Child image not found: ${childPath}`);
-              continue;
-            }
-
-            let childImage = sharp(childPath);
-            const childMetadata = await childImage.metadata();
-
-            // IMPORTANT: Use stored imageWidth/imageHeight (original dimensions), NOT actual file dimensions
-            const childImageWidth = child.imageWidth || child.width || childMetadata.width;
-            const childImageHeight = child.imageHeight || child.height || childMetadata.height;
-
-            const childPxPerCm = child.scalePixelsPerCentimeter || 100;
-            const parentPxPerCm = micrograph.scalePixelsPerCentimeter || 100;
-            const displayScale = parentPxPerCm / childPxPerCm;
-
-            const childDisplayWidth = childImageWidth * displayScale;
-            const childDisplayHeight = childImageHeight * displayScale;
-
-            let topLeftX = 0;
-            let topLeftY = 0;
-
-            if (child.offsetInParent) {
-              topLeftX = child.offsetInParent.X;
-              topLeftY = child.offsetInParent.Y;
-            } else if (child.pointInParent) {
-              topLeftX = child.pointInParent.x - childDisplayWidth / 2;
-              topLeftY = child.pointInParent.y - childDisplayHeight / 2;
-            } else if (child.xOffset !== undefined && child.yOffset !== undefined) {
-              topLeftX = child.xOffset;
-              topLeftY = child.yOffset;
-            }
-
-            const thumbX = Math.round(topLeftX * thumbnailScale);
-            const thumbY = Math.round(topLeftY * thumbnailScale);
-            const thumbChildWidth = Math.round(childDisplayWidth * thumbnailScale);
-            const thumbChildHeight = Math.round(childDisplayHeight * thumbnailScale);
-
-            childImage = childImage.resize(thumbChildWidth, thumbChildHeight, {
-              fit: 'fill',
-              kernel: sharp.kernel.lanczos3
-            });
-
-            if (child.rotation) {
-              const centerX = thumbX + thumbChildWidth / 2;
-              const centerY = thumbY + thumbChildHeight / 2;
-
-              // Convert to PNG with alpha channel before rotating
-              // This ensures the rotated corners are transparent, not black
-              childImage = childImage.ensureAlpha().rotate(child.rotation, {
-                background: { r: 0, g: 0, b: 0, alpha: 0 }
-              });
-
-              // Calculate rotated bounding box dimensions mathematically
-              // Sharp's metadata() on a pipeline returns input metadata, not post-transform
-              const radians = (child.rotation * Math.PI) / 180;
-              const cos = Math.abs(Math.cos(radians));
-              const sin = Math.abs(Math.sin(radians));
-              const rotatedWidth = thumbChildWidth * cos + thumbChildHeight * sin;
-              const rotatedHeight = thumbChildWidth * sin + thumbChildHeight * cos;
-
-              const adjustedX = Math.round(centerX - rotatedWidth / 2);
-              const adjustedY = Math.round(centerY - rotatedHeight / 2);
-
-              compositeInputs.push({
-                input: await childImage.png().toBuffer(),
-                left: adjustedX,
-                top: adjustedY
-              });
-            } else {
-              compositeInputs.push({
-                input: await childImage.toBuffer(),
-                left: thumbX,
-                top: thumbY
-              });
-            }
-          } catch (error) {
-            log.error(`[IPC] Failed to composite child ${child.id}:`, error);
-          }
-        }
-
-        const compositeImage = sharp(baseBuffer).composite(compositeInputs);
-        const outputPath = path.join(folderPaths.compositeThumbnails, micrographId);
-        await compositeImage.jpeg({ quality: 85 }).toFile(outputPath);
-
-        results.succeeded++;
       } catch (error) {
         log.error(`[IPC] Failed to rebuild thumbnail for ${micrographId}:`, error);
         results.failed++;
         results.errors.push({ micrographId, error: error.message });
+      } finally {
+        sharp.cache(false);
+        sharp.cache({ memory: 256, files: 20, items: 100 });
       }
     }
 
