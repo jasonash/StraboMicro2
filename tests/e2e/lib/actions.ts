@@ -253,6 +253,17 @@ export async function viewMicrograph(copy: Copy, micrographId: string): Promise<
   expect(copy.consoleErrors.filter((l) => /Failed to load image|load-tiles|ENOENT/.test(l))).toEqual([]);
 }
 
+/**
+ * Wait until this copy downloaded the micrograph's original. A new
+ * micrograph and its file refs reach the server as separate head moves, so
+ * with live notices a copy can pull the micrograph and settle before its
+ * refs arrive; the image follows a moment later.
+ */
+export async function waitImageArrived(copy: Copy, micrographId: string): Promise<void> {
+  await expect.poll(() => copy.state(new Function('e', `return e.sync.getState().imageArrivals[${JSON.stringify(micrographId)}] ?? 0`) as never),
+    { timeout: 60_000 }).toBeGreaterThan(0);
+}
+
 /** A micrograph as this copy has it (null when missing) */
 export function micrograph(copy: Copy, micrographId: string): Promise<{ name: string; imagePath: string | null } | null> {
   return copy.state(new Function('e', `
@@ -333,7 +344,7 @@ export async function canAddMicrograph(copy: Copy, sampleName: string): Promise<
 }
 
 /** File > Collaborate...: the Collaborators dialog, members loaded */
-async function collaborators(copy: Copy) {
+export async function collaborators(copy: Copy) {
   await copy.menu('File', 'Collaborate...');
   const dialog = copy.page.getByRole('dialog', { name: 'Collaborators' });
   await expect(dialog.getByRole('list')).toBeVisible({ timeout: 30_000 });

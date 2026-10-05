@@ -11,6 +11,7 @@ import { ACCOUNTS } from '../lib/copy';
 import { writeImage } from '../lib/fixtures';
 import {
   share, waitSettled, addReferenceMicrograph, viewMicrograph, micrograph, setOffline, syncChip, holdDownloads, releaseDownloads,
+  waitImageArrived,
 } from '../lib/actions';
 import { refChanges } from '../lib/server';
 
@@ -26,6 +27,8 @@ test("the owner's new micrograph reaches the editor and shows in the viewer", as
   await expect.poll(async () => (await micrograph(ben, id))?.name ?? null, { timeout: 60_000 }).toBe('Rim detail');
   await waitSettled(ben, 120_000);
   expect((await micrograph(ben, id))?.imagePath).toBeTruthy();
+  // Opening it before the image is here is scenario 3 below
+  await waitImageArrived(ben, id);
   await ben.caption("opens Ana's new micrograph");
   await viewMicrograph(ben, id);
   // Ben sent no files: not for the first micrograph, not for the new one
@@ -46,6 +49,7 @@ test("an editor's micrograph made offline goes up when back online, image and al
   await expect.poll(async () => (await micrograph(ana, id))?.name ?? null, { timeout: 90_000 }).toBe('Vein');
   await waitSettled(ben, 120_000);
   await waitSettled(ana, 120_000);
+  await waitImageArrived(ana, id);
   await ana.caption("opens Ben's new micrograph");
   await viewMicrograph(ana, id);
 });

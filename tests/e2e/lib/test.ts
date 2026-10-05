@@ -11,7 +11,8 @@ import { Copy, launchCopy, newRunDir, type Account } from './copy';
 import { makeProject, type FixtureProject } from './fixtures';
 
 interface Fixtures {
-  launch: (label: string, account: Account, opts?: { login?: boolean }) => Promise<Copy>;
+  /** env: extra environment for this copy (e.g. STRABO_E2E_POLL_MS) */
+  launch: (label: string, account: Account, opts?: { login?: boolean; env?: Record<string, string> }) => Promise<Copy>;
   project: (name: string, spotNames?: string[]) => Promise<FixtureProject>;
   runDir: string;
 }
@@ -24,7 +25,7 @@ export const test = base.extend<Fixtures>({
   launch: async ({ runDir }, use, testInfo) => {
     const copies: Copy[] = [];
     await use(async (label, account, opts = {}) => {
-      const copy = await launchCopy(label, account, copies.length, runDir);
+      const copy = await launchCopy(label, account, copies.length, runDir, opts.env);
       copies.push(copy);
       await copy.page.context().tracing.start({ screenshots: true, snapshots: true, title: label }).catch(() => undefined);
       if (opts.login !== false) await copy.login();

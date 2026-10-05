@@ -138,13 +138,14 @@ export class Copy {
  * Launch a copy as an account. Watch mode places the windows side by side:
  * slot 0 left, slot 1 right, slot 2 bottom left, ...
  */
-export async function launchCopy(label: string, account: Account, slot: number, runDir: string): Promise<Copy> {
+export async function launchCopy(label: string, account: Account, slot: number, runDir: string,
+  extraEnv: Record<string, string> = {}): Promise<Copy> {
   const dir = path.join(runDir, label.toLowerCase());
   fs.mkdirSync(dir, { recursive: true });
   const app = await electron.launch({
     args: ['.'],
     cwd: REPO,
-    env: { ...process.env, STRABO_E2E_DIR: dir, STRABO_E2E_SERVER: SERVER } as Record<string, string>,
+    env: { ...process.env, ...extraEnv, STRABO_E2E_DIR: dir, STRABO_E2E_SERVER: SERVER } as Record<string, string>,
   });
 
   // Native dialogs answered from the test's queue; anything unanswered is
