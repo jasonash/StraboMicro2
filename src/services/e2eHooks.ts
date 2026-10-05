@@ -8,6 +8,7 @@ import { useAppStore } from '@/store/useAppStore';
 import { useSyncStore } from '@/store/useSyncStore';
 import { useAuthStore } from '@/store/useAuthStore';
 import { useInvitationsStore } from '@/store/useInvitationsStore';
+import { usePresenceStore } from '@/store/usePresenceStore';
 
 declare global {
   interface Window {
@@ -16,8 +17,9 @@ declare global {
       sync: typeof useSyncStore;
       auth: typeof useAuthStore;
       invitations: typeof useInvitationsStore;
+      presence: typeof usePresenceStore;
     };
   }
 }
 
-window.__e2e = { app: useAppStore, sync: useSyncStore, auth: useAuthStore, invitations: useInvitationsStore };
+window.__e2e = { app: useAppStore, sync: useSyncStore, auth: useAuthStore, invitations: useInvitationsStore, presence: usePresenceStore };

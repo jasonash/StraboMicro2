@@ -5,7 +5,10 @@
  * dialog open waits for it with "<name> made 1 change; it'll appear when
  * you close this dialog" (17ap); a removed member hears of it at once; the
  * live service stopping pauses live updates (the chip says so, 17ao) and
- * starting again catches up on what was missed.
+ * starting again catches up on what was missed. Presence (R3, 17al-17an):
+ * the other person's badge in the header, on the micrograph they view in
+ * the tree, "editing" on the spot they edit and a line at the top of the
+ * same dialog here, "Here now" in Activity; gone when their app closes.
  *
  * Needs the dev strabo-live container (`docker ps` lists it); the second
  * test stops and starts it.
@@ -14,7 +17,9 @@
 import { execFileSync } from 'child_process';
 import { test, expect } from '../lib/test';
 import { ACCOUNTS, type Copy } from '../lib/copy';
-import { share, waitSettled, spotField, editSpot, syncChip, collaborators, removeMember, separateCopyNotice } from '../lib/actions';
+import {
+  share, waitSettled, spotField, editSpot, syncChip, collaborators, removeMember, separateCopyNotice, viewMicrograph, openActivity,
+} from '../lib/actions';
 
 /** Polling every 10 minutes: anything arriving sooner came over the live channel */
 const SLOW_POLL = { STRABO_E2E_POLL_MS: String(10 * 60_000) };
@@ -104,5 +109,72 @@ test('the live service stops: updates pause; it starts again: the copy catches u
   await expect.poll(() => spotField(ben, spot.id, 'name'), { timeout: 10_000 }).toBe('While down');
   await waitSettled(ben);
   expect(await ana.unansweredDialogs()).toEqual([]);
+  expect(await ben.unansweredDialogs()).toEqual([]);
+});
+
+/** Select a spot and open Add Data > Spot Data in the Properties panel (the Edit Spot dialog) */
+async function openEditSpot(copy: Copy, spotId: string) {
+  await copy.state(new Function('e', `return e.app.getState().selectActiveSpot(${JSON.stringify(spotId)})`) as never);
+  await copy.page.getByPlaceholder('Select or search data type...').click();
+  await copy.caption('opens Spot Data');
+  await copy.page.getByRole('option', { name: 'Spot Data' }).click();
+  const dialog = copy.page.getByRole('dialog', { name: 'Edit Spot' });
+  await expect(dialog).toBeVisible();
+  return dialog;
+}
+
+/** The line EditingScope puts at the top of a dialog's content (CSS ::before) */
+function dialogLine(copy: Copy): Promise<string> {
+  return copy.page.evaluate(() => {
+    const el = document.querySelector('.MuiDialog-root .MuiDialogContent-root');
+    const c = el ? getComputedStyle(el, '::before').content : 'none';
+    return c === 'none' || c === 'normal' ? '' : JSON.parse(c);
+  });
+}
+
+test('presence: badges, what they view and edit, Here now; gone when their app closes', async ({ launch, project }) => {
+  const p = await project('E2E Presence');
+  const spot = p.spots[0];
+  const ana = await launch('Ana', ACCOUNTS.ana);
+  const ben = await launch('Ben', ACCOUNTS.ben);
+  await share(ana, ben, p.smzPath, p.id, p.name);
+  await waitLive(ana);
+  await waitLive(ben);
+
+  // Each sees the other's badge in the header, not their own
+  await ben.caption("sees Ana's badge");
+  await expect(ben.page.getByTestId('header-presence').getByTestId('presence-badge')).toHaveText(['AR'], { timeout: 10_000 });
+  await expect(ana.page.getByTestId('header-presence').getByTestId('presence-badge')).toHaveText(['BI'], { timeout: 10_000 });
+
+  // Ana views the micrograph: Ben's tree shows her badge on it
+  await viewMicrograph(ana, p.micrographId);
+  await expect(ben.page.getByTestId('presence-marks').getByTestId('presence-badge').filter({ hasText: 'AR' }).first())
+    .toBeVisible({ timeout: 10_000 });
+
+  // Ana edits a spot: Ben sees "editing" on it, and the line in his own dialog for it
+  const anaDialog = await openEditSpot(ana, spot.id);
+  await ben.state(new Function('e', `return e.app.getState().selectActiveSpot(${JSON.stringify(spot.id)})`) as never);
+  await ben.caption("sees Ana editing the spot");
+  await expect(ben.page.getByTestId('presence-editing').first()).toBeVisible({ timeout: 10_000 });
+  const benDialog = await openEditSpot(ben, spot.id);
+  await expect.poll(() => dialogLine(ben), { timeout: 10_000 })
+    .toBe(`${ACCOUNTS.ana.name} is editing this spot right now. You can still edit; if you both change the same field you'll be asked which to keep.`);
+  await benDialog.getByRole('button', { name: 'Cancel' }).click();
+  await expect(benDialog).toBeHidden();
+  // Ana's dialog says Ben was editing it too while his was open; now he is not
+  await expect.poll(() => dialogLine(ana), { timeout: 10_000 }).toBe('');
+  await anaDialog.getByRole('button', { name: 'Cancel' }).click();
+  await expect(anaDialog).toBeHidden();
+  await ben.caption("Ana's 'editing' clears");
+  await expect(ben.page.getByTestId('presence-editing')).toHaveCount(0, { timeout: 10_000 });
+
+  // Activity: Here now
+  const panel = await openActivity(ben);
+  await expect(panel.getByTestId('here-now')).toContainText(ACCOUNTS.ana.name);
+
+  // Ana closes the app: her badge goes
+  await ana.caption('closes the app');
+  await ana.close();
+  await expect(ben.page.getByTestId('header-presence')).toHaveCount(0, { timeout: 15_000 });
   expect(await ben.unansweredDialogs()).toEqual([]);
 });

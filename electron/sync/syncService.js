@@ -40,6 +40,7 @@
  *                  as another computer, compare with the server (testTools.js)
  *   sync:live-follow / sync:live-unfollow   the open synced project on the
  *                  live channel (live.js, 17ah-17ay): notices instead of polls
+ *   sync:live-presence  my presence there (here/away, viewing, editing; 17al-17an)
  * Events to the renderer:
  *   sync:progress      { projectId, phase, ... } while pushing
  *   sync:local-change  projectId, after a file-only change (point counts,
@@ -1275,6 +1276,22 @@ async function liveFollow(projectId, restServer) {
   }
 }
 
+/**
+ * My presence in the open synced project (17al-17an). Only well-formed
+ * values go out (a bad one would make the service close the connection).
+ */
+function livePresence(projectId, presence) {
+  if (!presence || typeof presence !== 'object') return { ok: true };
+  const target = (t) => (t && typeof t === 'object' && /^[a-z_]{1,24}$/.test(String(t.type)) && /^[A-Za-z0-9._:-]{1,100}$/.test(String(t.id))
+    ? { type: String(t.type), id: String(t.id) } : null);
+  liveChannel().setPresence(projectId, {
+    state: presence.state === 'here' ? 'here' : 'away',
+    viewing: target(presence.viewing),
+    editing: target(presence.editing),
+  });
+  return { ok: true };
+}
+
 function liveUnfollow(projectId) {
   if (live) live.unfollow(projectId);
   return { ok: true };
@@ -1364,6 +1381,7 @@ function registerSyncIpc(ipcMain, getMainWindow, { devTools = false } = {}) {
   ipcMain.handle('sync:decide-discard', (_event, projectId, decisionId) => decideDiscard(projectId, decisionId));
   ipcMain.handle('sync:live-follow', (_event, projectId, restServer) => liveFollow(projectId, restServer));
   ipcMain.handle('sync:live-unfollow', (_event, projectId) => liveUnfollow(projectId));
+  ipcMain.handle('sync:live-presence', (_event, projectId, presence) => livePresence(projectId, presence));
   if (devTools) {
     ipcMain.handle('sync:test-other', (_event, projectId, restServer, changes) => testOther(projectId, restServer, changes));
     ipcMain.handle('sync:test-compare', (_event, projectId, restServer) => testCompare(projectId, restServer));
@@ -1374,5 +1392,5 @@ module.exports = {
   registerSyncIpc, notifyLocalChange, getStatus, preflight, activity, serverProject, listServerProjects, introCandidates, setPromptAnswer, compare, link, openRemote, turnOn, push, setMode, pull, commitPull, discardPull, download, clone,
   listDecisions, decide, decideCommit, decideDiscard, testOther, testCompare, cleanupReplaced,
   members, changeMembers, invites, answerInvite, permissions, leave, deleteProject, separate, history, restoreDeleted, parked, reviewParked,
-  liveFollow, liveUnfollow, liveLoginChanged,
+  liveFollow, liveUnfollow, livePresence, liveLoginChanged,
 };

@@ -1184,6 +1184,12 @@ interface Window {
         | { ok: true; live: boolean }
         | { ok: false; kind: SyncFailureKind; message: string }>;
       liveUnfollow: (projectId: string) => Promise<{ ok: true }>;
+      /** My presence in the followed project (sent whenever it is followed) */
+      livePresence: (projectId: string, presence: {
+        state: 'here' | 'away';
+        viewing: { type: string; id: string } | null;
+        editing: { type: string; id: string } | null;
+      }) => Promise<{ ok: true }>;
       onLive: (callback: (event: SyncLiveEvent) => void) => Unsubscribe;
     };
 

@@ -20,6 +20,8 @@ import { PseudotachylyteInfoDialog } from './dialogs/metadata/pseudotachylyte/Ps
 import { FaultsShearZonesInfoDialog } from './dialogs/metadata/faultsshearzon es/FaultsShearZonesInfoDialog';
 import { ExtinctionMicrostructureInfoDialog } from './dialogs/metadata/extinctionmicrostructure/ExtinctionMicrostructureInfoDialog';
 import { useAppStore } from '@/store';
+import { EditingScope } from './Presence';
+import { panelDialogTarget } from '@/utils/presence';
 import type { SampleMetadata } from '@/types/project-types';
 
 /**
@@ -69,7 +71,11 @@ const BottomPanel: React.FC = () => {
         />
       </Box>
 
-      {/* Dialogs */}
+      {/* Dialogs (what they edit is shown to the others, 17am) */}
+      <EditingScope target={panelDialogTarget(openDialog, {
+        projectId: project?.id ?? null, datasetId: datasetId ?? null, sampleId: sample?.id ?? null,
+        micrographId: activeMicrographId, spotId: activeSpotId,
+      })}>
       {openDialog === 'notes' && (
         <NotesDialog
           isOpen={true}
@@ -227,6 +233,7 @@ const BottomPanel: React.FC = () => {
           onEditSection={(sectionId) => setOpenDialog(sectionId)}
         />
       )}
+      </EditingScope>
     </Box>
   );
 };

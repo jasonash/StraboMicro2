@@ -68,6 +68,7 @@ import { useProjectSync } from './hooks/useProjectSync';
 import { useProjectPreparation } from './hooks/useProjectPreparation';
 import { ProjectMetadata, Spot } from '@/types/project-types';
 import './App.css';
+import { EditingScope } from '@/components/Presence';
 
 /**
  * Generate non-overlapping test spots for performance testing.
@@ -1730,10 +1731,12 @@ function App() {
         isOpen={isNewProjectDialogOpen}
         onClose={() => setIsNewProjectDialogOpen(false)}
       />
-      <EditProjectDialog
-        isOpen={isEditProjectDialogOpen}
-        onClose={() => setIsEditProjectDialogOpen(false)}
-      />
+      <EditingScope target={isEditProjectDialogOpen && project ? { type: 'project', id: project.id } : null}>
+        <EditProjectDialog
+          isOpen={isEditProjectDialogOpen}
+          onClose={() => setIsEditProjectDialogOpen(false)}
+        />
+      </EditingScope>
       <ProjectDebugModal
         isOpen={isDebugModalOpen}
         onClose={() => setIsDebugModalOpen(false)}

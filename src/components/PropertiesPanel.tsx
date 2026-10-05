@@ -30,6 +30,8 @@ import CircleIcon from '@mui/icons-material/Circle';
 import { useAppStore } from '@/store';
 import { findSpotById } from '@/store/helpers';
 import { BreadcrumbsBar } from './BreadcrumbsBar';
+import { EditingScope, PresenceMarks } from './Presence';
+import { panelDialogTarget } from '@/utils/presence';
 import { ReadOnlyScope, ReadOnlyNotice } from './ReadOnlyScope';
 import { useReadOnlyReason, currentPermissions } from '@/hooks/usePermissions';
 import { othersBeneath, othersBeneathMessage } from '@/utils/permissions';
@@ -303,9 +305,14 @@ export function PropertiesPanel() {
           <ReadOnlyScope readOnly={entityReason !== null} reason={entityReason}>
           <Box sx={{ p: 2, display: 'flex', flexDirection: 'column', height: '100%' }}>
             {/* Panel Title */}
-            <Typography variant="h6" sx={{ mb: 1, fontWeight: 600 }}>
-              {selectionType === 'spot' ? 'Spot Details' : 'Micrograph Details'}
-            </Typography>
+            <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+              <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                {selectionType === 'spot' ? 'Spot Details' : 'Micrograph Details'}
+              </Typography>
+              {/* Who else is editing it right now (17am) */}
+              {selectionType === 'spot' && activeSpotId && <PresenceMarks type="spot" id={activeSpotId} />}
+              {selectionType !== 'spot' && activeMicrographId && <PresenceMarks type="micrograph" id={activeMicrographId} />}
+            </Box>
 
             {/* Breadcrumbs Navigation Bar */}
             <BreadcrumbsBar
@@ -476,6 +483,10 @@ export function PropertiesPanel() {
 
       {/* Dialogs: view only when what they edit cannot be changed here (17h, 17i) */}
       <ReadOnlyScope readOnly={dialogReason !== null} reason={dialogReason}>
+      <EditingScope target={panelDialogTarget(openDialog, {
+        projectId: project?.id ?? null, datasetId: datasetId ?? null, sampleId: sample?.id ?? null,
+        micrographId: activeMicrographId, spotId: activeSpotId,
+      })}>
       {openDialog === 'notes' && (
         <NotesDialog
           isOpen={true}
@@ -650,6 +661,7 @@ export function PropertiesPanel() {
         />
       )}
 
+      </EditingScope>
       {/* Delete Confirmation Dialog */}
       </ReadOnlyScope>
 

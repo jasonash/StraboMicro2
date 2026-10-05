@@ -311,6 +311,49 @@ app.whenReady().then(async () => {
     ownerSock.shutdown();
     ownerSock = null;
 
+    section('Presence');
+    const seenA = [];
+    const seenB = [];
+    const chan = (seen) => createLiveChannel({
+      getToken: async () => people.owner.token,
+      clientId: () => 'presence-test',
+      emit: (projectId, ev) => seen.push({ projectId, ...ev }),
+    });
+    const chA = chan(seenA);
+    const chB = chan(seenB);
+    try {
+      // Set before following (the app reports presence before its follow is registered)
+      chA.setPresence('P', { state: 'here', viewing: { type: 'micrograph', id: 'M-1' }, editing: null });
+      chA.follow('P', { server: SERVER, pid, pkey: people.owner.pkey });
+      chB.follow('P', { server: SERVER, pid, pkey: people.owner.pkey });
+      const sees = async (seen, pred, ms = 5000) => {
+        const end = Date.now() + ms;
+        while (Date.now() < end) {
+          if (seen.some((x) => x.kind === 'presence' && x.people.some(pred))) return true;
+          await sleep(25);
+        }
+        return false;
+      };
+      check('presence set before the follow reaches the others', await sees(seenB, (x) => x.viewing && x.viewing.id === 'M-1'), JSON.stringify(seenB));
+      chB.setPresence('P', { state: 'away', viewing: null, editing: { type: 'spot', id: 'S-1' } });
+      check('a change of presence reaches the others', await sees(seenA, (x) => x.state === 'away' && x.editing && x.editing.id === 'S-1'), JSON.stringify(seenA.slice(-2)));
+      seenB.length = 0;
+      chA.shutdown();
+      const left = async () => {
+        const end = Date.now() + 5000;
+        while (Date.now() < end) {
+          const last = seenB.filter((x) => x.kind === 'presence').at(-1);
+          if (last && !last.people.some((x) => x.viewing && x.viewing.id === 'M-1')) return true;
+          await sleep(25);
+        }
+        return false;
+      };
+      check('a closed connection leaves everyone\'s presence', await left(), JSON.stringify(seenB));
+    } finally {
+      chA.shutdown();
+      chB.shutdown();
+    }
+
     section('Reconnect rules (fake socket)');
     const timing = { backoffMs: [100, 200], longWaitMs: 60_000, giveUpAfter: 4, stableMs: 50 };
     async function attempts(script, ms, extra = {}) {

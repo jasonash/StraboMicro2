@@ -26,6 +26,7 @@ import {
 } from '@mui/icons-material';
 import { useAppStore } from '@/store';
 import type { SampleMetadata, MicrographMetadata, Spot } from '@/types/project-types';
+import { PresenceMarks } from './Presence';
 
 // ============================================================================
 // HELPER FUNCTIONS
@@ -89,6 +90,7 @@ function SpotItem({ spot, micrographId, onClick }: SpotItemProps) {
       >
         {spot.name || 'Unnamed Spot'}
       </Link>
+      <PresenceMarks type="spot" id={spot.id} />
     </Box>
   );
 }

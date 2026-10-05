@@ -76,6 +76,7 @@ import { LinkSiblingDialog } from './dialogs/LinkSiblingDialog';
 import { AddSiblingDialog } from './dialogs/AddSiblingDialog';
 import { findMicrographById } from '@/store/helpers';
 import type { DatasetMetadata, SampleMetadata, MicrographMetadata } from '@/types/project-types';
+import { EditingScope, PresenceMarks } from './Presence';
 
 /**
  * Micrograph Thumbnail Component
@@ -1079,6 +1080,8 @@ export function ProjectTree() {
               )}
               {isReference && ' (Reference)'}
             </Typography>
+            {/* Who else views or edits it (17al, 17am) */}
+            <PresenceMarks type="micrograph" id={micrograph.id} viewing />
             {/* PPL/XPL indicator for micrographs with siblings */}
             {micrograph.siblingImageId && (
               <Tooltip title="Has PPL/XPL pair - Press X to toggle" placement="top">
@@ -1450,6 +1453,7 @@ export function ProjectTree() {
               searchFilter?.directMatches.has(sample.id) ?? false
             )}
           </Typography>
+          <PresenceMarks type="sample" id={sample.id} />
 
           {/* Sample Options Menu Button */}
           <IconButton
@@ -1621,6 +1625,7 @@ export function ProjectTree() {
               searchFilter?.directMatches.has(dataset.id) ?? false
             )}
           </Typography>
+          <PresenceMarks type="dataset" id={dataset.id} />
 
           {/* Dataset Options Menu Button */}
           <IconButton
@@ -1891,8 +1896,10 @@ export function ProjectTree() {
         </MenuItem>
       </Menu>
 
-      {/* Dialogs */}
-      <EditProjectDialog isOpen={showEditProject} onClose={() => setShowEditProject(false)} />
+      {/* Dialogs (what an edit dialog changes is shown to the others, 17am) */}
+      <EditingScope target={showEditProject && project ? { type: 'project', id: project.id } : null}>
+        <EditProjectDialog isOpen={showEditProject} onClose={() => setShowEditProject(false)} />
+      </EditingScope>
       <NewDatasetDialog isOpen={showNewDataset} onClose={() => setShowNewDataset(false)} />
       <NewSampleDialog
         isOpen={showNewSample}
@@ -1915,6 +1922,7 @@ export function ProjectTree() {
 
       {/* Edit Dataset Dialog */}
       {editingDatasetId && (
+        <EditingScope target={showEditDataset ? { type: 'dataset', id: editingDatasetId } : null}>
         <EditDatasetDialog
           isOpen={showEditDataset}
           onClose={() => {
@@ -1923,9 +1931,11 @@ export function ProjectTree() {
           }}
           datasetId={editingDatasetId}
         />
+        </EditingScope>
       )}
 
       {/* Edit Sample Dialog */}
+      <EditingScope target={showEditSample && editingSample ? { type: 'sample', id: editingSample.id } : null}>
       <EditSampleDialog
         isOpen={showEditSample}
         onClose={() => {
@@ -1934,9 +1944,11 @@ export function ProjectTree() {
         }}
         sample={editingSample}
       />
+      </EditingScope>
 
       {/* Edit Micrograph Dialog */}
       {editingMicrographId && (
+        <EditingScope target={showEditMicrograph ? { type: 'micrograph', id: editingMicrographId } : null}>
         <EditMicrographDialog
           isOpen={showEditMicrograph}
           onClose={() => {
@@ -1945,6 +1957,7 @@ export function ProjectTree() {
           }}
           micrographId={editingMicrographId}
         />
+        </EditingScope>
       )}
 
       {/* Add Micrograph to Groups Dialog */}

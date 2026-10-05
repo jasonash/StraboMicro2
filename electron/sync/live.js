@@ -18,6 +18,7 @@
  *                              normal access check
  *   { kind: 'parked' }         parked pushes changed (the owner counts again)
  *   { kind: 'presence', people }   who follows the project (17al-17an)
+ * My own presence (setPresence) goes out whenever the project is followed.
  *
  * Protocol (livesvc/server.js on the server): auth with the access token
  * first, sub per project; the token is sent again before it expires
@@ -81,8 +82,10 @@ function jwtExp(token) {
  */
 function createLiveChannel({ getToken, clientId, emit, WebSocketImpl = globalThis.WebSocket, timing = {} }) {
   const T = { ...DEFAULT_TIMING, ...timing };
-  /** @type {Map<string, { pid: number, server: string, pkey: string, live: boolean }>} */
+  /** @type {Map<string, { pid: number, server: string, pkey: string, live: boolean, presence: object | null }>} */
   const follows = new Map();
+  /** projectId => my latest presence there (kept from before the follow, which may come later) */
+  const presenceOf = new Map();
   /** projectId => when the first notice since its last pull arrived */
   const noticeAt = new Map();
   /** @type {WebSocket | null} */
@@ -116,7 +119,27 @@ function createLiveChannel({ getToken, clientId, emit, WebSocketImpl = globalThi
   function setLive(projectId, f, live) {
     if (f.live === live) return;
     f.live = live;
+    // Followed (again): the others see where I am at once
+    if (live) sendPresence(f);
     emit(projectId, { kind: 'status', live });
+  }
+
+  function sendPresence(f) {
+    if (f.live && f.presence) send({ t: 'presence', pid: f.pid, ...f.presence });
+  }
+
+  /**
+   * My presence in a followed project (17al-17an): sent now if followed,
+   * else as soon as it is. The service applies at most one a second.
+   * @param {string} projectId
+   * @param {{ state: 'here' | 'away', viewing: object | null, editing: object | null }} presence
+   */
+  function setPresence(projectId, presence) {
+    presenceOf.set(projectId, presence);
+    const f = follows.get(projectId);
+    if (!f) return;
+    f.presence = presence;
+    sendPresence(f);
   }
 
   function clearTimers() {
@@ -128,7 +151,7 @@ function createLiveChannel({ getToken, clientId, emit, WebSocketImpl = globalThi
   function follow(projectId, { server, pid, pkey }) {
     paused = false;
     const prev = follows.get(projectId);
-    const f = { pid: Number(pid), server, pkey: String(pkey), live: false };
+    const f = { pid: Number(pid), server, pkey: String(pkey), live: false, presence: presenceOf.get(projectId) ?? null };
     follows.set(projectId, f);
     if (ws && connServer !== server) {
       // The app now talks to another server (Preferences): start over with it
@@ -156,6 +179,7 @@ function createLiveChannel({ getToken, clientId, emit, WebSocketImpl = globalThi
     if (!f) return;
     follows.delete(projectId);
     noticeAt.delete(projectId);
+    presenceOf.delete(projectId);
     if (follows.size === 0) {
       close('nothing to follow');
       return;
@@ -420,6 +444,7 @@ function createLiveChannel({ getToken, clientId, emit, WebSocketImpl = globalThi
   return {
     follow,
     unfollow,
+    setPresence,
     loggedOut,
     accountChanged,
     /** Is the project followed right now? */

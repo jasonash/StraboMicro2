@@ -23,6 +23,7 @@ import { useAppStore } from '@/store';
 import { useAuthStore } from '@/store/useAuthStore';
 import { LoginDialog } from '@/components/dialogs/LoginDialog';
 import { SyncStatusChip } from '@/components/SyncStatusChip';
+import { HeaderPresence } from '@/components/Presence';
 import { useInvitationsStore } from '@/store/useInvitationsStore';
 import { LogoutSyncDialog } from '@/components/dialogs/LogoutSyncDialog';
 import { checkBeforeLogout, queuedUploadsText, LOGOUT_REQUEST_EVENT, type LogoutCheck } from '@/services/syncActions';
@@ -154,7 +155,8 @@ const Header: React.FC = () => {
           </Tooltip>
         </Box>
 
-        {/* Right: sync status of the open project, then the account */}
+        {/* Right: who else is here (17al), sync status of the open project, then the account */}
+        <HeaderPresence />
         <SyncStatusChip />
 
         {/* Invitations waiting for an answer (17f): stays until each is answered */}

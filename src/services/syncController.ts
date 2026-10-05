@@ -65,6 +65,8 @@ import { takeFirstSyncRequest } from '@/services/syncActions';
 import { loadParked } from '@/services/parkedLoad';
 import { E2E, e2eMs } from '@/services/e2eMode';
 import { editWaitText } from '@/utils/syncChipState';
+import { usePresenceStore, myEditingTarget } from '@/store/usePresenceStore';
+import { sendableTarget } from '@/utils/presence';
 
 // Under an end-to-end test (e2eMode.ts) the waits are short
 /** Push this long after the last change once no edit is open (17aj) */
@@ -87,6 +89,12 @@ const POLL_FOCUSED_MS = E2E?.pollMs ?? e2eMs(30_000, 1_500);
 const POLL_AWAY_MS = E2E?.pollMs ?? e2eMs(120_000, 3_000);
 /** Activity poll while the live channel is up: a safety net only */
 const POLL_LIVE_MS = E2E?.pollMs ?? e2eMs(5 * 60_000, 3_000);
+/** Here = window focused and input within this long; away otherwise (17an) */
+const AWAY_AFTER_MS = 5 * 60_000;
+/** How often here/away is worked out again */
+const PRESENCE_CHECK_MS = 15_000;
+/** Names of new people in the project are fetched at most this often */
+const NAMES_REFRESH_MS = 60_000;
 
 type SyncedStatus = Extract<SyncStatusResult, { synced: true }>;
 type Failure = Extract<SyncPushResult, { ok: false }>;
@@ -129,6 +137,11 @@ class ProjectSync {
   private live = false;
   /** Changes waiting on the server are held until the open edit closes (17ap) */
   private holdingForEdit = false;
+  /** My presence as last sent (JSON), and the last mouse or keyboard input */
+  private presenceSent = '';
+  private lastInputAt = Date.now();
+  private presenceTimer: ReturnType<typeof setInterval> | null = null;
+  private namesFetchedAt = 0;
   /** Background downloads of the files pulls brought */
   private downloading: Promise<void> | null = null;
   private downloadAgain = false;
@@ -200,6 +213,7 @@ class ProjectSync {
     this.unsubscribers.push(() => window.removeEventListener('focus', onFocus));
 
     this.followLive();
+    this.startPresence();
 
     // takeFirstSyncRequest first: it clears the request either way
     if (takeFirstSyncRequest(this.projectId) || useSyncStore.getState().phase === 'uploading') {
@@ -230,7 +244,73 @@ class ProjectSync {
     if (this.decisionTimer) clearTimeout(this.decisionTimer);
     this.decisionTimer = null;
     for (const off of this.unsubscribers.splice(0)) off();
+    if (this.presenceTimer) clearInterval(this.presenceTimer);
+    this.presenceTimer = null;
+    usePresenceStore.getState().setPeople([]);
     void window.api?.sync.liveUnfollow(this.projectId);
+  }
+
+  /**
+   * My presence (17al-17an): here or away, the micrograph I view, the item
+   * I edit (shape editing, or an edit dialog's EditingScope). Sent when it
+   * changes; main sends it again whenever the project is followed.
+   */
+  private startPresence(): void {
+    this.unsubscribers.push(useAppStore.subscribe((s, prev) => {
+      if (s.activeMicrographId !== prev.activeMicrographId || s.editingSpotId !== prev.editingSpotId) this.reportPresence();
+    }));
+    this.unsubscribers.push(usePresenceStore.subscribe((s, prev) => {
+      if (s.editing !== prev.editing) this.reportPresence();
+    }));
+    const onInput = () => {
+      const wasAway = Date.now() - this.lastInputAt >= AWAY_AFTER_MS;
+      this.lastInputAt = Date.now();
+      if (wasAway) this.reportPresence();
+    };
+    const onFocusChange = () => this.reportPresence();
+    for (const type of ['mousemove', 'mousedown', 'keydown', 'wheel'] as const) {
+      window.addEventListener(type, onInput, { passive: true });
+      this.unsubscribers.push(() => window.removeEventListener(type, onInput));
+    }
+    window.addEventListener('focus', onFocusChange);
+    window.addEventListener('blur', onFocusChange);
+    this.unsubscribers.push(() => {
+      window.removeEventListener('focus', onFocusChange);
+      window.removeEventListener('blur', onFocusChange);
+    });
+    this.presenceTimer = setInterval(() => this.reportPresence(), PRESENCE_CHECK_MS);
+    this.reportPresence();
+  }
+
+  private reportPresence(): void {
+    if (this.stopped || !window.api) return;
+    const s = useAppStore.getState();
+    const here = document.hasFocus() && Date.now() - this.lastInputAt < AWAY_AFTER_MS;
+    const presence = {
+      state: here ? 'here' as const : 'away' as const,
+      viewing: s.activeMicrographId ? sendableTarget({ type: 'micrograph', id: s.activeMicrographId }) : null,
+      editing: sendableTarget(s.editingSpotId ? { type: 'spot', id: s.editingSpotId } : myEditingTarget()),
+    };
+    const json = JSON.stringify(presence);
+    if (json === this.presenceSent) return;
+    this.presenceSent = json;
+    void window.api.sync.livePresence(this.projectId, presence).catch(() => null);
+  }
+
+  /** Who is in the project now; names of people not in the Collaborators list yet are fetched (17an). */
+  private onPresence(people: SyncLivePerson[]): void {
+    usePresenceStore.getState().setPeople(people);
+    const names = useSyncStore.getState().memberNames;
+    const me = Number(useAuthStore.getState().user?.pkey ?? NaN);
+    const unknown = people.some((p) => p.user !== me && !(p.user in names));
+    if (!unknown || Date.now() - this.namesFetchedAt < NAMES_REFRESH_MS) return;
+    this.namesFetchedAt = Date.now();
+    void window.api?.sync.members(this.projectId, getRestServerUrl()).then((m) => {
+      if (this.stopped || !m?.ok) return;
+      const fresh: Record<number, string> = {};
+      for (const x of m.members) fresh[x.user.pkey] = x.user.name || x.user.email || '';
+      useSyncStore.getState().update({ memberNames: fresh });
+    }).catch(() => null);
   }
 
   /** Follow the project on the live channel (main checks the account and server; logged out = later). */
@@ -249,7 +329,11 @@ class ProjectSync {
         useSyncStore.getState().update({ live: e.live });
         // Up (again): catch up on notices missed meanwhile (17ao). Down: poll on the normal timers
         if (e.live) this.pollWhenIdle();
-        else this.schedulePoll();
+        else {
+          // Stale presence misleads: badges hide while the channel is down (17ao)
+          usePresenceStore.getState().setPeople([]);
+          this.schedulePoll();
+        }
         return;
       case 'changed':
         // My own push needs no pull
@@ -259,6 +343,9 @@ class ProjectSync {
       case 'parked':
         // Role, removal, parked pushes: the poll's normal checks (17h, 17k, 17aa)
         this.pollWhenIdle();
+        return;
+      case 'presence':
+        if (this.live) this.onPresence(e.people);
         return;
       default:
     }

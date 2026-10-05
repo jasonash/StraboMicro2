@@ -44,6 +44,7 @@ import { useImperativeGeometryEditing } from '@/hooks/useImperativeGeometryEditi
 import { getEffectiveTheme } from '@/hooks/useTheme';
 import { releaseImage, isImageUsable } from '@/utils/imageUtils';
 import './TiledViewer.css';
+import { EditingScope } from './Presence';
 
 const TILE_SIZE = 256;
 const MIN_ZOOM = 0.1;
@@ -2591,14 +2592,16 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
         {/* Edit Spot Dialog (view only when I may not change the spot, 17h/17i) */}
         {editingSpot && (
           <ReadOnlyScope readOnly={editingSpotReason !== null} reason={editingSpotReason}>
-            <EditSpotDialog
-              isOpen={editSpotDialogOpen}
-              onClose={() => {
-                setEditSpotDialogOpen(false);
-                setEditingSpot(null);
-              }}
-              spotId={editingSpot.id}
-            />
+            <EditingScope target={editSpotDialogOpen ? { type: 'spot', id: editingSpot.id } : null}>
+              <EditSpotDialog
+                isOpen={editSpotDialogOpen}
+                onClose={() => {
+                  setEditSpotDialogOpen(false);
+                  setEditingSpot(null);
+                }}
+                spotId={editingSpot.id}
+              />
+            </EditingScope>
           </ReadOnlyScope>
         )}
 

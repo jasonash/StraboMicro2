@@ -705,6 +705,7 @@ contextBridge.exposeInMainWorld('api', {
     },
     liveFollow: (projectId, restServer) => ipcRenderer.invoke('sync:live-follow', projectId, restServer),
     liveUnfollow: (projectId) => ipcRenderer.invoke('sync:live-unfollow', projectId),
+    livePresence: (projectId, presence) => ipcRenderer.invoke('sync:live-presence', projectId, presence),
     onLive: (callback) => {
       const handler = (event, liveEvent) => callback(liveEvent);
       ipcRenderer.on('sync:live', handler);

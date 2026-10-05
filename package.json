@@ -34,6 +34,7 @@
     "test:permissions": "rolldown -c tests/sync/rolldown.test.config.mjs && node node_modules/.cache/sync-tests/permissions.test.mjs",
     "test:activity-feed": "rolldown -c tests/sync/rolldown.test.config.mjs && node node_modules/.cache/sync-tests/activityFeed.test.mjs",
     "test:parked-review": "rolldown -c tests/sync/rolldown.test.config.mjs && node node_modules/.cache/sync-tests/parkedReview.test.mjs",
+    "test:presence": "rolldown -c tests/sync/rolldown.test.config.mjs && node node_modules/.cache/sync-tests/presence.test.mjs",
     "e2e": "playwright test -c tests/e2e/playwright.config.ts",
     "e2e:watch": "E2E_WATCH=1 playwright test -c tests/e2e/playwright.config.ts",
     "e2e:report": "playwright show-report playwright-report/e2e",
