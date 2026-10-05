@@ -9,13 +9,13 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Stage, Layer, Image as KonvaImage, Rect, Transformer, Group, Line } from 'react-konva';
 import {
   Box, Typography, Stack, IconButton, Tooltip, Paper,
-  TextField, Select, MenuItem, FormControl, InputLabel, Grid, Slider
+  TextField, Select, MenuItem, FormControl, InputLabel, Grid, Slider, Alert
 } from '@mui/material';
 import { PanTool, RestartAlt, Timeline } from '@mui/icons-material';
 import Konva from 'konva';
 import { useAppStore } from '@/store';
 import { releaseImage } from '@/utils/imageUtils';
-import { tracedLinePixels, scaleFromTracedBar, MIN_TRACE_SCALE, MAX_TRACE_SCALE } from '@/utils/traceScaleBar';
+import { tracedLinePixels, scaleFromTracedBar, traceScaleNote } from '@/utils/traceScaleBar';
 
 interface PlacementCanvasProps {
   parentMicrographId: string;
@@ -135,6 +135,8 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
   const [currentLine, setCurrentLine] = useState<{ x1: number; y1: number; x2: number; y2: number } | null>(null);
   // The child's scale when the current line was started (its length is in that display)
   const lineScaleRef = useRef(1);
+  // Said under the inputs when the traced bar gives a scale outside the limits
+  const [scaleNote, setScaleNote] = useState<string | null>(null);
 
   // Parent micrograph metadata (for scale calculations)
   const [parentScale, setParentScale] = useState<number | null>(null);
@@ -626,7 +628,10 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
   // Auto-calculate child scale for Trace Scale Bar method
   useEffect(() => {
     if (scaleMethod !== 'Trace Scale Bar and Drag') return;
-    if (!parentScale || !parentOriginalWidth || !parentImage || !scaleBarPixelInput || !scaleBarPhysicalInput) return;
+    if (!parentScale || !parentOriginalWidth || !parentImage || !scaleBarPixelInput || !scaleBarPhysicalInput) {
+      setScaleNote(null);
+      return;
+    }
 
     const result = scaleFromTracedBar({
       pixels: parseFloat(scaleBarPixelInput),
@@ -636,8 +641,8 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
       parentDisplayedWidth: parentImage.width,
       parentOriginalWidth,
     });
+    setScaleNote(traceScaleNote(result));
     if (!result) return;
-    if (result.clamped) console.warn('[PlacementCanvas] Traced scale outside', MIN_TRACE_SCALE, 'to', MAX_TRACE_SCALE, '; clamped to', result.scale);
 
     // Update child scale (without calling onPlacementChange during render);
     // the same scale again is no change, so nothing re-renders
@@ -1198,6 +1203,9 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
             }}>
             Use the line tool to trace a scale bar on the child micrograph. Enter the physical length it represents.
           </Typography>
+          {scaleNote && (
+            <Alert severity="warning" sx={{ mt: 1, py: 0 }}>{scaleNote}</Alert>
+          )}
         </Paper>
       )}
 
@@ -1419,7 +1427,7 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
         <Typography variant="caption" sx={{
           color: 'text.secondary'
         }}>
-          Scale: {childTransform.scaleX.toFixed(2)}x | Zoom: {(scale * 100).toFixed(0)}%
+          Scale: {childTransform.scaleX >= 0.01 ? childTransform.scaleX.toFixed(2) : childTransform.scaleX.toPrecision(2)}x | Zoom: {(scale * 100).toFixed(0)}%
         </Typography>
       </Stack>
     </Box>

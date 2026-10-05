@@ -7,7 +7,7 @@
  *   npm run test:trace-scale-bar
  */
 
-import { tracedLinePixels, scaleFromTracedBar, MAX_TRACE_SCALE, MIN_TRACE_SCALE } from '../src/utils/traceScaleBar.ts';
+import { tracedLinePixels, scaleFromTracedBar, traceScaleNote, MAX_TRACE_SCALE, MIN_TRACE_SCALE } from '../src/utils/traceScaleBar.ts';
 
 let failures = 0;
 let passes = 0;
@@ -36,6 +36,17 @@ check('missing inputs -> null', scaleFromTracedBar({ pixels: 0, physicalLength: 
   scaleFromTracedBar({ pixels: 200, physicalLength: 100, unit: 'μm', ...parent, parentScale: 0 }) === null);
 check('clamped high', scaleFromTracedBar({ pixels: 1, physicalLength: 1000, unit: 'cm', ...parent })!.scale === MAX_TRACE_SCALE);
 check('clamped low', scaleFromTracedBar({ pixels: 1e9, physicalLength: 1, unit: 'μm', ...parent })!.scale === MIN_TRACE_SCALE);
+
+// Jason's case (2026-10-05): overlay on parent PF-5 (23336 px/cm, shown at full size), 2853.4 px traced
+const pf5 = { parentScale: 23336, parentDisplayedWidth: 1546, parentOriginalWidth: 1546 };
+const at = (um: number) => scaleFromTracedBar({ pixels: 2853.4, physicalLength: um, unit: 'μm', ...pf5 })!;
+check('11 um: 0.009x, no longer held at 0.01', near(at(11).scale, 23336 / (2853.4 / 0.0011)) && !at(11).clamped && at(11).scale < 0.01, at(11));
+check('5 um: smaller again (0.004x)', at(5).scale < at(11).scale && !at(5).clamped, at(5));
+check('34 um (its real bar): about 0.028x', Math.abs(at(34).scale - 0.0278) < 0.0005, at(34));
+check('inside the limits: no note', traceScaleNote(at(11)) === null);
+const tiny = scaleFromTracedBar({ pixels: 2853.4, physicalLength: 0.0001, unit: 'μm', ...pf5 })!;
+check('outside the limits: held at the limit, and said', tiny.clamped && tiny.scale === MIN_TRACE_SCALE &&
+  /make the overlay [0-9.e-]+x the parent's size, outside 0.0001x to 1000x\. Check the length and unit\./.test(traceScaleNote(tiny) ?? ''), traceScaleNote(tiny));
 
 // The component's two effects as a loop: pixels from the line, scale from the pixels, again
 function settle(measureWith: 'scale when drawn' | 'current scale', startScale: number, physicalLength: number) {
