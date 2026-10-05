@@ -16,6 +16,7 @@
     "test:project-copies": "electron tests/sync/projectCopies.electron.test.js",
     "test:sync-service": "electron tests/sync/syncService.electron.test.js",
     "test:merge": "node tests/sync/merge.test.js",
+    "test:client-timeouts": "node tests/sync/clientTimeouts.test.js",
     "test:pull": "electron tests/sync/pull.electron.test.js",
     "test:decisions": "electron tests/sync/decisions.electron.test.js",
     "test:link": "electron tests/sync/link.electron.test.js",

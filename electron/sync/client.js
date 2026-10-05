@@ -64,6 +64,39 @@ function hashFile(filePath) {
 }
 
 /**
+ * How long a connection may stay silent (spec v3 §11.2; found in the gap 4
+ * test 2026-10-05: with the network gone mid-download nothing failed for
+ * minutes, until the network came back). answerMs: for the answer to begin,
+ * plus the request body at minBytesPerSecond; stallMs: between pieces of an
+ * answer. Either one turns into 'offline', which the callers retry.
+ */
+const TIMEOUTS = { answerMs: 60_000, stallMs: 30_000, minBytesPerSecond: 50 * 1024 };
+
+/** An AbortSignal that fires unless fed again within the time given */
+function watchdog(ms) {
+  const ctrl = new AbortController();
+  let timer = null;
+  let limit = ms;
+  let fired = false;
+  const feed = (next) => {
+    limit = next;
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(() => {
+      fired = true;
+      ctrl.abort(new Error(`nothing for ${Math.round(limit / 1000)} s`));
+    }, next);
+  };
+  feed(ms);
+  return {
+    signal: ctrl.signal,
+    feed,
+    stop: () => { if (timer) clearTimeout(timer); timer = null; },
+    fired: () => fired,
+    why: () => `nothing for ${Math.round(limit / 1000)} s`,
+  };
+}
+
+/**
  * getAccessToken returns null when nobody is logged in (or may throw a
  * SyncError, e.g. offline). refreshAccessToken, when given, is called once
  * after a 401 and the request is retried with the new token (spec v3 §11.2).
@@ -73,10 +106,26 @@ function hashFile(filePath) {
  * them for its own and never pulls them).
  * @param {{ restServer: string, getAccessToken: () => Promise<string | null>,
  *   refreshAccessToken?: () => Promise<string | null>, fetchImpl?: typeof fetch,
- *   clientId?: string }} options
+ *   clientId?: string, timeouts?: Partial<typeof TIMEOUTS> }} options
  */
-function createSyncClient({ restServer, getAccessToken, refreshAccessToken, fetchImpl = fetch, clientId }) {
+function createSyncClient({ restServer, getAccessToken, refreshAccessToken, fetchImpl = fetch, clientId, timeouts = {} }) {
   const base = `${String(restServer).replace(/\/+$/, '')}/microsync/v1`;
+  const T = { ...TIMEOUTS, ...timeouts };
+
+  /** How long the answer to a request carrying `bytes` may take to begin */
+  const answerMs = (bytes) => T.answerMs + Math.ceil((bytes / T.minBytesPerSecond) * 1000);
+
+  /** The body of an answer, aborted when no data comes for T.stallMs */
+  async function readBody(res, dog) {
+    if (!res.body) return Buffer.alloc(0);
+    const parts = [];
+    dog.feed(T.stallMs);
+    for await (const chunk of res.body) {
+      dog.feed(T.stallMs);
+      parts.push(Buffer.from(chunk));
+    }
+    return Buffer.concat(parts);
+  }
 
   /**
    * @param {string} method
@@ -100,13 +149,24 @@ function createSyncClient({ restServer, getAccessToken, refreshAccessToken, fetc
       headers['Content-Type'] = 'application/octet-stream';
       payload = body;
     }
+    const dog = watchdog(answerMs(payload ? Buffer.byteLength(payload) : 0));
     let res;
+    let text;
     try {
-      res = await fetchImpl(base + path, { method, headers, body: payload });
-    } catch (err) {
-      throw new SyncError('offline', `Could not reach the StraboSpot server (${err.message})`, { notSent: neverSent(err) });
+      try {
+        res = await fetchImpl(base + path, { method, headers, body: payload, signal: dog.signal });
+      } catch (err) {
+        if (dog.fired()) throw new SyncError('offline', `No answer from the StraboSpot server (${dog.why()})`);
+        throw new SyncError('offline', `Could not reach the StraboSpot server (${err.message})`, { notSent: neverSent(err) });
+      }
+      try {
+        text = (await readBody(res, dog)).toString('utf8');
+      } catch (err) {
+        throw new SyncError('offline', dog.fired() ? `The answer from StraboSpot stopped (${dog.why()})` : `The answer from StraboSpot was cut off (${err.message})`);
+      }
+    } finally {
+      dog.stop();
     }
-    const text = await res.text();
     let data = null;
     try {
       data = text ? JSON.parse(text) : null;
@@ -186,14 +246,21 @@ function createSyncClient({ restServer, getAccessToken, refreshAccessToken, fetc
     async downloadFile(pid, sha256, destPath, { onProgress } = {}, retried = false) {
       const token = retried && refreshAccessToken ? await refreshAccessToken() : await getAccessToken();
       if (!token) throw new SyncError('auth', 'Not logged in');
+      const dog = watchdog(T.answerMs);
       let res;
       try {
-        res = await fetchImpl(`${base}/projects/${pid}/blobs/${sha256}`, { headers: { Authorization: `Bearer ${token}` } });
+        res = await fetchImpl(`${base}/projects/${pid}/blobs/${sha256}`, { headers: { Authorization: `Bearer ${token}` }, signal: dog.signal });
       } catch (err) {
+        dog.stop();
+        if (dog.fired()) throw new SyncError('offline', `No answer from the StraboSpot server (${dog.why()})`);
         throw new SyncError('offline', `Could not reach the StraboSpot server (${err.message})`);
       }
-      if (res.status === 401 && !retried && refreshAccessToken) {
+      const done = () => dog.stop();
+      if (res.status !== 200 || !res.body) {
         if (res.body) await res.body.cancel().catch(() => {});
+        done();
+      }
+      if (res.status === 401 && !retried && refreshAccessToken) {
         return this.downloadFile(pid, sha256, destPath, { onProgress }, true);
       }
       if (res.status === 401) throw new SyncError('auth', 'The server did not accept the login', { status: 401 });
@@ -209,7 +276,9 @@ function createSyncClient({ restServer, getAccessToken, refreshAccessToken, fetc
       let received = 0;
       const out = fs.createWriteStream(tmp);
       try {
+        dog.feed(T.stallMs);
         for await (const chunk of res.body) {
+          dog.feed(T.stallMs);
           hash.update(chunk);
           received += chunk.length;
           if (!out.write(chunk)) await new Promise((r) => out.once('drain', r));
@@ -222,9 +291,12 @@ function createSyncClient({ restServer, getAccessToken, refreshAccessToken, fetc
       } catch (err) {
         out.destroy();
         await fs.promises.rm(tmp, { force: true });
+        if (dog.fired()) throw new SyncError('offline', `Download stopped (${dog.why()})`);
         // File system errors (disk full, permissions) are not connection problems
         if (err instanceof SyncError || (err && typeof err.code === 'string' && err.code.startsWith('E'))) throw err;
         throw new SyncError('offline', `Download interrupted (${err.message})`);
+      } finally {
+        done();
       }
       return { size: received };
     },
@@ -376,4 +448,4 @@ function createSyncClient({ restServer, getAccessToken, refreshAccessToken, fetc
   };
 }
 
-module.exports = { createSyncClient, SyncError, hashFile };
+module.exports = { createSyncClient, SyncError, hashFile, TIMEOUTS };
