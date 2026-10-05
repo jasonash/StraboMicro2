@@ -18,6 +18,14 @@
  *
  *   npm run test:convergence                     a random seed (printed)
  *   SEED=12345 STEPS=300 npm run test:convergence
+ *   LIVE=1 npm run test:convergence              with the live channel (17au)
+ *
+ * LIVE=1: every computer follows the project on the live channel and syncs
+ * after each step in which it heard of someone else's change (as the app
+ * pulls on a notice); a new fault kills the strabo-live container and
+ * starts it again. Extra checks: 6. every computer is live again at the
+ * end, and a last change reaches every other computer as a notice within
+ * 3 s.
  *
  * The same seed replays the same sequence (timing on the server may still
  * differ; crashes land at seeded delays). Needs the dev Docker stack with
@@ -35,6 +43,7 @@ const electron = require('electron');
 
 const SEED = Number(process.env.SEED || Math.floor(Math.random() * 2 ** 31));
 const STEPS = Number(process.env.STEPS || 150);
+const LIVE = process.env.LIVE === '1';
 const SERVER = process.env.STRABO_E2E_SERVER || 'http://localhost';
 const AGENT = path.join(__dirname, 'agent.electron.js');
 const REPO = path.resolve(__dirname, '../../..');
@@ -177,9 +186,19 @@ class Agent {
   }
 }
 
+/** Wait until an agent follows its project on the live channel */
+async function waitLive(a, ms) {
+  const end = Date.now() + ms;
+  while (Date.now() < end) {
+    if ((await a.call('liveEvents')).status) return true;
+    await new Promise((resolve) => setTimeout(resolve, 200));
+  }
+  return false;
+}
+
 async function main() {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'smconverge-'));
-  console.log(`Convergence: SEED=${SEED} STEPS=${STEPS} (replay: SEED=${SEED} STEPS=${STEPS} npm run test:convergence)`);
+  console.log(`Convergence: SEED=${SEED} STEPS=${STEPS}${LIVE ? ' LIVE=1' : ''} (replay: ${LIVE ? 'LIVE=1 ' : ''}SEED=${SEED} STEPS=${STEPS} npm run test:convergence)`);
   console.log(`  work folder ${tmp}`);
   fixture('wipe-e2e');
   const tokens = {
@@ -236,8 +255,34 @@ async function main() {
     }
     const opened = await laptop.call('open', { pid });
     if (!opened.ok) throw new Error(`laptop open: ${JSON.stringify(opened)}`);
+    if (LIVE) {
+      for (const a of agents) await a.call('follow');
+      for (const a of agents) {
+        if (!await waitLive(a, 15_000)) throw new Error(`${a.name} never got live`);
+      }
+    }
     const start = await ana.call('canonical');
     console.log(`  project ${straboId} (server ${pid}), ${Object.keys(start).length} entities, 4 computers\n`);
+
+    const recordEdit = (a, e, step) => {
+      count(`edit ${e.kind}`);
+      for (const w of e.writes ?? []) {
+        const k = `${w.key}|${w.field}`;
+        if (!writes.has(k)) writes.set(k, []);
+        writes.get(k).push({ agent: a.name, value: w.value, step });
+      }
+      for (const k of e.created ?? []) {
+        if (k.startsWith('stroke:')) {
+          const mk = (e.writes ?? []).find((w) => w.field === 'sketchLayers')?.key ?? null;
+          strokes.set(k.slice(7), { micrograph: mk, agent: a.name, step });
+        } else created.add(k);
+      }
+      for (const k of e.deleted ?? []) {
+        if (!k.startsWith('stroke:')) deletedBy.set(k, a.name);
+        deletedAt.set(k, [...(deletedAt.get(k) ?? []), step]);
+      }
+      log.push({ step, agent: a.name, edit: e.kind, writes: e.writes, created: e.created, deleted: e.deleted });
+    };
 
     const doSync = async (a, step) => {
       const r = await a.call('sync');
@@ -254,24 +299,7 @@ async function main() {
       const roll = R();
       const a = pick(agents);
       if (roll < 0.5) {
-        const e = await a.call('edit', { seed: nextSeed(), step });
-        count(`edit ${e.kind}`);
-        for (const w of e.writes ?? []) {
-          const k = `${w.key}|${w.field}`;
-          if (!writes.has(k)) writes.set(k, []);
-          writes.get(k).push({ agent: a.name, value: w.value, step });
-        }
-        for (const k of e.created ?? []) {
-          if (k.startsWith('stroke:')) {
-            const mk = (e.writes ?? []).find((w) => w.field === 'sketchLayers')?.key ?? null;
-            strokes.set(k.slice(7), { micrograph: mk, agent: a.name, step });
-          } else created.add(k);
-        }
-        for (const k of e.deleted ?? []) {
-          if (!k.startsWith('stroke:')) deletedBy.set(k, a.name);
-          deletedAt.set(k, [...(deletedAt.get(k) ?? []), step]);
-        }
-        log.push({ step, agent: a.name, edit: e.kind, writes: e.writes, created: e.created, deleted: e.deleted });
+        recordEdit(a, await a.call('edit', { seed: nextSeed(), step }), step);
       } else if (roll < 0.71) {
         const r = await doSync(a, step);
         log.push({ step, agent: a.name, sync: r.ok ? 'ok' : r.kind });
@@ -318,6 +346,11 @@ async function main() {
         a.net = mode;
         count(`net ${mode}`);
         log.push({ step, agent: a.name, net: mode });
+      } else if (LIVE && R() < 0.3) {
+        // The live service is killed and started again: the copies reconnect and catch up
+        execFileSync('docker', ['restart', '-t', '0', 'strabo-live'], { stdio: 'ignore' });
+        count('live service killed');
+        log.push({ step, live: 'killed and started' });
       } else {
         // A crash: killed while a sync runs (or between steps), then started again online
         const midSync = R() < 0.7;
@@ -326,8 +359,21 @@ async function main() {
         await new Promise((resolve) => setTimeout(resolve, delay));
         await a.kill();
         await a.start();
+        if (LIVE) await a.call('follow');
         count(midSync ? 'crash mid-sync' : 'crash');
         log.push({ step, agent: a.name, crash: midSync ? `mid-sync after ${delay} ms` : 'idle' });
+      }
+
+      // A notice of someone else's change: that computer pulls (the app's controller does at once)
+      if (LIVE) {
+        for (const x of agents) {
+          const heard = await x.call('liveEvents');
+          if (heard.others > 0) {
+            count('live sync');
+            const r = await doSync(x, step);
+            log.push({ step, agent: x.name, sync: r.ok ? 'ok' : r.kind, live: true });
+          }
+        }
       }
     }
 
@@ -345,6 +391,32 @@ async function main() {
       roles.set(who.name, 'editor');
     }
     await ana.call('discardParked');
+    if (LIVE) {
+      // 6. Everyone live again, and a change reaches every other computer as a notice
+      for (const a of agents) {
+        if (!await waitLive(a, 40_000)) problems.push(`live: ${a.name} did not get live again`);
+        await a.call('liveEvents');
+      }
+      // An edit that changes something (the random one can be none)
+      for (let i = 0; i < 10; i++) {
+        const e = await ana.call('edit', { seed: nextSeed(), step: STEPS + 1 });
+        recordEdit(ana, e, STEPS + 1);
+        if (e.kind !== 'none') break;
+      }
+      const r = await doSync(ana, 'live check');
+      if (r.ok) {
+        const t0 = Date.now();
+        for (const a of agents.filter((x) => x !== ana)) {
+          let heard = false;
+          while (!heard && Date.now() - t0 < 3_000) {
+            heard = (await a.call('liveEvents')).others > 0;
+            if (!heard) await new Promise((resolve) => setTimeout(resolve, 50));
+          }
+          if (!heard) problems.push(`live: ${a.name} heard nothing of Ana's last change within 3 s`);
+        }
+        count('live check');
+      }
+    }
     let settled = false;
     for (let round = 1; round <= 12 && !settled; round++) {
       let moved = 0;

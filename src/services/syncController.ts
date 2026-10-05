@@ -63,14 +63,14 @@ import { applyRemoteChanges, isApplyingSavedStamps } from '@/store/remoteChanges
 import { compositesAffectedBy, regenerateComposites } from '@/utils/compositeRefresh';
 import { takeFirstSyncRequest } from '@/services/syncActions';
 import { loadParked } from '@/services/parkedLoad';
-import { E2E, e2eMs } from '@/services/e2eMode';
+import { E2E, e2eMs, LEGACY_SYNC } from '@/services/e2eMode';
 import { editWaitText } from '@/utils/syncChipState';
 import { usePresenceStore, myEditingTarget } from '@/store/usePresenceStore';
 import { sendableTarget } from '@/utils/presence';
 
 // Under an end-to-end test (e2eMode.ts) the waits are short
 /** Push this long after the last change once no edit is open (17aj) */
-const DEBOUNCE_MS = e2eMs(1_000, 300);
+const DEBOUNCE_MS = LEGACY_SYNC ? 3_000 : e2eMs(1_000, 300);
 const MAX_WAIT_MS = e2eMs(30_000, 3_000);
 const RETRY_DELAYS_MS = [5_000, 15_000, 30_000, 60_000, 120_000, 300_000].map((ms) => e2eMs(ms, ms / 10));
 const SLOW_RETRY_MS = e2eMs(10 * 60_000, 10_000);
@@ -315,7 +315,7 @@ class ProjectSync {
 
   /** Follow the project on the live channel (main checks the account and server; logged out = later). */
   private followLive(): void {
-    if (this.stopped || !window.api) return;
+    if (this.stopped || !window.api || LEGACY_SYNC) return;
     void window.api.sync.liveFollow(this.projectId, getRestServerUrl()).catch(() => null);
   }
 

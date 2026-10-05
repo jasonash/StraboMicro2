@@ -13,7 +13,12 @@ contextBridge.exposeInMainWorld('api', {
     if (!arg) return null;
     const poll = process.argv.find((a) => a.startsWith('--strabo-e2e-poll='));
     const pollMs = poll ? Number(poll.slice('--strabo-e2e-poll='.length)) : 0;
-    return { server: arg.slice('--strabo-e2e='.length), ...(pollMs > 0 ? { pollMs } : {}) };
+    const timers = process.argv.find((a) => a.startsWith('--strabo-e2e-timers='))?.slice('--strabo-e2e-timers='.length);
+    return {
+      server: arg.slice('--strabo-e2e='.length),
+      ...(pollMs > 0 ? { pollMs } : {}),
+      ...(timers === 'real' || timers === 'legacy' ? { timers } : {}),
+    };
   })(),
 
   // Session state persistence (for zustand store - replaces localStorage)

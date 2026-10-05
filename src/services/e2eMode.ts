@@ -9,7 +9,7 @@
  */
 
 /** The test run's settings, or null outside a test run */
-export const E2E: { server: string; pollMs?: number } | null =
+export const E2E: { server: string; pollMs?: number; timers?: 'real' | 'legacy' } | null =
   import.meta.env?.DEV && typeof window !== 'undefined' ? (window.api?.e2e ?? null) : null;
 
 /**
@@ -17,5 +17,11 @@ export const E2E: { server: string; pollMs?: number } | null =
  * does not wait out a 3 s debounce or a 5 minute poll.
  */
 export function e2eMs(normal: number, underTest: number): number {
-  return E2E ? underTest : normal;
+  return E2E && !E2E.timers ? underTest : normal;
 }
+
+/**
+ * Latency measurement only (e2e 10-latency, timers 'legacy'): sync as it
+ * was before the live channel (3 s debounce, no live channel, polling).
+ */
+export const LEGACY_SYNC = E2E?.timers === 'legacy';

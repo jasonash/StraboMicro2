@@ -8,7 +8,10 @@
  * app's serializer; sync is the controller's order (push, pull, apply,
  * save, commit, push what the merge left); decisions are answered through
  * the decisions service like the dialog. The network can be cut in three
- * ways (no-network, dropped, lost-reply), as in the e2e tests.
+ * ways (no-network, dropped, lost-reply), as in the e2e tests (the live
+ * channel's WebSocket is not cut by them). With LIVE=1 the driver has each
+ * copy follow the project on the live channel (follow) and reads what it
+ * heard (liveEvents).
  */
 
 const { app } = require('electron');
@@ -53,6 +56,22 @@ app.whenReady().then(async () => {
   tokenService.clearTokens = async () => {};
 
   const svc = require(`${E}/sync/syncService`);
+  // Live channel (run.js LIVE=1): its events land here, as they would reach the renderer
+  const live = { status: false, others: 0, mine: 0, lastOtherAt: 0 };
+  svc.registerSyncIpc({ handle: () => {} }, () => ({
+    isDestroyed: () => false,
+    webContents: {
+      send: (channel, e) => {
+        if (channel !== 'sync:live' || !e || e.projectId !== projectId) return;
+        if (e.kind === 'status') live.status = e.live;
+        if (e.kind === 'changed' && e.mine) live.mine++;
+        if (e.kind === 'changed' && !e.mine) {
+          live.others++;
+          live.lastOtherAt = Date.now();
+        }
+      },
+    },
+  }));
   const ser = require(`${E}/projectSerializer`);
   const projectFolders = require(`${E}/projectFolders`);
   const { applyEntityChanges, explode, perUserFields } = await import(`${E}/shared/entityModel.mjs`);
@@ -575,6 +594,14 @@ app.whenReady().then(async () => {
     compare: () => svc.testCompare(projectId, SERVER),
     canonical,
     ping: () => ({ ok: true, projectId }),
+    follow: () => svc.liveFollow(projectId, SERVER),
+    /** What the live channel said since the last call (others' notices are counted, then reset) */
+    liveEvents: () => {
+      const out = { ...live };
+      live.others = 0;
+      live.mine = 0;
+      return out;
+    },
   };
 
   const send = (msg) => process.stdout.write(`@@ ${JSON.stringify(msg)}\n`);

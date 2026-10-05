@@ -573,6 +573,8 @@ function createWindow() {
           `--strabo-e2e=${process.env.STRABO_E2E_SERVER || 'http://localhost'}`,
           // A scenario may set the activity poll (e.g. 10 min, to prove the live channel)
           ...(Number(process.env.STRABO_E2E_POLL_MS) > 0 ? [`--strabo-e2e-poll=${Number(process.env.STRABO_E2E_POLL_MS)}`] : []),
+          // Latency measurement (e2e 10-latency): the real timers, or those from before the live channel
+          ...(['real', 'legacy'].includes(String(process.env.STRABO_E2E_TIMERS)) ? [`--strabo-e2e-timers=${process.env.STRABO_E2E_TIMERS}`] : []),
         ],
       } : {}),
     },
