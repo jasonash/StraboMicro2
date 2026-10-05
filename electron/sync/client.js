@@ -67,10 +67,15 @@ function hashFile(filePath) {
  * getAccessToken returns null when nobody is logged in (or may throw a
  * SyncError, e.g. offline). refreshAccessToken, when given, is called once
  * after a 401 and the request is retried with the new token (spec v3 §11.2).
+ * clientId, when given, goes with file ref changes as it goes with pushes,
+ * so the server can tell this computer's ref changes from those of another
+ * computer of the same account (without it, every copy of the account takes
+ * them for its own and never pulls them).
  * @param {{ restServer: string, getAccessToken: () => Promise<string | null>,
- *   refreshAccessToken?: () => Promise<string | null>, fetchImpl?: typeof fetch }} options
+ *   refreshAccessToken?: () => Promise<string | null>, fetchImpl?: typeof fetch,
+ *   clientId?: string }} options
  */
-function createSyncClient({ restServer, getAccessToken, refreshAccessToken, fetchImpl = fetch }) {
+function createSyncClient({ restServer, getAccessToken, refreshAccessToken, fetchImpl = fetch, clientId }) {
   const base = `${String(restServer).replace(/\/+$/, '')}/microsync/v1`;
 
   /**
@@ -312,14 +317,15 @@ function createSyncClient({ restServer, getAccessToken, refreshAccessToken, fetc
      * yet); { skipped: 'forbidden' } when my role may not change it.
      */
     async setRef(pid, entityType, entityId, role, sha256) {
-      const r = await request('PUT', `/projects/${pid}/refs`, { json: { entityType, entityId, role, sha256 } });
+      const r = await request('PUT', `/projects/${pid}/refs`, { json: { entityType, entityId, role, sha256, ...(clientId ? { clientId } : {}) } });
       if (r.status === 404 && r.data && r.data.error === 'not_found') return { skipped: 'deleted' };
       if (r.status === 403 && r.data && r.data.error === 'forbidden') return { skipped: 'forbidden', reason: r.data.reason || '' };
       return expect(r, 200, 201);
     },
 
     async deleteRef(pid, entityType, entityId, role) {
-      const q = `entityType=${encodeURIComponent(entityType)}&entityId=${encodeURIComponent(entityId)}&role=${encodeURIComponent(role)}`;
+      const q = `entityType=${encodeURIComponent(entityType)}&entityId=${encodeURIComponent(entityId)}&role=${encodeURIComponent(role)}`
+        + (clientId ? `&clientId=${encodeURIComponent(clientId)}` : '');
       const r = await request('DELETE', `/projects/${pid}/refs?${q}`);
       if (r.status === 403 && r.data && r.data.error === 'forbidden') return { skipped: 'forbidden' };
       return expect(r, 200, 404);

@@ -127,6 +127,7 @@ function makeClient(restServer) {
     restServer,
     getAccessToken: async () => tokenFrom(await tokenService.getValidAccessToken(restServer)),
     refreshAccessToken: async () => tokenFrom(await tokenService.refreshAccessToken(restServer)),
+    clientId: loadEngine().syncEngine.getClientId(),
   });
 }
 

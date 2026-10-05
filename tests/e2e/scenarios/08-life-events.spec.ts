@@ -1,15 +1,19 @@
 /**
  * Life events around sync: the app quits in the middle of a sync and starts
  * again, logging out with changes not synced yet (16as), the same account
- * on two computers, and a local-only copy (an exported .smz) opened on a
+ * on two computers (also a new micrograph's image: its file refs once
+ * counted as the other computer's own, found on prod 2026-10-05), and a
+ * local-only copy (an exported .smz) opened on a
  * computer while the project is on StraboSpot (linking, 16an, 16am).
  */
 
 import { test, expect } from '../lib/test';
 import { ACCOUNTS, type Account, type Copy } from '../lib/copy';
+import { writeImage } from '../lib/fixtures';
 import {
   share, waitSettled, spotField, editSpot, addSpot, setOffline, setMode, openSmz, turnOnSync, downloadRemote, syncChip,
   exportSmz, clickAccount, logoutDialog, waitLoggedOut, answerAlsoOnStraboSpot, waitSynced, openActivity, activityLine,
+  addReferenceMicrograph, micrograph, waitImageArrived, viewMicrograph, holdFileRefs, releaseFileRefs,
 } from '../lib/actions';
 import { changeCount, serverField } from '../lib/server';
 
@@ -170,6 +174,29 @@ test('the same account on two computers: changes go both ways, and Activity coun
   const panel = await openActivity(ana);
   await expect(activityLine(ana, "You changed 2 spots on micrograph 'Overview'")).toBeVisible({ timeout: 30_000 });
   await expect(panel.getByText(/^Ana Ruiz /)).toHaveCount(0);
+});
+
+test("the same account on two computers: a new micrograph's image reaches the other computer", async ({ launch, project, runDir }) => {
+  const p = await project('E2E Two Computers Image');
+  const img = await writeImage(`${runDir}/images/two-computers.jpg`);
+  const ana = await launch('Ana', ACCOUNTS.ana);
+  const laptop = await launch('Ana laptop', ACCOUNTS.ana);
+  await openSmz(ana, p.smzPath, p.id);
+  await turnOnSync(ana);
+  await waitSettled(ana);
+  await downloadRemote(laptop, p.name, p.id);
+
+  // The micrograph arrives in one push, its image in file refs after the
+  // upload; held here so the desktop pulls the micrograph first, as on prod
+  await holdFileRefs(laptop);
+  const id = await addReferenceMicrograph(laptop, 'TX-01', img, 'From the laptop');
+  await expect.poll(async () => (await micrograph(ana, id))?.name ?? null, { timeout: 60_000 }).toBe('From the laptop');
+  await waitSettled(ana);
+  await releaseFileRefs(laptop);
+  await waitSettled(laptop, 120_000);
+  await waitImageArrived(ana, id);
+  await ana.caption("opens the laptop's new micrograph");
+  await viewMicrograph(ana, id);
 });
 
 test('an exported copy opened on another computer links to StraboSpot at once when nothing differs', async ({ launch, project, runDir }) => {
