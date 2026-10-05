@@ -129,6 +129,8 @@ interface SyncServerProject {
   syncState: string;
   updatedAt: string | null;
   owner: { pkey: number; name?: string } | null;
+  /** Active members, me included (missing from an older server) */
+  members?: number;
 }
 
 type SyncPreflightResult =

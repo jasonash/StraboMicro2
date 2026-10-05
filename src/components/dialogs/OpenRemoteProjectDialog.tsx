@@ -30,7 +30,7 @@ import {
   Typography,
 } from '@mui/material';
 import { getRestServerUrl } from './PreferencesDialog';
-import { formatSyncDate } from '@/utils/formatSyncDate';
+import { remoteRowText } from '@/utils/remoteProjectRow';
 import { openRemoteHere, downloadRemote, type RemoteProject } from '@/services/remoteProjects';
 import { InvitationList } from './InvitationList';
 import { useInvitationsStore } from '@/store/useInvitationsStore';
@@ -150,11 +150,7 @@ export function OpenRemoteProjectDialog({ open, onClose, onOpenProject }: OpenRe
                   <ListItemText
                     primary={p.name || 'Untitled Project'}
                     secondary={
-                      busy?.pid === p.pid ? busy.status
-                        : `${p.updatedAt ? `Changed ${formatSyncDate(p.updatedAt)}` : 'On StraboSpot'}` +
-                          (p.here === 'synced' ? ' · synced copy on this computer'
-                            : p.here === 'local' ? ' · a copy on this computer (it will be connected)' : '') +
-                          (p.role !== 'owner' && p.owner?.name ? ` · ${p.owner.name}'s project` : '')
+                      busy?.pid === p.pid ? busy.status : remoteRowText(p, projects)
                     }
                     sx={{ pr: 10 }}
                   />

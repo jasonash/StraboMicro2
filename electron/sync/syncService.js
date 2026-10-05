@@ -431,6 +431,7 @@ function serverRow(r) {
   return {
     pid: r.pid, straboId: r.straboId, name: r.name, role: r.role, syncFormat: r.syncFormat,
     syncState: r.syncState, updatedAt: r.updatedAt || null, owner: r.owner || null,
+    ...(Number.isInteger(r.members) ? { members: r.members } : {}),
   };
 }
 

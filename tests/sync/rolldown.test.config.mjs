@@ -1,4 +1,4 @@
-// Bundles the TypeScript sync tests for Node: npm run test:undo-history, test:geometry-preview, test:composite-refresh, test:sync-chip, test:member-cleanup, test:permissions, test:activity-feed, test:parked-review, test:presence
+// Bundles the TypeScript sync tests for Node: npm run test:undo-history, test:geometry-preview, test:composite-refresh, test:sync-chip, test:member-cleanup, test:permissions, test:activity-feed, test:parked-review, test:presence, test:remote-rows
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -11,4 +11,4 @@ const bundle = (name) => ({
   output: { file: path.join(root, `node_modules/.cache/sync-tests/${name}.test.mjs`), format: 'esm' },
 });
 
-export default [bundle('undoHistory'), bundle('geometryPreview'), bundle('compositeRefresh'), bundle('syncChipState'), bundle('memberCleanup'), bundle('permissions'), bundle('activityFeed'), bundle('parkedReview'), bundle('presence')];
+export default [bundle('undoHistory'), bundle('geometryPreview'), bundle('compositeRefresh'), bundle('syncChipState'), bundle('memberCleanup'), bundle('permissions'), bundle('activityFeed'), bundle('parkedReview'), bundle('presence'), bundle('remoteProjectRow')];
