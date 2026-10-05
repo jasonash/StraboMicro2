@@ -148,5 +148,74 @@ check('history page url: none without a server or project number',
   historyPageUrl('https://strabospot.org', '') === null && historyPageUrl('https://strabospot.org', 'abc') === null);
 check('history page url: a project number kept as text', historyPageUrl('https://strabospot.org', '812') === 'https://strabospot.org/micro_history?project_id=812');
 
+// The project's first upload (found in the gap 4 test, 2026-10-05: 40 lines for one upload)
+const up = (over: Partial<SyncHistoryRow> & { at?: string }) => row({ user: YOU, ...over });
+const firstUpload = [
+  // newest first: files of the new micrographs, then the creations, oldest the project
+  up({ type: 'micrograph', id: 'M2', op: 'update', changedPaths: ['refs.image', 'refs.thumbnail'], parentType: 'sample', parentId: 'SA', at: min(30) }),
+  up({ type: 'micrograph', id: 'M1', op: 'update', changedPaths: ['refs.image'], parentType: 'sample', parentId: 'SA', at: min(31) }),
+  up({ type: 'spot', id: 'S1', parentType: 'micrograph', parentId: 'M1', at: min(32) }),
+  up({ type: 'micrograph', id: 'M2', parentType: 'sample', parentId: 'SA', at: min(32) }),
+  up({ type: 'micrograph', id: 'M1', parentType: 'sample', parentId: 'SA', at: min(32) }),
+  up({ type: 'sample', id: 'SA', parentType: 'dataset', parentId: 'D1', at: min(32) }),
+  up({ type: 'dataset', id: 'D1', parentType: 'project', parentId: 'P', at: min(32) }),
+  up({ type: 'project', id: 'P', parentType: null, parentId: null, at: min(32) }),
+];
+g = groupActivity(firstUpload, look);
+check('first upload: one line', g.length === 1 && lineText(g[0]) === 'You put the project on StraboSpot (1 dataset, 2 micrographs, 1 sample, 1 spot)',
+  g.map(lineText));
+check('first upload: every change kept, newest seq is the key', g[0].seqs.length === 8 && g[0].key === String(g[0].seqs[0]) &&
+  g[0].seqs[0] === firstUpload[0].seq, g[0].seqs);
+check('first upload: selects nothing', g[0].target === null);
+
+g = groupActivity([
+  up({ id: 'S9', op: 'update', changedPaths: ['notes'], at: min(1) }),
+  up({ id: 'S8', at: min(2) }),
+  ...firstUpload,
+], look);
+check('later changes stay their own lines (an edit, a new spot 30 min later)', g.length === 3 &&
+  lineText(g[0]).startsWith('You changed Notes') && lineText(g[1]).startsWith('You added') && lineText(g[2]).startsWith('You put the project'),
+  g.map(lineText));
+
+g = groupActivity([
+  up({ id: 'S8', at: min(30) }),
+  up({ type: 'spot', id: 'S7', op: 'update', changedPaths: ['name'], at: min(31) }),
+  ...firstUpload.slice(2),
+], look);
+check('the upload ends at the first change of another kind', g.length === 3 && lineText(g[2]) === 'You put the project on StraboSpot (1 dataset, 2 micrographs, 1 sample, 1 spot)',
+  g.map(lineText));
+
+g = groupActivity([row({ type: 'spot', id: 'S9', at: min(31) }), ...firstUpload.slice(2)], look);
+check("someone else's change right after is not part of my upload", g.length === 2 && lineText(g[0]).startsWith('Maya Chen added'),
+  g.map(lineText));
+
+g = groupActivity([up({ type: 'spot', id: 'S9', parentType: 'micrograph', parentId: 'M1', at: min(30) }), ...firstUpload.slice(2)].map((r, i) => i === 0 ? r : { ...r, at: min(32) }), look);
+check('a spot added two minutes after the upload: its own line', g.length === 2 && lineText(g[0]).startsWith('You added an unnamed spot'), g.map(lineText));
+g = groupActivity([up({ type: 'dataset', id: 'D2', parentType: 'project', parentId: 'P', at: min(0) }), ...firstUpload.slice(2)].map((r, i) => i === 0 ? r : { ...r, at: min(40) }), look);
+check('more than 10 minutes after the upload: its own line', g.length === 2 && lineText(g[0]).startsWith('You added an unnamed dataset'), g.map(lineText));
+
+// A new micrograph's image is part of adding it
+g = groupActivity([
+  row({ type: 'micrograph', id: 'M2', op: 'update', changedPaths: ['refs.image', 'refs.thumbnail'], parentType: 'sample', parentId: 'SA', at: min(0) }),
+  row({ type: 'micrograph', id: 'M2', name: 'TS-12 xpl', parentType: 'sample', parentId: 'SA', at: min(1) }),
+], look);
+check("a new micrograph's files fold into 'added'", g.length === 1 && lineText(g[0]) === "Maya Chen added micrograph 'TS-12 xpl' to sample 'Basalt'" &&
+  g[0].seqs.length === 2, g.map(lineText));
+g = groupActivity([
+  row({ type: 'micrograph', id: 'M2', op: 'update', changedPaths: ['refs.image'], parentType: 'sample', parentId: 'SA', at: min(0) }),
+  row({ type: 'micrograph', id: 'M2', name: 'TS-12 xpl', parentType: 'sample', parentId: 'SA', at: min(15) }),
+], look);
+check('an image replaced later stays a change', g.length === 2 && lineText(g[0]).startsWith('Maya Chen changed Image'), g.map(lineText));
+g = groupActivity([
+  row({ type: 'micrograph', id: 'M2', op: 'update', changedPaths: ['refs.image', 'name'], parentType: 'sample', parentId: 'SA', at: min(0) }),
+  row({ type: 'micrograph', id: 'M2', name: 'TS-12 xpl', parentType: 'sample', parentId: 'SA', at: min(1) }),
+], look);
+check('files plus a field change stay a change', g.length === 2, g.map(lineText));
+g = groupActivity([
+  up({ type: 'micrograph', id: 'M2', op: 'update', changedPaths: ['refs.image'], parentType: 'sample', parentId: 'SA', at: min(0) }),
+  row({ type: 'micrograph', id: 'M2', name: 'TS-12 xpl', parentType: 'sample', parentId: 'SA', at: min(1) }),
+], look);
+check("my files on Maya's new micrograph stay my change", g.length === 2 && g[0].you, g.map(lineText));
+
 console.log(failures ? `\n${failures} FAILED (${passes} passed)` : `\nALL PASSED (${passes} checks)`);
 process.exit(failures ? 1 : 0);

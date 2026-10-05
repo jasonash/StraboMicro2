@@ -5,6 +5,14 @@
  *
  * - A cascaded delete or restore folds into its topmost item: "deleted
  *   micrograph 'A' (40 spots)".
+ * - A change of files only (refs.*) folds into the same person's creation
+ *   of that item, up to 10 minutes before it: a new micrograph's image is
+ *   part of "added", not a separate "changed".
+ * - The project's first upload is one line: its creation and the creations
+ *   after it by the same person, each at most a minute after the one before
+ *   (the app sends a big upload as back-to-back pushes of up to 500
+ *   changes, its files after them), up to the first change of another kind:
+ *   "put the project on StraboSpot (40 micrographs, 20 spots)".
  * - A burst is consecutive changes by the same person, of the same kind,
  *   on the same type under the same parent, the oldest at most 10 minutes
  *   before the newest; changes not in my copy yet never join changes that are.
@@ -15,6 +23,8 @@ import { containsLabel, fieldLabel, typeLabel, typePlural } from './syncDecision
 
 /** Changes this far apart (or closer) form one burst */
 export const BURST_MS = 10 * 60_000;
+/** The pushes of one first upload are at most this far apart */
+export const UPLOAD_GAP_MS = 60_000;
 
 export interface ActivityGroup {
   /** The newest change's seq */
@@ -50,7 +60,15 @@ interface Item {
   row: SyncHistoryRow;
   /** Folded cascade: type => count beneath */
   contains: Record<string, number>;
+  /** Every row the item stands for, newest first */
+  seqs: number[];
+  /** The project's first upload: what it added, type => count */
+  upload?: Record<string, number>;
+  /** The newest row it stands for, when newer than row (folded files) */
+  latest?: SyncHistoryRow;
 }
+
+const newest = (it: Item) => it.latest ?? it.row;
 
 const key = (type: string | null, id: string | null) => `${type ?? ''}:${id ?? ''}`;
 
@@ -76,11 +94,59 @@ function foldCascades(rows: SyncHistoryRow[]): Item[] {
     }
     if (root === r) continue;
     folded.add(r);
-    if (!items.has(root)) items.set(root, { row: root, contains: {} });
+    if (!items.has(root)) items.set(root, { row: root, contains: {}, seqs: [] });
     const c = items.get(root)!.contains;
     c[r.type] = (c[r.type] ?? 0) + 1;
   }
-  return rows.filter((r) => !folded.has(r)).map((r) => items.get(r) ?? { row: r, contains: {} });
+  return rows.filter((r) => !folded.has(r)).map((r) => {
+    const it = items.get(r) ?? { row: r, contains: {}, seqs: [] };
+    return { ...it, seqs: [r.seq] };
+  });
+}
+
+const refsOnly = (r: SyncHistoryRow) =>
+  r.op === 'update' && !r.movedFrom && (r.changedPaths ?? []).length > 0 && (r.changedPaths ?? []).every((p) => p.startsWith('refs.'));
+
+/** Same person, same side of "in my copy", so the two may share a line */
+const sameAuthor = (a: SyncHistoryRow, b: SyncHistoryRow) =>
+  a.user.pkey === b.user.pkey && (a.onBehalfOf?.pkey ?? null) === (b.onBehalfOf?.pkey ?? null) && a.pending === b.pending;
+
+/** Files of a new item join its creation; the project's first upload becomes one item (items newest first). */
+function foldUploads(items: Item[]): Item[] {
+  const creates = new Map<string, Item>();
+  for (const it of items) if (it.row.op === 'create') creates.set(key(it.row.type, it.row.id), it);
+  const kept: Item[] = [];
+  for (const it of items) {
+    const c = refsOnly(it.row) ? creates.get(key(it.row.type, it.row.id)) : undefined;
+    if (c && sameAuthor(c.row, it.row) && Date.parse(it.row.at) - Date.parse(c.row.at) <= BURST_MS && Date.parse(it.row.at) >= Date.parse(c.row.at)) {
+      c.seqs.push(...it.seqs);
+      if (it.row.seq > newest(c).seq) c.latest = it.row;
+      continue;
+    }
+    kept.push(it);
+  }
+
+  const start = kept.findIndex((it) => it.row.op === 'create' && it.row.type === 'project');
+  if (start < 0) return kept;
+  let end = start; // newest item of the upload
+  while (end > 0) {
+    const next = kept[end - 1];
+    const prev = kept[end];
+    if (next.row.op !== 'create' || !sameAuthor(next.row, prev.row) ||
+      Date.parse(next.row.at) - Date.parse(prev.row.at) > UPLOAD_GAP_MS) break;
+    end--;
+  }
+  const run = kept.slice(end, start + 1);
+  const added: Record<string, number> = {};
+  for (const it of run) if (it.row.type !== 'project') added[it.row.type] = (added[it.row.type] ?? 0) + 1;
+  const upload: Item = {
+    row: kept[end].row,
+    latest: run.map(newest).reduce((a, b) => (b.seq > a.seq ? b : a)),
+    contains: {},
+    seqs: run.flatMap((it) => it.seqs).sort((a, b) => b - a),
+    upload: added,
+  };
+  return [...kept.slice(0, end), upload, ...kept.slice(start + 1)];
 }
 
 /** The kind of change, for grouping and wording */
@@ -90,6 +156,7 @@ function kindOf(r: SyncHistoryRow): string {
 
 function burstKey(it: Item): string {
   const r = it.row;
+  if (it.upload) return `upload|${newest(it).seq}`;
   return [r.user.pkey, r.onBehalfOf?.pkey ?? '', kindOf(r), r.type, key(r.parentType, r.parentId), r.pending ? 'p' : ''].join('|');
 }
 
@@ -116,6 +183,7 @@ function sumContains(items: Item[]): Record<string, number> {
 }
 
 function describe(items: Item[], look: ActivityLookup): { text: string; target: ActivityGroup['target'] } {
+  if (items[0].upload) return { text: `put the project on StraboSpot${containsLabel(items[0].upload)}`, target: null };
   const first = items[0].row;
   const ids = [...new Set(items.map((it) => it.row.id))];
   const n = ids.length;
@@ -164,12 +232,12 @@ function describe(items: Item[], look: ActivityLookup): { text: string; target: 
 
 /** Group a page of brief history rows (newest first) into the panel's lines. */
 export function groupActivity(rows: SyncHistoryRow[], look: ActivityLookup): ActivityGroup[] {
-  const items = foldCascades(rows);
+  const items = foldUploads(foldCascades(rows));
   const bursts: Item[][] = [];
   for (const it of items) {
     const cur = bursts[bursts.length - 1];
     if (cur && burstKey(cur[0]) === burstKey(it) &&
-      Date.parse(cur[0].row.at) - Date.parse(it.row.at) <= BURST_MS) {
+      Date.parse(newest(cur[0]).at) - Date.parse(newest(it).at) <= BURST_MS) {
       cur.push(it);
     } else {
       bursts.push([it]);
@@ -177,20 +245,21 @@ export function groupActivity(rows: SyncHistoryRow[], look: ActivityLookup): Act
   }
   return bursts.map((b) => {
     const r = b[0].row;
+    const last = newest(b[0]);
     const { text, target } = describe(b, look);
     return {
-      key: String(r.seq),
+      key: String(last.seq),
       user: r.user,
       you: r.user.pkey === look.me,
       onBehalfOf: r.onBehalfOf,
       text,
-      at: r.at,
+      at: last.at,
       pending: r.pending,
       target,
       deleted: r.op === 'delete'
         ? b.filter((it) => !look.exists(it.row.type, it.row.id)).map((it) => ({ type: it.row.type, id: it.row.id, name: it.row.name }))
         : [],
-      seqs: b.flatMap((it) => [it.row.seq]),
+      seqs: b.flatMap((it) => it.seqs),
     };
   });
 }
