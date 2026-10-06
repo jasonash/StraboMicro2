@@ -183,22 +183,6 @@ function MicrographThumbnail({
     );
   }
 
-  if (!thumbnailDataUrl) {
-    // Fallback to icon if no thumbnail exists
-    return (
-      <Avatar
-        variant="rounded"
-        sx={{
-          width,
-          height,
-          bgcolor: 'action.hover',
-        }}
-      >
-        <ImageIcon fontSize="small" />
-      </Avatar>
-    );
-  }
-
   // Build tooltip message for incomplete setup
   const tooltipMessage = needsSetup
     ? [
@@ -208,7 +192,49 @@ function MicrographThumbnail({
       ].filter(Boolean).join(' • ')
     : '';
 
-  const thumbnail = (
+  // Shown with or without a thumbnail, so a micrograph that needs setup can always be found
+  const setupBadge = needsSetup && (
+    <Tooltip title={tooltipMessage} placement="top" arrow>
+      <Box
+        sx={{
+          position: 'absolute',
+          top: 6,
+          right: 6,
+          backgroundColor: 'warning.main',
+          borderRadius: '50%',
+          width: 26,
+          height: 26,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          boxShadow: 2,
+        }}
+      >
+        <WarningIcon sx={{ fontSize: 18, color: 'warning.contrastText' }} />
+      </Box>
+    </Tooltip>
+  );
+
+  if (!thumbnailDataUrl) {
+    // Fallback to icon if no thumbnail exists
+    return (
+      <Box sx={{ position: 'relative', width, height }}>
+        <Avatar
+          variant="rounded"
+          sx={{
+            width: '100%',
+            height: '100%',
+            bgcolor: 'action.hover',
+          }}
+        >
+          <ImageIcon fontSize="small" />
+        </Avatar>
+        {setupBadge}
+      </Box>
+    );
+  }
+
+  return (
     <Box sx={{ position: 'relative', width: '100%', height: '100%' }}>
       <Avatar
         variant="rounded"
@@ -220,31 +246,9 @@ function MicrographThumbnail({
           objectFit: 'cover',
         }}
       />
-      {needsSetup && (
-        <Tooltip title={tooltipMessage} placement="top" arrow>
-          <Box
-            sx={{
-              position: 'absolute',
-              top: 6,
-              right: 6,
-              backgroundColor: 'warning.main',
-              borderRadius: '50%',
-              width: 26,
-              height: 26,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              boxShadow: 2,
-            }}
-          >
-            <WarningIcon sx={{ fontSize: 18, color: 'warning.contrastText' }} />
-          </Box>
-        </Tooltip>
-      )}
+      {setupBadge}
     </Box>
   );
-
-  return thumbnail;
 }
 
 /**
