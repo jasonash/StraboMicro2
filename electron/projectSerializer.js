@@ -224,12 +224,12 @@ async function saveProjectJson(project, projectId) {
     // Serialize project to legacy format
     const legacyJson = serializeToLegacyFormat(project);
 
-    // Write to disk with pretty printing
-    await fs.promises.writeFile(
-      projectJsonPath,
-      JSON.stringify(legacyJson, null, 2),
-      'utf8'
-    );
+    // Write to disk with pretty printing. Atomic (temp file + rename), so a
+    // crash mid-save leaves the previous project.json intact. Required here,
+    // not at the top: the server PDF service vendors this file with shims
+    // for its top-level requires only, and never saves.
+    const { writeFileAtomic } = require('./atomicFile');
+    await writeFileAtomic(projectJsonPath, JSON.stringify(legacyJson, null, 2), 'utf8');
 
     log.info(`[ProjectSerializer] Successfully saved project.json to: ${projectJsonPath}`);
     return projectJsonPath;

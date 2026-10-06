@@ -34,6 +34,7 @@ import { findMicrographById, findSpotById } from '@/store/helpers';
 import { AssociatedFileData } from './AssociatedFileAddForm';
 import { AssociatedFileListItem } from './AssociatedFileListItem';
 import { EditAssociatedFileDialog } from './EditAssociatedFileDialog';
+import { deepEqual } from '@/utils/deepEqual';
 
 interface AssociatedFilesInfoDialogProps {
   isOpen: boolean;
@@ -101,22 +102,6 @@ export function AssociatedFilesInfoDialog({
     onClose();
   };
 
-  // Handle file deletion from filesystem
-  const handleFileDelete = async (file: AssociatedFileData) => {
-    if (!project?.id) return;
-
-    try {
-      // Delete file from associatedFiles folder
-      if (window.api?.deleteFromAssociatedFiles) {
-        await window.api.deleteFromAssociatedFiles(project.id, file.fileName);
-        console.log(`File deleted from associatedFiles: ${file.fileName}`);
-      }
-    } catch (error) {
-      console.error('Error deleting file:', error);
-      // Don't block the UI deletion even if filesystem deletion fails
-    }
-  };
-
   // Handle opening edit dialog
   const handleEditFile = (file: AssociatedFileData, index: number) => {
     setEditingFile(file);
@@ -173,6 +158,7 @@ export function AssociatedFilesInfoDialog({
     setIsAdding(true);
     const newFiles: AssociatedFileData[] = [];
     const duplicateFiles: string[] = [];
+    const renamedFiles: string[] = [];
     const otherErrors: string[] = [];
 
     for (const filePath of selectedFilePaths) {
@@ -180,14 +166,28 @@ export function AssociatedFilesInfoDialog({
       const fileName = filePath.split(/[/\\]/).pop() || filePath;
 
       try {
-        // Copy file to project's associatedFiles folder
-        if (window.api?.copyToAssociatedFiles) {
-          await window.api.copyToAssociatedFiles(filePath, project.id, fileName);
-          console.log(`File copied to associatedFiles: ${fileName}`);
+        if (!window.api?.copyToAssociatedFiles) {
+          throw new Error('Associated files API not available');
+        }
+
+        // Copy file to project's associatedFiles folder. The stored name can
+        // differ from fileName when a different file already uses that name.
+        const result = await window.api.copyToAssociatedFiles(filePath, project.id, fileName);
+        const storedName = result.fileName;
+        console.log(`File copied to associatedFiles: ${storedName}`);
+
+        // Same file already attached to this micrograph or spot
+        if ([...files, ...newFiles].some((f) => f.fileName === storedName)) {
+          duplicateFiles.push(storedName);
+          continue;
+        }
+
+        if (result.renamed) {
+          renamedFiles.push(`${fileName} \u2192 ${storedName}`);
         }
 
         const newFile: AssociatedFileData = {
-          fileName: fileName,
+          fileName: storedName,
           originalPath: filePath,
           fileType: newFileType,
           otherType: newFileType === 'Other' ? newOtherType : '',
@@ -195,14 +195,9 @@ export function AssociatedFilesInfoDialog({
         };
 
         newFiles.push(newFile);
-      } catch (error: any) {
+      } catch (error: unknown) {
         console.error('Error copying file:', error);
-        // Check if it's a duplicate file error
-        if (error?.message?.includes('already exists')) {
-          duplicateFiles.push(fileName);
-        } else {
-          otherErrors.push(fileName);
-        }
+        otherErrors.push(fileName);
       }
     }
 
@@ -222,6 +217,11 @@ export function AssociatedFilesInfoDialog({
     const messages: string[] = [];
     if (duplicateFiles.length > 0) {
       messages.push(`Already added: ${duplicateFiles.join(', ')}`);
+    }
+    if (renamedFiles.length > 0) {
+      messages.push(
+        `A different file with the same name is already in this project, so these were renamed:\n${renamedFiles.join('\n')}`
+      );
     }
     if (otherErrors.length > 0) {
       messages.push(`Failed to add: ${otherErrors.join(', ')}`);
@@ -244,7 +244,7 @@ export function AssociatedFilesInfoDialog({
   const hasChanges = (() => {
     if (files.length !== initialFiles.length) return true;
     // Deep compare files array
-    return JSON.stringify(files) !== JSON.stringify(initialFiles);
+    return !deepEqual(files, initialFiles);
   })();
 
   const title = micrographId
@@ -327,8 +327,11 @@ export function AssociatedFilesInfoDialog({
                     </IconButton>
                     <IconButton
                       size="small"
-                      onClick={async () => {
-                        await handleFileDelete(file);
+                      onClick={() => {
+                        // Only remove the reference. The file itself stays on disk
+                        // (another micrograph or spot may use it, and Cancel or undo
+                        // may bring this entry back); unreferenced files are removed
+                        // by cleanupOrphanedAssociatedFiles when the project loads.
                         setFiles(files.filter((_, i) => i !== index));
                       }}
                       title="Delete"

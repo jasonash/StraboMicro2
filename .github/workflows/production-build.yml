@@ -273,25 +273,37 @@ jobs:
       - name: Build application
         run: npm run build
 
-      - name: Import Code Signing Certificate
-        shell: powershell
-        env:
-          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
-          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
-        run: |
-          if ($env:WINDOWS_CERTIFICATE) {
-            $certificateBytes = [System.Convert]::FromBase64String($env:WINDOWS_CERTIFICATE)
-            $certPath = "$env:RUNNER_TEMP\certificate.pfx"
-            [System.IO.File]::WriteAllBytes($certPath, $certificateBytes)
-            echo "WIN_CSC_LINK=$certPath" >> $env:GITHUB_ENV
-            echo "WIN_CSC_KEY_PASSWORD=$env:WINDOWS_CERTIFICATE_PASSWORD" >> $env:GITHUB_ENV
-            Write-Host "Certificate imported successfully"
-          } else {
-            Write-Host "No certificate provided, skipping code signing"
-          }
-
       - name: Package for Windows
-        run: npx electron-builder --win --publish never
+        shell: bash
+        env:
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+        run: |
+          # Azure Artifact Signing (Individual identity "Jason Ash"). The signing
+          # options live here, not in package.json, so local package:win stays unsigned.
+          # publisherName also goes into app-update.yml: electron-updater then accepts
+          # only updates signed with this name.
+          if [ -n "$AZURE_CLIENT_SECRET" ]; then
+            echo "Signing with Azure Artifact Signing"
+            npx electron-builder --win --publish never \
+              -c.win.azureSignOptions.publisherName="Jason Ash" \
+              -c.win.azureSignOptions.endpoint="https://eus.codesigning.azure.net/" \
+              -c.win.azureSignOptions.codeSigningAccountName="strabomicro" \
+              -c.win.azureSignOptions.certificateProfileName="strabomicro-public"
+          else
+            echo "::error::Azure signing secrets are missing; a release must be signed"
+            exit 1
+          fi
+
+      - name: Check Windows signature
+        shell: powershell
+        run: |
+          foreach ($exe in Get-ChildItem release\*.exe) {
+            $sig = Get-AuthenticodeSignature $exe.FullName
+            Write-Host "$($exe.Name): $($sig.Status) $($sig.SignerCertificate.Subject)"
+            if ($sig.Status -ne 'Valid') { Write-Host "::error::$($exe.Name) is not validly signed"; exit 1 }
+          }
 
       - name: Upload Windows artifacts
         id: upload_windows_artifacts

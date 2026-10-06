@@ -151,6 +151,7 @@ if (process.platform === 'win32' && app.isPackaged && _sharpDebugLog.length > 0)
 
 const { createZipArchive } = require('./zipArchive');
 const projectFolders = require('./projectFolders');
+const { unlinkWithRetry, copyFileAtomic } = require('./atomicFile');
 const imageConverter = require('./imageConverter');
 const projectSerializer = require('./projectSerializer');
 const scratchSpace = require('./scratchSpace');
@@ -1245,12 +1246,13 @@ function createWindow() {
         },
         {
           label: 'Simulate Deep Link from Clipboard',
-          click: () => {
+          click: async () => {
             // macOS dev builds can't receive real protocol launches (the OS
             // needs an installed bundle), so this feeds a strabomicro:// URI
             // from the clipboard through the same handler for testing.
+            // clipboard.readText() returns a Promise since Electron 44.
             const { clipboard } = require('electron');
-            const text = (clipboard.readText() || '').trim();
+            const text = String((await clipboard.readText()) || '').trim();
             log.info('[Debug] Simulating deep link from clipboard');
             handleDeepLinkUrl(text);
           }
@@ -3029,21 +3031,6 @@ ipcMain.handle('project:copy-to-associated-files', async (event, sourcePath, pro
 });
 
 /**
- * Delete a file from the project's associatedFiles folder
- */
-ipcMain.handle('project:delete-from-associated-files', async (event, projectId, fileName) => {
-  try {
-    log.info(`[IPC] Deleting file from associatedFiles: ${fileName}`);
-    const result = await projectFolders.deleteFromAssociatedFiles(projectId, fileName);
-    log.info('[IPC] Successfully deleted file from associatedFiles');
-    return result;
-  } catch (error) {
-    log.error('[IPC] Error deleting file from associatedFiles:', error);
-    throw error;
-  }
-});
-
-/**
  * Clean up orphaned files in the project's associatedFiles folder
  */
 ipcMain.handle('project:cleanup-orphaned-associated-files', async (event, projectId, projectData) => {
@@ -3283,26 +3270,6 @@ ipcMain.handle('image:rotate', async (event, imagePath, degrees, flip = false) =
     throw error;
   }
 });
-
-/**
- * Unlink with retry on transient Windows file locks.
- * EPERM/EBUSY/EACCES on unlink usually means another process (AV scanner,
- * indexer) or a not-yet-released native handle has the file open. A short
- * backoff is enough to ride out almost all real-world cases.
- */
-async function unlinkWithRetry(filePath, { attempts = 6, baseDelayMs = 50 } = {}) {
-  const fsp = require('fs').promises;
-  for (let i = 0; i < attempts; i++) {
-    try {
-      await fsp.unlink(filePath);
-      return;
-    } catch (err) {
-      const retryable = err && (err.code === 'EPERM' || err.code === 'EBUSY' || err.code === 'EACCES');
-      if (!retryable || i === attempts - 1) throw err;
-      await new Promise(r => setTimeout(r, baseDelayMs * (i + 1)));
-    }
-  }
-}
 
 /**
  * ============================================================================
@@ -4298,10 +4265,16 @@ ipcMain.handle('auth:logout', async (event, restServer) => {
   }
 });
 
+// Waits between refresh attempts when the server cannot be reached or answers 5xx
+const AUTH_REFRESH_RETRY_DELAYS_MS = [1000, 3000];
+
 /**
- * Refresh the access token using the refresh token
+ * Refresh the access token using the refresh token.
+ * Tokens are cleared only when the server rejects the refresh token (401).
+ * Network errors and server errors keep the tokens (the user stays logged in)
+ * and are retried with backoff; if they persist, the result has unreachable: true.
  * @param {string} restServer - REST server URL from preferences
- * @returns {object} { success, error }
+ * @returns {object} { success, sessionExpired?, unreachable?, error? }
  */
 ipcMain.handle('auth:refresh', async (event, restServer) => {
   try {
@@ -4309,35 +4282,80 @@ ipcMain.handle('auth:refresh', async (event, restServer) => {
 
     if (!tokens || !tokens.refreshToken) {
       log.warn('[Auth] No refresh token available');
-      return { success: false, error: 'No refresh token' };
+      return { success: false, sessionExpired: true, error: 'No refresh token' };
     }
 
     const baseUrl = getRestServerFromPreferences(restServer);
-    const response = await fetch(`${baseUrl}/jwtauth/refresh`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ refresh_token: tokens.refreshToken }),
-    });
+    let lastProblem = '';
 
-    if (!response.ok) {
-      log.error('[Auth] Token refresh failed - session expired');
-      // Clear tokens since refresh failed
-      await tokenService.clearTokens();
-      return {
-        success: false,
-        error: 'Session expired. Please log in again.',
-      };
+    for (let attempt = 0; attempt <= AUTH_REFRESH_RETRY_DELAYS_MS.length; attempt++) {
+      if (attempt > 0) {
+        await new Promise((resolve) => setTimeout(resolve, AUTH_REFRESH_RETRY_DELAYS_MS[attempt - 1]));
+      }
+
+      let response;
+      try {
+        response = await fetch(`${baseUrl}/jwtauth/refresh`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ refresh_token: tokens.refreshToken }),
+        });
+      } catch (networkError) {
+        lastProblem = networkError.message || 'network error';
+        log.warn(`[Auth] Token refresh attempt ${attempt + 1} could not reach the server: ${lastProblem}`);
+        continue;
+      }
+
+      if (response.status === 401) {
+        log.warn('[Auth] Refresh token rejected by the server (401), session expired');
+        await tokenService.clearTokens();
+        return {
+          success: false,
+          sessionExpired: true,
+          error: 'Session expired. Please log in again.',
+        };
+      }
+
+      if (response.status >= 500) {
+        lastProblem = `HTTP ${response.status}`;
+        log.warn(`[Auth] Token refresh attempt ${attempt + 1} failed with ${lastProblem}`);
+        continue;
+      }
+
+      if (!response.ok) {
+        // Other 4xx: a request problem, not proof that the session is gone; keep the tokens
+        log.error(`[Auth] Token refresh failed with HTTP ${response.status}; tokens kept`);
+        return { success: false, error: 'Failed to refresh session' };
+      }
+
+      let data;
+      try {
+        data = await response.json();
+      } catch (parseError) {
+        lastProblem = 'unreadable server response';
+        log.warn(`[Auth] Token refresh attempt ${attempt + 1}: ${lastProblem}`);
+        continue;
+      }
+
+      if (!data || !data.access_token) {
+        lastProblem = 'server response without an access token';
+        log.warn(`[Auth] Token refresh attempt ${attempt + 1}: ${lastProblem}`);
+        continue;
+      }
+
+      await tokenService.updateAccessToken(data.access_token, data.expires_in);
+      log.info('[Auth] Token refreshed successfully');
+      return { success: true };
     }
 
-    const data = await response.json();
-
-    // Update the access token
-    await tokenService.updateAccessToken(data.access_token, data.expires_in);
-
-    log.info('[Auth] Token refreshed successfully');
-    return { success: true };
+    log.warn(`[Auth] Token refresh gave up (${lastProblem}); tokens kept`);
+    return {
+      success: false,
+      unreachable: true,
+      error: 'Could not reach the StraboSpot server. Check your connection and try again.',
+    };
   } catch (error) {
     log.error('[Auth] Token refresh error:', error);
     return {
@@ -4423,18 +4441,6 @@ ipcMain.handle('auth:check-storage', async () => {
 // =============================================================================
 // BATCH EXPORT ALL IMAGES TO ZIP
 // =============================================================================
-
-/**
- * Composite JPEG buffer for a micrograph (child overlays + spots + labels).
- * Used by the PDF report; delegates to the shared image export renderer.
- */
-async function generateCompositeBuffer(projectId, micrograph, projectData, folderPaths) {
-  const rendered = await imageExport.renderMicrographExport(projectId, micrograph, projectData, folderPaths, {
-    format: 'jpeg',
-    sketchLayers: 'none',
-  });
-  return rendered.buffer;
-}
 
 /**
  * Collect all micrographs from project (flattened list)
@@ -4954,7 +4960,7 @@ ipcMain.handle('project:export-pdf', async (event, projectId, projectData) => {
       projectData,
       projectId,
       folderPaths,
-      generateCompositeBuffer, // Pass the existing composite generator
+      imageExport.renderPdfImage, // Micrograph images for the PDF (capped at 2000 px)
       progressCallback
     );
 
@@ -5044,7 +5050,7 @@ ipcMain.handle('project:export-smz', async (event, projectId, projectData) => {
         projData,
         projId,
         paths,
-        generateCompositeBuffer, // Use the existing composite generator (with spots) for PDF
+        imageExport.renderPdfImage, // Micrograph images for the PDF (capped at 2000 px)
         progressCb
       );
     };
@@ -5141,7 +5147,7 @@ ipcMain.handle('server:push-project', async (event, projectId, projectData, opti
         projData,
         projId,
         paths,
-        generateCompositeBuffer,
+        imageExport.renderPdfImage,
         progressCb
       );
     };
@@ -5942,7 +5948,10 @@ ipcMain.handle('strabo-tools:process-full-resolution', async (event, params) => 
 ipcMain.handle('strabo-tools:overwrite-image', async (event, { identifier, targetPath }) => {
   try {
     const scratchPath = scratchSpace.getScratchPath(identifier);
-    await fs.promises.copyFile(scratchPath, targetPath);
+    // Replace the image with a new file instead of writing into it: a crash
+    // cannot leave a half-written original, and a hard-linked copy of the
+    // file elsewhere is never changed along with it.
+    await copyFileAtomic(scratchPath, targetPath);
     try { await fs.promises.unlink(scratchPath); } catch { /* ignore cleanup failure */ }
     return { success: true };
   } catch (error) {

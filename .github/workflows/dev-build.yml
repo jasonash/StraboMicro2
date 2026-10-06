@@ -269,25 +269,36 @@ jobs:
       - name: Build application
         run: npm run build
 
-      - name: Import Code Signing Certificate
-        shell: powershell
-        env:
-          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
-          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
-        run: |
-          if ($env:WINDOWS_CERTIFICATE) {
-            $certificateBytes = [System.Convert]::FromBase64String($env:WINDOWS_CERTIFICATE)
-            $certPath = "$env:RUNNER_TEMP\certificate.pfx"
-            [System.IO.File]::WriteAllBytes($certPath, $certificateBytes)
-            echo "WIN_CSC_LINK=$certPath" >> $env:GITHUB_ENV
-            echo "WIN_CSC_KEY_PASSWORD=$env:WINDOWS_CERTIFICATE_PASSWORD" >> $env:GITHUB_ENV
-            Write-Host "Certificate imported successfully"
-          } else {
-            Write-Host "No certificate provided, building unsigned"
-          }
-
       - name: Package for Windows
-        run: npx electron-builder --win --publish never
+        shell: bash
+        env:
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+        run: |
+          # Azure Artifact Signing (Individual identity "Jason Ash"). The signing
+          # options live here, not in package.json, so local package:win stays unsigned.
+          # publisherName also goes into app-update.yml: electron-updater then accepts
+          # only updates signed with this name.
+          if [ -n "$AZURE_CLIENT_SECRET" ]; then
+            echo "Signing with Azure Artifact Signing"
+            npx electron-builder --win --publish never \
+              -c.win.azureSignOptions.publisherName="Jason Ash" \
+              -c.win.azureSignOptions.endpoint="https://eus.codesigning.azure.net/" \
+              -c.win.azureSignOptions.codeSigningAccountName="strabomicro" \
+              -c.win.azureSignOptions.certificateProfileName="strabomicro-public"
+          else
+            echo "No Azure signing secrets, building unsigned"
+            npx electron-builder --win --publish never
+          fi
+
+      - name: Check Windows signature
+        shell: powershell
+        run: |
+          foreach ($exe in Get-ChildItem release\*.exe) {
+            $sig = Get-AuthenticodeSignature $exe.FullName
+            Write-Host "$($exe.Name): $($sig.Status) $($sig.SignerCertificate.Subject)"
+          }
 
       - name: Upload Windows artifacts
         id: upload_windows_artifacts
@@ -450,7 +461,7 @@ jobs:
 
           **macOS**: Download the DMG, open it, and drag StraboMicro2 to your Applications folder. The app is signed and notarized.
 
-          **Windows**: Download and run the installer. You may see a SmartScreen warning since the Windows build is not code-signed. Click "More info" then "Run anyway".
+          **Windows**: Download and run the installer. If you see a SmartScreen warning, click "More info" then "Run anyway".
 
           **Linux (AppImage)**: Download the AppImage, make it executable (\`chmod +x\`), and run with: \`./StraboMicro2-*.AppImage --no-sandbox\`
 

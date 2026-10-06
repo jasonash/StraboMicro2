@@ -296,12 +296,9 @@ interface Window {
     copyToAssociatedFiles: (sourcePath: string, projectId: string, fileName: string) => Promise<{
       destinationPath: string;
       fileName: string;
+      renamed: boolean;
+      reused: boolean;
       success: boolean;
-    }>;
-    deleteFromAssociatedFiles: (projectId: string, fileName: string) => Promise<{
-      success: boolean;
-      fileName: string;
-      message?: string;
     }>;
     cleanupOrphanedAssociatedFiles: (projectId: string, projectData: unknown) => Promise<{
       success: boolean;
@@ -494,6 +491,10 @@ interface Window {
       logout: (restServer: string) => Promise<{ success: boolean }>;
       refresh: (restServer: string) => Promise<{
         success: boolean;
+        /** The server rejected the refresh token (401); tokens were cleared */
+        sessionExpired?: boolean;
+        /** Network error or 5xx after retries; tokens were kept */
+        unreachable?: boolean;
         error?: string;
       }>;
       check: () => Promise<{
