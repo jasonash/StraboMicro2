@@ -214,6 +214,9 @@ class ProjectSync {
 
     this.followLive();
     this.startPresence();
+    this.unsubscribers.push(useAppStore.subscribe((state, prev) => {
+      if (state.project?.id === this.projectId && state.project?.name !== prev.project?.name) this.tellChatWindow();
+    }));
 
     // takeFirstSyncRequest first: it clears the request either way
     if (takeFirstSyncRequest(this.projectId) || useSyncStore.getState().phase === 'uploading') {
@@ -248,6 +251,8 @@ class ProjectSync {
     this.presenceTimer = null;
     usePresenceStore.getState().setPeople([]);
     void window.api?.sync.liveUnfollow(this.projectId);
+    void window.api?.chat.close(this.projectId).catch(() => null);
+    releaseChatWindow();
   }
 
   /**
@@ -313,10 +318,27 @@ class ProjectSync {
     }).catch(() => null);
   }
 
-  /** Follow the project on the live channel (main checks the account and server; logged out = later). */
+  /**
+   * Follow the project on the live channel (main checks the account and
+   * server; logged out = later), then start its chat (17bd) and tell the chat
+   * window which project is open (17be d).
+   */
   private followLive(): void {
     if (this.stopped || !window.api || LEGACY_SYNC) return;
-    void window.api.sync.liveFollow(this.projectId, getRestServerUrl()).catch(() => null);
+    const api = window.api;
+    const server = getRestServerUrl();
+    void api.sync.liveFollow(this.projectId, server).catch(() => null).finally(() => {
+      if (this.stopped) return;
+      void api.chat.open(this.projectId, server).catch(() => null);
+      this.tellChatWindow();
+    });
+  }
+
+  /** The chat window's project and title (again when the project is renamed) */
+  private tellChatWindow(): void {
+    if (this.stopped || !window.api) return;
+    const name = useAppStore.getState().project?.name ?? '';
+    void window.api.chatWindow.setContext({ projectId: this.projectId, name, restServer: getRestServerUrl() }).catch(() => null);
   }
 
   /** An event of the live channel for this project. */
@@ -1010,6 +1032,21 @@ class ProjectSync {
 }
 
 let current: ProjectSync | null = null;
+
+let chatWindowTimer: ReturnType<typeof setTimeout> | null = null;
+
+/**
+ * The open synced project stopped: the chat window goes (17be e) unless
+ * another synced project starts at once (opening another project switches
+ * the window to it, 17be d).
+ */
+function releaseChatWindow(): void {
+  if (chatWindowTimer) clearTimeout(chatWindowTimer);
+  chatWindowTimer = setTimeout(() => {
+    chatWindowTimer = null;
+    if (!current) void window.api?.chatWindow.setContext(null).catch(() => null);
+  }, 1500);
+}
 
 /**
  * Start syncing the open project (it is synced). Returns the stop function.

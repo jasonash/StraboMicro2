@@ -53,6 +53,15 @@ export default defineConfig({
   server: {
     port: 5173,
   },
+  // Two pages: the app, and the chat window (17bd; src/chat/)
+  build: {
+    rollupOptions: {
+      input: {
+        main: path.resolve(__dirname, 'index.html'),
+        chat: path.resolve(__dirname, 'chat.html'),
+      },
+    },
+  },
   assetsInclude: ['**/*.csv'],
   // OpenCV.js and onnxruntime-web need to be excluded from dep optimization
   optimizeDeps: {

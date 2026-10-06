@@ -723,6 +723,41 @@ contextBridge.exposeInMainWorld('api', {
     },
     notifyMenuState: (synced) => ipcRenderer.send('sync:menu-state', synced),
   },
+  // The chat window (17bd, 17be; electron/chatWindow.js). The main window
+  // opens it and says which project is open; the chat window asks the main
+  // window (through main) for the selection and for names of linked items.
+  chatWindow: {
+    open: () => ipcRenderer.invoke('chatwin:open'),
+    setContext: (context) => ipcRenderer.invoke('chatwin:set-context', context),
+    context: () => ipcRenderer.invoke('chatwin:context'),
+    onContext: (callback) => {
+      const handler = (event, context) => callback(context);
+      ipcRenderer.on('chatwin:context', handler);
+      return () => ipcRenderer.removeListener('chatwin:context', handler);
+    },
+    pin: (on) => ipcRenderer.invoke('chatwin:pin', on),
+    pinned: () => ipcRenderer.invoke('chatwin:pinned'),
+    hide: () => ipcRenderer.invoke('chatwin:hide'),
+    selection: () => ipcRenderer.invoke('chatwin:selection'),
+    resolve: (refs) => ipcRenderer.invoke('chatwin:resolve', refs),
+    selectRef: (ref) => ipcRenderer.invoke('chatwin:select-ref', ref),
+    // Main window side: answer the chat window's questions, select a linked item
+    onRequest: (callback) => {
+      const handler = (event, req) => {
+        Promise.resolve()
+          .then(() => callback(req.kind, req.payload))
+          .then((value) => ipcRenderer.send('chatwin:reply', req.id, value === undefined ? null : value))
+          .catch(() => ipcRenderer.send('chatwin:reply', req.id, null));
+      };
+      ipcRenderer.on('chatwin:request', handler);
+      return () => ipcRenderer.removeListener('chatwin:request', handler);
+    },
+    onSelectRef: (callback) => {
+      const handler = (event, ref) => callback(ref);
+      ipcRenderer.on('chat:select-ref', handler);
+      return () => ipcRenderer.removeListener('chat:select-ref', handler);
+    },
+  },
   // Project chat of the open synced project (17bd-17bi); state lives in main (electron/sync/chat.js)
   chat: {
     open: (projectId, restServer) => ipcRenderer.invoke('chat:open', projectId, restServer),

@@ -235,6 +235,8 @@ interface ChatState {
   live: boolean;
   /** Other active members; null until known (no chip at 0, 17be g) */
   others: number | null;
+  /** My role; the owner may delete anyone's message (17bf g) */
+  role: SyncRole | null;
   /** Oldest first; deleted ones stay with deletedAt set */
   messages: ChatMessage[];
   outbox: ChatOutgoing[];
@@ -242,6 +244,20 @@ interface ChatState {
   lastRead: number;
   unread: number;
   hasOlder: boolean;
+}
+
+/** The project the chat window is for (the main window's open synced project) */
+interface ChatWindowContext {
+  projectId: string;
+  name: string;
+  restServer: string;
+}
+
+/** A linked item as the main window's copy has it; name null = not in this copy */
+interface ResolvedChatRef {
+  type: 'spot' | 'micrograph';
+  id: string;
+  name: string | null;
 }
 
 type ChatEvent =
@@ -1251,6 +1267,29 @@ interface Window {
         editing: { type: string; id: string } | null;
       }) => Promise<{ ok: true }>;
       onLive: (callback: (event: SyncLiveEvent) => void) => Unsubscribe;
+    };
+
+    /** The chat window (17bd, 17be; electron/chatWindow.js) */
+    chatWindow: {
+      /** Open it, or bring it to the front (the header chip) */
+      open: () => Promise<{ ok: boolean; created?: boolean; message?: string }>;
+      /** The main window's open synced project; null closes the chat window */
+      setContext: (context: ChatWindowContext | null) => Promise<{ ok: true }>;
+      context: () => Promise<ChatWindowContext | null>;
+      onContext: (callback: (context: ChatWindowContext) => void) => Unsubscribe;
+      pin: (on: boolean) => Promise<{ pinned: boolean }>;
+      pinned: () => Promise<boolean>;
+      hide: () => Promise<{ ok: true }>;
+      /** Chat window: what is selected in the main window (link to selection), null if nothing */
+      selection: () => Promise<ResolvedChatRef | null>;
+      /** Chat window: names of linked items in the main window's copy */
+      resolve: (refs: ChatRef[]) => Promise<ResolvedChatRef[] | null>;
+      /** Chat window: select a linked item in the main window and bring it forward */
+      selectRef: (ref: ChatRef) => Promise<{ ok: boolean }>;
+      /** Main window: answer the chat window's questions */
+      onRequest: (callback: (kind: 'selection' | 'resolve', payload: unknown) => unknown) => Unsubscribe;
+      /** Main window: a link was clicked in the chat window */
+      onSelectRef: (callback: (ref: ChatRef) => void) => Unsubscribe;
     };
 
     /** Chat of the open synced project (17bd-17bi); the main process keeps the state */

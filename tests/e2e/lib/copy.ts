@@ -134,6 +134,11 @@ export class Copy {
   }
 }
 
+/** The app's main page (not the chat window's chat.html, 17bd) */
+function isMainPage(url: string): boolean {
+  return url.startsWith('http://localhost:5173') && !url.includes('chat.html');
+}
+
 /**
  * Launch a copy as an account. Watch mode places the windows side by side:
  * slot 0 left, slot 1 right, slot 2 bottom left, ...
@@ -176,10 +181,10 @@ export async function launchCopy(label: string, account: Account, slot: number, 
   });
 
   const page = await app.waitForEvent('window', {
-    predicate: (p) => p.url().startsWith('http://localhost:5173'),
+    predicate: (p) => isMainPage(p.url()),
     timeout: 60_000,
   }).catch(async () => {
-    const found = app.windows().find((p) => p.url().startsWith('http://localhost:5173'));
+    const found = app.windows().find((p) => isMainPage(p.url()));
     if (found) return found;
     // What there is to go on: the windows that did open, and the end of the main log
     const windows = app.windows().map((p) => p.url()).join(', ') || 'none';
@@ -191,7 +196,7 @@ export async function launchCopy(label: string, account: Account, slot: number, 
   await page.waitForFunction(() => Boolean(window.__e2e), undefined, { timeout: 60_000 });
 
   await app.evaluate(({ BrowserWindow, screen }, [label, slot]) => {
-    const win = BrowserWindow.getAllWindows().find((w) => w.webContents.getURL().startsWith('http://localhost:5173'));
+    const win = BrowserWindow.getAllWindows().find((w) => w.webContents.getURL().startsWith('http://localhost:5173') && !w.webContents.getURL().includes('chat.html'));
     if (!win) return;
     const area = screen.getPrimaryDisplay().workArea;
     const cols = 2;

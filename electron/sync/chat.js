@@ -106,6 +106,8 @@ function createChatService({ clientFor, emit, outboxDir, timing = {}, now = () =
       hasOlder: false,
       /** Other active members (null until known): the chip shows when > 0 */
       others: null,
+      /** My role in the project (the owner may delete anyone's message, 17bf g) */
+      role: null,
       live: false,
       /** loading | ready | offline | removed | error */
       status: 'loading',
@@ -119,6 +121,10 @@ function createChatService({ clientFor, emit, outboxDir, timing = {}, now = () =
       membersTimer: null,
       readTimer: null,
       readPending: 0,
+      /** Accounts seen in the members list (presence of anyone else = check it again) */
+      known: new Set(),
+      /** Unknown accounts already checked for (once each) */
+      asked: new Set(),
       closed: false,
     };
   }
@@ -172,6 +178,7 @@ function createChatService({ clientFor, emit, outboxDir, timing = {}, now = () =
       error: c.error,
       live: c.live,
       others: c.others,
+      role: c.role,
       messages,
       outbox: c.outbox.map(({ clientMsgId, text, refs, createdAt, status, error, retryAt }) => ({ clientMsgId, text, refs, createdAt, status, error: error || null, retryAt: retryAt || null })),
       rev: c.rev,
@@ -234,6 +241,7 @@ function createChatService({ clientFor, emit, outboxDir, timing = {}, now = () =
   }
 
   function took(c, data) {
+    if (typeof data.role === 'string') c.role = data.role;
     if (Number.isInteger(data.lastRead)) c.lastRead = Math.max(c.lastRead, data.lastRead);
     if (Number.isInteger(data.unread)) c.unread = data.unread;
   }
@@ -280,7 +288,9 @@ function createChatService({ clientFor, emit, outboxDir, timing = {}, now = () =
   async function loadMembers(c) {
     const r = await clientFor(c.server).request('GET', `/projects/${c.pid}/members`);
     if (r.status !== 200 || !r.data || !Array.isArray(r.data.members)) return;
-    const others = r.data.members.filter((m) => m && m.state === 'active' && m.user && Number(m.user.pkey) !== c.me).length;
+    const active = r.data.members.filter((m) => m && m.state === 'active' && m.user);
+    c.known = new Set(active.map((m) => Number(m.user.pkey)));
+    const others = active.filter((m) => Number(m.user.pkey) !== c.me).length;
     if (others !== c.others) {
       c.others = others;
       changed(c);
@@ -575,6 +585,14 @@ function createChatService({ clientFor, emit, outboxDir, timing = {}, now = () =
         if (!Number.isInteger(event.rev) || event.rev > c.rev) refresh(c);
       } else if (event.kind === 'chatread') {
         if (Number.isInteger(event.id) && event.id > c.lastRead) refresh(c);
+      } else if (event.kind === 'presence') {
+        // Someone the members list does not have yet (accepted an invitation meanwhile): the chip may show now
+        const strangers = (event.people || []).map((p) => Number(p && p.user))
+          .filter((u) => Number.isInteger(u) && u !== c.me && !c.known.has(u) && !c.asked.has(u));
+        if (strangers.length > 0) {
+          for (const u of strangers) c.asked.add(u);
+          serial(c, () => loadMembers(c)).catch(() => {});
+        }
       } else if (event.kind === 'access') {
         if (event.removed) {
           // Let the server say why (removed, left, deleted) on the next call

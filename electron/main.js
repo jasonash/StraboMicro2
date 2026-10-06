@@ -1486,6 +1486,7 @@ function createWindow() {
       const tokens = loggedIn ? await tokenService.getTokens() : null;
       accounts.setLoggedIn(tokens && tokens.user ? tokens.user : null, restServer);
       syncService.liveLoginChanged(tokens && tokens.user ? tokens.user : null);
+      if (!loggedIn) chatWindow.setContext(null);
     } catch (error) {
       log.warn('[Accounts] Could not read the logged-in account:', error.message);
     }
@@ -1670,6 +1671,8 @@ function createWindow() {
     // Clean up the IPC listener when window is closed
     ipcMain.removeListener('app:close-ready', handleCloseReady);
     mainWindow = null;
+    // A hidden chat window would keep macOS from making a new main window on activate
+    require('./chatWindow').destroy();
   });
 }
 
@@ -4183,6 +4186,11 @@ const tokenService = require('./tokenService');
 syncService.registerSyncIpc(ipcMain, () => mainWindow, { devTools: !app.isPackaged || app.getVersion().includes('-dev.') });
 introQueue.registerIntroIpc(ipcMain, () => mainWindow);
 
+// The chat window (17bd, 17be): chat events go to it as well as the main window
+const chatWindow = require('./chatWindow');
+chatWindow.register(ipcMain, () => mainWindow, app.isPackaged ? `${APP_SCHEME}://${APP_HOST}/chat.html` : 'http://localhost:5173/chat.html');
+syncService.onChatEvent((event) => chatWindow.forward('chat:event', event));
+
 // Helper to get REST server URL from renderer's localStorage
 // We'll pass it from the renderer since preferences are stored there
 function getRestServerFromPreferences(restServer) {
@@ -4267,8 +4275,9 @@ ipcMain.handle('auth:login', async (event, email, password, restServer) => {
  * @returns {object} { success }
  */
 ipcMain.handle('auth:logout', async (event, restServer) => {
-  // The live channel closes at once (17as)
+  // The live channel closes at once (17as), and the chat with it (17be e)
   syncService.liveLoginChanged(null);
+  chatWindow.setContext(null);
   try {
     const tokens = await tokenService.getTokens();
 
