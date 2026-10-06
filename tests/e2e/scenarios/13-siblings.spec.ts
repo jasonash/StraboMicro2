@@ -269,6 +269,12 @@ test('a project linked by the old Link Sibling opens repaired, exports, and stay
   // Only the unlinked XPL still needs a location (it shows in the tree with the warning)
   expect.soft(await refusedOnExport(ana)).toEqual(['Vein XPL Needs location']);
   await expect(treeRow(ana, 'Vein XPL')).toBeVisible();
+  // The fixture has no thumbnails: the badge shows on the placeholder too
+  await expect(treeRow(ana, 'Vein XPL').locator('[data-testid="WarningIcon"]')).toBeVisible();
+  await expect(treeRow(ana, 'Overview (Reference)').locator('[data-testid="WarningIcon"]')).toHaveCount(0);
+  // The fixture has no thumbnails: the badge shows on the placeholder too
+  await expect(treeRow(ana, 'Vein XPL').locator('[data-testid="WarningIcon"]')).toBeVisible();
+  await expect(treeRow(ana, 'Overview (Reference)').locator('[data-testid="WarningIcon"]')).toHaveCount(0);
 
   // Both pairs draw, and toggle to the XPL and back
   for (const id of [p.micrographId, ids.rimPpl]) {
