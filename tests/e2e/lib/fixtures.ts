@@ -57,12 +57,24 @@ export async function writeImage(filePath: string): Promise<string> {
   return filePath;
 }
 
+/**
+ * More for a project: fields set on the overview micrograph, and micrographs
+ * added to its sample (each with an id; each gets an image)
+ */
+export interface ProjectExtras {
+  /** the overview's id, for extras that refer to it */
+  overviewId?: string;
+  overview?: Record<string, unknown>;
+  micrographs?: Array<Record<string, unknown> & { id: string }>;
+}
+
 /** Write a new project .smz into `dir` */
-export async function makeProject(dir: string, name: string, spotNames: string[] = ['Garnet 1', 'Quartz 1']): Promise<FixtureProject> {
+export async function makeProject(dir: string, name: string, spotNames: string[] = ['Garnet 1', 'Quartz 1'],
+  extras: ProjectExtras = {}): Promise<FixtureProject> {
   const id = randomUUID();
   const datasetId = randomUUID();
   const sampleId = randomUUID();
-  const micrographId = randomUUID();
+  const micrographId = extras.overviewId ?? randomUUID();
   const spots = spotNames.map((n) => ({ id: randomUUID(), name: n }));
   const now = new Date().toISOString();
   const project = {
@@ -83,7 +95,8 @@ export async function makeProject(dir: string, name: string, spotNames: string[]
           spots: spots.map((s, i) => spot(s.id, s.name, 300 + i * 500, 400 + i * 200)),
           orientationInfo: { orientationMethod: 'unoriented' }, associatedFiles: [], links: [],
           isMicroVisible: true, isExpanded: false, isSpotExpanded: false, isFlipped: false, tags: [],
-        }],
+          ...extras.overview,
+        }, ...(extras.micrographs ?? [])],
         isExpanded: false, isSpotExpanded: false,
       }],
     }],
@@ -101,6 +114,7 @@ export async function makeProject(dir: string, name: string, spotNames: string[]
     zip.pipe(out);
     zip.append(JSON.stringify(project, null, 2), { name: `${id}/project.json` });
     zip.append(image, { name: `${id}/images/${micrographId}` });
+    for (const m of extras.micrographs ?? []) zip.append(image, { name: `${id}/images/${m.id}` });
     void zip.finalize();
   });
   return { id, name, datasetId, sampleId, micrographId, spots, smzPath };
