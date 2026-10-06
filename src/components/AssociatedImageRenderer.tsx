@@ -43,10 +43,10 @@ interface AssociatedImageRendererProps {
   showOutline?: boolean; // Show red outline around overlay (like legacy app)
 }
 
+// No dataUrl: it lives only in imageObj.src (see TiledViewer's TileInfo)
 interface TileInfo {
   x: number;
   y: number;
-  dataUrl: string;
   imageObj?: HTMLImageElement;
 }
 
@@ -551,7 +551,7 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
               continue;
             }
 
-            newTiles.set(`${x}_${y}`, { x, y, dataUrl, imageObj: img });
+            newTiles.set(`${x}_${y}`, { x, y, imageObj: img });
           }
 
           // Swap to tiled mode AFTER all tiles are loaded (keep current image visible until then)
