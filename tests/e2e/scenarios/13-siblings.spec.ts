@@ -253,7 +253,7 @@ test('a project linked by the old Link Sibling opens repaired, exports, and stay
   fs.copyFileSync(p.smzPath, 'test-results/sibling-broken-project.smz');
   const ana = await launch('Ana', ACCOUNTS.ana, { login: false });
   await openSmz(ana, p.smzPath, p.id);
-  await expandOverview(ana, p);
+  await treeRow(ana, 'Overview (Reference)').locator('button:has([data-testid="ChevronRightIcon"])').first().click();
 
   // Repaired on load, and that is a change to save
   const overview = await pair(ana, p.micrographId);
