@@ -128,6 +128,7 @@ import {
   dropDeadMemberIds,
 } from './helpers';
 import type { TiledViewerRef } from '@/components/TiledViewer';
+import { applySiblingLink, repairSiblingPlacements } from '@/utils/siblingPlacement';
 
 // ============================================================================
 // TYPE DEFINITIONS
@@ -717,14 +718,22 @@ export const useAppStore = create<AppState>()(
 
           // ========== PROJECT ACTIONS ==========
 
-          loadProject: (project, filePath) => {
+          loadProject: (loaded, filePath) => {
+            // PPL/XPL pairs saved before every pairing path placed the XPL where its PPL is
+            const repairedCopy = structuredClone(loaded);
+            const repairedSiblings = repairSiblingPlacements(repairedCopy);
+            const project = repairedSiblings.length > 0 ? repairedCopy : loaded;
+            if (repairedSiblings.length > 0) {
+              console.log(`[Store] Placed ${repairedSiblings.length} XPL sibling(s) with their PPL: ${repairedSiblings.join(', ')}`);
+            }
             const micrographIndex = buildMicrographIndex(project);
             const spotIndex = buildSpotIndex(project);
 
             set({
               project,
               projectFilePath: filePath,
-              isDirty: false,
+              // A repair is a change to save
+              isDirty: repairedSiblings.length > 0,
               activeDatasetId: project.datasets?.[0]?.id || null,
               activeSampleId: null,
               activeMicrographId: null,
@@ -989,49 +998,20 @@ export const useAppStore = create<AppState>()(
             if (!state.project) return state;
 
             const newProject = structuredClone(state.project);
-
-            // First pass: find the primary micrograph and its position data
-            let primaryMicro: MicrographMetadata | null = null;
+            let primary: MicrographMetadata | null = null;
+            let secondary: MicrographMetadata | null = null;
             for (const dataset of newProject.datasets || []) {
               for (const sample of dataset.samples || []) {
                 for (const micro of sample.micrographs || []) {
-                  if (micro.id === primaryId) {
-                    primaryMicro = micro;
-                    break;
-                  }
+                  if (micro.id === primaryId) primary = micro;
+                  else if (micro.id === secondaryId) secondary = micro;
                 }
-                if (primaryMicro) break;
               }
-              if (primaryMicro) break;
             }
+            if (!primary || !secondary) return state;
 
-            // Second pass: update both micrographs with bidirectional link
-            // and copy position from primary to secondary
-            for (const dataset of newProject.datasets || []) {
-              for (const sample of dataset.samples || []) {
-                for (const micro of sample.micrographs || []) {
-                  if (micro.id === primaryId) {
-                    micro.siblingImageId = secondaryId;
-                    micro.isPrimarySibling = true;
-                  } else if (micro.id === secondaryId) {
-                    micro.siblingImageId = primaryId;
-                    micro.isPrimarySibling = false;
-                    // Copy position from primary to secondary (XPL inherits PPL's position)
-                    if (primaryMicro) {
-                      micro.offsetInParent = primaryMicro.offsetInParent
-                        ? { ...primaryMicro.offsetInParent }
-                        : null;
-                      micro.rotation = primaryMicro.rotation;
-                      micro.scaleX = primaryMicro.scaleX;
-                      micro.scaleY = primaryMicro.scaleY;
-                      micro.pointInParent = primaryMicro.pointInParent
-                        ? { ...primaryMicro.pointInParent }
-                        : null;
-                    }
-                  }
-                }
-              }
-            }
+            // The XPL takes the PPL's parent and placement (src/utils/siblingPlacement.ts)
+            applySiblingLink(primary, secondary);
 
             return {
               project: newProject,
