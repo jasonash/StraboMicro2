@@ -723,6 +723,23 @@ contextBridge.exposeInMainWorld('api', {
     },
     notifyMenuState: (synced) => ipcRenderer.send('sync:menu-state', synced),
   },
+  // Project chat of the open synced project (17bd-17bi); state lives in main (electron/sync/chat.js)
+  chat: {
+    open: (projectId, restServer) => ipcRenderer.invoke('chat:open', projectId, restServer),
+    close: (projectId) => ipcRenderer.invoke('chat:close', projectId),
+    state: (projectId) => ipcRenderer.invoke('chat:state', projectId),
+    send: (projectId, text, refs) => ipcRenderer.invoke('chat:send', projectId, text, refs),
+    retry: (projectId, clientMsgId) => ipcRenderer.invoke('chat:retry', projectId, clientMsgId),
+    discard: (projectId, clientMsgId) => ipcRenderer.invoke('chat:discard', projectId, clientMsgId),
+    deleteMessage: (projectId, id) => ipcRenderer.invoke('chat:delete', projectId, id),
+    loadOlder: (projectId) => ipcRenderer.invoke('chat:older', projectId),
+    markRead: (projectId, id) => ipcRenderer.invoke('chat:read', projectId, id),
+    onEvent: (callback) => {
+      const handler = (event, chatEvent) => callback(chatEvent);
+      ipcRenderer.on('chat:event', handler);
+      return () => ipcRenderer.removeListener('chat:event', handler);
+    },
+  },
   onDebugSync: (callback) => {
     const handler = (event, action, arg) => callback(action, arg);
     ipcRenderer.on('debug:sync', handler);

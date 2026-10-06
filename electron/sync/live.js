@@ -17,6 +17,8 @@
  *                              membership changed; the renderer runs its
  *                              normal access check
  *   { kind: 'parked' }         parked pushes changed (the owner counts again)
+ *   { kind: 'chat', rev }      a chat message was sent or deleted (chat.js fetches)
+ *   { kind: 'chatread', id }   I read the chat up to id on another computer
  *   { kind: 'presence', people }   who follows the project (17al-17an)
  * My own presence (setPresence) goes out whenever the project is followed.
  *
@@ -341,6 +343,13 @@ function createLiveChannel({ getToken, clientId, emit, WebSocketImpl = globalThi
         const [projectId, f] = byPid(m.pid);
         if (!f) return;
         emit(projectId, m.t === 'parked' ? { kind: 'parked' } : { kind: 'presence', people: Array.isArray(m.people) ? m.people : [] });
+        return;
+      }
+      case 'chat':
+      case 'chatread': {
+        const [projectId, f] = byPid(m.pid);
+        if (!f) return;
+        emit(projectId, m.t === 'chat' ? { kind: 'chat', rev: Number(m.rev) || 0 } : { kind: 'chatread', id: Number(m.id) || 0 });
         return;
       }
       case 'error':

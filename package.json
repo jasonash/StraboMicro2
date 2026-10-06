@@ -26,6 +26,7 @@
     "test:order": "node tests/sync/convergence/order.js",
     "test:intro-queue": "electron tests/sync/introQueue.electron.test.js",
     "test:live": "electron tests/sync/live.electron.test.js",
+    "test:chat": "electron tests/sync/chat.electron.test.js",
     "test:smz-import": "electron tests/sync/smzImport.electron.test.js",
     "test:undo-patches": "node tests/sync/undoPatches.test.mjs",
     "test:undo-history": "rolldown -c tests/sync/rolldown.test.config.mjs && node node_modules/.cache/sync-tests/undoHistory.test.mjs",

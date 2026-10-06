@@ -191,7 +191,62 @@ type SyncLiveEvent = { projectId: string } & (
   | { kind: 'access'; role?: SyncRole; removed?: true }
   | { kind: 'parked' }
   | { kind: 'presence'; people: SyncLivePerson[] }
+  | { kind: 'chat'; rev: number }
+  | { kind: 'chatread'; id: number }
 );
+
+/** A chat message as the server keeps it (MsChat; 17bd-17bi) */
+interface ChatMessage {
+  id: number;
+  rev: number;
+  clientMsgId: string;
+  author: SyncUser;
+  /** '' when deleted */
+  text: string;
+  refs: ChatRef[];
+  createdAt: string;
+  deletedAt: string | null;
+  deletedBy: SyncUser | null;
+}
+
+/** A link from a message to a spot or micrograph of the project (17bf e) */
+interface ChatRef {
+  type: 'spot' | 'micrograph';
+  id: string;
+}
+
+/** My message not on the server yet: sending, waiting ("Not sent yet") or failed (refused) */
+interface ChatOutgoing {
+  clientMsgId: string;
+  text: string;
+  refs: ChatRef[];
+  createdAt: string;
+  status: 'sending' | 'waiting' | 'failed';
+  error: string | null;
+  retryAt: number | null;
+}
+
+/** The chat of the open synced project, as the main process keeps it (electron/sync/chat.js) */
+interface ChatState {
+  pid: number;
+  me: number;
+  status: 'loading' | 'ready' | 'offline' | 'removed' | 'error';
+  error: string | null;
+  live: boolean;
+  /** Other active members; null until known (no chip at 0, 17be g) */
+  others: number | null;
+  /** Oldest first; deleted ones stay with deletedAt set */
+  messages: ChatMessage[];
+  outbox: ChatOutgoing[];
+  rev: number;
+  lastRead: number;
+  unread: number;
+  hasOlder: boolean;
+}
+
+type ChatEvent =
+  | { projectId: string; type: 'state'; state: ChatState }
+  | { projectId: string; type: 'incoming'; messages: ChatMessage[] };
 
 /** A person as the sync API names them */
 interface SyncUser {
@@ -1196,6 +1251,23 @@ interface Window {
         editing: { type: string; id: string } | null;
       }) => Promise<{ ok: true }>;
       onLive: (callback: (event: SyncLiveEvent) => void) => Unsubscribe;
+    };
+
+    /** Chat of the open synced project (17bd-17bi); the main process keeps the state */
+    chat: {
+      open: (projectId: string, restServer: string) => Promise<
+        | { ok: true; state: ChatState }
+        | { ok: false; kind: SyncFailureKind; message: string }>;
+      close: (projectId: string) => Promise<{ ok: true }>;
+      state: (projectId: string) => Promise<ChatState | null>;
+      send: (projectId: string, text: string, refs?: ChatRef[]) => Promise<
+        { ok: true; clientMsgId: string } | { ok: false; message: string }>;
+      retry: (projectId: string, clientMsgId: string) => Promise<{ ok: boolean }>;
+      discard: (projectId: string, clientMsgId: string) => Promise<{ ok: boolean }>;
+      deleteMessage: (projectId: string, id: number) => Promise<{ ok: true } | { ok: false; message: string }>;
+      loadOlder: (projectId: string) => Promise<{ ok: true; more: boolean } | { ok: false; message: string }>;
+      markRead: (projectId: string, id: number) => Promise<{ ok: true }>;
+      onEvent: (callback: (event: ChatEvent) => void) => Unsubscribe;
     };
 
     // Point Count storage (separate from Spot system)

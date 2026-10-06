@@ -41,11 +41,15 @@
  *   sync:live-follow / sync:live-unfollow   the open synced project on the
  *                  live channel (live.js, 17ah-17ay): notices instead of polls
  *   sync:live-presence  my presence there (here/away, viewing, editing; 17al-17an)
+ *   chat:open / chat:close / chat:state   the open synced project's chat
+ *                  (chat.js, 17bd-17bi); chat:send / chat:retry / chat:discard /
+ *                  chat:delete / chat:older / chat:read
  * Events to the renderer:
  *   sync:progress      { projectId, phase, ... } while pushing
  *   sync:local-change  projectId, after a file-only change (point counts,
  *                      composite thumbnails) the renderer cannot see
  *   sync:live          { projectId, kind, ... } from the live channel (live.js)
+ *   chat:event         { projectId, type: 'state' | 'incoming', ... } (chat.js)
  *
  * A local-only project is recognized by the missing sync/state.json and
  * never loads the sync engine (spec v3 §3.4). Work on one project runs one
@@ -1253,7 +1257,10 @@ function liveChannel() {
         throw new Error(r.error || 'Could not get a login token');
       },
       clientId: () => loadEngine().syncEngine.getClientId(),
-      emit: (projectId, event) => send('sync:live', { projectId, ...event }),
+      emit: (projectId, event) => {
+        send('sync:live', { projectId, ...event });
+        if (chat) chat.onLive(projectId, event);
+      },
     });
   }
   return live;
@@ -1305,9 +1312,57 @@ function liveUnfollow(projectId) {
  * @param {{ pkey: string | number } | null} user - The logged-in account, null = logged out
  */
 function liveLoginChanged(user) {
+  if (chat && !user) chat.closeAll();
   if (!live) return;
   if (user) live.accountChanged(user.pkey);
   else live.loggedOut();
+}
+
+// ---------------------------------------------------------------------------
+// Chat (17bd-17bi)
+// ---------------------------------------------------------------------------
+
+/** @type {null | ReturnType<typeof import('./chat').createChatService>} */
+let chat = null;
+
+/** Where chat events go besides the main window (the chat window, C3) */
+let chatListeners = [];
+
+function chatService() {
+  if (!chat) {
+    const { app } = require('electron');
+    chat = require('./chat').createChatService({
+      clientFor: (server) => makeClient(server),
+      emit: (event) => {
+        send('chat:event', event);
+        for (const fn of chatListeners) fn(event);
+      },
+      outboxDir: path.join(app.getPath('userData'), 'chat-outbox'),
+    });
+  }
+  return chat;
+}
+
+/** Also deliver chat events to fn (another window); returns a remover */
+function onChatEvent(fn) {
+  chatListeners.push(fn);
+  return () => { chatListeners = chatListeners.filter((f) => f !== fn); };
+}
+
+/** Start the chat of the open synced project (after liveFollow, so notices reach it) */
+async function chatOpen(projectId, restServer) {
+  try {
+    const folder = projectFolders.getProjectFolderPath(projectId);
+    const state = isSyncedFolder(folder) ? await loadEngine().sidecar.loadState(folder) : null;
+    if (!state) return { ok: false, kind: 'not_synced', message: 'This project is not synced.' };
+    const problem = await bindingProblem(state.binding, restServer);
+    if (problem) return { ok: false, ...problem };
+    const s = chatService().open(projectId, { server: restServer, pid: Number(state.binding.pid), me: Number(state.binding.pkey) });
+    if (live) chat.onLive(projectId, { kind: 'status', live: live.isLive(projectId) });
+    return { ok: true, state: s };
+  } catch (err) {
+    return failure(err);
+  }
 }
 
 function send(channel, payload) {
@@ -1384,6 +1439,15 @@ function registerSyncIpc(ipcMain, getMainWindow, { devTools = false } = {}) {
   ipcMain.handle('sync:live-follow', (_event, projectId, restServer) => liveFollow(projectId, restServer));
   ipcMain.handle('sync:live-unfollow', (_event, projectId) => liveUnfollow(projectId));
   ipcMain.handle('sync:live-presence', (_event, projectId, presence) => livePresence(projectId, presence));
+  ipcMain.handle('chat:open', (_event, projectId, restServer) => chatOpen(projectId, restServer));
+  ipcMain.handle('chat:close', (_event, projectId) => { if (chat) chat.close(projectId); return { ok: true }; });
+  ipcMain.handle('chat:state', (_event, projectId) => (chat ? chat.state(projectId) : null));
+  ipcMain.handle('chat:send', (_event, projectId, text, refs) => chatService().send(projectId, text, refs));
+  ipcMain.handle('chat:retry', (_event, projectId, clientMsgId) => chatService().retry(projectId, clientMsgId));
+  ipcMain.handle('chat:discard', (_event, projectId, clientMsgId) => chatService().discard(projectId, clientMsgId));
+  ipcMain.handle('chat:delete', (_event, projectId, id) => chatService().deleteMessage(projectId, id));
+  ipcMain.handle('chat:older', (_event, projectId) => chatService().loadOlder(projectId));
+  ipcMain.handle('chat:read', (_event, projectId, id) => { chatService().markRead(projectId, Number(id)); return { ok: true }; });
   if (devTools) {
     ipcMain.handle('sync:test-other', (_event, projectId, restServer, changes) => testOther(projectId, restServer, changes));
     ipcMain.handle('sync:test-compare', (_event, projectId, restServer) => testCompare(projectId, restServer));
@@ -1394,5 +1458,5 @@ module.exports = {
   registerSyncIpc, notifyLocalChange, getStatus, preflight, activity, serverProject, listServerProjects, introCandidates, setPromptAnswer, compare, link, openRemote, turnOn, push, setMode, pull, commitPull, discardPull, download, clone,
   listDecisions, decide, decideCommit, decideDiscard, testOther, testCompare, cleanupReplaced,
   members, changeMembers, invites, answerInvite, permissions, leave, deleteProject, separate, history, restoreDeleted, parked, reviewParked,
-  liveFollow, liveUnfollow, livePresence, liveLoginChanged, sameServer,
+  liveFollow, liveUnfollow, livePresence, liveLoginChanged, sameServer, chatOpen, onChatEvent,
 };
