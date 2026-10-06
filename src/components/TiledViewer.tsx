@@ -69,10 +69,13 @@ export interface TiledViewerRef {
   panToPoint: (x: number, y: number) => void;
 }
 
+// No dataUrl here: the tile's data URL lives only in imageObj.src, which
+// releaseImage drops. Old render scopes kept alive by memoized callbacks
+// still reference their tiles Map, so a copy of the string here was never
+// freed (Sentry ELECTRON-2M, renderer out of memory after ~235 views).
 interface TileInfo {
   x: number;
   y: number;
-  dataUrl: string;
   imageObj?: HTMLImageElement;
 }
 
@@ -91,7 +94,6 @@ type RenderMode = 'thumbnail' | 'tiled';
 
 interface ThumbnailState {
   imageObj: HTMLImageElement;
-  dataUrl: string;
 }
 
 export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
@@ -376,6 +378,9 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
           releaseImage(tileInfo.imageObj);
         }
       }
+      // Empty the old Map too: stale closures can keep it reachable long after
+      // the switch, and every entry holds a decoded tile image
+      tiles.clear();
 
       // Force state clear
       setTiles(new Map());
@@ -676,7 +681,6 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
           if (thumbnailLoaded) {
             setThumbnail({
               imageObj: thumbnailImg,
-              dataUrl: thumbnailDataUrl,
             });
           } else {
             // A broken image must never reach Konva (drawImage throws on it).
@@ -853,7 +857,6 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
               newTiles.set(tileKey, {
                 x,
                 y,
-                dataUrl,
                 imageObj: img,
               });
             }
@@ -1103,7 +1106,6 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
             newTiles.set(tileKey, {
               x,
               y,
-              dataUrl,
               imageObj: img,
             });
           }

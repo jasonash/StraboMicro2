@@ -1,6 +1,6 @@
 {
   "name": "strabomicro2",
-  "version": "2.0.49",
+  "version": "2.0.50",
   "description": "StraboMicro - Geological Microanalysis Application",
   "main": "electron/main.js",
   "scripts": {
@@ -10,6 +10,7 @@
     "dev:electron": "wait-on http://localhost:5173 && electron .",
     "dev:second": "wait-on http://localhost:5173 && STRABO_PROFILE=b electron .",
     "dev:typecheck": "concurrently \"npm run dev:vite\" \"npm run dev:electron\" \"npm run typecheck:watch\"",
+    "test:trace-scale-bar": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/traceScaleBar.test.mts",
     "typecheck": "tsc --noEmit",
     "test:entity-model": "node tests/sync/entityModel.test.mjs",
     "test:sync-engine": "electron tests/sync/syncEngine.electron.test.js",
