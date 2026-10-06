@@ -774,6 +774,9 @@ contextBridge.exposeInMainWorld('api', {
       ipcRenderer.on('chat:event', handler);
       return () => ipcRenderer.removeListener('chat:event', handler);
     },
+    // The "Chat notifications" switch in Preferences (17bh b; electron/chatWindow.js)
+    notifications: () => ipcRenderer.invoke('chat:notifications'),
+    setNotifications: (on) => ipcRenderer.invoke('chat:set-notifications', on),
   },
   onDebugSync: (callback) => {
     const handler = (event, action, arg) => callback(action, arg);

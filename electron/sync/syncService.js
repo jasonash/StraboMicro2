@@ -49,7 +49,7 @@
  *   sync:local-change  projectId, after a file-only change (point counts,
  *                      composite thumbnails) the renderer cannot see
  *   sync:live          { projectId, kind, ... } from the live channel (live.js)
- *   chat:event         { projectId, type: 'state' | 'incoming', ... } (chat.js)
+ *   chat:event         { projectId, type: 'state' | 'incoming' | 'closed', ... } (chat.js)
  *
  * A local-only project is recognized by the missing sync/state.json and
  * never loads the sync engine (spec v3 §3.4). Work on one project runs one

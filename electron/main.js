@@ -4190,6 +4190,13 @@ introQueue.registerIntroIpc(ipcMain, () => mainWindow);
 const chatWindow = require('./chatWindow');
 chatWindow.register(ipcMain, () => mainWindow, app.isPackaged ? `${APP_SCHEME}://${APP_HOST}/chat.html` : 'http://localhost:5173/chat.html');
 syncService.onChatEvent((event) => chatWindow.forward('chat:event', event));
+// OS notifications for new messages and the unread badge (17bh)
+const chatNotifier = require('./chatNotify').attach({
+  getMainWindow: () => mainWindow,
+  chatWindow,
+  enabled: () => chatWindow.notificationsEnabled(),
+});
+syncService.onChatEvent((event) => chatNotifier.handle(event));
 
 // Helper to get REST server URL from renderer's localStorage
 // We'll pass it from the renderer since preferences are stored there

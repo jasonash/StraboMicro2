@@ -129,8 +129,26 @@ export class Copy {
     }, source) as Promise<T>;
   }
 
+  /**
+   * Quit the copy. Now and then a copy with a chat window never exits under
+   * Playwright: as the main window closes, the chat window takes focus and
+   * its focus handler stalls in the inspector Playwright drives the app
+   * through (sampled 2026-10-06; also on C3 code, about 1 run in 6). After
+   * CLOSE_MS the process is killed so the run goes on; the test's own
+   * checks have all passed by then.
+   */
   async close(): Promise<void> {
-    await this.app.close().catch(() => undefined);
+    const CLOSE_MS = 15_000;
+    let timer: NodeJS.Timeout | undefined;
+    const closed = await Promise.race([
+      this.app.close().then(() => true, () => true),
+      new Promise<boolean>((resolve) => { timer = setTimeout(() => resolve(false), CLOSE_MS); }),
+    ]);
+    clearTimeout(timer);
+    if (!closed) {
+      console.warn(`[e2e] ${this.label} did not quit within ${CLOSE_MS / 1000} s; killed`);
+      this.app.process().kill('SIGKILL');
+    }
   }
 }
 

@@ -61,6 +61,9 @@ export function PreferencesDialog({ isOpen, onClose }: PreferencesDialogProps) {
   /** null = never chosen (New Project then asks); saved only when changed here */
   const [syncNewProjects, setSyncNewProjects] = useState<boolean | null>(null);
   const [syncNewProjectsChanged, setSyncNewProjectsChanged] = useState(false);
+  /** "Chat notifications" (17bh b), kept by the main process; null until read */
+  const [chatNotifications, setChatNotifications] = useState<boolean | null>(null);
+  const [chatNotificationsChanged, setChatNotificationsChanged] = useState(false);
 
   // Load saved preferences when dialog opens
   useEffect(() => {
@@ -77,6 +80,9 @@ export function PreferencesDialog({ isOpen, onClose }: PreferencesDialogProps) {
     setError(null);
     setSyncNewProjects(getSyncNewProjectsPreference());
     setSyncNewProjectsChanged(false);
+    setChatNotificationsChanged(false);
+    setChatNotifications(null);
+    void window.api?.chat?.notifications().then(setChatNotifications).catch(() => setChatNotifications(true));
   }, [isOpen]);
 
   const handleRestServerChange = (value: string) => {
@@ -115,6 +121,7 @@ export function PreferencesDialog({ isOpen, onClose }: PreferencesDialogProps) {
     // Save to localStorage
     localStorage.setItem(STORAGE_KEY_REST_SERVER, restServer);
     if (syncNewProjectsChanged && syncNewProjects !== null) setSyncNewProjectsPreference(syncNewProjects);
+    if (chatNotificationsChanged && chatNotifications !== null) await window.api?.chat?.setNotifications(chatNotifications);
     // Main learns the server (which account's copies a project id means, 16d)
     if (serverChanges) window.api?.auth?.notifyStateChanged(false, restServer);
 
@@ -211,6 +218,29 @@ export function PreferencesDialog({ isOpen, onClose }: PreferencesDialogProps) {
               />
               <Typography variant="body2" sx={{ color: 'text.secondary', ml: 4 }}>
                 New Project preselects this choice. Each project's sync can be changed from the sync status in the header.
+              </Typography>
+            </Box>
+
+            {/* Chat Section (17bh b) */}
+            <Box>
+              <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>
+                Chat
+              </Typography>
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={chatNotifications !== false}
+                    disabled={chatNotifications === null}
+                    onChange={(e) => {
+                      setChatNotifications(e.target.checked);
+                      setChatNotificationsChanged(true);
+                    }}
+                  />
+                }
+                label="Chat notifications"
+              />
+              <Typography variant="body2" sx={{ color: 'text.secondary', ml: 4 }}>
+                Show a notification when someone writes in the chat of the open project while StraboMicro is in the background.
               </Typography>
             </Box>
           </Stack>

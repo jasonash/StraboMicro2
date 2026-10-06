@@ -54,13 +54,22 @@ function loadState() {
   }
 }
 
-function saveState() {
-  if (!win || win.isDestroyed()) return;
+/** Save the window's place and pin (when it exists) over what the file holds */
+function saveState(extra = {}) {
+  const next = { ...loadState(), ...extra };
+  if (win && !win.isDestroyed()) Object.assign(next, { bounds: win.getBounds(), pinned });
   try {
-    fs.writeFileSync(stateFile(), JSON.stringify({ bounds: win.getBounds(), pinned }));
+    fs.writeFileSync(stateFile(), JSON.stringify(next));
   } catch (err) {
-    log.warn(`[ChatWindow] Could not save its place: ${err.message}`);
+    log.warn(`[ChatWindow] Could not save its settings: ${err.message}`);
   }
+}
+
+/** The "Chat notifications" switch (Preferences, 17bh b); on unless turned off */
+let notifications = null;
+function notificationsEnabled() {
+  if (notifications === null) notifications = loadState().notifications !== false;
+  return notifications;
 }
 
 /** Saved bounds when they are still on a screen, else beside the main window */
@@ -216,6 +225,13 @@ function register(ipc, mainWindowGetter, url) {
     return { pinned };
   });
   ipc.handle('chatwin:pinned', () => pinned);
+  ipc.handle('chat:notifications', () => notificationsEnabled());
+  ipc.handle('chat:set-notifications', (_e, on) => {
+    notifications = on !== false;
+    saveState({ notifications });
+    log.info(`[ChatWindow] Chat notifications ${notifications ? 'on' : 'off'}`);
+    return notifications;
+  });
   ipc.handle('chatwin:hide', () => {
     if (win && !win.isDestroyed()) win.hide();
     return { ok: true };
@@ -240,4 +256,4 @@ function register(ipc, mainWindowGetter, url) {
   });
 }
 
-module.exports = { register, open, destroy, setContext, forward, isOpen: () => !!(win && !win.isDestroyed() && win.isVisible()), isFocused: () => !!(win && !win.isDestroyed() && win.isFocused()) };
+module.exports = { register, open, destroy, setContext, forward, notificationsEnabled, getContext: () => context, isOpen: () => !!(win && !win.isDestroyed() && win.isVisible()), isFocused: () => !!(win && !win.isDestroyed() && win.isFocused()) };

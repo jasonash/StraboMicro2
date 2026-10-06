@@ -262,7 +262,8 @@ interface ResolvedChatRef {
 
 type ChatEvent =
   | { projectId: string; type: 'state'; state: ChatState }
-  | { projectId: string; type: 'incoming'; messages: ChatMessage[] };
+  | { projectId: string; type: 'incoming'; messages: ChatMessage[] }
+  | { projectId: string; type: 'closed' };
 
 /** A person as the sync API names them */
 interface SyncUser {
@@ -1307,6 +1308,9 @@ interface Window {
       loadOlder: (projectId: string) => Promise<{ ok: true; more: boolean } | { ok: false; message: string }>;
       markRead: (projectId: string, id: number) => Promise<{ ok: true }>;
       onEvent: (callback: (event: ChatEvent) => void) => Unsubscribe;
+      /** The "Chat notifications" switch in Preferences (17bh b) */
+      notifications: () => Promise<boolean>;
+      setNotifications: (on: boolean) => Promise<boolean>;
     };
 
     // Point Count storage (separate from Spot system)

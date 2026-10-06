@@ -19,8 +19,9 @@
  * failed (the server refused it: the user edits or discards it).
  *
  * Events: emit({ projectId, type: 'state', state }) whenever anything
- * changes, and emit({ projectId, type: 'incoming', messages }) for messages
- * from other people that arrived after the first load (notifications, C4).
+ * changes, emit({ projectId, type: 'incoming', messages }) for messages
+ * from other people that arrived after the first load (notifications, C4),
+ * and emit({ projectId, type: 'closed' }) when the chat stops.
  */
 
 const fs = require('fs');
@@ -80,7 +81,7 @@ function cleanRefs(refs) {
 /**
  * @param {{
  *   clientFor: (server: string) => { request: (method: string, path: string, opts?: object) => Promise<{ status: number, data: any }> },
- *   emit: (event: { projectId: string, type: 'state' | 'incoming', state?: object, messages?: object[] }) => void,
+ *   emit: (event: { projectId: string, type: 'state' | 'incoming' | 'closed', state?: object, messages?: object[] }) => void,
  *   outboxDir: string,
  *   timing?: Partial<typeof DEFAULT_TIMING>,
  *   now?: () => number,
@@ -451,6 +452,8 @@ function createChatService({ clientFor, emit, outboxDir, timing = {}, now = () =
       stopTimers(c);
       c.closed = true;
       chats.delete(projectId);
+      // The badge and notifications forget it (chatNotify.js)
+      emit({ projectId, type: 'closed' });
     },
 
     /** Close every chat (logout) */
