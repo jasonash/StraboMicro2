@@ -252,6 +252,11 @@ function attach({ getMainWindow, chatWindow, enabled }) {
         }
       });
       n.on('close', () => live.delete(n));
+      // macOS refuses unsigned apps (npm run dev: UNErrorDomain error 1, "not allowed"); say so in the log
+      n.on('failed', (_e, error) => {
+        live.delete(n);
+        log.warn(`[ChatNotify] The OS did not show the notification for project ${projectId}: ${error}`);
+      });
       n.show();
       log.info(`[ChatNotify] Notification for project ${projectId}: ${title}`);
     },
