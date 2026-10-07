@@ -35,6 +35,8 @@ export interface IncompleteWarning {
   lines: string[];
   /** "and 3 more", or null */
   more: string | null;
+  /** What syncing means for them (singular or plural) */
+  note: string;
 }
 
 /** The turn-on dialog's warning, or null when every micrograph is complete */
@@ -49,5 +51,10 @@ export function incompleteWarning(items: IncompleteItem[]): IncompleteWarning | 
     title: n === 1 ? "1 micrograph isn't finished yet" : `${n} micrographs aren't finished yet`,
     lines: shown.map(({ item, missing }) => `${item.name}: ${missing}`),
     more: n > shown.length ? `and ${n - shown.length} more` : null,
+    note: n === 1
+      ? 'You can start syncing now and finish it later. Until then, collaborators see it marked incomplete, '
+        + 'and if it has no location, the StraboSpot website does not show it on its parent.'
+      : 'You can start syncing now and finish them later. Until then, collaborators see them marked incomplete, '
+        + 'and on the StraboSpot website a micrograph without a location is not shown on its parent.',
   };
 }

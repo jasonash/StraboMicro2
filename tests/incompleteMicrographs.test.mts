@@ -40,6 +40,7 @@ const one = incompleteWarning([item('TS-12', false, true)]);
 check('one: singular title', one?.title === "1 micrograph isn't finished yet", one);
 check('one: line', one?.lines.length === 1 && one.lines[0] === 'TS-12: needs a location', one);
 check('one: no more', one?.more === null, one);
+check('one: singular note', !!one?.note.includes('finish it later') && !one.note.includes(' them '), one);
 
 const many = Array.from({ length: INCOMPLETE_LIST_LIMIT + 3 }, (_, i) => item(`M${i + 1}`, true, false));
 const w = incompleteWarning([item('done', false, false), ...many]);
@@ -47,6 +48,7 @@ check('many: plural title counts only incomplete', w?.title === `${INCOMPLETE_LI
 check('many: lists the limit', w?.lines.length === INCOMPLETE_LIST_LIMIT, w);
 check('many: first listed is the first incomplete', w?.lines[0] === 'M1: needs a scale', w);
 check('many: and N more', w?.more === 'and 3 more', w);
+check('many: plural note', !!w?.note.includes('finish them later'), w);
 
 const exact = incompleteWarning(many.slice(0, INCOMPLETE_LIST_LIMIT));
 check('exactly the limit: no more line', exact?.more === null && exact.lines.length === INCOMPLETE_LIST_LIMIT, exact);

@@ -199,10 +199,7 @@ export function TurnOnSyncDialog({ open, projectId, saveProject, onClose, onStar
                 ))}
                 {incomplete.more && <li>{incomplete.more}</li>}
               </Box>
-              <Box sx={{ mt: 1 }}>
-                You can start syncing now and finish them later. Until then, collaborators see them marked
-                incomplete, and on the StraboSpot website a micrograph without a location is not shown on its parent.
-              </Box>
+              <Box sx={{ mt: 1 }}>{incomplete.note}</Box>
             </Alert>
           )}
           {error && <Alert severity="error">{error}</Alert>}
