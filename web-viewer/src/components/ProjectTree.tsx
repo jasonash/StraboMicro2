@@ -8,6 +8,7 @@ import { Box, Typography, Collapse, IconButton } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import { HttpTileLoader } from '../services/tileLoader';
+import { needsLocation } from '../utils/placement';
 import type { ProjectMetadata, DatasetMetadata, SampleMetadata, MicrographMetadata } from '../types/project-types';
 
 interface ProjectTreeProps {
@@ -158,6 +159,11 @@ function MicrographNode({ micrograph, allMicrographs, depth, activeMicrographId,
             }}>{children.length}</Typography>
           )}
         </Box>
+        {needsLocation(micrograph) && (
+          <Typography variant="caption" sx={{ display: 'block', ml: hasChildren ? '20px' : '16px', color: 'warning.main' }}>
+            Location not set
+          </Typography>
+        )}
 
         {/* Thumbnail */}
         {thumbnailUrl && (
