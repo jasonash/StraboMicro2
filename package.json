@@ -13,6 +13,8 @@
     "test:trace-scale-bar": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/traceScaleBar.test.mts",
     "test:chat-text": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/chatText.test.mts",
     "test:sibling-placement": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/siblingPlacement.test.mts",
+    "test:incomplete-micrographs": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/incompleteMicrographs.test.mts",
+    "test:web-viewer-placement": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/webViewerPlacement.test.mts",
     "typecheck": "tsc --noEmit",
     "test:entity-model": "node tests/sync/entityModel.test.mjs",
     "test:sync-engine": "electron tests/sync/syncEngine.electron.test.js",

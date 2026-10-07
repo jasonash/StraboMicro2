@@ -8,11 +8,17 @@
  * moves, the project reopens) and the first upload shows on the chip.
  * A project the server already has is linked instead (16an): the size line
  * still shows, and Start Syncing compares and links.
+ *
+ * Incomplete micrographs (no scale, no location, instrument details missing)
+ * are listed as a warning but never stop Start Syncing (2026-10-07): live
+ * sync sends half-finished work anyway, so refusing only here would not keep
+ * the server copy complete.
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
+  AlertTitle,
   Box,
   Button,
   CircularProgress,
@@ -28,6 +34,9 @@ import {
 import { useAuthStore, promptLogin } from '@/store/useAuthStore';
 import { getRestServerUrl } from './PreferencesDialog';
 import { formatBytes } from '@/utils/formatBytes';
+import { useAppStore } from '@/store/useAppStore';
+import { findIncompleteMicrographs } from './IncompleteMicrographsDialog';
+import { incompleteWarning } from '@/utils/incompleteMicrographs';
 
 interface TurnOnSyncDialogProps {
   open: boolean;
@@ -57,6 +66,11 @@ function blocker(p: Preflight): string | null {
 
 export function TurnOnSyncDialog({ open, projectId, saveProject, onClose, onStart }: TurnOnSyncDialogProps) {
   const loggedIn = useAuthStore((s) => s.isAuthenticated);
+  const project = useAppStore((s) => s.project);
+  const incomplete = useMemo(
+    () => (open && project ? incompleteWarning(findIncompleteMicrographs(project)) : null),
+    [open, project],
+  );
   const [mode, setMode] = useState<SyncMode>('automatic');
   const [preflight, setPreflight] = useState<Preflight | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -174,6 +188,21 @@ export function TurnOnSyncDialog({ open, projectId, saveProject, onClose, onStar
             <Alert severity="info">
               This project is already on StraboSpot. Start Syncing connects this copy to it; if the two differ,
               you choose which one to keep.
+            </Alert>
+          )}
+          {incomplete && (
+            <Alert severity="warning">
+              <AlertTitle sx={{ fontSize: '0.875rem' }}>{incomplete.title}</AlertTitle>
+              <Box component="ul" sx={{ m: 0, pl: 2.5 }}>
+                {incomplete.lines.map((line, i) => (
+                  <li key={i}>{line}</li>
+                ))}
+                {incomplete.more && <li>{incomplete.more}</li>}
+              </Box>
+              <Box sx={{ mt: 1 }}>
+                You can start syncing now and finish them later. Until then, collaborators see them marked
+                incomplete, and on the StraboSpot website a micrograph without a location is not shown on its parent.
+              </Box>
             </Alert>
           )}
           {error && <Alert severity="error">{error}</Alert>}
