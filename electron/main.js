@@ -3285,7 +3285,8 @@ ipcMain.handle('image:rotate', async (event, imagePath, degrees, flip = false) =
  * @param {string} micrographId - Micrograph ID to generate thumbnail for
  * @param {object} projectData - Current project data from renderer (avoids stale disk reads)
  */
-ipcMain.handle('composite:generate-thumbnail', async (event, projectId, micrographId, projectData) => {
+/** Composite thumbnail of one micrograph: its image with its children drawn on it */
+async function generateCompositeThumbnail(projectId, micrographId, projectData) {
   try {
     log.info(`[IPC] Generating composite thumbnail for micrograph: ${micrographId}`);
 
@@ -3307,11 +3308,9 @@ ipcMain.handle('composite:generate-thumbnail', async (event, projectId, microgra
           if (micro.id === micrographId) {
             micrograph = micro;
 
-            // Find immediate children (associated micrographs)
-            // Exclude secondary siblings (XPL) - they share same view area as primary (PPL)
-            childMicrographs = (sample.micrographs || []).filter(
-              m => m.parentID === micrographId && m.isPrimarySibling !== false
-            );
+            // Immediate children (associated micrographs) and, for a linked PPL/XPL pair, the
+            // other half's; secondary siblings (XPL) are left out (they share the primary's area)
+            childMicrographs = imageExport.pairChildrenOf(project, micro, { includeHidden: true });
 
             log.info(`[IPC] Found parent micrograph ${micrographId} with ${childMicrographs.length} children`);
             log.info(`[IPC] Children IDs:`, childMicrographs.map(c => ({ id: c.id, name: c.name, imagePath: c.imagePath })));
@@ -3693,6 +3692,15 @@ ipcMain.handle('composite:generate-thumbnail', async (event, projectId, microgra
     sharp.cache({ memory: 256, files: 20, items: 100 });
     throw error;
   }
+}
+
+ipcMain.handle('composite:generate-thumbnail', async (event, projectId, micrographId, projectData) => {
+  const result = await generateCompositeThumbnail(projectId, micrographId, projectData);
+  // A linked XPL's children are drawn on its PPL's composite too (the PPL's tree row
+  // reloads on the XPL's 'thumbnail-generated'), so redraw the PPL's before answering
+  const primary = imageExport.primaryOfSecondary(projectData, micrographId);
+  if (primary) await generateCompositeThumbnail(projectId, primary.id, projectData);
+  return result;
 });
 
 /**
@@ -3787,10 +3795,8 @@ ipcMain.handle('composite:rebuild-all-thumbnails', async (event, projectId, proj
             for (const micro of sample.micrographs || []) {
               if (micro.id === micrographId) {
                 micrograph = micro;
-                // Exclude secondary siblings (XPL) - they share same view area as primary (PPL)
-                childMicrographs = (sample.micrographs || []).filter(
-                  m => m.parentID === micrographId && m.isPrimarySibling !== false
-                );
+                // Children and, for a linked PPL/XPL pair, the other half's (see the single handler)
+                childMicrographs = imageExport.pairChildrenOf(project, micro, { includeHidden: true });
                 break;
               }
             }
