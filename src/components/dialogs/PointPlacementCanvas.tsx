@@ -5,6 +5,7 @@ import { PanTool, Timeline, ZoomIn, ZoomOut, RestartAlt, Place } from '@mui/icon
 import Konva from 'konva';
 import { useAppStore } from '@/store';
 import { releaseImage } from '@/utils/imageUtils';
+import { useLatest } from '@/hooks/useLatest';
 
 interface PointPlacementCanvasProps {
   parentMicrographId: string;
@@ -257,8 +258,12 @@ export const PointPlacementCanvas = ({
     setChildOverlayScale(fitScale);
   }, [scaleMethod, parentImage, childImage]);
 
-  // Notify parent of scale data changes
+  // Notify parent of scale data changes. Called through a ref: the dialogs
+  // pass a new callback on every render, and re-running on it looped with
+  // the dialog's state (Sentry ELECTRON-2J)
+  const onScaleDataChangeRef = useLatest(onScaleDataChange);
   useEffect(() => {
+    const onScaleDataChange = onScaleDataChangeRef.current;
     if (!onScaleDataChange) return;
 
     if (scaleMethod === 'Trace Scale Bar') {
@@ -297,7 +302,6 @@ export const PointPlacementCanvas = ({
     widthInput,
     heightInput,
     sizeUnitInput,
-    onScaleDataChange,
   ]);
 
   // Auto-populate width/height based on aspect ratio
