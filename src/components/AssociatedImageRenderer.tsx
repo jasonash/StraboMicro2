@@ -684,6 +684,7 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
 
     return (
       <Group
+        name={`micrograph-overlay-${micrograph.id}`}
         x={overlayTransform.x}
         y={overlayTransform.y}
         scaleX={overlayTransform.scaleX}
@@ -750,6 +751,7 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
 
     return (
       <Group
+        name={`micrograph-overlay-${micrograph.id}`}
         x={overlayTransform.x}
         y={overlayTransform.y}
         scaleX={overlayTransform.scaleX}

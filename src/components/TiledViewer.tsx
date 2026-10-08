@@ -22,6 +22,7 @@ import { currentPermissions, useReadOnlyReason } from '@/hooks/usePermissions';
 import { editRefusal } from '@/utils/permissions';
 import { ReadOnlyScope } from './ReadOnlyScope';
 import { getChildMicrographs } from '@/store/helpers';
+import { pairChildren, pairSpots } from '@/utils/siblingPair';
 import { AssociatedImageRenderer } from './AssociatedImageRenderer';
 import { ChildSpotsRenderer } from './ChildSpotsRenderer';
 import { SpotRenderer } from './SpotRenderer';
@@ -400,13 +401,22 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
       return null;
     }, [project, activeMicrographId])();
 
-    // Get child micrographs (overlays) - exclude secondary siblings (XPL) since they share position with primary (PPL)
-    const childMicrographs = useCallback(() => {
-      if (!activeMicrographId) return [];
-      const children = getChildMicrographs(project, activeMicrographId);
-      // Filter out secondary siblings (isPrimarySibling === false) - they share position with their primary
-      return children.filter(child => child.isPrimarySibling !== false);
-    }, [project, activeMicrographId])();
+    // Child micrographs (overlays) with their own parent: the active micrograph's and, for a
+    // linked PPL/XPL pair, the other half's too (src/utils/siblingPair.ts). Secondary siblings
+    // (XPL) are left out since they share position with their primary (PPL).
+    const pairChildList = useMemo(() => {
+      if (!activeMicrograph) return [];
+      return pairChildren(
+        activeMicrograph,
+        (parentId) => getChildMicrographs(project, parentId),
+        (id) => micrographIndex.get(id),
+      );
+    }, [project, activeMicrograph, micrographIndex]);
+    const childMicrographs = useMemo(() => pairChildList.map((c) => c.child), [pairChildList]);
+    const childParents = useMemo(
+      () => new Map(pairChildList.map((c) => [c.child.id, c.parent])),
+      [pairChildList],
+    );
 
     // Compute effective scalePixelsPerCentimeter for affine-placed micrographs.
     // Affine children often have a default scalePixelsPerCentimeter (100) because their real-world
@@ -441,26 +451,23 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
       return rootScale / cumulativeAffineScale;
     }, [activeMicrograph, micrographIndex]);
 
-    // Get effective spots - if viewing a secondary sibling (XPL), show spots from primary (PPL)
+    // Size and scale of a child's own parent, for its overlay and its spots. The other half of a
+    // pair shares the active image's pixel space; the loaded image fills in a size not stored yet.
+    const childParentMetadata = (childId: string) => {
+      const parent = childParents.get(childId) ?? activeMicrograph;
+      return {
+        width: parent?.imageWidth || parent?.width || imageMetadata?.width || 0,
+        height: parent?.imageHeight || parent?.height || imageMetadata?.height || 0,
+        scalePixelsPerCentimeter: parent?.scalePixelsPerCentimeter || 100,
+      };
+    };
+
+    // Effective spots: for a linked PPL/XPL pair, the primary's (where new spots go) plus any
+    // the secondary carries itself, in both views (src/utils/siblingPair.ts)
     const effectiveSpots = useMemo(() => {
       if (!activeMicrograph) return [];
-
-      // If this is a secondary sibling, get spots from the primary
-      if (activeMicrograph.isPrimarySibling === false && activeMicrograph.siblingImageId) {
-        // Find the primary sibling and return its spots
-        if (!project?.datasets) return activeMicrograph.spots || [];
-        for (const dataset of project.datasets) {
-          for (const sample of dataset.samples || []) {
-            const primaryMicro = sample.micrographs?.find(m => m.id === activeMicrograph.siblingImageId);
-            if (primaryMicro) {
-              return primaryMicro.spots || [];
-            }
-          }
-        }
-      }
-
-      return activeMicrograph.spots || [];
-    }, [activeMicrograph, project]);
+      return pairSpots(activeMicrograph, (id) => micrographIndex.get(id));
+    }, [activeMicrograph, micrographIndex]);
 
     // Drawing hooks for polygon and line tools
     const polygonDrawing = usePolygonDrawing({
@@ -2307,20 +2314,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                           key={childMicro.id}
                           micrograph={childMicro}
                           projectId={project.id}
-                          parentMetadata={{
-                            width:
-                              activeMicrograph.imageWidth ||
-                              activeMicrograph.width ||
-                              imageMetadata?.width ||
-                              0,
-                            height:
-                              activeMicrograph.imageHeight ||
-                              activeMicrograph.height ||
-                              imageMetadata?.height ||
-                              0,
-                            scalePixelsPerCentimeter:
-                              activeMicrograph.scalePixelsPerCentimeter || 100,
-                          }}
+                          parentMetadata={childParentMetadata(childMicro.id)}
                           viewport={{
                             x: position.x,
                             y: position.y,
@@ -2424,20 +2418,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                         <ChildSpotsRenderer
                           key={`child-spots-${childMicro.id}`}
                           childMicrograph={childMicro}
-                          parentMetadata={{
-                            width:
-                              activeMicrograph.imageWidth ||
-                              activeMicrograph.width ||
-                              imageMetadata?.width ||
-                              0,
-                            height:
-                              activeMicrograph.imageHeight ||
-                              activeMicrograph.height ||
-                              imageMetadata?.height ||
-                              0,
-                            scalePixelsPerCentimeter:
-                              activeMicrograph.scalePixelsPerCentimeter || 100,
-                          }}
+                          parentMetadata={childParentMetadata(childMicro.id)}
                           stageScale={zoom}
                           activeSpotId={activeSpotId}
                           selectedSpotIds={selectedSpotIds}

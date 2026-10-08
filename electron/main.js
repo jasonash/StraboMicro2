@@ -3434,6 +3434,13 @@ ipcMain.handle('composite:generate-thumbnail', async (event, projectId, microgra
   try {
     const result = await makeCompositeThumbnail(projectId, micrographId, projectData);
     if (result.success && result.changed) syncService.notifyLocalChange(projectId);
+    // A linked XPL's children are drawn on its PPL's composite too (the PPL's tree row
+    // reloads on the XPL's 'thumbnail-generated'), so redraw the PPL's before answering
+    const primary = imageExport.primaryOfSecondary(projectData, micrographId);
+    if (primary) {
+      const again = await makeCompositeThumbnail(projectId, primary.id, projectData);
+      if (again.success && again.changed) syncService.notifyLocalChange(projectId);
+    }
     return result;
   } catch (error) {
     log.error('[IPC] Error generating composite thumbnail:', error);
@@ -3476,11 +3483,9 @@ async function makeCompositeThumbnail(projectId, micrographId, projectData) {
         if (micro.id === micrographId) {
           micrograph = micro;
 
-          // Find immediate children (associated micrographs)
-          // Exclude secondary siblings (XPL) - they share same view area as primary (PPL)
-          childMicrographs = (sample.micrographs || []).filter(
-            m => m.parentID === micrographId && m.isPrimarySibling !== false
-          );
+          // Immediate children (associated micrographs) and, for a linked PPL/XPL pair, the
+          // other half's; secondary siblings (XPL) are left out (they share the primary's area)
+          childMicrographs = imageExport.pairChildrenOf(project, micro, { includeHidden: true });
 
           log.info(`[IPC] Found parent micrograph ${micrographId} with ${childMicrographs.length} children`);
           log.info(`[IPC] Children IDs:`, childMicrographs.map(c => ({ id: c.id, name: c.name, imagePath: c.imagePath })));

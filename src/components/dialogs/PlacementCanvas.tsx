@@ -16,6 +16,7 @@ import Konva from 'konva';
 import { useAppStore } from '@/store';
 import { releaseImage } from '@/utils/imageUtils';
 import { tracedLinePixels, scaleFromTracedBar, traceScaleNote } from '@/utils/traceScaleBar';
+import { useLatest } from '@/hooks/useLatest';
 
 interface PlacementCanvasProps {
   parentMicrographId: string;
@@ -61,6 +62,12 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
   onScaleDataChange,
 }) => {
   const stageRef = useRef<Konva.Stage>(null);
+
+  // The dialogs pass new callbacks on every render; effects call them through
+  // these refs, so a new function alone never re-runs an effect (a scale-data
+  // effect that re-ran on it looped with the dialog's state: Sentry ELECTRON-2J)
+  const onPlacementChangeRef = useLatest(onPlacementChange);
+  const onScaleDataChangeRef = useLatest(onScaleDataChange);
   const transformerRef = useRef<Konva.Transformer>(null);
   const childGroupRef = useRef<Konva.Group>(null);
 
@@ -524,7 +531,7 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
 
       // Convert from displayed coordinates to original parent coordinates
       if (!parentOriginalWidth || !parentImage?.width) {
-        onPlacementChange(topLeft.x, topLeft.y, childTransform.rotation, childTransform.scaleX, childTransform.scaleY);
+        onPlacementChangeRef.current(topLeft.x, topLeft.y, childTransform.rotation, childTransform.scaleX, childTransform.scaleY);
       } else {
         const scaleRatio = parentOriginalWidth / parentImage.width;
         const originalX = topLeft.x * scaleRatio;
@@ -533,11 +540,11 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
         // report it relative to the original parent, matching the drag/transform handlers
         const correctedScaleX = childTransform.scaleX * scaleRatio;
         const correctedScaleY = childTransform.scaleY * scaleRatio;
-        onPlacementChange(originalX, originalY, childTransform.rotation, correctedScaleX, correctedScaleY);
+        onPlacementChangeRef.current(originalX, originalY, childTransform.rotation, correctedScaleX, correctedScaleY);
       }
       prevScaleRef.current = { scaleX: childTransform.scaleX, scaleY: childTransform.scaleY };
     }
-  }, [scaleMethod, childTransform.scaleX, childTransform.scaleY, childTransform.x, childTransform.y, childTransform.rotation, onPlacementChange, parentOriginalWidth, parentImage]);
+  }, [scaleMethod, childTransform.scaleX, childTransform.scaleY, childTransform.x, childTransform.y, childTransform.rotation, parentOriginalWidth, parentImage]);
 
   // Auto-calculate child scale for Provide Width/Height method
   useEffect(() => {
@@ -667,6 +674,7 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
 
   // Notify parent of scale data changes for "Trace Scale Bar and Drag"
   useEffect(() => {
+    const onScaleDataChange = onScaleDataChangeRef.current;
     if (scaleMethod !== 'Trace Scale Bar and Drag' || !onScaleDataChange) return;
     if (!scaleBarPixelInput || !scaleBarPhysicalInput) return;
 
@@ -675,10 +683,11 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
       scaleBarPhysicalLength: parseFloat(scaleBarPhysicalInput),
       scaleBarUnits: scaleBarUnitInput,
     });
-  }, [scaleMethod, scaleBarPixelInput, scaleBarPhysicalInput, scaleBarUnitInput, onScaleDataChange]);
+  }, [scaleMethod, scaleBarPixelInput, scaleBarPhysicalInput, scaleBarUnitInput]);
 
   // Notify parent of scale data changes for "Pixel Conversion Factor"
   useEffect(() => {
+    const onScaleDataChange = onScaleDataChangeRef.current;
     if (scaleMethod !== 'Pixel Conversion Factor' || !onScaleDataChange) return;
     if (!pixelInput || !physicalLengthInput) return;
 
@@ -687,10 +696,11 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
       physicalLength: parseFloat(physicalLengthInput),
       pixelUnits: unitInput,
     });
-  }, [scaleMethod, pixelInput, physicalLengthInput, unitInput, onScaleDataChange]);
+  }, [scaleMethod, pixelInput, physicalLengthInput, unitInput]);
 
   // Notify parent of scale data changes for "Provide Width/Height"
   useEffect(() => {
+    const onScaleDataChange = onScaleDataChangeRef.current;
     if (scaleMethod !== 'Provide Width/Height of Image' || !onScaleDataChange) return;
     if (!widthInput) return;
 
@@ -699,7 +709,7 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
       imageHeightPhysical: heightInput ? parseFloat(heightInput) : undefined,
       sizeUnits: sizeUnitInput,
     });
-  }, [scaleMethod, widthInput, heightInput, sizeUnitInput, onScaleDataChange]);
+  }, [scaleMethod, widthInput, heightInput, sizeUnitInput]);
 
   // Pan/Zoom handlers
   const handleMouseDown = (e: Konva.KonvaEventObject<MouseEvent>) => {

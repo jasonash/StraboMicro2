@@ -75,6 +75,7 @@ import { SetScaleDialog } from './dialogs/SetScaleDialog';
 import { LinkSiblingDialog } from './dialogs/LinkSiblingDialog';
 import { AddSiblingDialog } from './dialogs/AddSiblingDialog';
 import { findMicrographById } from '@/store/helpers';
+import { hiddenSibling, pairPartner } from '@/utils/siblingPair';
 import type { DatasetMetadata, SampleMetadata, MicrographMetadata } from '@/types/project-types';
 import { EditingScope, PresenceMarks } from './Presence';
 
@@ -94,6 +95,8 @@ interface MicrographThumbnailProps {
   needsLocation?: boolean;
   /** Whether this micrograph still needs instrument/image info (batch-imported without it) */
   needsInstrumentInfo?: boolean;
+  /** Also reload when this micrograph's thumbnail is regenerated (a PPL's hidden XPL: its children are on the PPL's composite) */
+  alsoReloadForId?: string | null;
 }
 
 function MicrographThumbnail({
@@ -105,6 +108,7 @@ function MicrographThumbnail({
   needsScale = false,
   needsLocation = false,
   needsInstrumentInfo = false,
+  alsoReloadForId = null,
 }: MicrographThumbnailProps) {
   const needsSetup = needsScale || needsLocation || needsInstrumentInfo;
   const [thumbnailDataUrl, setThumbnailDataUrl] = useState<string | null>(null);
@@ -141,7 +145,8 @@ function MicrographThumbnail({
   useEffect(() => {
     const handleThumbnailGenerated = (event: Event) => {
       const customEvent = event as CustomEvent<{ micrographId: string }>;
-      if (customEvent.detail.micrographId === micrographId) {
+      const id = customEvent.detail.micrographId;
+      if (id === micrographId || (alsoReloadForId && id === alsoReloadForId)) {
         console.log(`[MicrographThumbnail] Reloading thumbnail for ${micrographId}`);
         // Reload the thumbnail after a delay to ensure file is written and synced
         // Longer delay to account for file system sync
@@ -166,7 +171,7 @@ function MicrographThumbnail({
       window.removeEventListener('thumbnail-generated', handleThumbnailGenerated);
       window.removeEventListener('rebuild-all-thumbnails', handleRebuildAll);
     };
-  }, [micrographId, loadThumbnail]);
+  }, [micrographId, alsoReloadForId, loadThumbnail]);
 
   if (loading) {
     return (
@@ -439,6 +444,9 @@ export function ProjectTree() {
 
         const byId = new Map<string, MicrographMetadata>();
         (s.micrographs ?? []).forEach((m) => byId.set(m.id, m));
+        // A hidden XPL's children are listed under its PPL, so the PPL stands in the chain too
+        const shownFor = (micro: MicrographMetadata): MicrographMetadata | null =>
+          micro.isPrimarySibling === false ? pairPartner(micro, (id) => byId.get(id)) : null;
 
         let anyDescendantInSample = false;
 
@@ -455,7 +463,9 @@ export function ProjectTree() {
           while (curr && byId.has(curr)) {
             const parent = byId.get(curr)!;
             const pName = parent.name ?? parent.imageFilename ?? '';
-            if (pName.toLowerCase().includes(q)) {
+            const shown = shownFor(parent);
+            const shownName = shown ? shown.name ?? shown.imageFilename ?? '' : '';
+            if (pName.toLowerCase().includes(q) || (shown && shownName.toLowerCase().includes(q))) {
               ancestorMicrographMatches = true;
               break;
             }
@@ -472,6 +482,8 @@ export function ProjectTree() {
             let chain: string | null | undefined = m.parentID;
             while (chain && byId.has(chain)) {
               visibleMicrographs.add(chain);
+              const shown = shownFor(byId.get(chain)!);
+              if (shown) visibleMicrographs.add(shown.id);
               chain = byId.get(chain)!.parentID;
             }
           }
@@ -995,7 +1007,16 @@ export function ProjectTree() {
     const children = searchFilter
       ? allChildren.filter((c) => searchFilter.visibleMicrographs.has(c.id))
       : allChildren;
-    const hasChildren = children.length > 0;
+    // A PPL's hidden XPL: its own children are listed under the pair as "On <XPL name>" (2026-10-07)
+    const xpl = hiddenSibling(micrograph, (id) => allMicrographs.find((m) => m.id === id));
+    const allXplChildren = xpl
+      ? buildMicrographHierarchy(allMicrographs, xpl.id).filter((c) => c.id !== micrograph.id)
+      : [];
+    const xplChildren = searchFilter
+      ? allXplChildren.filter((c) => searchFilter.visibleMicrographs.has(c.id))
+      : allXplChildren;
+    const pairChildList = [...children, ...xplChildren];
+    const hasChildren = pairChildList.length > 0;
     const isReference = !micrograph.parentID;
     const isHidden = micrograph.isMicroVisible === false;
     const parentId = micrograph.parentID || null;
@@ -1132,6 +1153,7 @@ export function ProjectTree() {
                 >
                   <MicrographThumbnail
                     micrographId={micrograph.id}
+                    alsoReloadForId={xpl?.id ?? null}
                     projectId={project.id}
                     micrographName={micrograph.name || micrograph.imageFilename || 'Unnamed'}
                     needsScale={needsScale}
@@ -1196,7 +1218,7 @@ export function ProjectTree() {
         </Box>
 
         {/* Children (Associated Micrographs) - with drag and drop support */}
-        {hasChildren && (
+        {children.length > 0 && (
           <Collapse in={isExpanded}>
             <Box sx={{ ml: 0 }}>
               <DndContext
@@ -1218,6 +1240,31 @@ export function ProjectTree() {
                 </SortableContext>
               </DndContext>
             </Box>
+          </Collapse>
+        )}
+
+        {/* Children of the hidden XPL, under the pair; reordered among themselves */}
+        {xpl && xplChildren.length > 0 && (
+          <Collapse in={isExpanded}>
+            <Typography
+              variant="caption"
+              sx={{ display: 'block', pl: 1.5, pt: 0.5, color: 'text.secondary', fontStyle: 'italic' }}
+            >
+              On {xpl.name || xpl.imageFilename || 'the XPL image'}
+            </Typography>
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragEnd={(event) => handleMicrographDragEnd(event, sampleId, xpl.id, xplChildren)}
+            >
+              <SortableContext items={xplChildren.map((c) => c.id)} strategy={verticalListSortingStrategy}>
+                {xplChildren.map((child) => (
+                  <SortableItemWrapper key={child.id} id={child.id}>
+                    {renderMicrograph(child, allMicrographs, level + 1, sampleId, xplChildren)}
+                  </SortableItemWrapper>
+                ))}
+              </SortableContext>
+            </DndContext>
           </Collapse>
         )}
 
@@ -1326,8 +1373,8 @@ export function ProjectTree() {
               <MenuItem
             disabled={!children.every((child) => may('micrograph', child.id))}
                 onClick={() => {
-                  // Set isMicroVisible: true on all direct children
-                  children.forEach((child) => {
+                  // Set isMicroVisible: true on all direct children (and the hidden XPL's)
+                  pairChildList.forEach((child) => {
                     updateMicrographMetadata(child.id, { isMicroVisible: true });
                   });
                   setMicrographOptionsAnchor({ ...micrographOptionsAnchor, [micrograph.id]: null });
@@ -1338,8 +1385,8 @@ export function ProjectTree() {
               <MenuItem
             disabled={!children.every((child) => may('micrograph', child.id))}
                 onClick={() => {
-                  // Set isMicroVisible: false on all direct children
-                  children.forEach((child) => {
+                  // Set isMicroVisible: false on all direct children (and the hidden XPL's)
+                  pairChildList.forEach((child) => {
                     updateMicrographMetadata(child.id, { isMicroVisible: false });
                   });
                   setMicrographOptionsAnchor({ ...micrographOptionsAnchor, [micrograph.id]: null });
@@ -1350,12 +1397,12 @@ export function ProjectTree() {
             </>
           )}
           {/* Edit All Associated Micrographs Opacity - only if has overlay children */}
-          {children.some((child) => child.offsetInParent) && (
+          {pairChildList.some((child) => child.offsetInParent) && (
             <MenuItem
             disabled={!children.every((child) => may('micrograph', child.id))}
               onClick={(event) => {
                 // Get average opacity of all overlay children for initial value
-                const overlayChildren = children.filter((child) => child.offsetInParent);
+                const overlayChildren = pairChildList.filter((child) => child.offsetInParent);
                 const avgOpacity = overlayChildren.length > 0
                   ? overlayChildren.reduce((sum, child) => sum + (child.opacity ?? 1.0), 0) / overlayChildren.length
                   : 1.0;
@@ -2290,8 +2337,13 @@ export function ProjectTree() {
                     d.samples?.flatMap(s => s.micrographs || []) || []
                   ) || [];
                   // Filter to overlay children of this parent (have offsetInParent)
+                  // ... including those of its hidden XPL, listed under the pair
+                  const parent = allMicrographs.find(m => m.id === batchOpacityParentId);
+                  const xplId = parent
+                    ? hiddenSibling(parent, (id) => allMicrographs.find((m) => m.id === id))?.id
+                    : undefined;
                   const overlayChildren = allMicrographs.filter(
-                    m => m.parentID === batchOpacityParentId && m.offsetInParent
+                    m => (m.parentID === batchOpacityParentId || (xplId && m.parentID === xplId)) && m.offsetInParent
                   );
                   // Update each overlay child's opacity
                   overlayChildren.forEach(child => {

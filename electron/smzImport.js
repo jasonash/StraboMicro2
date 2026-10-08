@@ -16,6 +16,7 @@ const crypto = require('crypto');
 const log = require('electron-log');
 const unzipper = require('unzipper');
 const sharp = require('sharp');
+const { USER_IMAGE_INPUT } = require('./sharpInput');
 const projectFolders = require('./projectFolders');
 const projectSerializer = require('./projectSerializer');
 const versionHistory = require('./versionHistory');
@@ -135,7 +136,7 @@ async function convertNonJpegImages(folderPaths, sendProgress) {
 
       try {
         // Use Sharp to detect the actual format
-        const metadata = await sharp(imagePath, { limitInputPixels: false }).metadata();
+        const metadata = await sharp(imagePath, USER_IMAGE_INPUT).metadata();
         const format = metadata.format;
 
         if (format === 'jpeg') {
@@ -152,7 +153,7 @@ async function convertNonJpegImages(folderPaths, sendProgress) {
         }
 
         // Read the image and convert to JPEG
-        const jpegBuffer = await sharp(imagePath, { limitInputPixels: false })
+        const jpegBuffer = await sharp(imagePath, USER_IMAGE_INPUT)
           .jpeg({ quality: 95, mozjpeg: true })
           .toBuffer();
 
@@ -222,7 +223,7 @@ async function downscaleLargeImages(folderPaths, sendProgress) {
 
       try {
         // Get image dimensions
-        const metadata = await sharp(imagePath, { limitInputPixels: false }).metadata();
+        const metadata = await sharp(imagePath, USER_IMAGE_INPUT).metadata();
         const { width, height } = metadata;
         const longEdge = Math.max(width, height);
 
@@ -244,7 +245,7 @@ async function downscaleLargeImages(folderPaths, sendProgress) {
         }
 
         // Downscale the image
-        const buffer = await sharp(imagePath, { limitInputPixels: false })
+        const buffer = await sharp(imagePath, USER_IMAGE_INPUT)
           .resize(newWidth, newHeight, { fit: 'inside' })
           .jpeg({ quality: 95, mozjpeg: true })
           .toBuffer();
@@ -317,7 +318,7 @@ async function upscaleLegacySmallImages(folderPaths, sendProgress) {
       const imagePath = path.join(folderPaths.images, filename);
 
       try {
-        const metadata = await sharp(imagePath, { limitInputPixels: false }).metadata();
+        const metadata = await sharp(imagePath, USER_IMAGE_INPUT).metadata();
         const { width, height } = metadata;
 
         if (width >= LEGACY_MIN_WIDTH) {
@@ -335,7 +336,7 @@ async function upscaleLegacySmallImages(folderPaths, sendProgress) {
           sendProgress('Upscaling images', 92, `Upscaling ${filename}...`);
         }
 
-        const buffer = await sharp(imagePath, { limitInputPixels: false })
+        const buffer = await sharp(imagePath, USER_IMAGE_INPUT)
           .resize(newWidth, newHeight)
           .jpeg({ quality: 95, mozjpeg: true })
           .toBuffer();
@@ -424,7 +425,7 @@ async function normalizeLegacyOversizedImages(projectData, folderPaths, sendProg
         continue;
       }
 
-      const metadata = await sharp(imagePath, { limitInputPixels: false }).metadata();
+      const metadata = await sharp(imagePath, USER_IMAGE_INPUT).metadata();
       if (metadata.width <= declaredWidth) {
         stats.skipped++;
         continue;
@@ -443,9 +444,9 @@ async function normalizeLegacyOversizedImages(projectData, folderPaths, sendProg
       let usedUiImage = false;
       const uiImagePath = path.join(folderPaths.uiImages, micrograph.id);
       if (fs.existsSync(uiImagePath)) {
-        const uiMeta = await sharp(uiImagePath, { limitInputPixels: false }).metadata();
+        const uiMeta = await sharp(uiImagePath, USER_IMAGE_INPUT).metadata();
         if (uiMeta.width === declaredWidth && uiMeta.height === declaredHeight) {
-          const buffer = await sharp(uiImagePath, { limitInputPixels: false })
+          const buffer = await sharp(uiImagePath, USER_IMAGE_INPUT)
             .jpeg({ quality: 95, mozjpeg: true })
             .toBuffer();
           await fs.promises.writeFile(imagePath, buffer);
@@ -454,7 +455,7 @@ async function normalizeLegacyOversizedImages(projectData, folderPaths, sendProg
       }
 
       if (!usedUiImage) {
-        const buffer = await sharp(imagePath, { limitInputPixels: false })
+        const buffer = await sharp(imagePath, USER_IMAGE_INPUT)
           .resize(declaredWidth, declaredHeight, { fit: 'fill' })
           .jpeg({ quality: 95, mozjpeg: true })
           .toBuffer();
@@ -521,7 +522,7 @@ async function syncMicrographDimensions(projectData, folderPaths, sendProgress) 
         }
 
         // Get actual image dimensions using Sharp
-        const metadata = await sharp(imagePath, { limitInputPixels: false }).metadata();
+        const metadata = await sharp(imagePath, USER_IMAGE_INPUT).metadata();
         const actualWidth = metadata.width;
         const actualHeight = metadata.height;
 
