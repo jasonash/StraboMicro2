@@ -144,23 +144,92 @@ function collectMicrographs(projectData, micrographIds = null) {
   return result;
 }
 
-/**
- * Children that the viewer would draw on top of this micrograph: direct
- * children that are not hidden and not secondary siblings.
- */
-function getDrawableChildren(projectData, micrograph) {
-  const children = [];
+/** Every micrograph in the project, in project order */
+function allMicrographs(projectData) {
+  const list = [];
   for (const dataset of projectData?.datasets || []) {
     for (const sample of dataset.samples || []) {
-      for (const child of sample.micrographs || []) {
-        if (child.parentID !== micrograph.id) continue;
-        if (child.isMicroVisible === false) continue;
-        if (child.isPrimarySibling === false) continue;
-        children.push(child);
-      }
+      for (const micro of sample.micrographs || []) list.push(micro);
+    }
+  }
+  return list;
+}
+
+/**
+ * The other half of a properly linked PPL/XPL pair (each links the other,
+ * exactly one primary), or null. Same rule as src/utils/siblingPair.ts.
+ */
+function pairPartner(micrograph, list) {
+  if (!micrograph?.siblingImageId || micrograph.siblingImageId === micrograph.id) return null;
+  const other = list.find((m) => m.id === micrograph.siblingImageId);
+  if (!other || other.siblingImageId !== micrograph.id) return null;
+  const onePrimary =
+    (micrograph.isPrimarySibling === true && other.isPrimarySibling === false) ||
+    (micrograph.isPrimarySibling === false && other.isPrimarySibling === true);
+  return onePrimary ? other : null;
+}
+
+/**
+ * A child of the other half of a pair, drawn on this micrograph. The two
+ * images share one pixel space; its scale is adjusted by the ratio of the two
+ * parents' scales so the usual parent/child scale math sizes it against its
+ * own parent.
+ */
+function asChildOf(child, ownParent, drawnOn) {
+  const own = ownParent.scalePixelsPerCentimeter;
+  const drawn = drawnOn.scalePixelsPerCentimeter;
+  if (!own || !drawn || !child.scalePixelsPerCentimeter || own === drawn) return child;
+  return { ...child, scalePixelsPerCentimeter: (child.scalePixelsPerCentimeter * drawn) / own };
+}
+
+/**
+ * Children drawn on top of this micrograph: its direct children and, for a
+ * linked PPL/XPL pair, the other half's (2026-10-07: children attached to a
+ * hidden XPL were never drawn). Secondary siblings are left out, and so are
+ * hidden children unless includeHidden (composite thumbnails keep them).
+ */
+function pairChildrenOf(projectData, micrograph, { includeHidden = false } = {}) {
+  const list = allMicrographs(projectData);
+  const partner = pairPartner(micrograph, list);
+  const skip = new Set([micrograph.id, partner?.id]);
+  const children = [];
+  for (const parent of partner ? [micrograph, partner] : [micrograph]) {
+    for (const child of list) {
+      if (child.parentID !== parent.id || skip.has(child.id)) continue;
+      if (!includeHidden && child.isMicroVisible === false) continue;
+      if (child.isPrimarySibling === false) continue;
+      children.push(parent === micrograph ? child : asChildOf(child, parent, micrograph));
     }
   }
   return children;
+}
+
+/**
+ * The primary (PPL) of a linked secondary (XPL), or null. Its composite
+ * thumbnail includes the secondary's children, so it is redrawn with it.
+ */
+function primaryOfSecondary(projectData, micrographId) {
+  const list = allMicrographs(projectData);
+  const micrograph = list.find((m) => m.id === micrographId);
+  if (!micrograph || micrograph.isPrimarySibling !== false) return null;
+  return pairPartner(micrograph, list);
+}
+
+/** Children that the viewer would draw on top of this micrograph */
+function getDrawableChildren(projectData, micrograph) {
+  return pairChildrenOf(projectData, micrograph);
+}
+
+/**
+ * Spots drawn on this micrograph: for a linked pair, the primary's and then
+ * any the secondary carries itself, in both views (as the viewer does).
+ */
+function getDrawableSpots(projectData, micrograph) {
+  const own = Array.isArray(micrograph.spots) ? micrograph.spots : [];
+  const partner = pairPartner(micrograph, allMicrographs(projectData));
+  if (!partner) return own;
+  const theirs = Array.isArray(partner.spots) ? partner.spots : [];
+  return micrograph.isPrimarySibling === true ? [...own, ...theirs] : [...theirs, ...own];
 }
 
 /** Sketch layers selected by an ImageExportOptions.sketchLayers value. */
@@ -603,7 +672,7 @@ function sketchTextSvg(item) {
  * Build the vector annotation groups for a micrograph.
  * @returns {string} SVG element markup (no <svg> wrapper), empty when nothing to draw
  */
-function buildAnnotationSvg({ micrograph, children, width, height, options }) {
+function buildAnnotationSvg({ micrograph, children, spots: drawnSpots, width, height, options }) {
   const sizes = annotationSizes(width, height);
   const parts = [];
 
@@ -616,7 +685,7 @@ function buildAnnotationSvg({ micrograph, children, width, height, options }) {
     }
   }
 
-  const spots = Array.isArray(micrograph.spots) ? micrograph.spots : [];
+  const spots = Array.isArray(drawnSpots) ? drawnSpots : Array.isArray(micrograph.spots) ? micrograph.spots : [];
   if (options.includeSpots && spots.length > 0) {
     parts.push('<g id="spots">');
     for (const spot of spots) {
@@ -717,7 +786,8 @@ async function renderMicrographExport(projectId, micrographOrId, projectData, fo
     ? await buildOverlayInputs(micrograph, children, folderPaths, width, height)
     : [];
 
-  const annotations = buildAnnotationSvg({ micrograph, children, width, height, options: opts });
+  const spots = getDrawableSpots(projectData, micrograph);
+  const annotations = buildAnnotationSvg({ micrograph, children, spots, width, height, options: opts });
 
   const common = { format: opts.format, extension: extensionForFormat(opts.format), mimeType: mimeTypeForFormat(opts.format), width, height };
 
@@ -813,6 +883,9 @@ module.exports = {
   collectMicrographs,
   sanitizeFilename,
   resolveImagePathWithLegacyFallback,
+  pairChildrenOf,
+  getDrawableSpots,
+  primaryOfSecondary,
   // Exposed for tests
   sketchStrokePath,
   buildAnnotationSvg,
