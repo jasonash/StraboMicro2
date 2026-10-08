@@ -12,6 +12,7 @@
  */
 
 const sharp = require('sharp');
+const { USER_IMAGE_INPUT } = require('./sharpInput');
 const fs = require('fs');
 const path = require('path');
 const log = require('electron-log');
@@ -433,7 +434,7 @@ async function convertToScratchJPEG(inputPath, progressCallback = null) {
  */
 async function convertDirectWithSharp(inputPath, scratchPath, identifier, progressCallback) {
   const metadata = await sharp(inputPath, {
-    limitInputPixels: false,
+    ...USER_IMAGE_INPUT,
     sequentialRead: true,
   }).metadata();
 
@@ -454,7 +455,7 @@ async function convertDirectWithSharp(inputPath, scratchPath, identifier, progre
   }
 
   let sharpPipeline = sharp(inputPath, {
-    limitInputPixels: false,
+    ...USER_IMAGE_INPUT,
     sequentialRead: true,
   });
 
@@ -512,7 +513,7 @@ async function convertToJPEG(inputPath, outputPath, options = {}) {
 
     // Create sharp instance
     let image = sharp(inputPath, {
-      limitInputPixels: false,
+      ...USER_IMAGE_INPUT,
       sequentialRead: true,
     });
 
@@ -660,7 +661,7 @@ async function generateImageVariants(sourcePath, projectId, micrographId, projec
  */
 async function getImageDimensions(imagePath) {
   try {
-    const metadata = await sharp(imagePath).metadata();
+    const metadata = await sharp(imagePath, USER_IMAGE_INPUT).metadata();
     return {
       width: metadata.width,
       height: metadata.height,
@@ -679,7 +680,7 @@ async function getImageDimensions(imagePath) {
  */
 async function isValidImage(filePath) {
   try {
-    await sharp(filePath).metadata();
+    await sharp(filePath, USER_IMAGE_INPUT).metadata();
     return true;
   } catch (error) {
     return false;
