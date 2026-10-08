@@ -84,6 +84,7 @@ export function IncompleteMicrographsDialog({
                 </ListItemIcon>
                 <ListItemText
                   primary={micro.name}
+                  slotProps={{ secondary: { component: 'div' } }}
                   secondary={
                     <Stack direction="row" spacing={0.5} sx={{ mt: 0.5 }}>
                       {micro.needsInstrumentInfo && (
