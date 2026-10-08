@@ -10,14 +10,15 @@
  * Needs no server work: one copy, not synced. The last test opens a project
  * saved by the old Link Sibling (what Daniel has) and checks the repair on
  * load; it also leaves that project in test-results/sibling-broken-project.smz
- * for opening by hand.
+ * for opening by hand. The one after it covers micrographs and a spot
+ * attached to the hidden XPL itself (Daniel's RGMC1b_5X_XPL, 2026-10-07).
  */
 
 import { test, expect } from '../lib/test';
 import { ACCOUNTS, type Copy } from '../lib/copy';
 import fs from 'fs';
 import { randomUUID } from 'crypto';
-import { makeProject, writeImage, type FixtureProject } from '../lib/fixtures';
+import { makeProject, spot, writeImage, type FixtureProject } from '../lib/fixtures';
 import { openSmz, viewMicrograph } from '../lib/actions';
 
 type Placement = 'reference' | 'offset' | 'affine';
@@ -296,4 +297,76 @@ test('a project linked by the old Link Sibling opens repaired, exports, and stay
   await ana.state(new Function('e', `return window.api.loadProjectJson(${JSON.stringify(p.id)})
     .then((project) => e.app.getState().loadProject(project, e.app.getState().projectFilePath))`) as never);
   expect.soft(await ana.state((e) => e.app.getState().isDirty), 'reopened: nothing to repair').toBe(false);
+});
+
+/**
+ * A PPL reference linked to its XPL (also a reference), with a micrograph
+ * placed on the XPL itself, an affine one on the XPL, one on the PPL, and a
+ * spot on the XPL: the shape of Daniel's RGMC1b_5X_XPL (five affine children
+ * and a spot nobody could see).
+ */
+async function hiddenXplProject(runDir: string): Promise<{ p: FixtureProject; ids: Record<string, string> }> {
+  const ids = { xpl: randomUUID(), onXpl: randomUUID(), onXplAffine: randomUUID(), onPpl: randomUUID(), xplSpot: randomUUID() };
+  const overviewId = randomUUID();
+  const base = (id: string, name: string, imageType: string, scale: number) => ({
+    id, name, imagePath: id, imageWidth: 1600, imageHeight: 1200, width: 1600, height: 1200, opacity: 1, imageType,
+    scalePixelsPerCentimeter: scale, orientationInfo: { orientationMethod: 'unoriented' }, spots: [], associatedFiles: [],
+    links: [], tags: [], isMicroVisible: true, isExpanded: true, isSpotExpanded: false, isFlipped: false,
+  });
+  const p = await makeProject(`${runDir}/fixtures`, 'E2E Siblings Hidden XPL Children', ['Garnet 1'], {
+    overviewId,
+    overview: { isExpanded: true, siblingImageId: ids.xpl, isPrimarySibling: true },
+    micrographs: [
+      { ...base(ids.xpl, 'Overview XPL', 'Cross Polarized Light', 40000), siblingImageId: overviewId, isPrimarySibling: false,
+        rotation: 0, spots: [spot(ids.xplSpot, 'XPL Spot', 900, 700)] },
+      { ...base(ids.onXpl, 'Grain on XPL', 'Plane Polarized Light', 80000), parentID: ids.xpl, offsetInParent: { X: 100, Y: 100 }, rotation: 0 },
+      { ...base(ids.onXplAffine, 'Rim on XPL', 'Plane Polarized Light', 160000), parentID: ids.xpl, placementType: 'affine',
+        affineMatrix: [0.25, 0, 400, 0, 0.25, 300], affineTileHash: ids.onXplAffine, affineBoundsOffset: { x: 400, y: 300 },
+        affineTransformedWidth: 400, affineTransformedHeight: 300 },
+      { ...base(ids.onPpl, 'Grain on PPL', 'Plane Polarized Light', 80000), parentID: overviewId, offsetInParent: { X: 900, Y: 600 }, rotation: 0 },
+    ],
+  });
+  return { p, ids };
+}
+
+/** Konva node names the viewer has drawn (overlays are micrograph-overlay-<id>, spots spot-<id>) */
+async function drawnNames(copy: Copy): Promise<string[]> {
+  return copy.state(new Function('e', `
+    const names = new Set();
+    for (const stage of (window.Konva && window.Konva.stages) || []) {
+      stage.find((node) => { const n = node.name(); if (n) n.split(' ').forEach((x) => names.add(x)); return false; });
+    }
+    return [...names];
+  `) as never) as Promise<string[]>;
+}
+
+test('micrographs and spots attached to a hidden XPL show under the pair and in both views', async ({ launch, runDir }) => {
+  const { p, ids } = await hiddenXplProject(runDir);
+  const ana = await launch('Ana', ACCOUNTS.ana, { login: false });
+  await openSmz(ana, p.smzPath, p.id);
+  await treeRow(ana, 'Overview (Reference)').locator('button:has([data-testid="ChevronRightIcon"])').first().click();
+
+  // Tree: the XPL stays hidden; its children are listed under the pair
+  await expect(ana.page.getByText('On Overview XPL', { exact: true })).toBeVisible();
+  for (const name of ['Grain on XPL', 'Rim on XPL', 'Grain on PPL']) await expect(treeRow(ana, name)).toBeVisible();
+  await expect(ana.page.getByText('Overview XPL', { exact: true })).toHaveCount(0);
+
+  // Viewer: both views draw both halves' children and spots
+  const expected = [ids.onPpl, ids.onXpl, ids.onXplAffine].map((id) => `micrograph-overlay-${id}`)
+    .concat([`spot-${p.spots[0].id}`, `spot-${ids.xplSpot}`]);
+  await viewMicrograph(ana, p.micrographId);
+  await expect.poll(() => drawnNames(ana), { timeout: 60_000, message: 'PPL view' }).toEqual(expect.arrayContaining(expected));
+  await toggleSibling(ana);
+  await expect.poll(() => drawnNames(ana), { timeout: 60_000, message: 'XPL view' }).toEqual(expect.arrayContaining(expected));
+  await toggleSibling(ana);
+
+  // Search: a match below the XPL reveals the PPL row it is listed under
+  await ana.page.getByPlaceholder('Search datasets, samples, micrographs…').fill('Rim on');
+  await expect(treeRow(ana, 'Rim on XPL')).toBeVisible();
+  await expect(treeRow(ana, 'Overview (Reference)')).toBeVisible();
+  await ana.page.getByPlaceholder('Search datasets, samples, micrographs…').fill('');
+
+  // Display only: nothing changed in the project
+  expect.soft(await ana.state((e) => e.app.getState().isDirty)).toBe(false);
+  expect(ana.consoleErrors.filter((l) => /Failed to load image|load-tiles|affine|ENOENT/i.test(l))).toEqual([]);
 });

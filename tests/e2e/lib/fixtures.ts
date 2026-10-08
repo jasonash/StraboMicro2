@@ -40,7 +40,7 @@ async function micrographImage(): Promise<Buffer> {
   return sharp(Buffer.from(svg)).jpeg({ quality: 85 }).toBuffer();
 }
 
-function spot(id: string, name: string, x: number, y: number) {
+export function spot(id: string, name: string, x: number, y: number) {
   const now = new Date().toISOString();
   return {
     id, name, labelColor: '0xffffffff', showLabel: true, color: '0x00ff00ff', opacity: 50,
