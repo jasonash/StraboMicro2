@@ -54,6 +54,7 @@ import { AffineRegistrationModal } from './AffineRegistrationModal';
 import { isInstrumentInfoComplete } from './InstrumentInfoForm';
 import { PanTool, Timeline, RestartAlt, CheckCircle, Cancel, RotateLeft, RotateRight } from '@mui/icons-material';
 import type { AffineMatrix, ControlPoint } from '@/utils/affineTransform';
+import { partnerImageType, partnerRole, polarizedRole } from '@/utils/polarization';
 import {
   bakeAffineTilesForCopy,
   computeCopiedPlacement,
@@ -844,8 +845,8 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
       }
 
       // Validate dimensions match the main image
-      const sibLabel = formData.imageType === 'Plane Polarized Light' ? 'XPL' : 'PPL';
-      const srcLabel = formData.imageType === 'Plane Polarized Light' ? 'PPL' : 'XPL';
+      const sibLabel = partnerRole(formData.imageType);
+      const srcLabel = sibLabel === 'XPL' ? 'PPL' : 'XPL';
       if (xplWidth !== formData.micrographWidth || xplHeight !== formData.micrographHeight) {
         alert(
           `The ${sibLabel} image dimensions (${xplWidth} x ${xplHeight}) ` +
@@ -870,7 +871,7 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
       console.log('[NewMicrographDialog] Sibling image added successfully');
     } catch (error) {
       console.error('[NewMicrographDialog] Error adding sibling image:', error);
-      const errSibLabel = formData.imageType === 'Plane Polarized Light' ? 'XPL' : 'PPL';
+      const errSibLabel = partnerRole(formData.imageType);
       alert(`Error loading ${errSibLabel} image: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setIsLoadingXpl(false);
@@ -1538,9 +1539,7 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
 
         // Create sibling micrograph - inherits everything from main except imageType
         // Sibling has the SAME parent as main (they are siblings, not parent/child)
-        const siblingImageType = formData.imageType === 'Plane Polarized Light'
-          ? 'Cross Polarized Light'
-          : 'Plane Polarized Light';
+        const siblingImageType = partnerImageType(formData.imageType);
 
         // An affine-placed main image renders from tiles keyed by affineTileHash, which
         // hold the WARPED pixels of one specific image. The XPL sibling shares the
@@ -1569,7 +1568,7 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
           // parentID is already inherited from micrograph via spread
           // Override imageType to complement of main
           imageType: siblingImageType,
-          // For Optical Microscopy, instrument.dataType is empty (only imageType is used)
+          // For Optical Microscopy and Scanner, instrument.dataType is empty (only imageType is used)
           // The instrument object is inherited from main via spread, which is correct
           ...(xplAffineTileHash ? { affineTileHash: xplAffineTileHash } : {}),
         };
@@ -1582,7 +1581,7 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
         console.log('Sibling micrograph created successfully:', xplMicrograph.id);
 
         // Link as siblings - PPL is always primary, XPL is always secondary
-        if (formData.imageType === 'Plane Polarized Light') {
+        if (polarizedRole(formData.imageType) === 'PPL') {
           // Main is PPL (primary), sibling is XPL (secondary)
           useAppStore.getState().linkSiblingImages(micrograph.id, xplMicrograph.id);
         } else {
@@ -3529,44 +3528,6 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
               </TextField>
             )}
 
-            {/* Add Corresponding Sibling Image button - shown for Optical Microscopy + PPL or XPL */}
-            {formData.instrumentType === 'Optical Microscopy' &&
-              (formData.imageType === 'Plane Polarized Light' || formData.imageType === 'Cross Polarized Light') && (
-                <Box sx={{ mt: 1 }}>
-                  {xplFilePath ? (
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <CheckCircle color="success" fontSize="small" />
-                      <Typography variant="body2" sx={{ flex: 1 }}>
-                        {formData.imageType === 'Plane Polarized Light' ? 'XPL' : 'PPL'} Image: {xplFileName}
-                      </Typography>
-                      <IconButton
-                        size="small"
-                        onClick={() => {
-                          setXplFilePath(null);
-                          setXplFileName(null);
-                          setXplWidth(null);
-                          setXplHeight(null);
-                          setXplScratchIdentifier(null);
-                        }}
-                        title={`Remove ${formData.imageType === 'Plane Polarized Light' ? 'XPL' : 'PPL'} image`}
-                      >
-                        <Cancel fontSize="small" />
-                      </IconButton>
-                    </Box>
-                  ) : (
-                    <Button
-                      variant="outlined"
-                      size="small"
-                      onClick={handleAddXplImage}
-                      disabled={isLoadingXpl}
-                    >
-                      {isLoadingXpl ? <CircularProgress size={16} sx={{ mr: 1 }} /> : null}
-                      Add Corresponding {formData.imageType === 'Plane Polarized Light' ? 'XPL' : 'PPL'} Image?
-                    </Button>
-                  )}
-                </Box>
-              )}
-
             {formData.instrumentType === 'Scanner' && (
               <TextField
                 fullWidth
@@ -3583,6 +3544,44 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
                 <MenuItem value="Other">Other</MenuItem>
               </TextField>
             )}
+
+            {/* Add Corresponding Sibling Image button - shown for Optical Microscopy or Scanner + PPL or XPL */}
+            {(formData.instrumentType === 'Optical Microscopy' || formData.instrumentType === 'Scanner') &&
+              polarizedRole(formData.imageType) && (
+                <Box sx={{ mt: 1 }}>
+                  {xplFilePath ? (
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <CheckCircle color="success" fontSize="small" />
+                      <Typography variant="body2" sx={{ flex: 1 }}>
+                        {partnerRole(formData.imageType)} Image: {xplFileName}
+                      </Typography>
+                      <IconButton
+                        size="small"
+                        onClick={() => {
+                          setXplFilePath(null);
+                          setXplFileName(null);
+                          setXplWidth(null);
+                          setXplHeight(null);
+                          setXplScratchIdentifier(null);
+                        }}
+                        title={`Remove ${partnerRole(formData.imageType)} image`}
+                      >
+                        <Cancel fontSize="small" />
+                      </IconButton>
+                    </Box>
+                  ) : (
+                    <Button
+                      variant="outlined"
+                      size="small"
+                      onClick={handleAddXplImage}
+                      disabled={isLoadingXpl}
+                    >
+                      {isLoadingXpl ? <CircularProgress size={16} sx={{ mr: 1 }} /> : null}
+                      Add Corresponding {partnerRole(formData.imageType)} Image?
+                    </Button>
+                  )}
+                </Box>
+              )}
 
             {(formData.instrumentType === 'Fourier Transform Infrared Spectroscopy (FTIR)' ||
               formData.instrumentType === 'Raman Spectroscopy') && (
