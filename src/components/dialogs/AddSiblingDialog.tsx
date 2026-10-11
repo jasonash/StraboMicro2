@@ -34,19 +34,12 @@ import {
   orientationLabel,
   type Orientation,
 } from '@/utils/rotationUtils';
+import { partnerImageType, polarizedRole } from '@/utils/polarization';
 
 interface AddSiblingDialogProps {
   open: boolean;
   onClose: () => void;
   sourceMicrographId: string | null;
-}
-
-const PPL_TYPES = ['PPL', 'Plane Polarized Light', 'Plane-Polarized Light'];
-
-function isPPLType(imageType: string | undefined | null): boolean {
-  if (!imageType) return false;
-  const normalized = imageType.toUpperCase();
-  return PPL_TYPES.some(t => normalized.includes(t.toUpperCase()));
 }
 
 
@@ -103,10 +96,11 @@ export function AddSiblingDialog({
 
   // Derive direction from source micrograph's imageType
   const { sourceIsPPL, siblingType, siblingLabel, sourceLabel } = useMemo(() => {
-    const srcIsPPL = isPPLType(sourceMicrograph?.imageType);
+    const srcIsPPL = polarizedRole(sourceMicrograph?.imageType) === 'PPL';
     return {
       sourceIsPPL: srcIsPPL,
-      siblingType: srcIsPPL ? 'Cross Polarized Light' as const : 'Plane Polarized Light' as const,
+      // Same instrument's name: Scanner "Plane Polarized" pairs with "Cross Polarized"
+      siblingType: partnerImageType(sourceMicrograph?.imageType),
       siblingLabel: srcIsPPL ? 'XPL' : 'PPL',
       sourceLabel: srcIsPPL ? 'PPL' : 'XPL',
     };
