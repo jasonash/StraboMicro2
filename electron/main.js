@@ -1637,8 +1637,9 @@ function createWindow() {
   if (isDev) {
     mainWindow.loadURL('http://localhost:5173');
 
-    // Open DevTools automatically in development
-    mainWindow.webContents.once('did-finish-load', () => {
+    // Open DevTools automatically in development (not for a background e2e
+    // copy: the detached DevTools window would take focus)
+    if (!E2E_BACKGROUND) mainWindow.webContents.once('did-finish-load', () => {
       log.info('Page loaded, opening DevTools...');
       mainWindow.webContents.openDevTools({ mode: 'detach' });
     });
