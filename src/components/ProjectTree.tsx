@@ -76,6 +76,7 @@ import { LinkSiblingDialog } from './dialogs/LinkSiblingDialog';
 import { AddSiblingDialog } from './dialogs/AddSiblingDialog';
 import { findMicrographById } from '@/store/helpers';
 import { hiddenSibling, pairPartner } from '@/utils/siblingPair';
+import { partnerRole, polarizedRole } from '@/utils/polarization';
 import type { DatasetMetadata, SampleMetadata, MicrographMetadata } from '@/types/project-types';
 import { EditingScope, PresenceMarks } from './Presence';
 
@@ -1343,7 +1344,7 @@ export function ProjectTree() {
             Delete Micrograph
           </MenuItem>
           {/* PPL/XPL Sibling Pairing - only for PPL/XPL image types */}
-          {(micrograph.imageType === 'Plane Polarized Light' || micrograph.imageType === 'Cross Polarized Light') && (
+          {polarizedRole(micrograph.imageType) && (
             !micrograph.siblingImageId ? (
               <MenuItem
             disabled={!may('micrograph', micrograph.id)}
@@ -1446,7 +1447,7 @@ export function ProjectTree() {
           </MenuItem>
           {/* Add Corresponding Sibling Image - show for PPL or XPL without existing sibling */}
           {!micrograph.siblingImageId &&
-            (micrograph.imageType === 'Plane Polarized Light' || micrograph.imageType === 'Cross Polarized Light') && (
+            polarizedRole(micrograph.imageType) && (
             <MenuItem
               disabled={!mayCreate}
               onClick={() => {
@@ -1455,7 +1456,7 @@ export function ProjectTree() {
                 setMicrographAddAnchor({ ...micrographAddAnchor, [micrograph.id]: null });
               }}
             >
-              Add Corresponding {micrograph.imageType === 'Plane Polarized Light' ? 'XPL' : 'PPL'} Image
+              Add Corresponding {partnerRole(micrograph.imageType)} Image
             </MenuItem>
           )}
         </Menu>
