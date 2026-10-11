@@ -45,6 +45,30 @@ if (E2E_DIR) {
   log.transports.file.resolvePathFn = () => path.join(userData, 'logs', 'main.log');
 }
 
+// Development only: an e2e copy that runs in the background
+// (STRABO_E2E_BACKGROUND=1, set by tests/e2e/lib/copy.ts unless watching), so
+// the person at the computer can keep working: no splash, no Dock icon, its
+// windows never take focus, are see-through and let clicks pass to what is
+// below. Pages keep running at full speed when covered (no background
+// throttling), and Playwright drives them without the OS.
+const E2E_BACKGROUND = Boolean(E2E_DIR) && process.env.STRABO_E2E_BACKGROUND === '1';
+if (E2E_BACKGROUND) {
+  BrowserWindow.prototype.show = function show() { this.showInactive(); };
+  BrowserWindow.prototype.focus = function focus() {};
+  app.focus = () => {};
+  app.on('browser-window-created', (_event, win) => {
+    win.setOpacity(0);
+    win.setIgnoreMouseEvents(true);
+    win.webContents.setBackgroundThrottling(false);
+  });
+  app.whenReady().then(() => {
+    if (process.platform === 'darwin') {
+      app.setActivationPolicy('accessory');
+      app.dock?.hide();
+    }
+  });
+}
+
 // Fix sharp native module resolution in Windows packaged builds.
 // sharp loads its binary via require('@img/sharp-win32-x64/sharp.node'), a
 // package.json exports-map entry that failed to resolve inside Electron's
@@ -502,6 +526,7 @@ function createSplashWindow() {
   splashWindow = new BrowserWindow({
     width: 400,
     height: 400,
+    show: !E2E_BACKGROUND,
     frame: false,
     transparent: true,
     resizable: false,

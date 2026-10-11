@@ -168,7 +168,9 @@ export async function launchCopy(label: string, account: Account, slot: number, 
   const app = await electron.launch({
     args: ['.'],
     cwd: REPO,
-    env: { ...process.env, ...extraEnv, STRABO_E2E_DIR: dir, STRABO_E2E_SERVER: SERVER } as Record<string, string>,
+    env: { ...process.env, ...extraEnv, STRABO_E2E_DIR: dir, STRABO_E2E_SERVER: SERVER,
+      // In the background unless watching or E2E_SHOW=1 (electron/main.js E2E_BACKGROUND)
+      STRABO_E2E_BACKGROUND: WATCH || process.env.E2E_SHOW === '1' ? '' : '1' } as Record<string, string>,
   });
 
   // Native dialogs answered from the test's queue; anything unanswered is
