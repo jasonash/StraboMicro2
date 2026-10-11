@@ -26,6 +26,7 @@ import {
 import { Image as ImageIcon } from '@mui/icons-material';
 import { useAppStore } from '@/store';
 import type { MicrographMetadata } from '@/types/project-types';
+import { canPairWith, polarizedRole } from '@/utils/polarization';
 
 interface LinkSiblingDialogProps {
   open: boolean;
@@ -42,29 +43,6 @@ const ASPECT_RATIO_TOLERANCE = 0.01;
 function aspectRatiosMatch(ratio1: number, ratio2: number): boolean {
   const diff = Math.abs(ratio1 - ratio2);
   return diff <= ASPECT_RATIO_TOLERANCE * Math.max(ratio1, ratio2);
-}
-
-/**
- * Get complementary image types for PPL/XPL pairing
- */
-function getComplementaryImageTypes(imageType: string | undefined | null): string[] {
-  if (!imageType) return [];
-
-  // PPL <-> XPL mappings
-  const pplTypes = ['PPL', 'Plane Polarized Light', 'Plane-Polarized Light'];
-  const xplTypes = ['XPL', 'Cross Polarized Light', 'Cross-Polarized Light', 'Crossed Polarized Light'];
-
-  const normalizedType = imageType.toUpperCase();
-
-  if (pplTypes.some(t => normalizedType.includes(t.toUpperCase()))) {
-    return xplTypes;
-  }
-  if (xplTypes.some(t => normalizedType.includes(t.toUpperCase()))) {
-    return pplTypes;
-  }
-
-  // If not specifically PPL/XPL, allow pairing with any optical image
-  return [...pplTypes, ...xplTypes];
 }
 
 export function LinkSiblingDialog({
@@ -103,7 +81,6 @@ export function LinkSiblingDialog({
     if (sourceWidth === 0 || sourceHeight === 0) return [];
 
     const sourceAspectRatio = sourceWidth / sourceHeight;
-    const complementaryTypes = getComplementaryImageTypes(sourceMicrograph.imageType);
 
     return (sourceSample.micrographs || []).filter(m => {
       // Not the source micrograph itself
@@ -121,16 +98,8 @@ export function LinkSiblingDialog({
       const candidateAspectRatio = candidateWidth / candidateHeight;
       if (!aspectRatiosMatch(sourceAspectRatio, candidateAspectRatio)) return false;
 
-      // Optionally check complementary imageType (but allow if no imageType set)
-      if (m.imageType && complementaryTypes.length > 0) {
-        const normalizedCandidateType = m.imageType.toUpperCase();
-        const isComplementary = complementaryTypes.some(t =>
-          normalizedCandidateType.includes(t.toUpperCase())
-        );
-        if (!isComplementary) return false;
-      }
-
-      return true;
+      // The other half (PPL <-> XPL, or no image type set), same instrument
+      return canPairWith(sourceMicrograph, m);
     });
   }, [sourceMicrograph, sourceSample]);
 
@@ -172,10 +141,7 @@ export function LinkSiblingDialog({
 
     // Determine which is primary (PPL) and which is secondary (XPL)
     // PPL is typically considered the primary view
-    const sourceType = sourceMicrograph.imageType?.toUpperCase() || '';
-    const isPPL = sourceType.includes('PPL') || sourceType.includes('PLANE');
-
-    if (isPPL) {
+    if (polarizedRole(sourceMicrograph.imageType) === 'PPL') {
       // Source is PPL (primary), candidate is XPL (secondary)
       linkSiblingImages(sourceMicrograph.id, selectedCandidateId);
     } else {
@@ -229,6 +195,7 @@ export function LinkSiblingDialog({
               <li>Have the same aspect ratio (within 1%)</li>
               <li>Not already be linked to another sibling</li>
               <li>Have a complementary image type (PPL/XPL)</li>
+              <li>Come from the same instrument</li>
             </ul>
           </Alert>
         ) : (
