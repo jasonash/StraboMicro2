@@ -19,6 +19,11 @@ A failed scenario attaches each copy's screen, main.log, any native dialog
 the test did not answer, and a trace (`npx playwright show-trace <zip>`:
 every step with a screenshot).
 
+Each test's copies live in one `strabo-e2e-*` folder (300 to 500 MB), which
+is deleted when the test passes and kept when it fails (the path is printed).
+`E2E_KEEP_RUN_DIRS=1` keeps every folder; `E2E_TMPDIR=<folder>` puts them on
+another disk instead of the system temp folder.
+
 ## Before each run (globalSetup.ts)
 
 - `seed.sql` creates the e2e accounts if missing (a dev database restored

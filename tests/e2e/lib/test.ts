@@ -19,8 +19,17 @@ interface Fixtures {
 
 export const test = base.extend<Fixtures>({
   // eslint-disable-next-line no-empty-pattern
-  runDir: async ({}, use) => {
-    await use(newRunDir());
+  // Removed after the test (copies are closed first: launch depends on runDir);
+  // kept when the test failed or E2E_KEEP_RUN_DIRS=1, for inspection
+  runDir: async ({}, use, testInfo) => {
+    const dir = newRunDir();
+    await use(dir);
+    const failed = testInfo.status !== testInfo.expectedStatus;
+    if (failed || process.env.E2E_KEEP_RUN_DIRS === '1') {
+      console.log(`[e2e] kept run folder ${dir}`);
+      return;
+    }
+    fs.rmSync(dir, { recursive: true, force: true, maxRetries: 3, retryDelay: 500 });
   },
   launch: async ({ runDir }, use, testInfo) => {
     const copies: Copy[] = [];

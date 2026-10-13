@@ -248,6 +248,9 @@ export async function launchCopy(label: string, account: Account, slot: number, 
   return copy;
 }
 
+/** One folder per test for its copies' profiles; E2E_TMPDIR puts them on another disk */
 export function newRunDir(): string {
-  return fs.mkdtempSync(path.join(os.tmpdir(), 'strabo-e2e-'));
+  const base = process.env.E2E_TMPDIR || os.tmpdir();
+  fs.mkdirSync(base, { recursive: true });
+  return fs.mkdtempSync(path.join(base, 'strabo-e2e-'));
 }
