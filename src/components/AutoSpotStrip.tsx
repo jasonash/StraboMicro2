@@ -1,26 +1,17 @@
 /**
- * Auto spot strip (docs/auto-spot-mode-design.md 5.4): beside the drawing
- * toolbar while auto spot mode is on and a spot tool is active. Picks the
+ * Auto spot strip (docs/auto-spot-mode-design.md 5.4): in the status line
+ * under the viewer while auto spot mode is on and a spot tool is active
+ * (Jason 2026-10-13: beside the toolbar it covered the image). Picks the
  * preset auto spots are made with and shows the next name.
  */
 
 import { useEffect } from 'react';
 import { MenuItem, Select, Typography, Box, Tooltip } from '@mui/material';
 import { useAppStore } from '@/store';
-import { useToolbarDock } from '@/hooks/useToolbarDock';
+import { useCanCreate } from '@/hooks/usePermissions';
 import { autoSpotDraft } from '@/utils/newSpot';
 import { chosenPattern } from '@/utils/autoSpotName';
 import type { PresetWithScope } from '@/types/preset-types';
-
-/** Distance from the docked edge: toolbar margin 16 + toolbar 54 + gap 8 */
-const OFFSET = 78;
-
-const STRIP_POSITION: Record<string, React.CSSProperties> = {
-  right: { right: OFFSET, top: '50%', transform: 'translateY(-50%)' },
-  left: { left: OFFSET, top: '50%', transform: 'translateY(-50%)' },
-  top: { top: OFFSET, left: '50%', transform: 'translateX(-50%)' },
-  bottom: { bottom: OFFSET, left: '50%', transform: 'translateX(-50%)' },
-};
 
 export const ALT_KEY_NAME = typeof navigator !== 'undefined' && /Mac/.test(navigator.userAgent) ? 'Option' : 'Alt';
 
@@ -29,7 +20,18 @@ export function autoSpotPresetOptions(all: PresetWithScope[], chosenId: string |
   return all.filter((p) => (p.spotNamePattern?.trim() ?? '') !== '' || p.id === chosenId);
 }
 
+/** The strip when auto spot mode applies (auto on, a spot tool, a micrograph, may create spots), else nothing */
 export function AutoSpotStrip() {
+  const autoSpotMode = useAppStore((s) => s.autoSpotMode);
+  const activeTool = useAppStore((s) => s.activeTool);
+  const activeMicrographId = useAppStore((s) => s.activeMicrographId);
+  const canDraw = useCanCreate();
+  const spotTool = activeTool === 'point' || activeTool === 'line' || activeTool === 'polygon';
+  if (!autoSpotMode || !spotTool || !activeMicrographId || !canDraw) return null;
+  return <AutoSpotStripContent />;
+}
+
+function AutoSpotStripContent() {
   const project = useAppStore((s) => s.project);
   const activeMicrographId = useAppStore((s) => s.activeMicrographId);
   const autoSpotPresetId = useAppStore((s) => s.autoSpotPresetId);
@@ -38,7 +40,6 @@ export function AutoSpotStrip() {
   // Subscribed so the list follows preset edits; read through getAllPresetsWithScope
   useAppStore((s) => s.globalPresets);
   const getAllPresetsWithScope = useAppStore((s) => s.getAllPresetsWithScope);
-  const { dockEdge } = useToolbarDock();
 
   const all = getAllPresetsWithScope();
   const preset = autoSpotPresetId ? all.find((p) => p.id === autoSpotPresetId) ?? null : null;
@@ -74,19 +75,13 @@ export function AutoSpotStrip() {
       <Box
         className="auto-spot-strip"
         data-testid="auto-spot-strip"
-        style={STRIP_POSITION[dockEdge]}
         sx={{
-          position: 'absolute',
-          zIndex: 100,
           display: 'flex',
           alignItems: 'center',
-          gap: 1.5,
-          px: 1.5,
-          py: 0.75,
-          bgcolor: 'var(--bg-tertiary)',
-          border: '1px solid var(--border)',
-          borderRadius: '6px',
-          boxShadow: '0 2px 8px rgba(0, 0, 0, 0.3)',
+          gap: 1,
+          pl: 2,
+          borderLeft: 1,
+          borderColor: 'divider',
           whiteSpace: 'nowrap',
         }}
       >
@@ -99,8 +94,9 @@ export function AutoSpotStrip() {
           value={preset?.id ?? ''}
           onChange={(e) => setAutoSpotPresetId(e.target.value === '' ? null : String(e.target.value))}
           displayEmpty
+          renderValue={() => preset?.name ?? 'Default'}
           inputProps={{ 'aria-label': 'Auto spot preset' }}
-          sx={{ minWidth: 120, fontSize: '0.85rem' }}
+          sx={{ minWidth: 80, fontSize: '0.85rem', '& .MuiSelect-select': { py: 0 } }}
         >
           <MenuItem value="">
             Default ({chosenPattern(null, project?.spotNamePattern)})

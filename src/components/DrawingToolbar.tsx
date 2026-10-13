@@ -4,7 +4,7 @@ import { Straighten as RulerIcon, AutoMode as AutoModeIcon } from '@mui/icons-ma
 import { useAppStore } from '@/store';
 import { useCanCreate, useCanEdit } from '@/hooks/usePermissions';
 import { useToolbarDock } from '@/hooks/useToolbarDock';
-import { AutoSpotStrip, ALT_KEY_NAME } from './AutoSpotStrip';
+import { ALT_KEY_NAME } from './AutoSpotStrip';
 import './DrawingToolbar.css';
 
 /**
@@ -74,10 +74,7 @@ const DrawingToolbar: React.FC = () => {
     ? { width: '1px', height: '28px', bgcolor: 'var(--text-muted)', mx: 1 }
     : { height: '2px', bgcolor: 'var(--text-muted)', mx: 1, my: 1 };
 
-  const spotToolActive = activeTool === 'point' || activeTool === 'line' || activeTool === 'polygon';
-
   return (
-    <>
     <Box className={`drawing-toolbar ${orientationClass}`} style={positionStyle}>
       {canDraw && (<>
       <Tooltip title="Point Spot" placement={tooltipPlacement}>
@@ -233,8 +230,6 @@ const DrawingToolbar: React.FC = () => {
         </IconButton>
       </Tooltip>
     </Box>
-    {canDraw && autoSpotMode && spotToolActive && activeMicrographId && <AutoSpotStrip />}
-    </>
   );
 };
 

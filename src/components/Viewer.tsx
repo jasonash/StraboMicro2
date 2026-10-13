@@ -8,6 +8,7 @@ import { TiledViewer, TiledViewerRef } from './TiledViewer';
 import { useAppStore } from '../store';
 import { useSyncStore } from '../store/useSyncStore';
 import { findMicrographById, findSpotById } from '../store/helpers';
+import { AutoSpotStrip } from './AutoSpotStrip';
 
 const Viewer: React.FC = () => {
   const [bottomHeight, setBottomHeight] = useState(200);
@@ -406,23 +407,26 @@ const Viewer: React.FC = () => {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          gap: 3,
+          gap: 2,
           px: 2,
           flexShrink: 0,
         }}
       >
         <Typography variant="body2" sx={{
-          color: 'text.secondary'
+          color: 'text.secondary',
+          whiteSpace: 'nowrap'
         }}>
           {cursorCoords
             ? `X: ${cursorCoords.x.toFixed(cursorCoords.decimals)} ${cursorCoords.unit} × Y: ${cursorCoords.y.toFixed(cursorCoords.decimals)} ${cursorCoords.unit}`
             : 'X: 0.000 cm × Y: 0.000 cm'}
         </Typography>
         <Typography variant="body2" sx={{
-          color: 'text.secondary'
+          color: 'text.secondary',
+          whiteSpace: 'nowrap'
         }}>
           Zoom: {(currentZoom * 100).toFixed(currentZoom < 1 ? 1 : 0)}%
         </Typography>
+        <AutoSpotStrip />
       </Box>
 
       {/* Bottom Panel */}
