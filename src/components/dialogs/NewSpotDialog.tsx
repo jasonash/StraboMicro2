@@ -23,10 +23,14 @@ import {
 } from '@mui/material';
 import { MuiColorInput } from 'mui-color-input';
 import { Spot, Geometry } from '@/types/project-types';
-import { v4 as uuidv4 } from 'uuid';
 import { useAppStore } from '@/store';
-import { mergePresetIntoSpot } from '@/store/helpers';
-import { legacyColorToHex, hexToLegacyColor } from '@/utils/colorUtils';
+import type { PresetWithScope } from '@/types/preset-types';
+import {
+  buildNewSpot,
+  lastUsedSpotAppearance,
+  rememberSpotAppearance,
+  withPresetAppearance,
+} from '@/utils/newSpot';
 import { PresetSelector } from '../PresetSelector';
 
 interface NewSpotDialogProps {
@@ -45,39 +49,27 @@ export const NewSpotDialog: React.FC<NewSpotDialogProps> = ({
   geometry,
   existingSpots = [],
 }) => {
-  // Load default values from localStorage
-  const getDefaultColor = (key: string, defaultValue: string) => {
-    return localStorage.getItem(`spot_${key}`) || defaultValue;
-  };
-
-  const getDefaultOpacity = () => {
-    const saved = localStorage.getItem('spot_opacity');
-    return saved ? parseInt(saved, 10) : 50;
-  };
-
   const getPresetById = useAppStore((state) => state.getPresetById);
 
   // Form state
   const [name, setName] = useState('');
   const [notes, setNotes] = useState('');
-  const [labelColor, setLabelColor] = useState('#ffffff'); // Default to white for better readability with background box
-  const [spotColor, setSpotColor] = useState(getDefaultColor('spotColor', '#00ff00'));
-  const [opacity, setOpacity] = useState(getDefaultOpacity());
+  // Label color starts white for better readability with the background box
+  const [labelColor, setLabelColor] = useState(() => lastUsedSpotAppearance().labelColor);
+  const [spotColor, setSpotColor] = useState(() => lastUsedSpotAppearance().spotColor);
+  const [opacity, setOpacity] = useState(() => lastUsedSpotAppearance().opacity);
   const [selectedPresetIds, setSelectedPresetIds] = useState<string[]>([]);
 
   // Selecting a preset prefills the appearance controls (which the user can
   // still override — whatever is in the controls at save time wins)
   const handlePresetSelectionChange = (presetIds: string[]) => {
-    const newlyAdded = presetIds.filter((id) => !selectedPresetIds.includes(id));
-    for (const id of newlyAdded) {
-      const preset = getPresetById(id);
-      if (preset?.data.color) {
-        setSpotColor(legacyColorToHex(preset.data.color));
-      }
-      if (preset?.data.opacity != null) {
-        setOpacity(preset.data.opacity);
-      }
-    }
+    const newlyAdded = presetIds
+      .filter((id) => !selectedPresetIds.includes(id))
+      .map((id) => getPresetById(id))
+      .filter((preset): preset is PresetWithScope => preset !== null);
+    const next = withPresetAppearance({ labelColor, spotColor, opacity }, newlyAdded);
+    setSpotColor(next.spotColor);
+    setOpacity(next.opacity);
     setSelectedPresetIds(presetIds);
   };
 
@@ -107,9 +99,10 @@ export const NewSpotDialog: React.FC<NewSpotDialogProps> = ({
     if (open) {
       setName('');
       setNotes('');
-      setLabelColor('#ffffff'); // Default to white
-      setSpotColor(getDefaultColor('spotColor', '#00ff00'));
-      setOpacity(getDefaultOpacity());
+      const start = lastUsedSpotAppearance();
+      setLabelColor(start.labelColor);
+      setSpotColor(start.spotColor);
+      setOpacity(start.opacity);
       setSelectedPresetIds([]);
       setEnableCopy(false);
       setSelectedSpotToCopy(null);
@@ -139,62 +132,15 @@ export const NewSpotDialog: React.FC<NewSpotDialogProps> = ({
       return;
     }
 
-    // Save preferences to localStorage
-    localStorage.setItem('spot_labelColor', labelColor);
-    localStorage.setItem('spot_spotColor', spotColor);
-    localStorage.setItem('spot_opacity', opacity.toString());
-    // Convert GeoJSON geometry to legacy format
-    let points: Array<{ X: number; Y: number }> = [];
-    let legacyGeometryType: string = '';
+    const appearance = { labelColor, spotColor, opacity };
+    rememberSpotAppearance(appearance);
 
-    if (geometry.type === 'Point') {
-      legacyGeometryType = 'point'; // lowercase in legacy format
-      const [x, y] = geometry.coordinates as [number, number];
-      points = [{ X: x, Y: y }];
-    } else if (geometry.type === 'LineString') {
-      legacyGeometryType = 'line'; // "line" not "LineString" in legacy format
-      points = (geometry.coordinates as Array<[number, number]>).map(([x, y]) => ({ X: x, Y: y }));
-    } else if (geometry.type === 'Polygon') {
-      legacyGeometryType = 'polygon'; // lowercase in legacy format
-      // Polygon coordinates are nested: [[[x1, y1], [x2, y2], ...]]
-      const ring = (geometry.coordinates as Array<Array<[number, number]>>)[0];
-      points = ring.map(([x, y]) => ({ X: x, Y: y }));
-    }
-
-    // Create the new spot in legacy format
-    const newSpot: Spot = {
-      id: uuidv4(),
-      name: name.trim(),
-      notes: notes.trim() || '',
-      labelColor: hexToLegacyColor(labelColor),
-      color: hexToLegacyColor(spotColor),
-      opacity,
-      date: new Date().toISOString(),
-      time: new Date().toISOString(),
-      modifiedTimestamp: Date.now(),
-      geometryType: legacyGeometryType,
-      points,
-    };
-
-    // Merge selected presets (additive, same rules as Quick Edit), then
-    // re-assert the dialog's appearance controls — controls win over preset
-    // appearance since they were prefilled from it and may have been overridden
-    if (selectedPresetIds.length > 0) {
-      const appliedIds: string[] = [];
-      for (const presetId of selectedPresetIds) {
-        const preset = getPresetById(presetId);
-        if (preset) {
-          mergePresetIntoSpot(newSpot, preset.data);
-          appliedIds.push(presetId);
-        }
-      }
-      if (appliedIds.length > 0) {
-        newSpot.appliedPresetIds = appliedIds;
-      }
-      newSpot.labelColor = hexToLegacyColor(labelColor);
-      newSpot.color = hexToLegacyColor(spotColor);
-      newSpot.opacity = opacity;
-    }
+    // Selected presets merge in (additive, same rules as Quick Edit); the
+    // dialog's appearance controls win over the presets' appearance
+    const presets = selectedPresetIds
+      .map((id) => getPresetById(id))
+      .filter((preset): preset is PresetWithScope => preset !== null);
+    const newSpot = buildNewSpot({ name, notes, geometry, appearance, presets });
 
     // If copying from existing spot, copy selected fields
     if (enableCopy && selectedSpotToCopy) {
