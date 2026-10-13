@@ -5,18 +5,19 @@
  * Similar to polygon drawing but for open polylines:
  * - Click to add points
  * - Preview line shows current segment while drawing
- * - Double-click to finish (500ms threshold)
+ * - Double-click to finish (same place, within 500 ms: utils/drawingDoubleClick)
  * - Stroke width scales with zoom
  */
 
 import { useRef, useCallback } from 'react';
 import Konva from 'konva';
+import { isDoubleClick, type LastClick } from '@/utils/drawingDoubleClick';
 
 interface LineDrawingState {
   currentLine: Konva.Line | null;
   previewLine: Konva.Line | null;
   currentPoints: number[];
-  lastClickTime: number;
+  lastClick: LastClick | null;
 }
 
 interface UseLineDrawingOptions {
@@ -26,14 +27,13 @@ interface UseLineDrawingOptions {
   lineColor?: string; // Optional line color (default: #cc3333)
 }
 
-const DOUBLE_CLICK_THRESHOLD = 500; // 500ms threshold for double-click
 
 export const useLineDrawing = ({ layer, scale, onComplete, lineColor = '#cc3333' }: UseLineDrawingOptions) => {
   const stateRef = useRef<LineDrawingState>({
     currentLine: null,
     previewLine: null,
     currentPoints: [],
-    lastClickTime: 0,
+    lastClick: null,
   });
 
   /**
@@ -45,11 +45,10 @@ export const useLineDrawing = ({ layer, scale, onComplete, lineColor = '#cc3333'
 
       const state = stateRef.current;
       const currentTime = Date.now();
-      const timeSinceLastClick = currentTime - state.lastClickTime;
 
       // Check for double-click to finish
       if (
-        timeSinceLastClick < DOUBLE_CLICK_THRESHOLD &&
+        isDoubleClick(state.lastClick, imageX, imageY, scale, currentTime) &&
         state.currentLine &&
         state.currentPoints.length >= 4 // At least 2 points (4 coordinates)
       ) {
@@ -64,11 +63,11 @@ export const useLineDrawing = ({ layer, scale, onComplete, lineColor = '#cc3333'
         // Call completion callback
         onComplete(finalPoints);
 
-        state.lastClickTime = 0; // Reset to prevent triple-click issues
+        state.lastClick = null; // Reset to prevent triple-click issues
         return;
       }
 
-      state.lastClickTime = currentTime;
+      state.lastClick = { time: currentTime, x: imageX, y: imageY };
 
       // Add point to current line
       state.currentPoints.push(imageX, imageY);

@@ -5,18 +5,19 @@
  * Based on ElectronTest implementation with the following features:
  * - Click to add vertices
  * - Preview line shows closed polygon shape while drawing
- * - Double-click to finish (500ms threshold)
+ * - Double-click to finish (same place, within 500 ms: utils/drawingDoubleClick)
  * - Stroke width scales with zoom
  */
 
 import { useRef, useCallback } from 'react';
 import Konva from 'konva';
+import { isDoubleClick, type LastClick } from '@/utils/drawingDoubleClick';
 
 interface PolygonDrawingState {
   currentPolygon: Konva.Line | null;
   previewLine: Konva.Line | null;
   currentPoints: number[];
-  lastClickTime: number;
+  lastClick: LastClick | null;
 }
 
 interface UsePolygonDrawingOptions {
@@ -25,14 +26,13 @@ interface UsePolygonDrawingOptions {
   onComplete: (points: number[]) => void;
 }
 
-const DOUBLE_CLICK_THRESHOLD = 500; // 500ms threshold for double-click
 
 export const usePolygonDrawing = ({ layer, scale, onComplete }: UsePolygonDrawingOptions) => {
   const stateRef = useRef<PolygonDrawingState>({
     currentPolygon: null,
     previewLine: null,
     currentPoints: [],
-    lastClickTime: 0,
+    lastClick: null,
   });
 
   /**
@@ -44,11 +44,10 @@ export const usePolygonDrawing = ({ layer, scale, onComplete }: UsePolygonDrawin
 
       const state = stateRef.current;
       const currentTime = Date.now();
-      const timeSinceLastClick = currentTime - state.lastClickTime;
 
       // Check for double-click to finish
       if (
-        timeSinceLastClick < DOUBLE_CLICK_THRESHOLD &&
+        isDoubleClick(state.lastClick, imageX, imageY, scale, currentTime) &&
         state.currentPolygon &&
         state.currentPoints.length >= 6 // At least 3 points (6 coordinates)
       ) {
@@ -66,11 +65,11 @@ export const usePolygonDrawing = ({ layer, scale, onComplete }: UsePolygonDrawin
         // Call completion callback
         onComplete(finalPoints);
 
-        state.lastClickTime = 0; // Reset to prevent triple-click issues
+        state.lastClick = null; // Reset to prevent triple-click issues
         return;
       }
 
-      state.lastClickTime = currentTime;
+      state.lastClick = { time: currentTime, x: imageX, y: imageY };
 
       // Add point to current polygon
       state.currentPoints.push(imageX, imageY);

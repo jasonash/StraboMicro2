@@ -210,3 +210,49 @@ test('A drag pans the image with a spot tool active and makes no spot (auto and 
   }
   expect((await spotNames(ana, p.micrographId)).length).toBe(before);
 });
+
+test('Lines keep every vertex: clicks that wobble a few pixels, and a quick click at a new vertex before the double-click', async ({ launch, project }) => {
+  const { p, ana } = await start(launch, project, 'E2E Auto Lines');
+  const box = await ana.page.locator('.konvajs-content').first().boundingBox();
+  if (!box) throw new Error('no viewer');
+  const cx = box.x + box.width / 2;
+  const cy = box.y + box.height / 2;
+  const layerPos = () => ana.page.evaluate(() => {
+    const k = (window as unknown as { Konva?: { stages: { findOne: (s: string) => { x: () => number; y: () => number } | undefined }[] } }).Konva;
+    const layer = k?.stages.map((st) => st.findOne('.image-layer')).find((l) => l);
+    return layer ? `${Math.round(layer.x())},${Math.round(layer.y())}` : null;
+  });
+  /** A click whose pointer moves `wobble` px between press and release, as a hand does */
+  const click = async (x: number, y: number, wobble: number) => {
+    await ana.page.mouse.move(x, y);
+    await ana.page.mouse.down();
+    await ana.page.mouse.move(x + wobble, y + wobble / 2);
+    await ana.page.mouse.up();
+  };
+  const lastLine = () => ana.state(new Function('e', `
+    const m = e.app.getState().micrographIndex.get(${JSON.stringify(p.micrographId)});
+    const lines = (m?.spots ?? []).filter((s) => s.geometryType === 'line');
+    return lines.length ? lines[lines.length - 1].points.length : 0;`) as never) as Promise<number>;
+
+  await autoButton(ana).click();
+  await ana.page.getByRole('button', { name: 'Line tool' }).click();
+
+  for (const wobble of [2, 4]) {
+    await ana.caption(`two-segment line, every click wobbles ${wobble} px`);
+    const before = await layerPos();
+    await click(cx - 150, cy - 60, wobble); await ana.page.waitForTimeout(600);
+    await click(cx, cy + 40, wobble); await ana.page.waitForTimeout(600);
+    await click(cx + 150, cy - 60, wobble); await ana.page.waitForTimeout(100);
+    await click(cx + 150, cy - 60, wobble);
+    await expect.poll(lastLine).toBe(3);
+    expect(await layerPos()).toBe(before); // the image did not move
+    await ana.state(new Function('e', `e.app.getState().deleteSpot((e.app.getState().micrographIndex.get(${JSON.stringify(p.micrographId)}).spots ?? []).at(-1).id)`) as never);
+  }
+
+  await ana.caption('quick line: the click at the third vertex comes 150 ms after the second');
+  await click(cx - 150, cy - 60, 0); await ana.page.waitForTimeout(600);
+  await click(cx, cy + 40, 0); await ana.page.waitForTimeout(150);
+  await click(cx + 150, cy - 60, 0); await ana.page.waitForTimeout(100);
+  await click(cx + 150, cy - 60, 0);
+  await expect.poll(lastLine).toBe(3);
+});

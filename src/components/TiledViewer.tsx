@@ -53,6 +53,7 @@ const TILE_SIZE = 256;
 const MIN_ZOOM = 0.1;
 const MAX_ZOOM = 20; // Increased from 5x to 20x for detail work
 const ZOOM_STEP = 1.1;
+const PAN_START_PX = 5; // A press pans only after the pointer moves this far (a click wobbles a little)
 
 interface TiledViewerProps {
   imagePath: string | null;
@@ -134,6 +135,10 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
     const [isPanning, setIsPanning] = useState(false);
     const [lastPointerPos, setLastPointerPos] = useState<{ x: number; y: number } | null>(null);
     const [hasDragged, setHasDragged] = useState(false); // Track if user has dragged since mousedown
+    // Where a press that may become a pan began; the image only moves once the
+    // pointer has gone PAN_START_PX from it, so the wobble of a click neither
+    // nudges the image nor turns the click into a drag
+    const panStartRef = useRef<{ x: number; y: number } | null>(null);
 
     // Track overlay tile loading state
     const [overlayLoadingCount, setOverlayLoadingCount] = useState(0);
@@ -1379,6 +1384,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
           if (!stage) return;
           const pos = stage.getPointerPosition();
           setLastPointerPos(pos);
+          panStartRef.current = pos ? { x: pos.x, y: pos.y } : null;
         }
       },
       [activeTool, position, zoom, rulerTool, lassoToolActive, spotLassoToolActive, pointCountMode, lasso, setSpotLassoActiveWithRef, activeSketchLayerId, activeMicrographId, handleEraseStroke, handleEraseText]
@@ -1393,6 +1399,12 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
 
       // Handle panning
       if (isPanning && lastPointerPos) {
+        const start = panStartRef.current;
+        if (start) {
+          if (Math.hypot(pos.x - start.x, pos.y - start.y) < PAN_START_PX) return;
+          panStartRef.current = null;
+          setHasDragged(true);
+        }
         const dx = pos.x - lastPointerPos.x;
         const dy = pos.y - lastPointerPos.y;
 
