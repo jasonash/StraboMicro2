@@ -43,6 +43,8 @@ import { useRulerTool } from '@/hooks/useRulerTool';
 import { useLasso, getIndicesInPolygon, isPointInPolygon } from '@/hooks/useLasso';
 import { useImperativeGeometryEditing } from '@/hooks/useImperativeGeometryEditing';
 import { getEffectiveTheme } from '@/hooks/useTheme';
+import { useLatest } from '@/hooks/useLatest';
+import { autoSpotDraft, buildNewSpot } from '@/utils/newSpot';
 import { releaseImage, isImageUsable } from '@/utils/imageUtils';
 import './TiledViewer.css';
 import { EditingScope } from './Presence';
@@ -139,6 +141,10 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
     // New Spot Dialog state
     const [newSpotDialogOpen, setNewSpotDialogOpen] = useState(false);
     const [pendingSpotGeometry, setPendingSpotGeometry] = useState<Geometry | null>(null);
+    // Auto spot mode: New Spot opened with Alt/Option starts with the auto name and preset
+    const [newSpotPrefill, setNewSpotPrefill] = useState<{ name: string; presetIds: string[] } | null>(null);
+    // Whether Alt/Option was held on the click that placed the point or closed the shape
+    const lastClickAltRef = useRef(false);
 
     // Edit Spot Dialog state
     const [editSpotDialogOpen, setEditSpotDialogOpen] = useState(false);
@@ -485,8 +491,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
           coordinates: [coordinates], // Polygon coordinates are array of rings
         };
 
-        setPendingSpotGeometry(polygonGeometry);
-        setNewSpotDialogOpen(true);
+        placeSpotRef.current(polygonGeometry);
       },
     });
 
@@ -505,8 +510,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
           coordinates,
         };
 
-        setPendingSpotGeometry(lineGeometry);
-        setNewSpotDialogOpen(true);
+        placeSpotRef.current(lineGeometry);
       },
     });
 
@@ -755,6 +759,15 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
         if (e.key === 'Escape') {
           // Cancel imperative editing mode
           geometryEditing.cancelEdits();
+
+          // Auto spot mode: Esc ends the run (a shape in progress is dropped
+          // by the tool-change cleanup). Dialogs stop Escape before it gets here.
+          const state = useAppStore.getState();
+          const tool = state.activeTool;
+          const inField = e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement;
+          if (state.autoSpotMode && !inField && (tool === 'point' || tool === 'line' || tool === 'polygon')) {
+            state.setActiveTool(null);
+          }
         }
       };
 
@@ -1700,14 +1713,15 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
 
         console.log('Click at image coordinates:', imageX, imageY, 'Tool:', activeTool);
 
+        lastClickAltRef.current = !!e.evt?.altKey;
+
         // Handle point tool
         if (activeTool === 'point') {
           const pointGeometry: Geometry = {
             type: 'Point',
             coordinates: [imageX, imageY],
           };
-          setPendingSpotGeometry(pointGeometry);
-          setNewSpotDialogOpen(true);
+          placeSpotRef.current(pointGeometry);
         }
 
         // Handle polygon tool
@@ -1798,13 +1812,44 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
         // Select the newly created spot
         selectActiveSpot(spot.id);
 
-        // Clear the drawing tool
-        setActiveTool(null);
+        // Clear the drawing tool (auto spot mode keeps it for the next spot)
+        if (!useAppStore.getState().autoSpotMode) setActiveTool(null);
 
         console.log('Spot created:', spot);
       },
       [activeMicrographId, addSpot, selectActiveSpot, setActiveTool]
     );
+
+    /**
+     * A point was clicked or a line/polygon closed. Auto spot mode saves it at
+     * once with the next name (docs/auto-spot-mode-design.md); otherwise, or
+     * with Alt/Option held, New Spot opens (filled in when in auto mode).
+     */
+    const placeSpot = useCallback(
+      (geometry: Geometry) => {
+        if (!activeMicrographId) return;
+        const state = useAppStore.getState();
+        if (!state.autoSpotMode) {
+          setNewSpotPrefill(null);
+          setPendingSpotGeometry(geometry);
+          setNewSpotDialogOpen(true);
+          return;
+        }
+        const preset = state.autoSpotPresetId ? state.getPresetById(state.autoSpotPresetId) : null;
+        const draft = autoSpotDraft(state.project, activeMicrographId, preset);
+        if (lastClickAltRef.current) {
+          setNewSpotPrefill({ name: draft.name, presetIds: draft.presets.map((p) => p.id) });
+          setPendingSpotGeometry(geometry);
+          setNewSpotDialogOpen(true);
+          return;
+        }
+        const spot = buildNewSpot({ name: draft.name, geometry, appearance: draft.appearance, presets: draft.presets });
+        addSpot(activeMicrographId, spot);
+        selectActiveSpot(spot.id);
+      },
+      [activeMicrographId, addSpot, selectActiveSpot]
+    );
+    const placeSpotRef = useLatest(placeSpot);
 
     /**
      * Handle edit spot geometry
@@ -2584,6 +2629,8 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
             onClose={() => setNewSpotDialogOpen(false)}
             onSave={handleSaveSpot}
             geometry={pendingSpotGeometry}
+            initialName={newSpotPrefill?.name}
+            initialPresetIds={newSpotPrefill?.presetIds}
             micrographId={activeMicrographId}
             existingSpots={effectiveSpots}
           />

@@ -40,6 +40,10 @@ interface NewSpotDialogProps {
   geometry: Geometry;
   micrographId: string;
   existingSpots?: Spot[];
+  /** Auto spot mode (Alt/Option+click): start with this name */
+  initialName?: string;
+  /** Auto spot mode (Alt/Option+click): start with these presets chosen */
+  initialPresetIds?: string[];
 }
 
 export const NewSpotDialog: React.FC<NewSpotDialogProps> = ({
@@ -48,6 +52,8 @@ export const NewSpotDialog: React.FC<NewSpotDialogProps> = ({
   onSave,
   geometry,
   existingSpots = [],
+  initialName,
+  initialPresetIds,
 }) => {
   const getPresetById = useAppStore((state) => state.getPresetById);
 
@@ -97,13 +103,16 @@ export const NewSpotDialog: React.FC<NewSpotDialogProps> = ({
   // Reset form when dialog opens
   useEffect(() => {
     if (open) {
-      setName('');
+      setName(initialName ?? '');
       setNotes('');
-      const start = lastUsedSpotAppearance();
+      const presets = (initialPresetIds ?? [])
+        .map((id) => getPresetById(id))
+        .filter((preset): preset is PresetWithScope => preset !== null);
+      const start = withPresetAppearance(lastUsedSpotAppearance(), presets);
       setLabelColor(start.labelColor);
       setSpotColor(start.spotColor);
       setOpacity(start.opacity);
-      setSelectedPresetIds([]);
+      setSelectedPresetIds(presets.map((p) => p.id));
       setEnableCopy(false);
       setSelectedSpotToCopy(null);
       setCopyFields({

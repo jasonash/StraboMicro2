@@ -4,6 +4,7 @@
  * preset auto spots are made with and shows the next name.
  */
 
+import { useEffect } from 'react';
 import { MenuItem, Select, Typography, Box, Tooltip } from '@mui/material';
 import { useAppStore } from '@/store';
 import { useToolbarDock } from '@/hooks/useToolbarDock';
@@ -43,6 +44,22 @@ export function AutoSpotStrip() {
   const preset = autoSpotPresetId ? all.find((p) => p.id === autoSpotPresetId) ?? null : null;
   const options = autoSpotPresetOptions(all, preset?.id ?? null);
   const draft = autoSpotDraft(project, activeMicrographId, preset);
+
+  // Keys 1-9 choose the preset bound to them (only while the strip shows:
+  // auto mode on and a spot tool active; Quick Classify ignores keys then)
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (!/^[1-9]$/.test(e.key) || e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      const state = useAppStore.getState();
+      const presetId = state.presetKeyBindings[e.key];
+      if (!presetId || !state.getPresetById(presetId)) return;
+      e.preventDefault();
+      state.setAutoSpotPresetId(presetId);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
 
   const keyOf = (presetId: string): string | null => {
     for (const [key, id] of Object.entries(presetKeyBindings)) if (id === presetId) return key;
