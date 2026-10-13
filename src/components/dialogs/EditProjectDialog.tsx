@@ -18,6 +18,7 @@ import {
   Grow,
 } from '@mui/material';
 import { useAppStore } from '@/store';
+import { DEFAULT_SPOT_NAME_PATTERN, spotNameFor } from '@/utils/autoSpotName';
 
 interface EditProjectDialogProps {
   isOpen: boolean;
@@ -34,6 +35,7 @@ interface ProjectMetadataForm {
   gpsDatum: string;
   magneticDeclination: string;
   notes: string;
+  spotNamePattern: string;
 }
 
 export const EditProjectDialog: React.FC<EditProjectDialogProps> = ({ isOpen, onClose }) => {
@@ -49,6 +51,7 @@ export const EditProjectDialog: React.FC<EditProjectDialogProps> = ({ isOpen, on
     gpsDatum: '',
     magneticDeclination: '',
     notes: '',
+    spotNamePattern: '',
   });
 
   // Load current project data when dialog opens
@@ -64,6 +67,7 @@ export const EditProjectDialog: React.FC<EditProjectDialogProps> = ({ isOpen, on
         gpsDatum: project.gpsDatum || '',
         magneticDeclination: project.magneticDeclination || '',
         notes: project.notes || '',
+        spotNamePattern: project.spotNamePattern || '',
       });
     }
   }, [isOpen, project]);
@@ -102,6 +106,7 @@ export const EditProjectDialog: React.FC<EditProjectDialogProps> = ({ isOpen, on
         gpsDatum: formData.gpsDatum,
         magneticDeclination: formData.magneticDeclination,
         notes: formData.notes,
+        spotNamePattern: formData.spotNamePattern.trim() || undefined,
       } : null,
       isDirty: true,
     }));
@@ -209,6 +214,14 @@ export const EditProjectDialog: React.FC<EditProjectDialogProps> = ({ isOpen, on
               onChange={(e) => updateField('magneticDeclination', e.target.value)}
             />
           </Box>
+          <TextField
+            fullWidth
+            label="Default Spot Name (auto spot mode)"
+            value={formData.spotNamePattern}
+            onChange={(e) => updateField('spotNamePattern', e.target.value)}
+            placeholder={DEFAULT_SPOT_NAME_PATTERN}
+            helperText={`{n} is the number. Used when the chosen preset has no spot name. Names look like: ${spotNameFor(formData.spotNamePattern, 1)}, ${spotNameFor(formData.spotNamePattern, 2)}, ...`}
+          />
           <TextField
             fullWidth
             multiline

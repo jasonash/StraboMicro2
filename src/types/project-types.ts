@@ -52,6 +52,9 @@ export interface ProjectMetadata {
   presets?: QuickApplyPreset[] | null;
   presetKeyBindings?: Record<string, string> | null; // Optional project override for key bindings
 
+  // Auto spot mode: default spot name pattern, {n} = number (v2 only; empty = "Spot {n}")
+  spotNamePattern?: string | null;
+
   // Mineral Color overrides (project-level)
   mineralColors?: MineralColorEntry[] | null;
 

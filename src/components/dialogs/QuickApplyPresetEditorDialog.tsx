@@ -48,6 +48,7 @@ import EditIcon from '@mui/icons-material/Edit';
 import { MuiColorInput } from 'mui-color-input';
 import { v4 as uuidv4 } from 'uuid';
 import { useAppStore } from '@/store';
+import { spotNameFor } from '@/utils/autoSpotName';
 import type { QuickApplyPreset, PresetData, PresetScope } from '@/types/preset-types';
 import { getPresetSummary, PRESET_FEATURE_FIELDS, PRESET_FEATURE_DISPLAY_NAMES } from '@/types/preset-types';
 import type {
@@ -129,6 +130,7 @@ export function QuickApplyPresetEditorDialog({
   // Form state - basic info
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
+  const [spotNamePattern, setSpotNamePattern] = useState('');
   const [scope, setScope] = useState<PresetScope>(defaultScope);
   const [error, setError] = useState('');
 
@@ -158,6 +160,7 @@ export function QuickApplyPresetEditorDialog({
         // Edit mode - load existing preset data
         setName(editPreset.name);
         setDescription(editPreset.description || '');
+        setSpotNamePattern(editPreset.spotNamePattern || '');
         setScope(editScope || defaultScope);
 
         // Load spot appearance
@@ -187,6 +190,7 @@ export function QuickApplyPresetEditorDialog({
         // Create mode - reset to defaults
         setName('');
         setDescription('');
+        setSpotNamePattern('');
         setScope(defaultScope);
         setSpotColor(null);
         setSpotOpacity(null);
@@ -243,6 +247,7 @@ export function QuickApplyPresetEditorDialog({
         ...editPreset,
         name: trimmedName,
         description: description.trim() || undefined,
+        spotNamePattern: spotNamePattern.trim() || undefined,
         modifiedAt: now,
         data: presetData,
       };
@@ -254,6 +259,7 @@ export function QuickApplyPresetEditorDialog({
         id: uuidv4(),
         name: trimmedName,
         description: description.trim() || undefined,
+        spotNamePattern: spotNamePattern.trim() || undefined,
         createdAt: now,
         modifiedAt: now,
         data: presetData,
@@ -450,6 +456,19 @@ export function QuickApplyPresetEditorDialog({
               placeholder="Brief description of this preset"
               multiline
               rows={2}
+            />
+
+            <TextField
+              fullWidth
+              label="Spot Name (auto spot mode, optional)"
+              value={spotNamePattern}
+              onChange={(e) => setSpotNamePattern(e.target.value)}
+              placeholder="e.g., Ol-{n}"
+              helperText={
+                spotNamePattern.trim()
+                  ? `{n} is the number. Names look like: ${spotNameFor(spotNamePattern, 1)}, ${spotNameFor(spotNamePattern, 2)}, ...`
+                  : 'Auto spot mode names spots made with this preset; {n} is the number. Presets with a spot name appear in its picker.'
+              }
             />
 
             {/* Copy from Spot Button */}

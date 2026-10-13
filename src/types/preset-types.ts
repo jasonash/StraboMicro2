@@ -56,6 +56,8 @@ export interface QuickApplyPreset {
   name: string;
   description?: string | null;
   color?: string | null; // Optional - legacy field, no longer used in UI
+  /** Auto spot mode: name pattern for spots made with this preset, {n} = number (e.g. "Ol-{n}") */
+  spotNamePattern?: string | null;
   createdAt: string; // ISO timestamp
   modifiedAt: string; // ISO timestamp
   data: PresetData;

@@ -204,5 +204,20 @@ if (dumpPath) {
   console.log(`  ${cases.length} projects, ${entitiesCompared} entities compared with the server`);
 }
 
+// Auto spot mode (docs/auto-spot-mode-design.md 5.1): spotNamePattern on the
+// project and on a preset is an ordinary synced field, never per-user
+{
+  const project = { ...base(), spotNamePattern: 'Spot-{n}',
+    presets: [{ id: 'PR1', name: 'Olivine', spotNamePattern: 'Ol-{n}', createdAt: 'a', modifiedAt: 'b', data: { opacity: 80 } }] };
+  const { entities, order } = explode(project, []);
+  check('auto spot: project body has spotNamePattern', entities['project:P'].body.spotNamePattern === 'Spot-{n}');
+  check('auto spot: preset body has spotNamePattern', entities['preset:PR1']?.body.spotNamePattern === 'Ol-{n}',
+    JSON.stringify(entities['preset:PR1']));
+  const back = assemble(entities, 'P', { order });
+  check('auto spot: both patterns come back from assemble',
+    back !== null && back.project.spotNamePattern === 'Spot-{n}' && back.project.presets?.[0]?.spotNamePattern === 'Ol-{n}');
+  check('auto spot: not a per-user field', !perUserFields('project').includes('spotNamePattern') && !perUserFields('preset').includes('spotNamePattern'));
+}
+
 console.log(failures ? `\n${failures} FAILED (${passes} passed)` : `\nALL PASSED (${passes} checks)`);
 process.exit(failures ? 1 : 0);
