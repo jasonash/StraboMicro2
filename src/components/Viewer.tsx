@@ -298,6 +298,7 @@ const Viewer: React.FC = () => {
       <Box sx={{ flex: 1, bgcolor: 'background.default', position: 'relative' }}>
         <TiledViewer ref={tiledViewerRef} imagePath={activeMicrographPath} imageRevision={imageRevision} onCursorMove={setCursorCoords} onZoomChange={setCurrentZoom} />
         <DrawingToolbar />
+        <AutoSpotStrip />
         <SketchToolbar />
 
         {/* Warning modal when sketch layer is hidden */}
@@ -426,7 +427,6 @@ const Viewer: React.FC = () => {
         }}>
           Zoom: {(currentZoom * 100).toFixed(currentZoom < 1 ? 1 : 0)}%
         </Typography>
-        <AutoSpotStrip />
       </Box>
 
       {/* Bottom Panel */}

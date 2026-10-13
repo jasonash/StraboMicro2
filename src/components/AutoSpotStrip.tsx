@@ -1,8 +1,9 @@
 /**
- * Auto spot strip (docs/auto-spot-mode-design.md 5.4): in the status line
- * under the viewer while auto spot mode is on and a spot tool is active
- * (Jason 2026-10-13: beside the toolbar it covered the image). Picks the
- * preset auto spots are made with and shows the next name.
+ * Auto spot strip (docs/auto-spot-mode-design.md 5.4): at the top center of
+ * the viewer, just below the top ruler, while auto spot mode is on and a
+ * spot tool is active. Picks the preset auto spots are made with and shows
+ * the next name. (Jason 2026-10-13: beside the toolbar it covered the area
+ * being clicked; in the status line it went unnoticed.)
  */
 
 import { useEffect } from 'react';
@@ -31,7 +32,11 @@ export function AutoSpotStrip() {
   return <AutoSpotStripContent />;
 }
 
+/** Height of the viewer's rulers (TiledViewer RULER_SIZE) */
+const RULER_SIZE = 30;
+
 function AutoSpotStripContent() {
+  const showRulers = useAppStore((s) => s.showRulers);
   const project = useAppStore((s) => s.project);
   const activeMicrographId = useAppStore((s) => s.activeMicrographId);
   const autoSpotPresetId = useAppStore((s) => s.autoSpotPresetId);
@@ -70,18 +75,26 @@ function AutoSpotStripContent() {
   return (
     <Tooltip
       title={`Auto spot mode: each click (or closed line or polygon) is saved as ${draft.name}. ${ALT_KEY_NAME}+click opens the New Spot dialog; Esc stops.`}
-      placement="top"
+      placement="bottom"
     >
       <Box
         className="auto-spot-strip"
         data-testid="auto-spot-strip"
         sx={{
+          position: 'absolute',
+          top: (showRulers ? RULER_SIZE : 0) + 8,
+          left: '50%',
+          transform: 'translateX(-50%)',
+          zIndex: 100,
           display: 'flex',
           alignItems: 'center',
-          gap: 1,
-          pl: 2,
-          borderLeft: 1,
-          borderColor: 'divider',
+          gap: 1.5,
+          px: 1.5,
+          py: 0.5,
+          bgcolor: 'var(--bg-tertiary)',
+          border: '1px solid var(--border)',
+          borderRadius: '6px',
+          boxShadow: '0 2px 8px rgba(0, 0, 0, 0.3)',
           whiteSpace: 'nowrap',
         }}
       >
