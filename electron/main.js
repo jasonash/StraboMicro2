@@ -1494,6 +1494,7 @@ function createWindow() {
 
     const menu = Menu.buildFromTemplate(menuTemplate);
     Menu.setApplicationMenu(menu);
+    require('./chatWindow').stripMenu();
   }
 
   // Store reference to buildMenu for IPC handlers

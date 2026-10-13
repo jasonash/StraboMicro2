@@ -117,6 +117,7 @@ function create() {
       preload: path.join(__dirname, 'preload.js'),
     },
   });
+  stripMenu();
   win.on('page-title-updated', (e) => e.preventDefault());
   let saveTimer = null;
   const later = () => {
@@ -140,6 +141,17 @@ function create() {
   win.once('ready-to-show', () => {
     if (win && !win.isDestroyed()) win.show();
   });
+}
+
+/**
+ * Windows and Linux attach the application menu to every window, and
+ * Menu.setApplicationMenu (main.js buildMenu) puts it back each time the menu
+ * is rebuilt, so this runs at creation and after every rebuild. Text editing
+ * shortcuts (copy, paste, undo, select all) still work without a menu.
+ */
+function stripMenu() {
+  if (process.platform === 'darwin' || !win || win.isDestroyed()) return;
+  win.removeMenu();
 }
 
 /** Open (or bring back) the chat window for the current project */
@@ -256,4 +268,4 @@ function register(ipc, mainWindowGetter, url) {
   });
 }
 
-module.exports = { register, open, destroy, setContext, forward, notificationsEnabled, getContext: () => context, isOpen: () => !!(win && !win.isDestroyed() && win.isVisible()), isFocused: () => !!(win && !win.isDestroyed() && win.isFocused()) };
+module.exports = { register, open, destroy, setContext, forward, stripMenu, notificationsEnabled, getContext: () => context, isOpen: () => !!(win && !win.isDestroyed() && win.isVisible()), isFocused: () => !!(win && !win.isDestroyed() && win.isFocused()) };
