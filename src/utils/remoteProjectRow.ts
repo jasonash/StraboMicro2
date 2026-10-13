@@ -20,3 +20,18 @@ export function remoteRowText(p: Row, all: Array<Pick<SyncServerProject, 'name'>
   if (all.filter((x) => key(x.name || '') === key(p.name || '')).length > 1) parts.push(`StraboSpot project ${p.pid}`);
   return parts.join(' · ');
 }
+
+/**
+ * What the deep-link dialog (Open in StraboMicro) says about a project I am
+ * in: "your project" only for the owner; a collaborator reads whose it is.
+ */
+export function deepLinkMineText(p: Pick<SyncServerProject, 'role' | 'owner'> & { here: 'synced' | 'local' | null }): string {
+  const whose = p.role === 'owner'
+    ? 'This is your project on StraboSpot'
+    : p.owner?.name
+      ? `You are a collaborator on ${p.owner.name}'s project on StraboSpot`
+      : 'You are a collaborator on this project on StraboSpot';
+  if (p.here === 'synced') return `${whose}, and your synced copy is on this computer.`;
+  if (p.here === 'local') return `${whose}, and a copy of it is on this computer.`;
+  return `${whose}. Download it as a synced copy: changes sync with StraboSpot automatically.`;
+}

@@ -19,26 +19,7 @@ import {
 import { Delete as DeleteIcon, Add as AddIcon } from '@mui/icons-material';
 import { useAppStore } from '../../store';
 import { AutocompleteMineralSearch } from './metadata/reusable/AutocompleteMineralSearch';
-
-// Default shortcuts that can be restored
-const DEFAULT_SHORTCUTS: Record<string, string> = {
-  'q': 'Quartz',
-  'p': 'Plagioclase',
-  'k': 'K-Feldspar',
-  'b': 'Biotite',
-  'm': 'Muscovite',
-  'h': 'Hornblende',
-  'o': 'Olivine',
-  'x': 'Clinopyroxene',
-  'g': 'Garnet',
-  'c': 'Calcite',
-  'd': 'Dolomite',
-  'a': 'Amphibole',
-  'e': 'Epidote',
-  's': 'Serpentine',
-  't': 'Tourmaline',
-  'z': 'Zircon',
-};
+import { DEFAULT_QUICK_CLASSIFY_SHORTCUTS } from '../../utils/quickClassifyDefaults';
 
 // Reserved keys that cannot be used as shortcuts
 const RESERVED_KEYS = [' ', 'Backspace', 'Escape', 'Enter', 'Tab'];
@@ -121,7 +102,7 @@ export const ConfigureShortcutsDialog: React.FC<ConfigureShortcutsDialogProps> =
 
   // Handle resetting to defaults
   const handleResetToDefaults = () => {
-    setLocalShortcuts({ ...DEFAULT_SHORTCUTS });
+    setLocalShortcuts({ ...DEFAULT_QUICK_CLASSIFY_SHORTCUTS });
     setError(null);
   };
 

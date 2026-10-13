@@ -175,13 +175,13 @@ export function CloseProjectDialog({
                 <ul style={{ margin: '8px 0', paddingLeft: '20px' }}>
                   <li>
                     <Typography variant="body2">
-                      <strong>Export as .smz</strong> (File → Export as .smz) to create a backup
+                      <strong>Export as .smz</strong> (File → Export as .smz...) to create a backup file
                     </Typography>
                   </li>
                   <li>
                     <Typography variant="body2">
-                      <strong>Upload to Strabo Server</strong> (File → Upload to Strabo Server) to save
-                      online
+                      <strong>Syncing it to StraboSpot</strong> (File → Upload to Strabo Server...) to keep
+                      a copy on StraboSpot
                     </Typography>
                   </li>
                 </ul>
@@ -189,7 +189,7 @@ export function CloseProjectDialog({
 
               <Alert severity="info" variant="outlined" sx={{ mb: 1 }}>
                 <Typography variant="body2">
-                  <strong>Tip:</strong> You can have multiple projects open on your computer at once.
+                  <strong>Tip:</strong> You can keep many projects on your computer.
                   Use <strong>File → Recent Projects</strong> to switch between them without deleting
                   anything.
                 </Typography>

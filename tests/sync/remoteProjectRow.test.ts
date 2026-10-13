@@ -4,7 +4,7 @@
  *   npm run test:remote-rows
  */
 
-import { remoteRowText } from '@/utils/remoteProjectRow';
+import { remoteRowText, deepLinkMineText } from '@/utils/remoteProjectRow';
 
 let failures = 0;
 let passes = 0;
@@ -30,6 +30,14 @@ is('same name: project number', remoteRowText(twins[1], twins), 'On StraboSpot �
 is('same name ignoring case and spaces', remoteRowText(row(), [row(), row({ pid: 9, name: ' localonlytest ' })]),
   'On StraboSpot · 2 people · StraboSpot project 5247');
 is('different names: no number', remoteRowText(row(), [row(), row({ pid: 9, name: 'Other' })]), 'On StraboSpot · 2 people');
+
+// Deep link (Open in StraboMicro): "your project" only for the owner
+is('deep link: owner, synced copy here', deepLinkMineText(row({ here: 'synced' })),
+  'This is your project on StraboSpot, and your synced copy is on this computer.');
+is('deep link: collaborator, nothing here', deepLinkMineText(row({ role: 'viewer' })),
+  "You are a collaborator on Jason Ash's project on StraboSpot. Download it as a synced copy: changes sync with StraboSpot automatically.");
+is('deep link: collaborator, local copy, owner unnamed', deepLinkMineText(row({ role: 'editor', owner: null, here: 'local' })),
+  'You are a collaborator on this project on StraboSpot, and a copy of it is on this computer.');
 
 console.log(failures ? `\n${failures} FAILED (${passes} passed)` : `\nALL PASSED (${passes} checks)`);
 process.exit(failures ? 1 : 0);

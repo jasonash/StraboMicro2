@@ -205,6 +205,24 @@ test('Add Corresponding XPL Image on the PPL reference', async ({ launch, projec
   expect.soft(await refusedOnExport(ana)).toEqual([]);
 });
 
+test('X shows the pair\'s other image; Cmd/Ctrl+X (Cut) does not', async ({ launch, project, runDir }) => {
+  const { p, ana } = await start(launch, project, 'E2E Siblings X Key');
+  const xplImg = await writeImage(`${runDir}/images/overview-xpl.jpg`);
+  await addCorrespondingXpl(ana, 'Overview (Reference)', xplImg);
+  await viewMicrograph(ana, p.micrographId);
+  const showingXpl = () => ana.state((e) => e.app.getState().siblingViewActive);
+  await ana.page.locator('body').click({ position: { x: 5, y: 5 } });
+
+  await ana.caption('presses Cmd/Ctrl+X: nothing to cut, the view stays on the PPL');
+  await ana.page.keyboard.press('ControlOrMeta+x');
+  await ana.page.waitForTimeout(300);
+  expect(await showingXpl()).toBe(false);
+
+  await ana.caption('presses X: the XPL is shown');
+  await ana.page.keyboard.press('x');
+  await expect.poll(showingXpl).toBe(true);
+});
+
 /**
  * A project as the old Link Sibling saved it: an XPL placed on its own PPL
  * reference and linked (parent kept, location gone), an affine PPL linked to

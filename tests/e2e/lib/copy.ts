@@ -166,7 +166,8 @@ export async function launchCopy(label: string, account: Account, slot: number, 
   const dir = path.join(runDir, label.toLowerCase());
   fs.mkdirSync(dir, { recursive: true });
   const app = await electron.launch({
-    args: ['.'],
+    // E2E_ELECTRON_ARGS: extra Chromium switches, e.g. --force-device-scale-factor=2 (manual screenshots)
+    args: ['.', ...(process.env.E2E_ELECTRON_ARGS || '').split(' ').filter(Boolean)],
     cwd: REPO,
     env: { ...process.env, ...extraEnv, STRABO_E2E_DIR: dir, STRABO_E2E_SERVER: SERVER,
       // In the background unless watching or E2E_SHOW=1 (electron/main.js E2E_BACKGROUND)
