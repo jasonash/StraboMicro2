@@ -9,6 +9,7 @@
 import { create } from 'zustand';
 import {
   installUndoHistory, resetUndoHistory, undo, redo, withoutUndoRecording, setUndoBlockedHandler, setChangeGuard,
+  asOwnUndoStep,
 } from '../../src/store/undoHistory';
 import { buildMicrographIndex, buildSpotIndex } from '../../src/store/helpers';
 import type { ProjectMetadata } from '../../src/types/project-types';
@@ -221,6 +222,33 @@ const S = () => store.getState();
   undo();
   check('undo after a save stamped the dataset\'s time', S().project!.datasets![0].name !== 'dataset renamed',
     S().project!.datasets![0].name);
+
+  // Auto spot mode: quick spots are one undo step each (asOwnUndoStep)
+  S().load(project('AUTO'));
+  const addSpot = (id: string) => S().edit((p) => { p.datasets![0].samples![0].micrographs![1].spots!.push({ id, name: id } as never); });
+  const spotsOn2 = () => (m(1).spots ?? []).map((x) => x.id).join(',');
+  S().edit((p) => { p.datasets![0].name = 'renamed'; }); // a pending edit right before
+  asOwnUndoStep(() => addSpot('A1'));
+  asOwnUndoStep(() => addSpot('A2'));
+  asOwnUndoStep(() => addSpot('A3'));
+  check('own steps: all three added at once', spotsOn2() === 'A1,A2,A3', spotsOn2());
+  await undo();
+  check('own steps: undo removes only the last spot', spotsOn2() === 'A1,A2', spotsOn2());
+  await undo();
+  check('own steps: next undo removes the second', spotsOn2() === 'A1', spotsOn2());
+  await undo();
+  check('own steps: then the first', spotsOn2() === '', spotsOn2());
+  check('own steps: the edit before is still there', S().project!.datasets![0].name === 'renamed', S().project!.datasets![0].name);
+  await undo();
+  check('own steps: the edit before was its own step', S().project!.datasets![0].name === 'D1', S().project!.datasets![0].name);
+  await redo();
+  await redo();
+  check('own steps: redo brings them back one at a time', spotsOn2() === 'A1', spotsOn2());
+  S().edit((p) => { p.datasets![0].name = 'after'; });
+  await sleep(QUIET);
+  await undo();
+  check('own steps: an ordinary edit after is not merged into the last spot', spotsOn2() === 'A1' && S().project!.datasets![0].name === 'renamed',
+    `${spotsOn2()} ${S().project!.datasets![0].name}`);
 
   console.log(failures ? `\n${failures} FAILED (${passes} passed)` : `\nALL PASSED (${passes} checks)`);
   process.exit(failures ? 1 : 0);

@@ -144,6 +144,20 @@ export function withoutUndoRecording(fn: () => void): void {
   }
 }
 
+/**
+ * Run a project change that must be an undo step of its own, never merged
+ * with edits just before or after it (auto spot mode: quick clicks are one
+ * spot per undo step). Pending edits are closed into their own step first.
+ */
+export function asOwnUndoStep(fn: () => void): void {
+  flush();
+  try {
+    fn();
+  } finally {
+    flush();
+  }
+}
+
 /** Start recording edits of the given store. Called once, where the store is created. */
 export function installUndoHistory(appStore: Store): void {
   store = appStore;

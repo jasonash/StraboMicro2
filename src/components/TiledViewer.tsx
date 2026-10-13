@@ -17,7 +17,7 @@ import { Stage, Layer, Image as KonvaImage, Circle, Line } from 'react-konva';
 import { Box, CircularProgress, Typography, IconButton, Tooltip } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
-import { useAppStore } from '@/store';
+import { useAppStore, asOwnUndoStep } from '@/store';
 import { currentPermissions, useReadOnlyReason } from '@/hooks/usePermissions';
 import { editRefusal } from '@/utils/permissions';
 import { ReadOnlyScope } from './ReadOnlyScope';
@@ -1857,7 +1857,8 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
           return;
         }
         const spot = buildNewSpot({ name: draft.name, geometry, appearance: draft.appearance, presets: draft.presets });
-        addSpot(activeMicrographId, spot);
+        // One undo step per auto spot, however quickly they come
+        asOwnUndoStep(() => addSpot(activeMicrographId, spot));
         selectActiveSpot(spot.id);
       },
       [activeMicrographId, addSpot, selectActiveSpot]

@@ -256,3 +256,25 @@ test('Lines keep every vertex: clicks that wobble a few pixels, and a quick clic
   await click(cx + 150, cy - 60, 0);
   await expect.poll(lastLine).toBe(3);
 });
+
+test('Undo removes quick auto spots one at a time (each is its own undo step)', async ({ launch, project }) => {
+  const { p, ana } = await start(launch, project, 'E2E Auto Undo');
+  const autoNames = async () => (await spotNames(ana, p.micrographId)).filter((n) => n.startsWith('Spot '));
+
+  await autoButton(ana).click();
+  await ana.page.getByRole('button', { name: 'Point tool' }).click();
+  await ana.caption('three clicks in quick succession');
+  await clickViewer(ana, -100, 0);
+  await clickViewer(ana, 0, 0);
+  await clickViewer(ana, 100, 0);
+  await expect.poll(autoNames).toEqual(['Spot 1', 'Spot 2', 'Spot 3']);
+
+  await ana.page.waitForTimeout(400); // past the history's 300 ms grouping, as a user would be
+  await ana.menu('Edit', 'Undo');
+  await expect.poll(autoNames).toEqual(['Spot 1', 'Spot 2']);
+  await ana.menu('Edit', 'Undo');
+  await expect.poll(autoNames).toEqual(['Spot 1']);
+  await ana.menu('Edit', 'Redo');
+  await expect.poll(autoNames).toEqual(['Spot 1', 'Spot 2']);
+  await expect(nextLabel(ana)).toHaveText('Next: Spot 3');
+});
