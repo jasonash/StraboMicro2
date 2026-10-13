@@ -12,6 +12,7 @@ import { create } from 'zustand';
 import { devtools, persist, createJSONStorage, StateStorage } from 'zustand/middleware';
 import { installUndoHistory, resetUndoHistory } from './undoHistory';
 import { DEFAULT_IMAGE_EXPORT_PREFERENCES, type ImageExportPreferences } from '@/types/image-export-types';
+import { DEFAULT_QUICK_CLASSIFY_SHORTCUTS } from '@/utils/quickClassifyDefaults';
 
 /**
  * Custom storage adapter that uses Electron IPC to persist state to a file
@@ -650,27 +651,8 @@ export const useAppStore = create<AppState>()(
 
           // Quick Classify state
           quickClassifyVisible: false,
-          // Default mineral shortcuts for Quick Classify - common rock-forming minerals
-          // Note: Non-mineral categories (matrix, void, lithic, opaque) are intentionally
-          // excluded - the mineralogy schema only supports actual mineral names.
-          // See PROJECT_STATUS.md for future schema expansion plans.
-          quickClassifyShortcuts: {
-            'q': 'Quartz',
-            'p': 'Plagioclase',
-            'k': 'K-Feldspar',
-            'o': 'Olivine',
-            'x': 'Clinopyroxene',
-            'a': 'Amphibole',
-            'h': 'Hornblende',
-            'b': 'Biotite',
-            'm': 'Muscovite',
-            'g': 'Garnet',
-            'c': 'Calcite',
-            'd': 'Dolomite',
-            'e': 'Epidote',
-            's': 'Serpentine',
-            'z': 'Zircon',
-          },
+          // Default mineral keys (src/utils/quickClassifyDefaults.ts)
+          quickClassifyShortcuts: { ...DEFAULT_QUICK_CLASSIFY_SHORTCUTS },
           statisticsPanelVisible: false,
           batchEditDialogOpen: false,
 

@@ -176,12 +176,13 @@ const Viewer: React.FC = () => {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Only trigger if:
-      // 1. Key is X
+      // 1. Key is X, without Cmd/Ctrl/Alt (Cmd+X is Cut)
       // 2. Quick Classify toolbar is NOT visible
       // 3. Not in an input field
       // 4. Active micrograph has a sibling
       if (
         e.key.toLowerCase() === 'x' &&
+        !e.metaKey && !e.ctrlKey && !e.altKey &&
         !quickClassifyVisible &&
         !['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement).tagName)
       ) {

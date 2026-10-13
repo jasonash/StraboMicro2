@@ -173,7 +173,7 @@ const DrawingToolbar: React.FC = () => {
 
       {/* Sketch Mode */}
       {canSketch && (
-      <Tooltip title={activeMicrographId ? "Sketch Mode (S)" : "Select a micrograph first"} placement={tooltipPlacement}>
+      <Tooltip title={activeMicrographId ? "Sketch Mode" : "Select a micrograph first"} placement={tooltipPlacement}>
         <span>
           <IconButton
             className="toolbar-button"

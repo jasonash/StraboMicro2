@@ -541,12 +541,12 @@ function App() {
       setIsEditProjectDialogOpen(true);
     }));
 
-    // Point Count menu item (Tools menu with Cmd+Shift+P)
+    // Point Count menu item (Tools menu)
     unsubscribers.push(window.api.onPointCount(() => {
       if (activeMicrographId) {
         setIsPointCountDialogOpen(true);
       } else {
-        console.warn('[App] Point Count: No micrograph selected');
+        alert('No micrograph selected. Please select a micrograph first.');
       }
     }));
 
@@ -555,7 +555,7 @@ function App() {
       if (activeMicrographId) {
         setIsGrainDetectionDialogOpen(true);
       } else {
-        console.warn('[App] Grain Detection: No micrograph selected');
+        alert('No micrograph selected. Please select a micrograph first.');
       }
     }));
 

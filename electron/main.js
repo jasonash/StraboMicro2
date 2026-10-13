@@ -993,7 +993,8 @@ function createWindow() {
         { type: 'separator' },
         {
           label: 'Edit Selected Spots...',
-          accelerator: 'CmdOrCtrl+Shift+E',
+          // B for batch edit (Shift+E is Export as .smz...)
+          accelerator: 'CmdOrCtrl+Shift+B',
           click: () => {
             if (mainWindow) {
               mainWindow.webContents.send('menu:batch-edit-spots');

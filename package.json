@@ -19,6 +19,7 @@
     "test:polarization": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/polarization.test.mts",
     "test:auto-spot-name": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/autoSpotName.test.mts",
     "test:project-serializer": "node tests/projectSerializer.test.js",
+    "test:menu-accelerators": "node tests/menuAccelerators.test.js",
     "test:user-images": "electron tests/userImages.electron.test.js",
     "typecheck": "tsc --noEmit",
     "test:entity-model": "node tests/sync/entityModel.test.mjs",
