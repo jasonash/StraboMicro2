@@ -173,7 +173,7 @@ async function loadAll(folder) {
 /** Body fields of a spot's shape, and of a micrograph's placement on its parent (one pick each). */
 const SHAPE_FIELDS = new Set(['geometryType', 'points', 'geometry']);
 const PLACEMENT_FIELDS = new Set(['placementType', 'offsetInParent', 'pointInParent', 'xOffset', 'yOffset', 'rotation',
-  'affineMatrix', 'affineControlPoints', 'affineBoundsOffset', 'affineTransformedWidth', 'affineTransformedHeight', 'affineTileHash']);
+  'affineMatrix', 'affineControlPoints', 'controlPoints', 'affineBoundsOffset', 'affineTransformedWidth', 'affineTransformedHeight', 'affineTileHash']);
 const PLACEMENT_PICK = ['placementType', 'offsetInParent', 'pointInParent', 'xOffset', 'yOffset', 'rotation', 'affineMatrix',
   'width', 'height', 'scalePixelsPerCentimeter'];
 

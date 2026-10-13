@@ -197,6 +197,60 @@ function cleanObjectForDb(obj) {
 }
 
 /**
+ * Fields this version does not know are kept, on save and on load, at every
+ * level (project, dataset, sample, micrograph, spot). Before 2026-10-13 each
+ * level wrote and read a fixed list only, so an older copy of the app that
+ * opened a synced project dropped every newer field on its next save and
+ * pushed that as a deletion (a collaborator's Default Spot Name vanished
+ * within a second). Known fields keep their order; unknown ones follow.
+ *
+ * NEVER_SAVE: fields the app puts on these objects for its own use while it
+ * runs. They must never reach project.json (or the server).
+ * LOAD_IGNORE: fields this version writes but deliberately does not read
+ * back; loading leaves them out, as it always did.
+ */
+const NEVER_SAVE = {
+  project: new Set([]),
+  dataset: new Set([]),
+  // name: a copy of label/sampleID set by the sample dialogs; exports read
+  // name first, so a saved copy could go stale when the label changes
+  sample: new Set(['name']),
+  // imagePath: set to the micrograph id on every load (toAppProject), an
+  // absolute local path in the debug loader; visible: the Groups panel eye
+  // toggle, a view setting that must not hide the micrograph for collaborators
+  micrograph: new Set(['imagePath', 'visible']),
+  // geometry: GeoJSON put on test spots by the Debug menu only
+  spot: new Set(['geometry']),
+};
+const LOAD_IGNORE = {
+  project: new Set(['instrumentsUsed', 'projectLocation']),
+  dataset: new Set([]),
+  sample: new Set([]),
+  micrograph: new Set([]),
+  spot: new Set([]),
+};
+
+/**
+ * `known` plus the fields of `source` it does not have (unknown to this
+ * version), except `skip` and empty values (undefined, functions).
+ * @param {object} source - The object the known fields were read from
+ * @param {object} known - The known fields, as written or read
+ * @param {Set<string>} skip
+ * @returns {object}
+ */
+function withUnknownFields(source, known, skip) {
+  if (!source || typeof source !== 'object') return known;
+  const out = known;
+  for (const key of Object.keys(source)) {
+    if (key in known || skip.has(key)) continue;
+    const value = source[key];
+    if (value === undefined || typeof value === 'function') continue;
+    out[key] = value;
+  }
+  return out;
+}
+
+/**
  * Serialize project data to legacy JSON format and save to disk
  * @param {Object} project - Project data from Zustand store
  * @param {string} projectId - UUID of the project
@@ -433,7 +487,7 @@ function toAppProject(legacyJson) {
  * @returns {Object} Legacy format JSON
  */
 function serializeToLegacyFormat(project) {
-  return {
+  return withUnknownFields(project, {
     id: project.id,
     name: project.name || '',
     startDate: project.startDate || '',
@@ -461,20 +515,20 @@ function serializeToLegacyFormat(project) {
     // Grain Size Analysis spot selection (project-level)
     grainAnalysisSpotFilter: project.grainAnalysisSpotFilter || undefined,
     grainAnalysisSelectedSpotIds: project.grainAnalysisSelectedSpotIds || undefined,
-  };
+  }, NEVER_SAVE.project);
 }
 
 /**
  * Serialize a dataset to legacy format
  */
 function serializeDataset(dataset) {
-  return {
+  return withUnknownFields(dataset, {
     id: dataset.id,
     name: dataset.name || '',
     date: dataset.date || new Date().toISOString(),
     modifiedTimestamp: dataset.modifiedTimestamp || new Date().toISOString(), // see stampModifiedTimestamps
     samples: (dataset.samples || []).map(serializeSample),
-  };
+  }, NEVER_SAVE.dataset);
 }
 
 /**
@@ -482,7 +536,7 @@ function serializeDataset(dataset) {
  * Note: Numeric values are rounded to avoid PostgreSQL double precision issues
  */
 function serializeSample(sample) {
-  return {
+  return withUnknownFields(sample, {
     id: sample.id,
     existsOnServer: sample.existsOnServer || false,
     label: sample.label || '',
@@ -508,7 +562,7 @@ function serializeSample(sample) {
     micrographs: (sample.micrographs || []).map(serializeMicrograph),
     isExpanded: sample.isExpanded || false,
     isSpotExpanded: sample.isSpotExpanded || false,
-  };
+  }, NEVER_SAVE.sample);
 }
 
 /**
@@ -517,7 +571,7 @@ function serializeSample(sample) {
  * Note: Nested objects (instrument, *Info) are cleaned to remove null values
  */
 function serializeMicrograph(micrograph) {
-  return {
+  return withUnknownFields(micrograph, {
     id: micrograph.id,
     parentID: micrograph.parentID || undefined,
     name: micrograph.name || '',
@@ -584,7 +638,7 @@ function serializeMicrograph(micrograph) {
     // Batch-import completion flag: set when "Instrument and Image Info" was skipped at import.
     // Cleared (false) once the user supplies the info via the post-batch completion dialog.
     needsInstrumentInfo: micrograph.needsInstrumentInfo === true ? true : undefined,
-  };
+  }, NEVER_SAVE.micrograph);
 }
 
 /**
@@ -601,7 +655,7 @@ function serializeSpot(spot) {
     return point;
   });
 
-  return {
+  return withUnknownFields(spot, {
     id: spot.id,
     name: spot.name || '',
     labelColor: spot.labelColor || '',
@@ -641,7 +695,7 @@ function serializeSpot(spot) {
     archived: spot.archived || undefined,
     // Quick Spot Presets tracking
     appliedPresetIds: spot.appliedPresetIds || undefined,
-  };
+  }, NEVER_SAVE.spot);
 }
 
 /**
@@ -650,7 +704,7 @@ function serializeSpot(spot) {
  * @returns {Object} Internal project format
  */
 function deserializeFromLegacyFormat(legacyJson) {
-  return {
+  return withUnknownFields(legacyJson, {
     id: legacyJson.id,
     name: legacyJson.name,
     startDate: legacyJson.startDate || undefined,
@@ -677,27 +731,27 @@ function deserializeFromLegacyFormat(legacyJson) {
     // Grain Size Analysis spot selection (project-level)
     grainAnalysisSpotFilter: legacyJson.grainAnalysisSpotFilter || undefined,
     grainAnalysisSelectedSpotIds: legacyJson.grainAnalysisSelectedSpotIds || undefined,
-  };
+  }, LOAD_IGNORE.project);
 }
 
 /**
  * Deserialize a dataset from legacy format
  */
 function deserializeDataset(dataset) {
-  return {
+  return withUnknownFields(dataset, {
     id: dataset.id,
     name: dataset.name,
     date: dataset.date,
     modifiedTimestamp: dataset.modifiedTimestamp || undefined,
     samples: (dataset.samples || []).map(deserializeSample),
-  };
+  }, LOAD_IGNORE.dataset);
 }
 
 /**
  * Deserialize a sample from legacy format
  */
 function deserializeSample(sample) {
-  return {
+  return withUnknownFields(sample, {
     id: sample.id,
     existsOnServer: sample.existsOnServer,
     label: sample.label,
@@ -723,14 +777,14 @@ function deserializeSample(sample) {
     micrographs: (sample.micrographs || []).map(deserializeMicrograph),
     isExpanded: sample.isExpanded,
     isSpotExpanded: sample.isSpotExpanded,
-  };
+  }, LOAD_IGNORE.sample);
 }
 
 /**
  * Deserialize a micrograph from legacy format
  */
 function deserializeMicrograph(micrograph) {
-  return {
+  return withUnknownFields(micrograph, {
     id: micrograph.id,
     parentID: micrograph.parentID,
     name: micrograph.name,
@@ -791,14 +845,14 @@ function deserializeMicrograph(micrograph) {
     straboTools: micrograph.straboTools,
     // Batch-import completion flag
     needsInstrumentInfo: micrograph.needsInstrumentInfo,
-  };
+  }, LOAD_IGNORE.micrograph);
 }
 
 /**
  * Deserialize a spot from legacy format
  */
 function deserializeSpot(spot) {
-  return {
+  return withUnknownFields(spot, {
     id: spot.id,
     name: spot.name,
     labelColor: spot.labelColor,
@@ -838,10 +892,12 @@ function deserializeSpot(spot) {
     archived: spot.archived,
     // Quick Spot Presets tracking
     appliedPresetIds: spot.appliedPresetIds,
-  };
+  }, LOAD_IGNORE.spot);
 }
 
 module.exports = {
+  NEVER_SAVE,
+  LOAD_IGNORE,
   saveProjectJson,
   saveProjectJsonStamped,
   loadProjectJson,
