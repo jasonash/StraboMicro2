@@ -210,6 +210,12 @@ interface AppState {
   /** Key bindings for presets (keys "1"-"9" -> preset ID) */
   presetKeyBindings: PresetKeyBindings;
 
+  // ========== AUTO SPOT MODE (personal, persisted; docs/auto-spot-mode-design.md) ==========
+  /** Spot tools place and name spots without the New Spot dialog */
+  autoSpotMode: boolean;
+  /** Preset for auto spots (name pattern, color, data); null = the project's default name */
+  autoSpotPresetId: string | null;
+
   // ========== POINT COUNT MODE STATE ==========
   /** Whether Point Count mode is active (separate from spots) */
   pointCountMode: boolean;
@@ -471,6 +477,8 @@ interface AppState {
   applyPresetToSpots: (presetId: string, spotIds: string[]) => void;
   /** Set or clear a key binding for a preset */
   setPresetKeyBinding: (key: string, presetId: string | null) => void;
+  setAutoSpotMode: (on: boolean) => void;
+  setAutoSpotPresetId: (presetId: string | null) => void;
   /** Get all presets with their scope information */
   getAllPresetsWithScope: () => PresetWithScope[];
   /** Get a preset by ID (searches both global and project) */
@@ -669,6 +677,10 @@ export const useAppStore = create<AppState>()(
           // Quick Spot Presets state (global - persisted)
           globalPresets: [],
           presetKeyBindings: {},
+
+          // Auto spot mode (personal)
+          autoSpotMode: false,
+          autoSpotPresetId: null,
 
           // Point Count mode state
           pointCountMode: false,
@@ -3053,6 +3065,9 @@ export const useAppStore = create<AppState>()(
             };
           }),
 
+          setAutoSpotMode: (on) => set({ autoSpotMode: on }),
+          setAutoSpotPresetId: (presetId) => set({ autoSpotPresetId: presetId }),
+
           setPresetKeyBinding: (key, presetId) => set((state) => {
             // Validate key is 1-9
             if (!/^[1-9]$/.test(key)) {
@@ -3755,6 +3770,10 @@ export const useAppStore = create<AppState>()(
           // Quick Spot Presets settings (global presets and key bindings)
           globalPresets: state.globalPresets,
           presetKeyBindings: state.presetKeyBindings,
+
+          // Auto spot mode (personal)
+          autoSpotMode: state.autoSpotMode,
+          autoSpotPresetId: state.autoSpotPresetId,
 
           // Generation settings
           lastPointCountSettings: state.lastPointCountSettings,

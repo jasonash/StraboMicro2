@@ -24,6 +24,14 @@ export function effectivePattern(pattern: string | null | undefined): string {
   return p.includes(PLACEHOLDER) ? p : `${p} ${PLACEHOLDER}`;
 }
 
+/** The pattern auto mode uses: the preset's spot name when it has one, else the project's default */
+export function chosenPattern(
+  presetPattern: string | null | undefined,
+  projectPattern: string | null | undefined
+): string {
+  return effectivePattern(presetPattern?.trim() ? presetPattern : projectPattern);
+}
+
 /** The name for number n (only the first {n} is replaced, as in Generate Spots) */
 export function spotNameFor(pattern: string | null | undefined, n: number): string {
   return effectivePattern(pattern).replace(PLACEHOLDER, String(n));

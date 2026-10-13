@@ -10,9 +10,10 @@
  */
 
 import { v4 as uuidv4 } from 'uuid';
-import type { Geometry, Spot } from '@/types/project-types';
-import type { PresetData } from '@/types/preset-types';
-import { mergePresetIntoSpot } from '@/store/helpers';
+import type { Geometry, ProjectMetadata, Spot } from '@/types/project-types';
+import type { PresetData, QuickApplyPreset } from '@/types/preset-types';
+import { getMicrographParentSample, mergePresetIntoSpot } from '@/store/helpers';
+import { chosenPattern, nextSpotName } from '@/utils/autoSpotName';
 import { legacyColorToHex, hexToLegacyColor } from '@/utils/colorUtils';
 
 /** Spot appearance in web form (#RRGGBB colors, opacity 0-100) */
@@ -131,4 +132,22 @@ export function buildNewSpot(input: NewSpotInput): Spot {
   }
 
   return spot;
+}
+
+/**
+ * What auto spot mode makes next on this micrograph: the name (pattern of the
+ * preset, else the project's; numbered across the micrograph's sample), the
+ * appearance New Spot would start with after choosing the preset, and the
+ * preset to merge.
+ */
+export function autoSpotDraft(
+  project: ProjectMetadata | null,
+  micrographId: string | null,
+  preset: QuickApplyPreset | null
+): { name: string; number: number; pattern: string; appearance: SpotAppearance; presets: QuickApplyPreset[] } {
+  const pattern = chosenPattern(preset?.spotNamePattern, project?.spotNamePattern);
+  const sample = micrographId ? getMicrographParentSample(project, micrographId) : null;
+  const { name, number } = nextSpotName(pattern, sample);
+  const presets = preset ? [preset] : [];
+  return { name, number, pattern, appearance: withPresetAppearance(lastUsedSpotAppearance(), presets), presets };
 }
