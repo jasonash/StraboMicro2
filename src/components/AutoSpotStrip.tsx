@@ -73,11 +73,7 @@ function AutoSpotStripContent() {
   };
 
   return (
-    <Tooltip
-      title={`Auto spot mode: each click (or closed line or polygon) is saved as ${draft.name}. ${ALT_KEY_NAME}+click opens the New Spot dialog; Esc stops.`}
-      placement="bottom"
-    >
-      <Box
+          <Box
         className="auto-spot-strip"
         data-testid="auto-spot-strip"
         sx={{
@@ -98,9 +94,11 @@ function AutoSpotStripContent() {
           whiteSpace: 'nowrap',
         }}
       >
-        <Typography variant="caption" sx={{ color: 'var(--accent)', fontWeight: 600 }}>
-          AUTO
-        </Typography>
+        <Tooltip title={`Auto spot mode: each click (or closed line or polygon) is saved as ${draft.name}. ${ALT_KEY_NAME}+click opens the New Spot dialog; Esc stops.`} placement="bottom">
+          <Typography variant="caption" sx={{ color: 'var(--accent)', fontWeight: 600, cursor: 'help' }}>
+            AUTO
+          </Typography>
+        </Tooltip>
         <Select
           size="small"
           variant="standard"
@@ -131,6 +129,5 @@ function AutoSpotStripContent() {
           Next: <strong>{draft.name}</strong>
         </Typography>
       </Box>
-    </Tooltip>
   );
 }
