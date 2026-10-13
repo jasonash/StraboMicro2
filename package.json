@@ -55,6 +55,7 @@
     "e2e:watch": "E2E_WATCH=1 playwright test -c tests/e2e/playwright.config.ts",
     "e2e:report": "playwright show-report playwright-report/e2e",
     "e2e:typecheck": "tsc -p tests/e2e/tsconfig.json",
+    "manual:screenshots": "playwright test -c tests/manual-screenshots/playwright.config.ts",
     "typecheck:watch": "tsc --noEmit --watch --preserveWatchOutput",
     "build": "tsc && vite build",
     "preview": "vite preview",
