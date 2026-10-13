@@ -17,6 +17,7 @@
     "test:web-viewer-placement": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/webViewerPlacement.test.mts",
     "test:sibling-pair": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/siblingPair.test.mts",
     "test:polarization": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/polarization.test.mts",
+    "test:auto-spot-name": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/autoSpotName.test.mts",
     "test:user-images": "electron tests/userImages.electron.test.js",
     "typecheck": "tsc --noEmit",
     "test:entity-model": "node tests/sync/entityModel.test.mjs",
