@@ -42,6 +42,7 @@ import { closeUnlessEscapeBlocked } from '@/utils/dialogClose';
 import { useAuthStore } from '@/store/useAuthStore';
 import { ImportTargetNotice, ImportTargetActions, importNeedsAnswer } from './ImportTargetNotice';
 import { findMyRemoteProject, openRemoteHere, downloadRemote, type RemoteProject } from '@/services/remoteProjects';
+import { deepLinkMineText } from '@/utils/remoteProjectRow';
 
 interface RemoteInspectResult {
   success: boolean;
@@ -359,11 +360,7 @@ export function DeepLinkOpenDialog({
               {myProject?.name || projectName}
             </Typography>
             <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-              {myProject?.here === 'synced'
-                ? 'This is your project on StraboSpot, and your synced copy is on this computer.'
-                : myProject?.here === 'local'
-                  ? 'This is your project on StraboSpot, and a copy of it is on this computer.'
-                  : 'This is your project on StraboSpot. Download it as a synced copy: changes sync with StraboSpot automatically.'}
+              {myProject && deepLinkMineText(myProject)}
             </Typography>
           </Box>
         );
