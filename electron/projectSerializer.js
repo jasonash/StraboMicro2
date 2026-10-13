@@ -454,6 +454,8 @@ function serializeToLegacyFormat(project) {
     // Quick Spot Presets (project-level)
     presets: project.presets || undefined,
     presetKeyBindings: project.presetKeyBindings || undefined,
+    // Auto spot mode: default spot name pattern (v2 only)
+    spotNamePattern: project.spotNamePattern || undefined,
     // Mineral Color overrides (project-level)
     mineralColors: project.mineralColors || undefined,
     // Grain Size Analysis spot selection (project-level)
@@ -668,6 +670,8 @@ function deserializeFromLegacyFormat(legacyJson) {
     // Quick Spot Presets (project-level)
     presets: legacyJson.presets || undefined,
     presetKeyBindings: legacyJson.presetKeyBindings || undefined,
+    // Auto spot mode: default spot name pattern (v2 only)
+    spotNamePattern: legacyJson.spotNamePattern || undefined,
     // Mineral Color overrides (project-level)
     mineralColors: legacyJson.mineralColors || undefined,
     // Grain Size Analysis spot selection (project-level)

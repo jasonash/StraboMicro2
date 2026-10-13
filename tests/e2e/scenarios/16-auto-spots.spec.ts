@@ -10,7 +10,7 @@
 import { test, expect } from '../lib/test';
 import { ACCOUNTS, type Copy } from '../lib/copy';
 import { type FixtureProject } from '../lib/fixtures';
-import { openSmz, viewMicrograph } from '../lib/actions';
+import { openSmz, viewMicrograph, share, waitSettled } from '../lib/actions';
 
 async function start(launch: (l: string, a: typeof ACCOUNTS.ana, o?: { login?: boolean }) => Promise<Copy>,
   project: (name: string) => Promise<FixtureProject>, name: string) {
@@ -277,4 +277,43 @@ test('Undo removes quick auto spots one at a time (each is its own undo step)', 
   await ana.menu('Edit', 'Redo');
   await expect.poll(autoNames).toEqual(['Spot 1', 'Spot 2']);
   await expect(nextLabel(ana)).toHaveText('Next: Spot 3');
+});
+
+test('Synced: the project default and a preset pattern reach the collaborator, and their Next moves past my auto spot', async ({ launch, project }) => {
+  const p = await project('E2E Auto Sync');
+  const ana = await launch('Ana', ACCOUNTS.ana);
+  const ben = await launch('Ben', ACCOUNTS.ben);
+  await share(ana, ben, p.smzPath, p.id, p.name);
+
+  await ana.caption('sets Default Spot Name Grain {n} and a project preset Olivine (Ol-{n})');
+  await ana.state(new Function('e', `
+    e.app.setState({ project: { ...e.app.getState().project, spotNamePattern: 'Grain {n}' }, isDirty: true });
+    e.app.getState().createPreset({ id: 'preset-ol-sync', name: 'Olivine', spotNamePattern: 'Ol-{n}',
+      createdAt: 'x', modifiedAt: 'x', data: { color: '0x3366ccff' } }, 'project');`) as never);
+  await waitSettled(ana);
+
+  await ben.caption('waits for both patterns');
+  const patterns = () => ben.state(new Function('e', `
+    const pr = e.app.getState().project;
+    return [pr?.spotNamePattern ?? null, (pr?.presets ?? []).find((x) => x.id === 'preset-ol-sync')?.spotNamePattern ?? null].join('|');`) as never);
+  await expect.poll(patterns, { timeout: 30_000 }).toBe('Grain {n}|Ol-{n}');
+
+  await viewMicrograph(ben, p.micrographId); // the image came with the invitation
+  await autoButton(ben).click();
+  await ben.page.getByRole('button', { name: 'Point tool' }).click();
+  await expect(nextLabel(ben)).toHaveText('Next: Grain 1');
+
+  await ana.caption('places an auto spot');
+  await viewMicrograph(ana, p.micrographId);
+  await autoButton(ana).click();
+  await ana.page.getByRole('button', { name: 'Point tool' }).click();
+  await clickViewer(ana, 0, 0);
+  expect(await spotNames(ana, p.micrographId)).toContain('Grain 1');
+  await waitSettled(ana);
+
+  await ben.caption("Ana's Grain 1 arrives; Next moves on");
+  await expect(nextLabel(ben)).toHaveText('Next: Grain 2', { timeout: 30_000 });
+  await ben.page.getByRole('combobox', { name: 'Auto spot preset' }).click();
+  await ben.page.getByRole('option', { name: /Olivine/ }).click();
+  await expect(nextLabel(ben)).toHaveText('Next: Ol-1');
 });
