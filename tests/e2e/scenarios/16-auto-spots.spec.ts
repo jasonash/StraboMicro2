@@ -173,3 +173,40 @@ test('Alt/Option+click opens New Spot with the auto name; manual mode still asks
   await expect.poll(() => activeTool(ana)).toBeNull();
   expect(await spotNames(ana, p.micrographId)).toContain('Manual');
 });
+
+test('A drag pans the image with a spot tool active and makes no spot (auto and manual)', async ({ launch, project }) => {
+  const { p, ana } = await start(launch, project, 'E2E Auto Pan');
+  // The viewer keeps its pan locally; the image layer's position shows it
+  const position = () => ana.page.evaluate(() => {
+    const k = (window as unknown as { Konva?: { stages: { findOne: (s: string) => { x: () => number; y: () => number } | undefined }[] } }).Konva;
+    const layer = k?.stages.map((st) => st.findOne('.image-layer')).find((l) => l);
+    return layer ? { x: Math.round(layer.x()), y: Math.round(layer.y()) } : null;
+  });
+  const box = await ana.page.locator('.konvajs-content').first().boundingBox();
+  if (!box) throw new Error('no viewer');
+  const drag = async (dx: number) => {
+    await ana.page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await ana.page.mouse.down();
+    await ana.page.mouse.move(box.x + box.width / 2 + dx / 2, box.y + box.height / 2 + 10, { steps: 5 });
+    await ana.page.mouse.move(box.x + box.width / 2 + dx, box.y + box.height / 2 + 20, { steps: 5 });
+    await ana.page.mouse.up();
+  };
+  const before = (await spotNames(ana, p.micrographId)).length;
+
+  for (const auto of [true, false]) {
+    if (auto) await autoButton(ana).click();
+    for (const tool of ['Point tool', 'Polygon tool']) {
+      await ana.caption(`${auto ? 'auto' : 'manual'}: drags with the ${tool}`);
+      await ana.page.getByRole('button', { name: tool }).click();
+      const start = JSON.stringify(await position());
+      expect(start).not.toBe('null');
+      await drag(150);
+      await expect.poll(async () => JSON.stringify(await position())).not.toBe(start);
+      await expect(ana.page.getByRole('dialog')).toHaveCount(0);
+      await ana.page.keyboard.press('Escape');
+      await ana.state(new Function('e', 'e.app.getState().setActiveTool(null)') as never);
+    }
+    if (auto) await autoButton(ana).click();
+  }
+  expect((await spotNames(ana, p.micrographId)).length).toBe(before);
+});

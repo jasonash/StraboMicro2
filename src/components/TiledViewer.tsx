@@ -1368,8 +1368,9 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
           return;
         }
 
-        // Only enable panning if no drawing tool is active
-        if (!activeTool || activeTool === 'select') {
+        // Panning: with no tool, and with a spot tool too (a drag pans; the
+        // click that ends a drag is ignored by handleStageClick, so no spot)
+        if (!activeTool || activeTool === 'select' || activeTool === 'point' || activeTool === 'line' || activeTool === 'polygon') {
           // Don't pan if lasso is active (point count or spot toolbar)
           if (lassoToolActive || spotLassoToolActive) return;
 
@@ -2267,7 +2268,9 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                 onMouseLeave={handleMouseLeave}
                 style={{
                   cursor:
-                    activeTool === 'point' ||
+                    isPanning && hasDragged
+                      ? 'grabbing'
+                      : activeTool === 'point' ||
                     activeTool === 'line' ||
                     activeTool === 'polygon' ||
                     activeTool === 'measure' ||
