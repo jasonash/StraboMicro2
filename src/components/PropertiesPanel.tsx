@@ -59,6 +59,7 @@ import { ExtinctionMicrostructureInfoDialog } from './dialogs/metadata/extinctio
 import { AssociatedFilesInfoDialog } from './dialogs/metadata/associatedfiles/AssociatedFilesInfoDialog';
 import { LinksInfoDialog } from './dialogs/metadata/links/LinksInfoDialog';
 import { MetadataSummary } from './MetadataSummary';
+import { CustomUserDataSummary } from './CustomUserDataSummary';
 import { GrainSizeSummary } from './GrainSizeSummary';
 import { PointCountSummary } from './PointCountSummary';
 import { StraboToolsSummary } from './StraboToolsSummary';
@@ -426,6 +427,12 @@ export function PropertiesPanel() {
                 micrographId={activeSpotId ? undefined : (activeMicrographId || undefined)}
                 spotId={activeSpotId || undefined}
                 onEditSection={(sectionId) => setOpenDialog(sectionId)}
+              />
+
+              {/* The user's own spreadsheet columns (Tools > Custom User Data...) */}
+              <CustomUserDataSummary
+                micrographId={activeSpotId ? undefined : (activeMicrographId || undefined)}
+                spotId={activeSpotId || undefined}
               />
 
               {/* Inline analytical summaries (micrograph only) */}

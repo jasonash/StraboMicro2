@@ -551,6 +551,23 @@ interface Window {
     openFileDialog: () => Promise<string | null>;
     openFilesDialog: () => Promise<string[]>;
     saveTextFile: (content: string, defaultName: string, extension: string) => Promise<{ success: boolean; canceled?: boolean; filePath?: string }>;
+    /** Custom User Data files (electron/customUserDataFiles.js) */
+    customUserData: {
+      save: (
+        table: { headers: string[]; rows: string[][]; lockedCount: number; instructions: string[] },
+        defaultName: string,
+        format: 'xlsx' | 'csv'
+      ) => Promise<{ success: boolean; canceled?: boolean; filePath?: string; error?: string }>;
+      open: () => Promise<{
+        success: boolean;
+        canceled?: boolean;
+        filePath?: string;
+        fileName?: string;
+        headers?: string[];
+        rows?: string[][];
+        error?: string;
+      }>;
+    };
     openExternalLink: (url: string) => Promise<{ success: boolean }>;
     openFilePath: (filePath: string) => Promise<{ success: boolean; error?: string }>;
     loadTiffImage: (filePath: string) => Promise<{
@@ -1357,6 +1374,7 @@ interface Window {
     onPointCount: (callback: () => void) => Unsubscribe;
     onGrainDetection: (callback: () => void) => Unsubscribe;
     onImageComparator: (callback: () => void) => Unsubscribe;
+    onCustomUserData: (callback: () => void) => Unsubscribe;
     onGrainSizeAnalysis: (callback: () => void) => Unsubscribe;
     onStraboTools: (callback: () => void) => Unsubscribe;
     straboTools: {

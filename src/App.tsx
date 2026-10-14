@@ -31,6 +31,7 @@ import { ProjectPrepDialog } from './components/dialogs/ProjectPrepDialog';
 import { PointCountDialog } from './components/dialogs/PointCountDialog';
 import { GrainDetectionDialog } from './components/dialogs/GrainDetectionDialog';
 import { ImageComparatorDialog } from './components/dialogs/ImageComparatorDialog';
+import { CustomUserDataDialog } from './components/dialogs/CustomUserDataDialog';
 import { GrainSizeAnalysisDialog } from './components/dialogs/GrainSizeAnalysisDialog';
 import { StraboToolsDialog } from './components/dialogs/StraboToolsDialog';
 import { MineralColorDialog } from './components/dialogs/MineralColorDialog';
@@ -224,6 +225,7 @@ function App() {
   const [isPointCountDialogOpen, setIsPointCountDialogOpen] = useState(false);
   const [isGrainDetectionDialogOpen, setIsGrainDetectionDialogOpen] = useState(false);
   const [isImageComparatorDialogOpen, setIsImageComparatorDialogOpen] = useState(false);
+  const [isCustomUserDataDialogOpen, setIsCustomUserDataDialogOpen] = useState(false);
   const [isGrainSizeAnalysisDialogOpen, setIsGrainSizeAnalysisDialogOpen] = useState(false);
   const [isStraboToolsDialogOpen, setIsStraboToolsDialogOpen] = useState(false);
   const [straboToolsInitialMicrographId, setStraboToolsInitialMicrographId] = useState<string | null>(null);
@@ -562,6 +564,11 @@ function App() {
     // Image Comparator menu item (Tools menu)
     unsubscribers.push(window.api.onImageComparator(() => {
       setIsImageComparatorDialogOpen(true);
+    }));
+
+    // Tools > Custom User Data...
+    unsubscribers.push(window.api.onCustomUserData(() => {
+      setIsCustomUserDataDialogOpen(true);
     }));
 
     // Grain Size Analysis menu item (Tools menu)
@@ -1965,6 +1972,10 @@ function App() {
       <ImageComparatorDialog
         open={isImageComparatorDialogOpen}
         onClose={() => setIsImageComparatorDialogOpen(false)}
+      />
+      <CustomUserDataDialog
+        open={isCustomUserDataDialogOpen}
+        onClose={() => setIsCustomUserDataDialogOpen(false)}
       />
       <StraboToolsDialog
         open={isStraboToolsDialogOpen}

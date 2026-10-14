@@ -10,6 +10,7 @@ import VisibilityIcon from '@mui/icons-material/Visibility';
 import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
 import { MetadataSummary } from './MetadataSummary';
 import { StraboToolsSummary } from './StraboToolsSummary';
+import { CustomUserDataSummary } from './CustomUserDataSummary';
 import type {
   ProjectMetadata,
   MicrographMetadata,
@@ -24,6 +25,7 @@ interface PropertiesPanelProps {
   sample: SampleMetadata | null;
   allMicrographs: MicrographMetadata[];
   onDeselectSpot: () => void;
+  onSelectSpot: (spot: Spot) => void;
 }
 
 export function PropertiesPanel({
@@ -32,6 +34,7 @@ export function PropertiesPanel({
   spot,
   sample,
   onDeselectSpot,
+  onSelectSpot,
 }: PropertiesPanelProps) {
   const isMicrograph = micrograph != null && spot == null;
 
@@ -128,6 +131,8 @@ export function PropertiesPanel({
               sample={sample}
               isMicrograph={isMicrograph}
             />
+
+            <CustomUserDataSummary project={project} micrograph={micrograph} spot={spot} onSelectSpot={onSelectSpot} />
 
             {isMicrograph && micrograph.straboTools && (
               <StraboToolsSummary straboTools={micrograph.straboTools} />
