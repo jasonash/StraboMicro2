@@ -212,6 +212,7 @@
     },
     "win": {
       "icon": "build/icon.ico",
+      "signExts": [".node", ".dll"],
       "target": [
         {
           "target": "nsis",
