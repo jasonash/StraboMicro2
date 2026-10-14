@@ -230,6 +230,7 @@ const syncSidecar = require('./sync/sidecar');
 const fastsamService = require('./fastsamService');
 const straboToolsMain = require('./straboToolsMain');
 const dialogDirs = require('./dialogDirs');
+const customUserDataFiles = require('./customUserDataFiles');
 const deepLink = require('./deepLink');
 
 // Handle EPIPE errors at process level (prevents crash on broken stdout pipe)
@@ -955,6 +956,14 @@ function createWindow() {
           click: () => {
             if (mainWindow) {
               mainWindow.webContents.send('menu:strabo-tools');
+            }
+          }
+        },
+        {
+          label: 'Custom User Data...',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('menu:custom-user-data');
             }
           }
         },
@@ -2036,6 +2045,47 @@ ipcMain.handle('dialog:save-text-file', async (event, content, defaultName, exte
   } catch (error) {
     log.error('[IPC] Error saving text file:', error);
     throw error;
+  }
+});
+
+// Custom User Data (docs/custom-user-data-design.md): save the template / download, read a filled one
+ipcMain.handle('custom-user-data:save', async (event, table, defaultName, format) => {
+  const ext = format === 'csv' ? 'csv' : 'xlsx';
+  const dir = dialogDirs.getDefaultPath('custom-user-data');
+  const result = await dialog.showSaveDialog(mainWindow, {
+    title: 'Save Custom User Data',
+    defaultPath: dir ? path.join(dir, `${defaultName}.${ext}`) : `${defaultName}.${ext}`,
+    filters: [ext === 'csv' ? { name: 'CSV Files', extensions: ['csv'] } : { name: 'Excel Workbook', extensions: ['xlsx'] }],
+  });
+  if (result.canceled || !result.filePath) return { success: false, canceled: true };
+  try {
+    await customUserDataFiles.writeTable(result.filePath, table);
+    dialogDirs.remember('custom-user-data', result.filePath);
+    log.info(`[CustomUserData] Saved ${table.rows.length} rows to ${result.filePath}`);
+    return { success: true, filePath: result.filePath };
+  } catch (error) {
+    log.error('[CustomUserData] Save failed:', error);
+    return { success: false, error: error instanceof Error ? error.message : String(error) };
+  }
+});
+
+ipcMain.handle('custom-user-data:open', async () => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: 'Import Filled Template',
+    defaultPath: dialogDirs.getDefaultPath('custom-user-data'),
+    filters: [{ name: 'Spreadsheets', extensions: ['xlsx', 'csv'] }],
+    properties: ['openFile'],
+  });
+  if (result.canceled || result.filePaths.length === 0) return { success: false, canceled: true };
+  const filePath = result.filePaths[0];
+  dialogDirs.remember('custom-user-data', filePath);
+  try {
+    const table = await customUserDataFiles.readTable(filePath);
+    log.info(`[CustomUserData] Read ${table.rows.length} rows, ${table.headers.length} columns from ${filePath}`);
+    return { success: true, filePath, fileName: path.basename(filePath), ...table };
+  } catch (error) {
+    log.error('[CustomUserData] Read failed:', error);
+    return { success: false, fileName: path.basename(filePath), error: error instanceof Error ? error.message : String(error) };
   }
 });
 

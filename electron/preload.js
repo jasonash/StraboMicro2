@@ -130,6 +130,12 @@ contextBridge.exposeInMainWorld('api', {
   saveTextFile: (content, defaultName, extension) =>
     ipcRenderer.invoke('dialog:save-text-file', content, defaultName, extension),
 
+  // Custom User Data files (.xlsx / .csv)
+  customUserData: {
+    save: (table, defaultName, format) => ipcRenderer.invoke('custom-user-data:save', table, defaultName, format),
+    open: () => ipcRenderer.invoke('custom-user-data:open'),
+  },
+
   // External links
   openExternalLink: (url) => ipcRenderer.invoke('open-external-link', url),
 
@@ -821,6 +827,11 @@ contextBridge.exposeInMainWorld('api', {
     const handler = () => callback();
     ipcRenderer.on('menu:image-comparator', handler);
     return () => ipcRenderer.removeListener('menu:image-comparator', handler);
+  },
+  onCustomUserData: (callback) => {
+    const handler = () => callback();
+    ipcRenderer.on('menu:custom-user-data', handler);
+    return () => ipcRenderer.removeListener('menu:custom-user-data', handler);
   },
   onGrainSizeAnalysis: (callback) => {
     const handler = () => callback();
