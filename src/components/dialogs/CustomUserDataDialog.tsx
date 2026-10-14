@@ -36,12 +36,11 @@ import {
   hasCustomUserData,
   importChangesSomething,
   INSTRUCTION_SECTIONS,
-  instructionLines,
   orderedColumns,
   spotsInOrder,
-  templateTable,
   type ImportPlan,
 } from '@/utils/customUserData';
+import { downloadCustomUserData, type CustomUserDataFormat } from '@/services/customUserDataDownload';
 
 interface CustomUserDataDialogProps {
   open: boolean;
@@ -49,14 +48,10 @@ interface CustomUserDataDialogProps {
 }
 
 type Scope = 'project' | 'micrograph';
-type Format = 'xlsx' | 'csv';
+type Format = CustomUserDataFormat;
 
 /** At most this many rows are listed per warning */
 const LIST_LIMIT = 10;
-
-function safeFileName(name: string): string {
-  return name.replace(/[\\/:*?"<>|]+/g, '-').trim() || 'Custom User Data';
-}
 
 function plural(n: number, one: string, many = `${one}s`): string {
   return `${n} ${n === 1 ? one : many}`;
@@ -125,15 +120,9 @@ export function CustomUserDataDialog({ open, onClose }: CustomUserDataDialogProp
     reset();
     setBusy(true);
     try {
-      const table = templateTable(project, effectiveScope === 'micrograph' ? micrograph?.id : null);
-      const base = effectiveScope === 'micrograph' && micrograph
-        ? `${project.name} - ${micrograph.name} - Custom User Data`
-        : `${project.name} - Custom User Data`;
-      const result = await window.api?.customUserData.save(
-        { ...table, instructions: instructionLines() }, safeFileName(base), format,
-      );
-      if (result?.success) setMessage({ severity: 'success', text: `Saved ${plural(table.rows.length, 'row')} to ${result.filePath}.` });
-      else if (result && !result.canceled) setMessage({ severity: 'error', text: `The file could not be saved: ${result.error ?? 'unknown error'}` });
+      const result = await downloadCustomUserData(project, effectiveScope === 'micrograph' ? micrograph?.id ?? null : null, format);
+      if (result.status === 'saved') setMessage({ severity: 'success', text: `Saved ${plural(result.rows, 'row')} to ${result.filePath}.` });
+      else if (result.status === 'failed') setMessage({ severity: 'error', text: `The file could not be saved: ${result.error}` });
     } finally {
       setBusy(false);
     }

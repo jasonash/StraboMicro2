@@ -113,3 +113,75 @@ test('a file with a duplicate header is refused and nothing changes', async ({ l
   await expect(dialog.getByText(/"mg#" appears twice \(columns B and C\)/)).toBeVisible();
   expect(await stored(ana)).toEqual({ columns: null, spots: { 'Garnet 1': null, 'Quartz 1': null } });
 });
+
+/** Put Custom User Data on the fixture's spots through the store (as an import would) */
+async function seed(copy: Copy, p: FixtureProject) {
+  await copy.state(new Function('e', `
+    const ids = ${JSON.stringify(p.spots.map((s) => s.id))};
+    e.app.getState().changeCustomUserData((project) => {
+      const next = structuredClone(project);
+      next.customUserDataColumns = ['Mg#', 'Note'];
+      for (const d of next.datasets) for (const s of d.samples) for (const m of s.micrographs) for (const sp of m.spots ?? []) {
+        if (sp.id === ids[0]) sp.customUserData = { 'Mg#': '0.820', Note: 'rim, core' };
+        if (sp.id === ids[1]) sp.customUserData = { 'Mg#': '<0.01' };
+      }
+      return next;
+    });
+  `) as never);
+}
+
+test('right pane: spot values, micrograph table, row click, remove column, remove all, undo', async ({ launch, project }) => {
+  const { p, ana } = await start(launch, project, 'E2E Custom Data Pane');
+  await seed(ana, p);
+  const pane = ana.page.getByText('Collected Data:').locator('..');
+
+  await ana.caption('a spot shows its values');
+  await ana.state(new Function('e', `return e.app.getState().selectActiveSpot(${JSON.stringify(p.spots[0].id)})`) as never);
+  await expect(pane.getByText('Custom User Data', { exact: true })).toBeVisible();
+  await expect(pane.getByText('0.820')).toBeVisible();
+  await expect(pane.getByText('rim, core')).toBeVisible();
+
+  await ana.caption('the micrograph shows a count and the table');
+  await ana.state(new Function('e', `
+    e.app.getState().selectActiveSpot(null);
+    return e.app.getState().selectMicrograph(${JSON.stringify(p.micrographId)});`) as never);
+  await expect(pane.getByText('Custom User Data', { exact: true })).toBeVisible();
+  await pane.getByText('Custom User Data', { exact: true }).click();
+  await expect(pane.getByText('2 columns on 2 spots of this micrograph.')).toBeVisible();
+  await pane.getByRole('button', { name: 'Show Custom User Data...' }).click();
+  const table = ana.page.getByRole('dialog', { name: /Custom User Data/ });
+  await expect(table.getByText('Overview: 2 spots, 2 columns')).toBeVisible();
+  await expect(table.getByRole('row')).toHaveCount(3);
+  await expect(table.getByRole('row', { name: /Quartz 1/ })).toContainText('<0.01');
+
+  await ana.caption('a row click selects the spot');
+  await table.getByRole('row', { name: /Quartz 1/ }).click();
+  await expect(table).toBeHidden();
+  await expect.poll(() => ana.state(new Function('e', 'return e.app.getState().activeSpotId') as never)).toBe(p.spots[1].id);
+
+  await ana.caption('Remove column takes "Note" out of the whole project');
+  await ana.state(new Function('e', `
+    e.app.getState().selectActiveSpot(null);
+    return e.app.getState().selectMicrograph(${JSON.stringify(p.micrographId)});`) as never);
+  await pane.getByText('Custom User Data', { exact: true }).click();
+  await pane.getByRole('button', { name: 'Show Custom User Data...' }).click();
+  await table.getByRole('button', { name: 'Remove column Note' }).click();
+  const confirm = ana.page.getByRole('dialog', { name: 'Remove the column "Note"?' });
+  await expect(confirm.getByText(/1 spot has a value in it/)).toBeVisible();
+  await confirm.getByRole('button', { name: 'Remove' }).click();
+  await expect(table.getByText('Removed the column "Note".')).toBeVisible();
+  expect(await stored(ana)).toEqual({ columns: ['Mg#'], spots: { 'Garnet 1': { 'Mg#': '0.820' }, 'Quartz 1': { 'Mg#': '<0.01' } } });
+
+  await ana.caption('Remove All Custom User Data');
+  await table.getByRole('button', { name: 'Remove All Custom User Data...' }).click();
+  await ana.page.getByRole('dialog', { name: 'Remove all Custom User Data?' }).getByRole('button', { name: 'Remove' }).click();
+  expect(await stored(ana)).toEqual({ columns: null, spots: { 'Garnet 1': null, 'Quartz 1': null } });
+  await table.getByRole('button', { name: 'Close' }).last().click();
+  await expect(pane.getByText('Custom User Data', { exact: true })).toBeHidden();
+
+  await ana.caption('each remove is its own undo step');
+  await ana.menu('Edit', 'Undo');
+  await expect.poll(() => stored(ana)).toEqual({ columns: ['Mg#'], spots: { 'Garnet 1': { 'Mg#': '0.820' }, 'Quartz 1': { 'Mg#': '<0.01' } } });
+  await ana.menu('Edit', 'Undo');
+  await expect.poll(() => stored(ana)).toEqual({ columns: ['Mg#', 'Note'], spots: { 'Garnet 1': { 'Mg#': '0.820', Note: 'rim, core' }, 'Quartz 1': { 'Mg#': '<0.01' } } });
+});
