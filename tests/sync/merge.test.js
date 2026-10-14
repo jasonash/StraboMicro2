@@ -5,6 +5,7 @@
  */
 
 const { mergeValue, mergeEntity, mergeProject, mergeIdSet } = require('../../electron/sync/merge');
+const { fieldChanges, applyFields } = require('../../electron/sync/pushBuilder');
 
 let failures = 0;
 let passes = 0;
@@ -304,6 +305,24 @@ const m = (body, extra) => st('micrograph', 'm1', body, extra);
   check('custom user data: same column changed on both sides = conflict on that column', r4.conflicts.length === 1 && eq(r4.conflicts[0].path, ['customUserData', 'Mg#']), J(r4));
   const r5 = mergeEntity(sp(undefined), sp({ A: '1' }), sp({ B: '2' }));
   check('custom user data: first imports on both sides merge', r5.conflicts.length === 0 && eq(r5.state.body.customUserData, { A: '1', B: '2' }), J(r5));
+}
+
+// --- Push field paths: the server takes only [A-Za-z0-9_] segments (MsModel::applyFields) ---
+{
+  const PATH = /^[A-Za-z0-9_]+(\.[A-Za-z0-9_]+)*$/;
+  const f1 = fieldChanges({ customUserData: { 'Mg#': '1', 'Age (Ma)': '2' } }, { customUserData: { 'Mg#': '1' } });
+  check('push: removing a header with odd characters sends the whole object', eq(f1, { customUserData: { 'Mg#': '1' } }), J(f1));
+  const f2 = fieldChanges({ customUserData: { Mg: '1' } }, { customUserData: { Mg: '1', 'Fo (%)': '88' } });
+  check('push: adding such a header sends the whole object', eq(f2, { customUserData: { Mg: '1', 'Fo (%)': '88' } }), J(f2));
+  const f3 = fieldChanges({ grainInfo: { a: 1, b: 2 } }, { grainInfo: { a: 1, b: 3 } });
+  check('push: ordinary nested keys still go per key', eq(f3, { 'grainInfo.b': 3 }), J(f3));
+  const f4 = fieldChanges({ customUserData: { Mg: '1', Fo: '2' } }, { customUserData: { Mg: '1' } });
+  check('push: plain headers go per key (null removes)', eq(f4, { 'customUserData.Fo': null }), J(f4));
+  const f5 = fieldChanges({ x: { 'a.b': 1 } }, { x: { 'a.b': 2 } });
+  check('push: a dotted key still sends the whole object', eq(f5, { x: { 'a.b': 2 } }), J(f5));
+  check('push: every path is one the server accepts', [f1, f2, f3, f4, f5].every((f) => Object.keys(f).every((k) => PATH.test(k))));
+  const base = { customUserData: { 'Mg#': '1', 'Age (Ma)': '2' } };
+  check('push: applying the change gives the new body', eq(applyFields(base, f1), { customUserData: { 'Mg#': '1' } }));
 }
 
 console.log(failures ? `\n${failures} FAILED (${passes} passed)` : `\nALL PASSED (${passes} checks)`);

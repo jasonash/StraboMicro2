@@ -14,7 +14,11 @@
  *
  * Field changes are dotted paths into the body; a value replaces the whole
  * value at its path (lists are atomic) and null removes the key, so a null
- * and a missing key count as the same here.
+ * and a missing key count as the same here. The server accepts only
+ * letters, digits and _ in a path (MsModel::applyFields), so an object with
+ * any other key (Custom User Data headers such as "Fo (%)") is sent whole;
+ * a change on both sides then meets the version check and merges per key
+ * here (merge.js) before it is sent again.
  */
 
 const { deepEqual } = require('../shared/deepEqual.mjs');
@@ -30,6 +34,9 @@ function isNullish(v) {
   return v === null || v === undefined;
 }
 
+/** A key the server accepts as one segment of a field path */
+const PATH_SEGMENT = /^[A-Za-z0-9_]+$/;
+
 /**
  * Field changes from one body to another: { 'a.b': value | null }.
  * @param {object} base
@@ -44,8 +51,8 @@ function fieldChanges(base, cur) {
       const bv = b[k];
       const cv = c[k];
       if (isNullish(bv) && isNullish(cv)) continue;
-      const canDescend = isPlainObject(bv) && isPlainObject(cv) && !k.includes('.') &&
-        ![...Object.keys(bv), ...Object.keys(cv)].some((x) => x.includes('.'));
+      const canDescend = isPlainObject(bv) && isPlainObject(cv) && PATH_SEGMENT.test(k) &&
+        [...Object.keys(bv), ...Object.keys(cv)].every((x) => PATH_SEGMENT.test(x));
       if (canDescend) {
         walk(bv, cv, `${prefix}${k}.`);
       } else if (!deepEqual(bv, cv)) {
