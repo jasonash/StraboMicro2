@@ -243,7 +243,7 @@ test('Synced: an import reaches the collaborator with its column order', async (
   await waitSettled(ben);
   await expect.poll(() => stored(ana), { timeout: 30_000 })
     .toEqual({ columns: ['Mg#'], spots: { 'Garnet 1': { 'Mg#': '0.820' }, 'Quartz 1': { 'Mg#': '<0.01' } } });
-  for (const copy of [ana, ben]) expect(await copy.state((e) => e.sync.getState().conflicts)).toBe(0);
+  for (const copy of [ana, ben]) expect(await copy.state((e) => [e.sync.getState().conflicts, e.sync.getState().refused])).toEqual([0, 0]);
 });
 
 test('Synced: columns imported on both computers at once are both kept, without a question', async ({ launch, project, runDir }) => {
@@ -266,7 +266,7 @@ test('Synced: columns imported on both computers at once are both kept, without 
     const s = await stored(copy);
     expect([...(s.columns ?? [])].sort()).toEqual(['Fo (%)', 'Mg#']);
     expect(s.spots).toEqual({ 'Garnet 1': { 'Mg#': '0.820', 'Fo (%)': '88' }, 'Quartz 1': { 'Fo (%)': '91' } });
-    expect(await copy.state((e) => e.sync.getState().conflicts)).toBe(0);
+    expect(await copy.state((e) => [e.sync.getState().conflicts, e.sync.getState().refused])).toEqual([0, 0]);
   }
   expect(await displayOrder(ana)).toEqual(await displayOrder(ben));
 });
@@ -300,4 +300,5 @@ test('Synced: a Contributor\'s import changes only their own spots and never the
   await expect.poll(() => stored(ana), { timeout: 30_000 }).toEqual(expected);
   expect(await stored(ben)).toEqual(expected);
   expect(await displayOrder(ana)).toEqual(['Mg#', 'Ben col']);
+  for (const copy of [ana, ben]) expect(await copy.state((e) => [e.sync.getState().conflicts, e.sync.getState().refused])).toEqual([0, 0]);
 });
