@@ -55,7 +55,7 @@ import type {
 type DataItem = MicrographMetadata | Spot;
 
 // Styled Accordion matching desktop app
-const StyledAccordion = styled(Accordion)(({ theme }) => ({
+export const StyledAccordion = styled(Accordion)(({ theme }) => ({
   '&:before': { display: 'none' },
   borderLeft: '3px solid transparent',
   transition: 'border-color 0.2s ease',
@@ -64,7 +64,7 @@ const StyledAccordion = styled(Accordion)(({ theme }) => ({
   },
 }));
 
-const StyledAccordionSummary = styled(AccordionSummary)(({ theme }) => ({
+export const StyledAccordionSummary = styled(AccordionSummary)(({ theme }) => ({
   minHeight: 32,
   padding: '0 12px',
   transition: 'background-color 0.2s ease',

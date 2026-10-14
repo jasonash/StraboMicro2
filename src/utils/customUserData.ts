@@ -123,6 +123,20 @@ export function templateTable(project: ProjectMetadata | null, micrographId?: st
   return { headers: [...LOCKED_COLUMNS, ...columns], rows, lockedCount: LOCKED_COLUMNS.length };
 }
 
+function csvField(value: string): string {
+  return /[",\r\n;\t]/.test(value) || /^\s|\s$/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
+}
+
+/**
+ * A table as CSV text: byte order mark (Excel then reads it as UTF-8), CRLF.
+ * Same output as toCsv in electron/customUserDataFiles.js, which the desktop
+ * writes with; this one is for the web viewer's download.
+ */
+export function tableToCsv(table: { headers: string[]; rows: string[][] }): string {
+  const lines = [table.headers, ...table.rows].map((r) => r.map((v) => csvField(String(v ?? ''))).join(','));
+  return `\uFEFF${lines.join('\r\n')}\r\n`;
+}
+
 /** How the template works: the .xlsx Instructions sheet and the dialog's help */
 export const INSTRUCTION_SECTIONS: ReadonlyArray<{ title: string; lines: string[] }> = [
   {

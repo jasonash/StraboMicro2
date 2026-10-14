@@ -20,6 +20,7 @@ import {
   removeColumn,
   spotEntries,
   templateTable,
+  tableToCsv,
   type ImportRights,
 } from '../src/utils/customUserData.ts';
 import type { ProjectMetadata, Spot } from '../src/types/project-types.ts';
@@ -27,6 +28,7 @@ import { fieldLabel, valueText } from '../src/utils/syncDecisionText.ts';
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
+const files = require('../electron/customUserDataFiles.js') as { toCsv: (h: string[], r: string[][]) => string };
 const pdf = require('../electron/pdfReactExport.js') as {
   customUserDataColumns: (p: unknown) => string[];
   customUserDataEntries: (columns: string[], spot: unknown) => Array<[string, string]>;
@@ -203,6 +205,11 @@ const variants: ProjectMetadata[] = [project(), { ...project(), customUserDataCo
 variants.forEach((v, i) => check(`PDF column order = app column order (${i})`, eq(pdf.customUserDataColumns(v), orderedColumns(v)), [pdf.customUserDataColumns(v), orderedColumns(v)]));
 check('PDF spot entries = app spot entries', eq(pdf.customUserDataEntries(orderedColumns(p), m1Spots[0]), spotEntries(p, m1Spots[0])));
 check('PDF spot entries: none', eq(pdf.customUserDataEntries(['a'], { customUserData: { a: '' } }), []));
+
+// ---------------------------------------------------------------- CSV text (web viewer) = desktop CSV file
+const csvTable = { headers: ['Spot ID', 'Notes'], rows: [['a', 'has, comma'], ['b', 'say "hi"\nnext line'], ['c', ' padded '], ['d', 'semi;colon'], ['e', '±']] };
+check('tableToCsv = desktop toCsv', tableToCsv(csvTable) === files.toCsv(csvTable.headers, csvTable.rows), [tableToCsv(csvTable), files.toCsv(csvTable.headers, csvTable.rows)]);
+check('tableToCsv: BOM and CRLF', tableToCsv(csvTable).startsWith('\uFEFFSpot ID,Notes\r\n'));
 
 // ---------------------------------------------------------------- sync decisions dialog text
 check('decision label: field name', fieldLabel(['customUserData']) === 'Custom User Data');

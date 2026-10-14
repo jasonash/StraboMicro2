@@ -351,6 +351,7 @@ export default function App() {
             sample={activeSample}
             allMicrographs={allMicrographs}
             onDeselectSpot={() => setSelectedSpot(null)}
+            onSelectSpot={handleSpotClick}
           />
         </Box>
       </Box>

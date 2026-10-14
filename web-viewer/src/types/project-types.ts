@@ -43,6 +43,8 @@ export interface ProjectMetadata {
   // Grain Size Analysis spot selection (project-level)
   grainAnalysisSpotFilter?: 'all' | 'selected' | null;
   grainAnalysisSelectedSpotIds?: string[] | null;
+  // Custom User Data column order
+  customUserDataColumns?: string[] | null;
 }
 
 export interface DatasetMetadata {
@@ -251,6 +253,8 @@ export interface Spot {
   centroid?: { X: number; Y: number } | null;
   appliedPresetIds?: string[] | null;
   archived?: boolean;
+  // Custom User Data: header => value as typed (src/utils/customUserData.ts in the app)
+  customUserData?: Record<string, string> | null;
   tags?: string[] | null;
 }
 

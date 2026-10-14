@@ -28,7 +28,8 @@ export async function downloadCustomUserData(project: ProjectMetadata, micrograp
       if (m) micrographName = m.name || '';
     }
   }
-  const base = micrographName ? `${project.name} - ${micrographName} - Custom User Data` : `${project.name} - Custom User Data`;
+  const projectName = (project.name || '').trim();
+  const base = micrographName.trim() ? `${projectName} - ${micrographName.trim()} - Custom User Data` : `${projectName} - Custom User Data`;
   const result = await window.api?.customUserData.save({ ...table, instructions: instructionLines() }, safeFileName(base), format);
   if (!result) return { status: 'failed', error: 'not available' };
   if (result.success && result.filePath) return { status: 'saved', filePath: result.filePath, rows: table.rows.length };
