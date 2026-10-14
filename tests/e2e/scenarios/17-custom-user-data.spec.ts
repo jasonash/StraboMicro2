@@ -3,14 +3,17 @@
  * Custom User Data... downloads the template (.xlsx with locked spot
  * columns), a filled file is checked and previewed, Apply Import stores the
  * values on the spots and the column order on the project as one undo step;
- * a broken file is refused with nothing changed. One copy, not synced.
+ * a broken file is refused with nothing changed. Right pane + table (stage
+ * 2). Synced (stage 5): an import reaches the collaborator, columns added on
+ * both sides at once are both kept, a Contributor's import changes only
+ * their own spots and never the column list (design 16).
  */
 
 import fs from 'fs';
 import ExcelJS from 'exceljs';
 import { test, expect } from '../lib/test';
 import { ACCOUNTS, type Copy } from '../lib/copy';
-import { openSmz } from '../lib/actions';
+import { addSpot, openSmz, setOffline, share, syncNow, waitSettled } from '../lib/actions';
 import type { FixtureProject } from '../lib/fixtures';
 
 const LOCKED = ['Sample Name', 'Micrograph Name', 'Spot Name', 'Spot ID', 'Archived'];
@@ -184,4 +187,117 @@ test('right pane: spot values, micrograph table, row click, remove column, remov
   await expect.poll(() => stored(ana)).toEqual({ columns: ['Mg#'], spots: { 'Garnet 1': { 'Mg#': '0.820' }, 'Quartz 1': { 'Mg#': '<0.01' } } });
   await ana.menu('Edit', 'Undo');
   await expect.poll(() => stored(ana)).toEqual({ columns: ['Mg#', 'Note'], spots: { 'Garnet 1': { 'Mg#': '0.820', Note: 'rim, core' }, 'Quartz 1': { 'Mg#': '<0.01' } } });
+});
+
+/** Tools > Custom User Data... > Import Filled Template... with a CSV, then Apply Import */
+async function importCsv(copy: Copy, filePath: string, csv: string, expectInPreview: RegExp[] = []) {
+  fs.writeFileSync(filePath, csv);
+  const dialog = await openTool(copy);
+  await copy.answerDialog({ kind: 'open', filePaths: [filePath] });
+  await dialog.getByRole('button', { name: 'Import Filled Template...' }).click();
+  const name = filePath.split('/').pop() ?? '';
+  const preview = copy.page.getByRole('dialog', { name: `Import ${name}?` });
+  await expect(preview).toBeVisible();
+  for (const re of expectInPreview) await expect(preview.getByText(re)).toBeVisible();
+  await preview.getByRole('button', { name: 'Apply Import' }).click();
+  await expect(copy.page.getByText(/^Imported /)).toBeVisible();
+  await copy.page.getByRole('dialog', { name: 'Custom User Data' }).getByRole('button', { name: 'Close' }).click();
+}
+
+/** The columns in display order, as this copy works them out */
+async function displayOrder(copy: Copy) {
+  return copy.state(new Function('e', `
+    const p = e.app.getState().project;
+    const listed = (p?.customUserDataColumns ?? []).slice();
+    const extra = new Set();
+    for (const d of p?.datasets ?? []) for (const s of d.samples ?? []) for (const m of s.micrographs ?? [])
+      for (const sp of m.spots ?? []) for (const k of Object.keys(sp.customUserData ?? {})) if (!listed.includes(k)) extra.add(k);
+    return [...listed, ...[...extra].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base', numeric: true }))];
+  `) as never) as Promise<string[]>;
+}
+
+test('Synced: an import reaches the collaborator with its column order', async ({ launch, project, runDir }) => {
+  const p = await project('E2E Custom Data Sync');
+  const ana = await launch('Ana', ACCOUNTS.ana);
+  const ben = await launch('Ben', ACCOUNTS.ben);
+  await share(ana, ben, p.smzPath, p.id, p.name);
+
+  await ana.caption('imports Mg# and Age (Ma)');
+  await importCsv(ana, `${runDir}/sync.csv`,
+    `Spot ID,Mg#,Age (Ma)\r\n${p.spots[0].id},0.820,312 ± 4\r\n${p.spots[1].id},<0.01,\r\n`);
+  await waitSettled(ana);
+
+  const expected = { columns: ['Mg#', 'Age (Ma)'], spots: { 'Garnet 1': { 'Mg#': '0.820', 'Age (Ma)': '312 ± 4' }, 'Quartz 1': { 'Mg#': '<0.01' } } };
+  await expect.poll(() => stored(ben), { timeout: 30_000 }).toEqual(expected);
+  await waitSettled(ben);
+
+  await ben.caption('removes the Age (Ma) column; Ana gets that too');
+  await ben.state(new Function('e', `return e.app.getState().selectMicrograph(${JSON.stringify(p.micrographId)})`) as never);
+  const pane = ben.page.getByText('Collected Data:').locator('..');
+  await pane.getByText('Custom User Data', { exact: true }).click();
+  await pane.getByRole('button', { name: 'Show Custom User Data...' }).click();
+  const table = ben.page.getByRole('dialog', { name: /Custom User Data/ });
+  await table.getByRole('button', { name: 'Remove column Age (Ma)' }).click();
+  await ben.page.getByRole('dialog', { name: 'Remove the column "Age (Ma)"?' }).getByRole('button', { name: 'Remove' }).click();
+  await table.getByRole('button', { name: 'Close' }).last().click();
+  await waitSettled(ben);
+  await expect.poll(() => stored(ana), { timeout: 30_000 })
+    .toEqual({ columns: ['Mg#'], spots: { 'Garnet 1': { 'Mg#': '0.820' }, 'Quartz 1': { 'Mg#': '<0.01' } } });
+  for (const copy of [ana, ben]) expect(await copy.state((e) => e.sync.getState().conflicts)).toBe(0);
+});
+
+test('Synced: columns imported on both computers at once are both kept, without a question', async ({ launch, project, runDir }) => {
+  const p = await project('E2E Custom Data Both');
+  const ana = await launch('Ana', ACCOUNTS.ana);
+  const ben = await launch('Ben', ACCOUNTS.ben);
+  await share(ana, ben, p.smzPath, p.id, p.name);
+
+  await setOffline(ben, true);
+  await importCsv(ana, `${runDir}/ana.csv`, `Spot ID,Mg#\r\n${p.spots[0].id},0.820\r\n`);
+  await waitSettled(ana);
+  await importCsv(ben, `${runDir}/ben.csv`, `Spot ID,Fo (%)\r\n${p.spots[0].id},88\r\n${p.spots[1].id},91\r\n`);
+  await setOffline(ben, false);
+  await syncNow(ben);
+  await waitSettled(ben);
+  await expect.poll(() => stored(ana), { timeout: 30_000 }).toEqual(await stored(ben));
+  await waitSettled(ana);
+
+  for (const copy of [ana, ben]) {
+    const s = await stored(copy);
+    expect([...(s.columns ?? [])].sort()).toEqual(['Fo (%)', 'Mg#']);
+    expect(s.spots).toEqual({ 'Garnet 1': { 'Mg#': '0.820', 'Fo (%)': '88' }, 'Quartz 1': { 'Fo (%)': '91' } });
+    expect(await copy.state((e) => e.sync.getState().conflicts)).toBe(0);
+  }
+  expect(await displayOrder(ana)).toEqual(await displayOrder(ben));
+});
+
+test('Synced: a Contributor\'s import changes only their own spots and never the column list', async ({ launch, project, runDir }) => {
+  const p = await project('E2E Custom Data Contributor');
+  const ana = await launch('Ana', ACCOUNTS.ana);
+  const ben = await launch('Ben', ACCOUNTS.ben);
+  await share(ana, ben, p.smzPath, p.id, p.name, 'Contributor');
+
+  await ana.caption('the owner sets the column order: Mg#');
+  await importCsv(ana, `${runDir}/owner.csv`, `Spot ID,Mg#\r\n${p.spots[0].id},0.820\r\n`);
+  await waitSettled(ana);
+  await expect.poll(() => stored(ben), { timeout: 30_000 }).toMatchObject({ columns: ['Mg#'] });
+
+  const benSpot = await addSpot(ben, p.micrographId, 'Ben spot');
+  await waitSettled(ben);
+  await expect.poll(async () => Object.keys((await stored(ana)).spots), { timeout: 30_000 }).toContain('Ben spot');
+
+  await ben.caption('imports a file with the owner\'s spot and his own');
+  await importCsv(ben, `${runDir}/contrib.csv`,
+    `Spot ID,Mg#,Ben col\r\n${p.spots[0].id},9.99,x\r\n${benSpot},0.5,mine\r\n`,
+    [/1 spot added by someone else \(skipped\)/, /can't change the column order/]);
+  await waitSettled(ben);
+  expect(await ben.state((e) => e.sync.getState().problem?.message ?? null)).toBeNull();
+
+  const expected = {
+    columns: ['Mg#'],
+    spots: { 'Garnet 1': { 'Mg#': '0.820' }, 'Quartz 1': null, 'Ben spot': { 'Mg#': '0.5', 'Ben col': 'mine' } },
+  };
+  await expect.poll(() => stored(ana), { timeout: 30_000 }).toEqual(expected);
+  expect(await stored(ben)).toEqual(expected);
+  expect(await displayOrder(ana)).toEqual(['Mg#', 'Ben col']);
 });
