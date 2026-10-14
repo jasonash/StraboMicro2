@@ -13,7 +13,7 @@
  *     mineralogy.minerals are separate fields.
  *   - Other lists are one value (items have no ids), except:
  *     id sets (spot.tags, micrograph.tags, group.micrographs, group.spotIDs,
- *     tag.spotIDs) merge as sets, and id-keyed lists (micrograph
+ *     tag.spotIDs, project.customUserDataColumns) merge as sets, and id-keyed lists (micrograph
  *     sketchLayers and each layer's strokes and textItems) merge per item.
  *   - modifiedTimestamp: the later value wins, never a conflict.
  *   - null and a missing key are the same (the push protocol's rule).
@@ -41,6 +41,8 @@ const { entityKey, DEPTH } = require('../shared/entityModel.mjs');
  */
 
 const ID_SETS = Object.freeze({
+  // Custom User Data column order: columns added on both sides are kept (design 15)
+  project: ['customUserDataColumns'],
   spot: ['tags'],
   micrograph: ['tags'],
   group: ['micrographs', 'spotIDs'],

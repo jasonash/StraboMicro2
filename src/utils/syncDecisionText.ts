@@ -52,7 +52,12 @@ const FIELD_LABELS: Record<string, string> = {
   geometry: 'Shape',
   points: 'Shape',
   geometryType: 'Shape type',
+  customUserData: 'Custom User Data',
+  customUserDataColumns: 'Custom User Data columns',
 };
+
+/** Fields whose keys are the user's own words (Custom User Data headers): shown as typed */
+const VERBATIM_KEYS = new Set(['customUserData']);
 
 /** Fields shown as "Shape changed" when the conflict has no picture (sketch, or a spot that also moved; 16y, 16ac). */
 const SHAPE_FIELDS = new Set(['geometry', 'points', 'sketchLayers']);
@@ -93,7 +98,8 @@ export function containsLabel(contains: Record<string, number>): string {
 
 /** "Mineralogy › Minerals"; list items show as "item". */
 export function fieldLabel(path: string[]): string {
-  const parts = path.map((seg) => {
+  const parts = path.map((seg, i) => {
+    if (i > 0 && VERBATIM_KEYS.has(path[i - 1])) return seg;
     if (isItemSegment(seg)) return 'item';
     if (FIELD_LABELS[seg]) return FIELD_LABELS[seg];
     const words = seg.replace(/([a-z0-9])([A-Z])/g, '$1 $2').replace(/_/g, ' ').toLowerCase();
@@ -121,8 +127,8 @@ function itemName(item: unknown): string {
   return typeof pct === 'number' ? `${base} ${scalar(pct)}%` : base;
 }
 
-/** Every leaf as "key: value" lines (the "Show all" text). */
-function fullText(v: unknown, indent = ''): string[] {
+/** Every leaf as "key: value" lines (the "Show all" text); verbatim: keys as typed (Custom User Data). */
+function fullText(v: unknown, indent = '', verbatim = false): string[] {
   if (Array.isArray(v)) {
     if (v.length === 0) return [`${indent}(none)`];
     return v.flatMap((x, i) => (isPlainObject(x) || Array.isArray(x)
@@ -132,9 +138,10 @@ function fullText(v: unknown, indent = ''): string[] {
   if (isPlainObject(v)) {
     const lines: string[] = [];
     for (const [k, x] of Object.entries(v)) {
-      if (x === null || x === undefined || k === 'id') continue;
-      if (isPlainObject(x) || Array.isArray(x)) lines.push(`${indent}${fieldLabel([k])}:`, ...fullText(x, `${indent}   `));
-      else lines.push(`${indent}${fieldLabel([k])}: ${scalar(x)}`);
+      if (x === null || x === undefined || (k === 'id' && !verbatim)) continue;
+      const label = verbatim ? k : fieldLabel([k]);
+      if (isPlainObject(x) || Array.isArray(x)) lines.push(`${indent}${label}:`, ...fullText(x, `${indent}   `, VERBATIM_KEYS.has(k)));
+      else lines.push(`${indent}${label}: ${scalar(x)}`);
     }
     return lines.length > 0 ? lines : [`${indent}(empty)`];
   }
@@ -168,7 +175,7 @@ export function valueText(path: string[], value: unknown): ValueText {
     return { short, full: fullText(value).join('\n') };
   }
   if (isPlainObject(value)) {
-    const lines = fullText(value);
+    const lines = fullText(value, '', VERBATIM_KEYS.has(path[path.length - 1]));
     const short = lines.filter((l) => !l.startsWith(' ') && !l.endsWith(':')).slice(0, 2).join('; ') || `${lines.length} values`;
     return { short: lines.length > 2 ? `${short}; ...` : short, full: lines.join('\n') };
   }

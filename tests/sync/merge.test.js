@@ -290,5 +290,21 @@ const m = (body, extra) => st('micrograph', 'm1', body, extra);
   }
 }
 
+// --- Custom User Data (docs/custom-user-data-design.md) -----------------------
+{
+  const pr = (cols) => st('project', 'P', { customUserDataColumns: cols }, { parentType: null, parentId: null });
+  const r = mergeEntity(pr(['Mg#']), pr(['Mg#', 'Fo']), pr(['Mg#', 'Age']));
+  check('custom user data: columns added on both sides are kept (mine first)', r.conflicts.length === 0 && eq(r.state.body.customUserDataColumns, ['Mg#', 'Fo', 'Age']), J(r));
+  const r2 = mergeEntity(pr(['Mg#', 'Fo']), pr(['Mg#']), pr(['Mg#', 'Fo', 'Age']));
+  check('custom user data: a removed column stays removed, theirs added kept', r2.conflicts.length === 0 && eq(r2.state.body.customUserDataColumns, ['Mg#', 'Age']), J(r2));
+  const sp = (data) => st('spot', 'p1', { customUserData: data }, { parentType: 'micrograph', parentId: 'm1' });
+  const r3 = mergeEntity(sp({ 'Mg#': '1' }), sp({ 'Mg#': '2' }), sp({ 'Mg#': '1', Fo: '88' }));
+  check('custom user data: different columns of one spot merge', r3.conflicts.length === 0 && eq(r3.state.body.customUserData, { 'Mg#': '2', Fo: '88' }), J(r3));
+  const r4 = mergeEntity(sp({ 'Mg#': '1' }), sp({ 'Mg#': '2' }), sp({ 'Mg#': '3' }));
+  check('custom user data: same column changed on both sides = conflict on that column', r4.conflicts.length === 1 && eq(r4.conflicts[0].path, ['customUserData', 'Mg#']), J(r4));
+  const r5 = mergeEntity(sp(undefined), sp({ A: '1' }), sp({ B: '2' }));
+  check('custom user data: first imports on both sides merge', r5.conflicts.length === 0 && eq(r5.state.body.customUserData, { A: '1', B: '2' }), J(r5));
+}
+
 console.log(failures ? `\n${failures} FAILED (${passes} passed)` : `\nALL PASSED (${passes} checks)`);
 process.exit(failures ? 1 : 0);

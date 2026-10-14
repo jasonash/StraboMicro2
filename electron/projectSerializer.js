@@ -250,6 +250,22 @@ function withUnknownFields(source, known, skip) {
   return out;
 }
 
+/** A list of non-empty strings, or undefined when there are none (Custom User Data columns) */
+function nonEmptyList(list) {
+  if (!Array.isArray(list)) return undefined;
+  const out = list.filter((v) => typeof v === 'string' && v !== '');
+  return out.length > 0 ? out : undefined;
+}
+
+/** A { key: text } map without empty values, or undefined when nothing is left (Custom User Data values) */
+function nonEmptyTextMap(map) {
+  if (!map || typeof map !== 'object' || Array.isArray(map)) return undefined;
+  const out = Object.fromEntries(Object.entries(map)
+    .filter(([, v]) => v !== null && v !== undefined && v !== '')
+    .map(([k, v]) => [k, String(v)]));
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
 /**
  * Serialize project data to legacy JSON format and save to disk
  * @param {Object} project - Project data from Zustand store
@@ -510,6 +526,8 @@ function serializeToLegacyFormat(project) {
     presetKeyBindings: project.presetKeyBindings || undefined,
     // Auto spot mode: default spot name pattern (v2 only)
     spotNamePattern: project.spotNamePattern || undefined,
+    // Custom User Data column order (v2 only; values are on each spot)
+    customUserDataColumns: nonEmptyList(project.customUserDataColumns),
     // Mineral Color overrides (project-level)
     mineralColors: project.mineralColors || undefined,
     // Grain Size Analysis spot selection (project-level)
@@ -695,6 +713,8 @@ function serializeSpot(spot) {
     archived: spot.archived || undefined,
     // Quick Spot Presets tracking
     appliedPresetIds: spot.appliedPresetIds || undefined,
+    // Custom User Data: header => value as typed (v2 only)
+    customUserData: nonEmptyTextMap(spot.customUserData),
   }, NEVER_SAVE.spot);
 }
 
@@ -726,6 +746,8 @@ function deserializeFromLegacyFormat(legacyJson) {
     presetKeyBindings: legacyJson.presetKeyBindings || undefined,
     // Auto spot mode: default spot name pattern (v2 only)
     spotNamePattern: legacyJson.spotNamePattern || undefined,
+    // Custom User Data column order (v2 only; values are on each spot)
+    customUserDataColumns: nonEmptyList(legacyJson.customUserDataColumns),
     // Mineral Color overrides (project-level)
     mineralColors: legacyJson.mineralColors || undefined,
     // Grain Size Analysis spot selection (project-level)
@@ -892,6 +914,8 @@ function deserializeSpot(spot) {
     archived: spot.archived,
     // Quick Spot Presets tracking
     appliedPresetIds: spot.appliedPresetIds,
+    // Custom User Data: header => value as typed (v2 only)
+    customUserData: nonEmptyTextMap(spot.customUserData),
   }, LOAD_IGNORE.spot);
 }
 

@@ -55,6 +55,9 @@ export interface ProjectMetadata {
   // Auto spot mode: default spot name pattern, {n} = number (v2 only; empty = "Spot {n}")
   spotNamePattern?: string | null;
 
+  // Custom User Data column order (v2 only; values are on each spot, src/utils/customUserData.ts)
+  customUserDataColumns?: string[] | null;
+
   // Mineral Color overrides (project-level)
   mineralColors?: MineralColorEntry[] | null;
 
@@ -407,6 +410,14 @@ export interface Spot {
    * Used for visual feedback (pie chart indicator) and tracking.
    */
   appliedPresetIds?: string[] | null;
+
+  // ========== CUSTOM USER DATA ==========
+
+  /**
+   * The user's own spreadsheet columns for this spot: header => value, kept
+   * as text exactly as typed (v2 only). Order: project.customUserDataColumns.
+   */
+  customUserData?: Record<string, string> | null;
 }
 
 // ============================================================================

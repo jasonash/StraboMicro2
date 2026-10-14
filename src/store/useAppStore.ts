@@ -462,6 +462,8 @@ interface AppState {
   resetGlobalMineralColors: () => void;
   /** Set or clear project-level mineral color overrides */
   setProjectMineralColors: (entries: MineralColorEntry[] | null) => void;
+  /** Change Custom User Data (import, remove column, remove all) through a src/utils/customUserData.ts function */
+  changeCustomUserData: (change: (project: ProjectMetadata) => ProjectMetadata) => void;
 
   // ========== QUICK APPLY PRESETS ACTIONS ==========
   /** Create a new preset */
@@ -2824,6 +2826,16 @@ export const useAppStore = create<AppState>()(
             return {
               project: { ...state.project, mineralColors: entries },
               isDirty: true,
+            };
+          }),
+
+          changeCustomUserData: (change) => set((state) => {
+            if (!state.project) return state;
+            const newProject = change(state.project);
+            return {
+              project: newProject,
+              isDirty: true,
+              spotIndex: buildSpotIndex(newProject),
             };
           }),
 

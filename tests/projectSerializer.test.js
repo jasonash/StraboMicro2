@@ -118,5 +118,24 @@ check('function unknown field not written', !('someFunction' in outEmpty));
 // The Default Spot Name (the field that exposed this) round-trips
 check('spotNamePattern round-trips', save(load({ ...file(), spotNamePattern: 'Grain {n}' })).spotNamePattern === 'Grain {n}');
 
+// Custom User Data (docs/custom-user-data-design.md): values on spots, column order on the project
+{
+  const p = load({ ...file(), customUserDataColumns: ['Mg#', '', 'Age (Ma)'] });
+  check('customUserDataColumns: empty names dropped on load', JSON.stringify(p.customUserDataColumns) === JSON.stringify(['Mg#', 'Age (Ma)']), p.customUserDataColumns);
+  p.datasets[0].samples[0].micrographs[0].spots[0].customUserData = { 'Mg#': '0.820', 'Age (Ma)': '', Odd: 12 };
+  const out = save(p);
+  check('customUserDataColumns saved', JSON.stringify(out.customUserDataColumns) === JSON.stringify(['Mg#', 'Age (Ma)']));
+  const saved = out.datasets[0].samples[0].micrographs[0].spots[0].customUserData;
+  check('customUserData saved as text, empty values dropped', JSON.stringify(saved) === JSON.stringify({ 'Mg#': '0.820', Odd: '12' }), saved);
+  const back = load(out).datasets[0].samples[0].micrographs[0].spots[0].customUserData;
+  check('customUserData round-trips', JSON.stringify(back) === JSON.stringify({ 'Mg#': '0.820', Odd: '12' }), back);
+  const none = load(file());
+  none.customUserDataColumns = [];
+  none.datasets[0].samples[0].micrographs[0].spots[0].customUserData = { a: '' };
+  const outNone = save(none);
+  check('empty column list not saved', !('customUserDataColumns' in outNone));
+  check('empty customUserData not saved', !('customUserData' in outNone.datasets[0].samples[0].micrographs[0].spots[0]));
+}
+
 console.log(failures ? `\n${failures} FAILED (${passes} passed)` : `\nALL PASSED (${passes} checks)`);
 process.exit(failures ? 1 : 0);
