@@ -24,6 +24,13 @@ import {
 } from '../src/utils/customUserData.ts';
 import type { ProjectMetadata, Spot } from '../src/types/project-types.ts';
 import { fieldLabel, valueText } from '../src/utils/syncDecisionText.ts';
+import { createRequire } from 'node:module';
+
+const require = createRequire(import.meta.url);
+const pdf = require('../electron/pdfReactExport.js') as {
+  customUserDataColumns: (p: unknown) => string[];
+  customUserDataEntries: (columns: string[], spot: unknown) => Array<[string, string]>;
+};
 
 let failures = 0;
 let passes = 0;
@@ -190,6 +197,12 @@ const rcAll = removeColumn(removeColumn(project(), 'Mg#'), 'Age (Ma)');
 check('remove last listed column: list removed', rcAll.customUserDataColumns === undefined);
 const ra = removeAllCustomUserData(project());
 check('remove all', ra.customUserDataColumns === undefined && !hasCustomUserData(ra));
+
+// ---------------------------------------------------------------- PDF (electron/pdfReactExport.js keeps its own copy of the order)
+const variants: ProjectMetadata[] = [project(), { ...project(), customUserDataColumns: undefined }, { ...project(), customUserDataColumns: ['zeta', '', 'zeta', 'Nope'] }, removeAllCustomUserData(project())];
+variants.forEach((v, i) => check(`PDF column order = app column order (${i})`, eq(pdf.customUserDataColumns(v), orderedColumns(v)), [pdf.customUserDataColumns(v), orderedColumns(v)]));
+check('PDF spot entries = app spot entries', eq(pdf.customUserDataEntries(orderedColumns(p), m1Spots[0]), spotEntries(p, m1Spots[0])));
+check('PDF spot entries: none', eq(pdf.customUserDataEntries(['a'], { customUserData: { a: '' } }), []));
 
 // ---------------------------------------------------------------- sync decisions dialog text
 check('decision label: field name', fieldLabel(['customUserData']) === 'Custom User Data');

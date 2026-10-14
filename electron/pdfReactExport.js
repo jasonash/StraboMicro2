@@ -319,6 +319,43 @@ function renderFeatureInfoSections(React, Text, View, Field, styles, entity) {
 }
 
 /**
+ * Custom User Data headers in display order: the project's list first, then
+ * other headers that have values, alphabetically. Same rule as orderedColumns
+ * in src/utils/customUserData.ts (tests/customUserData.test.mts checks they
+ * agree); repeated here because the server's PDF service runs this file on
+ * its own (pdfservice/vendor).
+ */
+function customUserDataColumns(project) {
+  const listed = (Array.isArray(project?.customUserDataColumns) ? project.customUserDataColumns : [])
+    .filter((c) => typeof c === 'string' && c !== '');
+  const seen = new Set(listed);
+  const extra = new Set();
+  for (const dataset of project?.datasets || []) {
+    for (const sample of dataset.samples || []) {
+      for (const micrograph of sample.micrographs || []) {
+        for (const spot of micrograph.spots || []) {
+          const data = spot.customUserData;
+          if (!data || typeof data !== 'object') continue;
+          for (const k of Object.keys(data)) if (!seen.has(k)) extra.add(k);
+        }
+      }
+    }
+  }
+  const unlisted = [...extra].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base', numeric: true }));
+  return [...new Set(listed), ...unlisted];
+}
+
+/** A spot's Custom User Data as [header, value] pairs in display order (non-empty only) */
+function customUserDataEntries(columns, spot) {
+  const data = spot?.customUserData;
+  if (!data || typeof data !== 'object') return [];
+  return columns
+    .filter((c) => Object.prototype.hasOwnProperty.call(data, c))
+    .map((c) => [c, data[c] === null || data[c] === undefined ? '' : String(data[c])])
+    .filter(([, v]) => v !== '');
+}
+
+/**
  * Format a value for display
  */
 function formatValue(value) {
@@ -917,6 +954,9 @@ async function generateProjectPDF(outputPath, projectData, projectId, folderPath
     );
   };
 
+  // Custom User Data column order, once for every spot page
+  const userDataColumns = customUserDataColumns(projectData);
+
   const buildSpotPage = ({ spot, micrograph, sample, dataset, index }) => {
     const spotName = spot.name || 'Unnamed';
     const breadcrumb = `${dataset.name || 'Dataset'} > ${sample.name || sample.label || 'Sample'} > ${micrograph.name || 'Micrograph'}`;
@@ -940,6 +980,19 @@ async function generateProjectPDF(outputPath, projectData, projectId, folderPath
     // Add all feature info sections for spot
     const featureElements = renderFeatureInfoSections(React, Text, View, Field, styles, spot);
     featureElements.forEach((el, i) => pageElements.push(React.cloneElement(el, { key: `feature-${i}` })));
+
+    // The user's own spreadsheet columns (Tools > Custom User Data...)
+    const userData = customUserDataEntries(userDataColumns, spot);
+    if (userData.length > 0) {
+      pageElements.push(
+        React.createElement(View, { key: 'custom-user-data' },
+          React.createElement(Text, { style: styles.subsectionHeader }, 'Custom User Data'),
+          React.createElement(View, { style: styles.card },
+            ...userData.map(([header, value]) => React.createElement(Field, { key: `cud-${header}`, label: header, value }))
+          )
+        )
+      );
+    }
 
     // Page number
     pageElements.push(
@@ -996,5 +1049,7 @@ async function generateProjectPDF(outputPath, projectData, projectId, folderPath
 }
 
 module.exports = {
-  generateProjectPDF
+  generateProjectPDF,
+  customUserDataColumns,
+  customUserDataEntries,
 };
