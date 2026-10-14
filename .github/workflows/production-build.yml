@@ -304,6 +304,14 @@ jobs:
             Write-Host "$($exe.Name): $($sig.Status) $($sig.SignerCertificate.Subject)"
             if ($sig.Status -ne 'Valid') { Write-Host "::error::$($exe.Name) is not validly signed"; exit 1 }
           }
+          # Native modules and their DLLs must be signed too: Smart App Control
+          # blocks unsigned ones ("An Application Control policy has blocked this
+          # file", canvas.node in dev.138). win.signExts in package.json signs them.
+          $native = Get-ChildItem release\win-unpacked -Recurse -Include *.node,*.dll
+          $unsigned = $native | Where-Object { (Get-AuthenticodeSignature $_.FullName).Status -ne 'Valid' }
+          Write-Host "Native files: $($native.Count), unsigned: $($unsigned.Count)"
+          $unsigned | ForEach-Object { Write-Host "UNSIGNED: $($_.FullName)" }
+          if ($unsigned.Count -gt 0) { Write-Host "::error::$($unsigned.Count) native files are not signed"; exit 1 }
 
       - name: Upload Windows artifacts
         id: upload_windows_artifacts
