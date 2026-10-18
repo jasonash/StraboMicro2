@@ -9,6 +9,7 @@ import { createHash } from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import { SERVER as SERVER_URL, type Copy } from './copy';
+import { endSessions } from './server';
 
 /** File > Open Local Project (.smz): Import, then Open Project */
 export async function openSmz(copy: Copy, smzPath: string, projectId: string): Promise<void> {
@@ -145,6 +146,47 @@ export async function setOffline(copy: Copy, offline: boolean, how: 'no-network'
       }) as typeof fetch
       : real;
   }, [offline, SERVER_URL, code, afterSending] as const);
+}
+
+/**
+ * The copy's session runs out, as after days without a refresh: the server
+ * revokes its refresh tokens, and the access tokens it holds now (issued up
+ * to this second) are refused with 401 like an expired JWT. A login after
+ * this gets new tokens that work. The live channel keeps its connection
+ * (the server checks a token only when it is sent).
+ */
+export async function expireSession(copy: Copy): Promise<void> {
+  await copy.caption('has been away long enough for the login to run out');
+  endSessions(copy.account.email);
+  const cutoff = Math.floor(Date.now() / 1000);
+  await copy.app.evaluate((_electron, [server, cutoff]) => {
+    const g = globalThis as unknown as { __e2eAuthFetch?: typeof fetch; fetch: typeof fetch };
+    if (!g.__e2eAuthFetch) g.__e2eAuthFetch = g.fetch;
+    const real = g.__e2eAuthFetch;
+    const issuedAt = (auth: string | null): number | null => {
+      const m = auth ? /^Bearer\s+[^.]+\.([^.]+)\./.exec(auth) : null;
+      if (!m) return null;
+      try {
+        return Number(JSON.parse(Buffer.from(m[1], 'base64url').toString('utf8')).iat);
+      } catch {
+        return null;
+      }
+    };
+    g.fetch = (async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      const headers = new Headers(init?.headers ?? (input instanceof Request ? input.headers : undefined));
+      const iat = issuedAt(headers.get('authorization'));
+      if (url.startsWith(server) && iat !== null && iat <= cutoff) {
+        return new Response(JSON.stringify({ error: 'token_expired' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
+      }
+      return real(input, init);
+    }) as typeof fetch;
+  }, [SERVER_URL, cutoff] as const);
+}
+
+/** The bottom-left notice 'You were logged out of StraboSpot...' (a session that ran out) */
+export function sessionEndedNotice(copy: Copy) {
+  return copy.page.getByRole('alert').filter({ hasText: 'You were logged out of StraboSpot' });
 }
 
 /** The notice 'N sync changes need your decision' > Review: the decisions dialog */

@@ -10,7 +10,9 @@
  * (npm run test:sync-chip).
  *
  * Manual mode never warns about a missing login by itself (16af): only a
- * Sync click that failed does; the click asks for the login first.
+ * Sync click that failed does; the click asks for the login first. The
+ * exception is a session that ran out (the server refused the login): the
+ * user did not log out, so both modes say so.
  */
 
 import type { SyncStoreState } from '@/store/useSyncStore';
@@ -43,6 +45,11 @@ export interface SyncChipAuth {
   pkey: string | null;
   /** The REST server the app is set to (Preferences) */
   restServer: string;
+  /**
+   * The session ran out (the server refused the login, not a logout): Manual
+   * mode then says "Log in to sync" too, since others' changes stop arriving
+   */
+  sessionEnded?: boolean;
 }
 
 /** Same rule as main's sameServer (electron/sync/syncService.js) */
@@ -197,12 +204,13 @@ function chipState(s: SyncChipInput, auth: SyncChipAuth): Omit<SyncChipState, 'i
     };
   }
 
-  // Login, account and server: from a failed sync, or (Automatic only) from
-  // the current login, so the chip says so before the next change
+  // Login, account and server: from a failed sync, or (Automatic, or after
+  // the session ran out) from the current login, so the chip says so before
+  // the next change
   let binding: 'auth' | 'account' | 'wrong_server' | null = null;
   if (problem && (problem.kind === 'auth' || problem.kind === 'account' || problem.kind === 'wrong_server')) {
     binding = problem.kind;
-  } else if (automatic && s.server !== null) {
+  } else if ((automatic || (auth.sessionEnded === true && !auth.loggedIn)) && s.server !== null) {
     if (!sameServer(s.server, auth.restServer)) binding = 'wrong_server';
     else if (!auth.loggedIn) binding = 'auth';
     else if (s.pkey !== null && auth.pkey !== s.pkey) binding = 'account';
@@ -213,7 +221,8 @@ function chipState(s: SyncChipInput, auth: SyncChipAuth): Omit<SyncChipState, 'i
       needsLogin: true,
       label: 'Log in to sync',
       tone: 'attention',
-      detail: `Log in as ${email} to sync this project. Your changes are kept on this computer until then.`,
+      detail: `${auth.sessionEnded === true && !auth.loggedIn ? 'You were logged out of StraboSpot. ' : ''}` +
+        `Log in as ${email} to sync this project. Your changes are kept on this computer until then.`,
     };
   }
   if (binding === 'account') {

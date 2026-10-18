@@ -194,6 +194,9 @@ class ProjectSync {
       if (changed && state.isAuthenticated && this.mode === 'automatic' && this.problem &&
         WAITS_FOR_LOGIN.includes(this.problem.kind)) {
         void this.run();
+      } else if (changed && state.isAuthenticated) {
+        // Logged in again: count now (clears a login problem in Manual mode, finds what arrived)
+        this.schedulePoll(0);
       }
     }));
     const onOnline = () => {
@@ -895,8 +898,9 @@ class ProjectSync {
 
   /**
    * Count the changes waiting on the server (16ah). Skipped while a cycle
-   * runs (its pull brings them) and while logged out; failures are left to
-   * the push and pull, which report them. onOpen: Manual mode's check when
+   * runs (its pull brings them) and while logged out; login failures
+   * (auth, account, server) become the problem, others are left to the
+   * push and pull, which report them. onOpen: Manual mode's check when
    * the project opens, which offers Sync Now if anything waits (§6.4).
    */
   private async poll(onOpen: boolean): Promise<void> {
@@ -932,6 +936,15 @@ class ProjectSync {
       else if (r?.kind === 'access_removed') {
         void this.removedOnPoll(r);
         return;
+      } else if (r && !r.ok && WAITS_FOR_LOGIN.includes(r.kind) && !this.running && this.problem?.kind !== r.kind) {
+        // The server did not take the login (it ran out, or another account):
+        // the chip says so; before, a poll said nothing and changes just never came
+        this.failed(r);
+      }
+      // A login problem that this poll got past is over (Manual mode has no cycle to clear it)
+      if (r?.ok && !this.running && this.problem && WAITS_FOR_LOGIN.includes(this.problem.kind)) {
+        this.problem = null;
+        useSyncStore.getState().update({ problem: null });
       }
       // My role follows the server (the owner may have changed it, 17h)
       if (r?.ok && r.role && r.role !== useSyncStore.getState().role) useSyncStore.getState().update({ role: r.role });

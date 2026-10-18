@@ -401,6 +401,11 @@ contextBridge.exposeInMainWorld('api', {
     getToken: () => ipcRenderer.invoke('auth:get-token'),
     checkStorage: () => ipcRenderer.invoke('auth:check-storage'),
     notifyStateChanged: (isLoggedIn, restServer) => ipcRenderer.send('auth:state-changed', isLoggedIn, restServer),
+    onSessionEnded: (callback) => {
+      const listener = (_event, info) => callback(info);
+      ipcRenderer.on('auth:session-ended', listener);
+      return () => ipcRenderer.removeListener('auth:session-ended', listener);
+    },
   },
 
   // Auth menu events

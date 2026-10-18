@@ -45,6 +45,7 @@ import {
 } from './components/dialogs/IncompleteMicrographsDialog';
 import UpdateNotification from './components/UpdateNotification';
 import SyncDecisionsNotice from './components/SyncDecisionsNotice';
+import SessionEndedNotice from './components/SessionEndedNotice';
 import SyncDecisionsDialog from './components/dialogs/SyncDecisionsDialog';
 import { SyncOpenPrompt } from './components/dialogs/SyncOpenPrompt';
 import { CopyOwnerDialog, type CopyOwnerPrompt } from './components/dialogs/CopyOwnerDialog';
@@ -1917,6 +1918,7 @@ function App() {
         onManualCheckComplete={() => setIsManualUpdateCheck(false)}
       />
       <SyncDecisionsNotice />
+      <SessionEndedNotice />
       <SyncIntroNotice />
       <SyncIntroDialog
         projects={introBlocked ? null : introProjects}

@@ -1381,6 +1381,15 @@ function createWindow() {
             mainWindow?.webContents.send('debug:sync', 'clone', text);
           },
         },
+        {
+          // The next sync check renews the login; a login the server ended is
+          // then refused, as after days away (shows the logged-out notice)
+          label: 'Sync: Expire My Access Token',
+          click: async () => {
+            const done = await tokenService.expireAccessToken();
+            log.info(`[Debug] Expire access token: ${done ? 'done' : 'not logged in'}`);
+          },
+        },
         { type: 'separator' },
         {
           label: 'Simulate Deep Link from Clipboard',
@@ -4263,6 +4272,13 @@ ipcMain.handle('debug:reset-everything', async () => {
  */
 
 const tokenService = require('./tokenService');
+
+// The server refused the refresh token (a sync, the live channel or any other
+// request found it): the renderer marks itself logged out and says so
+tokenService.onSessionEnded((info) => {
+  log.warn('[Auth] The session ended (refresh token refused); telling the window');
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('auth:session-ended', info);
+});
 
 // Sync IPC (sync:status, sync:turn-on, sync:push, sync:set-mode); the sync
 // engine itself loads only when a synced project uses it
