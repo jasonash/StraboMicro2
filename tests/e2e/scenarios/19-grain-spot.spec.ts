@@ -107,7 +107,10 @@ const grainPreview = (copy: Copy) => copy.state((e) => e.grain.getState().previe
 
 function spotsOf(copy: Copy, micrographId: string) {
   return copy.state(new Function('e', `
-    const m = e.app.getState().micrographIndex.get(${JSON.stringify(micrographId)});
+    const s = e.app.getState();
+    const id = ${JSON.stringify(micrographId)};
+    // From the project itself: micrographIndex is not rebuilt when a spot's outline changes
+    const m = (s.project?.datasets ?? []).flatMap((d) => d.samples ?? []).flatMap((x) => x.micrographs ?? []).find((x) => x.id === id);
     return (m?.spots ?? []).map((s) => ({ id: s.id, name: s.name, type: s.geometryType || s.geometry?.type,
       ring: s.geometry?.coordinates?.[0] ?? (s.points ?? []).map((p) => [p.X, p.Y]) }));`) as never) as
     Promise<Array<{ id: string; name: string; type: string; ring: number[][] }>>;
@@ -188,6 +191,122 @@ test('Grain Spot: a click on a grain makes a polygon spot of its outline, named 
   await ana.caption('clicks inside the spot it just made');
   await clickImage(ana, grain.x + grain.r * 0.3, grain.y);
   await expect.poll(() => ana.state((e) => e.app.getState().activeSpotId)).toBe(made.id);
+  expect((await spotsOf(ana, p.micrographId)).length).toBe(3);
+
+  expect(await ana.unansweredDialogs()).toEqual([]);
+});
+
+/** Area two circles share */
+function lensArea(r1: number, r2: number, d: number): number {
+  if (d >= r1 + r2) return 0;
+  if (d <= Math.abs(r1 - r2)) return Math.PI * Math.min(r1, r2) ** 2;
+  const a = r1 * r1 * Math.acos((d * d + r1 * r1 - r2 * r2) / (2 * d * r1));
+  const b = r2 * r2 * Math.acos((d * d + r2 * r2 - r1 * r1) / (2 * d * r2));
+  return a + b - 0.5 * Math.sqrt((-d + r1 + r2) * (d + r1 - r2) * (d - r1 + r2) * (d + r1 + r2));
+}
+
+/** Two overlapping grains, the later on top, nothing else drawn over either: refine clicks join and split them */
+function grainPair() {
+  const circles = fixtureCircles();
+  for (let a = 0; a < circles.length; a++) {
+    for (let b = a + 1; b < circles.length; b++) {
+      const A = circles[a], B = circles[b];
+      const d = Math.hypot(A.x - B.x, A.y - B.y);
+      if (d >= A.r + B.r - 20 || d <= A.r + 10 || d <= B.r + 10) continue;
+      const clear = (c: typeof A) => c.x - c.r > 10 && c.y - c.r > 10 && c.x + c.r < 1590 && c.y + c.r < 1190 && !insideFixtureSpot(c.x, c.y);
+      if (!clear(A) || !clear(B)) continue;
+      const covered = circles.some((c, k) => k !== b &&
+        ((k > a && Math.hypot(c.x - A.x, c.y - A.y) < c.r + A.r + 4) || (k > b && Math.hypot(c.x - B.x, c.y - B.y) < c.r + B.r + 4)));
+      if (covered) continue;
+      const lens = lensArea(A.r, B.r, d);
+      return { under: A, over: B, underVisible: Math.PI * A.r * A.r - lens, union: Math.PI * (A.r * A.r + B.r * B.r) - lens };
+    }
+  }
+  throw new Error('no grain pair in the fixture');
+}
+
+test('Grain Spot refine clicks: Shift+click adds a grain to the last outline, Cmd/Ctrl+click cuts it out again; each is one undo step', async ({ launch, project }) => {
+  const modelDir = await grainModelDir();
+  const p = await project('E2E Grain Refine');
+  const ana = await launch('Ana', ACCOUNTS.ana, { login: false, env: { STRABO_GRAIN_MODEL_DIR: modelDir } });
+  await openSmz(ana, p.smzPath, p.id);
+  await viewMicrograph(ana, p.micrographId);
+  await ana.page.getByRole('button', { name: 'Auto spot mode' }).click();
+  await ana.page.getByRole('button', { name: 'Grain Spot tool' }).click();
+  await expect.poll(() => grainPhase(ana), { timeout: 60_000 }).toBe('ready');
+  await expect(ana.page.getByTestId('grain-spot-status')).toContainText('Shift+click adds to the last grain');
+
+  const { under, over, underVisible, union } = grainPair();
+  const spotArea = async () => {
+    const made = (await spotsOf(ana, p.micrographId)).filter((s) => s.name === 'Spot 1');
+    return made.length === 1 ? ringArea(made[0].ring) : 0;
+  };
+  const ratio = (value: number, expected: number) => Math.round((value / expected) * 100) / 100;
+
+  // Zoom in on the pair, as a user would for grains this size (first off the
+  // toolbar, whose tooltip would cover the pair)
+  await ana.caption('zooms in on two overlapping grains');
+  const corner = await pageAt(ana, 20, 1180);
+  await ana.page.mouse.move(corner.x, corner.y, { steps: 3 });
+  await expect(ana.page.locator('.MuiTooltip-popper')).toHaveCount(0);
+  const middle = await pageAt(ana, (under.x + over.x) / 2, (under.y + over.y) / 2);
+  await ana.page.mouse.move(middle.x, middle.y);
+  for (let i = 0; i < 40 && (await ana.page.evaluate(() => window.__e2eView?.zoom ?? 1)) < 0.9; i++) {
+    await ana.page.mouse.wheel(0, -100);
+    await ana.page.waitForTimeout(60);
+  }
+  await expect.poll(() => grainPhase(ana), { timeout: 30_000 }).toBe('ready');
+
+  await ana.caption(`clicks the lower grain at (${under.x}, ${under.y}): only its visible part`);
+  await clickImage(ana, under.x, under.y);
+  await expect.poll(spotArea, { timeout: 30_000 }).toBeGreaterThan(0);
+  console.log(`[19] lower grain: ${Math.round(await spotArea())} vs ${Math.round(underVisible)} visible, union ${Math.round(union)}`);
+  expect(ratio(await spotArea(), underVisible)).toBeGreaterThan(0.75);
+  expect(ratio(await spotArea(), underVisible)).toBeLessThan(1.25);
+  const spotId = (await spotsOf(ana, p.micrographId)).find((s) => s.name === 'Spot 1')?.id;
+
+  // Holding Shift over the upper grain previews both together
+  await ana.caption('holds Shift over the upper grain: the preview takes in both');
+  await hoverImage(ana, over.x - 5, over.y);
+  await ana.page.keyboard.down('Shift');
+  await hoverImage(ana, over.x, over.y);
+  await expect.poll(async () => {
+    const preview = await grainPreview(ana);
+    return preview ? ratio(ringArea(preview.ring), union) : 0;
+  }, { timeout: 30_000 }).toBeGreaterThan(0.75);
+  expect(ratio(ringArea((await grainPreview(ana))?.ring ?? []), union)).toBeLessThan(1.25);
+
+  await ana.caption('Shift+clicks the upper grain: the same spot now covers both');
+  await ana.page.mouse.down();
+  await ana.page.mouse.up();
+  await ana.page.keyboard.up('Shift');
+  await expect.poll(async () => ratio(await spotArea(), union), { timeout: 30_000 }).toBeGreaterThan(0.75);
+  console.log(`[19] after Shift+click: ${Math.round(await spotArea())} vs union ${Math.round(union)}`);
+  expect(ratio(await spotArea(), union)).toBeLessThan(1.25);
+  const spots = await spotsOf(ana, p.micrographId);
+  expect(spots.length, 'no new spot').toBe(3);
+  expect(spots.find((s) => s.name === 'Spot 1')?.id).toBe(spotId);
+
+  await ana.caption('Cmd/Ctrl+clicks the upper grain: cut back to the lower one');
+  await ana.page.keyboard.down('ControlOrMeta');
+  await clickImage(ana, over.x, over.y);
+  await ana.page.keyboard.up('ControlOrMeta');
+  await expect.poll(async () => ratio(await spotArea(), underVisible), { timeout: 30_000 }).toBeLessThan(1.25);
+  console.log(`[19] after Cmd/Ctrl+click: ${Math.round(await spotArea())} vs ${Math.round(underVisible)} visible`);
+  expect(ratio(await spotArea(), underVisible)).toBeGreaterThan(0.75);
+  expect((await spotsOf(ana, p.micrographId)).length).toBe(3);
+
+  // Each change is its own undo step; after an undo the outline can still be refined
+  await ana.caption('Edit > Undo: back to both grains, then to the lower one');
+  await ana.menu('Edit', 'Undo');
+  await expect.poll(async () => ratio(await spotArea(), union)).toBeGreaterThan(0.75);
+  await ana.menu('Edit', 'Undo');
+  await expect.poll(async () => ratio(await spotArea(), underVisible)).toBeLessThan(1.25);
+  await ana.caption('Shift+click after the undo still refines the same spot');
+  await ana.page.keyboard.down('Shift');
+  await clickImage(ana, over.x, over.y);
+  await ana.page.keyboard.up('Shift');
+  await expect.poll(async () => ratio(await spotArea(), union), { timeout: 30_000 }).toBeGreaterThan(0.75);
   expect((await spotsOf(ana, p.micrographId)).length).toBe(3);
 
   expect(await ana.unansweredDialogs()).toEqual([]);

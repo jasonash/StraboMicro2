@@ -216,17 +216,34 @@ function viewReady(viewId: number): Promise<boolean> {
   });
 }
 
+/** A newer view replaced this one before its outline was made: ask again in the newest */
+export class ViewReplacedError extends Error {
+  constructor() {
+    super('The view was replaced by a newer one');
+    this.name = 'ViewReplacedError';
+  }
+}
+
+/** The worker's answer when it holds a newer view than the one asked about (samWorker.ts outline) */
+const WORKER_VIEW_GONE = 'This view has not been analyzed';
+
 /**
  * The outline of the grain at click (view pixels) in this view, waiting for
  * its analysis if needed. Extra points refine it: label 1 includes, 0 excludes.
- * null: nothing there, or the view was replaced meanwhile.
+ * null: nothing there. Throws ViewReplacedError when a newer view replaced it
+ * meanwhile (e.g. tiles arrived after a zoom and the view was analyzed again).
  */
 export async function outlineAt(viewId: number, click: Point, extra: Array<{ point: Point; label: 0 | 1 }> = []): Promise<GrainOutline | null> {
-  if (!(await viewReady(viewId))) return null;
+  if (!(await viewReady(viewId))) throw new ViewReplacedError();
   const points: Point[] = [click, ...extra.map((e) => e.point)];
   const labels = [1, ...extra.map((e) => e.label)];
-  const r = await send({ type: 'outline', id: nextRequestId++, viewId, points, labels, click });
-  return r.type === 'outline' ? r.outline : null;
+  try {
+    const r = await send({ type: 'outline', id: nextRequestId++, viewId, points, labels, click });
+    return r.type === 'outline' ? r.outline : null;
+  } catch (error) {
+    if (error instanceof Error && error.message === WORKER_VIEW_GONE) throw new ViewReplacedError();
+    throw error;
+  }
 }
 
 export function setNote(note: string | null): void {

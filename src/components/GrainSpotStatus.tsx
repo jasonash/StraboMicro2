@@ -11,6 +11,10 @@ import { useCanCreate } from '@/hooks/usePermissions';
 import { downloadModel, useGrainSpotStore } from '@/services/grainSpot/grainSpotEngine';
 import { formatBytes } from '@/utils/formatBytes';
 
+/** The status line's hint: how to click, and how to fix the last grain */
+const CLICK_HINT = `Click a grain to outline it. Shift+click adds to the last grain, ${
+  /Mac/.test(navigator.userAgent) ? '⌘' : 'Ctrl'}+click cuts from it.`;
+
 export function GrainSpotStatus() {
   const activeTool = useAppStore((s) => s.activeTool);
   const activeMicrographId = useAppStore((s) => s.activeMicrographId);
@@ -34,7 +38,7 @@ function GrainSpotStatusContent() {
       : phase === 'preparing' ? 'Preparing grains…'
         : phase === 'error' ? `Grain Spot is not available: ${error ?? 'unknown error'}`
           : phase === 'needs-download' ? 'Grain Spot needs a one-time download'
-            : note ?? 'Click a grain to outline it';
+            : note ?? CLICK_HINT;
 
   return (
     <>

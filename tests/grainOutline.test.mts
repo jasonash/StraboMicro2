@@ -7,7 +7,7 @@
  */
 
 import {
-  maskFromLogits, componentAt, fillHoles, maskArea, edgesTouched, runsOffScreen, traceOutline, ringArea, simplifyRing, outlineFromLogits,
+  maskFromLogits, componentAt, fillHoles, maskArea, edgesTouched, runsOffScreen, insideAt, traceOutline, ringArea, simplifyRing, outlineFromLogits,
   type MaskGrid, type Point,
 } from '../src/utils/grainOutline.ts';
 
@@ -173,6 +173,20 @@ function discLogits(lw: number, lh: number, cx: number, cy: number, r: number): 
   const speck = new Float32Array(n);
   speck.set(discLogits(lw, lh, 32, 32, 0.6));
   check('outline: a speck is ignored', outlineFromLogits(speck, 1, lw, lh, [0.9], 256, 256, click) === null);
+
+  // Refine clicks: the neighbour's far side (view 180, 128) is in candidates 1 and 2, not in the grain
+  const add: Point = [180, 128];
+  const added = outlineFromLogits(logits, 3, lw, lh, [0.95, 0.9, 0.5], 256, 256, click, { include: [add] });
+  check('refine: Shift+click takes in the neighbour (best scored candidate that holds it)', added?.maskIndex === 1, added?.maskIndex);
+  const addedAll = outlineFromLogits(logits, 3, lw, lh, [0.95, 0.6, 0.7], 256, 256, click, { include: [add] });
+  check('refine: among candidates that hold the point, the best scored wins (not the smallest)', addedAll?.maskIndex === 2, addedAll?.maskIndex);
+  const cut = outlineFromLogits(logits, 3, lw, lh, [0.5, 0.92, 0.6], 256, 256, click, { exclude: [add] });
+  check('refine: Cmd/Ctrl+click leaves the neighbour out', cut?.maskIndex === 0, cut?.maskIndex);
+  const both2 = outlineFromLogits(logits, 3, lw, lh, [0.5, 0.92, 0.95], 256, 256, click, { include: [add], exclude: [[10, 10]] });
+  check('refine: add and cut together', both2?.maskIndex === 1, both2?.maskIndex);
+  const none = outlineFromLogits(logits.subarray(0, 2 * n), 2, lw, lh, [0.5, 0.9], 256, 256, click, { include: [[5, 5]] });
+  check('refine: no candidate fits: the best scored one', none?.maskIndex === 1, none?.maskIndex);
+  check('insideAt: off the grid is outside', !insideAt({ data: new Uint8Array([1]), width: 1, height: 1 }, [-0.5, 0]) && insideAt({ data: new Uint8Array([1]), width: 1, height: 1 }, [0.5, 0.5]));
 }
 
 console.log(failures === 0 ? `\nALL PASSED (${passes} checks)` : `\n${failures} FAILED, ${passes} passed`);

@@ -22,7 +22,7 @@ import { isSpotTool } from '@/store/useAppStore';
 import { currentPermissions, useReadOnlyReason } from '@/hooks/usePermissions';
 import { editRefusal } from '@/utils/permissions';
 import { ReadOnlyScope } from './ReadOnlyScope';
-import { getChildMicrographs } from '@/store/helpers';
+import { findMicrographById, getChildMicrographs } from '@/store/helpers';
 import { pairChildren, pairSpots } from '@/utils/siblingPair';
 import { AssociatedImageRenderer } from './AssociatedImageRenderer';
 import { ChildSpotsRenderer } from './ChildSpotsRenderer';
@@ -45,11 +45,11 @@ import { useLasso, getIndicesInPolygon, isPointInPolygon } from '@/hooks/useLass
 import { useImperativeGeometryEditing } from '@/hooks/useImperativeGeometryEditing';
 import { getEffectiveTheme } from '@/hooks/useTheme';
 import { useLatest } from '@/hooks/useLatest';
-import { autoSpotDraft, buildNewSpot } from '@/utils/newSpot';
+import { autoSpotDraft, buildNewSpot, geometryToLegacy } from '@/utils/newSpot';
 import { releaseImage, isImageUsable } from '@/utils/imageUtils';
 import './TiledViewer.css';
 import { EditingScope } from './Presence';
-import { useGrainSpotTool } from '@/hooks/useGrainSpotTool';
+import { useGrainSpotTool, type GrainPrompt } from '@/hooks/useGrainSpotTool';
 import { E2E } from '@/services/e2eMode';
 import { setNote as setGrainNote } from '@/services/grainSpot/grainSpotEngine';
 import { GrainPreviewOutline } from './GrainPreviewOutline';
@@ -115,6 +115,18 @@ function polygonRingOf(spot: Spot): Array<{ x: number; y: number }> {
     return ring.flatMap((c) => (Array.isArray(c) && c.length >= 2 ? [{ x: Number(c[0]), y: Number(c[1]) }] : []));
   }
   return (spot.points ?? []).flatMap((p) => (typeof p.X === 'number' && typeof p.Y === 'number' ? [{ x: p.X, y: p.Y }] : []));
+}
+
+/** A spot outline as a comparable key (Grain Spot finds the spot it made by its outline) */
+function pointsKey(points: Array<{ X?: number | null; Y?: number | null }> | null | undefined): string {
+  return JSON.stringify((points ?? []).map((p) => [p.X, p.Y]));
+}
+
+/** Grain Spot refine click: Shift adds to the last grain (1), Cmd/Ctrl cuts from it (0) */
+function grainRefineLabel(evt: { shiftKey?: boolean; metaKey?: boolean; ctrlKey?: boolean } | undefined): 0 | 1 | null {
+  if (evt?.shiftKey) return 1;
+  if (evt?.metaKey || evt?.ctrlKey) return 0;
+  return null;
 }
 
 export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
@@ -511,6 +523,26 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
     });
     // Grain clicks are handled one at a time, in order
     const grainQueueRef = useRef<Promise<void>>(Promise.resolve());
+    /**
+     * The last grain made with Grain Spot: the clicks behind each of its
+     * outlines (newest last) and the outline they gave, so refine clicks find
+     * the spot by its outline, also after an undo, but not after a hand edit.
+     */
+    const lastGrainRef = useRef<{ micrographId: string; history: Array<{ prompts: GrainPrompt[]; key: string }> } | null>(null);
+    /** The spot a refine click would change and the clicks so far, or null */
+    const grainRefineTarget = useCallback((): { spotId: string; base: GrainPrompt[] } | null => {
+      const last = lastGrainRef.current;
+      const state = useAppStore.getState();
+      if (!last || last.micrographId !== state.activeMicrographId) return null;
+      // From the project itself: micrographIndex is not rebuilt when a spot's outline changes
+      const spots = findMicrographById(state.project, last.micrographId)?.spots ?? [];
+      for (let i = last.history.length - 1; i >= 0; i--) {
+        const entry = last.history[i];
+        const spot = spots.find((sp) => !sp.archived && pointsKey(sp.points) === entry.key);
+        if (spot) return { spotId: spot.id, base: entry.prompts };
+      }
+      return null;
+    }, []);
     /** The spot under this image point, if any: with Grain Spot a click there selects it */
     const grainSpotAt = useCallback((imageX: number, imageY: number) =>
       [...effectiveSpots].reverse().find((spot) => {
@@ -518,6 +550,33 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
         const ring = polygonRingOf(spot);
         return ring.length >= 3 && isPointInPolygon({ x: imageX, y: imageY }, ring);
       }), [effectiveSpots, showArchivedSpots]);
+    /** Preview the grain under the mouse; with Shift or Cmd/Ctrl held, the last grain as that click would change it */
+    const updateGrainHover = useCallback((screen: { x: number; y: number }, image: { x: number; y: number },
+      evt: { shiftKey?: boolean; metaKey?: boolean; ctrlKey?: boolean } | undefined) => {
+      const label = grainRefineLabel(evt);
+      const target = label !== null ? grainRefineTarget() : null;
+      if (target && label !== null) grainTool.hoverAtScreen(screen.x, screen.y, { base: target.base, label });
+      else if (grainSpotAt(image.x, image.y)) grainTool.clearHover();
+      else grainTool.hoverAtScreen(screen.x, screen.y);
+    }, [grainRefineTarget, grainSpotAt, grainTool]);
+    const updateGrainHoverRef = useLatest(updateGrainHover);
+    /** The mouse is over the viewer (Grain Spot: Shift or Cmd/Ctrl pressed without moving updates the preview) */
+    const grainPointerInsideRef = useRef(false);
+    useEffect(() => {
+      if (activeTool !== 'grain') return;
+      const onKey = (event: KeyboardEvent) => {
+        if (!['Shift', 'Meta', 'Control'].includes(event.key) || !grainPointerInsideRef.current) return;
+        const pos = stageRef.current?.getPointerPosition();
+        const { zoom: z, position: p } = viewRef.current;
+        if (pos) updateGrainHoverRef.current(pos, { x: (pos.x - p.x) / z, y: (pos.y - p.y) / z }, event);
+      };
+      window.addEventListener('keydown', onKey);
+      window.addEventListener('keyup', onKey);
+      return () => {
+        window.removeEventListener('keydown', onKey);
+        window.removeEventListener('keyup', onKey);
+      };
+    }, [activeTool, updateGrainHoverRef]);
     // Under test: the view, so a scenario can click at image coordinates
     useEffect(() => {
       if (E2E) window.__e2eView = { zoom, position };
@@ -1433,7 +1492,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
       [activeTool, position, zoom, rulerTool, lassoToolActive, spotLassoToolActive, pointCountMode, lasso, setSpotLassoActiveWithRef, activeSketchLayerId, activeMicrographId, handleEraseStroke, handleEraseText]
     );
 
-    const handleMouseMove = useCallback(() => {
+    const handleMouseMove = useCallback((e?: { evt?: MouseEvent }) => {
       const stage = stageRef.current;
       if (!stage) return;
 
@@ -1519,8 +1578,8 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
 
       // Grain Spot: outline the grain under the mouse (not over a spot, where a click selects)
       if (activeTool === 'grain') {
-        if (grainSpotAt((pos.x - position.x) / zoom, (pos.y - position.y) / zoom)) grainTool.clearHover();
-        else grainTool.hoverAtScreen(pos.x, pos.y);
+        grainPointerInsideRef.current = true;
+        updateGrainHover(pos, { x: (pos.x - position.x) / zoom, y: (pos.y - position.y) / zoom }, e?.evt);
       }
 
       // Handle drawing tool preview (polygon/line/measure)
@@ -1606,8 +1665,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
       pointCountMode,
       splitModeSpotId,
       splitLineDrawing,
-      grainSpotAt,
-      grainTool,
+      updateGrainHover,
     ]);
 
     const handleMouseUp = useCallback(() => {
@@ -1702,6 +1760,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
       setIsPanning(false);
       setLastPointerPos(null);
       onCursorMove?.(null); // Clear coordinates in status bar
+      grainPointerInsideRef.current = false;
       grainTool.clearHover();
 
       // Cancel lasso if mouse leaves while drawing (use ref to avoid stale closure)
@@ -1783,26 +1842,49 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
         // Grain Spot: a click inside a spot selects it; elsewhere the grain's
         // outline becomes a polygon spot (unless it runs off the screen)
         if (activeTool === 'grain') {
-          const hit = grainSpotAt(imageX, imageY);
-          if (hit) {
-            selectActiveSpot(hit.id);
-            setGrainNote(null);
-            return;
+          const label = grainRefineLabel(e.evt);
+          if (label === null || !grainRefineTarget()) {
+            const hit = grainSpotAt(imageX, imageY);
+            if (hit) {
+              selectActiveSpot(hit.id);
+              setGrainNote(null);
+              return;
+            }
           }
           const alt = lastClickAltRef.current;
+          const micrographId = activeMicrographId;
           grainQueueRef.current = grainQueueRef.current.then(async () => {
-            const found = await grainTool.outlineAtScreen(pos.x, pos.y);
+            // Looked up now, after any earlier click in the queue changed it
+            const target = label !== null ? grainRefineTarget() : null;
+            const found = await grainTool.outlineAtScreen(pos.x, pos.y, target && label !== null ? { base: target.base, label } : null);
             if (!found) {
-              setGrainNote('No grain found there. Try clicking nearer its middle, or zoom in.');
+              setGrainNote(target
+                ? 'The outline could not be changed there. Keep the first click on the grain on the screen and try again.'
+                : 'No grain found there. Try clicking nearer its middle, or zoom in.');
               return;
             }
             if (found.offScreen) {
               setGrainNote('That grain runs off the screen. Zoom out or pan to see all of it, then click it again.');
               return;
             }
-            setGrainNote(null);
-            // The new spot is under the mouse now: no preview until it moves off
+            // The spot is under the mouse now: no preview until it moves
             grainTool.clearHover();
+            const { points } = geometryToLegacy({ type: 'Polygon', coordinates: [found.ring] });
+            if (target && lastGrainRef.current) {
+              const refusal = editRefusal(currentPermissions(), 'spot', target.spotId);
+              if (refusal) {
+                setGrainNote(refusal);
+                return;
+              }
+              setGrainNote(null);
+              const { updateSpotData } = useAppStore.getState();
+              asOwnUndoStep(() => updateSpotData(target.spotId, { points, modifiedTimestamp: Date.now() }));
+              lastGrainRef.current.history.push({ prompts: found.prompts, key: pointsKey(points) });
+              selectActiveSpot(target.spotId);
+              return;
+            }
+            setGrainNote(null);
+            if (micrographId) lastGrainRef.current = { micrographId, history: [{ prompts: found.prompts, key: pointsKey(points) }] };
             lastClickAltRef.current = alt;
             placeSpotRef.current({ type: 'Polygon', coordinates: [found.ring] });
           }).catch((error: unknown) => {
@@ -1854,7 +1936,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
           setTextInputVisible(true);
         }
       },
-      [activeTool, position, zoom, polygonDrawing, lineDrawing, selectActiveSpot, clearSpotSelection, hasDragged, splitModeSpotId, splitLineDrawing, activeSketchLayerId, handleTextDoubleClick, grainSpotAt, grainTool]
+      [activeTool, position, zoom, polygonDrawing, lineDrawing, selectActiveSpot, clearSpotSelection, hasDragged, splitModeSpotId, splitLineDrawing, activeSketchLayerId, handleTextDoubleClick, grainSpotAt, grainTool, grainRefineTarget, activeMicrographId]
     );
 
     /**

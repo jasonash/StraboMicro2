@@ -13,12 +13,16 @@
  * outline is asked for at a time, and when it comes back the latest position
  * is next. The preview never analyzes a view itself; after a pan or zoom it
  * waits for the new view.
+ *
+ * Refine clicks (Shift+click adds, Cmd/Ctrl+click cuts) ask again with the
+ * earlier clicks plus the new one. Clicks are kept in image coordinates, so
+ * they still count after a pan or zoom as long as the first is on screen.
  */
 
 import { useCallback, useEffect, useRef, type RefObject } from 'react';
 import type Konva from 'konva';
 import {
-  start, prepareView, outlineAt, releaseView, isLoaded, setPreview, useGrainSpotStore,
+  start, prepareView, outlineAt, releaseView, isLoaded, setPreview, useGrainSpotStore, ViewReplacedError,
 } from '@/services/grainSpot/grainSpotEngine';
 import { runsOffScreen, type Point, type Sides } from '@/utils/grainOutline';
 
@@ -29,6 +33,9 @@ const SETTLE_MS = 350;
 
 interface ViewInfo {
   viewId: number;
+  /** Size of the view handed to the model, in its pixels */
+  width: number;
+  height: number;
   /** Screen (stage) position of the view's top-left corner */
   left: number;
   top: number;
@@ -40,11 +47,25 @@ interface ViewInfo {
   cutByScreen: Sides;
 }
 
+/** A click handed to the model, in image coordinates: label 1 = part of the grain, 0 = not */
+export interface GrainPrompt {
+  point: [number, number];
+  label: 0 | 1;
+}
+
 export interface GrainClickResult {
   /** Closed ring in image coordinates (first point not repeated) */
   ring: Array<[number, number]>;
   /** The grain reaches a side of the screen, so part of it is probably off screen */
   offScreen: boolean;
+  /** The clicks that made it (the first is the grain's; refine clicks follow) */
+  prompts: GrainPrompt[];
+}
+
+/** Refine clicks so far and the kind of the next one */
+export interface GrainRefine {
+  base: GrainPrompt[];
+  label: 0 | 1;
 }
 
 interface Options {
@@ -65,7 +86,7 @@ export function useGrainSpotTool({ active, stageRef, zoom, position, stageSize, 
   const latest = useRef({ zoom, position, stageSize, imageWidth, imageHeight });
   latest.current = { zoom, position, stageSize, imageWidth, imageHeight };
   /** Preview: the newest mouse position (null: none wanted), whether one is being outlined, and a counter that drops stale answers */
-  const hoverPos = useRef<{ x: number; y: number } | null>(null);
+  const hoverPos = useRef<{ x: number; y: number; refine: GrainRefine | null } | null>(null);
   const hoverBusy = useRef(false);
   const hoverGeneration = useRef(0);
 
@@ -97,7 +118,7 @@ export function useGrainSpotTool({ active, stageRef, zoom, position, stageSize, 
     const pixels = ctx.getImageData(0, 0, width, height);
     const viewId = prepareView({ rgba: pixels.data, width, height });
     const cutByScreen = { top: p.y < 0, right: p.x + iw * z > s.width, bottom: p.y + ih * z > s.height, left: p.x < 0 };
-    const info = { viewId, left, top, scale: width / (right - left), zoom: z, position: { ...p }, cutByScreen };
+    const info = { viewId, width, height, left, top, scale: width / (right - left), zoom: z, position: { ...p }, cutByScreen };
     viewRef.current = info;
     return info;
   }, [stageRef]);
@@ -114,18 +135,37 @@ export function useGrainSpotTool({ active, stageRef, zoom, position, stageSize, 
     };
   }, [active]);
 
-  /** The grain at this screen (stage) point in this view, or null when nothing is there */
-  const outlineInView = useCallback(async (view: ViewInfo, screenX: number, screenY: number): Promise<GrainClickResult | null> => {
-    const click: Point = [(screenX - view.left) * view.scale, (screenY - view.top) * view.scale];
-    const found = await outlineAt(view.viewId, click);
+  /**
+   * The grain these clicks describe in this view, or null when nothing is
+   * there (or its first click is off screen). Refine clicks off screen are left out.
+   */
+  const outlineInView = useCallback(async (view: ViewInfo, prompts: GrainPrompt[]): Promise<GrainClickResult | null> => {
+    const toView = ([ix, iy]: [number, number]): Point => [
+      (ix * view.zoom + view.position.x - view.left) * view.scale,
+      (iy * view.zoom + view.position.y - view.top) * view.scale,
+    ];
+    const inView = ([vx, vy]: Point) => vx >= 0 && vy >= 0 && vx < view.width && vy < view.height;
+    const [first, ...rest] = prompts;
+    if (!first) return null;
+    const click = toView(first.point);
+    if (!inView(click)) return null;
+    const extra = rest.map((q) => ({ point: toView(q.point), label: q.label })).filter((q) => inView(q.point));
+    const found = await outlineAt(view.viewId, click, extra);
     if (!found) return null;
     const ring = found.points.map(([vx, vy]): [number, number] => {
       const sx = view.left + vx / view.scale;
       const sy = view.top + vy / view.scale;
       return [(sx - view.position.x) / view.zoom, (sy - view.position.y) / view.zoom];
     });
-    return { ring, offScreen: runsOffScreen(found.edges, view.cutByScreen) };
+    return { ring, offScreen: runsOffScreen(found.edges, view.cutByScreen), prompts };
   }, []);
+
+  /** The clicks for this screen (stage) point: a new grain, or a refine of an earlier one */
+  const promptsAt = (screenX: number, screenY: number, refine: GrainRefine | null): GrainPrompt[] => {
+    const { zoom: z, position: p } = latest.current;
+    const point: [number, number] = [(screenX - p.x) / z, (screenY - p.y) / z];
+    return refine ? [...refine.base, { point, label: refine.label }] : [{ point, label: 1 }];
+  };
 
   /** Is this the view on screen now (no pan or zoom since it was taken)? */
   const isCurrent = (view: ViewInfo | null): view is ViewInfo => {
@@ -134,13 +174,23 @@ export function useGrainSpotTool({ active, stageRef, zoom, position, stageSize, 
   };
 
   /**
-   * The grain at this screen (stage) point, or null when nothing is there.
-   * A click right after a pan or zoom analyzes the new view first.
+   * The grain at this screen (stage) point, or with refine the earlier grain
+   * changed by a click here; null when nothing is there.
+   * A click right after a pan or zoom analyzes the new view first; when a
+   * newer view replaces the one it waited for, it asks again in that one.
    */
-  const outlineAtScreen = useCallback(async (screenX: number, screenY: number): Promise<GrainClickResult | null> => {
-    const view = isCurrent(viewRef.current) ? viewRef.current : capture();
-    if (!view) return null;
-    return outlineInView(view, screenX, screenY);
+  const outlineAtScreen = useCallback(async (screenX: number, screenY: number, refine: GrainRefine | null = null): Promise<GrainClickResult | null> => {
+    const prompts = promptsAt(screenX, screenY, refine);
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const view = isCurrent(viewRef.current) ? viewRef.current : capture();
+      if (!view) return null;
+      try {
+        return await outlineInView(view, prompts);
+      } catch (error) {
+        if (!(error instanceof ViewReplacedError)) throw error;
+      }
+    }
+    return null;
   }, [capture, outlineInView]);
 
   /** Outline the grain at the newest mouse position, then the next newest, until the mouse rests */
@@ -153,7 +203,7 @@ export function useGrainSpotTool({ active, stageRef, zoom, position, stageSize, 
         const view = viewRef.current;
         if (!pos || !isCurrent(view)) return;
         const generation = hoverGeneration.current;
-        const found = await outlineInView(view, pos.x, pos.y).catch(() => null);
+        const found = await outlineInView(view, promptsAt(pos.x, pos.y, pos.refine)).catch(() => null);
         // Moved on meanwhile (pan, zoom, preview put away): drop it
         if (generation !== hoverGeneration.current || !isCurrent(view)) continue;
         setPreview(found ? { ring: found.ring, offScreen: found.offScreen } : null);
@@ -164,9 +214,9 @@ export function useGrainSpotTool({ active, stageRef, zoom, position, stageSize, 
     }
   }, [outlineInView]);
 
-  /** The mouse is at this screen (stage) point: preview the grain under it */
-  const hoverAtScreen = useCallback((screenX: number, screenY: number) => {
-    hoverPos.current = { x: screenX, y: screenY };
+  /** The mouse is at this screen (stage) point: preview the grain under it (or the refined one) */
+  const hoverAtScreen = useCallback((screenX: number, screenY: number, refine: GrainRefine | null = null) => {
+    hoverPos.current = { x: screenX, y: screenY, refine };
     void runHover();
   }, [runHover]);
 

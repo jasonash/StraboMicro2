@@ -135,7 +135,10 @@ async function outline(request: Extract<SamRequest, { type: 'outline' }>): Promi
   const lh = dims[dims.length - 2];
   const lw = dims[dims.length - 1];
   const candidates = dims[dims.length - 3];
-  const found = outlineFromLogits(masks.data as Float32Array, candidates, lw, lh, iou, width, height, request.click);
+  // The first point is the click; the rest are refine clicks (label 1 adds, 0 cuts)
+  const include = request.points.filter((_, i) => i > 0 && request.labels[i] === 1);
+  const exclude = request.points.filter((_, i) => request.labels[i] === 0);
+  const found = outlineFromLogits(masks.data as Float32Array, candidates, lw, lh, iou, width, height, request.click, { include, exclude });
   return { type: 'outline', id: request.id, viewId: request.viewId, outline: found, ms: performance.now() - started };
 }
 

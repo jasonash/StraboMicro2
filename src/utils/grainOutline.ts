@@ -49,9 +49,13 @@ export interface OutlineOptions {
   iouMargin?: number;
   /** How far from the click to look for the mask when the click itself is just outside it */
   searchRadius?: number;
+  /** Refine clicks: the grain must take in these points (Shift+click adds) */
+  include?: Point[];
+  /** ... and leave out these (Cmd/Ctrl+click cuts) */
+  exclude?: Point[];
 }
 
-const DEFAULTS: Required<OutlineOptions> = { tolerance: 0.8, minArea: 16, iouMargin: 0.05, searchRadius: 3 };
+const DEFAULTS: Required<OutlineOptions> = { tolerance: 0.8, minArea: 16, iouMargin: 0.05, searchRadius: 3, include: [], exclude: [] };
 
 /**
  * Sample one candidate's logits (lw x lh over the model's square input) at
@@ -154,6 +158,13 @@ export function maskArea(mask: MaskGrid): number {
   let n = 0;
   for (let i = 0; i < mask.data.length; i++) n += mask.data[i];
   return n;
+}
+
+/** Is the pixel under this view point inside? (Points off the grid are outside) */
+export function insideAt(mask: MaskGrid, [x, y]: Point): boolean {
+  const px = Math.floor(x);
+  const py = Math.floor(y);
+  return px >= 0 && py >= 0 && px < mask.width && py < mask.height && mask.data[py * mask.width + px] === 1;
 }
 
 /** Which sides of the view have an inside pixel on them? */
@@ -316,25 +327,39 @@ export function simplifyRing(ring: Point[], tolerance: number): Point[] {
  * @param logits candidates * lh * lw values (pred_masks of one point batch)
  * @param iou predicted IoU per candidate
  * @param click view pixel that was clicked
+ *
+ * With refine clicks (options include/exclude) the candidate the model
+ * scores best among those that take in every added point and leave out every
+ * cut one wins; when none does, the best scored one.
  */
 export function outlineFromLogits(
   logits: Float32Array, candidates: number, lw: number, lh: number, iou: ArrayLike<number>,
   viewW: number, viewH: number, click: Point, options: OutlineOptions = {},
 ): GrainOutline | null {
   const o = { ...DEFAULTS, ...options };
+  const refining = o.include.length > 0 || o.exclude.length > 0;
   let bestIou = -Infinity;
   for (let k = 0; k < candidates; k++) bestIou = Math.max(bestIou, iou[k]);
   let chosen: { comp: MaskGrid; area: number; index: number } | null = null;
+  let fallback: { comp: MaskGrid; area: number; index: number } | null = null;
   for (let k = 0; k < candidates; k++) {
-    if (iou[k] < bestIou - o.iouMargin) continue;
+    if (!refining && iou[k] < bestIou - o.iouMargin) continue;
     const mask = maskFromLogits(logits, k * lw * lh, lw, lh, viewW, viewH);
     const comp = componentAt(mask, click[0], click[1], o.searchRadius);
     if (!comp) continue;
     fillHoles(comp);
     const area = maskArea(comp);
     if (area < o.minArea) continue;
-    if (!chosen || area < chosen.area) chosen = { comp, area, index: k };
+    const candidate = { comp, area, index: k };
+    if (refining) {
+      if (!fallback || iou[k] > iou[fallback.index]) fallback = candidate;
+      const fits = o.include.every((q) => insideAt(comp, q)) && !o.exclude.some((q) => insideAt(comp, q));
+      if (fits && (!chosen || iou[k] > iou[chosen.index])) chosen = candidate;
+    } else if (!chosen || area < chosen.area) {
+      chosen = candidate;
+    }
   }
+  chosen = chosen ?? fallback;
   if (!chosen) return null;
   const ring = simplifyRing(traceOutline(chosen.comp), o.tolerance);
   if (ring.length < 3) return null;
