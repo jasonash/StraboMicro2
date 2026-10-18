@@ -33,6 +33,8 @@ interface GrainSpotState {
   lastPrepareMs: number | null;
   /** The model is in the worker: views can be analyzed */
   modelLoaded: boolean;
+  /** Outline of the grain under the mouse, in image coordinates (null: none shown) */
+  preview: { ring: Array<[number, number]>; offScreen: boolean } | null;
 }
 
 export const useGrainSpotStore = create<GrainSpotState>()(() => ({
@@ -43,6 +45,7 @@ export const useGrainSpotStore = create<GrainSpotState>()(() => ({
   note: null,
   lastPrepareMs: null,
   modelLoaded: false,
+  preview: null,
 }));
 
 const setState = (patch: Partial<GrainSpotState>) => useGrainSpotStore.setState(patch);
@@ -230,9 +233,14 @@ export function setNote(note: string | null): void {
   if (useGrainSpotStore.getState().note !== note) setState({ note });
 }
 
+export function setPreview(preview: GrainSpotState['preview']): void {
+  if (preview !== null || useGrainSpotStore.getState().preview !== null) setState({ preview });
+}
+
 /** The tool was put down: forget the view (the model stays loaded for next time) */
 export function releaseView(): void {
   queued = null;
   readyViewId = 0;
+  setPreview(null);
   if (useGrainSpotStore.getState().phase === 'ready' || useGrainSpotStore.getState().phase === 'preparing') setState({ phase: 'idle', note: null });
 }

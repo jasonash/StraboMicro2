@@ -82,12 +82,28 @@ function cleanGrain() {
   return ok[0];
 }
 
-async function clickImage(copy: Copy, x: number, y: number) {
+/** Page position of an image point */
+async function pageAt(copy: Copy, x: number, y: number) {
   const view = await copy.page.evaluate(() => window.__e2eView);
   const box = await copy.page.locator('.konvajs-content').first().boundingBox();
   if (!view || !box) throw new Error('no viewer');
-  await copy.page.mouse.click(box.x + view.position.x + x * view.zoom, box.y + view.position.y + y * view.zoom);
+  return { x: box.x + view.position.x + x * view.zoom, y: box.y + view.position.y + y * view.zoom };
 }
+
+async function clickImage(copy: Copy, x: number, y: number) {
+  const at = await pageAt(copy, x, y);
+  await copy.page.mouse.click(at.x, at.y);
+}
+
+/** Move the mouse to an image point in a few steps, as a hand would */
+async function hoverImage(copy: Copy, x: number, y: number) {
+  const at = await pageAt(copy, x, y);
+  await copy.page.mouse.move(at.x, at.y, { steps: 5 });
+}
+
+/** The grain outline shown under the mouse */
+const grainPreview = (copy: Copy) => copy.state((e) => e.grain.getState().preview) as
+  Promise<{ ring: number[][]; offScreen: boolean } | null>;
 
 function spotsOf(copy: Copy, micrographId: string) {
   return copy.state(new Function('e', `
@@ -122,6 +138,24 @@ test('Grain Spot: a click on a grain makes a polygon spot of its outline, named 
   await expect(ana.page.getByTestId('grain-spot-status')).toContainText('Click a grain to outline it');
 
   const grain = cleanGrain();
+  const disc = Math.PI * grain.r * grain.r;
+
+  // Hover: the grain under the mouse is outlined before any click
+  await ana.caption('moves the mouse onto the grain: its outline shows before clicking');
+  await hoverImage(ana, grain.x - grain.r * 0.2, grain.y);
+  await hoverImage(ana, grain.x, grain.y);
+  await expect.poll(async () => {
+    const preview = await grainPreview(ana);
+    return preview ? Math.round((ringArea(preview.ring) / disc) * 100) / 100 : 0;
+  }, { timeout: 30_000 }).toBeGreaterThan(0.75);
+  const preview = await grainPreview(ana);
+  expect(preview?.offScreen).toBe(false);
+  expect(ringArea(preview?.ring ?? []) / disc).toBeLessThan(1.25);
+  expect(await ana.state(new Function('e', `
+    for (const stage of (window.Konva && window.Konva.stages) || []) if (stage.findOne('.grain-preview')) return true;
+    return false;`) as never), 'the preview is drawn on the drawing layer').toBe(true);
+  expect((await spotsOf(ana, p.micrographId)).length, 'hovering makes no spot').toBe(2);
+
   await ana.caption(`clicks the grain at (${grain.x}, ${grain.y}), radius ${grain.r}`);
   await clickImage(ana, grain.x, grain.y);
   await expect.poll(async () => (await spotsOf(ana, p.micrographId)).length, { timeout: 30_000 }).toBe(3);
@@ -132,7 +166,6 @@ test('Grain Spot: a click on a grain makes a polygon spot of its outline, named 
   expect(made.ring.length).toBeGreaterThanOrEqual(8);
   // The outline is the grain: area within 25 % of the disc, centered on it
   const area = ringArea(made.ring);
-  const disc = Math.PI * grain.r * grain.r;
   console.log(`[19] grain r=${grain.r}: outline area ${Math.round(area)} vs disc ${Math.round(disc)} (${made.ring.length} points)`);
   expect(area / disc).toBeGreaterThan(0.75);
   expect(area / disc).toBeLessThan(1.25);
@@ -141,6 +174,14 @@ test('Grain Spot: a click on a grain makes a polygon spot of its outline, named 
   expect(Math.hypot(cx - grain.x, cy - grain.y)).toBeLessThan(grain.r * 0.2);
   expect(await ana.state((e) => e.app.getState().activeSpotId)).toBe(made.id);
   expect(await ana.state((e) => e.app.getState().activeTool)).toBe('grain');
+
+  // The new spot is under the mouse: no preview there, and none after the mouse leaves the viewer
+  expect(await grainPreview(ana), 'the click puts the preview away').toBeNull();
+  await hoverImage(ana, grain.x + grain.r * 0.1, grain.y);
+  await ana.page.waitForTimeout(500);
+  expect(await grainPreview(ana), 'no preview over a spot').toBeNull();
+  await ana.page.mouse.move(2, 2);
+  expect(await grainPreview(ana)).toBeNull();
 
   // A click inside the new spot selects it instead of making another
   await ana.state((e) => e.app.getState().selectActiveSpot(null));

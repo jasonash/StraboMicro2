@@ -52,6 +52,7 @@ import { EditingScope } from './Presence';
 import { useGrainSpotTool } from '@/hooks/useGrainSpotTool';
 import { E2E } from '@/services/e2eMode';
 import { setNote as setGrainNote } from '@/services/grainSpot/grainSpotEngine';
+import { GrainPreviewOutline } from './GrainPreviewOutline';
 
 const TILE_SIZE = 256;
 const MIN_ZOOM = 0.1;
@@ -510,6 +511,13 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
     });
     // Grain clicks are handled one at a time, in order
     const grainQueueRef = useRef<Promise<void>>(Promise.resolve());
+    /** The spot under this image point, if any: with Grain Spot a click there selects it */
+    const grainSpotAt = useCallback((imageX: number, imageY: number) =>
+      [...effectiveSpots].reverse().find((spot) => {
+        if (spot.archived && !showArchivedSpots) return false;
+        const ring = polygonRingOf(spot);
+        return ring.length >= 3 && isPointInPolygon({ x: imageX, y: imageY }, ring);
+      }), [effectiveSpots, showArchivedSpots]);
     // Under test: the view, so a scenario can click at image coordinates
     useEffect(() => {
       if (E2E) window.__e2eView = { zoom, position };
@@ -1509,6 +1517,12 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
         setHasDragged(true);
       }
 
+      // Grain Spot: outline the grain under the mouse (not over a spot, where a click selects)
+      if (activeTool === 'grain') {
+        if (grainSpotAt((pos.x - position.x) / zoom, (pos.y - position.y) / zoom)) grainTool.clearHover();
+        else grainTool.hoverAtScreen(pos.x, pos.y);
+      }
+
       // Handle drawing tool preview (polygon/line/measure)
       if (activeTool === 'polygon' || activeTool === 'line' || activeTool === 'measure') {
         // Convert to image coordinates
@@ -1592,6 +1606,8 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
       pointCountMode,
       splitModeSpotId,
       splitLineDrawing,
+      grainSpotAt,
+      grainTool,
     ]);
 
     const handleMouseUp = useCallback(() => {
@@ -1686,6 +1702,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
       setIsPanning(false);
       setLastPointerPos(null);
       onCursorMove?.(null); // Clear coordinates in status bar
+      grainTool.clearHover();
 
       // Cancel lasso if mouse leaves while drawing (use ref to avoid stale closure)
       if (spotLassoActiveRef.current) {
@@ -1705,7 +1722,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
         isEraserDraggingRef.current = false;
         erasedStrokeIdsRef.current.clear();
       }
-    }, [onCursorMove, lasso, setSpotLassoActiveWithRef]);
+    }, [onCursorMove, lasso, setSpotLassoActiveWithRef, grainTool]);
 
     /**
      * Handle stage click for drawing tools
@@ -1766,11 +1783,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
         // Grain Spot: a click inside a spot selects it; elsewhere the grain's
         // outline becomes a polygon spot (unless it runs off the screen)
         if (activeTool === 'grain') {
-          const hit = [...effectiveSpots].reverse().find((spot) => {
-            if (spot.archived && !showArchivedSpots) return false;
-            const ring = polygonRingOf(spot);
-            return ring.length >= 3 && isPointInPolygon({ x: imageX, y: imageY }, ring);
-          });
+          const hit = grainSpotAt(imageX, imageY);
           if (hit) {
             selectActiveSpot(hit.id);
             setGrainNote(null);
@@ -1788,6 +1801,8 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
               return;
             }
             setGrainNote(null);
+            // The new spot is under the mouse now: no preview until it moves off
+            grainTool.clearHover();
             lastClickAltRef.current = alt;
             placeSpotRef.current({ type: 'Polygon', coordinates: [found.ring] });
           }).catch((error: unknown) => {
@@ -1839,7 +1854,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
           setTextInputVisible(true);
         }
       },
-      [activeTool, position, zoom, polygonDrawing, lineDrawing, selectActiveSpot, clearSpotSelection, hasDragged, splitModeSpotId, splitLineDrawing, activeSketchLayerId, handleTextDoubleClick, effectiveSpots, showArchivedSpots, grainTool]
+      [activeTool, position, zoom, polygonDrawing, lineDrawing, selectActiveSpot, clearSpotSelection, hasDragged, splitModeSpotId, splitLineDrawing, activeSketchLayerId, handleTextDoubleClick, grainSpotAt, grainTool]
     );
 
     /**
@@ -2656,6 +2671,9 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                   scaleY={zoom}
                 >
                   {/* Drawing shapes (polygon/line in progress) are added by the drawing hooks */}
+
+                  {/* Grain Spot: the grain under the mouse (dashed orange when it runs off the screen) */}
+                  {activeTool === 'grain' && <GrainPreviewOutline zoom={zoom} />}
 
                   {/* Sketch preview line during drawing */}
                   {sketchPreviewPoints.length >= 2 && (

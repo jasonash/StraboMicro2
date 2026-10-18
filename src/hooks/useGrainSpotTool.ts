@@ -7,12 +7,18 @@
  * What the model sees is the image layer as drawn (reference image, tiles,
  * associated images), cropped to the part of the image on screen, at screen
  * resolution: zooming in on fine grains is how the user picks the scale.
+ *
+ * While the mouse moves, the grain under it is outlined as a preview
+ * (useGrainSpotStore preview). Only the newest mouse position counts: one
+ * outline is asked for at a time, and when it comes back the latest position
+ * is next. The preview never analyzes a view itself; after a pan or zoom it
+ * waits for the new view.
  */
 
 import { useCallback, useEffect, useRef, type RefObject } from 'react';
 import type Konva from 'konva';
 import {
-  start, prepareView, outlineAt, releaseView, isLoaded, useGrainSpotStore,
+  start, prepareView, outlineAt, releaseView, isLoaded, setPreview, useGrainSpotStore,
 } from '@/services/grainSpot/grainSpotEngine';
 import { runsOffScreen, type Point, type Sides } from '@/utils/grainOutline';
 
@@ -58,6 +64,10 @@ export function useGrainSpotTool({ active, stageRef, zoom, position, stageSize, 
   const loaded = useGrainSpotStore((s) => s.modelLoaded);
   const latest = useRef({ zoom, position, stageSize, imageWidth, imageHeight });
   latest.current = { zoom, position, stageSize, imageWidth, imageHeight };
+  /** Preview: the newest mouse position (null: none wanted), whether one is being outlined, and a counter that drops stale answers */
+  const hoverPos = useRef<{ x: number; y: number } | null>(null);
+  const hoverBusy = useRef(false);
+  const hoverGeneration = useRef(0);
 
   /** Hand the current view to the model; null when there is no image on screen */
   const capture = useCallback((): ViewInfo | null => {
@@ -98,37 +108,86 @@ export function useGrainSpotTool({ active, stageRef, zoom, position, stageSize, 
     void start();
     return () => {
       viewRef.current = null;
+      hoverPos.current = null;
+      hoverGeneration.current++;
       releaseView();
     };
   }, [active]);
 
-  // Analyze the view once it has been still for a moment
-  useEffect(() => {
-    if (!active || !loaded) return;
-    const timer = setTimeout(capture, SETTLE_MS);
-    return () => clearTimeout(timer);
-  }, [active, loaded, capture, zoom, position.x, position.y, stageSize.width, stageSize.height, imageWidth, imageHeight, contentKey]);
+  /** The grain at this screen (stage) point in this view, or null when nothing is there */
+  const outlineInView = useCallback(async (view: ViewInfo, screenX: number, screenY: number): Promise<GrainClickResult | null> => {
+    const click: Point = [(screenX - view.left) * view.scale, (screenY - view.top) * view.scale];
+    const found = await outlineAt(view.viewId, click);
+    if (!found) return null;
+    const ring = found.points.map(([vx, vy]): [number, number] => {
+      const sx = view.left + vx / view.scale;
+      const sy = view.top + vy / view.scale;
+      return [(sx - view.position.x) / view.zoom, (sy - view.position.y) / view.zoom];
+    });
+    return { ring, offScreen: runsOffScreen(found.edges, view.cutByScreen) };
+  }, []);
+
+  /** Is this the view on screen now (no pan or zoom since it was taken)? */
+  const isCurrent = (view: ViewInfo | null): view is ViewInfo => {
+    const { zoom: z, position: p } = latest.current;
+    return view !== null && view.zoom === z && view.position.x === p.x && view.position.y === p.y;
+  };
 
   /**
    * The grain at this screen (stage) point, or null when nothing is there.
    * A click right after a pan or zoom analyzes the new view first.
    */
   const outlineAtScreen = useCallback(async (screenX: number, screenY: number): Promise<GrainClickResult | null> => {
-    let view = viewRef.current;
-    const { zoom: z, position: p } = latest.current;
-    if (!view || view.zoom !== z || view.position.x !== p.x || view.position.y !== p.y) view = capture();
+    const view = isCurrent(viewRef.current) ? viewRef.current : capture();
     if (!view) return null;
-    const click: Point = [(screenX - view.left) * view.scale, (screenY - view.top) * view.scale];
-    const found = await outlineAt(view.viewId, click);
-    if (!found) return null;
-    const v = view;
-    const ring = found.points.map(([vx, vy]): [number, number] => {
-      const sx = v.left + vx / v.scale;
-      const sy = v.top + vy / v.scale;
-      return [(sx - v.position.x) / v.zoom, (sy - v.position.y) / v.zoom];
-    });
-    return { ring, offScreen: runsOffScreen(found.edges, v.cutByScreen) };
-  }, [capture]);
+    return outlineInView(view, screenX, screenY);
+  }, [capture, outlineInView]);
 
-  return { outlineAtScreen };
+  /** Outline the grain at the newest mouse position, then the next newest, until the mouse rests */
+  const runHover = useCallback(async () => {
+    if (hoverBusy.current) return;
+    hoverBusy.current = true;
+    try {
+      for (;;) {
+        const pos = hoverPos.current;
+        const view = viewRef.current;
+        if (!pos || !isCurrent(view)) return;
+        const generation = hoverGeneration.current;
+        const found = await outlineInView(view, pos.x, pos.y).catch(() => null);
+        // Moved on meanwhile (pan, zoom, preview put away): drop it
+        if (generation !== hoverGeneration.current || !isCurrent(view)) continue;
+        setPreview(found ? { ring: found.ring, offScreen: found.offScreen } : null);
+        if (hoverPos.current === pos) return;
+      }
+    } finally {
+      hoverBusy.current = false;
+    }
+  }, [outlineInView]);
+
+  /** The mouse is at this screen (stage) point: preview the grain under it */
+  const hoverAtScreen = useCallback((screenX: number, screenY: number) => {
+    hoverPos.current = { x: screenX, y: screenY };
+    void runHover();
+  }, [runHover]);
+
+  /** No preview (mouse left, over a spot, or panning) */
+  const clearHover = useCallback(() => {
+    hoverPos.current = null;
+    hoverGeneration.current++;
+    setPreview(null);
+  }, []);
+
+  // Analyze the view once it has been still for a moment; the preview of the
+  // old view goes at once and comes back for the resting mouse in the new one
+  useEffect(() => {
+    if (!active || !loaded) return;
+    hoverGeneration.current++;
+    setPreview(null);
+    const timer = setTimeout(() => {
+      if (capture()) void runHover();
+    }, SETTLE_MS);
+    return () => clearTimeout(timer);
+  }, [active, loaded, capture, runHover, zoom, position.x, position.y, stageSize.width, stageSize.height, imageWidth, imageHeight, contentKey]);
+
+  return { outlineAtScreen, hoverAtScreen, clearHover };
 }
