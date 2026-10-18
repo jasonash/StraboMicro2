@@ -1405,6 +1405,23 @@ interface Window {
     onConfigureMineralColors: (callback: () => void) => Unsubscribe;
     onSpotColorMode: (callback: (mode: 'spot-color' | 'mineral-color') => void) => Unsubscribe;
 
+    // Grain Spot model (SAM 2.1 tiny int8; electron/grainSpotModel.js)
+    grainSpot: {
+      status: () => Promise<{ available: boolean; totalBytes: number }>;
+      download: () => Promise<{ success: boolean; error?: string }>;
+      onDownloadProgress: (callback: (progress: { percent: number; downloadedBytes: number; totalBytes: number }) => void) => Unsubscribe;
+      load: () => Promise<{
+        success: boolean;
+        error?: string;
+        encoder?: Uint8Array;
+        encoderData?: Uint8Array;
+        decoder?: Uint8Array;
+        decoderData?: Uint8Array;
+        /** File names the .onnx files expect for their weights */
+        names?: { encoderData: string; decoderData: string };
+      }>;
+    };
+
     // FastSAM Grain Detection (model management only - inference runs in renderer via onnxruntime-web)
     fastsam: {
       // Check if FastSAM model file is available

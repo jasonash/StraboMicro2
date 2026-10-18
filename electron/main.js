@@ -228,6 +228,8 @@ const pointCountStorage = require('./pointCountStorage');
 const syncService = require('./sync/syncService');
 const syncSidecar = require('./sync/sidecar');
 const fastsamService = require('./fastsamService');
+// Grain Spot model (SAM 2.1 tiny): download and bytes for the renderer
+require('./grainSpotModel').registerIpc(ipcMain);
 const straboToolsMain = require('./straboToolsMain');
 const dialogDirs = require('./dialogDirs');
 const customUserDataFiles = require('./customUserDataFiles');

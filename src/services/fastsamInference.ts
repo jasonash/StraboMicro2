@@ -12,6 +12,7 @@
  */
 
 import * as ort from 'onnxruntime-web';
+import { ortWasmPaths, ortThreads } from './ortWasm';
 
 // ============================================================================
 // Configuration
@@ -83,26 +84,13 @@ let wasmConfigured = false;
 function configureWasm(): void {
   if (wasmConfigured) return;
 
-  if (import.meta.env.DEV) {
-    // Dev: Vite serves WASM files from node_modules
-    ort.env.wasm.wasmPaths = '/node_modules/onnxruntime-web/dist/';
-  } else {
-    // Packaged Electron: the renderer is served from app://bundle/ by
-    // electron/main.js, which maps that scheme onto dist/. Point
-    // onnxruntime-web at the .mjs loader that vite.config.ts copies into
-    // dist/; the .wasm binary is then resolved relative to the .mjs URL
-    // automatically (see ort.mjs locateFile logic). Chromium's import()
-    // could not load ES modules straight from an asar file:// URL, which
-    // is why the loader is served through the protocol handler instead.
-    const mjsUrl = new URL('ort-wasm-simd-threaded.jsep.mjs', window.location.href).href;
-    ort.env.wasm.wasmPaths = { mjs: mjsUrl };
-    console.log('[FastSAM-Web] Using WASM loader:', mjsUrl);
-  }
+  ort.env.wasm.wasmPaths = ortWasmPaths();
+  console.log('[FastSAM-Web] Using WASM paths:', ort.env.wasm.wasmPaths);
 
   // Multi-threading requires crossOriginIsolated=true (enabled via COOP/COEP
   // headers in main.js). If not available, fall back to single-threaded.
   const canMultiThread = typeof crossOriginIsolated !== 'undefined' && crossOriginIsolated;
-  ort.env.wasm.numThreads = canMultiThread ? (navigator.hardwareConcurrency || 4) : 1;
+  ort.env.wasm.numThreads = ortThreads();
 
   // Suppress noisy ONNX runtime warnings (e.g. "Unknown CPU vendor")
   ort.env.logLevel = 'error';
