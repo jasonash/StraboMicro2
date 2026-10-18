@@ -25,9 +25,8 @@ export async function setWindowSize(copy: Copy, width: number, height: number): 
   await expect.poll(() => copy.page.evaluate(() => [window.innerWidth, window.innerHeight].join('x'))).toBe(`${width}x${height}`);
 }
 
-/** Open a demo project from its .smz (Open Local Project), named as the manual shows it */
-export async function openDemo(copy: Copy, demo: { id: string; name: string }): Promise<void> {
-  const smz = path.join(DEMO_DIR, `${demo.id}.smz`);
+/** Open a demo project from its .smz (Open Local Project), named as the manual shows it; smz defaults to MANUAL_DEMO/<id>.smz */
+export async function openDemo(copy: Copy, demo: { id: string; name: string }, smz = path.join(DEMO_DIR, `${demo.id}.smz`)): Promise<void> {
   if (!fs.existsSync(smz)) throw new Error(`demo project missing: ${smz} (set MANUAL_DEMO)`);
   await copy.answerDialog({ kind: 'open', filePaths: [smz] });
   await copy.menu('File', 'Open Local Project (.smz)');

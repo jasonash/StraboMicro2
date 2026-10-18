@@ -53,8 +53,8 @@ test('core', async ({ launch }) => {
 
   // Toolbar icons, in toolbar order
   const buttons = ana.page.locator('.drawing-toolbar button');
-  await expect(buttons).toHaveCount(8);
-  const files = ['spot', 'line', 'polygon', 'auto-spot', 'lasso', 'sketch', 'ruler', 'move-toolbar'];
+  await expect(buttons).toHaveCount(9);
+  const files = ['spot', 'line', 'polygon', 'grain-spot', 'auto-spot', 'lasso', 'sketch', 'ruler', 'move-toolbar'];
   for (let i = 0; i < files.length; i++) await shot(ana, files[i], buttons.nth(i), 3);
   await shot(ana, 'download-button', ana.page.getByRole('button', { name: /^Export Micrograph/ }).first(), 2);
 
