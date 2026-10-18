@@ -23,6 +23,11 @@ const { writeFileAtomic } = require('./atomicFile');
 const REVISION = '814a066640debee5a91e70aa401fb8e17e030503';
 const BASE_URL = `https://huggingface.co/onnx-community/sam2.1-hiera-tiny-ONNX/resolve/${REVISION}/onnx`;
 
+/** Development only: STRABO_GRAIN_MODEL_URL replaces BASE_URL (e2e 19 points it at a closed port to fail a download) */
+function baseUrl() {
+  return (!app.isPackaged && process.env.STRABO_GRAIN_MODEL_URL) || BASE_URL;
+}
+
 /** The .onnx files name their weights files, so the names must stay as they are */
 const FILES = [
   { role: 'encoder', name: 'vision_encoder_fp16.onnx', size: 314925, sha256: '7773e79d589dada8e1e630cc7eb18b17b2c5b4faeb1eaab5ebf9df618ecbd50a' },
@@ -89,7 +94,7 @@ async function runDownload(progress) {
       // not there yet
     }
     log.info(`[GrainSpot] Downloading ${f.name} (${(f.size / 1e6).toFixed(1)} MB)`);
-    const response = await fetch(`${BASE_URL}/${f.name}`);
+    const response = await fetch(`${baseUrl()}/${f.name}`);
     if (!response.ok || !response.body) throw new Error(`Download of ${f.name} failed: HTTP ${response.status}`);
     const chunks = [];
     let got = 0;

@@ -193,6 +193,12 @@ test(`Grain Spot (${where}): a click on a grain makes a polygon spot of its outl
   await ana.page.mouse.move(2, 2);
   expect(await grainPreview(ana)).toBeNull();
 
+  // Escape puts the tool down (auto spot mode is off here, so this is Grain Spot's own rule)
+  await ana.page.getByRole('button', { name: 'Auto spot mode' }).click();
+  expect(await ana.state((e) => e.app.getState().autoSpotMode)).toBe(false);
+  await ana.page.keyboard.press('Escape');
+  await expect.poll(() => ana.state((e) => e.app.getState().activeTool)).toBe(null);
+
   // A click inside the new spot selects it instead of making another
   await ana.state((e) => e.app.getState().selectActiveSpot(null));
   await ana.caption('clicks inside the spot it just made');
@@ -320,18 +326,32 @@ test('Grain Spot refine clicks: Shift+click adds a grain to the last outline, Cm
   expect(await ana.unansweredDialogs()).toEqual([]);
 });
 
-test('Grain Spot without the model: it offers the download; Not Now puts the tool down', async ({ launch, project }) => {
+test('Grain Spot without the model: it offers the download; a failed download offers Try Again; Not Now puts the tool down', async ({ launch, project }) => {
   const empty = fs.mkdtempSync(path.join(os.tmpdir(), 'grain-model-empty-'));
   const p = await project('E2E Grain Spot No Model');
-  const ana = await launch('Ana', ACCOUNTS.ana, { login: false, env: { STRABO_GRAIN_MODEL_DIR: empty } });
+  // Nothing listens on port 9 here, so the download fails at once
+  const ana = await launch('Ana', ACCOUNTS.ana, { login: false, env: { STRABO_GRAIN_MODEL_DIR: empty, STRABO_GRAIN_MODEL_URL: 'http://127.0.0.1:9' } });
   await openSmz(ana, p.smzPath, p.id);
   await viewMicrograph(ana, p.micrographId);
   await ana.page.getByRole('button', { name: 'Grain Spot tool' }).click();
   const dialog = ana.page.getByRole('dialog', { name: 'Download the Grain Model?' });
   await expect(dialog).toBeVisible({ timeout: 30_000 });
   await expect(dialog).toContainText('one-time download');
+  await ana.caption('clicks Download; the download fails');
+  await dialog.getByRole('button', { name: 'Download' }).click();
+  await expect(dialog.getByRole('alert')).toContainText('The download did not finish', { timeout: 30_000 });
+  await expect(dialog.getByRole('button', { name: 'Try Again' })).toBeEnabled();
+  await ana.caption('Try Again fails the same way and stays on the prompt');
+  await dialog.getByRole('button', { name: 'Try Again' }).click();
+  await expect(dialog.getByRole('button', { name: 'Try Again' })).toBeEnabled({ timeout: 30_000 });
   await dialog.getByRole('button', { name: 'Not Now' }).click();
   await expect(dialog).toBeHidden();
   expect(await ana.state((e) => e.app.getState().activeTool)).toBe(null);
+  // Picked again later: a fresh prompt, without the old error
+  await ana.page.getByRole('button', { name: 'Grain Spot tool' }).click();
+  await expect(dialog).toBeVisible({ timeout: 30_000 });
+  await expect(dialog.getByRole('alert')).toHaveCount(0);
+  await expect(dialog.getByRole('button', { name: 'Download' })).toBeVisible();
+  await dialog.getByRole('button', { name: 'Not Now' }).click();
   fs.rmSync(empty, { recursive: true, force: true });
 });

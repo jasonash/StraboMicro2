@@ -5,11 +5,15 @@
  * the first time it asks to download the model. Rendered by Viewer.tsx.
  */
 
-import { Box, Button, CircularProgress, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, LinearProgress, Typography } from '@mui/material';
+import { useEffect, useState } from 'react';
+import { Alert, Box, Button, CircularProgress, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, LinearProgress, Typography } from '@mui/material';
 import { useAppStore } from '@/store';
 import { useCanCreate } from '@/hooks/usePermissions';
 import { downloadModel, useGrainSpotStore } from '@/services/grainSpot/grainSpotEngine';
 import { formatBytes } from '@/utils/formatBytes';
+
+/** A view analyzed faster than this does not say "Preparing grains…" (on the GPU it takes about 0.15 s; the line would flicker) */
+const PREPARING_DELAY_MS = 300;
 
 /** The status line's hint: how to click, and how to fix the last grain */
 const CLICK_HINT = `Click a grain to outline it. Shift+click adds to the last grain, ${
@@ -33,10 +37,22 @@ function GrainSpotStatusContent() {
   const backend = useGrainSpotStore((s) => s.backend);
   const setActiveTool = useAppStore((s) => s.setActiveTool);
 
-  const busy = phase === 'loading' || phase === 'preparing' || phase === 'downloading';
+  // "Preparing grains…" only once an analysis has taken a moment
+  const [slowPrepare, setSlowPrepare] = useState(false);
+  useEffect(() => {
+    if (phase !== 'preparing') {
+      setSlowPrepare(false);
+      return;
+    }
+    const timer = setTimeout(() => setSlowPrepare(true), PREPARING_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [phase]);
+
+  const preparing = phase === 'preparing' && slowPrepare;
+  const busy = phase === 'loading' || preparing || phase === 'downloading';
   const text = phase === 'downloading' ? `Downloading the grain model… ${percent}%`
     : phase === 'loading' ? 'Loading the grain model…'
-      : phase === 'preparing' ? 'Preparing grains…'
+      : preparing ? 'Preparing grains…'
         : phase === 'error' ? `Grain Spot is not available: ${error ?? 'unknown error'}`
           : phase === 'needs-download' ? 'Grain Spot needs a one-time download'
             : note ?? CLICK_HINT;
@@ -87,14 +103,19 @@ function GrainSpotStatusContent() {
         <DialogContent>
           <DialogContentText>
             Grain Spot outlines a grain where you click. It needs a one-time download of the grain model
-            ({totalBytes > 0 ? formatBytes(totalBytes) : 'about 60 MB'}, SAM 2.1 from Meta, open source). After that it works offline.
+            ({totalBytes > 0 ? formatBytes(totalBytes) : 'about 76 MB'}, SAM 2.1 from Meta, open source). After that it works offline.
           </DialogContentText>
           {phase === 'downloading' && <LinearProgress variant="determinate" value={percent} sx={{ mt: 2 }} />}
+          {phase === 'needs-download' && error && (
+            <Alert severity="error" sx={{ mt: 2 }}>
+              The download did not finish ({error}). Check the internet connection and try again.
+            </Alert>
+          )}
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setActiveTool(null)} disabled={phase === 'downloading'}>Not Now</Button>
           <Button variant="contained" onClick={() => void downloadModel()} disabled={phase === 'downloading'}>
-            {phase === 'downloading' ? `Downloading… ${percent}%` : 'Download'}
+            {phase === 'downloading' ? `Downloading… ${percent}%` : error ? 'Try Again' : 'Download'}
           </Button>
         </DialogActions>
       </Dialog>

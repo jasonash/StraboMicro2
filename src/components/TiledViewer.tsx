@@ -868,11 +868,12 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
           geometryEditing.cancelEdits();
 
           // Auto spot mode: Esc ends the run (a shape in progress is dropped
-          // by the tool-change cleanup). Dialogs stop Escape before it gets here.
+          // by the tool-change cleanup); Grain Spot has no shape in progress,
+          // so Esc always puts it down. Dialogs stop Escape before it gets here.
           const state = useAppStore.getState();
           const tool = state.activeTool;
           const inField = e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement;
-          if (state.autoSpotMode && !inField && isSpotTool(tool)) {
+          if ((state.autoSpotMode || tool === 'grain') && !inField && isSpotTool(tool)) {
             state.setActiveTool(null);
           }
         }

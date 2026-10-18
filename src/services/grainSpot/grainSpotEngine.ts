@@ -103,7 +103,7 @@ export async function checkModel(): Promise<boolean> {
   if (!api) return false;
   const status = await api.status();
   setState({ totalBytes: status.totalBytes });
-  if (!status.available && useGrainSpotStore.getState().phase !== 'downloading') setState({ phase: 'needs-download' });
+  if (!status.available && useGrainSpotStore.getState().phase !== 'downloading') setState({ phase: 'needs-download', error: null });
   return status.available;
 }
 
@@ -114,9 +114,10 @@ export async function downloadModel(): Promise<boolean> {
   setState({ phase: 'downloading', percent: 0, error: null });
   const off = api.onDownloadProgress((p) => setState({ percent: p.percent }));
   try {
-    const result = await api.download();
+    const result = await api.download().catch((error: unknown) => ({ success: false, error: error instanceof Error ? error.message : String(error) }));
     if (!result.success) {
-      setState({ phase: 'error', error: result.error ?? 'The download failed' });
+      // Back to the download prompt, which says what went wrong and offers Try Again
+      setState({ phase: 'needs-download', error: result.error ?? 'The download failed' });
       return false;
     }
   } finally {
