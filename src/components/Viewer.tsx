@@ -256,7 +256,7 @@ const Viewer: React.FC = () => {
 
       // Spot tool shortcuts (only when not in sketch mode, no modifiers)
       // Suppressed while the Quick Classify toolbar is visible (Quick Classify / Quick Edit /
-      // Point Count modes) so V/P/L/G/M reach the mineral-shortcut handler instead of
+      // Point Count modes) so V/P/L/G/M/W reach the mineral-shortcut handler instead of
       // silently switching the active drawing tool.
       if (!sketchModeActive && !quickClassifyVisible && activeMicrographId && !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey) {
         const key = e.key.toLowerCase();
@@ -275,6 +275,10 @@ const Viewer: React.FC = () => {
         } else if (key === 'm') {
           e.preventDefault();
           setActiveTool('measure');
+        } else if (key === 'w') {
+          // Grain Spot (the magic wand)
+          e.preventDefault();
+          setActiveTool('grain');
         }
       }
     };

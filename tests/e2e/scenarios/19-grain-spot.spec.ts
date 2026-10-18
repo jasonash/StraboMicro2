@@ -198,6 +198,9 @@ test(`Grain Spot (${where}): a click on a grain makes a polygon spot of its outl
   expect(await ana.state((e) => e.app.getState().autoSpotMode)).toBe(false);
   await ana.page.keyboard.press('Escape');
   await expect.poll(() => ana.state((e) => e.app.getState().activeTool)).toBe(null);
+  // W picks it again (the magic wand; P, L, G and M are the other spot tools)
+  await ana.page.keyboard.press('w');
+  await expect.poll(() => ana.state((e) => e.app.getState().activeTool)).toBe('grain');
 
   // A click inside the new spot selects it instead of making another
   await ana.state((e) => e.app.getState().selectActiveSpot(null));
