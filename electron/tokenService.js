@@ -30,6 +30,9 @@ const REFRESH_RETRY_DELAYS_MS = [1000, 3000];
 // Store instance - lazily initialized
 let store = null;
 
+// Told when the server refuses the refresh token (the session ended on its own)
+const sessionEndedListeners = [];
+
 // Cache whether we should use encryption (checked once at startup)
 let useEncryption = null;
 
@@ -100,6 +103,16 @@ function shouldUseEncryption() {
 }
 
 const tokenService = {
+  /**
+   * Call fn({ email }) whenever the server refuses the refresh token and the
+   * tokens are cleared: the user was logged out without doing anything, and
+   * the renderer must be told (it still thinks it is logged in otherwise)
+   * @param {(info: { email: string | null }) => void} fn
+   */
+  onSessionEnded(fn) {
+    sessionEndedListeners.push(fn);
+  },
+
   /**
    * Check if secure storage is available on this system
    */
@@ -336,7 +349,21 @@ const tokenService = {
 
       if (response.status === 401) {
         log.warn('[TokenService] Refresh token rejected by the server (401), session expired');
+        // A login while this refresh was on its way saved new tokens: keep those
+        const now = await this.getTokens();
+        if (now && now.refreshToken !== tokens.refreshToken) {
+          return now.accessToken
+            ? { success: true, accessToken: now.accessToken, user: now.user }
+            : { success: false, error: 'Failed to refresh session' };
+        }
         await this.clearTokens();
+        for (const listener of sessionEndedListeners) {
+          try {
+            listener({ email: tokens.user && tokens.user.email ? tokens.user.email : null });
+          } catch (error) {
+            log.warn('[TokenService] Session ended listener failed:', error.message);
+          }
+        }
         return { success: false, sessionExpired: true, error: 'Session expired. Please log in again.' };
       }
 

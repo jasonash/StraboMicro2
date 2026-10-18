@@ -57,6 +57,15 @@ check('logged out offers Log in', syncChipState(synced, { ...auth, loggedIn: fal
 is('manual, logged out: no warning (16af)', label({ mode: 'manual' }, { loggedIn: false, pkey: null }), 'Synced');
 is('manual, logged out with changes', label({ mode: 'manual', pending: 3 }, { loggedIn: false, pkey: null }), 'Manual · 3 to sync');
 is('manual, a click that failed for the login does show', label({ mode: 'manual', problem: { kind: 'auth', message: '' } }), 'Log in to sync');
+// The session ran out (server refused the login): both modes say so, with why
+is('manual, session ended', label({ mode: 'manual' }, { loggedIn: false, pkey: null, sessionEnded: true }), 'Log in to sync');
+is('automatic, session ended', label({}, { loggedIn: false, pkey: null, sessionEnded: true }), 'Log in to sync');
+is('manual, session ended, logged in again', label({ mode: 'manual' }, { sessionEnded: true }), 'Synced');
+check('session ended: detail says logged out',
+  syncChipState({ ...synced, mode: 'manual' }, { ...auth, loggedIn: false, pkey: null, sessionEnded: true }).detail
+    .startsWith('You were logged out of StraboSpot. Log in as a@b.org'));
+check('plain logged out: detail without it',
+  syncChipState(synced, { ...auth, loggedIn: false, pkey: null }).detail.startsWith('Log in as a@b.org'));
 is('automatic, other account', label({}, { pkey: '9' }), 'Different account');
 is('automatic, other server', label({}, { restServer: 'http://localhost:8080' }), 'Different server');
 is('server compare ignores case and trailing slash', label({}, { restServer: 'https://StraboSpot.org/' }), 'Synced');

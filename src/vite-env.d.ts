@@ -927,6 +927,8 @@ interface Window {
       }>;
       /** restServer: the configured server, so main knows whose copies to list (16d) */
       notifyStateChanged: (isLoggedIn: boolean, restServer: string) => void;
+      /** The server refused the refresh token and main cleared the login (no logout by the user) */
+      onSessionEnded: (callback: (info: { email: string | null }) => void) => Unsubscribe;
     };
 
     // Auth menu events

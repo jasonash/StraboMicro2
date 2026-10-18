@@ -49,6 +49,7 @@ export function SyncStatusChip() {
   const sync = useSyncStore();
   const loggedIn = useAuthStore((s) => s.isAuthenticated);
   const userPkey = useAuthStore((s) => (s.user ? String(s.user.pkey) : null));
+  const sessionEnded = useAuthStore((s) => s.sessionEnded !== null);
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
   const [modeError, setModeError] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
@@ -62,7 +63,7 @@ export function SyncStatusChip() {
 
   if (!projectOpen) return null;
 
-  const state = syncChipState(sync, { loggedIn, pkey: userPkey, restServer: getRestServerUrl() });
+  const state = syncChipState(sync, { loggedIn, pkey: userPkey, restServer: getRestServerUrl(), sessionEnded });
   const liveLine = liveNote(sync, state);
   const waiting = decisionsWaiting(sync);
   const syncing = sync.activity === 'syncing';
