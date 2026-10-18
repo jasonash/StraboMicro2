@@ -45,8 +45,6 @@ function GrainSpotStatusContent() {
     <>
       <Box
         data-testid="grain-spot-status"
-        title={lastPrepareMs !== null
-          ? `Last view analyzed in ${(lastPrepareMs / 1000).toFixed(1)} s ${backend === 'webgpu' ? 'on the GPU' : 'on the CPU'}` : undefined}
         sx={{
           position: 'absolute',
           bottom: 16,
@@ -71,6 +69,19 @@ function GrainSpotStatusContent() {
         <Typography variant="body2" sx={{ color: note && phase === 'ready' ? 'var(--warning, #f0ad4e)' : 'var(--text-secondary)' }}>
           {text}
         </Typography>
+        {/* Where views are analyzed; the only part that takes the mouse (the line lies over the image), for its tooltip */}
+        {backend && (
+          <Typography
+            variant="caption"
+            data-testid="grain-spot-backend"
+            title={lastPrepareMs !== null
+              ? `Last view analyzed in ${(lastPrepareMs / 1000).toFixed(2)} s ${backend === 'webgpu' ? 'on the GPU (WebGPU)' : 'on the CPU'}`
+              : backend === 'webgpu' ? 'Views are analyzed on the GPU (WebGPU)' : 'Views are analyzed on the CPU'}
+            sx={{ ml: 0.5, px: 0.75, borderRadius: '4px', border: '1px solid var(--border)', color: 'var(--text-secondary)', pointerEvents: 'auto', cursor: 'default' }}
+          >
+            {backend === 'webgpu' ? 'GPU' : 'CPU'}
+          </Typography>
+        )}
       </Box>
 
       <Dialog open={phase === 'needs-download' || phase === 'downloading'} maxWidth="xs" fullWidth>
