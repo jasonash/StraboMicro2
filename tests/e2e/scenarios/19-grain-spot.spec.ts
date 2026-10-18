@@ -144,10 +144,7 @@ test(`Grain Spot (${where}): a click on a grain makes a polygon spot of its outl
   await expect.poll(() => grainPhase(ana), { timeout: 60_000 }).toBe('ready');
   await expect(ana.page.getByTestId('grain-spot-status')).toContainText('Click a grain to outline it');
   expect(await ana.state((e) => e.grain.getState().backend), 'where the view was analyzed').toBe(where === 'GPU' ? 'webgpu' : 'wasm');
-  await expect(ana.page.getByTestId('grain-spot-backend')).toHaveText(where);
-  // The label takes the mouse (the rest of the status line lets clicks through), so its tooltip can show
-  await ana.page.getByTestId('grain-spot-backend').hover({ timeout: 5_000 });
-  await expect(ana.page.getByTestId('grain-spot-backend')).toHaveAttribute('title', new RegExp(`Last view analyzed in [0-9.]+ s on the ${where}`));
+  await expect(ana.page.getByTestId('grain-spot-backend')).toHaveText(new RegExp(`^${where} [0-9]+\\.[0-9]{2} s$`));
   console.log(`[19] ${where}: view analyzed in ${await ana.state((e) => e.grain.getState().lastPrepareMs)} ms`);
 
   const grain = cleanGrain();
