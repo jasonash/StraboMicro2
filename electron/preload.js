@@ -18,6 +18,7 @@ contextBridge.exposeInMainWorld('api', {
       server: arg.slice('--strabo-e2e='.length),
       ...(pollMs > 0 ? { pollMs } : {}),
       ...(timers === 'real' || timers === 'legacy' ? { timers } : {}),
+      ...(process.argv.includes('--strabo-e2e-grain-cpu') ? { grainCpu: true } : {}),
     };
   })(),
 
@@ -886,5 +887,17 @@ contextBridge.exposeInMainWorld('api', {
     },
     // Read model file bytes (renderer passes to onnxruntime-web directly)
     loadModelBytes: () => ipcRenderer.invoke('fastsam:load-model-bytes'),
+  },
+
+  // Grain Spot model (SAM 2.1 tiny): download once, bytes for the renderer's worker
+  grainSpot: {
+    status: () => ipcRenderer.invoke('grainspot:status'),
+    download: () => ipcRenderer.invoke('grainspot:download'),
+    onDownloadProgress: (callback) => {
+      const handler = (_event, progress) => callback(progress);
+      ipcRenderer.on('grainspot:download-progress', handler);
+      return () => ipcRenderer.removeListener('grainspot:download-progress', handler);
+    },
+    load: () => ipcRenderer.invoke('grainspot:load'),
   },
 });

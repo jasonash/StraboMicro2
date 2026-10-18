@@ -18,6 +18,7 @@
     "test:sibling-pair": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/siblingPair.test.mts",
     "test:polarization": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/polarization.test.mts",
     "test:auto-spot-name": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/autoSpotName.test.mts",
+    "test:grain-outline": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/grainOutline.test.mts",
     "test:custom-user-data": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/customUserData.test.mts",
     "test:custom-user-data-files": "node tests/customUserDataFiles.test.js",
     "test:project-serializer": "node tests/projectSerializer.test.js",

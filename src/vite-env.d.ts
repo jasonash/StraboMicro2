@@ -512,7 +512,7 @@ interface Window {
   api?: {
     version: string;
     /** An end-to-end test run (development only; src/services/e2eMode.ts) */
-    e2e: { server: string; pollMs?: number; timers?: 'real' | 'legacy' } | null;
+    e2e: { server: string; pollMs?: number; timers?: 'real' | 'legacy'; grainCpu?: boolean } | null;
 
     // Session state persistence (replaces localStorage for packaged builds)
     session: {
@@ -1404,6 +1404,23 @@ interface Window {
     };
     onConfigureMineralColors: (callback: () => void) => Unsubscribe;
     onSpotColorMode: (callback: (mode: 'spot-color' | 'mineral-color') => void) => Unsubscribe;
+
+    // Grain Spot model (SAM 2.1 tiny, fp16 encoder + int8 decoder; electron/grainSpotModel.js)
+    grainSpot: {
+      status: () => Promise<{ available: boolean; totalBytes: number }>;
+      download: () => Promise<{ success: boolean; error?: string }>;
+      onDownloadProgress: (callback: (progress: { percent: number; downloadedBytes: number; totalBytes: number }) => void) => Unsubscribe;
+      load: () => Promise<{
+        success: boolean;
+        error?: string;
+        encoder?: Uint8Array;
+        encoderData?: Uint8Array;
+        decoder?: Uint8Array;
+        decoderData?: Uint8Array;
+        /** File names the .onnx files expect for their weights */
+        names?: { encoderData: string; decoderData: string };
+      }>;
+    };
 
     // FastSAM Grain Detection (model management only - inference runs in renderer via onnxruntime-web)
     fastsam: {

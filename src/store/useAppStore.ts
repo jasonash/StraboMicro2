@@ -135,7 +135,12 @@ import { applySiblingLink, repairSiblingPlacements } from '@/utils/siblingPlacem
 // TYPE DEFINITIONS
 // ============================================================================
 
-export type DrawingTool = 'select' | 'point' | 'line' | 'polygon' | 'measure' | 'sketch-pen' | 'sketch-marker' | 'sketch-eraser' | 'sketch-text' | null;
+export type DrawingTool = 'select' | 'point' | 'line' | 'polygon' | 'grain' | 'measure' | 'sketch-pen' | 'sketch-marker' | 'sketch-eraser' | 'sketch-text' | null;
+
+/** Tools that make spots: auto spot mode, its strip and Esc apply to them, and a drag pans ('grain' = Grain Spot) */
+export function isSpotTool(tool: DrawingTool): boolean {
+  return tool === 'point' || tool === 'line' || tool === 'polygon' || tool === 'grain';
+}
 export type SidebarTab = 'samples' | 'groups' | 'spots' | 'tags';
 export type ThemeMode = 'dark' | 'light' | 'system';
 

@@ -9,6 +9,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { Circle, Line, Group, Text, Rect } from 'react-konva';
 import { Spot } from '@/types/project-types';
 import { useAppStore } from '@/store';
+import { isSpotTool } from '@/store/useAppStore';
 import { DEFAULT_MINERAL_COLORS, NO_MINERAL_COLOR } from '@/constants/mineralColorDefaults';
 import { loadMinerals } from '@/utils/mineralData';
 
@@ -81,7 +82,7 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
   const sketchModeActive = useAppStore((state) => state.sketchModeActive);
 
   // Spots should be non-interactive when a drawing tool is active or sketch mode is on
-  const isDrawingTool = activeTool === 'point' || activeTool === 'line' || activeTool === 'polygon' || activeTool === 'measure';
+  const isDrawingTool = isSpotTool(activeTool) || activeTool === 'measure';
   const spotsNonInteractive = sketchModeActive || isDrawingTool;
 
   // Mineral color mode state (with fallbacks for rehydration from older stored state)
