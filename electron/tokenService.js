@@ -273,6 +273,20 @@ const tokenService = {
   },
 
   /**
+   * Debug menu (dev builds): the stored access token counts as expired, so
+   * the next request renews the login. If the server ended the session, that
+   * renewal is refused, as when a session runs out after days away.
+   * @returns {Promise<boolean>} false when nobody is logged in
+   */
+  async expireAccessToken() {
+    const tokens = await this.getTokens();
+    if (!tokens || !tokens.accessToken) return false;
+    await this.saveTokens(tokens.accessToken, tokens.refreshToken, -60, tokens.user, tokens.server);
+    log.info('[TokenService] Access token marked expired (Debug menu)');
+    return true;
+  },
+
+  /**
    * Get a valid access token, automatically refreshing if expired.
    * This is the main method server handlers should use.
    * @param {string} restServer - REST server URL for refresh endpoint

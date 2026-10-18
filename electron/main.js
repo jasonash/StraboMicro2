@@ -1381,6 +1381,15 @@ function createWindow() {
             mainWindow?.webContents.send('debug:sync', 'clone', text);
           },
         },
+        {
+          // The next sync check renews the login; a login the server ended is
+          // then refused, as after days away (shows the logged-out notice)
+          label: 'Sync: Expire My Access Token',
+          click: async () => {
+            const done = await tokenService.expireAccessToken();
+            log.info(`[Debug] Expire access token: ${done ? 'done' : 'not logged in'}`);
+          },
+        },
         { type: 'separator' },
         {
           label: 'Simulate Deep Link from Clipboard',
