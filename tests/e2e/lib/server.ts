@@ -44,3 +44,9 @@ export function changeCount(projectId: string, type: string, entityId: string, o
   return Number(sql(`SELECT count(*) FROM strabomicro.micro_changes
     WHERE project_id = ${pid} AND entity_type = '${type}' AND entity_id = '${entityId}' AND op = '${op}'`));
 }
+
+/** Revoke every refresh token of an account, as the server does when a session runs out: the next refresh is refused (401) */
+export function endSessions(email: string): void {
+  if (!/^[\w.+-]+@[\w.-]+$/.test(email)) throw new Error(`Not an email: ${email}`);
+  sql(`UPDATE refresh_tokens SET revoked = TRUE WHERE userpkey = (SELECT pkey FROM users WHERE email = '${email}')`);
+}
