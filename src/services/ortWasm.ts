@@ -10,14 +10,17 @@
  * could not load ES modules straight from an asar file:// URL, which is why
  * the loader is served through the protocol handler instead.
  *
+ * build: the default import ('onnxruntime-web', FastSAM) loads the jsep
+ * files; 'onnxruntime-web/webgpu' (Grain Spot) loads the asyncify files.
+ *
  * Call from the window (not a worker): the packaged path is resolved
  * against the page's URL, and a worker gets the result as a message.
  */
 export type OrtWasmPaths = string | { mjs: string };
 
-export function ortWasmPaths(): OrtWasmPaths {
+export function ortWasmPaths(build: 'jsep' | 'asyncify' = 'jsep'): OrtWasmPaths {
   if (import.meta.env.DEV) return '/node_modules/onnxruntime-web/dist/';
-  return { mjs: new URL('ort-wasm-simd-threaded.jsep.mjs', window.location.href).href };
+  return { mjs: new URL(`ort-wasm-simd-threaded.${build}.mjs`, window.location.href).href };
 }
 
 /** Threads for WASM inference: all cores when the page is cross-origin isolated (COOP/COEP in main.js), else 1 */

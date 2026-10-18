@@ -8,8 +8,9 @@
 
 import { create } from 'zustand';
 import { ortWasmPaths, ortThreads } from '@/services/ortWasm';
+import { E2E } from '@/services/e2eMode';
 import type { GrainOutline, Point } from '@/utils/grainOutline';
-import type { SamRequest, SamResponse } from './samWorker';
+import type { SamBackend, SamRequest, SamResponse } from './samWorker';
 
 export type GrainSpotPhase =
   | 'idle' // tool not used yet
@@ -31,6 +32,8 @@ interface GrainSpotState {
   note: string | null;
   /** How long the last view analysis took, ms (shown in the status line tooltip) */
   lastPrepareMs: number | null;
+  /** Where views are analyzed: on the GPU (WebGPU) or the CPU */
+  backend: SamBackend | null;
   /** The model is in the worker: views can be analyzed */
   modelLoaded: boolean;
   /** Outline of the grain under the mouse, in image coordinates (null: none shown) */
@@ -44,6 +47,7 @@ export const useGrainSpotStore = create<GrainSpotState>()(() => ({
   error: null,
   note: null,
   lastPrepareMs: null,
+  backend: null,
   modelLoaded: false,
   preview: null,
 }));
@@ -143,8 +147,12 @@ export function start(): Promise<boolean> {
     worker = w;
     try {
       const model = { encoder: bytes.encoder, encoderData: bytes.encoderData, decoder: bytes.decoder, decoderData: bytes.decoderData, names: bytes.names };
-      const r = await send({ type: 'init', id: nextRequestId++, model, wasmPaths: ortWasmPaths(), numThreads: ortThreads() });
-      if (r.type === 'init') console.log(`[GrainSpot] Model loaded in ${Math.round(r.ms)} ms (${ortThreads()} threads)`);
+      // samWorker imports onnxruntime-web/webgpu, which loads the asyncify files
+      const r = await send({ type: 'init', id: nextRequestId++, model, wasmPaths: ortWasmPaths('asyncify'), numThreads: ortThreads(), useGpu: !E2E?.grainCpu });
+      if (r.type === 'init') {
+        console.log(`[GrainSpot] Model loaded in ${Math.round(r.ms)} ms (${r.backend === 'webgpu' ? 'GPU' : `CPU, ${ortThreads()} threads`})`);
+        setState({ backend: r.backend });
+      }
       setState({ phase: 'idle', modelLoaded: true });
       return true;
     } catch (error) {
@@ -172,8 +180,8 @@ async function encodeNext(viewId: number, capture: ViewCapture): Promise<void> {
     const r = await send({ type: 'encode', id: nextRequestId++, viewId, rgba: capture.rgba, width: capture.width, height: capture.height }, [capture.rgba.buffer]);
     if (r.type === 'encode') {
       readyViewId = viewId;
-      setState({ lastPrepareMs: Math.round(r.ms) });
-      console.log(`[GrainSpot] View ${capture.width}x${capture.height} analyzed in ${Math.round(r.ms)} ms`);
+      setState({ lastPrepareMs: Math.round(r.ms), backend: r.backend });
+      console.log(`[GrainSpot] View ${capture.width}x${capture.height} analyzed in ${Math.round(r.ms)} ms (${r.backend === 'webgpu' ? 'GPU' : 'CPU'})`);
     }
     settleView(viewId, true);
   } catch (error) {

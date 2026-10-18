@@ -512,7 +512,7 @@ interface Window {
   api?: {
     version: string;
     /** An end-to-end test run (development only; src/services/e2eMode.ts) */
-    e2e: { server: string; pollMs?: number; timers?: 'real' | 'legacy' } | null;
+    e2e: { server: string; pollMs?: number; timers?: 'real' | 'legacy'; grainCpu?: boolean } | null;
 
     // Session state persistence (replaces localStorage for packaged builds)
     session: {
@@ -1405,7 +1405,7 @@ interface Window {
     onConfigureMineralColors: (callback: () => void) => Unsubscribe;
     onSpotColorMode: (callback: (mode: 'spot-color' | 'mineral-color') => void) => Unsubscribe;
 
-    // Grain Spot model (SAM 2.1 tiny int8; electron/grainSpotModel.js)
+    // Grain Spot model (SAM 2.1 tiny, fp16 encoder + int8 decoder; electron/grainSpotModel.js)
     grainSpot: {
       status: () => Promise<{ available: boolean; totalBytes: number }>;
       download: () => Promise<{ success: boolean; error?: string }>;

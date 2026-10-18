@@ -18,6 +18,7 @@ contextBridge.exposeInMainWorld('api', {
       server: arg.slice('--strabo-e2e='.length),
       ...(pollMs > 0 ? { pollMs } : {}),
       ...(timers === 'real' || timers === 'legacy' ? { timers } : {}),
+      ...(process.argv.includes('--strabo-e2e-grain-cpu') ? { grainCpu: true } : {}),
     };
   })(),
 

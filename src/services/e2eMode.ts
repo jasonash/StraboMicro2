@@ -9,7 +9,7 @@
  */
 
 /** The test run's settings, or null outside a test run */
-export const E2E: { server: string; pollMs?: number; timers?: 'real' | 'legacy' } | null =
+export const E2E: { server: string; pollMs?: number; timers?: 'real' | 'legacy'; grainCpu?: boolean } | null =
   import.meta.env?.DEV && typeof window !== 'undefined' ? (window.api?.e2e ?? null) : null;
 
 /**

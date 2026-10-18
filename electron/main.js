@@ -604,6 +604,8 @@ function createWindow() {
           ...(Number(process.env.STRABO_E2E_POLL_MS) > 0 ? [`--strabo-e2e-poll=${Number(process.env.STRABO_E2E_POLL_MS)}`] : []),
           // Latency measurement (e2e 10-latency): the real timers, or those from before the live channel
           ...(['real', 'legacy'].includes(String(process.env.STRABO_E2E_TIMERS)) ? [`--strabo-e2e-timers=${process.env.STRABO_E2E_TIMERS}`] : []),
+          // Grain Spot on the CPU only (e2e 19: the path for computers without WebGPU)
+          ...(process.env.STRABO_E2E_GRAIN_CPU === '1' ? ['--strabo-e2e-grain-cpu'] : []),
         ],
       } : {}),
     },

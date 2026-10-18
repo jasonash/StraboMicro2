@@ -21,14 +21,14 @@ import { openSmz, viewMicrograph } from '../lib/actions';
 /** The same files as electron/grainSpotModel.js */
 const REVISION = '814a066640debee5a91e70aa401fb8e17e030503';
 const FILES = [
-  { name: 'vision_encoder_int8.onnx', sha256: 'd848e08b747ba44ee59b31246988528d5ecc67d1e1c0a2f5c08395c86d92176f' },
-  { name: 'vision_encoder_int8.onnx_data', sha256: '4359d45f8aafcbc69f945e714af7fb06b74b24c753b5af86b6a230ecd0e737bc' },
+  { name: 'vision_encoder_fp16.onnx', sha256: '7773e79d589dada8e1e630cc7eb18b17b2c5b4faeb1eaab5ebf9df618ecbd50a' },
+  { name: 'vision_encoder_fp16.onnx_data', sha256: 'a4dd3759e9b6a476d991fb3493787992e78777e51462695e1bede71ae258103e' },
   { name: 'prompt_encoder_mask_decoder_int8.onnx', sha256: 'e53727dc441a3c8716dd4a606d5bbf920e33e7545d1a6ff843c9fb804c7d19b6' },
   { name: 'prompt_encoder_mask_decoder_int8.onnx_data', sha256: 'fdb3179a32388267a944a416c0f992c77a138b69a4bfd94f0bbf7089430d7489' },
 ];
 
 async function grainModelDir(): Promise<string> {
-  const dir = path.join(os.homedir(), '.cache', 'strabomicro-e2e', 'sam2.1-hiera-tiny-int8');
+  const dir = path.join(os.homedir(), '.cache', 'strabomicro-e2e', 'sam2.1-hiera-tiny');
   fs.mkdirSync(dir, { recursive: true });
   for (const f of FILES) {
     const file = path.join(dir, f.name);
@@ -127,10 +127,14 @@ function ringArea(ring: number[][]): number {
 
 const grainPhase = (copy: Copy) => copy.state((e) => e.grain.getState().phase);
 
-test('Grain Spot: a click on a grain makes a polygon spot of its outline, named by auto spot mode; a click inside it selects it', async ({ launch, project }) => {
+// On the GPU (WebGPU) where there is one, and on the CPU as computers without WebGPU do
+for (const where of ['GPU', 'CPU'] as const) {
+test(`Grain Spot (${where}): a click on a grain makes a polygon spot of its outline, named by auto spot mode; a click inside it selects it`, async ({ launch, project }) => {
+  test.skip(where === 'GPU' && process.platform !== 'darwin', 'WebGPU is checked on macOS (every Apple Silicon Mac has it)');
   const modelDir = await grainModelDir();
   const p = await project('E2E Grain Spot');
-  const ana = await launch('Ana', ACCOUNTS.ana, { login: false, env: { STRABO_GRAIN_MODEL_DIR: modelDir } });
+  const ana = await launch('Ana', ACCOUNTS.ana, { login: false,
+    env: { STRABO_GRAIN_MODEL_DIR: modelDir, ...(where === 'CPU' ? { STRABO_E2E_GRAIN_CPU: '1' } : {}) } });
   await openSmz(ana, p.smzPath, p.id);
   await viewMicrograph(ana, p.micrographId);
 
@@ -139,6 +143,8 @@ test('Grain Spot: a click on a grain makes a polygon spot of its outline, named 
   await ana.page.getByRole('button', { name: 'Grain Spot tool' }).click();
   await expect.poll(() => grainPhase(ana), { timeout: 60_000 }).toBe('ready');
   await expect(ana.page.getByTestId('grain-spot-status')).toContainText('Click a grain to outline it');
+  expect(await ana.state((e) => e.grain.getState().backend), 'where the view was analyzed').toBe(where === 'GPU' ? 'webgpu' : 'wasm');
+  console.log(`[19] ${where}: view analyzed in ${await ana.state((e) => e.grain.getState().lastPrepareMs)} ms`);
 
   const grain = cleanGrain();
   const disc = Math.PI * grain.r * grain.r;
@@ -195,6 +201,7 @@ test('Grain Spot: a click on a grain makes a polygon spot of its outline, named 
 
   expect(await ana.unansweredDialogs()).toEqual([]);
 });
+}
 
 /** Area two circles share */
 function lensArea(r1: number, r2: number, d: number): number {

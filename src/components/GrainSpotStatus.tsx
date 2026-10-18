@@ -30,6 +30,7 @@ function GrainSpotStatusContent() {
   const error = useGrainSpotStore((s) => s.error);
   const note = useGrainSpotStore((s) => s.note);
   const lastPrepareMs = useGrainSpotStore((s) => s.lastPrepareMs);
+  const backend = useGrainSpotStore((s) => s.backend);
   const setActiveTool = useAppStore((s) => s.setActiveTool);
 
   const busy = phase === 'loading' || phase === 'preparing' || phase === 'downloading';
@@ -44,7 +45,8 @@ function GrainSpotStatusContent() {
     <>
       <Box
         data-testid="grain-spot-status"
-        title={lastPrepareMs !== null ? `Last view analyzed in ${(lastPrepareMs / 1000).toFixed(1)} s` : undefined}
+        title={lastPrepareMs !== null
+          ? `Last view analyzed in ${(lastPrepareMs / 1000).toFixed(1)} s ${backend === 'webgpu' ? 'on the GPU' : 'on the CPU'}` : undefined}
         sx={{
           position: 'absolute',
           bottom: 16,

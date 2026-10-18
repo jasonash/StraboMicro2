@@ -5,13 +5,21 @@
  * milliseconds and returns the grain's polygon in view pixels
  * (src/utils/grainOutline.ts). Only the latest view is kept.
  *
+ * The image encoder (fp16) runs on the GPU through WebGPU where there is one
+ * (about 0.13 s a view on an M4 Pro instead of 1.1 s), else on the CPU
+ * (WASM, all threads). Should the GPU fail or give non-numbers, the worker
+ * moves to the CPU for good and analyzes the view again. The decoder is
+ * small and runs on the CPU either way. This is the 'onnxruntime-web/webgpu'
+ * build: the default build's older WebGPU path gives wrong outlines with the
+ * fp16 encoder.
+ *
  * Messages in:  init { model, wasmPaths, numThreads }
  *               encode { viewId, rgba, width, height }
  *               outline { viewId, points, labels, click }
  * Messages out: the same type with the request id, or { type: 'error', id, message }
  */
 
-import * as ort from 'onnxruntime-web';
+import * as ort from 'onnxruntime-web/webgpu';
 import { outlineFromLogits, type GrainOutline, type Point } from '@/utils/grainOutline';
 
 /** The model's input is a square of this many pixels; the view is stretched onto it */
@@ -20,15 +28,18 @@ const MEAN = [0.485, 0.456, 0.406];
 const STD = [0.229, 0.224, 0.225];
 
 export type SamRequest =
-  | { type: 'init'; id: number; model: SamModelBytes; wasmPaths: string | { mjs: string }; numThreads: number }
+  | { type: 'init'; id: number; model: SamModelBytes; wasmPaths: string | { mjs: string }; numThreads: number; useGpu: boolean }
   | { type: 'encode'; id: number; viewId: number; rgba: Uint8ClampedArray; width: number; height: number }
   | { type: 'outline'; id: number; viewId: number; points: Point[]; labels: number[]; click: Point };
 
 export type SamResponse =
-  | { type: 'init'; id: number; ms: number }
-  | { type: 'encode'; id: number; viewId: number; ms: number }
+  | { type: 'init'; id: number; ms: number; backend: SamBackend }
+  | { type: 'encode'; id: number; viewId: number; ms: number; backend: SamBackend }
   | { type: 'outline'; id: number; viewId: number; outline: GrainOutline | null; ms: number }
   | { type: 'error'; id: number; message: string };
+
+/** Where the image encoder runs */
+export type SamBackend = 'webgpu' | 'wasm';
 
 export interface SamModelBytes {
   encoder: Uint8Array;
@@ -39,6 +50,9 @@ export interface SamModelBytes {
 }
 
 let encoder: ort.InferenceSession | null = null;
+let backend: SamBackend = 'wasm';
+/** Kept to build a CPU encoder should the GPU one fail */
+let encoderModel: { bytes: Uint8Array; data: Uint8Array; dataName: string } | null = null;
 let decoder: ort.InferenceSession | null = null;
 /** The decoder of this export may or may not take input_boxes; learned on the first click */
 let decoderTakesBoxes = true;
@@ -81,23 +95,84 @@ async function init(request: Extract<SamRequest, { type: 'init' }>): Promise<Sam
   ort.env.wasm.numThreads = request.numThreads;
   ort.env.logLevel = 'error';
   const { model } = request;
-  encoder = await ort.InferenceSession.create(model.encoder, {
-    executionProviders: ['wasm'],
-    externalData: [{ path: model.names.encoderData, data: model.encoderData }],
-  });
+  encoderModel = { bytes: model.encoder, data: model.encoderData, dataName: model.names.encoderData };
+  if (request.useGpu && await hasGpu()) {
+    try {
+      encoder = await createEncoder('webgpu');
+      backend = 'webgpu';
+    } catch (error) {
+      console.warn('[GrainSpot] WebGPU is not usable, analyzing on the CPU:', error);
+    }
+  }
+  if (!encoder) encoder = await createEncoder('wasm');
   decoder = await ort.InferenceSession.create(model.decoder, {
     executionProviders: ['wasm'],
     externalData: [{ path: model.names.decoderData, data: model.decoderData }],
   });
-  return { type: 'init', id: request.id, ms: performance.now() - started };
+  return { type: 'init', id: request.id, ms: performance.now() - started, backend };
+}
+
+async function hasGpu(): Promise<boolean> {
+  const gpu = (navigator as Navigator & { gpu?: { requestAdapter(): Promise<unknown> } }).gpu;
+  if (!gpu) return false;
+  try {
+    return (await gpu.requestAdapter()) !== null;
+  } catch {
+    return false;
+  }
+}
+
+function createEncoder(provider: SamBackend): Promise<ort.InferenceSession> {
+  const m = encoderModel;
+  if (!m) throw new Error('The grain model is not loaded');
+  return ort.InferenceSession.create(m.bytes, {
+    executionProviders: [provider],
+    externalData: [{ path: m.dataName, data: m.data }],
+  });
+}
+
+/** Every value a number (a GPU gone wrong can give NaN or Infinity) */
+function allFinite(outputs: Record<string, ort.Tensor>): boolean {
+  for (const t of Object.values(outputs)) {
+    const data = t.data;
+    if (!(data instanceof Float32Array)) continue;
+    for (let i = 0; i < data.length; i++) if (!Number.isFinite(data[i])) return false;
+  }
+  return true;
+}
+
+/** Leave the GPU for good: the CPU encoder takes over */
+async function fallBackToCpu(reason: unknown): Promise<void> {
+  console.warn('[GrainSpot] The GPU analysis failed, moving to the CPU:', reason);
+  const old = encoder;
+  encoder = null;
+  backend = 'wasm';
+  await old?.release().catch(() => undefined);
+  encoder = await createEncoder('wasm');
 }
 
 async function encode(request: Extract<SamRequest, { type: 'encode' }>): Promise<SamResponse> {
   if (!encoder) throw new Error('The grain model is not loaded');
   const started = performance.now();
-  const result = await encoder.run({ pixel_values: toPixelValues(request.rgba, request.width, request.height) });
+  const input = { pixel_values: toPixelValues(request.rgba, request.width, request.height) };
+  let result: Record<string, ort.Tensor> | null = null;
+  if (backend === 'webgpu') {
+    try {
+      result = await encoder.run(input);
+      if (!allFinite(result)) {
+        await fallBackToCpu('the view analysis gave non-numbers');
+        result = null;
+      }
+    } catch (error) {
+      await fallBackToCpu(error);
+    }
+  }
+  if (!result) {
+    if (!encoder) throw new Error('The grain model is not loaded');
+    result = await encoder.run(input);
+  }
   view = { viewId: request.viewId, width: request.width, height: request.height, embeddings: result };
-  return { type: 'encode', id: request.id, viewId: request.viewId, ms: performance.now() - started };
+  return { type: 'encode', id: request.id, viewId: request.viewId, ms: performance.now() - started, backend };
 }
 
 async function outline(request: Extract<SamRequest, { type: 'outline' }>): Promise<SamResponse> {
