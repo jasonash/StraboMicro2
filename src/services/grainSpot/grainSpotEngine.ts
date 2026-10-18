@@ -31,6 +31,8 @@ interface GrainSpotState {
   note: string | null;
   /** How long the last view analysis took, ms (shown in the status line tooltip) */
   lastPrepareMs: number | null;
+  /** The model is in the worker: views can be analyzed */
+  modelLoaded: boolean;
 }
 
 export const useGrainSpotStore = create<GrainSpotState>()(() => ({
@@ -40,6 +42,7 @@ export const useGrainSpotStore = create<GrainSpotState>()(() => ({
   error: null,
   note: null,
   lastPrepareMs: null,
+  modelLoaded: false,
 }));
 
 const setState = (patch: Partial<GrainSpotState>) => useGrainSpotStore.setState(patch);
@@ -80,6 +83,11 @@ function onMessage(event: MessageEvent<SamResponse>) {
   pending.delete(message.id);
   if (message.type === 'error') waiter.reject(new Error(message.message));
   else waiter.resolve(message);
+}
+
+/** The model is in the worker and views can be analyzed */
+export function isLoaded(): boolean {
+  return worker !== null && useGrainSpotStore.getState().modelLoaded;
 }
 
 /** Is the model on this computer? Sets needs-download when not. */
@@ -134,7 +142,7 @@ export function start(): Promise<boolean> {
       const model = { encoder: bytes.encoder, encoderData: bytes.encoderData, decoder: bytes.decoder, decoderData: bytes.decoderData, names: bytes.names };
       const r = await send({ type: 'init', id: nextRequestId++, model, wasmPaths: ortWasmPaths(), numThreads: ortThreads() });
       if (r.type === 'init') console.log(`[GrainSpot] Model loaded in ${Math.round(r.ms)} ms (${ortThreads()} threads)`);
-      setState({ phase: 'idle' });
+      setState({ phase: 'idle', modelLoaded: true });
       return true;
     } catch (error) {
       w.terminate();

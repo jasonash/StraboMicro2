@@ -9,6 +9,7 @@
 import { useEffect } from 'react';
 import { MenuItem, Select, Typography, Box, Tooltip } from '@mui/material';
 import { useAppStore } from '@/store';
+import { isSpotTool } from '@/store/useAppStore';
 import { useCanCreate } from '@/hooks/usePermissions';
 import { autoSpotDraft } from '@/utils/newSpot';
 import { chosenPattern } from '@/utils/autoSpotName';
@@ -27,7 +28,7 @@ export function AutoSpotStrip() {
   const activeTool = useAppStore((s) => s.activeTool);
   const activeMicrographId = useAppStore((s) => s.activeMicrographId);
   const canDraw = useCanCreate();
-  const spotTool = activeTool === 'point' || activeTool === 'line' || activeTool === 'polygon';
+  const spotTool = isSpotTool(activeTool);
   if (!autoSpotMode || !spotTool || !activeMicrographId || !canDraw) return null;
   return <AutoSpotStripContent />;
 }

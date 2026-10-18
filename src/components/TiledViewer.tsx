@@ -18,6 +18,7 @@ import { Box, CircularProgress, Typography, IconButton, Tooltip } from '@mui/mat
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
 import { useAppStore, asOwnUndoStep } from '@/store';
+import { isSpotTool } from '@/store/useAppStore';
 import { currentPermissions, useReadOnlyReason } from '@/hooks/usePermissions';
 import { editRefusal } from '@/utils/permissions';
 import { ReadOnlyScope } from './ReadOnlyScope';
@@ -48,6 +49,9 @@ import { autoSpotDraft, buildNewSpot } from '@/utils/newSpot';
 import { releaseImage, isImageUsable } from '@/utils/imageUtils';
 import './TiledViewer.css';
 import { EditingScope } from './Presence';
+import { useGrainSpotTool } from '@/hooks/useGrainSpotTool';
+import { E2E } from '@/services/e2eMode';
+import { setNote as setGrainNote } from '@/services/grainSpot/grainSpotEngine';
 
 const TILE_SIZE = 256;
 const MIN_ZOOM = 0.1;
@@ -98,6 +102,18 @@ type RenderMode = 'thumbnail' | 'tiled';
 
 interface ThumbnailState {
   imageObj: HTMLImageElement;
+}
+
+/** A polygon spot's ring in image coordinates (GeoJSON geometry or legacy points); [] for other shapes */
+function polygonRingOf(spot: Spot): Array<{ x: number; y: number }> {
+  const type = spot.geometryType || spot.geometry?.type;
+  if (type !== 'polygon' && type !== 'Polygon') return [];
+  const coords = spot.geometry?.coordinates;
+  if (Array.isArray(coords)) {
+    const ring = (Array.isArray(coords[0]) && Array.isArray((coords[0] as unknown[])[0]) ? coords[0] : coords) as unknown[];
+    return ring.flatMap((c) => (Array.isArray(c) && c.length >= 2 ? [{ x: Number(c[0]), y: Number(c[1]) }] : []));
+  }
+  return (spot.points ?? []).flatMap((p) => (typeof p.X === 'number' && typeof p.Y === 'number' ? [{ x: p.X, y: p.Y }] : []));
 }
 
 export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
@@ -480,6 +496,25 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
       return pairSpots(activeMicrograph, (id) => micrographIndex.get(id));
     }, [activeMicrograph, micrographIndex]);
 
+    // Grain Spot: the model sees the image layer as drawn, so it looks again
+    // when tiles arrive or the image changes (docs/click-a-grain-design.md)
+    const grainTool = useGrainSpotTool({
+      active: activeTool === 'grain' && !!activeMicrographId,
+      stageRef,
+      zoom,
+      position,
+      stageSize,
+      imageWidth: imageMetadata?.width ?? 0,
+      imageHeight: imageMetadata?.height ?? 0,
+      contentKey: `${imagePath}:${imageRevision}:${renderMode}:${tiles.size}:${visibleTiles.length}`,
+    });
+    // Grain clicks are handled one at a time, in order
+    const grainQueueRef = useRef<Promise<void>>(Promise.resolve());
+    // Under test: the view, so a scenario can click at image coordinates
+    useEffect(() => {
+      if (E2E) window.__e2eView = { zoom, position };
+    }, [zoom, position]);
+
     // Drawing hooks for polygon and line tools
     const polygonDrawing = usePolygonDrawing({
       layer: drawingLayerRef.current,
@@ -770,7 +805,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
           const state = useAppStore.getState();
           const tool = state.activeTool;
           const inField = e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement;
-          if (state.autoSpotMode && !inField && (tool === 'point' || tool === 'line' || tool === 'polygon')) {
+          if (state.autoSpotMode && !inField && isSpotTool(tool)) {
             state.setActiveTool(null);
           }
         }
@@ -1375,7 +1410,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
 
         // Panning: with no tool, and with a spot tool too (a drag pans; the
         // click that ends a drag is ignored by handleStageClick, so no spot)
-        if (!activeTool || activeTool === 'select' || activeTool === 'point' || activeTool === 'line' || activeTool === 'polygon') {
+        if (!activeTool || activeTool === 'select' || isSpotTool(activeTool)) {
           // Don't pan if lasso is active (point count or spot toolbar)
           if (lassoToolActive || spotLassoToolActive) return;
 
@@ -1728,6 +1763,40 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
 
         lastClickAltRef.current = !!e.evt?.altKey;
 
+        // Grain Spot: a click inside a spot selects it; elsewhere the grain's
+        // outline becomes a polygon spot (unless it runs off the screen)
+        if (activeTool === 'grain') {
+          const hit = [...effectiveSpots].reverse().find((spot) => {
+            if (spot.archived && !showArchivedSpots) return false;
+            const ring = polygonRingOf(spot);
+            return ring.length >= 3 && isPointInPolygon({ x: imageX, y: imageY }, ring);
+          });
+          if (hit) {
+            selectActiveSpot(hit.id);
+            setGrainNote(null);
+            return;
+          }
+          const alt = lastClickAltRef.current;
+          grainQueueRef.current = grainQueueRef.current.then(async () => {
+            const found = await grainTool.outlineAtScreen(pos.x, pos.y);
+            if (!found) {
+              setGrainNote('No grain found there. Try clicking nearer its middle, or zoom in.');
+              return;
+            }
+            if (found.touchesEdge) {
+              setGrainNote('That grain runs off the screen. Zoom out or pan to see all of it, then click it again.');
+              return;
+            }
+            setGrainNote(null);
+            lastClickAltRef.current = alt;
+            placeSpotRef.current({ type: 'Polygon', coordinates: [found.ring] });
+          }).catch((error: unknown) => {
+            console.error('[GrainSpot] Click failed:', error);
+            setGrainNote('The grain could not be outlined. Try again.');
+          });
+          return;
+        }
+
         // Handle point tool
         if (activeTool === 'point') {
           const pointGeometry: Geometry = {
@@ -1770,7 +1839,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
           setTextInputVisible(true);
         }
       },
-      [activeTool, position, zoom, polygonDrawing, lineDrawing, selectActiveSpot, clearSpotSelection, hasDragged, splitModeSpotId, splitLineDrawing, activeSketchLayerId, handleTextDoubleClick]
+      [activeTool, position, zoom, polygonDrawing, lineDrawing, selectActiveSpot, clearSpotSelection, hasDragged, splitModeSpotId, splitLineDrawing, activeSketchLayerId, handleTextDoubleClick, effectiveSpots, showArchivedSpots, grainTool]
     );
 
     /**
@@ -2283,9 +2352,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                   cursor:
                     isPanning && hasDragged
                       ? 'grabbing'
-                      : activeTool === 'point' ||
-                    activeTool === 'line' ||
-                    activeTool === 'polygon' ||
+                      : isSpotTool(activeTool) ||
                     activeTool === 'measure' ||
                     activeTool === 'sketch-pen' ||
                     activeTool === 'sketch-marker' ||

@@ -9,6 +9,7 @@ import { useAppStore } from '../store';
 import { useSyncStore } from '../store/useSyncStore';
 import { findMicrographById, findSpotById } from '../store/helpers';
 import { AutoSpotStrip } from './AutoSpotStrip';
+import { GrainSpotStatus } from './GrainSpotStatus';
 
 const Viewer: React.FC = () => {
   const [bottomHeight, setBottomHeight] = useState(200);
@@ -300,6 +301,7 @@ const Viewer: React.FC = () => {
         <TiledViewer ref={tiledViewerRef} imagePath={activeMicrographPath} imageRevision={imageRevision} onCursorMove={setCursorCoords} onZoomChange={setCurrentZoom} />
         <DrawingToolbar />
         <AutoSpotStrip />
+        <GrainSpotStatus />
         <SketchToolbar />
 
         {/* Warning modal when sketch layer is hidden */}

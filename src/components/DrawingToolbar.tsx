@@ -1,6 +1,6 @@
 import React from 'react';
 import { Box, IconButton, Tooltip } from '@mui/material';
-import { Straighten as RulerIcon, AutoMode as AutoModeIcon } from '@mui/icons-material';
+import { Straighten as RulerIcon, AutoMode as AutoModeIcon, AutoFixHigh as GrainIcon } from '@mui/icons-material';
 import { useAppStore } from '@/store';
 import { useCanCreate, useCanEdit } from '@/hooks/usePermissions';
 import { useToolbarDock } from '@/hooks/useToolbarDock';
@@ -47,6 +47,10 @@ const DrawingToolbar: React.FC = () => {
 
   const handlePolygonClick = () => {
     setActiveTool(activeTool === 'polygon' ? null : 'polygon');
+  };
+
+  const handleGrainClick = () => {
+    setActiveTool(activeTool === 'grain' ? null : 'grain');
   };
 
   const handleLassoClick = () => {
@@ -127,6 +131,16 @@ const DrawingToolbar: React.FC = () => {
             <circle cx="5" cy="15" r="1.5" fill="currentColor" />
             <circle cx="3" cy="7" r="1.5" fill="currentColor" />
           </svg>
+        </IconButton>
+      </Tooltip>
+
+      <Tooltip title="Grain Spot: click a grain to outline it" placement={tooltipPlacement}>
+        <IconButton
+          className={`toolbar-button ${activeTool === 'grain' ? 'active' : ''}`}
+          onClick={handleGrainClick}
+          aria-label="Grain Spot tool"
+        >
+          <GrainIcon sx={{ fontSize: 20 }} />
         </IconButton>
       </Tooltip>
 

@@ -9,6 +9,7 @@ import { useSyncStore } from '@/store/useSyncStore';
 import { useAuthStore } from '@/store/useAuthStore';
 import { useInvitationsStore } from '@/store/useInvitationsStore';
 import { usePresenceStore } from '@/store/usePresenceStore';
+import { useGrainSpotStore } from '@/services/grainSpot/grainSpotEngine';
 
 declare global {
   interface Window {
@@ -18,8 +19,11 @@ declare global {
       auth: typeof useAuthStore;
       invitations: typeof useInvitationsStore;
       presence: typeof usePresenceStore;
+      grain: typeof useGrainSpotStore;
     };
+    /** The viewer's zoom and pan (TiledViewer), so a test can click at image coordinates */
+    __e2eView?: { zoom: number; position: { x: number; y: number } };
   }
 }
 
-window.__e2e = { app: useAppStore, sync: useSyncStore, auth: useAuthStore, invitations: useInvitationsStore, presence: usePresenceStore };
+window.__e2e = { app: useAppStore, sync: useSyncStore, auth: useAuthStore, invitations: useInvitationsStore, presence: usePresenceStore, grain: useGrainSpotStore };
