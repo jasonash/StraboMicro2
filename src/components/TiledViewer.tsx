@@ -1783,7 +1783,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
               setGrainNote('No grain found there. Try clicking nearer its middle, or zoom in.');
               return;
             }
-            if (found.touchesEdge) {
+            if (found.offScreen) {
               setGrainNote('That grain runs off the screen. Zoom out or pan to see all of it, then click it again.');
               return;
             }

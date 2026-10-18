@@ -14,7 +14,7 @@ import type Konva from 'konva';
 import {
   start, prepareView, outlineAt, releaseView, isLoaded, useGrainSpotStore,
 } from '@/services/grainSpot/grainSpotEngine';
-import type { Point } from '@/utils/grainOutline';
+import { runsOffScreen, type Point, type Sides } from '@/utils/grainOutline';
 
 /** Longest side of the pixels handed to the model (its input is 1024) */
 const MAX_VIEW = 1024;
@@ -30,12 +30,15 @@ interface ViewInfo {
   scale: number;
   zoom: number;
   position: { x: number; y: number };
+  /** Sides where the screen cut the image (elsewhere the view ends where the image does) */
+  cutByScreen: Sides;
 }
 
 export interface GrainClickResult {
   /** Closed ring in image coordinates (first point not repeated) */
   ring: Array<[number, number]>;
-  touchesEdge: boolean;
+  /** The grain reaches a side of the screen, so part of it is probably off screen */
+  offScreen: boolean;
 }
 
 interface Options {
@@ -83,7 +86,8 @@ export function useGrainSpotTool({ active, stageRef, zoom, position, stageSize, 
     ctx.drawImage(source, left * ratio, top * ratio, sw, sh, 0, 0, width, height);
     const pixels = ctx.getImageData(0, 0, width, height);
     const viewId = prepareView({ rgba: pixels.data, width, height });
-    const info = { viewId, left, top, scale: width / (right - left), zoom: z, position: { ...p } };
+    const cutByScreen = { top: p.y < 0, right: p.x + iw * z > s.width, bottom: p.y + ih * z > s.height, left: p.x < 0 };
+    const info = { viewId, left, top, scale: width / (right - left), zoom: z, position: { ...p }, cutByScreen };
     viewRef.current = info;
     return info;
   }, [stageRef]);
@@ -123,7 +127,7 @@ export function useGrainSpotTool({ active, stageRef, zoom, position, stageSize, 
       const sy = v.top + vy / v.scale;
       return [(sx - v.position.x) / v.zoom, (sy - v.position.y) / v.zoom];
     });
-    return { ring, touchesEdge: found.touchesEdge };
+    return { ring, offScreen: runsOffScreen(found.edges, v.cutByScreen) };
   }, [capture]);
 
   return { outlineAtScreen };

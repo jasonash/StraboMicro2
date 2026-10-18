@@ -7,7 +7,7 @@
  */
 
 import {
-  maskFromLogits, componentAt, fillHoles, maskArea, touchesEdge, traceOutline, ringArea, simplifyRing, outlineFromLogits,
+  maskFromLogits, componentAt, fillHoles, maskArea, edgesTouched, runsOffScreen, traceOutline, ringArea, simplifyRing, outlineFromLogits,
   type MaskGrid, type Point,
 } from '../src/utils/grainOutline.ts';
 
@@ -91,9 +91,21 @@ function discLogits(lw: number, lh: number, cx: number, cy: number, r: number): 
   check('holes: an open bay is not a hole', maskArea(fillHoles(bay)) === 7);
 }
 
-// --- touchesEdge
-check('edge: inside pixel on the border', touchesEdge(grid(['#..', '...', '...'])));
-check('edge: clear of the border', !touchesEdge(grid(['...', '.#.', '...'])));
+// --- edgesTouched + runsOffScreen
+{
+  const corner = edgesTouched(grid(['#..', '...', '...']));
+  check('edge: top-left pixel touches top and left only', corner.top && corner.left && !corner.right && !corner.bottom, corner);
+  const bottom = edgesTouched(grid(['...', '...', '.#.']));
+  check('edge: bottom pixel touches the bottom only', bottom.bottom && !bottom.top && !bottom.left && !bottom.right, bottom);
+  const clear = edgesTouched(grid(['...', '.#.', '...']));
+  check('edge: clear of the border', !clear.top && !clear.right && !clear.bottom && !clear.left, clear);
+  const none = { top: false, right: false, bottom: false, left: false };
+  // Jason's case: the grain sits on the micrograph's own bottom edge, which is on screen
+  check('off screen: grain on the image edge is not off screen', !runsOffScreen({ ...none, bottom: true }, { ...none, top: true, left: true, right: true }));
+  check('off screen: grain on a side the screen cut', runsOffScreen({ ...none, bottom: true }, { ...none, bottom: true }));
+  check('off screen: one of several sides cut', runsOffScreen({ ...none, left: true, bottom: true }, { ...none, left: true }));
+  check('off screen: clear of every side', !runsOffScreen(none, { top: true, right: true, bottom: true, left: true }));
+}
 
 // --- traceOutline: a 4x4 square of pixel centers gives a ring around them
 {
@@ -145,7 +157,7 @@ check('edge: clear of the border', !touchesEdge(grid(['...', '.#.', '...'])));
   check('outline: found', both !== null);
   check('outline: the smallest of the equally good candidates (the grain)', both?.maskIndex === 0, both?.maskIndex);
   near('outline: grain area (r = 24 view px)', both?.area ?? 0, Math.PI * 24 * 24, 60);
-  check('outline: grain clear of the edge', both?.touchesEdge === false);
+  check('outline: grain clear of the edge', both !== null && !both.edges.top && !both.edges.right && !both.edges.bottom && !both.edges.left);
   // Area from the ring matches the pixel count
   near('outline: ring area close to pixel area', Math.abs(ringArea(both?.points ?? [])), both?.area ?? 0, (both?.area ?? 0) * 0.03);
   // The grain candidate scored much lower: the larger one is used
@@ -153,7 +165,7 @@ check('edge: clear of the border', !touchesEdge(grid(['...', '.#.', '...'])));
   check('outline: a clearly worse candidate is skipped', larger?.maskIndex === 1, larger?.maskIndex);
   // Only the whole view is left: it touches the edge
   const all = outlineFromLogits(logits, 3, lw, lh, [0.1, 0.1, 0.9], 256, 256, click);
-  check('outline: the whole view touches the edge', all?.maskIndex === 2 && all.touchesEdge === true);
+  check('outline: the whole view touches the edge', all?.maskIndex === 2 && all.edges.top && all.edges.right && all.edges.bottom && all.edges.left);
   // A click away from every candidate (the whole-view one dropped by its score)
   const away = outlineFromLogits(logits, 3, lw, lh, [0.9, 0.9, 0.1], 256, 256, [10, 10]);
   check('outline: nothing under the click', away === null);

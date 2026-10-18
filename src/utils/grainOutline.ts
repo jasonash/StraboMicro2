@@ -21,13 +21,21 @@ export interface MaskGrid {
 
 export type Point = [number, number];
 
+/** Sides of the view */
+export interface Sides {
+  top: boolean;
+  right: boolean;
+  bottom: boolean;
+  left: boolean;
+}
+
 export interface GrainOutline {
   /** Closed ring, first point not repeated, in view pixels */
   points: Point[];
   /** Pixels inside (after filling holes) */
   area: number;
-  /** The grain reaches the edge of the view, so part of it is probably off screen */
-  touchesEdge: boolean;
+  /** Sides of the view the grain reaches (part of it may lie beyond them) */
+  edges: Sides;
   /** Which of the model's candidate masks was used */
   maskIndex: number;
 }
@@ -148,12 +156,28 @@ export function maskArea(mask: MaskGrid): number {
   return n;
 }
 
-/** Does any inside pixel lie on the view's border? */
-export function touchesEdge(mask: MaskGrid): boolean {
+/** Which sides of the view have an inside pixel on them? */
+export function edgesTouched(mask: MaskGrid): Sides {
   const { data, width, height } = mask;
-  for (let x = 0; x < width; x++) if (data[x] || data[(height - 1) * width + x]) return true;
-  for (let y = 0; y < height; y++) if (data[y * width] || data[y * width + width - 1]) return true;
-  return false;
+  const sides = { top: false, right: false, bottom: false, left: false };
+  for (let x = 0; x < width; x++) {
+    if (data[x]) sides.top = true;
+    if (data[(height - 1) * width + x]) sides.bottom = true;
+  }
+  for (let y = 0; y < height; y++) {
+    if (data[y * width]) sides.left = true;
+    if (data[y * width + width - 1]) sides.right = true;
+  }
+  return sides;
+}
+
+/**
+ * Part of the grain is off screen when it reaches a side of the view that the
+ * screen cut; a side where the image itself ends does not count.
+ */
+export function runsOffScreen(edges: Sides, cutByScreen: Sides): boolean {
+  return (edges.top && cutByScreen.top) || (edges.right && cutByScreen.right)
+    || (edges.bottom && cutByScreen.bottom) || (edges.left && cutByScreen.left);
 }
 
 /**
@@ -314,5 +338,5 @@ export function outlineFromLogits(
   if (!chosen) return null;
   const ring = simplifyRing(traceOutline(chosen.comp), o.tolerance);
   if (ring.length < 3) return null;
-  return { points: ring, area: chosen.area, touchesEdge: touchesEdge(chosen.comp), maskIndex: chosen.index };
+  return { points: ring, area: chosen.area, edges: edgesTouched(chosen.comp), maskIndex: chosen.index };
 }
