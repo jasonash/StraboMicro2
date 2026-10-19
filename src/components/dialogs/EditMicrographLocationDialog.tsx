@@ -78,7 +78,8 @@ export function EditMicrographLocationDialog({
   micrographId,
 }: EditMicrographLocationDialogProps) {
   const project = useAppStore((state) => state.project);
-  const updateMicrographMetadata = useAppStore((state) => state.updateMicrographMetadata);
+  // Placement saves keep the micrographs placed on this one the same size (affineScale.ts)
+  const placeMicrograph = useAppStore((state) => state.placeMicrograph);
 
   // State
   const [step, setStep] = useState(0); // 0 = location method, 1 = scale method, 2 = placement
@@ -481,7 +482,7 @@ export function EditMicrographLocationDialog({
         scaleAssumedFromWidthRatio: copied.scaleAssumedFromWidthRatio,
       });
 
-      updateMicrographMetadata(micrographId, {
+      placeMicrograph(micrographId, {
         ...copied.metadata,
         ...(affineTileHash ? { affineTileHash } : {}),
         opacity,
@@ -518,16 +519,14 @@ export function EditMicrographLocationDialog({
 
     if (locationMethod === 'Place automatically on parent' && autoPlacement) {
       // Affine tiles were baked by AutoPlacementPanel
-      updateMicrographMetadata(
+      placeMicrograph(
         micrographId,
         placementUpdates(autoPlacement, parentPxPerCm, micrograph.scalePixelsPerCentimeter, opacity),
       );
     } else if (locationMethod === '3-Point Registration') {
       // Affine placement: store matrix + control points, clear other placement fields.
-      // scalePixelsPerCentimeter is a placeholder for affine descendants (effective scale
-      // is derived from the root non-affine ancestor at render time); preserve the existing
-      // value if any, otherwise default to the parent's scale.
-      updateMicrographMetadata(micrographId, {
+      // placeMicrograph stores the real scale (the parent's over the matrix's enlargement).
+      placeMicrograph(micrographId, {
         placementType: 'affine',
         affineMatrix,
         controlPoints: affineControlPoints?.map((cp) => ({
@@ -549,7 +548,7 @@ export function EditMicrographLocationDialog({
         pointInParent: undefined,
       });
     } else if (locationMethod === 'Locate as a scaled rectangle') {
-      updateMicrographMetadata(micrographId, {
+      placeMicrograph(micrographId, {
         offsetInParent: { X: offsetX, Y: offsetY },
         rotation,
         scalePixelsPerCentimeter: newChildPxPerCm,
@@ -565,7 +564,7 @@ export function EditMicrographLocationDialog({
         affineTileHash: undefined,
       });
     } else {
-      updateMicrographMetadata(micrographId, {
+      placeMicrograph(micrographId, {
         pointInParent: { X: pointX, Y: pointY },
         scalePixelsPerCentimeter: newChildPxPerCm,
         // Clear rectangle and affine placement if switching methods

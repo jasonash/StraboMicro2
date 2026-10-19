@@ -24,6 +24,7 @@ import { editRefusal } from '@/utils/permissions';
 import { ReadOnlyScope } from './ReadOnlyScope';
 import { findMicrographById, getChildMicrographs } from '@/store/helpers';
 import { pairChildren, pairSpots } from '@/utils/siblingPair';
+import { realScaleOf } from '@/utils/affineScale';
 import { AssociatedImageRenderer } from './AssociatedImageRenderer';
 import { ChildSpotsRenderer } from './ChildSpotsRenderer';
 import { SpotRenderer } from './SpotRenderer';
@@ -458,38 +459,11 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
       [pairChildList],
     );
 
-    // Compute effective scalePixelsPerCentimeter for affine-placed micrographs.
-    // Affine children often have a default scalePixelsPerCentimeter (100) because their real-world
-    // scale is defined by the affine transform relative to the parent. Walk up the ancestor chain,
-    // accumulating affine scale factors, until we reach a micrograph with a calibrated scale.
-    const effectiveScalePixelsPerCentimeter = useMemo(() => {
-      if (!activeMicrograph) return null;
-
-      // Walk up through affine ancestors accumulating the combined scale factor
-      let cumulativeAffineScale = 1;
-      let current = activeMicrograph;
-
-      while (
-        current.placementType === 'affine' &&
-        current.affineMatrix &&
-        current.parentID
-      ) {
-        const [a, , , c] = current.affineMatrix;
-        const affineScale = Math.sqrt(a * a + c * c);
-        if (affineScale <= 0) break;
-        cumulativeAffineScale *= affineScale;
-
-        const parent = micrographIndex.get(current.parentID);
-        if (!parent) break;
-        current = parent;
-      }
-
-      // current is now the root ancestor (or the micrograph itself if not affine-placed)
-      const rootScale = current.scalePixelsPerCentimeter;
-      if (!rootScale) return activeMicrograph.scalePixelsPerCentimeter ?? null;
-
-      return rootScale / cumulativeAffineScale;
-    }, [activeMicrograph, micrographIndex]);
+    // The real scale (src/utils/affineScale.ts): an affine-placed micrograph's comes from its parent
+    const effectiveScalePixelsPerCentimeter = useMemo(
+      () => (activeMicrograph ? realScaleOf(activeMicrograph, (id) => micrographIndex.get(id)) : null),
+      [activeMicrograph, micrographIndex],
+    );
 
     // Size and scale of a child's own parent, for its overlay and its spots. The other half of a
     // pair shares the active image's pixel space; the loaded image fills in a size not stored yet.
