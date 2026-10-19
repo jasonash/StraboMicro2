@@ -146,13 +146,13 @@ const { cv } = await new Promise<{ cv: OpenCV }>((resolve) => {
   check('rectangle save: offset, rotation, opacity', rect.offsetInParent?.X === 12 && rect.offsetInParent?.Y === 34 && rect.rotation === -90 && rect.opacity === 0.8, rect);
   check('rectangle save: scale = parent / scale', rect.scalePixelsPerCentimeter === 160000, rect.scalePixelsPerCentimeter);
   check('rectangle save clears affine + point', 'placementType' in rect && rect.placementType === undefined && 'affineMatrix' in rect && 'affineTileHash' in rect && 'pointInParent' in rect && rect.pointInParent === undefined);
-  // An affine outcome keeps the child's own scale as the placeholder, else the parent's
+  // An affine outcome stores its real scale: the parent's over the matrix's enlargement
   const sheared: AffineMatrix = [0.3, 0.06, 100, 0, 0.33, 50];
   const affine = { kind: 'affine' as const, ...affineFields(sheared, 1000, 800), tileHash: 'hash1' };
   const a1 = placementUpdates(affine, 40000, 55555, 1);
-  check('affine save: matrix, tiles, placeholder scale', a1.placementType === 'affine' && a1.affineMatrix === sheared && a1.affineTileHash === 'hash1' && a1.scalePixelsPerCentimeter === 55555, a1);
+  const real = 40000 / Math.sqrt(0.3 * 0.33);
+  check('affine save: matrix, tiles, real scale', a1.placementType === 'affine' && a1.affineMatrix === sheared && a1.affineTileHash === 'hash1' && Math.abs((a1.scalePixelsPerCentimeter ?? 0) - real) < 1e-6, a1);
   check('affine save clears rectangle', 'offsetInParent' in a1 && a1.offsetInParent === undefined && 'rotation' in a1 && 'scaleX' in a1);
-  check('affine save without a child scale takes the parent\'s', placementUpdates(affine, 40000, null, 1).scalePixelsPerCentimeter === 40000);
 
   const m = (id: string, extra: Partial<MicrographMetadata> = {}): MicrographMetadata => ({ id, name: id, ...extra } as MicrographMetadata);
   check('no location', !hasLocation(m('a', { parentID: 'p' })));

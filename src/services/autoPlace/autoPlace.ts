@@ -144,8 +144,9 @@ export function placeAutomatically(
 }
 
 /**
- * An ancestor placed with 3-Point Registration keeps a placeholder scale; only an affine
- * placement gets the real scale from the chain (docs/drop-to-place-design.md D6)
+ * Under an affine-placed ancestor the result is saved as affine too (docs/drop-to-place-design.md
+ * D6). D6 was needed while affine placements stored a stand-in scale; since they store the real
+ * one (src/utils/affineScale.ts) a rectangle would be right as well, but D6 is kept as tested.
  */
 export function mustPlaceAffine(project: ProjectMetadata | null, parentMicrographId: string): boolean {
   return getMicrographAncestorChain(project, parentMicrographId).some((m) => m.parentID && m.placementType === 'affine');

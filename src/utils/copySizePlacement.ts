@@ -263,8 +263,8 @@ export function computeCopiedPlacement(
       affineBoundsOffset: { x: bounds.minX, y: bounds.minY },
       affineTransformedWidth: Math.ceil(bounds.width),
       affineTransformedHeight: Math.ceil(bounds.height),
-      // Placeholder for affine descendants; the effective scale is derived from
-      // the nearest non-affine ancestor at render time
+      // The source's real scale for the new pixel size; the save stores the exact one
+      // from the parent and the matrix (src/utils/affineScale.ts)
       scalePixelsPerCentimeter,
       ...CLEAR_RECTANGLE,
       ...CLEAR_POINT,

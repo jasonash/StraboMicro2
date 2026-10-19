@@ -20,6 +20,7 @@
     "test:auto-spot-name": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/autoSpotName.test.mts",
     "test:grain-outline": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/grainOutline.test.mts",
     "test:auto-place": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/autoPlace.test.mts",
+    "test:affine-scale": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/affineScale.test.mts",
     "test:grain-encoder-check": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/grainEncoderCheck.mts",
     "test:custom-user-data": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/customUserData.test.mts",
     "test:custom-user-data-files": "node tests/customUserDataFiles.test.js",

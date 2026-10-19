@@ -123,13 +123,12 @@ import {
   buildSpotIndex,
   findSpotParentMicrograph,
   findMicrographById,
-  getDescendantMicrographs,
-  isPointPlacedMicrograph,
   mergePresetIntoSpot,
   dropDeadMemberIds,
 } from './helpers';
 import type { TiledViewerRef } from '@/components/TiledViewer';
 import { applySiblingLink, repairSiblingPlacements } from '@/utils/siblingPlacement';
+import { affineRealScale, repairAffineScales, setScaleWithCascade } from '@/utils/affineScale';
 
 // ============================================================================
 // TYPE DEFINITIONS
@@ -402,11 +401,17 @@ interface AppState {
   addMicrograph: (sampleId: string, micrograph: MicrographMetadata) => boolean;
   updateMicrographMetadata: (id: string, updates: Partial<MicrographMetadata>) => void;
   /**
-   * Set scalePixelsPerCentimeter on a micrograph and cascade the same ratio to every
-   * non-point descendant. Point-placed descendants render as markers (not scaled
-   * overlays), so their scale is independent and is intentionally left alone.
+   * Set scalePixelsPerCentimeter on a micrograph; the micrographs placed on it keep their size
+   * and place (src/utils/affineScale.ts cascadeScale: rectangles change by the same ratio,
+   * affine ones get their real scale, point-placed ones keep their measured scale).
    */
   updateMicrographScaleWithCascade: (id: string, newScale: number) => void;
+  /**
+   * Save a micrograph's placement (Edit Micrograph Location, Place children automatically):
+   * an affine placement gets its real scale from its parent's, and when the stored scale
+   * changes, the micrographs placed on it keep their size and place (as above).
+   */
+  placeMicrograph: (id: string, updates: Partial<MicrographMetadata>) => void;
   deleteMicrograph: (id: string) => void;
   reorderMicrographs: (sampleId: string, parentId: string | null, orderedIds: string[]) => void;
 
@@ -723,10 +728,16 @@ export const useAppStore = create<AppState>()(
             // PPL/XPL pairs saved before every pairing path placed the XPL where its PPL is
             const repairedCopy = structuredClone(loaded);
             const repairedSiblings = repairSiblingPlacements(repairedCopy);
-            const project = repairedSiblings.length > 0 ? repairedCopy : loaded;
             if (repairedSiblings.length > 0) {
               console.log(`[Store] Placed ${repairedSiblings.length} XPL sibling(s) with their PPL: ${repairedSiblings.join(', ')}`);
             }
+            // Affine placements saved with a stand-in scale before 2026-10-19 (src/utils/affineScale.ts)
+            const repairedScales = repairAffineScales(repairedCopy);
+            if (repairedScales.length > 0) {
+              console.log(`[Store] Real scale for ${repairedScales.length} affine-placed micrograph(s): ${repairedScales.join(', ')}`);
+            }
+            const repairs = repairedSiblings.length + repairedScales.length;
+            const project = repairs > 0 ? repairedCopy : loaded;
             const micrographIndex = buildMicrographIndex(project);
             const spotIndex = buildSpotIndex(project);
 
@@ -734,7 +745,7 @@ export const useAppStore = create<AppState>()(
               project,
               projectFilePath: filePath,
               // A repair is a change to save
-              isDirty: repairedSiblings.length > 0,
+              isDirty: repairs > 0,
               activeDatasetId: project.datasets?.[0]?.id || null,
               activeSampleId: null,
               activeMicrographId: null,
@@ -1664,32 +1675,28 @@ export const useAppStore = create<AppState>()(
           }),
 
           updateMicrographScaleWithCascade: (id, newScale) => set((state) => {
-            if (!state.project) return state;
-
-            const target = findMicrographById(state.project, id);
-            if (!target) return state;
-
-            const oldScale = target.scalePixelsPerCentimeter;
+            if (!state.project || !findMicrographById(state.project, id)) return state;
             const newProject = structuredClone(state.project);
-
-            const applyScale = (micrograph: MicrographMetadata, value: number) => {
-              micrograph.scalePixelsPerCentimeter = value;
+            setScaleWithCascade(newProject, id, newScale);
+            return {
+              project: newProject,
+              isDirty: true,
+              micrographIndex: buildMicrographIndex(newProject),
             };
+          }),
 
-            const targetClone = findMicrographById(newProject, id);
-            if (!targetClone) return state;
-            applyScale(targetClone, newScale);
-
-            if (oldScale && oldScale > 0) {
-              const ratio = newScale / oldScale;
-              const descendants = getDescendantMicrographs(newProject, id);
-              for (const descendant of descendants) {
-                if (isPointPlacedMicrograph(descendant)) continue;
-                if (descendant.scalePixelsPerCentimeter == null) continue;
-                applyScale(descendant, descendant.scalePixelsPerCentimeter * ratio);
-              }
-            }
-
+          placeMicrograph: (id, updates) => set((state) => {
+            if (!state.project || !findMicrographById(state.project, id)) return state;
+            const newProject = structuredClone(state.project);
+            const target = findMicrographById(newProject, id);
+            if (!target) return state;
+            const { scalePixelsPerCentimeter, ...placement } = updates;
+            Object.assign(target, placement);
+            const parent = target.parentID ? findMicrographById(newProject, target.parentID) : null;
+            const scale = target.placementType === 'affine'
+              ? affineRealScale(parent?.scalePixelsPerCentimeter, target.affineMatrix) ?? scalePixelsPerCentimeter
+              : scalePixelsPerCentimeter;
+            if (scale) setScaleWithCascade(newProject, id, scale);
             return {
               project: newProject,
               isDirty: true,

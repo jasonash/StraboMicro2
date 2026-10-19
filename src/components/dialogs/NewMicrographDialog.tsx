@@ -50,6 +50,7 @@ import { InstrumentDatabaseDialog, type InstrumentData } from './InstrumentDatab
 import { ScaleBarCanvas, type Tool, type ScaleBarCanvasRef } from '../ScaleBarCanvas';
 import PlacementCanvas from './PlacementCanvas';
 import AutoPlacementPanel, { type AutoPlacementOutcome } from './AutoPlacementPanel';
+import { affineRealScale } from '@/utils/affineScale';
 import { PointPlacementCanvas } from './PointPlacementCanvas';
 import { AffineRegistrationModal } from './AffineRegistrationModal';
 import { isInstrumentInfoComplete } from './InstrumentInfoForm';
@@ -1159,8 +1160,8 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
         }
       }
     } else if (isAssociated && formData.locationMethod === 'Place automatically on parent') {
-      // The parent's stored scale (for an affine result a placeholder, as with 3-Point
-      // Registration); a rectangle is that many times larger per pixel
+      // A rectangle is that many times larger per pixel than its parent; an affine result's
+      // real scale is set below, with the other affine placements
       const { project } = useAppStore.getState();
       const parentScale =
         (parentMicrographId ? findMicrographById(project, parentMicrographId)?.scalePixelsPerCentimeter : null) ?? 100;
@@ -1540,6 +1541,14 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
         isMicroVisible: true,
         isFlipped: false,
       };
+      // An affine placement (3-Point Registration, automatic, copied) stores its real scale: the
+      // parent's over the matrix's enlargement (src/utils/affineScale.ts). The XPL sibling below
+      // shares it.
+      if (micrograph.placementType === 'affine' && parentMicrographId) {
+        const parentScale = findMicrographById(useAppStore.getState().project, parentMicrographId)?.scalePixelsPerCentimeter;
+        const real = affineRealScale(parentScale, micrograph.affineMatrix);
+        if (real !== null) micrograph.scalePixelsPerCentimeter = real;
+      }
 
       // Add micrograph to store. A false return means the target sample no longer
       // exists in the project — fail loudly instead of continuing with a micrograph

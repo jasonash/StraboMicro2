@@ -139,6 +139,8 @@ test('a sheared detail is saved like a 3-Point Registration, with baked tiles', 
   expect(m.affineTileHash).toBeTruthy();
   const a = m.affineMatrix ?? [];
   expect(a).toHaveLength(6);
+  // Its real scale: the overview's over the matrix's enlargement (src/utils/affineScale.ts)
+  expect(m.scale).toBeCloseTo(OVERVIEW_SCALE / Math.sqrt(Math.abs(a[0] * a[4] - a[1] * a[3])), 6);
   // The image's center lands inside the region on the overview
   const [x, y] = [a[0] * m.imageWidth / 2 + a[1] * m.imageHeight / 2 + a[2], a[3] * m.imageWidth / 2 + a[4] * m.imageHeight / 2 + a[5]];
   expect(x).toBeGreaterThan(REGION.left / 3);

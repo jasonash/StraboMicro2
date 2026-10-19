@@ -8,6 +8,7 @@
 
 import type { AffineMatrix, ControlPoint } from '@/utils/affineTransform';
 import type { MicrographMetadata } from '@/types/project-types';
+import { affineRealScale } from '../../utils/affineScale.ts';
 
 export interface RectanglePlacement {
   /** offsetInParent, parent px */
@@ -95,8 +96,8 @@ export function toAppPixels(
 
 /**
  * The micrograph fields that save an outcome, clearing the other placement methods. A rectangle's
- * scale comes from the parent's (parent px per cm / parent px per child px). An affine placement
- * keeps a placeholder scale like 3-Point Registration (the real one comes from the ancestor chain).
+ * scale comes from the parent's (parent px per cm / parent px per child px); so does an affine
+ * placement's (src/utils/affineScale.ts).
  */
 export function placementUpdates(
   outcome: AutoPlacementOutcome,
@@ -128,7 +129,7 @@ export function placementUpdates(
     affineTransformedWidth: outcome.transformedWidth,
     affineTransformedHeight: outcome.transformedHeight,
     affineTileHash: outcome.tileHash,
-    scalePixelsPerCentimeter: childPxPerCm ?? parentPxPerCm,
+    scalePixelsPerCentimeter: affineRealScale(parentPxPerCm, outcome.matrix) ?? childPxPerCm ?? parentPxPerCm,
     opacity,
     offsetInParent: undefined,
     rotation: undefined,

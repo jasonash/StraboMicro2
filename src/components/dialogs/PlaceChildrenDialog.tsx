@@ -111,7 +111,7 @@ function statusNote(state: RowState): string | null {
 }
 
 const PlaceChildrenDialog: React.FC<PlaceChildrenDialogProps> = ({ open, parentMicrographId, onClose }) => {
-  const updateMicrographMetadata = useAppStore((state) => state.updateMicrographMetadata);
+  const placeMicrograph = useAppStore((state) => state.placeMicrograph);
   const [rows, setRows] = useState<Row[]>([]);
   const [phase, setPhase] = useState<Phase>('matching');
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -266,7 +266,7 @@ const PlaceChildrenDialog: React.FC<PlaceChildrenDialogProps> = ({ open, parentM
     for (const { id, outcome } of outcomes) {
       const child = findMicrographById(latest, id);
       if (!child) continue;
-      updateMicrographMetadata(id, placementUpdates(outcome, parentPxPerCm, child.scalePixelsPerCentimeter, child.opacity ?? 1));
+      placeMicrograph(id, placementUpdates(outcome, parentPxPerCm, child.scalePixelsPerCentimeter, child.opacity ?? 1));
     }
     console.log(`[PlaceChildren] placed ${outcomes.length} of ${checkedRows.length} on ${parentMicrograph.name}`);
     if (outcomes.length > 0) {
