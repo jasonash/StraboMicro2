@@ -130,6 +130,26 @@ import type { TiledViewerRef } from '@/components/TiledViewer';
 import { applySiblingLink, repairSiblingPlacements } from '@/utils/siblingPlacement';
 import { affineRealScale, repairAffineScales, setScaleWithCascade } from '@/utils/affineScale';
 
+/**
+ * Repairs for projects saved by earlier versions, when a project is opened or the session
+ * restores it: PPL/XPL pairs saved before every pairing path placed the XPL where its PPL is,
+ * and affine placements saved with a stand-in scale before 2026-10-19 (src/utils/affineScale.ts).
+ * Returns the project itself when nothing needed repairing.
+ */
+function repairOnOpen(loaded: ProjectMetadata): { project: ProjectMetadata; repairs: number } {
+  const copy = structuredClone(loaded);
+  const siblings = repairSiblingPlacements(copy);
+  if (siblings.length > 0) {
+    console.log(`[Store] Placed ${siblings.length} XPL sibling(s) with their PPL: ${siblings.join(', ')}`);
+  }
+  const scales = repairAffineScales(copy);
+  if (scales.length > 0) {
+    console.log(`[Store] Real scale for ${scales.length} affine-placed micrograph(s): ${scales.join(', ')}`);
+  }
+  const repairs = siblings.length + scales.length;
+  return { project: repairs > 0 ? copy : loaded, repairs };
+}
+
 // ============================================================================
 // TYPE DEFINITIONS
 // ============================================================================
@@ -725,19 +745,7 @@ export const useAppStore = create<AppState>()(
           // ========== PROJECT ACTIONS ==========
 
           loadProject: (loaded, filePath) => {
-            // PPL/XPL pairs saved before every pairing path placed the XPL where its PPL is
-            const repairedCopy = structuredClone(loaded);
-            const repairedSiblings = repairSiblingPlacements(repairedCopy);
-            if (repairedSiblings.length > 0) {
-              console.log(`[Store] Placed ${repairedSiblings.length} XPL sibling(s) with their PPL: ${repairedSiblings.join(', ')}`);
-            }
-            // Affine placements saved with a stand-in scale before 2026-10-19 (src/utils/affineScale.ts)
-            const repairedScales = repairAffineScales(repairedCopy);
-            if (repairedScales.length > 0) {
-              console.log(`[Store] Real scale for ${repairedScales.length} affine-placed micrograph(s): ${repairedScales.join(', ')}`);
-            }
-            const repairs = repairedSiblings.length + repairedScales.length;
-            const project = repairs > 0 ? repairedCopy : loaded;
+            const { project, repairs } = repairOnOpen(loaded);
             const micrographIndex = buildMicrographIndex(project);
             const spotIndex = buildSpotIndex(project);
 
@@ -3800,6 +3808,12 @@ export const useAppStore = create<AppState>()(
                   if (!micrograph.imagePath) micrograph.imagePath = micrograph.id;
                 }
               }
+            }
+            // The same repairs as opening a project (the session restores it without loadProject)
+            const { project: repaired, repairs } = repairOnOpen(state.project);
+            if (repairs > 0) {
+              state.project = repaired;
+              state.isDirty = true;
             }
             // Rebuild the micrograph and spot indexes from the project data
             state.micrographIndex = buildMicrographIndex(state.project);

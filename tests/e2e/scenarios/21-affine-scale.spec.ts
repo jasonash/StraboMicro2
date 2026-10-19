@@ -78,4 +78,13 @@ test('an affine micrograph saved with a stand-in scale gets its real scale on op
   // (in the Properties panel's measurements section, which may be collapsed)
   await expect(ana.page.getByText('125.000 μm', { exact: true }).first()).toBeAttached({ timeout: 30_000 });
   await expect(ana.page.getByText('10.000 cm', { exact: true })).toHaveCount(0);
+
+  await ana.caption('the session restore path (startup) repairs too: stand-in written back, session restored');
+  await ana.state(new Function('e', `
+    e.app.getState().updateMicrographMetadata(${JSON.stringify(affineId)}, { scalePixelsPerCentimeter: 100 });`) as never);
+  expect(await scaleOf(ana, affineId)).toBe(100);
+  // Let the session storage write, then restore it as a restart does
+  await ana.page.waitForTimeout(1500);
+  await ana.state(new Function('e', 'return e.app.persist.rehydrate()') as never);
+  await expect.poll(() => scaleOf(ana, affineId), { timeout: 15_000 }).toBeCloseTo(OVERVIEW_SCALE / S, 6);
 });

@@ -36,6 +36,16 @@ check('real scale = parent / enlargement', near(affineRealScale(40000, turn(-70,
 check('no parent scale: none', affineRealScale(null, turn(0, 0.5)) === null && affineRealScale(0, turn(0, 0.5)) === null);
 check('flat matrix: none', affineRealScale(40000, [0, 0, 1, 0, 0, 1]) === null);
 
+// Jason's AffineTest project (2026-10-19): skew_small_transformed_pink on skew_big (499.51 px/cm),
+// saved with the stand-in 100; its 1944 px line read 19.443 cm, the viewer's ruler about 1.7 cm
+{
+  const m: AffineMatrix = [0.44117971199796296, -0.031089636704449048, 993.5542725879404, 0.09178718911392687, 0.42759291698699364, 6.2677555723115566];
+  const real = affineRealScale(499.51, m) as number;
+  const line = Math.hypot(1973.3074074074 - 29.0407407407, 2195.5185185185 - 2186.1259259259);
+  check('AffineTest: real scale about 1141.5 px/cm', Math.abs(real - 1141.46) < 0.1, real);
+  check('AffineTest: the line is 1.703 cm (was 19.443 with the stand-in)', (line / real).toFixed(3) === '1.703' && (line / 100).toFixed(3) === '19.443', line / real);
+}
+
 // ---------------------------------------------------------------- a project saved with stand-ins
 //
 // P reference 40000 px/cm
