@@ -149,9 +149,10 @@ export function start(): Promise<boolean> {
     try {
       const model = { encoder: bytes.encoder, encoderData: bytes.encoderData, decoder: bytes.decoder, decoderData: bytes.decoderData, names: bytes.names };
       // samWorker imports onnxruntime-web/webgpu, which loads the asyncify files
-      const r = await send({ type: 'init', id: nextRequestId++, model, wasmPaths: ortWasmPaths('asyncify'), numThreads: ortThreads(), useGpu: !E2E?.grainCpu });
+      const r = await send({ type: 'init', id: nextRequestId++, model, wasmPaths: ortWasmPaths('asyncify'), numThreads: ortThreads(), useGpu: !E2E?.grainCpu, simulateBadGpu: E2E?.grainBadGpu === true });
       if (r.type === 'init') {
-        console.log(`[GrainSpot] Model loaded in ${Math.round(r.ms)} ms (${r.backend === 'webgpu' ? 'GPU' : `CPU, ${ortThreads()} threads`})`);
+        const check = r.gpuCheck !== undefined ? `; GPU self-check difference ${r.gpuCheck.toFixed(5)}` : '';
+        console.log(`[GrainSpot] Model loaded in ${Math.round(r.ms)} ms (${r.backend === 'webgpu' ? 'GPU' : `CPU, ${ortThreads()} threads`}${check})`);
         setState({ backend: r.backend });
       }
       setState({ phase: 'idle', modelLoaded: true });

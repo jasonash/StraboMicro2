@@ -127,14 +127,17 @@ function ringArea(ring: number[][]): number {
 
 const grainPhase = (copy: Copy) => copy.state((e) => e.grain.getState().phase);
 
-// On the GPU (WebGPU) where there is one, and on the CPU as computers without WebGPU do
-for (const where of ['GPU', 'CPU'] as const) {
+// On the GPU (WebGPU) where there is one, on the CPU as computers without
+// WebGPU do, and with a GPU whose self-check fails (wrong numbers, no error)
+for (const where of ['GPU', 'CPU', 'faulty GPU'] as const) {
 test(`Grain Spot (${where}): a click on a grain makes a polygon spot of its outline, named by auto spot mode; a click inside it selects it`, async ({ launch, project }) => {
-  test.skip(where === 'GPU' && process.platform !== 'darwin', 'WebGPU is checked on macOS (every Apple Silicon Mac has it)');
+  test.skip(where !== 'CPU' && process.platform !== 'darwin', 'WebGPU is checked on macOS (every Apple Silicon Mac has it)');
+  const label = where === 'GPU' ? 'GPU' : 'CPU';
   const modelDir = await grainModelDir();
   const p = await project('E2E Grain Spot');
   const ana = await launch('Ana', ACCOUNTS.ana, { login: false,
-    env: { STRABO_GRAIN_MODEL_DIR: modelDir, ...(where === 'CPU' ? { STRABO_E2E_GRAIN_CPU: '1' } : {}) } });
+    env: { STRABO_GRAIN_MODEL_DIR: modelDir, ...(where === 'CPU' ? { STRABO_E2E_GRAIN_CPU: '1' } : {}),
+      ...(where === 'faulty GPU' ? { STRABO_E2E_GRAIN_BAD_GPU: '1' } : {}) } });
   await openSmz(ana, p.smzPath, p.id);
   await viewMicrograph(ana, p.micrographId);
 
@@ -143,8 +146,12 @@ test(`Grain Spot (${where}): a click on a grain makes a polygon spot of its outl
   await ana.page.getByRole('button', { name: 'Grain Spot tool' }).click();
   await expect.poll(() => grainPhase(ana), { timeout: 60_000 }).toBe('ready');
   await expect(ana.page.getByTestId('grain-spot-status')).toContainText('Click a grain to outline it');
-  expect(await ana.state((e) => e.grain.getState().backend), 'where the view was analyzed').toBe(where === 'GPU' ? 'webgpu' : 'wasm');
-  await expect(ana.page.getByTestId('grain-spot-backend')).toHaveText(new RegExp(`^${where} [0-9]+\\.[0-9]{2} s$`));
+  expect(await ana.state((e) => e.grain.getState().backend), 'where the view was analyzed').toBe(label === 'GPU' ? 'webgpu' : 'wasm');
+  await expect(ana.page.getByTestId('grain-spot-backend')).toHaveText(new RegExp(`^${label} [0-9]+\\.[0-9]{2} s$`));
+  const loaded = ana.consoleLines.find((l) => l.includes('[GrainSpot] Model loaded'));
+  console.log(`[19] ${where}: ${loaded}`);
+  if (where === 'GPU') expect(loaded).toMatch(/GPU self-check difference 0\.0[0-4]/);
+  if (where === 'faulty GPU') expect(ana.consoleLines.some((l) => l.includes("The GPU's test result differs from the CPU's"))).toBe(true);
   console.log(`[19] ${where}: view analyzed in ${await ana.state((e) => e.grain.getState().lastPrepareMs)} ms`);
 
   const grain = cleanGrain();

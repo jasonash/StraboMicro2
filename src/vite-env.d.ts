@@ -512,7 +512,7 @@ interface Window {
   api?: {
     version: string;
     /** An end-to-end test run (development only; src/services/e2eMode.ts) */
-    e2e: { server: string; pollMs?: number; timers?: 'real' | 'legacy'; grainCpu?: boolean } | null;
+    e2e: { server: string; pollMs?: number; timers?: 'real' | 'legacy'; grainCpu?: boolean; grainBadGpu?: boolean } | null;
 
     // Session state persistence (replaces localStorage for packaged builds)
     session: {

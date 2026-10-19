@@ -9,7 +9,9 @@
  * missing on many Windows GPUs) runs on the GPU through WebGPU where there
  * is one (about 0.2 s a view on an M4 Pro instead of 1 s), else on the CPU
  * (WASM, all threads). Should the GPU fail or give non-numbers, the worker
- * moves to the CPU for good and analyzes the view again. The decoder is
+ * moves to the CPU for good and analyzes the view again. Before it is used,
+ * the GPU analyzes a built-in test image whose correct result is known
+ * (encoderCheck.ts); a GPU that gets it wrong is not used. The decoder is
  * small and runs on the CPU either way. This is the 'onnxruntime-web/webgpu'
  * build: the default build's older WebGPU path gave wrong outlines with an
  * fp16 encoder in our tests.
@@ -22,19 +24,15 @@
 
 import * as ort from 'onnxruntime-web/webgpu';
 import { outlineFromLogits, type GrainOutline, type Point } from '@/utils/grainOutline';
-
-/** The model's input is a square of this many pixels; the view is stretched onto it */
-const INPUT = 1024;
-const MEAN = [0.485, 0.456, 0.406];
-const STD = [0.229, 0.224, 0.225];
+import { checkImage, difference, pixelValues, EXPECTED, INPUT, MAX_DIFFERENCE } from './encoderCheck';
 
 export type SamRequest =
-  | { type: 'init'; id: number; model: SamModelBytes; wasmPaths: string | { mjs: string }; numThreads: number; useGpu: boolean }
+  | { type: 'init'; id: number; model: SamModelBytes; wasmPaths: string | { mjs: string }; numThreads: number; useGpu: boolean; simulateBadGpu?: boolean }
   | { type: 'encode'; id: number; viewId: number; rgba: Uint8ClampedArray; width: number; height: number }
   | { type: 'outline'; id: number; viewId: number; points: Point[]; labels: number[]; click: Point };
 
 export type SamResponse =
-  | { type: 'init'; id: number; ms: number; backend: SamBackend }
+  | { type: 'init'; id: number; ms: number; backend: SamBackend; gpuCheck?: number }
   | { type: 'encode'; id: number; viewId: number; ms: number; backend: SamBackend }
   | { type: 'outline'; id: number; viewId: number; outline: GrainOutline | null; ms: number }
   | { type: 'error'; id: number; message: string };
@@ -61,35 +59,6 @@ let view: { viewId: number; width: number; height: number; embeddings: Record<st
 
 const reply = (message: SamResponse) => (self as unknown as Worker).postMessage(message);
 
-/** RGBA view pixels -> normalized CHW float tensor of INPUT x INPUT, bilinear */
-function toPixelValues(rgba: Uint8ClampedArray, width: number, height: number): ort.Tensor {
-  const out = new Float32Array(3 * INPUT * INPUT);
-  const plane = INPUT * INPUT;
-  const sx = width / INPUT;
-  const sy = height / INPUT;
-  for (let y = 0; y < INPUT; y++) {
-    const v = Math.min(Math.max((y + 0.5) * sy - 0.5, 0), height - 1);
-    const y0 = Math.floor(v);
-    const y1 = Math.min(y0 + 1, height - 1);
-    const fy = v - y0;
-    for (let x = 0; x < INPUT; x++) {
-      const u = Math.min(Math.max((x + 0.5) * sx - 0.5, 0), width - 1);
-      const x0 = Math.floor(u);
-      const x1 = Math.min(x0 + 1, width - 1);
-      const fx = u - x0;
-      const i00 = (y0 * width + x0) * 4;
-      const i01 = (y0 * width + x1) * 4;
-      const i10 = (y1 * width + x0) * 4;
-      const i11 = (y1 * width + x1) * 4;
-      for (let c = 0; c < 3; c++) {
-        const value = (rgba[i00 + c] * (1 - fx) + rgba[i01 + c] * fx) * (1 - fy) + (rgba[i10 + c] * (1 - fx) + rgba[i11 + c] * fx) * fy;
-        out[c * plane + y * INPUT + x] = (value / 255 - MEAN[c]) / STD[c];
-      }
-    }
-  }
-  return new ort.Tensor('float32', out, [1, 3, INPUT, INPUT]);
-}
-
 async function init(request: Extract<SamRequest, { type: 'init' }>): Promise<SamResponse> {
   const started = performance.now();
   ort.env.wasm.wasmPaths = request.wasmPaths;
@@ -97,10 +66,18 @@ async function init(request: Extract<SamRequest, { type: 'init' }>): Promise<Sam
   ort.env.logLevel = 'error';
   const { model } = request;
   encoderModel = { bytes: model.encoder, data: model.encoderData, dataName: model.names.encoderData };
+  let gpuCheck: number | undefined;
   if (request.useGpu && await hasGpu()) {
     try {
-      encoder = await createEncoder('webgpu');
-      backend = 'webgpu';
+      const gpu = await createEncoder('webgpu');
+      gpuCheck = await checkEncoder(gpu, request.simulateBadGpu === true);
+      if (gpuCheck <= MAX_DIFFERENCE) {
+        encoder = gpu;
+        backend = 'webgpu';
+      } else {
+        console.warn(`[GrainSpot] The GPU's test result differs from the CPU's (difference ${gpuCheck.toFixed(4)}, at most ${MAX_DIFFERENCE} allowed), analyzing on the CPU`);
+        await gpu.release().catch(() => undefined);
+      }
     } catch (error) {
       console.warn('[GrainSpot] WebGPU is not usable, analyzing on the CPU:', error);
     }
@@ -111,7 +88,22 @@ async function init(request: Extract<SamRequest, { type: 'init' }>): Promise<Sam
     logSeverityLevel: 3,
     externalData: [{ path: model.names.decoderData, data: model.decoderData }],
   });
-  return { type: 'init', id: request.id, ms: performance.now() - started, backend };
+  return { type: 'init', id: request.id, ms: performance.now() - started, backend, gpuCheck };
+}
+
+/**
+ * The built-in test image through this encoder: how far its result is from
+ * the CPU's (encoderCheck.ts). simulateBadGpu (tests only) skews the result
+ * by 10 %, as a faulty GPU might.
+ */
+async function checkEncoder(session: ort.InferenceSession, simulateBadGpu: boolean): Promise<number> {
+  const image = checkImage();
+  const result = await session.run({ pixel_values: new ort.Tensor('float32', pixelValues(image.rgba, image.width, image.height), [1, 3, INPUT, INPUT]) });
+  const outputs = Object.fromEntries(Object.entries(result).map(([name, t]) => {
+    const data = t.data as Float32Array;
+    return [name, simulateBadGpu ? data.map((v) => v * 1.1) : data];
+  }));
+  return difference(outputs, EXPECTED);
 }
 
 async function hasGpu(): Promise<boolean> {
@@ -158,7 +150,7 @@ async function fallBackToCpu(reason: unknown): Promise<void> {
 async function encode(request: Extract<SamRequest, { type: 'encode' }>): Promise<SamResponse> {
   if (!encoder) throw new Error('The grain model is not loaded');
   const started = performance.now();
-  const input = { pixel_values: toPixelValues(request.rgba, request.width, request.height) };
+  const input = { pixel_values: new ort.Tensor('float32', pixelValues(request.rgba, request.width, request.height), [1, 3, INPUT, INPUT]) };
   let result: Record<string, ort.Tensor> | null = null;
   if (backend === 'webgpu') {
     try {
