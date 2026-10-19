@@ -69,6 +69,7 @@ import { ConfirmDialog } from './dialogs/ConfirmDialog';
 import { AddMicrographToGroupsDialog } from './dialogs/AddMicrographToGroupsDialog';
 import { EditMicrographDialog } from './dialogs/metadata/EditMicrographDialog';
 import { EditMicrographLocationDialog } from './dialogs/EditMicrographLocationDialog';
+import PlaceChildrenDialog, { PlaceChildrenOffer } from './dialogs/PlaceChildrenDialog';
 import { CompleteInstrumentInfoDialog } from './dialogs/CompleteInstrumentInfoDialog';
 import { BatchImportDialog } from './dialogs/BatchImportDialog';
 import { SetScaleDialog } from './dialogs/SetScaleDialog';
@@ -77,6 +78,7 @@ import { AddSiblingDialog } from './dialogs/AddSiblingDialog';
 import { findMicrographById } from '@/store/helpers';
 import { hiddenSibling, pairPartner } from '@/utils/siblingPair';
 import { partnerRole, polarizedRole } from '@/utils/polarization';
+import { cannotPlaceChildrenReason, hasLocation, unplacedChildren } from '@/utils/micrographLocation';
 import type { DatasetMetadata, SampleMetadata, MicrographMetadata } from '@/types/project-types';
 import { EditingScope, PresenceMarks } from './Presence';
 
@@ -364,6 +366,12 @@ export function ProjectTree() {
   const [editingMicrographId, setEditingMicrographId] = useState<string | null>(null);
   const [showEditLocation, setShowEditLocation] = useState(false);
   const [editLocationMicrographId, setEditLocationMicrographId] = useState<string | null>(null);
+  // Place children automatically: the parent whose unplaced children are placed
+  const [placeChildrenParentId, setPlaceChildrenParentId] = useState<string | null>(null);
+  // Clicking an unplaced child offers placing all its siblings; "Just this one" stops the
+  // question for that parent until another project is opened
+  const [placeChildrenOffer, setPlaceChildrenOffer] = useState<{ childId: string; parentId: string } | null>(null);
+  const [declinedPlaceAll, setDeclinedPlaceAll] = useState<{ projectId: string | null; parentIds: string[] }>({ projectId: null, parentIds: [] });
   const [showAddToGroups, setShowAddToGroups] = useState(false);
   const [addToGroupsMicrograph, setAddToGroupsMicrograph] = useState<MicrographMetadata | null>(
     null
@@ -755,12 +763,7 @@ export function ProjectTree() {
     // Mirror the warning-icon criteria (needsLocation in renderMicrograph): an
     // associated micrograph with a scale but no placement is still un-set-up and
     // must go through the location dialog, not open in the viewer.
-    const hasLocation =
-      micrograph.offsetInParent ||
-      micrograph.pointInParent ||
-      micrograph.xOffset !== undefined ||
-      micrograph.placementType === 'affine';
-    if (isAssociated && (noScale || !hasLocation)) {
+    if (isAssociated && (noScale || !hasLocation(micrograph))) {
       setEditLocationMicrographId(micrographId);
       setShowEditLocation(true);
       return;
@@ -773,10 +776,30 @@ export function ProjectTree() {
     selectMicrograph(micrographId);
   };
 
+  // An unplaced child with unplaced siblings (as after a Batch Import): offer placing them all
+  // automatically before anything else
+  const placeAllOfferFor = (micrographId: string): { childId: string; parentId: string } | null => {
+    const micrograph = findMicrographById(project, micrographId);
+    const parent = micrograph?.parentID ? findMicrographById(project, micrograph.parentID) : null;
+    if (!project || !micrograph || !parent || hasLocation(micrograph) || !may('micrograph', micrograph.id)) return null;
+    if (declinedPlaceAll.projectId === project.id && declinedPlaceAll.parentIds.includes(parent.id)) return null;
+    if (cannotPlaceChildrenReason(parent) !== null || unplacedChildren(project, parent.id).length < 2) return null;
+    return { childId: micrograph.id, parentId: parent.id };
+  };
+
   const handleMicrographClick = (micrographId: string) => {
+    const offer = placeAllOfferFor(micrographId);
+    if (offer) {
+      setPlaceChildrenOffer(offer);
+      return;
+    }
+    continueAfterPlaceAllOffer(micrographId);
+  };
+
+  const continueAfterPlaceAllOffer = (micrographId: string) => {
     if (project) {
       const micrograph = findMicrographById(project, micrographId);
-      // Batch-imported without instrument info: prompt for it before anything else.
+      // Batch-imported without instrument info: prompt for it before the scale and location.
       if (micrograph?.needsInstrumentInfo) {
         setCompleteInstrumentInfoMicrographId(micrographId);
         setShowCompleteInstrumentInfo(true);
@@ -1024,9 +1047,7 @@ export function ProjectTree() {
 
     // Check if micrograph needs setup (missing scale, location, or instrument info)
     const needsScale = !micrograph.scalePixelsPerCentimeter;
-    // Location can be set via offsetInParent (scaled rectangle), pointInParent (approximate point), or affine placement
-    const hasLocation = micrograph.offsetInParent || micrograph.pointInParent || micrograph.xOffset !== undefined || micrograph.placementType === 'affine';
-    const needsLocation = !isReference && !hasLocation;
+    const needsLocation = !isReference && !hasLocation(micrograph);
     // Set only by Batch Import when "Instrument and Image Info" was unchecked; legacy/manual-import micrographs leave this absent.
     const needsInstrumentInfo = !!micrograph.needsInstrumentInfo;
     const needsSetup = needsScale || needsLocation || needsInstrumentInfo;
@@ -1332,6 +1353,25 @@ export function ProjectTree() {
               </MenuItem>
             </>
           )}
+          {unplacedChildren(project, micrograph.id).length > 0 && (() => {
+            const reason = cannotPlaceChildrenReason(micrograph);
+            return (
+              <MenuItem
+                disabled={!may('micrograph', micrograph.id) || reason !== null}
+                onClick={() => {
+                  setPlaceChildrenParentId(micrograph.id);
+                  setMicrographOptionsAnchor({ ...micrographOptionsAnchor, [micrograph.id]: null });
+                }}
+              >
+                <Box>
+                  <Typography variant="body2">Place children automatically...</Typography>
+                  {reason && (
+                    <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block' }}>{reason}</Typography>
+                  )}
+                </Box>
+              </MenuItem>
+            );
+          })()}
           <MenuItem
             disabled={!may('micrograph', micrograph.id)}
             onClick={() => {
@@ -2037,6 +2077,41 @@ export function ProjectTree() {
         />
       )}
 
+      {/* Place children automatically (menu, or the offer on clicking an unplaced child) */}
+      {placeChildrenParentId && (
+        <PlaceChildrenDialog
+          open
+          parentMicrographId={placeChildrenParentId}
+          onClose={() => setPlaceChildrenParentId(null)}
+        />
+      )}
+      {placeChildrenOffer && (() => {
+        const child = findMicrographById(project, placeChildrenOffer.childId);
+        const parent = findMicrographById(project, placeChildrenOffer.parentId);
+        return (
+          <PlaceChildrenOffer
+            open
+            childName={child?.name || 'This micrograph'}
+            parentName={parent?.name || 'its parent'}
+            others={unplacedChildren(project, placeChildrenOffer.parentId).length - 1}
+            onPlaceAll={() => {
+              setPlaceChildrenOffer(null);
+              setPlaceChildrenParentId(placeChildrenOffer.parentId);
+            }}
+            onJustThisOne={() => {
+              const projectId = project?.id ?? null;
+              setDeclinedPlaceAll((prev) => ({
+                projectId,
+                parentIds: [...(prev.projectId === projectId ? prev.parentIds : []), placeChildrenOffer.parentId],
+              }));
+              setPlaceChildrenOffer(null);
+              continueAfterPlaceAllOffer(placeChildrenOffer.childId);
+            }}
+            onClose={() => setPlaceChildrenOffer(null)}
+          />
+        );
+      })()}
+
       {/* Complete Instrument & Image Info Dialog (batch-imported micrographs without instrument info) */}
       <CompleteInstrumentInfoDialog
         isOpen={showCompleteInstrumentInfo}
@@ -2202,6 +2277,7 @@ export function ProjectTree() {
         }}
         sampleId={batchImportSampleId}
         parentMicrographId={batchImportParentMicrographId}
+        onPlaceChildren={setPlaceChildrenParentId}
       />
 
       {/* Set Scale Dialog (for batch-imported reference micrographs) */}

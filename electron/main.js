@@ -3429,6 +3429,18 @@ ipcMain.handle('image:get-dimensions', async (event, imagePath) => {
 });
 
 /**
+ * A grayscale region of an image, for "Place automatically on parent"
+ */
+ipcMain.handle('image:read-gray-region', async (event, imagePath, rect, maxSide) => {
+  try {
+    return await imageConverter.readGrayRegion(imagePath, rect, maxSide);
+  } catch (error) {
+    log.error('[IPC] Error reading gray region:', error);
+    throw error;
+  }
+});
+
+/**
  * Check if file is a valid image
  */
 ipcMain.handle('image:is-valid', async (event, filePath) => {

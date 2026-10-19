@@ -299,6 +299,7 @@ contextBridge.exposeInMainWorld('api', {
   generateImageVariants: (sourcePath, projectId, micrographId) =>
     ipcRenderer.invoke('image:generate-variants', sourcePath, projectId, micrographId),
   getImageDimensions: (imagePath) => ipcRenderer.invoke('image:get-dimensions', imagePath),
+  readGrayRegion: (imagePath, rect, maxSide) => ipcRenderer.invoke('image:read-gray-region', imagePath, rect, maxSide),
   isValidImage: (filePath) => ipcRenderer.invoke('image:is-valid', filePath),
   rotateImage: (imagePath, degrees, flip) => ipcRenderer.invoke('image:rotate', imagePath, degrees, flip),
 
