@@ -320,7 +320,11 @@ const PlaceChildrenDialog: React.FC<PlaceChildrenDialogProps> = ({ open, parentM
           )}
           {phase !== 'matching' && rows.length > 0 && (
             <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-              {`Found ${counts.found}, low confidence ${counts.low}, not placed ${counts.other} of ${rows.length}. `}
+              {`Of ${rows.length}: ${[
+                `${counts.found} found`,
+                counts.low > 0 ? `${counts.low} low confidence` : '',
+                counts.other > 0 ? `${counts.other} not found` : '',
+              ].filter(Boolean).join(', ')}. `}
               Checked micrographs are placed when you click Place. The others stay unplaced; place them later
               with Edit Micrograph Location.
             </Typography>
