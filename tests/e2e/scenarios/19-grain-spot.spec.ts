@@ -21,14 +21,14 @@ import { openSmz, viewMicrograph } from '../lib/actions';
 /** The same files as electron/grainSpotModel.js */
 const REVISION = '814a066640debee5a91e70aa401fb8e17e030503';
 const FILES = [
-  { name: 'vision_encoder_fp16.onnx', sha256: '7773e79d589dada8e1e630cc7eb18b17b2c5b4faeb1eaab5ebf9df618ecbd50a' },
-  { name: 'vision_encoder_fp16.onnx_data', sha256: 'a4dd3759e9b6a476d991fb3493787992e78777e51462695e1bede71ae258103e' },
+  { name: 'vision_encoder.onnx', sha256: '4f30aacd3aaefbca81a0b7fe4c1fc96345570ea0a6f80ced599493d1b3be2e8c' },
+  { name: 'vision_encoder.onnx_data', sha256: 'e83df9866a5afe68ea7f0f721f18f65137fc3acbf0da1c74e946d363e09c69cc' },
   { name: 'prompt_encoder_mask_decoder_int8.onnx', sha256: 'e53727dc441a3c8716dd4a606d5bbf920e33e7545d1a6ff843c9fb804c7d19b6' },
   { name: 'prompt_encoder_mask_decoder_int8.onnx_data', sha256: 'fdb3179a32388267a944a416c0f992c77a138b69a4bfd94f0bbf7089430d7489' },
 ];
 
 async function grainModelDir(): Promise<string> {
-  const dir = path.join(os.homedir(), '.cache', 'strabomicro-e2e', 'sam2.1-hiera-tiny');
+  const dir = path.join(os.homedir(), '.cache', 'strabomicro-e2e', 'sam2.1-hiera-tiny-fp32');
   fs.mkdirSync(dir, { recursive: true });
   for (const f of FILES) {
     const file = path.join(dir, f.name);

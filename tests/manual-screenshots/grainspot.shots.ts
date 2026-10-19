@@ -15,7 +15,7 @@ import { openDemo, setWindowSize, settle, shot, shotRect, view } from './lib';
 
 const DEMO = { id: '563a2289-0d40-44b6-abe2-2525e270aab9', name: 'Grain Spot Demo' };
 const SMZ = process.env.MANUAL_GRAIN_DEMO || path.join(os.homedir(), 'Desktop', 'Grain_Spot_Demo.smz');
-const MODEL = process.env.MANUAL_GRAIN_MODEL || path.join(os.homedir(), '.cache', 'strabomicro-e2e', 'sam2.1-hiera-tiny');
+const MODEL = process.env.MANUAL_GRAIN_MODEL || path.join(os.homedir(), '.cache', 'strabomicro-e2e', 'sam2.1-hiera-tiny-fp32');
 
 test('grain spot', async ({ launch }) => {
   if (!fs.existsSync(SMZ)) throw new Error(`Grain Spot demo project missing: ${SMZ} (set MANUAL_GRAIN_DEMO)`);
