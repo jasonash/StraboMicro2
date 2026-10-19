@@ -606,6 +606,8 @@ function createWindow() {
           ...(['real', 'legacy'].includes(String(process.env.STRABO_E2E_TIMERS)) ? [`--strabo-e2e-timers=${process.env.STRABO_E2E_TIMERS}`] : []),
           // Grain Spot on the CPU only (e2e 19: the path for computers without WebGPU)
           ...(process.env.STRABO_E2E_GRAIN_CPU === '1' ? ['--strabo-e2e-grain-cpu'] : []),
+          // A GPU whose self-check fails (e2e 19: wrong numbers without an error)
+          ...(process.env.STRABO_E2E_GRAIN_BAD_GPU === '1' ? ['--strabo-e2e-grain-bad-gpu'] : []),
         ],
       } : {}),
     },
