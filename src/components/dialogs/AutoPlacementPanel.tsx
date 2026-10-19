@@ -11,27 +11,17 @@
  */
 
 import React, { useCallback, useEffect, useState } from 'react';
-import { Alert, Box, Button, LinearProgress, Stack, Typography } from '@mui/material';
+import { Alert, Button, LinearProgress, Stack, Typography } from '@mui/material';
 import { useAppStore } from '@/store';
 import { useLatest } from '@/hooks/useLatest';
-import { findMicrographById, getMicrographAncestorChain } from '@/store/helpers';
-import { placeAutomatically, type AutoPlaceResult } from '@/services/autoPlace/autoPlace';
-import { affineFields, rectangleFields, type RectanglePlacement } from '@/services/autoPlace/placementFields';
-import type { AffineMatrix, ControlPoint } from '@/utils/affineTransform';
+import { findMicrographById } from '@/store/helpers';
+import { bakeAffineOutcome, mustPlaceAffine, placeAutomatically, type AutoPlaceResult } from '@/services/autoPlace/autoPlace';
+import { rectangleFields, type AutoPlacementOutcome, type RectanglePlacement } from '@/services/autoPlace/placementFields';
 import PlacementCanvas from './PlacementCanvas';
 import { AffineRegistrationModal } from './AffineRegistrationModal';
+import FootprintPreview from './FootprintPreview';
 
-export type AutoPlacementOutcome =
-  | ({ kind: 'rectangle' } & RectanglePlacement)
-  | {
-      kind: 'affine';
-      matrix: AffineMatrix;
-      controlPoints: ControlPoint[];
-      boundsOffset: { x: number; y: number };
-      transformedWidth: number;
-      transformedHeight: number;
-      tileHash: string;
-    };
+export type { AutoPlacementOutcome };
 
 export type HandPlacementMethod = 'Locate as a scaled rectangle' | '3-Point Registration';
 
@@ -98,11 +88,7 @@ const AutoPlacementPanel: React.FC<AutoPlacementPanelProps> = ({
       setParentPath(fullParentPath);
       const parentWidth = parent.imageWidth || parent.width || 0;
       const parentHeight = parent.imageHeight || parent.height || 0;
-      // An ancestor placed with 3-Point Registration keeps a placeholder scale; only an affine
-      // placement gets the real scale from the chain (docs/drop-to-place-design.md D6)
-      const mustBeAffine = getMicrographAncestorChain(project, parentMicrographId).some(
-        (m) => m.parentID && m.placementType === 'affine',
-      );
+      const mustBeAffine = mustPlaceAffine(project, parentMicrographId);
       setForcedAffine(mustBeAffine);
 
       const placing = placeAutomatically(
@@ -128,15 +114,8 @@ const AutoPlacementPanel: React.FC<AutoPlacementPanelProps> = ({
       }
       // Affine: bake the overlay tiles the way the 3-Point Registration modal does
       setPhase({ name: 'baking' });
-      const fields = affineFields(result.appMatrix, detailWidth, detailHeight);
-      const tiles = await window.api.loadImageWithTiles(detailPath);
-      const baked = await window.api.generateAffineTiles(detailPath, tiles.hash, fields.matrix);
+      const outcome = await bakeAffineOutcome(result.appMatrix, { path: detailPath, width: detailWidth, height: detailHeight });
       if (cancelled) return;
-      if (!baked?.success) {
-        setPhase({ name: 'failed', message: `The overlay tiles could not be made: ${baked?.error ?? 'unknown error'}` });
-        return;
-      }
-      const outcome = { kind: 'affine' as const, ...fields, tileHash: tiles.hash };
       setAffine(outcome);
       onOutcomeRef.current(outcome);
       setPhase({ name: 'done', result });
@@ -267,9 +246,8 @@ const AutoPlacementPanel: React.FC<AutoPlacementPanelProps> = ({
           <FootprintPreview
             parentPath={parentPath}
             parentMicrographId={parentMicrographId}
-            matrix={affine.matrix}
-            width={detailWidth}
-            height={detailHeight}
+            footprints={[{ matrix: affine.matrix, width: detailWidth, height: detailHeight }]}
+            maxWidth={800}
           />
         )}
         <Stack direction="row" spacing={1}>
@@ -294,58 +272,6 @@ const AutoPlacementPanel: React.FC<AutoPlacementPanelProps> = ({
     );
   }
   return null;
-};
-
-/** The parent's thumbnail with the placed image's outline on it */
-const FootprintPreview: React.FC<{
-  parentPath: string;
-  parentMicrographId: string;
-  matrix: AffineMatrix;
-  width: number;
-  height: number;
-}> = ({ parentPath, parentMicrographId, matrix, width, height }) => {
-  const [thumbnail, setThumbnail] = useState<{ url: string; width: number; height: number } | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      const tiles = await window.api?.loadImageWithTiles(parentPath);
-      if (!tiles) return;
-      const url = await window.api?.loadThumbnail(tiles.hash);
-      if (!cancelled && url) setThumbnail({ url, width: tiles.metadata.width, height: tiles.metadata.height });
-    })().catch((error: unknown) => console.warn('[AutoPlacement] preview not loaded', error));
-    return () => {
-      cancelled = true;
-    };
-  }, [parentPath]);
-
-  const parent = findMicrographById(useAppStore.getState().project, parentMicrographId);
-  const parentWidth = parent?.imageWidth || parent?.width || thumbnail?.width || 1;
-  const parentHeight = parent?.imageHeight || parent?.height || thumbnail?.height || 1;
-  if (!thumbnail) return <Box sx={{ height: 300 }} />;
-  const corners = [
-    [0, 0],
-    [width, 0],
-    [width, height],
-    [0, height],
-  ].map(([x, y]) => [matrix[0] * x + matrix[1] * y + matrix[2], matrix[3] * x + matrix[4] * y + matrix[5]]);
-  return (
-    <Box sx={{ position: 'relative', maxWidth: 800, alignSelf: 'center' }}>
-      <img src={thumbnail.url} alt="Parent micrograph" style={{ display: 'block', width: '100%', height: 'auto' }} />
-      <svg
-        viewBox={`0 0 ${parentWidth} ${parentHeight}`}
-        preserveAspectRatio="none"
-        style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}
-      >
-        <polygon
-          points={corners.map((c) => c.join(',')).join(' ')}
-          fill="rgba(0, 200, 255, 0.2)"
-          stroke="#00c8ff"
-          strokeWidth={Math.max(parentWidth, parentHeight) / 300}
-        />
-      </svg>
-    </Box>
-  );
 };
 
 export default AutoPlacementPanel;

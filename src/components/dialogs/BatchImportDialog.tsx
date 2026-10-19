@@ -55,6 +55,8 @@ import {
 } from '@/utils/rotationUtils';
 import { useAppStore } from '@/store';
 import type { MicrographMetadata } from '@/types/project-types';
+import { findMicrographById } from '@/store/helpers';
+import { cannotPlaceChildrenReason } from '@/utils/micrographLocation';
 import { InstrumentInfoForm, isInstrumentInfoComplete, type InstrumentFormData } from './InstrumentInfoForm';
 import { InstrumentDataForm, type InstrumentDataFormData, type Detector, initialInstrumentDataFormData } from './InstrumentDataForm';
 import { OrientationForm, type OrientationFormData, initialOrientationData, validateOrientationForm } from './OrientationForm';
@@ -65,6 +67,8 @@ interface BatchImportDialogProps {
   onClose: () => void;
   sampleId: string | null; // For reference micrographs
   parentMicrographId: string | null; // For associated micrographs
+  /** "Place automatically" on the last screen of an associated import: place the parent's unplaced children */
+  onPlaceChildren?: (parentMicrographId: string) => void;
 }
 
 interface SelectedFile {
@@ -85,6 +89,7 @@ export const BatchImportDialog: React.FC<BatchImportDialogProps> = ({
   onClose,
   sampleId,
   parentMicrographId,
+  onPlaceChildren,
 }) => {
   const [activeStep, setActiveStep] = useState(0);
   const [selectedFiles, setSelectedFiles] = useState<SelectedFile[]>([]);
@@ -118,6 +123,8 @@ export const BatchImportDialog: React.FC<BatchImportDialogProps> = ({
   const isImportingRef = useRef(false);
   const [importProgress, setImportProgress] = useState({ current: 0, total: 0, currentFile: '' });
   const [importErrors, setImportErrors] = useState<string[]>([]);
+  // Associated import done: how many were imported, for the "Place them automatically now?" screen
+  const [importedCount, setImportedCount] = useState<number | null>(null);
 
   // Determine if this is for associated micrographs (has parent) or reference (no parent)
   const isAssociated = parentMicrographId !== null;
@@ -441,6 +448,7 @@ export const BatchImportDialog: React.FC<BatchImportDialogProps> = ({
     setImportErrors([]);
 
     const errors: string[] = [];
+    let imported = 0;
 
     // Ensure all project folders exist (images, compositeThumbnails, etc.)
     // This is idempotent - safe to call even if folders already exist
@@ -612,6 +620,7 @@ export const BatchImportDialog: React.FC<BatchImportDialogProps> = ({
             });
         }
 
+        imported++;
         console.log(`[BatchImport] Successfully imported: ${file.name}`);
       } catch (error) {
         console.error(`[BatchImport] Error importing ${file.name}:`, error);
@@ -627,9 +636,14 @@ export const BatchImportDialog: React.FC<BatchImportDialogProps> = ({
     isImportingRef.current = false;
     setIsImporting(false);
 
-    // If all successful, close dialog
+    // If all successful, close the dialog, or offer placing associated micrographs automatically
     if (errors.length === 0) {
-      handleClose();
+      const parent = isAssociated ? findMicrographById(useAppStore.getState().project, parentMicrographId) : null;
+      if (onPlaceChildren && parent && imported > 0 && cannotPlaceChildrenReason(parent) === null) {
+        setImportedCount(imported);
+      } else {
+        handleClose();
+      }
     }
   };
 
@@ -648,8 +662,11 @@ export const BatchImportDialog: React.FC<BatchImportDialogProps> = ({
     setOrientationData(initialOrientationData);
     setImportProgress({ current: 0, total: 0, currentFile: '' });
     setImportErrors([]);
+    setImportedCount(null);
     onClose();
   };
+
+  const parentName = isAssociated ? findMicrographById(project, parentMicrographId)?.name || 'the parent micrograph' : '';
 
   const renderStepContent = () => {
     const currentStepName = steps[activeStep];
@@ -986,30 +1003,59 @@ export const BatchImportDialog: React.FC<BatchImportDialogProps> = ({
           ))}
         </Stepper>
 
-        {renderStepContent()}
+        {importedCount !== null ? (
+          <Stack spacing={2} sx={{ py: 2 }}>
+            <Alert severity="success">
+              {importedCount === 1 ? '1 micrograph imported.' : `${importedCount} micrographs imported.`}
+            </Alert>
+            <Typography variant="body1">Place them on {parentName} automatically now?</Typography>
+            <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+              StraboMicro looks for each image on {parentName} and shows you what it found before anything is
+              saved. Images it cannot find stay unplaced; you can place them later with Edit Micrograph Location.
+            </Typography>
+          </Stack>
+        ) : (
+          renderStepContent()
+        )}
       </DialogContent>
 
-      <DialogActions>
-        <Button onClick={handleClose} disabled={isImporting}>
-          Cancel
-        </Button>
-        <Button onClick={handleBack} disabled={activeStep === 0 || isImporting}>
-          Back
-        </Button>
-        {isLastStep ? (
+      {importedCount !== null ? (
+        <DialogActions>
+          <Button onClick={handleClose}>Later</Button>
           <Button
             variant="contained"
-            onClick={handleImport}
-            disabled={!canProceed() || isImporting}
+            onClick={() => {
+              const parentId = parentMicrographId;
+              handleClose();
+              if (parentId) onPlaceChildren?.(parentId);
+            }}
           >
-            {isImporting ? 'Importing...' : 'Import'}
+            Place automatically
           </Button>
-        ) : (
-          <Button variant="contained" onClick={handleNext} disabled={!canProceed()}>
-            Next
+        </DialogActions>
+      ) : (
+        <DialogActions>
+          <Button onClick={handleClose} disabled={isImporting}>
+            Cancel
           </Button>
-        )}
-      </DialogActions>
+          <Button onClick={handleBack} disabled={activeStep === 0 || isImporting}>
+            Back
+          </Button>
+          {isLastStep ? (
+            <Button
+              variant="contained"
+              onClick={handleImport}
+              disabled={!canProceed() || isImporting}
+            >
+              {isImporting ? 'Importing...' : 'Import'}
+            </Button>
+          ) : (
+            <Button variant="contained" onClick={handleNext} disabled={!canProceed()}>
+              Next
+            </Button>
+          )}
+        </DialogActions>
+      )}
     </Dialog>
   );
 };

@@ -7,6 +7,7 @@
  */
 
 import type { AffineMatrix, ControlPoint } from '@/utils/affineTransform';
+import type { MicrographMetadata } from '@/types/project-types';
 
 export interface RectanglePlacement {
   /** offsetInParent, parent px */
@@ -25,6 +26,11 @@ export interface AffinePlacement {
   transformedWidth: number;
   transformedHeight: number;
 }
+
+/** A found (and possibly adjusted) placement; affine ones carry the key of their baked tiles */
+export type AutoPlacementOutcome =
+  | ({ kind: 'rectangle' } & RectanglePlacement)
+  | ({ kind: 'affine'; tileHash: string } & AffinePlacement);
 
 function apply(m: AffineMatrix, x: number, y: number): [number, number] {
   return [m[0] * x + m[1] * y + m[2], m[3] * x + m[4] * y + m[5]];
@@ -85,4 +91,49 @@ export function toAppPixels(
   const px = parentApp.width / parentFile.width;
   const py = parentApp.height / parentFile.height;
   return [m[0] * sx * px, m[1] * sy * px, m[2] * px, m[3] * sx * py, m[4] * sy * py, m[5] * py];
+}
+
+/**
+ * The micrograph fields that save an outcome, clearing the other placement methods. A rectangle's
+ * scale comes from the parent's (parent px per cm / parent px per child px). An affine placement
+ * keeps a placeholder scale like 3-Point Registration (the real one comes from the ancestor chain).
+ */
+export function placementUpdates(
+  outcome: AutoPlacementOutcome,
+  parentPxPerCm: number,
+  childPxPerCm: number | null | undefined,
+  opacity: number,
+): Partial<MicrographMetadata> {
+  if (outcome.kind === 'rectangle') {
+    return {
+      offsetInParent: { X: outcome.offsetX, Y: outcome.offsetY },
+      rotation: outcome.rotation,
+      scalePixelsPerCentimeter: parentPxPerCm / outcome.scale,
+      opacity,
+      pointInParent: undefined,
+      placementType: undefined,
+      affineMatrix: undefined,
+      controlPoints: undefined,
+      affineBoundsOffset: undefined,
+      affineTransformedWidth: undefined,
+      affineTransformedHeight: undefined,
+      affineTileHash: undefined,
+    };
+  }
+  return {
+    placementType: 'affine',
+    affineMatrix: outcome.matrix,
+    controlPoints: outcome.controlPoints,
+    affineBoundsOffset: outcome.boundsOffset,
+    affineTransformedWidth: outcome.transformedWidth,
+    affineTransformedHeight: outcome.transformedHeight,
+    affineTileHash: outcome.tileHash,
+    scalePixelsPerCentimeter: childPxPerCm ?? parentPxPerCm,
+    opacity,
+    offsetInParent: undefined,
+    rotation: undefined,
+    scaleX: undefined,
+    scaleY: undefined,
+    pointInParent: undefined,
+  };
 }

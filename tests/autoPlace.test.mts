@@ -27,7 +27,9 @@ import {
   type GrayImage, type PlacementResult, type OpenCV,
 } from '../src/services/autoPlace/placementMatch.ts';
 import { computeAffineMatrix, type AffineMatrix } from '../src/utils/affineTransform.ts';
-import { rectangleFields, rectanglePoint, affineFields, toAppPixels } from '../src/services/autoPlace/placementFields.ts';
+import { rectangleFields, rectanglePoint, affineFields, toAppPixels, placementUpdates } from '../src/services/autoPlace/placementFields.ts';
+import { hasLocation, unplacedChildren, cannotPlaceChildrenReason } from '../src/utils/micrographLocation.ts';
+import type { MicrographMetadata, ProjectMetadata } from '../src/types/project-types.ts';
 
 const root = path.resolve(import.meta.dirname, '..');
 const TOXAWAY = process.env.TOXAWAY_DIR
@@ -134,6 +136,48 @@ const { cv } = await new Promise<{ cv: OpenCV }>((resolve) => {
   const appP = apply(inApp, 200, 150);
   check('toAppPixels', Math.hypot(appP[0] - fileP[0] * 2, appP[1] - fileP[1] * 2) < 1e-9, { fileP, appP });
   check('real shear settles as affine', settled.kind === 'affine' && settled.matrix === sheared, settled.kind);
+}
+
+// ---------------------------------------------------------------- 1b. saving and unplaced children
+
+{
+  // A rectangle outcome: the child's scale is the parent's divided by parent px per child px; other methods cleared
+  const rect = placementUpdates({ kind: 'rectangle', offsetX: 12, offsetY: 34, rotation: -90, scale: 0.25 }, 40000, undefined, 0.8);
+  check('rectangle save: offset, rotation, opacity', rect.offsetInParent?.X === 12 && rect.offsetInParent?.Y === 34 && rect.rotation === -90 && rect.opacity === 0.8, rect);
+  check('rectangle save: scale = parent / scale', rect.scalePixelsPerCentimeter === 160000, rect.scalePixelsPerCentimeter);
+  check('rectangle save clears affine + point', 'placementType' in rect && rect.placementType === undefined && 'affineMatrix' in rect && 'affineTileHash' in rect && 'pointInParent' in rect && rect.pointInParent === undefined);
+  // An affine outcome keeps the child's own scale as the placeholder, else the parent's
+  const sheared: AffineMatrix = [0.3, 0.06, 100, 0, 0.33, 50];
+  const affine = { kind: 'affine' as const, ...affineFields(sheared, 1000, 800), tileHash: 'hash1' };
+  const a1 = placementUpdates(affine, 40000, 55555, 1);
+  check('affine save: matrix, tiles, placeholder scale', a1.placementType === 'affine' && a1.affineMatrix === sheared && a1.affineTileHash === 'hash1' && a1.scalePixelsPerCentimeter === 55555, a1);
+  check('affine save clears rectangle', 'offsetInParent' in a1 && a1.offsetInParent === undefined && 'rotation' in a1 && 'scaleX' in a1);
+  check('affine save without a child scale takes the parent\'s', placementUpdates(affine, 40000, null, 1).scalePixelsPerCentimeter === 40000);
+
+  const m = (id: string, extra: Partial<MicrographMetadata> = {}): MicrographMetadata => ({ id, name: id, ...extra } as MicrographMetadata);
+  check('no location', !hasLocation(m('a', { parentID: 'p' })));
+  check('rectangle / point / legacy xOffset / affine count as a location',
+    hasLocation(m('a', { offsetInParent: { X: 0, Y: 0 } })) && hasLocation(m('a', { pointInParent: { X: 1, Y: 1 } }))
+    && hasLocation(m('a', { xOffset: 0 })) && hasLocation(m('a', { placementType: 'affine' })));
+  const project = {
+    id: 'proj', name: 'p',
+    datasets: [{ id: 'd', name: 'd', samples: [
+      { id: 's1', name: 's1', micrographs: [
+        m('p', { scalePixelsPerCentimeter: 40000, imagePath: 'p' }),
+        m('c1', { parentID: 'p' }),
+        m('c2', { parentID: 'p', offsetInParent: { X: 1, Y: 2 } }),
+        m('c3', { parentID: 'p', isPrimarySibling: false }),
+        m('g1', { parentID: 'c1' }),
+      ] },
+      { id: 's2', name: 's2', micrographs: [m('c4', { parentID: 'p', isPrimarySibling: true })] },
+    ] }],
+  } as unknown as ProjectMetadata;
+  const ids = unplacedChildren(project, 'p').map((c) => c.id);
+  check('unplaced children: direct, unplaced, not hidden siblings, in order', JSON.stringify(ids) === JSON.stringify(['c1', 'c4']), ids);
+  check('no project: none', unplacedChildren(null, 'p').length === 0);
+  check('parent with a scale can place its children', cannotPlaceChildrenReason(m('p', { scalePixelsPerCentimeter: 1, imagePath: 'p' })) === null);
+  check('parent without a scale cannot', cannotPlaceChildrenReason(m('p', { imagePath: 'p' })) !== null);
+  check('unplaced associated parent cannot', cannotPlaceChildrenReason(m('c1', { parentID: 'p', scalePixelsPerCentimeter: 1, imagePath: 'c1' })) !== null);
 }
 
 // ---------------------------------------------------------------- helpers

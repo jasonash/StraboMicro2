@@ -42,6 +42,7 @@ import PlacementCanvas from './PlacementCanvas';
 import { PointPlacementCanvas } from './PointPlacementCanvas';
 import { AffineRegistrationModal } from './AffineRegistrationModal';
 import AutoPlacementPanel, { type AutoPlacementOutcome } from './AutoPlacementPanel';
+import { placementUpdates } from '@/services/autoPlace/placementFields';
 import type { MicrographMetadata } from '@/types/project-types';
 import type { AffineMatrix, ControlPoint } from '@/utils/affineTransform';
 import {
@@ -515,39 +516,12 @@ export function EditMicrographLocationDialog({
       newChildPxPerCm,
     });
 
-    if (locationMethod === 'Place automatically on parent' && autoPlacement?.kind === 'rectangle') {
-      updateMicrographMetadata(micrographId, {
-        offsetInParent: { X: autoPlacement.offsetX, Y: autoPlacement.offsetY },
-        rotation: autoPlacement.rotation,
-        scalePixelsPerCentimeter: parentPxPerCm / autoPlacement.scale,
-        opacity,
-        pointInParent: undefined,
-        placementType: undefined,
-        affineMatrix: undefined,
-        controlPoints: undefined,
-        affineBoundsOffset: undefined,
-        affineTransformedWidth: undefined,
-        affineTransformedHeight: undefined,
-        affineTileHash: undefined,
-      });
-    } else if (locationMethod === 'Place automatically on parent' && autoPlacement?.kind === 'affine') {
-      // Saved like 3-Point Registration (below); the tiles were baked by AutoPlacementPanel
-      updateMicrographMetadata(micrographId, {
-        placementType: 'affine',
-        affineMatrix: autoPlacement.matrix,
-        controlPoints: autoPlacement.controlPoints,
-        affineBoundsOffset: autoPlacement.boundsOffset,
-        affineTransformedWidth: autoPlacement.transformedWidth,
-        affineTransformedHeight: autoPlacement.transformedHeight,
-        affineTileHash: autoPlacement.tileHash,
-        scalePixelsPerCentimeter: micrograph.scalePixelsPerCentimeter ?? parentPxPerCm,
-        opacity,
-        offsetInParent: undefined,
-        rotation: undefined,
-        scaleX: undefined,
-        scaleY: undefined,
-        pointInParent: undefined,
-      });
+    if (locationMethod === 'Place automatically on parent' && autoPlacement) {
+      // Affine tiles were baked by AutoPlacementPanel
+      updateMicrographMetadata(
+        micrographId,
+        placementUpdates(autoPlacement, parentPxPerCm, micrograph.scalePixelsPerCentimeter, opacity),
+      );
     } else if (locationMethod === '3-Point Registration') {
       // Affine placement: store matrix + control points, clear other placement fields.
       // scalePixelsPerCentimeter is a placeholder for affine descendants (effective scale

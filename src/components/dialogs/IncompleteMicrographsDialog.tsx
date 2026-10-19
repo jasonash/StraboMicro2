@@ -22,6 +22,7 @@ import {
 } from '@mui/material';
 import { Warning as WarningIcon } from '@mui/icons-material';
 import type { ProjectMetadata } from '@/types/project-types';
+import { hasLocation } from '@/utils/micrographLocation';
 
 export interface IncompleteMicrograph {
   id: string;
@@ -148,9 +149,7 @@ export function findIncompleteMicrographs(project: ProjectMetadata): IncompleteM
       for (const micro of sample.micrographs ?? []) {
         const isReference = !micro.parentID;
         const needsScale = !micro.scalePixelsPerCentimeter;
-        // Location can be set via offsetInParent (scaled rectangle), pointInParent (approximate point), or affine placement
-        const hasLocation = micro.offsetInParent || micro.pointInParent || micro.xOffset !== undefined || micro.placementType === 'affine';
-        const needsLocation = !isReference && !hasLocation;
+        const needsLocation = !isReference && !hasLocation(micro);
         const needsInstrumentInfo = !!micro.needsInstrumentInfo;
 
         if (needsScale || needsLocation || needsInstrumentInfo) {
