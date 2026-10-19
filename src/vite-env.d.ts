@@ -1405,7 +1405,7 @@ interface Window {
     onConfigureMineralColors: (callback: () => void) => Unsubscribe;
     onSpotColorMode: (callback: (mode: 'spot-color' | 'mineral-color') => void) => Unsubscribe;
 
-    // Grain Spot model (SAM 2.1 tiny, fp16 encoder + int8 decoder; electron/grainSpotModel.js)
+    // Grain Spot model (SAM 2.1 tiny, fp32 encoder + int8 decoder; electron/grainSpotModel.js)
     grainSpot: {
       status: () => Promise<{ available: boolean; totalBytes: number }>;
       download: () => Promise<{ success: boolean; error?: string }>;

@@ -5,13 +5,14 @@
  * milliseconds and returns the grain's polygon in view pixels
  * (src/utils/grainOutline.ts). Only the latest view is kept.
  *
- * The image encoder (fp16) runs on the GPU through WebGPU where there is one
- * (about 0.13 s a view on an M4 Pro instead of 1.1 s), else on the CPU
+ * The image encoder (fp32: the fp16 one needs the GPU's shader-f16 feature,
+ * missing on many Windows GPUs) runs on the GPU through WebGPU where there
+ * is one (about 0.2 s a view on an M4 Pro instead of 1 s), else on the CPU
  * (WASM, all threads). Should the GPU fail or give non-numbers, the worker
  * moves to the CPU for good and analyzes the view again. The decoder is
  * small and runs on the CPU either way. This is the 'onnxruntime-web/webgpu'
- * build: the default build's older WebGPU path gives wrong outlines with the
- * fp16 encoder.
+ * build: the default build's older WebGPU path gave wrong outlines with an
+ * fp16 encoder in our tests.
  *
  * Messages in:  init { model, wasmPaths, numThreads }
  *               encode { viewId, rgba, width, height }
@@ -107,6 +108,7 @@ async function init(request: Extract<SamRequest, { type: 'init' }>): Promise<Sam
   if (!encoder) encoder = await createEncoder('wasm');
   decoder = await ort.InferenceSession.create(model.decoder, {
     executionProviders: ['wasm'],
+    logSeverityLevel: 3,
     externalData: [{ path: model.names.decoderData, data: model.decoderData }],
   });
   return { type: 'init', id: request.id, ms: performance.now() - started, backend };
@@ -127,6 +129,8 @@ function createEncoder(provider: SamBackend): Promise<ort.InferenceSession> {
   if (!m) throw new Error('The grain model is not loaded');
   return ort.InferenceSession.create(m.bytes, {
     executionProviders: [provider],
+    // Errors only: "some nodes were not assigned to the preferred execution providers" is expected (shape ops go to the CPU)
+    logSeverityLevel: 3,
     externalData: [{ path: m.dataName, data: m.data }],
   });
 }

@@ -103,7 +103,7 @@ function GrainSpotStatusContent() {
         <DialogContent>
           <DialogContentText>
             Grain Spot outlines a grain where you click. It needs a one-time download of the grain model
-            ({totalBytes > 0 ? formatBytes(totalBytes) : 'about 76 MB'}, SAM 2.1 from Meta, open source). After that it works offline.
+            ({totalBytes > 0 ? formatBytes(totalBytes) : 'about 143 MB'}, SAM 2.1 from Meta, open source). After that it works offline.
           </DialogContentText>
           {phase === 'downloading' && <LinearProgress variant="determinate" value={percent} sx={{ mt: 2 }} />}
           {phase === 'needs-download' && error && (
