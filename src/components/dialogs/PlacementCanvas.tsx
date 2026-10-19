@@ -30,6 +30,12 @@ interface PlacementCanvasProps {
   initialScaleX?: number;
   initialScaleY?: number;
   initialOpacity?: number; // Initial opacity (0-1), default 1
+  /**
+   * A placement found elsewhere (Place automatically on parent), in original pixels: offset =
+   * offsetInParent, scale = parent px per child px. Takes precedence over the initial* values
+   * and turns off the auto-fit.
+   */
+  initialPlacement?: { offsetX: number; offsetY: number; rotation: number; scale: number };
   onPlacementChange: (offsetX: number, offsetY: number, rotation: number, scaleX?: number, scaleY?: number) => void;
   onOpacityChange?: (opacity: number) => void; // Callback when opacity changes
   onScaleDataChange?: (data: {
@@ -57,6 +63,7 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
   initialScaleX = 1,
   initialScaleY = 1,
   initialOpacity = 1,
+  initialPlacement,
   onPlacementChange,
   onOpacityChange,
   onScaleDataChange,
@@ -292,8 +299,18 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
           // Use parentMicrograph.imageWidth directly (not state, which may not be set yet)
           const parentOrigWidth = parentMicrograph.imageWidth || img.width;
 
-          // Check for default/uninitialized values (0, 0) or (400, 300)
-          if ((initialOffsetX === 0 && initialOffsetY === 0) ||
+          if (initialPlacement) {
+            // Shown in display pixels of the parent thumbnail
+            const ratio = img.width / parentOrigWidth;
+            const displayScale = initialPlacement.scale * ratio;
+            setChildTransform({
+              x: initialPlacement.offsetX * ratio + (childWidth * displayScale) / 2,
+              y: initialPlacement.offsetY * ratio + (childHeight * displayScale) / 2,
+              rotation: initialPlacement.rotation,
+              scaleX: displayScale,
+              scaleY: displayScale,
+            });
+          } else if ((initialOffsetX === 0 && initialOffsetY === 0) ||
               (initialOffsetX === 400 && initialOffsetY === 300)) {
             // These are the default values, so center the child on the parent
             const centerX = img.width / 2;
@@ -391,6 +408,7 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
   // For other methods, this is just initial display until user enters scale data
   useEffect(() => {
     if (!parentImage || !childImage) return;
+    if (initialPlacement) return;
     // Only auto-fit if scale is still at default (1.0) - don't override user adjustments or calculated scales
     if (childTransform.scaleX !== 1 || childTransform.scaleY !== 1) return;
 

@@ -26,7 +26,8 @@ import {
   toMat, fromMat, fitSimilarity, residual, settle, implausible,
   type GrayImage, type PlacementResult, type OpenCV,
 } from '../src/services/autoPlace/placementMatch.ts';
-import type { AffineMatrix } from '../src/utils/affineTransform.ts';
+import { computeAffineMatrix, type AffineMatrix } from '../src/utils/affineTransform.ts';
+import { rectangleFields, rectanglePoint, affineFields, toAppPixels } from '../src/services/autoPlace/placementFields.ts';
 
 const root = path.resolve(import.meta.dirname, '..');
 const TOXAWAY = process.env.TOXAWAY_DIR
@@ -108,6 +109,30 @@ const { cv } = await new Promise<{ cv: OpenCV }>((resolve) => {
   check('mirrored fit refused', mirrored === 'mirrored or flat', mirrored);
   const label = implausible({ m: [1, 0, 0, 0, 1, 0], inlier: new Uint8Array([1, 1, 1]), n: 3 }, [1, 0, 0, 0, 1, 0], pairs, 1000, 800, 2000, 1500);
   check('label-only match refused', label === 'label-only match', label);
+  // Saved fields: a rectangle drawn the renderer's way lands where the matrix says
+  for (const [deg, sc] of [[0, 0.5], [30, 0.25], [-100, 2], [180, 0.125]]) {
+    const t = turn(deg, sc, 700, 300);
+    const r = rectangleFields(t, 1000, 800);
+    const worst = Math.max(...[[0, 0], [1000, 0], [1000, 800], [0, 800], [313, 471]].map(([x, y]) => {
+      const a = rectanglePoint(r, 1000, 800, x, y);
+      const b = apply(t, x, y);
+      return Math.hypot(a[0] - b[0], a[1] - b[1]);
+    }));
+    check(`rectangle fields reproduce a ${deg} deg turn`, worst < 1e-6, { worst, r });
+    check(`rectangle scale ${sc}, rotation ${deg}`, Math.abs(r.scale - sc) < 1e-9 && Math.abs(((r.rotation - deg + 540) % 360) - 180) < 1e-9, r);
+  }
+  // Affine fields: 3-Point Registration's own math recovers the matrix from the control points
+  const af = affineFields(sheared, 1000, 800);
+  const back = computeAffineMatrix(af.controlPoints);
+  check('affine control points give back the matrix', back.every((v, i) => Math.abs(v - sheared[i]) < 1e-6), back);
+  const fp = footprint(sheared, 1000, 800);
+  check('affine bounds offset is the footprint minimum', Math.abs(af.boundsOffset.x - Math.min(...fp.map((c) => c[0]))) < 1e-9 && Math.abs(af.boundsOffset.y - Math.min(...fp.map((c) => c[1]))) < 1e-9);
+  // File pixels -> app pixels: a detail stored at half its file size, a parent stored at twice
+  const inFile = turn(10, 0.3, 50, 60);
+  const inApp = toAppPixels(inFile, { width: 2000, height: 1600 }, { width: 1000, height: 800 }, { width: 500, height: 400 }, { width: 1000, height: 800 });
+  const fileP = apply(inFile, 400, 300);
+  const appP = apply(inApp, 200, 150);
+  check('toAppPixels', Math.hypot(appP[0] - fileP[0] * 2, appP[1] - fileP[1] * 2) < 1e-9, { fileP, appP });
   check('real shear settles as affine', settled.kind === 'affine' && settled.matrix === sheared, settled.kind);
 }
 

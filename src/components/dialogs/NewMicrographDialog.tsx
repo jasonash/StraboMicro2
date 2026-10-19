@@ -49,6 +49,7 @@ import { PeriodicTableModal } from './PeriodicTableModal';
 import { InstrumentDatabaseDialog, type InstrumentData } from './InstrumentDatabaseDialog';
 import { ScaleBarCanvas, type Tool, type ScaleBarCanvasRef } from '../ScaleBarCanvas';
 import PlacementCanvas from './PlacementCanvas';
+import AutoPlacementPanel, { type AutoPlacementOutcome } from './AutoPlacementPanel';
 import { PointPlacementCanvas } from './PointPlacementCanvas';
 import { AffineRegistrationModal } from './AffineRegistrationModal';
 import { isInstrumentInfoComplete } from './InstrumentInfoForm';
@@ -136,6 +137,7 @@ interface MicrographFormData {
     | 'Locate as a scaled rectangle'
     | '3-Point Registration'
     | 'Copy from existing micrograph'
+    | 'Place automatically on parent'
     | '';
   offsetInParent: {
     X: number;
@@ -153,6 +155,8 @@ interface MicrographFormData {
   affineTransformedWidth: number | null;
   affineTransformedHeight: number | null;
   affineTileHash: string | null; // Hash used to store/load affine tiles
+  // "Place automatically on parent": the found (and possibly adjusted) placement
+  autoPlacement: AutoPlacementOutcome | null;
   instrumentType: string;
   otherInstrumentType: string;
   dataType: string;
@@ -284,6 +288,7 @@ const initialFormData: MicrographFormData = {
   affineTransformedWidth: null,
   affineTransformedHeight: null,
   affineTileHash: null,
+  autoPlacement: null,
   // Scale method will be set based on location method (defaults to 'Trace Scale Bar' initially)
   instrumentType: '',
   otherInstrumentType: '',
@@ -937,6 +942,7 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
         affineTransformedWidth: null,
         affineTransformedHeight: null,
         affineTileHash: null,
+        autoPlacement: null,
       }));
 
       setAppliedOrientation((prev) => composeOrientations(prev, pendingOrientation));
@@ -951,14 +957,18 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
     }
   };
 
+  const skipsScaleMethod = (method: MicrographFormData['locationMethod']) =>
+    method === '3-Point Registration' || method === 'Place automatically on parent';
+
   const handleNext = async () => {
     // Leaving the rotation step commits any pending rotation to the pixels
     if (currentStepId === 'image-rotation') {
       const ok = await applyPendingRotation();
       if (!ok) return; // Stay on the step; pending rotation is preserved
     }
-    // Skip the scale method step for 3-Point Registration since affine transform handles scale
-    if (currentStepId === 'location-method' && formData.locationMethod === '3-Point Registration') {
+    // Skip the scale method step for 3-Point Registration and automatic placement: the
+    // placement itself gives the scale
+    if (currentStepId === 'location-method' && skipsScaleMethod(formData.locationMethod)) {
       // Find the index of 'location-placement' step and jump directly to it
       const placementStepIndex = steps.findIndex((s) => s.id === 'location-placement');
       if (placementStepIndex > 0) {
@@ -971,7 +981,7 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
 
   const handleBack = () => {
     // When on location-placement with 3-Point Registration, go back to location-method (skip scale method)
-    if (currentStepId === 'location-placement' && formData.locationMethod === '3-Point Registration') {
+    if (currentStepId === 'location-placement' && skipsScaleMethod(formData.locationMethod)) {
       const locationMethodIndex = steps.findIndex((s) => s.id === 'location-method');
       if (locationMethodIndex >= 0) {
         setActiveStep(locationMethodIndex);
@@ -1148,6 +1158,14 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
           }
         }
       }
+    } else if (isAssociated && formData.locationMethod === 'Place automatically on parent') {
+      // The parent's stored scale (for an affine result a placeholder, as with 3-Point
+      // Registration); a rectangle is that many times larger per pixel
+      const { project } = useAppStore.getState();
+      const parentScale =
+        (parentMicrographId ? findMicrographById(project, parentMicrographId)?.scalePixelsPerCentimeter : null) ?? 100;
+      scalePixelsPerCentimeter =
+        formData.autoPlacement?.kind === 'rectangle' ? parentScale / formData.autoPlacement.scale : parentScale;
     } else if (isAssociated && formData.scaleMethod === 'Stretch and Drag') {
       console.log(
         '[NewMicrographDialog] Stretch and Drag - formData.scaleX at calculation time:',
@@ -1474,6 +1492,26 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
             affineTransformedWidth: formData.affineTransformedWidth,
             affineTransformedHeight: formData.affineTransformedHeight,
             affineTileHash: formData.affineTileHash, // Hash to locate affine tiles in cache
+          }),
+        ...(isAssociated &&
+          formData.locationMethod === 'Place automatically on parent' &&
+          formData.autoPlacement?.kind === 'rectangle' && {
+            offsetInParent: {
+              X: formData.autoPlacement.offsetX,
+              Y: formData.autoPlacement.offsetY,
+            },
+            rotation: formData.autoPlacement.rotation,
+          }),
+        ...(isAssociated &&
+          formData.locationMethod === 'Place automatically on parent' &&
+          formData.autoPlacement?.kind === 'affine' && {
+            placementType: 'affine' as const,
+            affineMatrix: formData.autoPlacement.matrix,
+            controlPoints: formData.autoPlacement.controlPoints,
+            affineBoundsOffset: formData.autoPlacement.boundsOffset,
+            affineTransformedWidth: formData.autoPlacement.transformedWidth,
+            affineTransformedHeight: formData.autoPlacement.transformedHeight,
+            affineTileHash: formData.autoPlacement.tileHash,
           }),
         ...(isAssociated &&
           formData.locationMethod === 'Copy from existing micrograph' && {
@@ -1849,6 +1887,8 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
         } else if (formData.locationMethod === '3-Point Registration') {
           // 3-Point Registration requires affine matrix to be computed
           return formData.affineMatrix !== null;
+        } else if (formData.locationMethod === 'Place automatically on parent') {
+          return formData.autoPlacement !== null;
         } else if (formData.locationMethod === 'Not Located') {
           // Not Located doesn't need position validation
           return true;
@@ -2714,9 +2754,27 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
               locationMethod: e.target.value as MicrographFormData['locationMethod'],
               scaleMethod: '',
               copySourceMicrographId: '',
+              autoPlacement: null,
             }));
           }}
         >
+          <FormControlLabel
+            value="Place automatically on parent"
+            control={<Radio />}
+            label="Place automatically on parent"
+          />
+          <Typography
+            variant="caption"
+            sx={{
+              color: 'text.secondary',
+              ml: 4,
+              mt: -1,
+              mb: 2
+            }}>
+            StraboMicro finds where this image sits on its parent by matching features, then you check
+            it. Works best when both show the same kind of view (PPL on PPL, XPL on XPL)
+          </Typography>
+
           <FormControlLabel
             value="Locate as a scaled rectangle"
             control={<Radio />}
@@ -3068,6 +3126,39 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
             onScaleDataChange={handleScaleDataChange}
           />
         </Stack>
+      );
+    }
+
+    if (formData.locationMethod === 'Place automatically on parent') {
+      if (!parentMicrographId || !formData.micrographFilePath) {
+        return (
+          <Typography variant="body2" color="error">
+            Error: Missing parent micrograph or child image data
+          </Typography>
+        );
+      }
+      return (
+        <AutoPlacementPanel
+          parentMicrographId={parentMicrographId}
+          detailPath={formData.micrographFilePath}
+          detailWidth={formData.micrographWidth}
+          detailHeight={formData.micrographHeight}
+          initialOpacity={formData.opacity}
+          onOutcome={(autoPlacement) => setFormData((prev) => ({ ...prev, autoPlacement }))}
+          onOpacityChange={handleOpacityChange}
+          onPlaceByHand={(method) => {
+            setFormData((prev) => ({
+              ...prev,
+              locationMethod: method,
+              scaleMethod: method === 'Locate as a scaled rectangle' ? 'Stretch and Drag' : '',
+              autoPlacement: null,
+              offsetInParent: { X: 0, Y: 0 },
+              rotationAngle: 0,
+              scaleX: 1,
+              scaleY: 1,
+            }));
+          }}
+        />
       );
     }
 

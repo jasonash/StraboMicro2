@@ -761,6 +761,11 @@ interface Window {
       height: number;
       format: string;
     }>;
+    readGrayRegion: (
+      imagePath: string,
+      rect: { x: number; y: number; width: number; height: number },
+      maxSide: number,
+    ) => Promise<{ data: Uint8Array; width: number; height: number }>;
     isValidImage: (filePath: string) => Promise<boolean>;
     rotateImage: (imagePath: string, degrees: number, flip?: boolean) => Promise<{
       success: boolean;

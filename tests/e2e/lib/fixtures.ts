@@ -40,6 +40,33 @@ async function micrographImage(): Promise<Buffer> {
   return sharp(Buffer.from(svg)).jpeg({ quality: 85 }).toBuffer();
 }
 
+/**
+ * A 1600 x 1200 "rock" drawing for image matching (Place automatically on parent): hundreds of
+ * irregular grains in many shades, so every area looks different. scale renders the same drawing
+ * larger (a finer image of the same rock); seed picks a different rock.
+ */
+export async function rockImage(seed = 11, scale = 1): Promise<ReturnType<typeof sharp>> {
+  let s = seed;
+  const rand = () => ((s = (s * 16807) % 2147483647) / 2147483647);
+  const shapes: string[] = [];
+  for (let i = 0; i < 900; i++) {
+    const cx = rand() * 1600;
+    const cy = rand() * 1200;
+    const r = 8 + rand() * 45;
+    const sides = 5 + Math.floor(rand() * 5);
+    const pts: string[] = [];
+    for (let k = 0; k < sides; k++) {
+      const a = (k / sides) * Math.PI * 2 + rand() * 0.5;
+      const rr = r * (0.6 + rand() * 0.6);
+      pts.push(`${(cx + Math.cos(a) * rr).toFixed(1)},${(cy + Math.sin(a) * rr).toFixed(1)}`);
+    }
+    const g = Math.floor(40 + rand() * 190);
+    shapes.push(`<polygon points="${pts.join(' ')}" fill="rgb(${g},${Math.floor(g * (0.8 + rand() * 0.3))},${Math.floor(g * (0.6 + rand() * 0.4))})" stroke="rgb(30,25,20)" stroke-width="${(0.5 + rand() * 2).toFixed(1)}"/>`);
+  }
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1200"><rect width="1600" height="1200" fill="#6a6058"/>${shapes.join('')}</svg>`;
+  return sharp(Buffer.from(svg), { density: 72 * scale });
+}
+
 export function spot(id: string, name: string, x: number, y: number) {
   const now = new Date().toISOString();
   return {
@@ -65,6 +92,8 @@ export interface ProjectExtras {
   /** the overview's id, for extras that refer to it */
   overviewId?: string;
   overview?: Record<string, unknown>;
+  /** the overview's image (JPEG); default: the circle drawing */
+  overviewImage?: Buffer;
   micrographs?: Array<Record<string, unknown> & { id: string }>;
 }
 
@@ -113,7 +142,7 @@ export async function makeProject(dir: string, name: string, spotNames: string[]
     zip.on('error', reject);
     zip.pipe(out);
     zip.append(JSON.stringify(project, null, 2), { name: `${id}/project.json` });
-    zip.append(image, { name: `${id}/images/${micrographId}` });
+    zip.append(extras.overviewImage ?? image, { name: `${id}/images/${micrographId}` });
     for (const m of extras.micrographs ?? []) zip.append(image, { name: `${id}/images/${m.id}` });
     void zip.finalize();
   });

@@ -727,7 +727,36 @@ async function resizeScratchImage(identifier, targetWidth, targetHeight) {
   }
 }
 
+/**
+ * A region of an image as 8-bit grayscale, shrunk (never enlarged) so its long side is at most
+ * maxSide. For "Place automatically on parent" (src/services/autoPlace): the parent can be far too
+ * big to load whole, so the matcher reads it in pieces.
+ */
+async function readGrayRegion(imagePath, rect, maxSide) {
+  const meta = await sharp(imagePath, USER_IMAGE_INPUT).metadata();
+  const left = Math.max(0, Math.min(meta.width - 1, Math.floor(rect.x)));
+  const top = Math.max(0, Math.min(meta.height - 1, Math.floor(rect.y)));
+  const width = Math.max(1, Math.min(meta.width - left, Math.ceil(rect.width)));
+  const height = Math.max(1, Math.min(meta.height - top, Math.ceil(rect.height)));
+  const f = Math.min(1, maxSide / Math.max(width, height));
+  let image = sharp(imagePath, USER_IMAGE_INPUT);
+  if (left > 0 || top > 0 || width < meta.width || height < meta.height) {
+    image = image.extract({ left, top, width, height });
+  }
+  if (f < 1) {
+    image = image.resize(Math.max(1, Math.round(width * f)), Math.max(1, Math.round(height * f)), { fit: 'fill' });
+  }
+  const { data, info } = await image.greyscale().removeAlpha().raw().toBuffer({ resolveWithObject: true });
+  let gray = data;
+  if (info.channels > 1) {
+    gray = Buffer.alloc(info.width * info.height);
+    for (let i = 0; i < gray.length; i++) gray[i] = data[i * info.channels];
+  }
+  return { data: new Uint8Array(gray.buffer, gray.byteOffset, gray.length), width: info.width, height: info.height };
+}
+
 module.exports = {
+  readGrayRegion,
   convertToScratchJPEG,
   convertToJPEG,
   convertAndSaveMicrographImage,
