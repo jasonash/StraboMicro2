@@ -94,6 +94,8 @@ export interface ProjectExtras {
   overview?: Record<string, unknown>;
   /** the overview's image (JPEG); default: the circle drawing */
   overviewImage?: Buffer;
+  /** images of added micrographs by id (JPEG); default: the circle drawing */
+  images?: Record<string, Buffer>;
   micrographs?: Array<Record<string, unknown> & { id: string }>;
 }
 
@@ -143,7 +145,7 @@ export async function makeProject(dir: string, name: string, spotNames: string[]
     zip.pipe(out);
     zip.append(JSON.stringify(project, null, 2), { name: `${id}/project.json` });
     zip.append(extras.overviewImage ?? image, { name: `${id}/images/${micrographId}` });
-    for (const m of extras.micrographs ?? []) zip.append(image, { name: `${id}/images/${m.id}` });
+    for (const m of extras.micrographs ?? []) zip.append(extras.images?.[m.id] ?? image, { name: `${id}/images/${m.id}` });
     void zip.finalize();
   });
   return { id, name, datasetId, sampleId, micrographId, spots, smzPath };

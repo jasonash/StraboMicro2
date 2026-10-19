@@ -8,6 +8,7 @@
  */
 
 import fs from 'fs';
+import { randomUUID } from 'crypto';
 import { test, expect } from '../lib/test';
 import { ACCOUNTS, type Copy } from '../lib/copy';
 import { makeProject, rockImage } from '../lib/fixtures';
@@ -51,6 +52,12 @@ async function placeAutomatically(copy: Copy, imagePath: string, name: string) {
   await dialog.getByText('Place automatically on parent', { exact: true }).click();
   await next.click(); // Location Method (the Scale Method step is skipped)
   return dialog;
+}
+
+/** Degrees between two angles, either way round */
+function angleFrom(a: number, b: number): number {
+  const d = ((((a - b) % 360) + 360) % 360);
+  return Math.min(d, 360 - d);
 }
 
 interface Saved {
@@ -102,7 +109,7 @@ test('a turned detail is found, Finish saves it as a scaled rectangle with the r
   expect(m.scale).toBeGreaterThan(expectedScale * 0.99);
   expect(m.scale).toBeLessThan(expectedScale * 1.01);
   // Turned 90 clockwise in the detail = -90 on the parent
-  expect(Math.abs((((m.rotation ?? 0) + 90) % 360 + 360) % 360)).toBeLessThan(0.5);
+  expect(angleFrom(m.rotation ?? 0, -90)).toBeLessThan(0.5);
   // Center on the region's center (offset = top-left before rotation)
   const s = OVERVIEW_SCALE / (m.scale ?? 1);
   const cx = (m.offset?.X ?? 0) + (m.imageWidth * s) / 2;
@@ -150,4 +157,49 @@ test('an unrelated image: No match found, and Place as a scaled rectangle opens 
   await dialog.getByRole('button', { name: 'Place as a scaled rectangle' }).click();
   await expect(dialog.getByLabel('X (px)')).toBeEnabled({ timeout: 30_000 });
   await expect(dialog.getByRole('button', { name: 'Finish' })).toBeEnabled();
+});
+
+test('Edit Micrograph Location: an unplaced micrograph (as after a batch import) is placed automatically', async ({ launch, runDir }) => {
+  const overview = await (await rockImage()).jpeg({ quality: 90 }).toBuffer();
+  const detail = await (await rockImage(11, 3)).extract(REGION).rotate(90).jpeg({ quality: 92 }).toBuffer();
+  const overviewId = randomUUID();
+  const childId = randomUUID();
+  const p = await makeProject(`${runDir}/fixtures`, 'E2E Auto Place Edit Location', [], {
+    overviewId,
+    overviewImage: overview,
+    micrographs: [{
+      id: childId, name: 'Unplaced detail', parentID: overviewId, imageType: 'Plane Polarized Light',
+      width: REGION.height, height: REGION.width, imageWidth: REGION.height, imageHeight: REGION.width, opacity: 1,
+      polish: false, description: '', notes: '', spots: [], orientationInfo: { orientationMethod: 'unoriented' },
+      associatedFiles: [], links: [], isMicroVisible: true, isExpanded: false, isSpotExpanded: false, isFlipped: false, tags: [],
+    }],
+    images: { [childId]: detail },
+  });
+  const ana = await launch('Ana', ACCOUNTS.ana, { login: false });
+  await openSmz(ana, p.smzPath, p.id);
+
+  await ana.caption('opens the overview row, clicks the unplaced micrograph: Edit Micrograph Location opens');
+  await ana.page.getByText('Overview (Reference)', { exact: true }).locator('xpath=..')
+    .locator('[data-testid="ChevronRightIcon"]').first().click();
+  await ana.page.getByText('Unplaced detail', { exact: true }).click();
+  const dialog = ana.page.getByRole('dialog', { name: 'Edit Micrograph Location' });
+  await expect(dialog).toBeVisible({ timeout: 30_000 });
+  await dialog.getByText('Place automatically on parent', { exact: true }).click();
+  await dialog.getByRole('button', { name: 'Next' }).click();
+  await expect(dialog.getByText(/^Found it/)).toBeVisible({ timeout: 90_000 });
+  await expect(dialog.getByLabel('X (px)')).toBeEnabled({ timeout: 30_000 });
+  await dialog.getByRole('button', { name: 'Save' }).click();
+  await expect(dialog).toBeHidden({ timeout: 60_000 });
+
+  const m = await saved(ana, 'Unplaced detail');
+  expect(m.placementType).toBeNull();
+  const expectedScale = OVERVIEW_SCALE * m.imageWidth / (REGION.height / 3);
+  expect(m.scale).toBeGreaterThan(expectedScale * 0.99);
+  expect(m.scale).toBeLessThan(expectedScale * 1.01);
+  expect(angleFrom(m.rotation ?? 0, -90)).toBeLessThan(0.5);
+  const s = OVERVIEW_SCALE / (m.scale ?? 1);
+  const cx = (m.offset?.X ?? 0) + (m.imageWidth * s) / 2;
+  const cy = (m.offset?.Y ?? 0) + (m.imageHeight * s) / 2;
+  expect(Math.abs(cx - (REGION.left + REGION.width / 2) / 3)).toBeLessThan(3);
+  expect(Math.abs(cy - (REGION.top + REGION.height / 2) / 3)).toBeLessThan(3);
 });
