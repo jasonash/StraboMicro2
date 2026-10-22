@@ -64,6 +64,7 @@ import {
   listCopyPlacementCandidates,
 } from '@/utils/copySizePlacement';
 import { findMicrographById } from '@/store/helpers';
+import { describeImageLoadError } from '@/utils/imageLoadError';
 import {
   isQuarterTurn,
   IDENTITY_ORIENTATION,
@@ -780,9 +781,7 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
             setConversionProgress(null);
           } catch (error) {
             console.error('[NewMicrographDialog] Failed to convert/load image:', error);
-            alert(
-              `Error loading image: ${error instanceof Error ? error.message : 'Unknown error'}`
-            );
+            alert(`Error loading image: ${describeImageLoadError(error)}`);
             setConversionProgress(null);
           } finally {
             setIsLoadingPreview(false);
@@ -878,7 +877,7 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
     } catch (error) {
       console.error('[NewMicrographDialog] Error adding sibling image:', error);
       const errSibLabel = partnerRole(formData.imageType);
-      alert(`Error loading ${errSibLabel} image: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      alert(`Error loading ${errSibLabel} image: ${describeImageLoadError(error)}`);
     } finally {
       setIsLoadingXpl(false);
     }

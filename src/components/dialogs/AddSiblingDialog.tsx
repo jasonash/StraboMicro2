@@ -35,6 +35,7 @@ import {
   type Orientation,
 } from '@/utils/rotationUtils';
 import { partnerImageType, polarizedRole } from '@/utils/polarization';
+import { describeImageLoadError } from '@/utils/imageLoadError';
 
 interface AddSiblingDialogProps {
   open: boolean;
@@ -225,7 +226,8 @@ export function AddSiblingDialog({
       setConversionProgress(null);
     } catch (err) {
       console.error('[AddSiblingDialog] Error loading image:', err);
-      setError(err instanceof Error ? err.message : 'Failed to load image');
+      setError(describeImageLoadError(err));
+      setConversionProgress(null);
     } finally {
       setLoading(false);
     }
@@ -392,6 +394,7 @@ export function AddSiblingDialog({
     } catch (err) {
       console.error(`[AddSiblingDialog] Error adding ${siblingLabel}:`, err);
       setError(err instanceof Error ? err.message : `Failed to add ${siblingLabel} image`);
+      setConversionProgress(null);
       setLoading(false);
     } finally {
       isAddingRef.current = false;
