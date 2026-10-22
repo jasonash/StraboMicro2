@@ -61,6 +61,7 @@ import { InstrumentInfoForm, isInstrumentInfoComplete, type InstrumentFormData }
 import { InstrumentDataForm, type InstrumentDataFormData, type Detector, initialInstrumentDataFormData } from './InstrumentDataForm';
 import { OrientationForm, type OrientationFormData, initialOrientationData, validateOrientationForm } from './OrientationForm';
 import type { InstrumentData } from './InstrumentDatabaseDialog';
+import { describeImageLoadError } from '@/utils/imageLoadError';
 
 interface BatchImportDialogProps {
   isOpen: boolean;
@@ -624,7 +625,7 @@ export const BatchImportDialog: React.FC<BatchImportDialogProps> = ({
         console.log(`[BatchImport] Successfully imported: ${file.name}`);
       } catch (error) {
         console.error(`[BatchImport] Error importing ${file.name}:`, error);
-        errors.push(`${file.name}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        errors.push(`${file.name}: ${describeImageLoadError(error)}`);
       }
     }
 

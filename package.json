@@ -27,6 +27,7 @@
     "test:project-serializer": "node tests/projectSerializer.test.js",
     "test:menu-accelerators": "node tests/menuAccelerators.test.js",
     "test:user-images": "electron tests/userImages.electron.test.js",
+    "test:image-load-error": "electron tests/imageLoadError.electron.test.mjs",
     "typecheck": "tsc --noEmit",
     "test:entity-model": "node tests/sync/entityModel.test.mjs",
     "test:sync-engine": "electron tests/sync/syncEngine.electron.test.js",
