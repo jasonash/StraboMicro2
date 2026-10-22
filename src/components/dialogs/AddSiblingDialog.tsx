@@ -227,6 +227,7 @@ export function AddSiblingDialog({
     } catch (err) {
       console.error('[AddSiblingDialog] Error loading image:', err);
       setError(describeImageLoadError(err));
+      setConversionProgress(null);
     } finally {
       setLoading(false);
     }
@@ -393,6 +394,7 @@ export function AddSiblingDialog({
     } catch (err) {
       console.error(`[AddSiblingDialog] Error adding ${siblingLabel}:`, err);
       setError(err instanceof Error ? err.message : `Failed to add ${siblingLabel} image`);
+      setConversionProgress(null);
       setLoading(false);
     } finally {
       isAddingRef.current = false;
