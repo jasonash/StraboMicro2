@@ -178,6 +178,8 @@ interface AppState {
   activeSampleId: string | null;
   activeMicrographId: string | null;
   activeSpotId: string | null; // Single active spot for properties panel
+  /** goToSpot asks the viewer to frame this spot once its micrograph's image is on screen (TiledViewer clears it) */
+  spotFocusRequest: { spotId: string; micrographId: string } | null;
   micrographNavigationStack: string[]; // Stack of micrograph IDs for back navigation (drill-down)
 
   // ========== SELECTION STATE ==========
@@ -341,6 +343,9 @@ interface AppState {
   selectSample: (id: string | null) => void;
   selectMicrograph: (id: string | null) => Promise<boolean>; // Returns true if navigation succeeded
   selectActiveSpot: (id: string | null) => Promise<boolean>; // Returns true if navigation succeeded
+  /** Show a spot wherever it is: switch to its micrograph, select it, zoom to it (chat links, Activity) */
+  goToSpot: (spotId: string) => Promise<boolean>;
+  clearSpotFocusRequest: () => void;
   drillDownToMicrograph: (id: string) => Promise<boolean>; // Navigate to child micrograph (pushes current to stack)
   navigateBack: () => Promise<boolean>; // Go back to previous micrograph in stack
   clearNavigationStack: () => void; // Clear the navigation stack
@@ -647,6 +652,7 @@ export const useAppStore = create<AppState>()(
           activeSampleId: null,
           activeMicrographId: null,
           activeSpotId: null,
+          spotFocusRequest: null,
           micrographNavigationStack: [],
 
           selectedSpotIds: [],
@@ -888,6 +894,17 @@ export const useAppStore = create<AppState>()(
             set({ activeSpotId: id });
             return true;
           },
+
+          goToSpot: async (spotId) => {
+            const micrograph = findSpotParentMicrograph(get().project, spotId);
+            if (!micrograph) return false;
+            if (!(await get().selectMicrograph(micrograph.id))) return false;
+            if (!(await get().selectActiveSpot(spotId))) return false;
+            set({ spotFocusRequest: { spotId, micrographId: micrograph.id } });
+            return true;
+          },
+
+          clearSpotFocusRequest: () => set({ spotFocusRequest: null }),
 
           drillDownToMicrograph: async (id) => {
             const { activeMicrographId, micrographNavigationStack, navigationGuard } = get();

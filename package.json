@@ -12,6 +12,7 @@
     "dev:typecheck": "concurrently \"npm run dev:vite\" \"npm run dev:electron\" \"npm run typecheck:watch\"",
     "test:trace-scale-bar": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/traceScaleBar.test.mts",
     "test:chat-text": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/chatText.test.mts",
+    "test:spot-framing": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/spotFraming.test.mts",
     "test:sibling-placement": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/siblingPlacement.test.mts",
     "test:incomplete-micrographs": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/incompleteMicrographs.test.mts",
     "test:web-viewer-placement": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/webViewerPlacement.test.mts",

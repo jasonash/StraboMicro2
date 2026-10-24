@@ -3,7 +3,8 @@
  * window in two real copies. No chip while the project is solo; it appears
  * when Ben joins; a message reaches the other copy's chip as unread and is
  * read in its chat window; a link to the selected spot is sent and a click
- * on it selects the spot in the other copy's main window; delete; the close
+ * on it, made while that copy shows another micrograph, switches to the
+ * spot's micrograph, selects the spot and zooms to it; delete; the close
  * button only hides the window and the chip brings it back; keep on top.
  * Stage C4 (17bh): the unread badge, an OS notification only with the
  * "Chat notifications" switch on (Preferences) and no window focused, a
@@ -16,6 +17,8 @@ import type { Page } from '@playwright/test';
 import { test, expect } from '../lib/test';
 import { ACCOUNTS, type Copy } from '../lib/copy';
 import fs from 'fs';
+import { randomUUID } from 'crypto';
+import { makeProject } from '../lib/fixtures';
 import { openSmz, turnOnSync, invite, acceptInvitationFromChip, waitSettled, setOffline, removeMember, separateCopyNotice } from '../lib/actions';
 
 const chip = (c: Copy) => c.page.getByTestId('chat-chip');
@@ -42,8 +45,17 @@ function chatWindowFlags(c: Copy) {
   });
 }
 
-test('two members chat in the chat window', async ({ launch, project }) => {
-  const p = await project('E2E Chat');
+test('two members chat in the chat window', async ({ launch, runDir }) => {
+  // A second reference micrograph, so the link is clicked while another one is on screen
+  const otherId = randomUUID();
+  const p = await makeProject(`${runDir}/fixtures`, 'E2E Chat', undefined, {
+    micrographs: [{
+      id: otherId, name: 'Second view', imagePath: otherId, imageType: 'Plane Polarized Light', width: 1600, height: 1200,
+      imageWidth: 1600, imageHeight: 1200, opacity: 1, scalePixelsPerCentimeter: 40000, rotation: 0, spots: [],
+      orientationInfo: { orientationMethod: 'unoriented' }, associatedFiles: [], links: [], tags: [],
+      isMicroVisible: true, isExpanded: false, isSpotExpanded: false, isFlipped: false,
+    }],
+  });
   const garnet = p.spots[0];
   const ana = await launch('Ana', ACCOUNTS.ana);
   const ben = await launch('Ben', ACCOUNTS.ben);
@@ -90,10 +102,27 @@ test('two members chat in the chat window', async ({ launch, project }) => {
   // Ana sees the link with the spot's name; a click selects it in her main window
   const linkA = chatA.getByTestId('chat-message').filter({ hasText: 'Here it is' }).getByRole('button', { name: garnet.name });
   await expect(linkA).toBeVisible({ timeout: 10_000 });
-  await ana.caption('clicks the link: her main window selects the spot');
-  await ana.state(new Function('e', 'return e.app.getState().selectActiveSpot(null)') as never);
+  await ana.caption('is on another micrograph and clicks the link: her main window goes to the spot');
+  await ana.state(new Function('e', `return e.app.getState().selectMicrograph(${JSON.stringify(otherId)})`) as never);
+  // The other micrograph (same size) is on screen and fitted: the whole-image zoom
+  await expect.poll(() => ana.page.evaluate(() => window.__e2eView?.zoom ?? 1), { timeout: 20_000 }).toBeLessThan(1);
+  const wholeZoom = await ana.page.evaluate(() => window.__e2eView?.zoom ?? 1);
   await linkA.click();
   await expect.poll(() => ana.state((e) => e.app.getState().activeSpotId)).toBe(garnet.id);
+  expect(await ana.state((e) => e.app.getState().activeMicrographId)).toBe(p.micrographId);
+  // Zoomed in, with the garnet (fixture spot: x 300-520, y 340-560) in the middle of the view
+  const box = await ana.page.locator('.konvajs-content').first().boundingBox();
+  if (!box) throw new Error('no viewer');
+  const framing = async () => {
+    const v = await ana.page.evaluate(() => window.__e2eView);
+    if (!v) return null;
+    return {
+      zoomedIn: v.zoom > wholeZoom * 1.5,
+      offX: Math.round(v.position.x + 410 * v.zoom - box.width / 2),
+      offY: Math.round(v.position.y + 450 * v.zoom - box.height / 2),
+    };
+  };
+  await expect.poll(framing, { timeout: 20_000 }).toEqual({ zoomedIn: true, offX: 0, offY: 0 });
 
   // Ana deletes her first message; Ben's window says so
   const first = chatA.getByTestId('chat-message').filter({ hasText: 'Hello Ben' });

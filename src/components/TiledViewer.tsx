@@ -22,9 +22,10 @@ import { isSpotTool } from '@/store/useAppStore';
 import { currentPermissions, useReadOnlyReason } from '@/hooks/usePermissions';
 import { editRefusal } from '@/utils/permissions';
 import { ReadOnlyScope } from './ReadOnlyScope';
-import { findMicrographById, getChildMicrographs } from '@/store/helpers';
+import { findMicrographById, findSpotById, getChildMicrographs } from '@/store/helpers';
 import { pairChildren, pairSpots } from '@/utils/siblingPair';
 import { realScaleOf } from '@/utils/affineScale';
+import { frameSpot, spotBounds } from '@/utils/spotFraming';
 import { AssociatedImageRenderer } from './AssociatedImageRenderer';
 import { ChildSpotsRenderer } from './ChildSpotsRenderer';
 import { SpotRenderer } from './SpotRenderer';
@@ -154,6 +155,9 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
     const viewRef = useRef({ zoom, position });
     viewRef.current = { zoom, position };
     const loadedPathRef = useRef<string | null>(null);
+    // The image on screen and fitted, and the micrograph it was loaded for:
+    // imagePath follows activeMicrographId a moment later (Viewer builds it)
+    const [imageReady, setImageReady] = useState<{ path: string; micrographId: string | null } | null>(null);
     const imageMetadataRef = useRef(imageMetadata);
     imageMetadataRef.current = imageMetadata;
     const [isLoading, setIsLoading] = useState(false);
@@ -202,6 +206,8 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
     const activeMicrographId = useAppStore((state) => state.activeMicrographId);
     const activeTool = useAppStore((state) => state.activeTool);
     const activeSpotId = useAppStore((state) => state.activeSpotId);
+    const spotFocusRequest = useAppStore((state) => state.spotFocusRequest);
+    const clearSpotFocusRequest = useAppStore((state) => state.clearSpotFocusRequest);
     const showRulers = useAppStore((state) => state.showRulers);
     const spotLabelMode = useAppStore((state) => state.spotLabelMode);
     const showMicrographOutlines = useAppStore((state) => state.showMicrographOutlines);
@@ -673,6 +679,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
      * Load image metadata and initialize viewer
      */
     useEffect(() => {
+      setImageReady(null);
       if (!imagePath || !window.api) {
         loadedPathRef.current = null;
         // Clear state when no image - use aggressive cleanup
@@ -690,6 +697,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
         ? { width: imageMetadataRef.current.width, height: imageMetadataRef.current.height }
         : null;
       loadedPathRef.current = imagePath;
+      const loadMicrographId = useAppStore.getState().activeMicrographId;
       // Clear the flag - we're now processing the toggle
       pendingSiblingToggleRef.current = false;
 
@@ -796,6 +804,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
           }
 
           setIsLoading(false);
+          setImageReady({ path: imagePath, micrographId: loadMicrographId });
           clearSiblingToggleInProgress(); // Clear the flag after image loads
           console.log('=== Thumbnail displayed, user can now interact ===');
 
@@ -1030,6 +1039,34 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
       setZoom(newZoom);
       setPosition({ x: newX, y: newY });
     }, []);
+
+    /**
+     * Go to spot (chat link, Activity): once the spot's micrograph is on
+     * screen and fitted, zoom and pan so the spot fills about a third of the view
+     */
+    useEffect(() => {
+      if (!spotFocusRequest) return;
+      if (spotFocusRequest.micrographId !== activeMicrographId) {
+        // Another micrograph was chosen before this one finished loading
+        clearSpotFocusRequest();
+        return;
+      }
+      if (!imageReady || imageReady.path !== imagePath || imageReady.micrographId !== activeMicrographId) return;
+      if (!imageMetadata || !containerRef.current) return;
+      clearSpotFocusRequest();
+      const spot = findSpotById(project, spotFocusRequest.spotId);
+      const bounds = spot ? spotBounds(spot) : null;
+      if (!bounds) return;
+      const view = frameSpot(
+        bounds,
+        { width: containerRef.current.clientWidth, height: containerRef.current.clientHeight },
+        { width: imageMetadata.width, height: imageMetadata.height },
+        MAX_ZOOM
+      );
+      if (!view) return;
+      setZoom(view.zoom);
+      setPosition(view.position);
+    }, [spotFocusRequest, activeMicrographId, imageReady, imagePath, imageMetadata, project, clearSpotFocusRequest]);
 
     /**
      * Calculate which tiles are visible in the current viewport
