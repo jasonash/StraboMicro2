@@ -61,7 +61,7 @@ export function ChatChip() {
     });
     const offSel = api.chatWindow.onSelectRef((ref) => {
       const app = useAppStore.getState();
-      if (ref.type === 'spot') void app.selectActiveSpot(ref.id);
+      if (ref.type === 'spot') void app.goToSpot(ref.id);
       else if (ref.type === 'micrograph') void app.selectMicrograph(ref.id);
     });
     return () => {

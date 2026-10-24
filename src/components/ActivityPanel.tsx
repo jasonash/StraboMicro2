@@ -164,7 +164,7 @@ export function ActivityPanel() {
     const t = g.target;
     if (!t) return;
     const app = useAppStore.getState();
-    if (t.type === 'spot') void app.selectActiveSpot(t.id);
+    if (t.type === 'spot') void app.goToSpot(t.id);
     else if (t.type === 'micrograph') void app.selectMicrograph(t.id);
   };
   const clickable = (g: ActivityGroup) => g.target !== null && (g.target.type === 'spot' || g.target.type === 'micrograph');
