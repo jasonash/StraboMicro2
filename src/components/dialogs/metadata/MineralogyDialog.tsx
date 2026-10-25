@@ -12,6 +12,7 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
+  DialogContentText,
   Button,
   Box,
   Tabs,
@@ -119,10 +120,22 @@ export function MineralogyDialog({
   const [selectedMinerals, setSelectedMinerals] = useState<string[]>([]);
   const [currentOperator, setCurrentOperator] = useState<string>('eq');
   const [currentPercentage, setCurrentPercentage] = useState<number | null>(null);
+  // Lithology tab: a selection made but not added (reported by LithologyPicker)
+  const [pendingLithology, setPendingLithology] = useState<LithologySelection | null>(null);
+  // Save was pressed with a mineral or lithology chosen but not added: ask first
+  const [askNotAdded, setAskNotAdded] = useState(false);
 
   // Load existing data when dialog opens
   useEffect(() => {
     if (!isOpen) return;
+
+    // Every opening starts with an empty mineral picker. The preset editor
+    // keeps this dialog mounted, so a mineral picked (not added) last time
+    // would otherwise still be in the field.
+    setSelectedMinerals([]);
+    setCurrentOperator('eq');
+    setCurrentPercentage(null);
+    setAskNotAdded(false);
 
     // Preset mode: load from props instead of store
     if (presetMode) {
@@ -179,9 +192,6 @@ export function MineralogyDialog({
       lithologies: (existingLithology?.lithologies || []) as LithologySelection[],
       lithologyNotes: existingLithology?.notes || '',
     });
-    setSelectedMinerals([]);
-    setCurrentOperator('eq');
-    setCurrentPercentage(null);
   }, [isOpen, micrographId, spotId, project, presetMode, initialMineralogy, initialLithology]);
 
   const handleTabChange = (_event: React.SyntheticEvent, newValue: number) => {
@@ -193,22 +203,20 @@ export function MineralogyDialog({
   const isPercentageOutOfRange =
     currentPercentage != null && (currentPercentage < 0 || currentPercentage > 100);
 
+  // The chosen mineral as a list entry (null when none is chosen)
+  const chosenMineral = (): MineralWithPercentage | null => {
+    if (selectedMinerals.length === 0) return null;
+    // Only include percentage info if actually entered (0 is stored, the null state is tracked here)
+    return currentPercentage != null
+      ? { name: selectedMinerals[0], operator: currentOperator, percentage: currentPercentage }
+      : { name: selectedMinerals[0], operator: '', percentage: 0 };
+  };
+
   // Add selected mineral with percentage to list
   const handleAddMineral = () => {
     if (isPercentageOutOfRange) return;
-    if (selectedMinerals.length > 0) {
-      const newMineral: MineralWithPercentage = {
-        name: selectedMinerals[0],
-        operator: currentPercentage != null ? currentOperator : '', // Only set operator if percentage is specified
-        percentage: currentPercentage ?? 0, // Use 0 for storage but we track null state separately
-      };
-
-      // Only include percentage info if actually entered
-      if (currentPercentage == null) {
-        newMineral.operator = '';
-        newMineral.percentage = 0;
-      }
-
+    const newMineral = chosenMineral();
+    if (newMineral) {
       setFormData(prev => ({
         ...prev,
         minerals: [...prev.minerals, newMineral],
@@ -229,27 +237,48 @@ export function MineralogyDialog({
     }));
   };
 
+  // A mineral or lithology chosen but never added would be lost on Save: ask
+  // first, which also shows that Add is what puts it in the list
   const handleSave = () => {
+    if (selectedMinerals.length > 0 || pendingLithology) {
+      setAskNotAdded(true);
+      return;
+    }
+    saveData(formData);
+  };
+
+  // "Add and Save": the waiting mineral and lithology join the lists, then save
+  const handleAddAndSave = () => {
+    const mineral = chosenMineral();
+    saveData({
+      ...formData,
+      minerals: mineral ? [...formData.minerals, mineral] : formData.minerals,
+      lithologies: pendingLithology ? [...formData.lithologies, pendingLithology] : formData.lithologies,
+    });
+  };
+
+  const saveData = (data: MineralogyData) => {
+    setAskNotAdded(false);
     // Save to TWO separate fields: mineralogy and lithologyInfo
     // Legacy app uses one dialog to edit both fields (by design)
-    console.log('Saving mineralogy and lithology data:', formData);
+    console.log('Saving mineralogy and lithology data:', data);
 
     // Build mineralogy object (Tab 1)
     const mineralogy = {
-      minerals: formData.minerals.map(m => ({
+      minerals: data.minerals.map(m => ({
         name: m.name,
         operator: m.operator,
         percentage: m.percentage,
       })),
-      mineralogyMethod: formData.determinationMethod || null,
-      percentageCalculationMethod: formData.percentageCalculationMethod || null,
-      notes: formData.mineralogyNotes || null,
+      mineralogyMethod: data.determinationMethod || null,
+      percentageCalculationMethod: data.percentageCalculationMethod || null,
+      notes: data.mineralogyNotes || null,
     };
 
     // Build lithologyInfo object (Tab 2)
     const lithologyInfo = {
-      lithologies: formData.lithologies || null,
-      notes: formData.lithologyNotes || null,
+      lithologies: data.lithologies || null,
+      notes: data.lithologyNotes || null,
     };
 
     // Check if mineralogy has any data worth saving (minerals OR notes OR methods)
@@ -311,163 +340,199 @@ export function MineralogyDialog({
         ? 'Spot Mineralogy/Lithology'
       : 'Mineralogy/Lithology';
 
+  // What Save would leave out, for the question
+  const notAdded = [
+    ...(selectedMinerals.length > 0 ? [`the mineral ${selectedMinerals[0]}`] : []),
+    ...(pendingLithology
+      ? [`the lithology ${[pendingLithology.level1, pendingLithology.level2, pendingLithology.level3].filter(Boolean).join(' > ')}`]
+      : []),
+  ];
+  const notAddedText = notAdded.join(' and ');
+
   return (
-    <Dialog open={isOpen} onClose={handleCancel} maxWidth="md" fullWidth>
-      <DialogTitle>{title}</DialogTitle>
-      <DialogContent>
-        <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
-          <Tabs value={currentTab} onChange={handleTabChange}>
-            <Tab label="Mineralogy" />
-            <Tab label="Lithology" />
-          </Tabs>
-        </Box>
+    <>
+      <Dialog open={askNotAdded} onClose={() => setAskNotAdded(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>Add before saving?</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            You chose {notAddedText} but did not press Add, so {notAdded.length === 1 ? 'it is' : 'they are'} not
+            in the list yet. Only what is in the list is saved.
+            {isPercentageOutOfRange && selectedMinerals.length > 0 && ' The percentage must be from 0 to 100 before it can be added.'}
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setAskNotAdded(false)}>Back</Button>
+          <Button onClick={() => saveData(formData)}>
+            {notAdded.length === 1 ? 'Save Without It' : 'Save Without Them'}
+          </Button>
+          <Button
+            variant="contained"
+            onClick={handleAddAndSave}
+            disabled={isPercentageOutOfRange && selectedMinerals.length > 0}
+          >
+            Add and Save
+          </Button>
+        </DialogActions>
+      </Dialog>
 
-        {/* Tab 1: Mineralogy */}
-        <TabPanel value={currentTab} index={0}>
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <Typography variant="subtitle1">Enter Mineral Name</Typography>
+      <Dialog open={isOpen} onClose={handleCancel} maxWidth="md" fullWidth>
+        <DialogTitle>{title}</DialogTitle>
+        <DialogContent>
+          <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
+            <Tabs value={currentTab} onChange={handleTabChange}>
+              <Tab label="Mineralogy" />
+              <Tab label="Lithology" />
+            </Tabs>
+          </Box>
 
-            <Box sx={{ display: 'flex', gap: 2, alignItems: 'flex-start' }}>
-              <Box sx={{ flex: 1 }}>
-                <AutocompleteMineralSearch
-                  selectedMinerals={selectedMinerals}
-                  onChange={setSelectedMinerals}
-                  multiple={false}
-                  label="Mineral"
-                  placeholder="Search for a mineral..."
+          {/* Tab 1: Mineralogy */}
+          <TabPanel value={currentTab} index={0}>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              <Typography variant="subtitle1">Enter Mineral Name</Typography>
+
+              <Box sx={{ display: 'flex', gap: 2, alignItems: 'flex-start' }}>
+                <Box sx={{ flex: 1 }}>
+                  <AutocompleteMineralSearch
+                    selectedMinerals={selectedMinerals}
+                    onChange={setSelectedMinerals}
+                    multiple={false}
+                    label="Mineral"
+                    placeholder="Search for a mineral..."
+                  />
+                </Box>
+                <TextField
+                  select
+                  label="Operator"
+                  value={currentOperator}
+                  onChange={(e) => setCurrentOperator(e.target.value)}
+                  sx={{ width: 80 }}
+                >
+                  <MenuItem value="eq">=</MenuItem>
+                  <MenuItem value="gt">&gt;</MenuItem>
+                  <MenuItem value="lt">&lt;</MenuItem>
+                </TextField>
+                <TextField
+                  type="number"
+                  label="Percentage"
+                  value={currentPercentage ?? ''}
+                  onChange={(e) => {
+                    const val = e.target.value.trim();
+                    setCurrentPercentage(val === '' ? null : parseFloat(val) || 0);
+                  }}
+                  sx={{ width: 120 }}
+                  error={isPercentageOutOfRange}
+                  helperText={isPercentageOutOfRange ? 'Enter 0 to 100' : undefined}
+                  slotProps={{
+                    htmlInput: { min: 0, max: 100, step: 0.1 }
+                  }}
                 />
+                <Button
+                  variant="outlined"
+                  onClick={handleAddMineral}
+                  disabled={selectedMinerals.length === 0 || isPercentageOutOfRange}
+                  sx={{ height: 56 }}
+                >
+                  Add
+                </Button>
               </Box>
-              <TextField
-                select
-                label="Operator"
-                value={currentOperator}
-                onChange={(e) => setCurrentOperator(e.target.value)}
-                sx={{ width: 80 }}
-              >
-                <MenuItem value="eq">=</MenuItem>
-                <MenuItem value="gt">&gt;</MenuItem>
-                <MenuItem value="lt">&lt;</MenuItem>
-              </TextField>
-              <TextField
-                type="number"
-                label="Percentage"
-                value={currentPercentage ?? ''}
-                onChange={(e) => {
-                  const val = e.target.value.trim();
-                  setCurrentPercentage(val === '' ? null : parseFloat(val) || 0);
-                }}
-                sx={{ width: 120 }}
-                error={isPercentageOutOfRange}
-                helperText={isPercentageOutOfRange ? 'Enter 0 to 100' : undefined}
-                slotProps={{
-                  htmlInput: { min: 0, max: 100, step: 0.1 }
-                }}
+
+              <Divider />
+
+              {/* Minerals list */}
+              {formData.minerals.length > 0 && (
+                <Box>
+                  <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                    Minerals
+                  </Typography>
+                  <List sx={{ border: 1, borderColor: 'divider', borderRadius: 1 }}>
+                    {formData.minerals.map((mineral, index) => {
+                      const operatorSymbol = mineral.operator === 'eq' ? '=' : mineral.operator === 'gt' ? '>' : '<';
+                      return (
+                        <ListItem
+                          key={index}
+                          secondaryAction={
+                            <IconButton edge="end" onClick={() => handleRemoveMineral(index)}>
+                              <DeleteIcon />
+                            </IconButton>
+                          }
+                        >
+                          <ListItemText
+                            primary={mineral.name}
+                            secondary={`${operatorSymbol} ${mineral.percentage}%`}
+                          />
+                        </ListItem>
+                      );
+                    })}
+                  </List>
+                </Box>
+              )}
+
+              <Divider />
+
+              <OtherTextField
+                options={DETERMINATION_METHODS}
+                value={formData.determinationMethod}
+                onChange={(value) =>
+                  setFormData(prev => ({ ...prev, determinationMethod: value }))
+                }
+                label="How was mineralogy determined?"
               />
-              <Button
-                variant="outlined"
-                onClick={handleAddMineral}
-                disabled={selectedMinerals.length === 0 || isPercentageOutOfRange}
-                sx={{ height: 56 }}
-              >
-                Add
-              </Button>
+
+              <OtherTextField
+                options={PERCENTAGE_CALCULATION_METHODS}
+                value={formData.percentageCalculationMethod}
+                onChange={(value) =>
+                  setFormData(prev => ({ ...prev, percentageCalculationMethod: value }))
+                }
+                label="How were percentages calculated?"
+              />
+
+              <TextField
+                fullWidth
+                multiline
+                rows={4}
+                label="Mineralogy Notes"
+                value={formData.mineralogyNotes}
+                onChange={(e) =>
+                  setFormData(prev => ({ ...prev, mineralogyNotes: e.target.value }))
+                }
+              />
             </Box>
+          </TabPanel>
 
-            <Divider />
+          {/* Tab 2: Lithology */}
+          <TabPanel value={currentTab} index={1}>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+              <LithologyPicker
+                selectedLithologies={formData.lithologies}
+                onChange={(lithologies) =>
+                  setFormData(prev => ({ ...prev, lithologies }))
+                }
+                onPendingChange={setPendingLithology}
+              />
 
-            {/* Minerals list */}
-            {formData.minerals.length > 0 && (
-              <Box>
-                <Typography variant="subtitle2" sx={{ mb: 1 }}>
-                  Minerals
-                </Typography>
-                <List sx={{ border: 1, borderColor: 'divider', borderRadius: 1 }}>
-                  {formData.minerals.map((mineral, index) => {
-                    const operatorSymbol = mineral.operator === 'eq' ? '=' : mineral.operator === 'gt' ? '>' : '<';
-                    return (
-                      <ListItem
-                        key={index}
-                        secondaryAction={
-                          <IconButton edge="end" onClick={() => handleRemoveMineral(index)}>
-                            <DeleteIcon />
-                          </IconButton>
-                        }
-                      >
-                        <ListItemText
-                          primary={mineral.name}
-                          secondary={`${operatorSymbol} ${mineral.percentage}%`}
-                        />
-                      </ListItem>
-                    );
-                  })}
-                </List>
-              </Box>
-            )}
+              <Divider />
 
-            <Divider />
-
-            <OtherTextField
-              options={DETERMINATION_METHODS}
-              value={formData.determinationMethod}
-              onChange={(value) =>
-                setFormData(prev => ({ ...prev, determinationMethod: value }))
-              }
-              label="How was mineralogy determined?"
-            />
-
-            <OtherTextField
-              options={PERCENTAGE_CALCULATION_METHODS}
-              value={formData.percentageCalculationMethod}
-              onChange={(value) =>
-                setFormData(prev => ({ ...prev, percentageCalculationMethod: value }))
-              }
-              label="How were percentages calculated?"
-            />
-
-            <TextField
-              fullWidth
-              multiline
-              rows={4}
-              label="Mineralogy Notes"
-              value={formData.mineralogyNotes}
-              onChange={(e) =>
-                setFormData(prev => ({ ...prev, mineralogyNotes: e.target.value }))
-              }
-            />
-          </Box>
-        </TabPanel>
-
-        {/* Tab 2: Lithology */}
-        <TabPanel value={currentTab} index={1}>
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-            <LithologyPicker
-              selectedLithologies={formData.lithologies}
-              onChange={(lithologies) =>
-                setFormData(prev => ({ ...prev, lithologies }))
-              }
-            />
-
-            <Divider />
-
-            <TextField
-              fullWidth
-              multiline
-              rows={4}
-              label="Lithology Notes"
-              value={formData.lithologyNotes}
-              onChange={(e) =>
-                setFormData(prev => ({ ...prev, lithologyNotes: e.target.value }))
-              }
-            />
-          </Box>
-        </TabPanel>
-      </DialogContent>
-      <DialogActions>
-        <Button onClick={handleCancel}>Cancel</Button>
-        <Button onClick={handleSave} variant="contained">
-          Save
-        </Button>
-      </DialogActions>
-    </Dialog>
+              <TextField
+                fullWidth
+                multiline
+                rows={4}
+                label="Lithology Notes"
+                value={formData.lithologyNotes}
+                onChange={(e) =>
+                  setFormData(prev => ({ ...prev, lithologyNotes: e.target.value }))
+                }
+              />
+            </Box>
+          </TabPanel>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCancel}>Cancel</Button>
+          <Button onClick={handleSave} variant="contained">
+            Save
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </>
   );
 }
