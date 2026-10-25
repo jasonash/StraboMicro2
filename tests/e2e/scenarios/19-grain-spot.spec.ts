@@ -350,6 +350,8 @@ test('Grain Spot without the model: it offers the download; a failed download of
   await ana.caption('clicks Download; the download fails');
   await dialog.getByRole('button', { name: 'Download' }).click();
   await expect(dialog.getByRole('alert')).toContainText('The download did not finish', { timeout: 30_000 });
+  // A plain reason, not "fetch failed" (Sentry ELECTRON-2Z)
+  await expect(dialog.getByRole('alert')).toContainText('Could not reach 127.0.0.1:9, where the model is downloaded from');
   await expect(dialog.getByRole('button', { name: 'Try Again' })).toBeEnabled();
   await ana.caption('Try Again fails the same way and stays on the prompt');
   await dialog.getByRole('button', { name: 'Try Again' }).click();
