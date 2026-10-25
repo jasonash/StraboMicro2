@@ -17,6 +17,7 @@ import {
 } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import { useAppStore } from '@/store';
+import { useStickyExpanded } from '@/hooks/useStickyExpanded';
 
 interface StraboToolsSummaryProps {
   micrographId: string;
@@ -66,6 +67,7 @@ const PHASE_COLORS: [number, number, number][] = [
 const PHASE_NAMES = ['Black', 'White', 'Pink', 'Green', 'Lavender', 'Blue'];
 
 export function StraboToolsSummary({ micrographId }: StraboToolsSummaryProps) {
+  const [expanded, onExpandedChange] = useStickyExpanded('straboTools', true);
   const micrographIndex = useAppStore((state) => state.micrographIndex);
   const micrograph = micrographIndex.get(micrographId);
 
@@ -76,7 +78,7 @@ export function StraboToolsSummary({ micrographId }: StraboToolsSummaryProps) {
   const timestamp = st.timestamp ? new Date(st.timestamp).toLocaleDateString() : '';
 
   return (
-    <StyledAccordion disableGutters elevation={0} defaultExpanded>
+    <StyledAccordion disableGutters elevation={0} expanded={expanded} onChange={onExpandedChange}>
       <StyledAccordionSummary expandIcon={<ExpandMoreIcon />}>
         <Typography variant="body2" sx={{ fontWeight: 500 }}>
           StraboTools

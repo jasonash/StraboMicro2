@@ -20,6 +20,7 @@ import {
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import TableChartOutlinedIcon from '@mui/icons-material/TableChartOutlined';
 import { useAppStore } from '@/store';
+import { useStickyExpanded } from '@/hooks/useStickyExpanded';
 import { columnsWithValues, spotEntries, spotsInOrder } from '@/utils/customUserData';
 import { CustomUserDataTableDialog } from './dialogs/CustomUserDataTableDialog';
 
@@ -54,6 +55,9 @@ export function CustomUserDataSummary({ micrographId, spotId, wholeProject = fal
   const project = useAppStore((s) => s.project);
   const spotIndex = useAppStore((s) => s.spotIndex);
   const [tableOpen, setTableOpen] = useState(false);
+  // A spot's section starts open, a micrograph's or the project's closed; each remembers its own state
+  const [spotExpanded, onSpotExpandedChange] = useStickyExpanded('customUserData.spot', true);
+  const [listExpanded, onListExpandedChange] = useStickyExpanded(wholeProject ? 'customUserData.project' : 'customUserData.micrograph', false);
 
   const spot = spotId ? spotIndex.get(spotId) : undefined;
   const entries = useMemo(() => (spot ? spotEntries(project, spot) : []), [project, spot]);
@@ -68,8 +72,7 @@ export function CustomUserDataSummary({ micrographId, spotId, wholeProject = fal
   if (spotId) {
     if (entries.length === 0) return null;
     return (
-      // Keyed: a spot's section starts open, a micrograph's closed (MUI keeps the first defaultExpanded)
-      <StyledAccordion key={`spot-${spotId}`} disableGutters defaultExpanded>
+      <StyledAccordion disableGutters expanded={spotExpanded} onChange={onSpotExpandedChange}>
         <StyledAccordionSummary expandIcon={<ExpandMoreIcon />}>
           <Typography variant="subtitle2">Custom User Data</Typography>
           <Chip label={entries.length} size="small" />
@@ -100,7 +103,7 @@ export function CustomUserDataSummary({ micrographId, spotId, wholeProject = fal
   return (
     <>
       {hasData && (
-        <StyledAccordion key={`micrograph-${tableMicrographId ?? 'project'}`} disableGutters defaultExpanded={false}>
+        <StyledAccordion disableGutters expanded={listExpanded} onChange={onListExpandedChange}>
           <StyledAccordionSummary expandIcon={<ExpandMoreIcon />}>
             <Typography variant="subtitle2">Custom User Data</Typography>
             <Chip label={micrographStats.spots === 1 ? '1 spot' : `${micrographStats.spots} spots`} size="small" />
