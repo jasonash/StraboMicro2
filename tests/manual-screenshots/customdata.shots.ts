@@ -46,11 +46,11 @@ test('custom user data', async ({ launch, runDir }) => {
   await wb.xlsx.readFile(template);
   const ws = wb.getWorksheet('Custom User Data');
   if (!ws) throw new Error('no data sheet');
-  ['Mineral', 'Mg#', 'Grain size (µm)', 'Analysis'].forEach((h, i) => { ws.getCell(1, 6 + i).value = h; });
+  ['Mineral', 'Mg#', 'Grain size (µm)', 'Analysis'].forEach((h, i) => { ws.getCell(1, 5 + i).value = h; });
   let filled = 0;
   ws.eachRow((row, n) => {
     if (n === 1 || filled >= VALUES.length || row.getCell(2).value !== REF) return;
-    VALUES[filled].forEach((v, i) => { if (v) row.getCell(6 + i).value = v; });
+    VALUES[filled].forEach((v, i) => { if (v) row.getCell(5 + i).value = v; });
     filled++;
   });
   const filledPath = `${runDir}/Toxaway analyses.xlsx`;

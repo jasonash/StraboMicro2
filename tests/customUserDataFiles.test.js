@@ -25,13 +25,13 @@ function check(label, ok, detail = '') {
 const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cud-files-'));
-const headers = ['Sample Name', 'Micrograph Name', 'Spot Name', 'Spot ID', 'Archived', 'Mg#', 'Notes'];
+const headers = ['Sample Name', 'Micrograph Name', 'Spot Name', 'Spot ID', 'Mg#', 'Notes'];
 const rows = [
-  ['Sample A', 'XPL', 'Spot 1', 'a-1', '', '0.820', 'has, comma'],
-  ['Sample A', 'XPL', 'Spot "2"', 'b-2', 'Yes', '<0.01', 'two\nlines'],
-  ['Sample B', 'PPL', 'Spöt ±3', 'c-3', '', '', ' padded '],
+  ['Sample A', 'XPL', 'Spot 1', 'a-1', '0.820', 'has, comma'],
+  ['Sample A', 'XPL', 'Spot "2"', 'b-2', '<0.01', 'two\nlines'],
+  ['Sample B', 'PPL', 'Spöt ±3', 'c-3', '', ' padded '],
 ];
-const table = { headers, rows, lockedCount: 5, instructions: ['StraboMicro Custom User Data', '', 'How to use'] };
+const table = { headers, rows, lockedCount: 4, instructions: ['StraboMicro Custom User Data', '', 'How to use'] };
 
 async function main() {
   // ------------------------------------------------------------ CSV
@@ -74,13 +74,13 @@ async function main() {
   check('xlsx: data sheet first, Instructions second', wb.worksheets[0].name === 'Custom User Data' && wb.worksheets[1].name === 'Instructions');
   check('xlsx: instructions text', wb.getWorksheet('Instructions').getCell('A1').value === 'StraboMicro Custom User Data');
   check('xlsx: header frozen', ws.views[0]?.state === 'frozen' && ws.views[0]?.ySplit === 1);
-  check('xlsx: header bold', ws.getCell('A1').font?.bold === true && ws.getCell('F1').font?.bold === true);
+  check('xlsx: header bold', ws.getCell('A1').font?.bold === true && ws.getCell('E1').font?.bold === true);
   check('xlsx: locked columns locked (cell default)', ws.getCell('D2').protection?.locked !== false);
-  check('xlsx: value cells unlocked', ws.getCell('F2').protection?.locked === false && ws.getCell('F1').protection?.locked === false);
-  check('xlsx: value cells are text format', ws.getCell('F2').numFmt === '@');
-  check('xlsx: locked cells grey on spot rows', ws.getCell('A2').fill?.fgColor?.argb === 'FFE0E0E0' && ws.getCell('E4').fill?.fgColor?.argb === 'FFE0E0E0');
+  check('xlsx: value cells unlocked', ws.getCell('E2').protection?.locked === false && ws.getCell('E1').protection?.locked === false);
+  check('xlsx: value cells are text format', ws.getCell('E2').numFmt === '@');
+  check('xlsx: locked cells grey on spot rows', ws.getCell('A2').fill?.fgColor?.argb === 'FFE0E0E0' && ws.getCell('D4').fill?.fgColor?.argb === 'FFE0E0E0');
   check('xlsx: grey stops after the last spot row', !ws.getCell('A5').fill);
-  check('xlsx: spare columns unlocked + text', ws.getColumn(8).protection?.locked === false && ws.getColumn(8).numFmt === '@' && ws.getColumn(300).protection?.locked === false);
+  check('xlsx: spare columns unlocked + text', ws.getColumn(7).protection?.locked === false && ws.getColumn(7).numFmt === '@' && ws.getColumn(300).protection?.locked === false);
   check('xlsx: locked columns not unlocked', ws.getColumn(4).protection?.locked !== false);
 
   const zip = await unzipper.Open.file(xPath);

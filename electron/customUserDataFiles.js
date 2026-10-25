@@ -6,7 +6,7 @@
  * columns are locked) is decided by the renderer (src/utils/customUserData.ts);
  * this module only knows about files.
  *
- * .xlsx: the first `lockedCount` columns (names, Spot ID, Archived) are
+ * .xlsx: the first `lockedCount` columns (names, Spot ID) are
  * locked with sheet protection (no password: a guardrail, the import check
  * is the real safety net), greyed on the rows with spots, header bold and
  * frozen; an "Instructions" sheet carries the text. Sorting, filtering and
