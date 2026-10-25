@@ -21,6 +21,7 @@ const crypto = require('crypto');
 const { app } = require('electron');
 const log = require('electron-log');
 const { writeFileAtomic } = require('./atomicFile');
+const { downloadFailure } = require('./downloadError');
 
 const REVISION = '814a066640debee5a91e70aa401fb8e17e030503';
 const BASE_URL = `https://huggingface.co/onnx-community/sam2.1-hiera-tiny-ONNX/resolve/${REVISION}/onnx`;
@@ -96,15 +97,25 @@ async function runDownload(progress) {
       // not there yet
     }
     log.info(`[GrainSpot] Downloading ${f.name} (${(f.size / 1e6).toFixed(1)} MB)`);
-    const response = await fetch(`${baseUrl()}/${f.name}`);
-    if (!response.ok || !response.body) throw new Error(`Download of ${f.name} failed: HTTP ${response.status}`);
+    const url = `${baseUrl()}/${f.name}`;
+    let response;
+    try {
+      response = await fetch(url);
+    } catch (error) {
+      throw downloadFailure('connect', url, { cause: error });
+    }
+    if (!response.ok || !response.body) throw downloadFailure('http', url, { status: response.status });
     const chunks = [];
     let got = 0;
-    for await (const chunk of response.body) {
-      chunks.push(Buffer.from(chunk));
-      got += chunk.length;
-      done += chunk.length;
-      report();
+    try {
+      for await (const chunk of response.body) {
+        chunks.push(Buffer.from(chunk));
+        got += chunk.length;
+        done += chunk.length;
+        report();
+      }
+    } catch (error) {
+      throw downloadFailure('transfer', url, { cause: error });
     }
     const data = Buffer.concat(chunks);
     const sha = crypto.createHash('sha256').update(data).digest('hex');
@@ -140,7 +151,7 @@ function registerIpc(ipcMain) {
       });
       return { success: true };
     } catch (error) {
-      log.error('[GrainSpot] Download failed:', error);
+      log.error('[GrainSpot] Download failed:', error.message, error.detail ?? error);
       return { success: false, error: error.message };
     }
   });

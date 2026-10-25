@@ -108,7 +108,7 @@ function GrainSpotStatusContent() {
           {phase === 'downloading' && <LinearProgress variant="determinate" value={percent} sx={{ mt: 2 }} />}
           {phase === 'needs-download' && error && (
             <Alert severity="error" sx={{ mt: 2 }}>
-              The download did not finish ({error}). Check the internet connection and try again.
+              The download did not finish. {error}
             </Alert>
           )}
         </DialogContent>
