@@ -90,11 +90,11 @@ check('hasCustomUserData: micrograph without', !hasCustomUserData(p, 'M2'));
 // ---------------------------------------------------------------- template
 const t = templateTable(p);
 check('template: headers = locked + ordered columns', eq(t.headers, [...LOCKED_COLUMNS, 'Mg#', 'Age (Ma)', 'Alpha', 'zeta']), t.headers);
-check('template: lockedCount', t.lockedCount === 5);
+check('template: lockedCount', t.lockedCount === 4);
 check('template: one row per spot, tree order', eq(t.rows.map((r) => r[3]), ['a', 'b', 'c', 'd']));
 check('template: sample label, micrograph, spot names', eq(t.rows[0].slice(0, 3), ['Sample A', 'XPL', 'Spot 1']));
-check('template: archived = Yes', t.rows[1][4] === 'Yes' && t.rows[0][4] === '');
-check('template: values as stored (0.820 kept)', eq(t.rows[0].slice(5), ['0.820', '312', '', '']));
+check('template: no Archived column (removed 2026-10-25), even for an archived spot', !t.headers.includes('Archived') && t.rows[1].length === t.headers.length, t.headers);
+check('template: values as stored (0.820 kept)', eq(t.rows[0].slice(4), ['0.820', '312', '', '']));
 const tm = templateTable(p, 'M3');
 check('template: one micrograph', eq(tm.rows.map((r) => r[3]), ['d']));
 check('template: empty project', templateTable(null).rows.length === 0);
@@ -107,16 +107,18 @@ function refused(headers: string[], rows: string[][] = [], rights = owner): stri
   return r.ok ? [] : r.problems;
 }
 check('refuse: no Spot ID column', refused(['Spot Name', 'X']).some((m) => m.includes('"Spot ID" column is missing')));
-check('refuse: blank header over values', refused([...H, '', 'X'], [['', '', '', 'a', '', 'v', '1']]).some((m) => m.includes('Column F has values but no header')));
-check('accept: blank header over an empty column', refused([...H, '', 'X'], [['', '', '', 'a', '', '', '1']]).length === 0);
-check('refuse: duplicate header (case + spaces ignored)', refused([...H, 'Mg#', ' mg# ']).some((m) => m.includes('appears twice (columns F and G)')));
+check('refuse: blank header over values', refused([...H, '', 'X'], [['', '', '', 'a', 'v', '1']]).some((m) => m.includes('Column E has values but no header')));
+check('accept: blank header over an empty column', refused([...H, '', 'X'], [['', '', '', 'a', '', '1']]).length === 0);
+check('refuse: duplicate header (case + spaces ignored)', refused([...H, 'Mg#', ' mg# ']).some((m) => m.includes('appears twice (columns E and F)')));
 check('refuse: header repeats a locked column', refused([...H, 'spot id']).some((m) => m.includes('appears twice')));
 check('refuse: __proto__ header', refused([...H, '__proto__']).some((m) => m.includes("can't be used")));
-check('refuse: same Spot ID on two rows', refused([...H, 'X'], [['', '', '', 'a', '', '1'], ['', '', '', 'a', '', '2']]).some((m) => m.includes('Rows 2 and 3 have the same Spot ID')));
+check('refuse: same Spot ID on two rows', refused([...H, 'X'], [['', '', '', 'a', '1'], ['', '', '', 'a', '2']]).some((m) => m.includes('Rows 2 and 3 have the same Spot ID')));
 check('refuse: no project', !checkImport(null, { headers: H, rows: [] }, owner).ok);
 check('column letters', columnLetter(0) === 'A' && columnLetter(25) === 'Z' && columnLetter(26) === 'AA' && columnLetter(701) === 'ZZ' && columnLetter(702) === 'AAA');
 
 // ---------------------------------------------------------------- plan
+// A template from the 2.0.55 test builds, with the Archived column: still
+// imports, and Archived is skipped, not taken as a user column
 const file = {
   headers: [' Sample Name', 'Micrograph Name', 'Spot Name', 'Spot ID', 'Archived', 'Mg#', ' Fo (%) '],
   rows: [

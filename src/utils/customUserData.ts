@@ -24,11 +24,12 @@ export const COL_SAMPLE = 'Sample Name';
 export const COL_MICROGRAPH = 'Micrograph Name';
 export const COL_SPOT = 'Spot Name';
 export const COL_ID = 'Spot ID';
-export const COL_ARCHIVED = 'Archived';
-export const LOCKED_COLUMNS = [COL_SAMPLE, COL_MICROGRAPH, COL_SPOT, COL_ID, COL_ARCHIVED] as const;
+export const LOCKED_COLUMNS = [COL_SAMPLE, COL_MICROGRAPH, COL_SPOT, COL_ID] as const;
+/** Locked column of templates from the 2.0.55 test builds (always blank: nothing in the app archives a spot); such a file's column is still skipped on import */
+const COL_ARCHIVED_OLD = 'Archived';
 
 /** Header names a user column may not use (case and surrounding spaces ignored) */
-const RESERVED = new Set(LOCKED_COLUMNS.map((c) => c.toLowerCase()));
+const RESERVED = new Set([...LOCKED_COLUMNS, COL_ARCHIVED_OLD].map((c) => c.toLowerCase()));
 /** Would replace an object's prototype when used as a key */
 const UNSAFE_KEYS = new Set(['__proto__']);
 
@@ -117,7 +118,6 @@ export function templateTable(project: ProjectMetadata | null, micrographId?: st
     micrograph.name || '',
     spot.name || '',
     spot.id,
-    spot.archived ? 'Yes' : '',
     ...columns.map((c) => valueOf(spot.customUserData, c)),
   ]);
   return { headers: [...LOCKED_COLUMNS, ...columns], rows, lockedCount: LOCKED_COLUMNS.length };

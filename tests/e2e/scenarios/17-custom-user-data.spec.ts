@@ -16,7 +16,7 @@ import { ACCOUNTS, type Copy } from '../lib/copy';
 import { addSpot, openSmz, setOffline, share, syncNow, waitSettled } from '../lib/actions';
 import type { FixtureProject } from '../lib/fixtures';
 
-const LOCKED = ['Sample Name', 'Micrograph Name', 'Spot Name', 'Spot ID', 'Archived'];
+const LOCKED = ['Sample Name', 'Micrograph Name', 'Spot Name', 'Spot ID'];
 
 /** Custom User Data as the store has it: column list + each spot's values by spot name */
 async function stored(copy: Copy) {
@@ -66,11 +66,11 @@ test('download the template, fill it, import it, undo it', async ({ launch, proj
   expect(wb.getWorksheet('Instructions')).toBeTruthy();
 
   await ana.caption('fills in two columns and imports the file');
-  ws.getCell('F1').value = 'Mg#';
-  ws.getCell('G1').value = 'Note';
-  ws.getCell('F2').value = '0.820';
-  ws.getCell('G2').value = 'rim, core';
-  ws.getCell('F3').value = '<0.01';
+  ws.getCell('E1').value = 'Mg#';
+  ws.getCell('F1').value = 'Note';
+  ws.getCell('E2').value = '0.820';
+  ws.getCell('F2').value = 'rim, core';
+  ws.getCell('E3').value = '<0.01';
   ws.getCell('C3').value = 'Quartz renamed in Excel';
   const filledPath = `${runDir}/filled.xlsx`;
   await wb.xlsx.writeFile(filledPath);
