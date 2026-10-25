@@ -484,6 +484,10 @@ export function PropertiesPanel() {
             <ProjectMetadataSection
               onEditProject={() => setOpenDialog('project')}
             />
+            {/* Every spot's Custom User Data in one table (only when there is some) */}
+            <Box sx={{ mt: 2 }}>
+              <CustomUserDataSummary wholeProject />
+            </Box>
           </Box>
         )}
       </TabPanel>

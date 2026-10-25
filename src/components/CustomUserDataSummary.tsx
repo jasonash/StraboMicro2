@@ -1,8 +1,8 @@
 /**
  * Custom User Data in the right pane (docs/custom-user-data-design.md 12):
- * a spot's values as "header: value" rows, or for a micrograph a count and
- * the Show Custom User Data... button (table modal). Renders nothing when
- * there is no data.
+ * a spot's values as "header: value" rows, or for a micrograph (or the whole
+ * project, in the Project tab) a count and the Show Custom User Data...
+ * button (table modal). Renders nothing when there is no data.
  */
 
 import { useMemo, useState } from 'react';
@@ -46,9 +46,11 @@ const StyledAccordionSummary = styled(AccordionSummary)(({ theme }) => ({
 interface CustomUserDataSummaryProps {
   micrographId?: string;
   spotId?: string;
+  /** The Project tab: every spot in the project */
+  wholeProject?: boolean;
 }
 
-export function CustomUserDataSummary({ micrographId, spotId }: CustomUserDataSummaryProps) {
+export function CustomUserDataSummary({ micrographId, spotId, wholeProject = false }: CustomUserDataSummaryProps) {
   const project = useAppStore((s) => s.project);
   const spotIndex = useAppStore((s) => s.spotIndex);
   const [tableOpen, setTableOpen] = useState(false);
@@ -56,12 +58,12 @@ export function CustomUserDataSummary({ micrographId, spotId }: CustomUserDataSu
   const spot = spotId ? spotIndex.get(spotId) : undefined;
   const entries = useMemo(() => (spot ? spotEntries(project, spot) : []), [project, spot]);
   const micrographStats = useMemo(() => {
-    if (spotId || !micrographId) return null;
-    const spots = spotsInOrder(project, micrographId).map((p) => p.spot);
+    if (spotId || (!micrographId && !wholeProject)) return null;
+    const spots = spotsInOrder(project, wholeProject ? null : micrographId).map((p) => p.spot);
     const columns = columnsWithValues(project, spots);
     const withData = spots.filter((s) => columns.some((c) => (s.customUserData?.[c] ?? '') !== '')).length;
     return { columns: columns.length, spots: withData };
-  }, [project, micrographId, spotId]);
+  }, [project, micrographId, spotId, wholeProject]);
 
   if (spotId) {
     if (entries.length === 0) return null;
@@ -90,14 +92,15 @@ export function CustomUserDataSummary({ micrographId, spotId }: CustomUserDataSu
     );
   }
 
-  if (!micrographId || !micrographStats) return null;
+  if (!micrographStats) return null;
+  const tableMicrographId = wholeProject ? null : micrographId ?? null;
   const hasData = micrographStats.spots > 0;
   // The table stays open after Remove all empties the micrograph (it shows what was done)
   if (!hasData && !tableOpen) return null;
   return (
     <>
       {hasData && (
-        <StyledAccordion key={`micrograph-${micrographId}`} disableGutters defaultExpanded={false}>
+        <StyledAccordion key={`micrograph-${tableMicrographId ?? 'project'}`} disableGutters defaultExpanded={false}>
           <StyledAccordionSummary expandIcon={<ExpandMoreIcon />}>
             <Typography variant="subtitle2">Custom User Data</Typography>
             <Chip label={micrographStats.spots === 1 ? '1 spot' : `${micrographStats.spots} spots`} size="small" />
@@ -105,7 +108,7 @@ export function CustomUserDataSummary({ micrographId, spotId }: CustomUserDataSu
           <AccordionDetails sx={{ py: 1 }}>
             <Typography variant="body2" sx={{ color: 'text.secondary', mb: 0.5 }}>
               {micrographStats.columns === 1 ? '1 column' : `${micrographStats.columns} columns`} on{' '}
-              {micrographStats.spots === 1 ? '1 spot' : `${micrographStats.spots} spots`} of this micrograph.
+              {micrographStats.spots === 1 ? '1 spot' : `${micrographStats.spots} spots`} {wholeProject ? 'in this project' : 'of this micrograph'}.
             </Typography>
             <Button
               size="small"
@@ -120,7 +123,7 @@ export function CustomUserDataSummary({ micrographId, spotId }: CustomUserDataSu
         </StyledAccordion>
       )}
       {tableOpen && (
-        <CustomUserDataTableDialog open={tableOpen} onClose={() => setTableOpen(false)} micrographId={micrographId} />
+        <CustomUserDataTableDialog open={tableOpen} onClose={() => setTableOpen(false)} micrographId={tableMicrographId} />
       )}
     </>
   );
