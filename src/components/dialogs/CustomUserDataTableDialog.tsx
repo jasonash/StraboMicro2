@@ -1,8 +1,10 @@
 /**
- * Custom User Data table of one micrograph (right pane > Show Custom User
- * Data...): one row per spot with values, the columns that have values here.
- * Clicking a row selects that spot. Download saves this micrograph's table;
- * Remove column and Remove all change the whole project (Owner, Editor,
+ * Custom User Data table of one micrograph, or of the whole project (right
+ * pane > Show Custom User Data..., micrograph or Project tab): one row per
+ * spot with values, the columns that have values there. The project table
+ * adds Sample and Micrograph columns. Clicking a row selects that spot (the
+ * project table goes to it: switches micrograph and zooms, like a chat spot
+ * link). Download saves the table shown; Remove column and Remove all change the whole project (Owner, Editor,
  * local project), each as one undo step. Design:
  * docs/custom-user-data-design.md (8, 12, 16).
  */
@@ -45,7 +47,8 @@ import { downloadCustomUserData, type CustomUserDataFormat } from '@/services/cu
 interface CustomUserDataTableDialogProps {
   open: boolean;
   onClose: () => void;
-  micrographId: string;
+  /** null = the whole project */
+  micrographId: string | null;
 }
 
 type Confirm = { kind: 'column'; column: string } | { kind: 'all' };
@@ -59,16 +62,18 @@ export function CustomUserDataTableDialog({ open, onClose, micrographId }: Custo
   const micrographIndex = useAppStore((s) => s.micrographIndex);
   const changeCustomUserData = useAppStore((s) => s.changeCustomUserData);
   const selectActiveSpot = useAppStore((s) => s.selectActiveSpot);
+  const goToSpot = useAppStore((s) => s.goToSpot);
   const permissions = usePermissions();
 
   const [confirm, setConfirm] = useState<Confirm | null>(null);
   const [downloadAnchor, setDownloadAnchor] = useState<HTMLElement | null>(null);
   const [message, setMessage] = useState<{ severity: 'success' | 'error'; text: string } | null>(null);
 
-  const micrograph = micrographIndex.get(micrographId);
-  const spots = useMemo(() => spotsInOrder(project, micrographId).map((p) => p.spot), [project, micrographId]);
-  const columns = useMemo(() => columnsWithValues(project, spots), [project, spots]);
-  const rows = useMemo(() => spots.filter((s) => columns.some((c) => (s.customUserData?.[c] ?? '') !== '')), [spots, columns]);
+  const wholeProject = micrographId === null;
+  const micrograph = micrographId === null ? undefined : micrographIndex.get(micrographId);
+  const places = useMemo(() => spotsInOrder(project, micrographId), [project, micrographId]);
+  const columns = useMemo(() => columnsWithValues(project, places.map((p) => p.spot)), [project, places]);
+  const rows = useMemo(() => places.filter(({ spot }) => columns.some((c) => (spot.customUserData?.[c] ?? '') !== '')), [places, columns]);
   const canRemove = !!project && canEditEntity(permissions, 'project', project.id);
 
   const projectCount = (column: string | null) => spotsInOrder(project).filter(({ spot }) => {
@@ -85,7 +90,7 @@ export function CustomUserDataTableDialog({ open, onClose, micrographId }: Custo
 
   const handleRowClick = (spotId: string) => {
     handleClose();
-    void selectActiveSpot(spotId);
+    void (wholeProject ? goToSpot(spotId) : selectActiveSpot(spotId));
   };
 
   const handleDownload = async (format: CustomUserDataFormat) => {
@@ -105,7 +110,8 @@ export function CustomUserDataTableDialog({ open, onClose, micrographId }: Custo
     setMessage({ severity: 'success', text: c.kind === 'all' ? 'Removed all Custom User Data.' : `Removed the column "${c.column}".` });
   };
 
-  if (!project || !micrograph) return null;
+  if (!project || (!wholeProject && !micrograph)) return null;
+  const headCell = { fontWeight: 600, whiteSpace: 'nowrap' } as const;
 
   return (
     <>
@@ -113,7 +119,7 @@ export function CustomUserDataTableDialog({ open, onClose, micrographId }: Custo
         <DialogTitle sx={{ pr: 6 }}>
           Custom User Data
           <Typography variant="body2" color="text.secondary">
-            {micrograph.name}: {plural(rows.length, 'spot')}, {plural(columns.length, 'column')}
+            {(wholeProject ? project.name : micrograph?.name) || '(unnamed)'}: {plural(rows.length, 'spot')}, {plural(columns.length, 'column')}
           </Typography>
           <IconButton aria-label="Close" onClick={handleClose} sx={{ position: 'absolute', right: 8, top: 8 }}>
             <CloseIcon />
@@ -122,20 +128,22 @@ export function CustomUserDataTableDialog({ open, onClose, micrographId }: Custo
         <DialogContent dividers>
           {rows.length === 0 ? (
             <Typography variant="body2" color="text.secondary">
-              No spot of this micrograph has Custom User Data. Use Tools &gt; Custom User Data... to import some.
+              No spot {wholeProject ? 'in this project' : 'of this micrograph'} has Custom User Data. Use Tools &gt; Custom User Data... to import some.
             </Typography>
           ) : (
             <>
               <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                Click a row to select that spot.
+                {wholeProject ? 'Click a row to go to that spot.' : 'Click a row to select that spot.'}
               </Typography>
               <TableContainer sx={{ maxHeight: '60vh' }}>
                 <Table size="small" stickyHeader>
                   <TableHead>
                     <TableRow>
-                      <TableCell sx={{ fontWeight: 600, whiteSpace: 'nowrap' }}>Spot</TableCell>
+                      {wholeProject && <TableCell sx={headCell}>Sample</TableCell>}
+                      {wholeProject && <TableCell sx={headCell}>Micrograph</TableCell>}
+                      <TableCell sx={headCell}>Spot</TableCell>
                       {columns.map((c) => (
-                        <TableCell key={c} sx={{ fontWeight: 600, whiteSpace: 'nowrap' }}>
+                        <TableCell key={c} sx={headCell}>
                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                             {c}
                             {canRemove && (
@@ -151,8 +159,10 @@ export function CustomUserDataTableDialog({ open, onClose, micrographId }: Custo
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {rows.map((s) => (
+                    {rows.map(({ spot: s, micrograph: m, sample }) => (
                       <TableRow key={s.id} hover onClick={() => handleRowClick(s.id)} sx={{ cursor: 'pointer' }}>
+                        {wholeProject && <TableCell sx={{ whiteSpace: 'nowrap' }}>{sample.label || sample.name || ''}</TableCell>}
+                        {wholeProject && <TableCell sx={{ whiteSpace: 'nowrap' }}>{m.name || ''}</TableCell>}
                         <TableCell sx={{ whiteSpace: 'nowrap' }}>
                           {s.name || '(unnamed)'}
                           {s.archived && <Typography component="span" variant="caption" color="text.secondary"> (archived)</Typography>}

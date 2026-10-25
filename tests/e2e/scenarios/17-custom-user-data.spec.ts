@@ -189,6 +189,29 @@ test('right pane: spot values, micrograph table, row click, remove column, remov
   await expect.poll(() => stored(ana)).toEqual({ columns: ['Mg#', 'Note'], spots: { 'Garnet 1': { 'Mg#': '0.820', Note: 'rim, core' }, 'Quartz 1': { 'Mg#': '<0.01' } } });
 });
 
+test('Project tab: the whole project in one table; a row goes to its spot', async ({ launch, project }) => {
+  const { p, ana } = await start(launch, project, 'E2E Custom Data Project');
+  await seed(ana, p);
+  await ana.state(new Function('e', 'return e.app.getState().selectMicrograph(null)') as never);
+
+  await ana.caption('the Project tab shows a count and the table');
+  await ana.page.getByRole('tab', { name: 'Project' }).click();
+  await ana.page.getByText('Custom User Data', { exact: true }).click();
+  await expect(ana.page.getByText('2 columns on 2 spots in this project.')).toBeVisible();
+  await ana.page.getByRole('button', { name: 'Show Custom User Data...' }).click();
+  const table = ana.page.getByRole('dialog', { name: /Custom User Data/ });
+  await expect(table.getByText('E2E Custom Data Project: 2 spots, 2 columns')).toBeVisible();
+  await expect(table.getByRole('columnheader')).toHaveText(['Sample', 'Micrograph', 'Spot', 'Mg#', 'Note']);
+  await expect(table.getByRole('row', { name: /Quartz 1/ })).toContainText('<0.01');
+
+  await ana.caption('a row click goes to the spot: its micrograph opens and the spot is selected');
+  await table.getByRole('row', { name: /Quartz 1/ }).click();
+  await expect(table).toBeHidden();
+  await expect.poll(() => ana.state(new Function('e', `
+    const s = e.app.getState();
+    return [s.activeMicrographId, s.activeSpotId];`) as never)).toEqual([p.micrographId, p.spots[1].id]);
+});
+
 /** Tools > Custom User Data... > Import Filled Template... with a CSV, then Apply Import */
 async function importCsv(copy: Copy, filePath: string, csv: string, expectInPreview: RegExp[] = []) {
   fs.writeFileSync(filePath, csv);
