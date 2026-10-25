@@ -267,6 +267,22 @@ export function buildSpotIndex(
 }
 
 /**
+ * Both lookup indexes for a project. Every store action that writes a new
+ * project must return these too: readers such as the Grain Size summary take
+ * a micrograph's spots from micrographIndex, so an index left on the old
+ * project keeps showing deleted or changed spots.
+ */
+export function projectIndexes(project: ProjectMetadata | null): {
+  micrographIndex: Map<string, MicrographMetadata>;
+  spotIndex: Map<string, Spot>;
+} {
+  return {
+    micrographIndex: buildMicrographIndex(project),
+    spotIndex: buildSpotIndex(project),
+  };
+}
+
+/**
  * Get the parent sample for a given micrograph
  */
 export function getMicrographParentSample(

@@ -60,6 +60,7 @@
     "test:presence": "rolldown -c tests/sync/rolldown.test.config.mjs && node node_modules/.cache/sync-tests/presence.test.mjs",
     "test:remote-rows": "rolldown -c tests/sync/rolldown.test.config.mjs && node node_modules/.cache/sync-tests/remoteProjectRow.test.mjs",
     "test:new-spot": "rolldown -c tests/sync/rolldown.test.config.mjs && node node_modules/.cache/sync-tests/newSpot.test.mjs",
+    "test:store-indexes": "rolldown -c tests/sync/rolldown.test.config.mjs && node node_modules/.cache/sync-tests/storeIndexes.test.mjs",
     "e2e": "playwright test -c tests/e2e/playwright.config.ts",
     "e2e:watch": "E2E_WATCH=1 playwright test -c tests/e2e/playwright.config.ts",
     "e2e:report": "playwright show-report playwright-report/e2e",
