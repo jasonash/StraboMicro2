@@ -121,6 +121,7 @@ import {
   updateSpot,
   buildMicrographIndex,
   buildSpotIndex,
+  projectIndexes,
   findSpotParentMicrograph,
   findMicrographById,
   mergePresetIntoSpot,
@@ -1053,7 +1054,7 @@ export const useAppStore = create<AppState>()(
             return {
               project: newProject,
               isDirty: true,
-              micrographIndex: buildMicrographIndex(newProject),
+              ...projectIndexes(newProject),
             };
           }),
 
@@ -1095,7 +1096,7 @@ export const useAppStore = create<AppState>()(
             return {
               project: newProject,
               isDirty: true,
-              micrographIndex: buildMicrographIndex(newProject),
+              ...projectIndexes(newProject),
               siblingViewActive: false,
               siblingCachedZoom: null,
               siblingCachedPosition: null,
@@ -1137,7 +1138,7 @@ export const useAppStore = create<AppState>()(
               return {
                 project: updatedProject,
                 isDirty: true,
-                micrographIndex: buildMicrographIndex(updatedProject),
+                ...projectIndexes(updatedProject),
                 activeSketchLayerId: layerId,
               };
             });
@@ -1162,7 +1163,7 @@ export const useAppStore = create<AppState>()(
             return {
               project: updatedProject,
               isDirty: true,
-              micrographIndex: buildMicrographIndex(updatedProject),
+              ...projectIndexes(updatedProject),
               activeSketchLayerId: newActiveLayerId,
             };
           }),
@@ -1182,7 +1183,7 @@ export const useAppStore = create<AppState>()(
             return {
               project: updatedProject,
               isDirty: true,
-              micrographIndex: buildMicrographIndex(updatedProject),
+              ...projectIndexes(updatedProject),
             };
           }),
 
@@ -1201,7 +1202,7 @@ export const useAppStore = create<AppState>()(
             return {
               project: updatedProject,
               isDirty: true,
-              micrographIndex: buildMicrographIndex(updatedProject),
+              ...projectIndexes(updatedProject),
             };
           }),
 
@@ -1220,7 +1221,7 @@ export const useAppStore = create<AppState>()(
             return {
               project: updatedProject,
               isDirty: true,
-              micrographIndex: buildMicrographIndex(updatedProject),
+              ...projectIndexes(updatedProject),
             };
           }),
 
@@ -1239,7 +1240,7 @@ export const useAppStore = create<AppState>()(
             return {
               project: updatedProject,
               isDirty: true,
-              micrographIndex: buildMicrographIndex(updatedProject),
+              ...projectIndexes(updatedProject),
             };
           }),
 
@@ -1258,7 +1259,7 @@ export const useAppStore = create<AppState>()(
             return {
               project: updatedProject,
               isDirty: true,
-              micrographIndex: buildMicrographIndex(updatedProject),
+              ...projectIndexes(updatedProject),
             };
           }),
 
@@ -1277,7 +1278,7 @@ export const useAppStore = create<AppState>()(
             return {
               project: updatedProject,
               isDirty: true,
-              micrographIndex: buildMicrographIndex(updatedProject),
+              ...projectIndexes(updatedProject),
             };
           }),
 
@@ -1299,7 +1300,7 @@ export const useAppStore = create<AppState>()(
             return {
               project: updatedProject,
               isDirty: true,
-              micrographIndex: buildMicrographIndex(updatedProject),
+              ...projectIndexes(updatedProject),
             };
           }),
 
@@ -1348,7 +1349,7 @@ export const useAppStore = create<AppState>()(
                   return {
                     project: updatedProject,
                     isDirty: true,
-                    micrographIndex: buildMicrographIndex(updatedProject),
+                    ...projectIndexes(updatedProject),
                     sketchModeActive: true,
                     activeTool: 'sketch-pen' as const,
                   };
@@ -1373,7 +1374,7 @@ export const useAppStore = create<AppState>()(
                   return {
                     project: updatedProject,
                     isDirty: true,
-                    micrographIndex: buildMicrographIndex(updatedProject),
+                    ...projectIndexes(updatedProject),
                     sketchModeActive: true,
                     activeSketchLayerId: firstLayer.id,
                     activeTool: 'sketch-pen' as const,
@@ -1415,7 +1416,7 @@ export const useAppStore = create<AppState>()(
             return {
               project: updatedProject,
               isDirty: true,
-              micrographIndex: buildMicrographIndex(updatedProject),
+              ...projectIndexes(updatedProject),
               sketchModeActive: true,
               activeSketchLayerId: layerId,
               activeTool: 'sketch-pen' as const,
@@ -1452,8 +1453,7 @@ export const useAppStore = create<AppState>()(
             return {
               project: newProject,
               isDirty: true,
-              micrographIndex: buildMicrographIndex(newProject),
-              spotIndex: buildSpotIndex(newProject),
+              ...projectIndexes(newProject),
             };
           }),
 
@@ -1467,7 +1467,7 @@ export const useAppStore = create<AppState>()(
               Object.assign(dataset, updates);
             }
 
-            return { project: newProject, isDirty: true };
+            return { project: newProject, isDirty: true, ...projectIndexes(newProject) };
           }),
 
           deleteDataset: (id) => set((state) => {
@@ -1480,8 +1480,7 @@ export const useAppStore = create<AppState>()(
             return {
               project: newProject,
               isDirty: true,
-              micrographIndex: buildMicrographIndex(newProject),
-              spotIndex: buildSpotIndex(newProject),
+              ...projectIndexes(newProject),
             };
           }),
 
@@ -1512,6 +1511,7 @@ export const useAppStore = create<AppState>()(
             return {
               project: newProject,
               isDirty: true,
+              ...projectIndexes(newProject),
             };
           }),
 
@@ -1530,8 +1530,7 @@ export const useAppStore = create<AppState>()(
             return {
               project: newProject,
               isDirty: true,
-              micrographIndex: buildMicrographIndex(newProject),
-              spotIndex: buildSpotIndex(newProject),
+              ...projectIndexes(newProject),
             };
           }),
 
@@ -1548,7 +1547,7 @@ export const useAppStore = create<AppState>()(
               }
             }
 
-            return { project: newProject, isDirty: true };
+            return { project: newProject, isDirty: true, ...projectIndexes(newProject) };
           }),
 
           deleteSample: (id) => set((state) => {
@@ -1564,8 +1563,7 @@ export const useAppStore = create<AppState>()(
             return {
               project: newProject,
               isDirty: true,
-              micrographIndex: buildMicrographIndex(newProject),
-              spotIndex: buildSpotIndex(newProject),
+              ...projectIndexes(newProject),
             };
           }),
 
@@ -1597,6 +1595,7 @@ export const useAppStore = create<AppState>()(
             return {
               project: newProject,
               isDirty: true,
+              ...projectIndexes(newProject),
             };
           }),
 
@@ -1649,8 +1648,7 @@ export const useAppStore = create<AppState>()(
               return {
                 project: newProject,
                 isDirty: true,
-                micrographIndex: buildMicrographIndex(newProject),
-                spotIndex: buildSpotIndex(newProject),
+                ...projectIndexes(newProject),
                 expandedDatasets: Array.from(expandedDatasets),
                 expandedSamples: Array.from(expandedSamples),
                 expandedMicrographs: Array.from(expandedMicrographs),
@@ -1695,7 +1693,7 @@ export const useAppStore = create<AppState>()(
             return {
               project: newProject,
               isDirty: true,
-              micrographIndex: buildMicrographIndex(newProject),
+              ...projectIndexes(newProject),
             };
           }),
 
@@ -1706,7 +1704,7 @@ export const useAppStore = create<AppState>()(
             return {
               project: newProject,
               isDirty: true,
-              micrographIndex: buildMicrographIndex(newProject),
+              ...projectIndexes(newProject),
             };
           }),
 
@@ -1725,7 +1723,7 @@ export const useAppStore = create<AppState>()(
             return {
               project: newProject,
               isDirty: true,
-              micrographIndex: buildMicrographIndex(newProject),
+              ...projectIndexes(newProject),
             };
           }),
 
@@ -1773,8 +1771,7 @@ export const useAppStore = create<AppState>()(
             return {
               project: newProject,
               isDirty: true,
-              micrographIndex: buildMicrographIndex(newProject),
-              spotIndex: buildSpotIndex(newProject),
+              ...projectIndexes(newProject),
             };
           }),
 
@@ -1840,7 +1837,7 @@ export const useAppStore = create<AppState>()(
             return {
               project: newProject,
               isDirty: true,
-              micrographIndex: buildMicrographIndex(newProject),
+              ...projectIndexes(newProject),
             };
           }),
 
@@ -1862,8 +1859,7 @@ export const useAppStore = create<AppState>()(
             return {
               project: newProject,
               isDirty: true,
-              micrographIndex: buildMicrographIndex(newProject),
-              spotIndex: buildSpotIndex(newProject),
+              ...projectIndexes(newProject),
             };
           }),
 
@@ -1883,8 +1879,7 @@ export const useAppStore = create<AppState>()(
             return {
               project: newProject,
               isDirty: true,
-              micrographIndex: buildMicrographIndex(newProject),
-              spotIndex: buildSpotIndex(newProject),
+              ...projectIndexes(newProject),
             };
           }),
 
@@ -1898,7 +1893,7 @@ export const useAppStore = create<AppState>()(
             return {
               project: newProject,
               isDirty: true,
-              spotIndex: buildSpotIndex(newProject),
+              ...projectIndexes(newProject),
             };
           }),
 
@@ -1945,7 +1940,7 @@ export const useAppStore = create<AppState>()(
             return {
               project: newProject,
               isDirty: true,
-              spotIndex: buildSpotIndex(newProject),
+              ...projectIndexes(newProject),
               ...quickEditUpdates,
             };
           }),
@@ -1968,7 +1963,7 @@ export const useAppStore = create<AppState>()(
               project: newProject,
               isDirty: true,
               selectedSpotIds: state.selectedSpotIds.filter(sid => sid !== id),
-              spotIndex: buildSpotIndex(newProject),
+              ...projectIndexes(newProject),
             };
           }),
 
@@ -2030,7 +2025,7 @@ export const useAppStore = create<AppState>()(
               project: newProject,
               isDirty: true,
               selectedSpotIds: state.selectedSpotIds.filter(sid => !spotIdSet.has(sid)),
-              spotIndex: buildSpotIndex(newProject),
+              ...projectIndexes(newProject),
               ...quickEditUpdates,
             };
           }),
@@ -2054,7 +2049,7 @@ export const useAppStore = create<AppState>()(
               project: newProject,
               isDirty: true,
               selectedSpotIds: state.selectedSpotIds.filter(sid => !deletedSpotIds.has(sid)),
-              spotIndex: buildSpotIndex(newProject),
+              ...projectIndexes(newProject),
             };
           }),
 
@@ -2203,7 +2198,7 @@ export const useAppStore = create<AppState>()(
                 isDirty: true,
                 selectedSpotIds: [newSpotId],
                 activeSpotId: newSpotId,
-                spotIndex: buildSpotIndex(newProject),
+                ...projectIndexes(newProject),
               });
 
               console.log(`[Store] Merged ${polygonSpots.length} spots into ${newSpotId}`);
@@ -2431,7 +2426,7 @@ export const useAppStore = create<AppState>()(
                 isDirty: true,
                 selectedSpotIds: newSpotIds,
                 activeSpotId: newSpotIds[0],
-                spotIndex: buildSpotIndex(newProject),
+                ...projectIndexes(newProject),
               });
 
               console.log(`[Store] Split spot ${spotId} into ${newSpots.length} spots`);
@@ -2453,6 +2448,7 @@ export const useAppStore = create<AppState>()(
             return {
               project: newProject,
               isDirty: true,
+              ...projectIndexes(newProject),
             };
           }),
 
@@ -2466,7 +2462,7 @@ export const useAppStore = create<AppState>()(
               Object.assign(group, updates);
             }
 
-            return { project: newProject, isDirty: true };
+            return { project: newProject, isDirty: true, ...projectIndexes(newProject) };
           }),
 
           deleteGroup: (id) => set((state) => {
@@ -2478,6 +2474,7 @@ export const useAppStore = create<AppState>()(
             return {
               project: newProject,
               isDirty: true,
+              ...projectIndexes(newProject),
             };
           }),
 
@@ -2498,7 +2495,7 @@ export const useAppStore = create<AppState>()(
               }
             }
 
-            return { project: newProject, isDirty: true };
+            return { project: newProject, isDirty: true, ...projectIndexes(newProject) };
           }),
 
           removeMicrographFromGroup: (groupId, micrographId) => set((state) => {
@@ -2511,7 +2508,7 @@ export const useAppStore = create<AppState>()(
               group.micrographs = group.micrographs.filter(id => id !== micrographId);
             }
 
-            return { project: newProject, isDirty: true };
+            return { project: newProject, isDirty: true, ...projectIndexes(newProject) };
           }),
 
           setGroupExpanded: (groupId, expanded) => set((state) => {
@@ -2524,7 +2521,7 @@ export const useAppStore = create<AppState>()(
               group.isExpanded = expanded;
             }
 
-            return { project: newProject, isDirty: true };
+            return { project: newProject, isDirty: true, ...projectIndexes(newProject) };
           }),
 
           // ========== CRUD: TAG ==========
@@ -2538,6 +2535,7 @@ export const useAppStore = create<AppState>()(
             return {
               project: newProject,
               isDirty: true,
+              ...projectIndexes(newProject),
             };
           }),
 
@@ -2554,6 +2552,7 @@ export const useAppStore = create<AppState>()(
             return {
               project: newProject,
               isDirty: true,
+              ...projectIndexes(newProject),
             };
           }),
 
@@ -2571,6 +2570,7 @@ export const useAppStore = create<AppState>()(
             return {
               project: newProject,
               isDirty: true,
+              ...projectIndexes(newProject),
             };
           }),
 
@@ -2591,10 +2591,9 @@ export const useAppStore = create<AppState>()(
                     if (spot.id === spotId) {
                       spot.tags = [...(spot.tags || []), tagId];
                       // Also rebuild spot index
-                      const newSpotIndex = buildSpotIndex(newProject);
                       return {
                         project: newProject,
-                        spotIndex: newSpotIndex,
+                        ...projectIndexes(newProject),
                         isDirty: true,
                       };
                     }
@@ -2623,10 +2622,9 @@ export const useAppStore = create<AppState>()(
                     if (spot.id === spotId) {
                       spot.tags = (spot.tags || []).filter(id => id !== tagId);
                       // Also rebuild spot index
-                      const newSpotIndex = buildSpotIndex(newProject);
                       return {
                         project: newProject,
-                        spotIndex: newSpotIndex,
+                        ...projectIndexes(newProject),
                         isDirty: true,
                       };
                     }
@@ -2648,7 +2646,7 @@ export const useAppStore = create<AppState>()(
               tag.isExpanded = expanded;
             }
 
-            return { project: newProject, isDirty: true };
+            return { project: newProject, isDirty: true, ...projectIndexes(newProject) };
           }),
 
           // ========== VIEWER ACTIONS ==========
@@ -2734,7 +2732,7 @@ export const useAppStore = create<AppState>()(
               return {
                 project: newProject,
                 isDirty: true,
-                spotIndex: buildSpotIndex(newProject),
+                ...projectIndexes(newProject),
                 // Clear editing state
                 editingSpotId: null,
                 editingGeometry: null,
@@ -2872,7 +2870,7 @@ export const useAppStore = create<AppState>()(
             return {
               project: newProject,
               isDirty: true,
-              spotIndex: buildSpotIndex(newProject),
+              ...projectIndexes(newProject),
             };
           }),
 
@@ -3018,7 +3016,7 @@ export const useAppStore = create<AppState>()(
             return {
               project: newProject,
               isDirty: true,
-              spotIndex: buildSpotIndex(newProject),
+              ...projectIndexes(newProject),
             };
           }),
 
@@ -3092,7 +3090,7 @@ export const useAppStore = create<AppState>()(
               ...quickEditUpdates,
               project: newProject,
               isDirty: true,
-              spotIndex: buildSpotIndex(newProject),
+              ...projectIndexes(newProject),
             };
           }),
 
