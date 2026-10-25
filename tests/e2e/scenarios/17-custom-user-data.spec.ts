@@ -166,7 +166,7 @@ test('right pane: spot values, micrograph table, row click, remove column, remov
   await ana.state(new Function('e', `
     e.app.getState().selectActiveSpot(null);
     return e.app.getState().selectMicrograph(${JSON.stringify(p.micrographId)});`) as never);
-  await pane.getByText('Custom User Data', { exact: true }).click();
+  // Opened above, so still open after a spot was selected and the micrograph again (sticky section)
   await pane.getByRole('button', { name: 'Show Custom User Data...' }).click();
   await table.getByRole('button', { name: 'Remove column Note' }).click();
   const confirm = ana.page.getByRole('dialog', { name: 'Remove the column "Note"?' });
