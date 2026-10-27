@@ -33,10 +33,13 @@ import {
 import { useSyncStore } from '@/store/useSyncStore';
 import { useAppStore } from '@/store';
 import {
-  containsLabel,
+  changedAtLabel,
   fieldLabel,
   itemLabel,
+  keepAllTheirsLabel,
+  questionText,
   refusedReason,
+  theirSideLabel,
   valueText,
 } from '@/utils/syncDecisionText';
 import SyncGeometryPreview from './SyncGeometryPreview';
@@ -71,13 +74,15 @@ function ValueBox({ path, value }: { path: string[]; value: unknown }) {
   );
 }
 
-/** Yours / Theirs radio columns of one row. */
-function SidePicker({ value, busy, onPick, render }: {
+/** Yours / theirs radio columns of one row; their side names who changed it when known. */
+function SidePicker({ value, busy, by, onPick, render }: {
   value: string;
   busy: boolean;
+  by: SyncAuthor | undefined;
   onPick: (side: 'mine' | 'theirs') => void;
   render: (side: 'mine' | 'theirs') => ReactNode;
 }) {
+  const when = changedAtLabel(by?.at);
   return (
     <RadioGroup
       value={value}
@@ -96,7 +101,10 @@ function SidePicker({ value, busy, onPick, render }: {
           sx={{ m: 0, alignItems: 'flex-start' }}
           label={
             <Box>
-              <Typography variant="caption" color="text.secondary">{side === 'mine' ? 'Yours' : 'Theirs'}</Typography>
+              <Typography variant="caption" color="text.secondary">
+                {side === 'mine' ? 'Yours' : theirSideLabel(by)}
+                {side === 'theirs' && when ? ` · ${when}` : ''}
+              </Typography>
               {render(side)}
             </Box>
           }
@@ -114,12 +122,18 @@ function ConflictItem({ item, busy, decide }: { item: SyncConflictItem; busy: bo
   const preview = item.preview;
   const grouped = new Set(preview?.fieldIds ?? []);
   const groupChoice = preview ? choices[preview.fieldIds[0]] ?? '' : '';
+  const byId = new Map(item.fields.map((f) => [f.id, f.by]));
+  // The newest change among the picture's fields stands for the picture
+  const groupBy = preview
+    ? preview.fieldIds.map((id) => byId.get(id)).filter((b) => b !== undefined)
+      .sort((a, b) => String(b.at ?? '').localeCompare(String(a.at ?? '')))[0]
+    : undefined;
   return (
     <Paper variant="outlined" sx={{ p: 2 }}>
       <Stack direction="row" spacing={1} sx={{ alignItems: 'center', mb: 1, flexWrap: 'wrap' }}>
         <Typography variant="subtitle2" sx={{ flexGrow: 1 }}>{itemLabel(item)}</Typography>
         <Button size="small" onClick={() => all('mine')} disabled={busy}>Keep all mine</Button>
-        <Button size="small" onClick={() => all('theirs')} disabled={busy}>Keep all theirs</Button>
+        <Button size="small" onClick={() => all('theirs')} disabled={busy}>{keepAllTheirsLabel(item.fields.map((f) => f.by))}</Button>
       </Stack>
       <Stack spacing={1.5} divider={<Divider flexItem />}>
         {preview && (
@@ -130,6 +144,7 @@ function ConflictItem({ item, busy, decide }: { item: SyncConflictItem; busy: bo
             <SidePicker
               value={groupChoice}
               busy={busy}
+              by={groupBy}
               onPick={(side) => setChoices({ ...choices, ...Object.fromEntries(preview.fieldIds.map((id) => [id, side])) })}
               render={(side) => <SyncGeometryPreview preview={preview} side={side} />}
             />
@@ -141,6 +156,7 @@ function ConflictItem({ item, busy, decide }: { item: SyncConflictItem; busy: bo
             <SidePicker
               value={choices[f.id] ?? ''}
               busy={busy}
+              by={f.by}
               onPick={(side) => setChoices({ ...choices, [f.id]: side })}
               render={(side) => (
                 <Typography variant="body2" component="div">
@@ -172,11 +188,7 @@ function ConflictItem({ item, busy, decide }: { item: SyncConflictItem; busy: bo
 
 function QuestionItem({ item, busy, decide }: { item: SyncQuestionItem; busy: boolean; decide: Decide }) {
   const theirsDeleted = item.kind === 'theirs_deleted';
-  const n = theirsDeleted ? item.localChanges : item.theirChanges;
-  const what = `${itemLabel(item)}${containsLabel(item.contains)}`;
-  const text = theirsDeleted
-    ? `They deleted ${what}. You changed ${n} of these since.`
-    : `You deleted ${what}. They changed ${n} ${n === 1 ? 'item' : 'items'} in it since.`;
+  const text = questionText(item);
   const answer = (a: 'restore' | 'delete' | 'keep_deleted' | 'bring_back') =>
     void decide({ kind: 'question', key: item.key, answer: a });
   return (

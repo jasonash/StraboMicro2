@@ -41,8 +41,10 @@ function syncDir(projectFolder) {
  * @property {object[]} [restores] - Restore with my changes: { key, keys, sent, bases } (restore op
  *   for key, keys held until a pull brings the restored states into the base; bases = what this
  *   copy knew before the delete, from the question, so the pull merges against it)
- * @property {Record<string, object[]>} [conflicts] - 'type:id' => unresolved field conflicts (pull)
- * @property {object[]} [questions] - delete-vs-edit questions waiting for the user (pull)
+ * @property {Record<string, object[]>} [conflicts] - 'type:id' => unresolved field conflicts (pull);
+ *   a field's by = { pkey, name, at } of who changed it last on the server (changeAuthors.js)
+ * @property {object[]} [questions] - delete-vs-edit questions waiting for the user (pull); by =
+ *   who deleted it, or who changed things in it, newest first
  * @property {Record<string, string>} [downloads] - 'type:id|role' => sha256 to fetch (pull)
  * @property {Record<string, number>} [authors] - 'type:id' => pkey of who created it, from the
  *   snapshot (clone) and create entries (pull); an entity missing here was created on this
@@ -181,6 +183,7 @@ function reconcileDecisions(state, current) {
   const here = (k) => Boolean(current.entities[k]);
 
   const { sameContent } = require('./merge');
+  const { distinctNewestFirst } = require('./changeAuthors');
   const refusedBefore = (state.refused || []).length;
   state.refused = (state.refused || []).filter((p) => !p || typeof p.key !== 'string' ||
     !sameContent(current.entities[p.key] ?? null, state.base[p.key] ?? null));
@@ -213,11 +216,17 @@ function reconcileDecisions(state, current) {
   };
   /** @type {Map<string, number>} root => conflicts in it */
   const roots = new Map();
+  /** @type {Map<string, object[]>} root => who made the conflicting changes (oldest first) */
+  const authors = new Map();
   for (const k of stale) {
+    const fields = state.conflicts[k] || [];
     delete state.conflicts[k];
     if (!state.base[k]) continue; // never on the server: nothing of theirs to lose
     const r = rootOf(k);
     roots.set(r, (roots.get(r) || 0) + 1);
+    const by = fields.map((f) => f.by).filter(Boolean)
+      .sort((a, b) => String(a.at ?? '').localeCompare(String(b.at ?? '')));
+    authors.set(r, [...(authors.get(r) || []), ...by]);
   }
   changed = true;
   if (roots.size === 0) return changed;
@@ -225,11 +234,14 @@ function reconcileDecisions(state, current) {
   for (const [root, n] of roots) {
     const keys = all.filter((k) => rootOf(k) === root);
     const q = state.questions.find((x) => x.key === root && x.kind === 'mine_deleted');
+    const had = q && Array.isArray(q.by) ? [...q.by].reverse() : [];
+    const by = distinctNewestFirst([...had, ...(authors.get(root) || [])]);
     if (q) {
       q.keys = [...new Set([...q.keys, ...keys])];
       q.theirChanges = (q.theirChanges || 0) + n;
+      if (by.length > 0) q.by = by;
     } else {
-      state.questions.push({ key: root, kind: 'mine_deleted', keys, localChanges: 0, theirChanges: n });
+      state.questions.push({ key: root, kind: 'mine_deleted', keys, localChanges: 0, theirChanges: n, ...(by.length > 0 ? { by } : {}) });
     }
   }
   for (const q of state.questions) {

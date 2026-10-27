@@ -184,6 +184,33 @@ app.whenReady().then(async () => {
     check('their later edit of another field keeps the conflict', st4.conflicts === 1 && micro(disk(), M1).notes === 'my notes' &&
       micro(disk(), M1).description === 'their description');
 
+    // Who made their change (Peter, 2026-10-27): my own account on another computer...
+    const field = async () => (await sidecar.loadState(folder)).conflicts[`micrograph:${M1}`][0];
+    const listed = async () => (await svc.listDecisions(pid)).conflicts.find((c) => c.key === `micrograph:${M1}`).fields[0];
+    let f1 = await field();
+    check('conflict credited to the account that changed it, with the time', f1.by && f1.by.pkey === who.pkey && typeof f1.by.at === 'string',
+      JSON.stringify(f1));
+    let l1 = await listed();
+    check('dialog: my own account = another computer', l1.by && l1.by.me === true, JSON.stringify(l1));
+    // ...then another member changes the same field: the newest author is named
+    const editorWho = fixture('token', 'editor@test.strabospot.org');
+    const editor = createSyncClient({ restServer: SERVER, getAccessToken: async () => editorWho.token });
+    await other.invite(serverPid, editorWho.email, 'editor');
+    check('editor joins', (await editor.answerInvite(serverPid, true)).status === 200);
+    const ed = await editor.push(serverPid, crypto.randomUUID(), 'editor-machine-' + crypto.randomUUID(),
+      [{ op: 'update', type: 'micrograph', id: M1, baseVersion: await v('micrograph', M1), fields: { notes: 'editor notes' } }]);
+    check('editor changed the notes', ed.results[0].status === 'accepted', JSON.stringify(ed));
+    await appPull();
+    f1 = await field();
+    l1 = await listed();
+    check('conflict now credited to the editor by name', f1.theirs === 'editor notes' && f1.by.pkey === editorWho.pkey &&
+      l1.by.me === false && l1.by.name.length > 0, JSON.stringify({ f1, l1 }));
+    // A pull that does not touch the field keeps the name
+    await otherPush([{ op: 'update', type: 'micrograph', id: M1, baseVersion: await v('micrograph', M1), fields: { description: 'again' } }]);
+    await appPull();
+    f1 = await field();
+    check('an unrelated later change keeps the editor as the author', f1.by.pkey === editorWho.pkey, JSON.stringify(f1));
+
     // Their delete of M2 while I edited one of its spots: a question, nothing removed
     await appEdit((p) => { micro(p, M2).spots.find((s) => s.id === S1).name = 'edited by me'; });
     const del = await otherPush([{ op: 'delete', type: 'micrograph', id: M2, baseVersion: await v('micrograph', M2) }]);
@@ -192,6 +219,8 @@ app.whenReady().then(async () => {
     const st5 = await svc.getStatus(pid);
     check('delete vs my edit: question, M2 kept locally', st5.questions === 1 && micro(disk(), M2) &&
       micro(disk(), M2).spots.find((s) => s.id === S1).name === 'edited by me', JSON.stringify(st5));
+    const q5 = (await svc.listDecisions(pid)).questions[0];
+    check('delete question names who deleted it (my other computer)', q5 && q5.by.length === 1 && q5.by[0].me === true, JSON.stringify(q5));
     const pushed5 = await svc.push(pid, SERVER, () => {});
     check('the held subtree is not pushed', pushed5.ok && pushed5.pushed === 0 && pushed5.notAccepted === 0, JSON.stringify(pushed5));
 
@@ -246,7 +275,7 @@ app.whenReady().then(async () => {
     check('clone made', cl.ok && cl.projectId === pid && cloneFolder.includes('Documents2') &&
       fs.existsSync(path.join(cloneFolder, 'project.json')), JSON.stringify(cl));
     const cp = JSON.parse(fs.readFileSync(path.join(cloneFolder, 'project.json'), 'utf8'));
-    check('clone has the server\'s state', micro(cp, M1).name === 'Renamed elsewhere' && micro(cp, M1).notes === 'their notes' &&
+    check('clone has the server\'s state', micro(cp, M1).name === 'Renamed elsewhere' && micro(cp, M1).notes === 'editor notes' &&
       !micro(cp, M2) && micro(cp, NEW_M) && micro(cp, NEW_M).name === 'Micrograph from elsewhere');
     check('clone downloaded the originals', fs.existsSync(path.join(cloneFolder, 'images', M1)) &&
       (await hashFile(path.join(cloneFolder, 'images', NEW_M))) === sha && cl.downloaded >= 2, JSON.stringify(cl));
