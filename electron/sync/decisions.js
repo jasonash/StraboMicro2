@@ -208,11 +208,27 @@ function geometryPreview(local, theirs, fields, lookup) {
 }
 
 /**
+ * A stored author for the dialog: name, time, and whether it is this account
+ * (then the change came from another computer of mine).
+ * @param {unknown} by
+ * @param {number} me - This copy's account pkey
+ */
+function authorForDialog(by, me) {
+  if (!by || typeof by !== 'object' || !(Number(by.pkey) > 0)) return undefined;
+  return {
+    name: typeof by.name === 'string' ? by.name : '',
+    me: Number(by.pkey) === Number(me),
+    at: typeof by.at === 'string' ? by.at : null,
+  };
+}
+
+/**
  * Everything waiting for the user, for the dialog.
  * @param {string} folder
  */
 async function listDecisions(folder) {
   const { state, current, lookup } = await loadAll(folder);
+  const me = state.binding.pkey;
 
   const conflicts = [];
   for (const [key, fields] of Object.entries(state.conflicts || {})) {
@@ -227,6 +243,7 @@ async function listDecisions(folder) {
         path: f.path,
         mine: displayValue(f.path, valueAt(local, f.path), lookup),
         theirs: displayValue(f.path, valueAt(theirs, f.path), lookup),
+        ...(authorForDialog(f.by, me) ? { by: authorForDialog(f.by, me) } : {}),
       })),
     });
   }
@@ -245,6 +262,7 @@ async function listDecisions(folder) {
       contains,
       localChanges: q.localChanges || 0,
       theirChanges: q.theirChanges || 0,
+      by: (Array.isArray(q.by) ? q.by : []).map((b) => authorForDialog(b, me)).filter(Boolean),
     };
   });
 

@@ -207,3 +207,78 @@ export function refusedReason(item: SyncRefusedItem): string {
   if (item.message) return `${capitalize(item.message.replace(/\.$/, ''))}.`;
   return 'The server did not accept it.';
 }
+
+// --- Who made their change (Peter, 2026-10-27: names, not "theirs") ---------
+
+/** The same person (or nobody), so one "Keep all" button can name them. */
+function sameAuthor(a: SyncAuthor | undefined, b: SyncAuthor | undefined): boolean {
+  if (!a || !b) return !a && !b;
+  return a.me === b.me && (a.me || a.name === b.name);
+}
+
+function possessive(name: string): string {
+  return `${name}'s`;
+}
+
+/** Column heading of their side: "Fred Smith's", "You, on another computer", or "Theirs" (no name stored). */
+export function theirSideLabel(by: SyncAuthor | undefined): string {
+  if (by?.me) return 'You, on another computer';
+  if (by?.name) return possessive(by.name);
+  return 'Theirs';
+}
+
+/** "Keep all Fred Smith's" when one person made every change of the item, else "Keep all theirs". */
+export function keepAllTheirsLabel(authors: Array<SyncAuthor | undefined>): string {
+  const first = authors[0];
+  if (authors.length === 0 || !authors.every((a) => sameAuthor(a, first))) return 'Keep all theirs';
+  if (first?.me) return 'Keep all from your other computer';
+  if (first?.name) return `Keep all ${possessive(first.name)}`;
+  return 'Keep all theirs';
+}
+
+/** "changed 10:21 AM" today, "changed Oct 26, 10:21 AM" earlier; '' without a time. */
+export function changedAtLabel(at: string | null | undefined, now: Date = new Date()): string {
+  if (!at) return '';
+  const d = new Date(at);
+  if (Number.isNaN(d.getTime())) return '';
+  const time = d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  const today = d.toDateString() === now.toDateString();
+  if (today) return `changed ${time}`;
+  const date = d.toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    ...(d.getFullYear() === now.getFullYear() ? {} : { year: 'numeric' }),
+  });
+  return `changed ${date}, ${time}`;
+}
+
+/** "Fred Smith", "Fred Smith and Ann Lee", "Fred Smith, Ann Lee and 2 others"; this account = "you (on another computer)". */
+function peopleList(by: SyncAuthor[]): string {
+  const names = by.map((b) => (b.me ? 'you (on another computer)' : b.name)).filter(Boolean);
+  if (names.length === 0) return '';
+  if (names.length === 1) return names[0];
+  if (names.length <= 3) return `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
+  return `${names.slice(0, 2).join(', ')} and ${names.length - 2} others`;
+}
+
+/** The sentence of a delete question, naming who deleted or changed it when known. */
+export function questionText(item: SyncQuestionItem): string {
+  const what = `${itemLabel(item)}${containsLabel(item.contains)}`;
+  const by = item.by ?? [];
+  if (item.kind === 'theirs_deleted') {
+    const n = item.localChanges;
+    const who = by[0];
+    const deleted = who?.me
+      ? `You deleted ${what} on another computer.`
+      : who?.name
+        ? `${who.name} deleted ${what}.`
+        : `They deleted ${what}.`;
+    return `${deleted} You changed ${n} of these since.`;
+  }
+  const n = item.theirChanges;
+  const items = `${n} ${n === 1 ? 'item' : 'items'}`;
+  const onlyMe = by.length > 0 && by.every((b) => b.me);
+  if (onlyMe) return `You deleted ${what}. You changed ${items} in it on another computer since.`;
+  const people = peopleList(by);
+  return `You deleted ${what}. ${people ? capitalize(people) : 'They'} changed ${items} in it since.`;
+}

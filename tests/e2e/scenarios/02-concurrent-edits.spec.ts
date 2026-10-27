@@ -51,10 +51,10 @@ for (const keep of ['theirs', 'mine'] as const) {
     await syncNow(ben);
 
     const dialog = await reviewDecisions(ben);
-    // Yours is Ben's name, Theirs is Ana's
+    // Yours is Ben's name; their side is Ana's, named, with the time of her change
     await expect(dialog.getByRole('radio', { name: /^Yours.*Garnet \(Ben\)/ })).toBeVisible();
-    await expect(dialog.getByRole('radio', { name: /^Theirs.*Garnet \(Ana\)/ })).toBeVisible();
-    await dialog.getByRole('button', { name: keep === 'theirs' ? 'Keep all theirs' : 'Keep all mine' }).click();
+    await expect(dialog.getByRole('radio', { name: new RegExp(`^${ACCOUNTS.ana.name}'s · changed .*Garnet \\(Ana\\)`) })).toBeVisible();
+    await dialog.getByRole('button', { name: keep === 'theirs' ? `Keep all ${ACCOUNTS.ana.name}'s` : 'Keep all mine' }).click();
     await ben.caption(`keeps ${keep}, Apply`);
     await dialog.getByRole('button', { name: 'Apply' }).click();
     await expect(ben.page.getByText('All settled and synced.')).toBeVisible({ timeout: 30_000 });
@@ -85,7 +85,7 @@ for (const answer of ['Restore with my changes', 'Delete it'] as const) {
     await syncNow(ben);
 
     const dialog = await reviewDecisions(ben);
-    await expect(dialog.getByText(/They deleted .*You changed 1 of these since\./)).toBeVisible();
+    await expect(dialog.getByText(new RegExp(`^${ACCOUNTS.ana.name} deleted .*You changed 1 of these since\\.`))).toBeVisible();
     await ben.caption(answer);
     await dialog.getByRole('button', { name: answer }).click();
     await expect(ben.page.getByText('All settled and synced.')).toBeVisible({ timeout: 30_000 });

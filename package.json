@@ -39,6 +39,8 @@
     "test:client-timeouts": "node tests/sync/clientTimeouts.test.js",
     "test:pull": "electron tests/sync/pull.electron.test.js",
     "test:decisions": "electron tests/sync/decisions.electron.test.js",
+    "test:change-authors": "node tests/sync/changeAuthors.test.js",
+    "test:decision-text": "rolldown -c tests/sync/rolldown.test.config.mjs && node node_modules/.cache/sync-tests/syncDecisionText.test.mjs",
     "test:link": "electron tests/sync/link.electron.test.js",
     "test:collaborators": "electron tests/sync/collaborators.electron.test.js",
     "test:convergence": "node tests/sync/convergence/run.js",

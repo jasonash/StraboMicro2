@@ -445,6 +445,16 @@ type SyncGeometryPreview =
     theirs: SyncPlacementSide;
   };
 
+/** Who made a change on the server (electron/sync/changeAuthors.js) */
+interface SyncAuthor {
+  /** Full name from the account; '' when the server has none */
+  name: string;
+  /** This account: the change came from another computer of mine */
+  me: boolean;
+  /** When the server took it (ISO) */
+  at: string | null;
+}
+
 interface SyncConflictItem extends SyncItemRef {
   preview?: SyncGeometryPreview;
   fields: Array<{
@@ -455,6 +465,8 @@ interface SyncConflictItem extends SyncItemRef {
     /** Values now (theirs = the server's); a parent is { parentType, parentId, name } */
     mine: unknown;
     theirs: unknown;
+    /** Who changed theirs last; absent for conflicts stored before 2.0.55 */
+    by?: SyncAuthor;
   }>;
 }
 
@@ -464,6 +476,8 @@ interface SyncQuestionItem extends SyncItemRef {
   contains: Record<string, number>;
   localChanges: number;
   theirChanges: number;
+  /** theirs_deleted: who deleted it; mine_deleted: who changed things in it, newest first */
+  by: SyncAuthor[];
 }
 
 interface SyncRefusedItem extends SyncItemRef {

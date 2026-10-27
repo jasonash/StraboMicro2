@@ -212,6 +212,8 @@ app.whenReady().then(async () => {
     const qd = L.ok && L.questions[0];
     check('deleted here: the conflict became one "you deleted it" question', L.ok && L.conflicts.length === 0 && L.questions.length === 1 &&
       qd.kind === 'mine_deleted' && qd.key === KM2 && qd.theirChanges === 1 && qd.contains.spot === 3, JSON.stringify(L));
+    check('the question keeps who made the conflicting change (my other computer)', qd && qd.by.length === 1 && qd.by[0].me === true,
+      JSON.stringify(qd));
     const pq = await push();
     check('the delete waits for the answer', pq.ok && (await onServer())[KM2], JSON.stringify(pq));
     const bb = await appDecide({ kind: 'question', key: KM2, answer: 'bring_back' });

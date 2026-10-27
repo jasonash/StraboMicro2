@@ -32,6 +32,7 @@ const tileCache = require('../tileCache');
 const sidecar = require('./sidecar');
 const { SyncError } = require('./client');
 const { mergeProject, sameState, carryConflicts } = require('./merge');
+const { byEntity, creditFields, questionAuthors } = require('./changeAuthors');
 const { readProjectFiles } = require('./syncEngine');
 
 /** Files a pull downloads, by ref role. */
@@ -149,6 +150,9 @@ async function preparePull({ folder, client, onProgress = () => {} }) {
 
   const merged = mergeProject(base, mine, theirs, { held: sidecar.heldKeys(state) });
 
+  // Who made each change (shown in the decisions dialog); my own restores are not theirs
+  const credited = byEntity(entries.filter((e) => !(e.op === 'restore' && restoring.has(entityKey(e.type, e.id)))), entityKey);
+
   // Conflicts: fresh ones plus earlier unresolved ones that still differ
   const conflicts = { ...(state.conflicts || {}) };
   const fresh = new Map(merged.conflicts.map((c) => [c.key, c.fields]));
@@ -163,7 +167,9 @@ async function preparePull({ folder, client, onProgress = () => {} }) {
       delete conflicts[key];
       continue;
     }
-    const fields = carryConflicts(conflicts[key] || [], fresh.get(key) || [], local, t);
+    const previous = conflicts[key] || [];
+    const carried = carryConflicts(previous, fresh.get(key) || [], local, t);
+    const fields = creditFields(carried, credited.get(key) || [], base[key] || null, stateFromEntry, previous);
     if (fields.length > 0) conflicts[key] = fields;
     else delete conflicts[key];
   }
@@ -172,6 +178,11 @@ async function preparePull({ folder, client, onProgress = () => {} }) {
   for (const q of merged.questions) {
     if (q.kind !== 'theirs_deleted') continue;
     q.bases = Object.fromEntries(q.keys.filter((k) => base[k]).map((k) => [k, base[k]]));
+  }
+  for (const q of merged.questions) {
+    const had = (state.questions || []).find((x) => x.key === q.key && x.kind === q.kind);
+    const by = questionAuthors(q, credited, base, stateFromEntry, (had && had.by) || []);
+    if (by.length > 0) q.by = by;
   }
   const questionKeys = new Set(merged.questions.map((q) => q.key));
   const questions = [...(state.questions || []).filter((q) => !questionKeys.has(q.key)), ...merged.questions];
