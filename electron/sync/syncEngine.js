@@ -31,6 +31,7 @@ const tileArchive = require('../tileArchive');
 const sidecar = require('./sidecar');
 const { planPush, batchPush, applyPushResults } = require('./pushBuilder');
 const { SyncError } = require('./client');
+const { sameContent } = require('./merge');
 
 /** This installation's id (the server skips a client's own pushes when it pulls). */
 function getClientId() {
@@ -82,6 +83,18 @@ const isParked = (err) => Boolean(err && err.data && err.data.parked === true);
  * first. Never for a resend: an earlier attempt may have reached the server
  * (answer lost, or the app stopped), whatever this attempt did.
  */
+/**
+ * The entity as this copy had it when a planned change was built (what an
+ * answer to it is about): undefined when the change does not say (a child
+ * order planned by an app older than this rule).
+ * @param {{ kind: string, target?: object, content?: object }} planned
+ */
+function sentState(planned) {
+  if (planned.kind === 'delete') return null;
+  if (planned.kind === 'create' || planned.kind === 'update') return planned.target ?? undefined;
+  return planned.content ?? undefined;
+}
+
 async function forgetUnsentPush(folder, state, err) {
   if (err instanceof SyncError && err.kind === 'offline' && err.notSent && state.outgoingPush) {
     state.outgoingPush = null;
@@ -156,7 +169,11 @@ async function pushProject({ folder, client, onProgress = () => {} }) {
       const r = applyPushResults(state.base, again, res.results);
       pushed += r.accepted;
       for (const x of r.problems) {
-        problems.push({ change: x.planned.change, result: x.result });
+        // The answer is about what that push carried, not about edits made
+        // since (convergence SEED=1806840850: a Viewer's parked change, its
+        // answer lost; the edit made as an Editor later was held as turned
+        // down for good, and Discard my change removed it)
+        problems.push({ change: x.planned.change, result: x.result, sent: sentState(x.planned), resent: true });
         resent.add(x.planned.key);
       }
     } catch (err) {
@@ -176,6 +193,13 @@ async function pushProject({ folder, client, onProgress = () => {} }) {
   if (project.id !== state.binding.straboId) throw new Error('project.json does not belong to this sync binding');
   const current = explode(project, pointCounts);
   if (sidecar.reconcileDecisions(state, current)) await sidecar.saveState(folder, state);
+  // A change of the push sent again that did not go through, edited since:
+  // the edit goes up now as its own change
+  for (const p of problems) {
+    if (!p.resent || p.sent === undefined) continue;
+    const key = `${p.change.type}:${p.change.id}`;
+    if (!sameContent(current.entities[key] ?? null, p.sent)) resent.delete(key);
+  }
   let filesUploaded = 0;
 
   // A. Originals of micrographs the server does not have yet (byte progress:
@@ -288,13 +312,17 @@ async function pushProject({ folder, client, onProgress = () => {} }) {
     state.onBehalf = Object.fromEntries(Object.entries(state.onBehalf).filter(([k, v]) =>
       waiting.has(k) || (!sent.has(k) && v && v.at > hourAgo)));
   }
+  // A resent change whose newer edit went up in this push has its own answer now
+  const plannedKeys = new Set(planned.map((p) => p.key));
   state.refused = [
     ...keptRefused,
     ...problems
       .filter((p) => p.result.status === 'invalid' || p.result.status === 'forbidden')
+      .filter((p) => !(p.resent && plannedKeys.has(`${p.change.type}:${p.change.id}`)))
       .map((p) => {
         const key = `${p.change.type}:${p.change.id}`;
-        return { key, change: p.change, result: p.result, local: current.entities[key] ?? null };
+        // Held while the entity is still what was turned down (sidecar.stillRefused)
+        return { key, change: p.change, result: p.result, local: p.sent !== undefined ? p.sent : current.entities[key] ?? null };
       }),
   ];
 

@@ -158,9 +158,12 @@ function planPush(base, current, { skip = new Set() } = {}) {
       });
     }
     if (cur.childOrder && !deepEqual(sentOrder, was.childOrder ?? {})) {
+      // content: the entity when this was planned, so a refusal of a push
+      // sent again is held for that, not for edits made since (syncEngine)
       orders.push({
         change: { op: 'update', type: cur.type, id: cur.id, childOrder: cur.childOrder },
         key, kind: 'order', target: { childOrder: sentOrder },
+        content: { type: cur.type, id: cur.id, parentType: cur.parentType, parentId: cur.parentId, body: cur.body },
       });
     }
   }
