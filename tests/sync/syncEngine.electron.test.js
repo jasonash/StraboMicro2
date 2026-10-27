@@ -227,6 +227,90 @@ app.whenReady().then(async () => {
     check('a thumbnail for a micrograph deleted on the server does not stop the push', skipped && !skipped.error &&
       st3.refs[thumbRk] === oldThumb, JSON.stringify(skipped).slice(0, 300));
 
+    // A push whose answer was lost (convergence SEED=1806840850): the server
+    // parked it (a Viewer's change); sent again on the next sync, the stored
+    // answer is about what that push carried, not about edits made since
+    {
+      const { SyncError } = require(`${E}/sync/client`);
+      const mkey = Object.keys((await sidecar.loadState(accountFolder)).base).find((k) => k.startsWith('micrograph:'));
+      const mid = mkey.slice(mkey.indexOf(':') + 1);
+      const sent = [];
+      let lost = null;
+      let replay = null;
+      const flaky = {
+        ...client,
+        push: async (spid, pushId, cid, changes) => {
+          sent.push({ pushId, changes });
+          if (lost === 'next') {
+            lost = pushId;
+            throw new SyncError('offline', 'The answer from StraboSpot was cut off (test)');
+          }
+          if (pushId === lost && replay) return { results: changes.map(() => ({ ...replay })) };
+          return client.push(spid, pushId, cid, changes);
+        },
+      };
+      const setMicro = (field, value) => writeLocal((p) => { micrographs(p).find((m) => m.id === mid)[field] = value; });
+      const mineIn = (from) => sent.slice(from).flatMap((x) => x.changes).filter((c) => c.id === mid);
+      const parked = { type: 'micrograph', id: mid, status: 'forbidden', reason: 'viewer', parked: true };
+
+      // Edited since the lost answer: the edit goes up in the same sync
+      setMicro('notes', 'sent while a Viewer');
+      lost = 'next';
+      replay = parked;
+      const a = await pushProject({ folder: accountFolder, client: flaky }).catch((err) => ({ error: err.message }));
+      check('lost answer: the push stays to be sent again', a.error && (await sidecar.loadState(accountFolder)).outgoingPush, JSON.stringify(a));
+      setMicro('description', 'edited as an Editor');
+      let from = sent.length;
+      const b = await pushProject({ folder: accountFolder, client: flaky });
+      let mine = mineIn(from);
+      check('edited since: the push is sent again, then the edit goes up as its own change', mine.length === 2 &&
+        mine[1].fields && mine[1].fields.description === 'edited as an Editor' && mine[1].fields.notes === 'sent while a Viewer',
+        JSON.stringify(mine));
+      let st = await sidecar.loadState(accountFolder);
+      check('edited since: nothing held as turned down, the server has the edit', b.pushed >= 1 &&
+        !(st.refused || []).some((x) => x.key === mkey) && st.base[mkey].body.description === 'edited as an Editor',
+        JSON.stringify({ b, refused: st.refused }));
+
+      // The same for a child order change (spots reordered, convergence
+      // SEED=1806840850: the order was what the lost push carried)
+      const withSpots = micrographs(readLocal().project).find((m) => (m.spots || []).length >= 2);
+      const okey = `micrograph:${withSpots.id}`;
+      const mineOf = (from, id) => sent.slice(from).flatMap((x) => x.changes).filter((c) => c.id === id);
+      writeLocal((p) => { const m = micrographs(p).find((x) => x.id === withSpots.id); m.spots = [...m.spots].reverse(); });
+      lost = 'next';
+      replay = { type: 'micrograph', id: withSpots.id, status: 'forbidden', reason: 'viewer', parked: true };
+      await pushProject({ folder: accountFolder, client: flaky }).catch(() => null);
+      check('lost answer: a child order change', mineOf(sent.length - 1, withSpots.id).some((c) => c.childOrder && !c.fields));
+      writeLocal((p) => { micrographs(p).find((x) => x.id === withSpots.id).description = 'after the order'; });
+      from = sent.length;
+      await pushProject({ folder: accountFolder, client: flaky });
+      st = await sidecar.loadState(accountFolder);
+      check('order sent again, edited since: the edit goes up in the same sync', mineOf(from, withSpots.id).some((c) => c.fields &&
+        c.fields.description === 'after the order') && st.base[okey].body.description === 'after the order' &&
+        !(st.refused || []).some((x) => x.key === okey), JSON.stringify({ sent: mineOf(from, withSpots.id), refused: st.refused }));
+      replay = parked;
+
+      // Not edited since: still turned down, held, not sent again
+      setMicro('notes', 'parked, nothing since');
+      lost = 'next';
+      await pushProject({ folder: accountFolder, client: flaky }).catch(() => null);
+      from = sent.length;
+      await pushProject({ folder: accountFolder, client: flaky });
+      st = await sidecar.loadState(accountFolder);
+      check('not edited since: held as turned down', (st.refused || []).some((x) => x.key === mkey) && mineIn(from).length === 1,
+        JSON.stringify({ refused: st.refused, sent: mineIn(from) }));
+      from = sent.length;
+      await pushProject({ folder: accountFolder, client: flaky });
+      check('not edited since: not sent again', mineIn(from).length === 0, JSON.stringify(mineIn(from)));
+      // An edit releases it (as before)
+      setMicro('notes', 'edited again');
+      from = sent.length;
+      await pushProject({ folder: accountFolder, client: flaky });
+      st = await sidecar.loadState(accountFolder);
+      check('an edit sends it again', mineIn(from).length === 1 && !(st.refused || []).some((x) => x.key === mkey) &&
+        st.base[mkey].body.notes === 'edited again', JSON.stringify({ refused: st.refused }));
+    }
+
     // A role that may not change files (a Viewer, 403 forbidden on upload and refs) does not stop the push
     let uploadCalls = 0;
     const forbidding = createSyncClient({
