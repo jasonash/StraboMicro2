@@ -9,6 +9,7 @@ import { useAppStore } from '../store';
 import { useSyncStore } from '../store/useSyncStore';
 import { findMicrographById, findSpotById } from '../store/helpers';
 import { AutoSpotStrip } from './AutoSpotStrip';
+import { SpotFilterPanel } from './SpotFilterPanel';
 import { GrainSpotStatus } from './GrainSpotStatus';
 
 const Viewer: React.FC = () => {
@@ -307,6 +308,7 @@ const Viewer: React.FC = () => {
         <AutoSpotStrip />
         <GrainSpotStatus />
         <SketchToolbar />
+        <SpotFilterPanel />
 
         {/* Warning modal when sketch layer is hidden */}
         {isSketchLayerHidden && (

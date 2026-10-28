@@ -49,6 +49,7 @@ import { getEffectiveTheme } from '@/hooks/useTheme';
 import { useLatest } from '@/hooks/useLatest';
 import { autoSpotDraft, buildNewSpot, geometryToLegacy } from '@/utils/newSpot';
 import { releaseImage, isImageUsable } from '@/utils/imageUtils';
+import { spotFilterLook } from '@/utils/spotDataSections';
 import './TiledViewer.css';
 import { EditingScope } from './Presence';
 import { useGrainSpotTool, type GrainPrompt } from '@/hooks/useGrainSpotTool';
@@ -213,6 +214,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
     const showMicrographOutlines = useAppStore((state) => state.showMicrographOutlines);
     const showRecursiveSpots = useAppStore((state) => state.showRecursiveSpots);
     const showArchivedSpots = useAppStore((state) => state.showArchivedSpots);
+    const spotFilter = useAppStore((state) => state.spotFilter);
     const siblingViewActive = useAppStore((state) => state.siblingViewActive);
     const siblingToggleInProgress = useAppStore((state) => state.siblingToggleInProgress);
     const clearSiblingToggleInProgress = useAppStore((state) => state.clearSiblingToggleInProgress);
@@ -527,9 +529,10 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
     const grainSpotAt = useCallback((imageX: number, imageY: number) =>
       [...effectiveSpots].reverse().find((spot) => {
         if (spot.archived && !showArchivedSpots) return false;
+        if (spotFilterLook(spot, spotFilter) === 'hidden') return false;
         const ring = polygonRingOf(spot);
         return ring.length >= 3 && isPointInPolygon({ x: imageX, y: imageY }, ring);
-      }), [effectiveSpots, showArchivedSpots]);
+      }), [effectiveSpots, showArchivedSpots, spotFilter]);
     /** Preview the grain under the mouse; with Shift or Cmd/Ctrl held, the last grain as that click would change it */
     const updateGrainHover = useCallback((screen: { x: number; y: number }, image: { x: number; y: number },
       evt: { shiftKey?: boolean; metaKey?: boolean; ctrlKey?: boolean } | undefined) => {
@@ -1130,6 +1133,8 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
       return spots.filter((spot) => {
         // Filter out archived spots unless showArchivedSpots is enabled
         if (spot.archived && !showArchivedSpots) return false;
+        // View > Filter Spots... with Hide others
+        if (spotFilterLook(spot, spotFilter) === 'hidden') return false;
 
         // Get spot coordinates
         const geometryType = spot.geometryType || spot.geometry?.type;
@@ -1175,7 +1180,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
 
         return intersectsX && intersectsY;
       });
-    }, [effectiveSpots, position, zoom, stageSize, showArchivedSpots]);
+    }, [effectiveSpots, position, zoom, stageSize, showArchivedSpots, spotFilter]);
 
     /**
      * Get sketch layers for the active micrograph
@@ -1718,6 +1723,8 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
           const spotsInLasso = spots.filter((spot) => {
             // Skip archived spots unless showing them
             if (spot.archived && !showArchivedSpots) return false;
+            // Spots dimmed or hidden by View > Filter Spots... are not picked
+            if (spotFilterLook(spot, useAppStore.getState().spotFilter) !== 'normal') return false;
             const centroid = getSpotCentroid(spot);
             if (!centroid) return false;
             return isPointInPolygon(centroid, polygon);
@@ -2691,6 +2698,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                       spot={spot}
                       scale={zoom}
                       isSelected={spot.id === activeSpotId || selectedSpotIds.includes(spot.id)}
+                      dimmed={spotFilterLook(spot, spotFilter) === 'dim'}
                       onClick={async (spot, e) => {
                         const isMultiSelect = e?.evt?.metaKey || e?.evt?.ctrlKey;
                         if (isMultiSelect) {
@@ -2720,7 +2728,8 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
 
                   {/* Second pass: Render visible spot labels (ensures labels are on top) */}
                   {/* Hide in point count mode */}
-                  {!pointCountMode && spotLabelMode !== 'none' && visibleSpots.map((spot) => (
+                  {/* Spots dimmed by View > Filter Spots... have no label */}
+                  {!pointCountMode && spotLabelMode !== 'none' && visibleSpots.filter((spot) => spotFilterLook(spot, spotFilter) === 'normal').map((spot) => (
                     <SpotRenderer
                       key={`${spot.id}-label`}
                       spot={spot}

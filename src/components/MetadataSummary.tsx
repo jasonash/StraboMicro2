@@ -58,6 +58,7 @@ import {
   isLineSpot,
   isPolygonSpot,
 } from '@/utils/geometryMeasurements';
+import { sectionHasData } from '@/utils/spotDataSections';
 
 interface MetadataSummaryProps {
   micrographId?: string;
@@ -744,19 +745,6 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
     );
   }
 
-  // Helper to check if a section has data
-  const hasData = (field: any): boolean => {
-    if (field === null || field === undefined) return false;
-    if (typeof field === 'string') return field.length > 0;
-    if (typeof field === 'number') return true;
-    if (typeof field === 'boolean') return true;
-    if (Array.isArray(field)) return field.length > 0;
-    if (typeof field === 'object') {
-      // Check if object has any non-null values
-      return Object.values(field).some(val => val !== null && val !== undefined);
-    }
-    return false;
-  };
 
   // Count items in array-based data
   const getItemCount = (items: any[] | undefined | null): number => {
@@ -1211,7 +1199,7 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
       )}
 
       {/* Mineralogy/Lithology */}
-      {(hasData(data.mineralogy) || hasData(data.lithologyInfo)) && (
+      {sectionHasData('mineralogy', data) && (
         <StyledAccordion
           expanded={expanded['mineralogy'] || false}
           onChange={handleExpand('mineralogy')}
@@ -1288,9 +1276,7 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
       )}
 
       {/* Grain Info */}
-      {(hasData(data.grainInfo?.grainSizeInfo) ||
-        hasData(data.grainInfo?.grainShapeInfo) ||
-        hasData(data.grainInfo?.grainOrientationInfo)) && (
+      {sectionHasData('grain', data) && (
         <StyledAccordion
           expanded={expanded['grain'] || false}
           onChange={handleExpand('grain')}
@@ -1398,7 +1384,7 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
       )}
 
       {/* Fabric Info */}
-      {hasData(data.fabricInfo?.fabrics) && (
+      {sectionHasData('fabric', data) && (
         <StyledAccordion
           expanded={expanded['fabric'] || false}
           onChange={handleExpand('fabric')}
@@ -1447,7 +1433,7 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
       )}
 
       {/* Clastic Deformation Bands */}
-      {hasData(data.clasticDeformationBandInfo?.bands) && (
+      {sectionHasData('clastic', data) && (
         <StyledAccordion
           expanded={expanded['clastic'] || false}
           onChange={handleExpand('clastic')}
@@ -1488,7 +1474,7 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
       )}
 
       {/* Faults and Shear Zones */}
-      {hasData(data.faultsShearZonesInfo?.faultsShearZones) && (
+      {sectionHasData('faultsShearZones', data) && (
         <StyledAccordion
           expanded={expanded['faultsShearZones'] || false}
           onChange={handleExpand('faultsShearZones')}
@@ -1529,7 +1515,7 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
       )}
 
       {/* Extinction Microstructures */}
-      {hasData(data.extinctionMicrostructureInfo?.extinctionMicrostructures) && (
+      {sectionHasData('extinctionMicrostructures', data) && (
         <StyledAccordion
           expanded={expanded['extinctionMicrostructures'] || false}
           onChange={handleExpand('extinctionMicrostructures')}
@@ -1570,7 +1556,7 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
       )}
 
       {/* Grain Boundary/Contact Info */}
-      {hasData(data.grainBoundaryInfo?.boundaries) && (
+      {sectionHasData('grainBoundary', data) && (
         <StyledAccordion
           expanded={expanded['grainBoundary'] || false}
           onChange={handleExpand('grainBoundary')}
@@ -1611,7 +1597,7 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
       )}
 
       {/* Intragrain Info */}
-      {hasData(data.intraGrainInfo?.grains) && (
+      {sectionHasData('intraGrain', data) && (
         <StyledAccordion
           expanded={expanded['intraGrain'] || false}
           onChange={handleExpand('intraGrain')}
@@ -1652,7 +1638,7 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
       )}
 
       {/* Vein Info */}
-      {hasData(data.veinInfo?.veins) && (
+      {sectionHasData('vein', data) && (
         <StyledAccordion
           expanded={expanded['vein'] || false}
           onChange={handleExpand('vein')}
@@ -1693,7 +1679,7 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
       )}
 
       {/* Pseudotachylyte Info */}
-      {hasData(data.pseudotachylyteInfo?.pseudotachylytes) && (
+      {sectionHasData('pseudotachylyte', data) && (
         <StyledAccordion
           expanded={expanded['pseudotachylyte'] || false}
           onChange={handleExpand('pseudotachylyte')}
@@ -1749,7 +1735,7 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
       )}
 
       {/* Fold Info */}
-      {hasData(data.foldInfo?.folds) && (
+      {sectionHasData('fold', data) && (
         <StyledAccordion
           expanded={expanded['fold'] || false}
           onChange={handleExpand('fold')}
@@ -1798,7 +1784,7 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
       )}
 
       {/* Fracture Info */}
-      {hasData(data.fractureInfo?.fractures) && (
+      {sectionHasData('fracture', data) && (
         <StyledAccordion
           expanded={expanded['fracture'] || false}
           onChange={handleExpand('fracture')}
@@ -1888,7 +1874,7 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
       >
         <StyledAccordionSummary expandIcon={<ExpandMoreIcon />}>
           <Typography variant="subtitle2">Associated Files</Typography>
-          {hasData(data.associatedFiles) && (
+          {sectionHasData('files', data) && (
             <Chip label={`${getItemCount(data.associatedFiles)} files`} size="small" />
           )}
           <Box sx={{ flexGrow: 1 }} />
@@ -1910,7 +1896,7 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
           </Box>
         </StyledAccordionSummary>
         <AccordionDetails sx={{ py: 1 }}>
-          {hasData(data.associatedFiles) ? (
+          {sectionHasData('files', data) ? (
             <Stack spacing={0.5}>
               {data.associatedFiles?.map((file, index) => (
                 <Box key={index} sx={{ display: 'flex', alignItems: 'center' }}>
@@ -1959,36 +1945,38 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
         </AccordionDetails>
       </StyledAccordion>
 
-      {/* Links */}
-      {hasData(data.links) && (
-        <StyledAccordion
-          expanded={expanded['links'] || false}
-          onChange={handleExpand('links')}
-          disableGutters
-          sx={{ '&:before': { display: 'none' } }}
-        >
-          <StyledAccordionSummary expandIcon={<ExpandMoreIcon />}>
-            <Typography variant="subtitle2">Links</Typography>
+      {/* Links (always shown, like Notes and Associated Files: the way to add a link) */}
+      <StyledAccordion
+        expanded={expanded['links'] || false}
+        onChange={handleExpand('links')}
+        disableGutters
+        sx={{ '&:before': { display: 'none' } }}
+      >
+        <StyledAccordionSummary expandIcon={<ExpandMoreIcon />}>
+          <Typography variant="subtitle2">Links</Typography>
+          {sectionHasData('links', data) && (
             <Chip label={`${getItemCount(data.links)} links`} size="small" />
-            <Box sx={{ flexGrow: 1 }} />
-            <Box
-              onClick={handleEdit('links')}
-              sx={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                width: 32,
-                height: 32,
-                mr: 1,
-                cursor: 'pointer',
-                borderRadius: '50%',
-                '&:hover': { bgcolor: 'action.hover' },
-              }}
-            >
-              <EditIcon fontSize="small" />
-            </Box>
-          </StyledAccordionSummary>
-          <AccordionDetails sx={{ py: 1 }}>
+          )}
+          <Box sx={{ flexGrow: 1 }} />
+          <Box
+            onClick={handleEdit('links')}
+            sx={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: 32,
+              height: 32,
+              mr: 1,
+              cursor: 'pointer',
+              borderRadius: '50%',
+              '&:hover': { bgcolor: 'action.hover' },
+            }}
+          >
+            <EditIcon fontSize="small" />
+          </Box>
+        </StyledAccordionSummary>
+        <AccordionDetails sx={{ py: 1 }}>
+          {sectionHasData('links', data) ? (
             <Stack spacing={0.5}>
               {data.links?.map((link, index) => (
                 <Box key={index}>
@@ -2001,9 +1989,18 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
                 </Box>
               ))}
             </Stack>
-          </AccordionDetails>
-        </StyledAccordion>
-      )}
+          ) : (
+            <Typography
+              variant="body2"
+              sx={{
+                color: 'text.secondary',
+                fontStyle: 'italic'
+              }}>
+              No links
+            </Typography>
+          )}
+        </AccordionDetails>
+      </StyledAccordion>
 
     </Stack>
   );

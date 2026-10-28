@@ -192,6 +192,11 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('view:toggle-archived-spots', handler);
     return () => ipcRenderer.removeListener('view:toggle-archived-spots', handler);
   },
+  onFilterSpots: (callback) => {
+    const handler = () => callback();
+    ipcRenderer.on('view:filter-spots', handler);
+    return () => ipcRenderer.removeListener('view:filter-spots', handler);
+  },
   onShowPointCountStatistics: (callback) => {
     const handler = () => callback();
     ipcRenderer.on('view:show-point-count-statistics', handler);
