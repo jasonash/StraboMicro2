@@ -127,3 +127,35 @@ test('a link filled in but not added asks first', async ({ launch, project }) =>
   await expect(dialog).toBeHidden();
   await expect.poll(async () => (await spotsSummary(ana, p.micrographId)).map((s) => s.links)).toEqual([[DATA, PAPER], [DATA, PAPER]]);
 });
+
+test('Links is always in the Properties panel, like Notes and Associated Files; its pencil adds a link', async ({ launch, project }) => {
+  const p = await project('E2E Links Section', ['Grain 1']);
+  const ana = await launch('Ana', ACCOUNTS.ana, { login: false });
+  await openSmz(ana, p.smzPath, p.id);
+  await viewMicrograph(ana, p.micrographId);
+  const pane = ana.page.getByText('Collected Data:').locator('..');
+  const linksSummary = pane.getByRole('button', { name: /^Links/ });
+
+  await ana.caption('a spot without links shows Links with No links');
+  await ana.state(new Function('e', `return e.app.getState().selectActiveSpot(${JSON.stringify(p.spots[0].id)})`) as never);
+  await expect(linksSummary).toBeVisible();
+  await linksSummary.click();
+  await expect(pane.getByText('No links', { exact: true })).toBeVisible();
+
+  await ana.caption('the pencil opens Spot Links; a saved link shows with its count');
+  await linksSummary.locator('[data-testid="EditIcon"]').click();
+  const dialog = ana.page.getByRole('dialog', { name: 'Spot Links' });
+  await fillLink(dialog, PAPER);
+  await dialog.getByRole('button', { name: 'Add', exact: true }).click();
+  await dialog.getByRole('button', { name: 'Save' }).click();
+  await expect(dialog).toBeHidden();
+  await expect(linksSummary).toContainText('1 links');
+  expect((await spotsSummary(ana, p.micrographId))[0].links).toEqual([PAPER]);
+
+  await ana.caption('a micrograph without links shows Links too');
+  await ana.state(new Function('e', `
+    e.app.getState().selectActiveSpot(null);
+    return e.app.getState().selectMicrograph(${JSON.stringify(p.micrographId)});`) as never);
+  await expect(linksSummary).toBeVisible();
+  await expect(linksSummary).not.toContainText('links');
+});

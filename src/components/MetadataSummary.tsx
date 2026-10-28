@@ -1945,36 +1945,38 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
         </AccordionDetails>
       </StyledAccordion>
 
-      {/* Links */}
-      {sectionHasData('links', data) && (
-        <StyledAccordion
-          expanded={expanded['links'] || false}
-          onChange={handleExpand('links')}
-          disableGutters
-          sx={{ '&:before': { display: 'none' } }}
-        >
-          <StyledAccordionSummary expandIcon={<ExpandMoreIcon />}>
-            <Typography variant="subtitle2">Links</Typography>
+      {/* Links (always shown, like Notes and Associated Files: the way to add a link) */}
+      <StyledAccordion
+        expanded={expanded['links'] || false}
+        onChange={handleExpand('links')}
+        disableGutters
+        sx={{ '&:before': { display: 'none' } }}
+      >
+        <StyledAccordionSummary expandIcon={<ExpandMoreIcon />}>
+          <Typography variant="subtitle2">Links</Typography>
+          {sectionHasData('links', data) && (
             <Chip label={`${getItemCount(data.links)} links`} size="small" />
-            <Box sx={{ flexGrow: 1 }} />
-            <Box
-              onClick={handleEdit('links')}
-              sx={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                width: 32,
-                height: 32,
-                mr: 1,
-                cursor: 'pointer',
-                borderRadius: '50%',
-                '&:hover': { bgcolor: 'action.hover' },
-              }}
-            >
-              <EditIcon fontSize="small" />
-            </Box>
-          </StyledAccordionSummary>
-          <AccordionDetails sx={{ py: 1 }}>
+          )}
+          <Box sx={{ flexGrow: 1 }} />
+          <Box
+            onClick={handleEdit('links')}
+            sx={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: 32,
+              height: 32,
+              mr: 1,
+              cursor: 'pointer',
+              borderRadius: '50%',
+              '&:hover': { bgcolor: 'action.hover' },
+            }}
+          >
+            <EditIcon fontSize="small" />
+          </Box>
+        </StyledAccordionSummary>
+        <AccordionDetails sx={{ py: 1 }}>
+          {sectionHasData('links', data) ? (
             <Stack spacing={0.5}>
               {data.links?.map((link, index) => (
                 <Box key={index}>
@@ -1987,9 +1989,18 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
                 </Box>
               ))}
             </Stack>
-          </AccordionDetails>
-        </StyledAccordion>
-      )}
+          ) : (
+            <Typography
+              variant="body2"
+              sx={{
+                color: 'text.secondary',
+                fontStyle: 'italic'
+              }}>
+              No links
+            </Typography>
+          )}
+        </AccordionDetails>
+      </StyledAccordion>
 
     </Stack>
   );
