@@ -531,6 +531,7 @@ export function QuickApplyPresetEditorDialog({
                       value={spotColor || '#808080'}
                       onChange={(newColor) => setSpotColor(newColor)}
                       format="hex"
+                      isAlphaHidden
                       disabled={!spotColor}
                       sx={{ flex: 1 }}
                     />

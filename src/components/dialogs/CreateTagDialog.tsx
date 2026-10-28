@@ -401,6 +401,7 @@ export function CreateTagDialog({
             value={fillColor}
             onChange={(newColor) => setFillColor(newColor)}
             format="hex"
+            isAlphaHidden
             fullWidth
             sx={{ '& input': { caretColor: 'transparent', cursor: 'pointer' } }}
             onKeyDown={(e) => e.preventDefault()}
