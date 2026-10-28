@@ -7,7 +7,6 @@
  * with detailed summaries showing actual data values instead of just counts.
  */
 
-import { sectionHasData } from '@/utils/spotDataSections';
 import { useState, useEffect } from 'react';
 import {
   Accordion,
@@ -59,6 +58,7 @@ import {
   isLineSpot,
   isPolygonSpot,
 } from '@/utils/geometryMeasurements';
+import { sectionHasData } from '@/utils/spotDataSections';
 
 interface MetadataSummaryProps {
   micrographId?: string;
