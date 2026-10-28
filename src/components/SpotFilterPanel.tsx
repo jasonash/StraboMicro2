@@ -135,6 +135,7 @@ export function SpotFilterPanel() {
                   <ToggleButtonGroup
                     size="small"
                     exclusive
+                    color="primary"
                     value={choice}
                     aria-label={section.label}
                     onChange={(_, value: RowChoice | null) => {
@@ -159,6 +160,7 @@ export function SpotFilterPanel() {
               <ToggleButtonGroup
                 size="small"
                 exclusive
+                color="primary"
                 value={spotFilter.others}
                 aria-label="Spots that don't match"
                 onChange={(_, value: 'dim' | 'hide' | null) => {
