@@ -11,7 +11,8 @@
  * is the real safety net), greyed on the rows with spots, header bold and
  * frozen; an "Instructions" sheet carries the text. Sorting, filtering and
  * column widths stay allowed (Excel still refuses to sort locked cells).
- * .csv: UTF-8 with a byte order mark (so Excel reads ± and accents), CRLF.
+ * .csv: UTF-8 with a byte order mark (so Excel reads ± and accents), CRLF;
+ * digits-only Spot IDs as ="..." (see csvSpotIdField).
  * Reading a .csv accepts comma, semicolon (European Excel) or tab.
  */
 
@@ -43,9 +44,24 @@ function csvField(value) {
   return /[",\r\n;\t]/.test(s) || /^\s|\s$/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
-/** Rows to CSV text (with BOM, CRLF line ends) */
+/**
+ * A Spot ID cell. The legacy app's ids are digits only (17671187167175);
+ * Excel reads those as numbers, shows them as 1.76712E+13 and saves them
+ * that way, so the digits are lost. Written as ="17671187167175", Excel,
+ * Numbers and Google Sheets keep it as text. The import reads both forms.
+ */
+function csvSpotIdField(value) {
+  const s = value == null ? '' : String(value);
+  return /^\d+$/.test(s) ? `="${s}"` : csvField(s);
+}
+
+/** Rows to CSV text (with BOM, CRLF line ends); same output as tableToCsv in src/utils/customUserData.ts */
 function toCsv(headers, rows) {
-  const lines = [headers, ...rows].map((r) => r.map(csvField).join(','));
+  const idCol = headers.indexOf('Spot ID'); // COL_ID in src/utils/customUserData.ts
+  const lines = [
+    headers.map(csvField).join(','),
+    ...rows.map((r) => r.map((v, i) => (i === idCol ? csvSpotIdField : csvField)(v)).join(',')),
+  ];
   return `\uFEFF${lines.join('\r\n')}\r\n`;
 }
 
