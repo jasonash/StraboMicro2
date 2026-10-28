@@ -209,6 +209,11 @@ test('micrographs', async ({ launch, runDir }) => {
   await ana.menu('Spot', 'Edit Selected Spots...');
   dlg = ana.page.getByRole('dialog').last();
   await expect(dlg).toBeVisible();
+  // Links checked with one link added (2.0.55)
+  await dlg.getByRole('checkbox', { name: 'Links' }).check();
+  await dlg.getByLabel('Link Label').fill('EPMA results');
+  await dlg.getByLabel('Link URL').fill('https://example.org/epma/toxaway');
+  await dlg.getByRole('button', { name: 'Add', exact: true }).click();
   await ana.page.waitForTimeout(500);
   await shot(ana, 'batch-edit-panel', dlg);
   await ana.page.keyboard.press('Escape');
