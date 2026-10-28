@@ -130,6 +130,7 @@ import {
 import type { TiledViewerRef } from '@/components/TiledViewer';
 import { applySiblingLink, repairSiblingPlacements } from '@/utils/siblingPlacement';
 import { affineRealScale, repairAffineScales, setScaleWithCascade } from '@/utils/affineScale';
+import { NO_SPOT_FILTER, type SpotFilter } from '@/utils/spotDataSections';
 
 /**
  * Repairs for projects saved by earlier versions, when a project is opened or the session
@@ -201,6 +202,9 @@ interface AppState {
   showMicrographOutlines: boolean;
   showRecursiveSpots: boolean;
   showArchivedSpots: boolean;
+  /** View > Filter Spots...: dims or hides spots by their data; this computer only, cleared with the project */
+  spotFilter: SpotFilter;
+  spotFilterPanelOpen: boolean;
   showRulers: boolean;
   spotOverlayOpacity: number;
   /** Last-used image export settings (File > Export Images / micrograph export button) */
@@ -608,6 +612,9 @@ interface AppState {
   setShowMicrographOutlines: (show: boolean) => void;
   setShowRecursiveSpots: (show: boolean) => void;
   setShowArchivedSpots: (show: boolean) => void;
+  setSpotFilter: (filter: SpotFilter) => void;
+  clearSpotFilter: () => void;
+  setSpotFilterPanelOpen: (open: boolean) => void;
   setShowRulers: (show: boolean) => void;
   setSpotOverlayOpacity: (opacity: number) => void;
   setImageExportOptions: (options: ImageExportPreferences) => void;
@@ -671,6 +678,8 @@ export const useAppStore = create<AppState>()(
           showMicrographOutlines: true,
           showRecursiveSpots: false,
           showArchivedSpots: false,
+          spotFilter: NO_SPOT_FILTER,
+          spotFilterPanelOpen: false,
           showRulers: true,
           spotOverlayOpacity: 0.7,
           imageExportOptions: DEFAULT_IMAGE_EXPORT_PREFERENCES,
@@ -768,6 +777,8 @@ export const useAppStore = create<AppState>()(
               micrographNavigationStack: [],
               selectedSpotIds: [],
               spotLassoToolActive: false,
+              spotFilter: NO_SPOT_FILTER,
+              spotFilterPanelOpen: false,
               siblingViewActive: false,
               siblingCachedZoom: null,
               siblingCachedPosition: null,
@@ -799,6 +810,8 @@ export const useAppStore = create<AppState>()(
               micrographNavigationStack: [],
               selectedSpotIds: [],
               spotLassoToolActive: false,
+              spotFilter: NO_SPOT_FILTER,
+              spotFilterPanelOpen: false,
               siblingViewActive: false,
               siblingCachedZoom: null,
               siblingCachedPosition: null,
@@ -2664,6 +2677,9 @@ export const useAppStore = create<AppState>()(
           setShowRecursiveSpots: (show) => set({ showRecursiveSpots: show }),
 
           setShowArchivedSpots: (show) => set({ showArchivedSpots: show }),
+          setSpotFilter: (filter) => set({ spotFilter: filter }),
+          clearSpotFilter: () => set((state) => ({ spotFilter: { ...NO_SPOT_FILTER, others: state.spotFilter.others } })),
+          setSpotFilterPanelOpen: (open) => set({ spotFilterPanelOpen: open }),
 
           setShowRulers: (show) => set({ showRulers: show }),
 

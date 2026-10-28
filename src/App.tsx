@@ -1038,6 +1038,12 @@ function App() {
       setShowArchivedSpots(checked);
     }));
 
+    // View: Filter Spots... (Cmd+Shift+F) opens or closes the filter panel
+    unsubscribers.push(window.api.onFilterSpots(() => {
+      const state = useAppStore.getState();
+      state.setSpotFilterPanelOpen(!state.spotFilterPanelOpen);
+    }));
+
     // View: Point Count Statistics menu item - toggle the panel
     unsubscribers.push(window.api.onShowPointCountStatistics(() => {
       const currentVisible = useAppStore.getState().statisticsPanelVisible;

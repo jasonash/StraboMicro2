@@ -53,6 +53,7 @@ interface SpotRendererProps {
   onClick?: (spot: Spot, event: any) => void;
   onContextMenu?: (spot: Spot, x: number, y: number) => void;
   renderLabelsOnly?: boolean; // If true, only render labels (for layering)
+  dimmed?: boolean; // Not matching View > Filter Spots... (drawn faint, like spots outside a Quick Edit session)
 }
 
 export const SpotRenderer: React.FC<SpotRendererProps> = ({
@@ -62,6 +63,7 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
   onClick,
   onContextMenu,
   renderLabelsOnly = false,
+  dimmed = false,
 }) => {
   const [isHovered, setIsHovered] = useState(false);
   const editingSpotId = useAppStore((state) => state.editingSpotId);
@@ -168,6 +170,11 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
       opacity = 0.2;
       fillOpacity = 0.1;
     }
+  }
+
+  if (dimmed && !isSelected) {
+    opacity = Math.min(opacity, 0.2);
+    fillOpacity = Math.min(fillOpacity, 0.1);
   }
 
   // Don't show hover effect when spot is selected

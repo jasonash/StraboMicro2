@@ -27,6 +27,7 @@ import {
 import { useAppStore } from '@/store';
 import type { SampleMetadata, MicrographMetadata, Spot } from '@/types/project-types';
 import { PresenceMarks } from './Presence';
+import { spotFilterLook } from '@/utils/spotDataSections';
 
 // ============================================================================
 // HELPER FUNCTIONS
@@ -66,12 +67,15 @@ interface SpotItemProps {
   spot: Spot;
   micrographId: string;
   onClick: (spot: Spot, micrographId: string) => void;
+  /** Not matching View > Filter Spots... (Dim others) */
+  dimmed?: boolean;
 }
 
-function SpotItem({ spot, micrographId, onClick }: SpotItemProps) {
+function SpotItem({ spot, micrographId, onClick, dimmed = false }: SpotItemProps) {
   return (
     <Box
       sx={{
+        opacity: dimmed ? 0.4 : 1,
         py: 0.25,
         '&:hover': { bgcolor: 'action.hover' },
         borderRadius: 0.5,
@@ -121,7 +125,10 @@ function MicrographSection({
   depth,
 }: MicrographSectionProps) {
   const isExpanded = expansionState.micrographs[micrograph.id] ?? true;
-  const spots = micrograph.spots || [];
+  const spotFilter = useAppStore((state) => state.spotFilter);
+  const allSpots = micrograph.spots || [];
+  // View > Filter Spots... with Hide others leaves out spots that do not match
+  const spots = allSpots.filter((spot) => spotFilterLook(spot, spotFilter) !== 'hidden');
   const children = childMap.get(micrograph.id) || [];
 
   // Build display name
@@ -164,6 +171,7 @@ function MicrographSection({
                 spot={spot}
                 micrographId={micrograph.id}
                 onClick={onSpotClick}
+                dimmed={spotFilterLook(spot, spotFilter) === 'dim'}
               />
             ))
           ) : (
@@ -175,7 +183,7 @@ function MicrographSection({
                 py: 0.25,
                 px: 1
               }}>
-              No spots.
+              {allSpots.length > 0 ? 'No spots match the filter.' : 'No spots.'}
             </Typography>
           )}
 

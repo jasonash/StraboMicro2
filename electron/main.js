@@ -1180,6 +1180,17 @@ function createWindow() {
         },
         { type: 'separator' },
         {
+          // Dim or hide spots by their data (Angus, 2026-10-28)
+          label: 'Filter Spots...',
+          accelerator: 'CmdOrCtrl+Shift+F',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('view:filter-spots');
+            }
+          }
+        },
+        { type: 'separator' },
+        {
           // Who changed what in a synced project (collaboration 17u)
           label: 'Activity',
           enabled: currentProjectSynced,
