@@ -8,9 +8,10 @@
  * - Primary Mineral (mineralogy)
  * - Color
  * - Opacity
+ * - Links (added to each spot's links; a URL the spot already has is skipped)
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -23,10 +24,16 @@ import {
   TextField,
   Typography,
   Slider,
+  IconButton,
+  DialogContentText,
 } from '@mui/material';
+import DeleteIcon from '@mui/icons-material/Delete';
 import { useReadOnly } from '../ReadOnlyScope';
 import { useAppStore } from '@/store';
 import { AutocompleteMineralSearch } from './metadata/reusable/AutocompleteMineralSearch';
+import { LinkAddForm, isValidURL, type LinkData } from './metadata/links/LinkAddForm';
+import type { LinkType, Spot } from '@/types/project-types';
+import { addLinks } from '@/utils/spotLinks';
 
 interface BatchEditSpotsDialogProps {
   isOpen: boolean;
@@ -77,6 +84,14 @@ export function BatchEditSpotsDialog({ isOpen, onClose }: BatchEditSpotsDialogPr
     enabled: false,
     value: 50,
   });
+  const [links, setLinks] = useState<FieldState<LinkType[]>>({
+    enabled: false,
+    value: [],
+  });
+  // A link typed in the form but not added yet, and the question about it
+  const [linkDraft, setLinkDraft] = useState<LinkData>({ label: '', url: '' });
+  const [askNotAdded, setAskNotAdded] = useState(false);
+  const handleDraftChange = useCallback((draft: LinkData) => setLinkDraft(draft), []);
 
   // Reset form when dialog opens, using last used color
   useEffect(() => {
@@ -84,10 +99,26 @@ export function BatchEditSpotsDialog({ isOpen, onClose }: BatchEditSpotsDialogPr
       setMineral({ enabled: false, value: '' });
       setColor({ enabled: false, value: getLastUsedColor() });
       setOpacity({ enabled: false, value: 50 });
+      setLinks({ enabled: false, value: [] });
+      setLinkDraft({ label: '', url: '' });
+      setAskNotAdded(false);
     }
   }, [isOpen]);
 
-  const handleApply = () => {
+  const draftHasText = links.enabled && (linkDraft.label.trim() !== '' || linkDraft.url.trim() !== '');
+  const draftIsValid = linkDraft.label.trim() !== '' && isValidURL(linkDraft.url);
+
+  const handleApplyClick = () => {
+    if (draftHasText) {
+      setAskNotAdded(true);
+      return;
+    }
+    applyToSpots(links.value);
+  };
+
+  const applyToSpots = (linksToAdd: LinkType[]) => {
+    setAskNotAdded(false);
+
     // Build update object with only enabled fields
     const updates: Record<string, unknown> = {};
 
@@ -112,150 +143,235 @@ export function BatchEditSpotsDialog({ isOpen, onClose }: BatchEditSpotsDialogPr
       updates.opacity = opacity.value;
     }
 
-    // Apply updates to all selected spots
+    // Apply updates to all selected spots; a spot with nothing to change is left alone
     for (const spotId of selectedSpotIds) {
       const spot = spotIndex.get(spotId);
-      if (spot) {
-        // Merge updates with existing spot data
-        const updatedSpot = { ...spot };
+      if (!spot) continue;
 
-        if (updates.mineralogy) {
-          updatedSpot.mineralogy = updates.mineralogy as typeof spot.mineralogy;
-        }
-        if (updates.color !== undefined) {
-          updatedSpot.color = updates.color as string;
-        }
-        if (updates.opacity !== undefined) {
-          updatedSpot.opacity = updates.opacity as number;
-        }
+      const spotUpdates: Partial<Spot> = {};
+      if (updates.mineralogy) {
+        spotUpdates.mineralogy = updates.mineralogy as typeof spot.mineralogy;
+      }
+      if (updates.color !== undefined) {
+        spotUpdates.color = updates.color as string;
+      }
+      if (updates.opacity !== undefined) {
+        spotUpdates.opacity = updates.opacity as number;
+      }
+      if (links.enabled) {
+        const merged = addLinks(spot.links, linksToAdd);
+        if (merged) spotUpdates.links = merged;
+      }
 
-        updateSpotData(spotId, updatedSpot);
+      if (Object.keys(spotUpdates).length > 0) {
+        updateSpotData(spotId, spotUpdates);
       }
     }
 
     onClose();
   };
 
-  const hasEnabledFields = mineral.enabled || color.enabled || opacity.enabled;
+  const hasEnabledFields =
+    mineral.enabled || color.enabled || opacity.enabled || (links.enabled && (links.value.length > 0 || draftHasText));
 
   return (
-    <Dialog open={isOpen} onClose={onClose} maxWidth="sm" fullWidth>
-      <DialogTitle>
-        Edit {selectedSpotIds.length} Spots
-      </DialogTitle>
+    <>
+      <Dialog open={askNotAdded} onClose={() => setAskNotAdded(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>Add before applying?</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            You filled in the link {linkDraft.label.trim() || linkDraft.url.trim()} but did not press Add, so it is not
+            in the list yet. Only links in the list are added to the spots.
+            {!draftIsValid && ' It needs a label and a URL beginning with http:// or https:// before it can be added.'}
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setAskNotAdded(false)}>Back</Button>
+          <Button onClick={() => applyToSpots(links.value)}>Apply Without It</Button>
+          <Button
+            variant="contained"
+            disabled={!draftIsValid}
+            onClick={() => applyToSpots([...links.value, linkDraft])}
+          >
+            Add and Apply
+          </Button>
+        </DialogActions>
+      </Dialog>
 
-      <DialogContent>
-        <Typography
-          variant="body2"
-          sx={{
-            color: 'text.secondary',
-            mb: 2
-          }}>
-          Check the fields you want to update. Only checked fields will be applied to all selected spots.
-        </Typography>
+      <Dialog open={isOpen} onClose={onClose} maxWidth="sm" fullWidth>
+        <DialogTitle>
+          Edit {selectedSpotIds.length} Spots
+        </DialogTitle>
 
-        {/* Primary Mineral */}
-        <Box sx={{ mb: 3 }}>
-          <FormControlLabel
-            control={
-              <Checkbox
-                checked={mineral.enabled}
-                onChange={(e) => setMineral((prev) => ({ ...prev, enabled: e.target.checked }))}
-              />
-            }
-            label="Primary Mineral"
-          />
-          {mineral.enabled && (
-            <Box sx={{ ml: 4, mt: 1 }}>
-              <AutocompleteMineralSearch
-                selectedMinerals={mineral.value ? [mineral.value] : []}
-                onChange={(minerals) => setMineral((prev) => ({ ...prev, value: minerals[0] || '' }))}
-                label="Mineral"
-                multiple={false}
-              />
-            </Box>
-          )}
-        </Box>
+        <DialogContent>
+          <Typography
+            variant="body2"
+            sx={{
+              color: 'text.secondary',
+              mb: 2
+            }}>
+            Check the fields you want to update. Only checked fields will be applied to all selected spots.
+          </Typography>
 
-        {/* Color */}
-        <Box sx={{ mb: 3 }}>
-          <FormControlLabel
-            control={
-              <Checkbox
-                checked={color.enabled}
-                onChange={(e) => setColor((prev) => ({ ...prev, enabled: e.target.checked }))}
-              />
-            }
-            label="Color"
-          />
-          {color.enabled && (
-            <Box sx={{ ml: 4, mt: 1, display: 'flex', alignItems: 'center', gap: 2 }}>
-              <input
-                type="color"
-                disabled={readOnlyScope}
-                value={color.value}
-                onChange={(e) => setColor((prev) => ({ ...prev, value: e.target.value }))}
-                style={{
-                  width: 60,
-                  height: 36,
-                  padding: 0,
-                  border: '1px solid #ccc',
-                  borderRadius: 4,
-                  cursor: 'pointer',
-                }}
-              />
-              <TextField
-                value={color.value}
-                onChange={(e) => setColor((prev) => ({ ...prev, value: e.target.value }))}
-                size="small"
-                sx={{ width: 100 }}
-              />
-            </Box>
-          )}
-        </Box>
-
-        {/* Opacity */}
-        <Box sx={{ mb: 3 }}>
-          <FormControlLabel
-            control={
-              <Checkbox
-                checked={opacity.enabled}
-                onChange={(e) => setOpacity((prev) => ({ ...prev, enabled: e.target.checked }))}
-              />
-            }
-            label="Opacity"
-          />
-          {opacity.enabled && (
-            <Box sx={{ ml: 4, mt: 1, pr: 2 }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                <Slider
-                  value={opacity.value}
-                  onChange={(_, value) => setOpacity((prev) => ({ ...prev, value: value as number }))}
-                  min={0}
-                  max={100}
-                  valueLabelDisplay="auto"
-                  sx={{ flex: 1 }}
+          {/* Primary Mineral */}
+          <Box sx={{ mb: 3 }}>
+            <FormControlLabel
+              control={
+                <Checkbox
+                  checked={mineral.enabled}
+                  onChange={(e) => setMineral((prev) => ({ ...prev, enabled: e.target.checked }))}
                 />
-                <Typography variant="body2" sx={{ minWidth: 40, textAlign: 'right' }}>
-                  {opacity.value}%
-                </Typography>
+              }
+              label="Primary Mineral"
+            />
+            {mineral.enabled && (
+              <Box sx={{ ml: 4, mt: 1 }}>
+                <AutocompleteMineralSearch
+                  selectedMinerals={mineral.value ? [mineral.value] : []}
+                  onChange={(minerals) => setMineral((prev) => ({ ...prev, value: minerals[0] || '' }))}
+                  label="Mineral"
+                  multiple={false}
+                />
               </Box>
-            </Box>
-          )}
-        </Box>
-      </DialogContent>
+            )}
+          </Box>
 
-      <DialogActions>
-        <Button onClick={onClose}>Cancel</Button>
-        <Button
-          onClick={handleApply}
-          variant="contained"
-          disabled={!hasEnabledFields}
-        >
-          Apply to {selectedSpotIds.length} Spots
-        </Button>
-      </DialogActions>
-    </Dialog>
+          {/* Color */}
+          <Box sx={{ mb: 3 }}>
+            <FormControlLabel
+              control={
+                <Checkbox
+                  checked={color.enabled}
+                  onChange={(e) => setColor((prev) => ({ ...prev, enabled: e.target.checked }))}
+                />
+              }
+              label="Color"
+            />
+            {color.enabled && (
+              <Box sx={{ ml: 4, mt: 1, display: 'flex', alignItems: 'center', gap: 2 }}>
+                <input
+                  type="color"
+                  disabled={readOnlyScope}
+                  value={color.value}
+                  onChange={(e) => setColor((prev) => ({ ...prev, value: e.target.value }))}
+                  style={{
+                    width: 60,
+                    height: 36,
+                    padding: 0,
+                    border: '1px solid #ccc',
+                    borderRadius: 4,
+                    cursor: 'pointer',
+                  }}
+                />
+                <TextField
+                  value={color.value}
+                  onChange={(e) => setColor((prev) => ({ ...prev, value: e.target.value }))}
+                  size="small"
+                  sx={{ width: 100 }}
+                />
+              </Box>
+            )}
+          </Box>
+
+          {/* Opacity */}
+          <Box sx={{ mb: 3 }}>
+            <FormControlLabel
+              control={
+                <Checkbox
+                  checked={opacity.enabled}
+                  onChange={(e) => setOpacity((prev) => ({ ...prev, enabled: e.target.checked }))}
+                />
+              }
+              label="Opacity"
+            />
+            {opacity.enabled && (
+              <Box sx={{ ml: 4, mt: 1, pr: 2 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                  <Slider
+                    value={opacity.value}
+                    onChange={(_, value) => setOpacity((prev) => ({ ...prev, value: value as number }))}
+                    min={0}
+                    max={100}
+                    valueLabelDisplay="auto"
+                    sx={{ flex: 1 }}
+                  />
+                  <Typography variant="body2" sx={{ minWidth: 40, textAlign: 'right' }}>
+                    {opacity.value}%
+                  </Typography>
+                </Box>
+              </Box>
+            )}
+          </Box>
+
+          {/* Links */}
+          <Box sx={{ mb: 3 }}>
+            <FormControlLabel
+              control={
+                <Checkbox
+                  checked={links.enabled}
+                  onChange={(e) => setLinks((prev) => ({ ...prev, enabled: e.target.checked }))}
+                />
+              }
+              label="Links"
+            />
+            {links.enabled && (
+              <Box sx={{ ml: 4, mt: 1 }}>
+                <Typography variant="body2" sx={{ color: 'text.secondary', mb: 1 }}>
+                  These links are added to each spot's links. A spot that already has a link's URL keeps it once.
+                </Typography>
+                {links.value.length === 0 ? (
+                  <Typography variant="body2" sx={{ color: 'text.secondary', fontStyle: 'italic', mb: 2 }}>
+                    No links added yet. Fill in the form below and click Add.
+                  </Typography>
+                ) : (
+                  <Box sx={{ mb: 2 }}>
+                    {links.value.map((link, index) => (
+                      <Box
+                        key={`${link.url}-${index}`}
+                        sx={{ display: 'flex', alignItems: 'center', gap: 1, py: 0.5 }}
+                      >
+                        <Box sx={{ flex: 1, minWidth: 0 }}>
+                          <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                            {link.label}
+                          </Typography>
+                          <Typography variant="caption" sx={{ color: 'text.secondary', wordBreak: 'break-all' }}>
+                            {link.url}
+                          </Typography>
+                        </Box>
+                        <IconButton
+                          size="small"
+                          aria-label={`Remove ${link.label}`}
+                          onClick={() =>
+                            setLinks((prev) => ({ ...prev, value: prev.value.filter((_, i) => i !== index) }))
+                          }
+                        >
+                          <DeleteIcon fontSize="small" />
+                        </IconButton>
+                      </Box>
+                    ))}
+                  </Box>
+                )}
+                <LinkAddForm
+                  onAdd={(link) => setLinks((prev) => ({ ...prev, value: [...prev.value, link] }))}
+                  onDraftChange={handleDraftChange}
+                />
+              </Box>
+            )}
+          </Box>
+        </DialogContent>
+
+        <DialogActions>
+          <Button onClick={onClose}>Cancel</Button>
+          <Button
+            onClick={handleApplyClick}
+            variant="contained"
+            disabled={!hasEnabledFields}
+          >
+            Apply to {selectedSpotIds.length} Spots
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </>
   );
 }
 
