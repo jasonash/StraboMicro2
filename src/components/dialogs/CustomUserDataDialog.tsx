@@ -212,6 +212,23 @@ export function CustomUserDataDialog({ open, onClose }: CustomUserDataDialogProp
               <RowList items={plan.unmatched.map((r) => `Row ${r.row}${r.spotName ? ` (${r.spotName})` : ''}: ${r.spotId}`)} />
             </Alert>
           )}
+          {plan.roundedId.length > 0 && (
+            <Alert severity="warning" sx={{ mb: 1 }}>
+              <AlertTitle>{plural(plan.roundedId.length, 'row')} with a damaged Spot ID (skipped)</AlertTitle>
+              <Typography variant="body2" sx={{ mb: 0.5 }}>
+                A spreadsheet program rounded their Spot ID (Excel does this in .csv files), and their Sample, Micrograph and Spot Name don&apos;t identify a single spot. Download a new template and fill it in again, or use .xlsx.
+              </Typography>
+              <RowList items={plan.roundedId.map((r) => `Row ${r.row}${r.spotName ? ` (${r.spotName})` : ''}: ${r.spotId}`)} />
+            </Alert>
+          )}
+          {plan.matchedByName.length > 0 && (
+            <Alert severity="info" sx={{ mb: 1 }}>
+              <AlertTitle>{plural(plan.matchedByName.length, 'row')} matched by name</AlertTitle>
+              <Typography variant="body2">
+                A spreadsheet program rounded their Spot ID (Excel does this in .csv files), so they were matched by Sample, Micrograph and Spot Name instead. To avoid this, use .xlsx with Excel.
+              </Typography>
+            </Alert>
+          )}
           {plan.missingId.length > 0 && (
             <Alert severity="warning" sx={{ mb: 1 }}>
               <AlertTitle>{plural(plan.missingId.length, 'row')} with values but no Spot ID (skipped)</AlertTitle>

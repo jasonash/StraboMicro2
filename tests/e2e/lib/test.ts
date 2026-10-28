@@ -8,12 +8,12 @@
 import { test as base, expect } from '@playwright/test';
 import fs from 'fs';
 import { Copy, launchCopy, newRunDir, type Account } from './copy';
-import { makeProject, type FixtureProject } from './fixtures';
+import { makeProject, type FixtureProject, type ProjectExtras } from './fixtures';
 
 interface Fixtures {
   /** env: extra environment for this copy (e.g. STRABO_E2E_POLL_MS) */
   launch: (label: string, account: Account, opts?: { login?: boolean; env?: Record<string, string> }) => Promise<Copy>;
-  project: (name: string, spotNames?: string[]) => Promise<FixtureProject>;
+  project: (name: string, spotNames?: string[], extras?: ProjectExtras) => Promise<FixtureProject>;
   runDir: string;
 }
 
@@ -59,7 +59,7 @@ export const test = base.extend<Fixtures>({
     }
   },
   project: async ({ runDir }, use) => {
-    await use((name, spotNames) => makeProject(`${runDir}/fixtures`, name, spotNames));
+    await use((name, spotNames, extras) => makeProject(`${runDir}/fixtures`, name, spotNames, extras));
   },
 });
 

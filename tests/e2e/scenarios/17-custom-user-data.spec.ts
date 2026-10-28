@@ -117,6 +117,46 @@ test('a file with a duplicate header is refused and nothing changes', async ({ l
   expect(await stored(ana)).toEqual({ columns: null, spots: { 'Garnet 1': null, 'Quartz 1': null } });
 });
 
+test('a project from the legacy app: its .csv saved again by Excel still imports', async ({ launch, project, runDir }) => {
+  const p = await project('E2E Custom Data Legacy', ['Garnet 1', 'Quartz 1', 'Albite 1'], { legacyIds: true });
+  const ana = await launch('Ana', ACCOUNTS.ana, { login: false });
+  await openSmz(ana, p.smzPath, p.id);
+  const dialog = await openTool(ana);
+
+  await ana.caption('downloads the .csv template: digits-only Spot IDs are written so Excel keeps them as text');
+  await dialog.getByLabel('CSV (.csv)').check();
+  const templatePath = `${runDir}/legacy.csv`;
+  await ana.answerDialog({ kind: 'save', filePath: templatePath });
+  await dialog.getByRole('button', { name: 'Download Template...' }).click();
+  await expect(dialog.getByText(/Saved 3 rows/)).toBeVisible();
+  const template = fs.readFileSync(templatePath, 'utf8');
+  for (const s of p.spots) expect(template).toContain(`,="${s.id}"\r\n`);
+
+  await ana.caption('the file as an older download comes back from Excel: Spot IDs rounded (1.76712E+13), all alike');
+  const excelSaved = template.replace(/^﻿/, '').replace(/="(\d+)"/g, (_m, digits: string) => Number(digits).toExponential(5).toUpperCase())
+    .split('\r\n').map((line, i) => (line === '' ? line : `${line},${i === 0 ? 'Mg#' : `0.8${i}`}`)).join('\r\n');
+  const rounded = excelSaved.split('\r\n')[1].split(',')[3];
+  expect(rounded).toMatch(/^\d\.\d{5}E\+\d+$/);
+  expect(excelSaved.split('\r\n').filter((l) => l.includes(rounded))).toHaveLength(3);
+  const excelPath = `${runDir}/legacy-excel.csv`;
+  fs.writeFileSync(excelPath, excelSaved);
+
+  await ana.caption('imports it: rows are matched by Sample, Micrograph and Spot Name');
+  await ana.answerDialog({ kind: 'open', filePaths: [excelPath] });
+  await dialog.getByRole('button', { name: 'Import Filled Template...' }).click();
+  const preview = ana.page.getByRole('dialog', { name: 'Import legacy-excel.csv?' });
+  await expect(preview).toBeVisible();
+  await expect(preview.getByText(/3 rows matched to spots\. 3 values on 3 spots/)).toBeVisible();
+  await expect(preview.getByText('3 rows matched by name')).toBeVisible();
+  await preview.getByRole('button', { name: 'Apply Import' }).click();
+  await expect(ana.page.getByText('Imported 3 values on 3 spots.')).toBeVisible();
+  expect(await stored(ana)).toEqual({
+    columns: ['Mg#'],
+    spots: { 'Garnet 1': { 'Mg#': '0.81' }, 'Quartz 1': { 'Mg#': '0.82' }, 'Albite 1': { 'Mg#': '0.83' } },
+  });
+  expect(await ana.unansweredDialogs()).toEqual([]);
+});
+
 /** Put Custom User Data on the fixture's spots through the store (as an import would) */
 async function seed(copy: Copy, p: FixtureProject) {
   await copy.state(new Function('e', `

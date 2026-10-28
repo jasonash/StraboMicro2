@@ -97,16 +97,25 @@ export interface ProjectExtras {
   /** images of added micrographs by id (JPEG); default: the circle drawing */
   images?: Record<string, Buffer>;
   micrographs?: Array<Record<string, unknown> & { id: string }>;
+  /** ids as the legacy app (v1) makes them: digits only, milliseconds * 10 + a digit (straboMicroUtil.getNewId) */
+  legacyIds?: boolean;
+}
+
+/** A legacy app id: digits only; made in quick succession, like spots drawn in one session */
+function legacyIdMaker(): () => string {
+  let next = Date.now() * 10;
+  return () => String(next++);
 }
 
 /** Write a new project .smz into `dir` */
 export async function makeProject(dir: string, name: string, spotNames: string[] = ['Garnet 1', 'Quartz 1'],
   extras: ProjectExtras = {}): Promise<FixtureProject> {
-  const id = randomUUID();
-  const datasetId = randomUUID();
-  const sampleId = randomUUID();
-  const micrographId = extras.overviewId ?? randomUUID();
-  const spots = spotNames.map((n) => ({ id: randomUUID(), name: n }));
+  const newId = extras.legacyIds ? legacyIdMaker() : randomUUID;
+  const id = newId();
+  const datasetId = newId();
+  const sampleId = newId();
+  const micrographId = extras.overviewId ?? newId();
+  const spots = spotNames.map((n) => ({ id: newId(), name: n }));
   const now = new Date().toISOString();
   const project = {
     id, name, startDate: '', endDate: '', purposeOfStudy: '', otherTeamMembers: '', areaOfInterest: '',

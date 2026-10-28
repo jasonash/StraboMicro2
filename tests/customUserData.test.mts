@@ -26,9 +26,10 @@ import {
 import type { ProjectMetadata, Spot } from '../src/types/project-types.ts';
 import { fieldLabel, valueText } from '../src/utils/syncDecisionText.ts';
 import { createRequire } from 'node:module';
+import { readFileSync } from 'node:fs';
 
 const require = createRequire(import.meta.url);
-const files = require('../electron/customUserDataFiles.js') as { toCsv: (h: string[], r: string[][]) => string };
+const files = require('../electron/customUserDataFiles.js') as { toCsv: (h: string[], r: string[][]) => string; parseCsv: (text: string) => string[][] };
 const pdf = require('../electron/pdfReactExport.js') as {
   customUserDataColumns: (p: unknown) => string[];
   customUserDataEntries: (columns: string[], spot: unknown) => Array<[string, string]>;
@@ -212,6 +213,66 @@ check('PDF spot entries: none', eq(pdf.customUserDataEntries(['a'], { customUser
 const csvTable = { headers: ['Spot ID', 'Notes'], rows: [['a', 'has, comma'], ['b', 'say "hi"\nnext line'], ['c', ' padded '], ['d', 'semi;colon'], ['e', '±']] };
 check('tableToCsv = desktop toCsv', tableToCsv(csvTable) === files.toCsv(csvTable.headers, csvTable.rows), [tableToCsv(csvTable), files.toCsv(csvTable.headers, csvTable.rows)]);
 check('tableToCsv: BOM and CRLF', tableToCsv(csvTable).startsWith('\uFEFFSpot ID,Notes\r\n'));
+
+// ---------------------------------------------------------------- legacy digits-only Spot IDs through Excel (Peter, 2026-10-28)
+// tests/fixtures/custom-user-data: a .csv download of a project whose spots
+// the legacy app made (ids like 17671187167175) and the same file after
+// Excel opened and saved it (ids now 1.76712E+13, several rows alike).
+const fixture = (name: string) => files.parseCsv(readFileSync(new URL(`./fixtures/custom-user-data/${name}`, import.meta.url), 'utf8'));
+const downloaded = fixture('legacy-ids-download.csv');
+const excelSaved = fixture('legacy-ids-excel-saved.csv');
+function legacyProject(): ProjectMetadata {
+  const rows = downloaded.slice(1);
+  return {
+    id: 'L', name: 'Pimu Epidote Blueschists',
+    datasets: [{ id: 'D', name: 'D', samples: [{ id: 'S', name: 'S', label: rows[0][0], micrographs: [{ id: 'M', name: rows[0][1], spots: rows.map((r) => spot(r[3], r[2])) }] }] }],
+  } as unknown as ProjectMetadata;
+}
+const withColumn = (rows: string[][]) => ({ headers: [...rows[0], 'Mg#'], rows: rows.slice(1).map((r, i) => [...r, `0.${i}`]) });
+const lp = legacyProject();
+const legacyIds = downloaded.slice(1).map((r) => r[3]);
+check('legacy fixture: 41 digits-only ids, Excel-saved copy rounded', legacyIds.length === 41 && legacyIds.every((id) => /^\d{14}$/.test(id)) &&
+  excelSaved.slice(1).every((r) => /E\+13$/.test(r[3])), excelSaved[1]);
+
+const fromDownload = checkImport(lp, withColumn(downloaded), owner);
+check('legacy: the download imports by Spot ID', fromDownload.ok && fromDownload.plan.matched === 41 && fromDownload.plan.matchedByName.length === 0, fromDownload);
+const fromExcel = checkImport(lp, withColumn(excelSaved), owner);
+check('legacy: Excel-saved file is not refused (rows alike after rounding)', fromExcel.ok, fromExcel);
+check('legacy: Excel-saved file matched by names, all 41 rows', fromExcel.ok && fromExcel.plan.matched === 41 && fromExcel.plan.matchedByName.length === 41 &&
+  fromExcel.plan.roundedId.length === 0 && fromExcel.plan.unmatched.length === 0, fromExcel.ok ? fromExcel.plan : fromExcel);
+check('legacy: values land on the real spot ids', fromExcel.ok && eq(Object.keys(fromExcel.plan.updates).sort(), [...legacyIds].sort()) &&
+  fromExcel.plan.updates[legacyIds[0]]?.['Mg#'] === '0.0', fromExcel.ok ? Object.keys(fromExcel.plan.updates).slice(0, 3) : '');
+check('legacy: trailing space Excel dropped from a spot name is no name change', fromExcel.ok && fromExcel.plan.nameChanges.length === 0, fromExcel.ok ? fromExcel.plan.nameChanges : '');
+
+// The download written again: digits-only ids as ="...", which Excel keeps as text; read back to the same spots
+const legacyTemplate = templateTable(lp);
+const rewritten = files.toCsv(legacyTemplate.headers, legacyTemplate.rows);
+check('csv: digits-only Spot ID written as ="..."', rewritten.includes('\r\n23C04A1,23C-04A1_PPL,SEM_1,="17671187167175"\r\n'), rewritten.slice(0, 120));
+check('csv: ="..." only in the Spot ID column', !files.toCsv(['Spot ID', 'Count'], [['a-1', '17671187167175']]).includes('='));
+check('csv: a uuid Spot ID is written as is', files.toCsv(['Spot ID'], [['3f2a9c1e-0b7d-4e55-9a41-6c2d8e1f0a37']]).includes('\r\n3f2a9c1e-0b7d-4e55-9a41-6c2d8e1f0a37\r\n'));
+check('tableToCsv = desktop toCsv (digits-only ids)', tableToCsv(legacyTemplate) === rewritten);
+const reread = checkImport(lp, withColumn(files.parseCsv(rewritten)), owner);
+check('legacy: ="..." ids (or LibreOffice keeping them as typed) match by Spot ID', reread.ok && reread.plan.matched === 41 && reread.plan.matchedByName.length === 0, reread);
+
+// Name matching is only for rounded ids, and only for one spot with those names
+const L = [...LOCKED_COLUMNS, 'Mg#'];
+const ln = (sample: string, spotName: string, id: string) => [sample, '23C-04A1_PPL', spotName, id, '1'];
+const lpOne = checkImport(lp, { headers: L, rows: [ln('23C04A1', 'SEM_1', 'not-an-id')] }, owner);
+check('names: an unknown (not rounded) id stays unmatched', lpOne.ok && lpOne.plan.unmatched.length === 1 && lpOne.plan.matched === 0, lpOne);
+const lpWrongName = checkImport(lp, { headers: L, rows: [ln('23C04A1', 'SEM_99', '1.76712E+13')] }, owner);
+check('names: rounded id + names of no spot = roundedId (skipped)', lpWrongName.ok && lpWrongName.plan.roundedId.length === 1 && lpWrongName.plan.matched === 0, lpWrongName);
+const twins = legacyProject();
+twins.datasets![0].samples![0].micrographs![0].spots![1].name = 'SEM_1';
+const lpTwin = checkImport(twins, { headers: L, rows: [ln('23C04A1', 'SEM_1', '1.76712E+13')] }, owner);
+check('names: two spots with those names = roundedId (skipped)', lpTwin.ok && lpTwin.plan.roundedId.length === 1 && lpTwin.plan.matched === 0, lpTwin);
+const lpNoNames = checkImport(lp, { headers: ['Spot ID', 'Mg#'], rows: [['1.76712E+13', '1']] }, owner);
+check('names: rounded id without the name columns = roundedId', lpNoNames.ok && lpNoNames.plan.roundedId.length === 1, lpNoNames);
+const lpBoth = checkImport(lp, { headers: L, rows: [ln('23C04A1', 'SEM_1', legacyIds[0]), ln('23C04A1', 'SEM_1', '1.76712E+13')] }, owner);
+check('refuse: one spot by id and again by name', !lpBoth.ok && lpBoth.problems.some((m) => m === 'Rows 2 and 3 are the same spot (SEM_1).'), lpBoth);
+const lpSameRounded = checkImport(lp, { headers: L, rows: [ln('23C04A1', 'SEM_99', '1.76712E+13'), ln('23C04A1', 'SEM_98', '1.76712E+13')] }, owner);
+check('rounded ids alike that match nothing are skipped, not refused', lpSameRounded.ok && lpSameRounded.plan.roundedId.length === 2, lpSameRounded);
+const applied = fromExcel.ok ? applyImport(lp, fromExcel.plan) : lp;
+check('legacy: apply after name matching', spotEntries(applied, applied.datasets![0].samples![0].micrographs![0].spots![5]).some(([c, v]) => c === 'Mg#' && v === '0.5'));
 
 // ---------------------------------------------------------------- sync decisions dialog text
 check('decision label: field name', fieldLabel(['customUserData']) === 'Custom User Data');
