@@ -78,6 +78,7 @@ import { AddSiblingDialog } from './dialogs/AddSiblingDialog';
 import { findMicrographById } from '@/store/helpers';
 import { hiddenSibling, pairPartner } from '@/utils/siblingPair';
 import { partnerRole, polarizedRole } from '@/utils/polarization';
+import { PlaceOnParentAreaDialog } from './dialogs/PlaceOnParentAreaDialog';
 import { cannotPlaceChildrenReason, hasLocation, unplacedChildren } from '@/utils/micrographLocation';
 import type { DatasetMetadata, SampleMetadata, MicrographMetadata } from '@/types/project-types';
 import { EditingScope, PresenceMarks } from './Presence';
@@ -371,6 +372,8 @@ export function ProjectTree() {
   const [placeChildrenParentId, setPlaceChildrenParentId] = useState<string | null>(null);
   // Delete unplaced children: the parent whose unplaced children are deleted (Peter, 2026-10-29)
   const [deleteUnplacedParentId, setDeleteUnplacedParentId] = useState<string | null>(null);
+  // Place unplaced children on its full area: the parent (Peter, 2026-10-29)
+  const [parentAreaParentId, setParentAreaParentId] = useState<string | null>(null);
   // Clicking an unplaced child offers placing all its siblings; "Just this one" stops the
   // question for that parent until another project is opened
   const [placeChildrenOffer, setPlaceChildrenOffer] = useState<{ childId: string; parentId: string } | null>(null);
@@ -1398,6 +1401,17 @@ export function ProjectTree() {
           })()}
           {unplacedChildren(project, micrograph.id).length > 0 && (
             <MenuItem
+              disabled={!micrograph.scalePixelsPerCentimeter || !unplacedChildren(project, micrograph.id).every((child) => may('micrograph', child.id))}
+              onClick={() => {
+                setParentAreaParentId(micrograph.id);
+                setMicrographOptionsAnchor({ ...micrographOptionsAnchor, [micrograph.id]: null });
+              }}
+            >
+              Place unplaced children on its full area...
+            </MenuItem>
+          )}
+          {unplacedChildren(project, micrograph.id).length > 0 && (
+            <MenuItem
               disabled={!unplacedChildren(project, micrograph.id).every((child) => may('micrograph', child.id))}
               onClick={() => {
                 setDeleteUnplacedParentId(micrograph.id);
@@ -2222,6 +2236,13 @@ export function ProjectTree() {
           setShowDeleteSampleConfirm(false);
           setDeletingSample(null);
         }}
+      />
+
+      {/* Place unplaced children on its full area */}
+      <PlaceOnParentAreaDialog
+        open={parentAreaParentId !== null}
+        parentMicrographId={parentAreaParentId}
+        onClose={() => setParentAreaParentId(null)}
       />
 
       {/* Delete unplaced children confirmation */}

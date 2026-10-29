@@ -289,3 +289,49 @@ export async function bakeAffineTilesForCopy(
     throw new Error(`Affine tile generation failed: ${result?.error ?? 'unknown error'}`);
   }
 }
+
+/**
+ * "Same area as parent" (Peter, 2026-10-29: EDS maps nested in the BSE image
+ * they were collected with): the child covers its parent exactly, as a plain
+ * scaled rectangle at offset 0, rotation 0, with the scale that makes its
+ * width the parent's width. The proportions must match (within
+ * ASPECT_RATIO_TOLERANCE). Returns why it cannot be used, or null.
+ */
+export function parentAreaUnavailableReason(
+  parent: MicrographMetadata | null | undefined,
+  childWidth: number | null | undefined,
+  childHeight: number | null | undefined
+): string | null {
+  if (!parent) return 'This micrograph has no parent.';
+  const parentWidth = pixelWidth(parent);
+  const parentHeight = pixelHeight(parent);
+  if (!parentWidth || !parentHeight || !childWidth || !childHeight) return 'The image sizes are not known.';
+  if (!parent.scalePixelsPerCentimeter) return 'The parent micrograph has no scale yet.';
+  if (!aspectRatiosMatch(childWidth, childHeight, parentWidth, parentHeight)) {
+    return `Its proportions (${childWidth} × ${childHeight}) differ from the parent's (${parentWidth} × ${parentHeight}).`;
+  }
+  return null;
+}
+
+/** The placement that makes a child of this pixel size cover its parent exactly; null when it cannot */
+export function computeParentAreaPlacement(
+  parent: MicrographMetadata | null | undefined,
+  childWidth: number | null | undefined,
+  childHeight: number | null | undefined
+): Partial<MicrographMetadata> | null {
+  if (!parent || !childWidth || parentAreaUnavailableReason(parent, childWidth, childHeight) !== null) return null;
+  const parentWidth = pixelWidth(parent) as number;
+  // Drawn size on the parent = child px * parentScale / childScale, so the child spans the parent's width when:
+  const scalePixelsPerCentimeter = (parent.scalePixelsPerCentimeter as number) * (childWidth / parentWidth);
+  return {
+    offsetInParent: { X: 0, Y: 0 },
+    rotation: 0,
+    scalePixelsPerCentimeter,
+    ...CLEAR_POINT,
+    ...CLEAR_AFFINE,
+    xOffset: undefined,
+    yOffset: undefined,
+    scaleX: undefined,
+    scaleY: undefined,
+  };
+}
