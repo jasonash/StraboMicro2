@@ -14,7 +14,7 @@
 import fs from 'node:fs';
 import {
   explode, assemble, collectPerUserFields, normalizeChildOrder, perUserFields,
-  ExplodeError, entityKey,
+  ExplodeError, entityKey, diffProjects, applyEntityChanges,
 } from '../../electron/shared/entityModel.mjs';
 import { deepEqual } from '../../electron/shared/deepEqual.mjs';
 
@@ -217,6 +217,29 @@ if (dumpPath) {
   check('auto spot: both patterns come back from assemble',
     back !== null && back.project.spotNamePattern === 'Spot-{n}' && back.project.presets?.[0]?.spotNamePattern === 'Ol-{n}');
   check('auto spot: not a per-user field', !perUserFields('project').includes('spotNamePattern') && !perUserFields('preset').includes('spotNamePattern'));
+}
+
+// Micrograph visibility is per-user (Jason, 2026-10-29): never in a body, never a change, kept on a pull
+{
+  const project = base();
+  project.datasets[0].samples[0].micrographs[0].isMicroVisible = false;
+  const { entities } = explode(project, []);
+  check('visibility: not in the micrograph body', !('isMicroVisible' in entities['micrograph:M2'].body), JSON.stringify(entities['micrograph:M2'].body));
+  check('visibility: a per-user field of a micrograph', perUserFields('micrograph').includes('isMicroVisible'));
+  const shown = base();
+  shown.datasets[0].samples[0].micrographs[0].isMicroVisible = true;
+  check('visibility: hiding or showing is no change to push', diffProjects(shown, project).length === 0);
+  check('visibility: collected as a per-user value', collectPerUserFields(project).get('micrograph:M2')?.isMicroVisible === false);
+  // A collaborator renames M2 (their copy shows it): the pull keeps it hidden here
+  const theirs = base();
+  theirs.datasets[0].samples[0].micrographs[0].name = 'renamed';
+  theirs.datasets[0].samples[0].micrographs[0].isMicroVisible = true;
+  const changes = diffProjects(base(), theirs);
+  const local = JSON.parse(JSON.stringify(project));
+  applyEntityChanges(local, changes, 'redo');
+  const m2 = local.datasets[0].samples[0].micrographs.find((m) => m.id === 'M2');
+  check('visibility: a pulled change to the micrograph applies', m2?.name === 'renamed', JSON.stringify(m2));
+  check('visibility: and keeps it hidden here', m2?.isMicroVisible === false, JSON.stringify(m2));
 }
 
 console.log(failures ? `\n${failures} FAILED (${passes} passed)` : `\nALL PASSED (${passes} checks)`);
