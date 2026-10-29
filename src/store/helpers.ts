@@ -490,7 +490,13 @@ export function getAvailablePhasesFromSpot(
  * - Other *Info arrays: append preset entries to existing
  * - Notes fields: concatenate with newline
  */
-export function mergePresetIntoSpot(spot: Spot, presetData: PresetData): void {
+export function mergePresetIntoSpot(spot: Spot, presetData: PresetData, existingTagIds?: ReadonlySet<string>): void {
+  // Add tags (project presets; ids of deleted tags are left out when existingTagIds is given)
+  const presetTags = (presetData.tags ?? []).filter((id) => !existingTagIds || existingTagIds.has(id));
+  if (presetTags.length > 0) {
+    spot.tags = [...new Set([...(spot.tags ?? []), ...presetTags])];
+  }
+
   // Merge scalar appearance properties (replace)
   if (presetData.color !== undefined) {
     spot.color = presetData.color;

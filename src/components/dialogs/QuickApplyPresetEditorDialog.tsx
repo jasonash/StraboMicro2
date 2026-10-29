@@ -66,6 +66,7 @@ import type {
   FaultsShearZonesInfoType,
   ExtinctionMicrostructureInfoType,
 } from '@/types/project-types';
+import { TagPicker } from '../TagPicker';
 import { MineralogyDialog } from './metadata/MineralogyDialog';
 import { GrainInfoDialog } from './metadata/graininfo/GrainInfoDialog';
 import { FabricsDialog } from './metadata/fabrics/FabricsDialog';
@@ -141,6 +142,12 @@ export function QuickApplyPresetEditorDialog({
   // Feature data - stored as a single object matching PresetData structure
   const [featureData, setFeatureData] = useState<Partial<PresetData>>({});
 
+  // Tags added to the spot: project presets only (tags belong to a project; Peter, 2026-10-29)
+  const [presetTagIds, setPresetTagIds] = useState<string[]>([]);
+  const projectTags = project?.tags ?? [];
+  const tagsAllowed = scope === 'project';
+  const savedTagIds = tagsAllowed ? presetTagIds.filter((id) => projectTags.some((t) => t.id === id)) : [];
+
   // Expanded state for accordions
   const [expandedSections, setExpandedSections] = useState<string[]>([]);
 
@@ -176,6 +183,7 @@ export function QuickApplyPresetEditorDialog({
           }
         }
         setFeatureData(data);
+        setPresetTagIds(editPreset.data.tags ?? []);
 
         // Determine which sections to expand
         const expanded: string[] = [];
@@ -184,6 +192,9 @@ export function QuickApplyPresetEditorDialog({
         }
         if (Object.keys(data).length > 0) {
           expanded.push('featureData');
+        }
+        if (editPreset.data.tags?.length) {
+          expanded.push('tags');
         }
         setExpandedSections(expanded);
       } else {
@@ -195,6 +206,7 @@ export function QuickApplyPresetEditorDialog({
         setSpotColor(null);
         setSpotOpacity(null);
         setFeatureData({});
+        setPresetTagIds([]);
         setExpandedSections([]);
       }
       setError('');
@@ -227,8 +239,13 @@ export function QuickApplyPresetEditorDialog({
       }
     }
 
+    // Tags (project presets only; tags since deleted are left out)
+    if (savedTagIds.length > 0) {
+      data.tags = savedTagIds;
+    }
+
     return data;
-  }, [spotColor, spotOpacity, featureData]);
+  }, [spotColor, spotOpacity, featureData, savedTagIds]);
 
   const handleSave = () => {
     const trimmedName = name.trim();
@@ -295,6 +312,7 @@ export function QuickApplyPresetEditorDialog({
       }
     }
     setFeatureData(data);
+    if (spot.tags?.length) setPresetTagIds([...spot.tags]);
 
     // Expand sections that have data
     const expanded: string[] = [];
@@ -303,6 +321,9 @@ export function QuickApplyPresetEditorDialog({
     }
     if (Object.keys(data).length > 0) {
       expanded.push('featureData');
+    }
+    if (spot.tags?.length) {
+      expanded.push('tags');
     }
     setExpandedSections(expanded);
 
@@ -417,7 +438,7 @@ export function QuickApplyPresetEditorDialog({
   };
 
   // Check if preset has any data
-  const hasData = spotColor || spotOpacity != null || Object.keys(featureData).length > 0;
+  const hasData = spotColor || spotOpacity != null || Object.keys(featureData).length > 0 || savedTagIds.length > 0;
 
   // Get list of configured features
   const configuredFeatures = Object.keys(featureData).filter((k) => featureData[k as keyof PresetData] != null);
@@ -647,6 +668,29 @@ export function QuickApplyPresetEditorDialog({
                     </Typography>
                   )}
                 </Stack>
+              </AccordionDetails>
+            </Accordion>
+
+            {/* Tags (project presets only) */}
+            <Accordion
+              expanded={expandedSections.includes('tags')}
+              onChange={handleAccordionChange('tags')}
+              disableGutters
+            >
+              <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                <Typography>Tags</Typography>
+                {savedTagIds.length > 0 && (
+                  <Chip label={`${savedTagIds.length}`} size="small" sx={{ ml: 1 }} />
+                )}
+              </AccordionSummary>
+              <AccordionDetails>
+                {tagsAllowed ? (
+                  <TagPicker tags={projectTags} selectedTagIds={savedTagIds} onChange={setPresetTagIds} />
+                ) : (
+                  <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+                    Tags belong to a project, so only Project presets can add them. Choose Scope: Project to add tags.
+                  </Typography>
+                )}
               </AccordionDetails>
             </Accordion>
 

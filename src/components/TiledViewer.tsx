@@ -2041,7 +2041,10 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
           setNewSpotDialogOpen(true);
           return;
         }
-        const spot = buildNewSpot({ name: draft.name, geometry, appearance: draft.appearance, presets: draft.presets });
+        const spot = buildNewSpot({
+          name: draft.name, geometry, appearance: draft.appearance, presets: draft.presets,
+          existingTagIds: (state.project?.tags ?? []).map((t) => t.id),
+        });
         // One undo step per auto spot, however quickly they come
         asOwnUndoStep(() => addSpot(activeMicrographId, spot));
         selectActiveSpot(spot.id);

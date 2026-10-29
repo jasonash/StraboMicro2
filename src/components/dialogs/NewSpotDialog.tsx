@@ -2,7 +2,7 @@
  * NewSpotDialog Component
  *
  * Modal dialog for creating new spots (point/line/polygon annotations).
- * Collects spot metadata including name, notes, colors, opacity, and optional
+ * Collects spot metadata including name, notes, tags, colors, opacity, and optional
  * copy-from-existing functionality.
  */
 
@@ -22,16 +22,20 @@ import {
   Stack,
 } from '@mui/material';
 import { MuiColorInput } from 'mui-color-input';
-import { Spot, Geometry } from '@/types/project-types';
+import { Spot, Geometry, Tag } from '@/types/project-types';
 import { useAppStore } from '@/store';
 import type { PresetWithScope } from '@/types/preset-types';
 import {
   buildNewSpot,
   lastUsedSpotAppearance,
+  lastUsedSpotTags,
   rememberSpotAppearance,
+  rememberSpotTags,
   withPresetAppearance,
+  withPresetTags,
 } from '@/utils/newSpot';
 import { PresetSelector } from '../PresetSelector';
+import { TagPicker } from '../TagPicker';
 
 interface NewSpotDialogProps {
   open: boolean;
@@ -56,6 +60,9 @@ export const NewSpotDialog: React.FC<NewSpotDialogProps> = ({
   initialPresetIds,
 }) => {
   const getPresetById = useAppStore((state) => state.getPresetById);
+  const projectId = useAppStore((state) => state.project?.id);
+  const projectTags = useAppStore((state) => state.project?.tags);
+  const tags: Tag[] = projectTags ?? [];
 
   // Form state
   const [name, setName] = useState('');
@@ -65,6 +72,8 @@ export const NewSpotDialog: React.FC<NewSpotDialogProps> = ({
   const [spotColor, setSpotColor] = useState(() => lastUsedSpotAppearance().spotColor);
   const [opacity, setOpacity] = useState(() => lastUsedSpotAppearance().opacity);
   const [selectedPresetIds, setSelectedPresetIds] = useState<string[]>([]);
+  // Tags the spot goes in (Peter, 2026-10-29); starts with the last ones chosen in this project
+  const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
 
   // Selecting a preset prefills the appearance controls (which the user can
   // still override — whatever is in the controls at save time wins)
@@ -76,6 +85,7 @@ export const NewSpotDialog: React.FC<NewSpotDialogProps> = ({
     const next = withPresetAppearance({ labelColor, spotColor, opacity }, newlyAdded);
     setSpotColor(next.spotColor);
     setOpacity(next.opacity);
+    setSelectedTagIds((current) => withPresetTags(current, newlyAdded, tags.map((t) => t.id)));
     setSelectedPresetIds(presetIds);
   };
 
@@ -113,6 +123,8 @@ export const NewSpotDialog: React.FC<NewSpotDialogProps> = ({
       setSpotColor(start.spotColor);
       setOpacity(start.opacity);
       setSelectedPresetIds(presets.map((p) => p.id));
+      const tagIdsNow = tags.map((t) => t.id);
+      setSelectedTagIds(withPresetTags(lastUsedSpotTags(projectId, tagIdsNow), presets, tagIdsNow));
       setEnableCopy(false);
       setSelectedSpotToCopy(null);
       setCopyFields({
@@ -149,7 +161,9 @@ export const NewSpotDialog: React.FC<NewSpotDialogProps> = ({
     const presets = selectedPresetIds
       .map((id) => getPresetById(id))
       .filter((preset): preset is PresetWithScope => preset !== null);
-    const newSpot = buildNewSpot({ name, notes, geometry, appearance, presets });
+    const tagIds = selectedTagIds.filter((id) => tags.some((t) => t.id === id));
+    rememberSpotTags(projectId, tagIds);
+    const newSpot = buildNewSpot({ name, notes, geometry, appearance, presets, tagIds, existingTagIds: tags.map((t) => t.id) });
 
     // If copying from existing spot, copy selected fields
     if (enableCopy && selectedSpotToCopy) {
@@ -195,7 +209,7 @@ export const NewSpotDialog: React.FC<NewSpotDialogProps> = ({
           newSpot.links = sourceSpot.links;
         }
         if (copyFields.allData || copyFields.tags) {
-          newSpot.tags = sourceSpot.tags;
+          newSpot.tags = [...new Set([...(newSpot.tags ?? []), ...(sourceSpot.tags ?? [])])];
         }
       }
     }
@@ -262,6 +276,9 @@ export const NewSpotDialog: React.FC<NewSpotDialogProps> = ({
             rows={3}
             fullWidth
           />
+
+          {/* Tags (a chosen preset adds its tags here; what is here at save time is what the spot gets) */}
+          <TagPicker tags={tags} selectedTagIds={selectedTagIds} onChange={setSelectedTagIds} />
 
           {/* Quick Spot Presets (hidden when none exist) */}
           <PresetSelector

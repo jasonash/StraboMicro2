@@ -7,6 +7,13 @@
  * Spot, and a chosen preset sets the spot color and opacity. Presets are then
  * merged into the spot (additive, same rules as Quick Edit) and the
  * appearance is put back on top, so it wins over the presets' own.
+ *
+ * Tags (Peter, 2026-10-29): New Spot can tag the spot as it is made
+ * (spot.tags, tag ids); the next New Spot in the same project starts with the
+ * tags chosen last, for this session only. A project preset can carry tags
+ * (data.tags): choosing it in New Spot adds them to the Tags field, and New
+ * Spot's Tags field at save time is what the spot gets (like the appearance).
+ * Auto spot mode has no Tags field, so the preset's tags go on the spot.
  */
 
 import { v4 as uuidv4 } from 'uuid';
@@ -57,6 +64,37 @@ export function rememberSpotAppearance(appearance: SpotAppearance): void {
   }
 }
 
+/** Tags chosen in the last New Spot, per project id (this session only) */
+const lastTagsByProject = new Map<string, string[]>();
+
+/** The tags the next New Spot starts with: the last ones chosen in this project that still exist */
+export function lastUsedSpotTags(projectId: string | null | undefined, existingTagIds: readonly string[]): string[] {
+  if (!projectId) return [];
+  const existing = new Set(existingTagIds);
+  return (lastTagsByProject.get(projectId) ?? []).filter((id) => existing.has(id));
+}
+
+/** Remember the tags New Spot saved with, for the next spot in this project */
+export function rememberSpotTags(projectId: string | null | undefined, tagIds: readonly string[]): void {
+  if (projectId) lastTagsByProject.set(projectId, [...tagIds]);
+}
+
+/** The tag ids after choosing these presets: current ones, then each preset's tags that exist, once each */
+export function withPresetTags(
+  current: readonly string[],
+  presets: ReadonlyArray<{ data: PresetData }>,
+  existingTagIds: readonly string[]
+): string[] {
+  const existing = new Set(existingTagIds);
+  const next = [...current];
+  for (const preset of presets) {
+    for (const id of preset.data.tags ?? []) {
+      if (existing.has(id) && !next.includes(id)) next.push(id);
+    }
+  }
+  return next;
+}
+
 /** The appearance after choosing these presets, in order (each sets spot color and opacity when it has them) */
 export function withPresetAppearance(
   appearance: SpotAppearance,
@@ -98,6 +136,10 @@ export interface NewSpotInput {
   appearance: SpotAppearance;
   /** Presets to merge, in order (already looked up; missing ones left out) */
   presets?: ReadonlyArray<{ id: string; data: PresetData }>;
+  /** Tag ids to put the spot in (New Spot's Tags field): when given, the spot gets exactly these */
+  tagIds?: readonly string[];
+  /** The project's tag ids: preset tags not among them are left out */
+  existingTagIds?: readonly string[];
   now?: Date;
 }
 
@@ -123,12 +165,19 @@ export function buildNewSpot(input: NewSpotInput): Spot {
 
   const presets = input.presets ?? [];
   if (presets.length > 0) {
-    for (const preset of presets) mergePresetIntoSpot(spot, preset.data);
+    const existingTags = input.existingTagIds ? new Set(input.existingTagIds) : undefined;
+    for (const preset of presets) mergePresetIntoSpot(spot, preset.data, existingTags);
     spot.appliedPresetIds = presets.map((p) => p.id);
     // The appearance wins over the presets' own (New Spot's controls were prefilled from them)
     spot.labelColor = hexToLegacyColor(appearance.labelColor);
     spot.color = hexToLegacyColor(appearance.spotColor);
     spot.opacity = appearance.opacity;
+  }
+
+  if (input.tagIds) {
+    const tagIds = [...new Set(input.tagIds)];
+    if (tagIds.length > 0) spot.tags = tagIds;
+    else delete spot.tags;
   }
 
   return spot;
