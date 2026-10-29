@@ -48,8 +48,10 @@ import type { AffineMatrix, ControlPoint } from '@/utils/affineTransform';
 import {
   bakeAffineTilesForCopy,
   computeCopiedPlacement,
+  computeParentAreaPlacement,
   describeCopyPlacementCandidate,
   listCopyPlacementCandidates,
+  parentAreaUnavailableReason,
 } from '@/utils/copySizePlacement';
 
 interface EditMicrographLocationDialogProps {
@@ -63,6 +65,7 @@ type LocationMethod =
   | 'Locate by an approximate point'
   | '3-Point Registration'
   | 'Copy from existing micrograph'
+  | 'Same area as parent'
   | 'Place automatically on parent';
 type ScaleMethod =
   | 'Trace Scale Bar and Drag'
@@ -126,6 +129,9 @@ export function EditMicrographLocationDialog({
   const [imagesFolder, setImagesFolder] = useState<string>('');
 
   // Sibling micrographs whose placement can be copied onto this one (any method)
+  // "Same area as parent": why this micrograph cannot cover its parent exactly, or null
+  const parentAreaReason = parentAreaUnavailableReason(parentMicrograph, micrograph?.imageWidth, micrograph?.imageHeight);
+
   const copyCandidates = useMemo(
     () =>
       listCopyPlacementCandidates(
@@ -242,7 +248,7 @@ export function EditMicrographLocationDialog({
   // Reset scale method when location method changes
   useEffect(() => {
     if (locationMethod === '3-Point Registration' || locationMethod === 'Copy from existing micrograph' ||
-        locationMethod === 'Place automatically on parent') {
+        locationMethod === 'Same area as parent' || locationMethod === 'Place automatically on parent') {
       // 3-Point Registration computes scale from the affine matrix, a copy takes everything
       // from the source, and automatic placement finds it; none needs a scale method.
       setScaleMethod('');
@@ -366,8 +372,11 @@ export function EditMicrographLocationDialog({
 
   const canProceedFromScaleMethod = (): boolean => scaleMethod !== '';
 
-  const isCopyMethod = locationMethod === 'Copy from existing micrograph';
-  const canFinishCopy = (): boolean => isCopyMethod && copySourceMicrographId !== '' && !isCopying;
+  // "Same area as parent" (Peter, 2026-10-29) finishes on the first step like a copy
+  const isParentAreaMethod = locationMethod === 'Same area as parent';
+  const isCopyMethod = locationMethod === 'Copy from existing micrograph' || isParentAreaMethod;
+  const canFinishCopy = (): boolean =>
+    isParentAreaMethod ? parentAreaReason === null : isCopyMethod && copySourceMicrographId !== '' && !isCopying;
 
   const skipsScaleMethod = locationMethod === '3-Point Registration' || locationMethod === 'Place automatically on parent';
 
@@ -451,6 +460,17 @@ export function EditMicrographLocationDialog({
    * bakes this image's own overlay tiles under its own tile hash.
    */
   const handleCopyFinish = async () => {
+    if (isParentAreaMethod) {
+      if (!micrograph || !parentMicrograph) return;
+      const placement = computeParentAreaPlacement(parentMicrograph, micrograph.imageWidth, micrograph.imageHeight);
+      if (!placement) {
+        setCopyError(parentAreaReason ?? 'This micrograph cannot cover its parent exactly.');
+        return;
+      }
+      placeMicrograph(micrographId, { ...placement, opacity });
+      closeAndRegenerateThumbnails(parentMicrograph.id);
+      return;
+    }
     if (!micrograph || !parentMicrograph || !project || !copySourceMicrographId) return;
 
     const source = findMicrographById(project, copySourceMicrographId);
@@ -727,7 +747,28 @@ export function EditMicrographLocationDialog({
                   : 'Reproduce a sibling micrograph\'s placement exactly, whatever method located it. Finishes immediately.'}
               </Typography>
 
-              {isCopyMethod && copyCandidates.length > 0 && (
+              <FormControlLabel
+                value="Same area as parent"
+                control={<Radio />}
+                label="Same area as parent"
+                disabled={parentAreaReason !== null}
+              />
+              <Typography
+                variant="caption"
+                sx={{
+                  color: 'text.secondary',
+                  ml: 4,
+                  mt: -1
+                }}>
+                {parentAreaReason !== null
+                  ? `Not available: ${parentAreaReason}`
+                  : 'Covers the parent exactly (for example element maps collected with it). Finishes immediately.'}
+              </Typography>
+              {isParentAreaMethod && copyError && (
+                <Alert severity="error" sx={{ ml: 4, maxWidth: 520 }}>{copyError}</Alert>
+              )}
+
+              {locationMethod === 'Copy from existing micrograph' && copyCandidates.length > 0 && (
                 <Stack spacing={1} sx={{ ml: 4, mt: 1 }}>
                   <FormControl sx={{ minWidth: 300 }} size="small">
                     <InputLabel>Select Micrograph</InputLabel>

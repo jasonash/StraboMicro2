@@ -60,8 +60,10 @@ import { partnerImageType, partnerRole, polarizedRole } from '@/utils/polarizati
 import {
   bakeAffineTilesForCopy,
   computeCopiedPlacement,
+  computeParentAreaPlacement,
   describeCopyPlacementCandidate,
   listCopyPlacementCandidates,
+  parentAreaUnavailableReason,
 } from '@/utils/copySizePlacement';
 import { findMicrographById } from '@/store/helpers';
 import { describeImageLoadError } from '@/utils/imageLoadError';
@@ -139,6 +141,7 @@ interface MicrographFormData {
     | 'Locate as a scaled rectangle'
     | '3-Point Registration'
     | 'Copy from existing micrograph'
+    | 'Same area as parent'
     | 'Place automatically on parent'
     | '';
   offsetInParent: {
@@ -609,9 +612,10 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
 
     if (isAssociated) {
       // Associated micrograph flow. "Copy from existing micrograph" takes location
-      // and scale from a sibling, so the wizard ends on the Location Method step.
+      // and scale from a sibling, and "Same area as parent" covers the parent
+      // exactly, so the wizard ends on the Location Method step.
       stepList.push({ id: 'location-method', label: 'Location Method' });
-      if (formData.locationMethod !== 'Copy from existing micrograph') {
+      if (formData.locationMethod !== 'Copy from existing micrograph' && formData.locationMethod !== 'Same area as parent') {
         stepList.push({ id: 'assoc-scale-method', label: 'Scale Method' });
         stepList.push({ id: 'location-placement', label: 'Micrograph Location & Scale' });
       }
@@ -1349,6 +1353,16 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
     if (typeof copiedScale === 'number') {
       scalePixelsPerCentimeter = copiedScale;
     }
+    // "Same area as parent" (Peter, 2026-10-29): offset 0, rotation 0, the scale that covers the parent
+    const parentAreaFields = (() => {
+      if (!isAssociated || formData.locationMethod !== 'Same area as parent' || !parentMicrographId) return null;
+      const { project } = useAppStore.getState();
+      const parent = project ? findMicrographById(project, parentMicrographId) : null;
+      return computeParentAreaPlacement(parent, formData.micrographWidth, formData.micrographHeight);
+    })();
+    if (typeof parentAreaFields?.scalePixelsPerCentimeter === 'number') {
+      scalePixelsPerCentimeter = parentAreaFields.scalePixelsPerCentimeter;
+    }
     if (copiedPlacement) {
       console.log('[NewMicrographDialog] Copying placement from sibling:', {
         sourceId: formData.copySourceMicrographId,
@@ -1518,6 +1532,7 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
             ...copiedPlacementFields,
             ...(copiedAffineTileHash ? { affineTileHash: copiedAffineTileHash } : {}),
           }),
+        ...(parentAreaFields ? (({ scalePixelsPerCentimeter: _scale, ...fields }) => fields)(parentAreaFields) : {}),
         instrument: {
           instrumentType: formData.instrumentType || undefined,
           otherInstrumentType: formData.otherInstrumentType || undefined,
@@ -1834,6 +1849,11 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
         // needs a source (this is the wizard's last step in that case)
         if (formData.locationMethod === 'Copy from existing micrograph') {
           return formData.copySourceMicrographId !== '';
+        }
+        if (formData.locationMethod === 'Same area as parent') {
+          const { project } = useAppStore.getState();
+          const parent = project && parentMicrographId ? findMicrographById(project, parentMicrographId) : null;
+          return parentAreaUnavailableReason(parent, formData.micrographWidth, formData.micrographHeight) === null;
         }
         return formData.locationMethod !== '';
 
@@ -2742,6 +2762,13 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
       formData.micrographHeight
     );
     const isCopyMethod = formData.locationMethod === 'Copy from existing micrograph';
+    // "Same area as parent": why this image cannot cover its parent exactly, or null
+    const wizardProject = useAppStore.getState().project;
+    const parentAreaReason = parentAreaUnavailableReason(
+      wizardProject && parentMicrographId ? findMicrographById(wizardProject, parentMicrographId) : null,
+      formData.micrographWidth,
+      formData.micrographHeight
+    );
     const selectedCopyCandidate =
       copyCandidates.find((c) => c.id === formData.copySourceMicrographId) ?? null;
 
@@ -2875,6 +2902,25 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
               )}
             </Stack>
           )}
+
+          <FormControlLabel
+            value="Same area as parent"
+            control={<Radio />}
+            label="Same area as parent"
+            disabled={parentAreaReason !== null}
+            sx={{ mt: 2 }}
+          />
+          <Typography
+            variant="caption"
+            sx={{
+              color: 'text.secondary',
+              ml: 4,
+              mt: -1
+            }}>
+            {parentAreaReason !== null
+              ? `Not available: ${parentAreaReason}`
+              : 'Covers the parent exactly (for example element maps collected with it). Finishes the import.'}
+          </Typography>
 
           {/* TODO: Implement these location methods later
           <FormControlLabel
