@@ -54,6 +54,16 @@ export function loadMinerals(): Mineral[] {
   return mineralCache;
 }
 
+let mineralByLowerName: Map<string, Mineral> | null = null;
+
+/** The database mineral with this name (case-insensitive), or undefined for a custom name */
+export function findMineral(name: string): Mineral | undefined {
+  if (!mineralByLowerName) {
+    mineralByLowerName = new Map(loadMinerals().map((m) => [m.mineralname.toLowerCase(), m]));
+  }
+  return mineralByLowerName.get(name.trim().toLowerCase());
+}
+
 /**
  * Load and parse lithology database
  */
