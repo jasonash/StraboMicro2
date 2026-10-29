@@ -12,6 +12,7 @@
 const { createCanvas, loadImage } = require('canvas');
 const tileCache = require('./tileCache');
 const sharp = require('sharp');
+const { tiffImageTo8Bit, toRgba } = require('./tiffPixels');
 
 // Note: Sharp configuration is centralized in main.js to prevent conflicts
 // Do not configure sharp.cache() or sharp.concurrency() here
@@ -508,7 +509,7 @@ class TileGenerator {
 
   /**
    * Decode TIFF image and return RGBA data
-   * Implements RGB to RGBA conversion as documented in docs/TIFF-RGB-to-RGBA-Conversion.md
+   * Gray, gray + alpha, RGB, palette and 16-bit TIFFs (electron/tiffPixels.js)
    *
    * @param {string} imagePath - Path to TIFF file
    * @returns {Promise<{width: number, height: number, data: Buffer}>}
@@ -529,38 +530,14 @@ class TileGenerator {
     const image = tiffData[0];
     const { width, height, data } = image;
 
-    // Detect format by calculating bytes per pixel
-    const bytesPerPixel = data.length / (width * height);
-    console.log(`TIFF decoded: ${width}x${height}, ${data.length} bytes, ${bytesPerPixel} bytes/pixel`);
-
-    const sourceData = new Uint8Array(data);
+    // 8-bit pixels (palette colors applied, 16-bit scaled), then RGBA
+    const { data: pixels, channels } = tiffImageTo8Bit(image);
+    console.log(`TIFF decoded: ${width}x${height}, ${data.length} samples, ${channels} channels`);
 
     // Release tiffData - we've extracted what we need
     tiffData = null;
 
-    let rgbaData;
-
-    if (bytesPerPixel === 3) {
-      // RGB format - need to convert to RGBA
-      console.log('Converting RGB to RGBA');
-      const pixelCount = width * height;
-      rgbaData = new Uint8Array(pixelCount * 4);
-
-      // RGB to RGBA conversion loop
-      // Two index pointers: i for source (RGB), j for destination (RGBA)
-      for (let i = 0, j = 0; i < sourceData.length; i += 3, j += 4) {
-        rgbaData[j] = sourceData[i];         // R
-        rgbaData[j + 1] = sourceData[i + 1]; // G
-        rgbaData[j + 2] = sourceData[i + 2]; // B
-        rgbaData[j + 3] = 255;               // A (fully opaque)
-      }
-    } else if (bytesPerPixel === 4) {
-      // Already RGBA format
-      console.log('Already RGBA format');
-      rgbaData = sourceData;
-    } else {
-      throw new Error(`Unsupported TIFF format: ${bytesPerPixel} bytes per pixel`);
-    }
+    const rgbaData = toRgba(pixels, channels);
 
     return {
       width,

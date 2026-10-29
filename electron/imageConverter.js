@@ -18,6 +18,7 @@ const path = require('path');
 const log = require('electron-log');
 const scratchSpace = require('./scratchSpace');
 const bmp = require('bmp-js');
+const { tiffImageTo8Bit } = require('./tiffPixels');
 
 // tiff is an ES module, we'll import it dynamically when needed
 let decodeTIFF = null;
@@ -210,8 +211,12 @@ async function convertToScratchJPEG(inputPath, progressCallback = null) {
       // certain compressions/bit-depths), fall back to Sharp/libvips, which
       // covers a wider range of TIFF formats.
       let tiffData;
+      let rawBuffer;
+      let channels;
       try {
         tiffData = decode(fileBuffer);
+        // 8-bit pixels: palette colors applied, 16-bit scaled (tiffPixels.js)
+        ({ data: rawBuffer, channels } = tiffImageTo8Bit(tiffData[0]));
       } catch (decodeErr) {
         if (decodeErr && typeof decodeErr.message === 'string' && decodeErr.message.startsWith('Unsupported ')) {
           log.warn(`[ImageConverter] tiff library rejected file (${decodeErr.message}); falling back to Sharp/libvips`);
@@ -234,23 +239,7 @@ async function convertToScratchJPEG(inputPath, progressCallback = null) {
         progressCallback({ stage: 'converting', percent: 60 });
       }
 
-      // Get image data - the tiff library returns data in different formats depending on the image
-      // We need to convert it to a format Sharp can understand
-      let rawBuffer;
-      let channels;
-
-      if (image.data) {
-        // Image has raw pixel data
-        rawBuffer = Buffer.from(image.data);
-
-        // Determine number of channels from the data length
-        const pixelCount = width * height;
-        channels = rawBuffer.length / pixelCount;
-
-        log.info(`[ImageConverter] Image has ${channels} channels`);
-      } else {
-        throw new Error('TIFF image data format not supported');
-      }
+      log.info(`[ImageConverter] Image has ${channels} channels${image.palette ? ' (palette colors applied)' : ''}, ${image.bitsPerSample} bits per sample`);
 
       // Release tiffData - we've extracted what we need into rawBuffer
       tiffData = null;
