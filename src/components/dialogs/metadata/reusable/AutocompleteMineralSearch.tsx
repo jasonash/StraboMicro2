@@ -5,7 +5,7 @@
  * Users can search for minerals by name and select them from suggestions.
  */
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   Autocomplete,
   TextField,
@@ -53,10 +53,16 @@ export function AutocompleteMineralSearch({
   };
 
   // Get Mineral objects from selected mineral names
-  // Search in all minerals (not just current options) to prevent value loss during typing
-  const selectedMineralObjects = selectedMinerals
-    .map(name => searchMinerals(name).find(m => m.mineralname === name))
-    .filter((m): m is Mineral => m !== undefined);
+  // Search in all minerals (not just current options) to prevent value loss during typing.
+  // Memoized: a new value array on every render made the Autocomplete (multiple) take it
+  // as a new selection and clear the typed text at each keystroke (Fabric Phases; Peter,
+  // 2026-10-29)
+  const selectedMineralObjects = useMemo(
+    () => selectedMinerals
+      .map(name => searchMinerals(name).find(m => m.mineralname === name))
+      .filter((m): m is Mineral => m !== undefined),
+    [selectedMinerals]
+  );
 
   return (
     <Autocomplete
