@@ -2320,32 +2320,11 @@ ipcMain.handle('load-image-preview', async (event, filePath, size = 'thumbnail')
 
       const image = images[0]; // Use first image
 
-      // Determine bytes per pixel to identify the format
-      const bytesPerPixel = image.data.length / (image.width * image.height);
-      log.info(`TIFF decoded: ${image.width}x${image.height}, ${image.data.length} bytes, ${bytesPerPixel} bytes/pixel`);
-
-      const sourceData = new Uint8Array(image.data);
-      let rgbaData;
-
-      if (bytesPerPixel === 3) {
-        // RGB format - need to convert to RGBA
-        log.info('Converting RGB to RGBA');
-        const pixelCount = image.width * image.height;
-        rgbaData = new Uint8ClampedArray(pixelCount * 4);
-
-        for (let i = 0, j = 0; i < sourceData.length; i += 3, j += 4) {
-          rgbaData[j] = sourceData[i];         // R
-          rgbaData[j + 1] = sourceData[i + 1]; // G
-          rgbaData[j + 2] = sourceData[i + 2]; // B
-          rgbaData[j + 3] = 255;               // A (fully opaque)
-        }
-      } else if (bytesPerPixel === 4) {
-        // Already RGBA format
-        log.info('Already RGBA format');
-        rgbaData = new Uint8ClampedArray(sourceData);
-      } else {
-        throw new Error(`Unsupported TIFF format: ${bytesPerPixel} bytes per pixel`);
-      }
+      // 8-bit pixels (palette colors applied, 16-bit scaled), then RGBA
+      const { tiffImageTo8Bit, toRgba } = require('./tiffPixels');
+      const { data: pixels, channels } = tiffImageTo8Bit(image);
+      log.info(`TIFF decoded: ${image.width}x${image.height}, ${channels} channels, ${image.bitsPerSample} bits per sample`);
+      const rgbaData = toRgba(pixels, channels);
 
       // Determine final canvas dimensions based on size parameter
       let finalWidth = image.width;
