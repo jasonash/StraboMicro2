@@ -1038,6 +1038,12 @@ function App() {
       setShowArchivedSpots(checked);
     }));
 
+    // View: Micrograph Visibility... (Cmd+Shift+V) opens or closes the visibility panel
+    unsubscribers.push(window.api.onMicrographVisibility(() => {
+      const state = useAppStore.getState();
+      state.setMicrographVisibilityPanelOpen(!state.micrographVisibilityPanelOpen);
+    }));
+
     // View: Filter Spots... (Cmd+Shift+F) opens or closes the filter panel
     unsubscribers.push(window.api.onFilterSpots(() => {
       const state = useAppStore.getState();
