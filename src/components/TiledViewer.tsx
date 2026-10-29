@@ -14,7 +14,7 @@
 
 import { useEffect, useRef, useState, useCallback, useImperativeHandle, forwardRef, useMemo } from 'react';
 import { Stage, Layer, Image as KonvaImage, Circle, Line } from 'react-konva';
-import { Box, CircularProgress, Typography, IconButton, Tooltip } from '@mui/material';
+import { Box, CircularProgress, Typography, IconButton, Tooltip, Menu, MenuItem } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
 import { useAppStore, asOwnUndoStep } from '@/store';
@@ -50,6 +50,8 @@ import { useLatest } from '@/hooks/useLatest';
 import { autoSpotDraft, buildNewSpot, geometryToLegacy } from '@/utils/newSpot';
 import { releaseImage, isImageUsable } from '@/utils/imageUtils';
 import { spotFilterLook } from '@/utils/spotDataSections';
+import { ParentSpotsRenderer } from './ParentSpotsRenderer';
+import type { ParentSpot } from '@/utils/parentSpots';
 import { spotDrawOrder, spotsAt } from '@/utils/spotStacking';
 import './TiledViewer.css';
 import { EditingScope } from './Presence';
@@ -216,6 +218,9 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
     const spotLabelMode = useAppStore((state) => state.spotLabelMode);
     const showMicrographOutlines = useAppStore((state) => state.showMicrographOutlines);
     const showRecursiveSpots = useAppStore((state) => state.showRecursiveSpots);
+    const showParentSpots = useAppStore((state) => state.showParentSpots);
+    // Right-click on a parent spot (View > Show Parent Spots): Go to Spot on <micrograph>
+    const [parentSpotMenu, setParentSpotMenu] = useState<{ x: number; y: number; spot: ParentSpot } | null>(null);
     const showArchivedSpots = useAppStore((state) => state.showArchivedSpots);
     const spotFilter = useAppStore((state) => state.spotFilter);
     const siblingViewActive = useAppStore((state) => state.siblingViewActive);
@@ -2701,6 +2706,17 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                         />
                       ))}
 
+                  {/* View > Show Parent Spots: the spots of the micrographs above, under this one's own */}
+                  {!pointCountMode && showParentSpots && activeMicrograph && (
+                    <ParentSpotsRenderer
+                      micrograph={activeMicrograph}
+                      width={activeMicrograph.imageWidth || imageMetadata?.width || 0}
+                      height={activeMicrograph.imageHeight || imageMetadata?.height || 0}
+                      stageScale={zoom}
+                      onContextMenu={(spot, x, y) => setParentSpotMenu({ x, y, spot })}
+                    />
+                  )}
+
                   {/* First pass: Render visible spot shapes (viewport culled for performance) */}
                   {/* Hide in point count mode */}
                   {!pointCountMode && visibleSpots.map((spot) => (
@@ -2754,6 +2770,15 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                       renderLabelsOnly={true}
                     />
                   ))}
+                  {!pointCountMode && spotLabelMode !== 'none' && showParentSpots && activeMicrograph && (
+                    <ParentSpotsRenderer
+                      micrograph={activeMicrograph}
+                      width={activeMicrograph.imageWidth || imageMetadata?.width || 0}
+                      height={activeMicrograph.imageHeight || imageMetadata?.height || 0}
+                      stageScale={zoom}
+                      renderLabelsOnly
+                    />
+                  )}
 
                   {/* Point Count points (rendered on top of spots when in point count mode) */}
                   <PointCountRenderer scale={zoom} />
@@ -2871,6 +2896,26 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
             </EditingScope>
           </ReadOnlyScope>
         )}
+
+        {/* Parent spot (View > Show Parent Spots): only Go to Spot on its micrograph */}
+        <Menu
+          open={parentSpotMenu !== null}
+          onClose={() => setParentSpotMenu(null)}
+          anchorReference="anchorPosition"
+          anchorPosition={parentSpotMenu ? { top: parentSpotMenu.y, left: parentSpotMenu.x } : undefined}
+        >
+          <MenuItem
+            onClick={async () => {
+              const target = parentSpotMenu?.spot;
+              setParentSpotMenu(null);
+              if (!target) return;
+              // Its micrograph opens with the spot selected and in view (as chat spot links)
+              if (await useAppStore.getState().goToSpot(target.source.id)) setActiveTool(null);
+            }}
+          >
+            Go to Spot on {parentSpotMenu?.spot.sourceMicrographName}
+          </MenuItem>
+        </Menu>
 
         {/* Spot Context Menu */}
         <SpotContextMenu

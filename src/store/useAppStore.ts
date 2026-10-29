@@ -201,6 +201,8 @@ interface AppState {
   spotLabelMode: SpotLabelMode;
   showMicrographOutlines: boolean;
   showRecursiveSpots: boolean;
+  /** View > Show Parent Spots: the spots of the micrographs above the one in the viewer (Peter, 2026-10-29) */
+  showParentSpots: boolean;
   showArchivedSpots: boolean;
   /** View > Filter Spots...: dims or hides spots by their data; this computer only, cleared with the project */
   spotFilter: SpotFilter;
@@ -615,6 +617,7 @@ interface AppState {
   setSpotLabelMode: (mode: SpotLabelMode) => void;
   setShowMicrographOutlines: (show: boolean) => void;
   setShowRecursiveSpots: (show: boolean) => void;
+  setShowParentSpots: (show: boolean) => void;
   setShowArchivedSpots: (show: boolean) => void;
   setSpotFilter: (filter: SpotFilter) => void;
   clearSpotFilter: () => void;
@@ -684,6 +687,7 @@ export const useAppStore = create<AppState>()(
           spotLabelMode: 'original' as SpotLabelMode,
           showMicrographOutlines: true,
           showRecursiveSpots: false,
+          showParentSpots: false,
           showArchivedSpots: false,
           spotFilter: NO_SPOT_FILTER,
           spotFilterPanelOpen: false,
@@ -2687,6 +2691,7 @@ export const useAppStore = create<AppState>()(
           setShowMicrographOutlines: (show) => set({ showMicrographOutlines: show }),
 
           setShowRecursiveSpots: (show) => set({ showRecursiveSpots: show }),
+          setShowParentSpots: (show) => set({ showParentSpots: show }),
 
           setShowArchivedSpots: (show) => set({ showArchivedSpots: show }),
           setSpotFilter: (filter) => set({ spotFilter: filter }),
@@ -3826,6 +3831,7 @@ export const useAppStore = create<AppState>()(
           imageExportOptions: state.imageExportOptions,
           showMicrographOutlines: state.showMicrographOutlines,
           showRecursiveSpots: state.showRecursiveSpots,
+          showParentSpots: state.showParentSpots,
           showArchivedSpots: state.showArchivedSpots,
           spotOverlayOpacity: state.spotOverlayOpacity,
           theme: state.theme,
@@ -3905,6 +3911,7 @@ export const useAppStore = create<AppState>()(
               spotLabelMode: state.spotLabelMode ?? 'original',
               showOverlayOutlines: state.showMicrographOutlines ?? true,
               showRecursiveSpots: state.showRecursiveSpots ?? false,
+              showParentSpots: state.showParentSpots ?? false,
               spotColorMode: state.spotColorMode ?? 'spot-color',
             });
           }

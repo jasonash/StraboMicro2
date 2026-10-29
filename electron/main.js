@@ -653,6 +653,7 @@ function createWindow() {
     spotLabelMode: 'original',
     showOverlayOutlines: true,
     showRecursiveSpots: false,
+    showParentSpots: false,
     spotColorMode: 'spot-color',
   };
 
@@ -1153,6 +1154,18 @@ function createWindow() {
             currentViewPrefs.showRecursiveSpots = menuItem.checked;
             if (mainWindow) {
               mainWindow.webContents.send('view:toggle-recursive-spots', menuItem.checked);
+            }
+          }
+        },
+        {
+          // The spots of the micrographs above the one in the viewer (Peter, 2026-10-29)
+          label: 'Show Parent Spots',
+          type: 'checkbox',
+          checked: currentViewPrefs.showParentSpots,
+          click: (menuItem) => {
+            currentViewPrefs.showParentSpots = menuItem.checked;
+            if (mainWindow) {
+              mainWindow.webContents.send('view:toggle-parent-spots', menuItem.checked);
             }
           }
         },

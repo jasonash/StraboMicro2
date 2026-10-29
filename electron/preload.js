@@ -187,6 +187,11 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('view:toggle-recursive-spots', handler);
     return () => ipcRenderer.removeListener('view:toggle-recursive-spots', handler);
   },
+  onToggleParentSpots: (callback) => {
+    const handler = (event, checked) => callback(checked);
+    ipcRenderer.on('view:toggle-parent-spots', handler);
+    return () => ipcRenderer.removeListener('view:toggle-parent-spots', handler);
+  },
   onToggleArchivedSpots: (callback) => {
     const handler = (event, checked) => callback(checked);
     ipcRenderer.on('view:toggle-archived-spots', handler);
