@@ -443,6 +443,8 @@ interface AppState {
    */
   placeMicrograph: (id: string, updates: Partial<MicrographMetadata>) => void;
   deleteMicrograph: (id: string) => void;
+  /** Delete several micrographs (with their descendants and PPL/XPL siblings) at once - single undo step */
+  deleteMicrographs: (ids: string[]) => void;
   reorderMicrographs: (sampleId: string, parentId: string | null, orderedIds: string[]) => void;
 
   // ========== CRUD: SPOT ==========
@@ -1740,8 +1742,10 @@ export const useAppStore = create<AppState>()(
             };
           }),
 
-          deleteMicrograph: (id) => set((state) => {
-            if (!state.project) return state;
+          deleteMicrograph: (id) => get().deleteMicrographs([id]),
+
+          deleteMicrographs: (ids) => set((state) => {
+            if (!state.project || ids.length === 0) return state;
 
             const newProject = structuredClone(state.project);
 
@@ -1749,14 +1753,14 @@ export const useAppStore = create<AppState>()(
               for (const sample of dataset.samples || []) {
                 if (!sample.micrographs) continue;
 
-                // Build set of IDs to delete: the target + all descendants + siblings
-                const idsToDelete = new Set<string>();
-                idsToDelete.add(id);
+                // Build set of IDs to delete: the targets + all descendants + siblings
+                const idsToDelete = new Set<string>(ids);
 
-                // Also delete sibling if this micrograph has one (PPL/XPL pair)
-                const targetMicro = sample.micrographs.find(m => m.id === id);
-                if (targetMicro?.siblingImageId) {
-                  idsToDelete.add(targetMicro.siblingImageId);
+                // Also delete the sibling of a target that has one (PPL/XPL pair)
+                for (const targetMicro of sample.micrographs) {
+                  if (ids.includes(targetMicro.id) && targetMicro.siblingImageId) {
+                    idsToDelete.add(targetMicro.siblingImageId);
+                  }
                 }
 
                 // Recursively find all descendants (of both target and sibling)

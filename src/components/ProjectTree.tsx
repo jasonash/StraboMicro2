@@ -330,6 +330,7 @@ export function ProjectTree() {
   const deleteDataset = useAppStore((state) => state.deleteDataset);
   const deleteSample = useAppStore((state) => state.deleteSample);
   const deleteMicrograph = useAppStore((state) => state.deleteMicrograph);
+  const deleteMicrographs = useAppStore((state) => state.deleteMicrographs);
   const updateMicrographMetadata = useAppStore((state) => state.updateMicrographMetadata);
   const reorderMicrographs = useAppStore((state) => state.reorderMicrographs);
   const reorderSamples = useAppStore((state) => state.reorderSamples);
@@ -368,6 +369,8 @@ export function ProjectTree() {
   const [editLocationMicrographId, setEditLocationMicrographId] = useState<string | null>(null);
   // Place children automatically: the parent whose unplaced children are placed
   const [placeChildrenParentId, setPlaceChildrenParentId] = useState<string | null>(null);
+  // Delete unplaced children: the parent whose unplaced children are deleted (Peter, 2026-10-29)
+  const [deleteUnplacedParentId, setDeleteUnplacedParentId] = useState<string | null>(null);
   // Clicking an unplaced child offers placing all its siblings; "Just this one" stops the
   // question for that parent until another project is opened
   const [placeChildrenOffer, setPlaceChildrenOffer] = useState<{ childId: string; parentId: string } | null>(null);
@@ -1052,6 +1055,20 @@ export function ProjectTree() {
     const needsInstrumentInfo = !!micrograph.needsInstrumentInfo;
     const needsSetup = needsScale || needsLocation || needsInstrumentInfo;
 
+    const deleteMicrographItem = (
+      <MenuItem
+        disabled={!may('micrograph', micrograph.id)}
+        onClick={() => {
+          if (!mayDeleteWithin('micrograph', micrograph.id, 'micrograph')) return;
+          setDeletingMicrograph(micrograph);
+          setShowDeleteMicrographConfirm(true);
+          setMicrographOptionsAnchor({ ...micrographOptionsAnchor, [micrograph.id]: null });
+        }}
+      >
+        Delete Micrograph
+      </MenuItem>
+    );
+
     // Use percentage-based sizing for responsive thumbnails
     // This allows thumbnails to shrink/grow with the sidebar width
     // No fixed pixel calculations needed - CSS will handle it automatically
@@ -1186,56 +1203,54 @@ export function ProjectTree() {
               )}
             </Box>
 
-            {/* Button Column - hidden when micrograph needs setup */}
-            {!needsSetup ? (
-              <Stack direction="column" spacing={0.5} sx={{ flexShrink: 0, width: 40 }}>
-                {/* Options Menu Button */}
-                <IconButton
-                  size="small"
-                  onClick={(e) => {
-                    setMicrographOptionsAnchor({
-                      ...micrographOptionsAnchor,
-                      [micrograph.id]: e.currentTarget,
-                    });
-                  }}
-                  sx={{ p: 0.5 }}
-                >
-                  <MoreVert fontSize="small" />
-                </IconButton>
-
-                {/* Add Menu Button */}
-                <IconButton
-                  size="small"
-                  onClick={(e) => {
-                    setMicrographAddAnchor({
-                      ...micrographAddAnchor,
-                      [micrograph.id]: e.currentTarget,
-                    });
-                  }}
-                  sx={{ p: 0.5 }}
-                >
-                  <Add fontSize="small" />
-                </IconButton>
-
-                {/* Visibility Toggle Button - Only for associated micrographs */}
-                {!isReference && (
+            {/* Button Column - only the options menu (Delete Micrograph) when micrograph needs setup */}
+            <Stack direction="column" spacing={0.5} sx={{ flexShrink: 0, width: 40 }}>
+              {/* Options Menu Button */}
+              <IconButton
+                size="small"
+                onClick={(e) => {
+                  setMicrographOptionsAnchor({
+                    ...micrographOptionsAnchor,
+                    [micrograph.id]: e.currentTarget,
+                  });
+                }}
+                sx={{ p: 0.5 }}
+              >
+                <MoreVert fontSize="small" />
+              </IconButton>
+              {!needsSetup && (
+                <>
+                  {/* Add Menu Button */}
                   <IconButton
                     size="small"
-                    onClick={() => {
-                      // Toggle visibility: if currently hidden (false), make visible (true); otherwise hide (false)
-                      const newVisibility = micrograph.isMicroVisible === false ? true : false;
-                      updateMicrographMetadata(micrograph.id, { isMicroVisible: newVisibility });
+                    onClick={(e) => {
+                      setMicrographAddAnchor({
+                        ...micrographAddAnchor,
+                        [micrograph.id]: e.currentTarget,
+                      });
                     }}
                     sx={{ p: 0.5 }}
                   >
-                    {isHidden ? <VisibilityOff fontSize="small" /> : <Visibility fontSize="small" />}
+                    <Add fontSize="small" />
                   </IconButton>
-                )}
-              </Stack>
-            ) : (
-              // Placeholder to maintain consistent width when buttons are hidden
-              <Box sx={{ flexShrink: 0, width: 40 }} />
-            )}
+
+                  {/* Visibility Toggle Button - Only for associated micrographs */}
+                  {!isReference && (
+                    <IconButton
+                      size="small"
+                      onClick={() => {
+                        // Toggle visibility: if currently hidden (false), make visible (true); otherwise hide (false)
+                        const newVisibility = micrograph.isMicroVisible === false ? true : false;
+                        updateMicrographMetadata(micrograph.id, { isMicroVisible: newVisibility });
+                      }}
+                      sx={{ p: 0.5 }}
+                    >
+                      {isHidden ? <VisibilityOff fontSize="small" /> : <Visibility fontSize="small" />}
+                    </IconButton>
+                  )}
+                </>
+              )}
+            </Stack>
           </Stack>
         </Box>
 
@@ -1290,10 +1305,19 @@ export function ProjectTree() {
           </Collapse>
         )}
 
-        {/* Options Menu */}
+        {/* Options Menu (only Delete Micrograph while it needs setup: Peter, 2026-10-29) */}
         <Menu
           anchorEl={micrographOptionsAnchor[micrograph.id]}
-          open={Boolean(micrographOptionsAnchor[micrograph.id])}
+          open={needsSetup && Boolean(micrographOptionsAnchor[micrograph.id])}
+          onClose={() =>
+            setMicrographOptionsAnchor({ ...micrographOptionsAnchor, [micrograph.id]: null })
+          }
+        >
+          {deleteMicrographItem}
+        </Menu>
+        <Menu
+          anchorEl={micrographOptionsAnchor[micrograph.id]}
+          open={!needsSetup && Boolean(micrographOptionsAnchor[micrograph.id])}
           onClose={() =>
             setMicrographOptionsAnchor({ ...micrographOptionsAnchor, [micrograph.id]: null })
           }
@@ -1372,17 +1396,18 @@ export function ProjectTree() {
               </MenuItem>
             );
           })()}
-          <MenuItem
-            disabled={!may('micrograph', micrograph.id)}
-            onClick={() => {
-              if (!mayDeleteWithin('micrograph', micrograph.id, 'micrograph')) return;
-              setDeletingMicrograph(micrograph);
-              setShowDeleteMicrographConfirm(true);
-              setMicrographOptionsAnchor({ ...micrographOptionsAnchor, [micrograph.id]: null });
-            }}
-          >
-            Delete Micrograph
-          </MenuItem>
+          {unplacedChildren(project, micrograph.id).length > 0 && (
+            <MenuItem
+              disabled={!unplacedChildren(project, micrograph.id).every((child) => may('micrograph', child.id))}
+              onClick={() => {
+                setDeleteUnplacedParentId(micrograph.id);
+                setMicrographOptionsAnchor({ ...micrographOptionsAnchor, [micrograph.id]: null });
+              }}
+            >
+              Delete unplaced children...
+            </MenuItem>
+          )}
+          {deleteMicrographItem}
           {/* PPL/XPL Sibling Pairing - only for PPL/XPL image types */}
           {polarizedRole(micrograph.imageType) && (
             !micrograph.siblingImageId ? (
@@ -2198,6 +2223,53 @@ export function ProjectTree() {
           setDeletingSample(null);
         }}
       />
+
+      {/* Delete unplaced children confirmation */}
+      {(() => {
+        const parent = deleteUnplacedParentId ? findMicrographById(project, deleteUnplacedParentId) : null;
+        const unplaced = deleteUnplacedParentId ? unplacedChildren(project, deleteUnplacedParentId) : [];
+        const shown = unplaced.slice(0, 10);
+        return (
+          <ConfirmDialog
+            open={!!parent && unplaced.length > 0}
+            title="Delete Unplaced Children"
+            message={
+              parent ? (
+                <>
+                  Delete the {unplaced.length === 1 ? 'micrograph' : `${unplaced.length} micrographs`} on "{parent.name}" that {unplaced.length === 1 ? 'has' : 'have'} not been placed yet?
+                  <br />
+                  <br />
+                  {shown.map((m) => (
+                    <span key={m.id}>
+                      {m.name || m.imageFilename || 'Unnamed Micrograph'}
+                      <br />
+                    </span>
+                  ))}
+                  {unplaced.length > shown.length && (
+                    <>
+                      and {unplaced.length - shown.length} more
+                      <br />
+                    </>
+                  )}
+                  <br />
+                  Their spots, PPL/XPL pairs, and any micrographs placed on them are removed too.
+                </>
+              ) : (
+                ''
+              )
+            }
+            confirmLabel="Delete"
+            confirmColor="error"
+            onConfirm={() => {
+              if (unplaced.every((m) => mayDeleteWithin('micrograph', m.id, 'micrograph'))) {
+                deleteMicrographs(unplaced.map((m) => m.id));
+              }
+              setDeleteUnplacedParentId(null);
+            }}
+            onCancel={() => setDeleteUnplacedParentId(null)}
+          />
+        );
+      })()}
 
       {/* Delete Micrograph Confirmation */}
       <ConfirmDialog
