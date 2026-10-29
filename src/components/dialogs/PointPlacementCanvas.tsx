@@ -6,6 +6,7 @@ import Konva from 'konva';
 import { useAppStore } from '@/store';
 import { releaseImage } from '@/utils/imageUtils';
 import { useLatest } from '@/hooks/useLatest';
+import { wheelZoomDirection } from '@/utils/wheelZoom';
 
 interface PointPlacementCanvasProps {
   parentMicrographId: string;
@@ -539,7 +540,8 @@ export const PointPlacementCanvas = ({
       y: (pointer.y - stagePos.y) / oldScale,
     };
 
-    const direction = e.evt.deltaY > 0 ? -1 : 1;
+    const direction = wheelZoomDirection(e.evt);
+    if (direction === 0) return;
     const newScale = direction > 0 ? oldScale * 1.1 : oldScale / 1.1;
     const clampedScale = Math.max(0.1, Math.min(20, newScale));
 

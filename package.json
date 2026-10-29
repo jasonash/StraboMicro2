@@ -25,6 +25,7 @@
     "test:spot-stacking": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/spotStacking.test.mts",
     "test:micrograph-visibility": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/micrographVisibility.test.mts",
     "test:scale-input": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/scaleInput.test.mts",
+    "test:wheel-zoom": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/wheelZoom.test.mts",
     "test:parent-spots": "rolldown -c tests/sync/rolldown.test.config.mjs && node node_modules/.cache/sync-tests/parentSpots.test.mjs",
     "test:parent-area": "rolldown -c tests/sync/rolldown.test.config.mjs && node node_modules/.cache/sync-tests/parentArea.test.mjs",
     "test:grain-outline": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/grainOutline.test.mts",

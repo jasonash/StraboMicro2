@@ -59,6 +59,7 @@ import { useGrainSpotTool, type GrainPrompt } from '@/hooks/useGrainSpotTool';
 import { E2E } from '@/services/e2eMode';
 import { setNote as setGrainNote } from '@/services/grainSpot/grainSpotEngine';
 import { GrainPreviewOutline } from './GrainPreviewOutline';
+import { wheelZoomDirection } from '@/utils/wheelZoom';
 
 const TILE_SIZE = 256;
 const MIN_ZOOM = 0.1;
@@ -1318,7 +1319,8 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
         const pointer = stage.getPointerPosition();
 
         // Calculate new zoom
-        const direction = e.evt.deltaY > 0 ? -1 : 1;
+        const direction = wheelZoomDirection(e.evt);
+        if (direction === 0) return;
         const newZoom = Math.max(
           MIN_ZOOM,
           Math.min(MAX_ZOOM, oldZoom * (direction > 0 ? ZOOM_STEP : 1 / ZOOM_STEP))
