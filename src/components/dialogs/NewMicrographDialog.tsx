@@ -62,7 +62,9 @@ import {
   computeCopiedPlacement,
   computeParentAreaPlacement,
   describeCopyPlacementCandidate,
+  describeScaleSource,
   listCopyPlacementCandidates,
+  listScaleSources,
   parentAreaUnavailableReason,
 } from '@/utils/copySizePlacement';
 import { findMicrographById } from '@/store/helpers';
@@ -117,6 +119,7 @@ interface MicrographFormData {
   scaleMethod:
     | 'Trace Scale Bar'
     | 'Pixel Conversion Factor'
+    | 'Copy scale from an existing micrograph'
     | 'Provide Width/Height of Image'
     | 'Use Same Scale as Parent'
     | 'Stretch and Drag'
@@ -153,6 +156,7 @@ interface MicrographFormData {
   scaleY: number;
   opacity: number; // Opacity for associated micrograph overlay (0-1)
   copySourceMicrographId: string; // For the "Copy from existing micrograph" location method
+  scaleSourceId: string; // For the "Copy scale from an existing micrograph" scale method (Peter, 2026-10-29)
   // Affine transform fields (for 3-Point Registration)
   affineMatrix: AffineMatrix | null;
   affineControlPoints: ControlPoint[] | null;
@@ -286,6 +290,7 @@ const initialFormData: MicrographFormData = {
   scaleY: 1,
   opacity: 1,
   copySourceMicrographId: '',
+  scaleSourceId: '',
   // Affine transform fields (for 3-Point Registration)
   affineMatrix: null,
   affineControlPoints: null,
@@ -1298,7 +1303,7 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
       );
     } else if (
       isAssociated &&
-      formData.scaleMethod === 'Pixel Conversion Factor' &&
+      (formData.scaleMethod === 'Pixel Conversion Factor' || formData.scaleMethod === 'Copy scale from an existing micrograph') &&
       formData.pixels &&
       formData.physicalLength
     ) {
@@ -1336,6 +1341,12 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
         '[NewMicrographDialog] Calculated scale from width/height:',
         scalePixelsPerCentimeter
       );
+    }
+
+    // "Copy scale from an existing micrograph": the source's px/cm exactly
+    if (isAssociated && formData.scaleMethod === 'Copy scale from an existing micrograph') {
+      const source = listScaleSources(useAppStore.getState().project, null).find((src) => src.id === formData.scaleSourceId);
+      if (source) scalePixelsPerCentimeter = source.scale;
     }
 
     // "Copy from existing micrograph": location AND scale come from the sibling,
@@ -1867,16 +1878,19 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
           'Trace Scale Bar and Drag',
           'Stretch and Drag',
           'Pixel Conversion Factor',
+          'Copy scale from an existing micrograph',
           'Provide Width/Height of Image',
         ];
         const validPointMethods = [
           'Trace Scale Bar',
           'Use Same Scale as Parent',
           'Pixel Conversion Factor',
+          'Copy scale from an existing micrograph',
           'Provide Width/Height of Image',
         ];
 
         const validMethods = isScaledRectangle ? validScaledRectangleMethods : validPointMethods;
+        if (formData.scaleMethod === 'Copy scale from an existing micrograph' && formData.scaleSourceId === '') return false;
         return validMethods.includes(formData.scaleMethod);
       }
 
@@ -1889,7 +1903,7 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
           // Validate scale inputs based on scale method
           if (formData.scaleMethod === 'Trace Scale Bar') {
             return !!(formData.scaleBarLineLengthPixels && formData.scaleBarPhysicalLength);
-          } else if (formData.scaleMethod === 'Pixel Conversion Factor') {
+          } else if (formData.scaleMethod === 'Pixel Conversion Factor' || formData.scaleMethod === 'Copy scale from an existing micrograph') {
             return !!(formData.pixels && formData.physicalLength);
           } else if (formData.scaleMethod === 'Provide Width/Height of Image') {
             return !!(formData.imageWidthPhysical || formData.imageHeightPhysical);
@@ -1901,7 +1915,7 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
           // Validate scale inputs based on scale method
           if (formData.scaleMethod === 'Trace Scale Bar and Drag') {
             return !!(formData.scaleBarLineLengthPixels && formData.scaleBarPhysicalLength);
-          } else if (formData.scaleMethod === 'Pixel Conversion Factor') {
+          } else if (formData.scaleMethod === 'Pixel Conversion Factor' || formData.scaleMethod === 'Copy scale from an existing micrograph') {
             return !!(formData.pixels && formData.physicalLength);
           } else if (formData.scaleMethod === 'Provide Width/Height of Image') {
             return !!(formData.imageWidthPhysical || formData.imageHeightPhysical);
@@ -2789,6 +2803,7 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
               locationMethod: e.target.value as MicrographFormData['locationMethod'],
               scaleMethod: '',
               copySourceMicrographId: '',
+              scaleSourceId: '',
               autoPlacement: null,
             }));
           }}
@@ -2950,6 +2965,10 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
   const renderAssociatedScaleMethodStep = () => {
     // Different scale options based on location method
     const isScaledRectangle = formData.locationMethod === 'Locate as a scaled rectangle';
+    // "Copy scale from an existing micrograph" (Peter, 2026-10-29): any micrograph in the project with a scale
+    const scaleSources = listScaleSources(useAppStore.getState().project, null);
+    const isCopyScale = formData.scaleMethod === 'Copy scale from an existing micrograph';
+    const scaleSource = isCopyScale ? scaleSources.find((src) => src.id === formData.scaleSourceId) ?? null : null;
 
     return (
       <Stack spacing={3}>
@@ -3033,6 +3052,49 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
             }}>
             Enter pixels per unit manually
           </Typography>
+
+          <FormControlLabel
+            value="Copy scale from an existing micrograph"
+            control={<Radio />}
+            label="Copy scale from an existing micrograph"
+            disabled={scaleSources.length === 0}
+          />
+          <Typography
+            variant="caption"
+            sx={{
+              color: 'text.secondary',
+              ml: 4,
+              mt: -1,
+              mb: isCopyScale ? 1 : 2
+            }}>
+            {scaleSources.length === 0
+              ? 'No micrograph in this project has a scale yet'
+              : 'Use the scale of a micrograph taken at the same magnification, then drag this one into place'}
+          </Typography>
+          {isCopyScale && (
+            <Stack spacing={1} sx={{ ml: 4, mb: 2 }}>
+              <FormControl sx={{ minWidth: 300 }} size="small">
+                <InputLabel id="wizard-copy-scale-source-label">Copy scale from</InputLabel>
+                <Select
+                  labelId="wizard-copy-scale-source-label"
+                  value={formData.scaleSourceId}
+                  label="Copy scale from"
+                  onChange={(e) => updateField('scaleSourceId', e.target.value)}
+                >
+                  {scaleSources.map((src) => (
+                    <MenuItem key={src.id} value={src.id}>{describeScaleSource(src)}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+              {scaleSource && (scaleSource.width !== formData.micrographWidth || scaleSource.height !== formData.micrographHeight) && (
+                <Alert severity="info" sx={{ maxWidth: 560 }}>
+                  This image is {formData.micrographWidth} × {formData.micrographHeight} pixels and {scaleSource.name} is{' '}
+                  {scaleSource.width} × {scaleSource.height}. The scale is copied as it is, which is right when both
+                  were taken at the same magnification and resolution.
+                </Alert>
+              )}
+            </Stack>
+          )}
 
           <FormControlLabel
             value="Provide Width/Height of Image"
@@ -3139,7 +3201,13 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
             childScratchPath={formData.micrographFilePath}
             childWidth={formData.micrographWidth}
             childHeight={formData.micrographHeight}
-            scaleMethod={formData.scaleMethod}
+            scaleMethod={formData.scaleMethod === 'Copy scale from an existing micrograph' ? 'Pixel Conversion Factor' : formData.scaleMethod}
+            initialPixelConversion={(() => {
+              const source = formData.scaleMethod === 'Copy scale from an existing micrograph'
+                ? listScaleSources(useAppStore.getState().project, null).find((src) => src.id === formData.scaleSourceId)
+                : undefined;
+              return source ? { pixels: String(source.scale), physicalLength: '1', unit: 'cm' } : undefined;
+            })()}
             initialOffsetX={formData.offsetInParent.X}
             initialOffsetY={formData.offsetInParent.Y}
             initialRotation={formData.rotationAngle}
@@ -3165,7 +3233,13 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
             childScratchPath={formData.micrographFilePath}
             childWidth={formData.micrographWidth}
             childHeight={formData.micrographHeight}
-            scaleMethod={formData.scaleMethod || ''}
+            scaleMethod={formData.scaleMethod === 'Copy scale from an existing micrograph' ? 'Pixel Conversion Factor' : formData.scaleMethod || ''}
+            initialPixelConversion={(() => {
+              const source = formData.scaleMethod === 'Copy scale from an existing micrograph'
+                ? listScaleSources(useAppStore.getState().project, null).find((src) => src.id === formData.scaleSourceId)
+                : undefined;
+              return source ? { pixels: String(source.scale), physicalLength: '1', unit: 'cm' } : undefined;
+            })()}
             initialOffsetX={formData.offsetInParent.X}
             initialOffsetY={formData.offsetInParent.Y}
             onPlacementChange={(offsetX, offsetY) => {

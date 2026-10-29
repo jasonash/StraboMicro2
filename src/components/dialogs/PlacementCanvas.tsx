@@ -36,6 +36,8 @@ interface PlacementCanvasProps {
    * and turns off the auto-fit.
    */
   initialPlacement?: { offsetX: number; offsetY: number; rotation: number; scale: number };
+  /** Pixel Conversion Factor fields filled in at the start ("Copy scale from an existing micrograph") */
+  initialPixelConversion?: { pixels: string; physicalLength: string; unit: string };
   onPlacementChange: (offsetX: number, offsetY: number, rotation: number, scaleX?: number, scaleY?: number) => void;
   onOpacityChange?: (opacity: number) => void; // Callback when opacity changes
   onScaleDataChange?: (data: {
@@ -64,6 +66,7 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
   initialScaleY = 1,
   initialOpacity = 1,
   initialPlacement,
+  initialPixelConversion,
   onPlacementChange,
   onOpacityChange,
   onScaleDataChange,
@@ -129,9 +132,9 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
   const [childOpacity, setChildOpacity] = useState(initialOpacity);
 
   // State for Pixel Conversion Factor inputs
-  const [pixelInput, setPixelInput] = useState('');
-  const [physicalLengthInput, setPhysicalLengthInput] = useState('');
-  const [unitInput, setUnitInput] = useState('μm');
+  const [pixelInput, setPixelInput] = useState(initialPixelConversion?.pixels ?? '');
+  const [physicalLengthInput, setPhysicalLengthInput] = useState(initialPixelConversion?.physicalLength ?? '');
+  const [unitInput, setUnitInput] = useState(initialPixelConversion?.unit ?? 'μm');
 
   // State for Width/Height inputs
   const [widthInput, setWidthInput] = useState('');
@@ -530,7 +533,9 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
       scaleX: scaleFactor,
       scaleY: scaleFactor,
     }));
-  }, [scaleMethod, pixelInput, physicalLengthInput, unitInput, parentScale]);
+    // parentImage + parentOriginalWidth: fields filled in at the start ("Copy scale") are read
+    // before the parent image has loaded, so the scale is worked out again once it has
+  }, [scaleMethod, pixelInput, physicalLengthInput, unitInput, parentScale, parentImage, parentOriginalWidth]);
 
   // Call onPlacementChange when scale changes automatically (for auto-scale methods)
   // Use a ref to track previous scale to avoid calling on every render

@@ -16,6 +16,8 @@ interface PointPlacementCanvasProps {
   initialOffsetX?: number;
   initialOffsetY?: number;
   onPlacementChange: (offsetX: number, offsetY: number) => void;
+  /** Pixel Conversion Factor fields filled in at the start ("Copy scale from an existing micrograph") */
+  initialPixelConversion?: { pixels: string; physicalLength: string; unit: string };
   onScaleDataChange?: (data: {
     scaleBarLineLengthPixels?: number;
     scaleBarPhysicalLength?: number;
@@ -38,6 +40,7 @@ export const PointPlacementCanvas = ({
   initialOffsetX = 0,
   initialOffsetY = 0,
   onPlacementChange,
+  initialPixelConversion,
   onScaleDataChange,
 }: PointPlacementCanvasProps) => {
   const [parentImage, setParentImage] = useState<HTMLImageElement | null>(null);
@@ -93,9 +96,9 @@ export const PointPlacementCanvas = ({
   const [activeTool, setActiveTool] = useState<'pan' | 'point' | 'line'>('pan');
 
   // State for Pixel Conversion Factor inputs
-  const [pixelInput, setPixelInput] = useState('');
-  const [physicalLengthInput, setPhysicalLengthInput] = useState('');
-  const [unitInput, setUnitInput] = useState('μm');
+  const [pixelInput, setPixelInput] = useState(initialPixelConversion?.pixels ?? '');
+  const [physicalLengthInput, setPhysicalLengthInput] = useState(initialPixelConversion?.physicalLength ?? '');
+  const [unitInput, setUnitInput] = useState(initialPixelConversion?.unit ?? 'μm');
 
   // State for Width/Height inputs
   const [widthInput, setWidthInput] = useState('');
