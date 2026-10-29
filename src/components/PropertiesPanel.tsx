@@ -377,7 +377,7 @@ export function PropertiesPanel() {
                         secondary={
                           appliedPresetIds.has(preset.id)
                             ? 'Already applied'
-                            : getPresetSummary(preset).slice(0, 2).join(', ') || 'No data'
+                            : getPresetSummary(preset).join(', ') || 'No data'
                         }
                         slotProps={{
                           primary: { variant: 'body2' },
@@ -405,7 +405,7 @@ export function PropertiesPanel() {
                         secondary={
                           appliedPresetIds.has(preset.id)
                             ? 'Already applied'
-                            : getPresetSummary(preset).slice(0, 2).join(', ') || 'No data'
+                            : getPresetSummary(preset).join(', ') || 'No data'
                         }
                         slotProps={{
                           primary: { variant: 'body2' },

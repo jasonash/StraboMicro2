@@ -123,10 +123,17 @@ test('a Project preset carries tags (Global cannot); choosing it in New Spot add
   await ana.page.keyboard.press('Escape');
   await expect(presets).toBeHidden();
 
+  await ana.state(new Function('e', `
+    const now = new Date().toISOString();
+    e.app.getState().createPreset({ id: 'preset-zircon', name: 'Zircon', createdAt: now, modifiedAt: now,
+      data: { color: '0xff0000ff', opacity: 60, mineralogy: { minerals: [{ name: 'Zircon' }] }, tags: ['tag-garnet'] } }, 'project');`) as never);
+
   await ana.caption('New Spot: choosing the preset adds its tag to the Tags field');
   const dialog = await newPointSpot(ana, 0);
   await expect(dialog.getByRole('button', { name: 'Garnet porphyroblast' })).toHaveCount(0);
   await dialog.getByRole('combobox', { name: 'Apply Presets' }).click();
+  // The list shows everything a preset applies (it stopped after two, hiding Tags; Jason, 2026-10-29)
+  await expect(ana.page.getByRole('option', { name: /Zircon/ })).toContainText('Spot color, Opacity, Mineralogy, Tag');
   await ana.page.getByRole('option', { name: /Garnet/ }).first().click();
   await expect(dialog.getByRole('button', { name: 'Garnet porphyroblast' })).toBeVisible();
   await dialog.getByRole('textbox', { name: 'Name' }).fill('P1');
