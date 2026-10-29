@@ -3,7 +3,9 @@
  * field lists the project's tags; the spot is saved with their ids in
  * spot.tags; the next New Spot in the project starts with the tags chosen
  * last (this session), and clearing them is remembered too. With no tags in
- * the project the field says where to create them. One copy, not synced.
+ * the project the field says where to create them. A Project-scope Quick Spot
+ * Preset can carry tags (Global ones cannot: tags belong to a project);
+ * choosing it in New Spot adds its tags to the field. One copy, not synced.
  */
 
 import { test, expect } from '../lib/test';
@@ -84,4 +86,51 @@ test('with no tags in the project, the Tags field says where to create them', as
   const dialog = await newPointSpot(ana, 0);
   await expect(dialog.getByText('No tags yet: create them in the Tags tab')).toBeVisible();
   await dialog.getByRole('button', { name: 'Cancel' }).click();
+});
+
+/** The tag ids of a preset by name (global or project) */
+function presetTags(copy: Copy, name: string): Promise<string[] | null> {
+  return copy.state(new Function('e', `
+    const s = e.app.getState();
+    const p = [...(s.globalPresets ?? []), ...(s.project?.presets ?? [])].find((x) => x.name === ${JSON.stringify(name)});
+    return p ? (p.data?.tags ?? []) : null;`) as never) as Promise<string[] | null>;
+}
+
+test('a Project preset carries tags (Global cannot); choosing it in New Spot adds them', async ({ launch, project }) => {
+  const { p, ana } = await start(launch, project, 'E2E Preset Tags');
+  await ana.state(new Function('e', `
+    e.app.getState().createTag({ id: 'tag-garnet', name: 'Garnet porphyroblast', tagType: 'other', fillColor: '#aa3333', lineColor: '#000000', transparency: 100, tagSize: 10, spotIDs: [] });`) as never);
+
+  await ana.caption('New Preset, Scope Global: the Tags section says only Project presets can add tags');
+  await ana.menu('Spot', 'Quick Spot Presets...');
+  const presets = ana.page.getByRole('dialog', { name: 'Quick Spot Presets' });
+  await presets.getByRole('button', { name: 'New Preset' }).click();
+  const editor = ana.page.getByRole('dialog', { name: 'Create New Preset' });
+  await editor.getByLabel('Preset Name').fill('Garnet');
+  await editor.getByRole('button', { name: /^Tags/ }).click();
+  await expect(editor.getByText(/only Project presets can add them/)).toBeVisible();
+
+  await ana.caption('Scope Project: picks Garnet porphyroblast, Create');
+  // The Scope select has no accessible name (its InputLabel is not linked); found by its value
+  await editor.getByRole('combobox').filter({ hasText: 'Global' }).click();
+  await ana.page.getByRole('option', { name: 'Project' }).click();
+  await editor.getByRole('combobox', { name: 'Tags' }).click();
+  await ana.page.getByRole('option', { name: 'Garnet porphyroblast' }).click();
+  await expect(editor.getByText(/Preset will apply: Tag/)).toBeVisible();
+  await editor.getByRole('button', { name: 'Create' }).click();
+  await expect(editor).toBeHidden();
+  await expect.poll(() => presetTags(ana, 'Garnet')).toEqual(['tag-garnet']);
+  await ana.page.keyboard.press('Escape');
+  await expect(presets).toBeHidden();
+
+  await ana.caption('New Spot: choosing the preset adds its tag to the Tags field');
+  const dialog = await newPointSpot(ana, 0);
+  await expect(dialog.getByRole('button', { name: 'Garnet porphyroblast' })).toHaveCount(0);
+  await dialog.getByRole('combobox', { name: 'Apply Presets' }).click();
+  await ana.page.getByRole('option', { name: /Garnet/ }).first().click();
+  await expect(dialog.getByRole('button', { name: 'Garnet porphyroblast' })).toBeVisible();
+  await dialog.getByRole('textbox', { name: 'Name' }).fill('P1');
+  await dialog.getByRole('button', { name: 'Create Spot' }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect.poll(() => spotTags(ana, p.micrographId, 'P1')).toEqual(['tag-garnet']);
 });

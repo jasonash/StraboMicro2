@@ -20,8 +20,6 @@ import {
   Typography,
   Slider,
   Stack,
-  Autocomplete,
-  Chip,
 } from '@mui/material';
 import { MuiColorInput } from 'mui-color-input';
 import { Spot, Geometry, Tag } from '@/types/project-types';
@@ -34,9 +32,10 @@ import {
   rememberSpotAppearance,
   rememberSpotTags,
   withPresetAppearance,
+  withPresetTags,
 } from '@/utils/newSpot';
-import { tagSwatchStyle } from '@/utils/tagSwatch';
 import { PresetSelector } from '../PresetSelector';
+import { TagPicker } from '../TagPicker';
 
 interface NewSpotDialogProps {
   open: boolean;
@@ -86,6 +85,7 @@ export const NewSpotDialog: React.FC<NewSpotDialogProps> = ({
     const next = withPresetAppearance({ labelColor, spotColor, opacity }, newlyAdded);
     setSpotColor(next.spotColor);
     setOpacity(next.opacity);
+    setSelectedTagIds((current) => withPresetTags(current, newlyAdded, tags.map((t) => t.id)));
     setSelectedPresetIds(presetIds);
   };
 
@@ -123,7 +123,8 @@ export const NewSpotDialog: React.FC<NewSpotDialogProps> = ({
       setSpotColor(start.spotColor);
       setOpacity(start.opacity);
       setSelectedPresetIds(presets.map((p) => p.id));
-      setSelectedTagIds(lastUsedSpotTags(projectId, tags.map((t) => t.id)));
+      const tagIdsNow = tags.map((t) => t.id);
+      setSelectedTagIds(withPresetTags(lastUsedSpotTags(projectId, tagIdsNow), presets, tagIdsNow));
       setEnableCopy(false);
       setSelectedSpotToCopy(null);
       setCopyFields({
@@ -162,7 +163,7 @@ export const NewSpotDialog: React.FC<NewSpotDialogProps> = ({
       .filter((preset): preset is PresetWithScope => preset !== null);
     const tagIds = selectedTagIds.filter((id) => tags.some((t) => t.id === id));
     rememberSpotTags(projectId, tagIds);
-    const newSpot = buildNewSpot({ name, notes, geometry, appearance, presets, tagIds });
+    const newSpot = buildNewSpot({ name, notes, geometry, appearance, presets, tagIds, existingTagIds: tags.map((t) => t.id) });
 
     // If copying from existing spot, copy selected fields
     if (enableCopy && selectedSpotToCopy) {
@@ -276,41 +277,8 @@ export const NewSpotDialog: React.FC<NewSpotDialogProps> = ({
             fullWidth
           />
 
-          {/* Tags */}
-          <Autocomplete
-            multiple
-            options={tags}
-            value={tags.filter((t) => selectedTagIds.includes(t.id))}
-            onChange={(_event, value) => setSelectedTagIds(value.map((t) => t.id))}
-            getOptionLabel={(tag) => tag.name}
-            isOptionEqualToValue={(option, value) => option.id === value.id}
-            noOptionsText={tags.length === 0 ? 'No tags yet: create them in the Tags tab' : 'No matching tags'}
-            renderOption={(props, tag) => (
-              <Box component="li" {...props} key={tag.id} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <Box sx={tagSwatchStyle(tag, 12)} />
-                {tag.name}
-              </Box>
-            )}
-            renderValue={(value, getItemProps) =>
-              value.map((tag, index) => (
-                <Chip
-                  label={tag.name}
-                  size="small"
-                  icon={<Box sx={{ ...tagSwatchStyle(tag, 12), ml: 1 }} />}
-                  {...getItemProps({ index })}
-                  key={tag.id}
-                />
-              ))
-            }
-            renderInput={(params) => (
-              <TextField
-                {...params}
-                label="Tags"
-                placeholder={selectedTagIds.length === 0 ? 'Add tags...' : undefined}
-                helperText={tags.length === 0 ? 'No tags yet: create them in the Tags tab' : undefined}
-              />
-            )}
-          />
+          {/* Tags (a chosen preset adds its tags here; what is here at save time is what the spot gets) */}
+          <TagPicker tags={tags} selectedTagIds={selectedTagIds} onChange={setSelectedTagIds} />
 
           {/* Quick Spot Presets (hidden when none exist) */}
           <PresetSelector

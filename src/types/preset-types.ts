@@ -45,6 +45,9 @@ export interface PresetData {
   faultsShearZonesInfo?: FaultsShearZonesInfoType | null;
   extinctionMicrostructureInfo?: ExtinctionMicrostructureInfoType | null;
   lithologyInfo?: LithologyInfoType | null;
+
+  /** Tag ids added to the spot (project presets only: tags belong to a project; Peter, 2026-10-29) */
+  tags?: string[] | null;
 }
 
 /**
@@ -181,6 +184,8 @@ export function getPresetSummary(preset: QuickApplyPreset): string[] {
       summary.push(PRESET_FEATURE_DISPLAY_NAMES[field]);
     }
   }
+
+  if (data.tags?.length) summary.push(data.tags.length === 1 ? 'Tag' : `Tags (${data.tags.length})`);
 
   return summary;
 }

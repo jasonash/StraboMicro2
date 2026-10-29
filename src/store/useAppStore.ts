@@ -3021,8 +3021,9 @@ export const useAppStore = create<AppState>()(
             }
 
             // Apply preset to spot using additive merge
+            const projectTagIds = new Set((state.project.tags ?? []).map((t) => t.id));
             const newProject = updateSpot(state.project, spotId, (spot) => {
-              mergePresetIntoSpot(spot, preset!.data);
+              mergePresetIntoSpot(spot, preset!.data, projectTagIds);
 
               // Track applied preset ID
               if (!spot.appliedPresetIds) {
@@ -3055,6 +3056,7 @@ export const useAppStore = create<AppState>()(
 
             const spotIdSet = new Set(spotIds);
             const newProject = structuredClone(state.project);
+            const projectTagIds = new Set((newProject.tags ?? []).map((t) => t.id));
             const now = Date.now();
             let anyApplied = false;
 
@@ -3070,7 +3072,7 @@ export const useAppStore = create<AppState>()(
                           continue;
                         }
 
-                        mergePresetIntoSpot(spot, preset!.data);
+                        mergePresetIntoSpot(spot, preset!.data, projectTagIds);
 
                         if (!spot.appliedPresetIds) {
                           spot.appliedPresetIds = [];

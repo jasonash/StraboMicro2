@@ -15,8 +15,10 @@ import {
   lastUsedSpotAppearance,
   rememberSpotAppearance,
   withPresetAppearance,
+  withPresetTags,
 } from '@/utils/newSpot';
 import type { Geometry } from '@/types/project-types';
+import { mergePresetIntoSpot } from '@/store/helpers';
 import type { PresetData } from '@/types/preset-types';
 
 let failures = 0;
@@ -120,6 +122,26 @@ eq('another project starts empty', lastUsedSpotTags('proj-b', ['t1', 't2']), [])
 eq('no project', lastUsedSpotTags(null, ['t1']), []);
 rememberSpotTags('proj-a', []);
 eq('cleared tags are remembered as none', lastUsedSpotTags('proj-a', ['t1', 't2']), []);
+
+// Preset tags (project presets)
+const tagged: PresetData = { tags: ['t1', 't-gone'] };
+eq('preset tags added after current, existing only, once each', withPresetTags(['t2', 't1'], [{ data: tagged }], ['t1', 't2']), ['t2', 't1']);
+eq('preset tags into empty', withPresetTags([], [{ data: tagged }, { data: { tags: ['t3'] } }], ['t1', 't3']), ['t1', 't3']);
+eq('preset without tags', withPresetTags(['t1'], [{ data: olivine }], ['t1']), ['t1']);
+const auto = buildNewSpot({ name: 'auto', geometry: point, appearance: white, presets: [{ id: 'p-t', data: tagged }], existingTagIds: ['t1'] });
+eq('auto spot mode (no Tags field): preset tags on the spot, deleted ones left out', auto.tags, ['t1']);
+const fromDialog = buildNewSpot({ name: 'dlg', geometry: point, appearance: white, presets: [{ id: 'p-t', data: tagged }], tagIds: ['t2'], existingTagIds: ['t1', 't2'] });
+eq("New Spot's Tags field is final (a chip removed stays removed)", fromDialog.tags, ['t2']);
+const cleared = buildNewSpot({ name: 'clr', geometry: point, appearance: white, presets: [{ id: 'p-t', data: tagged }], tagIds: [], existingTagIds: ['t1'] });
+eq('Tags field cleared: no tags even with a tagged preset', cleared.tags, undefined);
+
+// Quick Edit / Quick Apply (mergePresetIntoSpot): added to the spot's tags, never twice
+const has = buildNewSpot({ name: 'has', geometry: point, appearance: white, tagIds: ['t1'] });
+mergePresetIntoSpot(has, { tags: ['t1', 't2', 't-gone'] }, new Set(['t1', 't2']));
+eq('preset applied: tags added once, deleted ones left out', has.tags, ['t1', 't2']);
+const plain = buildNewSpot({ name: 'plain', geometry: point, appearance: white });
+mergePresetIntoSpot(plain, olivine, new Set(['t1']));
+eq('preset without tags leaves tags alone', plain.tags, undefined);
 
 console.log(`\n${passes} passed, ${failures} failed`);
 process.exit(failures ? 1 : 0);
