@@ -60,6 +60,7 @@ import {
 } from '@/services/grainDetection';
 import * as fastsamInference from '@/services/fastsamInference';
 import { v4 as uuidv4 } from 'uuid';
+import { wheelZoomDirection } from '@/utils/wheelZoom';
 
 // ============================================================================
 // TYPES
@@ -806,7 +807,8 @@ export function GrainDetectionDialog({
       y: (pointer.y - position.y) / oldZoom,
     };
 
-    const direction = e.evt.deltaY > 0 ? -1 : 1;
+    const direction = wheelZoomDirection(e.evt);
+    if (direction === 0) return;
     const newZoom = direction > 0
       ? Math.min(oldZoom * ZOOM_STEP, MAX_ZOOM)
       : Math.max(oldZoom / ZOOM_STEP, fitZoom);

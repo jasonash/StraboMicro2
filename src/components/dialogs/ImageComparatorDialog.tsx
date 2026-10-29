@@ -32,6 +32,7 @@ import { Stage, Layer, Image as KonvaImage, Group, Circle, Line, Rect } from 're
 import { useAppStore } from '@/store';
 import { getEffectiveTheme } from '@/hooks/useTheme';
 import type { MicrographMetadata, Spot } from '@/types/project-types';
+import { wheelZoomDirection } from '@/utils/wheelZoom';
 
 const TILE_SIZE = 256;
 const MIN_ZOOM = 0.05;
@@ -435,7 +436,8 @@ function ComparatorCanvas({
     const pointer = stageNode.getPointerPosition();
     if (!pointer) return;
 
-    const direction = e.evt.deltaY > 0 ? -1 : 1;
+    const direction = wheelZoomDirection(e.evt);
+    if (direction === 0) return;
     const newZoom = direction > 0
       ? Math.min(state.zoom * ZOOM_STEP, MAX_ZOOM)
       : Math.max(state.zoom / ZOOM_STEP, MIN_ZOOM);

@@ -42,6 +42,7 @@ import {
   type ControlPoint,
   type AffineMatrix,
 } from '@/utils/affineTransform';
+import { wheelZoomDirection } from '@/utils/wheelZoom';
 
 const MIN_ZOOM = 0.1;
 const MAX_ZOOM = 10;
@@ -558,7 +559,8 @@ export function AffineRegistrationModal({
       const setPanel = panel === 'parent' ? setParentPanel : setOverlayPanel;
       const currentPanel = panel === 'parent' ? parentPanel : overlayPanel;
 
-      const direction = e.evt.deltaY > 0 ? -1 : 1;
+      const direction = wheelZoomDirection(e.evt);
+      if (direction === 0) return;
       const newZoom =
         direction > 0
           ? Math.min(currentPanel.zoom * ZOOM_STEP, MAX_ZOOM)
@@ -694,7 +696,8 @@ export function AffineRegistrationModal({
       const pointer = stageNode.getPointerPosition();
       if (!pointer) return;
 
-      const direction = e.evt.deltaY > 0 ? -1 : 1;
+      const direction = wheelZoomDirection(e.evt);
+      if (direction === 0) return;
       const newZoom =
         direction > 0
           ? Math.min(previewPanel.zoom * ZOOM_STEP, MAX_ZOOM)
