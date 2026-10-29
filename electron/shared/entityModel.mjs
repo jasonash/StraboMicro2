@@ -52,7 +52,9 @@ export const CHILD_KEYS = Object.freeze({
 });
 
 const PROJECT_PER_USER = Object.freeze(['presetKeyBindings', 'grainAnalysisSpotFilter', 'grainAnalysisSelectedSpotIds']);
-const ENTITY_PER_USER = Object.freeze(['isExpanded', 'isSpotExpanded']);
+// isMicroVisible (the eye): each person's own view, not shared with collaborators (Jason,
+// 2026-10-29: hiding a micrograph hid it on the other copy too); the server list matches
+const ENTITY_PER_USER = Object.freeze(['isExpanded', 'isSpotExpanded', 'isMicroVisible']);
 
 /** Per-user fields of a type: stay in the local project.json, never synced. */
 export function perUserFields(type) {
