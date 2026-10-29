@@ -679,7 +679,7 @@ function App() {
       setIsQuickApplyPresetsDialogOpen(true);
     }));
 
-    // Merge Selected Spots menu item (Edit menu, Cmd+M)
+    // Merge Selected Spots menu item (Spot menu, Alt+Cmd+M)
     unsubscribers.push(window.api.onMergeSpots(() => {
       const state = useAppStore.getState();
       const selectedIds = state.selectedSpotIds;

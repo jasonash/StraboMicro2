@@ -1018,7 +1018,8 @@ function createWindow() {
         },
         {
           label: 'Merge Selected Spots',
-          accelerator: 'CmdOrCtrl+M',
+          // Not Cmd+M: that is Minimize on macOS (Window menu below; Peter, 2026-10-29)
+          accelerator: 'Alt+CmdOrCtrl+M',
           click: () => {
             if (mainWindow) {
               mainWindow.webContents.send('menu:merge-spots');
@@ -1254,6 +1255,8 @@ function createWindow() {
         ] : []),
       ],
     },
+    // macOS standard Window menu: Minimize (Cmd+M), Zoom, Bring All to Front
+    ...(process.platform === 'darwin' ? [{ role: 'windowMenu' }] : []),
     {
       label: 'Help',
       submenu: [

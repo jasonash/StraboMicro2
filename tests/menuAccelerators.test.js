@@ -2,6 +2,8 @@
  * Every menu accelerator in electron/main.js is used once (2026-10-13: File >
  * Export as .smz... and Spot > Edit Selected Spots... both had
  * CmdOrCtrl+Shift+E, so only one of them could ever fire).
+ * CmdOrCtrl+M stays free for macOS Minimize, and the macOS Window menu that
+ * has it is there (2026-10-29: Cmd+M merged spots instead of minimizing).
  *
  *   npm run test:menu-accelerators
  */
@@ -40,6 +42,15 @@ for (const [key, labels] of byKey) {
     failures++;
     console.log(`  FAIL  ${key} is on ${labels.length} menu items: ${labels.join(', ')}`);
   }
+}
+
+if (byKey.has('cmdorctrl+m')) {
+  failures++;
+  console.log(`  FAIL  CmdOrCtrl+M is on ${byKey.get('cmdorctrl+m').join(', ')}; it is Minimize on macOS`);
+}
+if (!/process\.platform === 'darwin' \? \[\{ role: 'windowMenu' \}\]/.test(menu)) {
+  failures++;
+  console.log("  FAIL  no macOS Window menu (role: 'windowMenu') in the menu template");
 }
 
 if (items.length < 20) {
