@@ -56,6 +56,7 @@ import {
 import { useAppStore } from '@/store';
 import type { MicrographMetadata } from '@/types/project-types';
 import { findMicrographById } from '@/store/helpers';
+import { listPlacedChildren } from '@/utils/copySizePlacement';
 import { cannotPlaceChildrenReason } from '@/utils/micrographLocation';
 import { InstrumentInfoForm, isInstrumentInfoComplete, type InstrumentFormData } from './InstrumentInfoForm';
 import { InstrumentDataForm, type InstrumentDataFormData, type Detector, initialInstrumentDataFormData } from './InstrumentDataForm';
@@ -68,8 +69,11 @@ interface BatchImportDialogProps {
   onClose: () => void;
   sampleId: string | null; // For reference micrographs
   parentMicrographId: string | null; // For associated micrographs
-  /** "Place automatically" on the last screen of an associated import: place the parent's unplaced children */
-  onPlaceChildren?: (parentMicrographId: string) => void;
+  /**
+   * The last screen of an associated import: place the parent's unplaced children automatically
+   * (image matching), on its full area, or like a placed child (Peter, 2026-10-29)
+   */
+  onPlaceChildren?: (parentMicrographId: string, how: 'auto' | 'parent-area' | 'like-sibling') => void;
 }
 
 interface SelectedFile {
@@ -668,6 +672,8 @@ export const BatchImportDialog: React.FC<BatchImportDialogProps> = ({
   };
 
   const parentName = isAssociated ? findMicrographById(project, parentMicrographId)?.name || 'the parent micrograph' : '';
+  // The last screen offers "Like a placed one..." when the parent already has a placed child
+  const hasPlacedSibling = isAssociated && listPlacedChildren(project, parentMicrographId).length > 0;
 
   const renderStepContent = () => {
     const currentStepName = steps[activeStep];
@@ -1009,10 +1015,23 @@ export const BatchImportDialog: React.FC<BatchImportDialogProps> = ({
             <Alert severity="success">
               {importedCount === 1 ? '1 micrograph imported.' : `${importedCount} micrographs imported.`}
             </Alert>
-            <Typography variant="body1">Place them on {parentName} automatically now?</Typography>
+            <Typography variant="body1">Place them on {parentName} now?</Typography>
             <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-              StraboMicro looks for each image on {parentName} and shows you what it found before anything is
-              saved. Images it cannot find stay unplaced; you can place them later with Edit Micrograph Location.
+              <strong>Place automatically:</strong> StraboMicro looks for each image on {parentName} and shows you
+              what it found before anything is saved.
+            </Typography>
+            <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+              <strong>Same area as {parentName}:</strong> each image covers {parentName} exactly (for example
+              element maps collected with it).
+            </Typography>
+            {hasPlacedSibling && (
+              <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+                <strong>Like a placed micrograph:</strong> each image gets the location, scale and rotation of a
+                micrograph already placed on {parentName} (for example maps of the same area).
+              </Typography>
+            )}
+            <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+              Images that cannot be placed stay unplaced; you can place them later with Edit Micrograph Location.
             </Typography>
           </Stack>
         ) : (
@@ -1023,12 +1042,24 @@ export const BatchImportDialog: React.FC<BatchImportDialogProps> = ({
       {importedCount !== null ? (
         <DialogActions>
           <Button onClick={handleClose}>Later</Button>
+          {(['parent-area', ...(hasPlacedSibling ? ['like-sibling' as const] : [])] as const).map((how) => (
+            <Button
+              key={how}
+              onClick={() => {
+                const parentId = parentMicrographId;
+                handleClose();
+                if (parentId) onPlaceChildren?.(parentId, how);
+              }}
+            >
+              {how === 'parent-area' ? 'Same area' : 'Like a placed one...'}
+            </Button>
+          ))}
           <Button
             variant="contained"
             onClick={() => {
               const parentId = parentMicrographId;
               handleClose();
-              if (parentId) onPlaceChildren?.(parentId);
+              if (parentId) onPlaceChildren?.(parentId, 'auto');
             }}
           >
             Place automatically
