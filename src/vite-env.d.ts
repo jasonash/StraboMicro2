@@ -608,6 +608,7 @@ interface Window {
     onToggleOverlayOutlines: (callback: (checked: boolean) => void) => Unsubscribe;
     onToggleRecursiveSpots: (callback: (checked: boolean) => void) => Unsubscribe;
     onToggleArchivedSpots: (callback: (checked: boolean) => void) => Unsubscribe;
+    onMicrographVisibility: (callback: () => void) => Unsubscribe;
     onFilterSpots: (callback: () => void) => Unsubscribe;
     onShowPointCountStatistics: (callback: () => void) => Unsubscribe;
     onToggleQuickClassify: (callback: () => void) => Unsubscribe;

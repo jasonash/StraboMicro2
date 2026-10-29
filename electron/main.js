@@ -1181,6 +1181,16 @@ function createWindow() {
         },
         { type: 'separator' },
         {
+          // Show or hide the micrographs placed on the one in the viewer (Jason + Peter, 2026-10-29)
+          label: 'Micrograph Visibility...',
+          accelerator: 'CmdOrCtrl+Shift+V',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('view:micrograph-visibility');
+            }
+          }
+        },
+        {
           // Dim or hide spots by their data (Angus, 2026-10-28)
           label: 'Filter Spots...',
           accelerator: 'CmdOrCtrl+Shift+F',

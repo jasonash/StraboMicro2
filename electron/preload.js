@@ -192,6 +192,11 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('view:toggle-archived-spots', handler);
     return () => ipcRenderer.removeListener('view:toggle-archived-spots', handler);
   },
+  onMicrographVisibility: (callback) => {
+    const handler = () => callback();
+    ipcRenderer.on('view:micrograph-visibility', handler);
+    return () => ipcRenderer.removeListener('view:micrograph-visibility', handler);
+  },
   onFilterSpots: (callback) => {
     const handler = () => callback();
     ipcRenderer.on('view:filter-spots', handler);

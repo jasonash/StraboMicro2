@@ -205,6 +205,8 @@ interface AppState {
   /** View > Filter Spots...: dims or hides spots by their data; this computer only, cleared with the project */
   spotFilter: SpotFilter;
   spotFilterPanelOpen: boolean;
+  /** View > Micrograph Visibility... panel open (closed with the project) */
+  micrographVisibilityPanelOpen: boolean;
   showRulers: boolean;
   spotOverlayOpacity: number;
   /** Last-used image export settings (File > Export Images / micrograph export button) */
@@ -617,6 +619,9 @@ interface AppState {
   setSpotFilter: (filter: SpotFilter) => void;
   clearSpotFilter: () => void;
   setSpotFilterPanelOpen: (open: boolean) => void;
+  setMicrographVisibilityPanelOpen: (open: boolean) => void;
+  /** Show or hide several micrographs at once (micrograph id => visible); one change */
+  setMicrographsVisible: (updates: Map<string, boolean>) => void;
   setShowRulers: (show: boolean) => void;
   setSpotOverlayOpacity: (opacity: number) => void;
   setImageExportOptions: (options: ImageExportPreferences) => void;
@@ -682,6 +687,7 @@ export const useAppStore = create<AppState>()(
           showArchivedSpots: false,
           spotFilter: NO_SPOT_FILTER,
           spotFilterPanelOpen: false,
+          micrographVisibilityPanelOpen: false,
           showRulers: true,
           spotOverlayOpacity: 0.7,
           imageExportOptions: DEFAULT_IMAGE_EXPORT_PREFERENCES,
@@ -781,6 +787,7 @@ export const useAppStore = create<AppState>()(
               spotLassoToolActive: false,
               spotFilter: NO_SPOT_FILTER,
               spotFilterPanelOpen: false,
+              micrographVisibilityPanelOpen: false,
               siblingViewActive: false,
               siblingCachedZoom: null,
               siblingCachedPosition: null,
@@ -814,6 +821,7 @@ export const useAppStore = create<AppState>()(
               spotLassoToolActive: false,
               spotFilter: NO_SPOT_FILTER,
               spotFilterPanelOpen: false,
+              micrographVisibilityPanelOpen: false,
               siblingViewActive: false,
               siblingCachedZoom: null,
               siblingCachedPosition: null,
@@ -2684,6 +2692,18 @@ export const useAppStore = create<AppState>()(
           setSpotFilter: (filter) => set({ spotFilter: filter }),
           clearSpotFilter: () => set((state) => ({ spotFilter: { ...NO_SPOT_FILTER, others: state.spotFilter.others } })),
           setSpotFilterPanelOpen: (open) => set({ spotFilterPanelOpen: open }),
+          setMicrographVisibilityPanelOpen: (open) => set({ micrographVisibilityPanelOpen: open }),
+
+          setMicrographsVisible: (updates) => set((state) => {
+            if (!state.project || updates.size === 0) return state;
+            let newProject = state.project;
+            for (const [id, visible] of updates) {
+              newProject = updateMicrograph(newProject, id, (micrograph) => {
+                micrograph.isMicroVisible = visible;
+              });
+            }
+            return { project: newProject, isDirty: true, ...projectIndexes(newProject) };
+          }),
 
           setShowRulers: (show) => set({ showRulers: show }),
 
