@@ -2,13 +2,19 @@
  * "Same area as parent" (src/utils/copySizePlacement.ts; Peter, 2026-10-29):
  * a child covers its parent exactly at offset 0, rotation 0, with the scale
  * that makes its drawn width the parent's width; only for matching
- * proportions and a parent with a scale.
+ * proportions and a parent with a scale. "Place unplaced children like...":
+ * the placed children that can be the model, and why a child cannot copy it.
  *
  *   npm run test:parent-area
  */
 
-import { computeParentAreaPlacement, parentAreaUnavailableReason } from '@/utils/copySizePlacement';
-import type { MicrographMetadata } from '@/types/project-types';
+import {
+  computeParentAreaPlacement,
+  copyPlacementUnavailableReason,
+  listPlacedChildren,
+  parentAreaUnavailableReason,
+} from '@/utils/copySizePlacement';
+import type { MicrographMetadata, ProjectMetadata } from '@/types/project-types';
 
 let failures = 0;
 let passes = 0;
@@ -43,6 +49,20 @@ eq('no placement when proportions differ', computeParentAreaPlacement(bse, 1000,
 eq('parent without scale', parentAreaUnavailableReason({ ...bse, scalePixelsPerCentimeter: undefined }, 768, 512), 'The parent micrograph has no scale yet.');
 eq('no parent', parentAreaUnavailableReason(null, 768, 512), 'This micrograph has no parent.');
 eq('unknown child size', parentAreaUnavailableReason(bse, 0, 512), 'The image sizes are not known.');
+
+// Place unplaced children like...
+const rect = { id: 'si', name: 'Map Si', parentID: 'bse', imageWidth: 800, imageHeight: 600, offsetInParent: { X: 1, Y: 2 }, scalePixelsPerCentimeter: 8 } as MicrographMetadata;
+const pointPlaced = { id: 'pt', name: 'Spot photo', parentID: 'bse', imageWidth: 100, imageHeight: 900, pointInParent: { X: 5, Y: 5 } } as MicrographMetadata;
+const unplacedChild = { id: 'al', name: 'Map Al', parentID: 'bse', imageWidth: 800, imageHeight: 600 } as MicrographMetadata;
+const elsewhere = { id: 'x', name: 'Other', parentID: 'other', imageWidth: 800, imageHeight: 600, offsetInParent: { X: 0, Y: 0 } } as MicrographMetadata;
+const project = { id: 'p', datasets: [{ samples: [{ micrographs: [bse, rect, pointPlaced, unplacedChild, elsewhere] }] }] } as unknown as ProjectMetadata;
+eq('placed children of the parent only', listPlacedChildren(project, 'bse').map((c) => [c.id, c.placementType]), [['si', 'rectangle'], ['pt', 'point']]);
+eq('no parent: none', listPlacedChildren(project, null), []);
+eq('same proportions: can copy', copyPlacementUnavailableReason(rect, 400, 300), null);
+eq('other proportions', copyPlacementUnavailableReason(rect, 500, 500), "Its proportions (500 × 500) differ from Map Si's (800 × 600).");
+eq('a point placement: any proportions', copyPlacementUnavailableReason(pointPlaced, 500, 500), null);
+eq('no model', copyPlacementUnavailableReason(null, 500, 500), 'Choose a micrograph to copy.');
+eq('model not placed', copyPlacementUnavailableReason(unplacedChild, 800, 600), 'Map Al has no placement to copy.');
 
 console.log(`\n${passes} passed, ${failures} failed`);
 process.exit(failures ? 1 : 0);

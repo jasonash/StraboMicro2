@@ -78,7 +78,7 @@ test('Place unplaced children on its full area places the maps with the parent\'
     .locator('button:has([data-testid="MoreVertIcon"])').first().click();
   await ana.page.getByRole('menuitem', { name: 'Place unplaced children on its full area...' }).click();
   const dialog = ana.page.getByRole('dialog', { name: 'Place on the Full Area of Overview' });
-  await expect(dialog.getByTestId('parent-area-row')).toHaveCount(3);
+  await expect(dialog.getByTestId('place-unplaced-row')).toHaveCount(3);
   await expect(dialog.getByRole('checkbox', { name: 'Square map' })).toBeDisabled();
   await expect(dialog.getByText(/Its proportions \(500 × 500\) differ from the parent's \(1600 × 1200\)/)).toBeVisible();
 
@@ -96,7 +96,7 @@ test('Place unplaced children on its full area places the maps with the parent\'
   await ana.page.getByText('Overview (Reference)', { exact: true }).locator('xpath=../..')
     .locator('button:has([data-testid="MoreVertIcon"])').first().click();
   await ana.page.getByRole('menuitem', { name: 'Place unplaced children on its full area...' }).click();
-  await expect(dialog.getByTestId('parent-area-row')).toHaveCount(2);
+  await expect(dialog.getByTestId('place-unplaced-row')).toHaveCount(2);
   await dialog.getByRole('button', { name: 'Place 1 micrograph' }).click();
   await expect(dialog).toBeHidden();
   await expect.poll(async () => (await placed(ana, 'Map Ca'))?.scale ?? null).toBe(40000);

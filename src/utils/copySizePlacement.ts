@@ -335,3 +335,49 @@ export function computeParentAreaPlacement(
     scaleY: undefined,
   };
 }
+
+/**
+ * "Place unplaced children like..." (Peter, 2026-10-29: a stack of EDS maps of
+ * one area): the placed children of a parent, any one of which can be the
+ * model whose placement the unplaced children copy (the same rules as "Copy
+ * location and scale from an existing micrograph").
+ */
+export function listPlacedChildren(
+  project: ProjectMetadata | null | undefined,
+  parentMicrographId: string | null | undefined
+): CopyPlacementCandidate[] {
+  if (!project || !parentMicrographId) return [];
+  const placed: CopyPlacementCandidate[] = [];
+  for (const dataset of project.datasets || []) {
+    for (const sample of dataset.samples || []) {
+      for (const micro of sample.micrographs || []) {
+        if (micro.parentID !== parentMicrographId) continue;
+        const width = pixelWidth(micro);
+        const height = pixelHeight(micro);
+        const placementType = getSourcePlacementType(micro);
+        if (!width || !height || !placementType) continue;
+        placed.push({ id: micro.id, name: micro.name || 'Unnamed Micrograph', width, height, placementType, sameDimensions: false });
+      }
+    }
+  }
+  return placed;
+}
+
+/** Why a child of this pixel size cannot copy the model's placement, or null */
+export function copyPlacementUnavailableReason(
+  model: MicrographMetadata | null | undefined,
+  width: number | null | undefined,
+  height: number | null | undefined
+): string | null {
+  if (!model) return 'Choose a micrograph to copy.';
+  const modelWidth = pixelWidth(model);
+  const modelHeight = pixelHeight(model);
+  const placementType = getSourcePlacementType(model);
+  if (!placementType || !modelWidth || !modelHeight) return `${model.name || 'That micrograph'} has no placement to copy.`;
+  if (!width || !height) return 'The image size is not known.';
+  // A point placement has no footprint, so any image can copy it
+  if (placementType !== 'point' && !aspectRatiosMatch(width, height, modelWidth, modelHeight)) {
+    return `Its proportions (${width} × ${height}) differ from ${model.name || 'the model'}'s (${modelWidth} × ${modelHeight}).`;
+  }
+  return null;
+}

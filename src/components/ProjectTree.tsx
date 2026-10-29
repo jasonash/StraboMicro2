@@ -78,7 +78,8 @@ import { AddSiblingDialog } from './dialogs/AddSiblingDialog';
 import { findMicrographById } from '@/store/helpers';
 import { hiddenSibling, pairPartner } from '@/utils/siblingPair';
 import { partnerRole, polarizedRole } from '@/utils/polarization';
-import { PlaceOnParentAreaDialog } from './dialogs/PlaceOnParentAreaDialog';
+import { PlaceUnplacedChildrenDialog, type PlaceChildrenHow } from './dialogs/PlaceUnplacedChildrenDialog';
+import { listPlacedChildren } from '@/utils/copySizePlacement';
 import { cannotPlaceChildrenReason, hasLocation, unplacedChildren } from '@/utils/micrographLocation';
 import type { DatasetMetadata, SampleMetadata, MicrographMetadata } from '@/types/project-types';
 import { EditingScope, PresenceMarks } from './Presence';
@@ -372,8 +373,8 @@ export function ProjectTree() {
   const [placeChildrenParentId, setPlaceChildrenParentId] = useState<string | null>(null);
   // Delete unplaced children: the parent whose unplaced children are deleted (Peter, 2026-10-29)
   const [deleteUnplacedParentId, setDeleteUnplacedParentId] = useState<string | null>(null);
-  // Place unplaced children on its full area: the parent (Peter, 2026-10-29)
-  const [parentAreaParentId, setParentAreaParentId] = useState<string | null>(null);
+  // Place unplaced children on its full area / like a placed child: the parent and how (Peter, 2026-10-29)
+  const [placeUnplaced, setPlaceUnplaced] = useState<{ parentId: string; how: PlaceChildrenHow } | null>(null);
   // Clicking an unplaced child offers placing all its siblings; "Just this one" stops the
   // question for that parent until another project is opened
   const [placeChildrenOffer, setPlaceChildrenOffer] = useState<{ childId: string; parentId: string } | null>(null);
@@ -1403,11 +1404,22 @@ export function ProjectTree() {
             <MenuItem
               disabled={!micrograph.scalePixelsPerCentimeter || !unplacedChildren(project, micrograph.id).every((child) => may('micrograph', child.id))}
               onClick={() => {
-                setParentAreaParentId(micrograph.id);
+                setPlaceUnplaced({ parentId: micrograph.id, how: 'parent-area' });
                 setMicrographOptionsAnchor({ ...micrographOptionsAnchor, [micrograph.id]: null });
               }}
             >
               Place unplaced children on its full area...
+            </MenuItem>
+          )}
+          {unplacedChildren(project, micrograph.id).length > 0 && (
+            <MenuItem
+              disabled={listPlacedChildren(project, micrograph.id).length === 0 || !unplacedChildren(project, micrograph.id).every((child) => may('micrograph', child.id))}
+              onClick={() => {
+                setPlaceUnplaced({ parentId: micrograph.id, how: 'like-sibling' });
+                setMicrographOptionsAnchor({ ...micrographOptionsAnchor, [micrograph.id]: null });
+              }}
+            >
+              Place unplaced children like...
             </MenuItem>
           )}
           {unplacedChildren(project, micrograph.id).length > 0 && (
@@ -2238,11 +2250,12 @@ export function ProjectTree() {
         }}
       />
 
-      {/* Place unplaced children on its full area */}
-      <PlaceOnParentAreaDialog
-        open={parentAreaParentId !== null}
-        parentMicrographId={parentAreaParentId}
-        onClose={() => setParentAreaParentId(null)}
+      {/* Place unplaced children on its full area / like a placed child */}
+      <PlaceUnplacedChildrenDialog
+        open={placeUnplaced !== null}
+        how={placeUnplaced?.how ?? 'parent-area'}
+        parentMicrographId={placeUnplaced?.parentId ?? null}
+        onClose={() => setPlaceUnplaced(null)}
       />
 
       {/* Delete unplaced children confirmation */}
@@ -2370,7 +2383,10 @@ export function ProjectTree() {
         }}
         sampleId={batchImportSampleId}
         parentMicrographId={batchImportParentMicrographId}
-        onPlaceChildren={setPlaceChildrenParentId}
+        onPlaceChildren={(parentId, how) => {
+          if (how === 'auto') setPlaceChildrenParentId(parentId);
+          else setPlaceUnplaced({ parentId, how });
+        }}
       />
 
       {/* Set Scale Dialog (for batch-imported reference micrographs) */}
