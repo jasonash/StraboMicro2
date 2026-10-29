@@ -110,7 +110,8 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
     if (!mineralName) return null;
     const abbrevMap = getMineralAbbrevMap();
     const abbrev = abbrevMap.get(mineralName.toLowerCase());
-    return abbrev || mineralName.slice(0, 3);
+    // A custom name (not in the mineral database, e.g. "lithic fragments") has no abbreviation: show it whole
+    return abbrev || mineralName;
   }, [spotLabelMode, spot.name, spot.mineralogy?.minerals]);
 
   const isEditing = editingSpotId === spot.id;

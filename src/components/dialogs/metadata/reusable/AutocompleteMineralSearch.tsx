@@ -3,6 +3,10 @@
  *
  * Provides autocomplete search functionality for minerals from the database.
  * Users can search for minerals by name and select them from suggestions.
+ * A name that is not in the database (e.g. "lithic fragments") can be used
+ * too: 'Use "..."' ends the list when the typed text matches no mineral, and
+ * custom names already used in the project are offered again
+ * (src/utils/customMinerals.ts; Peter, 2026-10-29).
  */
 
 import { useMemo, useState } from 'react';
@@ -13,7 +17,9 @@ import {
   Box,
   AutocompleteRenderInputParams,
 } from '@mui/material';
-import { Mineral, searchMinerals } from '@/utils/mineralData';
+import { findMineral, searchMinerals } from '@/utils/mineralData';
+import { matchCustomNames, projectMineralNames, typedNameToOffer } from '@/utils/customMinerals';
+import { useAppStore } from '@/store';
 
 interface AutocompleteMineralSearchProps {
   selectedMinerals: string[]; // Array of mineral names
@@ -22,6 +28,22 @@ interface AutocompleteMineralSearchProps {
   placeholder?: string;
   multiple?: boolean; // Allow multiple selection (default: true)
   helperText?: string;
+}
+
+/** A database mineral, a custom name, or the typed text offered as 'Use "..."' */
+interface MineralOption {
+  name: string;
+  abbrev: string | null;
+  custom: boolean;
+  typed: boolean;
+}
+
+const NOT_IN_LIST = 'not in mineral list';
+
+/** The option for a saved name: keeps the name as saved (legacy lowercase names too) */
+function optionForName(name: string): MineralOption {
+  const mineral = findMineral(name);
+  return { name, abbrev: mineral?.abbrev ?? null, custom: !mineral, typed: false };
 }
 
 export function AutocompleteMineralSearch({
@@ -33,34 +55,41 @@ export function AutocompleteMineralSearch({
   helperText,
 }: AutocompleteMineralSearchProps) {
   const [inputValue, setInputValue] = useState('');
-  const [options, setOptions] = useState<Mineral[]>(() => searchMinerals(''));
+  const project = useAppStore((state) => state.project);
 
-  // Update options when input changes
-  const handleInputChange = (_event: React.SyntheticEvent, value: string) => {
-    setInputValue(value);
-    setOptions(searchMinerals(value));
-  };
+  // Custom names used anywhere in the project, offered again when typing
+  const customNames = useMemo(
+    () => matchCustomNames('', projectMineralNames(project), (n) => !!findMineral(n)),
+    [project]
+  );
+
+  const options = useMemo((): MineralOption[] => {
+    const fromDatabase = searchMinerals(inputValue).map((m): MineralOption => (
+      { name: m.mineralname, abbrev: m.abbrev, custom: false, typed: false }
+    ));
+    const fromProject = matchCustomNames(inputValue, customNames, () => false).map(optionForName);
+    const offered = [...fromProject, ...fromDatabase];
+    const typed = typedNameToOffer(inputValue, offered.map((o) => o.name));
+    // With nothing typed the common minerals come first, then the project's custom names
+    const list = inputValue.trim() ? offered : [...fromDatabase, ...fromProject];
+    return typed ? [...list, { name: typed, abbrev: null, custom: true, typed: true }] : list;
+  }, [inputValue, customNames]);
 
   // Handle selection change
-  const handleChange = (_event: React.SyntheticEvent, value: Mineral[] | Mineral | null) => {
-    if (multiple) {
-      const minerals = (value as Mineral[]) || [];
-      onChange(minerals.map(m => m.mineralname));
+  const handleChange = (_event: React.SyntheticEvent, value: MineralOption[] | MineralOption | null) => {
+    if (Array.isArray(value)) {
+      onChange(value.map(m => m.name));
     } else {
-      const mineral = value as Mineral | null;
-      onChange(mineral ? [mineral.mineralname] : []);
+      onChange(value ? [value.name] : []);
     }
   };
 
-  // Get Mineral objects from selected mineral names
-  // Search in all minerals (not just current options) to prevent value loss during typing.
+  // Options for the selected mineral names (database minerals and custom names).
   // Memoized: a new value array on every render made the Autocomplete (multiple) take it
   // as a new selection and clear the typed text at each keystroke (Fabric Phases; Peter,
   // 2026-10-29)
   const selectedMineralObjects = useMemo(
-    () => selectedMinerals
-      .map(name => searchMinerals(name).find(m => m.mineralname === name))
-      .filter((m): m is Mineral => m !== undefined),
+    () => selectedMinerals.filter((name) => name.trim() !== '').map(optionForName),
     [selectedMinerals]
   );
 
@@ -71,9 +100,9 @@ export function AutocompleteMineralSearch({
       value={multiple ? selectedMineralObjects : (selectedMineralObjects[0] || null)}
       onChange={handleChange}
       inputValue={inputValue}
-      onInputChange={handleInputChange}
-      getOptionLabel={(option) => option.mineralname}
-      isOptionEqualToValue={(option, value) => option.mineralname === value.mineralname}
+      onInputChange={(_event, value) => setInputValue(value)}
+      getOptionLabel={(option) => option.name}
+      isOptionEqualToValue={(option, value) => option.name.toLowerCase() === value.name.toLowerCase()}
       filterOptions={(x) => x} // We handle filtering ourselves
       renderInput={(params: AutocompleteRenderInputParams) => (
         <TextField
@@ -89,19 +118,20 @@ export function AutocompleteMineralSearch({
         Array.isArray(value)
           ? value.map((option, index) => (
               <Chip
-                label={`${option.mineralname} (${option.abbrev})`}
+                label={option.custom ? `${option.name} (${NOT_IN_LIST})` : `${option.name} (${option.abbrev})`}
+                variant={option.custom ? 'outlined' : 'filled'}
                 {...getItemProps({ index })}
-                key={option.pkey}
+                key={option.name}
               />
             ))
           : null
       : undefined}
       renderOption={(props, option) => (
-        <Box component="li" {...props} key={option.pkey}>
+        <Box component="li" {...props} key={`${option.typed ? 'typed' : 'name'}:${option.name}`}>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', width: '100%' }}>
-            <span>{option.mineralname}</span>
-            <span style={{ color: '#666', fontSize: '0.9em', marginLeft: '8px' }}>
-              {option.abbrev}
+            <span>{option.typed ? `Use "${option.name}"` : option.name}</span>
+            <span style={{ color: '#666', fontSize: '0.9em', marginLeft: '8px', fontStyle: option.custom ? 'italic' : undefined }}>
+              {option.custom ? NOT_IN_LIST : option.abbrev}
             </span>
           </Box>
         </Box>
