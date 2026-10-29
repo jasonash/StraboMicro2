@@ -7,6 +7,10 @@
  * Spot, and a chosen preset sets the spot color and opacity. Presets are then
  * merged into the spot (additive, same rules as Quick Edit) and the
  * appearance is put back on top, so it wins over the presets' own.
+ *
+ * Tags (Peter, 2026-10-29): New Spot can tag the spot as it is made
+ * (spot.tags, tag ids); the next New Spot in the same project starts with the
+ * tags chosen last, for this session only.
  */
 
 import { v4 as uuidv4 } from 'uuid';
@@ -57,6 +61,21 @@ export function rememberSpotAppearance(appearance: SpotAppearance): void {
   }
 }
 
+/** Tags chosen in the last New Spot, per project id (this session only) */
+const lastTagsByProject = new Map<string, string[]>();
+
+/** The tags the next New Spot starts with: the last ones chosen in this project that still exist */
+export function lastUsedSpotTags(projectId: string | null | undefined, existingTagIds: readonly string[]): string[] {
+  if (!projectId) return [];
+  const existing = new Set(existingTagIds);
+  return (lastTagsByProject.get(projectId) ?? []).filter((id) => existing.has(id));
+}
+
+/** Remember the tags New Spot saved with, for the next spot in this project */
+export function rememberSpotTags(projectId: string | null | undefined, tagIds: readonly string[]): void {
+  if (projectId) lastTagsByProject.set(projectId, [...tagIds]);
+}
+
 /** The appearance after choosing these presets, in order (each sets spot color and opacity when it has them) */
 export function withPresetAppearance(
   appearance: SpotAppearance,
@@ -98,6 +117,8 @@ export interface NewSpotInput {
   appearance: SpotAppearance;
   /** Presets to merge, in order (already looked up; missing ones left out) */
   presets?: ReadonlyArray<{ id: string; data: PresetData }>;
+  /** Tag ids to put the spot in */
+  tagIds?: readonly string[];
   now?: Date;
 }
 
@@ -130,6 +151,9 @@ export function buildNewSpot(input: NewSpotInput): Spot {
     spot.color = hexToLegacyColor(appearance.spotColor);
     spot.opacity = appearance.opacity;
   }
+
+  const tagIds = [...new Set(input.tagIds ?? [])];
+  if (tagIds.length > 0) spot.tags = tagIds;
 
   return spot;
 }

@@ -9,6 +9,8 @@
 
 import {
   buildNewSpot,
+  lastUsedSpotTags,
+  rememberSpotTags,
   geometryToLegacy,
   lastUsedSpotAppearance,
   rememberSpotAppearance,
@@ -101,6 +103,23 @@ const d = buildNewSpot({ name: 'two', geometry: point, appearance: white, preset
 eq('two presets: minerals appended', d.mineralogy?.minerals?.length, 2);
 eq('two presets: ids in order', d.appliedPresetIds, ['p1', 'p2']);
 check('preset data not shared with the spot', d.mineralogy?.minerals?.[0] !== olivine.mineralogy?.minerals?.[0]);
+
+// Tags (Peter, 2026-10-29)
+eq('no tags: no tags field', a.tags, undefined);
+const t = buildNewSpot({ name: 'tagged', geometry: point, appearance: white, tagIds: ['t1', 't2', 't1'] });
+eq('tag ids on the spot, once each', t.tags, ['t1', 't2']);
+eq('empty tag list: no tags field', buildNewSpot({ name: 'x', geometry: point, appearance: white, tagIds: [] }).tags, undefined);
+const e = buildNewSpot({ name: 'both', geometry: point, appearance: white, presets: [{ id: 'p-ol', data: olivine }], tagIds: ['t1'] });
+eq('tags with a preset', [e.tags, e.appliedPresetIds], [['t1'], ['p-ol']]);
+
+eq('nothing remembered yet', lastUsedSpotTags('proj-a', ['t1']), []);
+rememberSpotTags('proj-a', ['t1', 't2']);
+eq('last tags of the project', lastUsedSpotTags('proj-a', ['t1', 't2', 't3']), ['t1', 't2']);
+eq('a deleted tag is left out', lastUsedSpotTags('proj-a', ['t2']), ['t2']);
+eq('another project starts empty', lastUsedSpotTags('proj-b', ['t1', 't2']), []);
+eq('no project', lastUsedSpotTags(null, ['t1']), []);
+rememberSpotTags('proj-a', []);
+eq('cleared tags are remembered as none', lastUsedSpotTags('proj-a', ['t1', 't2']), []);
 
 console.log(`\n${passes} passed, ${failures} failed`);
 process.exit(failures ? 1 : 0);

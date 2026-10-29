@@ -2,7 +2,7 @@
  * NewSpotDialog Component
  *
  * Modal dialog for creating new spots (point/line/polygon annotations).
- * Collects spot metadata including name, notes, colors, opacity, and optional
+ * Collects spot metadata including name, notes, tags, colors, opacity, and optional
  * copy-from-existing functionality.
  */
 
@@ -20,17 +20,22 @@ import {
   Typography,
   Slider,
   Stack,
+  Autocomplete,
+  Chip,
 } from '@mui/material';
 import { MuiColorInput } from 'mui-color-input';
-import { Spot, Geometry } from '@/types/project-types';
+import { Spot, Geometry, Tag } from '@/types/project-types';
 import { useAppStore } from '@/store';
 import type { PresetWithScope } from '@/types/preset-types';
 import {
   buildNewSpot,
   lastUsedSpotAppearance,
+  lastUsedSpotTags,
   rememberSpotAppearance,
+  rememberSpotTags,
   withPresetAppearance,
 } from '@/utils/newSpot';
+import { tagSwatchStyle } from '@/utils/tagSwatch';
 import { PresetSelector } from '../PresetSelector';
 
 interface NewSpotDialogProps {
@@ -56,6 +61,9 @@ export const NewSpotDialog: React.FC<NewSpotDialogProps> = ({
   initialPresetIds,
 }) => {
   const getPresetById = useAppStore((state) => state.getPresetById);
+  const projectId = useAppStore((state) => state.project?.id);
+  const projectTags = useAppStore((state) => state.project?.tags);
+  const tags: Tag[] = projectTags ?? [];
 
   // Form state
   const [name, setName] = useState('');
@@ -65,6 +73,8 @@ export const NewSpotDialog: React.FC<NewSpotDialogProps> = ({
   const [spotColor, setSpotColor] = useState(() => lastUsedSpotAppearance().spotColor);
   const [opacity, setOpacity] = useState(() => lastUsedSpotAppearance().opacity);
   const [selectedPresetIds, setSelectedPresetIds] = useState<string[]>([]);
+  // Tags the spot goes in (Peter, 2026-10-29); starts with the last ones chosen in this project
+  const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
 
   // Selecting a preset prefills the appearance controls (which the user can
   // still override — whatever is in the controls at save time wins)
@@ -113,6 +123,7 @@ export const NewSpotDialog: React.FC<NewSpotDialogProps> = ({
       setSpotColor(start.spotColor);
       setOpacity(start.opacity);
       setSelectedPresetIds(presets.map((p) => p.id));
+      setSelectedTagIds(lastUsedSpotTags(projectId, tags.map((t) => t.id)));
       setEnableCopy(false);
       setSelectedSpotToCopy(null);
       setCopyFields({
@@ -149,7 +160,9 @@ export const NewSpotDialog: React.FC<NewSpotDialogProps> = ({
     const presets = selectedPresetIds
       .map((id) => getPresetById(id))
       .filter((preset): preset is PresetWithScope => preset !== null);
-    const newSpot = buildNewSpot({ name, notes, geometry, appearance, presets });
+    const tagIds = selectedTagIds.filter((id) => tags.some((t) => t.id === id));
+    rememberSpotTags(projectId, tagIds);
+    const newSpot = buildNewSpot({ name, notes, geometry, appearance, presets, tagIds });
 
     // If copying from existing spot, copy selected fields
     if (enableCopy && selectedSpotToCopy) {
@@ -195,7 +208,7 @@ export const NewSpotDialog: React.FC<NewSpotDialogProps> = ({
           newSpot.links = sourceSpot.links;
         }
         if (copyFields.allData || copyFields.tags) {
-          newSpot.tags = sourceSpot.tags;
+          newSpot.tags = [...new Set([...(newSpot.tags ?? []), ...(sourceSpot.tags ?? [])])];
         }
       }
     }
@@ -261,6 +274,42 @@ export const NewSpotDialog: React.FC<NewSpotDialogProps> = ({
             multiline
             rows={3}
             fullWidth
+          />
+
+          {/* Tags */}
+          <Autocomplete
+            multiple
+            options={tags}
+            value={tags.filter((t) => selectedTagIds.includes(t.id))}
+            onChange={(_event, value) => setSelectedTagIds(value.map((t) => t.id))}
+            getOptionLabel={(tag) => tag.name}
+            isOptionEqualToValue={(option, value) => option.id === value.id}
+            noOptionsText={tags.length === 0 ? 'No tags yet: create them in the Tags tab' : 'No matching tags'}
+            renderOption={(props, tag) => (
+              <Box component="li" {...props} key={tag.id} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Box sx={tagSwatchStyle(tag, 12)} />
+                {tag.name}
+              </Box>
+            )}
+            renderValue={(value, getItemProps) =>
+              value.map((tag, index) => (
+                <Chip
+                  label={tag.name}
+                  size="small"
+                  icon={<Box sx={{ ...tagSwatchStyle(tag, 12), ml: 1 }} />}
+                  {...getItemProps({ index })}
+                  key={tag.id}
+                />
+              ))
+            }
+            renderInput={(params) => (
+              <TextField
+                {...params}
+                label="Tags"
+                placeholder={selectedTagIds.length === 0 ? 'Add tags...' : undefined}
+                helperText={tags.length === 0 ? 'No tags yet: create them in the Tags tab' : undefined}
+              />
+            )}
           />
 
           {/* Quick Spot Presets (hidden when none exist) */}

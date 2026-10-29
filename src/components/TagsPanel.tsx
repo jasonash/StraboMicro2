@@ -34,6 +34,7 @@ import { useAppStore } from '@/store';
 import { CreateTagDialog } from './dialogs/CreateTagDialog';
 import { AddSpotsToTagDialog } from './dialogs/AddSpotsToTagDialog';
 import type { Tag, Spot, ProjectMetadata } from '@/types/project-types';
+import { tagSwatchStyle } from '@/utils/tagSwatch';
 
 // ============================================================================
 // TAG TYPE GROUPINGS (commented out for future use)
@@ -150,24 +151,6 @@ function TagItem({
     }
   };
 
-  // Calculate preview circle style
-  const getPreviewStyle = () => {
-    const transparency = tag.transparency ?? 100;
-    const alphaHex = Math.round((transparency / 100) * 255)
-      .toString(16)
-      .padStart(2, '0');
-    const size = Math.min(tag.tagSize ?? 10, 16); // Cap at 16px for list display
-
-    return {
-      width: size,
-      height: size,
-      borderRadius: '50%',
-      backgroundColor: `${tag.fillColor || '#FF0000'}${alphaHex}`,
-      border: `1px solid ${tag.lineColor || '#000000'}`,
-      flexShrink: 0,
-    };
-  };
-
   return (
     <Box sx={{ mb: 0.5 }}>
       {/* Tag Header */}
@@ -189,7 +172,7 @@ function TagItem({
         </IconButton>
 
         {/* Color preview circle */}
-        <Box sx={getPreviewStyle()} />
+        <Box sx={tagSwatchStyle(tag)} />
 
         <Typography variant="body2" sx={{ flex: 1, ml: 1, fontWeight: 500 }}>
           {tag.name}
