@@ -50,6 +50,7 @@ import { useLatest } from '@/hooks/useLatest';
 import { autoSpotDraft, buildNewSpot, geometryToLegacy } from '@/utils/newSpot';
 import { releaseImage, isImageUsable } from '@/utils/imageUtils';
 import { spotFilterLook } from '@/utils/spotDataSections';
+import { spotDrawOrder, spotsAt } from '@/utils/spotStacking';
 import './TiledViewer.css';
 import { EditingScope } from './Presence';
 import { useGrainSpotTool, type GrainPrompt } from '@/hooks/useGrainSpotTool';
@@ -201,6 +202,8 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
       null
     );
     const [isContextMenuRecursiveSpot, setIsContextMenuRecursiveSpot] = useState(false);
+    // Every spot under the right-click, top first (Select Spot Here when more than one)
+    const [contextMenuSpotsHere, setContextMenuSpotsHere] = useState<Spot[]>([]);
 
     // Get project and active micrograph from store
     const project = useAppStore((state) => state.project);
@@ -1113,8 +1116,12 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
      * Calculate which spots are visible in the current viewport
      * Uses bounding box intersection - if any part of spot overlaps viewport, render it
      */
+    // Drawing order: larger polygons under smaller ones, lines and points on top (src/utils/spotStacking.ts).
+    // Sorted once per spot change, not per pan/zoom; visibleSpots keeps this order
+    const orderedSpots = useMemo(() => spotDrawOrder(effectiveSpots), [effectiveSpots]);
+
     const visibleSpots = useMemo(() => {
-      const spots = effectiveSpots;
+      const spots = orderedSpots;
       if (!spots || spots.length === 0) return [];
 
       // Get viewport bounds in image space
@@ -1180,7 +1187,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
 
         return intersectsX && intersectsY;
       });
-    }, [effectiveSpots, position, zoom, stageSize, showArchivedSpots, spotFilter]);
+    }, [orderedSpots, position, zoom, stageSize, showArchivedSpots, spotFilter]);
 
     /**
      * Get sketch layers for the active micrograph
@@ -2689,6 +2696,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                             setContextMenuSpot(spot);
                             setContextMenuPosition({ x, y });
                             setIsContextMenuRecursiveSpot(true);
+                            setContextMenuSpotsHere([]);
                           }}
                         />
                       ))}
@@ -2724,6 +2732,11 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                         setContextMenuSpot(spot);
                         setContextMenuPosition({ x, y });
                         setIsContextMenuRecursiveSpot(false);
+                        // The spots under the cursor (image pixels; 6 screen px around points and lines)
+                        const pointer = stageRef.current?.getPointerPosition();
+                        setContextMenuSpotsHere(pointer
+                          ? spotsAt(visibleSpots, (pointer.x - position.x) / zoom, (pointer.y - position.y) / zoom, 6 / zoom)
+                          : []);
                       }}
                       renderLabelsOnly={false}
                     />
@@ -2867,6 +2880,14 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
             setContextMenuSpot(null);
             setContextMenuPosition(null);
             setIsContextMenuRecursiveSpot(false);
+            setContextMenuSpotsHere([]);
+          }}
+          spotsHere={contextMenuSpotsHere}
+          activeSpotId={activeSpotId}
+          onSelectSpotHere={async (spot) => {
+            clearSpotSelection();
+            const didNavigate = await selectActiveSpot(spot.id);
+            if (didNavigate) setActiveTool(null);
           }}
           onEditGeometry={handleEditGeometry}
           onEditMetadata={handleEditMetadata}

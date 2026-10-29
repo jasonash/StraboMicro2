@@ -22,6 +22,7 @@
     "test:spot-links": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/spotLinks.test.mts",
     "test:spot-data-sections": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/spotDataSections.test.mts",
     "test:custom-minerals": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/customMinerals.test.mts",
+    "test:spot-stacking": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/spotStacking.test.mts",
     "test:grain-outline": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/grainOutline.test.mts",
     "test:auto-place": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/autoPlace.test.mts",
     "test:affine-scale": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/affineScale.test.mts",
