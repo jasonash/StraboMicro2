@@ -54,6 +54,7 @@ interface SpotRendererProps {
   onContextMenu?: (spot: Spot, x: number, y: number) => void;
   renderLabelsOnly?: boolean; // If true, only render labels (for layering)
   dimmed?: boolean; // Not matching View > Filter Spots... (drawn faint, like spots outside a Quick Edit session)
+  fromParent?: boolean; // View > Show Parent Spots: a spot of a micrograph above this one (faded, always dashed)
 }
 
 export const SpotRenderer: React.FC<SpotRendererProps> = ({
@@ -64,6 +65,7 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
   onContextMenu,
   renderLabelsOnly = false,
   dimmed = false,
+  fromParent = false,
 }) => {
   const [isHovered, setIsHovered] = useState(false);
   const editingSpotId = useAppStore((state) => state.editingSpotId);
@@ -176,6 +178,10 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
   if (dimmed && !isSelected) {
     opacity = Math.min(opacity, 0.2);
     fillOpacity = Math.min(fillOpacity, 0.1);
+  }
+  if (fromParent) {
+    opacity = Math.min(opacity, 0.6);
+    fillOpacity = Math.min(fillOpacity, 0.12);
   }
 
   // Don't show hover effect when spot is selected
@@ -367,7 +373,7 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
           points={points}
           stroke={isSelected ? 'transparent' : strokeColor}
           strokeWidth={isSelected ? 0 : strokeWidth}
-          dash={isClassified ? undefined : [8 / scale, 4 / scale]}
+          dash={isClassified && !fromParent ? undefined : [8 / scale, 4 / scale]}
           opacity={opacity}
           listening={true}
           lineCap="round"
@@ -448,7 +454,7 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
           points={points}
           stroke={isSelected ? 'transparent' : strokeColor}
           strokeWidth={isSelected ? 0 : strokeWidth}
-          dash={isClassified ? undefined : [8 / scale, 4 / scale]}
+          dash={isClassified && !fromParent ? undefined : [8 / scale, 4 / scale]}
           fill={fillOpacity === 0 ? 'transparent' : color}
           opacity={opacity}
           closed={true}

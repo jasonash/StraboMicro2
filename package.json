@@ -24,6 +24,7 @@
     "test:custom-minerals": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/customMinerals.test.mts",
     "test:spot-stacking": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/spotStacking.test.mts",
     "test:micrograph-visibility": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/micrographVisibility.test.mts",
+    "test:parent-spots": "rolldown -c tests/sync/rolldown.test.config.mjs && node node_modules/.cache/sync-tests/parentSpots.test.mjs",
     "test:parent-area": "rolldown -c tests/sync/rolldown.test.config.mjs && node node_modules/.cache/sync-tests/parentArea.test.mjs",
     "test:grain-outline": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/grainOutline.test.mts",
     "test:auto-place": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/autoPlace.test.mts",

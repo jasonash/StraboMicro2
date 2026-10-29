@@ -1033,6 +1033,12 @@ function App() {
       window.api?.notifyViewPrefsChanged({ showRecursiveSpots: checked });
     }));
 
+    // View: Show Parent Spots menu item
+    unsubscribers.push(window.api.onToggleParentSpots((checked) => {
+      useAppStore.getState().setShowParentSpots(checked);
+      window.api?.notifyViewPrefsChanged({ showParentSpots: checked });
+    }));
+
     // View: Toggle Archived Spots menu item
     unsubscribers.push(window.api.onToggleArchivedSpots((checked) => {
       setShowArchivedSpots(checked);

@@ -1,4 +1,4 @@
-// Bundles the TypeScript tests that import through the @ alias for Node: npm run test:undo-history, test:geometry-preview, test:composite-refresh, test:sync-chip, test:member-cleanup, test:permissions, test:activity-feed, test:parked-review, test:presence, test:remote-rows, test:new-spot, test:parent-area, test:store-indexes, test:decision-text
+// Bundles the TypeScript tests that import through the @ alias for Node: npm run test:undo-history, test:geometry-preview, test:composite-refresh, test:sync-chip, test:member-cleanup, test:permissions, test:activity-feed, test:parked-review, test:presence, test:remote-rows, test:new-spot, test:parent-area, test:parent-spots, test:store-indexes, test:decision-text
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -11,4 +11,4 @@ const bundle = (name, dir = 'tests/sync') => ({
   output: { file: path.join(root, `node_modules/.cache/sync-tests/${name}.test.mjs`), format: 'esm' },
 });
 
-export default [bundle('undoHistory'), bundle('geometryPreview'), bundle('compositeRefresh'), bundle('syncChipState'), bundle('memberCleanup'), bundle('permissions'), bundle('activityFeed'), bundle('parkedReview'), bundle('presence'), bundle('remoteProjectRow'), bundle('syncDecisionText'), bundle('newSpot', 'tests'), bundle('parentArea', 'tests'), { ...bundle('storeIndexes', 'tests'), transform: { define: { 'import.meta.env': '{"DEV":false,"PROD":true,"MODE":"test"}' } } }];
+export default [bundle('undoHistory'), bundle('geometryPreview'), bundle('compositeRefresh'), bundle('syncChipState'), bundle('memberCleanup'), bundle('permissions'), bundle('activityFeed'), bundle('parkedReview'), bundle('presence'), bundle('remoteProjectRow'), bundle('syncDecisionText'), bundle('newSpot', 'tests'), bundle('parentArea', 'tests'), bundle('parentSpots', 'tests'), { ...bundle('storeIndexes', 'tests'), transform: { define: { 'import.meta.env': '{"DEV":false,"PROD":true,"MODE":"test"}' } } }];

@@ -601,12 +601,14 @@ interface Window {
       spotLabelMode: 'original' | 'mineralogy' | 'none';
       showOverlayOutlines: boolean;
       showRecursiveSpots: boolean;
+      showParentSpots: boolean;
       spotColorMode: 'spot-color' | 'mineral-color';
     }>) => void;
     onToggleRulers: (callback: (checked: boolean) => void) => Unsubscribe;
     onSpotLabelMode: (callback: (mode: 'original' | 'mineralogy' | 'none') => void) => Unsubscribe;
     onToggleOverlayOutlines: (callback: (checked: boolean) => void) => Unsubscribe;
     onToggleRecursiveSpots: (callback: (checked: boolean) => void) => Unsubscribe;
+    onToggleParentSpots: (callback: (checked: boolean) => void) => Unsubscribe;
     onToggleArchivedSpots: (callback: (checked: boolean) => void) => Unsubscribe;
     onMicrographVisibility: (callback: () => void) => Unsubscribe;
     onFilterSpots: (callback: () => void) => Unsubscribe;
