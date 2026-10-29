@@ -55,6 +55,7 @@ import {
   listScaleSources,
   parentAreaUnavailableReason,
 } from '@/utils/copySizePlacement';
+import { pixelsPerCentimeterFromInput, type ScaleInput } from '@/utils/scaleInput';
 
 interface EditMicrographLocationDialogProps {
   open: boolean;
@@ -96,6 +97,8 @@ export function EditMicrographLocationDialog({
   const [copySourceMicrographId, setCopySourceMicrographId] = useState<string>('');
   // "Copy scale from an existing micrograph" (Peter, 2026-10-29): the micrograph whose px/cm is copied
   const [scaleSourceId, setScaleSourceId] = useState<string>('');
+  // What the placement step's scale fields last reported (a point placement's scale comes from it)
+  const [scaleInput, setScaleInput] = useState<ScaleInput>({});
   const [isCopying, setIsCopying] = useState(false);
   const [copyError, setCopyError] = useState<string | null>(null);
   const [micrograph, setMicrograph] = useState<MicrographMetadata | null>(null);
@@ -258,6 +261,7 @@ export function EditMicrographLocationDialog({
 
     setCopySourceMicrographId('');
     setScaleSourceId('');
+    setScaleInput({});
     setCopyError(null);
     setStep(0);
   }, [open, project, micrographId]);
@@ -352,6 +356,7 @@ export function EditMicrographLocationDialog({
     }
 
     setHasScaleData(hasValidScaleData);
+    setScaleInput(data);
   };
 
   // Check if scale method requires scale data input
@@ -605,9 +610,14 @@ export function EditMicrographLocationDialog({
         affineTileHash: undefined,
       });
     } else {
+      // A point placement has no size on the canvas: its scale is what the scale step entered
+      // (it used to keep parentPxPerCm / the old scaleX, whatever was entered; 2026-10-29)
+      const pointPxPerCm = scaleSource
+        ? scaleSource.scale
+        : pixelsPerCentimeterFromInput(scaleMethod, scaleInput, micrograph.imageWidth, micrograph.imageHeight) ?? newChildPxPerCm;
       placeMicrograph(micrographId, {
         pointInParent: { X: pointX, Y: pointY },
-        scalePixelsPerCentimeter: newChildPxPerCm,
+        scalePixelsPerCentimeter: pointPxPerCm,
         // Clear rectangle and affine placement if switching methods
         offsetInParent: undefined,
         rotation: undefined,
