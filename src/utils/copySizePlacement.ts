@@ -381,3 +381,48 @@ export function copyPlacementUnavailableReason(
   }
   return null;
 }
+
+/** A micrograph whose scale another can copy ("Copy scale from an existing micrograph") */
+export interface ScaleSource {
+  id: string;
+  name: string;
+  width: number;
+  height: number;
+  /** Pixels per centimeter */
+  scale: number;
+}
+
+/**
+ * Every micrograph in the project with a scale, except excludeId, for "Copy
+ * scale from an existing micrograph" (Peter, 2026-10-29: photomicrographs at
+ * the same magnification from different places). The scale is copied as it is
+ * (pixels per centimeter), which is right for images from the same camera at
+ * the same resolution.
+ */
+export function listScaleSources(
+  project: ProjectMetadata | null | undefined,
+  excludeId: string | null | undefined
+): ScaleSource[] {
+  if (!project) return [];
+  const sources: ScaleSource[] = [];
+  for (const dataset of project.datasets || []) {
+    for (const sample of dataset.samples || []) {
+      for (const micro of sample.micrographs || []) {
+        if (excludeId && micro.id === excludeId) continue;
+        const scale = micro.scalePixelsPerCentimeter;
+        const width = pixelWidth(micro);
+        const height = pixelHeight(micro);
+        if (!scale || !width || !height) continue;
+        sources.push({ id: micro.id, name: micro.name || 'Unnamed Micrograph', width, height, scale });
+      }
+    }
+  }
+  return sources;
+}
+
+/** Dropdown label: "Ol-3 (2048 × 1536, 1.25 px/μm)" */
+export function describeScaleSource(s: ScaleSource): string {
+  const perMicron = s.scale / 10000;
+  const shown = perMicron >= 100 ? perMicron.toFixed(0) : perMicron >= 1 ? perMicron.toFixed(2) : perMicron.toPrecision(3);
+  return `${s.name} (${s.width} × ${s.height}, ${shown} px/μm)`;
+}

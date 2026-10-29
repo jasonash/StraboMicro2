@@ -11,7 +11,9 @@
 import {
   computeParentAreaPlacement,
   copyPlacementUnavailableReason,
+  describeScaleSource,
   listPlacedChildren,
+  listScaleSources,
   parentAreaUnavailableReason,
 } from '@/utils/copySizePlacement';
 import type { MicrographMetadata, ProjectMetadata } from '@/types/project-types';
@@ -63,6 +65,12 @@ eq('other proportions', copyPlacementUnavailableReason(rect, 500, 500), "Its pro
 eq('a point placement: any proportions', copyPlacementUnavailableReason(pointPlaced, 500, 500), null);
 eq('no model', copyPlacementUnavailableReason(null, 500, 500), 'Choose a micrograph to copy.');
 eq('model not placed', copyPlacementUnavailableReason(unplacedChild, 800, 600), 'Map Al has no placement to copy.');
+
+// Copy scale from an existing micrograph
+eq('scale sources: every micrograph with a scale, not the excluded one', listScaleSources(project, 'si').map((x) => [x.id, x.scale]), [['bse', 60000]]);
+eq('scale sources include placed children', listScaleSources(project, null).map((x) => x.id), ['bse', 'si']);
+eq('label in px/um', describeScaleSource({ id: 'a', name: 'Ol-3', width: 2048, height: 1536, scale: 12500 }), 'Ol-3 (2048 × 1536, 1.25 px/μm)');
+eq('label for a coarse scale', describeScaleSource({ id: 'b', name: 'Scan', width: 100, height: 100, scale: 1234 }), 'Scan (100 × 100, 0.123 px/μm)');
 
 console.log(`\n${passes} passed, ${failures} failed`);
 process.exit(failures ? 1 : 0);

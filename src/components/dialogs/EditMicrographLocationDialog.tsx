@@ -50,7 +50,9 @@ import {
   computeCopiedPlacement,
   computeParentAreaPlacement,
   describeCopyPlacementCandidate,
+  describeScaleSource,
   listCopyPlacementCandidates,
+  listScaleSources,
   parentAreaUnavailableReason,
 } from '@/utils/copySizePlacement';
 
@@ -72,6 +74,7 @@ type ScaleMethod =
   | 'Stretch and Drag'
   | 'Trace Scale Bar'
   | 'Pixel Conversion Factor'
+  | 'Copy scale from an existing micrograph'
   | 'Provide Width/Height of Image'
   | '';
 
@@ -91,6 +94,8 @@ export function EditMicrographLocationDialog({
   const [autoPlacement, setAutoPlacement] = useState<AutoPlacementOutcome | null>(null);
   const [scaleMethod, setScaleMethod] = useState<ScaleMethod>('Stretch and Drag');
   const [copySourceMicrographId, setCopySourceMicrographId] = useState<string>('');
+  // "Copy scale from an existing micrograph" (Peter, 2026-10-29): the micrograph whose px/cm is copied
+  const [scaleSourceId, setScaleSourceId] = useState<string>('');
   const [isCopying, setIsCopying] = useState(false);
   const [copyError, setCopyError] = useState<string | null>(null);
   const [micrograph, setMicrograph] = useState<MicrographMetadata | null>(null);
@@ -129,6 +134,17 @@ export function EditMicrographLocationDialog({
   const [imagesFolder, setImagesFolder] = useState<string>('');
 
   // Sibling micrographs whose placement can be copied onto this one (any method)
+  // "Copy scale from an existing micrograph": any micrograph in the project with a scale. The
+  // placement step gets it as a filled-in Pixel Conversion Factor (px per 1 cm); the save stores
+  // the source's px/cm exactly
+  const scaleSources = useMemo(() => listScaleSources(project, micrographId), [project, micrographId]);
+  const isCopyScale = scaleMethod === 'Copy scale from an existing micrograph';
+  const scaleSource = isCopyScale ? scaleSources.find((src) => src.id === scaleSourceId) ?? null : null;
+  const canvasScaleMethod = isCopyScale ? 'Pixel Conversion Factor' : scaleMethod;
+  const initialPixelConversion = scaleSource
+    ? { pixels: String(scaleSource.scale), physicalLength: '1', unit: 'cm' }
+    : undefined;
+
   // "Same area as parent": why this micrograph cannot cover its parent exactly, or null
   const parentAreaReason = parentAreaUnavailableReason(parentMicrograph, micrograph?.imageWidth, micrograph?.imageHeight);
 
@@ -241,6 +257,7 @@ export function EditMicrographLocationDialog({
     }
 
     setCopySourceMicrographId('');
+    setScaleSourceId('');
     setCopyError(null);
     setStep(0);
   }, [open, project, micrographId]);
@@ -258,12 +275,14 @@ export function EditMicrographLocationDialog({
       if (scaleMethod !== 'Trace Scale Bar and Drag' &&
           scaleMethod !== 'Stretch and Drag' &&
           scaleMethod !== 'Pixel Conversion Factor' &&
+          scaleMethod !== 'Copy scale from an existing micrograph' &&
           scaleMethod !== 'Provide Width/Height of Image') {
         setScaleMethod('Stretch and Drag');
       }
     } else {
       if (scaleMethod !== 'Trace Scale Bar' &&
           scaleMethod !== 'Pixel Conversion Factor' &&
+          scaleMethod !== 'Copy scale from an existing micrograph' &&
           scaleMethod !== 'Provide Width/Height of Image') {
         setScaleMethod('Trace Scale Bar');
       }
@@ -318,7 +337,7 @@ export function EditMicrographLocationDialog({
         data.scaleBarPhysicalLength &&
         data.scaleBarUnits
       );
-    } else if (scaleMethod === 'Pixel Conversion Factor') {
+    } else if (canvasScaleMethod === 'Pixel Conversion Factor') {
       hasValidScaleData = !!(
         data.pixels &&
         data.physicalLength &&
@@ -340,7 +359,7 @@ export function EditMicrographLocationDialog({
     return (
       scaleMethod === 'Trace Scale Bar and Drag' ||
       scaleMethod === 'Trace Scale Bar' ||
-      scaleMethod === 'Pixel Conversion Factor' ||
+      canvasScaleMethod === 'Pixel Conversion Factor' ||
       scaleMethod === 'Provide Width/Height of Image'
     );
   };
@@ -370,7 +389,8 @@ export function EditMicrographLocationDialog({
     return true;
   };
 
-  const canProceedFromScaleMethod = (): boolean => scaleMethod !== '';
+  const canProceedFromScaleMethod = (): boolean =>
+    scaleMethod !== '' && (!isCopyScale || scaleSource !== null);
 
   // "Same area as parent" (Peter, 2026-10-29) finishes on the first step like a copy
   const isParentAreaMethod = locationMethod === 'Same area as parent';
@@ -524,7 +544,8 @@ export function EditMicrographLocationDialog({
     // Formula: displayScale = parentPxPerCm / childPxPerCm
     // So: childPxPerCm = parentPxPerCm / displayScale
     const parentPxPerCm = parentMicrograph.scalePixelsPerCentimeter || 100;
-    const newChildPxPerCm = parentPxPerCm / scaleX; // scaleX is the display scale
+    // scaleX is the display scale; a copied scale is stored exactly
+    const newChildPxPerCm = scaleSource ? scaleSource.scale : parentPxPerCm / scaleX;
 
     console.log('[EditMicrographLocationDialog] handleSave called with:', {
       locationMethod,
@@ -897,6 +918,49 @@ export function EditMicrographLocationDialog({
               </Typography>
 
               <FormControlLabel
+                value="Copy scale from an existing micrograph"
+                control={<Radio />}
+                label="Copy scale from an existing micrograph"
+                disabled={scaleSources.length === 0}
+              />
+              <Typography
+                variant="caption"
+                sx={{
+                  color: 'text.secondary',
+                  ml: 4,
+                  mt: -1,
+                  mb: isCopyScale ? 1 : 2
+                }}>
+                {scaleSources.length === 0
+                  ? 'No micrograph in this project has a scale yet'
+                  : 'Use the scale of a micrograph taken at the same magnification, then drag this one into place'}
+              </Typography>
+              {isCopyScale && (
+                <Stack spacing={1} sx={{ ml: 4, mb: 2 }}>
+                  <FormControl sx={{ minWidth: 300 }} size="small">
+                    <InputLabel id="copy-scale-source-label">Copy scale from</InputLabel>
+                    <Select
+                      labelId="copy-scale-source-label"
+                      value={scaleSourceId}
+                      label="Copy scale from"
+                      onChange={(e) => setScaleSourceId(e.target.value)}
+                    >
+                      {scaleSources.map((src) => (
+                        <MenuItem key={src.id} value={src.id}>{describeScaleSource(src)}</MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                  {scaleSource && (scaleSource.width !== micrograph.imageWidth || scaleSource.height !== micrograph.imageHeight) && (
+                    <Alert severity="info" sx={{ maxWidth: 520 }}>
+                      This image is {micrograph.imageWidth} × {micrograph.imageHeight} pixels and {scaleSource.name} is{' '}
+                      {scaleSource.width} × {scaleSource.height}. The scale is copied as it is, which is right when both
+                      were taken at the same magnification and resolution.
+                    </Alert>
+                  )}
+                </Stack>
+              )}
+
+              <FormControlLabel
                 value="Provide Width/Height of Image"
                 control={<Radio />}
                 label="Provide Width/Height of Image"
@@ -1026,7 +1090,8 @@ export function EditMicrographLocationDialog({
                 childScratchPath={childImagePath}
                 childWidth={micrograph.imageWidth || 800}
                 childHeight={micrograph.imageHeight || 600}
-                scaleMethod={scaleMethod}
+                scaleMethod={canvasScaleMethod}
+                initialPixelConversion={initialPixelConversion}
                 // For methods requiring scale input, use (0, 0) to center the child initially
                 // For "Stretch and Drag", use the existing position
                 initialOffsetX={requiresScaleData() ? 0 : offsetX}
@@ -1045,7 +1110,8 @@ export function EditMicrographLocationDialog({
                 childScratchPath={childImagePath}
                 childWidth={micrograph.imageWidth || 800}
                 childHeight={micrograph.imageHeight || 600}
-                scaleMethod={scaleMethod}
+                scaleMethod={canvasScaleMethod}
+                initialPixelConversion={initialPixelConversion}
                 initialOffsetX={pointX}
                 initialOffsetY={pointY}
                 onPlacementChange={(x, y) => handlePointPlacementChange(x, y)}
