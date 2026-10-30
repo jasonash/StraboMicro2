@@ -15,7 +15,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import {
   Dialog,
-  DialogTitle,
   DialogContent,
   DialogActions,
   Button,
@@ -38,6 +37,7 @@ import {
 import { CheckCircle } from '@mui/icons-material';
 import { useAppStore } from '@/store';
 import { findMicrographById } from '@/store/helpers';
+import { MicrographDialogTitle, type ByHandProgress } from './MicrographDialogTitle';
 import PlacementCanvas from './PlacementCanvas';
 import { PointPlacementCanvas } from './PointPlacementCanvas';
 import { AffineRegistrationModal } from './AffineRegistrationModal';
@@ -61,6 +61,7 @@ interface EditMicrographLocationDialogProps {
   open: boolean;
   onClose: () => void;
   micrographId: string;
+  progress?: ByHandProgress;
 }
 
 type LocationMethod =
@@ -83,6 +84,7 @@ export function EditMicrographLocationDialog({
   open,
   onClose,
   micrographId,
+  progress,
 }: EditMicrographLocationDialogProps) {
   const project = useAppStore((state) => state.project);
   // Placement saves keep the micrographs placed on this one the same size (affineScale.ts)
@@ -670,7 +672,7 @@ export function EditMicrographLocationDialog({
       maxWidth={step === 2 ? 'lg' : 'sm'}
       fullWidth
     >
-      <DialogTitle>Edit Micrograph Location</DialogTitle>
+      <MicrographDialogTitle title="Edit Micrograph Location" micrographId={micrographId} progress={progress} />
 
       <DialogContent>
         <Stepper activeStep={displayStep} sx={{ mb: 3 }}>

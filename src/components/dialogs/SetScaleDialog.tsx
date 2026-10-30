@@ -14,7 +14,6 @@
 import { useState, useEffect, useRef } from 'react';
 import {
   Dialog,
-  DialogTitle,
   DialogContent,
   DialogActions,
   Button,
@@ -34,6 +33,7 @@ import {
 import { PanTool, Timeline, RestartAlt } from '@mui/icons-material';
 import { useAppStore } from '@/store';
 import { findMicrographById } from '@/store/helpers';
+import { MicrographDialogTitle, type ByHandProgress } from './MicrographDialogTitle';
 import { ScaleBarCanvas, type ScaleBarCanvasRef } from '../ScaleBarCanvas';
 import type { MicrographMetadata } from '@/types/project-types';
 
@@ -41,12 +41,13 @@ interface SetScaleDialogProps {
   open: boolean;
   onClose: () => void;
   micrographId: string;
+  progress?: ByHandProgress;
 }
 
 type ScaleMethod = 'Trace Scale Bar' | 'Pixel Conversion Factor' | 'Provide Width/Height of Image';
 type CanvasTool = 'pointer' | 'line';
 
-export function SetScaleDialog({ open, onClose, micrographId }: SetScaleDialogProps) {
+export function SetScaleDialog({ open, onClose, micrographId, progress }: SetScaleDialogProps) {
   const project = useAppStore((state) => state.project);
   const updateMicrographMetadata = useAppStore((state) => state.updateMicrographMetadata);
 
@@ -532,7 +533,7 @@ export function SetScaleDialog({ open, onClose, micrographId }: SetScaleDialogPr
         paper: { sx: { minHeight: '50vh' } }
       }}
     >
-      <DialogTitle>Set Micrograph Scale</DialogTitle>
+      <MicrographDialogTitle title="Set Micrograph Scale" micrographId={micrographId} progress={progress} />
 
       <DialogContent>
         <Typography
