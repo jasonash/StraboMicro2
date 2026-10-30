@@ -7,7 +7,7 @@
 
 import { test, expect } from '../e2e/lib/test';
 import { ACCOUNTS, type Copy } from '../e2e/lib/copy';
-import { editSpot, setOffline, syncNow, waitSettled, reviewDecisions } from '../e2e/lib/actions';
+import { collaborators, editSpot, invite, setOffline, share, syncNow, waitSettled, reviewDecisions } from '../e2e/lib/actions';
 import { TOXAWAY, micrographId, openDemo, setWindowSize, settle, shot, shotRect, view } from './lib';
 import type { Page } from '@playwright/test';
 
@@ -142,4 +142,18 @@ test('collab', async ({ launch }) => {
     await ben.page.waitForTimeout(2500);
     await shot(ben, 'sync-decisions-dialog', decisions);
   }
+});
+
+// Only the Collaborators dialog, without the demo projects: -g "collaborators dialog only"
+test('collaborators dialog only', async ({ launch, project }) => {
+  const p = await project('Manual Collaborators');
+  const ana = await launch('Ana', ACCOUNTS.ana);
+  const ben = await launch('Ben', ACCOUNTS.ben);
+  await setWindowSize(ana, 1600, 1000);
+  await share(ana, ben, p.smzPath, p.id, p.name, 'Editor');
+  await invite(ana, ACCOUNTS.cleo.email, 'Viewer');
+  const dlg = await collaborators(ana);
+  await expect(dlg.getByText(ACCOUNTS.cleo.name).first()).toBeVisible({ timeout: 30_000 });
+  await ana.page.waitForTimeout(1000);
+  await shot(ana, 'collaborators-dialog', dlg);
 });
