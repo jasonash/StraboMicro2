@@ -12,6 +12,8 @@
  * The owner can delete the project from StraboSpot (17p, 17ac) the same
  * way, confirming by typing its name: StraboSpot keeps it 30 days
  * (restorable on the website) and members' copies become separate.
+ * Pasted lists and join links (QR codes) are on the website's Collaborators
+ * page, which works on the same list; Open on StraboSpot... goes there.
  */
 
 import { useCallback, useEffect, useState } from 'react';
@@ -51,7 +53,7 @@ interface CollaboratorsDialogProps {
   onDeleteProject: (keep: boolean) => Promise<string | null>;
 }
 
-type MemberList = { myRole: SyncRole; members: SyncMember[] };
+type MemberList = { pid: number; myRole: SyncRole; members: SyncMember[] };
 
 export function CollaboratorsDialog({ open, projectId, onClose, onLeave, onDeleteProject }: CollaboratorsDialogProps) {
   const [list, setList] = useState<MemberList | null>(null);
@@ -71,7 +73,7 @@ export function CollaboratorsDialog({ open, projectId, onClose, onLeave, onDelet
     if (!projectId || !window.api) return;
     setLoadError(null);
     const r = await window.api.sync.members(projectId, getRestServerUrl());
-    if (r.ok) setList({ myRole: r.myRole, members: r.members });
+    if (r.ok) setList({ pid: r.pid, myRole: r.myRole, members: r.members });
     else {
       setList(null);
       setLoadError(r.message);
@@ -320,6 +322,20 @@ export function CollaboratorsDialog({ open, projectId, onClose, onLeave, onDelet
                 {roleLabel(role)}: {ROLE_DESCRIPTION[role]} They need a StraboSpot account, and get an email
                 with the invitation.
               </Typography>
+              <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
+                <Typography variant="body2" sx={{ color: 'text.secondary', flex: '1 1 260px' }}>
+                  For a class or workshop, invite a pasted list of addresses, or make a QR code people can
+                  scan to ask to join, on the StraboSpot website.
+                </Typography>
+                <Button
+                  variant="outlined"
+                  onClick={() => void window.api?.openExternalLink(
+                    `${getRestServerUrl().replace(/\/+$/, '')}/micro_collaborators?project_id=${list.pid}`
+                  )}
+                >
+                  Open on StraboSpot...
+                </Button>
+              </Box>
             </>
           )}
 
