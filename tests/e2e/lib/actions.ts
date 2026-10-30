@@ -39,7 +39,7 @@ export async function invite(copy: Copy, email: string, role: 'Editor' | 'Contri
   await copy.menu('File', 'Collaborate...');
   const dialog = copy.page.getByRole('dialog', { name: 'Collaborators' });
   await dialog.getByLabel('Email address').fill(email);
-  await dialog.getByRole('combobox').click();
+  await dialog.getByRole('combobox').last().click(); // members' role pickers come first
   await copy.page.getByRole('option', { name: role, exact: true }).click();
   await copy.caption(`invites ${email} as ${role}`);
   await dialog.getByRole('button', { name: 'Invite', exact: true }).click();
