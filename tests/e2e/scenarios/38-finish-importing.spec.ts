@@ -228,10 +228,14 @@ test('one micrograph: with instrument info straight to Edit Micrograph Location;
 
   await ana.caption('Same area as parent on the first opens the next; Cancel there stops');
   const edit = editLocation(ana);
+  await expect(edit.getByText('Edit Micrograph Location (1 of 3)')).toBeVisible();
+  await expect(edit.getByTestId('dialog-micrograph-name')).toHaveText('A map');
   await edit.getByRole('radio', { name: 'Same area as parent' }).check();
   await edit.getByRole('button', { name: 'Finish' }).click();
   await expect.poll(async () => (await saved(ana, 'A map')).offset).toEqual({ X: 0, Y: 0 });
   await expect(edit).toBeVisible();
+  await expect(edit.getByText('Edit Micrograph Location (2 of 3)')).toBeVisible();
+  await expect(edit.getByTestId('dialog-micrograph-name')).toHaveText('B map');
   await edit.getByRole('button', { name: 'Cancel' }).click();
   await expect(edit).toBeHidden();
   await ana.page.waitForTimeout(500);
@@ -253,6 +257,13 @@ test('one micrograph: with instrument info straight to Edit Micrograph Location;
   await ana.page.getByText('C map', { exact: true }).click();
   await expect(w).toBeHidden();
   await expect(edit).toBeHidden();
+
+  await ana.caption('after the run, the tree menu opens it with its name and no count');
+  await ana.page.getByText('C map', { exact: true }).locator('xpath=../..')
+    .locator('button:has([data-testid="MoreVertIcon"])').first().click();
+  await ana.page.getByRole('menuitem', { name: 'Edit Micrograph Location' }).click();
+  await expect(edit.getByText('Edit Micrograph Location', { exact: true })).toBeVisible();
+  await expect(edit.getByTestId('dialog-micrograph-name')).toHaveText('C map');
 });
 
 test('Batch Import: instrument info is on by default with image types per file, then the placement choices; unchecked goes on to the instrument steps; one goes to its own dialog', async ({ launch, runDir }) => {
@@ -325,6 +336,10 @@ test('Batch Import: instrument info is on by default with image types per file, 
   await batch.getByRole('button', { name: 'Next' }).click();
   await batch.getByRole('button', { name: 'Import', exact: true }).click();
   await expect(editLocation(ana)).toBeVisible({ timeout: 60_000 });
+  await ana.caption('one on its own: name and thumbnail, no count');
+  await expect(editLocation(ana).getByText('Edit Micrograph Location', { exact: true })).toBeVisible();
+  await expect(editLocation(ana).getByTestId('dialog-micrograph-name')).toHaveText('Single one');
+  await expect(editLocation(ana).getByTestId('dialog-micrograph-thumbnail')).toBeVisible({ timeout: 15_000 });
   await editLocation(ana).getByRole('button', { name: 'Cancel' }).click();
   await expect(editLocation(ana)).toBeHidden();
 });
@@ -349,6 +364,8 @@ test('reference micrographs without instrument info or scale: the same steps, th
   await w.getByRole('button', { name: 'Set the scale of each, one at a time...' }).click();
   const scale = ana.page.getByRole('dialog', { name: 'Set Micrograph Scale' });
   await expect(scale).toBeVisible();
+  await expect(scale.getByText('Set Micrograph Scale (1 of 2)')).toBeVisible();
+  await expect(scale.getByTestId('dialog-micrograph-name')).toHaveText('Ref one');
   await scale.getByRole('button', { name: 'Cancel' }).click();
   await expect(scale).toBeHidden();
   expect(await saved(ana, 'Ref one')).toMatchObject({ needsInstrumentInfo: false, imageType: 'Reflected Light', scale: null });

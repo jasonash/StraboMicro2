@@ -380,6 +380,8 @@ export function ProjectTree() {
   // scaled one at a time after it (Jason, 2026-10-30)
   const [finishRequest, setFinishRequest] = useState<FinishRequest | null>(null);
   const [byHandQueue, setByHandQueue] = useState<string[]>([]);
+  // How many the by-hand run started with; 0 when no run is going (dialogs show "2 of 4")
+  const [byHandTotal, setByHandTotal] = useState(0);
   const [placeOnlyIds, setPlaceOnlyIds] = useState<string[] | undefined>(undefined);
   const [showAddToGroups, setShowAddToGroups] = useState(false);
   const [addToGroupsMicrograph, setAddToGroupsMicrograph] = useState<MicrographMetadata | null>(
@@ -799,20 +801,26 @@ export function ProjectTree() {
   };
 
   // Place or scale these one at a time: each saved one opens the next, Cancel ends it
-  const startByHand = (ids: string[]) => {
+  const openNextByHand = (ids: string[]) => {
     const [first, ...rest] = ids;
     setByHandQueue(rest);
     if (first) continueAfterInstrumentInfo(first);
+  };
+  const startByHand = (ids: string[]) => {
+    setByHandTotal(ids.length);
+    openNextByHand(ids);
   };
   const nextByHand = (finishedId: string | null) => {
     const latest = useAppStore.getState().project;
     const finished = finishedId ? findMicrographById(latest, finishedId) : null;
     if (finished && !isIncomplete(finished) && byHandQueue.length > 0) {
-      startByHand(byHandQueue);
+      openNextByHand(byHandQueue);
     } else {
       setByHandQueue([]);
+      setByHandTotal(0);
     }
   };
+  const byHandProgress = { position: byHandTotal - byHandQueue.length, total: byHandTotal };
 
   const handleFinishPlace = (how: FinishPlacement, ids: string[]) => {
     const parentId = findMicrographById(project, ids[0])?.parentID ?? null;
@@ -2145,6 +2153,7 @@ export function ProjectTree() {
             nextByHand(editLocationMicrographId);
           }}
           micrographId={editLocationMicrographId}
+          progress={byHandProgress}
         />
       )}
 
@@ -2393,6 +2402,7 @@ export function ProjectTree() {
             nextByHand(setScaleMicrographId);
           }}
           micrographId={setScaleMicrographId}
+          progress={byHandProgress}
         />
       )}
 
