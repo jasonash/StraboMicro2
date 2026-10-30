@@ -1,6 +1,6 @@
 /**
  * One choice of how to place micrographs: a plain button with what it does
- * underneath. No choice is highlighted (Jason, 2026-10-30).
+ * underneath. All choices look the same, so none stands out (Jason, 2026-10-30).
  */
 
 import { Box, Button, Typography } from '@mui/material';
@@ -8,11 +8,11 @@ import { Box, Button, Typography } from '@mui/material';
 export function PlaceChoice({ label, detail, onClick }: { label: string; detail?: string; onClick: () => void }) {
   return (
     <Box>
-      <Button variant="outlined" fullWidth onClick={onClick} sx={{ justifyContent: 'flex-start', textAlign: 'left', textTransform: 'none' }}>
+      <Button variant="contained" onClick={onClick} sx={{ textTransform: 'none' }}>
         {label}
       </Button>
       {detail && (
-        <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mt: 0.5, ml: 1 }}>
+        <Typography variant="body2" sx={{ color: 'text.secondary', mt: 0.5 }}>
           {detail}
         </Typography>
       )}

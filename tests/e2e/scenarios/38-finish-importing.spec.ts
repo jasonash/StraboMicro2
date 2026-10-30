@@ -134,11 +134,11 @@ test('Peter\'s state: the wizard opens for all three, Cancel at every step chang
   await click(ana, 'Next');
 
   await ana.caption('the placement step: every choice, none highlighted; Later keeps the instrument info');
-  await expect(w.getByRole('button', { name: /^Find each one on / })).toBeVisible();
+  await expect(w.getByRole('button', { name: /^Automatically place on / })).toBeVisible();
   await expect(w.getByRole('button', { name: /^Cover the full area of / })).toBeVisible();
   await expect(w.getByRole('button', { name: 'Copy the placement of a placed micrograph...' })).toBeVisible();
   await expect(w.getByRole('button', { name: 'Place by hand, one at a time...' })).toBeVisible();
-  await expect(w.locator('button.MuiButton-contained')).toHaveCount(0);
+  await expect(w.locator('.MuiDialogContent-root button.MuiButton-contained')).toHaveCount(4);
   await click(ana, 'Later');
   await expect(w).toBeHidden();
   expect(await saved(ana, 'amp_PPL')).toMatchObject({ needsInstrumentInfo: false, imageType: 'Plane Polarized Light', instrumentType: 'Optical Microscopy', brand: 'Olympus', offset: null });

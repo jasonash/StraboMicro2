@@ -244,7 +244,7 @@ async function placedNames(copy: Copy): Promise<string[]> {
     return names.sort();`) as never) as unknown as string[];
 }
 
-test('Batch Import goes on to Find each one: found ones are placed in one undo step, the unrelated one is left', async ({ launch, runDir }) => {
+test('Batch Import goes on to Automatically place: found ones are placed in one undo step, the unrelated one is left', async ({ launch, runDir }) => {
   const { ana } = await start(launch, runDir, 'E2E Place Children Batch');
   const images = await childImages();
   fs.mkdirSync(`${runDir}/images`, { recursive: true });
@@ -272,8 +272,8 @@ test('Batch Import goes on to Find each one: found ones are placed in one undo s
   const finish = ana.page.getByRole('dialog', { name: 'Finish Importing' });
   await expect(finish.getByText('3 micrographs imported.')).toBeVisible({ timeout: 120_000 });
   await expect(batch).toBeHidden();
-  await ana.caption('answers Find each one in Finish Importing');
-  await finish.getByRole('button', { name: /^Find each one on / }).click();
+  await ana.caption('answers Automatically place in Finish Importing');
+  await finish.getByRole('button', { name: /^Automatically place on / }).click();
   await expect(finish).toBeHidden();
 
   const dialog = ana.page.getByRole('dialog', { name: /^Place children automatically on/ });
@@ -300,7 +300,7 @@ test('Batch Import goes on to Find each one: found ones are placed in one undo s
   await expect.poll(() => placedNames(ana), { timeout: 15_000 }).toEqual([]);
 });
 
-test('Finish Importing > Find each one covers the checked ones only; Edit Micrograph Location lists automatic last; the menu item and Stop', async ({ launch, runDir }) => {
+test('Finish Importing > Automatically place covers the checked ones only; Edit Micrograph Location lists automatic last; the menu item and Stop', async ({ launch, runDir }) => {
   const overview = await (await rockImage()).jpeg({ quality: 90 }).toBuffer();
   const images = await childImages();
   const overviewId = randomUUID();
@@ -326,14 +326,14 @@ test('Finish Importing > Find each one covers the checked ones only; Edit Microg
   await ana.page.getByText('Overview (Reference)', { exact: true }).locator('xpath=..')
     .locator('[data-testid="ChevronRightIcon"]').first().click();
 
-  await ana.caption('clicks an unplaced child: Finish Importing; leaves one out; Find each one looks for the other two');
+  await ana.caption('clicks an unplaced child: Finish Importing; leaves one out; Automatically place looks for the other two');
   await ana.page.getByText('Child turned', { exact: true }).click();
   const finish = ana.page.getByRole('dialog', { name: 'Finish Importing' });
   await expect(finish.getByTestId('finish-row')).toHaveCount(3);
   await finish.getByRole('checkbox', { name: 'Child unrelated' }).uncheck();
   await finish.getByRole('button', { name: 'Next', exact: true }).click();
   await finish.getByRole('button', { name: 'Next', exact: true }).click();
-  await finish.getByRole('button', { name: /^Find each one on / }).click();
+  await finish.getByRole('button', { name: /^Automatically place on / }).click();
   const only = ana.page.getByRole('dialog', { name: /^Place children automatically on/ });
   await expect(only.getByTestId('place-children-row')).toHaveCount(2);
   await only.getByRole('button', { name: 'Cancel' }).click();

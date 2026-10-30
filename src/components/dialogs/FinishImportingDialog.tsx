@@ -342,8 +342,8 @@ export function FinishImportingDialog({ request, onClose, onDone, onPlace }: Fin
               {placeReason && <Alert severity="info">{placeReason}. Until then they can only be placed by hand.</Alert>}
               {!placeReason && (
                 <PlaceChoice
-                  label={`Find each one on ${parentName}...`}
-                  detail="Automatic: matches features in the images and shows what it found before saving."
+                  label={`Automatically place on ${parentName}...`}
+                  detail="Looks for each image by matching features, and shows what it found before saving. Images it cannot match stay unplaced."
                   onClick={() => onPlace('auto', placingIds)}
                 />
               )}
