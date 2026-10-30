@@ -2809,23 +2809,6 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
           }}
         >
           <FormControlLabel
-            value="Place automatically on parent"
-            control={<Radio />}
-            label="Place automatically on parent"
-          />
-          <Typography
-            variant="caption"
-            sx={{
-              color: 'text.secondary',
-              ml: 4,
-              mt: -1,
-              mb: 2
-            }}>
-            StraboMicro finds where this image sits on its parent by matching features, then you check
-            it. Works best when both show the same kind of view (PPL on PPL, XPL on XPL)
-          </Typography>
-
-          <FormControlLabel
             value="Locate as a scaled rectangle"
             control={<Radio />}
             label="Locate as a scaled rectangle"
@@ -2935,6 +2918,23 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
             {parentAreaReason !== null
               ? `Not available: ${parentAreaReason}`
               : 'Covers the parent exactly (for example element maps collected with it). Finishes the import.'}
+          </Typography>
+
+          <FormControlLabel
+            value="Place automatically on parent"
+            control={<Radio />}
+            label="Place automatically on parent"
+            sx={{ mt: 2 }}
+          />
+          <Typography
+            variant="caption"
+            sx={{
+              color: 'text.secondary',
+              ml: 4,
+              mt: -1
+            }}>
+            StraboMicro finds where this image sits on its parent by matching features, then you check
+            it. Works best when both show the same kind of view (PPL on PPL, XPL on XPL)
           </Typography>
 
           {/* TODO: Implement these location methods later

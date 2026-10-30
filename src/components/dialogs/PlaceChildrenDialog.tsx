@@ -10,6 +10,7 @@
  */
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { PlaceAllChoices, PlaceChoice, type PlaceAllHow } from './PlaceAllChoices';
 import {
   Alert,
   Box,
@@ -422,7 +423,8 @@ export default PlaceChildrenDialog;
 
 /**
  * Asked when an unplaced child is clicked while its parent has other unplaced children (as after a
- * Batch Import): place them all automatically, or set up just this one. Closing it does neither.
+ * Batch Import): place only this one (any location method), or all of them together. Closing it does
+ * neither.
  */
 export const PlaceChildrenOffer: React.FC<{
   open: boolean;
@@ -430,24 +432,28 @@ export const PlaceChildrenOffer: React.FC<{
   parentName: string;
   /** Unplaced children of the parent besides the clicked one */
   others: number;
-  onPlaceAll: () => void;
-  onJustThisOne: () => void;
+  hasPlacedSibling: boolean;
+  onPlaceAll: (how: PlaceAllHow) => void;
+  onOnlyThisOne: () => void;
   onClose: () => void;
-}> = ({ open, childName, parentName, others, onPlaceAll, onJustThisOne, onClose }) => (
+}> = ({ open, childName, parentName, others, hasPlacedSibling, onPlaceAll, onOnlyThisOne, onClose }) => (
   <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth aria-labelledby="place-children-offer-title">
-    <DialogTitle id="place-children-offer-title">Place all children automatically?</DialogTitle>
+    <DialogTitle id="place-children-offer-title">Place {childName}</DialogTitle>
     <DialogContent>
-      <Typography variant="body2">
-        {childName} and {others === 1 ? '1 other micrograph' : `${others} other micrographs`} on {parentName} are not
-        placed yet. StraboMicro can look for each of them on {parentName} and show you what it found before anything
-        is saved.
-      </Typography>
+      <Stack spacing={2.5}>
+        <Typography variant="body2">
+          {childName} has no location on {parentName} yet.{' '}
+          {others === 1 ? '1 other micrograph there doesn\'t have one either.' : `${others} other micrographs there don't have one either.`}
+        </Typography>
+        <Stack spacing={1.5}>
+          <Typography variant="subtitle2">Only {childName}</Typography>
+          <PlaceChoice label="Choose a location method..." onClick={onOnlyThisOne} />
+        </Stack>
+        <PlaceAllChoices count={others + 1} parentName={parentName} hasPlacedSibling={hasPlacedSibling} onChoose={onPlaceAll} />
+      </Stack>
     </DialogContent>
     <DialogActions>
-      <Button onClick={onJustThisOne}>Just this one</Button>
-      <Button onClick={onPlaceAll} variant="contained">
-        Place all automatically
-      </Button>
+      <Button onClick={onClose}>Not now</Button>
     </DialogActions>
   </Dialog>
 );

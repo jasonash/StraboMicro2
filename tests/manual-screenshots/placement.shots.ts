@@ -66,13 +66,13 @@ test('place automatically', async ({ launch, runDir }) => {
 
   // Clicking an unplaced child: the offer
   await ana.page.getByText(children[0].name, { exact: true }).click();
-  const offer = ana.page.getByRole('dialog', { name: 'Place all children automatically?' });
+  const offer = ana.page.getByRole('dialog', { name: `Place ${children[0].name}` });
   await expect(offer).toBeVisible();
   await settle(ana, 800);
   await shot(ana, 'place-children-offer', offer);
 
-  // Just this one: Edit Micrograph Location, Place automatically on parent
-  await offer.getByRole('button', { name: 'Just this one' }).click();
+  // Only this one: Edit Micrograph Location, Place automatically on parent
+  await offer.getByRole('button', { name: 'Choose a location method...' }).click();
   const edit = ana.page.getByRole('dialog', { name: 'Edit Micrograph Location' });
   await expect(edit).toBeVisible();
   await edit.getByText('Place automatically on parent', { exact: true }).click();

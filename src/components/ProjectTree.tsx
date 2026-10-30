@@ -375,7 +375,7 @@ export function ProjectTree() {
   const [deleteUnplacedParentId, setDeleteUnplacedParentId] = useState<string | null>(null);
   // Place unplaced children on its full area / like a placed child: the parent and how (Peter, 2026-10-29)
   const [placeUnplaced, setPlaceUnplaced] = useState<{ parentId: string; how: PlaceChildrenHow } | null>(null);
-  // Clicking an unplaced child offers placing all its siblings; "Just this one" stops the
+  // Clicking an unplaced child offers placing all its siblings; "Choose a location method..." stops the
   // question for that parent until another project is opened
   const [placeChildrenOffer, setPlaceChildrenOffer] = useState<{ childId: string; parentId: string } | null>(null);
   const [declinedPlaceAll, setDeclinedPlaceAll] = useState<{ projectId: string | null; parentIds: string[] }>({ projectId: null, parentIds: [] });
@@ -783,8 +783,8 @@ export function ProjectTree() {
     selectMicrograph(micrographId);
   };
 
-  // An unplaced child with unplaced siblings (as after a Batch Import): offer placing them all
-  // automatically before anything else
+  // An unplaced child with unplaced siblings (as after a Batch Import): ask whether to place only
+  // this one or all of them together
   const placeAllOfferFor = (micrographId: string): { childId: string; parentId: string } | null => {
     const micrograph = findMicrographById(project, micrographId);
     const parent = micrograph?.parentID ? findMicrographById(project, micrograph.parentID) : null;
@@ -2145,11 +2145,13 @@ export function ProjectTree() {
             childName={child?.name || 'This micrograph'}
             parentName={parent?.name || 'its parent'}
             others={unplacedChildren(project, placeChildrenOffer.parentId).length - 1}
-            onPlaceAll={() => {
+            hasPlacedSibling={listPlacedChildren(project, placeChildrenOffer.parentId).length > 0}
+            onPlaceAll={(how) => {
               setPlaceChildrenOffer(null);
-              setPlaceChildrenParentId(placeChildrenOffer.parentId);
+              if (how === 'auto') setPlaceChildrenParentId(placeChildrenOffer.parentId);
+              else setPlaceUnplaced({ parentId: placeChildrenOffer.parentId, how });
             }}
-            onJustThisOne={() => {
+            onOnlyThisOne={() => {
               const projectId = project?.id ?? null;
               setDeclinedPlaceAll((prev) => ({
                 projectId,
