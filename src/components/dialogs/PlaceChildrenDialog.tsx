@@ -10,7 +10,6 @@
  */
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { PlaceAllChoices, PlaceChoice, type PlaceAllHow } from './PlaceAllChoices';
 import {
   Alert,
   Box,
@@ -44,6 +43,8 @@ import FootprintPreview from './FootprintPreview';
 interface PlaceChildrenDialogProps {
   open: boolean;
   parentMicrographId: string;
+  /** Only these unplaced children (Finish Importing); default all */
+  onlyIds?: string[];
   onClose: () => void;
 }
 
@@ -111,7 +112,7 @@ function statusNote(state: RowState): string | null {
   }
 }
 
-const PlaceChildrenDialog: React.FC<PlaceChildrenDialogProps> = ({ open, parentMicrographId, onClose }) => {
+const PlaceChildrenDialog: React.FC<PlaceChildrenDialogProps> = ({ open, parentMicrographId, onlyIds, onClose }) => {
   const placeMicrograph = useAppStore((state) => state.placeMicrograph);
   const [rows, setRows] = useState<Row[]>([]);
   const [phase, setPhase] = useState<Phase>('matching');
@@ -158,7 +159,7 @@ const PlaceChildrenDialog: React.FC<PlaceChildrenDialogProps> = ({ open, parentM
       const fullParentPath = `${folders.images}/${parentMicrograph.imagePath}`;
       setParentPath(fullParentPath);
       const children: Row[] = unplacedChildren(project, parentMicrographId)
-        .filter((c) => c.imagePath)
+        .filter((c) => c.imagePath && (!onlyIds || onlyIds.includes(c.id)))
         .map((c) => ({
           id: c.id,
           label: c.name || c.imageFilename || 'Unnamed',
@@ -420,40 +421,3 @@ const PlaceChildrenDialog: React.FC<PlaceChildrenDialogProps> = ({ open, parentM
 };
 
 export default PlaceChildrenDialog;
-
-/**
- * Asked when an unplaced child is clicked while its parent has other unplaced children (as after a
- * Batch Import): place only this one (any location method), or all of them together. Closing it does
- * neither.
- */
-export const PlaceChildrenOffer: React.FC<{
-  open: boolean;
-  childName: string;
-  parentName: string;
-  /** Unplaced children of the parent besides the clicked one */
-  others: number;
-  hasPlacedSibling: boolean;
-  onPlaceAll: (how: PlaceAllHow) => void;
-  onOnlyThisOne: () => void;
-  onClose: () => void;
-}> = ({ open, childName, parentName, others, hasPlacedSibling, onPlaceAll, onOnlyThisOne, onClose }) => (
-  <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth aria-labelledby="place-children-offer-title">
-    <DialogTitle id="place-children-offer-title">Place {childName}</DialogTitle>
-    <DialogContent>
-      <Stack spacing={2.5}>
-        <Typography variant="body2">
-          {childName} has no location on {parentName} yet.{' '}
-          {others === 1 ? '1 other micrograph there doesn\'t have one either.' : `${others} other micrographs there don't have one either.`}
-        </Typography>
-        <Stack spacing={1.5}>
-          <Typography variant="subtitle2">Only {childName}</Typography>
-          <PlaceChoice label="Choose a location method..." onClick={onOnlyThisOne} />
-        </Stack>
-        <PlaceAllChoices count={others + 1} parentName={parentName} hasPlacedSibling={hasPlacedSibling} onChoose={onPlaceAll} />
-      </Stack>
-    </DialogContent>
-    <DialogActions>
-      <Button onClick={onClose}>Not now</Button>
-    </DialogActions>
-  </Dialog>
-);

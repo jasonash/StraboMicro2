@@ -54,10 +54,12 @@ interface PlaceUnplacedChildrenDialogProps {
   how: PlaceChildrenHow;
   /** The parent whose unplaced children are placed */
   parentMicrographId: string | null;
+  /** Only these unplaced children (Finish Importing); default all */
+  onlyIds?: string[];
   onClose: () => void;
 }
 
-export function PlaceUnplacedChildrenDialog({ open, how, parentMicrographId, onClose }: PlaceUnplacedChildrenDialogProps) {
+export function PlaceUnplacedChildrenDialog({ open, how, parentMicrographId, onlyIds, onClose }: PlaceUnplacedChildrenDialogProps) {
   const project = useAppStore((state) => state.project);
   const placeMicrograph = useAppStore((state) => state.placeMicrograph);
   const parent = parentMicrographId ? findMicrographById(project, parentMicrographId) : null;
@@ -86,7 +88,7 @@ export function PlaceUnplacedChildrenDialog({ open, how, parentMicrographId, onC
       ? parentAreaUnavailableReason(parent, child.imageWidth, child.imageHeight)
       : copyPlacementUnavailableReason(model, child.imageWidth, child.imageHeight);
 
-  const rows = (parentMicrographId ? unplacedChildren(project, parentMicrographId) : []).map((child) => {
+  const rows = (parentMicrographId ? unplacedChildren(project, parentMicrographId) : []).filter((child) => !onlyIds || onlyIds.includes(child.id)).map((child) => {
     const reason = reasonFor(child);
     const copied = how === 'like-sibling' && model && reason === null
       ? computeCopiedPlacement(model, child.imageWidth, child.imageHeight)

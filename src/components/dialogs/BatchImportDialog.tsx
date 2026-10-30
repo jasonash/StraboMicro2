@@ -11,8 +11,8 @@
  * 6. Set per-image rotation (optional) - destructive 90° pixel rotation, import-time only
  * 7. Create all micrographs at once
  *
- * Note: Batch imported micrographs do NOT have scale/location data.
- * When clicked in the sidebar, they redirect to the scale/location dialog.
+ * Note: Batch imported micrographs do NOT have scale/location data. The import
+ * goes on to Finish Importing, as does clicking one in the tree later.
  *
  * IMPORTANT: Full data model compatibility with legacy JavaFX app is maintained.
  */
@@ -40,29 +40,22 @@ import {
   Paper,
   LinearProgress,
   Alert,
-  CircularProgress,
 } from '@mui/material';
-import { Delete, CloudUpload, Warning, RotateLeft, RotateRight, Flip } from '@mui/icons-material';
+import { Delete, CloudUpload, Warning } from '@mui/icons-material';
 import {
   IDENTITY_ORIENTATION,
   isIdentityOrientation,
-  orientationRotateCW,
-  orientationRotateCCW,
-  toggleOrientationFlip,
-  orientationCssTransform,
-  orientationLabel,
   type Orientation,
 } from '@/utils/rotationUtils';
 import { useAppStore } from '@/store';
 import type { MicrographMetadata } from '@/types/project-types';
-import { findMicrographById } from '@/store/helpers';
-import { listPlacedChildren } from '@/utils/copySizePlacement';
-import { cannotPlaceChildrenReason, unplacedChildren } from '@/utils/micrographLocation';
-import { PlaceAllChoices } from './PlaceAllChoices';
-import { InstrumentInfoForm, isInstrumentInfoComplete, type InstrumentFormData } from './InstrumentInfoForm';
-import { InstrumentDataForm, type InstrumentDataFormData, type Detector, initialInstrumentDataFormData } from './InstrumentDataForm';
+import { effectiveImageType, imageTypesComplete } from '@/utils/imageTypeChoices';
+import { InstrumentInfoForm } from './InstrumentInfoForm';
+import { ImageTypeRows } from './ImageTypeRows';
+import { RotateFlipList } from './RotateFlipList';
+import { useInstrumentForms } from './useInstrumentForms';
+import { InstrumentDataForm } from './InstrumentDataForm';
 import { OrientationForm, type OrientationFormData, initialOrientationData, validateOrientationForm } from './OrientationForm';
-import type { InstrumentData } from './InstrumentDatabaseDialog';
 import { describeImageLoadError } from '@/utils/imageLoadError';
 
 interface BatchImportDialogProps {
@@ -70,11 +63,8 @@ interface BatchImportDialogProps {
   onClose: () => void;
   sampleId: string | null; // For reference micrographs
   parentMicrographId: string | null; // For associated micrographs
-  /**
-   * The last screen of an associated import: place the parent's unplaced children automatically
-   * (image matching), on its full area, or like a placed child (Peter, 2026-10-29)
-   */
-  onPlaceChildren?: (parentMicrographId: string, how: 'auto' | 'parent-area' | 'like-sibling') => void;
+  /** Every file imported without errors: goes on to Finish Importing with the new micrographs */
+  onImported?: (micrographIds: string[]) => void;
 }
 
 interface SelectedFile {
@@ -83,23 +73,16 @@ interface SelectedFile {
   validationError?: string;
 }
 
-const initialInstrumentInfoData: InstrumentFormData = {
-  instrumentType: '',
-  otherInstrumentType: '',
-  dataType: '',
-  imageType: '',
-};
-
 export const BatchImportDialog: React.FC<BatchImportDialogProps> = ({
   isOpen,
   onClose,
   sampleId,
   parentMicrographId,
-  onPlaceChildren,
+  onImported,
 }) => {
   const [activeStep, setActiveStep] = useState(0);
   const [selectedFiles, setSelectedFiles] = useState<SelectedFile[]>([]);
-  const [includeInstrumentInfo, setIncludeInstrumentInfo] = useState(false);
+  const [includeInstrumentInfo, setIncludeInstrumentInfo] = useState(true);
   const [includeOrientation, setIncludeOrientation] = useState(false);
   const [includeRotation, setIncludeRotation] = useState(false);
 
@@ -112,12 +95,7 @@ export const BatchImportDialog: React.FC<BatchImportDialogProps> = ({
   const [previewCache, setPreviewCache] = useState<Record<string, string>>({});
   const isLoadingPreviewsRef = useRef(false);
 
-  // Instrument & Image Info (step 1)
-  const [instrumentInfoData, setInstrumentInfoData] = useState<InstrumentFormData>(initialInstrumentInfoData);
-
-  // Instrument Data (step 2) - detectors, software, etc.
-  const [instrumentDataFormData, setInstrumentDataFormData] = useState<InstrumentDataFormData>(initialInstrumentDataFormData);
-  const [detectors, setDetectors] = useState<Detector[]>([{ type: '', make: '', model: '' }]);
+  const forms = useInstrumentForms();
 
   // Orientation
   const [orientationData, setOrientationData] = useState<OrientationFormData>(initialOrientationData);
@@ -129,9 +107,6 @@ export const BatchImportDialog: React.FC<BatchImportDialogProps> = ({
   const isImportingRef = useRef(false);
   const [importProgress, setImportProgress] = useState({ current: 0, total: 0, currentFile: '' });
   const [importErrors, setImportErrors] = useState<string[]>([]);
-  // Associated import done: how many were imported, for the "Place them automatically now?" screen
-  const [importedCount, setImportedCount] = useState<number | null>(null);
-
   // Determine if this is for associated micrographs (has parent) or reference (no parent)
   const isAssociated = parentMicrographId !== null;
 
@@ -141,22 +116,6 @@ export const BatchImportDialog: React.FC<BatchImportDialogProps> = ({
 
   // Get project from store
   const project = useAppStore((state) => state.project);
-
-  // Get existing micrographs for "copy from" dropdown
-  const existingMicrographs = useMemo((): MicrographMetadata[] => {
-    if (!project) return [];
-    const micrographs: MicrographMetadata[] = [];
-    for (const dataset of project.datasets || []) {
-      for (const sample of dataset.samples || []) {
-        for (const micro of sample.micrographs || []) {
-          if (micro.instrument?.instrumentType) {
-            micrographs.push(micro);
-          }
-        }
-      }
-    }
-    return micrographs;
-  }, [project]);
 
   // Build steps array based on selected options
   const steps = useMemo(() => {
@@ -252,113 +211,12 @@ export const BatchImportDialog: React.FC<BatchImportDialogProps> = ({
     };
   }, [onRotationStep, validFiles, previewCache]);
 
-  // Instrument Info handlers
-  const handleInstrumentInfoChange = (field: keyof InstrumentFormData, value: string) => {
-    setInstrumentInfoData((prev) => ({ ...prev, [field]: value }));
-  };
-
-  // Instrument Data handlers
-  const handleInstrumentDataChange = (field: keyof InstrumentDataFormData, value: string) => {
-    setInstrumentDataFormData((prev) => ({ ...prev, [field]: value }));
-  };
-
-  const handleDetectorChange = (index: number, field: keyof Detector, value: string) => {
-    setDetectors((prev) => {
-      const updated = [...prev];
-      updated[index] = { ...updated[index], [field]: value };
-      return updated;
-    });
-  };
-
-  const handleAddDetector = () => {
-    setDetectors((prev) => [...prev, { type: '', make: '', model: '' }]);
-  };
-
-  const handleRemoveDetector = (index: number) => {
-    setDetectors((prev) => prev.filter((_, i) => i !== index));
-  };
-
   // Orientation handlers
   const handleOrientationChange = <K extends keyof OrientationFormData>(
     field: K,
     value: OrientationFormData[K]
   ) => {
     setOrientationData((prev) => ({ ...prev, [field]: value }));
-  };
-
-  // Load from database
-  const handleInstrumentFromDatabase = (instrument: InstrumentData) => {
-    // Update instrument info (type)
-    setInstrumentInfoData((prev) => ({
-      ...prev,
-      instrumentType: instrument.instrumentType || prev.instrumentType,
-    }));
-
-    // Update instrument data (brand, model, etc.)
-    setInstrumentDataFormData({
-      instrumentBrand: instrument.instrumentBrand || '',
-      instrumentModel: instrument.instrumentModel || '',
-      university: instrument.university || '',
-      laboratory: instrument.laboratory || '',
-      dataCollectionSoftware: instrument.dataCollectionSoftware || '',
-      dataCollectionSoftwareVersion: instrument.dataCollectionSoftwareVersion || '',
-      postProcessingSoftware: instrument.postProcessingSoftware || '',
-      postProcessingSoftwareVersion: instrument.postProcessingSoftwareVersion || '',
-      filamentType: instrument.filamentType || '',
-      instrumentNotes: instrument.instrumentNotes || '',
-    });
-
-    // Update detectors
-    if (instrument.detectors && instrument.detectors.length > 0) {
-      setDetectors(
-        instrument.detectors.map((d) => ({
-          type: d.detectorType || '',
-          make: d.detectorMake || '',
-          model: d.detectorModel || '',
-        }))
-      );
-    }
-  };
-
-  // Copy from existing micrograph
-  const handleCopyFromExisting = (micrographId: string) => {
-    const sourceMicro = existingMicrographs.find((m) => m.id === micrographId);
-    if (!sourceMicro || !sourceMicro.instrument) return;
-
-    const inst = sourceMicro.instrument;
-
-    // Update instrument info
-    setInstrumentInfoData({
-      instrumentType: inst.instrumentType || '',
-      otherInstrumentType: inst.otherInstrumentType || '',
-      dataType: inst.dataType || '',
-      imageType: sourceMicro.imageType || '',
-    });
-
-    // Update instrument data
-    setInstrumentDataFormData({
-      instrumentBrand: inst.instrumentBrand || '',
-      instrumentModel: inst.instrumentModel || '',
-      university: inst.university || '',
-      laboratory: inst.laboratory || '',
-      dataCollectionSoftware: inst.dataCollectionSoftware || '',
-      dataCollectionSoftwareVersion: inst.dataCollectionSoftwareVersion || '',
-      postProcessingSoftware: inst.postProcessingSoftware || '',
-      postProcessingSoftwareVersion: inst.postProcessingSoftwareVersion || '',
-      filamentType: inst.filamentType || '',
-      instrumentNotes: inst.instrumentNotes || '',
-    });
-
-    // Update detectors
-    if (inst.instrumentDetectors && inst.instrumentDetectors.length > 0) {
-      setDetectors(
-        inst.instrumentDetectors.map((d) => ({
-          type: d.detectorType || '',
-          make: d.detectorMake || '',
-          model: d.detectorModel || '',
-        }))
-      );
-    }
   };
 
   const canProceed = () => {
@@ -369,8 +227,8 @@ export const BatchImportDialog: React.FC<BatchImportDialogProps> = ({
         return validFiles.length > 0;
 
       case 'Instrument & Image Info':
-        // Shared rule: instrument type + image type, or just the free-text name for "Other"
-        return isInstrumentInfoComplete(instrumentInfoData);
+        // Instrument type + an image type for each file, or just the free-text name for "Other"
+        return imageTypesComplete(forms.info, forms.ownImageTypes, validFiles.map((f) => f.path));
 
       case 'Instrument Data':
         // Instrument data step is always valid (all fields optional)
@@ -454,7 +312,7 @@ export const BatchImportDialog: React.FC<BatchImportDialogProps> = ({
     setImportErrors([]);
 
     const errors: string[] = [];
-    let imported = 0;
+    const importedIds: string[] = [];
 
     // Ensure all project folders exist (images, compositeThumbnails, etc.)
     // This is idempotent - safe to call even if folders already exist
@@ -537,33 +395,10 @@ export const BatchImportDialog: React.FC<BatchImportDialogProps> = ({
         };
 
         // Add instrument info if included (FULL data model)
-        if (includeInstrumentInfo && instrumentInfoData.instrumentType) {
+        if (includeInstrumentInfo && forms.info.instrumentType) {
           // Absent rather than '' when no image type applies (e.g. "Other"), like the wizard
-          micrograph.imageType = instrumentInfoData.imageType || undefined;
-          micrograph.instrument = {
-            instrumentType: instrumentInfoData.instrumentType,
-            otherInstrumentType: instrumentInfoData.otherInstrumentType || undefined,
-            dataType: instrumentInfoData.dataType || undefined,
-            // Instrument data fields
-            instrumentBrand: instrumentDataFormData.instrumentBrand || undefined,
-            instrumentModel: instrumentDataFormData.instrumentModel || undefined,
-            university: instrumentDataFormData.university || undefined,
-            laboratory: instrumentDataFormData.laboratory || undefined,
-            dataCollectionSoftware: instrumentDataFormData.dataCollectionSoftware || undefined,
-            dataCollectionSoftwareVersion: instrumentDataFormData.dataCollectionSoftwareVersion || undefined,
-            postProcessingSoftware: instrumentDataFormData.postProcessingSoftware || undefined,
-            postProcessingSoftwareVersion: instrumentDataFormData.postProcessingSoftwareVersion || undefined,
-            filamentType: instrumentDataFormData.filamentType || undefined,
-            instrumentNotes: instrumentDataFormData.instrumentNotes || undefined,
-            // Detectors
-            instrumentDetectors: detectors
-              .filter((d) => d.type || d.make || d.model)
-              .map((d) => ({
-                detectorType: d.type || undefined,
-                detectorMake: d.make || undefined,
-                detectorModel: d.model || undefined,
-              })),
-          };
+          micrograph.imageType = effectiveImageType(forms.info.imageType, forms.ownImageTypes, file.path) || undefined;
+          micrograph.instrument = forms.buildInstrument();
         }
 
         // Add orientation if included (reference only)
@@ -626,7 +461,7 @@ export const BatchImportDialog: React.FC<BatchImportDialogProps> = ({
             });
         }
 
-        imported++;
+        importedIds.push(micrographId);
         console.log(`[BatchImport] Successfully imported: ${file.name}`);
       } catch (error) {
         console.error(`[BatchImport] Error importing ${file.name}:`, error);
@@ -642,14 +477,10 @@ export const BatchImportDialog: React.FC<BatchImportDialogProps> = ({
     isImportingRef.current = false;
     setIsImporting(false);
 
-    // If all successful, close the dialog, or offer placing associated micrographs
+    // If all successful, close the dialog and go on with what the new micrographs still need
     if (errors.length === 0) {
-      const parent = isAssociated ? findMicrographById(useAppStore.getState().project, parentMicrographId) : null;
-      if (onPlaceChildren && parent && imported > 0 && cannotPlaceChildrenReason(parent) === null) {
-        setImportedCount(imported);
-      } else {
-        handleClose();
-      }
+      handleClose();
+      if (importedIds.length > 0) onImported?.(importedIds);
     }
   };
 
@@ -657,24 +488,17 @@ export const BatchImportDialog: React.FC<BatchImportDialogProps> = ({
     // Reset state
     setActiveStep(0);
     setSelectedFiles([]);
-    setIncludeInstrumentInfo(false);
+    setIncludeInstrumentInfo(true);
     setIncludeOrientation(false);
     setIncludeRotation(false);
     setFileOrientations({});
     setPreviewCache({});
-    setInstrumentInfoData(initialInstrumentInfoData);
-    setInstrumentDataFormData(initialInstrumentDataFormData);
-    setDetectors([{ type: '', make: '', model: '' }]);
+    forms.reset();
     setOrientationData(initialOrientationData);
     setImportProgress({ current: 0, total: 0, currentFile: '' });
     setImportErrors([]);
-    setImportedCount(null);
     onClose();
   };
-
-  const parentName = isAssociated ? findMicrographById(project, parentMicrographId)?.name || 'the parent micrograph' : '';
-  // The last screen offers "Copy the placement..." when the parent already has a placed child
-  const hasPlacedSibling = isAssociated && listPlacedChildren(project, parentMicrographId).length > 0;
 
   const renderStepContent = () => {
     const currentStepName = steps[activeStep];
@@ -703,6 +527,11 @@ export const BatchImportDialog: React.FC<BatchImportDialogProps> = ({
                 }
                 label="Instrument and Image Info"
               />
+              {!includeInstrumentInfo && (
+                <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', ml: 4, mt: -1 }}>
+                  You will be asked for it when you finish importing them.
+                </Typography>
+              )}
               {!isAssociated && (
                 <FormControlLabel
                   control={
@@ -792,26 +621,36 @@ export const BatchImportDialog: React.FC<BatchImportDialogProps> = ({
 
       case 'Instrument & Image Info':
         return (
-          <InstrumentInfoForm
-            formData={instrumentInfoData}
-            onFormChange={handleInstrumentInfoChange}
-            onInstrumentFromDatabase={handleInstrumentFromDatabase}
-            existingMicrographs={existingMicrographs}
-            onCopyFromExisting={handleCopyFromExisting}
-            showCopyFromExisting={true}
-          />
+          <Stack spacing={2}>
+            <InstrumentInfoForm
+              formData={forms.info}
+              onFormChange={forms.onInfoChange}
+              onInstrumentFromDatabase={forms.onInstrumentFromDatabase}
+              existingMicrographs={forms.existingMicrographs}
+              onCopyFromExisting={forms.onCopyFromExisting}
+              showCopyFromExisting
+            />
+            <ImageTypeRows
+              instrumentType={forms.info.instrumentType}
+              dataType={forms.info.dataType}
+              commonImageType={forms.info.imageType}
+              own={forms.ownImageTypes}
+              rows={validFiles.map((f) => ({ id: f.path, name: f.name }))}
+              onChange={forms.setOwnImageType}
+            />
+          </Stack>
         );
 
       case 'Instrument Data':
         return (
           <InstrumentDataForm
-            formData={instrumentDataFormData}
-            detectors={detectors}
-            instrumentType={instrumentInfoData.instrumentType}
-            onFormChange={handleInstrumentDataChange}
-            onDetectorChange={handleDetectorChange}
-            onAddDetector={handleAddDetector}
-            onRemoveDetector={handleRemoveDetector}
+            formData={forms.data}
+            detectors={forms.detectors}
+            instrumentType={forms.info.instrumentType}
+            onFormChange={forms.onDataChange}
+            onDetectorChange={forms.onDetectorChange}
+            onAddDetector={forms.onAddDetector}
+            onRemoveDetector={forms.onRemoveDetector}
           />
         );
 
@@ -831,93 +670,12 @@ export const BatchImportDialog: React.FC<BatchImportDialogProps> = ({
               affect how the image appears everywhere (detail view, thumbnails, exports). They
               cannot be changed after import.
             </Alert>
-            <Paper variant="outlined" sx={{ maxHeight: 420, overflow: 'auto' }}>
-              <List dense>
-                {validFiles.map((file) => {
-                  const orientation = fileOrientations[file.path] ?? IDENTITY_ORIENTATION;
-                  const preview = previewCache[file.path];
-                  return (
-                    <ListItem key={file.path} sx={{ gap: 2 }}>
-                      {/* Square container: the rotated bounding box never overflows */}
-                      <Box
-                        sx={{
-                          width: 120,
-                          height: 120,
-                          flexShrink: 0,
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          bgcolor: 'action.hover',
-                          borderRadius: 1,
-                        }}
-                      >
-                        {preview === undefined ? (
-                          <CircularProgress size={24} />
-                        ) : preview === '' ? (
-                          <Warning color="disabled" />
-                        ) : (
-                          <Box
-                            component="img"
-                            src={preview}
-                            alt={file.name}
-                            sx={{
-                              maxWidth: '100%',
-                              maxHeight: '100%',
-                              transform: orientationCssTransform(orientation),
-                              transition: 'transform 150ms ease',
-                            }}
-                          />
-                        )}
-                      </Box>
-                      <ListItemText
-                        primary={file.name}
-                        secondary={orientationLabel(orientation)}
-                        slotProps={{
-                          primary: { noWrap: true }
-                        }}
-                      />
-                      <IconButton
-                        size="small"
-                        title="Rotate 90° counter-clockwise"
-                        onClick={() =>
-                          setFileOrientations((prev) => ({
-                            ...prev,
-                            [file.path]: orientationRotateCCW(orientation),
-                          }))
-                        }
-                      >
-                        <RotateLeft />
-                      </IconButton>
-                      <IconButton
-                        size="small"
-                        title="Rotate 90° clockwise"
-                        onClick={() =>
-                          setFileOrientations((prev) => ({
-                            ...prev,
-                            [file.path]: orientationRotateCW(orientation),
-                          }))
-                        }
-                      >
-                        <RotateRight />
-                      </IconButton>
-                      <IconButton
-                        size="small"
-                        title="Flip (mirror) left-right"
-                        color={orientation.flip ? 'primary' : 'default'}
-                        onClick={() =>
-                          setFileOrientations((prev) => ({
-                            ...prev,
-                            [file.path]: toggleOrientationFlip(orientation),
-                          }))
-                        }
-                      >
-                        <Flip />
-                      </IconButton>
-                    </ListItem>
-                  );
-                })}
-              </List>
-            </Paper>
+            <RotateFlipList
+              rows={validFiles.map((f) => ({ id: f.path, name: f.name }))}
+              orientations={fileOrientations}
+              previews={previewCache}
+              onChange={(path, orientation) => setFileOrientations((prev) => ({ ...prev, [path]: orientation }))}
+            />
           </Stack>
         );
 
@@ -1011,36 +769,9 @@ export const BatchImportDialog: React.FC<BatchImportDialogProps> = ({
           ))}
         </Stepper>
 
-        {importedCount !== null ? (
-          <Stack spacing={2} sx={{ py: 2 }}>
-            <Alert severity="success">
-              {importedCount === 1 ? '1 micrograph imported.' : `${importedCount} micrographs imported.`}
-            </Alert>
-            <Typography variant="body1">Place them on {parentName} now?</Typography>
-            <PlaceAllChoices
-              count={parentMicrographId ? unplacedChildren(project, parentMicrographId).length : 0}
-              parentName={parentName}
-              hasPlacedSibling={hasPlacedSibling}
-              onChoose={(how) => {
-                const parentId = parentMicrographId;
-                handleClose();
-                if (parentId) onPlaceChildren?.(parentId, how);
-              }}
-            />
-            <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-              Images that cannot be placed stay unplaced; you can place them later with Edit Micrograph Location.
-            </Typography>
-          </Stack>
-        ) : (
-          renderStepContent()
-        )}
+        {renderStepContent()}
       </DialogContent>
 
-      {importedCount !== null ? (
-        <DialogActions>
-          <Button onClick={handleClose}>Later</Button>
-        </DialogActions>
-      ) : (
         <DialogActions>
           <Button onClick={handleClose} disabled={isImporting}>
             Cancel
@@ -1062,7 +793,6 @@ export const BatchImportDialog: React.FC<BatchImportDialogProps> = ({
             </Button>
           )}
         </DialogActions>
-      )}
     </Dialog>
   );
 };
