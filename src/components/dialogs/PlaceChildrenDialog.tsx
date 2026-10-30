@@ -43,6 +43,8 @@ import FootprintPreview from './FootprintPreview';
 interface PlaceChildrenDialogProps {
   open: boolean;
   parentMicrographId: string;
+  /** Only these unplaced children (Finish Importing); default all */
+  onlyIds?: string[];
   onClose: () => void;
 }
 
@@ -110,7 +112,7 @@ function statusNote(state: RowState): string | null {
   }
 }
 
-const PlaceChildrenDialog: React.FC<PlaceChildrenDialogProps> = ({ open, parentMicrographId, onClose }) => {
+const PlaceChildrenDialog: React.FC<PlaceChildrenDialogProps> = ({ open, parentMicrographId, onlyIds, onClose }) => {
   const placeMicrograph = useAppStore((state) => state.placeMicrograph);
   const [rows, setRows] = useState<Row[]>([]);
   const [phase, setPhase] = useState<Phase>('matching');
@@ -157,7 +159,7 @@ const PlaceChildrenDialog: React.FC<PlaceChildrenDialogProps> = ({ open, parentM
       const fullParentPath = `${folders.images}/${parentMicrograph.imagePath}`;
       setParentPath(fullParentPath);
       const children: Row[] = unplacedChildren(project, parentMicrographId)
-        .filter((c) => c.imagePath)
+        .filter((c) => c.imagePath && (!onlyIds || onlyIds.includes(c.id)))
         .map((c) => ({
           id: c.id,
           label: c.name || c.imageFilename || 'Unnamed',
@@ -419,35 +421,3 @@ const PlaceChildrenDialog: React.FC<PlaceChildrenDialogProps> = ({ open, parentM
 };
 
 export default PlaceChildrenDialog;
-
-/**
- * Asked when an unplaced child is clicked while its parent has other unplaced children (as after a
- * Batch Import): place them all automatically, or set up just this one. Closing it does neither.
- */
-export const PlaceChildrenOffer: React.FC<{
-  open: boolean;
-  childName: string;
-  parentName: string;
-  /** Unplaced children of the parent besides the clicked one */
-  others: number;
-  onPlaceAll: () => void;
-  onJustThisOne: () => void;
-  onClose: () => void;
-}> = ({ open, childName, parentName, others, onPlaceAll, onJustThisOne, onClose }) => (
-  <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth aria-labelledby="place-children-offer-title">
-    <DialogTitle id="place-children-offer-title">Place all children automatically?</DialogTitle>
-    <DialogContent>
-      <Typography variant="body2">
-        {childName} and {others === 1 ? '1 other micrograph' : `${others} other micrographs`} on {parentName} are not
-        placed yet. StraboMicro can look for each of them on {parentName} and show you what it found before anything
-        is saved.
-      </Typography>
-    </DialogContent>
-    <DialogActions>
-      <Button onClick={onJustThisOne}>Just this one</Button>
-      <Button onClick={onPlaceAll} variant="contained">
-        Place all automatically
-      </Button>
-    </DialogActions>
-  </Dialog>
-);

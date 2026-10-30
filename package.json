@@ -14,6 +14,7 @@
     "test:chat-text": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/chatText.test.mts",
     "test:spot-framing": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/spotFraming.test.mts",
     "test:sibling-placement": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/siblingPlacement.test.mts",
+    "test:finish-importing": "rolldown -c tests/sync/rolldown.test.config.mjs && node node_modules/.cache/sync-tests/finishImporting.test.mjs",
     "test:incomplete-micrographs": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/incompleteMicrographs.test.mts",
     "test:web-viewer-placement": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/webViewerPlacement.test.mts",
     "test:sibling-pair": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/siblingPair.test.mts",

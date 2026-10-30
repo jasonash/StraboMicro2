@@ -64,15 +64,25 @@ test('place automatically', async ({ launch, runDir }) => {
     .locator('[data-testid="ChevronRightIcon"]').first().click();
   await settle(ana);
 
-  // Clicking an unplaced child: the offer
+  // Clicking an unplaced child: Finish Importing, its placement step
   await ana.page.getByText(children[0].name, { exact: true }).click();
-  const offer = ana.page.getByRole('dialog', { name: 'Place all children automatically?' });
-  await expect(offer).toBeVisible();
+  const finish = ana.page.getByRole('dialog', { name: 'Finish Importing' });
+  await expect(finish).toBeVisible();
   await settle(ana, 800);
-  await shot(ana, 'place-children-offer', offer);
+  await shot(ana, 'finish-importing-list', finish);
+  await finish.getByRole('button', { name: 'Next', exact: true }).click();
+  await finish.getByRole('button', { name: 'Next', exact: true }).click();
+  await settle(ana, 800);
+  await shot(ana, 'finish-importing-placement', finish);
+  await finish.getByRole('button', { name: 'Later' }).click();
+  await expect(finish).toBeHidden();
 
-  // Just this one: Edit Micrograph Location, Place automatically on parent
-  await offer.getByRole('button', { name: 'Just this one' }).click();
+  // One micrograph on its own: Edit Micrograph Location, Place automatically on parent
+  await ana.page.getByText(children[0].name, { exact: true }).click();
+  await finish.getByRole('checkbox', { name: children[1].name }).uncheck();
+  await finish.getByRole('checkbox', { name: children[2].name }).uncheck();
+  await finish.getByRole('button', { name: 'Next', exact: true }).click();
+  await finish.getByRole('button', { name: 'Next', exact: true }).click();
   const edit = ana.page.getByRole('dialog', { name: 'Edit Micrograph Location' });
   await expect(edit).toBeVisible();
   await edit.getByText('Place automatically on parent', { exact: true }).click();

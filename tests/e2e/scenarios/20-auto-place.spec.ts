@@ -244,7 +244,7 @@ async function placedNames(copy: Copy): Promise<string[]> {
     return names.sort();`) as never) as unknown as string[];
 }
 
-test('Batch Import ends with Place automatically: found ones are placed in one undo step, the unrelated one is left', async ({ launch, runDir }) => {
+test('Batch Import goes on to Automatically place: found ones are placed in one undo step, the unrelated one is left', async ({ launch, runDir }) => {
   const { ana } = await start(launch, runDir, 'E2E Place Children Batch');
   const images = await childImages();
   fs.mkdirSync(`${runDir}/images`, { recursive: true });
@@ -262,11 +262,19 @@ test('Batch Import ends with Place automatically: found ones are placed in one u
   await ana.answerDialog({ kind: 'open', filePaths: files });
   await batch.getByRole('button', { name: 'Browse' }).click();
   await batch.getByRole('button', { name: 'Next' }).click();
+  await batch.getByRole('combobox', { name: /^Instrument Type/ }).click();
+  await ana.page.getByRole('option', { name: 'Optical Microscopy', exact: true }).click();
+  await batch.getByRole('combobox', { name: /^Image Type/ }).first().click();
+  await ana.page.getByRole('option', { name: 'Plane Polarized Light', exact: true }).click();
+  await batch.getByRole('button', { name: 'Next' }).click();
+  await batch.getByRole('button', { name: 'Next' }).click();
   await batch.getByRole('button', { name: 'Import', exact: true }).click();
-  await expect(batch.getByText('3 micrographs imported.')).toBeVisible({ timeout: 120_000 });
-  await ana.caption('answers Place automatically on the last screen');
-  await batch.getByRole('button', { name: 'Place automatically' }).click();
+  const finish = ana.page.getByRole('dialog', { name: 'Finish Importing' });
+  await expect(finish.getByText('3 micrographs imported.')).toBeVisible({ timeout: 120_000 });
   await expect(batch).toBeHidden();
+  await ana.caption('answers Automatically place in Finish Importing');
+  await finish.getByRole('button', { name: /^Automatically place on / }).click();
+  await expect(finish).toBeHidden();
 
   const dialog = ana.page.getByRole('dialog', { name: /^Place children automatically on/ });
   await expect(dialog).toBeVisible();
@@ -292,7 +300,7 @@ test('Batch Import ends with Place automatically: found ones are placed in one u
   await expect.poll(() => placedNames(ana), { timeout: 15_000 }).toEqual([]);
 });
 
-test('clicking an unplaced child offers placing all; Just this one opens Edit Location and stops asking; the menu item and Stop', async ({ launch, runDir }) => {
+test('Finish Importing > Automatically place covers the checked ones only; Edit Micrograph Location lists automatic last; the menu item and Stop', async ({ launch, runDir }) => {
   const overview = await (await rockImage()).jpeg({ quality: 90 }).toBuffer();
   const images = await childImages();
   const overviewId = randomUUID();
@@ -318,21 +326,31 @@ test('clicking an unplaced child offers placing all; Just this one opens Edit Lo
   await ana.page.getByText('Overview (Reference)', { exact: true }).locator('xpath=..')
     .locator('[data-testid="ChevronRightIcon"]').first().click();
 
-  await ana.caption('clicks an unplaced child: the offer comes first');
+  await ana.caption('clicks an unplaced child: Finish Importing; leaves one out; Automatically place looks for the other two');
   await ana.page.getByText('Child turned', { exact: true }).click();
-  const offer = ana.page.getByRole('dialog', { name: 'Place all children automatically?' });
-  await expect(offer).toBeVisible();
-  await expect(offer.getByText(/Child turned and 2 other micrographs on/)).toBeVisible();
-  await offer.getByRole('button', { name: 'Just this one' }).click();
+  const finish = ana.page.getByRole('dialog', { name: 'Finish Importing' });
+  await expect(finish.getByTestId('finish-row')).toHaveCount(3);
+  await finish.getByRole('checkbox', { name: 'Child unrelated' }).uncheck();
+  await finish.getByRole('button', { name: 'Next', exact: true }).click();
+  await finish.getByRole('button', { name: 'Next', exact: true }).click();
+  await finish.getByRole('button', { name: /^Automatically place on / }).click();
+  const only = ana.page.getByRole('dialog', { name: /^Place children automatically on/ });
+  await expect(only.getByTestId('place-children-row')).toHaveCount(2);
+  await only.getByRole('button', { name: 'Cancel' }).click();
+  await expect(only).toBeHidden();
+
+  await ana.caption('only one left unchecked: on to Edit Micrograph Location, scaled rectangle first, automatic last');
+  await ana.page.getByText('Child turned', { exact: true }).click();
+  await finish.getByRole('checkbox', { name: 'Child plain' }).uncheck();
+  await finish.getByRole('checkbox', { name: 'Child unrelated' }).uncheck();
+  await finish.getByRole('button', { name: 'Next', exact: true }).click();
+  await finish.getByRole('button', { name: 'Next', exact: true }).click();
   const editLocation = ana.page.getByRole('dialog', { name: 'Edit Micrograph Location' });
   await expect(editLocation).toBeVisible();
-  await editLocation.getByRole('button', { name: 'Cancel' }).click();
-  await expect(editLocation).toBeHidden();
-
-  await ana.caption('another child of the same parent: no offer this time');
-  await ana.page.getByText('Child plain', { exact: true }).click();
-  await expect(editLocation).toBeVisible();
-  await expect(offer).toBeHidden();
+  const methods = editLocation.getByRole('radio');
+  await expect(methods.first()).toHaveValue('Locate as a scaled rectangle');
+  await expect(methods.first()).toBeChecked();
+  await expect(methods.last()).toHaveValue('Place automatically on parent');
   await editLocation.getByRole('button', { name: 'Cancel' }).click();
   await expect(editLocation).toBeHidden();
 
