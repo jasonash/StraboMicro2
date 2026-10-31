@@ -565,6 +565,7 @@ interface Window {
     openFileDialog: () => Promise<string | null>;
     openFilesDialog: () => Promise<string[]>;
     saveTextFile: (content: string, defaultName: string, extension: string) => Promise<{ success: boolean; canceled?: boolean; filePath?: string }>;
+    openTextFile: (title: string, extension: string) => Promise<{ success: boolean; canceled?: boolean; filePath?: string; content?: string; error?: string }>;
     /** Custom User Data files (electron/customUserDataFiles.js) */
     customUserData: {
       save: (

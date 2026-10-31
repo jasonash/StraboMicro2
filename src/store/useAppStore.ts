@@ -115,7 +115,17 @@ import type {
 } from '@/types/preset-types';
 import type { MineralColorEntry, SpotColorMode, SpotLabelMode } from '@/types/mineral-color-types';
 import { DEFAULT_MINERAL_COLORS } from '@/constants/mineralColorDefaults';
+import { v4 as uuidv4 } from 'uuid';
 import { PRESET_FEATURE_FIELDS } from '@/types/preset-types';
+import {
+  bindPresetKey,
+  keysAfterCopy,
+  keysForOpenedProject,
+  keysOfPresets,
+  planPresetCopy,
+  withoutPresetKey,
+} from '@/utils/presetLibrary';
+import type { PresetConflictChoice, PresetCopyPlan } from '@/utils/presetLibrary';
 import {
   updateMicrograph,
   updateSpot,
@@ -138,6 +148,26 @@ import { NO_SPOT_FILTER, type SpotFilter } from '@/utils/spotDataSections';
  * and affine placements saved with a stand-in scale before 2026-10-19 (src/utils/affineScale.ts).
  * Returns the project itself when nothing needed repairing.
  */
+/** Keys of global presets; before they were kept apart, the global ones among the live keys */
+function globalKeysOf(state: Pick<AppState, 'globalPresetKeys' | 'presetKeyBindings' | 'globalPresets'>): PresetKeyBindings {
+  return state.globalPresetKeys ?? keysOfPresets(state.presetKeyBindings, state.globalPresets);
+}
+
+/** A change of keys: the live ones, the global ones, and what is remembered for the open project */
+function presetKeyState(
+  state: Pick<AppState, 'project' | 'presetKeysByProject'>,
+  presetKeyBindings: PresetKeyBindings,
+  globalPresetKeys: PresetKeyBindings
+) {
+  return {
+    presetKeyBindings,
+    globalPresetKeys,
+    presetKeysByProject: state.project
+      ? { ...state.presetKeysByProject, [state.project.id]: presetKeyBindings }
+      : state.presetKeysByProject,
+  };
+}
+
 function repairOnOpen(loaded: ProjectMetadata): { project: ProjectMetadata; repairs: number } {
   const copy = structuredClone(loaded);
   const siblings = repairSiblingPlacements(copy);
@@ -245,6 +275,10 @@ interface AppState {
   globalPresets: QuickApplyPreset[];
   /** Key bindings for presets (keys "1"-"9" -> preset ID) */
   presetKeyBindings: PresetKeyBindings;
+  /** Keys of global presets, the start of a project with no remembered keys (null: not worked out yet, older settings) */
+  globalPresetKeys: PresetKeyBindings | null;
+  /** Keys per project id, on this computer only (presetKeyBindings = those of the open project) */
+  presetKeysByProject: Record<string, PresetKeyBindings>;
 
   // ========== AUTO SPOT MODE (personal, persisted; docs/auto-spot-mode-design.md) ==========
   /** Spot tools place and name spots without the New Spot dialog */
@@ -518,6 +552,8 @@ interface AppState {
   updatePreset: (id: string, updates: Partial<QuickApplyPreset>, scope: PresetScope) => void;
   /** Delete a preset */
   deletePreset: (id: string, scope: PresetScope) => void;
+  /** Copies presets into a scope (new ids; same names per choice); from Global, each key moves to its copy */
+  copyPresets: (sources: QuickApplyPreset[], to: PresetScope, choice: PresetConflictChoice) => PresetCopyPlan;
   /** Reorder presets within a scope */
   reorderPresets: (orderedIds: string[], scope: PresetScope) => void;
   /** Apply a preset to a single spot (additive merge) */
@@ -719,6 +755,8 @@ export const useAppStore = create<AppState>()(
           // Quick Spot Presets state (global - persisted)
           globalPresets: [],
           presetKeyBindings: {},
+          globalPresetKeys: null,
+          presetKeysByProject: {},
 
           // Auto spot mode (personal)
           autoSpotMode: false,
@@ -776,9 +814,21 @@ export const useAppStore = create<AppState>()(
             const { project, repairs } = repairOnOpen(loaded);
             const micrographIndex = buildMicrographIndex(project);
             const spotIndex = buildSpotIndex(project);
+            const keysBefore = get();
+            const globalKeys = globalKeysOf(keysBefore);
+            const openedKeys = keysForOpenedProject(
+              keysBefore.presetKeysByProject[project.id],
+              globalKeys,
+              keysBefore.presetKeyBindings,
+              project.presets ?? [],
+              keysBefore.globalPresets
+            );
 
             set({
               project,
+              presetKeyBindings: openedKeys,
+              globalPresetKeys: globalKeys,
+              presetKeysByProject: { ...keysBefore.presetKeysByProject, [project.id]: openedKeys },
               projectFilePath: filePath,
               // A repair is a change to save
               isDirty: repairs > 0,
@@ -812,7 +862,10 @@ export const useAppStore = create<AppState>()(
 
           closeProject: () => {
             resetUndoHistory();
+            const globalKeys = globalKeysOf(get());
             set({
+              presetKeyBindings: globalKeys,
+              globalPresetKeys: globalKeys,
               project: null,
               projectFilePath: null,
               isDirty: false,
@@ -2965,17 +3018,20 @@ export const useAppStore = create<AppState>()(
 
           deletePreset: (id, scope) => set((state) => {
             // Also unbind the key if this preset was bound
-            const newKeyBindings = { ...state.presetKeyBindings };
-            for (const [key, presetId] of Object.entries(newKeyBindings)) {
-              if (presetId === id) {
-                delete newKeyBindings[key];
-              }
-            }
+            const newKeys = presetKeyState(
+              state,
+              withoutPresetKey(state.presetKeyBindings, id),
+              withoutPresetKey(globalKeysOf(state), id)
+            );
 
             if (scope === 'global') {
               return {
                 globalPresets: state.globalPresets.filter((p) => p.id !== id),
-                presetKeyBindings: newKeyBindings,
+                ...newKeys,
+                // A deleted global preset must not keep a key in any project
+                presetKeysByProject: Object.fromEntries(
+                  Object.entries(newKeys.presetKeysByProject).map(([projectId, keys]) => [projectId, withoutPresetKey(keys, id)])
+                ),
               };
             } else {
               if (!state.project) return state;
@@ -2995,11 +3051,30 @@ export const useAppStore = create<AppState>()(
                   presets: existingPresets.filter((p) => p.id !== id),
                   presetKeyBindings: Object.keys(projectKeyBindings || {}).length > 0 ? projectKeyBindings : null,
                 },
-                presetKeyBindings: newKeyBindings,
+                ...newKeys,
                 isDirty: true,
               };
             }
           }),
+
+          copyPresets: (sources, to, choice) => {
+            const state = get();
+            const existing = to === 'global' ? state.globalPresets : state.project?.presets ?? [];
+            const plan = planPresetCopy(sources, existing, to, choice, new Date().toISOString(), uuidv4);
+            const replaced = new Map(plan.replace.map((p) => [p.id, p]));
+            const merged = [...existing.map((p) => replaced.get(p.id) ?? p), ...plan.add];
+
+            if (to === 'global') {
+              set({ globalPresets: merged });
+            } else if (state.project) {
+              set({
+                project: { ...state.project, presets: merged },
+                ...presetKeyState(state, keysAfterCopy(state.presetKeyBindings, plan.targetIds), globalKeysOf(state)),
+                isDirty: true,
+              });
+            }
+            return plan;
+          },
 
           reorderPresets: (orderedIds, scope) => set((state) => {
             if (scope === 'global') {
@@ -3151,23 +3226,15 @@ export const useAppStore = create<AppState>()(
               return state;
             }
 
-            const newKeyBindings = { ...state.presetKeyBindings };
-
+            const isGlobal = (id: string | undefined) => state.globalPresets.some((p) => p.id === id);
+            let globalKeys = globalKeysOf(state);
             if (presetId === null) {
-              // Clear binding
-              delete newKeyBindings[key];
-            } else {
-              // Clear any existing binding for this preset
-              for (const [existingKey, existingId] of Object.entries(newKeyBindings)) {
-                if (existingId === presetId) {
-                  delete newKeyBindings[existingKey];
-                }
-              }
-              // Set new binding
-              newKeyBindings[key] = presetId;
+              if (isGlobal(state.presetKeyBindings[key])) globalKeys = bindPresetKey(globalKeys, key, null);
+            } else if (isGlobal(presetId)) {
+              globalKeys = bindPresetKey(globalKeys, key, presetId);
             }
 
-            return { presetKeyBindings: newKeyBindings };
+            return presetKeyState(state, bindPresetKey(state.presetKeyBindings, key, presetId), globalKeys);
           }),
 
           getAllPresetsWithScope: () => {
@@ -3847,6 +3914,8 @@ export const useAppStore = create<AppState>()(
           // Quick Spot Presets settings (global presets and key bindings)
           globalPresets: state.globalPresets,
           presetKeyBindings: state.presetKeyBindings,
+          globalPresetKeys: state.globalPresetKeys,
+          presetKeysByProject: state.presetKeysByProject,
 
           // Auto spot mode (personal)
           autoSpotMode: state.autoSpotMode,
