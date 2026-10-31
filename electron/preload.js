@@ -131,6 +131,7 @@ contextBridge.exposeInMainWorld('api', {
   openFilesDialog: () => ipcRenderer.invoke('dialog:open-files'),
   saveTextFile: (content, defaultName, extension) =>
     ipcRenderer.invoke('dialog:save-text-file', content, defaultName, extension),
+  openTextFile: (title, extension) => ipcRenderer.invoke('dialog:open-text-file', title, extension),
 
   // Custom User Data files (.xlsx / .csv)
   customUserData: {

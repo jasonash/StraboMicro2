@@ -7,6 +7,7 @@
  * - List with drag-to-reorder
  * - Key binding assignment (1-9)
  * - Edit, Delete, Duplicate actions
+ * - Copy between Global and Project, export to / import from a file
  */
 
 import { useState, useCallback } from 'react';
@@ -37,6 +38,9 @@ import AddIcon from '@mui/icons-material/Add';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
+import DriveFileMoveIcon from '@mui/icons-material/DriveFileMove';
+import FileDownloadIcon from '@mui/icons-material/FileDownload';
+import FileUploadIcon from '@mui/icons-material/FileUpload';
 import KeyboardIcon from '@mui/icons-material/Keyboard';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
 import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
@@ -61,6 +65,8 @@ import { v4 as uuidv4 } from 'uuid';
 import { useAppStore } from '@/store';
 import type { QuickApplyPreset, PresetScope } from '@/types/preset-types';
 import { getPresetSummary } from '@/types/preset-types';
+import { buildPresetFile, parsePresetFile, presetNameConflicts } from '@/utils/presetLibrary';
+import type { PresetConflictChoice, PresetCopyPlan } from '@/utils/presetLibrary';
 import { QuickApplyPresetEditorDialog } from './QuickApplyPresetEditorDialog';
 
 interface QuickApplyPresetsDialogProps {
@@ -90,6 +96,9 @@ interface SortablePresetItemProps {
   onDelete: () => void;
   onDuplicate: () => void;
   onBindKey: (key: string | null) => void;
+  copyLabel: string;
+  copyDisabled: boolean;
+  onCopy: () => void;
 }
 
 function SortablePresetItem({
@@ -99,6 +108,9 @@ function SortablePresetItem({
   onDelete,
   onDuplicate,
   onBindKey,
+  copyLabel,
+  copyDisabled,
+  onCopy,
 }: SortablePresetItemProps) {
   const {
     attributes,
@@ -229,6 +241,16 @@ function SortablePresetItem({
             <ContentCopyIcon fontSize="small" sx={{ mr: 1 }} />
             Duplicate
           </MenuItem>
+          <MenuItem
+            disabled={copyDisabled}
+            onClick={() => {
+              onCopy();
+              setMenuAnchor(null);
+            }}
+          >
+            <DriveFileMoveIcon fontSize="small" sx={{ mr: 1 }} />
+            {copyLabel}
+          </MenuItem>
           <Divider />
           <MenuItem
             onClick={() => {
@@ -251,6 +273,7 @@ export function QuickApplyPresetsDialog({ open, onClose }: QuickApplyPresetsDial
   const project = useAppStore((state) => state.project);
   const presetKeyBindings = useAppStore((state) => state.presetKeyBindings);
   const createPreset = useAppStore((state) => state.createPreset);
+  const copyPresets = useAppStore((state) => state.copyPresets);
   const deletePreset = useAppStore((state) => state.deletePreset);
   const reorderPresets = useAppStore((state) => state.reorderPresets);
   const setPresetKeyBinding = useAppStore((state) => state.setPresetKeyBinding);
@@ -259,6 +282,10 @@ export function QuickApplyPresetsDialog({ open, onClose }: QuickApplyPresetsDial
   const [editorOpen, setEditorOpen] = useState(false);
   const [editingPreset, setEditingPreset] = useState<QuickApplyPreset | null>(null);
   const [editingScope, setEditingScope] = useState<PresetScope>('global');
+
+  // Presets waiting on the "already there" question, and the outcome of the last copy
+  const [pendingCopy, setPendingCopy] = useState<{ sources: QuickApplyPreset[]; to: PresetScope; conflicts: string[] } | null>(null);
+  const [notice, setNotice] = useState<{ severity: 'success' | 'error'; text: string } | null>(null);
 
   // Get project presets
   const projectPresets = project?.presets || [];
@@ -314,6 +341,59 @@ export function QuickApplyPresetsDialog({ open, onClose }: QuickApplyPresetsDial
     createPreset(duplicated, scope);
   };
 
+  const scopeName = (scope: PresetScope) => (scope === 'global' ? 'Global' : 'this project');
+
+  const finishCopy = (sources: QuickApplyPreset[], to: PresetScope, choice: PresetConflictChoice) => {
+    const plan: PresetCopyPlan = copyPresets(sources, to, choice);
+    const count = plan.add.length + plan.replace.length;
+    const parts = [`${count} preset${count === 1 ? '' : 's'} copied to ${scopeName(to)}.`];
+    if (plan.skipped.length > 0) parts.push(`Already there, left as they were: ${plan.skipped.join(', ')}.`);
+    if (plan.tagsDropped > 0) parts.push('Tags were not copied, because tags belong to one project.');
+    setNotice({ severity: 'success', text: parts.join(' ') });
+    setCurrentTab(to === 'global' ? 0 : 1);
+  };
+
+  /** Copies, first asking about names the target already has */
+  const startCopy = (sources: QuickApplyPreset[], to: PresetScope) => {
+    const existing = to === 'global' ? globalPresets : projectPresets;
+    const conflicts = presetNameConflicts(sources, existing);
+    if (conflicts.length > 0) setPendingCopy({ sources, to, conflicts });
+    else finishCopy(sources, to, 'skip');
+  };
+
+  const handleExport = async (presets: QuickApplyPreset[], scope: PresetScope) => {
+    try {
+      const baseName = scope === 'global' ? 'Global' : (project?.name ?? 'Project').replace(/[\\/:*?"<>|]/g, '_');
+      const saved = await window.api?.saveTextFile(
+        buildPresetFile(presets, new Date().toISOString()),
+        `${baseName} Quick Spot Presets.json`,
+        'json'
+      );
+      if (!saved?.success) return;
+      const tagged = presets.filter((p) => (p.data?.tags?.length ?? 0) > 0).length;
+      setNotice({
+        severity: 'success',
+        text: `${presets.length} preset${presets.length === 1 ? '' : 's'} exported.${tagged > 0 ? ' Tags were left out, because tags belong to one project.' : ''}`,
+      });
+    } catch (error) {
+      setNotice({ severity: 'error', text: `The file could not be saved: ${error instanceof Error ? error.message : String(error)}` });
+    }
+  };
+
+  const handleImport = async (scope: PresetScope) => {
+    try {
+      const opened = await window.api?.openTextFile('Import Quick Spot Presets', 'json');
+      if (!opened || opened.canceled) return;
+      if (!opened.success || opened.content === undefined) {
+        setNotice({ severity: 'error', text: opened.error ?? 'The file could not be read.' });
+        return;
+      }
+      startCopy(parsePresetFile(opened.content, new Date().toISOString()), scope);
+    } catch (error) {
+      setNotice({ severity: 'error', text: error instanceof Error ? error.message : String(error) });
+    }
+  };
+
   const handleBindKey = (presetId: string, key: string | null) => {
     if (key === null) {
       // Clear binding for this preset
@@ -352,14 +432,42 @@ export function QuickApplyPresetsDialog({ open, onClose }: QuickApplyPresetsDial
             }}>
             No {scope === 'global' ? 'global' : 'project'} presets yet
           </Typography>
-          <Button variant="outlined" startIcon={<AddIcon />} onClick={handleCreateNew}>
-            Create Preset
-          </Button>
+          <Box sx={{ display: 'flex', gap: 1, justifyContent: 'center', flexWrap: 'wrap' }}>
+            <Button variant="outlined" startIcon={<AddIcon />} onClick={handleCreateNew}>
+              Create Preset
+            </Button>
+            {scope === 'project' && globalPresets.length > 0 && (
+              <Button variant="outlined" startIcon={<DriveFileMoveIcon />} onClick={() => startCopy(globalPresets, 'project')}>
+                Copy from Global ({globalPresets.length})
+              </Button>
+            )}
+            <Button variant="outlined" startIcon={<FileUploadIcon />} onClick={() => handleImport(scope)}>
+              Import...
+            </Button>
+          </Box>
         </Box>
       );
     }
 
     return (
+      <>
+      <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mb: 1 }}>
+        <Button
+          size="small"
+          startIcon={<DriveFileMoveIcon />}
+          disabled={scope === 'global' && !project}
+          onClick={() => startCopy(presets, scope === 'global' ? 'project' : 'global')}
+        >
+          {scope === 'global' ? 'Copy All to Project' : 'Copy All to Global'}
+        </Button>
+        <Box sx={{ flexGrow: 1 }} />
+        <Button size="small" startIcon={<FileUploadIcon />} onClick={() => handleImport(scope)}>
+          Import...
+        </Button>
+        <Button size="small" startIcon={<FileDownloadIcon />} onClick={() => handleExport(presets, scope)}>
+          Export...
+        </Button>
+      </Box>
       <DndContext
         sensors={sensors}
         collisionDetection={closestCenter}
@@ -376,11 +484,15 @@ export function QuickApplyPresetsDialog({ open, onClose }: QuickApplyPresetsDial
                 onDelete={() => handleDelete(preset.id, scope)}
                 onDuplicate={() => handleDuplicate(preset, scope)}
                 onBindKey={(key) => handleBindKey(preset.id, key)}
+                copyLabel={scope === 'global' ? 'Copy to Project' : 'Copy to Global'}
+                copyDisabled={scope === 'global' && !project}
+                onCopy={() => startCopy([preset], scope === 'global' ? 'project' : 'global')}
               />
             ))}
           </List>
         </SortableContext>
       </DndContext>
+      </>
     );
   };
 
@@ -397,7 +509,17 @@ export function QuickApplyPresetsDialog({ open, onClose }: QuickApplyPresetsDial
           <Alert severity="info" sx={{ mb: 2 }}>
             Presets can be applied to spots using keys 1-9 in Quick Edit mode.
             {boundKeysCount > 0 && ` (${boundKeysCount} key${boundKeysCount !== 1 ? 's' : ''} bound)`}
+            <Box component="span" sx={{ display: 'block', mt: 0.5 }}>
+              Only <strong>Project</strong> presets are shared with collaborators. <strong>Global</strong> presets stay
+              on this computer, ready to copy into any project: use Copy to Project to share them.
+            </Box>
           </Alert>
+
+          {notice && (
+            <Alert severity={notice.severity} onClose={() => setNotice(null)} sx={{ mb: 2 }}>
+              {notice.text}
+            </Alert>
+          )}
 
           {/* Tabs */}
           <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }}>
@@ -432,6 +554,37 @@ export function QuickApplyPresetsDialog({ open, onClose }: QuickApplyPresetsDial
             New Preset
           </Button>
           <Button onClick={onClose}>Close</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Names the target already has */}
+      <Dialog open={pendingCopy !== null} onClose={() => setPendingCopy(null)} maxWidth="xs" fullWidth>
+        <DialogTitle>Presets Already There</DialogTitle>
+        <DialogContent>
+          <Typography sx={{ mb: 1 }}>
+            {pendingCopy ? `${pendingCopy.to === 'global' ? 'Global' : 'This project'} already has presets with these names:` : ''}
+          </Typography>
+          <Typography sx={{ fontWeight: 'bold' }}>{pendingCopy?.conflicts.join(', ')}</Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setPendingCopy(null)}>Cancel</Button>
+          <Button
+            onClick={() => {
+              if (pendingCopy) finishCopy(pendingCopy.sources, pendingCopy.to, 'replace');
+              setPendingCopy(null);
+            }}
+          >
+            Replace Them
+          </Button>
+          <Button
+            variant="contained"
+            onClick={() => {
+              if (pendingCopy) finishCopy(pendingCopy.sources, pendingCopy.to, 'skip');
+              setPendingCopy(null);
+            }}
+          >
+            Keep Existing
+          </Button>
         </DialogActions>
       </Dialog>
 

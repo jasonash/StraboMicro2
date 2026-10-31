@@ -2101,6 +2101,27 @@ ipcMain.handle('dialog:save-text-file', async (event, content, defaultName, exte
 });
 
 // Custom User Data (docs/custom-user-data-design.md): save the template / download, read a filled one
+// Reads a small text file the user picks (Quick Spot Presets import)
+ipcMain.handle('dialog:open-text-file', async (event, title, extension) => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title,
+    defaultPath: dialogDirs.getDefaultPath('text-file'),
+    filters: [{ name: `${extension.toUpperCase()} Files`, extensions: [extension] }, { name: 'All Files', extensions: ['*'] }],
+    properties: ['openFile'],
+  });
+  if (result.canceled || result.filePaths.length === 0) return { success: false, canceled: true };
+  const filePath = result.filePaths[0];
+  dialogDirs.remember('text-file', filePath);
+  try {
+    const { size } = await fs.promises.stat(filePath);
+    if (size > 20 * 1024 * 1024) return { success: false, error: 'This file is too large.' };
+    return { success: true, filePath, content: await fs.promises.readFile(filePath, 'utf8') };
+  } catch (error) {
+    log.error('[IPC] Error reading text file:', error);
+    return { success: false, error: error instanceof Error ? error.message : String(error) };
+  }
+});
+
 ipcMain.handle('custom-user-data:save', async (event, table, defaultName, format) => {
   const ext = format === 'csv' ? 'csv' : 'xlsx';
   const dir = dialogDirs.getDefaultPath('custom-user-data');
