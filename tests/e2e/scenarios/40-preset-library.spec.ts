@@ -75,7 +75,14 @@ test('copy from Global: new ids, keys per project, names already there, the note
     const st = e.app.getState();
     st.loadProject({ ...st.project, id: ${JSON.stringify(a.id)}, presets: ${JSON.stringify(copied)} }, null);`) as never);
   expect((await keys(ana))['1']).toBe(olCopy);
-  expect((await keys(ana))['2']).toBeUndefined();
+  // A key on a global preset, bound while another project was open, works here too
+  expect((await keys(ana))['2']).toBe('g-qz');
+
+  await ana.caption('the outcome of the copy is gone when the dialog opens again');
+  await ana.menu('Spot', 'Quick Spot Presets...');
+  await expect(presetsDialog(ana)).toBeVisible();
+  await expect(presetsDialog(ana)).not.toContainText('copied');
+  await closePresets(ana);
 
   await ana.caption('closing keeps only the global keys, and the key bound in B is one of them');
   await ana.state((e) => e.app.getState().closeProject());

@@ -107,10 +107,14 @@ eq('binding takes over the key', bindPresetKey({ 1: 'a' }, '1', 'b'), { 1: 'b' }
 eq('null clears', bindPresetKey({ 1: 'a' }, '1', null), {});
 eq('without preset', withoutPresetKey({ 1: 'a', 2: 'b' }, 'a'), { 2: 'b' });
 eq('keys of presets', keysOfPresets({ 1: 'a', 2: 'b' }, [{ id: 'b' }]), { 2: 'b' });
-eq('opened: remembered wins', keysForOpenedProject({ 3: 'c' }, { 1: 'g' }, { 2: 'p' }, [{ id: 'p' }]), { 3: 'c' });
-eq('opened: remembered empty stays empty', keysForOpenedProject({}, { 1: 'g' }, {}, []), {});
-eq('opened first time: global keys', keysForOpenedProject(undefined, { 1: 'g' }, { 2: 'other' }, []), { 1: 'g' });
-eq('opened first time: own older keys win', keysForOpenedProject(undefined, { 1: 'g' }, { 1: 'p' }, [{ id: 'p' }]), { 1: 'p' });
+const G = [{ id: 'g' }];
+eq('opened: remembered + global keys', keysForOpenedProject({ 3: 'c' }, { 1: 'g' }, { 2: 'p' }, [{ id: 'p' }], G), { 1: 'g', 3: 'c' });
+eq('opened: a global key bound after the project was last open arrives', keysForOpenedProject({}, { 1: 'g' }, {}, [], G), { 1: 'g' });
+eq('opened: own key beats a global key', keysForOpenedProject({ 1: 'c' }, { 1: 'g' }, {}, [], G), { 1: 'c' });
+eq('opened: remembered global key that moved follows the global keys', keysForOpenedProject({ 1: 'g' }, { 2: 'g' }, {}, [], G), { 2: 'g' });
+eq('opened: remembered global key since cleared stays cleared', keysForOpenedProject({ 1: 'g' }, {}, {}, [], G), {});
+eq('opened first time: global keys', keysForOpenedProject(undefined, { 1: 'g' }, { 2: 'other' }, [], G), { 1: 'g' });
+eq('opened first time: own older keys win', keysForOpenedProject(undefined, { 1: 'g' }, { 1: 'p' }, [{ id: 'p' }], G), { 1: 'p' });
 eq('copy takes the key', keysAfterCopy({ 1: 'g1', 2: 'g2' }, { g1: 'c1' }), { 1: 'c1', 2: 'g2' });
 eq('skipped copy: key moves to the one there', keysAfterCopy({ 1: 'g1' }, { g1: 'p1' }), { 1: 'p1' });
 eq('from a file: ids match nothing', keysAfterCopy({ 1: 'g1' }, { 'file-0': 'c' }), { 1: 'g1' });

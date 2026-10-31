@@ -820,7 +820,8 @@ export const useAppStore = create<AppState>()(
               keysBefore.presetKeysByProject[project.id],
               globalKeys,
               keysBefore.presetKeyBindings,
-              project.presets ?? []
+              project.presets ?? [],
+              keysBefore.globalPresets
             );
 
             set({
@@ -3027,6 +3028,10 @@ export const useAppStore = create<AppState>()(
               return {
                 globalPresets: state.globalPresets.filter((p) => p.id !== id),
                 ...newKeys,
+                // A deleted global preset must not keep a key in any project
+                presetKeysByProject: Object.fromEntries(
+                  Object.entries(newKeys.presetKeysByProject).map(([projectId, keys]) => [projectId, withoutPresetKey(keys, id)])
+                ),
               };
             } else {
               if (!state.project) return state;

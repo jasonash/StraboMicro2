@@ -10,7 +10,7 @@
  * - Copy between Global and Project, export to / import from a file
  */
 
-import { useState, useCallback } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -286,6 +286,11 @@ export function QuickApplyPresetsDialog({ open, onClose }: QuickApplyPresetsDial
   // Presets waiting on the "already there" question, and the outcome of the last copy
   const [pendingCopy, setPendingCopy] = useState<{ sources: QuickApplyPreset[]; to: PresetScope; conflicts: string[] } | null>(null);
   const [notice, setNotice] = useState<{ severity: 'success' | 'error'; text: string } | null>(null);
+
+  // The outcome of a copy is news only until the dialog closes
+  useEffect(() => {
+    if (open) setNotice(null);
+  }, [open]);
 
   // Get project presets
   const projectPresets = project?.presets || [];

@@ -187,17 +187,24 @@ export function keysOfPresets(bindings: PresetKeyBindings, presets: Array<{ id: 
 }
 
 /**
- * Keys when a project opens: what this computer remembers for it, else the
- * keys of global presets, plus keys already on its own presets (bindings made
- * before keys were remembered per project).
+ * Keys when a project opens: the keys of global presets work everywhere, and
+ * the project's own keys come on top. Its own = what this computer remembers
+ * for it, less any global preset (those follow globalKeys, which may have
+ * changed since), else keys already on its presets (bindings made before keys
+ * were remembered per project).
  */
 export function keysForOpenedProject(
   remembered: PresetKeyBindings | undefined,
   globalKeys: PresetKeyBindings,
   liveKeys: PresetKeyBindings,
-  projectPresets: Array<{ id: string }>
+  projectPresets: Array<{ id: string }>,
+  globalPresets: Array<{ id: string }>
 ): PresetKeyBindings {
-  return remembered ?? { ...globalKeys, ...keysOfPresets(liveKeys, projectPresets) };
+  const globalIds = new Set(globalPresets.map((p) => p.id));
+  const own = remembered
+    ? Object.fromEntries(Object.entries(remembered).filter(([, id]) => !globalIds.has(id)))
+    : keysOfPresets(liveKeys, projectPresets);
+  return { ...globalKeys, ...own };
 }
 
 /** Each source's key moves to the copy standing for it */
