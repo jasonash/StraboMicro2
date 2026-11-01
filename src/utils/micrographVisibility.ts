@@ -1,25 +1,26 @@
 /**
- * View > Micrograph Visibility... (Jason + Peter, 2026-10-29): the rows of the
- * panel and what its buttons change. The rows are every associated
- * micrograph placed under the micrograph in the viewer, in tree order and
- * indented by depth. A PPL/XPL pair is one row (the XPL is drawn where its
+ * View > Micrograph Visibility... (Jason + Peter, 2026-10-29; direct children
+ * only, Jason 2026-11-01): the rows of the panel and what its buttons change.
+ * The rule is "if it is listed, it is on the screen": the rows are exactly the
+ * micrographs the viewer draws on the one in view. That is its direct children,
+ * for a linked PPL/XPL pair both halves' children (the same list from either
+ * view), and only those placed where the viewer can draw them. Nested
+ * micrographs are not drawn there, so they are listed once their parent is
+ * opened. A PPL/XPL pair among the rows is one row (the XPL is drawn where its
  * PPL is), and showing or hiding it changes both. Visibility (isMicroVisible)
  * is each person's own view (a per-user field, never synced). Pure functions
  * (npm run test:micrograph-visibility).
  */
 
 import type { MicrographMetadata, ProjectMetadata } from '@/types/project-types';
+import { isDrawnAsMarker, isDrawnAsOverlay, pairChildren } from './siblingPair.ts';
 
 export interface VisibilityRow {
   id: string;
   name: string;
-  /** 0 = placed directly on the micrograph in the viewer */
-  depth: number;
   visible: boolean;
   /** 0-1 */
   opacity: number;
-  /** The row's ancestors below the micrograph in the viewer (nearest last) */
-  ancestorIds: string[];
   /** The hidden secondary sibling (XPL) that follows this row's visibility, if any */
   siblingId: string | null;
 }
@@ -32,34 +33,30 @@ function micrographsOf(project: ProjectMetadata | null | undefined): MicrographM
   return all;
 }
 
-/** The panel's rows for the micrograph in the viewer (depth-first, in the tree's order) */
-export function visibilityRows(project: ProjectMetadata | null | undefined, rootId: string | null | undefined): VisibilityRow[] {
-  if (!project || !rootId) return [];
+/** The panel's rows for the micrograph in the viewer, hidden ones included */
+export function visibilityRows(project: ProjectMetadata | null | undefined, activeId: string | null | undefined): VisibilityRow[] {
+  if (!project || !activeId) return [];
   const all = micrographsOf(project);
   const byId = new Map(all.map((m) => [m.id, m]));
-  const rows: VisibilityRow[] = [];
-  const seen = new Set<string>([rootId]);
-  const visit = (parentId: string, depth: number, ancestors: string[]) => {
-    for (const m of all) {
-      if (m.parentID !== parentId || m.isPrimarySibling === false || seen.has(m.id)) continue;
-      seen.add(m.id);
-      const sibling = m.siblingImageId ? byId.get(m.siblingImageId) : undefined;
-      rows.push({
-        id: m.id,
-        name: m.name || m.imageFilename || 'Unnamed Micrograph',
-        depth,
-        visible: m.isMicroVisible !== false,
-        opacity: m.opacity ?? 1,
-        ancestorIds: ancestors,
+  const active = byId.get(activeId);
+  if (!active) return [];
+  const children = pairChildren(
+    active,
+    (parentId) => all.filter((m) => m.parentID === parentId),
+    (id) => byId.get(id),
+  );
+  return children
+    .filter(({ child }) => isDrawnAsOverlay(child) || isDrawnAsMarker(child))
+    .map(({ child }) => {
+      const sibling = child.siblingImageId ? byId.get(child.siblingImageId) : undefined;
+      return {
+        id: child.id,
+        name: child.name || child.imageFilename || 'Unnamed Micrograph',
+        visible: child.isMicroVisible !== false,
+        opacity: child.opacity ?? 1,
         siblingId: sibling && sibling.isPrimarySibling === false ? sibling.id : null,
-      });
-      visit(m.id, depth + 1, [...ancestors, m.id]);
-      // Children placed on the hidden XPL show in its PPL's place (as in the tree)
-      if (sibling && sibling.isPrimarySibling === false) visit(sibling.id, depth + 1, [...ancestors, m.id]);
-    }
-  };
-  visit(rootId, 0, []);
-  return rows;
+      };
+    });
 }
 
 /** Rows whose name contains the text (case-insensitive); all rows for blank text */
@@ -78,17 +75,12 @@ export function visibilityFor(rows: VisibilityRow[], visible: boolean): Map<stri
   return out;
 }
 
-/**
- * "Show only this one": the row and its ancestors shown (or it could not be
- * seen), every other row hidden. Only rows that change are returned.
- */
+/** "Show only this one": the row shown, every other row hidden. Only rows that change are returned. */
 export function showOnlyUpdates(rows: VisibilityRow[], id: string): Map<string, boolean> {
-  const target = rows.find((r) => r.id === id);
-  if (!target) return new Map();
-  const keep = new Set([id, ...target.ancestorIds]);
+  if (!rows.some((r) => r.id === id)) return new Map();
   const out = new Map<string, boolean>();
   for (const r of rows) {
-    const visible = keep.has(r.id);
+    const visible = r.id === id;
     if (r.visible === visible) continue;
     out.set(r.id, visible);
     if (r.siblingId) out.set(r.siblingId, visible);

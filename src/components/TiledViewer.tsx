@@ -23,7 +23,7 @@ import { currentPermissions, useReadOnlyReason } from '@/hooks/usePermissions';
 import { editRefusal } from '@/utils/permissions';
 import { ReadOnlyScope } from './ReadOnlyScope';
 import { findMicrographById, findSpotById, getChildMicrographs } from '@/store/helpers';
-import { pairChildren, pairSpots } from '@/utils/siblingPair';
+import { isDrawnAsMarker, isDrawnAsOverlay, pairChildren, pairSpots } from '@/utils/siblingPair';
 import { realScaleOf } from '@/utils/affineScale';
 import { frameSpot, spotBounds } from '@/utils/spotFraming';
 import { AssociatedImageRenderer } from './AssociatedImageRenderer';
@@ -2556,20 +2556,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                     activeMicrograph &&
                     project &&
                     childMicrographs
-                      .filter((childMicro) => {
-                        // Must have scale set
-                        if (
-                          childMicro.scalePixelsPerCentimeter === undefined ||
-                          childMicro.scalePixelsPerCentimeter === null
-                        ) {
-                          return false;
-                        }
-                        // Must NOT be point-located (pointInParent means it's a point, not an overlay)
-                        if ((childMicro as { pointInParent?: unknown }).pointInParent) {
-                          return false;
-                        }
-                        return true;
-                      })
+                      .filter(isDrawnAsOverlay)
                       .map((childMicro) => (
                         <AssociatedImageRenderer
                           key={childMicro.id}
@@ -2605,15 +2592,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                     activeMicrograph &&
                     project &&
                     childMicrographs
-                      .filter((childMicro) => {
-                        // Must have pointInParent (point-located micrograph)
-                        const pointData = (
-                          childMicro as {
-                            pointInParent?: { x?: number; y?: number; X?: number; Y?: number } | null;
-                          }
-                        ).pointInParent;
-                        return pointData != null; // Check for both null and undefined
-                      })
+                      .filter(isDrawnAsMarker)
                       .map((childMicro) => {
                         const pointData = (
                           childMicro as {
