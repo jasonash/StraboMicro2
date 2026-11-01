@@ -1,8 +1,8 @@
 /**
  * View > Micrograph Visibility... (Cmd/Ctrl+Shift+V; Jason + Peter,
- * 2026-10-29): a panel in the top-left corner of the viewer that lists every
- * associated micrograph placed under the micrograph in the viewer, indented
- * as in the tree, to show or hide them quickly. Show All / Hide All act on the
+ * 2026-10-29): a panel in the top-left corner of the viewer that lists the
+ * associated micrographs drawn on the micrograph in the viewer, to show or
+ * hide them quickly. Show All / Hide All act on the
  * rows the name filter leaves; "Show only this one" hides the others, and the
  * Up/Down arrow keys then step through the rows one at a time (a stack of
  * element maps over its BSE image). Each row has the micrograph's opacity.
@@ -139,7 +139,7 @@ export function MicrographVisibilityPanel() {
                     display: 'flex',
                     alignItems: 'center',
                     gap: 0.5,
-                    pl: 1 + row.depth * 2,
+                    pl: 1,
                     pr: 1,
                     borderRadius: 0.5,
                     bgcolor: row.id === onlyId ? 'action.selected' : 'transparent',

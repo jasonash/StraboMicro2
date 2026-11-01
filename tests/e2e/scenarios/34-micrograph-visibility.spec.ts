@@ -1,10 +1,11 @@
 /**
- * View > Micrograph Visibility... (Jason + Peter, 2026-10-29): a panel listing
- * the micrographs placed under the one in the viewer, indented as in the
- * tree; each row shows/hides its micrograph, "Show only this one" hides the
- * others (keeping its parent), the Up/Down keys then step through the rows,
- * the name filter limits Show All / Hide All, and each row's slider sets the
- * micrograph's opacity. One copy, not synced.
+ * View > Micrograph Visibility... (Jason + Peter, 2026-10-29; direct children
+ * only, 2026-11-01): a panel listing what the viewer draws on the micrograph in
+ * view; for a PPL/XPL pair the same list from either half. Each row
+ * shows/hides its micrograph, "Show only this one" hides the others, the
+ * Up/Down keys then step through the rows, the name filter limits Show All /
+ * Hide All, and each row's slider sets the micrograph's opacity. One copy, not
+ * synced.
  */
 
 import { randomUUID } from 'crypto';
@@ -29,47 +30,73 @@ async function visibleMap(copy: Copy): Promise<Record<string, boolean>> {
     return out;`) as never)) as unknown as Record<string, boolean>;
 }
 
-test('Micrograph Visibility: hide one, show only one, step with the arrow keys, filter + Hide All, opacity', async ({ launch, runDir }) => {
+test('Micrograph Visibility: only what is drawn is listed, same list from PPL and XPL, hide one, show only one, step with the arrow keys, filter + Hide All, opacity', async ({ launch, runDir }) => {
   const overviewId = randomUUID();
-  const bse = randomUUID();
+  const ppl = randomUUID();
+  const xpl = randomUUID();
+  const mapAl = randomUUID();
   const p = await makeProject(`${runDir}/fixtures`, 'E2E Micrograph Visibility', [], {
     overviewId,
-    micrographs: [child(bse, 'BSE 1', overviewId), child(randomUUID(), 'Map Al', bse), child(randomUUID(), 'Map Ca', bse)],
+    micrographs: [
+      { ...child(ppl, 'BSE 1', overviewId), siblingImageId: xpl, isPrimarySibling: true },
+      { ...child(xpl, 'BSE 1 XPL', overviewId), siblingImageId: ppl, isPrimarySibling: false },
+      child(mapAl, 'Map Al', ppl),
+      child(randomUUID(), 'Map Ca', ppl),
+      child(randomUUID(), 'Map Fe', xpl),
+      child(randomUUID(), 'Nested', mapAl),
+      { ...child(randomUUID(), 'No scale', ppl), scalePixelsPerCentimeter: null },
+    ],
   });
   const ana = await launch('Ana', ACCOUNTS.ana, { login: false });
   await openSmz(ana, p.smzPath, p.id);
   await viewMicrograph(ana, overviewId);
 
-  await ana.caption('View > Micrograph Visibility...: three rows, the maps under BSE 1');
+  await ana.caption('View > Micrograph Visibility... on the overview: only BSE 1, not what is nested in it');
   await ana.menu('View', 'Micrograph Visibility...');
   const panel = ana.page.getByRole('dialog', { name: 'Micrograph Visibility' });
-  await expect(panel.getByTestId('visibility-row')).toHaveCount(3);
-  await expect(panel.getByTestId('visibility-row')).toHaveText(['BSE 1', 'Map Al', 'Map Ca']);
+  const rows = panel.getByTestId('visibility-row');
+  await expect(rows).toHaveText(['BSE 1']);
+
+  await ana.caption('on BSE 1: both halves\' children; no Nested, no No scale');
+  await viewMicrograph(ana, ppl);
+  await expect(rows).toHaveText(['Map Al', 'Map Ca', 'Map Fe']);
+
+  await ana.caption('switches to the XPL: the same three, its own first');
+  await ana.state(new Function('e', 'e.app.getState().toggleSiblingView()') as never);
+  await expect.poll(() => ana.state(new Function('e', 'return e.app.getState().activeMicrographId') as never)).toBe(xpl);
+  await expect(rows).toHaveText(['Map Fe', 'Map Al', 'Map Ca']);
+  await ana.state(new Function('e', 'e.app.getState().toggleSiblingView()') as never);
+  await expect(rows).toHaveText(['Map Al', 'Map Ca', 'Map Fe']);
+
+  // Never touched by the panel on BSE 1
+  const rest = { 'BSE 1': true, 'BSE 1 XPL': true, Nested: true, 'No scale': true };
+  const maps = (al: boolean, ca: boolean, fe: boolean) => ({ ...rest, 'Map Al': al, 'Map Ca': ca, 'Map Fe': fe });
 
   await ana.caption('hides Map Al');
   await panel.getByRole('button', { name: 'Hide Map Al' }).click();
-  await expect.poll(() => visibleMap(ana)).toEqual({ 'BSE 1': true, 'Map Al': false, 'Map Ca': true });
+  await expect.poll(() => visibleMap(ana)).toEqual(maps(false, true, true));
 
-  await ana.caption('Show only Map Ca: its parent BSE 1 stays');
+  await ana.caption('Show only Map Ca');
   await panel.getByRole('button', { name: 'Show only Map Ca' }).click();
-  await expect.poll(() => visibleMap(ana)).toEqual({ 'BSE 1': true, 'Map Al': false, 'Map Ca': true });
+  await expect.poll(() => visibleMap(ana)).toEqual(maps(false, true, false));
   await ana.caption('Up arrow: Map Al alone');
   await ana.page.keyboard.press('ArrowUp');
-  await expect.poll(() => visibleMap(ana)).toEqual({ 'BSE 1': true, 'Map Al': true, 'Map Ca': false });
-  await ana.caption('Up again: BSE 1 alone (its maps hidden)');
+  await expect.poll(() => visibleMap(ana)).toEqual(maps(true, false, false));
+  await ana.caption('Up wraps to the last row: Map Fe alone');
   await ana.page.keyboard.press('ArrowUp');
-  await expect.poll(() => visibleMap(ana)).toEqual({ 'BSE 1': true, 'Map Al': false, 'Map Ca': false });
-  await ana.caption('Up wraps to the last row: Map Ca alone');
-  await ana.page.keyboard.press('ArrowUp');
-  await expect.poll(() => visibleMap(ana)).toEqual({ 'BSE 1': true, 'Map Al': false, 'Map Ca': true });
+  await expect.poll(() => visibleMap(ana)).toEqual(maps(false, false, true));
+  await ana.caption('Down wraps to the first row: Map Al alone');
+  await ana.page.keyboard.press('ArrowDown');
+  await expect.poll(() => visibleMap(ana)).toEqual(maps(true, false, false));
 
-  await ana.caption('filter "map", Show All, then Hide All: BSE 1 is not touched');
-  await panel.getByLabel('Filter by name').fill('map');
-  await expect(panel.getByTestId('visibility-row')).toHaveCount(2);
+  await ana.caption('filter "ca", Hide All, then Show All: only Map Ca changes');
+  await panel.getByLabel('Filter by name').fill('ca');
+  await expect(rows).toHaveCount(1);
   await panel.getByRole('button', { name: 'Show All' }).click();
-  await expect.poll(() => visibleMap(ana)).toEqual({ 'BSE 1': true, 'Map Al': true, 'Map Ca': true });
+  await expect.poll(() => visibleMap(ana)).toEqual(maps(true, true, false));
   await panel.getByRole('button', { name: 'Hide All' }).click();
-  await expect.poll(() => visibleMap(ana)).toEqual({ 'BSE 1': true, 'Map Al': false, 'Map Ca': false });
+  await expect.poll(() => visibleMap(ana)).toEqual(maps(true, false, false));
+  await panel.getByLabel('Filter by name').fill('');
 
   await ana.caption('opacity of Map Al down one step with the keyboard');
   await panel.getByRole('slider', { name: 'Opacity of Map Al' }).focus();
