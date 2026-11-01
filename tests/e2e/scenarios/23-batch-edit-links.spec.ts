@@ -8,7 +8,7 @@
 
 import { test, expect } from '../lib/test';
 import { ACCOUNTS, type Copy } from '../lib/copy';
-import { openSmz, viewMicrograph, editSpot } from '../lib/actions';
+import { openSmz, viewMicrograph, editSpot, catchExternalLinks } from '../lib/actions';
 
 const PAPER = { label: 'Paper', url: 'https://doi.org/10.1000/paper' };
 const DATA = { label: 'Data', url: 'https://example.org/data' };
@@ -158,4 +158,29 @@ test('Links is always in the Properties panel, like Notes and Associated Files; 
     return e.app.getState().selectMicrograph(${JSON.stringify(p.micrographId)});`) as never);
   await expect(linksSummary).toBeVisible();
   await expect(linksSummary).not.toContainText('links');
+});
+
+test('a web link in the Properties panel opens in the browser; any other address stays text and cannot be opened', async ({ launch, project }) => {
+  const p = await project('E2E Clickable Links', ['Grain 1']);
+  const ana = await launch('Ana', ACCOUNTS.ana, { login: false });
+  await openSmz(ana, p.smzPath, p.id);
+  await viewMicrograph(ana, p.micrographId);
+  const links = await catchExternalLinks(ana);
+  const notWeb = 'file:///etc/hosts';
+  await editSpot(ana, p.spots[0].id, { links: [PAPER, { label: 'Local', url: notWeb }] });
+  await ana.state(new Function('e', `return e.app.getState().selectActiveSpot(${JSON.stringify(p.spots[0].id)})`) as never);
+
+  await ana.caption('opens the Links section of the spot and clicks the web link');
+  const paper = ana.page.getByRole('button', { name: PAPER.url });
+  await expect(ana.page.getByText('Links', { exact: true }).last()).toBeVisible();
+  if (!(await paper.isVisible())) await ana.page.getByText('Links', { exact: true }).last().click();
+  await paper.click();
+  await expect.poll(links).toEqual([PAPER.url]);
+  await expect(paper).toBeVisible(); // the click did not close the section
+
+  await ana.caption('the file address is plain text, and main refuses it even if asked directly');
+  await expect(ana.page.getByText(notWeb)).toBeVisible();
+  await expect(ana.page.getByRole('button', { name: notWeb })).toHaveCount(0);
+  await ana.page.evaluate((url) => (window as unknown as { api: { openExternalLink(u: string): Promise<unknown> } }).api.openExternalLink(url), notWeb);
+  expect(await links()).toEqual([PAPER.url]);
 });

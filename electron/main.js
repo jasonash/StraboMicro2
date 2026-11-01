@@ -2165,6 +2165,13 @@ ipcMain.handle('custom-user-data:open', async () => {
 // Open external link in default browser
 ipcMain.handle('open-external-link', async (event, url) => {
   try {
+    // The address can come from a project shared by someone else: the operating
+    // system would run whatever handles file:, smb: or a custom app scheme
+    const scheme = URL.canParse(url) ? new URL(url).protocol : '';
+    if (!['http:', 'https:', 'ftp:', 'mailto:'].includes(scheme)) {
+      log.warn(`[IPC] Refused to open external link: ${url}`);
+      return { success: false };
+    }
     log.info(`[IPC] Opening external link: ${url}`);
     await shell.openExternal(url);
     return { success: true };

@@ -21,6 +21,7 @@ import {
   Tooltip,
   styled,
 } from '@mui/material';
+import { isWebLink } from '@/utils/externalLink';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import EditIcon from '@mui/icons-material/Edit';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
@@ -1983,9 +1984,23 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
                   <Typography variant="body2" sx={{
                     fontWeight: 'medium'
                   }}>• {link.label}</Typography>
-                  <Typography variant="caption" color="primary" sx={{ wordBreak: 'break-all', ml: 2 }}>
-                    {link.url}
-                  </Typography>
+                  {isWebLink(link.url) ? (
+                    <Link
+                      component="button"
+                      variant="caption"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void window.api?.openExternalLink(link.url ?? '');
+                      }}
+                      sx={{ display: 'block', ml: 2, textAlign: 'left', wordBreak: 'break-all' }}
+                    >
+                      {link.url}
+                    </Link>
+                  ) : (
+                    <Typography variant="caption" sx={{ display: 'block', ml: 2, wordBreak: 'break-all' }}>
+                      {link.url}
+                    </Typography>
+                  )}
                 </Box>
               ))}
             </Stack>
