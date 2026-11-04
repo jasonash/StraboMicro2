@@ -5,27 +5,35 @@
  *
  * The fetch built into Node 24 (undici 7.30.1) throws an uncatchable
  * AssertionError "assert(!this.paused)" there, and Electron showed "A
- * JavaScript error occurred in the main process". The sync client now uses
- * undici 8 from npm, and the main process ignores that one assertion if it
- * still comes from another download (electron/fatalErrors.js).
+ * JavaScript error occurred in the main process". electron/main.js now
+ * loads undici 8 from npm on its first line: loaded before anything fetches,
+ * it becomes the connection pool of the built-in fetch too, so every fetch
+ * in the main process (sync client included, which keeps calling the
+ * built-in fetch so tests can still cut the network through it) uses the
+ * fixed code. The main process also ignores that one assertion if it ever
+ * comes again (electron/fatalErrors.js).
  *
  * The bug needs the reader to be stalled on a timer when the last bytes and
  * the close arrive. A slow disk does that with long, irregular stalls; a
  * reader that waits a few ms per piece does it reliably, so that is what
- * parts 1 and 2 use.
+ * parts 1 and 2 use. This process loads undici first, as main.js does.
  *   1. In fresh processes: Node's built-in fetch throws the assertion (the
  *      test reproduces the bug; if a later Electron fixes it this says so),
  *      but not once undici 8 was loaded first, which electron/main.js does
  *      on its first line (checked too).
- *   2. The fetch the sync client uses by default does not, and every
- *      download is whole.
- *   3. The real downloadFile, through its default fetch, with the server
- *      closing every connection: every file whole, no temp files left.
+ *   2. Here (undici loaded first): the built-in fetch, which the sync
+ *      client uses, does not throw it, and every download is whole.
+ *   3. The real downloadFile with the server closing every connection:
+ *      every file whole, no temp files left; and the client calls
+ *      globalThis.fetch (the tests that cut the network rely on that).
  *   4. The real assertion is recognised; other errors still show the box.
  * Runs in Electron so it uses Electron's Node and its bundled undici.
  *
  *   npm run test:download-close
  */
+
+// First, as on the first line of electron/main.js
+require('undici');
 
 const http = require('http');
 const fs = require('fs');
@@ -34,7 +42,7 @@ const path = require('path');
 const crypto = require('crypto');
 const { spawnSync } = require('child_process');
 const { app } = require('electron');
-const { createSyncClient, defaultFetch } = require('../electron/sync/client');
+const { createSyncClient } = require('../electron/sync/client');
 const { isUndiciPausedAssert, handleFatalError } = require('../electron/fatalErrors');
 
 let failures = 0;
@@ -120,10 +128,6 @@ async function main() {
   const url = `${restServer}/microsync/v1/projects/1/blobs/${files[0].sha}`;
   console.log(`Electron ${process.versions.electron}, Node ${process.versions.node}, built-in undici ${process.versions.undici}, npm undici ${require('undici/package.json').version}`);
 
-  check('the sync client does not use the built-in fetch', typeof defaultFetch === 'function' && defaultFetch !== globalThis.fetch);
-  const clientCode = fs.readFileSync(path.join(__dirname, '../electron/sync/client.js'), 'utf8');
-  check('createSyncClient defaults to that fetch', /function createSyncClient\(\{[^)]*fetchImpl = defaultFetch[,\s}]/.test(clientCode));
-
   // 1. Node's built-in fetch, each case in a fresh process (load order matters)
   {
     const builtin = child('builtin');
@@ -148,14 +152,14 @@ async function main() {
   }
 
   // For part 4: the assertion as the built-in fetch threw it (this process
-  // loaded undici 8 first, through the client, so it cannot throw it here)
+  // loaded undici 8 first, so it cannot throw it here)
   const realAssert = builtinSample && Object.assign(new Error(builtinSample.message), builtinSample);
 
-  // 2. The sync client's fetch, same reader
+  // 2. The built-in fetch here, where undici was loaded first
   {
-    const { seen, result } = await uncaughtDuring(() => slowReads(defaultFetch, url, 30));
-    check('sync client fetch: no uncaught error in 30 downloads', seen.length === 0, seen[0] && seen[0].stack);
-    check('sync client fetch: every download whole', result.every((n) => n === SIZE), result.join(', '));
+    const { seen, result } = await uncaughtDuring(() => slowReads(fetch, url, 30));
+    check('built-in fetch after undici: no uncaught error in 30 downloads', seen.length === 0, seen[0] && seen[0].stack);
+    check('built-in fetch after undici: every download whole', result.every((n) => n === SIZE), result.join(', '));
   }
 
   // 3. The real downloadFile, as the app makes the client
@@ -179,6 +183,23 @@ async function main() {
     check(`downloadFile: all ${files.length} files whole`, result.every((r) => r === true), result.find((r) => r !== true));
     const leftovers = fs.readdirSync(dir).filter((n) => n.includes('.download-'));
     check('downloadFile: no temp files left', leftovers.length === 0, leftovers.join(', '));
+
+    // The tests that cut the network replace globalThis.fetch: it must be used
+    const realFetch = globalThis.fetch;
+    let calls = 0;
+    globalThis.fetch = async (u, o) => {
+      calls++;
+      return realFetch(u, o);
+    };
+    // (inside uncaughtDuring: an uncaught error here would open Electron's
+    // error box and block the run)
+    await uncaughtDuring(async () => {
+      try {
+        await createSyncClient({ restServer, getAccessToken: async () => 'token' }).downloadFile(1, files[0].sha, path.join(dir, 'via-global'));
+      } catch (_) { /* counted below */ }
+    });
+    globalThis.fetch = realFetch;
+    check('the sync client calls globalThis.fetch', calls === 1, `calls: ${calls}`);
     fs.rmSync(dir, { recursive: true, force: true });
   }
 
