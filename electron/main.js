@@ -1,3 +1,12 @@
+// FIRST, before anything uses fetch: load undici 8 from npm. Node 24's
+// built-in fetch (undici 7.30.1) throws an uncatchable AssertionError when a
+// server closes the connection while a download waits for a slow disk
+// (Sentry ELECTRON-34). Loaded first, undici 8 becomes the connection pool
+// that the built-in fetch uses too, so every fetch in this process gets the
+// fix. Loaded after the first fetch it would not, so keep this line on top.
+// Checked by npm run test:download-close.
+require('undici');
+
 // Configure libvips memory limits BEFORE loading Sharp
 // VIPS_DISC_THRESHOLD controls when libvips switches to disc caching
 // Setting to 0 forces disc caching immediately, avoiding memory limits
@@ -158,8 +167,17 @@ Sentry.init({
   release: `strabomicro2@${app.getVersion()}`,
   // Set environment
   environment: app.isPackaged ? 'production' : 'development',
+  // An uncaught error: the usual error box, except for the undici assertion
+  // that a closed connection during a slow download throws (ELECTRON-34)
+  onFatalError(error) {
+    require('./fatalErrors').handleFatalError(error, { dialog, log });
+  },
   // Filter out sensitive file paths
-  beforeSend(event) {
+  beforeSend(event, hint) {
+    // Still reported, but as a warning: the app carries on (ELECTRON-34)
+    if (require('./fatalErrors').isUndiciPausedAssert(hint?.originalException)) {
+      event.level = 'warning';
+    }
     // Scrub user home directory from file paths
     const homeDir = app.getPath('home');
     const eventStr = JSON.stringify(event);

@@ -53,11 +53,6 @@ export const ChildSpotsRenderer: React.FC<ChildSpotsRendererProps> = ({
   // View > Filter Spots...: hidden spots are skipped, dimmed ones drawn faint
   const spotFilter = useAppStore((state) => state.spotFilter);
 
-  // Skip if no spots
-  if (!childMicrograph.spots || childMicrograph.spots.length === 0) {
-    return null;
-  }
-
   // For affine (3-Point Registration) placements, the child→parent mapping is
   // an arbitrary 2x3 matrix that doesn't decompose cleanly into Konva's
   // Group transform fields (x/y/scale/rotation/skew/offset). Pre-transform
@@ -122,6 +117,14 @@ export const ChildSpotsRenderer: React.FC<ChildSpotsRendererProps> = ({
       offsetY: imageHeight / 2, // Rotate around center
     };
   }, [childMicrograph, parentMetadata]);
+
+  // Skip if no spots. This must stay AFTER every hook: a child that gains its
+  // first spot (or loses its last) while the parent is shown would otherwise
+  // change the hook count between renders (React error #310 / #300, Sentry
+  // ELECTRON-33).
+  if (!childMicrograph.spots || childMicrograph.spots.length === 0) {
+    return null;
+  }
 
   // Affine path: spot coords are already in parent space, so render at identity
   // and pass stageScale as the effective scale (strokes are in parent pixels).
