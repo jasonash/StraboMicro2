@@ -6,7 +6,12 @@ import SketchToolbar from './SketchToolbar';
 import BottomPanel from './BottomPanel';
 import { TiledViewer, TiledViewerRef } from './TiledViewer';
 import { useAppStore } from '../store';
+import { useSyncStore } from '../store/useSyncStore';
 import { findMicrographById, findSpotById } from '../store/helpers';
+import { AutoSpotStrip } from './AutoSpotStrip';
+import { SpotFilterPanel } from './SpotFilterPanel';
+import { MicrographVisibilityPanel } from './MicrographVisibilityPanel';
+import { GrainSpotStatus } from './GrainSpotStatus';
 
 const Viewer: React.FC = () => {
   const [bottomHeight, setBottomHeight] = useState(200);
@@ -17,6 +22,8 @@ const Viewer: React.FC = () => {
   // Get active micrograph and spot from store
   const project = useAppStore((state) => state.project);
   const activeMicrographId = useAppStore((state) => state.activeMicrographId);
+  // Bumped when sync downloads a new original for it (same path, new file)
+  const imageRevision = useSyncStore((s) => (activeMicrographId ? s.imageArrivals[activeMicrographId] ?? 0 : 0));
   const activeSpotId = useAppStore((state) => state.activeSpotId);
   const selectedSpotIds = useAppStore((state) => state.selectedSpotIds);
   const setViewerRef = useAppStore((state) => state.setViewerRef);
@@ -172,12 +179,13 @@ const Viewer: React.FC = () => {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Only trigger if:
-      // 1. Key is X
+      // 1. Key is X, without Cmd/Ctrl/Alt (Cmd+X is Cut)
       // 2. Quick Classify toolbar is NOT visible
       // 3. Not in an input field
       // 4. Active micrograph has a sibling
       if (
         e.key.toLowerCase() === 'x' &&
+        !e.metaKey && !e.ctrlKey && !e.altKey &&
         !quickClassifyVisible &&
         !['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement).tagName)
       ) {
@@ -250,7 +258,7 @@ const Viewer: React.FC = () => {
 
       // Spot tool shortcuts (only when not in sketch mode, no modifiers)
       // Suppressed while the Quick Classify toolbar is visible (Quick Classify / Quick Edit /
-      // Point Count modes) so V/P/L/G/M reach the mineral-shortcut handler instead of
+      // Point Count modes) so V/P/L/G/M/W reach the mineral-shortcut handler instead of
       // silently switching the active drawing tool.
       if (!sketchModeActive && !quickClassifyVisible && activeMicrographId && !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey) {
         const key = e.key.toLowerCase();
@@ -269,6 +277,10 @@ const Viewer: React.FC = () => {
         } else if (key === 'm') {
           e.preventDefault();
           setActiveTool('measure');
+        } else if (key === 'w') {
+          // Grain Spot (the magic wand)
+          e.preventDefault();
+          setActiveTool('grain');
         }
       }
     };
@@ -292,9 +304,13 @@ const Viewer: React.FC = () => {
     >
       {/* Canvas area */}
       <Box sx={{ flex: 1, bgcolor: 'background.default', position: 'relative' }}>
-        <TiledViewer ref={tiledViewerRef} imagePath={activeMicrographPath} onCursorMove={setCursorCoords} onZoomChange={setCurrentZoom} />
+        <TiledViewer ref={tiledViewerRef} imagePath={activeMicrographPath} imageRevision={imageRevision} onCursorMove={setCursorCoords} onZoomChange={setCurrentZoom} />
         <DrawingToolbar />
+        <AutoSpotStrip />
+        <GrainSpotStatus />
         <SketchToolbar />
+        <SpotFilterPanel />
+        <MicrographVisibilityPanel />
 
         {/* Warning modal when sketch layer is hidden */}
         {isSketchLayerHidden && (
@@ -403,20 +419,22 @@ const Viewer: React.FC = () => {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          gap: 3,
+          gap: 2,
           px: 2,
           flexShrink: 0,
         }}
       >
         <Typography variant="body2" sx={{
-          color: 'text.secondary'
+          color: 'text.secondary',
+          whiteSpace: 'nowrap'
         }}>
           {cursorCoords
             ? `X: ${cursorCoords.x.toFixed(cursorCoords.decimals)} ${cursorCoords.unit} × Y: ${cursorCoords.y.toFixed(cursorCoords.decimals)} ${cursorCoords.unit}`
             : 'X: 0.000 cm × Y: 0.000 cm'}
         </Typography>
         <Typography variant="body2" sx={{
-          color: 'text.secondary'
+          color: 'text.secondary',
+          whiteSpace: 'nowrap'
         }}>
           Zoom: {(currentZoom * 100).toFixed(currentZoom < 1 ? 1 : 0)}%
         </Typography>

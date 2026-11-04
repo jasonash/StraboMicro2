@@ -1,7 +1,7 @@
 /**
  * Shared helpers for the .smz import flows.
  *
- * Three dialogs import .smz archives (ImportSmzDialog, RemoteProjectsDialog,
+ * Dialogs that import .smz archives (ImportSmzDialog,
  * DeepLinkOpenDialog) and need identical semantics around two edge cases:
  * unloading the currently open project before a replace-import, and
  * deduplicating imported presets against global presets. These live here so

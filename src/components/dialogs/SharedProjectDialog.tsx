@@ -24,16 +24,16 @@ import {
   Box,
   Typography,
   LinearProgress,
-  Alert,
   TextField,
   CircularProgress,
 } from '@mui/material';
 import ShareIcon from '@mui/icons-material/Share';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import ErrorIcon from '@mui/icons-material/Error';
-import WarningIcon from '@mui/icons-material/Warning';
 import { useAuthStore } from '@/store/useAuthStore';
 import { closeUnlessEscapeBlocked } from '@/utils/dialogClose';
+import { unloadIfReplacingOpenProject } from '../../utils/importUtils';
+import { ImportTargetNotice, ImportTargetActions, importNeedsAnswer } from './ImportTargetNotice';
 
 interface DownloadProgress {
   phase: string;
@@ -47,14 +47,6 @@ interface ImportProgress {
   phase: string;
   percentage: number;
   detail: string;
-}
-
-interface InspectResult {
-  success: boolean;
-  projectId?: string;
-  projectName?: string;
-  projectExists?: boolean;
-  error?: string;
 }
 
 interface ImportResult {
@@ -78,17 +70,20 @@ interface SharedProjectDialogProps {
   open: boolean;
   onClose: () => void;
   onImportComplete: (projectData: unknown) => void;
+  /** Open a project that is on disk (my synced copy) */
+  onOpenProject: (projectId: string) => Promise<void> | void;
 }
 
 export function SharedProjectDialog({
   open,
   onClose,
   onImportComplete,
+  onOpenProject,
 }: SharedProjectDialogProps) {
   const [dialogState, setDialogState] = useState<DialogState>('input');
   const [shareCode, setShareCode] = useState('');
   const [downloadedZipPath, setDownloadedZipPath] = useState<string | null>(null);
-  const [inspectResult, setInspectResult] = useState<InspectResult | null>(null);
+  const [inspectResult, setInspectResult] = useState<SmzInspectResult | null>(null);
   const [downloadProgress, setDownloadProgress] = useState<DownloadProgress | null>(null);
   const [importProgress, setImportProgress] = useState<ImportProgress | null>(null);
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
@@ -176,7 +171,7 @@ export function SharedProjectDialog({
 
       // Inspect the downloaded file
       setDialogState('inspecting');
-      const inspect = await window.api.smzImport.inspect(result.zipPath!);
+      const inspect = await window.api.smzImport.inspect(result.zipPath!, { shareCode });
 
       if (!inspect.success) {
         setErrorMessage(inspect.error || 'Failed to read downloaded file');
@@ -186,13 +181,13 @@ export function SharedProjectDialog({
 
       setInspectResult(inspect);
 
-      // If project exists locally, show confirmation
+      // A local copy to replace or my synced copy: ask first
       // Otherwise, start import directly
-      if (inspect.projectExists) {
+      if (importNeedsAnswer(inspect)) {
         setDialogState('confirm-import');
       } else {
         // No conflict, proceed with import
-        await startImport(result.zipPath);
+        await startImport(false, result.zipPath, inspect);
       }
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'Download failed');
@@ -200,15 +195,21 @@ export function SharedProjectDialog({
     }
   }, [shareCode, logout]);
 
-  const startImport = useCallback(async (zipPath?: string) => {
+  const startImport = useCallback(async (asCopy: boolean, zipPath?: string, inspect?: SmzInspectResult | null) => {
     const pathToImport = zipPath || downloadedZipPath;
     if (!pathToImport || !window.api?.smzImport?.import) return;
 
     setDialogState('importing');
     setImportProgress(null);
 
+    // Replacing the open project: unload it first (as the other import flows do)
+    const target = inspect ?? inspectResult;
+    if (target?.projectExists && !asCopy) {
+      unloadIfReplacingOpenProject(target.projectId);
+    }
+
     try {
-      const result = await window.api.smzImport.import(pathToImport);
+      const result = await window.api.smzImport.import(pathToImport, { asCopy, shareCode });
 
       if (result.success) {
         setImportResult(result);
@@ -227,7 +228,7 @@ export function SharedProjectDialog({
       setErrorMessage(error instanceof Error ? error.message : 'Import failed');
       setDialogState('error');
     }
-  }, [downloadedZipPath]);
+  }, [downloadedZipPath, inspectResult, shareCode]);
 
   const handleClose = () => {
     // Don't allow closing during download or import
@@ -279,6 +280,7 @@ export function SharedProjectDialog({
                 mb: 3
               }}>
               Enter the 6-character share code to download a project shared by another user.
+              This is your own copy. Changes you make won't reach the owner.
             </Typography>
             <TextField
               label="Share Code"
@@ -363,40 +365,7 @@ export function SharedProjectDialog({
               Project ID: {inspectResult?.projectId}
             </Typography>
 
-            <Alert
-              severity="warning"
-              icon={<WarningIcon />}
-              sx={{ mb: 2 }}
-            >
-              <Typography variant="subtitle2" sx={{ fontWeight: 'bold', mb: 1 }}>
-                This will replace your local project!
-              </Typography>
-              <Typography variant="body2" sx={{ mb: 1 }}>
-                A project with this ID already exists on your computer. Downloading this project will:
-              </Typography>
-              <ul style={{ margin: '8px 0', paddingLeft: '20px' }}>
-                <li><Typography variant="body2">
-                  <strong>Delete all local data</strong> for this project
-                </Typography></li>
-                <li><Typography variant="body2">
-                  <strong>Clear version history</strong> (all previous versions will be lost)
-                </Typography></li>
-                <li><Typography variant="body2">
-                  Replace with the shared version
-                </Typography></li>
-              </ul>
-              <Typography variant="body2" sx={{ mt: 1, fontWeight: 'bold' }}>
-                Before continuing, consider:
-              </Typography>
-              <ul style={{ margin: '8px 0', paddingLeft: '20px' }}>
-                <li><Typography variant="body2">
-                  Exporting your local project as .smz (File → Export as .smz)
-                </Typography></li>
-                <li><Typography variant="body2">
-                  Pushing local changes to server first (File → Push to Server)
-                </Typography></li>
-              </ul>
-            </Alert>
+            <ImportTargetNotice inspect={inspectResult} source="the shared version" />
           </Box>
         );
 
@@ -440,6 +409,7 @@ export function SharedProjectDialog({
               color: 'text.secondary'
             }}>
               The shared project has been downloaded and imported successfully.
+              This is your own copy. Changes you make won't reach the owner.
             </Typography>
           </Box>
         );
@@ -488,16 +458,16 @@ export function SharedProjectDialog({
 
       case 'confirm-import':
         return (
-          <>
-            <Button onClick={handleBackToInput}>Back</Button>
-            <Button
-              variant="contained"
-              color="warning"
-              onClick={() => startImport()}
-            >
-              Replace & Import
-            </Button>
-          </>
+          <ImportTargetActions
+            inspect={inspectResult}
+            onCancel={handleBackToInput}
+            onImport={(asCopy) => void startImport(asCopy)}
+            onOpenMine={() => {
+              const id = inspectResult?.projectId;
+              onClose();
+              if (id) void onOpenProject(id);
+            }}
+          />
         );
 
       case 'success':

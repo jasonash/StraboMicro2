@@ -17,6 +17,7 @@ import { useAppStore } from '@/store';
 import { releaseImage } from '@/utils/imageUtils';
 import { tracedLinePixels, scaleFromTracedBar, traceScaleNote } from '@/utils/traceScaleBar';
 import { useLatest } from '@/hooks/useLatest';
+import { wheelZoomDirection } from '@/utils/wheelZoom';
 
 interface PlacementCanvasProps {
   parentMicrographId: string;
@@ -30,6 +31,14 @@ interface PlacementCanvasProps {
   initialScaleX?: number;
   initialScaleY?: number;
   initialOpacity?: number; // Initial opacity (0-1), default 1
+  /**
+   * A placement found elsewhere (Place automatically on parent), in original pixels: offset =
+   * offsetInParent, scale = parent px per child px. Takes precedence over the initial* values
+   * and turns off the auto-fit.
+   */
+  initialPlacement?: { offsetX: number; offsetY: number; rotation: number; scale: number };
+  /** Pixel Conversion Factor fields filled in at the start ("Copy scale from an existing micrograph") */
+  initialPixelConversion?: { pixels: string; physicalLength: string; unit: string };
   onPlacementChange: (offsetX: number, offsetY: number, rotation: number, scaleX?: number, scaleY?: number) => void;
   onOpacityChange?: (opacity: number) => void; // Callback when opacity changes
   onScaleDataChange?: (data: {
@@ -57,6 +66,8 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
   initialScaleX = 1,
   initialScaleY = 1,
   initialOpacity = 1,
+  initialPlacement,
+  initialPixelConversion,
   onPlacementChange,
   onOpacityChange,
   onScaleDataChange,
@@ -122,9 +133,9 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
   const [childOpacity, setChildOpacity] = useState(initialOpacity);
 
   // State for Pixel Conversion Factor inputs
-  const [pixelInput, setPixelInput] = useState('');
-  const [physicalLengthInput, setPhysicalLengthInput] = useState('');
-  const [unitInput, setUnitInput] = useState('μm');
+  const [pixelInput, setPixelInput] = useState(initialPixelConversion?.pixels ?? '');
+  const [physicalLengthInput, setPhysicalLengthInput] = useState(initialPixelConversion?.physicalLength ?? '');
+  const [unitInput, setUnitInput] = useState(initialPixelConversion?.unit ?? 'μm');
 
   // State for Width/Height inputs
   const [widthInput, setWidthInput] = useState('');
@@ -292,8 +303,18 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
           // Use parentMicrograph.imageWidth directly (not state, which may not be set yet)
           const parentOrigWidth = parentMicrograph.imageWidth || img.width;
 
-          // Check for default/uninitialized values (0, 0) or (400, 300)
-          if ((initialOffsetX === 0 && initialOffsetY === 0) ||
+          if (initialPlacement) {
+            // Shown in display pixels of the parent thumbnail
+            const ratio = img.width / parentOrigWidth;
+            const displayScale = initialPlacement.scale * ratio;
+            setChildTransform({
+              x: initialPlacement.offsetX * ratio + (childWidth * displayScale) / 2,
+              y: initialPlacement.offsetY * ratio + (childHeight * displayScale) / 2,
+              rotation: initialPlacement.rotation,
+              scaleX: displayScale,
+              scaleY: displayScale,
+            });
+          } else if ((initialOffsetX === 0 && initialOffsetY === 0) ||
               (initialOffsetX === 400 && initialOffsetY === 300)) {
             // These are the default values, so center the child on the parent
             const centerX = img.width / 2;
@@ -391,6 +412,7 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
   // For other methods, this is just initial display until user enters scale data
   useEffect(() => {
     if (!parentImage || !childImage) return;
+    if (initialPlacement) return;
     // Only auto-fit if scale is still at default (1.0) - don't override user adjustments or calculated scales
     if (childTransform.scaleX !== 1 || childTransform.scaleY !== 1) return;
 
@@ -512,7 +534,9 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
       scaleX: scaleFactor,
       scaleY: scaleFactor,
     }));
-  }, [scaleMethod, pixelInput, physicalLengthInput, unitInput, parentScale]);
+    // parentImage + parentOriginalWidth: fields filled in at the start ("Copy scale") are read
+    // before the parent image has loaded, so the scale is worked out again once it has
+  }, [scaleMethod, pixelInput, physicalLengthInput, unitInput, parentScale, parentImage, parentOriginalWidth]);
 
   // Call onPlacementChange when scale changes automatically (for auto-scale methods)
   // Use a ref to track previous scale to avoid calling on every render
@@ -810,7 +834,8 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
       y: (pointer.y - stagePos.y) / oldScale,
     };
 
-    const direction = e.evt.deltaY > 0 ? -1 : 1;
+    const direction = wheelZoomDirection(e.evt);
+    if (direction === 0) return;
     const newScale = direction > 0 ? oldScale * 1.1 : oldScale / 1.1;
     const clampedScale = Math.max(0.1, Math.min(20, newScale));
 

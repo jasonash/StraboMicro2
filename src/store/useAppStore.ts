@@ -10,8 +10,9 @@
 
 import { create } from 'zustand';
 import { devtools, persist, createJSONStorage, StateStorage } from 'zustand/middleware';
-import { temporal } from 'zundo';
+import { installUndoHistory, resetUndoHistory } from './undoHistory';
 import { DEFAULT_IMAGE_EXPORT_PREFERENCES, type ImageExportPreferences } from '@/types/image-export-types';
+import { DEFAULT_QUICK_CLASSIFY_SHORTCUTS } from '@/utils/quickClassifyDefaults';
 
 /**
  * Custom storage adapter that uses Electron IPC to persist state to a file
@@ -114,26 +115,83 @@ import type {
 } from '@/types/preset-types';
 import type { MineralColorEntry, SpotColorMode, SpotLabelMode } from '@/types/mineral-color-types';
 import { DEFAULT_MINERAL_COLORS } from '@/constants/mineralColorDefaults';
+import { v4 as uuidv4 } from 'uuid';
 import { PRESET_FEATURE_FIELDS } from '@/types/preset-types';
+import {
+  bindPresetKey,
+  keysAfterCopy,
+  keysForOpenedProject,
+  keysOfPresets,
+  planPresetCopy,
+  withoutPresetKey,
+} from '@/utils/presetLibrary';
+import type { PresetConflictChoice, PresetCopyPlan } from '@/utils/presetLibrary';
 import {
   updateMicrograph,
   updateSpot,
   buildMicrographIndex,
   buildSpotIndex,
+  projectIndexes,
   findSpotParentMicrograph,
   findMicrographById,
-  getDescendantMicrographs,
-  isPointPlacedMicrograph,
   mergePresetIntoSpot,
+  dropDeadMemberIds,
 } from './helpers';
 import type { TiledViewerRef } from '@/components/TiledViewer';
 import { applySiblingLink, repairSiblingPlacements } from '@/utils/siblingPlacement';
+import { affineRealScale, repairAffineScales, setScaleWithCascade } from '@/utils/affineScale';
+import { NO_SPOT_FILTER, type SpotFilter } from '@/utils/spotDataSections';
+
+/**
+ * Repairs for projects saved by earlier versions, when a project is opened or the session
+ * restores it: PPL/XPL pairs saved before every pairing path placed the XPL where its PPL is,
+ * and affine placements saved with a stand-in scale before 2026-10-19 (src/utils/affineScale.ts).
+ * Returns the project itself when nothing needed repairing.
+ */
+/** Keys of global presets; before they were kept apart, the global ones among the live keys */
+function globalKeysOf(state: Pick<AppState, 'globalPresetKeys' | 'presetKeyBindings' | 'globalPresets'>): PresetKeyBindings {
+  return state.globalPresetKeys ?? keysOfPresets(state.presetKeyBindings, state.globalPresets);
+}
+
+/** A change of keys: the live ones, the global ones, and what is remembered for the open project */
+function presetKeyState(
+  state: Pick<AppState, 'project' | 'presetKeysByProject'>,
+  presetKeyBindings: PresetKeyBindings,
+  globalPresetKeys: PresetKeyBindings
+) {
+  return {
+    presetKeyBindings,
+    globalPresetKeys,
+    presetKeysByProject: state.project
+      ? { ...state.presetKeysByProject, [state.project.id]: presetKeyBindings }
+      : state.presetKeysByProject,
+  };
+}
+
+function repairOnOpen(loaded: ProjectMetadata): { project: ProjectMetadata; repairs: number } {
+  const copy = structuredClone(loaded);
+  const siblings = repairSiblingPlacements(copy);
+  if (siblings.length > 0) {
+    console.log(`[Store] Placed ${siblings.length} XPL sibling(s) with their PPL: ${siblings.join(', ')}`);
+  }
+  const scales = repairAffineScales(copy);
+  if (scales.length > 0) {
+    console.log(`[Store] Real scale for ${scales.length} affine-placed micrograph(s): ${scales.join(', ')}`);
+  }
+  const repairs = siblings.length + scales.length;
+  return { project: repairs > 0 ? copy : loaded, repairs };
+}
 
 // ============================================================================
 // TYPE DEFINITIONS
 // ============================================================================
 
-export type DrawingTool = 'select' | 'point' | 'line' | 'polygon' | 'measure' | 'sketch-pen' | 'sketch-marker' | 'sketch-eraser' | 'sketch-text' | null;
+export type DrawingTool = 'select' | 'point' | 'line' | 'polygon' | 'grain' | 'measure' | 'sketch-pen' | 'sketch-marker' | 'sketch-eraser' | 'sketch-text' | null;
+
+/** Tools that make spots: auto spot mode, its strip and Esc apply to them, and a drag pans ('grain' = Grain Spot) */
+export function isSpotTool(tool: DrawingTool): boolean {
+  return tool === 'point' || tool === 'line' || tool === 'polygon' || tool === 'grain';
+}
 export type SidebarTab = 'samples' | 'groups' | 'spots' | 'tags';
 export type ThemeMode = 'dark' | 'light' | 'system';
 
@@ -152,6 +210,8 @@ interface AppState {
   activeSampleId: string | null;
   activeMicrographId: string | null;
   activeSpotId: string | null; // Single active spot for properties panel
+  /** goToSpot asks the viewer to frame this spot once its micrograph's image is on screen (TiledViewer clears it) */
+  spotFocusRequest: { spotId: string; micrographId: string } | null;
   micrographNavigationStack: string[]; // Stack of micrograph IDs for back navigation (drill-down)
 
   // ========== SELECTION STATE ==========
@@ -171,7 +231,14 @@ interface AppState {
   spotLabelMode: SpotLabelMode;
   showMicrographOutlines: boolean;
   showRecursiveSpots: boolean;
+  /** View > Show Parent Spots: the spots of the micrographs above the one in the viewer (Peter, 2026-10-29) */
+  showParentSpots: boolean;
   showArchivedSpots: boolean;
+  /** View > Filter Spots...: dims or hides spots by their data; this computer only, cleared with the project */
+  spotFilter: SpotFilter;
+  spotFilterPanelOpen: boolean;
+  /** View > Micrograph Visibility... panel open (closed with the project) */
+  micrographVisibilityPanelOpen: boolean;
   showRulers: boolean;
   spotOverlayOpacity: number;
   /** Last-used image export settings (File > Export Images / micrograph export button) */
@@ -208,6 +275,16 @@ interface AppState {
   globalPresets: QuickApplyPreset[];
   /** Key bindings for presets (keys "1"-"9" -> preset ID) */
   presetKeyBindings: PresetKeyBindings;
+  /** Keys of global presets, the start of a project with no remembered keys (null: not worked out yet, older settings) */
+  globalPresetKeys: PresetKeyBindings | null;
+  /** Keys per project id, on this computer only (presetKeyBindings = those of the open project) */
+  presetKeysByProject: Record<string, PresetKeyBindings>;
+
+  // ========== AUTO SPOT MODE (personal, persisted; docs/auto-spot-mode-design.md) ==========
+  /** Spot tools place and name spots without the New Spot dialog */
+  autoSpotMode: boolean;
+  /** Preset for auto spots (name pattern, color, data); null = the project's default name */
+  autoSpotPresetId: string | null;
 
   // ========== POINT COUNT MODE STATE ==========
   /** Whether Point Count mode is active (separate from spots) */
@@ -309,6 +386,9 @@ interface AppState {
   selectSample: (id: string | null) => void;
   selectMicrograph: (id: string | null) => Promise<boolean>; // Returns true if navigation succeeded
   selectActiveSpot: (id: string | null) => Promise<boolean>; // Returns true if navigation succeeded
+  /** Show a spot wherever it is: switch to its micrograph, select it, zoom to it (chat links, Activity) */
+  goToSpot: (spotId: string) => Promise<boolean>;
+  clearSpotFocusRequest: () => void;
   drillDownToMicrograph: (id: string) => Promise<boolean>; // Navigate to child micrograph (pushes current to stack)
   navigateBack: () => Promise<boolean>; // Go back to previous micrograph in stack
   clearNavigationStack: () => void; // Clear the navigation stack
@@ -389,12 +469,20 @@ interface AppState {
   addMicrograph: (sampleId: string, micrograph: MicrographMetadata) => boolean;
   updateMicrographMetadata: (id: string, updates: Partial<MicrographMetadata>) => void;
   /**
-   * Set scalePixelsPerCentimeter on a micrograph and cascade the same ratio to every
-   * non-point descendant. Point-placed descendants render as markers (not scaled
-   * overlays), so their scale is independent and is intentionally left alone.
+   * Set scalePixelsPerCentimeter on a micrograph; the micrographs placed on it keep their size
+   * and place (src/utils/affineScale.ts cascadeScale: rectangles change by the same ratio,
+   * affine ones get their real scale, point-placed ones keep their measured scale).
    */
   updateMicrographScaleWithCascade: (id: string, newScale: number) => void;
+  /**
+   * Save a micrograph's placement (Edit Micrograph Location, Place children automatically):
+   * an affine placement gets its real scale from its parent's, and when the stored scale
+   * changes, the micrographs placed on it keep their size and place (as above).
+   */
+  placeMicrograph: (id: string, updates: Partial<MicrographMetadata>) => void;
   deleteMicrograph: (id: string) => void;
+  /** Delete several micrographs (with their descendants and PPL/XPL siblings) at once - single undo step */
+  deleteMicrographs: (ids: string[]) => void;
   reorderMicrographs: (sampleId: string, parentId: string | null, orderedIds: string[]) => void;
 
   // ========== CRUD: SPOT ==========
@@ -454,6 +542,8 @@ interface AppState {
   resetGlobalMineralColors: () => void;
   /** Set or clear project-level mineral color overrides */
   setProjectMineralColors: (entries: MineralColorEntry[] | null) => void;
+  /** Change Custom User Data (import, remove column, remove all) through a src/utils/customUserData.ts function */
+  changeCustomUserData: (change: (project: ProjectMetadata) => ProjectMetadata) => void;
 
   // ========== QUICK APPLY PRESETS ACTIONS ==========
   /** Create a new preset */
@@ -462,6 +552,8 @@ interface AppState {
   updatePreset: (id: string, updates: Partial<QuickApplyPreset>, scope: PresetScope) => void;
   /** Delete a preset */
   deletePreset: (id: string, scope: PresetScope) => void;
+  /** Copies presets into a scope (new ids; same names per choice); from Global, each key moves to its copy */
+  copyPresets: (sources: QuickApplyPreset[], to: PresetScope, choice: PresetConflictChoice) => PresetCopyPlan;
   /** Reorder presets within a scope */
   reorderPresets: (orderedIds: string[], scope: PresetScope) => void;
   /** Apply a preset to a single spot (additive merge) */
@@ -470,6 +562,8 @@ interface AppState {
   applyPresetToSpots: (presetId: string, spotIds: string[]) => void;
   /** Set or clear a key binding for a preset */
   setPresetKeyBinding: (key: string, presetId: string | null) => void;
+  setAutoSpotMode: (on: boolean) => void;
+  setAutoSpotPresetId: (presetId: string | null) => void;
   /** Get all presets with their scope information */
   getAllPresetsWithScope: () => PresetWithScope[];
   /** Get a preset by ID (searches both global and project) */
@@ -559,7 +653,14 @@ interface AppState {
   setSpotLabelMode: (mode: SpotLabelMode) => void;
   setShowMicrographOutlines: (show: boolean) => void;
   setShowRecursiveSpots: (show: boolean) => void;
+  setShowParentSpots: (show: boolean) => void;
   setShowArchivedSpots: (show: boolean) => void;
+  setSpotFilter: (filter: SpotFilter) => void;
+  clearSpotFilter: () => void;
+  setSpotFilterPanelOpen: (open: boolean) => void;
+  setMicrographVisibilityPanelOpen: (open: boolean) => void;
+  /** Show or hide several micrographs at once (micrograph id => visible); one change */
+  setMicrographsVisible: (updates: Map<string, boolean>) => void;
   setShowRulers: (show: boolean) => void;
   setSpotOverlayOpacity: (opacity: number) => void;
   setImageExportOptions: (options: ImageExportPreferences) => void;
@@ -595,7 +696,6 @@ interface AppState {
 export const useAppStore = create<AppState>()(
   devtools(
     persist(
-      temporal(
         (set, get) => ({
           // ========== INITIAL STATE ==========
           project: null,
@@ -606,6 +706,7 @@ export const useAppStore = create<AppState>()(
           activeSampleId: null,
           activeMicrographId: null,
           activeSpotId: null,
+          spotFocusRequest: null,
           micrographNavigationStack: [],
 
           selectedSpotIds: [],
@@ -622,7 +723,11 @@ export const useAppStore = create<AppState>()(
           spotLabelMode: 'original' as SpotLabelMode,
           showMicrographOutlines: true,
           showRecursiveSpots: false,
+          showParentSpots: false,
           showArchivedSpots: false,
+          spotFilter: NO_SPOT_FILTER,
+          spotFilterPanelOpen: false,
+          micrographVisibilityPanelOpen: false,
           showRulers: true,
           spotOverlayOpacity: 0.7,
           imageExportOptions: DEFAULT_IMAGE_EXPORT_PREFERENCES,
@@ -642,33 +747,20 @@ export const useAppStore = create<AppState>()(
 
           // Quick Classify state
           quickClassifyVisible: false,
-          // Default mineral shortcuts for Quick Classify - common rock-forming minerals
-          // Note: Non-mineral categories (matrix, void, lithic, opaque) are intentionally
-          // excluded - the mineralogy schema only supports actual mineral names.
-          // See PROJECT_STATUS.md for future schema expansion plans.
-          quickClassifyShortcuts: {
-            'q': 'Quartz',
-            'p': 'Plagioclase',
-            'k': 'K-Feldspar',
-            'o': 'Olivine',
-            'x': 'Clinopyroxene',
-            'a': 'Amphibole',
-            'h': 'Hornblende',
-            'b': 'Biotite',
-            'm': 'Muscovite',
-            'g': 'Garnet',
-            'c': 'Calcite',
-            'd': 'Dolomite',
-            'e': 'Epidote',
-            's': 'Serpentine',
-            'z': 'Zircon',
-          },
+          // Default mineral keys (src/utils/quickClassifyDefaults.ts)
+          quickClassifyShortcuts: { ...DEFAULT_QUICK_CLASSIFY_SHORTCUTS },
           statisticsPanelVisible: false,
           batchEditDialogOpen: false,
 
           // Quick Spot Presets state (global - persisted)
           globalPresets: [],
           presetKeyBindings: {},
+          globalPresetKeys: null,
+          presetKeysByProject: {},
+
+          // Auto spot mode (personal)
+          autoSpotMode: false,
+          autoSpotPresetId: null,
 
           // Point Count mode state
           pointCountMode: false,
@@ -719,21 +811,27 @@ export const useAppStore = create<AppState>()(
           // ========== PROJECT ACTIONS ==========
 
           loadProject: (loaded, filePath) => {
-            // PPL/XPL pairs saved before every pairing path placed the XPL where its PPL is
-            const repairedCopy = structuredClone(loaded);
-            const repairedSiblings = repairSiblingPlacements(repairedCopy);
-            const project = repairedSiblings.length > 0 ? repairedCopy : loaded;
-            if (repairedSiblings.length > 0) {
-              console.log(`[Store] Placed ${repairedSiblings.length} XPL sibling(s) with their PPL: ${repairedSiblings.join(', ')}`);
-            }
+            const { project, repairs } = repairOnOpen(loaded);
             const micrographIndex = buildMicrographIndex(project);
             const spotIndex = buildSpotIndex(project);
+            const keysBefore = get();
+            const globalKeys = globalKeysOf(keysBefore);
+            const openedKeys = keysForOpenedProject(
+              keysBefore.presetKeysByProject[project.id],
+              globalKeys,
+              keysBefore.presetKeyBindings,
+              project.presets ?? [],
+              keysBefore.globalPresets
+            );
 
             set({
               project,
+              presetKeyBindings: openedKeys,
+              globalPresetKeys: globalKeys,
+              presetKeysByProject: { ...keysBefore.presetKeysByProject, [project.id]: openedKeys },
               projectFilePath: filePath,
               // A repair is a change to save
-              isDirty: repairedSiblings.length > 0,
+              isDirty: repairs > 0,
               activeDatasetId: project.datasets?.[0]?.id || null,
               activeSampleId: null,
               activeMicrographId: null,
@@ -741,6 +839,9 @@ export const useAppStore = create<AppState>()(
               micrographNavigationStack: [],
               selectedSpotIds: [],
               spotLassoToolActive: false,
+              spotFilter: NO_SPOT_FILTER,
+              spotFilterPanelOpen: false,
+              micrographVisibilityPanelOpen: false,
               siblingViewActive: false,
               siblingCachedZoom: null,
               siblingCachedPosition: null,
@@ -750,6 +851,8 @@ export const useAppStore = create<AppState>()(
               micrographIndex,
               spotIndex,
             });
+            // A freshly loaded project starts with no undo history (even the same project reloaded)
+            resetUndoHistory();
 
             // Fire-and-forget: clean up orphaned associated files on disk
             window.api?.cleanupOrphanedAssociatedFiles(project.id, project).catch((error) => {
@@ -757,23 +860,32 @@ export const useAppStore = create<AppState>()(
             });
           },
 
-          closeProject: () => set({
-            project: null,
-            projectFilePath: null,
-            isDirty: false,
-            activeDatasetId: null,
-            activeSampleId: null,
-            activeMicrographId: null,
-            activeSpotId: null,
-            micrographNavigationStack: [],
-            selectedSpotIds: [],
-            spotLassoToolActive: false,
-            siblingViewActive: false,
-            siblingCachedZoom: null,
-            siblingCachedPosition: null,
-            micrographIndex: new Map(),
-            spotIndex: new Map(),
-          }),
+          closeProject: () => {
+            resetUndoHistory();
+            const globalKeys = globalKeysOf(get());
+            set({
+              presetKeyBindings: globalKeys,
+              globalPresetKeys: globalKeys,
+              project: null,
+              projectFilePath: null,
+              isDirty: false,
+              activeDatasetId: null,
+              activeSampleId: null,
+              activeMicrographId: null,
+              activeSpotId: null,
+              micrographNavigationStack: [],
+              selectedSpotIds: [],
+              spotLassoToolActive: false,
+              spotFilter: NO_SPOT_FILTER,
+              spotFilterPanelOpen: false,
+              micrographVisibilityPanelOpen: false,
+              siblingViewActive: false,
+              siblingCachedZoom: null,
+              siblingCachedPosition: null,
+              micrographIndex: new Map(),
+              spotIndex: new Map(),
+            });
+          },
 
           saveProject: async () => {
             const { project, isDirty } = get();
@@ -863,6 +975,17 @@ export const useAppStore = create<AppState>()(
             set({ activeSpotId: id });
             return true;
           },
+
+          goToSpot: async (spotId) => {
+            const micrograph = findSpotParentMicrograph(get().project, spotId);
+            if (!micrograph) return false;
+            if (!(await get().selectMicrograph(micrograph.id))) return false;
+            if (!(await get().selectActiveSpot(spotId))) return false;
+            set({ spotFocusRequest: { spotId, micrographId: micrograph.id } });
+            return true;
+          },
+
+          clearSpotFocusRequest: () => set({ spotFocusRequest: null }),
 
           drillDownToMicrograph: async (id) => {
             const { activeMicrographId, micrographNavigationStack, navigationGuard } = get();
@@ -1011,7 +1134,7 @@ export const useAppStore = create<AppState>()(
             return {
               project: newProject,
               isDirty: true,
-              micrographIndex: buildMicrographIndex(newProject),
+              ...projectIndexes(newProject),
             };
           }),
 
@@ -1053,7 +1176,7 @@ export const useAppStore = create<AppState>()(
             return {
               project: newProject,
               isDirty: true,
-              micrographIndex: buildMicrographIndex(newProject),
+              ...projectIndexes(newProject),
               siblingViewActive: false,
               siblingCachedZoom: null,
               siblingCachedPosition: null,
@@ -1095,7 +1218,7 @@ export const useAppStore = create<AppState>()(
               return {
                 project: updatedProject,
                 isDirty: true,
-                micrographIndex: buildMicrographIndex(updatedProject),
+                ...projectIndexes(updatedProject),
                 activeSketchLayerId: layerId,
               };
             });
@@ -1120,7 +1243,7 @@ export const useAppStore = create<AppState>()(
             return {
               project: updatedProject,
               isDirty: true,
-              micrographIndex: buildMicrographIndex(updatedProject),
+              ...projectIndexes(updatedProject),
               activeSketchLayerId: newActiveLayerId,
             };
           }),
@@ -1140,7 +1263,7 @@ export const useAppStore = create<AppState>()(
             return {
               project: updatedProject,
               isDirty: true,
-              micrographIndex: buildMicrographIndex(updatedProject),
+              ...projectIndexes(updatedProject),
             };
           }),
 
@@ -1159,7 +1282,7 @@ export const useAppStore = create<AppState>()(
             return {
               project: updatedProject,
               isDirty: true,
-              micrographIndex: buildMicrographIndex(updatedProject),
+              ...projectIndexes(updatedProject),
             };
           }),
 
@@ -1178,7 +1301,7 @@ export const useAppStore = create<AppState>()(
             return {
               project: updatedProject,
               isDirty: true,
-              micrographIndex: buildMicrographIndex(updatedProject),
+              ...projectIndexes(updatedProject),
             };
           }),
 
@@ -1197,7 +1320,7 @@ export const useAppStore = create<AppState>()(
             return {
               project: updatedProject,
               isDirty: true,
-              micrographIndex: buildMicrographIndex(updatedProject),
+              ...projectIndexes(updatedProject),
             };
           }),
 
@@ -1216,7 +1339,7 @@ export const useAppStore = create<AppState>()(
             return {
               project: updatedProject,
               isDirty: true,
-              micrographIndex: buildMicrographIndex(updatedProject),
+              ...projectIndexes(updatedProject),
             };
           }),
 
@@ -1235,7 +1358,7 @@ export const useAppStore = create<AppState>()(
             return {
               project: updatedProject,
               isDirty: true,
-              micrographIndex: buildMicrographIndex(updatedProject),
+              ...projectIndexes(updatedProject),
             };
           }),
 
@@ -1257,7 +1380,7 @@ export const useAppStore = create<AppState>()(
             return {
               project: updatedProject,
               isDirty: true,
-              micrographIndex: buildMicrographIndex(updatedProject),
+              ...projectIndexes(updatedProject),
             };
           }),
 
@@ -1306,7 +1429,7 @@ export const useAppStore = create<AppState>()(
                   return {
                     project: updatedProject,
                     isDirty: true,
-                    micrographIndex: buildMicrographIndex(updatedProject),
+                    ...projectIndexes(updatedProject),
                     sketchModeActive: true,
                     activeTool: 'sketch-pen' as const,
                   };
@@ -1331,7 +1454,7 @@ export const useAppStore = create<AppState>()(
                   return {
                     project: updatedProject,
                     isDirty: true,
-                    micrographIndex: buildMicrographIndex(updatedProject),
+                    ...projectIndexes(updatedProject),
                     sketchModeActive: true,
                     activeSketchLayerId: firstLayer.id,
                     activeTool: 'sketch-pen' as const,
@@ -1373,7 +1496,7 @@ export const useAppStore = create<AppState>()(
             return {
               project: updatedProject,
               isDirty: true,
-              micrographIndex: buildMicrographIndex(updatedProject),
+              ...projectIndexes(updatedProject),
               sketchModeActive: true,
               activeSketchLayerId: layerId,
               activeTool: 'sketch-pen' as const,
@@ -1410,8 +1533,7 @@ export const useAppStore = create<AppState>()(
             return {
               project: newProject,
               isDirty: true,
-              micrographIndex: buildMicrographIndex(newProject),
-              spotIndex: buildSpotIndex(newProject),
+              ...projectIndexes(newProject),
             };
           }),
 
@@ -1425,7 +1547,7 @@ export const useAppStore = create<AppState>()(
               Object.assign(dataset, updates);
             }
 
-            return { project: newProject, isDirty: true };
+            return { project: newProject, isDirty: true, ...projectIndexes(newProject) };
           }),
 
           deleteDataset: (id) => set((state) => {
@@ -1433,12 +1555,12 @@ export const useAppStore = create<AppState>()(
 
             const newProject = structuredClone(state.project);
             newProject.datasets = newProject.datasets?.filter(d => d.id !== id) || [];
+            dropDeadMemberIds(newProject);
 
             return {
               project: newProject,
               isDirty: true,
-              micrographIndex: buildMicrographIndex(newProject),
-              spotIndex: buildSpotIndex(newProject),
+              ...projectIndexes(newProject),
             };
           }),
 
@@ -1469,6 +1591,7 @@ export const useAppStore = create<AppState>()(
             return {
               project: newProject,
               isDirty: true,
+              ...projectIndexes(newProject),
             };
           }),
 
@@ -1487,8 +1610,7 @@ export const useAppStore = create<AppState>()(
             return {
               project: newProject,
               isDirty: true,
-              micrographIndex: buildMicrographIndex(newProject),
-              spotIndex: buildSpotIndex(newProject),
+              ...projectIndexes(newProject),
             };
           }),
 
@@ -1505,7 +1627,7 @@ export const useAppStore = create<AppState>()(
               }
             }
 
-            return { project: newProject, isDirty: true };
+            return { project: newProject, isDirty: true, ...projectIndexes(newProject) };
           }),
 
           deleteSample: (id) => set((state) => {
@@ -1516,12 +1638,12 @@ export const useAppStore = create<AppState>()(
             for (const dataset of newProject.datasets || []) {
               dataset.samples = dataset.samples?.filter(s => s.id !== id) || [];
             }
+            dropDeadMemberIds(newProject);
 
             return {
               project: newProject,
               isDirty: true,
-              micrographIndex: buildMicrographIndex(newProject),
-              spotIndex: buildSpotIndex(newProject),
+              ...projectIndexes(newProject),
             };
           }),
 
@@ -1553,6 +1675,7 @@ export const useAppStore = create<AppState>()(
             return {
               project: newProject,
               isDirty: true,
+              ...projectIndexes(newProject),
             };
           }),
 
@@ -1605,8 +1728,7 @@ export const useAppStore = create<AppState>()(
               return {
                 project: newProject,
                 isDirty: true,
-                micrographIndex: buildMicrographIndex(newProject),
-                spotIndex: buildSpotIndex(newProject),
+                ...projectIndexes(newProject),
                 expandedDatasets: Array.from(expandedDatasets),
                 expandedSamples: Array.from(expandedSamples),
                 expandedMicrographs: Array.from(expandedMicrographs),
@@ -1651,46 +1773,44 @@ export const useAppStore = create<AppState>()(
             return {
               project: newProject,
               isDirty: true,
-              micrographIndex: buildMicrographIndex(newProject),
+              ...projectIndexes(newProject),
             };
           }),
 
           updateMicrographScaleWithCascade: (id, newScale) => set((state) => {
-            if (!state.project) return state;
-
-            const target = findMicrographById(state.project, id);
-            if (!target) return state;
-
-            const oldScale = target.scalePixelsPerCentimeter;
+            if (!state.project || !findMicrographById(state.project, id)) return state;
             const newProject = structuredClone(state.project);
-
-            const applyScale = (micrograph: MicrographMetadata, value: number) => {
-              micrograph.scalePixelsPerCentimeter = value;
-            };
-
-            const targetClone = findMicrographById(newProject, id);
-            if (!targetClone) return state;
-            applyScale(targetClone, newScale);
-
-            if (oldScale && oldScale > 0) {
-              const ratio = newScale / oldScale;
-              const descendants = getDescendantMicrographs(newProject, id);
-              for (const descendant of descendants) {
-                if (isPointPlacedMicrograph(descendant)) continue;
-                if (descendant.scalePixelsPerCentimeter == null) continue;
-                applyScale(descendant, descendant.scalePixelsPerCentimeter * ratio);
-              }
-            }
-
+            setScaleWithCascade(newProject, id, newScale);
             return {
               project: newProject,
               isDirty: true,
-              micrographIndex: buildMicrographIndex(newProject),
+              ...projectIndexes(newProject),
             };
           }),
 
-          deleteMicrograph: (id) => set((state) => {
-            if (!state.project) return state;
+          placeMicrograph: (id, updates) => set((state) => {
+            if (!state.project || !findMicrographById(state.project, id)) return state;
+            const newProject = structuredClone(state.project);
+            const target = findMicrographById(newProject, id);
+            if (!target) return state;
+            const { scalePixelsPerCentimeter, ...placement } = updates;
+            Object.assign(target, placement);
+            const parent = target.parentID ? findMicrographById(newProject, target.parentID) : null;
+            const scale = target.placementType === 'affine'
+              ? affineRealScale(parent?.scalePixelsPerCentimeter, target.affineMatrix) ?? scalePixelsPerCentimeter
+              : scalePixelsPerCentimeter;
+            if (scale) setScaleWithCascade(newProject, id, scale);
+            return {
+              project: newProject,
+              isDirty: true,
+              ...projectIndexes(newProject),
+            };
+          }),
+
+          deleteMicrograph: (id) => get().deleteMicrographs([id]),
+
+          deleteMicrographs: (ids) => set((state) => {
+            if (!state.project || ids.length === 0) return state;
 
             const newProject = structuredClone(state.project);
 
@@ -1698,14 +1818,14 @@ export const useAppStore = create<AppState>()(
               for (const sample of dataset.samples || []) {
                 if (!sample.micrographs) continue;
 
-                // Build set of IDs to delete: the target + all descendants + siblings
-                const idsToDelete = new Set<string>();
-                idsToDelete.add(id);
+                // Build set of IDs to delete: the targets + all descendants + siblings
+                const idsToDelete = new Set<string>(ids);
 
-                // Also delete sibling if this micrograph has one (PPL/XPL pair)
-                const targetMicro = sample.micrographs.find(m => m.id === id);
-                if (targetMicro?.siblingImageId) {
-                  idsToDelete.add(targetMicro.siblingImageId);
+                // Also delete the sibling of a target that has one (PPL/XPL pair)
+                for (const targetMicro of sample.micrographs) {
+                  if (ids.includes(targetMicro.id) && targetMicro.siblingImageId) {
+                    idsToDelete.add(targetMicro.siblingImageId);
+                  }
                 }
 
                 // Recursively find all descendants (of both target and sibling)
@@ -1728,12 +1848,12 @@ export const useAppStore = create<AppState>()(
                 sample.micrographs = sample.micrographs.filter(m => !idsToDelete.has(m.id));
               }
             }
+            dropDeadMemberIds(newProject);
 
             return {
               project: newProject,
               isDirty: true,
-              micrographIndex: buildMicrographIndex(newProject),
-              spotIndex: buildSpotIndex(newProject),
+              ...projectIndexes(newProject),
             };
           }),
 
@@ -1799,7 +1919,7 @@ export const useAppStore = create<AppState>()(
             return {
               project: newProject,
               isDirty: true,
-              micrographIndex: buildMicrographIndex(newProject),
+              ...projectIndexes(newProject),
             };
           }),
 
@@ -1821,8 +1941,7 @@ export const useAppStore = create<AppState>()(
             return {
               project: newProject,
               isDirty: true,
-              micrographIndex: buildMicrographIndex(newProject),
-              spotIndex: buildSpotIndex(newProject),
+              ...projectIndexes(newProject),
             };
           }),
 
@@ -1842,8 +1961,7 @@ export const useAppStore = create<AppState>()(
             return {
               project: newProject,
               isDirty: true,
-              micrographIndex: buildMicrographIndex(newProject),
-              spotIndex: buildSpotIndex(newProject),
+              ...projectIndexes(newProject),
             };
           }),
 
@@ -1857,7 +1975,7 @@ export const useAppStore = create<AppState>()(
             return {
               project: newProject,
               isDirty: true,
-              spotIndex: buildSpotIndex(newProject),
+              ...projectIndexes(newProject),
             };
           }),
 
@@ -1904,7 +2022,7 @@ export const useAppStore = create<AppState>()(
             return {
               project: newProject,
               isDirty: true,
-              spotIndex: buildSpotIndex(newProject),
+              ...projectIndexes(newProject),
               ...quickEditUpdates,
             };
           }),
@@ -1921,12 +2039,13 @@ export const useAppStore = create<AppState>()(
                 }
               }
             }
+            dropDeadMemberIds(newProject);
 
             return {
               project: newProject,
               isDirty: true,
               selectedSpotIds: state.selectedSpotIds.filter(sid => sid !== id),
-              spotIndex: buildSpotIndex(newProject),
+              ...projectIndexes(newProject),
             };
           }),
 
@@ -1943,6 +2062,7 @@ export const useAppStore = create<AppState>()(
                 }
               }
             }
+            dropDeadMemberIds(newProject);
 
             // Handle Quick Edit mode state updates
             let quickEditUpdates: Partial<AppState> = {};
@@ -1987,7 +2107,7 @@ export const useAppStore = create<AppState>()(
               project: newProject,
               isDirty: true,
               selectedSpotIds: state.selectedSpotIds.filter(sid => !spotIdSet.has(sid)),
-              spotIndex: buildSpotIndex(newProject),
+              ...projectIndexes(newProject),
               ...quickEditUpdates,
             };
           }),
@@ -2001,6 +2121,7 @@ export const useAppStore = create<AppState>()(
               micrograph.spots = [];
               return deletedSpotIds;
             });
+            dropDeadMemberIds(newProject);
 
             // Get the deleted spot IDs from the old project
             const oldMicrograph = state.micrographIndex.get(micrographId);
@@ -2010,7 +2131,7 @@ export const useAppStore = create<AppState>()(
               project: newProject,
               isDirty: true,
               selectedSpotIds: state.selectedSpotIds.filter(sid => !deletedSpotIds.has(sid)),
-              spotIndex: buildSpotIndex(newProject),
+              ...projectIndexes(newProject),
             };
           }),
 
@@ -2152,13 +2273,14 @@ export const useAppStore = create<AppState>()(
                   }
                 }
               }
+              dropDeadMemberIds(newProject);
 
               set({
                 project: newProject,
                 isDirty: true,
                 selectedSpotIds: [newSpotId],
                 activeSpotId: newSpotId,
-                spotIndex: buildSpotIndex(newProject),
+                ...projectIndexes(newProject),
               });
 
               console.log(`[Store] Merged ${polygonSpots.length} spots into ${newSpotId}`);
@@ -2379,13 +2501,14 @@ export const useAppStore = create<AppState>()(
                   }
                 }
               }
+              dropDeadMemberIds(newProject);
 
               set({
                 project: newProject,
                 isDirty: true,
                 selectedSpotIds: newSpotIds,
                 activeSpotId: newSpotIds[0],
-                spotIndex: buildSpotIndex(newProject),
+                ...projectIndexes(newProject),
               });
 
               console.log(`[Store] Split spot ${spotId} into ${newSpots.length} spots`);
@@ -2407,6 +2530,7 @@ export const useAppStore = create<AppState>()(
             return {
               project: newProject,
               isDirty: true,
+              ...projectIndexes(newProject),
             };
           }),
 
@@ -2420,7 +2544,7 @@ export const useAppStore = create<AppState>()(
               Object.assign(group, updates);
             }
 
-            return { project: newProject, isDirty: true };
+            return { project: newProject, isDirty: true, ...projectIndexes(newProject) };
           }),
 
           deleteGroup: (id) => set((state) => {
@@ -2432,6 +2556,7 @@ export const useAppStore = create<AppState>()(
             return {
               project: newProject,
               isDirty: true,
+              ...projectIndexes(newProject),
             };
           }),
 
@@ -2452,7 +2577,7 @@ export const useAppStore = create<AppState>()(
               }
             }
 
-            return { project: newProject, isDirty: true };
+            return { project: newProject, isDirty: true, ...projectIndexes(newProject) };
           }),
 
           removeMicrographFromGroup: (groupId, micrographId) => set((state) => {
@@ -2465,7 +2590,7 @@ export const useAppStore = create<AppState>()(
               group.micrographs = group.micrographs.filter(id => id !== micrographId);
             }
 
-            return { project: newProject, isDirty: true };
+            return { project: newProject, isDirty: true, ...projectIndexes(newProject) };
           }),
 
           setGroupExpanded: (groupId, expanded) => set((state) => {
@@ -2478,7 +2603,7 @@ export const useAppStore = create<AppState>()(
               group.isExpanded = expanded;
             }
 
-            return { project: newProject, isDirty: true };
+            return { project: newProject, isDirty: true, ...projectIndexes(newProject) };
           }),
 
           // ========== CRUD: TAG ==========
@@ -2492,6 +2617,7 @@ export const useAppStore = create<AppState>()(
             return {
               project: newProject,
               isDirty: true,
+              ...projectIndexes(newProject),
             };
           }),
 
@@ -2508,6 +2634,7 @@ export const useAppStore = create<AppState>()(
             return {
               project: newProject,
               isDirty: true,
+              ...projectIndexes(newProject),
             };
           }),
 
@@ -2519,26 +2646,13 @@ export const useAppStore = create<AppState>()(
             // Remove tag from project.tags array
             newProject.tags = (newProject.tags || []).filter(t => t.id !== id);
 
-            // Also remove tag ID from any spots that have it
-            const datasets = newProject.datasets || [];
-            for (const dataset of datasets) {
-              const samples = dataset.samples || [];
-              for (const sample of samples) {
-                const micrographs = sample.micrographs || [];
-                for (const micrograph of micrographs) {
-                  const spots = micrograph.spots || [];
-                  for (const spot of spots) {
-                    if (spot.tags && spot.tags.includes(id)) {
-                      spot.tags = spot.tags.filter(tagId => tagId !== id);
-                    }
-                  }
-                }
-              }
-            }
+            // Also drop the tag id from micrographs and spots
+            dropDeadMemberIds(newProject);
 
             return {
               project: newProject,
               isDirty: true,
+              ...projectIndexes(newProject),
             };
           }),
 
@@ -2559,10 +2673,9 @@ export const useAppStore = create<AppState>()(
                     if (spot.id === spotId) {
                       spot.tags = [...(spot.tags || []), tagId];
                       // Also rebuild spot index
-                      const newSpotIndex = buildSpotIndex(newProject);
                       return {
                         project: newProject,
-                        spotIndex: newSpotIndex,
+                        ...projectIndexes(newProject),
                         isDirty: true,
                       };
                     }
@@ -2591,10 +2704,9 @@ export const useAppStore = create<AppState>()(
                     if (spot.id === spotId) {
                       spot.tags = (spot.tags || []).filter(id => id !== tagId);
                       // Also rebuild spot index
-                      const newSpotIndex = buildSpotIndex(newProject);
                       return {
                         project: newProject,
-                        spotIndex: newSpotIndex,
+                        ...projectIndexes(newProject),
                         isDirty: true,
                       };
                     }
@@ -2616,7 +2728,7 @@ export const useAppStore = create<AppState>()(
               tag.isExpanded = expanded;
             }
 
-            return { project: newProject, isDirty: true };
+            return { project: newProject, isDirty: true, ...projectIndexes(newProject) };
           }),
 
           // ========== VIEWER ACTIONS ==========
@@ -2632,8 +2744,24 @@ export const useAppStore = create<AppState>()(
           setShowMicrographOutlines: (show) => set({ showMicrographOutlines: show }),
 
           setShowRecursiveSpots: (show) => set({ showRecursiveSpots: show }),
+          setShowParentSpots: (show) => set({ showParentSpots: show }),
 
           setShowArchivedSpots: (show) => set({ showArchivedSpots: show }),
+          setSpotFilter: (filter) => set({ spotFilter: filter }),
+          clearSpotFilter: () => set((state) => ({ spotFilter: { ...NO_SPOT_FILTER, others: state.spotFilter.others } })),
+          setSpotFilterPanelOpen: (open) => set({ spotFilterPanelOpen: open }),
+          setMicrographVisibilityPanelOpen: (open) => set({ micrographVisibilityPanelOpen: open }),
+
+          setMicrographsVisible: (updates) => set((state) => {
+            if (!state.project || updates.size === 0) return state;
+            let newProject = state.project;
+            for (const [id, visible] of updates) {
+              newProject = updateMicrograph(newProject, id, (micrograph) => {
+                micrograph.isMicroVisible = visible;
+              });
+            }
+            return { project: newProject, isDirty: true, ...projectIndexes(newProject) };
+          }),
 
           setShowRulers: (show) => set({ showRulers: show }),
 
@@ -2702,7 +2830,7 @@ export const useAppStore = create<AppState>()(
               return {
                 project: newProject,
                 isDirty: true,
-                spotIndex: buildSpotIndex(newProject),
+                ...projectIndexes(newProject),
                 // Clear editing state
                 editingSpotId: null,
                 editingGeometry: null,
@@ -2834,6 +2962,16 @@ export const useAppStore = create<AppState>()(
             };
           }),
 
+          changeCustomUserData: (change) => set((state) => {
+            if (!state.project) return state;
+            const newProject = change(state.project);
+            return {
+              project: newProject,
+              isDirty: true,
+              ...projectIndexes(newProject),
+            };
+          }),
+
           // ========== QUICK APPLY PRESETS ACTIONS ==========
 
           createPreset: (preset, scope) => set((state) => {
@@ -2880,17 +3018,20 @@ export const useAppStore = create<AppState>()(
 
           deletePreset: (id, scope) => set((state) => {
             // Also unbind the key if this preset was bound
-            const newKeyBindings = { ...state.presetKeyBindings };
-            for (const [key, presetId] of Object.entries(newKeyBindings)) {
-              if (presetId === id) {
-                delete newKeyBindings[key];
-              }
-            }
+            const newKeys = presetKeyState(
+              state,
+              withoutPresetKey(state.presetKeyBindings, id),
+              withoutPresetKey(globalKeysOf(state), id)
+            );
 
             if (scope === 'global') {
               return {
                 globalPresets: state.globalPresets.filter((p) => p.id !== id),
-                presetKeyBindings: newKeyBindings,
+                ...newKeys,
+                // A deleted global preset must not keep a key in any project
+                presetKeysByProject: Object.fromEntries(
+                  Object.entries(newKeys.presetKeysByProject).map(([projectId, keys]) => [projectId, withoutPresetKey(keys, id)])
+                ),
               };
             } else {
               if (!state.project) return state;
@@ -2910,11 +3051,30 @@ export const useAppStore = create<AppState>()(
                   presets: existingPresets.filter((p) => p.id !== id),
                   presetKeyBindings: Object.keys(projectKeyBindings || {}).length > 0 ? projectKeyBindings : null,
                 },
-                presetKeyBindings: newKeyBindings,
+                ...newKeys,
                 isDirty: true,
               };
             }
           }),
+
+          copyPresets: (sources, to, choice) => {
+            const state = get();
+            const existing = to === 'global' ? state.globalPresets : state.project?.presets ?? [];
+            const plan = planPresetCopy(sources, existing, to, choice, new Date().toISOString(), uuidv4);
+            const replaced = new Map(plan.replace.map((p) => [p.id, p]));
+            const merged = [...existing.map((p) => replaced.get(p.id) ?? p), ...plan.add];
+
+            if (to === 'global') {
+              set({ globalPresets: merged });
+            } else if (state.project) {
+              set({
+                project: { ...state.project, presets: merged },
+                ...presetKeyState(state, keysAfterCopy(state.presetKeyBindings, plan.targetIds), globalKeysOf(state)),
+                isDirty: true,
+              });
+            }
+            return plan;
+          },
 
           reorderPresets: (orderedIds, scope) => set((state) => {
             if (scope === 'global') {
@@ -2961,8 +3121,9 @@ export const useAppStore = create<AppState>()(
             }
 
             // Apply preset to spot using additive merge
+            const projectTagIds = new Set((state.project.tags ?? []).map((t) => t.id));
             const newProject = updateSpot(state.project, spotId, (spot) => {
-              mergePresetIntoSpot(spot, preset!.data);
+              mergePresetIntoSpot(spot, preset!.data, projectTagIds);
 
               // Track applied preset ID
               if (!spot.appliedPresetIds) {
@@ -2976,7 +3137,7 @@ export const useAppStore = create<AppState>()(
             return {
               project: newProject,
               isDirty: true,
-              spotIndex: buildSpotIndex(newProject),
+              ...projectIndexes(newProject),
             };
           }),
 
@@ -2995,6 +3156,7 @@ export const useAppStore = create<AppState>()(
 
             const spotIdSet = new Set(spotIds);
             const newProject = structuredClone(state.project);
+            const projectTagIds = new Set((newProject.tags ?? []).map((t) => t.id));
             const now = Date.now();
             let anyApplied = false;
 
@@ -3010,7 +3172,7 @@ export const useAppStore = create<AppState>()(
                           continue;
                         }
 
-                        mergePresetIntoSpot(spot, preset!.data);
+                        mergePresetIntoSpot(spot, preset!.data, projectTagIds);
 
                         if (!spot.appliedPresetIds) {
                           spot.appliedPresetIds = [];
@@ -3050,9 +3212,12 @@ export const useAppStore = create<AppState>()(
               ...quickEditUpdates,
               project: newProject,
               isDirty: true,
-              spotIndex: buildSpotIndex(newProject),
+              ...projectIndexes(newProject),
             };
           }),
+
+          setAutoSpotMode: (on) => set({ autoSpotMode: on }),
+          setAutoSpotPresetId: (presetId) => set({ autoSpotPresetId: presetId }),
 
           setPresetKeyBinding: (key, presetId) => set((state) => {
             // Validate key is 1-9
@@ -3061,23 +3226,15 @@ export const useAppStore = create<AppState>()(
               return state;
             }
 
-            const newKeyBindings = { ...state.presetKeyBindings };
-
+            const isGlobal = (id: string | undefined) => state.globalPresets.some((p) => p.id === id);
+            let globalKeys = globalKeysOf(state);
             if (presetId === null) {
-              // Clear binding
-              delete newKeyBindings[key];
-            } else {
-              // Clear any existing binding for this preset
-              for (const [existingKey, existingId] of Object.entries(newKeyBindings)) {
-                if (existingId === presetId) {
-                  delete newKeyBindings[existingKey];
-                }
-              }
-              // Set new binding
-              newKeyBindings[key] = presetId;
+              if (isGlobal(state.presetKeyBindings[key])) globalKeys = bindPresetKey(globalKeys, key, null);
+            } else if (isGlobal(presetId)) {
+              globalKeys = bindPresetKey(globalKeys, key, presetId);
             }
 
-            return { presetKeyBindings: newKeyBindings };
+            return presetKeyState(state, bindPresetKey(state.presetKeyBindings, key, presetId), globalKeys);
           }),
 
           getAllPresetsWithScope: () => {
@@ -3717,12 +3874,6 @@ export const useAppStore = create<AppState>()(
 
           setLastGrainDetectionSettings: (settings) => set({ lastGrainDetectionSettings: settings }),
         }),
-        {
-          // Temporal (undo/redo) configuration
-          limit: 50,
-          equality: (a, b) => a.project === b.project,
-        }
-      ),
       {
         // Persistence configuration
         name: 'strabomicro-storage',
@@ -3747,6 +3898,7 @@ export const useAppStore = create<AppState>()(
           imageExportOptions: state.imageExportOptions,
           showMicrographOutlines: state.showMicrographOutlines,
           showRecursiveSpots: state.showRecursiveSpots,
+          showParentSpots: state.showParentSpots,
           showArchivedSpots: state.showArchivedSpots,
           spotOverlayOpacity: state.spotOverlayOpacity,
           theme: state.theme,
@@ -3762,6 +3914,12 @@ export const useAppStore = create<AppState>()(
           // Quick Spot Presets settings (global presets and key bindings)
           globalPresets: state.globalPresets,
           presetKeyBindings: state.presetKeyBindings,
+          globalPresetKeys: state.globalPresetKeys,
+          presetKeysByProject: state.presetKeysByProject,
+
+          // Auto spot mode (personal)
+          autoSpotMode: state.autoSpotMode,
+          autoSpotPresetId: state.autoSpotPresetId,
 
           // Generation settings
           lastPointCountSettings: state.lastPointCountSettings,
@@ -3782,6 +3940,12 @@ export const useAppStore = create<AppState>()(
                   if (!micrograph.imagePath) micrograph.imagePath = micrograph.id;
                 }
               }
+            }
+            // The same repairs as opening a project (the session restores it without loadProject)
+            const { project: repaired, repairs } = repairOnOpen(state.project);
+            if (repairs > 0) {
+              state.project = repaired;
+              state.isDirty = true;
             }
             // Rebuild the micrograph and spot indexes from the project data
             state.micrographIndex = buildMicrographIndex(state.project);
@@ -3816,6 +3980,7 @@ export const useAppStore = create<AppState>()(
               spotLabelMode: state.spotLabelMode ?? 'original',
               showOverlayOutlines: state.showMicrographOutlines ?? true,
               showRecursiveSpots: state.showRecursiveSpots ?? false,
+              showParentSpots: state.showParentSpots ?? false,
               spotColorMode: state.spotColorMode ?? 'spot-color',
             });
           }
@@ -3830,10 +3995,10 @@ export const useAppStore = create<AppState>()(
 );
 
 // ============================================================================
-// UNDO/REDO HOOKS (from zundo temporal middleware)
+// UNDO/REDO (patch-based, see undoHistory.ts)
 // ============================================================================
 
-export const useTemporalStore = useAppStore.temporal;
+installUndoHistory(useAppStore);
 
 // ============================================================================
 // DEBUG HELPERS (development only)

@@ -20,7 +20,6 @@ const http = require('http');
  * Server endpoints
  */
 const ENDPOINTS = {
-  MY_PROJECTS: 'https://strabospot.org/jwtmicrodb/myProjects',
   PROJECT_URL: 'https://strabospot.org/jwtmicrodb/projectURL',
   SHARED_PROJECT: 'https://strabospot.org/jwtmicrodb/sharedProject',
   SHARED_FILES: 'https://strabospot.org/straboMicroFiles',
@@ -52,75 +51,20 @@ function formatBytes(bytes) {
 }
 
 /**
- * List user's projects from the server
- * @param {string} accessToken - JWT access token
- * @returns {Promise<{success: boolean, projects?: Array, error?: string}>}
- */
-async function listProjects(accessToken) {
-  try {
-    log.info('[ServerDownload] Fetching project list...');
-
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 30000);
-
-    const response = await fetch(ENDPOINTS.MY_PROJECTS, {
-      method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-      },
-      signal: controller.signal,
-    });
-
-    clearTimeout(timeoutId);
-
-    if (!response.ok) {
-      if (response.status === 401) {
-        return { success: false, error: 'Authentication expired. Please log in again.' };
-      }
-      return { success: false, error: `Server error: ${response.status}` };
-    }
-
-    const data = await response.json();
-    log.info(`[ServerDownload] Found ${data.projects?.length || 0} projects`);
-
-    // Transform project data for UI
-    const projects = (data.projects || []).map(p => ({
-      id: p.id,
-      name: p.name,
-      uploadDate: p.uploaddate,
-      modifiedTimestamp: p.modifiedtimestamp,
-      bytes: p.bytes,
-      bytesFormatted: formatBytes(p.bytes),
-      self: p.self,
-    }));
-
-    // Sort by modified timestamp (newest first)
-    projects.sort((a, b) => (b.modifiedTimestamp || 0) - (a.modifiedTimestamp || 0));
-
-    return { success: true, projects };
-  } catch (error) {
-    log.error('[ServerDownload] Error fetching project list:', error);
-    if (error.name === 'AbortError') {
-      return { success: false, error: 'Request timed out. Please try again.' };
-    }
-    return { success: false, error: error.message };
-  }
-}
-
-/**
  * Get the download URL for a project
  * @param {string} projectId - Project ID
  * @param {string} accessToken - JWT access token
  * @returns {Promise<{success: boolean, url?: string, bytes?: number, micrographCount?: string, error?: string}>}
  */
-async function getProjectUrl(projectId, accessToken) {
+async function getProjectUrl(projectId, accessToken, serverBase = ENDPOINTS.BASE_URL) {
   try {
     log.info(`[ServerDownload] Getting download URL for project: ${projectId}`);
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 15000);
 
-    const response = await fetch(`${ENDPOINTS.PROJECT_URL}/${projectId}`, {
+    const projectUrlEndpoint = serverBase === ENDPOINTS.BASE_URL ? ENDPOINTS.PROJECT_URL : `${String(serverBase).replace(/\/+$/, '')}/jwtmicrodb/projectURL`;
+    const response = await fetch(`${projectUrlEndpoint}/${projectId}`, {
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${accessToken}`,
@@ -145,7 +89,7 @@ async function getProjectUrl(projectId, accessToken) {
     // Construct full URL (the response gives a relative path)
     const fullUrl = data.url.startsWith('http')
       ? data.url
-      : `${ENDPOINTS.BASE_URL}${data.url}`;
+      : `${String(serverBase).replace(/\/+$/, '')}${data.url}`;
 
     log.info(`[ServerDownload] Download URL: ${fullUrl}`);
     log.info(`[ServerDownload] File size: ${formatBytes(data.bytes)}`);
@@ -259,7 +203,7 @@ function downloadFile(url, destPath, progressCallback) {
  * @param {Function} progressCallback - Progress callback
  * @returns {Promise<{success: boolean, zipPath?: string, error?: string}>}
  */
-async function downloadProject(projectId, accessToken, progressCallback) {
+async function downloadProject(projectId, accessToken, progressCallback, serverBase = ENDPOINTS.BASE_URL) {
   let tempZipPath = null;
 
   try {
@@ -275,7 +219,7 @@ async function downloadProject(projectId, accessToken, progressCallback) {
     // --- Step 1: Get download URL ---
     sendProgress(DownloadPhase.FETCHING_URL, 5, 'Getting download link...');
 
-    const urlResult = await getProjectUrl(projectId, accessToken);
+    const urlResult = await getProjectUrl(projectId, accessToken, serverBase);
     if (!urlResult.success) {
       return { success: false, error: urlResult.error };
     }
@@ -507,7 +451,6 @@ async function downloadSharedProject(shareCode, accessToken, progressCallback) {
 }
 
 module.exports = {
-  listProjects,
   getProjectUrl,
   downloadFile,
   downloadProject,

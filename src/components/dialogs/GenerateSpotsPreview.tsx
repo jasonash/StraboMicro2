@@ -5,6 +5,7 @@ import { PanTool, CropFree, ZoomIn, ZoomOut, RestartAlt, ClearAll } from '@mui/i
 import Konva from 'konva';
 import { useAppStore } from '@/store';
 import { releaseImage } from '@/utils/imageUtils';
+import { wheelZoomDirection } from '@/utils/wheelZoom';
 
 export interface GeneratedPoint {
   x: number;
@@ -178,7 +179,8 @@ export const GenerateSpotsPreview = ({
       y: (pointer.y - stagePos.y) / oldScale,
     };
 
-    const direction = e.evt.deltaY < 0 ? 1 : -1;
+    const direction = wheelZoomDirection(e.evt);
+    if (direction === 0) return;
     const newScale = direction > 0 ? oldScale * 1.2 : oldScale / 1.2;
     const clampedScale = Math.max(0.1, Math.min(10, newScale));
 

@@ -1,0 +1,265 @@
+/**
+ * Tests for project copies (projectFolders resolver, projectCopies move,
+ * tile cache re-keying, hard links). Runs inside Electron with Documents and
+ * userData pointed at a temporary folder, so real data is never touched.
+ *
+ *   npm run test:project-copies
+ */
+
+const { app } = require('electron');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+
+const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'smcopies-'));
+app.setPath('documents', path.join(tmp, 'Documents'));
+app.setPath('userData', path.join(tmp, 'userData'));
+fs.mkdirSync(path.join(tmp, 'Documents'), { recursive: true });
+
+const E = path.join(__dirname, '../../electron');
+let failures = 0;
+let passes = 0;
+function check(label, ok, detail = '') {
+  if (ok) passes++;
+  else {
+    failures++;
+    console.log(`  FAIL  ${label}${detail ? `\n        ${detail}` : ''}`);
+  }
+}
+
+app.whenReady().then(async () => {
+  try {
+    const sharp = require('sharp');
+    const projectFolders = require(`${E}/projectFolders`);
+    const projectCopies = require(`${E}/projectCopies`);
+    const tileCache = require(`${E}/tileCache`);
+    const tileGenerator = require(`${E}/tileGenerator`);
+    const projectsIndex = require(`${E}/projectsIndex`);
+    const imageConverter = require(`${E}/imageConverter`);
+    const { linkOrCopyFile, copyFileAtomic } = require(`${E}/atomicFile`);
+    await tileCache.ensureCacheDir?.();
+
+    const data = projectFolders.getStraboMicro2DataPath();
+    check('data root under the temporary Documents', data.startsWith(tmp));
+
+    // Folder names
+    check('server folder: host', projectFolders.serverFolderName('https://strabospot.org') === 'strabospot.org');
+    check('server folder: port kept, made safe', projectFolders.serverFolderName('http://localhost:8080/') === 'localhost_8080');
+    check('server folder: bare host, case folded', projectFolders.serverFolderName('StraboSpot.org') === 'strabospot.org');
+    let threw = false;
+    try { projectFolders.getAccountFolderPath('https://strabospot.org', '../x'); } catch { threw = true; }
+    check('account key must be numeric', threw);
+    check('account copy path', projectFolders.getAccountCopyPath('P1', 'https://strabospot.org', 5) ===
+      path.join(data, 'accounts', 'strabospot.org', '5', 'P1'));
+
+    // A local-only project with a real image and real tiles
+    const pid = 'proj-1';
+    await projectFolders.createProjectFolders(pid);
+    const local = path.join(data, pid);
+    check('new project resolves to the local-only folder', projectFolders.getProjectFolderPath(pid) === local);
+    fs.writeFileSync(path.join(local, 'project.json'), JSON.stringify({ id: pid, name: 'Copy Test', datasets: [] }));
+    const img = path.join(local, 'images', 'mic-1');
+    await sharp({ create: { width: 700, height: 500, channels: 3, background: { r: 200, g: 50, b: 20 } } }).jpeg().toFile(img);
+    await tileGenerator.processImageComplete(img);
+    const oldCache = await tileCache.isCacheValid(img);
+    check('tiles cached for the local path', oldCache.exists);
+
+    // Move into the account folder
+    const to = await projectCopies.moveProjectToAccount(pid, 'https://strabospot.org', 5);
+    check('moved to accounts/<server>/<pkey>/<id>', to === path.join(data, 'accounts', 'strabospot.org', '5', pid) &&
+      fs.existsSync(path.join(to, 'project.json')) && !fs.existsSync(local));
+    check('resolver follows the move', projectFolders.getProjectFolderPath(pid) === to);
+    const newImg = path.join(to, 'images', 'mic-1');
+    const newCache = await tileCache.isCacheValid(newImg);
+    check('tiles survive the move (valid for the new path)', newCache.exists, JSON.stringify(newCache).slice(0, 200));
+    check('old cache key gone', !fs.existsSync(tileCache.getCacheDir(oldCache.hash)));
+    const again = await tileGenerator.processImageComplete(newImg);
+    check('no re-tiling needed after the move', again.fromCache === true, JSON.stringify(again).slice(0, 200));
+
+    threw = false;
+    try { await projectCopies.moveProjectToAccount(pid, 'https://strabospot.org', 5); } catch { threw = true; }
+    check('moving again fails (no local-only project left)', threw);
+
+    // Resolver without a pinned copy finds the only account copy
+    projectFolders.forgetProjectCopy(pid);
+    check('resolver finds the single account copy on disk', projectFolders.getProjectFolderPath(pid) === to);
+
+    // Listing and Recent Projects
+    const copies = await projectFolders.listProjectCopies();
+    const mine = copies.find((c) => c.projectId === pid);
+    check('listProjectCopies reports the account copy', mine && mine.folderPath === to &&
+      mine.account && mine.account.server === 'strabospot.org' && mine.account.pkey === '5', JSON.stringify(copies));
+    check('accounts/ is not listed as a local project', !(await projectFolders.listProjectFolders()).includes('accounts'));
+    const index = await projectsIndex.rebuildIndex();
+    const entry = index.projects.find((p) => p.id === pid);
+    check('Recent Projects index still has the moved project', entry && entry.name === 'Copy Test' && entry.account?.pkey === '5', JSON.stringify(index));
+
+    // Moving onto an existing account copy is refused
+    // createProjectFolders(pid) would resolve to the copy in use (BatchImportDialog relies on
+    // that for existing projects), so make a local-only folder with the same id by hand
+    fs.mkdirSync(local, { recursive: true });
+    fs.writeFileSync(path.join(local, 'project.json'), JSON.stringify({ id: pid, name: 'Second' }));
+    projectFolders.useProjectCopy(pid, to); // the synced copy is the one open
+    check('createProjectFolders on an open synced project targets its copy',
+      (await projectFolders.createProjectFolders(pid)).projectPath === to);
+    threw = false;
+    try { await projectCopies.moveProjectToAccount(pid, 'https://strabospot.org', 5); } catch { threw = true; }
+    check('move refused when the account already has a copy', threw && fs.existsSync(local) && fs.existsSync(to));
+    projectFolders.forgetProjectCopy(pid);
+    check('local-only folder wins over account copies when not pinned', projectFolders.getProjectFolderPath(pid) === local);
+    projectFolders.useProjectCopy(pid, to);
+    check('a pinned copy wins', projectFolders.getProjectFolderPath(pid) === to);
+    fs.rmSync(local, { recursive: true, force: true });
+
+    // Two account copies, nothing pinned: ambiguous, falls back to the local location
+    const other = projectFolders.getAccountCopyPath(pid, 'http://localhost:8080', 5);
+    fs.mkdirSync(other, { recursive: true });
+    fs.writeFileSync(path.join(other, 'project.json'), JSON.stringify({ id: pid, name: 'Dev copy' }));
+    projectFolders.forgetProjectCopy(pid);
+    check('two account copies and none pinned: no guess', projectFolders.getProjectFolderPath(pid) === local);
+
+    // Image conversion writes into the copy in use
+    projectFolders.useProjectCopy(pid, to);
+    const src = path.join(tmp, 'source.png');
+    await sharp({ create: { width: 64, height: 48, channels: 3, background: { r: 1, g: 2, b: 3 } } }).png().toFile(src);
+    await imageConverter.convertAndSaveMicrographImage(src, pid, 'mic-2', projectFolders.getProjectFolderPath(pid));
+    check('micrograph image saved into the account copy', fs.existsSync(path.join(to, 'images', 'mic-2')));
+
+    // Hard links between two accounts' copies
+    const linked = path.join(other, 'images', 'mic-1');
+    fs.mkdirSync(path.dirname(linked), { recursive: true });
+    const how = await linkOrCopyFile(newImg, linked);
+    check('second copy hard-links the original', how === 'linked' && fs.statSync(linked).ino === fs.statSync(newImg).ino);
+    const replacement = path.join(tmp, 'replacement.jpg');
+    fs.writeFileSync(replacement, 'not the same bytes');
+    await copyFileAtomic(replacement, newImg);
+    check('replacing one copy leaves the other intact', fs.readFileSync(linked).length !== fs.statSync(newImg).size &&
+      fs.statSync(linked).ino !== fs.statSync(newImg).ino);
+    threw = false;
+    try { await linkOrCopyFile(newImg, linked); } catch { threw = true; }
+    check('link refuses an existing target', threw);
+
+    // Accounts: which copy a project id means, whose copy may open, Recent Projects (16d, 16at, 16ax, 16ba)
+    const accounts = require(`${E}/accounts`);
+    const PROD = 'https://strabospot.org';
+    const jason = { pkey: 5, name: 'Jason Ash', email: 'jason@example.org' };
+    const jane = { pkey: 7, name: 'Jane Doe', email: 'jane@example.org' };
+    const janeCopy = projectFolders.getAccountCopyPath(pid, PROD, 7);
+    fs.mkdirSync(path.join(janeCopy, 'sync'), { recursive: true });
+    fs.writeFileSync(path.join(janeCopy, 'project.json'), JSON.stringify({ id: pid, name: 'Copy Test' }));
+    fs.writeFileSync(path.join(janeCopy, 'sync', 'state.json'), JSON.stringify({ binding: { email: 'jane@example.org' } }));
+    const pid2 = 'proj-2';
+    fs.mkdirSync(path.join(data, pid2), { recursive: true });
+    fs.writeFileSync(path.join(data, pid2, 'project.json'), JSON.stringify({ id: pid2, name: 'Local Only' }));
+
+    check('accountOfFolder: account copy', JSON.stringify(projectFolders.accountOfFolder(to)) === JSON.stringify({ server: 'strabospot.org', pkey: '5' }));
+    check('accountOfFolder: local-only is null', projectFolders.accountOfFolder(path.join(data, pid2)) === null);
+
+    projectFolders.useProjectCopy(pid, to);
+    const pinFile = path.join(app.getPath('userData'), 'copies-in-use.json');
+    check('the copy in use is saved (survives a restart)', JSON.parse(fs.readFileSync(pinFile, 'utf8'))[pid] === to);
+
+    // Jane's copy is open, Jason logs in: the open copy stays pinned, opening by id means Jason's
+    projectFolders.useProjectCopy(pid, janeCopy);
+    accounts.setLoggedIn(jason, PROD);
+    check('pinned copy kept while a login changes', projectFolders.getProjectFolderPath(pid) === janeCopy);
+    check('opening by id means the logged-in account\'s copy', projectFolders.defaultProjectCopy(pid) === to);
+    const jasonsOwner = accounts.checkCopyOwner(janeCopy);
+    check('another account\'s copy may not be used; owner email from its sidecar', !jasonsOwner.ok &&
+      jasonsOwner.owner.email === 'jane@example.org' && jasonsOwner.owner.pkey === '7', JSON.stringify(jasonsOwner));
+    check('own copy and local-only may be used', accounts.checkCopyOwner(to).ok && accounts.checkCopyOwner(path.join(data, pid2)).ok);
+    const devOwner = accounts.checkCopyOwner(other);
+    check('own copy on another server: not usable, marked otherServer', !devOwner.ok && devOwner.owner.otherServer === true &&
+      jasonsOwner.owner.otherServer === false, JSON.stringify(devOwner));
+    check('resolveProjectCopy drops the pin', projectFolders.resolveProjectCopy(pid) === to &&
+      JSON.parse(fs.readFileSync(pinFile, 'utf8'))[pid] === undefined);
+    check('last account recorded', accounts.getLast()?.pkey === '5' && accounts.getLast()?.name === 'Jason Ash');
+
+    accounts.setLoggedIn(jane, PROD);
+    check('Jane logged in: her copy', projectFolders.defaultProjectCopy(pid) === janeCopy);
+    const janesOwner = accounts.checkCopyOwner(to);
+    check('Jason\'s copy is named by his recorded name', !janesOwner.ok && janesOwner.owner.name === 'Jason Ash', JSON.stringify(janesOwner));
+
+    // Logged out: the last account (Jane) may use her copies, nobody else's
+    accounts.setLoggedIn(null, PROD);
+    check('logged out: the last account\'s copy', projectFolders.defaultProjectCopy(pid) === janeCopy);
+    check('logged out: last account\'s copy opens, others do not', accounts.checkCopyOwner(janeCopy).ok && !accounts.checkCopyOwner(to).ok);
+
+    // Recent Projects: one entry per copy, filtered by account, labeled when logged out
+    await projectsIndex.rebuildIndex();
+    let recent = await projectsIndex.getRecentProjects(10);
+    const show = (list) => JSON.stringify(list.map((p) => [p.id, p.account && p.account.pkey, p.ownerLabel]));
+    check('logged out: last account\'s copy labeled, local-only unlabeled, other accounts hidden',
+      recent.length === 2 && recent.some((p) => p.id === pid && p.account?.pkey === '7' && p.ownerLabel === "Jane's copy") &&
+      recent.some((p) => p.id === pid2 && !p.account && p.ownerLabel === null), show(recent));
+    accounts.setLoggedIn(jason, PROD);
+    fs.mkdirSync(local, { recursive: true });
+    fs.writeFileSync(path.join(local, 'project.json'), JSON.stringify({ id: pid, name: 'Local twin' }));
+    await projectsIndex.rebuildIndex();
+    recent = await projectsIndex.getRecentProjects(10);
+    check('logged in: own copy (not the dev-server copy, not Jane\'s), no label, local twin hidden',
+      recent.length === 2 && recent.some((p) => p.id === pid && p.account?.pkey === '5' && p.account?.server === 'strabospot.org' &&
+        p.ownerLabel === null) && recent.some((p) => p.id === pid2), show(recent));
+    fs.rmSync(local, { recursive: true, force: true });
+
+    // Deleting one copy removes only its entry
+    fs.rmSync(janeCopy, { recursive: true, force: true });
+    await projectsIndex.removeProject(pid);
+    const all = await projectsIndex.getAllProjects();
+    check('removeProject drops only copies gone from disk', !all.some((p) => p.id === pid && p.account?.pkey === '7') &&
+      all.some((p) => p.id === pid && p.account?.pkey === '5'), JSON.stringify(all));
+
+    // A synced copy becomes a separate copy with a new id (17j leave and keep, 17k removed)
+    const versionHistory = require(`${E}/versionHistory`);
+    const pid3 = 'proj-3';
+    const synced3 = projectFolders.getAccountCopyPath(pid3, PROD, 5);
+    fs.mkdirSync(path.join(synced3, 'sync'), { recursive: true });
+    fs.mkdirSync(path.join(synced3, 'images'), { recursive: true });
+    fs.writeFileSync(path.join(synced3, 'project.json'), JSON.stringify({ id: pid3, name: 'Shared Work', datasets: [] }));
+    fs.writeFileSync(path.join(synced3, 'sync', 'state.json'), JSON.stringify({ binding: { email: 'jason@example.org' } }));
+    const img3 = path.join(synced3, 'images', 'mic-3');
+    await sharp({ create: { width: 300, height: 200, channels: 3, background: { r: 9, g: 90, b: 9 } } }).jpeg().toFile(img3);
+    await tileGenerator.processImageComplete(img3);
+    projectFolders.useProjectCopy(pid3, synced3);
+    await projectsIndex.updateProjectOpened(pid3, 'Shared Work');
+    await versionHistory.createVersion(pid3, { id: pid3, name: 'Shared Work', datasets: [] }, 'old', null);
+
+    const sep = await projectCopies.makeSeparateCopy(pid3);
+    const sepJson = JSON.parse(fs.readFileSync(path.join(sep.folder, 'project.json'), 'utf8'));
+    check('separate copy: new id, local-only folder, name kept', sep.projectId !== pid3 &&
+      sep.folder === path.join(data, sep.projectId) && sepJson.id === sep.projectId && sepJson.name === 'Shared Work' &&
+      sep.name === 'Shared Work', JSON.stringify({ sep, id: sepJson.id, name: sepJson.name }));
+    check('separate copy: synced folder gone, no sync state', !fs.existsSync(synced3) &&
+      !fs.existsSync(path.join(sep.folder, 'sync')) && fs.existsSync(path.join(sep.folder, 'images', 'mic-3')));
+    check('separate copy: resolver finds the new id, not the old', projectFolders.getProjectFolderPath(sep.projectId) === sep.folder &&
+      projectFolders.getProjectFolderPath(pid3) !== synced3 && projectFolders.findAccountCopies(pid3).length === 0);
+    check('separate copy: tiles kept', (await tileCache.isCacheValid(path.join(sep.folder, 'images', 'mic-3'))).exists);
+    const sepVersions = await versionHistory.listVersions(sep.projectId);
+    check('separate copy: history starts with one version; the old id keeps its own', sepVersions.length === 1 &&
+      (await versionHistory.listVersions(pid3)).length === 1, JSON.stringify(sepVersions).slice(0, 300));
+    const all3 = await projectsIndex.getAllProjects();
+    check('separate copy: Recent Projects has the new local-only entry, not the old synced one',
+      all3.some((p) => p.id === sep.projectId && !p.account) && !all3.some((p) => p.id === pid3), JSON.stringify(all3));
+    threw = false;
+    try { await projectCopies.makeSeparateCopy(sep.projectId); } catch { threw = true; }
+    check('separate copy: a local-only project is refused', threw && fs.existsSync(sep.folder));
+
+    // Copies set aside by "Use the StraboSpot copy" go after 30 days
+    const { cleanupReplaced } = require(`${E}/sync/syncService`);
+    const replaced = path.join(projectFolders.getStraboMicro2DataPath(), '_replaced');
+    const now = Date.parse('2026-10-02T12:00:00.000Z');
+    for (const n of ['p1-2026-08-01T10-00-00-000Z', 'p2-2026-09-30T10-00-00-000Z', 'notes']) {
+      fs.mkdirSync(path.join(replaced, n, 'images'), { recursive: true });
+    }
+    const gone = await cleanupReplaced(now);
+    check('_replaced: only the copy set aside over 30 days ago is removed',
+      gone.length === 1 && gone[0].startsWith('p1-') && fs.readdirSync(replaced).sort().join() === 'notes,p2-2026-09-30T10-00-00-000Z',
+      JSON.stringify({ gone, left: fs.readdirSync(replaced) }));
+  } catch (e) {
+    failures++;
+    console.log('ERROR', e && e.stack);
+  }
+  fs.rmSync(tmp, { recursive: true, force: true });
+  console.log(failures ? `\n${failures} FAILED (${passes} passed)` : `\nALL PASSED (${passes} checks)`);
+  app.exit(failures ? 1 : 0);
+});

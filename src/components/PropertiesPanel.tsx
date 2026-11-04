@@ -30,6 +30,11 @@ import CircleIcon from '@mui/icons-material/Circle';
 import { useAppStore } from '@/store';
 import { findSpotById } from '@/store/helpers';
 import { BreadcrumbsBar } from './BreadcrumbsBar';
+import { EditingScope, PresenceMarks } from './Presence';
+import { panelDialogTarget } from '@/utils/presence';
+import { ReadOnlyScope, ReadOnlyNotice } from './ReadOnlyScope';
+import { useReadOnlyReason, currentPermissions } from '@/hooks/usePermissions';
+import { othersBeneath, othersBeneathMessage } from '@/utils/permissions';
 import { ExportImagesDialog } from './dialogs/ExportImagesDialog';
 import { CombinedDataTypeSelector } from './CombinedDataTypeSelector';
 import { ConfirmDialog } from './dialogs/ConfirmDialog';
@@ -54,6 +59,7 @@ import { ExtinctionMicrostructureInfoDialog } from './dialogs/metadata/extinctio
 import { AssociatedFilesInfoDialog } from './dialogs/metadata/associatedfiles/AssociatedFilesInfoDialog';
 import { LinksInfoDialog } from './dialogs/metadata/links/LinksInfoDialog';
 import { MetadataSummary } from './MetadataSummary';
+import { CustomUserDataSummary } from './CustomUserDataSummary';
 import { GrainSizeSummary } from './GrainSizeSummary';
 import { PointCountSummary } from './PointCountSummary';
 import { StraboToolsSummary } from './StraboToolsSummary';
@@ -182,6 +188,29 @@ export function PropertiesPanel() {
   // Determine what type of entity is selected (check spot first since it's more specific)
   const selectionType = activeSpotId ? 'spot' : activeMicrographId ? 'micrograph' : null;
 
+  // Role checks of a shared project (17h, 17i): why each part is view only (null = editable)
+  const entityReason = useReadOnlyReason(selectionType, activeSpotId ?? activeMicrographId);
+  const micrographReason = useReadOnlyReason('micrograph', activeMicrographId);
+  const spotReason = useReadOnlyReason('spot', activeSpotId);
+  const projectReason = useReadOnlyReason('project', project?.id);
+  const datasetReason = useReadOnlyReason('dataset', datasetId);
+  const sampleReason = useReadOnlyReason('sample', sample?.id);
+  const dialogReason = openDialog === 'project' ? projectReason
+    : openDialog === 'dataset' ? datasetReason
+      : openDialog === 'sample' ? sampleReason
+        : entityReason;
+
+  /** Delete asked for: a Contributor's delete must not take other people's items along (17i) */
+  const askDelete = (kind: 'micrograph' | 'spot') => {
+    const id = kind === 'micrograph' ? activeMicrographId : activeSpotId;
+    const others = id ? othersBeneath(currentPermissions(), project, kind, id) : 0;
+    if (others > 0) {
+      setSnackbar({ open: true, message: othersBeneathMessage(kind, others), severity: 'error' });
+      return;
+    }
+    setConfirmDelete(kind);
+  };
+
   // Handle delete confirmation
   const handleConfirmDelete = () => {
     if (confirmDelete === 'micrograph' && activeMicrographId) {
@@ -274,32 +303,44 @@ export function PropertiesPanel() {
             </Typography>
           </Box>
         ) : (
+          <ReadOnlyScope readOnly={entityReason !== null} reason={entityReason}>
           <Box sx={{ p: 2, display: 'flex', flexDirection: 'column', height: '100%' }}>
             {/* Panel Title */}
-            <Typography variant="h6" sx={{ mb: 1, fontWeight: 600 }}>
-              {selectionType === 'spot' ? 'Spot Details' : 'Micrograph Details'}
-            </Typography>
+            <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+              <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                {selectionType === 'spot' ? 'Spot Details' : 'Micrograph Details'}
+              </Typography>
+              {/* Who else is editing it right now (17am) */}
+              {selectionType === 'spot' && activeSpotId && <PresenceMarks type="spot" id={activeSpotId} />}
+              {selectionType !== 'spot' && activeMicrographId && <PresenceMarks type="micrograph" id={activeMicrographId} />}
+            </Box>
 
             {/* Breadcrumbs Navigation Bar */}
             <BreadcrumbsBar
               onExport={() => setExportDialogOpen(true)}
-              onDeleteMicrograph={() => setConfirmDelete('micrograph')}
-              onDeleteSpot={() => setConfirmDelete('spot')}
+              onDeleteMicrograph={micrographReason === null ? () => askDelete('micrograph') : undefined}
+              onDeleteSpot={spotReason === null ? () => askDelete('spot') : undefined}
             />
 
-            {/* Combined Data Type Selector */}
-            <Typography variant="subtitle1" sx={{ mb: 1, fontWeight: 600 }}>
-              Add Data:
-            </Typography>
-            <Box sx={{ mb: 3 }}>
-              <CombinedDataTypeSelector
-                context={selectionType}
-                onSelectModal={(modal) => setOpenDialog(modal)}
-              />
-            </Box>
+            <ReadOnlyNotice />
+
+            {/* Combined Data Type Selector (adding data changes this micrograph or spot) */}
+            {entityReason === null && (
+              <>
+                <Typography variant="subtitle1" sx={{ mb: 1, fontWeight: 600 }}>
+                  Add Data:
+                </Typography>
+                <Box sx={{ mb: 3 }}>
+                  <CombinedDataTypeSelector
+                    context={selectionType}
+                    onSelectModal={(modal) => setOpenDialog(modal)}
+                  />
+                </Box>
+              </>
+            )}
 
             {/* Apply Preset Button (spots only) */}
-            {selectionType === 'spot' && availablePresets.length > 0 && (
+            {selectionType === 'spot' && availablePresets.length > 0 && entityReason === null && (
               <Box sx={{ mb: 2 }}>
                 <Button
                   variant="outlined"
@@ -336,7 +377,7 @@ export function PropertiesPanel() {
                         secondary={
                           appliedPresetIds.has(preset.id)
                             ? 'Already applied'
-                            : getPresetSummary(preset).slice(0, 2).join(', ') || 'No data'
+                            : getPresetSummary(preset).join(', ') || 'No data'
                         }
                         slotProps={{
                           primary: { variant: 'body2' },
@@ -364,7 +405,7 @@ export function PropertiesPanel() {
                         secondary={
                           appliedPresetIds.has(preset.id)
                             ? 'Already applied'
-                            : getPresetSummary(preset).slice(0, 2).join(', ') || 'No data'
+                            : getPresetSummary(preset).join(', ') || 'No data'
                         }
                         slotProps={{
                           primary: { variant: 'body2' },
@@ -388,6 +429,12 @@ export function PropertiesPanel() {
                 onEditSection={(sectionId) => setOpenDialog(sectionId)}
               />
 
+              {/* The user's own spreadsheet columns (Tools > Custom User Data...) */}
+              <CustomUserDataSummary
+                micrographId={activeSpotId ? undefined : (activeMicrographId || undefined)}
+                spotId={activeSpotId || undefined}
+              />
+
               {/* Inline analytical summaries (micrograph only) */}
               {!activeSpotId && activeMicrographId && (
                 <>
@@ -398,6 +445,7 @@ export function PropertiesPanel() {
               )}
             </Box>
           </Box>
+          </ReadOnlyScope>
         )}
       </TabPanel>
 
@@ -409,7 +457,10 @@ export function PropertiesPanel() {
               Sketch Layers
             </Typography>
             <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-              <SketchLayersPanel />
+              <ReadOnlyScope readOnly={micrographReason !== null} reason={micrographReason}>
+                <ReadOnlyNotice />
+                <SketchLayersPanel />
+              </ReadOnlyScope>
             </Box>
           </Box>
         </TabPanel>
@@ -433,11 +484,20 @@ export function PropertiesPanel() {
             <ProjectMetadataSection
               onEditProject={() => setOpenDialog('project')}
             />
+            {/* Every spot's Custom User Data in one table (only when there is some) */}
+            <Box sx={{ mt: 2 }}>
+              <CustomUserDataSummary wholeProject />
+            </Box>
           </Box>
         )}
       </TabPanel>
 
-      {/* Dialogs */}
+      {/* Dialogs: view only when what they edit cannot be changed here (17h, 17i) */}
+      <ReadOnlyScope readOnly={dialogReason !== null} reason={dialogReason}>
+      <EditingScope target={panelDialogTarget(openDialog, {
+        projectId: project?.id ?? null, datasetId: datasetId ?? null, sampleId: sample?.id ?? null,
+        micrographId: activeMicrographId, spotId: activeSpotId,
+      })}>
       {openDialog === 'notes' && (
         <NotesDialog
           isOpen={true}
@@ -612,7 +672,10 @@ export function PropertiesPanel() {
         />
       )}
 
+      </EditingScope>
       {/* Delete Confirmation Dialog */}
+      </ReadOnlyScope>
+
       <ConfirmDialog
         open={confirmDelete !== null}
         onCancel={() => setConfirmDelete(null)}
@@ -620,8 +683,8 @@ export function PropertiesPanel() {
         title={confirmDelete === 'micrograph' ? 'Delete Micrograph' : 'Delete Spot'}
         message={
           confirmDelete === 'micrograph'
-            ? 'Are you sure you want to delete this micrograph? This action cannot be undone.'
-            : 'Are you sure you want to delete this spot? This action cannot be undone.'
+            ? 'Are you sure you want to delete this micrograph?'
+            : 'Are you sure you want to delete this spot?'
         }
         confirmLabel="Delete"
         confirmColor="error"

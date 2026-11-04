@@ -12,6 +12,7 @@ import { Box, CircularProgress, Typography, IconButton, Tooltip, Stack } from '@
 import { ZoomIn, ZoomOut, FitScreen } from '@mui/icons-material';
 import { useAppStore } from '@/store';
 import { generatePoints, type GridType } from '@/services/pointCounting';
+import { wheelZoomDirection } from '@/utils/wheelZoom';
 
 // ============================================================================
 // TYPES
@@ -254,7 +255,8 @@ export function GridPreviewCanvas({
       y: (pointer.y - position.y) / oldZoom,
     };
 
-    const direction = e.evt.deltaY > 0 ? -1 : 1;
+    const direction = wheelZoomDirection(e.evt);
+    if (direction === 0) return;
     const newZoom = direction > 0
       ? Math.min(oldZoom * ZOOM_STEP, MAX_ZOOM)
       : Math.max(oldZoom / ZOOM_STEP, fitZoom);

@@ -117,10 +117,416 @@ interface Window {
 // Unsubscribe function type for IPC event listeners
 type Unsubscribe = () => void;
 
+type SyncMode = 'automatic' | 'manual';
+
+/** A project of mine on the server (any format) */
+interface SyncServerProject {
+  pid: number;
+  straboId: string;
+  name: string;
+  role: string;
+  syncFormat: 'entity' | 'legacy' | string;
+  syncState: string;
+  updatedAt: string | null;
+  owner: { pkey: number; name?: string } | null;
+  /** Active members, me included (missing from an older server) */
+  members?: number;
+}
+
+type SyncPreflightResult =
+  | {
+    ok: true;
+    /** Originals and other files (tiles not counted) */
+    bytes: number;
+    loggedIn: boolean;
+    /** Why the server cannot take it now (offline, disabled, ...) */
+    problem: { kind: SyncFailureKind; message: string } | null;
+    /** The server already has a project with this id (linking, step 8 stage 4) */
+    onServer: { pid: number; syncFormat: string; syncState: string; updatedAt: string | null } | null;
+  }
+  | { ok: false; kind: SyncFailureKind; message: string };
+
+type SyncDebugAction = 'clone'
+  | 'test-conflict' | 'test-their-delete' | 'test-my-delete' | 'test-refused' | 'test-notice' | 'test-compare';
+
+/** Why a sync call did not run or failed (electron/sync/syncService.js) */
+type SyncFailureKind =
+  | 'offline' | 'server' | 'auth' | 'disabled' | 'old_server'
+  | 'account' | 'wrong_server' | 'exists' | 'not_synced' | 'access_removed' | 'error';
+
+/**
+ * I was removed from a synced project or left it (17k; failures of kind
+ * access_removed carry it): who removed me (null when I left or it is not
+ * known), and whether my last push was sent to the owner for review.
+ */
+interface SyncRemoval {
+  left: boolean;
+  removedBy: { pkey: number; name: string } | null;
+  parked: boolean;
+  projectName: string | null;
+  /**
+   * Set when the owner deleted the project from StraboSpot (410
+   * project_deleted, 17ac) instead: byMe = I did, on another computer;
+   * restorableUntil = null once it can no longer be restored
+   */
+  deleted?: { byMe: boolean; deletedBy: { pkey: number; name: string } | null; restorableUntil: string | null } | null;
+}
+
+type SyncCallResult = { ok: true } | { ok: false; kind: SyncFailureKind; message: string };
+
+/** Someone following a project on the live channel (17al-17an; R3 shows them) */
+interface SyncLivePerson {
+  conn: string;
+  user: number;
+  state: 'here' | 'away';
+  viewing: { type: string; id: string } | null;
+  editing: { type: string; id: string } | null;
+  since: string;
+}
+
+/** An event of the live channel (electron/sync/live.js) */
+type SyncLiveEvent = { projectId: string } & (
+  | { kind: 'status'; live: boolean }
+  | { kind: 'changed'; seq: number; mine: boolean }
+  | { kind: 'access'; role?: SyncRole; removed?: true }
+  | { kind: 'parked' }
+  | { kind: 'presence'; people: SyncLivePerson[] }
+  | { kind: 'chat'; rev: number }
+  | { kind: 'chatread'; id: number }
+);
+
+/** A chat message as the server keeps it (MsChat; 17bd-17bi) */
+interface ChatMessage {
+  id: number;
+  rev: number;
+  clientMsgId: string;
+  author: SyncUser;
+  /** '' when deleted */
+  text: string;
+  refs: ChatRef[];
+  createdAt: string;
+  deletedAt: string | null;
+  deletedBy: SyncUser | null;
+}
+
+/** A link from a message to a spot or micrograph of the project (17bf e) */
+interface ChatRef {
+  type: 'spot' | 'micrograph';
+  id: string;
+}
+
+/** My message not on the server yet: sending, waiting ("Not sent yet") or failed (refused) */
+interface ChatOutgoing {
+  clientMsgId: string;
+  text: string;
+  refs: ChatRef[];
+  createdAt: string;
+  status: 'sending' | 'waiting' | 'failed';
+  error: string | null;
+  retryAt: number | null;
+}
+
+/** The chat of the open synced project, as the main process keeps it (electron/sync/chat.js) */
+interface ChatState {
+  pid: number;
+  me: number;
+  status: 'loading' | 'ready' | 'offline' | 'removed' | 'error';
+  error: string | null;
+  live: boolean;
+  /** Other active members; null until known (no chip at 0, 17be g) */
+  others: number | null;
+  /** My role; the owner may delete anyone's message (17bf g) */
+  role: SyncRole | null;
+  /** Oldest first; deleted ones stay with deletedAt set */
+  messages: ChatMessage[];
+  outbox: ChatOutgoing[];
+  rev: number;
+  lastRead: number;
+  unread: number;
+  hasOlder: boolean;
+}
+
+/** The project the chat window is for (the main window's open synced project) */
+interface ChatWindowContext {
+  projectId: string;
+  name: string;
+  restServer: string;
+}
+
+/** A linked item as the main window's copy has it; name null = not in this copy */
+interface ResolvedChatRef {
+  type: 'spot' | 'micrograph';
+  id: string;
+  name: string | null;
+}
+
+type ChatEvent =
+  | { projectId: string; type: 'state'; state: ChatState }
+  | { projectId: string; type: 'incoming'; messages: ChatMessage[] }
+  | { projectId: string; type: 'closed' };
+
+/** A person as the sync API names them */
+interface SyncUser {
+  pkey: number;
+  name: string;
+  email?: string;
+}
+
+type SyncRole = 'owner' | 'editor' | 'contributor' | 'viewer';
+
+/** One row of a project's member list (Phase 2) */
+interface SyncMember {
+  user: SyncUser;
+  role: SyncRole;
+  state: 'active' | 'invited' | 'declined';
+  invitedBy: SyncUser | null;
+  invitedAt: string | null;
+  respondedAt: string | null;
+}
+
+/** modifiedTimestamp of the project and of each dataset as a save wrote them */
+interface SavedStamps {
+  project: string | null;
+  datasets: Record<string, string>;
+}
+
+/** One row of the activity panel's list (server brief history, 17v) */
+interface SyncHistoryRow {
+  seq: number;
+  pushId: string | null;
+  type: string;
+  id: string;
+  op: 'create' | 'update' | 'delete' | 'restore' | 'import' | 'replace_project';
+  /** The entity's name from its body (null: none) */
+  name: string | null;
+  parentType: string | null;
+  parentId: string | null;
+  /** A move: the old parent's id */
+  movedFrom: string | null;
+  /** Fields an update changed (bookkeeping left out); null for other ops */
+  changedPaths: string[] | null;
+  user: SyncUser;
+  /** An accepted parked change: whose change it was (17y) */
+  onBehalfOf: SyncUser | null;
+  at: string;
+  /** My own change from this computer */
+  here: boolean;
+  /** Not in this copy yet */
+  pending: boolean;
+}
+
+/** One change in a parked push, as the member's app sent it */
+interface SyncParkedChange {
+  op: 'create' | 'update' | 'delete' | 'restore';
+  type: string;
+  id: string;
+  parentType?: string | null;
+  parentId?: string | null;
+  body?: Record<string, unknown>;
+  childOrder?: Record<string, string[]>;
+  /** Changed fields by dotted path (null removes) */
+  fields?: Record<string, unknown>;
+  baseVersion?: number;
+}
+
+/** Changes waiting for the owner's review (17o): a removed member's push, or what a new role refused */
+interface SyncParkedPush {
+  id: number;
+  user: SyncUser;
+  parkedAt: string;
+  reason: 'removed' | 'role_changed';
+  role: SyncRole | null;
+  changes: SyncParkedChange[];
+  /** Items decided so far ('type:id' => decision) */
+  decided: Record<string, 'accepted' | 'discarded'>;
+}
+
+/** An invitation waiting for me (17f) */
+interface SyncInvitation {
+  pid: number;
+  straboId: string;
+  name: string;
+  role: SyncRole;
+  invitedBy: SyncUser | null;
+  owner: SyncUser | null;
+  invitedAt: string | null;
+}
+
+/**
+ * A refused member change: kind is the server's reason (no_account,
+ * already_member, invitee_has_copy, not_ready, forbidden, ...) or a
+ * connection kind; message is ready to show.
+ */
+type SyncMemberFailure = { ok: false; kind: SyncFailureKind | string; message: string };
+
+type SyncPushResult =
+  | { ok: true; pushed: number; filesUploaded: number; notAccepted: number; conflicts: number; restored: number; ready: boolean }
+  | { ok: false; kind: SyncFailureKind; message: string; removal?: SyncRemoval };
+
+type SyncStatusResult =
+  | { synced: false; error?: string }
+  | {
+    synced: true;
+    mode: SyncMode;
+    /** uploading until the first upload finished */
+    phase: 'uploading' | 'ready';
+    server: string;
+    email: string;
+    pkey: string;
+    pid: number;
+    /** Entity changes not yet on the server; null if they could not be counted */
+    pending: number | null;
+    /** Changes the server refused */
+    refused: number;
+    /** Entities with unresolved field conflicts */
+    conflicts: number;
+    /** Delete-vs-edit questions waiting */
+    questions: number;
+    /** Files a pull brought that are not downloaded yet */
+    downloads: number;
+  };
+
+type SyncPullResult =
+  | {
+    ok: true;
+    pullId: string;
+    /** Entity changes in the app's form (electron/shared/entityModel.mjs EntityChange) */
+    changes: import('../electron/shared/entityModel.mjs').EntityChange[];
+    summary: { received: number; applied: number; conflicts: number; questions: number; pointCounts: number };
+  }
+  | { ok: false; kind: SyncFailureKind; message: string; removal?: SyncRemoval };
+
+/** How the decisions dialog names an entity (electron/sync/decisions.js describe) */
+interface SyncItemRef {
+  key: string;
+  type: string;
+  name: string;
+  /** Containing entity (null for top-level ones) */
+  parentType: string | null;
+  parentName: string;
+}
+
+/** A spot's shape as stored (legacy body fields) */
+interface SyncShapeSide {
+  geometryType?: string | null;
+  points?: Array<{ X?: number | null; Y?: number | null }> | null;
+  geometry?: { type?: string; coordinates?: unknown } | null;
+}
+
+/** A micrograph's placement on its parent as stored (legacy body fields) */
+interface SyncPlacementSide {
+  placementType?: string | null;
+  offsetInParent?: { X?: number | null; Y?: number | null } | null;
+  pointInParent?: { X?: number | null; Y?: number | null } | null;
+  xOffset?: number | null;
+  yOffset?: number | null;
+  rotation?: number | null;
+  affineMatrix?: number[] | null;
+  width?: number | null;
+  height?: number | null;
+  scalePixelsPerCentimeter?: number | null;
+}
+
+/**
+ * Fields of a conflict shown as one picture with one pick (electron/sync/
+ * decisions.js geometryPreview): a spot's shape over its micrograph, or a
+ * micrograph's placement over its parent. Yours = the local copy, theirs =
+ * the server's.
+ */
+type SyncGeometryPreview =
+  | { group: 'shape'; fieldIds: string[]; micrographId: string; mine: SyncShapeSide; theirs: SyncShapeSide }
+  | {
+    group: 'placement';
+    fieldIds: string[];
+    /** The parent micrograph the placement is drawn on, and its px/cm */
+    micrographId: string;
+    parentScalePixelsPerCentimeter: number | null;
+    mine: SyncPlacementSide;
+    theirs: SyncPlacementSide;
+  };
+
+/** Who made a change on the server (electron/sync/changeAuthors.js) */
+interface SyncAuthor {
+  /** Full name from the account; '' when the server has none */
+  name: string;
+  /** This account: the change came from another computer of mine */
+  me: boolean;
+  /** When the server took it (ISO) */
+  at: string | null;
+}
+
+interface SyncConflictItem extends SyncItemRef {
+  preview?: SyncGeometryPreview;
+  fields: Array<{
+    /** JSON of path; the key of a choice */
+    id: string;
+    /** Body path; '[<id>]' items of id-keyed lists; ['@parent'] the parent */
+    path: string[];
+    /** Values now (theirs = the server's); a parent is { parentType, parentId, name } */
+    mine: unknown;
+    theirs: unknown;
+    /** Who changed theirs last; absent for conflicts stored before 2.0.55 */
+    by?: SyncAuthor;
+  }>;
+}
+
+interface SyncQuestionItem extends SyncItemRef {
+  kind: 'theirs_deleted' | 'mine_deleted';
+  /** What is beneath it, by entity type */
+  contains: Record<string, number>;
+  localChanges: number;
+  theirChanges: number;
+  /** theirs_deleted: who deleted it; mine_deleted: who changed things in it, newest first */
+  by: SyncAuthor[];
+}
+
+interface SyncRefusedItem extends SyncItemRef {
+  op: string;
+  status: string;
+  reason: string;
+  message: string;
+  /** My role changed: the server sent it to the project owner for review (17k) */
+  parked?: boolean;
+}
+
+type SyncDecisionsResult =
+  | { ok: true; conflicts: SyncConflictItem[]; questions: SyncQuestionItem[]; refused: SyncRefusedItem[] }
+  | { ok: false; kind: SyncFailureKind; message: string };
+
+type SyncDecision =
+  | { kind: 'conflict'; key: string; choices: Record<string, 'mine' | 'theirs'> }
+  | { kind: 'question'; key: string; answer: 'restore' | 'delete' | 'keep_deleted' | 'bring_back' }
+  | { kind: 'refused'; key: string; answer: 'discard' };
+
+type SyncDecideResult =
+  | {
+    ok: true;
+    decisionId: string;
+    changes: import('../electron/shared/entityModel.mjs').EntityChange[];
+    /** Taking theirs in a conflict is an ordinary edit (undo); other answers are not */
+    undoable: boolean;
+  }
+  | { ok: false; kind: SyncFailureKind; message: string };
+
+interface SyncProgress {
+  projectId: string;
+  phase: 'images' | 'push' | 'tiles' | 'files' | 'pull' | 'download' | 'compare';
+  item?: string;
+  count?: number;
+  /** download phase: the file being downloaded (1-based) out of total */
+  done?: number;
+  total?: number;
+  /** images phase: bytes of originals uploaded so far, out of bytesTotal (this push) */
+  bytesDone?: number;
+  bytesTotal?: number;
+}
+
 // Electron API declarations
 interface Window {
   api?: {
     version: string;
+    /** An end-to-end test run (development only; src/services/e2eMode.ts) */
+    e2e: { server: string; pollMs?: number; timers?: 'real' | 'legacy'; grainCpu?: boolean; grainBadGpu?: boolean } | null;
 
     // Session state persistence (replaces localStorage for packaged builds)
     session: {
@@ -159,6 +565,24 @@ interface Window {
     openFileDialog: () => Promise<string | null>;
     openFilesDialog: () => Promise<string[]>;
     saveTextFile: (content: string, defaultName: string, extension: string) => Promise<{ success: boolean; canceled?: boolean; filePath?: string }>;
+    openTextFile: (title: string, extension: string) => Promise<{ success: boolean; canceled?: boolean; filePath?: string; content?: string; error?: string }>;
+    /** Custom User Data files (electron/customUserDataFiles.js) */
+    customUserData: {
+      save: (
+        table: { headers: string[]; rows: string[][]; lockedCount: number; instructions: string[] },
+        defaultName: string,
+        format: 'xlsx' | 'csv'
+      ) => Promise<{ success: boolean; canceled?: boolean; filePath?: string; error?: string }>;
+      open: () => Promise<{
+        success: boolean;
+        canceled?: boolean;
+        filePath?: string;
+        fileName?: string;
+        headers?: string[];
+        rows?: string[][];
+        error?: string;
+      }>;
+    };
     openExternalLink: (url: string) => Promise<{ success: boolean }>;
     openFilePath: (filePath: string) => Promise<{ success: boolean; error?: string }>;
     loadTiffImage: (filePath: string) => Promise<{
@@ -178,13 +602,17 @@ interface Window {
       spotLabelMode: 'original' | 'mineralogy' | 'none';
       showOverlayOutlines: boolean;
       showRecursiveSpots: boolean;
+      showParentSpots: boolean;
       spotColorMode: 'spot-color' | 'mineral-color';
     }>) => void;
     onToggleRulers: (callback: (checked: boolean) => void) => Unsubscribe;
     onSpotLabelMode: (callback: (mode: 'original' | 'mineralogy' | 'none') => void) => Unsubscribe;
     onToggleOverlayOutlines: (callback: (checked: boolean) => void) => Unsubscribe;
     onToggleRecursiveSpots: (callback: (checked: boolean) => void) => Unsubscribe;
+    onToggleParentSpots: (callback: (checked: boolean) => void) => Unsubscribe;
     onToggleArchivedSpots: (callback: (checked: boolean) => void) => Unsubscribe;
+    onMicrographVisibility: (callback: () => void) => Unsubscribe;
+    onFilterSpots: (callback: () => void) => Unsubscribe;
     onShowPointCountStatistics: (callback: () => void) => Unsubscribe;
     onToggleQuickClassify: (callback: () => void) => Unsubscribe;
 
@@ -352,6 +780,11 @@ interface Window {
       height: number;
       format: string;
     }>;
+    readGrayRegion: (
+      imagePath: string,
+      rect: { x: number; y: number; width: number; height: number },
+      maxSide: number,
+    ) => Promise<{ data: Uint8Array; width: number; height: number }>;
     isValidImage: (filePath: string) => Promise<boolean>;
     rotateImage: (imagePath: string, degrees: number, flip?: boolean) => Promise<{
       success: boolean;
@@ -361,12 +794,11 @@ interface Window {
     }>;
 
     // Composite thumbnail generation
-    generateCompositeThumbnail: (projectId: string, micrographId: string, projectData: any) => Promise<{
-      success: boolean;
-      thumbnailPath: string;
-      width: number;
-      height: number;
-    }>;
+    // waitingFor: a synced copy's micrographs whose image has not arrived yet (nothing written)
+    generateCompositeThumbnail: (projectId: string, micrographId: string, projectData: any) => Promise<
+      | { success: true; changed: boolean; thumbnailPath: string; width: number; height: number }
+      | { success: false; waitingFor: string[] }
+    >;
     getCompositeThumbnailPath: (projectId: string, micrographId: string) => Promise<string>;
     loadCompositeThumbnail: (projectId: string, micrographId: string) => Promise<string | null>;
     rebuildAllThumbnails: (projectId: string, projectData: any) => Promise<{
@@ -383,7 +815,11 @@ interface Window {
     saveProjectJson: (project: any, projectId: string) => Promise<{
       success: boolean;
       path: string;
+      /** The times the save gave the project and its datasets */
+      stamps?: SavedStamps;
     }>;
+    /** After each save: the stamped times, for the store to take back */
+    onProjectStamped: (callback: (projectId: string, stamps: SavedStamps) => void) => Unsubscribe;
     loadProjectJson: (projectId: string) => Promise<any>;
 
     // Debug utilities
@@ -495,9 +931,11 @@ interface Window {
         sessionExpired?: boolean;
         /** Network error or 5xx after retries; tokens were kept */
         unreachable?: boolean;
+        /** With unreachable: the last attempt had no connection (not a server error) */
+        offline?: boolean;
         error?: string;
       }>;
-      check: () => Promise<{
+      check: (restServer: string) => Promise<{
         isLoggedIn: boolean;
         user?: { pkey: string; email: string; name: string } | null;
         needsRefresh?: boolean;
@@ -511,7 +949,10 @@ interface Window {
         available: boolean;
         backend: string;
       }>;
-      notifyStateChanged: (isLoggedIn: boolean) => void;
+      /** restServer: the configured server, so main knows whose copies to list (16d) */
+      notifyStateChanged: (isLoggedIn: boolean, restServer: string) => void;
+      /** The server refused the refresh token and main cleared the login (no logout by the user) */
+      onSessionEnded: (callback: (info: { email: string | null }) => void) => Unsubscribe;
     };
 
     // Auth menu events
@@ -591,48 +1032,12 @@ interface Window {
 
     // Push to Server
     onPushToServer: (callback: () => void) => Unsubscribe;
+    onCollaborate: (callback: () => void) => Unsubscribe;
+    /** View > Activity (synced projects) */
+    onActivity: (callback: () => void) => Unsubscribe;
     // Open Remote Project
     onOpenRemoteProject: (callback: () => void) => Unsubscribe;
     server: {
-      checkConnectivity: () => Promise<{
-        online: boolean;
-        error?: string;
-      }>;
-      checkProjectExists: (projectId: string) => Promise<{
-        exists: boolean;
-        error?: string;
-      }>;
-      pushProject: (
-        projectId: string,
-        projectData: any,
-        options?: { overwrite?: boolean }
-      ) => Promise<{
-        success: boolean;
-        needsOverwriteConfirm?: boolean;
-        error?: string;
-      }>;
-      onPushProgress: (callback: (progress: {
-        phase: string;
-        percentage: number;
-        message: string;
-        itemName?: string;
-        bytesUploaded?: number;
-        bytesTotal?: number;
-      }) => void) => void;
-      removePushProgressListener: () => void;
-      // Remote project download (Open Remote Project)
-      listProjects: () => Promise<{
-        success: boolean;
-        projects?: RemoteProject[];
-        error?: string;
-        sessionExpired?: boolean;
-      }>;
-      downloadProject: (projectId: string) => Promise<{
-        success: boolean;
-        zipPath?: string;
-        error?: string;
-        sessionExpired?: boolean;
-      }>;
       cleanupDownload: (zipPath: string) => Promise<{
         success: boolean;
       }>;
@@ -677,7 +1082,16 @@ interface Window {
         success: boolean;
         project?: any;
         error?: string;
+        /** The copy belongs to another account and was not opened (16at) */
+        belongsTo?: CopyOwner;
       }>;
+      /**
+       * Whose copy the open project is (16ax), or with forOpen the copy opening it
+       * would use (16at): owner null when this login may use it
+       */
+      copyOwner: (projectId: string, forOpen?: boolean) => Promise<{ owner: CopyOwner | null; ownCopy: boolean }>;
+      /** Main recorded a login state change */
+      onAccountsChanged: (callback: () => void) => Unsubscribe;
       // Refresh the Recent Projects menu
       refreshMenu: () => Promise<void>;
       // Close (delete) a project completely - removes from disk, index, and version history
@@ -701,15 +1115,11 @@ interface Window {
         filePath?: string;
       }>;
       // Inspect an .smz file (get project info without importing)
-      inspect: (smzPath: string) => Promise<{
-        success: boolean;
-        projectId?: string;
-        projectName?: string;
-        projectExists?: boolean;
-        error?: string;
-      }>;
-      // Import an .smz file (DESTRUCTIVE - replaces existing project)
-      import: (smzPath: string) => Promise<{
+      /** shareCode: Open Shared Project (projectId = the copy that code would replace) */
+      inspect: (smzPath: string, options?: { shareCode?: string }) => Promise<SmzInspectResult>;
+      // Import an .smz file (DESTRUCTIVE - replaces a local-only project with the same id;
+      // asCopy: under a new id, next to my synced copy)
+      import: (smzPath: string, options?: { asCopy?: boolean; shareCode?: string }) => Promise<{
         success: boolean;
         projectId?: string;
         projectData?: any;
@@ -757,9 +1167,194 @@ interface Window {
 
     // Debug menu events (only used in development)
     onDebugTriggerTestError: (callback: () => void) => Unsubscribe;
+    onDebugImportSmzCopy: (callback: () => void) => Unsubscribe;
     onDebugGenerateTestSpots: (callback: () => void) => Unsubscribe;
     onDebugClearAllSpots: (callback: () => void) => Unsubscribe;
     onDebugToggleMemoryMonitor: (callback: () => void) => Unsubscribe;
+    /** Temporary sync triggers in the Debug menu (until the sync UI exists) */
+    onDebugSync: (callback: (action: SyncDebugAction, arg?: string) => void) => Unsubscribe;
+
+    // Sync of synced projects (electron/sync/syncService.js)
+    sync: {
+      /** Pass the current project to count changes not saved yet */
+      status: (projectId: string, project?: unknown) => Promise<SyncStatusResult>;
+      /** Moves the project folder: the project must not be loaded */
+      turnOn: (projectId: string, restServer: string, mode: SyncMode) => Promise<SyncCallResult & { folder?: string; pid?: number }>;
+      /** Pushes the saved project.json (save first) */
+      push: (projectId: string, restServer: string) => Promise<SyncPushResult>;
+      setMode: (projectId: string, mode: SyncMode) => Promise<SyncCallResult>;
+      /** Turn-on dialog: upload size; logged in: can the server sync, is the project on it already */
+      preflight: (projectId: string, restServer: string) => Promise<SyncPreflightResult>;
+      /** Changes waiting on the server for this copy (others: per person other than me) */
+      activity: (projectId: string, restServer: string, presence?: 'active' | 'away') => Promise<
+        | { ok: true; incoming: number; others: Array<{ name: string; count: number }>; role: SyncRole | null; parkedCount: number }
+        | { ok: false; kind: SyncFailureKind; message: string; removal?: SyncRemoval }>;
+      /** The server project with this local-only project's id (row null if none) and the one-time prompt's answer */
+      serverProject: (projectId: string, restServer: string) => Promise<
+        | { ok: true; row: SyncServerProject | null; answer: 'automatic' | 'manual' | 'local' | null }
+        | { ok: false; kind: SyncFailureKind; message: string }>;
+      /** My server projects for Open Remote Project, each with what this computer has */
+      serverProjects: (restServer: string) => Promise<
+        | { ok: true; projects: Array<SyncServerProject & { here: 'synced' | 'local' | null }> }
+        | { ok: false; kind: SyncFailureKind; message: string }>;
+      /** The intro (16aq): shown yet, and the background uploads (16ay) */
+      introStatus: () => Promise<SyncIntroStatus>;
+      /** Local-only projects not on the server, with upload sizes (fails: wait, do not mark shown) */
+      introCandidates: (restServer: string) => Promise<
+        | { ok: true; projects: Array<{ id: string; name: string; bytes: number | null }> }
+        | { ok: false; kind: SyncFailureKind; message: string }>;
+      introShown: () => Promise<void>;
+      /** Queue the first uploads of these closed projects */
+      introEnqueue: (projectIds: string[], mode: SyncMode, restServer: string) => Promise<SyncCallResult>;
+      onIntroStatus: (callback: (status: SyncIntroStatus) => void) => Unsubscribe;
+      promptAnswer: (projectId: string, answer: 'automatic' | 'manual' | 'local') => Promise<SyncCallResult>;
+      /** The local-only copy vs the converted server project (progress: phase 'compare', bytes) */
+      compare: (projectId: string, restServer: string, pid: number) => Promise<
+        | { ok: true; identical: boolean; total: number; byType: Record<string, number>; localChanged: string | null; serverChanged: string | null }
+        | { ok: false; kind: SyncFailureKind; message: string }>;
+      /** Link the local-only copy (not loaded; the folder moves) */
+      link: (projectId: string, restServer: string, pid: number, mode: SyncMode, use: 'mine' | 'theirs') => Promise<
+        | { ok: true; folder: string; adopted: boolean }
+        | { ok: false; kind: SyncFailureKind; message: string }>;
+      /** Open Remote Project for a project this computer has no copy of (progress projectId: remote:<pid>) */
+      openRemote: (pid: number, restServer: string, mode: SyncMode) => Promise<
+        | { ok: true; projectId: string; adopted: boolean; existing?: boolean; interrupted?: boolean; remaining?: number }
+        | { ok: false; kind: SyncFailureKind; message: string }>;
+      /** Fetch and merge; apply result.changes to the store, save, then pullCommit */
+      pull: (projectId: string, restServer: string) => Promise<SyncPullResult>;
+      pullCommit: (projectId: string, pullId: string) => Promise<SyncCallResult & { downloads?: number }>;
+      pullDiscard: (projectId: string, pullId: string) => Promise<{ ok: true }>;
+      /** Make a synced copy of server project pid on this computer (then open it with projects.load) */
+      clone: (pid: number, restServer: string, mode: SyncMode) => Promise<
+        | { ok: true; projectId: string; downloaded: number }
+        | { ok: false; kind: SyncFailureKind; message: string }>;
+      /** Fetch files a pull brought; ids of micrographs whose image or thumbnail arrived */
+      download: (projectId: string, restServer: string) => Promise<
+        | { ok: true; downloaded: number; images: string[]; thumbnails: string[] }
+        | { ok: false; kind: SyncFailureKind; message: string }>;
+      /** My pkey, last known role (null if not known yet) and who created what ('type:id' => pkey; missing = created here) */
+      permissions: (projectId: string) => Promise<
+        | { ok: true; me: number; role: SyncRole | null; authors: Record<string, number> }
+        | SyncMemberFailure>;
+      /** Collaborators of the open synced project (Phase 2) */
+      members: (projectId: string, restServer: string) => Promise<
+        | { ok: true; pid: number; myRole: SyncRole; members: SyncMember[]; transferTo: SyncUser | null }
+        | SyncMemberFailure>;
+      /** Invite by email, change a role, or remove someone (owner) */
+      changeMembers: (projectId: string, restServer: string, change:
+        | { action: 'invite'; email: string; role: SyncRole }
+        | { action: 'role'; pkey: number; role: SyncRole }
+        | { action: 'remove'; pkey: number }) => Promise<
+        | { ok: true; status?: string; emailed?: boolean; member?: { user: SyncUser; role: SyncRole; state: string } }
+        | SyncMemberFailure>;
+      /** Invitations waiting for the logged-in account */
+      invites: (restServer: string) => Promise<
+        | { ok: true; invitations: SyncInvitation[]; transfers: Array<{ pid: number; straboId: string; name: string; from: SyncUser | null }> }
+        | SyncMemberFailure>;
+      /** Accept (then download it with openRemote) or decline an invitation */
+      answerInvite: (restServer: string, pid: number, accept: boolean) => Promise<
+        | { ok: true; pid?: number; straboId?: string; name?: string; role?: SyncRole; status?: string }
+        | SyncMemberFailure>;
+      /** Leave the open synced project (17j): push first; afterwards keep a separate copy (separate) or delete it */
+      leave: (projectId: string, restServer: string) => Promise<{ ok: true; status?: string } | SyncMemberFailure>;
+      /** The owner deletes the open synced project from StraboSpot (17ac): kept 30 days, restorable on the website */
+      deleteProject: (projectId: string, restServer: string) => Promise<{ ok: true; restorableUntil: string | null } | SyncMemberFailure>;
+      /** The activity panel's list: newest first; before = seq of the last row shown (0 = newest) */
+      history: (projectId: string, restServer: string, before?: number) => Promise<
+        | { ok: true; changes: SyncHistoryRow[]; more: boolean; me: number }
+        | { ok: false; kind: SyncFailureKind; message: string; removal?: SyncRemoval }>;
+      /** Restore deleted items with what was deleted with them (17n); a pull brings them into this copy */
+      restoreDeleted: (projectId: string, restServer: string, items: Array<{ type: string; id: string }>) => Promise<
+        | { ok: true; results: Array<{ type: string; id: string; ok: boolean; status: string; reason: string }> }
+        | { ok: false; kind: SyncFailureKind; message: string; removal?: SyncRemoval }>;
+      /** Parked changes waiting for my review (owner, 17o) */
+      parked: (projectId: string, restServer: string) => Promise<
+        | { ok: true; parked: SyncParkedPush[] }
+        | { ok: false; kind: SyncFailureKind | string; message: string; removal?: SyncRemoval }>;
+      /** Record decisions on a parked push; accepted keys go up on behalf of memberPkey (17y) */
+      reviewParked: (projectId: string, restServer: string, parkedId: number,
+        decisions: Record<string, 'accepted' | 'discarded'>, memberPkey: number) => Promise<
+        | { ok: true; status: string; left: number }
+        | { ok: false; kind: SyncFailureKind | string; message: string; removal?: SyncRemoval }>;
+      /** A synced copy that is not loaded becomes a separate local-only copy with a new id (open it with projects.load) */
+      separate: (projectId: string) => Promise<
+        | { ok: true; projectId: string; name: string }
+        | { ok: false; kind: SyncFailureKind; message: string }>;
+      /** What waits for the user's decision */
+      decisions: (projectId: string) => Promise<SyncDecisionsResult>;
+      /** Work out one answer (save first); apply result.changes, save, then decideCommit */
+      decide: (projectId: string, decision: SyncDecision) => Promise<SyncDecideResult>;
+      decideCommit: (projectId: string, decisionId: string) => Promise<SyncCallResult & { downloads?: number }>;
+      decideDiscard: (projectId: string, decisionId: string) => Promise<{ ok: true }>;
+      /** Dev test tool (Debug > Sync Test): push changes as another computer; versions come from the server */
+      testOther: (projectId: string, restServer: string, changes: Array<Record<string, unknown>>) => Promise<
+        | { ok: true; results: Array<{ status: string; reason?: string }> }
+        | { ok: false; kind: SyncFailureKind; message: string }>;
+      /** Dev test tool: the saved project vs the server */
+      testCompare: (projectId: string, restServer: string) => Promise<
+        | { ok: true; same: number; differences: string[]; held: number }
+        | { ok: false; kind: SyncFailureKind; message: string }>;
+      onProgress: (callback: (progress: SyncProgress) => void) => Unsubscribe;
+      /** A synced project changed on disk without a store change (point counts, thumbnails) */
+      onLocalChange: (callback: (projectId: string) => void) => Unsubscribe;
+      /** Tells main whether the open project is synced (File menu wording, spec v3 14t) */
+      notifyMenuState: (synced: boolean) => void;
+      /** Follow the open synced project on the live channel (again after a login change or reconnect) */
+      liveFollow: (projectId: string, restServer: string) => Promise<
+        | { ok: true; live: boolean }
+        | { ok: false; kind: SyncFailureKind; message: string }>;
+      liveUnfollow: (projectId: string) => Promise<{ ok: true }>;
+      /** My presence in the followed project (sent whenever it is followed) */
+      livePresence: (projectId: string, presence: {
+        state: 'here' | 'away';
+        viewing: { type: string; id: string } | null;
+        editing: { type: string; id: string } | null;
+      }) => Promise<{ ok: true }>;
+      onLive: (callback: (event: SyncLiveEvent) => void) => Unsubscribe;
+    };
+
+    /** The chat window (17bd, 17be; electron/chatWindow.js) */
+    chatWindow: {
+      /** Open it, or bring it to the front (the header chip) */
+      open: () => Promise<{ ok: boolean; created?: boolean; message?: string }>;
+      /** The main window's open synced project; null closes the chat window */
+      setContext: (context: ChatWindowContext | null) => Promise<{ ok: true }>;
+      context: () => Promise<ChatWindowContext | null>;
+      onContext: (callback: (context: ChatWindowContext) => void) => Unsubscribe;
+      pin: (on: boolean) => Promise<{ pinned: boolean }>;
+      pinned: () => Promise<boolean>;
+      hide: () => Promise<{ ok: true }>;
+      /** Chat window: what is selected in the main window (link to selection), null if nothing */
+      selection: () => Promise<ResolvedChatRef | null>;
+      /** Chat window: names of linked items in the main window's copy */
+      resolve: (refs: ChatRef[]) => Promise<ResolvedChatRef[] | null>;
+      /** Chat window: select a linked item in the main window and bring it forward */
+      selectRef: (ref: ChatRef) => Promise<{ ok: boolean }>;
+      /** Main window: answer the chat window's questions */
+      onRequest: (callback: (kind: 'selection' | 'resolve', payload: unknown) => unknown) => Unsubscribe;
+      /** Main window: a link was clicked in the chat window */
+      onSelectRef: (callback: (ref: ChatRef) => void) => Unsubscribe;
+    };
+
+    /** Chat of the open synced project (17bd-17bi); the main process keeps the state */
+    chat: {
+      open: (projectId: string, restServer: string) => Promise<
+        | { ok: true; state: ChatState }
+        | { ok: false; kind: SyncFailureKind; message: string }>;
+      close: (projectId: string) => Promise<{ ok: true }>;
+      state: (projectId: string) => Promise<ChatState | null>;
+      send: (projectId: string, text: string, refs?: ChatRef[]) => Promise<
+        { ok: true; clientMsgId: string } | { ok: false; message: string }>;
+      retry: (projectId: string, clientMsgId: string) => Promise<{ ok: boolean }>;
+      discard: (projectId: string, clientMsgId: string) => Promise<{ ok: boolean }>;
+      deleteMessage: (projectId: string, id: number) => Promise<{ ok: true } | { ok: false; message: string }>;
+      loadOlder: (projectId: string) => Promise<{ ok: true; more: boolean } | { ok: false; message: string }>;
+      markRead: (projectId: string, id: number) => Promise<{ ok: true }>;
+      onEvent: (callback: (event: ChatEvent) => void) => Unsubscribe;
+      /** The "Chat notifications" switch in Preferences (17bh b) */
+      notifications: () => Promise<boolean>;
+      setNotifications: (on: boolean) => Promise<boolean>;
+    };
 
     // Point Count storage (separate from Spot system)
     pointCount: {
@@ -805,6 +1400,7 @@ interface Window {
     onPointCount: (callback: () => void) => Unsubscribe;
     onGrainDetection: (callback: () => void) => Unsubscribe;
     onImageComparator: (callback: () => void) => Unsubscribe;
+    onCustomUserData: (callback: () => void) => Unsubscribe;
     onGrainSizeAnalysis: (callback: () => void) => Unsubscribe;
     onStraboTools: (callback: () => void) => Unsubscribe;
     straboTools: {
@@ -832,6 +1428,23 @@ interface Window {
     };
     onConfigureMineralColors: (callback: () => void) => Unsubscribe;
     onSpotColorMode: (callback: (mode: 'spot-color' | 'mineral-color') => void) => Unsubscribe;
+
+    // Grain Spot model (SAM 2.1 tiny, fp32 encoder + int8 decoder; electron/grainSpotModel.js)
+    grainSpot: {
+      status: () => Promise<{ available: boolean; totalBytes: number }>;
+      download: () => Promise<{ success: boolean; error?: string }>;
+      onDownloadProgress: (callback: (progress: { percent: number; downloadedBytes: number; totalBytes: number }) => void) => Unsubscribe;
+      load: () => Promise<{
+        success: boolean;
+        error?: string;
+        encoder?: Uint8Array;
+        encoderData?: Uint8Array;
+        decoder?: Uint8Array;
+        decoderData?: Uint8Array;
+        /** File names the .onnx files expect for their weights */
+        names?: { encoderData: string; decoderData: string };
+      }>;
+    };
 
     // FastSAM Grain Detection (model management only - inference runs in renderer via onnxruntime-web)
     fastsam: {
@@ -949,6 +1562,35 @@ interface ProjectIndexEntry {
   id: string;
   name: string;
   lastOpened: string;
+  /** The account of a synced copy (server folder name, pkey); null for local-only */
+  account?: { server: string; pkey: string } | null;
+  /** Logged out, the last account's copies: "Jason's copy" (16d) */
+  ownerLabel?: string | null;
+}
+
+/** The intro (16aq) and its background first uploads (16ay) */
+interface SyncIntroStatus {
+  shown: boolean;
+  /** Projects still waiting (including the one uploading) */
+  queued: number;
+  total: number;
+  done: number;
+  /** The projects still waiting, in upload order */
+  items: Array<{ projectId: string; name: string }>;
+  current: { projectId: string; name: string } | null;
+  /** Why the queue is not moving */
+  waiting: 'login' | 'offline' | 'server' | 'open' | null;
+}
+
+/** The account a synced copy belongs to (name '' when it never logged in here) */
+interface CopyOwner {
+  name: string;
+  email: string;
+  /** Server folder name, e.g. strabospot.org */
+  server: string;
+  pkey: string;
+  /** The copy syncs with a server other than the one the app is set to */
+  otherServer: boolean;
 }
 
 // Version History Types
@@ -990,21 +1632,23 @@ interface DiffEntry {
   parentPath: string | null;
 }
 
+/** What an .smz file holds and what this computer has of that project */
+interface SmzInspectResult {
+  success: boolean;
+  projectId?: string;
+  projectName?: string;
+  /** A local-only copy with this id exists (an import replaces it) */
+  projectExists?: boolean;
+  /** The logged-in (else last) account has a synced copy (never replaced) */
+  syncedCopy?: boolean;
+  error?: string;
+}
+
 interface VersionStats {
   totalVersions: number;
   totalSizeBytes: number;
   oldestTimestamp: string | null;
   newestTimestamp: string | null;
-}
-
-// Remote Project Types (Server Download)
-interface RemoteProject {
-  id: string;
-  name: string;
-  uploadDate: string;
-  modifiedTimestamp: number;
-  bytes: number;
-  bytesFormatted: string;
 }
 
 // Point Count Types

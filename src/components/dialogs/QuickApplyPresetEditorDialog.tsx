@@ -48,6 +48,7 @@ import EditIcon from '@mui/icons-material/Edit';
 import { MuiColorInput } from 'mui-color-input';
 import { v4 as uuidv4 } from 'uuid';
 import { useAppStore } from '@/store';
+import { spotNameFor } from '@/utils/autoSpotName';
 import type { QuickApplyPreset, PresetData, PresetScope } from '@/types/preset-types';
 import { getPresetSummary, PRESET_FEATURE_FIELDS, PRESET_FEATURE_DISPLAY_NAMES } from '@/types/preset-types';
 import type {
@@ -65,6 +66,7 @@ import type {
   FaultsShearZonesInfoType,
   ExtinctionMicrostructureInfoType,
 } from '@/types/project-types';
+import { TagPicker } from '../TagPicker';
 import { MineralogyDialog } from './metadata/MineralogyDialog';
 import { GrainInfoDialog } from './metadata/graininfo/GrainInfoDialog';
 import { FabricsDialog } from './metadata/fabrics/FabricsDialog';
@@ -129,6 +131,7 @@ export function QuickApplyPresetEditorDialog({
   // Form state - basic info
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
+  const [spotNamePattern, setSpotNamePattern] = useState('');
   const [scope, setScope] = useState<PresetScope>(defaultScope);
   const [error, setError] = useState('');
 
@@ -138,6 +141,12 @@ export function QuickApplyPresetEditorDialog({
 
   // Feature data - stored as a single object matching PresetData structure
   const [featureData, setFeatureData] = useState<Partial<PresetData>>({});
+
+  // Tags added to the spot: project presets only (tags belong to a project; Peter, 2026-10-29)
+  const [presetTagIds, setPresetTagIds] = useState<string[]>([]);
+  const projectTags = project?.tags ?? [];
+  const tagsAllowed = scope === 'project';
+  const savedTagIds = tagsAllowed ? presetTagIds.filter((id) => projectTags.some((t) => t.id === id)) : [];
 
   // Expanded state for accordions
   const [expandedSections, setExpandedSections] = useState<string[]>([]);
@@ -158,6 +167,7 @@ export function QuickApplyPresetEditorDialog({
         // Edit mode - load existing preset data
         setName(editPreset.name);
         setDescription(editPreset.description || '');
+        setSpotNamePattern(editPreset.spotNamePattern || '');
         setScope(editScope || defaultScope);
 
         // Load spot appearance
@@ -173,6 +183,7 @@ export function QuickApplyPresetEditorDialog({
           }
         }
         setFeatureData(data);
+        setPresetTagIds(editPreset.data.tags ?? []);
 
         // Determine which sections to expand
         const expanded: string[] = [];
@@ -182,15 +193,20 @@ export function QuickApplyPresetEditorDialog({
         if (Object.keys(data).length > 0) {
           expanded.push('featureData');
         }
+        if (editPreset.data.tags?.length) {
+          expanded.push('tags');
+        }
         setExpandedSections(expanded);
       } else {
         // Create mode - reset to defaults
         setName('');
         setDescription('');
+        setSpotNamePattern('');
         setScope(defaultScope);
         setSpotColor(null);
         setSpotOpacity(null);
         setFeatureData({});
+        setPresetTagIds([]);
         setExpandedSections([]);
       }
       setError('');
@@ -223,8 +239,13 @@ export function QuickApplyPresetEditorDialog({
       }
     }
 
+    // Tags (project presets only; tags since deleted are left out)
+    if (savedTagIds.length > 0) {
+      data.tags = savedTagIds;
+    }
+
     return data;
-  }, [spotColor, spotOpacity, featureData]);
+  }, [spotColor, spotOpacity, featureData, savedTagIds]);
 
   const handleSave = () => {
     const trimmedName = name.trim();
@@ -243,6 +264,7 @@ export function QuickApplyPresetEditorDialog({
         ...editPreset,
         name: trimmedName,
         description: description.trim() || undefined,
+        spotNamePattern: spotNamePattern.trim() || undefined,
         modifiedAt: now,
         data: presetData,
       };
@@ -254,6 +276,7 @@ export function QuickApplyPresetEditorDialog({
         id: uuidv4(),
         name: trimmedName,
         description: description.trim() || undefined,
+        spotNamePattern: spotNamePattern.trim() || undefined,
         createdAt: now,
         modifiedAt: now,
         data: presetData,
@@ -289,6 +312,7 @@ export function QuickApplyPresetEditorDialog({
       }
     }
     setFeatureData(data);
+    if (spot.tags?.length) setPresetTagIds([...spot.tags]);
 
     // Expand sections that have data
     const expanded: string[] = [];
@@ -297,6 +321,9 @@ export function QuickApplyPresetEditorDialog({
     }
     if (Object.keys(data).length > 0) {
       expanded.push('featureData');
+    }
+    if (spot.tags?.length) {
+      expanded.push('tags');
     }
     setExpandedSections(expanded);
 
@@ -411,7 +438,7 @@ export function QuickApplyPresetEditorDialog({
   };
 
   // Check if preset has any data
-  const hasData = spotColor || spotOpacity != null || Object.keys(featureData).length > 0;
+  const hasData = spotColor || spotOpacity != null || Object.keys(featureData).length > 0 || savedTagIds.length > 0;
 
   // Get list of configured features
   const configuredFeatures = Object.keys(featureData).filter((k) => featureData[k as keyof PresetData] != null);
@@ -450,6 +477,19 @@ export function QuickApplyPresetEditorDialog({
               placeholder="Brief description of this preset"
               multiline
               rows={2}
+            />
+
+            <TextField
+              fullWidth
+              label="Spot Name (auto spot mode, optional)"
+              value={spotNamePattern}
+              onChange={(e) => setSpotNamePattern(e.target.value)}
+              placeholder="e.g., Ol-{n}"
+              helperText={
+                spotNamePattern.trim()
+                  ? `{n} is the number. Names look like: ${spotNameFor(spotNamePattern, 1)}, ${spotNameFor(spotNamePattern, 2)}, ...`
+                  : 'Auto spot mode names spots made with this preset; {n} is the number. Presets with a spot name appear in its picker.'
+              }
             />
 
             {/* Copy from Spot Button */}
@@ -512,6 +552,7 @@ export function QuickApplyPresetEditorDialog({
                       value={spotColor || '#808080'}
                       onChange={(newColor) => setSpotColor(newColor)}
                       format="hex"
+                      isAlphaHidden
                       disabled={!spotColor}
                       sx={{ flex: 1 }}
                     />
@@ -627,6 +668,29 @@ export function QuickApplyPresetEditorDialog({
                     </Typography>
                   )}
                 </Stack>
+              </AccordionDetails>
+            </Accordion>
+
+            {/* Tags (project presets only) */}
+            <Accordion
+              expanded={expandedSections.includes('tags')}
+              onChange={handleAccordionChange('tags')}
+              disableGutters
+            >
+              <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                <Typography>Tags</Typography>
+                {savedTagIds.length > 0 && (
+                  <Chip label={`${savedTagIds.length}`} size="small" sx={{ ml: 1 }} />
+                )}
+              </AccordionSummary>
+              <AccordionDetails>
+                {tagsAllowed ? (
+                  <TagPicker tags={projectTags} selectedTagIds={savedTagIds} onChange={setPresetTagIds} />
+                ) : (
+                  <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+                    Tags belong to a project, so only Project presets can add them. Choose Scope: Project to add tags.
+                  </Typography>
+                )}
               </AccordionDetails>
             </Accordion>
 

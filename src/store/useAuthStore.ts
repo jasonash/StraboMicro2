@@ -7,6 +7,7 @@
  *
  * This store only tracks:
  * - Whether user is logged in (for UI updates)
+ * - Whether the server could not be reached (logged in, offline)
  * - User profile info (for display)
  * - Loading/error states (for UI feedback)
  */
@@ -38,6 +39,19 @@ interface AuthState {
   user: AuthUser | null;
   isLoading: boolean;
   error: string | null;
+  /**
+   * Logged in, but the last token refresh or sync request found no
+   * connection (spec v3 16ar); cleared by the next one that reaches the
+   * server. Server errors do not set it (16ba).
+   */
+  offline: boolean;
+  /**
+   * The server refused the refresh token, so the user was logged out without
+   * logging out (the session ran out). The sync chip and the bottom-left
+   * notice ask for a login; null after a login or a logout. dismissed: the
+   * notice was closed (the chip still says so).
+   */
+  sessionEnded: { email: string | null; dismissed: boolean } | null;
 
   // ========== LOGIN PROMPT STATE ==========
   /** When true, the login dialog should be shown for re-authentication */
@@ -51,6 +65,10 @@ interface AuthState {
   checkAuthStatus: () => Promise<void>;
   refreshToken: () => Promise<RefreshOutcome>;
   clearError: () => void;
+  setOffline: (offline: boolean) => void;
+  /** The session ended on its own (main cleared the login): logged out, and say so */
+  sessionHasEnded: (email: string | null) => void;
+  dismissSessionEnded: () => void;
   /** Called by App.tsx when the login prompt dialog is dismissed (cancel) */
   dismissLoginPrompt: () => void;
 }
@@ -69,6 +87,8 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
   user: null,
   isLoading: false,
   error: null,
+  offline: false,
+  sessionEnded: null,
   loginPromptActive: false,
   loginPromptMessage: null,
 
@@ -96,11 +116,13 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
           user: result.user,
           isLoading: false,
           error: null,
+          offline: false,
+          sessionEnded: null,
           loginPromptActive: false,
           loginPromptMessage: null,
         });
         // Notify main process to update menu
-        window.api.auth.notifyStateChanged(true);
+        window.api.auth.notifyStateChanged(true, getRestServerUrl());
         console.log('[AuthStore] Login successful for:', result.user?.email);
         // Resolve any pending auth requests that were waiting for re-login
         const resolvers = pendingLoginResolvers;
@@ -154,10 +176,12 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
       user: null,
       isLoading: false,
       error: null,
+      offline: false,
+      sessionEnded: null,
     });
 
     // Notify main process to update menu
-    window.api?.auth?.notifyStateChanged(false);
+    window.api?.auth?.notifyStateChanged(false, getRestServerUrl());
     console.log('[AuthStore] Logged out');
   },
 
@@ -171,14 +195,15 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
     }
 
     try {
-      const result = await window.api.auth.check();
+      // Tokens of another server count as logged out (main clears them)
+      const result = await window.api.auth.check(getRestServerUrl());
 
       if (result.isLoggedIn) {
         set({
           isAuthenticated: true,
           user: result.user,
         });
-        window.api.auth.notifyStateChanged(true);
+        window.api.auth.notifyStateChanged(true, getRestServerUrl());
         console.log('[AuthStore] User is logged in:', result.user?.email);
       } else if (result.needsRefresh) {
         // Token expired but we have refresh token - try to refresh
@@ -191,20 +216,22 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
             isAuthenticated: true,
             user: result.user ?? null,
           });
-          window.api.auth.notifyStateChanged(true);
+          window.api.auth.notifyStateChanged(true, getRestServerUrl());
         } else {
           set({
             isAuthenticated: false,
             user: null,
           });
-          window.api.auth.notifyStateChanged(false);
+          window.api.auth.notifyStateChanged(false, getRestServerUrl());
+          // The session ran out while the app was closed: say so like a running one
+          get().sessionHasEnded(result.user?.email ?? null);
         }
       } else {
         set({
           isAuthenticated: false,
           user: null,
         });
-        window.api.auth.notifyStateChanged(false);
+        window.api.auth.notifyStateChanged(false, getRestServerUrl());
       }
     } catch (error) {
       console.error('[AuthStore] Auth check error:', error);
@@ -212,7 +239,7 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
         isAuthenticated: false,
         user: null,
       });
-      window.api?.auth?.notifyStateChanged(false);
+      window.api?.auth?.notifyStateChanged(false, getRestServerUrl());
     }
   },
 
@@ -231,20 +258,18 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
 
       if (result.success) {
         console.log('[AuthStore] Token refreshed successfully');
+        set({ offline: false });
         return 'refreshed';
       }
       if (result.sessionExpired) {
         console.warn('[AuthStore] Session expired:', result.error);
-        set({
-          isAuthenticated: false,
-          user: null,
-          error: result.error ?? null,
-        });
-        window.api.auth.notifyStateChanged(false);
+        get().sessionHasEnded(get().user?.email ?? null);
+        set({ error: result.error ?? null });
         return 'expired';
       }
       // Offline or server trouble: tokens were kept, stay logged in
       console.warn('[AuthStore] Token refresh not possible right now:', result.error);
+      set({ offline: result.offline === true });
       return 'unavailable';
     } catch (error) {
       console.error('[AuthStore] Token refresh error:', error);
@@ -257,6 +282,32 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
    */
   clearError: () => set({ error: null }),
 
+  setOffline: (offline: boolean) => {
+    if (get().offline !== offline) set({ offline });
+  },
+
+  sessionHasEnded: (email: string | null) => {
+    const { isAuthenticated, user, sessionEnded } = get();
+    // Already logged out (a logout, or this was heard already): nothing changes
+    if (!isAuthenticated && !user) {
+      if (sessionEnded === null && email !== null) set({ sessionEnded: { email, dismissed: false } });
+      return;
+    }
+    set({
+      isAuthenticated: false,
+      user: null,
+      offline: false,
+      sessionEnded: { email: email ?? user?.email ?? null, dismissed: false },
+    });
+    window.api?.auth?.notifyStateChanged(false, getRestServerUrl());
+    console.warn('[AuthStore] Logged out: the session ended');
+  },
+
+  dismissSessionEnded: () => {
+    const { sessionEnded } = get();
+    if (sessionEnded && !sessionEnded.dismissed) set({ sessionEnded: { ...sessionEnded, dismissed: true } });
+  },
+
   /**
    * Dismiss the login prompt (user cancelled)
    * Rejects all pending auth requests so callers get an error
@@ -268,6 +319,17 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
     resolvers.forEach(({ reject }) => reject(new Error('Login cancelled')));
   },
 }));
+
+// The connection is back: if the header says offline, check with the server
+// (a refresh) so it clears without waiting for the next sync. Main says when
+// the server refused the refresh token (a sync or the live channel found it).
+if (typeof window !== 'undefined') {
+  window.api?.auth?.onSessionEnded?.((info) => useAuthStore.getState().sessionHasEnded(info.email));
+  window.addEventListener('online', () => {
+    const { isAuthenticated, offline, refreshToken } = useAuthStore.getState();
+    if (isAuthenticated && offline) void refreshToken();
+  });
+}
 
 // ============================================================================
 // HELPER FUNCTIONS
@@ -287,6 +349,19 @@ function requestLogin(message: string): Promise<void> {
       useAuthStore.setState({ loginPromptActive: true, loginPromptMessage: message });
     }
   });
+}
+
+/**
+ * Show the login dialog with a message; true once logged in, false if the
+ * user cancelled. Used by user actions that need a login (e.g. Sync Now).
+ */
+export async function promptLogin(message: string): Promise<boolean> {
+  try {
+    await requestLogin(message);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /**

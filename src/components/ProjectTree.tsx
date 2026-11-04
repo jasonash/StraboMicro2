@@ -57,6 +57,8 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { useAppStore } from '@/store';
+import { usePermissions } from '@/hooks/usePermissions';
+import { canEditEntity, canCreate, othersBeneath, othersBeneathMessage } from '@/utils/permissions';
 import { NewDatasetDialog } from './dialogs/NewDatasetDialog';
 import { NewSampleDialog } from './dialogs/NewSampleDialog';
 import { NewMicrographDialog } from './dialogs/NewMicrographDialog';
@@ -67,7 +69,9 @@ import { ConfirmDialog } from './dialogs/ConfirmDialog';
 import { AddMicrographToGroupsDialog } from './dialogs/AddMicrographToGroupsDialog';
 import { EditMicrographDialog } from './dialogs/metadata/EditMicrographDialog';
 import { EditMicrographLocationDialog } from './dialogs/EditMicrographLocationDialog';
-import { CompleteInstrumentInfoDialog } from './dialogs/CompleteInstrumentInfoDialog';
+import PlaceChildrenDialog from './dialogs/PlaceChildrenDialog';
+import { FinishImportingDialog, type FinishPlacement, type FinishRequest } from './dialogs/FinishImportingDialog';
+import { finishGroup, goesStraightToItsDialog, isIncomplete } from '@/utils/finishImporting';
 import { BatchImportDialog } from './dialogs/BatchImportDialog';
 import { SetScaleDialog } from './dialogs/SetScaleDialog';
 import { LinkSiblingDialog } from './dialogs/LinkSiblingDialog';
@@ -75,7 +79,11 @@ import { AddSiblingDialog } from './dialogs/AddSiblingDialog';
 import { findMicrographById } from '@/store/helpers';
 import { hiddenSibling, pairPartner } from '@/utils/siblingPair';
 import { partnerRole, polarizedRole } from '@/utils/polarization';
+import { PlaceUnplacedChildrenDialog, type PlaceChildrenHow } from './dialogs/PlaceUnplacedChildrenDialog';
+import { listPlacedChildren } from '@/utils/copySizePlacement';
+import { cannotPlaceChildrenReason, hasLocation, unplacedChildren } from '@/utils/micrographLocation';
 import type { DatasetMetadata, SampleMetadata, MicrographMetadata } from '@/types/project-types';
+import { EditingScope, PresenceMarks } from './Presence';
 
 /**
  * Micrograph Thumbnail Component
@@ -310,11 +318,22 @@ function SortableItemWrapper({ id, children }: SortableItemWrapperProps) {
 
 export function ProjectTree() {
   const project = useAppStore((state) => state.project);
+  // Role checks of a shared project (17h, 17i): edit actions only for what I may change
+  const perms = usePermissions();
+  const may = (type: string, id: string) => canEditEntity(perms, type, id);
+  const mayCreate = canCreate(perms);
+  /** False (after saying why) when a Contributor's delete would take other people's items along */
+  const mayDeleteWithin = (type: string, id: string, what: string): boolean => {
+    const others = othersBeneath(perms, project, type, id);
+    if (others > 0) alert(othersBeneathMessage(what, others));
+    return others === 0;
+  };
   const selectMicrograph = useAppStore((state) => state.selectMicrograph);
   const activeMicrographId = useAppStore((state) => state.activeMicrographId);
   const deleteDataset = useAppStore((state) => state.deleteDataset);
   const deleteSample = useAppStore((state) => state.deleteSample);
   const deleteMicrograph = useAppStore((state) => state.deleteMicrograph);
+  const deleteMicrographs = useAppStore((state) => state.deleteMicrographs);
   const updateMicrographMetadata = useAppStore((state) => state.updateMicrographMetadata);
   const reorderMicrographs = useAppStore((state) => state.reorderMicrographs);
   const reorderSamples = useAppStore((state) => state.reorderSamples);
@@ -351,6 +370,19 @@ export function ProjectTree() {
   const [editingMicrographId, setEditingMicrographId] = useState<string | null>(null);
   const [showEditLocation, setShowEditLocation] = useState(false);
   const [editLocationMicrographId, setEditLocationMicrographId] = useState<string | null>(null);
+  // Place children automatically: the parent whose unplaced children are placed
+  const [placeChildrenParentId, setPlaceChildrenParentId] = useState<string | null>(null);
+  // Delete unplaced children: the parent whose unplaced children are deleted (Peter, 2026-10-29)
+  const [deleteUnplacedParentId, setDeleteUnplacedParentId] = useState<string | null>(null);
+  // Place unplaced children on its full area / like a placed child: the parent and how (Peter, 2026-10-29)
+  const [placeUnplaced, setPlaceUnplaced] = useState<{ parentId: string; how: PlaceChildrenHow } | null>(null);
+  // Finish Importing: the wizard for incomplete micrographs, and those waiting to be placed or
+  // scaled one at a time after it (Jason, 2026-10-30)
+  const [finishRequest, setFinishRequest] = useState<FinishRequest | null>(null);
+  const [byHandQueue, setByHandQueue] = useState<string[]>([]);
+  // How many the by-hand run started with; 0 when no run is going (dialogs show "2 of 4")
+  const [byHandTotal, setByHandTotal] = useState(0);
+  const [placeOnlyIds, setPlaceOnlyIds] = useState<string[] | undefined>(undefined);
   const [showAddToGroups, setShowAddToGroups] = useState(false);
   const [addToGroupsMicrograph, setAddToGroupsMicrograph] = useState<MicrographMetadata | null>(
     null
@@ -376,9 +408,6 @@ export function ProjectTree() {
   const [setScaleMicrographId, setSetScaleMicrographId] = useState<string | null>(null);
 
   // Complete Instrument Info dialog (for batch-imported micrographs missing instrument/image info)
-  const [showCompleteInstrumentInfo, setShowCompleteInstrumentInfo] = useState(false);
-  const [completeInstrumentInfoMicrographId, setCompleteInstrumentInfoMicrographId] =
-    useState<string | null>(null);
 
   // Link Sibling dialog state (for PPL/XPL pairing)
   const [showLinkSibling, setShowLinkSibling] = useState(false);
@@ -742,12 +771,7 @@ export function ProjectTree() {
     // Mirror the warning-icon criteria (needsLocation in renderMicrograph): an
     // associated micrograph with a scale but no placement is still un-set-up and
     // must go through the location dialog, not open in the viewer.
-    const hasLocation =
-      micrograph.offsetInParent ||
-      micrograph.pointInParent ||
-      micrograph.xOffset !== undefined ||
-      micrograph.placementType === 'affine';
-    if (isAssociated && (noScale || !hasLocation)) {
+    if (isAssociated && (noScale || !hasLocation(micrograph))) {
       setEditLocationMicrographId(micrographId);
       setShowEditLocation(true);
       return;
@@ -760,17 +784,62 @@ export function ProjectTree() {
     selectMicrograph(micrographId);
   };
 
+  // An incomplete micrograph opens Finish Importing, with the others incomplete beside it; one that
+  // needs only its location or scale goes straight to that dialog
   const handleMicrographClick = (micrographId: string) => {
-    if (project) {
-      const micrograph = findMicrographById(project, micrographId);
-      // Batch-imported without instrument info: prompt for it before anything else.
-      if (micrograph?.needsInstrumentInfo) {
-        setCompleteInstrumentInfoMicrographId(micrographId);
-        setShowCompleteInstrumentInfo(true);
-        return;
-      }
+    const micrograph = findMicrographById(project, micrographId);
+    if (!project || !micrograph || !isIncomplete(micrograph) || !may('micrograph', micrograph.id)) {
+      continueAfterInstrumentInfo(micrographId);
+      return;
     }
-    continueAfterInstrumentInfo(micrographId);
+    const group = finishGroup(project, micrographId).filter((m) => may('micrograph', m.id));
+    if (goesStraightToItsDialog(group)) {
+      continueAfterInstrumentInfo(micrographId);
+      return;
+    }
+    setFinishRequest({ ids: group.map((m) => m.id) });
+  };
+
+  // Place or scale these one at a time: each saved one opens the next, Cancel ends it
+  const openNextByHand = (ids: string[]) => {
+    const [first, ...rest] = ids;
+    setByHandQueue(rest);
+    if (first) continueAfterInstrumentInfo(first);
+  };
+  const startByHand = (ids: string[]) => {
+    setByHandTotal(ids.length);
+    openNextByHand(ids);
+  };
+  const nextByHand = (finishedId: string | null) => {
+    const latest = useAppStore.getState().project;
+    const finished = finishedId ? findMicrographById(latest, finishedId) : null;
+    if (finished && !isIncomplete(finished) && byHandQueue.length > 0) {
+      openNextByHand(byHandQueue);
+    } else {
+      setByHandQueue([]);
+      setByHandTotal(0);
+    }
+  };
+  const byHandProgress = { position: byHandTotal - byHandQueue.length, total: byHandTotal };
+
+  const handleFinishPlace = (how: FinishPlacement, ids: string[]) => {
+    const parentId = findMicrographById(project, ids[0])?.parentID ?? null;
+    setFinishRequest(null);
+    if (how === 'by-hand' || !parentId) {
+      startByHand(ids);
+      return;
+    }
+    setPlaceOnlyIds(ids);
+    if (how === 'auto') setPlaceChildrenParentId(parentId);
+    else setPlaceUnplaced({ parentId, how });
+  };
+
+  // The end of Batch Import: what the imported micrographs still need
+  const handleBatchImported = (ids: string[]) => {
+    const latest = useAppStore.getState().project;
+    const imported = ids.map((id) => findMicrographById(latest, id)).filter((m): m is MicrographMetadata => !!m);
+    if (goesStraightToItsDialog(imported)) startByHand(ids);
+    else if (imported.length > 0) setFinishRequest({ ids, importedCount: imported.length });
   };
 
   // Build hierarchy from flat micrograph array
@@ -1011,12 +1080,24 @@ export function ProjectTree() {
 
     // Check if micrograph needs setup (missing scale, location, or instrument info)
     const needsScale = !micrograph.scalePixelsPerCentimeter;
-    // Location can be set via offsetInParent (scaled rectangle), pointInParent (approximate point), or affine placement
-    const hasLocation = micrograph.offsetInParent || micrograph.pointInParent || micrograph.xOffset !== undefined || micrograph.placementType === 'affine';
-    const needsLocation = !isReference && !hasLocation;
+    const needsLocation = !isReference && !hasLocation(micrograph);
     // Set only by Batch Import when "Instrument and Image Info" was unchecked; legacy/manual-import micrographs leave this absent.
     const needsInstrumentInfo = !!micrograph.needsInstrumentInfo;
     const needsSetup = needsScale || needsLocation || needsInstrumentInfo;
+
+    const deleteMicrographItem = (
+      <MenuItem
+        disabled={!may('micrograph', micrograph.id)}
+        onClick={() => {
+          if (!mayDeleteWithin('micrograph', micrograph.id, 'micrograph')) return;
+          setDeletingMicrograph(micrograph);
+          setShowDeleteMicrographConfirm(true);
+          setMicrographOptionsAnchor({ ...micrographOptionsAnchor, [micrograph.id]: null });
+        }}
+      >
+        Delete Micrograph
+      </MenuItem>
+    );
 
     // Use percentage-based sizing for responsive thumbnails
     // This allows thumbnails to shrink/grow with the sidebar width
@@ -1093,6 +1174,8 @@ export function ProjectTree() {
               )}
               {isReference && ' (Reference)'}
             </Typography>
+            {/* Who else views or edits it (17al, 17am) */}
+            <PresenceMarks type="micrograph" id={micrograph.id} viewing />
             {/* PPL/XPL indicator for micrographs with siblings */}
             {micrograph.siblingImageId && (
               <Tooltip title="Has PPL/XPL pair - Press X to toggle" placement="top">
@@ -1150,56 +1233,54 @@ export function ProjectTree() {
               )}
             </Box>
 
-            {/* Button Column - hidden when micrograph needs setup */}
-            {!needsSetup ? (
-              <Stack direction="column" spacing={0.5} sx={{ flexShrink: 0, width: 40 }}>
-                {/* Options Menu Button */}
-                <IconButton
-                  size="small"
-                  onClick={(e) => {
-                    setMicrographOptionsAnchor({
-                      ...micrographOptionsAnchor,
-                      [micrograph.id]: e.currentTarget,
-                    });
-                  }}
-                  sx={{ p: 0.5 }}
-                >
-                  <MoreVert fontSize="small" />
-                </IconButton>
-
-                {/* Add Menu Button */}
-                <IconButton
-                  size="small"
-                  onClick={(e) => {
-                    setMicrographAddAnchor({
-                      ...micrographAddAnchor,
-                      [micrograph.id]: e.currentTarget,
-                    });
-                  }}
-                  sx={{ p: 0.5 }}
-                >
-                  <Add fontSize="small" />
-                </IconButton>
-
-                {/* Visibility Toggle Button - Only for associated micrographs */}
-                {!isReference && (
+            {/* Button Column - only the options menu (Delete Micrograph) when micrograph needs setup */}
+            <Stack direction="column" spacing={0.5} sx={{ flexShrink: 0, width: 40 }}>
+              {/* Options Menu Button */}
+              <IconButton
+                size="small"
+                onClick={(e) => {
+                  setMicrographOptionsAnchor({
+                    ...micrographOptionsAnchor,
+                    [micrograph.id]: e.currentTarget,
+                  });
+                }}
+                sx={{ p: 0.5 }}
+              >
+                <MoreVert fontSize="small" />
+              </IconButton>
+              {!needsSetup && (
+                <>
+                  {/* Add Menu Button */}
                   <IconButton
                     size="small"
-                    onClick={() => {
-                      // Toggle visibility: if currently hidden (false), make visible (true); otherwise hide (false)
-                      const newVisibility = micrograph.isMicroVisible === false ? true : false;
-                      updateMicrographMetadata(micrograph.id, { isMicroVisible: newVisibility });
+                    onClick={(e) => {
+                      setMicrographAddAnchor({
+                        ...micrographAddAnchor,
+                        [micrograph.id]: e.currentTarget,
+                      });
                     }}
                     sx={{ p: 0.5 }}
                   >
-                    {isHidden ? <VisibilityOff fontSize="small" /> : <Visibility fontSize="small" />}
+                    <Add fontSize="small" />
                   </IconButton>
-                )}
-              </Stack>
-            ) : (
-              // Placeholder to maintain consistent width when buttons are hidden
-              <Box sx={{ flexShrink: 0, width: 40 }} />
-            )}
+
+                  {/* Visibility Toggle Button - Only for associated micrographs */}
+                  {!isReference && (
+                    <IconButton
+                      size="small"
+                      onClick={() => {
+                        // Toggle visibility: if currently hidden (false), make visible (true); otherwise hide (false)
+                        const newVisibility = micrograph.isMicroVisible === false ? true : false;
+                        updateMicrographMetadata(micrograph.id, { isMicroVisible: newVisibility });
+                      }}
+                      sx={{ p: 0.5 }}
+                    >
+                      {isHidden ? <VisibilityOff fontSize="small" /> : <Visibility fontSize="small" />}
+                    </IconButton>
+                  )}
+                </>
+              )}
+            </Stack>
           </Stack>
         </Box>
 
@@ -1254,10 +1335,19 @@ export function ProjectTree() {
           </Collapse>
         )}
 
-        {/* Options Menu */}
+        {/* Options Menu (only Delete Micrograph while it needs setup: Peter, 2026-10-29) */}
         <Menu
           anchorEl={micrographOptionsAnchor[micrograph.id]}
-          open={Boolean(micrographOptionsAnchor[micrograph.id])}
+          open={needsSetup && Boolean(micrographOptionsAnchor[micrograph.id])}
+          onClose={() =>
+            setMicrographOptionsAnchor({ ...micrographOptionsAnchor, [micrograph.id]: null })
+          }
+        >
+          {deleteMicrographItem}
+        </Menu>
+        <Menu
+          anchorEl={micrographOptionsAnchor[micrograph.id]}
+          open={!needsSetup && Boolean(micrographOptionsAnchor[micrograph.id])}
           onClose={() =>
             setMicrographOptionsAnchor({ ...micrographOptionsAnchor, [micrograph.id]: null })
           }
@@ -1272,6 +1362,7 @@ export function ProjectTree() {
             Add to Group(s)
           </MenuItem>
           <MenuItem
+            disabled={!may('micrograph', micrograph.id)}
             onClick={() => {
               setEditingMicrographId(micrograph.id);
               setShowEditMicrograph(true);
@@ -1281,6 +1372,7 @@ export function ProjectTree() {
             Edit Micrograph Metadata
           </MenuItem>
           <MenuItem
+            disabled={!may('micrograph', micrograph.id)}
             onClick={() => {
               window.dispatchEvent(new CustomEvent('open-strabo-tools', { detail: micrograph.id }));
               setMicrographOptionsAnchor({ ...micrographOptionsAnchor, [micrograph.id]: null });
@@ -1291,6 +1383,7 @@ export function ProjectTree() {
           {!isReference && (
             <>
               <MenuItem
+            disabled={!may('micrograph', micrograph.id)}
                 onClick={() => {
                   setEditLocationMicrographId(micrograph.id);
                   setShowEditLocation(true);
@@ -1300,6 +1393,7 @@ export function ProjectTree() {
                 Edit Micrograph Location
               </MenuItem>
               <MenuItem
+            disabled={!may('micrograph', micrograph.id)}
                 onClick={(event) => {
                   // Open opacity popover - capture position before menu closes
                   const rect = event.currentTarget.getBoundingClientRect();
@@ -1313,19 +1407,64 @@ export function ProjectTree() {
               </MenuItem>
             </>
           )}
-          <MenuItem
-            onClick={() => {
-              setDeletingMicrograph(micrograph);
-              setShowDeleteMicrographConfirm(true);
-              setMicrographOptionsAnchor({ ...micrographOptionsAnchor, [micrograph.id]: null });
-            }}
-          >
-            Delete Micrograph
-          </MenuItem>
+          {unplacedChildren(project, micrograph.id).length > 0 && (() => {
+            const reason = cannotPlaceChildrenReason(micrograph);
+            return (
+              <MenuItem
+                disabled={!may('micrograph', micrograph.id) || reason !== null}
+                onClick={() => {
+                  setPlaceChildrenParentId(micrograph.id);
+                  setMicrographOptionsAnchor({ ...micrographOptionsAnchor, [micrograph.id]: null });
+                }}
+              >
+                <Box>
+                  <Typography variant="body2">Place children automatically...</Typography>
+                  {reason && (
+                    <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block' }}>{reason}</Typography>
+                  )}
+                </Box>
+              </MenuItem>
+            );
+          })()}
+          {unplacedChildren(project, micrograph.id).length > 0 && (
+            <MenuItem
+              disabled={!micrograph.scalePixelsPerCentimeter || !unplacedChildren(project, micrograph.id).every((child) => may('micrograph', child.id))}
+              onClick={() => {
+                setPlaceUnplaced({ parentId: micrograph.id, how: 'parent-area' });
+                setMicrographOptionsAnchor({ ...micrographOptionsAnchor, [micrograph.id]: null });
+              }}
+            >
+              Place unplaced children on its full area...
+            </MenuItem>
+          )}
+          {unplacedChildren(project, micrograph.id).length > 0 && (
+            <MenuItem
+              disabled={listPlacedChildren(project, micrograph.id).length === 0 || !unplacedChildren(project, micrograph.id).every((child) => may('micrograph', child.id))}
+              onClick={() => {
+                setPlaceUnplaced({ parentId: micrograph.id, how: 'like-sibling' });
+                setMicrographOptionsAnchor({ ...micrographOptionsAnchor, [micrograph.id]: null });
+              }}
+            >
+              Place unplaced children like...
+            </MenuItem>
+          )}
+          {unplacedChildren(project, micrograph.id).length > 0 && (
+            <MenuItem
+              disabled={!unplacedChildren(project, micrograph.id).every((child) => may('micrograph', child.id))}
+              onClick={() => {
+                setDeleteUnplacedParentId(micrograph.id);
+                setMicrographOptionsAnchor({ ...micrographOptionsAnchor, [micrograph.id]: null });
+              }}
+            >
+              Delete unplaced children...
+            </MenuItem>
+          )}
+          {deleteMicrographItem}
           {/* PPL/XPL Sibling Pairing - only for PPL/XPL image types */}
           {polarizedRole(micrograph.imageType) && (
             !micrograph.siblingImageId ? (
               <MenuItem
+            disabled={!may('micrograph', micrograph.id)}
                 onClick={() => {
                   setLinkSiblingMicrographId(micrograph.id);
                   setShowLinkSibling(true);
@@ -1336,6 +1475,7 @@ export function ProjectTree() {
               </MenuItem>
             ) : (
               <MenuItem
+            disabled={!may('micrograph', micrograph.id)}
                 onClick={() => {
                   unlinkSiblingImages(micrograph.id);
                   setMicrographOptionsAnchor({ ...micrographOptionsAnchor, [micrograph.id]: null });
@@ -1349,6 +1489,7 @@ export function ProjectTree() {
           {hasChildren && (
             <>
               <MenuItem
+            disabled={!children.every((child) => may('micrograph', child.id))}
                 onClick={() => {
                   // Set isMicroVisible: true on all direct children (and the hidden XPL's)
                   pairChildList.forEach((child) => {
@@ -1360,6 +1501,7 @@ export function ProjectTree() {
                 Show All Associated Micrographs
               </MenuItem>
               <MenuItem
+            disabled={!children.every((child) => may('micrograph', child.id))}
                 onClick={() => {
                   // Set isMicroVisible: false on all direct children (and the hidden XPL's)
                   pairChildList.forEach((child) => {
@@ -1375,6 +1517,7 @@ export function ProjectTree() {
           {/* Edit All Associated Micrographs Opacity - only if has overlay children */}
           {pairChildList.some((child) => child.offsetInParent) && (
             <MenuItem
+            disabled={!children.every((child) => may('micrograph', child.id))}
               onClick={(event) => {
                 // Get average opacity of all overlay children for initial value
                 const overlayChildren = pairChildList.filter((child) => child.offsetInParent);
@@ -1400,6 +1543,7 @@ export function ProjectTree() {
           onClose={() => setMicrographAddAnchor({ ...micrographAddAnchor, [micrograph.id]: null })}
         >
           <MenuItem
+            disabled={!mayCreate}
             onClick={() => {
               handleAddAssociatedMicrograph(micrograph.id);
               setMicrographAddAnchor({ ...micrographAddAnchor, [micrograph.id]: null });
@@ -1408,6 +1552,7 @@ export function ProjectTree() {
             Add Associated Micrograph
           </MenuItem>
           <MenuItem
+            disabled={!mayCreate}
             onClick={() => {
               setBatchImportSampleId(null);
               setBatchImportParentMicrographId(micrograph.id);
@@ -1421,6 +1566,7 @@ export function ProjectTree() {
           {!micrograph.siblingImageId &&
             polarizedRole(micrograph.imageType) && (
             <MenuItem
+              disabled={!mayCreate}
               onClick={() => {
                 setAddSiblingMicrographId(micrograph.id);
                 setShowAddSibling(true);
@@ -1476,6 +1622,7 @@ export function ProjectTree() {
               searchFilter?.directMatches.has(sample.id) ?? false
             )}
           </Typography>
+          <PresenceMarks type="sample" id={sample.id} />
 
           {/* Sample Options Menu Button */}
           <IconButton
@@ -1546,6 +1693,7 @@ export function ProjectTree() {
           onClose={() => setSampleMenuAnchor({ ...sampleMenuAnchor, [sample.id]: null })}
         >
           <MenuItem
+            disabled={!may('sample', sample.id)}
             onClick={() => {
               setEditingSample(sample);
               setShowEditSample(true);
@@ -1555,7 +1703,9 @@ export function ProjectTree() {
             Edit Sample Metadata
           </MenuItem>
           <MenuItem
+            disabled={!may('sample', sample.id)}
             onClick={() => {
+              if (!mayDeleteWithin('sample', sample.id, 'sample')) return;
               setDeletingSample(sample);
               setShowDeleteSampleConfirm(true);
               setSampleMenuAnchor({ ...sampleMenuAnchor, [sample.id]: null });
@@ -1572,6 +1722,7 @@ export function ProjectTree() {
           onClose={() => setSampleAddAnchor({ ...sampleAddAnchor, [sample.id]: null })}
         >
           <MenuItem
+            disabled={!mayCreate}
             onClick={() => {
               handleAddReferenceMicrograph(sample.id);
               setSampleAddAnchor({ ...sampleAddAnchor, [sample.id]: null });
@@ -1580,6 +1731,7 @@ export function ProjectTree() {
             Add New Reference Micrograph
           </MenuItem>
           <MenuItem
+            disabled={!mayCreate}
             onClick={() => {
               setBatchImportSampleId(sample.id);
               setBatchImportParentMicrographId(null);
@@ -1642,6 +1794,7 @@ export function ProjectTree() {
               searchFilter?.directMatches.has(dataset.id) ?? false
             )}
           </Typography>
+          <PresenceMarks type="dataset" id={dataset.id} />
 
           {/* Dataset Options Menu Button */}
           <IconButton
@@ -1696,6 +1849,7 @@ export function ProjectTree() {
           onClose={() => setDatasetMenuAnchor({ ...datasetMenuAnchor, [dataset.id]: null })}
         >
           <MenuItem
+            disabled={!may('dataset', dataset.id)}
             onClick={() => {
               setEditingDatasetId(dataset.id);
               setShowEditDataset(true);
@@ -1705,7 +1859,9 @@ export function ProjectTree() {
             Edit Dataset Metadata
           </MenuItem>
           <MenuItem
+            disabled={!may('dataset', dataset.id)}
             onClick={() => {
+              if (!mayDeleteWithin('dataset', dataset.id, 'dataset')) return;
               setDeletingDataset(dataset);
               setShowDeleteDatasetConfirm(true);
               setDatasetMenuAnchor({ ...datasetMenuAnchor, [dataset.id]: null });
@@ -1722,6 +1878,7 @@ export function ProjectTree() {
           onClose={() => setDatasetAddAnchor({ ...datasetAddAnchor, [dataset.id]: null })}
         >
           <MenuItem
+            disabled={!mayCreate}
             onClick={() => {
               handleAddSample(dataset.id);
               setDatasetAddAnchor({ ...datasetAddAnchor, [dataset.id]: null });
@@ -1881,6 +2038,7 @@ export function ProjectTree() {
         onClose={() => setProjectMenuAnchor(null)}
       >
         <MenuItem
+            disabled={!project || !may('project', project.id)}
           onClick={() => {
             setShowEditProject(true);
             setProjectMenuAnchor(null);
@@ -1897,6 +2055,7 @@ export function ProjectTree() {
         onClose={() => setProjectAddAnchor(null)}
       >
         <MenuItem
+            disabled={!mayCreate}
           onClick={() => {
             handleAddDataset();
             setProjectAddAnchor(null);
@@ -1906,8 +2065,10 @@ export function ProjectTree() {
         </MenuItem>
       </Menu>
 
-      {/* Dialogs */}
-      <EditProjectDialog isOpen={showEditProject} onClose={() => setShowEditProject(false)} />
+      {/* Dialogs (what an edit dialog changes is shown to the others, 17am) */}
+      <EditingScope target={showEditProject && project ? { type: 'project', id: project.id } : null}>
+        <EditProjectDialog isOpen={showEditProject} onClose={() => setShowEditProject(false)} />
+      </EditingScope>
       <NewDatasetDialog isOpen={showNewDataset} onClose={() => setShowNewDataset(false)} />
       <NewSampleDialog
         isOpen={showNewSample}
@@ -1930,6 +2091,7 @@ export function ProjectTree() {
 
       {/* Edit Dataset Dialog */}
       {editingDatasetId && (
+        <EditingScope target={showEditDataset ? { type: 'dataset', id: editingDatasetId } : null}>
         <EditDatasetDialog
           isOpen={showEditDataset}
           onClose={() => {
@@ -1938,9 +2100,11 @@ export function ProjectTree() {
           }}
           datasetId={editingDatasetId}
         />
+        </EditingScope>
       )}
 
       {/* Edit Sample Dialog */}
+      <EditingScope target={showEditSample && editingSample ? { type: 'sample', id: editingSample.id } : null}>
       <EditSampleDialog
         isOpen={showEditSample}
         onClose={() => {
@@ -1949,9 +2113,11 @@ export function ProjectTree() {
         }}
         sample={editingSample}
       />
+      </EditingScope>
 
       {/* Edit Micrograph Dialog */}
       {editingMicrographId && (
+        <EditingScope target={showEditMicrograph ? { type: 'micrograph', id: editingMicrographId } : null}>
         <EditMicrographDialog
           isOpen={showEditMicrograph}
           onClose={() => {
@@ -1960,6 +2126,7 @@ export function ProjectTree() {
           }}
           micrographId={editingMicrographId}
         />
+        </EditingScope>
       )}
 
       {/* Add Micrograph to Groups Dialog */}
@@ -1979,28 +2146,38 @@ export function ProjectTree() {
       {editLocationMicrographId && (
         <EditMicrographLocationDialog
           open={showEditLocation}
+          key={editLocationMicrographId}
           onClose={() => {
             setShowEditLocation(false);
             setEditLocationMicrographId(null);
+            nextByHand(editLocationMicrographId);
           }}
           micrographId={editLocationMicrographId}
+          progress={byHandProgress}
         />
       )}
 
-      {/* Complete Instrument & Image Info Dialog (batch-imported micrographs without instrument info) */}
-      <CompleteInstrumentInfoDialog
-        isOpen={showCompleteInstrumentInfo}
-        micrographId={completeInstrumentInfoMicrographId}
-        onClose={() => {
-          setShowCompleteInstrumentInfo(false);
-          setCompleteInstrumentInfoMicrographId(null);
+      {/* Place children automatically (menu, or Finish Importing) */}
+      {placeChildrenParentId && (
+        <PlaceChildrenDialog
+          open
+          parentMicrographId={placeChildrenParentId}
+          onlyIds={placeOnlyIds}
+          onClose={() => {
+            setPlaceChildrenParentId(null);
+            setPlaceOnlyIds(undefined);
+          }}
+        />
+      )}
+      {/* Finish Importing: the wizard for incomplete micrographs */}
+      <FinishImportingDialog
+        request={finishRequest}
+        onClose={() => setFinishRequest(null)}
+        onDone={(ids) => {
+          setFinishRequest(null);
+          if (ids.length === 1) selectMicrograph(ids[0]);
         }}
-        onComplete={() => {
-          const id = completeInstrumentInfoMicrographId;
-          setShowCompleteInstrumentInfo(false);
-          setCompleteInstrumentInfoMicrographId(null);
-          if (id) continueAfterInstrumentInfo(id);
-        }}
+        onPlace={handleFinishPlace}
       />
 
       {/* Delete Dataset Confirmation */}
@@ -2073,6 +2250,65 @@ export function ProjectTree() {
           setDeletingSample(null);
         }}
       />
+
+      {/* Place unplaced children on its full area / like a placed child */}
+      <PlaceUnplacedChildrenDialog
+        open={placeUnplaced !== null}
+        how={placeUnplaced?.how ?? 'parent-area'}
+        parentMicrographId={placeUnplaced?.parentId ?? null}
+        onlyIds={placeOnlyIds}
+        onClose={() => {
+          setPlaceUnplaced(null);
+          setPlaceOnlyIds(undefined);
+        }}
+      />
+
+      {/* Delete unplaced children confirmation */}
+      {(() => {
+        const parent = deleteUnplacedParentId ? findMicrographById(project, deleteUnplacedParentId) : null;
+        const unplaced = deleteUnplacedParentId ? unplacedChildren(project, deleteUnplacedParentId) : [];
+        const shown = unplaced.slice(0, 10);
+        return (
+          <ConfirmDialog
+            open={!!parent && unplaced.length > 0}
+            title="Delete Unplaced Children"
+            message={
+              parent ? (
+                <>
+                  Delete the {unplaced.length === 1 ? 'micrograph' : `${unplaced.length} micrographs`} on "{parent.name}" that {unplaced.length === 1 ? 'has' : 'have'} not been placed yet?
+                  <br />
+                  <br />
+                  {shown.map((m) => (
+                    <span key={m.id}>
+                      {m.name || m.imageFilename || 'Unnamed Micrograph'}
+                      <br />
+                    </span>
+                  ))}
+                  {unplaced.length > shown.length && (
+                    <>
+                      and {unplaced.length - shown.length} more
+                      <br />
+                    </>
+                  )}
+                  <br />
+                  Their spots, PPL/XPL pairs, and any micrographs placed on them are removed too.
+                </>
+              ) : (
+                ''
+              )
+            }
+            confirmLabel="Delete"
+            confirmColor="error"
+            onConfirm={() => {
+              if (unplaced.every((m) => mayDeleteWithin('micrograph', m.id, 'micrograph'))) {
+                deleteMicrographs(unplaced.map((m) => m.id));
+              }
+              setDeleteUnplacedParentId(null);
+            }}
+            onCancel={() => setDeleteUnplacedParentId(null)}
+          />
+        );
+      })()}
 
       {/* Delete Micrograph Confirmation */}
       <ConfirmDialog
@@ -2152,17 +2388,21 @@ export function ProjectTree() {
         }}
         sampleId={batchImportSampleId}
         parentMicrographId={batchImportParentMicrographId}
+        onImported={handleBatchImported}
       />
 
       {/* Set Scale Dialog (for batch-imported reference micrographs) */}
       {setScaleMicrographId && (
         <SetScaleDialog
           open={showSetScale}
+          key={setScaleMicrographId}
           onClose={() => {
             setShowSetScale(false);
             setSetScaleMicrographId(null);
+            nextByHand(setScaleMicrographId);
           }}
           micrographId={setScaleMicrographId}
+          progress={byHandProgress}
         />
       )}
 

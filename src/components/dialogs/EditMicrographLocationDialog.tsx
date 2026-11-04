@@ -15,7 +15,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import {
   Dialog,
-  DialogTitle,
   DialogContent,
   DialogActions,
   Button,
@@ -38,34 +37,46 @@ import {
 import { CheckCircle } from '@mui/icons-material';
 import { useAppStore } from '@/store';
 import { findMicrographById } from '@/store/helpers';
+import { MicrographDialogTitle, type ByHandProgress } from './MicrographDialogTitle';
 import PlacementCanvas from './PlacementCanvas';
 import { PointPlacementCanvas } from './PointPlacementCanvas';
 import { AffineRegistrationModal } from './AffineRegistrationModal';
+import AutoPlacementPanel, { type AutoPlacementOutcome } from './AutoPlacementPanel';
+import { placementUpdates } from '@/services/autoPlace/placementFields';
 import type { MicrographMetadata } from '@/types/project-types';
 import type { AffineMatrix, ControlPoint } from '@/utils/affineTransform';
 import {
   bakeAffineTilesForCopy,
   computeCopiedPlacement,
+  computeParentAreaPlacement,
   describeCopyPlacementCandidate,
+  describeScaleSource,
   listCopyPlacementCandidates,
+  listScaleSources,
+  parentAreaUnavailableReason,
 } from '@/utils/copySizePlacement';
+import { pixelsPerCentimeterFromInput, type ScaleInput } from '@/utils/scaleInput';
 
 interface EditMicrographLocationDialogProps {
   open: boolean;
   onClose: () => void;
   micrographId: string;
+  progress?: ByHandProgress;
 }
 
 type LocationMethod =
   | 'Locate as a scaled rectangle'
   | 'Locate by an approximate point'
   | '3-Point Registration'
-  | 'Copy from existing micrograph';
+  | 'Copy from existing micrograph'
+  | 'Same area as parent'
+  | 'Place automatically on parent';
 type ScaleMethod =
   | 'Trace Scale Bar and Drag'
   | 'Stretch and Drag'
   | 'Trace Scale Bar'
   | 'Pixel Conversion Factor'
+  | 'Copy scale from an existing micrograph'
   | 'Provide Width/Height of Image'
   | '';
 
@@ -73,15 +84,23 @@ export function EditMicrographLocationDialog({
   open,
   onClose,
   micrographId,
+  progress,
 }: EditMicrographLocationDialogProps) {
   const project = useAppStore((state) => state.project);
-  const updateMicrographMetadata = useAppStore((state) => state.updateMicrographMetadata);
+  // Placement saves keep the micrographs placed on this one the same size (affineScale.ts)
+  const placeMicrograph = useAppStore((state) => state.placeMicrograph);
 
   // State
   const [step, setStep] = useState(0); // 0 = location method, 1 = scale method, 2 = placement
   const [locationMethod, setLocationMethod] = useState<LocationMethod>('Locate as a scaled rectangle');
+  // "Place automatically on parent": the found (and possibly adjusted) placement
+  const [autoPlacement, setAutoPlacement] = useState<AutoPlacementOutcome | null>(null);
   const [scaleMethod, setScaleMethod] = useState<ScaleMethod>('Stretch and Drag');
   const [copySourceMicrographId, setCopySourceMicrographId] = useState<string>('');
+  // "Copy scale from an existing micrograph" (Peter, 2026-10-29): the micrograph whose px/cm is copied
+  const [scaleSourceId, setScaleSourceId] = useState<string>('');
+  // What the placement step's scale fields last reported (a point placement's scale comes from it)
+  const [scaleInput, setScaleInput] = useState<ScaleInput>({});
   const [isCopying, setIsCopying] = useState(false);
   const [copyError, setCopyError] = useState<string | null>(null);
   const [micrograph, setMicrograph] = useState<MicrographMetadata | null>(null);
@@ -120,6 +139,20 @@ export function EditMicrographLocationDialog({
   const [imagesFolder, setImagesFolder] = useState<string>('');
 
   // Sibling micrographs whose placement can be copied onto this one (any method)
+  // "Copy scale from an existing micrograph": any micrograph in the project with a scale. The
+  // placement step gets it as a filled-in Pixel Conversion Factor (px per 1 cm); the save stores
+  // the source's px/cm exactly
+  const scaleSources = useMemo(() => listScaleSources(project, micrographId), [project, micrographId]);
+  const isCopyScale = scaleMethod === 'Copy scale from an existing micrograph';
+  const scaleSource = isCopyScale ? scaleSources.find((src) => src.id === scaleSourceId) ?? null : null;
+  const canvasScaleMethod = isCopyScale ? 'Pixel Conversion Factor' : scaleMethod;
+  const initialPixelConversion = scaleSource
+    ? { pixels: String(scaleSource.scale), physicalLength: '1', unit: 'cm' }
+    : undefined;
+
+  // "Same area as parent": why this micrograph cannot cover its parent exactly, or null
+  const parentAreaReason = parentAreaUnavailableReason(parentMicrograph, micrograph?.imageWidth, micrograph?.imageHeight);
+
   const copyCandidates = useMemo(
     () =>
       listCopyPlacementCandidates(
@@ -229,15 +262,18 @@ export function EditMicrographLocationDialog({
     }
 
     setCopySourceMicrographId('');
+    setScaleSourceId('');
+    setScaleInput({});
     setCopyError(null);
     setStep(0);
   }, [open, project, micrographId]);
 
   // Reset scale method when location method changes
   useEffect(() => {
-    if (locationMethod === '3-Point Registration' || locationMethod === 'Copy from existing micrograph') {
-      // 3-Point Registration computes scale from the affine matrix, and a copy takes
-      // everything from the source; neither needs a scale method.
+    if (locationMethod === '3-Point Registration' || locationMethod === 'Copy from existing micrograph' ||
+        locationMethod === 'Same area as parent' || locationMethod === 'Place automatically on parent') {
+      // 3-Point Registration computes scale from the affine matrix, a copy takes everything
+      // from the source, and automatic placement finds it; none needs a scale method.
       setScaleMethod('');
       return;
     }
@@ -245,12 +281,14 @@ export function EditMicrographLocationDialog({
       if (scaleMethod !== 'Trace Scale Bar and Drag' &&
           scaleMethod !== 'Stretch and Drag' &&
           scaleMethod !== 'Pixel Conversion Factor' &&
+          scaleMethod !== 'Copy scale from an existing micrograph' &&
           scaleMethod !== 'Provide Width/Height of Image') {
         setScaleMethod('Stretch and Drag');
       }
     } else {
       if (scaleMethod !== 'Trace Scale Bar' &&
           scaleMethod !== 'Pixel Conversion Factor' &&
+          scaleMethod !== 'Copy scale from an existing micrograph' &&
           scaleMethod !== 'Provide Width/Height of Image') {
         setScaleMethod('Trace Scale Bar');
       }
@@ -305,7 +343,7 @@ export function EditMicrographLocationDialog({
         data.scaleBarPhysicalLength &&
         data.scaleBarUnits
       );
-    } else if (scaleMethod === 'Pixel Conversion Factor') {
+    } else if (canvasScaleMethod === 'Pixel Conversion Factor') {
       hasValidScaleData = !!(
         data.pixels &&
         data.physicalLength &&
@@ -320,6 +358,7 @@ export function EditMicrographLocationDialog({
     }
 
     setHasScaleData(hasValidScaleData);
+    setScaleInput(data);
   };
 
   // Check if scale method requires scale data input
@@ -327,7 +366,7 @@ export function EditMicrographLocationDialog({
     return (
       scaleMethod === 'Trace Scale Bar and Drag' ||
       scaleMethod === 'Trace Scale Bar' ||
-      scaleMethod === 'Pixel Conversion Factor' ||
+      canvasScaleMethod === 'Pixel Conversion Factor' ||
       scaleMethod === 'Provide Width/Height of Image'
     );
   };
@@ -336,6 +375,9 @@ export function EditMicrographLocationDialog({
   const canSave = (): boolean => {
     if (locationMethod === '3-Point Registration') {
       return affineMatrix !== null;
+    }
+    if (locationMethod === 'Place automatically on parent') {
+      return autoPlacement !== null;
     }
 
     const isPointLocation = locationMethod === 'Locate by an approximate point';
@@ -354,10 +396,16 @@ export function EditMicrographLocationDialog({
     return true;
   };
 
-  const canProceedFromScaleMethod = (): boolean => scaleMethod !== '';
+  const canProceedFromScaleMethod = (): boolean =>
+    scaleMethod !== '' && (!isCopyScale || scaleSource !== null);
 
-  const isCopyMethod = locationMethod === 'Copy from existing micrograph';
-  const canFinishCopy = (): boolean => isCopyMethod && copySourceMicrographId !== '' && !isCopying;
+  // "Same area as parent" (Peter, 2026-10-29) finishes on the first step like a copy
+  const isParentAreaMethod = locationMethod === 'Same area as parent';
+  const isCopyMethod = locationMethod === 'Copy from existing micrograph' || isParentAreaMethod;
+  const canFinishCopy = (): boolean =>
+    isParentAreaMethod ? parentAreaReason === null : isCopyMethod && copySourceMicrographId !== '' && !isCopying;
+
+  const skipsScaleMethod = locationMethod === '3-Point Registration' || locationMethod === 'Place automatically on parent';
 
   const handleNext = () => {
     if (step === 0) {
@@ -366,8 +414,8 @@ export function EditMicrographLocationDialog({
         void handleCopyFinish();
         return;
       }
-      // 3-Point Registration skips the Scale Method step (affine matrix encodes scale)
-      if (locationMethod === '3-Point Registration') {
+      // 3-Point Registration and automatic placement skip the Scale Method step
+      if (skipsScaleMethod) {
         setStep(2);
       } else {
         setStep(1);
@@ -385,8 +433,8 @@ export function EditMicrographLocationDialog({
       // Reset scale data and point placement when going back
       setHasScaleData(false);
       setHasPointPlaced(false);
-      // From the placement step under 3-Point, jump back to the Location Method step
-      if (step === 2 && locationMethod === '3-Point Registration') {
+      // From the placement step under 3-Point or automatic placement, jump back to the Location Method step
+      if (step === 2 && skipsScaleMethod) {
         setStep(0);
       } else {
         setStep(step - 1);
@@ -439,6 +487,17 @@ export function EditMicrographLocationDialog({
    * bakes this image's own overlay tiles under its own tile hash.
    */
   const handleCopyFinish = async () => {
+    if (isParentAreaMethod) {
+      if (!micrograph || !parentMicrograph) return;
+      const placement = computeParentAreaPlacement(parentMicrograph, micrograph.imageWidth, micrograph.imageHeight);
+      if (!placement) {
+        setCopyError(parentAreaReason ?? 'This micrograph cannot cover its parent exactly.');
+        return;
+      }
+      placeMicrograph(micrographId, { ...placement, opacity });
+      closeAndRegenerateThumbnails(parentMicrograph.id);
+      return;
+    }
     if (!micrograph || !parentMicrograph || !project || !copySourceMicrographId) return;
 
     const source = findMicrographById(project, copySourceMicrographId);
@@ -470,7 +529,7 @@ export function EditMicrographLocationDialog({
         scaleAssumedFromWidthRatio: copied.scaleAssumedFromWidthRatio,
       });
 
-      updateMicrographMetadata(micrographId, {
+      placeMicrograph(micrographId, {
         ...copied.metadata,
         ...(affineTileHash ? { affineTileHash } : {}),
         opacity,
@@ -492,7 +551,8 @@ export function EditMicrographLocationDialog({
     // Formula: displayScale = parentPxPerCm / childPxPerCm
     // So: childPxPerCm = parentPxPerCm / displayScale
     const parentPxPerCm = parentMicrograph.scalePixelsPerCentimeter || 100;
-    const newChildPxPerCm = parentPxPerCm / scaleX; // scaleX is the display scale
+    // scaleX is the display scale; a copied scale is stored exactly
+    const newChildPxPerCm = scaleSource ? scaleSource.scale : parentPxPerCm / scaleX;
 
     console.log('[EditMicrographLocationDialog] handleSave called with:', {
       locationMethod,
@@ -505,12 +565,16 @@ export function EditMicrographLocationDialog({
       newChildPxPerCm,
     });
 
-    if (locationMethod === '3-Point Registration') {
+    if (locationMethod === 'Place automatically on parent' && autoPlacement) {
+      // Affine tiles were baked by AutoPlacementPanel
+      placeMicrograph(
+        micrographId,
+        placementUpdates(autoPlacement, parentPxPerCm, micrograph.scalePixelsPerCentimeter, opacity),
+      );
+    } else if (locationMethod === '3-Point Registration') {
       // Affine placement: store matrix + control points, clear other placement fields.
-      // scalePixelsPerCentimeter is a placeholder for affine descendants (effective scale
-      // is derived from the root non-affine ancestor at render time); preserve the existing
-      // value if any, otherwise default to the parent's scale.
-      updateMicrographMetadata(micrographId, {
+      // placeMicrograph stores the real scale (the parent's over the matrix's enlargement).
+      placeMicrograph(micrographId, {
         placementType: 'affine',
         affineMatrix,
         controlPoints: affineControlPoints?.map((cp) => ({
@@ -532,7 +596,7 @@ export function EditMicrographLocationDialog({
         pointInParent: undefined,
       });
     } else if (locationMethod === 'Locate as a scaled rectangle') {
-      updateMicrographMetadata(micrographId, {
+      placeMicrograph(micrographId, {
         offsetInParent: { X: offsetX, Y: offsetY },
         rotation,
         scalePixelsPerCentimeter: newChildPxPerCm,
@@ -548,9 +612,14 @@ export function EditMicrographLocationDialog({
         affineTileHash: undefined,
       });
     } else {
-      updateMicrographMetadata(micrographId, {
+      // A point placement has no size on the canvas: its scale is what the scale step entered
+      // (it used to keep parentPxPerCm / the old scaleX, whatever was entered; 2026-10-29)
+      const pointPxPerCm = scaleSource
+        ? scaleSource.scale
+        : pixelsPerCentimeterFromInput(scaleMethod, scaleInput, micrograph.imageWidth, micrograph.imageHeight) ?? newChildPxPerCm;
+      placeMicrograph(micrographId, {
         pointInParent: { X: pointX, Y: pointY },
-        scalePixelsPerCentimeter: newChildPxPerCm,
+        scalePixelsPerCentimeter: pointPxPerCm,
         // Clear rectangle and affine placement if switching methods
         offsetInParent: undefined,
         rotation: undefined,
@@ -582,16 +651,17 @@ export function EditMicrographLocationDialog({
   }
 
   const isAffine = locationMethod === '3-Point Registration';
-  // 3-Point Registration skips the Scale Method step (affine matrix encodes scale);
+  const isAuto = locationMethod === 'Place automatically on parent';
+  // 3-Point Registration and automatic placement skip the Scale Method step;
   // copying finishes on the first step
   const steps = isCopyMethod
     ? ['Location Method']
-    : isAffine
+    : skipsScaleMethod
       ? ['Location Method', 'Position']
       : ['Location Method', 'Scale Method', 'Position'];
-  // For the Stepper UI, when 3-Point is selected and the user is on the Position step
-  // (internal step = 2), display it as step 1 since we hide the Scale Method step.
-  const displayStep = isAffine && step === 2 ? 1 : step;
+  // For the Stepper UI, when the Scale Method step is hidden and the user is on the Position
+  // step (internal step = 2), display it as step 1.
+  const displayStep = skipsScaleMethod && step === 2 ? 1 : step;
   const isScaledRectangle = locationMethod === 'Locate as a scaled rectangle';
   const selectedCopyCandidate = copyCandidates.find((c) => c.id === copySourceMicrographId) ?? null;
 
@@ -602,7 +672,7 @@ export function EditMicrographLocationDialog({
       maxWidth={step === 2 ? 'lg' : 'sm'}
       fullWidth
     >
-      <DialogTitle>Edit Micrograph Location</DialogTitle>
+      <MicrographDialogTitle title="Edit Micrograph Location" micrographId={micrographId} progress={progress} />
 
       <DialogContent>
         <Stepper activeStep={displayStep} sx={{ mb: 3 }}>
@@ -623,7 +693,10 @@ export function EditMicrographLocationDialog({
             </Typography>
             <RadioGroup
               value={locationMethod}
-              onChange={(e) => setLocationMethod(e.target.value as LocationMethod)}
+              onChange={(e) => {
+                setLocationMethod(e.target.value as LocationMethod);
+                setAutoPlacement(null);
+              }}
             >
               <FormControlLabel
                 value="Locate as a scaled rectangle"
@@ -690,7 +763,28 @@ export function EditMicrographLocationDialog({
                   : 'Reproduce a sibling micrograph\'s placement exactly, whatever method located it. Finishes immediately.'}
               </Typography>
 
-              {isCopyMethod && copyCandidates.length > 0 && (
+              <FormControlLabel
+                value="Same area as parent"
+                control={<Radio />}
+                label="Same area as parent"
+                disabled={parentAreaReason !== null}
+              />
+              <Typography
+                variant="caption"
+                sx={{
+                  color: 'text.secondary',
+                  ml: 4,
+                  mt: -1
+                }}>
+                {parentAreaReason !== null
+                  ? `Not available: ${parentAreaReason}`
+                  : 'Covers the parent exactly (for example element maps collected with it). Finishes immediately.'}
+              </Typography>
+              {isParentAreaMethod && copyError && (
+                <Alert severity="error" sx={{ ml: 4, maxWidth: 520 }}>{copyError}</Alert>
+              )}
+
+              {locationMethod === 'Copy from existing micrograph' && copyCandidates.length > 0 && (
                 <Stack spacing={1} sx={{ ml: 4, mt: 1 }}>
                   <FormControl sx={{ minWidth: 300 }} size="small">
                     <InputLabel>Select Micrograph</InputLabel>
@@ -730,6 +824,23 @@ export function EditMicrographLocationDialog({
                   )}
                 </Stack>
               )}
+
+              <FormControlLabel
+                value="Place automatically on parent"
+                control={<Radio />}
+                label="Place automatically on parent"
+                sx={{ mt: 2 }}
+              />
+              <Typography
+                variant="caption"
+                sx={{
+                  color: 'text.secondary',
+                  ml: 4,
+                  mt: -1
+                }}>
+                StraboMicro finds where this image sits on its parent by matching features, then you check
+                it. Works best when both show the same kind of view (PPL on PPL, XPL on XPL)
+              </Typography>
             </RadioGroup>
           </Stack>
         )}
@@ -819,6 +930,49 @@ export function EditMicrographLocationDialog({
               </Typography>
 
               <FormControlLabel
+                value="Copy scale from an existing micrograph"
+                control={<Radio />}
+                label="Copy scale from an existing micrograph"
+                disabled={scaleSources.length === 0}
+              />
+              <Typography
+                variant="caption"
+                sx={{
+                  color: 'text.secondary',
+                  ml: 4,
+                  mt: -1,
+                  mb: isCopyScale ? 1 : 2
+                }}>
+                {scaleSources.length === 0
+                  ? 'No micrograph in this project has a scale yet'
+                  : 'Use the scale of a micrograph taken at the same magnification, then drag this one into place'}
+              </Typography>
+              {isCopyScale && (
+                <Stack spacing={1} sx={{ ml: 4, mb: 2 }}>
+                  <FormControl sx={{ minWidth: 300 }} size="small">
+                    <InputLabel id="copy-scale-source-label">Copy scale from</InputLabel>
+                    <Select
+                      labelId="copy-scale-source-label"
+                      value={scaleSourceId}
+                      label="Copy scale from"
+                      onChange={(e) => setScaleSourceId(e.target.value)}
+                    >
+                      {scaleSources.map((src) => (
+                        <MenuItem key={src.id} value={src.id}>{describeScaleSource(src)}</MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                  {scaleSource && (scaleSource.width !== micrograph.imageWidth || scaleSource.height !== micrograph.imageHeight) && (
+                    <Alert severity="info" sx={{ maxWidth: 520 }}>
+                      This image is {micrograph.imageWidth} × {micrograph.imageHeight} pixels and {scaleSource.name} is{' '}
+                      {scaleSource.width} × {scaleSource.height}. The scale is copied as it is, which is right when both
+                      were taken at the same magnification and resolution.
+                    </Alert>
+                  )}
+                </Stack>
+              )}
+
+              <FormControlLabel
                 value="Provide Width/Height of Image"
                 control={<Radio />}
                 label="Provide Width/Height of Image"
@@ -841,7 +995,29 @@ export function EditMicrographLocationDialog({
         {/* Step 2: Placement UI */}
         {step === 2 && (
           <Box>
-            {isAffine ? (
+            {isAuto ? (
+              <AutoPlacementPanel
+                parentMicrographId={parentMicrograph.id}
+                detailPath={childImagePath}
+                detailWidth={micrograph.imageWidth || micrograph.width || 0}
+                detailHeight={micrograph.imageHeight || micrograph.height || 0}
+                initialOpacity={opacity}
+                onOutcome={setAutoPlacement}
+                onOpacityChange={setOpacity}
+                onPlaceByHand={(method) => {
+                  setLocationMethod(method);
+                  setAutoPlacement(null);
+                  if (method === 'Locate as a scaled rectangle') {
+                    // Center the overlay (PlacementCanvas does this for 0, 0) at the default size
+                    setOffsetX(0);
+                    setOffsetY(0);
+                    setRotation(0);
+                    setScaleX(1);
+                    setScaleY(1);
+                  }
+                }}
+              />
+            ) : isAffine ? (
               <Stack spacing={2}>
                 <Typography variant="body2" sx={{
                   color: 'text.secondary'
@@ -926,7 +1102,8 @@ export function EditMicrographLocationDialog({
                 childScratchPath={childImagePath}
                 childWidth={micrograph.imageWidth || 800}
                 childHeight={micrograph.imageHeight || 600}
-                scaleMethod={scaleMethod}
+                scaleMethod={canvasScaleMethod}
+                initialPixelConversion={initialPixelConversion}
                 // For methods requiring scale input, use (0, 0) to center the child initially
                 // For "Stretch and Drag", use the existing position
                 initialOffsetX={requiresScaleData() ? 0 : offsetX}
@@ -945,7 +1122,8 @@ export function EditMicrographLocationDialog({
                 childScratchPath={childImagePath}
                 childWidth={micrograph.imageWidth || 800}
                 childHeight={micrograph.imageHeight || 600}
-                scaleMethod={scaleMethod}
+                scaleMethod={canvasScaleMethod}
+                initialPixelConversion={initialPixelConversion}
                 initialOffsetX={pointX}
                 initialOffsetY={pointY}
                 onPlacementChange={(x, y) => handlePointPlacementChange(x, y)}

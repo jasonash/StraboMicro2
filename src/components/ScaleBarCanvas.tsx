@@ -3,6 +3,7 @@ import { Stage, Layer, Image as KonvaImage, Line } from 'react-konva';
 import { Box, Stack, IconButton, Tooltip, Paper } from '@mui/material';
 import { PanTool, Timeline, ZoomIn, ZoomOut, RestartAlt } from '@mui/icons-material';
 import Konva from 'konva';
+import { wheelZoomDirection } from '@/utils/wheelZoom';
 
 export type Tool = 'pointer' | 'line';
 
@@ -203,7 +204,8 @@ export const ScaleBarCanvas = forwardRef<ScaleBarCanvasRef, ScaleBarCanvasProps>
       y: (pointer.y - stagePos.y) / oldScale,
     };
 
-    const direction = e.evt.deltaY > 0 ? -1 : 1;
+    const direction = wheelZoomDirection(e.evt);
+    if (direction === 0) return;
     const newScale = direction > 0 ? oldScale * 1.1 : oldScale / 1.1;
     const clampedScale = Math.max(0.1, Math.min(20, newScale));
 

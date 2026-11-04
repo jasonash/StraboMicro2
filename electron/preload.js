@@ -1,9 +1,27 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
+/** The app's handler for the times a save stamped (saveProjectJson) */
+let projectStampListener = null;
+
 // Expose protected methods that allow the renderer process to use
 // the ipcRenderer without exposing the entire object
 contextBridge.exposeInMainWorld('api', {
   version: process.versions.electron,
+  /** An end-to-end test run (STRABO_E2E_DIR, development only; tests/e2e) */
+  e2e: (() => {
+    const arg = process.argv.find((a) => a.startsWith('--strabo-e2e='));
+    if (!arg) return null;
+    const poll = process.argv.find((a) => a.startsWith('--strabo-e2e-poll='));
+    const pollMs = poll ? Number(poll.slice('--strabo-e2e-poll='.length)) : 0;
+    const timers = process.argv.find((a) => a.startsWith('--strabo-e2e-timers='))?.slice('--strabo-e2e-timers='.length);
+    return {
+      server: arg.slice('--strabo-e2e='.length),
+      ...(pollMs > 0 ? { pollMs } : {}),
+      ...(timers === 'real' || timers === 'legacy' ? { timers } : {}),
+      ...(process.argv.includes('--strabo-e2e-grain-cpu') ? { grainCpu: true } : {}),
+      ...(process.argv.includes('--strabo-e2e-grain-bad-gpu') ? { grainBadGpu: true } : {}),
+    };
+  })(),
 
   // Session state persistence (for zustand store - replaces localStorage)
   session: {
@@ -113,6 +131,13 @@ contextBridge.exposeInMainWorld('api', {
   openFilesDialog: () => ipcRenderer.invoke('dialog:open-files'),
   saveTextFile: (content, defaultName, extension) =>
     ipcRenderer.invoke('dialog:save-text-file', content, defaultName, extension),
+  openTextFile: (title, extension) => ipcRenderer.invoke('dialog:open-text-file', title, extension),
+
+  // Custom User Data files (.xlsx / .csv)
+  customUserData: {
+    save: (table, defaultName, format) => ipcRenderer.invoke('custom-user-data:save', table, defaultName, format),
+    open: () => ipcRenderer.invoke('custom-user-data:open'),
+  },
 
   // External links
   openExternalLink: (url) => ipcRenderer.invoke('open-external-link', url),
@@ -163,10 +188,25 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('view:toggle-recursive-spots', handler);
     return () => ipcRenderer.removeListener('view:toggle-recursive-spots', handler);
   },
+  onToggleParentSpots: (callback) => {
+    const handler = (event, checked) => callback(checked);
+    ipcRenderer.on('view:toggle-parent-spots', handler);
+    return () => ipcRenderer.removeListener('view:toggle-parent-spots', handler);
+  },
   onToggleArchivedSpots: (callback) => {
     const handler = (event, checked) => callback(checked);
     ipcRenderer.on('view:toggle-archived-spots', handler);
     return () => ipcRenderer.removeListener('view:toggle-archived-spots', handler);
+  },
+  onMicrographVisibility: (callback) => {
+    const handler = () => callback();
+    ipcRenderer.on('view:micrograph-visibility', handler);
+    return () => ipcRenderer.removeListener('view:micrograph-visibility', handler);
+  },
+  onFilterSpots: (callback) => {
+    const handler = () => callback();
+    ipcRenderer.on('view:filter-spots', handler);
+    return () => ipcRenderer.removeListener('view:filter-spots', handler);
   },
   onShowPointCountStatistics: (callback) => {
     const handler = () => callback();
@@ -275,6 +315,7 @@ contextBridge.exposeInMainWorld('api', {
   generateImageVariants: (sourcePath, projectId, micrographId) =>
     ipcRenderer.invoke('image:generate-variants', sourcePath, projectId, micrographId),
   getImageDimensions: (imagePath) => ipcRenderer.invoke('image:get-dimensions', imagePath),
+  readGrayRegion: (imagePath, rect, maxSide) => ipcRenderer.invoke('image:read-gray-region', imagePath, rect, maxSide),
   isValidImage: (filePath) => ipcRenderer.invoke('image:is-valid', filePath),
   rotateImage: (imagePath, degrees, flip) => ipcRenderer.invoke('image:rotate', imagePath, degrees, flip),
 
@@ -289,7 +330,18 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('composite:rebuild-all-thumbnails', projectId, projectData),
 
   // Project serialization
-  saveProjectJson: (project, projectId) => ipcRenderer.invoke('project:save-json', project, projectId),
+  // The times a save stamped go to the app (onProjectStamped), so its project matches the file
+  saveProjectJson: async (project, projectId) => {
+    const result = await ipcRenderer.invoke('project:save-json', project, projectId);
+    if (result && result.stamps && projectStampListener) projectStampListener(projectId, result.stamps);
+    return result;
+  },
+  onProjectStamped: (callback) => {
+    projectStampListener = callback;
+    return () => {
+      if (projectStampListener === callback) projectStampListener = null;
+    };
+  },
   loadProjectJson: (projectId) => ipcRenderer.invoke('project:load-json', projectId),
 
   // Debug utilities
@@ -364,10 +416,15 @@ contextBridge.exposeInMainWorld('api', {
     login: (email, password, restServer) => ipcRenderer.invoke('auth:login', email, password, restServer),
     logout: (restServer) => ipcRenderer.invoke('auth:logout', restServer),
     refresh: (restServer) => ipcRenderer.invoke('auth:refresh', restServer),
-    check: () => ipcRenderer.invoke('auth:check'),
+    check: (restServer) => ipcRenderer.invoke('auth:check', restServer),
     getToken: () => ipcRenderer.invoke('auth:get-token'),
     checkStorage: () => ipcRenderer.invoke('auth:check-storage'),
-    notifyStateChanged: (isLoggedIn) => ipcRenderer.send('auth:state-changed', isLoggedIn),
+    notifyStateChanged: (isLoggedIn, restServer) => ipcRenderer.send('auth:state-changed', isLoggedIn, restServer),
+    onSessionEnded: (callback) => {
+      const listener = (_event, info) => callback(info);
+      ipcRenderer.on('auth:session-ended', listener);
+      return () => ipcRenderer.removeListener('auth:session-ended', listener);
+    },
   },
 
   // Auth menu events
@@ -449,18 +506,15 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('menu:push-to-server', callback);
     return () => ipcRenderer.removeListener('menu:push-to-server', callback);
   },
+  onActivity: (callback) => {
+    ipcRenderer.on('menu:activity', callback);
+    return () => ipcRenderer.removeListener('menu:activity', callback);
+  },
+  onCollaborate: (callback) => {
+    ipcRenderer.on('menu:collaborate', callback);
+    return () => ipcRenderer.removeListener('menu:collaborate', callback);
+  },
   server: {
-    checkConnectivity: () => ipcRenderer.invoke('server:check-connectivity'),
-    checkProjectExists: (projectId) => ipcRenderer.invoke('server:check-project-exists', projectId),
-    pushProject: (projectId, projectData, options) =>
-      ipcRenderer.invoke('server:push-project', projectId, projectData, options),
-    onPushProgress: (callback) =>
-      ipcRenderer.on('server:push-progress', (event, progress) => callback(progress)),
-    removePushProgressListener: () =>
-      ipcRenderer.removeAllListeners('server:push-progress'),
-    // Remote project download (Open Remote Project)
-    listProjects: () => ipcRenderer.invoke('server:list-projects'),
-    downloadProject: (projectId) => ipcRenderer.invoke('server:download-project', projectId),
     cleanupDownload: (zipPath) => ipcRenderer.invoke('server:cleanup-download', zipPath),
     onDownloadProgress: (callback) => {
       const handler = (event, progress) => callback(progress);
@@ -539,6 +593,14 @@ contextBridge.exposeInMainWorld('api', {
     remove: (projectId) => ipcRenderer.invoke('projects:remove', projectId),
     // Load a project by ID
     load: (projectId) => ipcRenderer.invoke('projects:load', projectId),
+    // Whose copy the open project is (another account's copy, 16ax)
+    copyOwner: (projectId, forOpen) => ipcRenderer.invoke('projects:copy-owner', projectId, forOpen),
+    // Main recorded a login state change (the open copy's owner may differ now)
+    onAccountsChanged: (callback) => {
+      const listener = () => callback();
+      ipcRenderer.on('accounts:changed', listener);
+      return () => ipcRenderer.removeListener('accounts:changed', listener);
+    },
     // Refresh the Recent Projects menu
     refreshMenu: () => ipcRenderer.invoke('projects:refresh-menu'),
     // Close (delete) a project completely - removes from disk, index, and version history
@@ -577,9 +639,9 @@ contextBridge.exposeInMainWorld('api', {
     // Open file selection dialog for .smz files
     selectFile: () => ipcRenderer.invoke('smz:select-file'),
     // Inspect an .smz file (get project info without importing)
-    inspect: (smzPath) => ipcRenderer.invoke('smz:inspect', smzPath),
-    // Import an .smz file (DESTRUCTIVE - replaces existing project)
-    import: (smzPath) => ipcRenderer.invoke('smz:import', smzPath),
+    inspect: (smzPath, options) => ipcRenderer.invoke('smz:inspect', smzPath, options),
+    // Import an .smz file (DESTRUCTIVE - replaces a local-only project with the same id)
+    import: (smzPath, options) => ipcRenderer.invoke('smz:import', smzPath, options),
     // Progress updates during import
     onImportProgress: (callback) => {
       const handler = (event, progress) => callback(progress);
@@ -601,6 +663,11 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('debug:trigger-test-error', handler);
     return () => ipcRenderer.removeListener('debug:trigger-test-error', handler);
   },
+  onDebugImportSmzCopy: (callback) => {
+    const handler = () => callback();
+    ipcRenderer.on('debug:import-smz-copy', handler);
+    return () => ipcRenderer.removeListener('debug:import-smz-copy', handler);
+  },
   onDebugGenerateTestSpots: (callback) => {
     const handler = () => callback();
     ipcRenderer.on('debug:generate-test-spots', handler);
@@ -615,6 +682,136 @@ contextBridge.exposeInMainWorld('api', {
     const handler = () => callback();
     ipcRenderer.on('debug:toggle-memory-monitor', handler);
     return () => ipcRenderer.removeListener('debug:toggle-memory-monitor', handler);
+  },
+
+  // Sync of synced projects (collaboration); local-only projects only ever call status
+  sync: {
+    status: (projectId, project) => ipcRenderer.invoke('sync:status', projectId, project),
+    turnOn: (projectId, restServer, mode) => ipcRenderer.invoke('sync:turn-on', projectId, restServer, mode),
+    push: (projectId, restServer) => ipcRenderer.invoke('sync:push', projectId, restServer),
+    setMode: (projectId, mode) => ipcRenderer.invoke('sync:set-mode', projectId, mode),
+    preflight: (projectId, restServer) => ipcRenderer.invoke('sync:preflight', projectId, restServer),
+    activity: (projectId, restServer, presence) => ipcRenderer.invoke('sync:activity', projectId, restServer, presence),
+    serverProject: (projectId, restServer) => ipcRenderer.invoke('sync:server-project', projectId, restServer),
+    serverProjects: (restServer) => ipcRenderer.invoke('sync:server-projects', restServer),
+    // The "What's new: sync" intro and its background uploads (16aq, 16ay)
+    introStatus: () => ipcRenderer.invoke('sync:intro-status'),
+    introCandidates: (restServer) => ipcRenderer.invoke('sync:intro-candidates', restServer),
+    introShown: () => ipcRenderer.invoke('sync:intro-shown'),
+    introEnqueue: (projectIds, mode, restServer) => ipcRenderer.invoke('sync:intro-enqueue', projectIds, mode, restServer),
+    onIntroStatus: (callback) => {
+      const handler = (event, status) => callback(status);
+      ipcRenderer.on('sync:intro-status', handler);
+      return () => ipcRenderer.removeListener('sync:intro-status', handler);
+    },
+    promptAnswer: (projectId, answer) => ipcRenderer.invoke('sync:prompt-answer', projectId, answer),
+    compare: (projectId, restServer, pid) => ipcRenderer.invoke('sync:compare', projectId, restServer, pid),
+    link: (projectId, restServer, pid, mode, use) => ipcRenderer.invoke('sync:link', projectId, restServer, pid, mode, use),
+    openRemote: (pid, restServer, mode) => ipcRenderer.invoke('sync:open-remote', pid, restServer, mode),
+    pull: (projectId, restServer) => ipcRenderer.invoke('sync:pull', projectId, restServer),
+    pullCommit: (projectId, pullId) => ipcRenderer.invoke('sync:pull-commit', projectId, pullId),
+    pullDiscard: (projectId, pullId) => ipcRenderer.invoke('sync:pull-discard', projectId, pullId),
+    download: (projectId, restServer) => ipcRenderer.invoke('sync:download', projectId, restServer),
+    clone: (pid, restServer, mode) => ipcRenderer.invoke('sync:clone', pid, restServer, mode),
+    // Collaborators (Phase 2)
+    permissions: (projectId) => ipcRenderer.invoke('sync:permissions', projectId),
+    members: (projectId, restServer) => ipcRenderer.invoke('sync:members', projectId, restServer),
+    changeMembers: (projectId, restServer, change) => ipcRenderer.invoke('sync:change-members', projectId, restServer, change),
+    invites: (restServer) => ipcRenderer.invoke('sync:invites', restServer),
+    answerInvite: (restServer, pid, accept) => ipcRenderer.invoke('sync:answer-invite', restServer, pid, accept),
+    leave: (projectId, restServer) => ipcRenderer.invoke('sync:leave', projectId, restServer),
+    deleteProject: (projectId, restServer) => ipcRenderer.invoke('sync:delete-project', projectId, restServer),
+    separate: (projectId) => ipcRenderer.invoke('sync:separate', projectId),
+    history: (projectId, restServer, before) => ipcRenderer.invoke('sync:history', projectId, restServer, before),
+    restoreDeleted: (projectId, restServer, items) => ipcRenderer.invoke('sync:restore-deleted', projectId, restServer, items),
+    parked: (projectId, restServer) => ipcRenderer.invoke('sync:parked', projectId, restServer),
+    reviewParked: (projectId, restServer, parkedId, decisions, memberPkey) =>
+      ipcRenderer.invoke('sync:review-parked', projectId, restServer, parkedId, decisions, memberPkey),
+    decisions: (projectId) => ipcRenderer.invoke('sync:decisions', projectId),
+    decide: (projectId, decision) => ipcRenderer.invoke('sync:decide', projectId, decision),
+    decideCommit: (projectId, decisionId) => ipcRenderer.invoke('sync:decide-commit', projectId, decisionId),
+    decideDiscard: (projectId, decisionId) => ipcRenderer.invoke('sync:decide-discard', projectId, decisionId),
+    testOther: (projectId, restServer, changes) => ipcRenderer.invoke('sync:test-other', projectId, restServer, changes),
+    testCompare: (projectId, restServer) => ipcRenderer.invoke('sync:test-compare', projectId, restServer),
+    onProgress: (callback) => {
+      const handler = (event, progress) => callback(progress);
+      ipcRenderer.on('sync:progress', handler);
+      return () => ipcRenderer.removeListener('sync:progress', handler);
+    },
+    onLocalChange: (callback) => {
+      const handler = (event, projectId) => callback(projectId);
+      ipcRenderer.on('sync:local-change', handler);
+      return () => ipcRenderer.removeListener('sync:local-change', handler);
+    },
+    liveFollow: (projectId, restServer) => ipcRenderer.invoke('sync:live-follow', projectId, restServer),
+    liveUnfollow: (projectId) => ipcRenderer.invoke('sync:live-unfollow', projectId),
+    livePresence: (projectId, presence) => ipcRenderer.invoke('sync:live-presence', projectId, presence),
+    onLive: (callback) => {
+      const handler = (event, liveEvent) => callback(liveEvent);
+      ipcRenderer.on('sync:live', handler);
+      return () => ipcRenderer.removeListener('sync:live', handler);
+    },
+    notifyMenuState: (synced) => ipcRenderer.send('sync:menu-state', synced),
+  },
+  // The chat window (17bd, 17be; electron/chatWindow.js). The main window
+  // opens it and says which project is open; the chat window asks the main
+  // window (through main) for the selection and for names of linked items.
+  chatWindow: {
+    open: () => ipcRenderer.invoke('chatwin:open'),
+    setContext: (context) => ipcRenderer.invoke('chatwin:set-context', context),
+    context: () => ipcRenderer.invoke('chatwin:context'),
+    onContext: (callback) => {
+      const handler = (event, context) => callback(context);
+      ipcRenderer.on('chatwin:context', handler);
+      return () => ipcRenderer.removeListener('chatwin:context', handler);
+    },
+    pin: (on) => ipcRenderer.invoke('chatwin:pin', on),
+    pinned: () => ipcRenderer.invoke('chatwin:pinned'),
+    hide: () => ipcRenderer.invoke('chatwin:hide'),
+    selection: () => ipcRenderer.invoke('chatwin:selection'),
+    resolve: (refs) => ipcRenderer.invoke('chatwin:resolve', refs),
+    selectRef: (ref) => ipcRenderer.invoke('chatwin:select-ref', ref),
+    // Main window side: answer the chat window's questions, select a linked item
+    onRequest: (callback) => {
+      const handler = (event, req) => {
+        Promise.resolve()
+          .then(() => callback(req.kind, req.payload))
+          .then((value) => ipcRenderer.send('chatwin:reply', req.id, value === undefined ? null : value))
+          .catch(() => ipcRenderer.send('chatwin:reply', req.id, null));
+      };
+      ipcRenderer.on('chatwin:request', handler);
+      return () => ipcRenderer.removeListener('chatwin:request', handler);
+    },
+    onSelectRef: (callback) => {
+      const handler = (event, ref) => callback(ref);
+      ipcRenderer.on('chat:select-ref', handler);
+      return () => ipcRenderer.removeListener('chat:select-ref', handler);
+    },
+  },
+  // Project chat of the open synced project (17bd-17bi); state lives in main (electron/sync/chat.js)
+  chat: {
+    open: (projectId, restServer) => ipcRenderer.invoke('chat:open', projectId, restServer),
+    close: (projectId) => ipcRenderer.invoke('chat:close', projectId),
+    state: (projectId) => ipcRenderer.invoke('chat:state', projectId),
+    send: (projectId, text, refs) => ipcRenderer.invoke('chat:send', projectId, text, refs),
+    retry: (projectId, clientMsgId) => ipcRenderer.invoke('chat:retry', projectId, clientMsgId),
+    discard: (projectId, clientMsgId) => ipcRenderer.invoke('chat:discard', projectId, clientMsgId),
+    deleteMessage: (projectId, id) => ipcRenderer.invoke('chat:delete', projectId, id),
+    loadOlder: (projectId) => ipcRenderer.invoke('chat:older', projectId),
+    markRead: (projectId, id) => ipcRenderer.invoke('chat:read', projectId, id),
+    onEvent: (callback) => {
+      const handler = (event, chatEvent) => callback(chatEvent);
+      ipcRenderer.on('chat:event', handler);
+      return () => ipcRenderer.removeListener('chat:event', handler);
+    },
+    // The "Chat notifications" switch in Preferences (17bh b; electron/chatWindow.js)
+    notifications: () => ipcRenderer.invoke('chat:notifications'),
+    setNotifications: (on) => ipcRenderer.invoke('chat:set-notifications', on),
+  },
+  onDebugSync: (callback) => {
+    const handler = (event, action, arg) => callback(action, arg);
+    ipcRenderer.on('debug:sync', handler);
+    return () => ipcRenderer.removeListener('debug:sync', handler);
   },
 
   // Point Count storage (separate from Spot system)
@@ -654,6 +851,11 @@ contextBridge.exposeInMainWorld('api', {
     const handler = () => callback();
     ipcRenderer.on('menu:image-comparator', handler);
     return () => ipcRenderer.removeListener('menu:image-comparator', handler);
+  },
+  onCustomUserData: (callback) => {
+    const handler = () => callback();
+    ipcRenderer.on('menu:custom-user-data', handler);
+    return () => ipcRenderer.removeListener('menu:custom-user-data', handler);
   },
   onGrainSizeAnalysis: (callback) => {
     const handler = () => callback();
@@ -703,5 +905,17 @@ contextBridge.exposeInMainWorld('api', {
     },
     // Read model file bytes (renderer passes to onnxruntime-web directly)
     loadModelBytes: () => ipcRenderer.invoke('fastsam:load-model-bytes'),
+  },
+
+  // Grain Spot model (SAM 2.1 tiny): download once, bytes for the renderer's worker
+  grainSpot: {
+    status: () => ipcRenderer.invoke('grainspot:status'),
+    download: () => ipcRenderer.invoke('grainspot:download'),
+    onDownloadProgress: (callback) => {
+      const handler = (_event, progress) => callback(progress);
+      ipcRenderer.on('grainspot:download-progress', handler);
+      return () => ipcRenderer.removeListener('grainspot:download-progress', handler);
+    },
+    load: () => ipcRenderer.invoke('grainspot:load'),
   },
 });

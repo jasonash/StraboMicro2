@@ -1,0 +1,661 @@
+/**
+ * What a person does in the app, step by step, through the real menus and
+ * dialogs (labels as the app shows them). Each helper waits until the app
+ * has finished, so scenarios read like the manual test scripts.
+ */
+
+import { expect } from '@playwright/test';
+import { createHash } from 'crypto';
+import fs from 'fs';
+import path from 'path';
+import { SERVER as SERVER_URL, type Copy } from './copy';
+import { endSessions } from './server';
+
+/** File > Open Local Project (.smz): Import, then Open Project */
+export async function openSmz(copy: Copy, smzPath: string, projectId: string): Promise<void> {
+  await copy.answerDialog({ kind: 'open', filePaths: [smzPath] });
+  await copy.menu('File', 'Open Local Project (.smz)');
+  const dialog = copy.page.getByRole('dialog', { name: 'Open Project' });
+  await dialog.getByRole('button', { name: 'Import' }).click();
+  await dialog.getByRole('button', { name: 'Open Project' }).click({ timeout: 60_000 });
+  await expect.poll(() => copy.state((e) => e.app.getState().project?.id ?? null), { timeout: 30_000 }).toBe(projectId);
+}
+
+/** File > Upload to Strabo Server...: the turn-on dialog, Start Syncing; waits for the first upload */
+export async function turnOnSync(copy: Copy, mode: 'Sync automatically' | 'Sync when I click' = 'Sync automatically'): Promise<void> {
+  await copy.menu('File', 'Upload to Strabo Server...');
+  const dialog = copy.page.getByRole('dialog', { name: 'Sync this project to StraboSpot' });
+  await dialog.getByText(mode, { exact: true }).click();
+  await copy.caption(`chooses '${mode}', Start Syncing`);
+  await dialog.getByRole('button', { name: 'Start Syncing' }).click();
+  await expect.poll(() => copy.state((e) => {
+    const s = e.sync.getState();
+    return s.synced && s.phase === 'ready' && s.pid !== null;
+  }), { timeout: 90_000 }).toBe(true);
+}
+
+/** File > Collaborate...: invite by email with a role, then Close */
+export async function invite(copy: Copy, email: string, role: 'Editor' | 'Contributor' | 'Viewer'): Promise<void> {
+  await copy.menu('File', 'Collaborate...');
+  const dialog = copy.page.getByRole('dialog', { name: 'Collaborators' });
+  await dialog.getByLabel('Email address').fill(email);
+  await dialog.getByRole('combobox').last().click(); // members' role pickers come first
+  await copy.page.getByRole('option', { name: role, exact: true }).click();
+  await copy.caption(`invites ${email} as ${role}`);
+  await dialog.getByRole('button', { name: 'Invite', exact: true }).click();
+  await expect(dialog.getByText(`Invitation sent to ${email}.`)).toBeVisible();
+  await dialog.getByRole('button', { name: 'Close' }).click();
+  await expect(dialog).toBeHidden();
+}
+
+/**
+ * The header chip ('1 invitation') opens the invitation; Accept, then Open.
+ * Waits for the project to be open and synced in this copy.
+ */
+export async function acceptInvitationFromChip(copy: Copy, projectName: string): Promise<void> {
+  const chip = copy.page.getByRole('button', { name: /^\d+ invitations?$/ });
+  await expect(chip).toBeVisible({ timeout: 30_000 });
+  await copy.caption('sees the invitation in the header');
+  await chip.click();
+  await acceptInDialog(copy, projectName);
+}
+
+/** The invitation dialog (opened at login, or from the chip): Accept, then Open */
+export async function acceptInDialog(copy: Copy, projectName: string): Promise<void> {
+  const dialog = copy.page.getByRole('dialog', { name: /You have (an invitation|invitations)/ });
+  const row = dialog.getByRole('listitem').filter({ hasText: projectName });
+  await row.getByRole('button', { name: 'Accept' }).click();
+  await row.getByRole('button', { name: 'Open' }).click({ timeout: 90_000 });
+  await expect.poll(() => copy.state((e) => {
+    const s = e.sync.getState();
+    return Boolean(s.synced && e.app.getState().project?.name);
+  }), { timeout: 60_000 }).toBe(true);
+}
+
+/** Nothing waiting either way: no local changes to push, none to pull, no file downloads, not syncing */
+export async function waitSettled(copy: Copy, timeout = 60_000): Promise<void> {
+  await expect.poll(() => copy.state((e) => {
+    const s = e.sync.getState();
+    return { activity: s.activity, pending: s.pending ?? 0, incoming: s.incoming, downloads: s.downloads, problem: s.problem?.message ?? null };
+  }), { timeout }).toEqual({ activity: 'idle', pending: 0, incoming: 0, downloads: 0, problem: null });
+}
+
+/** A spot's field as this copy has it */
+export function spotField(copy: Copy, spotId: string, field: string): Promise<unknown> {
+  return copy.state(new Function('e', `
+    for (const d of e.app.getState().project?.datasets ?? [])
+      for (const s of d.samples ?? [])
+        for (const m of s.micrographs ?? [])
+          for (const sp of m.spots ?? []) if (sp.id === ${JSON.stringify(spotId)}) return sp[${JSON.stringify(field)}] ?? null;
+    return undefined;
+  `) as (e: NonNullable<Window['__e2e']>) => unknown);
+}
+
+/** The header sync chip (its text follows the state: 'Synced', 'Manual · 2 to sync', ...) */
+export function syncChip(copy: Copy) {
+  return copy.page.getByTestId('sync-chip');
+}
+
+/** Sync chip > Sync Now */
+export async function syncNow(copy: Copy): Promise<void> {
+  await syncChip(copy).click();
+  await copy.caption('Sync Now');
+  await copy.page.getByRole('button', { name: 'Sync Now' }).click();
+}
+
+/** Sync chip > 'Sync automatically' or 'Sync when I click' */
+export async function setMode(copy: Copy, mode: 'Sync automatically' | 'Sync when I click'): Promise<void> {
+  await syncChip(copy).click();
+  await copy.caption(`switches to '${mode}'`);
+  await copy.page.getByRole('presentation').getByText(mode, { exact: true }).click();
+  await expect.poll(() => copy.state((e) => e.sync.getState().mode)).toBe(mode === 'Sync automatically' ? 'automatic' : 'manual');
+  await copy.page.keyboard.press('Escape');
+}
+
+/**
+ * Take this copy off the network (or back): its main process cannot reach
+ * the server, the way a laptop without Wi-Fi cannot. The sync client reads
+ * the global fetch on every call. 'dropped': the connection breaks while a
+ * request is on its way (the server may have it), so an interrupted push
+ * is kept and sent again first. 'lost-reply': every request reaches the
+ * server and is done there, but the answer never comes back (ECONNRESET).
+ */
+export async function setOffline(copy: Copy, offline: boolean, how: 'no-network' | 'dropped' | 'lost-reply' = 'no-network'): Promise<void> {
+  await copy.caption(offline
+    ? (how === 'dropped' ? 'loses the connection mid-request' : how === 'lost-reply' ? 'loses every answer from the server' : 'goes offline')
+    : 'comes back online');
+  const code = how === 'no-network' ? 'ECONNREFUSED' : 'ECONNRESET';
+  const afterSending = how === 'lost-reply';
+  await copy.app.evaluate((_electron, [offline, server, code, afterSending]) => {
+    const g = globalThis as unknown as { __e2eFetch?: typeof fetch; fetch: typeof fetch };
+    if (!g.__e2eFetch) g.__e2eFetch = g.fetch;
+    const real = g.__e2eFetch;
+    g.fetch = offline
+      ? (async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+        const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+        if (!url.startsWith(server)) return real(input, init);
+        const fail = () => Object.assign(new TypeError('fetch failed'), { cause: Object.assign(new Error(code), { code }) });
+        // The server has the request and does it; only its answer is lost
+        if (afterSending) {
+          const res = await real(input, init);
+          await res.arrayBuffer().catch(() => undefined);
+          throw fail();
+        }
+        // As Node's fetch fails with no network: before anything is sent
+        throw fail();
+      }) as typeof fetch
+      : real;
+  }, [offline, SERVER_URL, code, afterSending] as const);
+}
+
+/**
+ * The copy's session runs out, as after days without a refresh: the server
+ * revokes its refresh tokens, and the access tokens it holds now (issued up
+ * to this second) are refused with 401 like an expired JWT. A login after
+ * this gets new tokens that work. The live channel keeps its connection
+ * (the server checks a token only when it is sent).
+ */
+export async function expireSession(copy: Copy): Promise<void> {
+  await copy.caption('has been away long enough for the login to run out');
+  endSessions(copy.account.email);
+  const cutoff = Math.floor(Date.now() / 1000);
+  await copy.app.evaluate((_electron, [server, cutoff]) => {
+    const g = globalThis as unknown as { __e2eAuthFetch?: typeof fetch; fetch: typeof fetch };
+    if (!g.__e2eAuthFetch) g.__e2eAuthFetch = g.fetch;
+    const real = g.__e2eAuthFetch;
+    const issuedAt = (auth: string | null): number | null => {
+      const m = auth ? /^Bearer\s+[^.]+\.([^.]+)\./.exec(auth) : null;
+      if (!m) return null;
+      try {
+        return Number(JSON.parse(Buffer.from(m[1], 'base64url').toString('utf8')).iat);
+      } catch {
+        return null;
+      }
+    };
+    g.fetch = (async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      const headers = new Headers(init?.headers ?? (input instanceof Request ? input.headers : undefined));
+      const iat = issuedAt(headers.get('authorization'));
+      if (url.startsWith(server) && iat !== null && iat <= cutoff) {
+        return new Response(JSON.stringify({ error: 'token_expired' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
+      }
+      return real(input, init);
+    }) as typeof fetch;
+  }, [SERVER_URL, cutoff] as const);
+}
+
+/** The bottom-left notice 'You were logged out of StraboSpot...' (a session that ran out) */
+export function sessionEndedNotice(copy: Copy) {
+  return copy.page.getByRole('alert').filter({ hasText: 'You were logged out of StraboSpot' });
+}
+
+/** The notice 'N sync changes need your decision' > Review: the decisions dialog */
+export async function reviewDecisions(copy: Copy) {
+  // A Sync Now that leaves something to decide opens the dialog by itself
+  // (16x); otherwise the notice offers Review
+  const dialog = copy.page.getByRole('dialog', { name: 'Sync needs your decision' });
+  const notice = copy.page.getByText(/sync (change needs|changes need) your decision/);
+  await expect(dialog.or(notice).first()).toBeVisible({ timeout: 30_000 });
+  if (!(await dialog.isVisible())) {
+    await copy.caption('reviews the decisions');
+    await copy.page.getByRole('button', { name: 'Review', exact: true }).click();
+  }
+  await expect(dialog).toBeVisible();
+  return dialog;
+}
+
+/** Change a spot the way the spot editor does (store action updateSpotData) */
+export async function editSpot(copy: Copy, spotId: string, updates: Record<string, unknown>): Promise<void> {
+  await copy.caption(`edits a spot: ${JSON.stringify(updates)}`);
+  await copy.state(new Function('e', `e.app.getState().updateSpotData(${JSON.stringify(spotId)}, ${JSON.stringify(updates)})`) as never);
+}
+
+/** Delete a spot the way the spot menu does (store action deleteSpot) */
+export async function deleteSpot(copy: Copy, spotId: string): Promise<void> {
+  await copy.caption('deletes a spot');
+  await copy.state(new Function('e', `e.app.getState().deleteSpot(${JSON.stringify(spotId)})`) as never);
+}
+
+/**
+ * The usual start: the owner opens the project and syncs it, invites the
+ * member with a role, the member accepts from the header chip; both settled.
+ */
+export async function share(owner: Copy, member: Copy, smzPath: string, projectId: string, projectName: string,
+  role: 'Editor' | 'Contributor' | 'Viewer' = 'Editor'): Promise<void> {
+  await openSmz(owner, smzPath, projectId);
+  await turnOnSync(owner);
+  await invite(owner, member.account.email, role);
+  await acceptInvitationFromChip(member, projectName);
+  await waitSettled(owner);
+  await waitSettled(member);
+}
+
+/** The tree's + button on a row (dataset, sample or micrograph) by its name */
+function treeAddButton(copy: Copy, rowName: string) {
+  return copy.page.getByText(rowName, { exact: true }).locator('xpath=..').locator('button:has([data-testid="AddIcon"])');
+}
+
+/**
+ * Sample + > Add New Reference Micrograph, through all eight steps of the
+ * New Reference Micrograph dialog (Optical Microscopy, Plane Polarized
+ * Light, unoriented, scale by Pixel Conversion Factor). Returns its id.
+ */
+export async function addReferenceMicrograph(copy: Copy, sampleName: string, imagePath: string, name: string): Promise<string> {
+  const before = await copy.state((e) => {
+    const ids: string[] = [];
+    for (const d of e.app.getState().project?.datasets ?? []) for (const s of d.samples ?? []) for (const m of s.micrographs ?? []) ids.push(m.id);
+    return ids;
+  });
+  await copy.caption(`adds micrograph '${name}' to ${sampleName}`);
+  await treeAddButton(copy, sampleName).click();
+  await copy.page.getByRole('menuitem', { name: 'Add New Reference Micrograph' }).click();
+  const dialog = copy.page.getByRole('dialog', { name: 'New Reference Micrograph' });
+  const next = dialog.getByRole('button', { name: 'Next' });
+  const pick = async (combo: string, option: string) => {
+    await dialog.getByRole('combobox', { name: new RegExp(`^${combo}`) }).click();
+    await copy.page.getByRole('option', { name: option, exact: true }).click();
+  };
+
+  await copy.answerDialog({ kind: 'open', filePaths: [imagePath] });
+  await dialog.getByRole('button', { name: 'Browse...' }).click();
+  await next.click(); // 1 Load Reference Micrograph
+  await next.click(); // 2 Image Rotation
+  await pick('Instrument Type', 'Optical Microscopy');
+  await pick('Image Type', 'Plane Polarized Light');
+  await next.click(); // 3 Instrument & Image Information
+  await next.click(); // 4 Instrument Data
+  await dialog.getByLabel(/^Name/).fill(name);
+  await next.click(); // 5 Micrograph Metadata
+  await next.click(); // 6 Micrograph Orientation (unoriented)
+  await dialog.getByText('Pixel Conversion Factor', { exact: true }).click();
+  await next.click(); // 7 Set Micrograph Scale
+  await dialog.getByLabel(/^Number of Pixels/).fill('1000');
+  await dialog.getByLabel(/^Physical Length/).fill('1');
+  await copy.caption('Finish');
+  await dialog.getByRole('button', { name: 'Finish' }).click();
+  await expect(dialog).toBeHidden({ timeout: 60_000 });
+
+  let id = '';
+  await expect.poll(async () => {
+    const all = await copy.state((e) => {
+      const out: Array<{ id: string; name: string }> = [];
+      for (const d of e.app.getState().project?.datasets ?? []) for (const s of d.samples ?? []) for (const m of s.micrographs ?? []) out.push({ id: m.id, name: m.name ?? '' });
+      return out;
+    });
+    id = all.find((m) => !before.includes(m.id) && m.name === name)?.id ?? '';
+    return id;
+  }, { timeout: 30_000 }).not.toBe('');
+  return id;
+}
+
+/** Select a micrograph in the tree by name; wait until the viewer shows its image */
+export async function viewMicrograph(copy: Copy, micrographId: string): Promise<void> {
+  await copy.state(new Function('e', `return e.app.getState().selectMicrograph(${JSON.stringify(micrographId)})`) as never);
+  await expect(copy.page.getByText('No micrograph loaded')).toHaveCount(0);
+  await expect(copy.page.getByText('Loading image...')).toHaveCount(0, { timeout: 60_000 });
+  expect(copy.consoleErrors.filter((l) => /Failed to load image|load-tiles|ENOENT/.test(l))).toEqual([]);
+}
+
+/**
+ * Wait until this copy downloaded the micrograph's original. A new
+ * micrograph and its file refs reach the server as separate head moves, so
+ * with live notices a copy can pull the micrograph and settle before its
+ * refs arrive; the image follows a moment later.
+ */
+export async function waitImageArrived(copy: Copy, micrographId: string): Promise<void> {
+  await expect.poll(() => copy.state(new Function('e', `return e.sync.getState().imageArrivals[${JSON.stringify(micrographId)}] ?? 0`) as never),
+    { timeout: 60_000 }).toBeGreaterThan(0);
+}
+
+/** A micrograph as this copy has it (null when missing) */
+export function micrograph(copy: Copy, micrographId: string): Promise<{ name: string; imagePath: string | null } | null> {
+  return copy.state(new Function('e', `
+    for (const d of e.app.getState().project?.datasets ?? [])
+      for (const s of d.samples ?? [])
+        for (const m of s.micrographs ?? []) if (m.id === ${JSON.stringify(micrographId)}) return { name: m.name ?? '', imagePath: m.imagePath ?? null };
+    return null;
+  `) as (e: NonNullable<Window['__e2e']>) => { name: string; imagePath: string | null } | null);
+}
+
+/**
+ * Hold this copy's requests whose URL matches `pattern` until release:
+ * the request waits, everything else goes through.
+ */
+async function holdRequests(copy: Copy, pattern: string, caption: string): Promise<void> {
+  await copy.caption(caption);
+  await copy.app.evaluate((_electron, source) => {
+    const g = globalThis as unknown as {
+      __e2eHeld?: { release: (how: 'go' | 'drop') => void; gate: Promise<'go' | 'drop'> }; __e2eHoldFetch?: typeof fetch; fetch: typeof fetch;
+    };
+    let release: (how: 'go' | 'drop') => void = () => {};
+    const gate = new Promise<'go' | 'drop'>((r) => { release = r; });
+    g.__e2eHeld = { release, gate };
+    const real = g.fetch;
+    g.__e2eHoldFetch = real;
+    const re = new RegExp(source);
+    g.fetch = (async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      if (re.test(url) && g.__e2eHeld && (await g.__e2eHeld.gate) === 'drop') {
+        // The connection is lost while the request waits, as Node's fetch reports it
+        throw Object.assign(new TypeError('fetch failed'), { cause: Object.assign(new Error('ECONNRESET'), { code: 'ECONNRESET' }) });
+      }
+      return real(input, init);
+    }) as typeof fetch;
+  }, pattern);
+}
+
+async function releaseRequests(copy: Copy, caption: string, how: 'go' | 'drop' = 'go'): Promise<void> {
+  await copy.caption(caption);
+  await copy.app.evaluate((_electron, how) => {
+    const g = globalThis as unknown as { __e2eHeld?: { release: (how: 'go' | 'drop') => void }; __e2eHoldFetch?: typeof fetch; fetch: typeof fetch };
+    g.__e2eHeld?.release(how);
+    g.__e2eHeld = undefined;
+    if (g.__e2eHoldFetch && how === 'go') g.fetch = g.__e2eHoldFetch;
+  }, how);
+}
+
+/**
+ * The held downloads fail as if the connection broke under them (call
+ * setOffline first so the retries fail too; coming back online then
+ * restores the plain fetch)
+ */
+export function dropHeldDownloads(copy: Copy): Promise<void> {
+  return releaseRequests(copy, 'loses the connection in the middle of the download', 'drop');
+}
+
+/**
+ * Hold this copy's file downloads (originals, thumbnails, attachments) until
+ * releaseDownloads: a slow connection, so the test can act while they are
+ * on the way. Other requests go through.
+ */
+export function holdDownloads(copy: Copy): Promise<void> {
+  return holdRequests(copy, '/blobs/', 'has a slow connection (downloads held)');
+}
+
+export function releaseDownloads(copy: Copy): Promise<void> {
+  return releaseRequests(copy, 'downloads continue');
+}
+
+/**
+ * Hold this copy's file refs (the step after an upload that tells the server
+ * which file a micrograph uses) until releaseFileRefs: a slow upload, so the
+ * other copies get the new micrograph before its image, as on prod.
+ */
+export function holdFileRefs(copy: Copy): Promise<void> {
+  return holdRequests(copy, '/refs', 'has a slow connection (file uploads held)');
+}
+
+export function releaseFileRefs(copy: Copy): Promise<void> {
+  return releaseRequests(copy, 'file uploads continue');
+}
+
+/**
+ * Place a new micrograph on a parent the way New Associated Micrograph saves
+ * it: the image into the project folder, the micrograph into the store, then
+ * the parent's composite thumbnail. 'offset' places it by position and scale,
+ * 'affine' by a 3-point registration matrix (the composite makes the warped
+ * image itself). Either way it covers 400 x 300 px at (400, 300) of a
+ * 1600 x 1200 parent at 40000 px/cm. Returns its id.
+ */
+export async function addOverlayMicrograph(copy: Copy, sampleId: string, parentId: string, imagePath: string,
+  name: string, placement: 'offset' | 'affine'): Promise<string> {
+  await copy.caption(`places micrograph '${name}' on the overview (${placement})`);
+  const id = crypto.randomUUID();
+  const placed = placement === 'affine'
+    ? { placementType: 'affine', affineMatrix: [0.25, 0, 400, 0, 0.25, 300], affineTileHash: id,
+      affineBoundsOffset: { x: 400, y: 300 }, affineTransformedWidth: 400, affineTransformedHeight: 300 }
+    : { offsetInParent: { X: 400, Y: 300 }, rotation: 0 };
+  const micrograph = {
+    id, name, imagePath: id, imageWidth: 1600, imageHeight: 1200, width: 1600, height: 1200, opacity: 1,
+    imageType: 'Plane Polarized Light', scalePixelsPerCentimeter: 160000, parentID: parentId, ...placed,
+    orientationInfo: { orientationMethod: 'unoriented' }, spots: [], associatedFiles: [], links: [], tags: [],
+    isMicroVisible: true, isExpanded: false, isSpotExpanded: false, isFlipped: false,
+  };
+  await copy.state(new Function('e', `return (async () => {
+    const project = e.app.getState().project;
+    const scratch = await window.api.convertToScratchJPEG(${JSON.stringify(imagePath)});
+    await window.api.moveFromScratch(scratch.identifier, project.id, ${JSON.stringify(id)});
+    e.app.getState().addMicrograph(${JSON.stringify(sampleId)}, ${JSON.stringify(micrograph)});
+    const after = e.app.getState().project;
+    await window.api.generateCompositeThumbnail(after.id, ${JSON.stringify(parentId)}, after);
+  })()`) as never);
+  return id;
+}
+
+/** SHA-256 of a micrograph's composite thumbnail in this copy (null when there is none) */
+export async function compositeSha(copy: Copy, projectId: string, micrographId: string): Promise<string | null> {
+  const folder = await copy.state(new Function('e', `return window.api.getProjectFolderPaths(${JSON.stringify(projectId)})
+    .then((f) => f.compositeThumbnails)`) as never) as string;
+  try {
+    return createHash('sha256').update(fs.readFileSync(path.join(folder, micrographId))).digest('hex');
+  } catch {
+    return null;
+  }
+}
+
+/** Add a polygon spot the way the drawing tools do (store action addSpot); returns its id */
+export async function addSpot(copy: Copy, micrographId: string, name: string): Promise<string> {
+  await copy.caption(`adds spot '${name}'`);
+  const id = crypto.randomUUID();
+  const now = new Date().toISOString();
+  const spot = {
+    id, name, labelColor: '0xffffffff', showLabel: true, color: '0x00ff00ff', opacity: 50, date: now, time: now, notes: '',
+    modifiedTimestamp: Date.now(), geometryType: 'polygon', points: [{ X: 200, Y: 200 }, { X: 400, Y: 180 }, { X: 330, Y: 380 }],
+    associatedFiles: [], links: [], tags: [],
+  };
+  await copy.state(new Function('e', `e.app.getState().addSpot(${JSON.stringify(micrographId)}, ${JSON.stringify(spot)})`) as never);
+  return id;
+}
+
+/** Rename the project the way the Edit Project dialog saves it */
+export async function renameProject(copy: Copy, name: string): Promise<void> {
+  await copy.caption(`renames the project to '${name}'`);
+  await copy.state(new Function('e', `e.app.setState((s) => ({ project: s.project ? { ...s.project, name: ${JSON.stringify(name)} } : s.project }))`) as never);
+}
+
+/** The newest alert() since `from`, waiting for one to appear */
+export async function nextAlert(copy: Copy, from: number): Promise<string> {
+  await expect.poll(() => copy.alerts.length, { timeout: 15_000 }).toBeGreaterThan(from);
+  return copy.alerts[copy.alerts.length - 1];
+}
+
+/** Is the tree's 'Add New Reference Micrograph' item enabled on this sample */
+export async function canAddMicrograph(copy: Copy, sampleName: string): Promise<boolean> {
+  await treeAddButton(copy, sampleName).click();
+  const item = copy.page.getByRole('menuitem', { name: 'Add New Reference Micrograph' });
+  await expect(item).toBeVisible();
+  const enabled = !(await item.getAttribute('aria-disabled'));
+  await copy.page.keyboard.press('Escape');
+  await expect(item).toBeHidden();
+  return enabled;
+}
+
+/** File > Collaborate...: the Collaborators dialog, members loaded */
+export async function collaborators(copy: Copy) {
+  await copy.menu('File', 'Collaborate...');
+  const dialog = copy.page.getByRole('dialog', { name: 'Collaborators' });
+  await expect(dialog.getByRole('list')).toBeVisible({ timeout: 30_000 });
+  return dialog;
+}
+
+/** The owner changes a member's role in the Collaborators dialog */
+export async function changeRole(owner: Copy, member: Copy, role: 'Editor' | 'Contributor' | 'Viewer'): Promise<void> {
+  const dialog = await collaborators(owner);
+  const row = dialog.getByRole('listitem').filter({ hasText: member.account.email });
+  await row.getByRole('combobox').click();
+  await owner.caption(`makes ${member.account.name} ${role === 'Editor' ? 'an' : 'a'} ${role}`);
+  await owner.page.getByRole('option', { name: role, exact: true }).click();
+  await expect(dialog.getByText(`${member.account.name} is now ${role === 'Editor' ? 'an' : 'a'} ${role}.`)).toBeVisible();
+  await dialog.getByRole('button', { name: 'Close' }).click();
+  await expect(dialog).toBeHidden();
+}
+
+/** The owner removes a member: Remove..., then Remove */
+export async function removeMember(owner: Copy, member: Copy): Promise<void> {
+  const dialog = await collaborators(owner);
+  const row = dialog.getByRole('listitem').filter({ hasText: member.account.email });
+  await row.getByRole('button', { name: 'Remove…' }).click();
+  await owner.caption(`removes ${member.account.name}`);
+  await row.getByRole('button', { name: 'Remove', exact: true }).click();
+  await expect(dialog.getByText(`${member.account.name} was removed from the project.`)).toBeVisible();
+  await dialog.getByRole('button', { name: 'Close' }).click();
+  await expect(dialog).toBeHidden();
+}
+
+/** A member leaves: Leave Project..., keep a separate copy or remove it, Leave Project */
+export async function leaveProject(copy: Copy, keepCopy: boolean): Promise<void> {
+  const dialog = await collaborators(copy);
+  await dialog.getByRole('button', { name: 'Leave Project…' }).click();
+  await dialog.getByLabel(keepCopy ? 'Keep a separate copy on this computer (it no longer syncs)' : 'Remove it from this computer').check();
+  await copy.caption(keepCopy ? 'leaves, keeping a copy' : 'leaves and removes the copy');
+  await dialog.getByRole('button', { name: 'Leave Project', exact: true }).click();
+  await expect(dialog).toBeHidden({ timeout: 30_000 });
+}
+
+/** The notice a member gets when their copy became separate: its title and text, then OK */
+export async function separateCopyNotice(copy: Copy, title: 'You Left the Project' | 'Removed From the Project' | 'Deleted From StraboSpot'): Promise<string> {
+  const dialog = copy.page.getByRole('dialog', { name: title });
+  await expect(dialog).toBeVisible({ timeout: 60_000 });
+  const text = await dialog.innerText();
+  await copy.caption(`sees '${title}'`);
+  await dialog.getByRole('button', { name: 'OK' }).click();
+  await expect(dialog).toBeHidden();
+  return text;
+}
+
+/** The owner opens 'Changes waiting for your review' from the sync chip (Review...) */
+export async function openParkedReview(owner: Copy) {
+  await expect.poll(() => owner.state((e) => e.sync.getState().parkedCount), { timeout: 60_000 }).toBeGreaterThan(0);
+  await syncChip(owner).click();
+  await owner.caption('reviews the changes sent to them');
+  await owner.page.getByRole('button', { name: 'Review…' }).click();
+  const dialog = owner.page.getByRole('dialog', { name: 'Changes waiting for your review' });
+  await expect(dialog).toBeVisible();
+  return dialog;
+}
+
+/** View > Activity: the activity panel (a drawer over the right pane) */
+export async function openActivity(copy: Copy) {
+  await copy.menu('View', 'Activity');
+  const panel = activityPanel(copy);
+  await expect(panel).toBeVisible();
+  return panel;
+}
+
+export function activityPanel(copy: Copy) {
+  return copy.page.locator('.MuiPaper-root').filter({ has: copy.page.getByRole('button', { name: 'Close activity' }) });
+}
+
+/** One line of the activity panel by its full text ("Ana Ruiz deleted spot 'Quartz 1'"), with its time, chip and Restore */
+export function activityLine(copy: Copy, text: string) {
+  return activityPanel(copy).getByText(text, { exact: true }).locator('xpath=..');
+}
+
+/** The tree's three-dot menu of a micrograph > Delete Micrograph, then Delete */
+export async function deleteMicrographFromTree(copy: Copy, rowText: string): Promise<void> {
+  await copy.caption(`deletes micrograph '${rowText}'`);
+  const row = copy.page.getByText(rowText, { exact: true }).locator('xpath=../..');
+  await row.locator('button:has([data-testid="MoreVertIcon"])').first().click();
+  await copy.page.getByRole('menuitem', { name: 'Delete Micrograph' }).click();
+  const dialog = copy.page.getByRole('dialog', { name: 'Delete Micrograph' });
+  await dialog.getByRole('button', { name: 'Delete', exact: true }).click();
+  await expect(dialog).toBeHidden();
+}
+
+/** Record the links this copy opens in the browser instead of opening them */
+export async function catchExternalLinks(copy: Copy): Promise<() => Promise<string[]>> {
+  await copy.app.evaluate(({ shell }) => {
+    const g = globalThis as unknown as { __e2eLinks: string[] };
+    g.__e2eLinks = [];
+    shell.openExternal = async (url: string) => {
+      g.__e2eLinks.push(url);
+    };
+  });
+  return () => copy.app.evaluate(() => (globalThis as unknown as { __e2eLinks: string[] }).__e2eLinks.slice());
+}
+
+/** The ids of every spot on a micrograph in this copy (null: no such micrograph) */
+export function spotIds(copy: Copy, micrographId: string): Promise<string[] | null> {
+  return copy.state(new Function('e', `
+    for (const d of e.app.getState().project?.datasets ?? [])
+      for (const s of d.samples ?? [])
+        for (const m of s.micrographs ?? []) if (m.id === ${JSON.stringify(micrographId)}) return (m.spots ?? []).map((sp) => sp.id).sort();
+    return null;
+  `) as (e: NonNullable<Window['__e2e']>) => string[] | null);
+}
+
+/**
+ * The owner: File > Collaborate... > Delete from StraboSpot… (sends their
+ * changes first), keep or remove the copy, type the name, Delete from
+ * StraboSpot. The confirm button stays disabled until the name is typed.
+ */
+export async function deleteFromStraboSpot(owner: Copy, projectName: string, keepCopy: boolean): Promise<void> {
+  const dialog = await collaborators(owner);
+  await dialog.getByRole('button', { name: 'Delete from StraboSpot…' }).click();
+  const confirm = dialog.getByRole('button', { name: 'Delete from StraboSpot', exact: true });
+  await expect(confirm).toBeVisible({ timeout: 60_000 });
+  await dialog.getByLabel(keepCopy ? 'Keep a copy on this computer (it no longer syncs)' : 'Remove it from this computer too').check();
+  const typed = dialog.getByLabel(`Type "${projectName}" to confirm`);
+  await typed.fill(projectName.slice(0, -1));
+  await expect(confirm).toBeDisabled();
+  await typed.fill(projectName);
+  await owner.caption(keepCopy ? 'deletes it from StraboSpot, keeping a copy' : 'deletes it from StraboSpot and from this computer');
+  await confirm.click();
+  await expect(dialog).toBeHidden({ timeout: 60_000 });
+}
+
+/** File > Open Remote Project...: Download a project by name (synced automatically); waits until it is open and settled */
+export async function downloadRemote(copy: Copy, projectName: string, projectId: string): Promise<void> {
+  await copy.menu('File', 'Open Remote Project...');
+  const dialog = copy.page.getByRole('dialog', { name: 'Open Remote Project' });
+  const row = dialog.getByRole('listitem').filter({ hasText: projectName });
+  await copy.caption(`downloads '${projectName}'`);
+  await row.getByRole('button', { name: 'Download' }).click({ timeout: 30_000 });
+  await expect(dialog).toBeHidden({ timeout: 120_000 });
+  await expect.poll(() => copy.state((e) => e.app.getState().project?.id ?? null), { timeout: 60_000 }).toBe(projectId);
+  await waitSettled(copy, 120_000);
+}
+
+/** File > Export as .smz...: saved to `filePath`, then Done */
+export async function exportSmz(copy: Copy, filePath: string): Promise<void> {
+  // A save dialog only offers folders that exist
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  await copy.answerDialog({ kind: 'save', filePath });
+  await copy.menu('File', 'Export as .smz...');
+  const dialog = copy.page.getByRole('dialog', { name: 'Export Project as .smz' });
+  await dialog.getByRole('button', { name: 'Done' }).click({ timeout: 120_000 });
+  await expect(dialog).toBeHidden();
+}
+
+/** The header's account name: the logout check (a popover, or 'Log out of StraboSpot?' with unsynced changes) */
+export async function clickAccount(copy: Copy): Promise<void> {
+  await copy.caption('clicks their name in the header');
+  await copy.page.getByRole('banner').getByText(copy.account.name, { exact: true }).click();
+}
+
+/** 'Log out of StraboSpot?' (unsynced changes in the open project) */
+export function logoutDialog(copy: Copy) {
+  return copy.page.getByRole('dialog', { name: 'Log out of StraboSpot?' });
+}
+
+export async function waitLoggedOut(copy: Copy): Promise<void> {
+  await expect.poll(() => copy.state((e) => e.auth.getState().isAuthenticated), { timeout: 30_000 }).toBe(false);
+}
+
+/** The one-time prompt 'This project is also on StraboSpot' (a local-only copy of my project opened): answer it */
+export async function answerAlsoOnStraboSpot(copy: Copy, answer: 'Sync automatically' | 'Sync when I click' | 'Keep on this computer only'): Promise<void> {
+  const dialog = copy.page.getByRole('dialog', { name: 'This project is also on StraboSpot' });
+  await expect(dialog).toBeVisible({ timeout: 30_000 });
+  await copy.caption(`answers '${answer}'`);
+  await dialog.getByRole('button', { name: answer, exact: true }).click();
+  await expect(dialog).toBeHidden();
+}
+
+/** Wait until the open project is a synced copy, ready and settled */
+export async function waitSynced(copy: Copy, projectId: string, timeout = 120_000): Promise<void> {
+  await expect.poll(() => copy.state((e) => {
+    const s = e.sync.getState();
+    return Boolean(s.synced && s.phase === 'ready' && e.app.getState().project?.id === s.projectId) ? e.app.getState().project?.id ?? null : null;
+  }), { timeout }).toBe(projectId);
+  await waitSettled(copy, timeout);
+}

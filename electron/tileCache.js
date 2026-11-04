@@ -60,8 +60,7 @@ class TileCache {
   async generateImageHash(imagePath) {
     try {
       const stats = await fs.stat(imagePath);
-      const hashInput = `${imagePath}:${stats.size}`;
-      return crypto.createHash('sha256').update(hashInput).digest('hex');
+      return this.hashFor(imagePath, stats.size);
     } catch (error) {
       console.error('Failed to generate image hash:', error);
       throw error;
@@ -76,6 +75,39 @@ class TileCache {
    */
   getCacheDir(imageHash) {
     return path.join(this.cacheDir, imageHash);
+  }
+
+  /**
+   * Cache key for an image file: SHA-256 of its path and size
+   * @param {string} imagePath
+   * @param {number} size - File size in bytes
+   * @returns {string}
+   */
+  hashFor(imagePath, size) {
+    return crypto.createHash('sha256').update(`${imagePath}:${size}`).digest('hex');
+  }
+
+  /**
+   * Keep an image's tiles when its file moves (the cache key is path + size):
+   * rename the cache folder from the old key to the new one and update the
+   * path in its metadata. Call after the file is at its new path.
+   * @param {string} oldPath - Where the image was
+   * @param {string} newPath - Where it is now
+   * @returns {Promise<boolean>} true when a cache was moved
+   */
+  async rekeyImage(oldPath, newPath) {
+    const { size } = await fs.stat(newPath);
+    const from = this.getCacheDir(this.hashFor(oldPath, size));
+    const to = this.getCacheDir(this.hashFor(newPath, size));
+    if (from === to || !fsSync.existsSync(from) || fsSync.existsSync(to)) return false;
+    await fs.rename(from, to);
+    const metadataPath = path.join(to, 'metadata.json');
+    if (fsSync.existsSync(metadataPath)) {
+      const metadata = JSON.parse(await fs.readFile(metadataPath, 'utf-8'));
+      metadata.originalPath = newPath;
+      await fs.writeFile(metadataPath, JSON.stringify(metadata, null, 2), 'utf-8');
+    }
+    return true;
   }
 
   /**

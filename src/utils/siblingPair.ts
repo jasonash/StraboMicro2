@@ -40,6 +40,16 @@ export interface PairChild {
   parent: MicrographMetadata;
 }
 
+/** A child the viewer draws as an image over its parent: it has a scale and is not point-located */
+export function isDrawnAsOverlay(child: MicrographMetadata): boolean {
+  return child.scalePixelsPerCentimeter != null && !child.pointInParent;
+}
+
+/** A child the viewer draws as a clickable marker on its parent: it is point-located */
+export function isDrawnAsMarker(child: MicrographMetadata): boolean {
+  return child.pointInParent != null;
+}
+
 /**
  * The children drawn on a micrograph: its own, then (for a linked pair) the
  * other half's. Secondary siblings are left out (they are drawn as the
