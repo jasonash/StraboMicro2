@@ -14,12 +14,18 @@
 
 import { useEffect, useRef, useState, useCallback, useImperativeHandle, forwardRef, useMemo } from 'react';
 import { Stage, Layer, Image as KonvaImage, Circle, Line } from 'react-konva';
-import { Box, CircularProgress, Typography, IconButton, Tooltip } from '@mui/material';
+import { Box, CircularProgress, Typography, IconButton, Tooltip, Menu, MenuItem } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
-import { useAppStore } from '@/store';
-import { getChildMicrographs } from '@/store/helpers';
-import { pairChildren, pairSpots } from '@/utils/siblingPair';
+import { useAppStore, asOwnUndoStep } from '@/store';
+import { isSpotTool } from '@/store/useAppStore';
+import { currentPermissions, useReadOnlyReason } from '@/hooks/usePermissions';
+import { editRefusal } from '@/utils/permissions';
+import { ReadOnlyScope } from './ReadOnlyScope';
+import { findMicrographById, findSpotById, getChildMicrographs } from '@/store/helpers';
+import { isDrawnAsMarker, isDrawnAsOverlay, pairChildren, pairSpots } from '@/utils/siblingPair';
+import { realScaleOf } from '@/utils/affineScale';
+import { frameSpot, spotBounds } from '@/utils/spotFraming';
 import { AssociatedImageRenderer } from './AssociatedImageRenderer';
 import { ChildSpotsRenderer } from './ChildSpotsRenderer';
 import { SpotRenderer } from './SpotRenderer';
@@ -40,16 +46,31 @@ import { useRulerTool } from '@/hooks/useRulerTool';
 import { useLasso, getIndicesInPolygon, isPointInPolygon } from '@/hooks/useLasso';
 import { useImperativeGeometryEditing } from '@/hooks/useImperativeGeometryEditing';
 import { getEffectiveTheme } from '@/hooks/useTheme';
+import { useLatest } from '@/hooks/useLatest';
+import { autoSpotDraft, buildNewSpot, geometryToLegacy } from '@/utils/newSpot';
 import { releaseImage, isImageUsable } from '@/utils/imageUtils';
+import { spotFilterLook } from '@/utils/spotDataSections';
+import { ParentSpotsRenderer } from './ParentSpotsRenderer';
+import type { ParentSpot } from '@/utils/parentSpots';
+import { spotDrawOrder, spotsAt } from '@/utils/spotStacking';
 import './TiledViewer.css';
+import { EditingScope } from './Presence';
+import { useGrainSpotTool, type GrainPrompt } from '@/hooks/useGrainSpotTool';
+import { E2E } from '@/services/e2eMode';
+import { setNote as setGrainNote } from '@/services/grainSpot/grainSpotEngine';
+import { GrainPreviewOutline } from './GrainPreviewOutline';
+import { wheelZoomDirection } from '@/utils/wheelZoom';
 
 const TILE_SIZE = 256;
 const MIN_ZOOM = 0.1;
 const MAX_ZOOM = 20; // Increased from 5x to 20x for detail work
 const ZOOM_STEP = 1.1;
+const PAN_START_PX = 5; // A press pans only after the pointer moves this far (a click wobbles a little)
 
 interface TiledViewerProps {
   imagePath: string | null;
+  /** Changes when the file at imagePath was replaced (a sync download): reload, keeping the view */
+  imageRevision?: number;
   onCursorMove?: (coords: { x: number; y: number; unit: string; decimals: number } | null) => void;
   onZoomChange?: (zoom: number) => void;
 }
@@ -91,8 +112,32 @@ interface ThumbnailState {
   imageObj: HTMLImageElement;
 }
 
+/** A polygon spot's ring in image coordinates (GeoJSON geometry or legacy points); [] for other shapes */
+function polygonRingOf(spot: Spot): Array<{ x: number; y: number }> {
+  const type = spot.geometryType || spot.geometry?.type;
+  if (type !== 'polygon' && type !== 'Polygon') return [];
+  const coords = spot.geometry?.coordinates;
+  if (Array.isArray(coords)) {
+    const ring = (Array.isArray(coords[0]) && Array.isArray((coords[0] as unknown[])[0]) ? coords[0] : coords) as unknown[];
+    return ring.flatMap((c) => (Array.isArray(c) && c.length >= 2 ? [{ x: Number(c[0]), y: Number(c[1]) }] : []));
+  }
+  return (spot.points ?? []).flatMap((p) => (typeof p.X === 'number' && typeof p.Y === 'number' ? [{ x: p.X, y: p.Y }] : []));
+}
+
+/** A spot outline as a comparable key (Grain Spot finds the spot it made by its outline) */
+function pointsKey(points: Array<{ X?: number | null; Y?: number | null }> | null | undefined): string {
+  return JSON.stringify((points ?? []).map((p) => [p.X, p.Y]));
+}
+
+/** Grain Spot refine click: Shift adds to the last grain (1), Cmd/Ctrl cuts from it (0) */
+function grainRefineLabel(evt: { shiftKey?: boolean; metaKey?: boolean; ctrlKey?: boolean } | undefined): 0 | 1 | null {
+  if (evt?.shiftKey) return 1;
+  if (evt?.metaKey || evt?.ctrlKey) return 0;
+  return null;
+}
+
 export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
-  ({ imagePath, onCursorMove, onZoomChange }, ref) => {
+  ({ imagePath, imageRevision = 0, onCursorMove, onZoomChange }, ref) => {
     const stageRef = useRef<any>(null);
     const containerRef = useRef<HTMLDivElement>(null);
     const drawingLayerRef = useRef<any>(null);
@@ -110,12 +155,29 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
     const [visibleTiles, setVisibleTiles] = useState<string[]>([]);
     const [zoom, setZoom] = useState(1);
     const [position, setPosition] = useState({ x: 0, y: 0 });
+    // The view as of the last render, and the path last loaded: a reload of
+    // the same path (imageRevision) keeps the view when the size is unchanged
+    const viewRef = useRef({ zoom, position });
+    viewRef.current = { zoom, position };
+    const loadedPathRef = useRef<string | null>(null);
+    // The image on screen and fitted, and the micrograph it was loaded for:
+    // imagePath follows activeMicrographId a moment later (Viewer builds it)
+    const [imageReady, setImageReady] = useState<{ path: string; micrographId: string | null } | null>(null);
+    const imageMetadataRef = useRef(imageMetadata);
+    imageMetadataRef.current = imageMetadata;
     const [isLoading, setIsLoading] = useState(false);
+    // The original is not on this computer yet (a synced project still
+    // downloading): said in words, and loaded again when it arrives
+    const [imageMissing, setImageMissing] = useState(false);
     const [isLoadingTiles, setIsLoadingTiles] = useState(false);
     const [tileLoadingMessage, setTileLoadingMessage] = useState<string>('');
     const [isPanning, setIsPanning] = useState(false);
     const [lastPointerPos, setLastPointerPos] = useState<{ x: number; y: number } | null>(null);
     const [hasDragged, setHasDragged] = useState(false); // Track if user has dragged since mousedown
+    // Where a press that may become a pan began; the image only moves once the
+    // pointer has gone PAN_START_PX from it, so the wobble of a click neither
+    // nudges the image nor turns the click into a drag
+    const panStartRef = useRef<{ x: number; y: number } | null>(null);
 
     // Track overlay tile loading state
     const [overlayLoadingCount, setOverlayLoadingCount] = useState(0);
@@ -123,10 +185,15 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
     // New Spot Dialog state
     const [newSpotDialogOpen, setNewSpotDialogOpen] = useState(false);
     const [pendingSpotGeometry, setPendingSpotGeometry] = useState<Geometry | null>(null);
+    // Auto spot mode: New Spot opened with Alt/Option starts with the auto name and preset
+    const [newSpotPrefill, setNewSpotPrefill] = useState<{ name: string; presetIds: string[] } | null>(null);
+    // Whether Alt/Option was held on the click that placed the point or closed the shape
+    const lastClickAltRef = useRef(false);
 
     // Edit Spot Dialog state
     const [editSpotDialogOpen, setEditSpotDialogOpen] = useState(false);
     const [editingSpot, setEditingSpot] = useState<Spot | null>(null);
+    const editingSpotReason = useReadOnlyReason('spot', editingSpot?.id);
 
     // Batch Edit Dialog state (from store for global access)
     const batchEditDialogOpen = useAppStore((state) => state.batchEditDialogOpen);
@@ -138,17 +205,25 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
       null
     );
     const [isContextMenuRecursiveSpot, setIsContextMenuRecursiveSpot] = useState(false);
+    // Every spot under the right-click, top first (Select Spot Here when more than one)
+    const [contextMenuSpotsHere, setContextMenuSpotsHere] = useState<Spot[]>([]);
 
     // Get project and active micrograph from store
     const project = useAppStore((state) => state.project);
     const activeMicrographId = useAppStore((state) => state.activeMicrographId);
     const activeTool = useAppStore((state) => state.activeTool);
     const activeSpotId = useAppStore((state) => state.activeSpotId);
+    const spotFocusRequest = useAppStore((state) => state.spotFocusRequest);
+    const clearSpotFocusRequest = useAppStore((state) => state.clearSpotFocusRequest);
     const showRulers = useAppStore((state) => state.showRulers);
     const spotLabelMode = useAppStore((state) => state.spotLabelMode);
     const showMicrographOutlines = useAppStore((state) => state.showMicrographOutlines);
     const showRecursiveSpots = useAppStore((state) => state.showRecursiveSpots);
+    const showParentSpots = useAppStore((state) => state.showParentSpots);
+    // Right-click on a parent spot (View > Show Parent Spots): Go to Spot on <micrograph>
+    const [parentSpotMenu, setParentSpotMenu] = useState<{ x: number; y: number; spot: ParentSpot } | null>(null);
     const showArchivedSpots = useAppStore((state) => state.showArchivedSpots);
+    const spotFilter = useAppStore((state) => state.spotFilter);
     const siblingViewActive = useAppStore((state) => state.siblingViewActive);
     const siblingToggleInProgress = useAppStore((state) => state.siblingToggleInProgress);
     const clearSiblingToggleInProgress = useAppStore((state) => state.clearSiblingToggleInProgress);
@@ -401,38 +476,11 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
       [pairChildList],
     );
 
-    // Compute effective scalePixelsPerCentimeter for affine-placed micrographs.
-    // Affine children often have a default scalePixelsPerCentimeter (100) because their real-world
-    // scale is defined by the affine transform relative to the parent. Walk up the ancestor chain,
-    // accumulating affine scale factors, until we reach a micrograph with a calibrated scale.
-    const effectiveScalePixelsPerCentimeter = useMemo(() => {
-      if (!activeMicrograph) return null;
-
-      // Walk up through affine ancestors accumulating the combined scale factor
-      let cumulativeAffineScale = 1;
-      let current = activeMicrograph;
-
-      while (
-        current.placementType === 'affine' &&
-        current.affineMatrix &&
-        current.parentID
-      ) {
-        const [a, , , c] = current.affineMatrix;
-        const affineScale = Math.sqrt(a * a + c * c);
-        if (affineScale <= 0) break;
-        cumulativeAffineScale *= affineScale;
-
-        const parent = micrographIndex.get(current.parentID);
-        if (!parent) break;
-        current = parent;
-      }
-
-      // current is now the root ancestor (or the micrograph itself if not affine-placed)
-      const rootScale = current.scalePixelsPerCentimeter;
-      if (!rootScale) return activeMicrograph.scalePixelsPerCentimeter ?? null;
-
-      return rootScale / cumulativeAffineScale;
-    }, [activeMicrograph, micrographIndex]);
+    // The real scale (src/utils/affineScale.ts): an affine-placed micrograph's comes from its parent
+    const effectiveScalePixelsPerCentimeter = useMemo(
+      () => (activeMicrograph ? realScaleOf(activeMicrograph, (id) => micrographIndex.get(id)) : null),
+      [activeMicrograph, micrographIndex],
+    );
 
     // Size and scale of a child's own parent, for its overlay and its spots. The other half of a
     // pair shares the active image's pixel space; the loaded image fills in a size not stored yet.
@@ -452,6 +500,80 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
       return pairSpots(activeMicrograph, (id) => micrographIndex.get(id));
     }, [activeMicrograph, micrographIndex]);
 
+    // Grain Spot: the model sees the image layer as drawn, so it looks again
+    // when tiles arrive or the image changes (docs/click-a-grain-design.md)
+    const grainTool = useGrainSpotTool({
+      active: activeTool === 'grain' && !!activeMicrographId,
+      stageRef,
+      zoom,
+      position,
+      stageSize,
+      imageWidth: imageMetadata?.width ?? 0,
+      imageHeight: imageMetadata?.height ?? 0,
+      contentKey: `${imagePath}:${imageRevision}:${renderMode}:${tiles.size}:${visibleTiles.length}`,
+    });
+    // Grain clicks are handled one at a time, in order
+    const grainQueueRef = useRef<Promise<void>>(Promise.resolve());
+    /**
+     * The last grain made with Grain Spot: the clicks behind each of its
+     * outlines (newest last) and the outline they gave, so refine clicks find
+     * the spot by its outline, also after an undo, but not after a hand edit.
+     */
+    const lastGrainRef = useRef<{ micrographId: string; history: Array<{ prompts: GrainPrompt[]; key: string }> } | null>(null);
+    /** The spot a refine click would change and the clicks so far, or null */
+    const grainRefineTarget = useCallback((): { spotId: string; base: GrainPrompt[] } | null => {
+      const last = lastGrainRef.current;
+      const state = useAppStore.getState();
+      if (!last || last.micrographId !== state.activeMicrographId) return null;
+      // From the project itself: micrographIndex is not rebuilt when a spot's outline changes
+      const spots = findMicrographById(state.project, last.micrographId)?.spots ?? [];
+      for (let i = last.history.length - 1; i >= 0; i--) {
+        const entry = last.history[i];
+        const spot = spots.find((sp) => !sp.archived && pointsKey(sp.points) === entry.key);
+        if (spot) return { spotId: spot.id, base: entry.prompts };
+      }
+      return null;
+    }, []);
+    /** The spot under this image point, if any: with Grain Spot a click there selects it */
+    const grainSpotAt = useCallback((imageX: number, imageY: number) =>
+      [...effectiveSpots].reverse().find((spot) => {
+        if (spot.archived && !showArchivedSpots) return false;
+        if (spotFilterLook(spot, spotFilter) === 'hidden') return false;
+        const ring = polygonRingOf(spot);
+        return ring.length >= 3 && isPointInPolygon({ x: imageX, y: imageY }, ring);
+      }), [effectiveSpots, showArchivedSpots, spotFilter]);
+    /** Preview the grain under the mouse; with Shift or Cmd/Ctrl held, the last grain as that click would change it */
+    const updateGrainHover = useCallback((screen: { x: number; y: number }, image: { x: number; y: number },
+      evt: { shiftKey?: boolean; metaKey?: boolean; ctrlKey?: boolean } | undefined) => {
+      const label = grainRefineLabel(evt);
+      const target = label !== null ? grainRefineTarget() : null;
+      if (target && label !== null) grainTool.hoverAtScreen(screen.x, screen.y, { base: target.base, label });
+      else if (grainSpotAt(image.x, image.y)) grainTool.clearHover();
+      else grainTool.hoverAtScreen(screen.x, screen.y);
+    }, [grainRefineTarget, grainSpotAt, grainTool]);
+    const updateGrainHoverRef = useLatest(updateGrainHover);
+    /** The mouse is over the viewer (Grain Spot: Shift or Cmd/Ctrl pressed without moving updates the preview) */
+    const grainPointerInsideRef = useRef(false);
+    useEffect(() => {
+      if (activeTool !== 'grain') return;
+      const onKey = (event: KeyboardEvent) => {
+        if (!['Shift', 'Meta', 'Control'].includes(event.key) || !grainPointerInsideRef.current) return;
+        const pos = stageRef.current?.getPointerPosition();
+        const { zoom: z, position: p } = viewRef.current;
+        if (pos) updateGrainHoverRef.current(pos, { x: (pos.x - p.x) / z, y: (pos.y - p.y) / z }, event);
+      };
+      window.addEventListener('keydown', onKey);
+      window.addEventListener('keyup', onKey);
+      return () => {
+        window.removeEventListener('keydown', onKey);
+        window.removeEventListener('keyup', onKey);
+      };
+    }, [activeTool, updateGrainHoverRef]);
+    // Under test: the view, so a scenario can click at image coordinates
+    useEffect(() => {
+      if (E2E) window.__e2eView = { zoom, position };
+    }, [zoom, position]);
+
     // Drawing hooks for polygon and line tools
     const polygonDrawing = usePolygonDrawing({
       layer: drawingLayerRef.current,
@@ -468,8 +590,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
           coordinates: [coordinates], // Polygon coordinates are array of rings
         };
 
-        setPendingSpotGeometry(polygonGeometry);
-        setNewSpotDialogOpen(true);
+        placeSpotRef.current(polygonGeometry);
       },
     });
 
@@ -488,8 +609,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
           coordinates,
         };
 
-        setPendingSpotGeometry(lineGeometry);
-        setNewSpotDialogOpen(true);
+        placeSpotRef.current(lineGeometry);
       },
     });
 
@@ -571,7 +691,9 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
      * Load image metadata and initialize viewer
      */
     useEffect(() => {
+      setImageReady(null);
       if (!imagePath || !window.api) {
+        loadedPathRef.current = null;
         // Clear state when no image - use aggressive cleanup
         cleanupTileMemoryRef.current();
         setImageMetadata(null);
@@ -580,6 +702,14 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
 
       // Check if this is a sibling toggle (flag was set by siblingToggleInProgress effect)
       const isSiblingToggle = pendingSiblingToggleRef.current;
+      // The same file again, replaced on disk (imageRevision changed)
+      const isFileReload = !isSiblingToggle && loadedPathRef.current === imagePath;
+      const viewBefore = isFileReload ? viewRef.current : null;
+      const sizeBefore = isFileReload && imageMetadataRef.current
+        ? { width: imageMetadataRef.current.width, height: imageMetadataRef.current.height }
+        : null;
+      loadedPathRef.current = imagePath;
+      const loadMicrographId = useAppStore.getState().activeMicrographId;
       // Clear the flag - we're now processing the toggle
       pendingSiblingToggleRef.current = false;
 
@@ -588,6 +718,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
 
       const loadImage = async () => {
         setIsLoading(true);
+        setImageMissing(false);
 
         // CRITICAL: Aggressively clean up previous image memory BEFORE loading new one
         // This prevents OOM crashes when rapidly switching between large micrographs
@@ -601,8 +732,8 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
         setImageMetadata(null);
         setRenderMode('thumbnail');
 
-        // Only reset zoom/position if NOT a sibling toggle
-        if (!isSiblingToggle) {
+        // Only reset zoom/position if NOT a sibling toggle or a file reload
+        if (!isSiblingToggle && !isFileReload) {
           setZoom(1);
           setPosition({ x: 0, y: 0 });
         }
@@ -675,12 +806,17 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
             setZoom(preservedViewStateRef.current.zoom);
             setPosition(preservedViewStateRef.current.position);
             preservedViewStateRef.current = null;
+          } else if (viewBefore && sizeBefore &&
+            sizeBefore.width === result.metadata.width && sizeBefore.height === result.metadata.height) {
+            setZoom(viewBefore.zoom);
+            setPosition(viewBefore.position);
           } else {
             // Fit thumbnail to screen
             fitToScreen(result.metadata.width, result.metadata.height);
           }
 
           setIsLoading(false);
+          setImageReady({ path: imagePath, micrographId: loadMicrographId });
           clearSiblingToggleInProgress(); // Clear the flag after image loads
           console.log('=== Thumbnail displayed, user can now interact ===');
 
@@ -694,7 +830,13 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
             currentSession
           );
         } catch (error) {
-          console.error('Failed to load image:', error);
+          if (/ENOENT/.test(String(error))) {
+            // Not an error worth a report: sync brings it, and imageRevision reloads it
+            console.warn('[TiledViewer] The image is not on this computer yet:', imagePath);
+            setImageMissing(true);
+          } else {
+            console.error('Failed to load image:', error);
+          }
           setIsLoading(false);
           clearSiblingToggleInProgress(); // Clear the flag even on error
         }
@@ -709,7 +851,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
         // Aggressive cleanup
         cleanupTileMemoryRef.current();
       };
-    }, [imagePath, clearSiblingToggleInProgress]);
+    }, [imagePath, imageRevision, clearSiblingToggleInProgress]);
 
     /**
      * Handle keyboard events (e.g., Escape to cancel editing mode)
@@ -719,6 +861,16 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
         if (e.key === 'Escape') {
           // Cancel imperative editing mode
           geometryEditing.cancelEdits();
+
+          // Auto spot mode: Esc ends the run (a shape in progress is dropped
+          // by the tool-change cleanup); Grain Spot has no shape in progress,
+          // so Esc always puts it down. Dialogs stop Escape before it gets here.
+          const state = useAppStore.getState();
+          const tool = state.activeTool;
+          const inField = e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement;
+          if ((state.autoSpotMode || tool === 'grain') && !inField && isSpotTool(tool)) {
+            state.setActiveTool(null);
+          }
         }
       };
 
@@ -901,6 +1053,34 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
     }, []);
 
     /**
+     * Go to spot (chat link, Activity): once the spot's micrograph is on
+     * screen and fitted, zoom and pan so the spot fills about a third of the view
+     */
+    useEffect(() => {
+      if (!spotFocusRequest) return;
+      if (spotFocusRequest.micrographId !== activeMicrographId) {
+        // Another micrograph was chosen before this one finished loading
+        clearSpotFocusRequest();
+        return;
+      }
+      if (!imageReady || imageReady.path !== imagePath || imageReady.micrographId !== activeMicrographId) return;
+      if (!imageMetadata || !containerRef.current) return;
+      clearSpotFocusRequest();
+      const spot = findSpotById(project, spotFocusRequest.spotId);
+      const bounds = spot ? spotBounds(spot) : null;
+      if (!bounds) return;
+      const view = frameSpot(
+        bounds,
+        { width: containerRef.current.clientWidth, height: containerRef.current.clientHeight },
+        { width: imageMetadata.width, height: imageMetadata.height },
+        MAX_ZOOM
+      );
+      if (!view) return;
+      setZoom(view.zoom);
+      setPosition(view.position);
+    }, [spotFocusRequest, activeMicrographId, imageReady, imagePath, imageMetadata, project, clearSpotFocusRequest]);
+
+    /**
      * Calculate which tiles are visible in the current viewport
      */
     const calculateVisibleTiles = useCallback(() => {
@@ -942,8 +1122,12 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
      * Calculate which spots are visible in the current viewport
      * Uses bounding box intersection - if any part of spot overlaps viewport, render it
      */
+    // Drawing order: larger polygons under smaller ones, lines and points on top (src/utils/spotStacking.ts).
+    // Sorted once per spot change, not per pan/zoom; visibleSpots keeps this order
+    const orderedSpots = useMemo(() => spotDrawOrder(effectiveSpots), [effectiveSpots]);
+
     const visibleSpots = useMemo(() => {
-      const spots = effectiveSpots;
+      const spots = orderedSpots;
       if (!spots || spots.length === 0) return [];
 
       // Get viewport bounds in image space
@@ -962,6 +1146,8 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
       return spots.filter((spot) => {
         // Filter out archived spots unless showArchivedSpots is enabled
         if (spot.archived && !showArchivedSpots) return false;
+        // View > Filter Spots... with Hide others
+        if (spotFilterLook(spot, spotFilter) === 'hidden') return false;
 
         // Get spot coordinates
         const geometryType = spot.geometryType || spot.geometry?.type;
@@ -1007,7 +1193,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
 
         return intersectsX && intersectsY;
       });
-    }, [effectiveSpots, position, zoom, stageSize, showArchivedSpots]);
+    }, [orderedSpots, position, zoom, stageSize, showArchivedSpots, spotFilter]);
 
     /**
      * Get sketch layers for the active micrograph
@@ -1133,7 +1319,8 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
         const pointer = stage.getPointerPosition();
 
         // Calculate new zoom
-        const direction = e.evt.deltaY > 0 ? -1 : 1;
+        const direction = wheelZoomDirection(e.evt);
+        if (direction === 0) return;
         const newZoom = Math.max(
           MIN_ZOOM,
           Math.min(MAX_ZOOM, oldZoom * (direction > 0 ? ZOOM_STEP : 1 / ZOOM_STEP))
@@ -1319,8 +1506,9 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
           return;
         }
 
-        // Only enable panning if no drawing tool is active
-        if (!activeTool || activeTool === 'select') {
+        // Panning: with no tool, and with a spot tool too (a drag pans; the
+        // click that ends a drag is ignored by handleStageClick, so no spot)
+        if (!activeTool || activeTool === 'select' || isSpotTool(activeTool)) {
           // Don't pan if lasso is active (point count or spot toolbar)
           if (lassoToolActive || spotLassoToolActive) return;
 
@@ -1329,12 +1517,13 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
           if (!stage) return;
           const pos = stage.getPointerPosition();
           setLastPointerPos(pos);
+          panStartRef.current = pos ? { x: pos.x, y: pos.y } : null;
         }
       },
       [activeTool, position, zoom, rulerTool, lassoToolActive, spotLassoToolActive, pointCountMode, lasso, setSpotLassoActiveWithRef, activeSketchLayerId, activeMicrographId, handleEraseStroke, handleEraseText]
     );
 
-    const handleMouseMove = useCallback(() => {
+    const handleMouseMove = useCallback((e?: { evt?: MouseEvent }) => {
       const stage = stageRef.current;
       if (!stage) return;
 
@@ -1343,6 +1532,12 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
 
       // Handle panning
       if (isPanning && lastPointerPos) {
+        const start = panStartRef.current;
+        if (start) {
+          if (Math.hypot(pos.x - start.x, pos.y - start.y) < PAN_START_PX) return;
+          panStartRef.current = null;
+          setHasDragged(true);
+        }
         const dx = pos.x - lastPointerPos.x;
         const dy = pos.y - lastPointerPos.y;
 
@@ -1410,6 +1605,12 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
           }
         }
         setHasDragged(true);
+      }
+
+      // Grain Spot: outline the grain under the mouse (not over a spot, where a click selects)
+      if (activeTool === 'grain') {
+        grainPointerInsideRef.current = true;
+        updateGrainHover(pos, { x: (pos.x - position.x) / zoom, y: (pos.y - position.y) / zoom }, e?.evt);
       }
 
       // Handle drawing tool preview (polygon/line/measure)
@@ -1495,6 +1696,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
       pointCountMode,
       splitModeSpotId,
       splitLineDrawing,
+      updateGrainHover,
     ]);
 
     const handleMouseUp = useCallback(() => {
@@ -1535,6 +1737,8 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
           const spotsInLasso = spots.filter((spot) => {
             // Skip archived spots unless showing them
             if (spot.archived && !showArchivedSpots) return false;
+            // Spots dimmed or hidden by View > Filter Spots... are not picked
+            if (spotFilterLook(spot, useAppStore.getState().spotFilter) !== 'normal') return false;
             const centroid = getSpotCentroid(spot);
             if (!centroid) return false;
             return isPointInPolygon(centroid, polygon);
@@ -1589,6 +1793,8 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
       setIsPanning(false);
       setLastPointerPos(null);
       onCursorMove?.(null); // Clear coordinates in status bar
+      grainPointerInsideRef.current = false;
+      grainTool.clearHover();
 
       // Cancel lasso if mouse leaves while drawing (use ref to avoid stale closure)
       if (spotLassoActiveRef.current) {
@@ -1608,7 +1814,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
         isEraserDraggingRef.current = false;
         erasedStrokeIdsRef.current.clear();
       }
-    }, [onCursorMove, lasso, setSpotLassoActiveWithRef]);
+    }, [onCursorMove, lasso, setSpotLassoActiveWithRef, grainTool]);
 
     /**
      * Handle stage click for drawing tools
@@ -1664,14 +1870,70 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
 
         console.log('Click at image coordinates:', imageX, imageY, 'Tool:', activeTool);
 
+        lastClickAltRef.current = !!e.evt?.altKey;
+
+        // Grain Spot: a click inside a spot selects it; elsewhere the grain's
+        // outline becomes a polygon spot (unless it runs off the screen)
+        if (activeTool === 'grain') {
+          const label = grainRefineLabel(e.evt);
+          if (label === null || !grainRefineTarget()) {
+            const hit = grainSpotAt(imageX, imageY);
+            if (hit) {
+              selectActiveSpot(hit.id);
+              setGrainNote(null);
+              return;
+            }
+          }
+          const alt = lastClickAltRef.current;
+          const micrographId = activeMicrographId;
+          grainQueueRef.current = grainQueueRef.current.then(async () => {
+            // Looked up now, after any earlier click in the queue changed it
+            const target = label !== null ? grainRefineTarget() : null;
+            const found = await grainTool.outlineAtScreen(pos.x, pos.y, target && label !== null ? { base: target.base, label } : null);
+            if (!found) {
+              setGrainNote(target
+                ? 'The outline could not be changed there. Keep the first click on the grain on the screen and try again.'
+                : 'No grain found there. Try clicking nearer its middle, or zoom in.');
+              return;
+            }
+            if (found.offScreen) {
+              setGrainNote('That grain runs off the screen. Zoom out or pan to see all of it, then click it again.');
+              return;
+            }
+            // The spot is under the mouse now: no preview until it moves
+            grainTool.clearHover();
+            const { points } = geometryToLegacy({ type: 'Polygon', coordinates: [found.ring] });
+            if (target && lastGrainRef.current) {
+              const refusal = editRefusal(currentPermissions(), 'spot', target.spotId);
+              if (refusal) {
+                setGrainNote(refusal);
+                return;
+              }
+              setGrainNote(null);
+              const { updateSpotData } = useAppStore.getState();
+              asOwnUndoStep(() => updateSpotData(target.spotId, { points, modifiedTimestamp: Date.now() }));
+              lastGrainRef.current.history.push({ prompts: found.prompts, key: pointsKey(points) });
+              selectActiveSpot(target.spotId);
+              return;
+            }
+            setGrainNote(null);
+            if (micrographId) lastGrainRef.current = { micrographId, history: [{ prompts: found.prompts, key: pointsKey(points) }] };
+            lastClickAltRef.current = alt;
+            placeSpotRef.current({ type: 'Polygon', coordinates: [found.ring] });
+          }).catch((error: unknown) => {
+            console.error('[GrainSpot] Click failed:', error);
+            setGrainNote('The grain could not be outlined. Try again.');
+          });
+          return;
+        }
+
         // Handle point tool
         if (activeTool === 'point') {
           const pointGeometry: Geometry = {
             type: 'Point',
             coordinates: [imageX, imageY],
           };
-          setPendingSpotGeometry(pointGeometry);
-          setNewSpotDialogOpen(true);
+          placeSpotRef.current(pointGeometry);
         }
 
         // Handle polygon tool
@@ -1707,7 +1969,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
           setTextInputVisible(true);
         }
       },
-      [activeTool, position, zoom, polygonDrawing, lineDrawing, selectActiveSpot, clearSpotSelection, hasDragged, splitModeSpotId, splitLineDrawing, activeSketchLayerId, handleTextDoubleClick]
+      [activeTool, position, zoom, polygonDrawing, lineDrawing, selectActiveSpot, clearSpotSelection, hasDragged, splitModeSpotId, splitLineDrawing, activeSketchLayerId, handleTextDoubleClick, grainSpotAt, grainTool, grainRefineTarget, activeMicrographId]
     );
 
     /**
@@ -1762,8 +2024,8 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
         // Select the newly created spot
         selectActiveSpot(spot.id);
 
-        // Clear the drawing tool
-        setActiveTool(null);
+        // Clear the drawing tool (auto spot mode keeps it for the next spot)
+        if (!useAppStore.getState().autoSpotMode) setActiveTool(null);
 
         console.log('Spot created:', spot);
       },
@@ -1771,10 +2033,51 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
     );
 
     /**
+     * A point was clicked or a line/polygon closed. Auto spot mode saves it at
+     * once with the next name (docs/auto-spot-mode-design.md); otherwise, or
+     * with Alt/Option held, New Spot opens (filled in when in auto mode).
+     */
+    const placeSpot = useCallback(
+      (geometry: Geometry) => {
+        if (!activeMicrographId) return;
+        const state = useAppStore.getState();
+        if (!state.autoSpotMode) {
+          setNewSpotPrefill(null);
+          setPendingSpotGeometry(geometry);
+          setNewSpotDialogOpen(true);
+          return;
+        }
+        const preset = state.autoSpotPresetId ? state.getPresetById(state.autoSpotPresetId) : null;
+        const draft = autoSpotDraft(state.project, activeMicrographId, preset);
+        if (lastClickAltRef.current) {
+          setNewSpotPrefill({ name: draft.name, presetIds: draft.presets.map((p) => p.id) });
+          setPendingSpotGeometry(geometry);
+          setNewSpotDialogOpen(true);
+          return;
+        }
+        const spot = buildNewSpot({
+          name: draft.name, geometry, appearance: draft.appearance, presets: draft.presets,
+          existingTagIds: (state.project?.tags ?? []).map((t) => t.id),
+        });
+        // One undo step per auto spot, however quickly they come
+        asOwnUndoStep(() => addSpot(activeMicrographId, spot));
+        selectActiveSpot(spot.id);
+      },
+      [activeMicrographId, addSpot, selectActiveSpot]
+    );
+    const placeSpotRef = useLatest(placeSpot);
+
+    /**
      * Handle edit spot geometry
      */
     const handleEditGeometry = useCallback(
       (spot: Spot) => {
+        // Role checks of a shared project (17i): only what I may change
+        const refusal = editRefusal(currentPermissions(), 'spot', spot.id);
+        if (refusal) {
+          alert(refusal);
+          return;
+        }
         console.log('Edit geometry for spot:', spot.name);
 
         // Enter imperative edit mode, passing current zoom for correct handle sizes
@@ -1807,7 +2110,12 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
      */
     const handleDeleteSpot = useCallback(
       (spot: Spot) => {
-        if (window.confirm(`Delete spot "${spot.name}"?\n\nThis action cannot be undone.`)) {
+        const refusal = editRefusal(currentPermissions(), 'spot', spot.id);
+        if (refusal) {
+          alert(refusal);
+          return;
+        }
+        if (window.confirm(`Delete spot "${spot.name}"?`)) {
           deleteSpot(spot.id);
           console.log('Spot deleted:', spot.name);
         }
@@ -1826,8 +2134,15 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
 
       if (allIds.length === 0) return;
 
+      const perms = currentPermissions();
+      const refused = allIds.map((id) => editRefusal(perms, 'spot', id)).find((r) => r !== null);
+      if (refused) {
+        alert(`Some of the selected spots can't be deleted here. ${refused}`);
+        return;
+      }
+
       const count = allIds.length;
-      if (window.confirm(`Delete ${count} selected spots?\n\nThis action cannot be undone.`)) {
+      if (window.confirm(`Delete ${count} selected spots?`)) {
         // Delete each spot
         for (const spotId of allIds) {
           deleteSpot(spotId);
@@ -2008,6 +2323,13 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
           </div>
         )}
 
+        {imagePath && imageMissing && !isLoading && (
+          <div className="tiled-viewer-loading">
+            <div className="spinner" />
+            <p>This micrograph&apos;s image is still downloading…</p>
+          </div>
+        )}
+
         {!imagePath && !isLoading && (
           <div className="tiled-viewer-empty">
             <p>No micrograph loaded</p>
@@ -2161,9 +2483,9 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                 onMouseLeave={handleMouseLeave}
                 style={{
                   cursor:
-                    activeTool === 'point' ||
-                    activeTool === 'line' ||
-                    activeTool === 'polygon' ||
+                    isPanning && hasDragged
+                      ? 'grabbing'
+                      : isSpotTool(activeTool) ||
                     activeTool === 'measure' ||
                     activeTool === 'sketch-pen' ||
                     activeTool === 'sketch-marker' ||
@@ -2234,20 +2556,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                     activeMicrograph &&
                     project &&
                     childMicrographs
-                      .filter((childMicro) => {
-                        // Must have scale set
-                        if (
-                          childMicro.scalePixelsPerCentimeter === undefined ||
-                          childMicro.scalePixelsPerCentimeter === null
-                        ) {
-                          return false;
-                        }
-                        // Must NOT be point-located (pointInParent means it's a point, not an overlay)
-                        if ((childMicro as { pointInParent?: unknown }).pointInParent) {
-                          return false;
-                        }
-                        return true;
-                      })
+                      .filter(isDrawnAsOverlay)
                       .map((childMicro) => (
                         <AssociatedImageRenderer
                           key={childMicro.id}
@@ -2283,15 +2592,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                     activeMicrograph &&
                     project &&
                     childMicrographs
-                      .filter((childMicro) => {
-                        // Must have pointInParent (point-located micrograph)
-                        const pointData = (
-                          childMicro as {
-                            pointInParent?: { x?: number; y?: number; X?: number; Y?: number } | null;
-                          }
-                        ).pointInParent;
-                        return pointData != null; // Check for both null and undefined
-                      })
+                      .filter(isDrawnAsMarker)
                       .map((childMicro) => {
                         const pointData = (
                           childMicro as {
@@ -2381,9 +2682,21 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                             setContextMenuSpot(spot);
                             setContextMenuPosition({ x, y });
                             setIsContextMenuRecursiveSpot(true);
+                            setContextMenuSpotsHere([]);
                           }}
                         />
                       ))}
+
+                  {/* View > Show Parent Spots: the spots of the micrographs above, under this one's own */}
+                  {!pointCountMode && showParentSpots && activeMicrograph && (
+                    <ParentSpotsRenderer
+                      micrograph={activeMicrograph}
+                      width={activeMicrograph.imageWidth || imageMetadata?.width || 0}
+                      height={activeMicrograph.imageHeight || imageMetadata?.height || 0}
+                      stageScale={zoom}
+                      onContextMenu={(spot, x, y) => setParentSpotMenu({ x, y, spot })}
+                    />
+                  )}
 
                   {/* First pass: Render visible spot shapes (viewport culled for performance) */}
                   {/* Hide in point count mode */}
@@ -2393,6 +2706,7 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                       spot={spot}
                       scale={zoom}
                       isSelected={spot.id === activeSpotId || selectedSpotIds.includes(spot.id)}
+                      dimmed={spotFilterLook(spot, spotFilter) === 'dim'}
                       onClick={async (spot, e) => {
                         const isMultiSelect = e?.evt?.metaKey || e?.evt?.ctrlKey;
                         if (isMultiSelect) {
@@ -2415,6 +2729,11 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                         setContextMenuSpot(spot);
                         setContextMenuPosition({ x, y });
                         setIsContextMenuRecursiveSpot(false);
+                        // The spots under the cursor (image pixels; 6 screen px around points and lines)
+                        const pointer = stageRef.current?.getPointerPosition();
+                        setContextMenuSpotsHere(pointer
+                          ? spotsAt(visibleSpots, (pointer.x - position.x) / zoom, (pointer.y - position.y) / zoom, 6 / zoom)
+                          : []);
                       }}
                       renderLabelsOnly={false}
                     />
@@ -2422,7 +2741,8 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
 
                   {/* Second pass: Render visible spot labels (ensures labels are on top) */}
                   {/* Hide in point count mode */}
-                  {!pointCountMode && spotLabelMode !== 'none' && visibleSpots.map((spot) => (
+                  {/* Spots dimmed by View > Filter Spots... have no label */}
+                  {!pointCountMode && spotLabelMode !== 'none' && visibleSpots.filter((spot) => spotFilterLook(spot, spotFilter) === 'normal').map((spot) => (
                     <SpotRenderer
                       key={`${spot.id}-label`}
                       spot={spot}
@@ -2431,6 +2751,15 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                       renderLabelsOnly={true}
                     />
                   ))}
+                  {!pointCountMode && spotLabelMode !== 'none' && showParentSpots && activeMicrograph && (
+                    <ParentSpotsRenderer
+                      micrograph={activeMicrograph}
+                      width={activeMicrograph.imageWidth || imageMetadata?.width || 0}
+                      height={activeMicrograph.imageHeight || imageMetadata?.height || 0}
+                      stageScale={zoom}
+                      renderLabelsOnly
+                    />
+                  )}
 
                   {/* Point Count points (rendered on top of spots when in point count mode) */}
                   <PointCountRenderer scale={zoom} />
@@ -2467,6 +2796,9 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
                   scaleY={zoom}
                 >
                   {/* Drawing shapes (polygon/line in progress) are added by the drawing hooks */}
+
+                  {/* Grain Spot: the grain under the mouse (dashed orange when it runs off the screen) */}
+                  {activeTool === 'grain' && <GrainPreviewOutline zoom={zoom} />}
 
                   {/* Sketch preview line during drawing */}
                   {sketchPreviewPoints.length >= 2 && (
@@ -2523,22 +2855,48 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
             onClose={() => setNewSpotDialogOpen(false)}
             onSave={handleSaveSpot}
             geometry={pendingSpotGeometry}
+            initialName={newSpotPrefill?.name}
+            initialPresetIds={newSpotPrefill?.presetIds}
             micrographId={activeMicrographId}
             existingSpots={effectiveSpots}
           />
         )}
 
-        {/* Edit Spot Dialog */}
+        {/* Edit Spot Dialog (view only when I may not change the spot, 17h/17i) */}
         {editingSpot && (
-          <EditSpotDialog
-            isOpen={editSpotDialogOpen}
-            onClose={() => {
-              setEditSpotDialogOpen(false);
-              setEditingSpot(null);
-            }}
-            spotId={editingSpot.id}
-          />
+          <ReadOnlyScope readOnly={editingSpotReason !== null} reason={editingSpotReason}>
+            <EditingScope target={editSpotDialogOpen ? { type: 'spot', id: editingSpot.id } : null}>
+              <EditSpotDialog
+                isOpen={editSpotDialogOpen}
+                onClose={() => {
+                  setEditSpotDialogOpen(false);
+                  setEditingSpot(null);
+                }}
+                spotId={editingSpot.id}
+              />
+            </EditingScope>
+          </ReadOnlyScope>
         )}
+
+        {/* Parent spot (View > Show Parent Spots): only Go to Spot on its micrograph */}
+        <Menu
+          open={parentSpotMenu !== null}
+          onClose={() => setParentSpotMenu(null)}
+          anchorReference="anchorPosition"
+          anchorPosition={parentSpotMenu ? { top: parentSpotMenu.y, left: parentSpotMenu.x } : undefined}
+        >
+          <MenuItem
+            onClick={async () => {
+              const target = parentSpotMenu?.spot;
+              setParentSpotMenu(null);
+              if (!target) return;
+              // Its micrograph opens with the spot selected and in view (as chat spot links)
+              if (await useAppStore.getState().goToSpot(target.source.id)) setActiveTool(null);
+            }}
+          >
+            Go to Spot on {parentSpotMenu?.spot.sourceMicrographName}
+          </MenuItem>
+        </Menu>
 
         {/* Spot Context Menu */}
         <SpotContextMenu
@@ -2548,6 +2906,14 @@ export const TiledViewer = forwardRef<TiledViewerRef, TiledViewerProps>(
             setContextMenuSpot(null);
             setContextMenuPosition(null);
             setIsContextMenuRecursiveSpot(false);
+            setContextMenuSpotsHere([]);
+          }}
+          spotsHere={contextMenuSpotsHere}
+          activeSpotId={activeSpotId}
+          onSelectSpotHere={async (spot) => {
+            clearSpotSelection();
+            const didNavigate = await selectActiveSpot(spot.id);
+            if (didNavigate) setActiveTool(null);
           }}
           onEditGeometry={handleEditGeometry}
           onEditMetadata={handleEditMetadata}

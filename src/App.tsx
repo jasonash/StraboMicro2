@@ -6,7 +6,7 @@ import { NewProjectDialog } from './components/dialogs/NewProjectDialog';
 import { EditProjectDialog } from './components/dialogs/EditProjectDialog';
 import { ProjectDebugModal } from './components/dialogs/ProjectDebugModal';
 import { SerializedJsonModal } from './components/dialogs/SerializedJsonModal';
-import { PreferencesDialog } from './components/dialogs/PreferencesDialog';
+import { PreferencesDialog, getRestServerUrl } from './components/dialogs/PreferencesDialog';
 import { LoginDialog } from './components/dialogs/LoginDialog';
 import { AboutDialog } from './components/dialogs/AboutDialog';
 import { LogViewerModal } from './components/dialogs/LogViewerModal';
@@ -15,20 +15,23 @@ import { ExportImagesDialog } from './components/dialogs/ExportImagesDialog';
 import { RebuildTileCacheDialog } from './components/dialogs/RebuildTileCacheDialog';
 import { ExportPDFDialog } from './components/dialogs/ExportPDFDialog';
 import { ExportSmzDialog } from './components/dialogs/ExportSmzDialog';
-import { PushToServerDialog } from './components/dialogs/PushToServerDialog';
+import { TurnOnSyncDialog } from './components/dialogs/TurnOnSyncDialog';
 import { VersionHistoryDialog } from './components/dialogs/VersionHistoryDialog';
 import { StatisticsPanel } from './components/StatisticsPanel';
 import { QuickClassifyToolbar } from './components/QuickClassifyToolbar';
 import { ConfigureShortcutsDialog } from './components/dialogs/ConfigureShortcutsDialog';
 import { ImportSmzDialog } from './components/dialogs/ImportSmzDialog';
 import { DeepLinkOpenDialog } from './components/dialogs/DeepLinkOpenDialog';
-import { RemoteProjectsDialog } from './components/dialogs/RemoteProjectsDialog';
+import { OpenRemoteProjectDialog } from './components/dialogs/OpenRemoteProjectDialog';
+import { SyncLinkPrompt } from './components/dialogs/SyncLinkPrompt';
+import { SyncLinkChoiceDialog } from './components/dialogs/SyncLinkChoiceDialog';
 import { SharedProjectDialog } from './components/dialogs/SharedProjectDialog';
 import { CloseProjectDialog } from './components/dialogs/CloseProjectDialog';
 import { ProjectPrepDialog } from './components/dialogs/ProjectPrepDialog';
 import { PointCountDialog } from './components/dialogs/PointCountDialog';
 import { GrainDetectionDialog } from './components/dialogs/GrainDetectionDialog';
 import { ImageComparatorDialog } from './components/dialogs/ImageComparatorDialog';
+import { CustomUserDataDialog } from './components/dialogs/CustomUserDataDialog';
 import { GrainSizeAnalysisDialog } from './components/dialogs/GrainSizeAnalysisDialog';
 import { StraboToolsDialog } from './components/dialogs/StraboToolsDialog';
 import { MineralColorDialog } from './components/dialogs/MineralColorDialog';
@@ -41,13 +44,33 @@ import {
   IncompleteMicrograph,
 } from './components/dialogs/IncompleteMicrographsDialog';
 import UpdateNotification from './components/UpdateNotification';
-import { useAppStore, useTemporalStore } from '@/store';
-import { useAuthStore } from '@/store/useAuthStore';
+import SyncDecisionsNotice from './components/SyncDecisionsNotice';
+import SessionEndedNotice from './components/SessionEndedNotice';
+import SyncDecisionsDialog from './components/dialogs/SyncDecisionsDialog';
+import { SyncOpenPrompt } from './components/dialogs/SyncOpenPrompt';
+import { CopyOwnerDialog, type CopyOwnerPrompt } from './components/dialogs/CopyOwnerDialog';
+import { SyncIntroDialog, type SyncIntroProject } from './components/dialogs/SyncIntroDialog';
+import { CollaboratorsDialog } from './components/dialogs/CollaboratorsDialog';
+import { SeparateCopyDialog, type SeparateCopyNotice } from './components/dialogs/SeparateCopyDialog';
+import { ParkedReviewDialog } from './components/dialogs/ParkedReviewDialog';
+import { applySavedStamps } from './store/remoteChanges';
+import { InvitationsDialog } from './components/dialogs/InvitationsDialog';
+import { useInvitationsStore, INVITES_RECHECK_MS, INVITES_FOCUS_MIN_MS } from '@/store/useInvitationsStore';
+import { SyncIntroNotice } from './components/SyncIntroNotice';
+import { useAppStore, undo, redo, setUndoBlockedHandler, setChangeGuard } from '@/store';
+import { currentPermissions } from '@/hooks/usePermissions';
+import { isRestricted, splitChanges, refusalMessage } from '@/utils/permissions';
+import { useAuthStore, promptLogin } from '@/store/useAuthStore';
+import { syncNowFromUser, requestFirstSync, TURN_ON_SYNC_EVENT, COLLABORATE_EVENT, LOGOUT_REQUEST_EVENT } from '@/services/syncActions';
+import { beginLinking, LINK_SYNC_EVENT, type LinkRequest } from '@/services/syncLinking';
+import { useSyncStore } from '@/store/useSyncStore';
 import { useTheme } from './hooks/useTheme';
 import { useAutosave } from './hooks/useAutosave';
+import { useProjectSync } from './hooks/useProjectSync';
 import { useProjectPreparation } from './hooks/useProjectPreparation';
 import { ProjectMetadata, Spot } from '@/types/project-types';
 import './App.css';
+import { EditingScope } from '@/components/Presence';
 
 /**
  * Generate non-overlapping test spots for performance testing.
@@ -174,12 +197,22 @@ function App() {
   const [isRebuildTileCacheOpen, setIsRebuildTileCacheOpen] = useState(false);
   const [isExportPDFOpen, setIsExportPDFOpen] = useState(false);
   const [isExportSmzOpen, setIsExportSmzOpen] = useState(false);
-  const [isPushToServerOpen, setIsPushToServerOpen] = useState(false);
+  const [isTurnOnSyncOpen, setIsTurnOnSyncOpen] = useState(false);
+  const [isCollaboratorsOpen, setIsCollaboratorsOpen] = useState(false);
+  const [separateNotice, setSeparateNotice] = useState<SeparateCopyNotice | null>(null);
+  // Collaborate... on a local-only project turns sync on first (17d), then opens Collaborators
+  const collaborateAfterTurnOn = useRef(false);
+
+  // Another account's copy (16at opening it, 16ax it is open)
+  const [ownerPrompt, setOwnerPrompt] = useState<CopyOwnerPrompt | null>(null);
+  // "What's new: sync" (16aq): the projects it offers, null = not showing
+  const [introProjects, setIntroProjects] = useState<SyncIntroProject[] | null>(null);
   const [isVersionHistoryOpen, setIsVersionHistoryOpen] = useState(false);
   const [isIncompleteMicrographsOpen, setIsIncompleteMicrographsOpen] = useState(false);
   const [incompleteMicrographs, setIncompleteMicrographs] = useState<IncompleteMicrograph[]>([]);
   const [incompleteActionName, setIncompleteActionName] = useState('export');
   const [isImportSmzOpen, setIsImportSmzOpen] = useState(false);
+  const [importSmzAsCopy, setImportSmzAsCopy] = useState(false);
   const [importSmzFilePath, setImportSmzFilePath] = useState<string | null>(null);
   const [deepLinkPkey, setDeepLinkPkey] = useState<string | null>(null);
   const [isRemoteProjectsOpen, setIsRemoteProjectsOpen] = useState(false);
@@ -193,6 +226,7 @@ function App() {
   const [isPointCountDialogOpen, setIsPointCountDialogOpen] = useState(false);
   const [isGrainDetectionDialogOpen, setIsGrainDetectionDialogOpen] = useState(false);
   const [isImageComparatorDialogOpen, setIsImageComparatorDialogOpen] = useState(false);
+  const [isCustomUserDataDialogOpen, setIsCustomUserDataDialogOpen] = useState(false);
   const [isGrainSizeAnalysisDialogOpen, setIsGrainSizeAnalysisDialogOpen] = useState(false);
   const [isStraboToolsDialogOpen, setIsStraboToolsDialogOpen] = useState(false);
   const [straboToolsInitialMicrographId, setStraboToolsInitialMicrographId] = useState<string | null>(null);
@@ -226,7 +260,10 @@ function App() {
   useTheme();
 
   // Initialize autosave (5-minute timer when dirty)
-  const { manualSave, saveBeforeClose, saveBeforeSwitch } = useAutosave();
+  const { manualSave, ensureSaved, saveBeforeClose, saveBeforeSwitch } = useAutosave();
+
+  // Push changes of a synced project (does nothing for local-only projects)
+  useProjectSync();
 
   // Initialize project preparation hook (for caching thumbnails on project load)
   const { prepareProject, isPreparingProject, preparationProgress } = useProjectPreparation();
@@ -265,6 +302,35 @@ function App() {
       }
     }
   }, [prepareProject]);
+
+  /**
+   * Close the open project (saving it first) and open this one from disk.
+   * Used by Open Remote Project; the Recent Projects menu does the same.
+   */
+  const openProjectById = useCallback(async (projectId: string) => {
+    // Another account's copy does not open (16at); asked before the open project closes
+    const check = await window.api?.projects.copyOwner(projectId, true);
+    if (check?.owner) {
+      const name = (await window.api?.projects.getAll())?.find((p) => p.id === projectId)?.name ?? null;
+      setOwnerPrompt({ mode: 'open', projectId, projectName: name, owner: check.owner, ownCopy: false });
+      return;
+    }
+    if (!(await saveBeforeSwitch())) return;
+    closeProject();
+    setLoadingProjectName('');
+    setIsLoadingProject(true);
+    try {
+      const result = await window.api?.projects.load(projectId);
+      if (result?.success && result.project) {
+        setLoadingProjectName(result.project.name || '');
+        await loadProjectWithPreparation(result.project, null);
+      } else {
+        alert(`Failed to load project: ${result?.error || 'Unknown error'}`);
+      }
+    } finally {
+      setIsLoadingProject(false);
+    }
+  }, [saveBeforeSwitch, closeProject, loadProjectWithPreparation]);
 
   // Check auth status on app startup
   useEffect(() => {
@@ -427,6 +493,18 @@ function App() {
       }
 
       setImportSmzFilePath(null); // Clear any previous file path
+      setImportSmzAsCopy(false);
+      setIsImportSmzOpen(true);
+    }));
+
+    // Debug: Open .smz as a Separate Copy (new project id, for sync tests)
+    unsubscribers.push(window.api.onDebugImportSmzCopy(async () => {
+      const proceed = await saveBeforeSwitch();
+      if (!proceed) {
+        return;
+      }
+      setImportSmzFilePath(null);
+      setImportSmzAsCopy(true);
       setIsImportSmzOpen(true);
     }));
 
@@ -442,6 +520,7 @@ function App() {
 
       // Set the file path and open the import dialog
       setImportSmzFilePath(filePath);
+      setImportSmzAsCopy(false);
       setIsImportSmzOpen(true);
     }));
 
@@ -465,12 +544,12 @@ function App() {
       setIsEditProjectDialogOpen(true);
     }));
 
-    // Point Count menu item (Tools menu with Cmd+Shift+P)
+    // Point Count menu item (Tools menu)
     unsubscribers.push(window.api.onPointCount(() => {
       if (activeMicrographId) {
         setIsPointCountDialogOpen(true);
       } else {
-        console.warn('[App] Point Count: No micrograph selected');
+        alert('No micrograph selected. Please select a micrograph first.');
       }
     }));
 
@@ -479,13 +558,18 @@ function App() {
       if (activeMicrographId) {
         setIsGrainDetectionDialogOpen(true);
       } else {
-        console.warn('[App] Grain Detection: No micrograph selected');
+        alert('No micrograph selected. Please select a micrograph first.');
       }
     }));
 
     // Image Comparator menu item (Tools menu)
     unsubscribers.push(window.api.onImageComparator(() => {
       setIsImageComparatorDialogOpen(true);
+    }));
+
+    // Tools > Custom User Data...
+    unsubscribers.push(window.api.onCustomUserData(() => {
+      setIsCustomUserDataDialogOpen(true);
     }));
 
     // Grain Size Analysis menu item (Tools menu)
@@ -551,7 +635,7 @@ function App() {
         return;
       }
 
-      if (!confirm(`Are you sure you want to delete all ${spotCount} spots on this micrograph?\n\nThis action cannot be undone.`)) {
+      if (!confirm(`Are you sure you want to delete all ${spotCount} spots on this micrograph?`)) {
         return;
       }
 
@@ -595,7 +679,7 @@ function App() {
       setIsQuickApplyPresetsDialogOpen(true);
     }));
 
-    // Merge Selected Spots menu item (Edit menu, Cmd+M)
+    // Merge Selected Spots menu item (Spot menu, Alt+Cmd+M)
     unsubscribers.push(window.api.onMergeSpots(() => {
       const state = useAppStore.getState();
       const selectedIds = state.selectedSpotIds;
@@ -903,16 +987,21 @@ function App() {
     }));
 
     // Undo menu item
+    setUndoBlockedHandler((message) => alert(message));
+    // Role checks of a shared project (17h, 17i): what the screens miss is put back here
+    setChangeGuard((changes) => {
+      const p = currentPermissions();
+      if (!isRestricted(p)) return null;
+      const { refused } = splitChanges(p, changes);
+      return refused.length > 0 ? refusalMessage(refused[0].problem) : null;
+    });
     unsubscribers.push(window.api.onUndo(() => {
-      const temporalState = useTemporalStore.getState();
-      temporalState.undo();
+      void undo();
     }));
 
     // Redo menu item
     unsubscribers.push(window.api.onRedo(() => {
-      const temporalState = useTemporalStore.getState();
-      temporalState.redo();
-      console.log('Redo performed');
+      void redo();
     }));
 
     // Theme menu item
@@ -944,9 +1033,27 @@ function App() {
       window.api?.notifyViewPrefsChanged({ showRecursiveSpots: checked });
     }));
 
+    // View: Show Parent Spots menu item
+    unsubscribers.push(window.api.onToggleParentSpots((checked) => {
+      useAppStore.getState().setShowParentSpots(checked);
+      window.api?.notifyViewPrefsChanged({ showParentSpots: checked });
+    }));
+
     // View: Toggle Archived Spots menu item
     unsubscribers.push(window.api.onToggleArchivedSpots((checked) => {
       setShowArchivedSpots(checked);
+    }));
+
+    // View: Micrograph Visibility... (Cmd+Shift+V) opens or closes the visibility panel
+    unsubscribers.push(window.api.onMicrographVisibility(() => {
+      const state = useAppStore.getState();
+      state.setMicrographVisibilityPanelOpen(!state.micrographVisibilityPanelOpen);
+    }));
+
+    // View: Filter Spots... (Cmd+Shift+F) opens or closes the filter panel
+    unsubscribers.push(window.api.onFilterSpots(() => {
+      const state = useAppStore.getState();
+      state.setSpotFilterPanelOpen(!state.spotFilterPanelOpen);
     }));
 
     // View: Point Count Statistics menu item - toggle the panel
@@ -968,8 +1075,9 @@ function App() {
     }));
 
     // Account: Logout menu item
-    unsubscribers.push(window.api.onLogoutRequest(async () => {
-      await logout();
+    // The Header asks about unsynced changes first (16as), as for its own logout
+    unsubscribers.push(window.api.onLogoutRequest(() => {
+      window.dispatchEvent(new Event(LOGOUT_REQUEST_EVENT));
     }));
 
     // Help: About menu item
@@ -1152,21 +1260,32 @@ function App() {
       setIsExportSmzOpen(true);
     }));
 
-    // File: Push to Server menu item
+    // File: Upload to Strabo Server... (local only) / Sync to Strabo Server... (synced: Sync Now, spec v3 16ai)
     unsubscribers.push(window.api?.onPushToServer(() => {
       if (!project) {
         alert('No project loaded. Please load a project first.');
         return;
       }
-      // Check for incomplete micrographs before allowing upload
-      const incomplete = findIncompleteMicrographs(project);
-      if (incomplete.length > 0) {
-        setIncompleteMicrographs(incomplete);
-        setIncompleteActionName('upload');
-        setIsIncompleteMicrographsOpen(true);
+      if (useSyncStore.getState().synced) {
+        void syncNowFromUser();
         return;
       }
-      setIsPushToServerOpen(true);
+      collaborateAfterTurnOn.current = false;
+      setIsTurnOnSyncOpen(true);
+    }));
+
+    // View: Activity (17u; the menu item is enabled only for a synced project)
+    unsubscribers.push(window.api?.onActivity(() => {
+      useSyncStore.getState().update({ activityOpen: true });
+    }));
+
+    // File: Collaborate... (17a, 17d)
+    unsubscribers.push(window.api?.onCollaborate(() => {
+      if (!project) {
+        alert('No project loaded. Please load a project first.');
+        return;
+      }
+      window.dispatchEvent(new CustomEvent(COLLABORATE_EVENT));
     }));
 
     // File: Open Remote Project menu item
@@ -1210,46 +1329,440 @@ function App() {
     }));
 
     // File: Switch Project (from Recent Projects menu)
-    unsubscribers.push(window.api?.onSwitchProject(async (_event, projectId) => {
+    unsubscribers.push(window.api?.onSwitchProject((_event, projectId) => {
       console.log('[App] Switching to project:', projectId);
-
-      // Check for unsaved changes
-      const canSwitch = await saveBeforeSwitch();
-      if (!canSwitch) {
-        console.log('[App] Switch cancelled - save failed');
-        return;
-      }
-
-      // Close current project and show loading indicator
-      closeProject();
-      setLoadingProjectName('');
-      setIsLoadingProject(true);
-
-      // Load the new project
-      try {
-        const result = await window.api?.projects.load(projectId);
-        if (result?.success && result.project) {
-          setLoadingProjectName(result.project.name || '');
-          // Load with preparation (prepares image cache before loading into store)
-          await loadProjectWithPreparation(result.project, null);
-          console.log('[App] Project loaded successfully:', result.project.name);
-        } else {
-          console.error('[App] Failed to load project:', result?.error);
-          alert(`Failed to load project: ${result?.error || 'Unknown error'}`);
-        }
-      } catch (error) {
-        console.error('[App] Error loading project:', error);
-        alert(`Error loading project: ${error}`);
-      } finally {
-        setIsLoadingProject(false);
-      }
+      void openProjectById(projectId);
     }));
 
     // Cleanup: remove all listeners when dependencies change or component unmounts
     return () => {
       unsubscribers.forEach(unsub => unsub?.());
     };
-  }, [closeProject, setTheme, setShowRulers, setSpotLabelMode, setShowMicrographOutlines, logout, project, manualSave, saveBeforeSwitch, loadProjectWithPreparation, activeMicrographId, micrographIndex, addSpot, updateMicrographMetadata]);
+  }, [closeProject, setTheme, setShowRulers, setSpotLabelMode, setShowMicrographOutlines, logout, project, manualSave, saveBeforeSwitch, loadProjectWithPreparation, activeMicrographId, micrographIndex, addSpot, updateMicrographMetadata, openProjectById]);
+
+  // The open copy belongs to another account (16ax): checked when a project
+  // opens and after every login change main has recorded (a login, or the
+  // startup check after a restored session)
+  const openProjectId = useAppStore((state) => state.project?.id ?? null);
+  const ownerLoginRunning = useRef(false);
+  const checkOpenCopyOwner = useCallback(async () => {
+    if (ownerLoginRunning.current) return;
+    const current = useAppStore.getState().project;
+    if (!current?.id || !window.api) {
+      setOwnerPrompt((p) => (p?.mode === 'opened' ? null : p));
+      return;
+    }
+    const r = await window.api.projects.copyOwner(current.id);
+    if (useAppStore.getState().project?.id !== current.id) return;
+    setOwnerPrompt((p) => {
+      if (p?.mode === 'open') return p;
+      return r.owner
+        ? { mode: 'opened', projectId: current.id, projectName: current.name ?? null, owner: r.owner, ownCopy: r.ownCopy }
+        : null;
+    });
+  }, []);
+  useEffect(() => {
+    void checkOpenCopyOwner();
+  }, [openProjectId, checkOpenCopyOwner]);
+  useEffect(() => window.api?.projects.onAccountsChanged(() => void checkOpenCopyOwner()), [checkOpenCopyOwner]);
+
+  const logInAsCopyOwner = useCallback(async (p: CopyOwnerPrompt) => {
+    setOwnerPrompt(null);
+    ownerLoginRunning.current = true;
+    let ok = false;
+    try {
+      if (useAuthStore.getState().isAuthenticated) await logout();
+      const who = p.owner.email || p.owner.name || 'the owner of this copy';
+      ok = await promptLogin(`Log in as ${who} to use this copy.`);
+    } finally {
+      ownerLoginRunning.current = false;
+    }
+    if (ok && p.mode === 'open') await openProjectById(p.projectId);
+    else void checkOpenCopyOwner();
+  }, [logout, openProjectById, checkOpenCopyOwner]);
+
+  const dismissCopyOwner = useCallback(async (p: CopyOwnerPrompt) => {
+    setOwnerPrompt(null);
+    if (p.mode !== 'opened') return;
+    if (!(await saveBeforeSwitch())) return;
+    closeProject();
+  }, [saveBeforeSwitch, closeProject]);
+
+  // Turn sync on for the open project (the turn-on dialog's Start Syncing,
+  // 16aj). The folder moves, so the project is saved and unloaded first,
+  // then opened again from its new folder; the first upload starts when its
+  // sync starts, in either mode, and shows on the chip.
+  const turnOnSync = useCallback(async (mode: SyncMode) => {
+    const api = window.api;
+    const current = useAppStore.getState().project;
+    if (!api || !current) return false;
+    const saved = await ensureSaved();
+    if (!saved.success) {
+      alert(`The project could not be saved, so sync was not turned on.\n\n${saved.error ?? 'Unknown error'}`);
+      return false;
+    }
+    closeProject();
+    setLoadingProjectName(current.name || '');
+    setIsLoadingProject(true);
+    try {
+      const result = await api.sync.turnOn(current.id, getRestServerUrl(), mode);
+      if (result.ok) requestFirstSync(current.id);
+      const loaded = await api.projects.load(current.id);
+      if (loaded?.success && loaded.project) {
+        await loadProjectWithPreparation(loaded.project, null);
+      } else {
+        alert(`Failed to load project: ${loaded?.error || 'Unknown error'}`);
+      }
+      if (!result.ok) alert(`Sync could not be turned on. The project stays on this computer only.\n\n${result.message}`);
+      return result.ok && Boolean(loaded?.success);
+    } finally {
+      setIsLoadingProject(false);
+    }
+  }, [ensureSaved, closeProject, loadProjectWithPreparation]);
+
+  // The open synced copy becomes a separate copy with a new id (17j leave
+  // and keep, 17k removed): saved (unsynced work stays in it), unloaded
+  // (the folder moves), then opened again under its new id
+  const makeOpenCopySeparate = useCallback(async (projectId: string): Promise<
+    { ok: true; projectId: string; name: string } | { ok: false; message: string }> => {
+    const api = window.api;
+    if (!api) return { ok: false, message: 'Not available.' };
+    const current = useAppStore.getState().project;
+    if (current?.id === projectId) {
+      const saved = await ensureSaved();
+      if (!saved.success) return { ok: false, message: `The project could not be saved. ${saved.error ?? ''}`.trim() };
+      closeProject();
+    }
+    setLoadingProjectName(current?.name || '');
+    setIsLoadingProject(true);
+    try {
+      const r = await api.sync.separate(projectId);
+      if (!r.ok) return { ok: false, message: r.message };
+      const loaded = await api.projects.load(r.projectId);
+      if (loaded?.success && loaded.project) await loadProjectWithPreparation(loaded.project, null);
+      else alert(`Failed to load project: ${loaded?.error || 'Unknown error'}`);
+      return r;
+    } finally {
+      setIsLoadingProject(false);
+    }
+  }, [ensureSaved, closeProject, loadProjectWithPreparation]);
+
+  // The times each save stamped go back into the store, so it matches project.json
+  useEffect(() => window.api?.onProjectStamped((id, stamps) => applySavedStamps(id, stamps)), []);
+
+  /** The project this computer is deleting from StraboSpot (its own answer is handled by deleteFromStraboSpot) */
+  const deletingHere = useRef<string | null>(null);
+
+  // Removed from the open project (17k), or the owner deleted it from
+  // StraboSpot (17ac): it becomes a separate copy and a notice says why.
+  // Leaving is handled by leaveProject, deleting here by deleteFromStraboSpot.
+  const accessRemoved = useSyncStore((state) => state.accessRemoved);
+  useEffect(() => {
+    if (!accessRemoved) return;
+    useSyncStore.getState().update({ accessRemoved: null });
+    if (accessRemoved.left || useAppStore.getState().project?.id !== accessRemoved.projectId) return;
+    if (deletingHere.current === accessRemoved.projectId) return;
+    const deleted = accessRemoved.deleted ?? null;
+    void (async () => {
+      // Changes that had not synced stay in the separate copy (nothing is parked for a deleted project)
+      let keptChanges = false;
+      if (deleted) {
+        const project = useAppStore.getState().project;
+        const st = await window.api?.sync.status(accessRemoved.projectId, project ?? undefined).catch(() => null);
+        keptChanges = Boolean(st?.synced && (st.pending ?? 0) + st.refused + (st.conflicts ?? 0) + (st.questions ?? 0) > 0);
+      }
+      const r = await makeOpenCopySeparate(accessRemoved.projectId);
+      if (!r.ok) {
+        alert(`${deleted ? 'This project was deleted from StraboSpot' : 'You no longer have access to this project on StraboSpot'}, and this copy could not be made separate.\n\n${r.message}`);
+        return;
+      }
+      setSeparateNotice(deleted
+        ? {
+          kind: 'deleted',
+          name: r.name || accessRemoved.projectName || '',
+          removedBy: deleted.deletedBy?.name || null,
+          parked: false,
+          deletedByMe: deleted.byMe,
+          keptChanges,
+          restorableUntil: deleted.restorableUntil,
+        }
+        : {
+          kind: 'removed',
+          name: r.name || accessRemoved.projectName || '',
+          removedBy: accessRemoved.removedBy?.name || null,
+          parked: accessRemoved.parked,
+        });
+    })();
+  }, [accessRemoved, makeOpenCopySeparate]);
+
+  // Delete from StraboSpot (17ac), after the Collaborators dialog pushed and
+  // the owner typed the name: the server keeps it 30 days (restorable on the
+  // website), then this copy becomes separate (keep) or is removed.
+  // Returns an error to show, or null.
+  const deleteFromStraboSpot = useCallback(async (keep: boolean): Promise<string | null> => {
+    const api = window.api;
+    const current = useAppStore.getState().project;
+    if (!api || !current) return 'No project is open.';
+    deletingHere.current = current.id;
+    try {
+      const r = await api.sync.deleteProject(current.id, getRestServerUrl());
+      if (!r.ok) return r.message;
+      setIsCollaboratorsOpen(false);
+      if (keep) {
+        const s = await makeOpenCopySeparate(current.id);
+        if (!s.ok) {
+          alert(`The project was deleted from StraboSpot, but this copy could not be made separate.\n\n${s.message}`);
+          return null;
+        }
+        setSeparateNotice({
+          kind: 'deleted', name: s.name || current.name || '', removedBy: null, parked: false,
+          deletedByMe: true, keptChanges: false, restorableUntil: r.restorableUntil,
+        });
+        return null;
+      }
+      const closed = await api.projects.close(current.id);
+      if (closed?.success) closeProject();
+      else alert(`The project was deleted from StraboSpot, but this copy could not be removed.\n\n${closed?.error || 'Unknown error'}`);
+      return null;
+    } finally {
+      deletingHere.current = null;
+    }
+  }, [makeOpenCopySeparate, closeProject]);
+
+  // Leave Project (17j), after the Collaborators dialog pushed and the
+  // person confirmed: the server removes me, then the copy becomes separate
+  // (keep) or is deleted. Returns an error to show, or null.
+  const leaveProject = useCallback(async (keep: boolean): Promise<string | null> => {
+    const api = window.api;
+    const current = useAppStore.getState().project;
+    if (!api || !current) return 'No project is open.';
+    const r = await api.sync.leave(current.id, getRestServerUrl());
+    if (!r.ok) return r.message;
+    setIsCollaboratorsOpen(false);
+    if (keep) {
+      const s = await makeOpenCopySeparate(current.id);
+      if (!s.ok) {
+        alert(`You left the project, but this copy could not be made separate.\n\n${s.message}`);
+        return null;
+      }
+      setSeparateNotice({ kind: 'left', name: s.name || current.name || '', removedBy: null, parked: false });
+      return null;
+    }
+    const closed = await api.projects.close(current.id);
+    if (closed?.success) closeProject();
+    else alert(`You left the project, but this copy could not be removed.\n\n${closed?.error || 'Unknown error'}`);
+    return null;
+  }, [makeOpenCopySeparate, closeProject]);
+
+  // "What's new: sync" (16aq, 16ba): once per computer, when logged in (at
+  // the first launch after the update, else at the first login after it).
+  // Nothing to offer marks it shown; a failure (offline, sync switched off
+  // on the server) leaves it for the next launch or login
+  const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
+  const authPkey = useAuthStore((state) => state.user?.pkey ?? null);
+  const startupValidationComplete = useAppStore((state) => state.startupValidationComplete);
+  const introCheckedFor = useRef<string | null>(null);
+  useEffect(() => {
+    const api = window.api;
+    if (!api || !isAuthenticated || !authPkey || !startupValidationComplete) return;
+    if (introCheckedFor.current === String(authPkey)) return;
+    introCheckedFor.current = String(authPkey);
+    void (async () => {
+      const state = await api.sync.introStatus().catch(() => null);
+      if (!state || state.shown) return;
+      const r = await api.sync.introCandidates(getRestServerUrl()).catch(() => null);
+      if (!r || !r.ok) {
+        console.log('[App] Sync intro waits:', r && !r.ok ? r.message : 'no answer');
+        return;
+      }
+      if (r.projects.length === 0) {
+        await api.sync.introShown();
+        return;
+      }
+      setIntroProjects(r.projects);
+    })();
+  }, [isAuthenticated, authPkey, startupValidationComplete]);
+
+  const syncIntroSelected = useCallback(async (projectIds: string[], mode: SyncMode) => {
+    const api = window.api;
+    setIntroProjects(null);
+    if (!api) return;
+    await api.sync.introShown();
+    const openId = useAppStore.getState().project?.id ?? null;
+    const closed = projectIds.filter((id) => id !== openId);
+    if (closed.length > 0) {
+      const r = await api.sync.introEnqueue(closed, mode, getRestServerUrl());
+      if (!r.ok) alert(`The projects could not be queued for syncing.\n\n${r.message}`);
+    }
+    // The open project goes through the normal turn-on path (its chip shows the upload)
+    if (openId && projectIds.includes(openId)) await turnOnSync(mode);
+  }, [turnOnSync]);
+
+  const syncIntroNotNow = useCallback(() => {
+    setIntroProjects(null);
+    void window.api?.sync.introShown();
+  }, []);
+
+  // The intro waits while another dialog that appears at startup is up
+  const linkOffer = useSyncStore((state) => state.linkOffer);
+  const linkChoice = useSyncStore((state) => state.linkChoice);
+  const syncOpenPrompt = useSyncStore((state) => state.openPrompt);
+  const introBlocked = isStartupMessageOpen || ownerPrompt !== null || loginPromptActive || isLoadingProject ||
+    linkOffer !== null || linkChoice !== null || syncOpenPrompt !== null;
+
+  // Link the open local-only project to the same project on StraboSpot
+  // (16an, 16am): saved and unloaded first (the folder moves), linked, the
+  // first sync pushes my differences (or an adopted project's first upload),
+  // then opened again
+  const linkSync = useCallback(async ({ projectId, pid, mode, use }: LinkRequest) => {
+    const api = window.api;
+    const current = useAppStore.getState().project;
+    if (!api || !current || current.id !== projectId) return;
+    const saved = await manualSave();
+    if (!saved.success) {
+      alert(`The project could not be saved, so it was not connected to StraboSpot.\n\n${saved.error ?? 'Unknown error'}`);
+      return;
+    }
+    closeProject();
+    setLoadingProjectName(current.name || '');
+    setIsLoadingProject(true);
+    try {
+      const result = await api.sync.link(projectId, getRestServerUrl(), pid, mode, use);
+      if (result.ok) requestFirstSync(projectId);
+      const loaded = await api.projects.load(projectId);
+      if (loaded?.success && loaded.project) {
+        await loadProjectWithPreparation(loaded.project, null);
+      } else {
+        alert(`Failed to load project: ${loaded?.error || 'Unknown error'}`);
+      }
+      if (!result.ok) alert(`This copy could not be connected to StraboSpot. It stays on this computer only.\n\n${result.message}`);
+    } finally {
+      setIsLoadingProject(false);
+    }
+  }, [manualSave, closeProject, loadProjectWithPreparation]);
+
+  useEffect(() => {
+    const onLink = (e: Event) => {
+      if (e instanceof CustomEvent) void linkSync(e.detail as LinkRequest);
+    };
+    window.addEventListener(LINK_SYNC_EVENT, onLink);
+    return () => window.removeEventListener(LINK_SYNC_EVENT, onLink);
+  }, [linkSync]);
+
+  // The chip's "Sync this project…" opens the turn-on dialog
+  useEffect(() => {
+    const open = () => {
+      collaborateAfterTurnOn.current = false;
+      setIsTurnOnSyncOpen(true);
+    };
+    window.addEventListener(TURN_ON_SYNC_EVENT, open);
+    return () => window.removeEventListener(TURN_ON_SYNC_EVENT, open);
+  }, []);
+
+  // Collaborate... (menu, chip): a synced project opens Collaborators; a
+  // local-only one turns sync on first, then continues there (17d)
+  useEffect(() => {
+    const open = () => {
+      if (!useAppStore.getState().project) return;
+      if (useSyncStore.getState().synced) {
+        setIsCollaboratorsOpen(true);
+        return;
+      }
+      collaborateAfterTurnOn.current = true;
+      setIsTurnOnSyncOpen(true);
+    };
+    window.addEventListener(COLLABORATE_EVENT, open);
+    return () => window.removeEventListener(COLLABORATE_EVENT, open);
+  }, []);
+
+  // Invitations waiting for this account (17f): the dialog at launch and
+  // after each login, once the startup dialogs and the sync intro are done;
+  // then every 5 minutes and on window focus (at most once a minute), the header indicator only
+  const invitesCheckedFor = useRef<string | null>(null);
+  useEffect(() => {
+    if (!window.api || !isAuthenticated || !authPkey || !startupValidationComplete) return;
+    if (introProjects !== null || introBlocked) return;
+    if (invitesCheckedFor.current === String(authPkey)) return;
+    invitesCheckedFor.current = String(authPkey);
+    void useInvitationsStore.getState().refresh(true);
+  }, [isAuthenticated, authPkey, startupValidationComplete, introProjects, introBlocked]);
+  useEffect(() => {
+    if (isAuthenticated) return;
+    invitesCheckedFor.current = null;
+    useInvitationsStore.getState().clear();
+  }, [isAuthenticated]);
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    const recheck = () => {
+      if (Date.now() - useInvitationsStore.getState().lastCheckedAt >= INVITES_FOCUS_MIN_MS) {
+        void useInvitationsStore.getState().refresh(false);
+      }
+    };
+    const timer = setInterval(recheck, INVITES_RECHECK_MS);
+    window.addEventListener('focus', recheck);
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener('focus', recheck);
+    };
+  }, [isAuthenticated]);
+  const invitationsOpen = useInvitationsStore((s) => s.dialogOpen);
+  const invitations = useInvitationsStore((s) => s.invitations);
+
+  // Debug > Sync: Download Synced Project (until Open Remote Project does
+  // it, step 8 stage 4) and Debug > Sync Test
+  useEffect(() => {
+    if (!window.api?.onDebugSync) return;
+
+    // Make a synced copy of a server project here, then open it
+    const cloneFromServer = async (text: string | undefined) => {
+      const api = window.api;
+      const pid = Number((text ?? '').trim());
+      if (!api || !Number.isInteger(pid) || pid <= 0) {
+        alert('Copy a server project number (shown in the sync chip\'s popover in the other copy) first.');
+        return;
+      }
+      if (!useAuthStore.getState().isAuthenticated) {
+        alert('Log in first.');
+        return;
+      }
+      setLoadingProjectName(`server project ${pid}`);
+      setIsLoadingProject(true);
+      try {
+        const result = await api.sync.clone(pid, getRestServerUrl(), 'automatic');
+        if (!result.ok) {
+          alert(`The synced project could not be downloaded (${result.kind}): ${result.message}`);
+          return;
+        }
+        if (useAppStore.getState().project) {
+          const saved = await manualSave();
+          if (!saved.success) {
+            alert(`The open project could not be saved: ${saved.error ?? 'unknown error'}`);
+            return;
+          }
+          closeProject();
+        }
+        const loaded = await api.projects.load(result.projectId);
+        if (loaded?.success && loaded.project) {
+          await loadProjectWithPreparation(loaded.project, null);
+        } else {
+          alert(`Failed to load project: ${loaded?.error || 'Unknown error'}`);
+        }
+      } finally {
+        setIsLoadingProject(false);
+      }
+    };
+
+    return window.api.onDebugSync((action, arg) => {
+      void (async () => {
+        if (action === 'clone') {
+          await cloneFromServer(arg);
+        } else if (action.startsWith('test-')) {
+          const { runSyncTestScenario } = await import('@/services/syncTestScenarios');
+          await runSyncTestScenario(action);
+        }
+      })();
+    });
+  }, [closeProject, manualSave, loadProjectWithPreparation]);
 
   return (
     <>
@@ -1258,10 +1771,12 @@ function App() {
         isOpen={isNewProjectDialogOpen}
         onClose={() => setIsNewProjectDialogOpen(false)}
       />
-      <EditProjectDialog
-        isOpen={isEditProjectDialogOpen}
-        onClose={() => setIsEditProjectDialogOpen(false)}
-      />
+      <EditingScope target={isEditProjectDialogOpen && project ? { type: 'project', id: project.id } : null}>
+        <EditProjectDialog
+          isOpen={isEditProjectDialogOpen}
+          onClose={() => setIsEditProjectDialogOpen(false)}
+        />
+      </EditingScope>
       <ProjectDebugModal
         isOpen={isDebugModalOpen}
         onClose={() => setIsDebugModalOpen(false)}
@@ -1320,11 +1835,23 @@ function App() {
         projectId={project?.id ?? null}
         projectData={project}
       />
-      <PushToServerDialog
-        open={isPushToServerOpen}
-        onClose={() => setIsPushToServerOpen(false)}
+      <TurnOnSyncDialog
+        open={isTurnOnSyncOpen}
         projectId={project?.id ?? null}
-        projectData={project}
+        saveProject={ensureSaved}
+        onClose={() => setIsTurnOnSyncOpen(false)}
+        onStart={(mode, onServer) => {
+          const id = useAppStore.getState().project?.id;
+          const thenCollaborate = collaborateAfterTurnOn.current;
+          collaborateAfterTurnOn.current = false;
+          if (onServer && id) {
+            void beginLinking({ projectId: id, pid: onServer.pid, syncFormat: onServer.syncFormat, updatedAt: onServer.updatedAt }, mode);
+          } else {
+            void turnOnSync(mode).then((ok) => {
+              if (ok && thenCollaborate) setIsCollaboratorsOpen(true);
+            });
+          }
+        }}
       />
       <IncompleteMicrographsDialog
         open={isIncompleteMicrographsOpen}
@@ -1344,23 +1871,23 @@ function App() {
           setImportSmzFilePath(null); // Clear the file path when closing
         }}
         initialFilePath={importSmzFilePath}
+        asSeparateCopy={importSmzAsCopy}
+        onOpenProject={openProjectById}
         onImportComplete={(importedProject) => {
           // Load the imported project with image preparation
           loadProjectWithPreparation(importedProject, null);
         }}
       />
-      <RemoteProjectsDialog
+      <OpenRemoteProjectDialog
         open={isRemoteProjectsOpen}
         onClose={() => setIsRemoteProjectsOpen(false)}
-        onImportComplete={(importedProject: any) => {
-          // Load the imported project with image preparation
-          loadProjectWithPreparation(importedProject, null);
-        }}
+        onOpenProject={openProjectById}
       />
       <DeepLinkOpenDialog
         open={deepLinkPkey !== null}
         pkey={deepLinkPkey ?? ''}
         onClose={() => setDeepLinkPkey(null)}
+        onOpenProject={openProjectById}
         onImportComplete={(importedProject: any) => {
           // Load the imported project with image preparation
           loadProjectWithPreparation(importedProject, null);
@@ -1369,6 +1896,7 @@ function App() {
       <SharedProjectDialog
         open={isSharedProjectOpen}
         onClose={() => setIsSharedProjectOpen(false)}
+        onOpenProject={openProjectById}
         onImportComplete={(importedProject: any) => {
           // Load the imported project with image preparation
           loadProjectWithPreparation(importedProject, null);
@@ -1407,6 +1935,50 @@ function App() {
         manualCheck={isManualUpdateCheck}
         onManualCheckComplete={() => setIsManualUpdateCheck(false)}
       />
+      <SyncDecisionsNotice />
+      <SessionEndedNotice />
+      <SyncIntroNotice />
+      <SyncIntroDialog
+        projects={introBlocked ? null : introProjects}
+        openProjectId={project?.id ?? null}
+        onSyncSelected={(ids, mode) => void syncIntroSelected(ids, mode)}
+        onNotNow={syncIntroNotNow}
+      />
+      <CollaboratorsDialog
+        open={isCollaboratorsOpen}
+        projectId={project?.id ?? null}
+        onClose={() => setIsCollaboratorsOpen(false)}
+        onLeave={leaveProject}
+        onDeleteProject={deleteFromStraboSpot}
+      />
+      <ParkedReviewDialog />
+      <SeparateCopyDialog
+        notice={separateNotice}
+        onClose={() => setSeparateNotice(null)}
+        onDelete={() => {
+          setSeparateNotice(null);
+          setIsCloseProjectOpen(true);
+        }}
+      />
+      <InvitationsDialog
+        invitations={introBlocked || !invitationsOpen ? null : invitations}
+        onClose={() => useInvitationsStore.getState().closeDialog()}
+        onAnswered={(pid) => useInvitationsStore.getState().remove(pid)}
+        onOpenProject={(projectId) => void openProjectById(projectId)}
+      />
+      <SyncDecisionsDialog />
+      <SyncOpenPrompt />
+      <CopyOwnerDialog
+        prompt={ownerPrompt}
+        onLogInAsOwner={(p) => void logInAsCopyOwner(p)}
+        onOpenOwnCopy={(p) => {
+          setOwnerPrompt(null);
+          void openProjectById(p.projectId);
+        }}
+        onDismiss={(p) => void dismissCopyOwner(p)}
+      />
+      <SyncLinkPrompt />
+      <SyncLinkChoiceDialog />
       <PointCountDialog
         isOpen={isPointCountDialogOpen}
         onClose={() => setIsPointCountDialogOpen(false)}
@@ -1420,6 +1992,10 @@ function App() {
       <ImageComparatorDialog
         open={isImageComparatorDialogOpen}
         onClose={() => setIsImageComparatorDialogOpen(false)}
+      />
+      <CustomUserDataDialog
+        open={isCustomUserDataDialogOpen}
+        onClose={() => setIsCustomUserDataDialogOpen(false)}
       />
       <StraboToolsDialog
         open={isStraboToolsDialogOpen}

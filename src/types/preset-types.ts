@@ -45,6 +45,9 @@ export interface PresetData {
   faultsShearZonesInfo?: FaultsShearZonesInfoType | null;
   extinctionMicrostructureInfo?: ExtinctionMicrostructureInfoType | null;
   lithologyInfo?: LithologyInfoType | null;
+
+  /** Tag ids added to the spot (project presets only: tags belong to a project; Peter, 2026-10-29) */
+  tags?: string[] | null;
 }
 
 /**
@@ -56,6 +59,8 @@ export interface QuickApplyPreset {
   name: string;
   description?: string | null;
   color?: string | null; // Optional - legacy field, no longer used in UI
+  /** Auto spot mode: name pattern for spots made with this preset, {n} = number (e.g. "Ol-{n}") */
+  spotNamePattern?: string | null;
   createdAt: string; // ISO timestamp
   modifiedAt: string; // ISO timestamp
   data: PresetData;
@@ -179,6 +184,8 @@ export function getPresetSummary(preset: QuickApplyPreset): string[] {
       summary.push(PRESET_FEATURE_DISPLAY_NAMES[field]);
     }
   }
+
+  if (data.tags?.length) summary.push(data.tags.length === 1 ? 'Tag' : `Tags (${data.tags.length})`);
 
   return summary;
 }

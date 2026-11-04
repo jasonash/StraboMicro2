@@ -3,15 +3,19 @@
  *
  * Context menu for spot operations (right-click menu).
  * Supports Edit Geometry, Edit Metadata, Delete, and Batch Edit actions.
+ * When more than one spot is under the cursor, Select Spot Here lists them
+ * by name, top first, so a spot covered by another can be picked (Peter,
+ * 2026-10-29; src/utils/spotStacking.ts).
  */
 
-import { Menu, MenuItem, ListItemIcon, ListItemText, Divider } from '@mui/material';
+import { Menu, MenuItem, ListItemIcon, ListItemText, Divider, ListSubheader } from '@mui/material';
 import DeleteIcon from '@mui/icons-material/Delete';
 import EditIcon from '@mui/icons-material/Edit';
 import EditNoteIcon from '@mui/icons-material/EditNote';
 import ShapeLineIcon from '@mui/icons-material/Timeline';
 import MergeIcon from '@mui/icons-material/CallMerge';
 import ContentCutIcon from '@mui/icons-material/ContentCut';
+import CheckIcon from '@mui/icons-material/Check';
 import { Spot } from '@/types/project-types';
 
 interface SpotContextMenuProps {
@@ -35,6 +39,12 @@ interface SpotContextMenuProps {
   onSplitSpot?: (spot: Spot) => void;
   /** Whether the selected spots can be merged (all polygons) */
   canMerge?: boolean;
+  /** Every spot under the cursor, top first (the list shows when there is more than one) */
+  spotsHere?: Spot[];
+  /** Select one of spotsHere */
+  onSelectSpotHere?: (spot: Spot) => void;
+  /** The selected spot's id (checked in the list) */
+  activeSpotId?: string | null;
 }
 
 export const SpotContextMenu: React.FC<SpotContextMenuProps> = ({
@@ -51,6 +61,9 @@ export const SpotContextMenu: React.FC<SpotContextMenuProps> = ({
   onMergeSpots,
   onSplitSpot,
   canMerge = false,
+  spotsHere = [],
+  onSelectSpotHere,
+  activeSpotId = null,
 }) => {
   const handleEditGeometry = () => {
     if (!spot) return;
@@ -106,6 +119,24 @@ export const SpotContextMenu: React.FC<SpotContextMenuProps> = ({
         anchorPosition ? { top: anchorPosition.y, left: anchorPosition.x } : undefined
       }
     >
+      {/* Overlapping spots: pick any spot under the cursor by name */}
+      {spotsHere.length > 1 && onSelectSpotHere && [
+        <ListSubheader key="here-header" sx={{ lineHeight: '32px' }}>Select Spot Here</ListSubheader>,
+        ...spotsHere.map((s) => (
+          <MenuItem
+            key={`here-${s.id}`}
+            onClick={() => {
+              onSelectSpotHere(s);
+              onClose();
+            }}
+          >
+            <ListItemIcon>{s.id === activeSpotId && <CheckIcon fontSize="small" />}</ListItemIcon>
+            <ListItemText>{s.name || 'Unnamed spot'}</ListItemText>
+          </MenuItem>
+        )),
+        <Divider key="here-divider" />,
+      ]}
+
       {/* Batch edit option when multiple spots selected */}
       {showBatchEdit && (
         <MenuItem onClick={handleBatchEdit}>

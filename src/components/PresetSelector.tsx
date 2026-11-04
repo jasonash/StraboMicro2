@@ -66,7 +66,8 @@ export function PresetSelector({
       renderOption={(props, preset, { selected }) => {
         const key = boundKey(preset.id);
         const isApplied = applied.has(preset.id);
-        const summary = getPresetSummary(preset).slice(0, 2).join(', ');
+        // Everything the preset applies, as in Quick Spot Presets (it used to stop after two, hiding e.g. Tags)
+        const summary = getPresetSummary(preset).join(', ');
         return (
           <Box component="li" {...props} key={preset.id}>
             <Checkbox
@@ -86,7 +87,6 @@ export function PresetSelector({
               </Box>
               <Typography
                 variant="caption"
-                noWrap
                 sx={{
                   color: 'text.secondary',
                   display: 'block'

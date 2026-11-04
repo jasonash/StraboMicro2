@@ -263,8 +263,8 @@ export function computeCopiedPlacement(
       affineBoundsOffset: { x: bounds.minX, y: bounds.minY },
       affineTransformedWidth: Math.ceil(bounds.width),
       affineTransformedHeight: Math.ceil(bounds.height),
-      // Placeholder for affine descendants; the effective scale is derived from
-      // the nearest non-affine ancestor at render time
+      // The source's real scale for the new pixel size; the save stores the exact one
+      // from the parent and the matrix (src/utils/affineScale.ts)
       scalePixelsPerCentimeter,
       ...CLEAR_RECTANGLE,
       ...CLEAR_POINT,
@@ -288,4 +288,141 @@ export async function bakeAffineTilesForCopy(
   if (!result?.success) {
     throw new Error(`Affine tile generation failed: ${result?.error ?? 'unknown error'}`);
   }
+}
+
+/**
+ * "Same area as parent" (Peter, 2026-10-29: EDS maps nested in the BSE image
+ * they were collected with): the child covers its parent exactly, as a plain
+ * scaled rectangle at offset 0, rotation 0, with the scale that makes its
+ * width the parent's width. The proportions must match (within
+ * ASPECT_RATIO_TOLERANCE). Returns why it cannot be used, or null.
+ */
+export function parentAreaUnavailableReason(
+  parent: MicrographMetadata | null | undefined,
+  childWidth: number | null | undefined,
+  childHeight: number | null | undefined
+): string | null {
+  if (!parent) return 'This micrograph has no parent.';
+  const parentWidth = pixelWidth(parent);
+  const parentHeight = pixelHeight(parent);
+  if (!parentWidth || !parentHeight || !childWidth || !childHeight) return 'The image sizes are not known.';
+  if (!parent.scalePixelsPerCentimeter) return 'The parent micrograph has no scale yet.';
+  if (!aspectRatiosMatch(childWidth, childHeight, parentWidth, parentHeight)) {
+    return `Its proportions (${childWidth} × ${childHeight}) differ from the parent's (${parentWidth} × ${parentHeight}).`;
+  }
+  return null;
+}
+
+/** The placement that makes a child of this pixel size cover its parent exactly; null when it cannot */
+export function computeParentAreaPlacement(
+  parent: MicrographMetadata | null | undefined,
+  childWidth: number | null | undefined,
+  childHeight: number | null | undefined
+): Partial<MicrographMetadata> | null {
+  if (!parent || !childWidth || parentAreaUnavailableReason(parent, childWidth, childHeight) !== null) return null;
+  const parentWidth = pixelWidth(parent) as number;
+  // Drawn size on the parent = child px * parentScale / childScale, so the child spans the parent's width when:
+  const scalePixelsPerCentimeter = (parent.scalePixelsPerCentimeter as number) * (childWidth / parentWidth);
+  return {
+    offsetInParent: { X: 0, Y: 0 },
+    rotation: 0,
+    scalePixelsPerCentimeter,
+    ...CLEAR_POINT,
+    ...CLEAR_AFFINE,
+    xOffset: undefined,
+    yOffset: undefined,
+    scaleX: undefined,
+    scaleY: undefined,
+  };
+}
+
+/**
+ * "Place unplaced children like..." (Peter, 2026-10-29: a stack of EDS maps of
+ * one area): the placed children of a parent, any one of which can be the
+ * model whose placement the unplaced children copy (the same rules as "Copy
+ * location and scale from an existing micrograph").
+ */
+export function listPlacedChildren(
+  project: ProjectMetadata | null | undefined,
+  parentMicrographId: string | null | undefined
+): CopyPlacementCandidate[] {
+  if (!project || !parentMicrographId) return [];
+  const placed: CopyPlacementCandidate[] = [];
+  for (const dataset of project.datasets || []) {
+    for (const sample of dataset.samples || []) {
+      for (const micro of sample.micrographs || []) {
+        if (micro.parentID !== parentMicrographId) continue;
+        const width = pixelWidth(micro);
+        const height = pixelHeight(micro);
+        const placementType = getSourcePlacementType(micro);
+        if (!width || !height || !placementType) continue;
+        placed.push({ id: micro.id, name: micro.name || 'Unnamed Micrograph', width, height, placementType, sameDimensions: false });
+      }
+    }
+  }
+  return placed;
+}
+
+/** Why a child of this pixel size cannot copy the model's placement, or null */
+export function copyPlacementUnavailableReason(
+  model: MicrographMetadata | null | undefined,
+  width: number | null | undefined,
+  height: number | null | undefined
+): string | null {
+  if (!model) return 'Choose a micrograph to copy.';
+  const modelWidth = pixelWidth(model);
+  const modelHeight = pixelHeight(model);
+  const placementType = getSourcePlacementType(model);
+  if (!placementType || !modelWidth || !modelHeight) return `${model.name || 'That micrograph'} has no placement to copy.`;
+  if (!width || !height) return 'The image size is not known.';
+  // A point placement has no footprint, so any image can copy it
+  if (placementType !== 'point' && !aspectRatiosMatch(width, height, modelWidth, modelHeight)) {
+    return `Its proportions (${width} × ${height}) differ from ${model.name || 'the model'}'s (${modelWidth} × ${modelHeight}).`;
+  }
+  return null;
+}
+
+/** A micrograph whose scale another can copy ("Copy scale from an existing micrograph") */
+export interface ScaleSource {
+  id: string;
+  name: string;
+  width: number;
+  height: number;
+  /** Pixels per centimeter */
+  scale: number;
+}
+
+/**
+ * Every micrograph in the project with a scale, except excludeId, for "Copy
+ * scale from an existing micrograph" (Peter, 2026-10-29: photomicrographs at
+ * the same magnification from different places). The scale is copied as it is
+ * (pixels per centimeter), which is right for images from the same camera at
+ * the same resolution.
+ */
+export function listScaleSources(
+  project: ProjectMetadata | null | undefined,
+  excludeId: string | null | undefined
+): ScaleSource[] {
+  if (!project) return [];
+  const sources: ScaleSource[] = [];
+  for (const dataset of project.datasets || []) {
+    for (const sample of dataset.samples || []) {
+      for (const micro of sample.micrographs || []) {
+        if (excludeId && micro.id === excludeId) continue;
+        const scale = micro.scalePixelsPerCentimeter;
+        const width = pixelWidth(micro);
+        const height = pixelHeight(micro);
+        if (!scale || !width || !height) continue;
+        sources.push({ id: micro.id, name: micro.name || 'Unnamed Micrograph', width, height, scale });
+      }
+    }
+  }
+  return sources;
+}
+
+/** Dropdown label: "Ol-3 (2048 × 1536, 1.25 px/μm)" */
+export function describeScaleSource(s: ScaleSource): string {
+  const perMicron = s.scale / 10000;
+  const shown = perMicron >= 100 ? perMicron.toFixed(0) : perMicron >= 1 ? perMicron.toFixed(2) : perMicron.toPrecision(3);
+  return `${s.name} (${s.width} × ${s.height}, ${shown} px/μm)`;
 }

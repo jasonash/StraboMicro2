@@ -18,6 +18,7 @@ import { ScaleBar } from './ScaleBar';
 import { CursorLocation } from './CursorLocation';
 import { HttpTileLoader, TileMetadata } from '../services/tileLoader';
 import type { Spot, SketchLayer, MicrographMetadata } from '../types/project-types';
+import { hasLocation } from '../utils/placement';
 
 // Constants matching desktop app
 const TILE_SIZE = 256;
@@ -388,12 +389,14 @@ export function TiledViewer({ micrographId, spots, sketchLayers, scalePixelsPerC
   // ============================================================================
   // SPLIT CHILDREN: rectangle/affine overlays vs point-located markers.
   // Matches the desktop's filter — pointInParent renders as a Circle, not an image.
+  // Children not placed yet are left out (utils/placement.ts).
   // ============================================================================
 
   const { overlayChildren, pointChildren } = useMemo(() => {
     const overlays: MicrographMetadata[] = [];
     const points: Array<{ child: MicrographMetadata; x: number; y: number }> = [];
     for (const child of childMicrographs ?? []) {
+      if (!hasLocation(child)) continue;
       const p = child.pointInParent;
       if (p) {
         const px = p.X ?? p.x ?? 0;

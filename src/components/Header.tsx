@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   AppBar,
   Toolbar,
@@ -8,6 +8,7 @@ import {
   Tooltip,
   Popover,
   Button,
+  Chip,
 } from '@mui/material';
 import {
   Navigation as PointerIcon,
@@ -15,20 +16,48 @@ import {
   ZoomOut as ZoomOutIcon,
   MyLocation as CrosshairIcon,
   Logout as LogoutIcon,
+  MailOutlined as MailOutlineIcon,
 } from '@mui/icons-material';
 import appIcon from '../assets/app-icon.png';
 import { useAppStore } from '@/store';
 import { useAuthStore } from '@/store/useAuthStore';
 import { LoginDialog } from '@/components/dialogs/LoginDialog';
+import { SyncStatusChip } from '@/components/SyncStatusChip';
+import { HeaderPresence } from '@/components/Presence';
+import { ChatChip } from '@/components/ChatChip';
+import { useInvitationsStore } from '@/store/useInvitationsStore';
+import { LogoutSyncDialog } from '@/components/dialogs/LogoutSyncDialog';
+import { checkBeforeLogout, queuedUploadsText, LOGOUT_REQUEST_EVENT, type LogoutCheck } from '@/services/syncActions';
 
 const Header: React.FC = () => {
   const viewerRef = useAppStore((state) => state.viewerRef);
   const activeTool = useAppStore((state) => state.activeTool);
   const setActiveTool = useAppStore((state) => state.setActiveTool);
-  const { isAuthenticated, user, logout } = useAuthStore();
+  const { isAuthenticated, user, offline, logout } = useAuthStore();
+  const invitationCount = useInvitationsStore((s) => s.invitations.length);
+  const openInvitations = useInvitationsStore((s) => s.openDialog);
 
   const [loginDialogOpen, setLoginDialogOpen] = useState(false);
   const [logoutAnchorEl, setLogoutAnchorEl] = useState<HTMLElement | null>(null);
+  // Intro uploads still queued, for the plain logout confirmation (16az)
+  const [logoutQueued, setLogoutQueued] = useState(0);
+  // Logout with the open project not fully synced (16as, 16az)
+  const [logoutCheck, setLogoutCheck] = useState<Exclude<LogoutCheck, { kind: 'plain' }> | null>(null);
+
+  // Account > Logout: unsynced changes in the open project ask first (16as);
+  // otherwise it logs out at once, as the menu always did
+  useEffect(() => {
+    const onRequest = () => {
+      void (async () => {
+        if (!useAuthStore.getState().isAuthenticated) return;
+        const check = await checkBeforeLogout();
+        if (check.kind === 'plain') await useAuthStore.getState().logout();
+        else setLogoutCheck(check);
+      })();
+    };
+    window.addEventListener(LOGOUT_REQUEST_EVENT, onRequest);
+    return () => window.removeEventListener(LOGOUT_REQUEST_EVENT, onRequest);
+  }, []);
 
   const handleRecenter = () => {
     if (viewerRef?.current) {
@@ -52,9 +81,16 @@ const Header: React.FC = () => {
     setActiveTool(null); // Reset to pan/select mode
   };
 
-  const handleAuthClick = (event: React.MouseEvent<HTMLElement>) => {
+  const handleAuthClick = async (event: React.MouseEvent<HTMLElement>) => {
     if (isAuthenticated) {
-      setLogoutAnchorEl(event.currentTarget);
+      const anchor = event.currentTarget;
+      const check = await checkBeforeLogout();
+      if (check.kind === 'plain') {
+        setLogoutQueued(check.queued);
+        setLogoutAnchorEl(anchor);
+      } else {
+        setLogoutCheck(check);
+      }
     } else {
       setLoginDialogOpen(true);
     }
@@ -120,6 +156,23 @@ const Header: React.FC = () => {
           </Tooltip>
         </Box>
 
+        {/* Right: who else is here (17al), chat (17bd), sync status of the open project, then the account */}
+        <HeaderPresence />
+        <ChatChip />
+        <SyncStatusChip />
+
+        {/* Invitations waiting for an answer (17f): stays until each is answered */}
+        {isAuthenticated && invitationCount > 0 && (
+          <Chip
+            size="small"
+            color="primary"
+            icon={<MailOutlineIcon />}
+            label={invitationCount === 1 ? '1 invitation' : `${invitationCount} invitations`}
+            onClick={openInvitations}
+            sx={{ ml: 1, '& .MuiChip-icon': { fontSize: 16 } }}
+          />
+        )}
+
         {/* Right: User info - clickable */}
         <Box
           onClick={handleAuthClick}
@@ -134,14 +187,22 @@ const Header: React.FC = () => {
           }}
         >
           {isAuthenticated && user ? (
-            <Typography variant="body2" sx={{
-              color: 'text.secondary'
-            }}>
-              Logged in as{' '}
-              <Box component="span" sx={{ color: 'text.primary', fontWeight: 500 }}>
-                {user.name ? `${user.name} (${user.email})` : user.email}
-              </Box>
-            </Typography>
+            // Spec v3 16ar: the name (email in the tooltip), "· offline" without a connection
+            <Tooltip
+              placement="bottom-end"
+              title={offline
+                ? `${user.email}. StraboSpot cannot be reached right now; your work is kept on this computer and syncs when the connection returns.`
+                : user.email}
+            >
+              <Typography variant="body2" sx={{ color: 'text.primary', fontWeight: 500 }}>
+                {user.name || user.email}
+                {offline && (
+                  <Box component="span" sx={{ color: 'text.secondary', fontWeight: 400 }}>
+                    {' · offline'}
+                  </Box>
+                )}
+              </Typography>
+            </Tooltip>
           ) : (
             <Typography variant="body2" sx={{
               color: 'text.secondary'
@@ -163,6 +224,11 @@ const Header: React.FC = () => {
             <Typography variant="body2">
               Log out of StraboSpot?
             </Typography>
+            {queuedUploadsText(logoutQueued) && (
+              <Typography variant="body2" sx={{ color: 'text.secondary', maxWidth: 280 }}>
+                {queuedUploadsText(logoutQueued)}
+              </Typography>
+            )}
             <Box sx={{ display: 'flex', gap: 1, justifyContent: 'flex-end' }}>
               <Button
                 size="small"
@@ -183,6 +249,12 @@ const Header: React.FC = () => {
           </Box>
         </Popover>
       </Toolbar>
+
+      <LogoutSyncDialog
+        check={logoutCheck}
+        onClose={() => setLogoutCheck(null)}
+        onLogout={logout}
+      />
 
       {/* Login dialog - opened when clicking "Not logged in" */}
       <LoginDialog

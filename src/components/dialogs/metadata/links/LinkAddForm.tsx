@@ -22,11 +22,13 @@ interface LinkAddFormProps {
   onAdd: (link: LinkData) => void;
   onCancel?: () => void;
   initialData?: LinkData;
+  /** Called with the form's text as it is typed (a link filled in but not added yet) */
+  onDraftChange?: (draft: LinkData) => void;
 }
 
 // LEGACY: Lines 102-127 in editLink.java
 // URL validation regex (must start with http:// or https://)
-function isValidURL(url: string): boolean {
+export function isValidURL(url: string): boolean {
   if (!url) return false;
 
   // Simple validation: must start with http:// or https://
@@ -41,9 +43,13 @@ function isValidURL(url: string): boolean {
   return urlWithoutProtocol.includes('.');
 }
 
-export function LinkAddForm({ onAdd, onCancel, initialData }: LinkAddFormProps) {
+export function LinkAddForm({ onAdd, onCancel, initialData, onDraftChange }: LinkAddFormProps) {
   const [label, setLabel] = useState<string>(initialData?.label || '');
   const [url, setUrl] = useState<string>(initialData?.url || '');
+
+  useEffect(() => {
+    onDraftChange?.({ label, url });
+  }, [label, url, onDraftChange]);
 
   useEffect(() => {
     if (initialData) {

@@ -29,20 +29,12 @@ import RestoreIcon from '@mui/icons-material/Restore';
 import DeleteIcon from '@mui/icons-material/Delete';
 import { useAppStore } from '@/store';
 import { ConfirmDialog } from './ConfirmDialog';
+import { formatBytes } from '@/utils/formatBytes';
 
 interface VersionHistoryDialogProps {
   open: boolean;
   onClose: () => void;
   projectId: string;
-}
-
-// Format file size in human-readable format
-function formatBytes(bytes: number): string {
-  if (bytes === 0) return '0 B';
-  const k = 1024;
-  const sizes = ['B', 'KB', 'MB', 'GB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
 }
 
 // Format relative time

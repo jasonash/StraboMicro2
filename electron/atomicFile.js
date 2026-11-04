@@ -72,6 +72,19 @@ async function moveIntoPlace(tmpPath, targetPath) {
 }
 
 /**
+ * Flush a finished file's contents to disk
+ * @param {string} filePath
+ */
+async function syncFile(filePath) {
+  const handle = await fs.promises.open(filePath, 'r+');
+  try {
+    await handle.sync();
+  } finally {
+    await handle.close();
+  }
+}
+
+/**
  * Write data to a file atomically (temporary file, flush, rename)
  * @param {string} targetPath
  * @param {string | Buffer} data
@@ -104,12 +117,7 @@ async function copyFileAtomic(sourcePath, targetPath) {
   const tmpPath = tempPathFor(targetPath);
   try {
     await fs.promises.copyFile(sourcePath, tmpPath, fs.constants.COPYFILE_EXCL);
-    const handle = await fs.promises.open(tmpPath, 'r+');
-    try {
-      await handle.sync();
-    } finally {
-      await handle.close();
-    }
+    await syncFile(tmpPath);
   } catch (err) {
     await fs.promises.rm(tmpPath, { force: true }).catch(() => {});
     throw err;
@@ -117,9 +125,37 @@ async function copyFileAtomic(sourcePath, targetPath) {
   await moveIntoPlace(tmpPath, targetPath);
 }
 
+/** Errors that mean "this disk or folder cannot hard-link here", not "something is wrong". */
+const NO_LINK_CODES = new Set(['EXDEV', 'EPERM', 'ENOTSUP', 'EOPNOTSUPP', 'ENOSYS', 'EMLINK', 'EACCES']);
+
+/**
+ * Hard-link a file to a new path, or copy it where linking is not possible
+ * (another disk, FAT/exFAT, some network drives). The target must not exist.
+ * Linked files share their bytes, so they must only ever be replaced
+ * (writeFileAtomic / copyFileAtomic), never written into.
+ * @param {string} sourcePath
+ * @param {string} targetPath
+ * @returns {Promise<'linked' | 'copied'>}
+ */
+async function linkOrCopyFile(sourcePath, targetPath) {
+  try {
+    await fs.promises.link(sourcePath, targetPath);
+    return 'linked';
+  } catch (err) {
+    if (!err || !NO_LINK_CODES.has(err.code)) throw err;
+  }
+  await copyFileAtomic(sourcePath, targetPath);
+  return 'copied';
+}
+
 module.exports = {
   withRetry,
+  linkOrCopyFile,
   unlinkWithRetry,
   writeFileAtomic,
   copyFileAtomic,
+  // For callers that stream into the temporary file themselves
+  tempPathFor,
+  syncFile,
+  moveIntoPlace,
 };

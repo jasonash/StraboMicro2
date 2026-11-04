@@ -1,0 +1,369 @@
+/**
+ * End-to-end test of turning sync on and pushing, against the local dev
+ * server (StraboBackendDevKit, http://localhost). Runs inside Electron with
+ * Documents and userData in a temporary folder.
+ *
+ *   npm run test:sync-engine
+ *
+ * Needs the dev Docker stack (strabo-php) with MICROSYNC_ENABLED, the
+ * fixture user owner@test.strabospot.org, and the copied prod folder
+ * straboMicroFiles/727 (9 micrographs with nesting, 36 spots, an attachment
+ * on a spot, 2 point count sessions). Server projects use the mscli-
+ * prefix and are removed at the end (tests/microsync/client_fixture.php).
+ */
+
+const { app } = require('electron');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+const crypto = require('crypto');
+const { execFileSync } = require('child_process');
+
+const FIXTURE = path.join(os.homedir(), 'Desktop/Work/StraboBackendDevKit/www/straboMicroFiles/727');
+const SERVER = 'http://localhost';
+const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'smsync-'));
+app.setPath('documents', path.join(tmp, 'Documents'));
+app.setPath('userData', path.join(tmp, 'userData'));
+fs.mkdirSync(path.join(tmp, 'Documents'), { recursive: true });
+
+const E = path.join(__dirname, '../../electron');
+let failures = 0;
+let passes = 0;
+function check(label, ok, detail = '') {
+  if (ok) passes++;
+  else {
+    failures++;
+    console.log(`  FAIL  ${label}${detail ? `\n        ${String(detail).slice(0, 2000)}` : ''}`);
+  }
+  return ok;
+}
+function fixture(...args) {
+  const out = execFileSync('docker', ['exec', 'strabo-php', 'php', '/srv/app/www/tests/microsync/client_fixture.php', ...args.map(String)],
+    { maxBuffer: 1 << 28 }).toString();
+  return JSON.parse(out);
+}
+
+app.whenReady().then(async () => {
+  try {
+    const { createSyncClient } = require(`${E}/sync/client`);
+    const { turnSyncOn, pushProject } = require(`${E}/sync/syncEngine`);
+    const sidecar = require(`${E}/sync/sidecar`);
+    const projectFolders = require(`${E}/projectFolders`);
+    const { normalizeProject } = require(`${E}/shared/entityModel.mjs`);
+    const { deepEqual } = require(`${E}/shared/deepEqual.mjs`);
+
+    fixture('cleanup');
+    const who = fixture('token');
+    const client = createSyncClient({ restServer: SERVER, getAccessToken: async () => who.token });
+    check('server ping', (await client.ping()).ok === true);
+
+    // A local-only project made from the fixture, under a test id
+    const pid = `mscli-${crypto.randomUUID()}`;
+    const local = path.join(projectFolders.getStraboMicro2DataPath(), pid);
+    fs.mkdirSync(local, { recursive: true });
+    for (const sub of ['images', 'compositeThumbnails', 'associatedFiles', 'point-counts']) {
+      fs.cpSync(path.join(FIXTURE, sub), path.join(local, sub), { recursive: true });
+    }
+    const p0 = JSON.parse(fs.readFileSync(path.join(FIXTURE, 'project.json'), 'utf8'));
+    p0.id = pid;
+    p0.name = 'Client sync test';
+    p0.datasets[0].isExpanded = true; // per-user: must not reach the server
+    fs.writeFileSync(path.join(local, 'project.json'), JSON.stringify(p0, null, 2));
+
+    const readLocal = () => {
+      const folder = projectFolders.getProjectFolderPath(pid);
+      const project = JSON.parse(fs.readFileSync(path.join(folder, 'project.json'), 'utf8'));
+      const ids = new Set(micrographs(project).map((m) => m.id));
+      const pcs = fs.readdirSync(path.join(folder, 'point-counts')).filter((n) => n.endsWith('.json')).sort()
+        .map((n) => JSON.parse(fs.readFileSync(path.join(folder, 'point-counts', n), 'utf8')))
+        .filter((pc) => ids.has(pc.micrographId)); // orphaned sessions are not synced
+      return { folder, project, pcs };
+    };
+    const writeLocal = (fn) => {
+      const { folder, project } = readLocal();
+      fn(project, folder);
+      fs.writeFileSync(path.join(folder, 'project.json'), JSON.stringify(project, null, 2));
+    };
+    const micrographs = (p) => p.datasets.flatMap((d) => d.samples.flatMap((s) => s.micrographs));
+    /** Server copy (after a build) equals the local project and has every file ref. */
+    const compare = (label, serverPid) => {
+      fixture('build', serverPid);
+      const a = fixture('assembled', serverPid);
+      const { project, pcs } = readLocal();
+      const want = normalizeProject(project).project;
+      check(`${label}: server project equals local`, a && deepEqual(a.project, want), firstDiff(a && a.project, want));
+      const wantPcs = pcs.map((x) => { const y = { ...x }; delete y.isExpanded; return y; });
+      check(`${label}: point counts equal`, a && deepEqual(
+        [...a.pointCounts].sort((x, y) => (x.id < y.id ? -1 : 1)), [...wantPcs].sort((x, y) => (x.id < y.id ? -1 : 1))));
+      const ms = micrographs(project);
+      const refs = a ? a.refs : {};
+      const missing = [];
+      for (const m of ms) {
+        for (const role of ['image', 'thumbnail', 'tiles']) {
+          if (!refs[role] || !refs[role][`micrograph:${m.id}`]) missing.push(`${role} ${m.id}`);
+        }
+      }
+      check(`${label}: image, thumbnail and tiles ref for every micrograph`, missing.length === 0, missing.join(', '));
+      return a;
+    };
+
+    // Turn sync on
+    const progress = [];
+    const imageBytes = [];
+    const on = await turnSyncOn({ projectId: pid, restServer: SERVER, user: { pkey: who.pkey, email: who.email }, client, onProgress: (x) => { progress.push(x.phase); if (x.phase === 'images') imageBytes.push(x); } });
+    check('turn sync on', on.status === 'synced' && on.pid > 0, JSON.stringify(on));
+    const accountFolder = projectFolders.getAccountCopyPath(pid, SERVER, who.pkey);
+
+    // Tile archives carry no path or time of this computer (16v): the same
+    // image gives the same archive, wherever it was tiled
+    {
+      const tileArchive = require(`${E}/tileArchive`);
+      const firstImage = fs.readdirSync(path.join(accountFolder, 'images'))[0];
+      const entries = await tileArchive.collectTileEntries(path.join(accountFolder, 'images', firstImage), 'test');
+      const meta = entries.find((e) => e.name === 'metadata.json');
+      const parsed = meta && meta.data ? JSON.parse(meta.data) : null;
+      check('tile archive metadata has no originalPath or createdAt', parsed !== null && !('originalPath' in parsed) &&
+        !('createdAt' in parsed) && parsed.width > 0, JSON.stringify(meta).slice(0, 400));
+    }
+    check('folder moved into the account folder', on.folder === accountFolder && !fs.existsSync(local) && fs.existsSync(path.join(accountFolder, 'project.json')));
+    const state = await sidecar.loadState(accountFolder);
+    check('sidecar written: binding, ready, base, refs', state && state.binding.pid === on.pid && state.phase === 'ready' &&
+      Object.keys(state.base).length > 40 && Object.keys(state.refs).length >= 27, JSON.stringify(state && { phase: state.phase, base: Object.keys(state.base).length, refs: Object.keys(state.refs).length }));
+    check('progress reported for images, push, tiles, files', ['images', 'push', 'tiles', 'files'].every((ph) => progress.includes(ph)));
+    const lastBytes = imageBytes[imageBytes.length - 1];
+    check('image progress counts bytes up to the total (status chip percentage)',
+      imageBytes.length > 0 && lastBytes.bytesTotal > 0 && lastBytes.bytesDone === lastBytes.bytesTotal &&
+      imageBytes.every((x, i) => x.bytesDone <= x.bytesTotal && (i === 0 || x.bytesDone >= imageBytes[i - 1].bytesDone)),
+      JSON.stringify(imageBytes.slice(-3)));
+    const meta = await client.getProject(on.pid);
+    check('server project is ready', meta.syncState === 'ready');
+    const first = compare('first upload', on.pid);
+    check('attachment ref on its spot', first && first.refs['associated_file:RotatingMeeting_Information.textClipping'] &&
+      Object.keys(first.refs['associated_file:RotatingMeeting_Information.textClipping'])[0].startsWith('spot:'));
+    check('per-user field not on the server', first && first.project.datasets[0].isExpanded === undefined);
+
+    // Nothing changed: nothing sent
+    const idle = await pushProject({ folder: accountFolder, client });
+    check('push with no changes sends nothing', idle.pushed === 0 && idle.filesUploaded === 0 && idle.problems.length === 0, JSON.stringify(idle));
+
+    // Local edits
+    let spotWithFile = null;
+    writeLocal((p) => {
+      const ms = micrographs(p);
+      ms[0].name = 'Renamed reference';
+      ms[0].notes = 'note added';
+      delete ms[1].description;
+      ms[2].spots = ms[2].spots || [];
+      ms[2].spots.push({ id: crypto.randomUUID(), name: 'new spot', geometryType: 'point', points: [{ X: 10, Y: 20 }] });
+      const withSpots = ms.find((m) => (m.spots || []).some((s) => !s.associatedFiles));
+      withSpots.spots.splice(withSpots.spots.findIndex((s) => !s.associatedFiles), 1);
+      p.datasets[0].samples[0].micrographs.reverse();
+      p.tags.push({ id: crypto.randomUUID(), name: 'pushed tag' });
+      for (const m of ms) for (const s of m.spots || []) if (s.associatedFiles) { spotWithFile = s; delete s.associatedFiles; }
+    });
+    const edit = await pushProject({ folder: accountFolder, client });
+    check('edits pushed without problems', edit.pushed > 0 && edit.problems.length === 0, JSON.stringify(edit.problems).slice(0, 800));
+    const second = compare('after edits', on.pid);
+    check('removed attachment ref removed', second && !(second.refs['associated_file:RotatingMeeting_Information.textClipping'] || {})[`spot:${spotWithFile && spotWithFile.id}`]);
+
+    // A new micrograph with a new image: image uploaded before the create
+    const newId = crypto.randomUUID();
+    writeLocal((p, folder) => {
+      const src = micrographs(p)[0];
+      fs.copyFileSync(path.join(folder, 'images', src.id), path.join(folder, 'images', newId));
+      fs.appendFileSync(path.join(folder, 'images', newId), Buffer.from([0]));
+      fs.copyFileSync(path.join(folder, 'compositeThumbnails', src.id), path.join(folder, 'compositeThumbnails', newId));
+      const m = JSON.parse(JSON.stringify(src));
+      m.id = newId;
+      m.name = 'New micrograph';
+      m.spots = [{ id: crypto.randomUUID(), name: 'on new micrograph' }];
+      delete m.parentID;
+      p.datasets[0].samples[0].micrographs.push(m);
+    });
+    const added = await pushProject({ folder: accountFolder, client });
+    // The image is new; its tiles equal the source micrograph's (same pixels)
+    // and tile archives are the same everywhere (16v), so the server already
+    // has that blob: the ref is set without a second upload
+    check('new micrograph pushed', added.pushed >= 3 && added.filesUploaded >= 1 && added.problems.length === 0, JSON.stringify(added));
+    const afterNew = compare('after new micrograph', on.pid);
+    check('new micrograph has image and tiles refs', Boolean(afterNew && (afterNew.refs.image || {})[`micrograph:${newId}`] &&
+      (afterNew.refs.tiles || {})[`micrograph:${newId}`]), JSON.stringify(afterNew && afterNew.refs.tiles));
+
+    // Delete a micrograph that has nested children: one delete, the server cascades
+    let deletedIds = [];
+    writeLocal((p) => {
+      const s = p.datasets[0].samples[0];
+      const parent = s.micrographs.find((m) => s.micrographs.some((c) => c.parentID === m.id));
+      deletedIds = [parent.id, ...s.micrographs.filter((c) => c.parentID === parent.id).map((c) => c.id)];
+      s.micrographs = s.micrographs.filter((m) => !deletedIds.includes(m.id));
+    });
+    const orphaned = readLocal().pcs.length;
+    const del = await pushProject({ folder: accountFolder, client });
+    check('cascade delete pushed', del.problems.length === 0, JSON.stringify(del.problems).slice(0, 800));
+    const again2 = await pushProject({ folder: accountFolder, client });
+    check('orphaned point count files are not pushed again', again2.pushed === 0 && again2.problems.length === 0, JSON.stringify(again2));
+    check('fixture really has orphaned point counts now', fs.readdirSync(path.join(accountFolder, 'point-counts')).length > orphaned);
+    const st = await sidecar.loadState(accountFolder);
+    check('deleted micrographs and their spots gone from the base', deletedIds.every((id) => !st.base[`micrograph:${id}`]) &&
+      !Object.values(st.base).some((e) => e.type === 'spot' && deletedIds.includes(e.parentId)));
+    compare('after cascade delete', on.pid);
+
+    // A file ref for a micrograph deleted on the server meanwhile (not pulled yet) is skipped, not retried forever
+    const st2 = await sidecar.loadState(accountFolder);
+    const doomed = st2.base[`micrograph:${newId}`];
+    const gone = await client.push(on.pid, crypto.randomUUID(), 'another-computer',
+      [{ op: 'delete', type: 'micrograph', id: newId, baseVersion: doomed.version }]);
+    check('another computer deletes the new micrograph', gone.results[0].status === 'accepted', JSON.stringify(gone.results));
+    const thumbRk = `micrograph:${newId}|thumbnail`;
+    const oldThumb = st2.refs[thumbRk];
+    fs.appendFileSync(path.join(accountFolder, 'compositeThumbnails', newId), Buffer.from([1, 2, 3]));
+    let skipped;
+    try {
+      skipped = await pushProject({ folder: accountFolder, client });
+    } catch (err) {
+      skipped = { error: err.message };
+    }
+    const st3 = await sidecar.loadState(accountFolder);
+    check('a thumbnail for a micrograph deleted on the server does not stop the push', skipped && !skipped.error &&
+      st3.refs[thumbRk] === oldThumb, JSON.stringify(skipped).slice(0, 300));
+
+    // A push whose answer was lost (convergence SEED=1806840850): the server
+    // parked it (a Viewer's change); sent again on the next sync, the stored
+    // answer is about what that push carried, not about edits made since
+    {
+      const { SyncError } = require(`${E}/sync/client`);
+      const mkey = Object.keys((await sidecar.loadState(accountFolder)).base).find((k) => k.startsWith('micrograph:'));
+      const mid = mkey.slice(mkey.indexOf(':') + 1);
+      const sent = [];
+      let lost = null;
+      let replay = null;
+      const flaky = {
+        ...client,
+        push: async (spid, pushId, cid, changes) => {
+          sent.push({ pushId, changes });
+          if (lost === 'next') {
+            lost = pushId;
+            throw new SyncError('offline', 'The answer from StraboSpot was cut off (test)');
+          }
+          if (pushId === lost && replay) return { results: changes.map(() => ({ ...replay })) };
+          return client.push(spid, pushId, cid, changes);
+        },
+      };
+      const setMicro = (field, value) => writeLocal((p) => { micrographs(p).find((m) => m.id === mid)[field] = value; });
+      const mineIn = (from) => sent.slice(from).flatMap((x) => x.changes).filter((c) => c.id === mid);
+      const parked = { type: 'micrograph', id: mid, status: 'forbidden', reason: 'viewer', parked: true };
+
+      // Edited since the lost answer: the edit goes up in the same sync
+      setMicro('notes', 'sent while a Viewer');
+      lost = 'next';
+      replay = parked;
+      const a = await pushProject({ folder: accountFolder, client: flaky }).catch((err) => ({ error: err.message }));
+      check('lost answer: the push stays to be sent again', a.error && (await sidecar.loadState(accountFolder)).outgoingPush, JSON.stringify(a));
+      setMicro('description', 'edited as an Editor');
+      let from = sent.length;
+      const b = await pushProject({ folder: accountFolder, client: flaky });
+      let mine = mineIn(from);
+      check('edited since: the push is sent again, then the edit goes up as its own change', mine.length === 2 &&
+        mine[1].fields && mine[1].fields.description === 'edited as an Editor' && mine[1].fields.notes === 'sent while a Viewer',
+        JSON.stringify(mine));
+      let st = await sidecar.loadState(accountFolder);
+      check('edited since: nothing held as turned down, the server has the edit', b.pushed >= 1 &&
+        !(st.refused || []).some((x) => x.key === mkey) && st.base[mkey].body.description === 'edited as an Editor',
+        JSON.stringify({ b, refused: st.refused }));
+
+      // The same for a child order change (spots reordered, convergence
+      // SEED=1806840850: the order was what the lost push carried)
+      const withSpots = micrographs(readLocal().project).find((m) => (m.spots || []).length >= 2);
+      const okey = `micrograph:${withSpots.id}`;
+      const mineOf = (from, id) => sent.slice(from).flatMap((x) => x.changes).filter((c) => c.id === id);
+      writeLocal((p) => { const m = micrographs(p).find((x) => x.id === withSpots.id); m.spots = [...m.spots].reverse(); });
+      lost = 'next';
+      replay = { type: 'micrograph', id: withSpots.id, status: 'forbidden', reason: 'viewer', parked: true };
+      await pushProject({ folder: accountFolder, client: flaky }).catch(() => null);
+      check('lost answer: a child order change', mineOf(sent.length - 1, withSpots.id).some((c) => c.childOrder && !c.fields));
+      writeLocal((p) => { micrographs(p).find((x) => x.id === withSpots.id).description = 'after the order'; });
+      from = sent.length;
+      await pushProject({ folder: accountFolder, client: flaky });
+      st = await sidecar.loadState(accountFolder);
+      check('order sent again, edited since: the edit goes up in the same sync', mineOf(from, withSpots.id).some((c) => c.fields &&
+        c.fields.description === 'after the order') && st.base[okey].body.description === 'after the order' &&
+        !(st.refused || []).some((x) => x.key === okey), JSON.stringify({ sent: mineOf(from, withSpots.id), refused: st.refused }));
+      replay = parked;
+
+      // Not edited since: still turned down, held, not sent again
+      setMicro('notes', 'parked, nothing since');
+      lost = 'next';
+      await pushProject({ folder: accountFolder, client: flaky }).catch(() => null);
+      from = sent.length;
+      await pushProject({ folder: accountFolder, client: flaky });
+      st = await sidecar.loadState(accountFolder);
+      check('not edited since: held as turned down', (st.refused || []).some((x) => x.key === mkey) && mineIn(from).length === 1,
+        JSON.stringify({ refused: st.refused, sent: mineIn(from) }));
+      from = sent.length;
+      await pushProject({ folder: accountFolder, client: flaky });
+      check('not edited since: not sent again', mineIn(from).length === 0, JSON.stringify(mineIn(from)));
+      // An edit releases it (as before)
+      setMicro('notes', 'edited again');
+      from = sent.length;
+      await pushProject({ folder: accountFolder, client: flaky });
+      st = await sidecar.loadState(accountFolder);
+      check('an edit sends it again', mineIn(from).length === 1 && !(st.refused || []).some((x) => x.key === mkey) &&
+        st.base[mkey].body.notes === 'edited again', JSON.stringify({ refused: st.refused }));
+    }
+
+    // A role that may not change files (a Viewer, 403 forbidden on upload and refs) does not stop the push
+    let uploadCalls = 0;
+    const forbidding = createSyncClient({
+      restServer: SERVER,
+      getAccessToken: async () => who.token,
+      fetchImpl: async (url, init) => {
+        if (/\/(uploads|refs)/.test(String(url))) {
+          uploadCalls++;
+          return new Response(JSON.stringify({ error: 'forbidden', message: 'Viewers cannot upload' }), { status: 403 });
+        }
+        return fetch(url, init);
+      },
+    });
+    const liveMic = Object.keys((await sidecar.loadState(accountFolder)).base).find((k) => k.startsWith('micrograph:'));
+    const liveId = liveMic.slice(liveMic.indexOf(':') + 1);
+    fs.appendFileSync(path.join(accountFolder, 'compositeThumbnails', liveId), Buffer.from([4, 5, 6]));
+    let refusedFiles;
+    try {
+      refusedFiles = await pushProject({ folder: accountFolder, client: forbidding });
+    } catch (err) {
+      refusedFiles = { error: err.message };
+    }
+    check('a file my role may not upload (403) does not stop the push', refusedFiles && !refusedFiles.error && uploadCalls > 0,
+      JSON.stringify(refusedFiles).slice(0, 300));
+    // A copy that knows it is a Viewer does not try files at all
+    const vs = await sidecar.loadState(accountFolder);
+    await sidecar.saveState(accountFolder, { ...vs, role: 'viewer' });
+    uploadCalls = 0;
+    const asViewer = await pushProject({ folder: accountFolder, client: forbidding });
+    check('a Viewer\'s copy sends no files', asViewer && uploadCalls === 0, `calls ${uploadCalls}`);
+    await sidecar.saveState(accountFolder, { ...(await sidecar.loadState(accountFolder)), role: 'owner' });
+
+    // Turning sync on again resumes (no new server project, nothing to send)
+    const again = await turnSyncOn({ projectId: pid, restServer: SERVER, user: { pkey: who.pkey, email: who.email }, client });
+    check('turning sync on again resumes the same project', again.status === 'synced' && again.pid === on.pid);
+  } catch (e) {
+    failures++;
+    console.log('ERROR', e && e.stack);
+  }
+  try { fixture('cleanup'); } catch (_) { /* reported above */ }
+  fs.rmSync(tmp, { recursive: true, force: true });
+  console.log(failures ? `\n${failures} FAILED (${passes} passed)` : `\nALL PASSED (${passes} checks)`);
+  app.exit(failures ? 1 : 0);
+});
+
+function firstDiff(a, b, p = '') {
+  const { deepEqual } = require(`${E}/shared/deepEqual.mjs`);
+  if (deepEqual(a, b)) return '';
+  if (a && b && typeof a === 'object' && typeof b === 'object') {
+    for (const k of new Set([...Object.keys(a), ...Object.keys(b)])) {
+      const d = firstDiff(a[k], b[k], `${p}.${k}`);
+      if (d) return d;
+    }
+  }
+  return `${p}: server ${JSON.stringify(a)?.slice(0, 300)} vs local ${JSON.stringify(b)?.slice(0, 300)}`;
+}

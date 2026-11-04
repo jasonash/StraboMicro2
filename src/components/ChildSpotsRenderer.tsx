@@ -13,55 +13,12 @@
 
 import { useMemo } from 'react';
 import { Group } from 'react-konva';
-import { MicrographMetadata, Spot, Geometry } from '@/types/project-types';
+import { MicrographMetadata, Spot } from '@/types/project-types';
 import type { AffineMatrix } from '@/utils/affineTransform';
 import { SpotRenderer } from './SpotRenderer';
-
-// Apply a 2x3 affine matrix [a, b, tx, c, d, ty] to a 2D point.
-const applyAffine = (matrix: AffineMatrix, x: number, y: number): [number, number] => {
-  const [a, b, tx, c, d, ty] = matrix;
-  return [a * x + b * y + tx, c * x + d * y + ty];
-};
-
-// Return a shallow-cloned Spot with its geometry/points mapped through the
-// affine matrix. The original spot is untouched so callers (selection, edit
-// callbacks) keep operating on the canonical spot in child coordinate space.
-const transformSpotByAffine = (spot: Spot, matrix: AffineMatrix): Spot => {
-  const next: Spot = { ...spot };
-
-  if (spot.geometry) {
-    const { type, coordinates } = spot.geometry;
-    if (type === 'Point') {
-      const [x, y] = coordinates as [number, number];
-      next.geometry = { ...spot.geometry, coordinates: applyAffine(matrix, x, y) } as Geometry;
-    } else if (type === 'LineString') {
-      next.geometry = {
-        ...spot.geometry,
-        coordinates: (coordinates as Array<[number, number]>).map(([x, y]) =>
-          applyAffine(matrix, x, y)
-        ),
-      } as Geometry;
-    } else if (type === 'Polygon') {
-      next.geometry = {
-        ...spot.geometry,
-        coordinates: (coordinates as Array<Array<[number, number]>>).map((ring) =>
-          ring.map(([x, y]) => applyAffine(matrix, x, y))
-        ),
-      } as Geometry;
-    }
-  }
-
-  if (spot.points) {
-    next.points = spot.points.map((p) => {
-      const sx = p.X ?? p.x ?? 0;
-      const sy = p.Y ?? p.y ?? 0;
-      const [nx, ny] = applyAffine(matrix, sx, sy);
-      return { X: nx, Y: ny };
-    });
-  }
-
-  return next;
-};
+import { useAppStore } from '@/store';
+import { spotFilterLook } from '@/utils/spotDataSections';
+import { transformSpot } from '@/utils/parentSpots';
 
 interface ChildSpotsRendererProps {
   /** The child micrograph whose spots we're rendering */
@@ -93,6 +50,9 @@ export const ChildSpotsRenderer: React.FC<ChildSpotsRendererProps> = ({
   onSpotClick,
   onSpotContextMenu,
 }) => {
+  // View > Filter Spots...: hidden spots are skipped, dimmed ones drawn faint
+  const spotFilter = useAppStore((state) => state.spotFilter);
+
   // Skip if no spots
   if (!childMicrograph.spots || childMicrograph.spots.length === 0) {
     return null;
@@ -113,7 +73,7 @@ export const ChildSpotsRenderer: React.FC<ChildSpotsRendererProps> = ({
     const matrix = childMicrograph.affineMatrix as AffineMatrix;
     return childMicrograph.spots.map((original) => ({
       original,
-      transformed: transformSpotByAffine(original, matrix),
+      transformed: transformSpot(original, matrix),
     }));
   }, [isAffine, childMicrograph.affineMatrix, childMicrograph.spots]);
 
@@ -168,7 +128,7 @@ export const ChildSpotsRenderer: React.FC<ChildSpotsRendererProps> = ({
   if (affineSpots) {
     return (
       <Group>
-        {affineSpots.map(({ original, transformed }) => (
+        {affineSpots.filter(({ original }) => spotFilterLook(original, spotFilter) !== 'hidden').map(({ original, transformed }) => (
           <SpotRenderer
             key={original.id}
             spot={transformed}
@@ -176,6 +136,7 @@ export const ChildSpotsRenderer: React.FC<ChildSpotsRendererProps> = ({
             isSelected={
               original.id === activeSpotId || selectedSpotIds.includes(original.id)
             }
+            dimmed={spotFilterLook(original, spotFilter) === 'dim'}
             onClick={onSpotClick ? (_, event) => onSpotClick(original, event) : undefined}
             onContextMenu={
               onSpotContextMenu ? (_, x, y) => onSpotContextMenu(original, x, y) : undefined
@@ -202,12 +163,13 @@ export const ChildSpotsRenderer: React.FC<ChildSpotsRendererProps> = ({
       offsetY={overlayTransform.offsetY}
     >
       {/* Render child spots - clickable for selection and editing */}
-      {childMicrograph.spots.map((spot) => (
+      {childMicrograph.spots.filter((spot) => spotFilterLook(spot, spotFilter) !== 'hidden').map((spot) => (
         <SpotRenderer
           key={spot.id}
           spot={spot}
           scale={effectiveScale}
           isSelected={spot.id === activeSpotId || selectedSpotIds.includes(spot.id)}
+          dimmed={spotFilterLook(spot, spotFilter) === 'dim'}
           onClick={onSpotClick}
           onContextMenu={onSpotContextMenu}
           renderLabelsOnly={false}

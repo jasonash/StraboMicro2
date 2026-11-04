@@ -37,17 +37,29 @@ interface LithologyPickerProps {
   selectedLithologies: LithologySelection[];
   onChange: (lithologies: LithologySelection[]) => void;
   label?: string;
+  /** Told about a selection that Add would put in the list but that is not added yet (null = none) */
+  onPendingChange?: (pending: LithologySelection | null) => void;
 }
 
 export function LithologyPicker({
   selectedLithologies,
   onChange,
   label = 'Lithologies',
+  onPendingChange,
 }: LithologyPickerProps) {
   // Current selection being built
   const [level1, setLevel1] = useState('');
   const [level2, setLevel2] = useState('');
   const [level3, setLevel3] = useState('');
+
+  // Report the not-yet-added selection (only one Add would accept: level 1 + 2, not already listed)
+  const pendingIsNew = !!level1 && !!level2 &&
+    !selectedLithologies.some(l => l.level1 === level1 && l.level2 === level2 && l.level3 === (level3 || ''));
+  useEffect(() => {
+    onPendingChange?.(pendingIsNew ? { level1, level2, level3: level3 || '' } : null);
+  }, [pendingIsNew, level1, level2, level3]);
+  // Hidden tab or closed dialog: nothing is waiting any more
+  useEffect(() => () => onPendingChange?.(null), []);
 
   // Available options for each level
   const [level1Options] = useState(() => getLithologyLevel1Options());

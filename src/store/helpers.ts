@@ -178,6 +178,74 @@ export function buildMicrographIndex(
 /**
  * Build an index of all spots in the project for fast lookups
  */
+/** The selection fields that can point at entities. */
+export interface SelectionState {
+  activeMicrographId: string | null;
+  micrographNavigationStack: string[];
+  activeSpotId: string | null;
+  selectedSpotIds: string[];
+}
+
+/**
+ * The selection after entities were removed by a change the user did not
+ * make here (undo, a pull): anything pointing at a removed entity is cleared.
+ */
+export function selectionAfterChange(
+  state: SelectionState,
+  micrographIndex: Map<string, MicrographMetadata>,
+  spotIndex: Map<string, Spot>
+): SelectionState {
+  return {
+    activeMicrographId: state.activeMicrographId && micrographIndex.has(state.activeMicrographId) ? state.activeMicrographId : null,
+    micrographNavigationStack: state.micrographNavigationStack.every((id) => micrographIndex.has(id)) ? state.micrographNavigationStack : [],
+    activeSpotId: state.activeSpotId && spotIndex.has(state.activeSpotId) ? state.activeSpotId : null,
+    selectedSpotIds: state.selectedSpotIds.filter((id) => spotIndex.has(id)),
+  };
+}
+
+/**
+ * Drop membership ids that point at something no longer in the project
+ * (micrograph and spot tags, group micrographs and spotIDs, tag spotIDs).
+ * Call on the cloned project after a delete; lists without a dead id are
+ * left as they are. A pull does the same for synced projects (merge.js
+ * dropDeadMembers).
+ */
+export function dropDeadMemberIds(project: ProjectMetadata): void {
+  const micrographIds = new Set<string>();
+  const spotIds = new Set<string>();
+  const tagIds = new Set((project.tags || []).map((t) => t.id));
+  const owners: Array<{ tags?: string[] | null }> = [];
+  for (const dataset of project.datasets || []) {
+    for (const sample of dataset.samples || []) {
+      for (const micrograph of sample.micrographs || []) {
+        micrographIds.add(micrograph.id);
+        owners.push(micrograph);
+        for (const spot of micrograph.spots || []) {
+          spotIds.add(spot.id);
+          owners.push(spot);
+        }
+      }
+    }
+  }
+  // null when nothing is dead, so untouched lists keep their exact value
+  const kept = (ids: string[] | null | undefined, live: Set<string>) =>
+    Array.isArray(ids) && ids.some((id) => !live.has(id)) ? ids.filter((id) => live.has(id)) : null;
+  for (const owner of owners) {
+    const tags = kept(owner.tags, tagIds);
+    if (tags) owner.tags = tags;
+  }
+  for (const group of project.groups || []) {
+    const micrographs = kept(group.micrographs, micrographIds);
+    if (micrographs) group.micrographs = micrographs;
+    const spots = kept(group.spotIDs, spotIds);
+    if (spots) group.spotIDs = spots;
+  }
+  for (const tag of project.tags || []) {
+    const spots = kept(tag.spotIDs, spotIds);
+    if (spots) tag.spotIDs = spots;
+  }
+}
+
 export function buildSpotIndex(
   project: ProjectMetadata | null
 ): Map<string, Spot> {
@@ -196,6 +264,22 @@ export function buildSpotIndex(
   }
 
   return index;
+}
+
+/**
+ * Both lookup indexes for a project. Every store action that writes a new
+ * project must return these too: readers such as the Grain Size summary take
+ * a micrograph's spots from micrographIndex, so an index left on the old
+ * project keeps showing deleted or changed spots.
+ */
+export function projectIndexes(project: ProjectMetadata | null): {
+  micrographIndex: Map<string, MicrographMetadata>;
+  spotIndex: Map<string, Spot>;
+} {
+  return {
+    micrographIndex: buildMicrographIndex(project),
+    spotIndex: buildSpotIndex(project),
+  };
 }
 
 /**
@@ -406,7 +490,13 @@ export function getAvailablePhasesFromSpot(
  * - Other *Info arrays: append preset entries to existing
  * - Notes fields: concatenate with newline
  */
-export function mergePresetIntoSpot(spot: Spot, presetData: PresetData): void {
+export function mergePresetIntoSpot(spot: Spot, presetData: PresetData, existingTagIds?: ReadonlySet<string>): void {
+  // Add tags (project presets; ids of deleted tags are left out when existingTagIds is given)
+  const presetTags = (presetData.tags ?? []).filter((id) => !existingTagIds || existingTagIds.has(id));
+  if (presetTags.length > 0) {
+    spot.tags = [...new Set([...(spot.tags ?? []), ...presetTags])];
+  }
+
   // Merge scalar appearance properties (replace)
   if (presetData.color !== undefined) {
     spot.color = presetData.color;

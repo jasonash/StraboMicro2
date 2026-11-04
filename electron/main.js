@@ -13,6 +13,62 @@ const fs = require('fs');
 const { pathToFileURL } = require('url');
 const log = require('electron-log');
 
+// Development only: STRABO_PROFILE=<name> runs a second, independent copy of
+// the app on this computer (its own settings, login, sync installation id,
+// tile cache, log and StraboMicro2Data folder in ~/Documents/StraboMicro2-<name>),
+// for testing sync between two "machines". Set before anything reads these
+// paths (tileCache resolves its folder when it loads). Electron's
+// single-instance lock follows userData, so both copies can run at once.
+const DEV_PROFILE = !app.isPackaged && /^[a-z0-9_-]{1,32}$/i.test(process.env.STRABO_PROFILE || '')
+  ? process.env.STRABO_PROFILE
+  : null;
+if (DEV_PROFILE) {
+  const userData = `${app.getPath('userData')}-${DEV_PROFILE}`;
+  app.setPath('userData', userData);
+  app.setPath('documents', path.join(app.getPath('documents'), `StraboMicro2-${DEV_PROFILE}`));
+  fs.mkdirSync(app.getPath('documents'), { recursive: true });
+  log.transports.file.resolvePathFn = () => path.join(userData, 'logs', 'main.log');
+}
+
+// Development only: STRABO_E2E_DIR=<absolute folder> is one copy of the app
+// in an end-to-end test run (tests/e2e). Its userData and Documents live in
+// that folder, and the page learns it is under test (shorter sync timers,
+// stores reachable by the test; src/services/e2eMode.ts).
+const E2E_DIR = !app.isPackaged && !DEV_PROFILE && path.isAbsolute(process.env.STRABO_E2E_DIR || '')
+  ? process.env.STRABO_E2E_DIR
+  : null;
+if (E2E_DIR) {
+  const userData = path.join(E2E_DIR, 'userData');
+  app.setPath('userData', userData);
+  app.setPath('documents', path.join(E2E_DIR, 'Documents'));
+  fs.mkdirSync(app.getPath('documents'), { recursive: true });
+  log.transports.file.resolvePathFn = () => path.join(userData, 'logs', 'main.log');
+}
+
+// Development only: an e2e copy that runs in the background
+// (STRABO_E2E_BACKGROUND=1, set by tests/e2e/lib/copy.ts unless watching), so
+// the person at the computer can keep working: no splash, no Dock icon, its
+// windows never take focus, are see-through and let clicks pass to what is
+// below. Pages keep running at full speed when covered (no background
+// throttling), and Playwright drives them without the OS.
+const E2E_BACKGROUND = Boolean(E2E_DIR) && process.env.STRABO_E2E_BACKGROUND === '1';
+if (E2E_BACKGROUND) {
+  BrowserWindow.prototype.show = function show() { this.showInactive(); };
+  BrowserWindow.prototype.focus = function focus() {};
+  app.focus = () => {};
+  app.on('browser-window-created', (_event, win) => {
+    win.setOpacity(0);
+    win.setIgnoreMouseEvents(true);
+    win.webContents.setBackgroundThrottling(false);
+  });
+  app.whenReady().then(() => {
+    if (process.platform === 'darwin') {
+      app.setActivationPolicy('accessory');
+      app.dock?.hide();
+    }
+  });
+}
+
 // Fix sharp native module resolution in Windows packaged builds.
 // sharp loads its binary via require('@img/sharp-win32-x64/sharp.node'), a
 // package.json exports-map entry that failed to resolve inside Electron's
@@ -159,18 +215,24 @@ const pdfExport = require('./pdfExport');
 // Use React-PDF for better layout and working internal links
 const pdfProjectExport = require('./pdfReactExport');
 const smzExport = require('./smzExport');
-const serverUpload = require('./serverUpload');
 const versionHistory = require('./versionHistory');
 const projectsIndex = require('./projectsIndex');
+const accounts = require('./accounts');
+const introQueue = require('./sync/introQueue');
 const imageExport = require('./imageExport');
 const smzImport = require('./smzImport');
 const serverDownload = require('./serverDownload');
 const autoUpdaterModule = require('./autoUpdater');
 const logService = require('./logService');
 const pointCountStorage = require('./pointCountStorage');
+const syncService = require('./sync/syncService');
+const syncSidecar = require('./sync/sidecar');
 const fastsamService = require('./fastsamService');
+// Grain Spot model (SAM 2.1 tiny): download and bytes for the renderer
+require('./grainSpotModel').registerIpc(ipcMain);
 const straboToolsMain = require('./straboToolsMain');
 const dialogDirs = require('./dialogDirs');
+const customUserDataFiles = require('./customUserDataFiles');
 const deepLink = require('./deepLink');
 
 // Handle EPIPE errors at process level (prevents crash on broken stdout pipe)
@@ -467,6 +529,7 @@ function createSplashWindow() {
   splashWindow = new BrowserWindow({
     width: 400,
     height: 400,
+    show: !E2E_BACKGROUND,
     frame: false,
     transparent: true,
     resizable: false,
@@ -534,8 +597,28 @@ function createWindow() {
       nodeIntegration: false,
       contextIsolation: true,
       preload: path.join(__dirname, 'preload.js'),
+      ...(E2E_DIR ? {
+        additionalArguments: [
+          `--strabo-e2e=${process.env.STRABO_E2E_SERVER || 'http://localhost'}`,
+          // A scenario may set the activity poll (e.g. 10 min, to prove the live channel)
+          ...(Number(process.env.STRABO_E2E_POLL_MS) > 0 ? [`--strabo-e2e-poll=${Number(process.env.STRABO_E2E_POLL_MS)}`] : []),
+          // Latency measurement (e2e 10-latency): the real timers, or those from before the live channel
+          ...(['real', 'legacy'].includes(String(process.env.STRABO_E2E_TIMERS)) ? [`--strabo-e2e-timers=${process.env.STRABO_E2E_TIMERS}`] : []),
+          // Grain Spot on the CPU only (e2e 19: the path for computers without WebGPU)
+          ...(process.env.STRABO_E2E_GRAIN_CPU === '1' ? ['--strabo-e2e-grain-cpu'] : []),
+          // A GPU whose self-check fails (e2e 19: wrong numbers without an error)
+          ...(process.env.STRABO_E2E_GRAIN_BAD_GPU === '1' ? ['--strabo-e2e-grain-bad-gpu'] : []),
+        ],
+      } : {}),
     },
   });
+  if (DEV_PROFILE) {
+    // Show which copy this is (STRABO_PROFILE, development only)
+    mainWindow.on('page-title-updated', (event, title) => {
+      event.preventDefault();
+      mainWindow.setTitle(`${title} [${DEV_PROFILE}]`);
+    });
+  }
 
   // Restore maximized state if needed
   if (savedState.isMaximized) {
@@ -556,6 +639,7 @@ function createWindow() {
 
   // Track auth state for menu
   let isLoggedIn = false;
+  let currentProjectSynced = false;
 
   // Track current project ID for menu
   let currentProjectId = null;
@@ -569,6 +653,7 @@ function createWindow() {
     spotLabelMode: 'original',
     showOverlayOutlines: true,
     showRecursiveSpots: false,
+    showParentSpots: false,
     spotColorMode: 'spot-color',
   };
 
@@ -619,8 +704,10 @@ function createWindow() {
           ...recentProjectsCache.map((proj) => {
             const isCurrentProject = proj.id === currentProjectId;
             const dateStr = formatRelativeDate(proj.lastOpened);
-            const label = dateStr
-              ? `${proj.name || 'Untitled Project'}  (${dateStr})`
+            // Logged out, the last account's copies say whose they are (16d)
+            const notes = [proj.ownerLabel, dateStr].filter(Boolean).join(', ');
+            const label = notes
+              ? `${proj.name || 'Untitled Project'}  (${notes})`
               : proj.name || 'Untitled Project';
 
             return {
@@ -720,12 +807,23 @@ function createWindow() {
           }
         },
         {
-          label: 'Upload to Strabo Server...',
+          // A synced project: runs Sync Now (asks for a login first if needed)
+          label: currentProjectSynced ? 'Sync to Strabo Server...' : 'Upload to Strabo Server...',
           accelerator: 'CmdOrCtrl+Shift+U',
-          enabled: isLoggedIn,
+          enabled: true, // the turn-on dialog offers the login
           click: () => {
             if (mainWindow) {
               mainWindow.webContents.send('menu:push-to-server');
+            }
+          }
+        },
+        {
+          // Members, roles and invitations (Phase 2, 17a); a local-only project
+          // turns sync on first (17d)
+          label: 'Collaborate...',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('menu:collaborate');
             }
           }
         },
@@ -868,6 +966,14 @@ function createWindow() {
             }
           }
         },
+        {
+          label: 'Custom User Data...',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('menu:custom-user-data');
+            }
+          }
+        },
         { type: 'separator' },
         {
           label: 'Rebuild Tile Cache...',
@@ -903,7 +1009,8 @@ function createWindow() {
         { type: 'separator' },
         {
           label: 'Edit Selected Spots...',
-          accelerator: 'CmdOrCtrl+Shift+E',
+          // B for batch edit (Shift+E is Export as .smz...)
+          accelerator: 'CmdOrCtrl+Shift+B',
           click: () => {
             if (mainWindow) {
               mainWindow.webContents.send('menu:batch-edit-spots');
@@ -912,7 +1019,8 @@ function createWindow() {
         },
         {
           label: 'Merge Selected Spots',
-          accelerator: 'CmdOrCtrl+M',
+          // Not Cmd+M: that is Minimize on macOS (Window menu below; Peter, 2026-10-29)
+          accelerator: 'Alt+CmdOrCtrl+M',
           click: () => {
             if (mainWindow) {
               mainWindow.webContents.send('menu:merge-spots');
@@ -1049,6 +1157,18 @@ function createWindow() {
             }
           }
         },
+        {
+          // The spots of the micrographs above the one in the viewer (Peter, 2026-10-29)
+          label: 'Show Parent Spots',
+          type: 'checkbox',
+          checked: currentViewPrefs.showParentSpots,
+          click: (menuItem) => {
+            currentViewPrefs.showParentSpots = menuItem.checked;
+            if (mainWindow) {
+              mainWindow.webContents.send('view:toggle-parent-spots', menuItem.checked);
+            }
+          }
+        },
         { type: 'separator' },
         {
           label: 'View Spots by Spot Color',
@@ -1069,6 +1189,38 @@ function createWindow() {
             currentViewPrefs.spotColorMode = 'mineral-color';
             if (mainWindow) {
               mainWindow.webContents.send('view:spot-color-mode', 'mineral-color');
+            }
+          }
+        },
+        { type: 'separator' },
+        {
+          // Show or hide the micrographs placed on the one in the viewer (Jason + Peter, 2026-10-29)
+          label: 'Micrograph Visibility...',
+          accelerator: 'CmdOrCtrl+Shift+V',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('view:micrograph-visibility');
+            }
+          }
+        },
+        {
+          // Dim or hide spots by their data (Angus, 2026-10-28)
+          label: 'Filter Spots...',
+          accelerator: 'CmdOrCtrl+Shift+F',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('view:filter-spots');
+            }
+          }
+        },
+        { type: 'separator' },
+        {
+          // Who changed what in a synced project (collaboration 17u)
+          label: 'Activity',
+          enabled: currentProjectSynced,
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('menu:activity');
             }
           }
         },
@@ -1126,6 +1278,8 @@ function createWindow() {
         ] : []),
       ],
     },
+    // macOS standard Window menu: Minimize (Cmd+M), Zoom, Bring All to Front
+    ...(process.platform === 'darwin' ? [{ role: 'windowMenu' }] : []),
     {
       label: 'Help',
       submenu: [
@@ -1244,6 +1398,42 @@ function createWindow() {
             }
           }
         },
+        { type: 'separator' },
+        // Sync dev tools; the sync UI itself is the header chip, the turn-on dialog and the File menu
+        {
+          // One-window sync scenarios on the selected micrograph / spot (src/services/syncTestScenarios.ts)
+          label: 'Sync Test',
+          submenu: [
+            { label: 'Conflict on a Spot', click: () => mainWindow?.webContents.send('debug:sync', 'test-conflict') },
+            { label: 'Shape Conflict on a Spot', click: () => mainWindow?.webContents.send('debug:sync', 'test-shape') },
+            { label: 'Placement Conflict (Associated Micrograph)', click: () => mainWindow?.webContents.send('debug:sync', 'test-placement') },
+            { label: 'They Delete the Micrograph, I Edit a Spot', click: () => mainWindow?.webContents.send('debug:sync', 'test-their-delete') },
+            { label: 'I Delete the Micrograph, They Edit a Spot', click: () => mainWindow?.webContents.send('debug:sync', 'test-my-delete') },
+            { label: 'Server Turns Down a Move', click: () => mainWindow?.webContents.send('debug:sync', 'test-refused') },
+            { label: 'Conflict in the Background (Notice)', click: () => mainWindow?.webContents.send('debug:sync', 'test-notice') },
+            { type: 'separator' },
+            { label: 'Compare with Server', click: () => mainWindow?.webContents.send('debug:sync', 'test-compare') },
+          ],
+        },
+        {
+          // Server project number (the chip's popover) copied in the other copy of the app
+          label: 'Sync: Download Synced Project (Number from Clipboard)',
+          click: async () => {
+            // clipboard.readText() returns a Promise since Electron 44
+            const text = String((await require('electron').clipboard.readText()) || '').trim();
+            mainWindow?.webContents.send('debug:sync', 'clone', text);
+          },
+        },
+        {
+          // The next sync check renews the login; a login the server ended is
+          // then refused, as after days away (shows the logged-out notice)
+          label: 'Sync: Expire My Access Token',
+          click: async () => {
+            const done = await tokenService.expireAccessToken();
+            log.info(`[Debug] Expire access token: ${done ? 'done' : 'not logged in'}`);
+          },
+        },
+        { type: 'separator' },
         {
           label: 'Simulate Deep Link from Clipboard',
           click: async () => {
@@ -1315,6 +1505,17 @@ function createWindow() {
         },
         { type: 'separator' },
         {
+          // A copy of someone's real project under a new id, for sync tests
+          // that must not link to (or convert) the original on StraboSpot
+          label: 'Open .smz as a Separate Copy...',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('debug:import-smz-copy');
+            }
+          }
+        },
+        { type: 'separator' },
+        {
           label: 'Generate 100 Test Spots',
           click: () => {
             if (mainWindow) {
@@ -1355,6 +1556,7 @@ function createWindow() {
 
     const menu = Menu.buildFromTemplate(menuTemplate);
     Menu.setApplicationMenu(menu);
+    require('./chatWindow').stripMenu();
   }
 
   // Store reference to buildMenu for IPC handlers
@@ -1364,14 +1566,37 @@ function createWindow() {
   buildMenu();
 
   // IPC handler to update auth state and rebuild menu
-  ipcMain.on('auth:state-changed', (event, loggedIn) => {
+  // Every login state change (login, logout, startup check, expiry): which
+  // account's copies Recent Projects lists and a project id opens (16d, 16ba)
+  ipcMain.on('auth:state-changed', async (event, loggedIn, restServer) => {
     isLoggedIn = loggedIn;
+    try {
+      const tokens = loggedIn ? await tokenService.getTokens() : null;
+      accounts.setLoggedIn(tokens && tokens.user ? tokens.user : null, restServer);
+      syncService.liveLoginChanged(tokens && tokens.user ? tokens.user : null);
+      if (!loggedIn) chatWindow.setContext(null);
+    } catch (error) {
+      log.warn('[Accounts] Could not read the logged-in account:', error.message);
+    }
     buildMenu();
+    // The renderer checks the open copy's owner again (16ax)
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('accounts:changed');
+    // The intro's background uploads run while their account is logged in (16ay)
+    introQueue.kick();
   });
 
   // IPC handler to update current project and rebuild menu
   ipcMain.on('project:current-changed', (event, projectId) => {
     currentProjectId = projectId;
+    buildMenu();
+    // The intro queue moves a folder only while its project is closed (16ay)
+    introQueue.setOpenProject(projectId);
+  });
+
+  // The open project is synced or not: File menu reads Upload or Sync (spec v3 14t)
+  ipcMain.on('sync:menu-state', (event, synced) => {
+    if (currentProjectSynced === Boolean(synced)) return;
+    currentProjectSynced = Boolean(synced);
     buildMenu();
   });
 
@@ -1475,8 +1700,9 @@ function createWindow() {
   if (isDev) {
     mainWindow.loadURL('http://localhost:5173');
 
-    // Open DevTools automatically in development
-    mainWindow.webContents.once('did-finish-load', () => {
+    // Open DevTools automatically in development (not for a background e2e
+    // copy: the detached DevTools window would take focus)
+    if (!E2E_BACKGROUND) mainWindow.webContents.once('did-finish-load', () => {
       log.info('Page loaded, opening DevTools...');
       mainWindow.webContents.openDevTools({ mode: 'detach' });
     });
@@ -1534,6 +1760,8 @@ function createWindow() {
     // Clean up the IPC listener when window is closed
     ipcMain.removeListener('app:close-ready', handleCloseReady);
     mainWindow = null;
+    // A hidden chat window would keep macOS from making a new main window on activate
+    require('./chatWindow').destroy();
   });
 }
 
@@ -1635,6 +1863,9 @@ app.whenReady().then(async () => {
   // Clean up scratch space on startup
   await scratchSpace.cleanupAll();
 
+  // Until the renderer reports the login: the last account's copies (16d)
+  accounts.applyPreference();
+
   // Rebuild projects index on startup
   log.info('[App] Rebuilding projects index on startup...');
   try {
@@ -1643,6 +1874,9 @@ app.whenReady().then(async () => {
   } catch (error) {
     log.error('[App] Error rebuilding projects index:', error);
   }
+
+  // Copies set aside by "Use the StraboSpot copy", after 30 days (not awaited)
+  syncService.cleanupReplaced().catch((err) => log.warn('[App] _replaced cleanup failed:', err));
 
   // Install React DevTools in development mode
   if (isDev) {
@@ -1866,9 +2100,78 @@ ipcMain.handle('dialog:save-text-file', async (event, content, defaultName, exte
   }
 });
 
+// Custom User Data (docs/custom-user-data-design.md): save the template / download, read a filled one
+// Reads a small text file the user picks (Quick Spot Presets import)
+ipcMain.handle('dialog:open-text-file', async (event, title, extension) => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title,
+    defaultPath: dialogDirs.getDefaultPath('text-file'),
+    filters: [{ name: `${extension.toUpperCase()} Files`, extensions: [extension] }, { name: 'All Files', extensions: ['*'] }],
+    properties: ['openFile'],
+  });
+  if (result.canceled || result.filePaths.length === 0) return { success: false, canceled: true };
+  const filePath = result.filePaths[0];
+  dialogDirs.remember('text-file', filePath);
+  try {
+    const { size } = await fs.promises.stat(filePath);
+    if (size > 20 * 1024 * 1024) return { success: false, error: 'This file is too large.' };
+    return { success: true, filePath, content: await fs.promises.readFile(filePath, 'utf8') };
+  } catch (error) {
+    log.error('[IPC] Error reading text file:', error);
+    return { success: false, error: error instanceof Error ? error.message : String(error) };
+  }
+});
+
+ipcMain.handle('custom-user-data:save', async (event, table, defaultName, format) => {
+  const ext = format === 'csv' ? 'csv' : 'xlsx';
+  const dir = dialogDirs.getDefaultPath('custom-user-data');
+  const result = await dialog.showSaveDialog(mainWindow, {
+    title: 'Save Custom User Data',
+    defaultPath: dir ? path.join(dir, `${defaultName}.${ext}`) : `${defaultName}.${ext}`,
+    filters: [ext === 'csv' ? { name: 'CSV Files', extensions: ['csv'] } : { name: 'Excel Workbook', extensions: ['xlsx'] }],
+  });
+  if (result.canceled || !result.filePath) return { success: false, canceled: true };
+  try {
+    await customUserDataFiles.writeTable(result.filePath, table);
+    dialogDirs.remember('custom-user-data', result.filePath);
+    log.info(`[CustomUserData] Saved ${table.rows.length} rows to ${result.filePath}`);
+    return { success: true, filePath: result.filePath };
+  } catch (error) {
+    log.error('[CustomUserData] Save failed:', error);
+    return { success: false, error: error instanceof Error ? error.message : String(error) };
+  }
+});
+
+ipcMain.handle('custom-user-data:open', async () => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: 'Import Filled Template',
+    defaultPath: dialogDirs.getDefaultPath('custom-user-data'),
+    filters: [{ name: 'Spreadsheets', extensions: ['xlsx', 'csv'] }],
+    properties: ['openFile'],
+  });
+  if (result.canceled || result.filePaths.length === 0) return { success: false, canceled: true };
+  const filePath = result.filePaths[0];
+  dialogDirs.remember('custom-user-data', filePath);
+  try {
+    const table = await customUserDataFiles.readTable(filePath);
+    log.info(`[CustomUserData] Read ${table.rows.length} rows, ${table.headers.length} columns from ${filePath}`);
+    return { success: true, filePath, fileName: path.basename(filePath), ...table };
+  } catch (error) {
+    log.error('[CustomUserData] Read failed:', error);
+    return { success: false, fileName: path.basename(filePath), error: error instanceof Error ? error.message : String(error) };
+  }
+});
+
 // Open external link in default browser
 ipcMain.handle('open-external-link', async (event, url) => {
   try {
+    // The address can come from a project shared by someone else: the operating
+    // system would run whatever handles file:, smb: or a custom app scheme
+    const scheme = URL.canParse(url) ? new URL(url).protocol : '';
+    if (!['http:', 'https:', 'ftp:', 'mailto:'].includes(scheme)) {
+      log.warn(`[IPC] Refused to open external link: ${url}`);
+      return { success: false };
+    }
     log.info(`[IPC] Opening external link: ${url}`);
     await shell.openExternal(url);
     return { success: true };
@@ -2071,32 +2374,11 @@ ipcMain.handle('load-image-preview', async (event, filePath, size = 'thumbnail')
 
       const image = images[0]; // Use first image
 
-      // Determine bytes per pixel to identify the format
-      const bytesPerPixel = image.data.length / (image.width * image.height);
-      log.info(`TIFF decoded: ${image.width}x${image.height}, ${image.data.length} bytes, ${bytesPerPixel} bytes/pixel`);
-
-      const sourceData = new Uint8Array(image.data);
-      let rgbaData;
-
-      if (bytesPerPixel === 3) {
-        // RGB format - need to convert to RGBA
-        log.info('Converting RGB to RGBA');
-        const pixelCount = image.width * image.height;
-        rgbaData = new Uint8ClampedArray(pixelCount * 4);
-
-        for (let i = 0, j = 0; i < sourceData.length; i += 3, j += 4) {
-          rgbaData[j] = sourceData[i];         // R
-          rgbaData[j + 1] = sourceData[i + 1]; // G
-          rgbaData[j + 2] = sourceData[i + 2]; // B
-          rgbaData[j + 3] = 255;               // A (fully opaque)
-        }
-      } else if (bytesPerPixel === 4) {
-        // Already RGBA format
-        log.info('Already RGBA format');
-        rgbaData = new Uint8ClampedArray(sourceData);
-      } else {
-        throw new Error(`Unsupported TIFF format: ${bytesPerPixel} bytes per pixel`);
-      }
+      // 8-bit pixels (palette colors applied, 16-bit scaled), then RGBA
+      const { tiffImageTo8Bit, toRgba } = require('./tiffPixels');
+      const { data: pixels, channels } = tiffImageTo8Bit(image);
+      log.info(`TIFF decoded: ${image.width}x${image.height}, ${channels} channels, ${image.bitsPerSample} bits per sample`);
+      const rgbaData = toRgba(pixels, channels);
 
       // Determine final canvas dimensions based on size parameter
       let finalWidth = image.width;
@@ -2484,32 +2766,33 @@ const affineGenerationInFlight = new Map();
  * overlay failed to render with "Affine thumbnail not found". This rebuilds them
  * under the SAME hash the renderer reads from (the micrograph's affineTileHash).
  */
+async function ensureAffineTiles(imagePath, imageHash, affineMatrix) {
+  // Fast path: tiles already baked with a matching matrix, nothing to do.
+  if (await affineTileGenerator.hasMatchingAffineTiles(imageHash, affineMatrix)) return false;
+
+  // Coalesce concurrent regeneration of the same overlay onto one promise.
+  let pending = affineGenerationInFlight.get(imageHash);
+  if (!pending) {
+    pending = (async () => {
+      const resolvedPath = await resolveImagePathWithLegacyFallback(imagePath);
+      log.info(`[Affine] Regenerating missing affine tiles for ${imageHash} from ${resolvedPath}`);
+      // Drop any stale/partial affine subdir before re-baking under this hash.
+      await tileCache.deleteAffineTiles(imageHash);
+      await affineTileGenerator.generateAffineTiles(resolvedPath, imageHash, affineMatrix);
+    })().finally(() => affineGenerationInFlight.delete(imageHash));
+    affineGenerationInFlight.set(imageHash, pending);
+  }
+  await pending;
+  return true;
+}
+
 ipcMain.handle('tiles:ensure-affine-tiles', async (event, imagePath, imageHash, affineMatrix) => {
   try {
     if (!imageHash || !Array.isArray(affineMatrix) || affineMatrix.length !== 6) {
       return { success: false, error: 'Missing image hash or affine matrix' };
     }
-
-    // Fast path: tiles already baked with a matching matrix — nothing to do.
-    if (await affineTileGenerator.hasMatchingAffineTiles(imageHash, affineMatrix)) {
-      return { success: true, regenerated: false };
-    }
-
-    // Coalesce concurrent regeneration of the same overlay onto one promise.
-    let pending = affineGenerationInFlight.get(imageHash);
-    if (!pending) {
-      pending = (async () => {
-        const resolvedPath = await resolveImagePathWithLegacyFallback(imagePath);
-        log.info(`[Affine] Regenerating missing affine tiles for ${imageHash} from ${resolvedPath}`);
-        // Drop any stale/partial affine subdir before re-baking under this hash.
-        await tileCache.deleteAffineTiles(imageHash);
-        await affineTileGenerator.generateAffineTiles(resolvedPath, imageHash, affineMatrix);
-      })().finally(() => affineGenerationInFlight.delete(imageHash));
-      affineGenerationInFlight.set(imageHash, pending);
-    }
-    await pending;
-
-    return { success: true, regenerated: true };
+    const regenerated = await ensureAffineTiles(imagePath, imageHash, affineMatrix);
+    return { success: true, regenerated };
   } catch (error) {
     log.error('[Affine] Failed to ensure affine tiles:', error);
     return { success: false, error: error.message };
@@ -3090,8 +3373,7 @@ ipcMain.handle('image:convert-to-scratch', async (event, sourcePath) => {
 ipcMain.handle('image:move-from-scratch', async (event, identifier, projectId, micrographId) => {
   try {
     log.info(`[IPC] Moving scratch image to project folder: ${identifier}`);
-    const dataPath = projectFolders.getStraboMicro2DataPath();
-    const destination = `${dataPath}/${projectId}/images/${micrographId}`;
+    const destination = path.join(projectFolders.getProjectFolderPath(projectId), 'images', micrographId);
 
     await scratchSpace.moveToFinal(identifier, destination);
 
@@ -3140,12 +3422,12 @@ ipcMain.handle('image:resize-scratch', async (event, identifier, targetWidth, ta
 ipcMain.handle('image:convert-and-save-micrograph', async (event, sourcePath, projectId, micrographId) => {
   try {
     log.info(`[IPC] Converting and saving micrograph image: ${sourcePath}`);
-    const dataPath = projectFolders.getStraboMicro2DataPath();
+    const projectPath = projectFolders.getProjectFolderPath(projectId);
     const result = await imageConverter.convertAndSaveMicrographImage(
       sourcePath,
       projectId,
       micrographId,
-      dataPath
+      projectPath
     );
     log.info('[IPC] Successfully converted and saved micrograph image');
     return result;
@@ -3161,12 +3443,12 @@ ipcMain.handle('image:convert-and-save-micrograph', async (event, sourcePath, pr
 ipcMain.handle('image:generate-variants', async (event, sourcePath, projectId, micrographId) => {
   try {
     log.info(`[IPC] Generating image variants for micrograph: ${micrographId}`);
-    const dataPath = projectFolders.getStraboMicro2DataPath();
+    const projectPath = projectFolders.getProjectFolderPath(projectId);
     const result = await imageConverter.generateImageVariants(
       sourcePath,
       projectId,
       micrographId,
-      dataPath
+      projectPath
     );
     log.info('[IPC] Successfully generated image variants');
     return result;
@@ -3186,6 +3468,18 @@ ipcMain.handle('image:get-dimensions', async (event, imagePath) => {
     return dimensions;
   } catch (error) {
     log.error('[IPC] Error getting image dimensions:', error);
+    throw error;
+  }
+});
+
+/**
+ * A grayscale region of an image, for "Place automatically on parent"
+ */
+ipcMain.handle('image:read-gray-region', async (event, imagePath, rect, maxSide) => {
+  try {
+    return await imageConverter.readGrayRegion(imagePath, rect, maxSide);
+  } catch (error) {
+    log.error('[IPC] Error reading gray region:', error);
     throw error;
   }
 });
@@ -3285,423 +3579,479 @@ ipcMain.handle('image:rotate', async (event, imagePath, degrees, flip = false) =
  * @param {string} micrographId - Micrograph ID to generate thumbnail for
  * @param {object} projectData - Current project data from renderer (avoids stale disk reads)
  */
-/** Composite thumbnail of one micrograph: its image with its children drawn on it */
-async function generateCompositeThumbnail(projectId, micrographId, projectData) {
+ipcMain.handle('composite:generate-thumbnail', async (event, projectId, micrographId, projectData) => {
   try {
-    log.info(`[IPC] Generating composite thumbnail for micrograph: ${micrographId}`);
-
-    // Get project folder paths
-    const folderPaths = await projectFolders.getProjectFolderPaths(projectId);
-
-    // Use provided project data instead of loading from disk (may be stale).
-    // Guard against a missing snapshot so the failure below is a diagnosable
-    // "not found" error rather than an opaque TypeError.
-    const project = projectData || {};
-
-    // Find the micrograph in the project hierarchy
-    let micrograph = null;
-    let childMicrographs = [];
-
-    for (const dataset of project.datasets || []) {
-      for (const sample of dataset.samples || []) {
-        for (const micro of sample.micrographs || []) {
-          if (micro.id === micrographId) {
-            micrograph = micro;
-
-            // Immediate children (associated micrographs) and, for a linked PPL/XPL pair, the
-            // other half's; secondary siblings (XPL) are left out (they share the primary's area)
-            childMicrographs = imageExport.pairChildrenOf(project, micro, { includeHidden: true });
-
-            log.info(`[IPC] Found parent micrograph ${micrographId} with ${childMicrographs.length} children`);
-            log.info(`[IPC] Children IDs:`, childMicrographs.map(c => ({ id: c.id, name: c.name, imagePath: c.imagePath })));
-
-            break;
-          }
-        }
-        if (micrograph) break;
-      }
-      if (micrograph) break;
+    const result = await makeCompositeThumbnail(projectId, micrographId, projectData);
+    if (result.success && result.changed) syncService.notifyLocalChange(projectId);
+    // A linked XPL's children are drawn on its PPL's composite too (the PPL's tree row
+    // reloads on the XPL's 'thumbnail-generated'), so redraw the PPL's before answering
+    const primary = imageExport.primaryOfSecondary(projectData, micrographId);
+    if (primary) {
+      const again = await makeCompositeThumbnail(projectId, primary.id, projectData);
+      if (again.success && again.changed) syncService.notifyLocalChange(projectId);
     }
-
-    if (!micrograph) {
-      const availableIds = project.datasets?.flatMap(d => d.samples?.flatMap(s => s.micrographs?.map(m => m.id)) || []) || [];
-      const datasetCount = project.datasets?.length ?? 0;
-      const sampleCount = project.datasets?.reduce((n, d) => n + (d.samples?.length || 0), 0) ?? 0;
-      log.error(`[IPC] Micrograph ${micrographId} not found in project. Available micrographs:`, availableIds);
-      // Include snapshot shape in the message so remote error reports (Sentry) are
-      // self-diagnosing — distinguishes "empty/stale snapshot" from "wrong id".
-      throw new Error(
-        `Micrograph ${micrographId} not found in project ` +
-        `(snapshot: ${datasetCount} datasets, ${sampleCount} samples, ${availableIds.length} micrographs)`
-      );
-    }
-
-    // Load base micrograph image (with fallback to uiImages for legacy projects)
-    const basePath = await resolveImagePathWithLegacyFallback(
-      path.join(folderPaths.images, micrograph.imagePath)
-    );
-    log.info(`[IPC] Loading base image: ${basePath}`);
-
-    let baseImage = sharp(basePath);
-    const baseMetadata = await baseImage.metadata();
-
-    log.info(`[IPC] Parent micrograph: ${micrograph.id}`);
-    log.info(`[IPC]   imageWidth (stored): ${micrograph.imageWidth}, imageHeight (stored): ${micrograph.imageHeight}`);
-    log.info(`[IPC]   Actual file dimensions: ${baseMetadata.width}x${baseMetadata.height}`);
-    log.info(`[IPC]   Parent px/cm: ${micrograph.scalePixelsPerCentimeter}`);
-
-    // Calculate thumbnail dimensions maintaining aspect ratio
-    const maxDimension = 250;
-    const aspectRatio = baseMetadata.width / baseMetadata.height;
-    let thumbWidth, thumbHeight;
-
-    if (baseMetadata.width > baseMetadata.height) {
-      thumbWidth = maxDimension;
-      thumbHeight = Math.round(maxDimension / aspectRatio);
-    } else {
-      thumbHeight = maxDimension;
-      thumbWidth = Math.round(maxDimension * aspectRatio);
-    }
-
-    // Resize base image to thumbnail size
-    baseImage = baseImage.resize(thumbWidth, thumbHeight, {
-      fit: 'fill',
-      kernel: sharp.kernel.lanczos3
-    });
-
-    // If there are no children, just save the base thumbnail
-    if (childMicrographs.length === 0) {
-      log.info(`[IPC] No child micrographs, saving base thumbnail only`);
-
-      const outputPath = path.join(folderPaths.compositeThumbnails, micrographId);
-      await baseImage.jpeg({ quality: 85 }).toFile(outputPath);
-
-      return {
-        success: true,
-        thumbnailPath: outputPath,
-        width: thumbWidth,
-        height: thumbHeight
-      };
-    }
-
-    // Composite children onto base
-    log.info(`[IPC] Compositing ${childMicrographs.length} child micrographs`);
-
-    // Convert base image to buffer for compositing
-    const baseBuffer = await baseImage.toBuffer();
-
-    // Calculate scale factor from original to thumbnail
-    const thumbnailScale = thumbWidth / baseMetadata.width;
-
-    // Build composite layers
-    const compositeInputs = [];
-
-    for (const child of childMicrographs) {
-      try {
-        // Skip point-located micrographs - they should be rendered as point markers, not overlays
-        if (child.pointInParent) {
-          log.info(`[IPC] Skipping point-located child ${child.id} (${child.name}) - not rendered as overlay`);
-          continue;
-        }
-
-        // Handle affine-transformed overlays specially - load pre-transformed image from cache
-        if (child.placementType === 'affine' && child.affineTileHash) {
-          log.info(`[IPC] Loading affine overlay ${child.id} for thumbnail from cache`);
-          const tileCache = require('./tileCache');
-          const affineBuffer = await tileCache.loadAffineMedium(child.affineTileHash);
-
-          if (affineBuffer) {
-            // Use bounds and dimensions from micrograph data (not cache metadata)
-            const boundsOffset = child.affineBoundsOffset || { x: 0, y: 0 };
-            const transformedWidth = child.affineTransformedWidth || 0;
-            const transformedHeight = child.affineTransformedHeight || 0;
-
-            // Scale position and size to thumbnail coordinates
-            const thumbX = Math.round(boundsOffset.x * thumbnailScale);
-            const thumbY = Math.round(boundsOffset.y * thumbnailScale);
-            const thumbAffineWidth = Math.round(transformedWidth * thumbnailScale);
-            const thumbAffineHeight = Math.round(transformedHeight * thumbnailScale);
-
-            log.info(`[IPC] Affine thumbnail ${child.id}: bounds=(${thumbX}, ${thumbY}), size=${thumbAffineWidth}x${thumbAffineHeight}`);
-
-            // Resize and apply opacity
-            let affineImage = sharp(affineBuffer)
-              .resize(thumbAffineWidth, thumbAffineHeight, { fit: 'fill', kernel: sharp.kernel.lanczos3 })
-              .ensureAlpha();
-
-            const childOpacity = child.opacity ?? 1.0;
-            let finalBuffer;
-            if (childOpacity < 1.0) {
-              const { data, info } = await affineImage.raw().toBuffer({ resolveWithObject: true });
-              for (let i = 3; i < data.length; i += 4) {
-                data[i] = Math.round(data[i] * childOpacity);
-              }
-              finalBuffer = await sharp(data, {
-                raw: { width: info.width, height: info.height, channels: info.channels }
-              }).png().toBuffer();
-            } else {
-              finalBuffer = await affineImage.png().toBuffer();
-            }
-
-            // Bounds checking and cropping
-            if (thumbX + thumbAffineWidth > 0 && thumbY + thumbAffineHeight > 0 && thumbX < thumbWidth && thumbY < thumbHeight) {
-              let cropX = 0, cropY = 0, cropW = thumbAffineWidth, cropH = thumbAffineHeight;
-              let finalX = thumbX, finalY = thumbY;
-
-              if (thumbX < 0) { cropX = -thumbX; cropW -= cropX; finalX = 0; }
-              if (thumbY < 0) { cropY = -thumbY; cropH -= cropY; finalY = 0; }
-              if (finalX + cropW > thumbWidth) { cropW = thumbWidth - finalX; }
-              if (finalY + cropH > thumbHeight) { cropH = thumbHeight - finalY; }
-
-              if (cropW > 0 && cropH > 0) {
-                let compositeBuffer = finalBuffer;
-                if (cropX > 0 || cropY > 0 || cropW !== thumbAffineWidth || cropH !== thumbAffineHeight) {
-                  compositeBuffer = await sharp(finalBuffer)
-                    .extract({ left: Math.round(cropX), top: Math.round(cropY), width: Math.round(cropW), height: Math.round(cropH) })
-                    .toBuffer();
-                }
-                compositeInputs.push({ input: compositeBuffer, left: Math.round(finalX), top: Math.round(finalY) });
-                log.info(`[IPC] Added affine overlay to thumbnail at (${finalX}, ${finalY})`);
-              }
-            }
-          } else {
-            log.warn(`[IPC] No cached affine data for ${child.id}, skipping in thumbnail`);
-          }
-          continue;
-        }
-
-        // Skip children that haven't been located yet (no position data)
-        // This is critical for batch-imported micrographs which don't have position until user sets it
-        // Without this check, ALL children would be loaded from disk causing massive memory spike
-        if (!child.offsetInParent && child.xOffset === undefined) {
-          log.info(`[IPC] Skipping unlocated child ${child.id} (${child.name}) - no position data yet`);
-          continue;
-        }
-
-        log.info(`[IPC] Processing child ${child.id} (${child.name})`);
-
-        // Load child image (with fallback to uiImages for legacy projects)
-        const childPath = await resolveImagePathWithLegacyFallback(
-          path.join(folderPaths.images, child.imagePath)
-        );
-        let childImage = sharp(childPath);
-        const childMetadata = await childImage.metadata();
-
-        // IMPORTANT: Use stored imageWidth/imageHeight (original dimensions), NOT actual file dimensions
-        // This matches how AssociatedImageRenderer works in the main viewer
-        const childImageWidth = child.imageWidth || child.width || childMetadata.width;
-        const childImageHeight = child.imageHeight || child.height || childMetadata.height;
-
-        // Calculate child's display scale based on pixels per centimeter
-        const childPxPerCm = child.scalePixelsPerCentimeter || 100;
-        const parentPxPerCm = micrograph.scalePixelsPerCentimeter || 100;
-        const displayScale = parentPxPerCm / childPxPerCm;
-
-        log.info(`[IPC]   Child px/cm: ${childPxPerCm}, Parent px/cm: ${parentPxPerCm}, Display scale: ${displayScale}`);
-        log.info(`[IPC]   Child stored dimensions: ${childImageWidth}x${childImageHeight}, actual file: ${childMetadata.width}x${childMetadata.height}`);
-
-        // Calculate child dimensions in parent's coordinate space using STORED dimensions
-        const childDisplayWidth = childImageWidth * displayScale;
-        const childDisplayHeight = childImageHeight * displayScale;
-
-        // Get child position (top-left)
-        let topLeftX = 0;
-        let topLeftY = 0;
-
-        if (child.offsetInParent) {
-          topLeftX = child.offsetInParent.X;
-          topLeftY = child.offsetInParent.Y;
-          log.info(`[IPC]   Using offsetInParent: (${topLeftX}, ${topLeftY})`);
-        } else if (child.pointInParent) {
-          topLeftX = child.pointInParent.x - childDisplayWidth / 2;
-          topLeftY = child.pointInParent.y - childDisplayHeight / 2;
-          log.info(`[IPC]   Using pointInParent: (${child.pointInParent.x}, ${child.pointInParent.y}) -> topLeft: (${topLeftX}, ${topLeftY})`);
-        } else if (child.xOffset !== undefined && child.yOffset !== undefined) {
-          topLeftX = child.xOffset;
-          topLeftY = child.yOffset;
-          log.info(`[IPC]   Using legacy offset: (${topLeftX}, ${topLeftY})`);
-        }
-
-        // Scale position to thumbnail coordinates
-        const thumbX = Math.round(topLeftX * thumbnailScale);
-        const thumbY = Math.round(topLeftY * thumbnailScale);
-
-        // Scale child dimensions to thumbnail coordinates
-        const thumbChildWidth = Math.round(childDisplayWidth * thumbnailScale);
-        const thumbChildHeight = Math.round(childDisplayHeight * thumbnailScale);
-
-        log.info(`[IPC]   Original position: (${topLeftX}, ${topLeftY}), Thumbnail position: (${thumbX}, ${thumbY})`);
-        log.info(`[IPC]   Original size: ${childMetadata.width}x${childMetadata.height}, Display size: ${childDisplayWidth}x${childDisplayHeight}, Thumb size: ${thumbChildWidth}x${thumbChildHeight}`);
-
-        // Resize child image
-        childImage = childImage.resize(thumbChildWidth, thumbChildHeight, {
-          fit: 'fill',
-          kernel: sharp.kernel.lanczos3
-        });
-
-        // Get child opacity (default to 1 if not set)
-        const childOpacity = child.opacity ?? 1.0;
-        log.info(`[IPC]   Child opacity: ${childOpacity}`);
-
-        // Ensure we have alpha channel for opacity support
-        childImage = childImage.ensureAlpha();
-
-        // Apply opacity by multiplying the alpha channel
-        // We need to get the buffer, modify alpha values, then create new sharp instance
-        if (childOpacity < 1.0) {
-          const { data, info } = await childImage.raw().toBuffer({ resolveWithObject: true });
-
-          // Modify alpha channel (every 4th byte starting at index 3)
-          for (let i = 3; i < data.length; i += 4) {
-            data[i] = Math.round(data[i] * childOpacity);
-          }
-
-          // Recreate sharp instance with modified data
-          childImage = sharp(data, {
-            raw: {
-              width: info.width,
-              height: info.height,
-              channels: info.channels
-            }
-          });
-        }
-
-        // Apply rotation if needed
-        let finalX, finalY, finalBuffer;
-        if (child.rotation) {
-          // Calculate center position for rotation
-          const centerX = thumbX + thumbChildWidth / 2;
-          const centerY = thumbY + thumbChildHeight / 2;
-
-          // Rotate with transparent background
-          childImage = childImage.rotate(child.rotation, {
-            background: { r: 0, g: 0, b: 0, alpha: 0 }
-          });
-
-          // Calculate rotated bounding box dimensions mathematically
-          // Sharp's metadata() on a pipeline returns input metadata, not post-transform
-          const radians = (child.rotation * Math.PI) / 180;
-          const cos = Math.abs(Math.cos(radians));
-          const sin = Math.abs(Math.sin(radians));
-          const rotatedWidth = thumbChildWidth * cos + thumbChildHeight * sin;
-          const rotatedHeight = thumbChildWidth * sin + thumbChildHeight * cos;
-
-          // Adjust position to account for rotation
-          finalX = Math.round(centerX - rotatedWidth / 2);
-          finalY = Math.round(centerY - rotatedHeight / 2);
-          finalBuffer = await childImage.png().toBuffer();
-
-          log.info(`[IPC]   Rotation: ${child.rotation}°, Rotated size: ${Math.round(rotatedWidth)}x${Math.round(rotatedHeight)}`);
-        } else {
-          finalX = thumbX;
-          finalY = thumbY;
-          finalBuffer = await childImage.png().toBuffer();
-        }
-
-        // Validate that the composite position is within bounds
-        // Sharp requires: left >= 0, top >= 0, and image fits within base
-        const childBufferMeta = await sharp(finalBuffer).metadata();
-        const childW = childBufferMeta.width;
-        const childH = childBufferMeta.height;
-
-        // Skip children that would be entirely outside the base image
-        if (finalX + childW <= 0 || finalY + childH <= 0 || finalX >= thumbWidth || finalY >= thumbHeight) {
-          log.info(`[IPC]   Skipping child ${child.id} - entirely outside base image bounds`);
-          continue;
-        }
-
-        // Crop child image if it extends outside base bounds
-        let cropX = 0, cropY = 0, cropW = childW, cropH = childH;
-        let compositeX = finalX, compositeY = finalY;
-
-        // Handle negative X (child extends past left edge)
-        if (finalX < 0) {
-          cropX = -finalX;
-          cropW -= cropX;
-          compositeX = 0;
-        }
-
-        // Handle negative Y (child extends past top edge)
-        if (finalY < 0) {
-          cropY = -finalY;
-          cropH -= cropY;
-          compositeY = 0;
-        }
-
-        // Handle overflow on right
-        if (compositeX + cropW > thumbWidth) {
-          cropW = thumbWidth - compositeX;
-        }
-
-        // Handle overflow on bottom
-        if (compositeY + cropH > thumbHeight) {
-          cropH = thumbHeight - compositeY;
-        }
-
-        // Validate crop dimensions are positive
-        if (cropW <= 0 || cropH <= 0) {
-          log.info(`[IPC]   Skipping child ${child.id} - crop dimensions invalid after bounds check`);
-          continue;
-        }
-
-        // If we need to crop, extract the visible region
-        let compositeBuffer = finalBuffer;
-        if (cropX > 0 || cropY > 0 || cropW !== childW || cropH !== childH) {
-          log.info(`[IPC]   Cropping child to visible region: extract(${cropX}, ${cropY}, ${cropW}, ${cropH})`);
-          compositeBuffer = await sharp(finalBuffer)
-            .extract({ left: cropX, top: cropY, width: cropW, height: cropH })
-            .toBuffer();
-        }
-
-        compositeInputs.push({
-          input: compositeBuffer,
-          left: compositeX,
-          top: compositeY
-        });
-      } catch (error) {
-        log.error(`[IPC] Failed to composite child ${child.id}:`, error);
-        // Continue with other children
-      }
-    }
-
-    // Apply composites to base image
-    const compositeImage = sharp(baseBuffer).composite(compositeInputs);
-
-    // Save to compositeThumbnails folder (JPEG with no extension)
-    const outputPath = path.join(folderPaths.compositeThumbnails, micrographId);
-    await compositeImage.jpeg({ quality: 85 }).toFile(outputPath);
-
-    log.info(`[IPC] Successfully generated composite thumbnail: ${outputPath}`);
-
+    return result;
+  } catch (error) {
+    log.error('[IPC] Error generating composite thumbnail:', error);
+    throw error;
+  } finally {
     // Release Sharp memory after thumbnail generation
     // This prevents memory accumulation when generating multiple thumbnails
     sharp.cache(false);
     sharp.cache({ memory: 256, files: 20, items: 100 });
+  }
+});
+
+/**
+ * Write a micrograph's composite thumbnail (its image with its placed
+ * children on it) to compositeThumbnails/<id>.
+ * @param {object} projectData - The project as the renderer has it (the file may be stale)
+ * @returns {Promise<{ success: true, changed: boolean, thumbnailPath: string, width: number, height: number }
+ *   | { success: false, waitingFor: string[] }>} changed: the file was written (it
+ *   differed); waitingFor: micrographs of a synced copy whose image has not
+ *   arrived yet, nothing was written
+ */
+async function makeCompositeThumbnail(projectId, micrographId, projectData) {
+  log.info(`[IPC] Generating composite thumbnail for micrograph: ${micrographId}`);
+
+  // Get project folder paths
+  const folderPaths = await projectFolders.getProjectFolderPaths(projectId);
+
+  // Use provided project data instead of loading from disk (may be stale).
+  // Guard against a missing snapshot so the failure below is a diagnosable
+  // "not found" error rather than an opaque TypeError.
+  const project = projectData || {};
+
+  // Find the micrograph in the project hierarchy
+  let micrograph = null;
+  let childMicrographs = [];
+
+  for (const dataset of project.datasets || []) {
+    for (const sample of dataset.samples || []) {
+      for (const micro of sample.micrographs || []) {
+        if (micro.id === micrographId) {
+          micrograph = micro;
+
+          // Immediate children (associated micrographs) and, for a linked PPL/XPL pair, the
+          // other half's; secondary siblings (XPL) are left out (they share the primary's area)
+          childMicrographs = imageExport.pairChildrenOf(project, micro, { includeHidden: true });
+
+          log.info(`[IPC] Found parent micrograph ${micrographId} with ${childMicrographs.length} children`);
+          log.info(`[IPC] Children IDs:`, childMicrographs.map(c => ({ id: c.id, name: c.name, imagePath: c.imagePath })));
+
+          break;
+        }
+      }
+      if (micrograph) break;
+    }
+    if (micrograph) break;
+  }
+
+  if (!micrograph) {
+    const availableIds = project.datasets?.flatMap(d => d.samples?.flatMap(s => s.micrographs?.map(m => m.id)) || []) || [];
+    const datasetCount = project.datasets?.length ?? 0;
+    const sampleCount = project.datasets?.reduce((n, d) => n + (d.samples?.length || 0), 0) ?? 0;
+    log.error(`[IPC] Micrograph ${micrographId} not found in project. Available micrographs:`, availableIds);
+    // Include snapshot shape in the message so remote error reports (Sentry) are
+    // self-diagnosing — distinguishes "empty/stale snapshot" from "wrong id".
+    throw new Error(
+      `Micrograph ${micrographId} not found in project ` +
+      `(snapshot: ${datasetCount} datasets, ${sampleCount} samples, ${availableIds.length} micrographs)`
+    );
+  }
+
+  // A synced copy waits for an image that has not arrived yet (a pull brings
+  // a micrograph before its files): the composite is left as it was and made
+  // again when the image arrives, so one without the overlay is never
+  // written, and pushed to everyone (2026-10-05). A local project keeps
+  // making it without a missing image.
+  const synced = fs.existsSync(path.join(syncSidecar.syncDir(folderPaths.projectPath), 'state.json'));
+  const waitingFor = [];
+
+  // Load base micrograph image (with fallback to uiImages for legacy projects)
+  const basePath = await resolveImagePathWithLegacyFallback(
+    path.join(folderPaths.images, micrograph.imagePath)
+  );
+  if (synced && !fs.existsSync(basePath)) {
+    log.info(`[IPC] Composite of ${micrographId} left as it was: its image has not arrived yet`);
+    return { success: false, waitingFor: [micrographId] };
+  }
+  log.info(`[IPC] Loading base image: ${basePath}`);
+
+  let baseImage = sharp(basePath);
+  const baseMetadata = await baseImage.metadata();
+
+  log.info(`[IPC] Parent micrograph: ${micrograph.id}`);
+  log.info(`[IPC]   imageWidth (stored): ${micrograph.imageWidth}, imageHeight (stored): ${micrograph.imageHeight}`);
+  log.info(`[IPC]   Actual file dimensions: ${baseMetadata.width}x${baseMetadata.height}`);
+  log.info(`[IPC]   Parent px/cm: ${micrograph.scalePixelsPerCentimeter}`);
+
+  // Calculate thumbnail dimensions maintaining aspect ratio
+  const maxDimension = 250;
+  const aspectRatio = baseMetadata.width / baseMetadata.height;
+  let thumbWidth, thumbHeight;
+
+  if (baseMetadata.width > baseMetadata.height) {
+    thumbWidth = maxDimension;
+    thumbHeight = Math.round(maxDimension / aspectRatio);
+  } else {
+    thumbHeight = maxDimension;
+    thumbWidth = Math.round(maxDimension * aspectRatio);
+  }
+
+  // Resize base image to thumbnail size
+  baseImage = baseImage.resize(thumbWidth, thumbHeight, {
+    fit: 'fill',
+    kernel: sharp.kernel.lanczos3
+  });
+
+  // If there are no children, just save the base thumbnail
+  if (childMicrographs.length === 0) {
+    log.info(`[IPC] No child micrographs, saving base thumbnail only`);
+
+    const outputPath = path.join(folderPaths.compositeThumbnails, micrographId);
+    const changed = await writeIfChanged(outputPath, await baseImage.jpeg({ quality: 85 }).toBuffer());
 
     return {
       success: true,
+      changed,
       thumbnailPath: outputPath,
       width: thumbWidth,
       height: thumbHeight
     };
-
-  } catch (error) {
-    log.error('[IPC] Error generating composite thumbnail:', error);
-    // Still try to release memory on error
-    sharp.cache(false);
-    sharp.cache({ memory: 256, files: 20, items: 100 });
-    throw error;
   }
+
+  // Composite children onto base
+  log.info(`[IPC] Compositing ${childMicrographs.length} child micrographs`);
+
+  // Convert base image to buffer for compositing
+  const baseBuffer = await baseImage.toBuffer();
+
+  // Calculate scale factor from original to thumbnail
+  const thumbnailScale = thumbWidth / baseMetadata.width;
+
+  // Build composite layers
+  const compositeInputs = [];
+
+  for (const child of childMicrographs) {
+    try {
+      // Skip point-located micrographs - they should be rendered as point markers, not overlays
+      if (child.pointInParent) {
+        log.info(`[IPC] Skipping point-located child ${child.id} (${child.name}) - not rendered as overlay`);
+        continue;
+      }
+
+      // Handle affine-transformed overlays specially - load pre-transformed image from cache
+      if (child.placementType === 'affine' && child.affineTileHash) {
+        log.info(`[IPC] Loading affine overlay ${child.id} for thumbnail from cache`);
+        const childPath = await resolveImagePathWithLegacyFallback(
+          path.join(folderPaths.images, child.imagePath)
+        );
+        const haveImage = fs.existsSync(childPath);
+        if (synced && !haveImage) {
+          waitingFor.push(child.id);
+          continue;
+        }
+        // The warped image is cached only where someone viewed the overlay (not
+        // on a computer that pulled it): make it, or remake it for a new matrix
+        if (haveImage && Array.isArray(child.affineMatrix) && child.affineMatrix.length === 6) {
+          await ensureAffineTiles(childPath, child.affineTileHash, child.affineMatrix);
+        }
+        const tileCache = require('./tileCache');
+        const affineBuffer = await tileCache.loadAffineMedium(child.affineTileHash);
+
+        if (affineBuffer) {
+          // Use bounds and dimensions from micrograph data (not cache metadata)
+          const boundsOffset = child.affineBoundsOffset || { x: 0, y: 0 };
+          const transformedWidth = child.affineTransformedWidth || 0;
+          const transformedHeight = child.affineTransformedHeight || 0;
+
+          // Scale position and size to thumbnail coordinates
+          const thumbX = Math.round(boundsOffset.x * thumbnailScale);
+          const thumbY = Math.round(boundsOffset.y * thumbnailScale);
+          const thumbAffineWidth = Math.round(transformedWidth * thumbnailScale);
+          const thumbAffineHeight = Math.round(transformedHeight * thumbnailScale);
+
+          log.info(`[IPC] Affine thumbnail ${child.id}: bounds=(${thumbX}, ${thumbY}), size=${thumbAffineWidth}x${thumbAffineHeight}`);
+
+          // Resize and apply opacity
+          let affineImage = sharp(affineBuffer)
+            .resize(thumbAffineWidth, thumbAffineHeight, { fit: 'fill', kernel: sharp.kernel.lanczos3 })
+            .ensureAlpha();
+
+          const childOpacity = child.opacity ?? 1.0;
+          let finalBuffer;
+          if (childOpacity < 1.0) {
+            const { data, info } = await affineImage.raw().toBuffer({ resolveWithObject: true });
+            for (let i = 3; i < data.length; i += 4) {
+              data[i] = Math.round(data[i] * childOpacity);
+            }
+            finalBuffer = await sharp(data, {
+              raw: { width: info.width, height: info.height, channels: info.channels }
+            }).png().toBuffer();
+          } else {
+            finalBuffer = await affineImage.png().toBuffer();
+          }
+
+          // Bounds checking and cropping
+          if (thumbX + thumbAffineWidth > 0 && thumbY + thumbAffineHeight > 0 && thumbX < thumbWidth && thumbY < thumbHeight) {
+            let cropX = 0, cropY = 0, cropW = thumbAffineWidth, cropH = thumbAffineHeight;
+            let finalX = thumbX, finalY = thumbY;
+
+            if (thumbX < 0) { cropX = -thumbX; cropW -= cropX; finalX = 0; }
+            if (thumbY < 0) { cropY = -thumbY; cropH -= cropY; finalY = 0; }
+            if (finalX + cropW > thumbWidth) { cropW = thumbWidth - finalX; }
+            if (finalY + cropH > thumbHeight) { cropH = thumbHeight - finalY; }
+
+            if (cropW > 0 && cropH > 0) {
+              let compositeBuffer = finalBuffer;
+              if (cropX > 0 || cropY > 0 || cropW !== thumbAffineWidth || cropH !== thumbAffineHeight) {
+                compositeBuffer = await sharp(finalBuffer)
+                  .extract({ left: Math.round(cropX), top: Math.round(cropY), width: Math.round(cropW), height: Math.round(cropH) })
+                  .toBuffer();
+              }
+              compositeInputs.push({ input: compositeBuffer, left: Math.round(finalX), top: Math.round(finalY) });
+              log.info(`[IPC] Added affine overlay to thumbnail at (${finalX}, ${finalY})`);
+            }
+          }
+        } else {
+          log.warn(`[IPC] No cached affine data for ${child.id}, skipping in thumbnail`);
+        }
+        continue;
+      }
+
+      // Skip children that haven't been located yet (no position data)
+      // This is critical for batch-imported micrographs which don't have position until user sets it
+      // Without this check, ALL children would be loaded from disk causing massive memory spike
+      if (!child.offsetInParent && child.xOffset === undefined) {
+        log.info(`[IPC] Skipping unlocated child ${child.id} (${child.name}) - no position data yet`);
+        continue;
+      }
+
+      log.info(`[IPC] Processing child ${child.id} (${child.name})`);
+
+      // Load child image (with fallback to uiImages for legacy projects)
+      const childPath = await resolveImagePathWithLegacyFallback(
+        path.join(folderPaths.images, child.imagePath)
+      );
+      if (synced && !fs.existsSync(childPath)) {
+        waitingFor.push(child.id);
+        continue;
+      }
+      let childImage = sharp(childPath);
+      const childMetadata = await childImage.metadata();
+
+      // IMPORTANT: Use stored imageWidth/imageHeight (original dimensions), NOT actual file dimensions
+      // This matches how AssociatedImageRenderer works in the main viewer
+      const childImageWidth = child.imageWidth || child.width || childMetadata.width;
+      const childImageHeight = child.imageHeight || child.height || childMetadata.height;
+
+      // Calculate child's display scale based on pixels per centimeter
+      const childPxPerCm = child.scalePixelsPerCentimeter || 100;
+      const parentPxPerCm = micrograph.scalePixelsPerCentimeter || 100;
+      const displayScale = parentPxPerCm / childPxPerCm;
+
+      log.info(`[IPC]   Child px/cm: ${childPxPerCm}, Parent px/cm: ${parentPxPerCm}, Display scale: ${displayScale}`);
+      log.info(`[IPC]   Child stored dimensions: ${childImageWidth}x${childImageHeight}, actual file: ${childMetadata.width}x${childMetadata.height}`);
+
+      // Calculate child dimensions in parent's coordinate space using STORED dimensions
+      const childDisplayWidth = childImageWidth * displayScale;
+      const childDisplayHeight = childImageHeight * displayScale;
+
+      // Get child position (top-left)
+      let topLeftX = 0;
+      let topLeftY = 0;
+
+      if (child.offsetInParent) {
+        topLeftX = child.offsetInParent.X;
+        topLeftY = child.offsetInParent.Y;
+        log.info(`[IPC]   Using offsetInParent: (${topLeftX}, ${topLeftY})`);
+      } else if (child.pointInParent) {
+        topLeftX = child.pointInParent.x - childDisplayWidth / 2;
+        topLeftY = child.pointInParent.y - childDisplayHeight / 2;
+        log.info(`[IPC]   Using pointInParent: (${child.pointInParent.x}, ${child.pointInParent.y}) -> topLeft: (${topLeftX}, ${topLeftY})`);
+      } else if (child.xOffset !== undefined && child.yOffset !== undefined) {
+        topLeftX = child.xOffset;
+        topLeftY = child.yOffset;
+        log.info(`[IPC]   Using legacy offset: (${topLeftX}, ${topLeftY})`);
+      }
+
+      // Scale position to thumbnail coordinates
+      const thumbX = Math.round(topLeftX * thumbnailScale);
+      const thumbY = Math.round(topLeftY * thumbnailScale);
+
+      // Scale child dimensions to thumbnail coordinates
+      const thumbChildWidth = Math.round(childDisplayWidth * thumbnailScale);
+      const thumbChildHeight = Math.round(childDisplayHeight * thumbnailScale);
+
+      log.info(`[IPC]   Original position: (${topLeftX}, ${topLeftY}), Thumbnail position: (${thumbX}, ${thumbY})`);
+      log.info(`[IPC]   Original size: ${childMetadata.width}x${childMetadata.height}, Display size: ${childDisplayWidth}x${childDisplayHeight}, Thumb size: ${thumbChildWidth}x${thumbChildHeight}`);
+
+      // Resize child image
+      childImage = childImage.resize(thumbChildWidth, thumbChildHeight, {
+        fit: 'fill',
+        kernel: sharp.kernel.lanczos3
+      });
+
+      // Get child opacity (default to 1 if not set)
+      const childOpacity = child.opacity ?? 1.0;
+      log.info(`[IPC]   Child opacity: ${childOpacity}`);
+
+      // Ensure we have alpha channel for opacity support
+      childImage = childImage.ensureAlpha();
+
+      // Apply opacity by multiplying the alpha channel
+      // We need to get the buffer, modify alpha values, then create new sharp instance
+      if (childOpacity < 1.0) {
+        const { data, info } = await childImage.raw().toBuffer({ resolveWithObject: true });
+
+        // Modify alpha channel (every 4th byte starting at index 3)
+        for (let i = 3; i < data.length; i += 4) {
+          data[i] = Math.round(data[i] * childOpacity);
+        }
+
+        // Recreate sharp instance with modified data
+        childImage = sharp(data, {
+          raw: {
+            width: info.width,
+            height: info.height,
+            channels: info.channels
+          }
+        });
+      }
+
+      // Apply rotation if needed
+      let finalX, finalY, finalBuffer;
+      if (child.rotation) {
+        // Calculate center position for rotation
+        const centerX = thumbX + thumbChildWidth / 2;
+        const centerY = thumbY + thumbChildHeight / 2;
+
+        // Rotate with transparent background
+        childImage = childImage.rotate(child.rotation, {
+          background: { r: 0, g: 0, b: 0, alpha: 0 }
+        });
+
+        // Calculate rotated bounding box dimensions mathematically
+        // Sharp's metadata() on a pipeline returns input metadata, not post-transform
+        const radians = (child.rotation * Math.PI) / 180;
+        const cos = Math.abs(Math.cos(radians));
+        const sin = Math.abs(Math.sin(radians));
+        const rotatedWidth = thumbChildWidth * cos + thumbChildHeight * sin;
+        const rotatedHeight = thumbChildWidth * sin + thumbChildHeight * cos;
+
+        // Adjust position to account for rotation
+        finalX = Math.round(centerX - rotatedWidth / 2);
+        finalY = Math.round(centerY - rotatedHeight / 2);
+        finalBuffer = await childImage.png().toBuffer();
+
+        log.info(`[IPC]   Rotation: ${child.rotation}°, Rotated size: ${Math.round(rotatedWidth)}x${Math.round(rotatedHeight)}`);
+      } else {
+        finalX = thumbX;
+        finalY = thumbY;
+        finalBuffer = await childImage.png().toBuffer();
+      }
+
+      // Validate that the composite position is within bounds
+      // Sharp requires: left >= 0, top >= 0, and image fits within base
+      const childBufferMeta = await sharp(finalBuffer).metadata();
+      const childW = childBufferMeta.width;
+      const childH = childBufferMeta.height;
+
+      // Skip children that would be entirely outside the base image
+      if (finalX + childW <= 0 || finalY + childH <= 0 || finalX >= thumbWidth || finalY >= thumbHeight) {
+        log.info(`[IPC]   Skipping child ${child.id} - entirely outside base image bounds`);
+        continue;
+      }
+
+      // Crop child image if it extends outside base bounds
+      let cropX = 0, cropY = 0, cropW = childW, cropH = childH;
+      let compositeX = finalX, compositeY = finalY;
+
+      // Handle negative X (child extends past left edge)
+      if (finalX < 0) {
+        cropX = -finalX;
+        cropW -= cropX;
+        compositeX = 0;
+      }
+
+      // Handle negative Y (child extends past top edge)
+      if (finalY < 0) {
+        cropY = -finalY;
+        cropH -= cropY;
+        compositeY = 0;
+      }
+
+      // Handle overflow on right
+      if (compositeX + cropW > thumbWidth) {
+        cropW = thumbWidth - compositeX;
+      }
+
+      // Handle overflow on bottom
+      if (compositeY + cropH > thumbHeight) {
+        cropH = thumbHeight - compositeY;
+      }
+
+      // Validate crop dimensions are positive
+      if (cropW <= 0 || cropH <= 0) {
+        log.info(`[IPC]   Skipping child ${child.id} - crop dimensions invalid after bounds check`);
+        continue;
+      }
+
+      // If we need to crop, extract the visible region
+      let compositeBuffer = finalBuffer;
+      if (cropX > 0 || cropY > 0 || cropW !== childW || cropH !== childH) {
+        log.info(`[IPC]   Cropping child to visible region: extract(${cropX}, ${cropY}, ${cropW}, ${cropH})`);
+        compositeBuffer = await sharp(finalBuffer)
+          .extract({ left: cropX, top: cropY, width: cropW, height: cropH })
+          .toBuffer();
+      }
+
+      compositeInputs.push({
+        input: compositeBuffer,
+        left: compositeX,
+        top: compositeY
+      });
+    } catch (error) {
+      log.error(`[IPC] Failed to composite child ${child.id}:`, error);
+      // Continue with other children
+    }
+  }
+
+  if (waitingFor.length > 0) {
+    log.info(`[IPC] Composite of ${micrographId} left as it was: waiting for the image of ${waitingFor.join(', ')}`);
+    return { success: false, waitingFor };
+  }
+
+  // Apply composites to base image
+  const compositeImage = sharp(baseBuffer).composite(compositeInputs);
+
+  // Save to compositeThumbnails folder (JPEG with no extension)
+  const outputPath = path.join(folderPaths.compositeThumbnails, micrographId);
+  const changed = await writeIfChanged(outputPath, await compositeImage.jpeg({ quality: 85 }).toBuffer());
+
+  log.info(`[IPC] Successfully generated composite thumbnail: ${outputPath}${changed ? '' : ' (unchanged)'}`);
+
+  return {
+    success: true,
+    changed,
+    thumbnailPath: outputPath,
+    width: thumbWidth,
+    height: thumbHeight
+  };
 }
 
-ipcMain.handle('composite:generate-thumbnail', async (event, projectId, micrographId, projectData) => {
-  const result = await generateCompositeThumbnail(projectId, micrographId, projectData);
-  // A linked XPL's children are drawn on its PPL's composite too (the PPL's tree row
-  // reloads on the XPL's 'thumbnail-generated'), so redraw the PPL's before answering
-  const primary = imageExport.primaryOfSecondary(projectData, micrographId);
-  if (primary) await generateCompositeThumbnail(projectId, primary.id, projectData);
-  return result;
-});
+/**
+ * Write a file unless it already holds these bytes (a composite made again
+ * the same, e.g. on a computer that also downloaded it, is no change to sync).
+ * @returns {Promise<boolean>} whether it was written
+ */
+async function writeIfChanged(filePath, buffer) {
+  const old = await fs.promises.readFile(filePath).catch(() => null);
+  if (old && old.equals(buffer)) return false;
+  await fs.promises.writeFile(filePath, buffer);
+  return true;
+}
 
 /**
  * Get path to composite thumbnail (returns empty string if doesn't exist)
@@ -3785,202 +4135,26 @@ ipcMain.handle('composite:rebuild-all-thumbnails', async (event, projectId, proj
     // Generate thumbnail for each micrograph
     for (const micrographId of micrographIds) {
       try {
-        // Reuse the existing generate-thumbnail handler logic
-        // Find the micrograph in the project hierarchy
-        let micrograph = null;
-        let childMicrographs = [];
-
-        for (const dataset of project.datasets || []) {
-          for (const sample of dataset.samples || []) {
-            for (const micro of sample.micrographs || []) {
-              if (micro.id === micrographId) {
-                micrograph = micro;
-                // Children and, for a linked PPL/XPL pair, the other half's (see the single handler)
-                childMicrographs = imageExport.pairChildrenOf(project, micro, { includeHidden: true });
-                break;
-              }
-            }
-            if (micrograph) break;
-          }
-          if (micrograph) break;
-        }
-
-        if (!micrograph || !micrograph.imagePath) {
-          log.warn(`[IPC] Skipping micrograph ${micrographId} - no image path`);
-          continue;
-        }
-
-        // Get project folder paths
-        const folderPaths = await projectFolders.getProjectFolderPaths(projectId);
-
-        // Load base micrograph image (with fallback to uiImages for legacy projects)
-        const basePath = await resolveImagePathWithLegacyFallback(
-          path.join(folderPaths.images, micrograph.imagePath)
-        );
-
-        // Check if image file exists
-        const fs = require('fs').promises;
-        try {
-          await fs.access(basePath);
-        } catch {
-          log.warn(`[IPC] Skipping micrograph ${micrographId} - image file not found: ${basePath}`);
-          continue;
-        }
-
-        let baseImage = sharp(basePath);
-        const baseMetadata = await baseImage.metadata();
-
-        // Calculate thumbnail dimensions maintaining aspect ratio
-        const maxDimension = 250;
-        const aspectRatio = baseMetadata.width / baseMetadata.height;
-        let thumbWidth, thumbHeight;
-
-        if (baseMetadata.width > baseMetadata.height) {
-          thumbWidth = maxDimension;
-          thumbHeight = Math.round(maxDimension / aspectRatio);
-        } else {
-          thumbHeight = maxDimension;
-          thumbWidth = Math.round(maxDimension * aspectRatio);
-        }
-
-        // Resize base image to thumbnail size
-        baseImage = baseImage.resize(thumbWidth, thumbHeight, {
-          fit: 'fill',
-          kernel: sharp.kernel.lanczos3
-        });
-
-        // If there are no children, just save the base thumbnail
-        if (childMicrographs.length === 0) {
-          const outputPath = path.join(folderPaths.compositeThumbnails, micrographId);
-          await baseImage.jpeg({ quality: 85 }).toFile(outputPath);
+        const result = await makeCompositeThumbnail(projectId, micrographId, project);
+        if (result.success) {
           results.succeeded++;
-          continue;
+        } else {
+          // A synced copy whose images are still downloading: made when they arrive
+          results.failed++;
+          results.errors.push({ micrographId, error: 'Waiting for images that are still downloading' });
         }
-
-        // Composite children onto base
-        const baseBuffer = await baseImage.toBuffer();
-        const thumbnailScale = thumbWidth / baseMetadata.width;
-        const compositeInputs = [];
-
-        for (const child of childMicrographs) {
-          try {
-            if (!child.imagePath) continue;
-
-            // Skip point-located micrographs - they should be rendered as point markers, not overlays
-            if (child.pointInParent) {
-              log.info(`[IPC] Rebuild: Skipping point-located child ${child.id} - not rendered as overlay`);
-              continue;
-            }
-
-            // Skip children that haven't been located yet (no position data)
-            // This prevents loading ALL child images when only some have position data
-            if (!child.offsetInParent && child.xOffset === undefined) {
-              log.info(`[IPC] Rebuild: Skipping unlocated child ${child.id} - no position data yet`);
-              continue;
-            }
-
-            // Load child image (with fallback to uiImages for legacy projects)
-            const childPath = await resolveImagePathWithLegacyFallback(
-              path.join(folderPaths.images, child.imagePath)
-            );
-
-            // Check if child image exists
-            try {
-              await fs.access(childPath);
-            } catch {
-              log.warn(`[IPC] Child image not found: ${childPath}`);
-              continue;
-            }
-
-            let childImage = sharp(childPath);
-            const childMetadata = await childImage.metadata();
-
-            // IMPORTANT: Use stored imageWidth/imageHeight (original dimensions), NOT actual file dimensions
-            const childImageWidth = child.imageWidth || child.width || childMetadata.width;
-            const childImageHeight = child.imageHeight || child.height || childMetadata.height;
-
-            const childPxPerCm = child.scalePixelsPerCentimeter || 100;
-            const parentPxPerCm = micrograph.scalePixelsPerCentimeter || 100;
-            const displayScale = parentPxPerCm / childPxPerCm;
-
-            const childDisplayWidth = childImageWidth * displayScale;
-            const childDisplayHeight = childImageHeight * displayScale;
-
-            let topLeftX = 0;
-            let topLeftY = 0;
-
-            if (child.offsetInParent) {
-              topLeftX = child.offsetInParent.X;
-              topLeftY = child.offsetInParent.Y;
-            } else if (child.pointInParent) {
-              topLeftX = child.pointInParent.x - childDisplayWidth / 2;
-              topLeftY = child.pointInParent.y - childDisplayHeight / 2;
-            } else if (child.xOffset !== undefined && child.yOffset !== undefined) {
-              topLeftX = child.xOffset;
-              topLeftY = child.yOffset;
-            }
-
-            const thumbX = Math.round(topLeftX * thumbnailScale);
-            const thumbY = Math.round(topLeftY * thumbnailScale);
-            const thumbChildWidth = Math.round(childDisplayWidth * thumbnailScale);
-            const thumbChildHeight = Math.round(childDisplayHeight * thumbnailScale);
-
-            childImage = childImage.resize(thumbChildWidth, thumbChildHeight, {
-              fit: 'fill',
-              kernel: sharp.kernel.lanczos3
-            });
-
-            if (child.rotation) {
-              const centerX = thumbX + thumbChildWidth / 2;
-              const centerY = thumbY + thumbChildHeight / 2;
-
-              // Convert to PNG with alpha channel before rotating
-              // This ensures the rotated corners are transparent, not black
-              childImage = childImage.ensureAlpha().rotate(child.rotation, {
-                background: { r: 0, g: 0, b: 0, alpha: 0 }
-              });
-
-              // Calculate rotated bounding box dimensions mathematically
-              // Sharp's metadata() on a pipeline returns input metadata, not post-transform
-              const radians = (child.rotation * Math.PI) / 180;
-              const cos = Math.abs(Math.cos(radians));
-              const sin = Math.abs(Math.sin(radians));
-              const rotatedWidth = thumbChildWidth * cos + thumbChildHeight * sin;
-              const rotatedHeight = thumbChildWidth * sin + thumbChildHeight * cos;
-
-              const adjustedX = Math.round(centerX - rotatedWidth / 2);
-              const adjustedY = Math.round(centerY - rotatedHeight / 2);
-
-              compositeInputs.push({
-                input: await childImage.png().toBuffer(),
-                left: adjustedX,
-                top: adjustedY
-              });
-            } else {
-              compositeInputs.push({
-                input: await childImage.toBuffer(),
-                left: thumbX,
-                top: thumbY
-              });
-            }
-          } catch (error) {
-            log.error(`[IPC] Failed to composite child ${child.id}:`, error);
-          }
-        }
-
-        const compositeImage = sharp(baseBuffer).composite(compositeInputs);
-        const outputPath = path.join(folderPaths.compositeThumbnails, micrographId);
-        await compositeImage.jpeg({ quality: 85 }).toFile(outputPath);
-
-        results.succeeded++;
       } catch (error) {
         log.error(`[IPC] Failed to rebuild thumbnail for ${micrographId}:`, error);
         results.failed++;
         results.errors.push({ micrographId, error: error.message });
+      } finally {
+        sharp.cache(false);
+        sharp.cache({ memory: 256, files: 20, items: 100 });
       }
     }
 
     log.info(`[IPC] Rebuild complete: ${results.succeeded} succeeded, ${results.failed} failed`);
+    syncService.notifyLocalChange(projectId);
 
     return {
       success: true,
@@ -4004,9 +4178,10 @@ ipcMain.handle('composite:rebuild-all-thumbnails', async (event, projectId, proj
 ipcMain.handle('project:save-json', async (event, project, projectId) => {
   try {
     log.info(`[IPC] Saving project.json for: ${projectId}`);
-    const savedPath = await projectSerializer.saveProjectJson(project, projectId);
+    const saved = await projectSerializer.saveProjectJsonStamped(project, projectId);
     log.info('[IPC] Successfully saved project.json');
-    return { success: true, path: savedPath };
+    // stamps: the times the save gave the project and datasets (the app takes them back)
+    return { success: true, path: saved.path, stamps: saved.stamps };
   } catch (error) {
     log.error('[IPC] Error saving project.json:', error);
     throw error;
@@ -4160,6 +4335,30 @@ ipcMain.handle('debug:reset-everything', async () => {
 
 const tokenService = require('./tokenService');
 
+// The server refused the refresh token (a sync, the live channel or any other
+// request found it): the renderer marks itself logged out and says so
+tokenService.onSessionEnded((info) => {
+  log.warn('[Auth] The session ended (refresh token refused); telling the window');
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('auth:session-ended', info);
+});
+
+// Sync IPC (sync:status, sync:turn-on, sync:push, sync:set-mode); the sync
+// engine itself loads only when a synced project uses it
+syncService.registerSyncIpc(ipcMain, () => mainWindow, { devTools: !app.isPackaged || app.getVersion().includes('-dev.') });
+introQueue.registerIntroIpc(ipcMain, () => mainWindow);
+
+// The chat window (17bd, 17be): chat events go to it as well as the main window
+const chatWindow = require('./chatWindow');
+chatWindow.register(ipcMain, () => mainWindow, app.isPackaged ? `${APP_SCHEME}://${APP_HOST}/chat.html` : 'http://localhost:5173/chat.html');
+syncService.onChatEvent((event) => chatWindow.forward('chat:event', event));
+// OS notifications for new messages and the unread badge (17bh)
+const chatNotifier = require('./chatNotify').attach({
+  getMainWindow: () => mainWindow,
+  chatWindow,
+  enabled: () => chatWindow.notificationsEnabled(),
+});
+syncService.onChatEvent((event) => chatNotifier.handle(event));
+
 // Helper to get REST server URL from renderer's localStorage
 // We'll pass it from the renderer since preferences are stored there
 function getRestServerFromPreferences(restServer) {
@@ -4181,15 +4380,30 @@ ipcMain.handle('auth:login', async (event, email, password, restServer) => {
     log.info('[Auth] Using REST server:', baseUrl);
     log.info('[Auth] Full login URL:', `${baseUrl}/jwtauth/login`);
 
-    const response = await fetch(`${baseUrl}/jwtauth/login`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ email, password }),
-    });
+    // No connection (or no answer within 30 s) reads as such, not as the
+    // raw "fetch failed" (found offline in the gap 4 test, 2026-10-05)
+    let response;
+    try {
+      response = await fetch(`${baseUrl}/jwtauth/login`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email, password }),
+        signal: AbortSignal.timeout(30_000),
+      });
+    } catch (error) {
+      log.warn('[Auth] Login: could not reach the server:', error.message);
+      return { success: false, error: "Can't reach StraboSpot. Check your connection and try again." };
+    }
 
-    const data = await response.json();
+    let data;
+    try {
+      data = await response.json();
+    } catch (error) {
+      log.warn('[Auth] Login: the answer was not JSON (HTTP ' + response.status + '):', error.message);
+      return { success: false, error: 'StraboSpot did not answer as expected. Please try again later.' };
+    }
 
     if (!response.ok) {
       log.warn('[Auth] Login failed:', data.message || 'Unknown error');
@@ -4204,7 +4418,8 @@ ipcMain.handle('auth:login', async (event, email, password, restServer) => {
       data.access_token,
       data.refresh_token,
       data.expires_in,
-      data.user
+      data.user,
+      baseUrl
     );
 
     log.info('[Auth] Login successful for:', data.user.email);
@@ -4228,6 +4443,9 @@ ipcMain.handle('auth:login', async (event, email, password, restServer) => {
  * @returns {object} { success }
  */
 ipcMain.handle('auth:logout', async (event, restServer) => {
+  // The live channel closes at once (17as), and the chat with it (17be e)
+  syncService.liveLoginChanged(null);
+  chatWindow.setContext(null);
   try {
     const tokens = await tokenService.getTokens();
 
@@ -4271,97 +4489,18 @@ ipcMain.handle('auth:logout', async (event, restServer) => {
   }
 });
 
-// Waits between refresh attempts when the server cannot be reached or answers 5xx
-const AUTH_REFRESH_RETRY_DELAYS_MS = [1000, 3000];
-
 /**
  * Refresh the access token using the refresh token.
- * Tokens are cleared only when the server rejects the refresh token (401).
- * Network errors and server errors keep the tokens (the user stays logged in)
- * and are retried with backoff; if they persist, the result has unreachable: true.
+ * Tokens are cleared only when the server rejects the refresh token (401);
+ * see tokenService.refreshAccessToken.
  * @param {string} restServer - REST server URL from preferences
  * @returns {object} { success, sessionExpired?, unreachable?, error? }
  */
 ipcMain.handle('auth:refresh', async (event, restServer) => {
   try {
-    const tokens = await tokenService.getTokens();
-
-    if (!tokens || !tokens.refreshToken) {
-      log.warn('[Auth] No refresh token available');
-      return { success: false, sessionExpired: true, error: 'No refresh token' };
-    }
-
-    const baseUrl = getRestServerFromPreferences(restServer);
-    let lastProblem = '';
-
-    for (let attempt = 0; attempt <= AUTH_REFRESH_RETRY_DELAYS_MS.length; attempt++) {
-      if (attempt > 0) {
-        await new Promise((resolve) => setTimeout(resolve, AUTH_REFRESH_RETRY_DELAYS_MS[attempt - 1]));
-      }
-
-      let response;
-      try {
-        response = await fetch(`${baseUrl}/jwtauth/refresh`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ refresh_token: tokens.refreshToken }),
-        });
-      } catch (networkError) {
-        lastProblem = networkError.message || 'network error';
-        log.warn(`[Auth] Token refresh attempt ${attempt + 1} could not reach the server: ${lastProblem}`);
-        continue;
-      }
-
-      if (response.status === 401) {
-        log.warn('[Auth] Refresh token rejected by the server (401), session expired');
-        await tokenService.clearTokens();
-        return {
-          success: false,
-          sessionExpired: true,
-          error: 'Session expired. Please log in again.',
-        };
-      }
-
-      if (response.status >= 500) {
-        lastProblem = `HTTP ${response.status}`;
-        log.warn(`[Auth] Token refresh attempt ${attempt + 1} failed with ${lastProblem}`);
-        continue;
-      }
-
-      if (!response.ok) {
-        // Other 4xx: a request problem, not proof that the session is gone; keep the tokens
-        log.error(`[Auth] Token refresh failed with HTTP ${response.status}; tokens kept`);
-        return { success: false, error: 'Failed to refresh session' };
-      }
-
-      let data;
-      try {
-        data = await response.json();
-      } catch (parseError) {
-        lastProblem = 'unreadable server response';
-        log.warn(`[Auth] Token refresh attempt ${attempt + 1}: ${lastProblem}`);
-        continue;
-      }
-
-      if (!data || !data.access_token) {
-        lastProblem = 'server response without an access token';
-        log.warn(`[Auth] Token refresh attempt ${attempt + 1}: ${lastProblem}`);
-        continue;
-      }
-
-      await tokenService.updateAccessToken(data.access_token, data.expires_in);
-      log.info('[Auth] Token refreshed successfully');
-      return { success: true };
-    }
-
-    log.warn(`[Auth] Token refresh gave up (${lastProblem}); tokens kept`);
-    return {
-      success: false,
-      unreachable: true,
-      error: 'Could not reach the StraboSpot server. Check your connection and try again.',
-    };
+    const result = await tokenService.refreshAccessToken(getRestServerFromPreferences(restServer));
+    const { accessToken, user, ...rest } = result;
+    return rest;
   } catch (error) {
     log.error('[Auth] Token refresh error:', error);
     return {
@@ -4373,13 +4512,22 @@ ipcMain.handle('auth:refresh', async (event, restServer) => {
 
 /**
  * Check if user is currently logged in with valid tokens
+ * @param {string} restServer - The configured REST server; tokens of another server are cleared
  * @returns {object} { isLoggedIn, user }
  */
-ipcMain.handle('auth:check', async () => {
+ipcMain.handle('auth:check', async (event, restServer) => {
   try {
     const tokens = await tokenService.getTokens();
 
     if (!tokens) {
+      return { isLoggedIn: false, user: null };
+    }
+
+    // Tokens of another server (the app was set to a new one): logged out.
+    // Tokens saved before they recorded their server are taken as they are.
+    if (tokens.server && restServer && !syncService.sameServer(tokens.server, restServer)) {
+      log.info(`[Auth] The saved login is for ${tokens.server}, the app is set to ${restServer}: logged out`);
+      await tokenService.clearTokens();
       return { isLoggedIn: false, user: null };
     }
 
@@ -5095,103 +5243,6 @@ ipcMain.handle('project:export-smz', async (event, projectId, projectData) => {
 });
 
 // =============================================================================
-// PUSH PROJECT TO SERVER
-// =============================================================================
-
-/**
- * Check server connectivity
- */
-ipcMain.handle('server:check-connectivity', async () => {
-  return serverUpload.checkConnectivity();
-});
-
-/**
- * Check if project exists on server
- */
-ipcMain.handle('server:check-project-exists', async (event, projectId) => {
-  try {
-    // Get valid token with auto-refresh
-    const tokenResult = await tokenService.getValidAccessToken();
-    if (!tokenResult.success) {
-      return { exists: false, error: tokenResult.error, sessionExpired: tokenResult.sessionExpired };
-    }
-    return serverUpload.checkProjectExists(projectId, tokenResult.accessToken);
-  } catch (error) {
-    log.error('[ServerUpload] Check project exists failed:', error);
-    return { exists: false, error: error.message };
-  }
-});
-
-/**
- * Push project to server
- * Main handler that orchestrates the entire upload process
- */
-ipcMain.handle('server:push-project', async (event, projectId, projectData, options) => {
-  try {
-    log.info('[ServerUpload] Starting push-to-server for project:', projectId);
-
-    const { overwrite = false } = options || {};
-
-    // Get valid token with auto-refresh
-    const tokenResult = await tokenService.getValidAccessToken();
-    if (!tokenResult.success) {
-      return { success: false, error: tokenResult.error, sessionExpired: tokenResult.sessionExpired };
-    }
-
-    // Get project folder paths
-    const folderPaths = await projectFolders.getProjectFolderPaths(projectId);
-
-    // Progress callback to send updates to renderer
-    const progressCallback = (progress) => {
-      event.sender.send('server:push-progress', progress);
-    };
-
-    // PDF generator wrapper (same as export-smz)
-    const pdfGenerator = async (outputPath, projData, projId, paths, progressCb) => {
-      await pdfProjectExport.generateProjectPDF(
-        outputPath,
-        projData,
-        projId,
-        paths,
-        imageExport.renderPdfImage,
-        progressCb
-      );
-    };
-
-    // Execute the push
-    const result = await serverUpload.pushProject({
-      projectId,
-      projectData,
-      folderPaths,
-      accessToken: tokenResult.accessToken,
-      overwrite,
-      progressCallback,
-      pdfGenerator,
-      projectSerializer,
-    });
-
-    if (result.success) {
-      log.info('[ServerUpload] Push completed successfully');
-    } else if (result.needsOverwriteConfirm) {
-      log.info('[ServerUpload] Project exists, awaiting overwrite confirmation');
-    } else {
-      log.error('[ServerUpload] Push failed:', result.error);
-    }
-
-    return result;
-
-  } catch (error) {
-    log.error('[ServerUpload] Push failed with exception:', error);
-    event.sender.send('server:push-progress', {
-      phase: serverUpload.UploadPhase.ERROR,
-      percentage: 0,
-      message: error.message,
-    });
-    return { success: false, error: error.message };
-  }
-});
-
-// =============================================================================
 // VERSION HISTORY
 // =============================================================================
 
@@ -5288,7 +5339,9 @@ ipcMain.handle('version:prune', async (event, projectId) => {
  */
 ipcMain.handle('point-count:save-session', async (event, projectId, session) => {
   log.info('[PointCount] Saving session:', session.id, 'for project:', projectId);
-  return pointCountStorage.saveSession(projectId, session);
+  const result = await pointCountStorage.saveSession(projectId, session);
+  syncService.notifyLocalChange(projectId);
+  return result;
 });
 
 /**
@@ -5304,7 +5357,9 @@ ipcMain.handle('point-count:load-session', async (event, projectId, sessionId) =
  */
 ipcMain.handle('point-count:delete-session', async (event, projectId, sessionId) => {
   log.info('[PointCount] Deleting session:', sessionId, 'for project:', projectId);
-  return pointCountStorage.deleteSession(projectId, sessionId);
+  const result = await pointCountStorage.deleteSession(projectId, sessionId);
+  syncService.notifyLocalChange(projectId);
+  return result;
 });
 
 /**
@@ -5328,7 +5383,9 @@ ipcMain.handle('point-count:list-all-sessions', async (event, projectId) => {
  */
 ipcMain.handle('point-count:rename-session', async (event, projectId, sessionId, newName) => {
   log.info('[PointCount] Renaming session:', sessionId, 'to:', newName);
-  return pointCountStorage.renameSession(projectId, sessionId, newName);
+  const result = await pointCountStorage.renameSession(projectId, sessionId, newName);
+  syncService.notifyLocalChange(projectId);
+  return result;
 });
 
 // =============================================================================
@@ -5385,13 +5442,18 @@ ipcMain.handle('projects:close', async (event, projectId) => {
   log.info('[Projects] Closing (deleting) project:', projectId);
 
   try {
-    // 1. Clear version history
-    await versionHistory.clearHistory(projectId);
-    log.info('[Projects] Cleared version history');
-
-    // 2. Delete project folder from disk
+    // 1. Delete the project folder (the copy in use) from disk
     await projectFolders.deleteProjectFolder(projectId);
     log.info('[Projects] Deleted project folder');
+
+    // 2. Clear version history, unless another copy of this id is still
+    // here (history is kept per project id, shared by its copies)
+    const otherCopy = projectFolders.findAccountCopies(projectId).length > 0 ||
+      fs.existsSync(path.join(projectFolders.getLocalProjectPath(projectId), 'project.json'));
+    if (!otherCopy) {
+      await versionHistory.clearHistory(projectId);
+      log.info('[Projects] Cleared version history');
+    }
 
     // 3. Remove from projects index
     await projectsIndex.removeProject(projectId);
@@ -5416,7 +5478,26 @@ ipcMain.handle('projects:close', async (event, projectId) => {
 ipcMain.handle('projects:load', async (event, projectId) => {
   log.info('[ProjectsIndex] Loading project:', projectId);
   try {
+    // Which copy: the logged-in (else last) account's, else local-only (16ba);
+    // another account's copy does not open (16at). The intro queue may be
+    // moving this project's folder right now (16ay): wait for it.
+    await introQueue.awaitMove(projectId);
+    const folder = projectFolders.resolveProjectCopy(projectId);
+    const owner = accounts.checkCopyOwner(folder);
+    if (!owner.ok) {
+      const who = owner.owner.name || owner.owner.email || 'another account';
+      log.info(`[ProjectsIndex] Not opening ${folder}: it belongs to ${who}`);
+      return { success: false, error: `This copy belongs to ${who}.`, belongsTo: owner.owner };
+    }
+    projectFolders.useProjectCopy(projectId, folder);
     const project = await projectSerializer.loadProjectJson(projectId);
+    // Point counts of micrographs deleted earlier (kept for undo until now)
+    try {
+      const removed = await pointCountStorage.removeOrphanedSessions(projectId, project);
+      if (removed.length) log.info(`[PointCountStorage] Removed ${removed.length} point count(s) of deleted micrographs: ${removed.join(', ')}`);
+    } catch (err) {
+      log.warn('[PointCountStorage] Orphaned point count cleanup failed:', err);
+    }
     // Update lastOpened in index
     await projectsIndex.updateProjectOpened(projectId, project.name);
     // Refresh menu to show updated recent projects
@@ -5428,6 +5509,25 @@ ipcMain.handle('projects:load', async (event, projectId) => {
     log.error('[ProjectsIndex] Error loading project:', error);
     return { success: false, error: error.message };
   }
+});
+
+/**
+ * Whose copy the open project is (16ax), or with forOpen the copy opening
+ * this project id would use (16at, checked before the open project closes):
+ * owner null when this login may use it; ownCopy when the logged-in account
+ * has its own copy of it.
+ */
+ipcMain.handle('projects:copy-owner', async (event, projectId, forOpen) => {
+  const folder = forOpen ? projectFolders.defaultProjectCopy(projectId) : projectFolders.getProjectFolderPath(projectId);
+  const check = accounts.checkCopyOwner(folder);
+  const active = accounts.getActive();
+  let ownCopy = false;
+  if (active) {
+    try {
+      ownCopy = fs.existsSync(path.join(projectFolders.getAccountCopyPath(projectId, active.server, active.pkey), 'project.json'));
+    } catch (_) { /* invalid account key */ }
+  }
+  return { owner: check.ok ? null : check.owner, ownCopy };
 });
 
 /**
@@ -5478,24 +5578,26 @@ ipcMain.handle('smz:select-file', async () => {
  * Inspect an .smz file to get project info without importing
  * Used to check if project exists locally and show confirmation dialog
  */
-ipcMain.handle('smz:inspect', async (event, smzPath) => {
+ipcMain.handle('smz:inspect', async (event, smzPath, options) => {
   log.info('[SmzImport] Inspecting .smz file:', smzPath);
-  return smzImport.inspectSmz(smzPath);
+  return smzImport.inspectSmz(smzPath, { shareCode: typeof options?.shareCode === 'string' ? options.shareCode : undefined });
 });
 
 /**
- * Import an .smz file (DESTRUCTIVE - replaces existing project)
+ * Import an .smz file (DESTRUCTIVE - replaces a local-only project with the
+ * same id; asCopy imports it under a new id next to my synced copy;
+ * shareCode: Open Shared Project, own id per code, see smzImport.inspectSmz)
  * Progress updates are sent via 'smz:import-progress' event
  */
-ipcMain.handle('smz:import', async (event, smzPath) => {
-  log.info('[SmzImport] Starting import of:', smzPath);
+ipcMain.handle('smz:import', async (event, smzPath, options) => {
+  log.info('[SmzImport] Starting import of:', smzPath, options?.asCopy ? '(as a separate copy)' : '');
 
   const result = await smzImport.importSmz(smzPath, (progress) => {
     // Send progress updates to renderer
     if (mainWindow) {
       mainWindow.webContents.send('smz:import-progress', progress);
     }
-  });
+  }, { asCopy: options?.asCopy === true, shareCode: typeof options?.shareCode === 'string' ? options.shareCode : '' });
 
   // If successful, update projects index and refresh menu
   if (result.success && result.projectId) {
@@ -5512,54 +5614,9 @@ ipcMain.handle('smz:import', async (event, smzPath) => {
 
 /**
  * ============================================================================
- * SERVER DOWNLOAD HANDLERS (Open Remote Project)
+ * SERVER DOWNLOAD HANDLERS (Open Shared Project, deep links)
  * ============================================================================
  */
-
-/**
- * List user's remote projects from the server
- * Requires authentication (JWT token)
- */
-ipcMain.handle('server:list-projects', async () => {
-  log.info('[ServerDownload] Listing remote projects...');
-
-  // Get valid token with auto-refresh
-  const tokenResult = await tokenService.getValidAccessToken();
-  if (!tokenResult.success) {
-    log.warn('[ServerDownload] Not authenticated or session expired');
-    return { success: false, error: tokenResult.error, sessionExpired: tokenResult.sessionExpired };
-  }
-
-  return serverDownload.listProjects(tokenResult.accessToken);
-});
-
-/**
- * Download a project from the server
- * Returns the path to the downloaded .zip file for inspection/import
- */
-ipcMain.handle('server:download-project', async (event, projectId) => {
-  log.info('[ServerDownload] Downloading project:', projectId);
-
-  // Get valid token with auto-refresh
-  const tokenResult = await tokenService.getValidAccessToken();
-  if (!tokenResult.success) {
-    log.warn('[ServerDownload] Not authenticated or session expired');
-    return { success: false, error: tokenResult.error, sessionExpired: tokenResult.sessionExpired };
-  }
-
-  const result = await serverDownload.downloadProject(
-    projectId,
-    tokenResult.accessToken,
-    (progress) => {
-      // Send progress updates to renderer
-      if (mainWindow) {
-        mainWindow.webContents.send('server:download-progress', progress);
-      }
-    }
-  );
-
-  return result;
-});
 
 /**
  * Deep link: resolve project name and size for a pkey (HEAD request).

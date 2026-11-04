@@ -12,6 +12,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const log = require('electron-log');
 const unzipper = require('unzipper');
 const sharp = require('sharp');
@@ -564,13 +565,58 @@ async function syncMicrographDimensions(projectData, folderPaths, sendProgress) 
 }
 
 /**
+ * Share-code copies (Open Shared Project, spec v3 16ap revised, 17b): each
+ * gets its own project id, so it never links to the original or to a
+ * membership copy. userData/share-codes.json remembers which local copy a
+ * code made (code -> project id), so the same code offers Replace.
+ */
+function shareCodesFile() {
+  const { app } = require('electron');
+  return path.join(app.getPath('userData'), 'share-codes.json');
+}
+
+function readShareCodes() {
+  try {
+    const data = JSON.parse(fs.readFileSync(shareCodesFile(), 'utf8'));
+    return data && typeof data === 'object' && !Array.isArray(data) ? data : {};
+  } catch (_) {
+    return {};
+  }
+}
+
+function recordShareCode(shareCode, projectId) {
+  const codes = readShareCodes();
+  codes[String(shareCode).toLowerCase()] = projectId;
+  fs.writeFileSync(shareCodesFile(), JSON.stringify(codes, null, 2));
+}
+
+/**
+ * The local-only copy a share code replaces, or null (a new copy): the copy
+ * the code made before, else (copies made before 17b kept the original id)
+ * a local-only copy with the archive's id.
+ * @param {string} shareCode
+ * @param {string} archiveId
+ * @returns {string | null}
+ */
+function shareCodeTarget(shareCode, archiveId) {
+  const has = (id) => typeof id === 'string' && id !== '' &&
+    fs.existsSync(path.join(projectFolders.getLocalProjectPath(id), 'project.json'));
+  const recorded = readShareCodes()[String(shareCode).toLowerCase()];
+  if (has(recorded)) return recorded;
+  return has(archiveId) ? archiveId : null;
+}
+
+/**
  * Extract and inspect an .smz file to get project info without importing
- * Used to check if project exists and show user confirmation dialog
+ * Used to check if project exists and show user confirmation dialog.
+ * With a share code, projectId is the local copy that code would replace
+ * (projectExists), else the archive's id (the import picks a new one).
  *
  * @param {string} smzPath - Path to the .smz file
- * @returns {Promise<{success: boolean, projectId?: string, projectName?: string, projectExists?: boolean, error?: string}>}
+ * @param {{ shareCode?: string }} [options]
+ * @returns {Promise<{success: boolean, projectId?: string, projectName?: string, projectExists?: boolean, syncedCopy?: boolean, error?: string}>}
  */
-async function inspectSmz(smzPath) {
+async function inspectSmz(smzPath, { shareCode } = {}) {
   try {
     log.info(`[SmzImport] Inspecting .smz file: ${smzPath}`);
 
@@ -615,16 +661,24 @@ async function inspectSmz(smzPath) {
 
     const projectName = projectJson.name || 'Untitled Project';
 
-    // Check if project already exists locally
-    const projectExists = await projectFolders.projectFolderExists(projectId);
+    // A local-only copy is what an import replaces; a synced copy of the
+    // logged-in (else last) account is never replaced (spec v3 11.4)
+    if (shareCode) {
+      const target = shareCodeTarget(shareCode, projectId);
+      log.info(`[SmzImport] Share code ${shareCode}: ${target ? `replaces ${target}` : 'a new copy'}`);
+      return { success: true, projectId: target || projectId, projectName, projectExists: target !== null, syncedCopy: false };
+    }
+    const projectExists = fs.existsSync(projectFolders.getLocalProjectPath(projectId));
+    const syncedCopy = projectFolders.ownProjectCopy(projectId) !== null;
 
-    log.info(`[SmzImport] Project "${projectName}" (${projectId}), exists locally: ${projectExists}`);
+    log.info(`[SmzImport] Project "${projectName}" (${projectId}), local copy: ${projectExists}, my synced copy: ${syncedCopy}`);
 
     return {
       success: true,
       projectId,
       projectName,
       projectExists,
+      syncedCopy,
     };
   } catch (error) {
     log.error('[SmzImport] Error inspecting .smz file:', error);
@@ -666,14 +720,21 @@ async function findAnyFile(dirPath) {
 }
 
 /**
- * Import an .smz file into the application
- * This is a DESTRUCTIVE operation - it replaces any existing project with the same ID
+ * Import an .smz file into the application, always as a local-only copy.
+ * This is a DESTRUCTIVE operation - it replaces a local-only project with the
+ * same ID. A synced copy of the logged-in (else last) account is never
+ * replaced: with one, the file imports only asCopy, under a new project id
+ * and with " (copy)" after its name.
+ *
+ * A share code imports under the id of the copy that code made before (or
+ * a pre-17b copy with the archive's id), else under a new id; the name stays.
  *
  * @param {string} smzPath - Path to the .smz file
  * @param {Function} progressCallback - Callback for progress updates
+ * @param {{ asCopy?: boolean, shareCode?: string }} [options]
  * @returns {Promise<{success: boolean, projectId?: string, projectData?: Object, error?: string}>}
  */
-async function importSmz(smzPath, progressCallback) {
+async function importSmz(smzPath, progressCallback, { asCopy = false, shareCode = '' } = {}) {
   try {
     log.info(`[SmzImport] Starting import of: ${smzPath}`);
 
@@ -691,7 +752,15 @@ async function importSmz(smzPath, progressCallback) {
       return inspectResult;
     }
 
-    const { projectId, projectName, projectExists } = inspectResult;
+    const { projectId: archiveId, projectName, syncedCopy } = inspectResult;
+    if (syncedCopy && !asCopy && !shareCode) {
+      return { success: false, error: 'This computer has your synced copy of this project. Open it, or import the file as a separate copy.' };
+    }
+    const shareTarget = shareCode ? shareCodeTarget(shareCode, archiveId) : null;
+    const projectId = shareCode ? (shareTarget || crypto.randomUUID()) : asCopy ? crypto.randomUUID() : archiveId;
+    const projectExists = shareCode ? shareTarget !== null : inspectResult.projectExists && !asCopy;
+    // Into the local-only folder, whichever copy this id used before
+    projectFolders.useProjectCopy(projectId, projectFolders.getLocalProjectPath(projectId));
 
     sendProgress('Preparing', 5, 'Preparing to import...');
 
@@ -728,10 +797,17 @@ async function importSmz(smzPath, progressCallback) {
       }
     }
 
-    // Clear version history for this project ID (whether it existed or not)
-    log.info(`[SmzImport] Clearing version history for project: ${projectId}`);
-    sendProgress('Clearing version history', 15, 'Removing old versions...');
-    await versionHistory.clearHistory(projectId);
+    // Deleting forgets the pin: pin the local-only folder again, or the
+    // folders below would resolve to an account copy of this id
+    projectFolders.useProjectCopy(projectId, projectFolders.getLocalProjectPath(projectId));
+
+    // Clear version history for this project ID (whether it existed or not),
+    // unless an account copy of it is here: the history is kept per project id
+    if (projectFolders.findAccountCopies(projectId).length === 0) {
+      log.info(`[SmzImport] Clearing version history for project: ${projectId}`);
+      sendProgress('Clearing version history', 15, 'Removing old versions...');
+      await versionHistory.clearHistory(projectId);
+    }
 
     // Create fresh project folder structure
     log.info(`[SmzImport] Creating project folders for: ${projectId}`);
@@ -754,14 +830,14 @@ async function importSmz(smzPath, progressCallback) {
     for (const file of files) {
       const relativePath = file.path;
 
-      // Skip if path doesn't start with project ID
-      if (!relativePath.startsWith(projectId + '/')) {
+      // Skip if path doesn't start with the archive's project ID
+      if (!relativePath.startsWith(archiveId + '/')) {
         log.warn(`[SmzImport] Skipping unexpected file: ${relativePath}`);
         continue;
       }
 
       // Get the path relative to project folder
-      const pathWithinProject = relativePath.substring(projectId.length + 1);
+      const pathWithinProject = relativePath.substring(archiveId.length + 1);
 
       // Determine destination based on file type
       let destPath;
@@ -846,7 +922,7 @@ async function importSmz(smzPath, progressCallback) {
       sendProgress('Extracting files', percentage, path.basename(pathWithinProject));
     }
 
-    const isLegacyProject = /^\d+$/.test(projectId);
+    const isLegacyProject = /^\d+$/.test(archiveId);
 
     // Fill in missing images/ files from uiImages (legacy .smz files may lack
     // some or all originals — see ensureImagesFolder)
@@ -884,6 +960,11 @@ async function importSmz(smzPath, progressCallback) {
     sendProgress('Loading project', 93, 'Reading project data...');
 
     const projectData = await projectSerializer.loadProjectJson(projectId);
+    if (projectId !== archiveId) {
+      projectData.id = projectId;
+      if (asCopy) projectData.name = `${projectData.name || 'Untitled Project'} (copy)`;
+      await projectSerializer.saveProjectJson(projectData, projectId);
+    }
 
     // Normalize oversized legacy images BEFORE syncing dimensions.
     // Locally-saved legacy .smz files include full-resolution originals in images/, but all
@@ -1080,6 +1161,7 @@ async function importSmz(smzPath, progressCallback) {
       log.info(`[SmzImport] Affine tile generation: ${affineOk} ok, ${affineSkipped} skipped (missing image), ${affineFailed} failed`);
     }
 
+    if (shareCode) recordShareCode(shareCode, projectId);
     log.info(`[SmzImport] Import complete: ${projectName} (${projectId})`);
     sendProgress('Complete', 100, 'Import complete!');
 

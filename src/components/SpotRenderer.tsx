@@ -9,6 +9,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { Circle, Line, Group, Text, Rect } from 'react-konva';
 import { Spot } from '@/types/project-types';
 import { useAppStore } from '@/store';
+import { isSpotTool } from '@/store/useAppStore';
 import { DEFAULT_MINERAL_COLORS, NO_MINERAL_COLOR } from '@/constants/mineralColorDefaults';
 import { loadMinerals } from '@/utils/mineralData';
 
@@ -52,6 +53,8 @@ interface SpotRendererProps {
   onClick?: (spot: Spot, event: any) => void;
   onContextMenu?: (spot: Spot, x: number, y: number) => void;
   renderLabelsOnly?: boolean; // If true, only render labels (for layering)
+  dimmed?: boolean; // Not matching View > Filter Spots... (drawn faint, like spots outside a Quick Edit session)
+  fromParent?: boolean; // View > Show Parent Spots: a spot of a micrograph above this one (faded, always dashed)
 }
 
 export const SpotRenderer: React.FC<SpotRendererProps> = ({
@@ -61,6 +64,8 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
   onClick,
   onContextMenu,
   renderLabelsOnly = false,
+  dimmed = false,
+  fromParent = false,
 }) => {
   const [isHovered, setIsHovered] = useState(false);
   const editingSpotId = useAppStore((state) => state.editingSpotId);
@@ -81,7 +86,7 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
   const sketchModeActive = useAppStore((state) => state.sketchModeActive);
 
   // Spots should be non-interactive when a drawing tool is active or sketch mode is on
-  const isDrawingTool = activeTool === 'point' || activeTool === 'line' || activeTool === 'polygon' || activeTool === 'measure';
+  const isDrawingTool = isSpotTool(activeTool) || activeTool === 'measure';
   const spotsNonInteractive = sketchModeActive || isDrawingTool;
 
   // Mineral color mode state (with fallbacks for rehydration from older stored state)
@@ -107,7 +112,8 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
     if (!mineralName) return null;
     const abbrevMap = getMineralAbbrevMap();
     const abbrev = abbrevMap.get(mineralName.toLowerCase());
-    return abbrev || mineralName.slice(0, 3);
+    // A custom name (not in the mineral database, e.g. "lithic fragments") has no abbreviation: show it whole
+    return abbrev || mineralName;
   }, [spotLabelMode, spot.name, spot.mineralogy?.minerals]);
 
   const isEditing = editingSpotId === spot.id;
@@ -167,6 +173,15 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
       opacity = 0.2;
       fillOpacity = 0.1;
     }
+  }
+
+  if (dimmed && !isSelected) {
+    opacity = Math.min(opacity, 0.2);
+    fillOpacity = Math.min(fillOpacity, 0.1);
+  }
+  if (fromParent) {
+    opacity = Math.min(opacity, 0.6);
+    fillOpacity = Math.min(fillOpacity, 0.12);
   }
 
   // Don't show hover effect when spot is selected
@@ -358,7 +373,7 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
           points={points}
           stroke={isSelected ? 'transparent' : strokeColor}
           strokeWidth={isSelected ? 0 : strokeWidth}
-          dash={isClassified ? undefined : [8 / scale, 4 / scale]}
+          dash={isClassified && !fromParent ? undefined : [8 / scale, 4 / scale]}
           opacity={opacity}
           listening={true}
           lineCap="round"
@@ -439,7 +454,7 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
           points={points}
           stroke={isSelected ? 'transparent' : strokeColor}
           strokeWidth={isSelected ? 0 : strokeWidth}
-          dash={isClassified ? undefined : [8 / scale, 4 / scale]}
+          dash={isClassified && !fromParent ? undefined : [8 / scale, 4 / scale]}
           fill={fillOpacity === 0 ? 'transparent' : color}
           opacity={opacity}
           closed={true}

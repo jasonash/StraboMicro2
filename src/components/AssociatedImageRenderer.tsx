@@ -16,6 +16,7 @@ import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { Group, Image as KonvaImage, Rect, Line } from 'react-konva';
 import { MicrographMetadata } from '@/types/project-types';
 import { useAppStore } from '@/store';
+import { useSyncStore } from '@/store/useSyncStore';
 import { releaseImage, isImageUsable } from '@/utils/imageUtils';
 
 // Render modes based on screen coverage and zoom
@@ -89,6 +90,15 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
 
   // Get active tool to avoid changing cursor when drawing/measuring
   const activeTool = useAppStore((state) => state.activeTool);
+
+  // Sync downloaded a new original for this overlay (same path, new file): load it again
+  const imageArrivals = useSyncStore((s) => s.imageArrivals[micrograph.id] ?? 0);
+  const imageArrivalsRef = useRef(imageArrivals);
+  useEffect(() => {
+    if (imageArrivalsRef.current === imageArrivals) return;
+    imageArrivalsRef.current = imageArrivals;
+    setImageState({ mode: 'THUMBNAIL', imageObj: null, tiles: new Map(), isLoading: false, retryCount: 0 });
+  }, [imageArrivals]);
 
   // Cleanup on unmount to prevent memory leaks
   useEffect(() => {
@@ -570,7 +580,9 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
       } catch (error) {
         // Only log error on final retry attempt to avoid console noise
         if (imageState.retryCount >= MAX_RETRIES - 1) {
-          console.error('[AssociatedImageRenderer] Failed to load image after retries:', error);
+          // A synced project's image still downloading: imageArrivals loads it again
+          if (/ENOENT/.test(String(error))) console.warn('[AssociatedImageRenderer] The image is not on this computer yet:', micrograph.id);
+          else console.error('[AssociatedImageRenderer] Failed to load image after retries:', error);
         }
         // Reset loading state and schedule retry after delay
         // This handles race conditions during initial project load

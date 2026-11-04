@@ -21,6 +21,7 @@ import {
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import { useAppStore } from '@/store';
+import { useStickyExpanded } from '@/hooks/useStickyExpanded';
 import { calculateAllGrainMetrics } from '@/utils/grainMetrics';
 import { analyzeGrains } from '@/services/grainAnalysis/statistics';
 
@@ -85,6 +86,7 @@ function StatRow({ label, value }: { label: string; value: string }) {
 }
 
 export function GrainSizeSummary({ micrographId }: GrainSizeSummaryProps) {
+  const [expanded, onExpandedChange] = useStickyExpanded('grainSize', false);
   const micrographIndex = useAppStore((s) => s.micrographIndex);
   const project = useAppStore((s) => s.project);
   const grainSpotFilter = useAppStore((s) => s.grainAnalysisSpotFilter);
@@ -174,7 +176,7 @@ export function GrainSizeSummary({ micrographId }: GrainSizeSummaryProps) {
   };
 
   return (
-    <StyledAccordion disableGutters defaultExpanded={false}>
+    <StyledAccordion disableGutters expanded={expanded} onChange={onExpandedChange}>
       <StyledAccordionSummary expandIcon={<ExpandMoreIcon />}>
         <Typography variant="subtitle2">Grain Size Analysis</Typography>
         <Chip

@@ -10,6 +10,7 @@
  * Controlled vocabularies match exactly with legacy JavaFX app.
  */
 
+import { imageTypeChoices } from '@/utils/imageTypeChoices';
 import { useState } from 'react';
 import {
   TextField,
@@ -67,6 +68,7 @@ export const InstrumentInfoForm: React.FC<InstrumentInfoFormProps> = ({
   showCopyFromExisting = false,
 }) => {
   const [showPeriodicTable, setShowPeriodicTable] = useState(false);
+  const imageTypeList = imageTypeChoices(formData.instrumentType, formData.dataType);
   const [showInstrumentDatabase, setShowInstrumentDatabase] = useState(false);
 
   const handleInstrumentFromDatabase = (instrument: InstrumentData) => {
@@ -314,8 +316,8 @@ export const InstrumentInfoForm: React.FC<InstrumentInfoFormProps> = ({
         </TextField>
       )}
 
-      {/* Image Type field - shown for Optical Microscopy, Scanner, FTIR, Raman, AFM */}
-      {formData.instrumentType === 'Optical Microscopy' && (
+      {/* Image Type: the list for this instrument and data type */}
+      {imageTypeList.kind === 'list' && (
         <TextField
           fullWidth
           required
@@ -325,188 +327,11 @@ export const InstrumentInfoForm: React.FC<InstrumentInfoFormProps> = ({
           onChange={(e) => onFormChange('imageType', e.target.value)}
         >
           <MenuItem value="">Select Image Type...</MenuItem>
-          <MenuItem value="Plane Polarized Light">Plane Polarized Light</MenuItem>
-          <MenuItem value="Cross Polarized Light">Cross Polarized Light</MenuItem>
-          <MenuItem value="Reflected Light">Reflected Light</MenuItem>
-          <MenuItem value="1/4 Lambda Plate">1/4 Lambda Plate</MenuItem>
-          <MenuItem value="Cathodoluminescence">Cathodoluminescence</MenuItem>
-          <MenuItem value="Gypsum Plate">Gypsum Plate</MenuItem>
+          {imageTypeList.options.map((option) => (
+            <MenuItem key={option} value={option}>{option}</MenuItem>
+          ))}
         </TextField>
       )}
-
-      {formData.instrumentType === 'Scanner' && (
-        <TextField
-          fullWidth
-          required
-          select
-          label="Image Type"
-          value={formData.imageType}
-          onChange={(e) => onFormChange('imageType', e.target.value)}
-        >
-          <MenuItem value="">Select Image Type...</MenuItem>
-          <MenuItem value="No Polarizer">No Polarizer</MenuItem>
-          <MenuItem value="Plane Polarized">Plane Polarized</MenuItem>
-          <MenuItem value="Cross Polarized">Cross Polarized</MenuItem>
-          <MenuItem value="Other">Other</MenuItem>
-        </TextField>
-      )}
-
-      {(formData.instrumentType === 'Fourier Transform Infrared Spectroscopy (FTIR)' ||
-        formData.instrumentType === 'Raman Spectroscopy') && (
-        <TextField
-          fullWidth
-          required
-          select
-          label="Image Type"
-          value={formData.imageType}
-          onChange={(e) => onFormChange('imageType', e.target.value)}
-        >
-          <MenuItem value="">Select Image Type...</MenuItem>
-          <MenuItem value="False Color Map">False Color Map</MenuItem>
-          <MenuItem value="Intensity Map">Intensity Map</MenuItem>
-        </TextField>
-      )}
-
-      {formData.instrumentType === 'Atomic Force Microscopy (AFM)' && (
-        <TextField
-          fullWidth
-          required
-          select
-          label="Image Type"
-          value={formData.imageType}
-          onChange={(e) => onFormChange('imageType', e.target.value)}
-        >
-          <MenuItem value="">Select Image Type...</MenuItem>
-          <MenuItem value="Topography Image">Topography Image</MenuItem>
-        </TextField>
-      )}
-
-      {/* Conditional Image Type based on Data Type for TEM */}
-      {formData.instrumentType === 'Transmission Electron Microscopy (TEM)' &&
-        formData.dataType === 'Electron Diffraction' && (
-          <TextField
-            fullWidth
-            required
-            select
-            label="Image Type"
-            value={formData.imageType}
-            onChange={(e) => onFormChange('imageType', e.target.value)}
-          >
-            <MenuItem value="">Select Image Type...</MenuItem>
-            <MenuItem value="Selected Area Electron Diffraction (SAED)">
-              Selected Area Electron Diffraction (SAED)
-            </MenuItem>
-            <MenuItem value="Convergent Beam Electron Diffraction (CBED)">
-              Convergent Beam Electron Diffraction (CBED)
-            </MenuItem>
-            <MenuItem value="Nano Beam Diffraction (NBD)">
-              Nano Beam Diffraction (NBD)
-            </MenuItem>
-            <MenuItem value="Large Area Convergent Beam Electron Diffraction (LACBED)">
-              Large Area Convergent Beam Electron Diffraction (LACBED)
-            </MenuItem>
-          </TextField>
-        )}
-
-      {/* Conditional Image Type based on Data Type for STEM CL */}
-      {formData.instrumentType === 'Scanning Transmission Electron Microscopy (STEM)' &&
-        formData.dataType === 'Cathodoluminescence (CL)' && (
-          <TextField
-            fullWidth
-            required
-            select
-            label="Image Type"
-            value={formData.imageType}
-            onChange={(e) => onFormChange('imageType', e.target.value)}
-          >
-            <MenuItem value="">Select Image Type...</MenuItem>
-            <MenuItem value="Panchromatic CL Image">Panchromatic CL Image</MenuItem>
-            <MenuItem value="Wavelength Filtered CL Image">
-              Wavelength Filtered CL Image
-            </MenuItem>
-            <MenuItem value="Cathodoluminescence Spectroscopy">
-              Cathodoluminescence Spectroscopy
-            </MenuItem>
-          </TextField>
-        )}
-
-      {/* Conditional Image Type based on Data Type for SEM EBSD */}
-      {formData.instrumentType === 'Scanning Electron Microscopy (SEM)' &&
-        formData.dataType === 'Electron Backscatter Diffraction (EBSD)' && (
-          <TextField
-            fullWidth
-            required
-            select
-            label="Image Type"
-            value={formData.imageType}
-            onChange={(e) => onFormChange('imageType', e.target.value)}
-          >
-            <MenuItem value="">Select Image Type...</MenuItem>
-            <MenuItem value="Orientation (Euler)">Orientation (Euler)</MenuItem>
-            <MenuItem value="Orientation (IPF-X)">Orientation (IPF-X)</MenuItem>
-            <MenuItem value="Orientation (IPF-Y)">Orientation (IPF-Y)</MenuItem>
-            <MenuItem value="Orientation (IPF-Z)">Orientation (IPF-Z)</MenuItem>
-            <MenuItem value="Band Contrast">Band Contrast</MenuItem>
-            <MenuItem value="Phase Map">Phase Map</MenuItem>
-            <MenuItem value="Misorientation to Mean">Misorientation to Mean</MenuItem>
-            <MenuItem value="Grain Boundaries">Grain Boundaries</MenuItem>
-            <MenuItem value="Sub-grain Boundaries">Sub-grain Boundaries</MenuItem>
-          </TextField>
-        )}
-
-      {/* Conditional Image Type based on Data Type for SEM CL */}
-      {formData.instrumentType === 'Scanning Electron Microscopy (SEM)' &&
-        formData.dataType === 'Cathodoluminescence (CL)' && (
-          <TextField
-            fullWidth
-            required
-            select
-            label="Image Type"
-            value={formData.imageType}
-            onChange={(e) => onFormChange('imageType', e.target.value)}
-          >
-            <MenuItem value="">Select Image Type...</MenuItem>
-            <MenuItem value="Panchromatic CL Image">Panchromatic CL Image</MenuItem>
-            <MenuItem value="Wavelength Filtered CL Image">
-              Wavelength Filtered CL Image
-            </MenuItem>
-          </TextField>
-        )}
-
-      {/* Conditional Image Type for SEM FIB-SEM */}
-      {formData.instrumentType === 'Scanning Electron Microscopy (SEM)' &&
-        formData.dataType === 'Focused Ion Beam Scanning Electron Microscopy (FIB-SEM)' && (
-          <TextField
-            fullWidth
-            required
-            select
-            label="Image Type"
-            value={formData.imageType}
-            onChange={(e) => onFormChange('imageType', e.target.value)}
-          >
-            <MenuItem value="">Select Image Type...</MenuItem>
-            <MenuItem value="FIB Imaging">FIB Imaging</MenuItem>
-          </TextField>
-        )}
-
-      {/* Conditional Image Type for Electron Microprobe CL */}
-      {formData.instrumentType === 'Electron Microprobe' &&
-        formData.dataType === 'Cathodoluminescence (CL)' && (
-          <TextField
-            fullWidth
-            required
-            select
-            label="Image Type"
-            value={formData.imageType}
-            onChange={(e) => onFormChange('imageType', e.target.value)}
-          >
-            <MenuItem value="">Select Image Type...</MenuItem>
-            <MenuItem value="Panchromatic SEM-CL Image">Panchromatic SEM-CL Image</MenuItem>
-            <MenuItem value="Wavelength Filtered SEM-CL Image">
-              Wavelength Filtered SEM-CL Image
-            </MenuItem>
-          </TextField>
-        )}
 
       {/* Auto-set imageType display for certain data types */}
       {formData.instrumentType === 'Transmission Electron Microscopy (TEM)' &&

@@ -19,6 +19,7 @@ import {
 } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import { useAppStore } from '@/store';
+import { useStickyExpanded } from '@/hooks/useStickyExpanded';
 import { getMineralColor } from '@/types/point-count-types';
 import type { PointCountSessionSummary } from '@/types/point-count-types';
 
@@ -190,6 +191,7 @@ function SessionDetail({ session }: { session: PointCountSessionSummary }) {
 }
 
 export function PointCountSummary({ micrographId }: PointCountSummaryProps) {
+  const [expanded, onExpandedChange] = useStickyExpanded('pointCount', false);
   const pointCountSessionList = useAppStore((s) => s.pointCountSessionList);
 
   // Filter sessions for this micrograph
@@ -204,7 +206,7 @@ export function PointCountSummary({ micrographId }: PointCountSummaryProps) {
   const olderSessions = sessions.slice(1);
 
   return (
-    <StyledAccordion disableGutters defaultExpanded={false}>
+    <StyledAccordion disableGutters expanded={expanded} onChange={onExpandedChange}>
       <StyledAccordionSummary expandIcon={<ExpandMoreIcon />}>
         <Typography variant="subtitle2">Point Count Results</Typography>
         <Chip label={`${sessions.length} session${sessions.length !== 1 ? 's' : ''}`} size="small" />

@@ -54,6 +54,16 @@ export function loadMinerals(): Mineral[] {
   return mineralCache;
 }
 
+let mineralByLowerName: Map<string, Mineral> | null = null;
+
+/** The database mineral with this name (case-insensitive), or undefined for a custom name */
+export function findMineral(name: string): Mineral | undefined {
+  if (!mineralByLowerName) {
+    mineralByLowerName = new Map(loadMinerals().map((m) => [m.mineralname.toLowerCase(), m]));
+  }
+  return mineralByLowerName.get(name.trim().toLowerCase());
+}
+
 /**
  * Load and parse lithology database
  */
@@ -79,10 +89,12 @@ export function getCommonMinerals(): Mineral[] {
 }
 
 /**
- * Search minerals by name (case-insensitive)
+ * Search minerals by name (case-insensitive). With nothing typed: every common
+ * mineral (150), not cut at the limit (the lists stopped at Dolomite, the 50th;
+ * Peter, 2026-10-29). The limit applies to typed searches over all 5598.
  */
 export function searchMinerals(query: string, limit = 50): Mineral[] {
-  if (!query) return getCommonMinerals().slice(0, limit);
+  if (!query) return getCommonMinerals();
 
   const lowercaseQuery = query.toLowerCase();
   const allMinerals = loadMinerals();

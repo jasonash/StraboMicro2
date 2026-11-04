@@ -11,6 +11,7 @@
 const path = require('path');
 const fs = require('fs');
 const { app } = require('electron');
+const { downloadFailure } = require('./downloadError');
 
 // ============================================================================
 // Configuration
@@ -19,6 +20,11 @@ const { app } = require('electron');
 const MODEL_FILENAME = 'FastSAM-x.onnx';
 const MODEL_URL = 'https://huggingface.co/jasonash1/fastsam-onnx/resolve/main/FastSAM-x.onnx';
 const MODEL_SIZE_BYTES = 289_000_000; // ~276MB, used for progress estimation
+
+/** Development only: STRABO_FASTSAM_MODEL_URL replaces MODEL_URL (tests/modelDownloadError point it at failing servers) */
+function modelUrl() {
+  return (!app.isPackaged && process.env.STRABO_FASTSAM_MODEL_URL) || MODEL_URL;
+}
 
 // ============================================================================
 // State
@@ -104,6 +110,15 @@ function getModelStatus() {
   };
 }
 
+/** Close a write stream and wait for its file handle to be released (Windows cannot delete an open file) */
+function closeStream(stream) {
+  if (stream.closed) return Promise.resolve();
+  return new Promise((resolve) => {
+    stream.once('close', resolve);
+    stream.destroy();
+  });
+}
+
 /**
  * Download the FastSAM model from Hugging Face.
  * @param {function} progressCallback - Called with { percent, downloadedBytes, totalBytes, status }
@@ -119,7 +134,8 @@ async function downloadModel(progressCallback = null) {
     return downloadPath;
   }
 
-  console.log('[FastSAM] Starting model download from:', MODEL_URL);
+  const url = modelUrl();
+  console.log('[FastSAM] Starting model download from:', url);
   console.log('[FastSAM] Download destination:', downloadPath);
 
   if (progressCallback) {
@@ -130,10 +146,15 @@ async function downloadModel(progressCallback = null) {
     // Use dynamic import for node-fetch (ESM module)
     const fetch = (await import('node-fetch')).default;
 
-    const response = await fetch(MODEL_URL);
+    let response;
+    try {
+      response = await fetch(url);
+    } catch (err) {
+      throw downloadFailure('connect', url, { cause: err });
+    }
 
     if (!response.ok) {
-      throw new Error(`Download failed: ${response.status} ${response.statusText}`);
+      throw downloadFailure('http', url, { status: response.status });
     }
 
     const contentLength = parseInt(response.headers.get('content-length') || MODEL_SIZE_BYTES, 10);
@@ -143,19 +164,30 @@ async function downloadModel(progressCallback = null) {
     const fileStream = fs.createWriteStream(tempPath);
 
     // Process the response body as a stream
-    for await (const chunk of response.body) {
-      fileStream.write(chunk);
-      downloadedBytes += chunk.length;
+    try {
+      for await (const chunk of response.body) {
+        fileStream.write(chunk);
+        downloadedBytes += chunk.length;
 
-      if (progressCallback) {
-        const percent = Math.round((downloadedBytes / contentLength) * 100);
-        progressCallback({
-          percent,
-          downloadedBytes,
-          totalBytes: contentLength,
-          status: `Downloading... ${Math.round(downloadedBytes / 1024 / 1024)}MB / ${Math.round(contentLength / 1024 / 1024)}MB`,
-        });
+        if (progressCallback) {
+          const percent = Math.round((downloadedBytes / contentLength) * 100);
+          progressCallback({
+            percent,
+            downloadedBytes,
+            totalBytes: contentLength,
+            status: `Downloading... ${Math.round(downloadedBytes / 1024 / 1024)}MB / ${Math.round(contentLength / 1024 / 1024)}MB`,
+          });
+        }
       }
+    } catch (err) {
+      await closeStream(fileStream);
+      throw downloadFailure('transfer', url, { cause: err });
+    }
+
+    // A connection that closes early can end the stream without an error
+    if (response.headers.get('content-length') && downloadedBytes < contentLength) {
+      await closeStream(fileStream);
+      throw downloadFailure('transfer', url, { cause: new Error(`got ${downloadedBytes} of ${contentLength} bytes`) });
     }
 
     fileStream.end();
@@ -180,13 +212,17 @@ async function downloadModel(progressCallback = null) {
 
     return downloadPath;
   } catch (err) {
-    // Clean up partial download
-    if (fs.existsSync(tempPath)) {
-      fs.unlinkSync(tempPath);
+    // Clean up partial download (a failed removal must not hide the download error)
+    try {
+      if (fs.existsSync(tempPath)) {
+        fs.unlinkSync(tempPath);
+      }
+    } catch (cleanupErr) {
+      console.warn('[FastSAM] Could not remove the partial download:', cleanupErr);
     }
 
-    console.error('[FastSAM] Download failed:', err);
-    throw new Error(`Failed to download FastSAM model: ${err.message}`);
+    console.error('[FastSAM] Download failed:', err.detail ?? err);
+    throw new Error(`The FastSAM model did not download. ${err.message}`);
   }
 }
 

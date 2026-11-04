@@ -1,0 +1,255 @@
+/**
+ * Integration test for src/store/undoHistory.ts with a real zustand store.
+ *
+ *   npm run test:undo-history
+ *
+ * Bundled with rolldown (tests/sync/rolldown.test.config.mjs) and run in Node.
+ */
+
+import { create } from 'zustand';
+import {
+  installUndoHistory, resetUndoHistory, undo, redo, withoutUndoRecording, setUndoBlockedHandler, setChangeGuard,
+  asOwnUndoStep,
+} from '../../src/store/undoHistory';
+import { buildMicrographIndex, buildSpotIndex } from '../../src/store/helpers';
+import type { ProjectMetadata } from '../../src/types/project-types';
+
+let failures = 0;
+let passes = 0;
+function check(label: string, ok: boolean, detail = ''): void {
+  if (ok) passes++;
+  else {
+    failures++;
+    console.log(`  FAIL  ${label}${detail ? `\n        ${detail}` : ''}`);
+  }
+}
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const QUIET = 350; // a little over the history's 300 ms
+
+interface TestState {
+  project: ProjectMetadata | null;
+  isDirty: boolean;
+  activeMicrographId: string | null;
+  activeSpotId: string | null;
+  micrographNavigationStack: string[];
+  selectedSpotIds: string[];
+  micrographIndex: ReturnType<typeof buildMicrographIndex>;
+  spotIndex: ReturnType<typeof buildSpotIndex>;
+  selectMicrograph: (id: string | null) => Promise<boolean>;
+  selectActiveSpot: (id: string | null) => Promise<boolean>;
+  edit: (fn: (p: ProjectMetadata) => void) => void;
+  load: (p: ProjectMetadata) => void;
+}
+
+const store = create<TestState>()((set, get) => ({
+  project: null,
+  isDirty: false,
+  activeMicrographId: null,
+  activeSpotId: null,
+  micrographNavigationStack: [],
+  selectedSpotIds: [],
+  micrographIndex: new Map(),
+  spotIndex: new Map(),
+  selectMicrograph: async (id) => { set({ activeMicrographId: id, activeSpotId: null }); return true; },
+  selectActiveSpot: async (id) => { set({ activeSpotId: id }); return true; },
+  edit: (fn) => {
+    const p = structuredClone(get().project!);
+    fn(p);
+    set({ project: p, isDirty: true, micrographIndex: buildMicrographIndex(p), spotIndex: buildSpotIndex(p) });
+  },
+  load: (p) => {
+    set({ project: p, isDirty: false, micrographIndex: buildMicrographIndex(p), spotIndex: buildSpotIndex(p),
+      activeMicrographId: null, activeSpotId: null });
+    resetUndoHistory();
+  },
+}));
+installUndoHistory(store);
+const blocked: string[] = [];
+setUndoBlockedHandler((m) => blocked.push(m));
+
+const project = (id = 'P'): ProjectMetadata => ({
+  id, name: 'Project',
+  datasets: [{ id: 'D1', name: 'D1', samples: [{ id: 'S1', name: 'S1', micrographs: [
+    { id: 'M1', name: 'ref', spots: [{ id: 'X1', name: 'a' }] },
+    { id: 'M2', name: 'other', spots: [] },
+  ] }] }],
+} as unknown as ProjectMetadata);
+const m = (i: number) => store.getState().project!.datasets![0].samples![0].micrographs![i];
+const S = () => store.getState();
+
+(async () => {
+  store.getState().load(project());
+
+  // A burst of edits is one step
+  for (let i = 0; i < 20; i++) S().edit((p) => { p.datasets![0].samples![0].micrographs![0].opacity = i / 20; });
+  await sleep(QUIET);
+  S().edit((p) => { p.datasets![0].samples![0].micrographs![0].name = 'renamed'; });
+  await sleep(QUIET);
+  await undo();
+  check('undo the rename', m(0).name === 'ref' && m(0).opacity === 19 / 20);
+  await undo();
+  check('one undo reverts the whole slider burst', m(0).opacity === undefined, String(m(0).opacity));
+  check('undo marks the project changed', S().isDirty === true);
+  await redo();
+  await redo();
+  check('redo twice restores both', m(0).opacity === 19 / 20 && m(0).name === 'renamed');
+
+  // Undo during a burst closes the burst first
+  S().edit((p) => { p.datasets![0].samples![0].micrographs![1].name = 'quick'; });
+  await undo();
+  check('undo right after an edit (no wait) undoes it', m(1).name === 'other');
+
+  // New edit clears redo
+  await redo();
+  check('redo it', m(1).name === 'quick');
+  await undo();
+  S().edit((p) => { p.name = 'new edit'; });
+  await sleep(QUIET);
+  await redo();
+  check('a new edit clears redo', m(1).name === 'other' && S().project!.name === 'new edit');
+
+  // Selection: undo a spot add while it is selected; undo a delete reselects
+  S().edit((p) => { p.datasets![0].samples![0].micrographs![1].spots!.push({ id: 'X9', name: 'new' } as never); });
+  await sleep(QUIET);
+  await S().selectMicrograph('M2');
+  await S().selectActiveSpot('X9');
+  store.setState({ selectedSpotIds: ['X9', 'X1'] });
+  await undo();
+  check('undo removes the added spot and clears its selection',
+    !S().spotIndex.has('X9') && S().activeSpotId === null && JSON.stringify(S().selectedSpotIds) === '["X1"]');
+  await S().selectMicrograph('M2');
+  await redo();
+  check('redo re-adds the spot and selects it', S().spotIndex.has('X9') && S().activeSpotId === 'X9');
+  S().edit((p) => { p.datasets![0].samples![0].micrographs!.splice(0, 1); }); // delete M1 (and X1)
+  await sleep(QUIET);
+  check('micrograph deleted', !S().micrographIndex.has('M1') && !S().spotIndex.has('X1'));
+  await S().selectMicrograph('M2');
+  await undo();
+  check('undo restores the micrograph and its spot', S().micrographIndex.has('M1') && S().spotIndex.has('X1'));
+  check('undo of a delete navigates to the restored spot', S().activeMicrographId === 'M1' && S().activeSpotId === 'X1',
+    `${S().activeMicrographId} ${S().activeSpotId}`);
+
+  // Pulled change: not recorded, survives undo, blocks undo of the same entity
+  S().edit((p) => { p.datasets![0].samples![0].micrographs![0].notes = 'mine'; });
+  await sleep(QUIET);
+  withoutUndoRecording(() => S().edit((p) => { p.datasets![0].samples![0].micrographs![1].notes = 'theirs'; }));
+  await sleep(QUIET);
+  await undo();
+  check('pulled change is not an undo step and survives undo', m(0).notes === undefined && m(1).notes === 'theirs');
+  await redo();
+  withoutUndoRecording(() => S().edit((p) => { p.datasets![0].samples![0].micrographs![0].notes = 'theirs too'; }));
+  const before = blocked.length;
+  await undo();
+  check('undo blocked when the entity changed remotely, with a notice',
+    m(0).notes === 'theirs too' && blocked.length === before + 1 && blocked[blocked.length - 1].includes('micrograph'), blocked.join(' | '));
+
+  // Per-user only: no step
+  S().edit((p) => { p.datasets![0].samples![0].micrographs![0].isExpanded = true; });
+  await sleep(QUIET);
+  const n = m(0).name;
+  await undo();
+  check('tree expansion is not an undo step (undo goes to the previous edit instead)', m(0).isExpanded === true && m(0).name === n);
+
+  // Switching projects clears history, also mid-burst
+  S().edit((p) => { p.name = 'unsaved in A'; });
+  S().load(project('Q'));
+  await sleep(QUIET);
+  await undo();
+  check('history cleared on project switch', S().project!.id === 'Q' && S().project!.name === 'Project');
+  S().edit((p) => { p.name = 'Q edit'; });
+  await sleep(QUIET);
+  S().load(project('Q')); // same project reloaded
+  await undo();
+  check('history cleared when the same project is reloaded', S().project!.name === 'Project');
+
+  // Project replaced without loadProject (e.g. restored from saved state): history still cleared
+  S().edit((p) => { p.name = 'Q edited'; });
+  await sleep(QUIET);
+  S().edit((p) => { p.name = 'Q mid-burst'; });
+  const r = project('R');
+  r.datasets![0].samples![0].micrographs![0].name = 'only in R';
+  store.setState({ project: r, micrographIndex: buildMicrographIndex(r), spotIndex: buildSpotIndex(r) });
+  await sleep(QUIET);
+  await undo();
+  check('history cleared when the project is replaced directly',
+    S().project!.id === 'R' && S().project!.name === 'Project' && m(0).name === 'only in R', `${S().project!.name} / ${m(0).name}`);
+
+  // Role checks (17h, 17i): a refused burst is put back whole and never recorded
+  S().load(project());
+  setChangeGuard((changes) => (changes.some((c) => (c.before ?? c.after)?.id === 'X1') ? 'Not yours.' : null));
+  blocked.length = 0;
+  S().edit((p) => { p.datasets[0].samples[0].micrographs[0].spots![0].name = 'changed by someone not allowed'; p.name = 'also changed'; });
+  await sleep(QUIET);
+  check('refused burst put back whole (the allowed part too)', m(0).spots![0].name === 'a' && S().project!.name === 'Project',
+    `${m(0).spots![0].name} / ${S().project!.name}`);
+  check('refusal message shown', blocked.length === 1 && blocked[0] === 'Not yours.', JSON.stringify(blocked));
+  await undo();
+  check('nothing recorded for a refused burst', S().project!.name === 'Project' && m(0).spots![0].name === 'a');
+  S().edit((p) => { p.name = 'allowed edit'; });
+  await sleep(QUIET);
+  check('an allowed burst is kept', S().project!.name === 'allowed edit');
+  // A step recorded before the role changed: undo is checked again
+  setChangeGuard(null);
+  S().edit((p) => { p.datasets[0].samples[0].micrographs[0].spots![0].name = 'edited while allowed'; });
+  await sleep(QUIET);
+  setChangeGuard((changes) => (changes.some((c) => (c.before ?? c.after)?.id === 'X1') ? 'Not yours now.' : null));
+  blocked.length = 0;
+  await undo();
+  check('undo the guard refuses is skipped', m(0).spots![0].name === 'edited while allowed' && blocked.length === 1 &&
+    blocked[0].includes('Not yours now.'), JSON.stringify(blocked));
+  setChangeGuard(null);
+  await undo();
+  check('a refused undo is dropped like any skipped step (the next undo goes further back)',
+    m(0).spots![0].name === 'edited while allowed' && S().project!.name === 'Project', `${m(0).spots![0].name} / ${S().project!.name}`);
+  blocked.length = 0;
+
+  // Limit 50
+  for (let i = 0; i < 55; i++) { S().edit((p) => { p.name = `v${i}`; }); await undo(); await redo(); }
+  let count = 0;
+  for (let i = 0; i < 60; i++) { const before2 = S().project!.name; await undo(); if (S().project!.name !== before2) count++; }
+  check('at most 50 undo steps', count === 50, String(count));
+
+  // A save writes its stamped time back into the store (applySavedStamps):
+  // undo still works on the dataset afterwards (the time is bookkeeping)
+  resetUndoHistory();
+  S().edit((p) => { p.datasets![0].name = 'dataset renamed'; });
+  await sleep(QUIET);
+  withoutUndoRecording(() => {
+    const p = structuredClone(S().project!);
+    p.datasets![0].modifiedTimestamp = '2026-10-03T15:00:00.000Z';
+    store.setState({ project: p });
+  });
+  undo();
+  check('undo after a save stamped the dataset\'s time', S().project!.datasets![0].name !== 'dataset renamed',
+    S().project!.datasets![0].name);
+
+  // Auto spot mode: quick spots are one undo step each (asOwnUndoStep)
+  S().load(project('AUTO'));
+  const addSpot = (id: string) => S().edit((p) => { p.datasets![0].samples![0].micrographs![1].spots!.push({ id, name: id } as never); });
+  const spotsOn2 = () => (m(1).spots ?? []).map((x) => x.id).join(',');
+  S().edit((p) => { p.datasets![0].name = 'renamed'; }); // a pending edit right before
+  asOwnUndoStep(() => addSpot('A1'));
+  asOwnUndoStep(() => addSpot('A2'));
+  asOwnUndoStep(() => addSpot('A3'));
+  check('own steps: all three added at once', spotsOn2() === 'A1,A2,A3', spotsOn2());
+  await undo();
+  check('own steps: undo removes only the last spot', spotsOn2() === 'A1,A2', spotsOn2());
+  await undo();
+  check('own steps: next undo removes the second', spotsOn2() === 'A1', spotsOn2());
+  await undo();
+  check('own steps: then the first', spotsOn2() === '', spotsOn2());
+  check('own steps: the edit before is still there', S().project!.datasets![0].name === 'renamed', S().project!.datasets![0].name);
+  await undo();
+  check('own steps: the edit before was its own step', S().project!.datasets![0].name === 'D1', S().project!.datasets![0].name);
+  await redo();
+  await redo();
+  check('own steps: redo brings them back one at a time', spotsOn2() === 'A1', spotsOn2());
+  S().edit((p) => { p.datasets![0].name = 'after'; });
+  await sleep(QUIET);
+  await undo();
+  check('own steps: an ordinary edit after is not merged into the last spot', spotsOn2() === 'A1' && S().project!.datasets![0].name === 'renamed',
+    `${spotsOn2()} ${S().project!.datasets![0].name}`);
+
+  console.log(failures ? `\n${failures} FAILED (${passes} passed)` : `\nALL PASSED (${passes} checks)`);
+  process.exit(failures ? 1 : 0);
+})();

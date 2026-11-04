@@ -18,6 +18,7 @@ const path = require('path');
 const log = require('electron-log');
 const scratchSpace = require('./scratchSpace');
 const bmp = require('bmp-js');
+const { tiffImageTo8Bit } = require('./tiffPixels');
 
 // tiff is an ES module, we'll import it dynamically when needed
 let decodeTIFF = null;
@@ -210,8 +211,12 @@ async function convertToScratchJPEG(inputPath, progressCallback = null) {
       // certain compressions/bit-depths), fall back to Sharp/libvips, which
       // covers a wider range of TIFF formats.
       let tiffData;
+      let rawBuffer;
+      let channels;
       try {
         tiffData = decode(fileBuffer);
+        // 8-bit pixels: palette colors applied, 16-bit scaled (tiffPixels.js)
+        ({ data: rawBuffer, channels } = tiffImageTo8Bit(tiffData[0]));
       } catch (decodeErr) {
         if (decodeErr && typeof decodeErr.message === 'string' && decodeErr.message.startsWith('Unsupported ')) {
           log.warn(`[ImageConverter] tiff library rejected file (${decodeErr.message}); falling back to Sharp/libvips`);
@@ -234,23 +239,7 @@ async function convertToScratchJPEG(inputPath, progressCallback = null) {
         progressCallback({ stage: 'converting', percent: 60 });
       }
 
-      // Get image data - the tiff library returns data in different formats depending on the image
-      // We need to convert it to a format Sharp can understand
-      let rawBuffer;
-      let channels;
-
-      if (image.data) {
-        // Image has raw pixel data
-        rawBuffer = Buffer.from(image.data);
-
-        // Determine number of channels from the data length
-        const pixelCount = width * height;
-        channels = rawBuffer.length / pixelCount;
-
-        log.info(`[ImageConverter] Image has ${channels} channels`);
-      } else {
-        throw new Error('TIFF image data format not supported');
-      }
+      log.info(`[ImageConverter] Image has ${channels} channels${image.palette ? ' (palette colors applied)' : ''}, ${image.bitsPerSample} bits per sample`);
 
       // Release tiffData - we've extracted what we need into rawBuffer
       tiffData = null;
@@ -563,15 +552,15 @@ async function convertToJPEG(inputPath, outputPath, options = {}) {
  * @param {string} sourcePath - Path to source image file
  * @param {string} projectId - UUID of the project
  * @param {string} micrographId - UUID of the micrograph
- * @param {string} projectFoldersBasePath - Base path to StraboMicro2Data folder
+ * @param {string} projectPath - The project's folder (projectFolders.getProjectFolderPath)
  * @returns {Promise<Object>} Conversion result with metadata
  */
-async function convertAndSaveMicrographImage(sourcePath, projectId, micrographId, projectFoldersBasePath) {
+async function convertAndSaveMicrographImage(sourcePath, projectId, micrographId, projectPath) {
   try {
     log.info(`[ImageConverter] Converting micrograph image for project ${projectId}, micrograph ${micrographId}`);
 
     // Build path to project's images folder
-    const imagesFolder = path.join(projectFoldersBasePath, projectId, 'images');
+    const imagesFolder = path.join(projectPath, 'images');
 
     // Ensure images folder exists
     await fs.promises.mkdir(imagesFolder, { recursive: true });
@@ -600,14 +589,13 @@ async function convertAndSaveMicrographImage(sourcePath, projectId, micrographId
  * @param {string} sourcePath - Path to source JPEG image
  * @param {string} projectId - UUID of the project
  * @param {string} micrographId - UUID of the micrograph
- * @param {string} projectFoldersBasePath - Base path to StraboMicro2Data folder
+ * @param {string} projectPath - The project's folder (projectFolders.getProjectFolderPath)
  * @returns {Promise<Object>} Paths to all generated images
  */
-async function generateImageVariants(sourcePath, projectId, micrographId, projectFoldersBasePath) {
+async function generateImageVariants(sourcePath, projectId, micrographId, projectPath) {
   try {
     log.info(`[ImageConverter] Generating image variants for micrograph ${micrographId}`);
 
-    const projectPath = path.join(projectFoldersBasePath, projectId);
 
     // Define output paths (all without extension)
     const variants = [
@@ -728,7 +716,36 @@ async function resizeScratchImage(identifier, targetWidth, targetHeight) {
   }
 }
 
+/**
+ * A region of an image as 8-bit grayscale, shrunk (never enlarged) so its long side is at most
+ * maxSide. For "Place automatically on parent" (src/services/autoPlace): the parent can be far too
+ * big to load whole, so the matcher reads it in pieces.
+ */
+async function readGrayRegion(imagePath, rect, maxSide) {
+  const meta = await sharp(imagePath, USER_IMAGE_INPUT).metadata();
+  const left = Math.max(0, Math.min(meta.width - 1, Math.floor(rect.x)));
+  const top = Math.max(0, Math.min(meta.height - 1, Math.floor(rect.y)));
+  const width = Math.max(1, Math.min(meta.width - left, Math.ceil(rect.width)));
+  const height = Math.max(1, Math.min(meta.height - top, Math.ceil(rect.height)));
+  const f = Math.min(1, maxSide / Math.max(width, height));
+  let image = sharp(imagePath, USER_IMAGE_INPUT);
+  if (left > 0 || top > 0 || width < meta.width || height < meta.height) {
+    image = image.extract({ left, top, width, height });
+  }
+  if (f < 1) {
+    image = image.resize(Math.max(1, Math.round(width * f)), Math.max(1, Math.round(height * f)), { fit: 'fill' });
+  }
+  const { data, info } = await image.greyscale().removeAlpha().raw().toBuffer({ resolveWithObject: true });
+  let gray = data;
+  if (info.channels > 1) {
+    gray = Buffer.alloc(info.width * info.height);
+    for (let i = 0; i < gray.length; i++) gray[i] = data[i * info.channels];
+  }
+  return { data: new Uint8Array(gray.buffer, gray.byteOffset, gray.length), width: info.width, height: info.height };
+}
+
 module.exports = {
+  readGrayRegion,
   convertToScratchJPEG,
   convertToJPEG,
   convertAndSaveMicrographImage,

@@ -1,8 +1,10 @@
 import React from 'react';
 import { Box, IconButton, Tooltip } from '@mui/material';
-import { Straighten as RulerIcon } from '@mui/icons-material';
+import { Straighten as RulerIcon, AutoMode as AutoModeIcon, AutoFixHigh as GrainIcon } from '@mui/icons-material';
 import { useAppStore } from '@/store';
+import { useCanCreate, useCanEdit } from '@/hooks/usePermissions';
 import { useToolbarDock } from '@/hooks/useToolbarDock';
+import { ALT_KEY_NAME } from './AutoSpotStrip';
 import './DrawingToolbar.css';
 
 /**
@@ -16,11 +18,17 @@ const DrawingToolbar: React.FC = () => {
   const activeTool = useAppStore((state) => state.activeTool);
   const setActiveTool = useAppStore((state) => state.setActiveTool);
   const pointCountMode = useAppStore((state) => state.pointCountMode);
+  const autoSpotMode = useAppStore((state) => state.autoSpotMode);
+  const setAutoSpotMode = useAppStore((state) => state.setAutoSpotMode);
   const spotLassoToolActive = useAppStore((state) => state.spotLassoToolActive);
   const setSpotLassoToolActive = useAppStore((state) => state.setSpotLassoToolActive);
   const sketchModeActive = useAppStore((state) => state.sketchModeActive);
   const setSketchModeActive = useAppStore((state) => state.setSketchModeActive);
   const activeMicrographId = useAppStore((state) => state.activeMicrographId);
+  // Role checks of a shared project (17h, 17i): Viewers draw no spots; a
+  // sketch is part of the micrograph, so only who may change it sketches
+  const canDraw = useCanCreate();
+  const canSketch = useCanEdit('micrograph', activeMicrographId);
 
   const { isHorizontal, positionStyle, tooltipPlacement, cycleDock } = useToolbarDock();
 
@@ -39,6 +47,10 @@ const DrawingToolbar: React.FC = () => {
 
   const handlePolygonClick = () => {
     setActiveTool(activeTool === 'polygon' ? null : 'polygon');
+  };
+
+  const handleGrainClick = () => {
+    setActiveTool(activeTool === 'grain' ? null : 'grain');
   };
 
   const handleLassoClick = () => {
@@ -68,6 +80,7 @@ const DrawingToolbar: React.FC = () => {
 
   return (
     <Box className={`drawing-toolbar ${orientationClass}`} style={positionStyle}>
+      {canDraw && (<>
       <Tooltip title="Point Spot" placement={tooltipPlacement}>
         <IconButton
           className={`toolbar-button ${activeTool === 'point' ? 'active' : ''}`}
@@ -121,6 +134,33 @@ const DrawingToolbar: React.FC = () => {
         </IconButton>
       </Tooltip>
 
+      <Tooltip title="Grain Spot: click a grain to outline it" placement={tooltipPlacement}>
+        <IconButton
+          className={`toolbar-button ${activeTool === 'grain' ? 'active' : ''}`}
+          onClick={handleGrainClick}
+          aria-label="Grain Spot tool"
+        >
+          <GrainIcon sx={{ fontSize: 20 }} />
+        </IconButton>
+      </Tooltip>
+
+      <Tooltip
+        title={autoSpotMode
+          ? `Auto spot mode is ON: spots are saved and named without a dialog (${ALT_KEY_NAME}+click opens it). Click to turn off.`
+          : 'Auto spot mode: place and name spots without a dialog'}
+        placement={tooltipPlacement}
+      >
+        <IconButton
+          className={`toolbar-button ${autoSpotMode ? 'active' : ''}`}
+          onClick={() => setAutoSpotMode(!autoSpotMode)}
+          aria-label="Auto spot mode"
+          aria-pressed={autoSpotMode}
+        >
+          <AutoModeIcon sx={{ fontSize: 20 }} />
+        </IconButton>
+      </Tooltip>
+      </>)}
+
       {/* Divider */}
       <Box sx={dividerSx} />
 
@@ -146,7 +186,8 @@ const DrawingToolbar: React.FC = () => {
       </Tooltip>
 
       {/* Sketch Mode */}
-      <Tooltip title={activeMicrographId ? "Sketch Mode (S)" : "Select a micrograph first"} placement={tooltipPlacement}>
+      {canSketch && (
+      <Tooltip title={activeMicrographId ? "Sketch Mode" : "Select a micrograph first"} placement={tooltipPlacement}>
         <span>
           <IconButton
             className="toolbar-button"
@@ -168,6 +209,7 @@ const DrawingToolbar: React.FC = () => {
           </IconButton>
         </span>
       </Tooltip>
+      )}
 
       <Tooltip title="Measure Distance" placement={tooltipPlacement}>
         <IconButton
