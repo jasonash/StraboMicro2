@@ -21,6 +21,14 @@
 
 const fs = require('fs');
 const crypto = require('crypto');
+// undici 8 from npm, not the fetch built into Node. Node 24 (Electron 44)
+// bundles undici 7.30.1, which throws an uncatchable AssertionError
+// (assert(!this.paused) in Parser.finish) when the server closes the
+// connection while a download is waiting for a slow disk (Sentry
+// ELECTRON-34, 2026-11-04: 376 files into a OneDrive folder; prod Apache
+// closes every connection after 100 requests). Fixed upstream in undici 8
+// (nodejs/undici #5389, #5474). Test: npm run test:download-close.
+const { fetch: defaultFetch } = require('undici');
 
 class SyncError extends Error {
   /**
@@ -108,7 +116,7 @@ function watchdog(ms) {
  *   refreshAccessToken?: () => Promise<string | null>, fetchImpl?: typeof fetch,
  *   clientId?: string, timeouts?: Partial<typeof TIMEOUTS> }} options
  */
-function createSyncClient({ restServer, getAccessToken, refreshAccessToken, fetchImpl = fetch, clientId, timeouts = {} }) {
+function createSyncClient({ restServer, getAccessToken, refreshAccessToken, fetchImpl = defaultFetch, clientId, timeouts = {} }) {
   const base = `${String(restServer).replace(/\/+$/, '')}/microsync/v1`;
   const T = { ...TIMEOUTS, ...timeouts };
 
@@ -448,4 +456,5 @@ function createSyncClient({ restServer, getAccessToken, refreshAccessToken, fetc
   };
 }
 
-module.exports = { createSyncClient, SyncError, hashFile, TIMEOUTS };
+// defaultFetch: what createSyncClient uses unless given fetchImpl (tests check it)
+module.exports = { createSyncClient, SyncError, hashFile, TIMEOUTS, defaultFetch };
