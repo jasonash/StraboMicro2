@@ -1,6 +1,6 @@
 {
   "name": "strabomicro2",
-  "version": "2.0.54",
+  "version": "2.0.55",
   "description": "StraboMicro - Geological Microanalysis Application",
   "main": "electron/main.js",
   "scripts": {
@@ -235,7 +235,10 @@
     },
     "win": {
       "icon": "build/icon.ico",
-      "signExts": [".node", ".dll"],
+      "signExts": [
+        ".node",
+        ".dll"
+      ],
       "target": [
         {
           "target": "nsis",
